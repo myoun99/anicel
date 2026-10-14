@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -19,13 +20,16 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show FxToggleButton, LayerMuteToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
-    show LayerRowDragTarget;
+    show LayerRowDragState, LayerRowDragTarget, TimelineRowDragHooks;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
@@ -60,7 +64,14 @@ void main() {
         },
       );
 
-  Cut cutOf(String id, {Layer? conteLayer, Layer? folder}) => Cut(
+  /// Cut [id], its conte — [conteLayer] — ridden by [attachRows] attach
+  /// rows above it, at seats +1 up.
+  Cut cutOf(
+    String id, {
+    Layer? conteLayer,
+    Layer? folder,
+    int attachRows = 0,
+  }) => Cut(
     id: CutId(id),
     name: id,
     duration: 12,
@@ -78,6 +89,14 @@ void main() {
       ),
       ?folder,
       ?conteLayer,
+      for (var seat = 1; seat <= attachRows; seat += 1)
+        Layer(
+          id: LayerId('$id-conte+$seat'),
+          name: 'Conte+$seat',
+          kind: LayerKind.storyboard,
+          attachedToLayerId: LayerId('$id-conte'),
+          frames: const [],
+        ),
     ],
   );
 
@@ -90,8 +109,13 @@ void main() {
 
   /// Cuts a and b, each with a camera and a conte of the same face — b's
   /// conte as [bConte] makes it, beside [bFolder] where given — on one
-  /// track with [seRows] S rows.
-  Project film({Layer? bConte, Layer? bFolder, int seRows = 1}) => Project(
+  /// track with [seRows] S rows; a's conte ridden by [attachRows].
+  Project film({
+    Layer? bConte,
+    Layer? bFolder,
+    int seRows = 1,
+    int attachRows = 0,
+  }) => Project(
     id: const ProjectId('rail-labels'),
     name: 'Rail labels',
     createdAt: DateTime.utc(2026, 10, 14),
@@ -101,7 +125,7 @@ void main() {
         name: 'V1',
         seLayers: [for (var n = 1; n <= seRows; n += 1) seLayer(n)],
         cuts: [
-          cutOf('a', conteLayer: conte('a')),
+          cutOf('a', conteLayer: conte('a'), attachRows: attachRows),
           cutOf('b', conteLayer: bConte ?? conte('b'), folder: bFolder),
         ],
       ),
@@ -111,13 +135,16 @@ void main() {
   /// The tab as the workspace mounts it, on [project]: built again on every
   /// notify the session makes — and on the camera VIEW [cameraView], which
   /// is none. [turned] hears every lane twirl the rail turns; [openLanes]
-  /// are the layers whose lanes stand open.
+  /// are the layers whose lanes stand open, [openGroups] the conte rows'
+  /// lane groups that do; [rowFilter] is the legend's.
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
     ValueNotifier<bool>? cameraView,
     List<LayerId>? turned,
     Set<LayerId> openLanes = const {},
+    Set<String> openGroups = const {},
+    TimelineRowFilter rowFilter = TimelineRowFilter.none,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -135,9 +162,10 @@ void main() {
               showSeconds: false,
               onShowSecondsChanged: (_) {},
               thumbnails: null,
-              rowFilter: TimelineRowFilter.none,
+              rowFilter: rowFilter,
               cameraViewEnabled: cameraView,
               expandedLaneLayerIds: openLanes,
+              expandedLaneGroupKeys: openGroups,
               onToggleLayerLanes: turned?.add,
             ),
           ),
@@ -611,4 +639,319 @@ void main() {
 
     expect(turned, [const LayerId('b-cam')]);
   });
+
+  // 🧪What a kept row's wrapper is built from, field by field (the mutants
+  // of 10-14): each pin changes ONE of them while the label shows nothing
+  // new, so the label is kept and only that field can build the wrapper
+  // again. The fields a label's own facts already carry — the S row's
+  // layer, the transition row's, the camera row's name, the V row's index
+  // (its name says it) — need none.
+
+  /// [layer] on the sheet unless [off] names it — the same instance when it
+  /// already stands so.
+  Layer sheeted(Layer layer, Set<String> off) {
+    final on = !off.contains(layer.id.value);
+    return layer.onTimesheet == on ? layer : layer.copyWith(onTimesheet: on);
+  }
+
+  /// [project] with the rows [off] names off the sheet and every other row
+  /// on it — each row that already stands so kept as it was.
+  Project sheetedOff(Project project, Set<String> off) => editTracks(
+    project,
+    (track) => track.copyWith(
+      seLayers: [for (final layer in track.seLayers) sheeted(layer, off)],
+      cuts: [
+        for (final cut in track.cuts)
+          cut.copyWith(
+            layers: [for (final layer in cut.layers) sheeted(layer, off)],
+          ),
+      ],
+    ),
+  );
+
+  /// The legend's filter that shows the rows on the sheet.
+  const onTheSheet = TimelineRowFilter(onTimesheetOnly: true);
+
+  Future<void> resheet(
+    WidgetTester tester,
+    EditorSessionManager session,
+    Set<String> off,
+  ) async {
+    session.repository.updateProject((project) => sheetedOff(project, off));
+    session.notifyChanged();
+    await tester.pump();
+  }
+
+  testWidgets('🚨an S row the filter shows somewhere else builds its wrapper '
+      'again — its caret at the slot it shows at, last or not as it is', (
+    tester,
+  ) async {
+    final session = await pumpPanel(
+      tester,
+      sheetedOff(film(seRows: 3), {'t1-s1'}),
+      rowFilter: onTheSheet,
+    );
+    final s2 = key('storyboard-se-label-t1-2');
+    // S3 over S2: S2 the lower of the two shown.
+    expect(wrapper(tester, s2).slotBefore, 1, reason: 'premise');
+    expect(wrapper(tester, s2).isLastRow, isTrue, reason: 'premise');
+
+    // S2 over S1: the upper of two.
+    await resheet(tester, session, {'t1-s3'});
+    expect(wrapper(tester, s2).slotBefore, 0);
+    expect(wrapper(tester, s2).isLastRow, isFalse);
+
+    // S2 alone: the upper, and the last.
+    await resheet(tester, session, {'t1-s1', 't1-s3'});
+    expect(wrapper(tester, s2).slotBefore, 0);
+    expect(wrapper(tester, s2).isLastRow, isTrue);
+  });
+
+  testWidgets('🚨a conte row the filter shows somewhere else builds its '
+      'wrapper again — its caret at the seat it shows at, last or not as it '
+      'is', (tester) async {
+    final session = await pumpPanel(
+      tester,
+      sheetedOff(film(attachRows: 2), {'a-conte'}),
+      rowFilter: onTheSheet,
+    );
+    final seat1 = key('storyboard-conte+1-label-t1');
+    // +2 over +1: +1 the lower of the two shown.
+    expect(wrapper(tester, seat1).slotBefore, 1, reason: 'premise');
+    expect(wrapper(tester, seat1).isLastRow, isTrue, reason: 'premise');
+
+    // +1 over the conte: the upper of two.
+    await resheet(tester, session, {'a-conte+2'});
+    expect(wrapper(tester, seat1).slotBefore, 0);
+    expect(wrapper(tester, seat1).isLastRow, isFalse);
+
+    // +1 alone: the upper, and the last.
+    await resheet(tester, session, {'a-conte', 'a-conte+2'});
+    expect(wrapper(tester, seat1).slotBefore, 0);
+    expect(wrapper(tester, seat1).isLastRow, isTrue);
+  });
+
+  /// The twirl that opens the Transform group of the lanes now open.
+  final transformGroupTwirl = find.byWidgetPredicate(
+    (widget) =>
+        widget is LayerFoldTwirl &&
+        (widget.name?.endsWith('-transform-group') ?? false),
+  );
+
+  testWidgets('🚨an S row\'s wrapper takes its group\'s height as a group of '
+      'its lanes twirls open — its label as it was', (tester) async {
+    await pumpPanel(tester, film());
+    await tester.tap(
+      find.descendant(of: seLabel, matching: find.byType(LayerFoldTwirl)),
+    );
+    await tester.pump();
+    final label = tester.widget(seLabel);
+    final open = wrapper(tester, seLabel).rowExtent;
+
+    await tester.tap(transformGroupTwirl.first);
+    await tester.pump();
+
+    expect(tester.widget(seLabel), same(label), reason: 'premise: kept');
+    expect(wrapper(tester, seLabel).rowExtent, greaterThan(open));
+  });
+
+  testWidgets('🚨a conte row\'s wrapper takes its group\'s height as a group '
+      'of its lanes twirls open — its head as it was', (tester) async {
+    // The host's set, which it turns in place as its twirl is pressed.
+    final groups = <String>{};
+    final session = await pumpPanel(
+      tester,
+      film(),
+      openLanes: {const LayerId('a-conte')},
+      openGroups: groups,
+    );
+    final head = tester.widget(headIn(conteLabel));
+    final open = wrapper(tester, conteLabel).rowExtent;
+
+    groups.add(laneGroupKey(const LayerId('a-conte'), 'transform-group'));
+    session.notifyChanged();
+    await tester.pump();
+
+    expect(tester.widget(headIn(conteLabel)), same(head), reason: 'kept');
+    expect(wrapper(tester, conteLabel).rowExtent, greaterThan(open));
+  });
+
+  /// [film] with a second track, t2, of one cut — 'c'.
+  Project twoTracks() {
+    final one = film();
+    return one.copyWith(
+      tracks: [
+        ...one.tracks,
+        Track(id: const TrackId('t2'), name: 'V2', cuts: [cutOf('c')]),
+      ],
+    );
+  }
+
+  testWidgets('🚨a V row\'s wrapper is built again as a track is added under '
+      'it — it is not the last row any more', (tester) async {
+    final session = await pumpPanel(tester, twoTracks());
+    final v2 = key('storyboard-track-select-t2');
+    expect(wrapper(tester, v2).isLastRow, isTrue, reason: 'premise');
+
+    session.repository.updateProject(
+      (project) => project.copyWith(
+        tracks: [
+          ...project.tracks,
+          Track(id: const TrackId('t3'), name: 'V3', cuts: [cutOf('d')]),
+        ],
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+
+    expect(wrapper(tester, v2).isLastRow, isFalse);
+  });
+
+  testWidgets('🚨a V row its tracks can re-order takes its group\'s height '
+      'as an S row opens its lanes', (tester) async {
+    await pumpPanel(tester, twoTracks());
+    final closed = wrapper(tester, vLabel).rowExtent;
+
+    await tester.tap(
+      find.descendant(of: seLabel, matching: find.byType(LayerFoldTwirl)),
+    );
+    await tester.pump();
+
+    expect(wrapper(tester, vLabel).rowExtent, greaterThan(closed));
+  });
+
+  /// Hooks hearing every move a row's drag makes: the rows it was handed,
+  /// by name.
+  TimelineRowDragHooks hooksHearing(List<List<String>> moves) =>
+      TimelineRowDragHooks(
+        drag: ValueNotifier<LayerRowDragState?>(null),
+        onBegin: (_) {},
+        onRowTarget: (_, _, _) {},
+        onUpdate: (rows, slot, {pointerInRow}) =>
+            moves.add([for (final row in rows) row.name]),
+        onTrackUpdate: (_) {},
+        onEffectUpdate: (_, _, _) {},
+        onEnd: () {},
+        onCancel: () {},
+      );
+
+  /// The panel alone, built by a host that hands it what [host] holds — the
+  /// film, the hooks, whether it wires a span and whether the V rows'
+  /// lanes resize — and built again as [host] changes.
+  Future<void> pumpBare(
+    WidgetTester tester,
+    ValueNotifier<_BareHost> host,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder(
+            valueListenable: host,
+            builder: (context, now, _) => StoryboardPanel(
+              project: now.film,
+              activeCutId: const CutId('a'),
+              pixelsPerFrame: 12,
+              projectFrameRate: ProjectFrameRate.fps24,
+              poseDisplaySize: const CanvasSize(width: 640, height: 360),
+              rowDragHooks: now.hooks,
+              onRowSelectionSpan: now.span ? (_, _) {} : null,
+              onResizeTrackLanes: now.resize ? (delta) => delta : null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('🚨a row\'s wrapper is built again for the hooks its host hands '
+      'it now, and for a span it no longer wires', (tester) async {
+    final f = film();
+    final first = hooksHearing([]);
+    final host = ValueNotifier<_BareHost>(
+      (film: f, hooks: first, span: true, resize: false),
+    );
+    addTearDown(host.dispose);
+    await pumpBare(tester, host);
+    expect(wrapper(tester, seLabel).hooks, same(first), reason: 'premise');
+    expect(
+      wrapper(tester, seLabel).onSelectCrossed,
+      isNotNull,
+      reason: 'premise',
+    );
+
+    final second = hooksHearing([]);
+    host.value = (film: f, hooks: second, span: true, resize: false);
+    await tester.pump();
+    expect(wrapper(tester, seLabel).hooks, same(second));
+
+    host.value = (film: f, hooks: second, span: false, resize: false);
+    await tester.pump();
+    expect(wrapper(tester, seLabel).onSelectCrossed, isNull);
+  });
+
+  testWidgets('🚨a V row its tracks can re-order wears the lane splitter '
+      'its host offers now', (tester) async {
+    final two = twoTracks();
+    final hooks = hooksHearing([]);
+    final host = ValueNotifier<_BareHost>(
+      (film: two, hooks: hooks, span: true, resize: false),
+    );
+    addTearDown(host.dispose);
+    await pumpBare(tester, host);
+    final splitter = key('storyboard-track-lane-splitter-t1');
+    expect(splitter, findsNothing, reason: 'premise');
+
+    host.value = (film: two, hooks: hooks, span: true, resize: true);
+    await tester.pump();
+
+    expect(splitter, findsOneWidget);
+  });
+
+  testWidgets('🚨a kept S row\'s drag moves it among the rows as the track '
+      'holds them at the move', (tester) async {
+    final moves = <List<String>>[];
+    final hooks = hooksHearing(moves);
+    final before = film(seRows: 2);
+    final host = ValueNotifier<_BareHost>(
+      (film: before, hooks: hooks, span: true, resize: false),
+    );
+    addTearDown(host.dispose);
+    await pumpBare(tester, host);
+    final kept = wrapper(tester, seLabel);
+    // S2 is renamed: S1 shows nothing new and is kept.
+    host.value = (
+      film: editTracks(
+        before,
+        (track) => track.copyWith(
+          seLayers: [
+            for (final layer in track.seLayers)
+              if (layer.id == const LayerId('t1-s2'))
+                layer.copyWith(name: 'Rain')
+              else
+                layer,
+          ],
+        ),
+      ),
+      hooks: hooks,
+      span: true,
+      resize: false,
+    );
+    await tester.pump();
+    expect(wrapper(tester, seLabel), same(kept), reason: 'premise: kept');
+
+    kept.onCrossed(-1, null, 0);
+
+    expect(moves.single, ['Rain', 'S1']);
+  });
 }
+
+/// What [pumpBare]'s host hands the panel.
+typedef _BareHost = ({
+  Project film,
+  TimelineRowDragHooks hooks,
+  bool span,
+  bool resize,
+});

@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 /// 🗣️F-322 (유저 2026-10-09): 「콘티패널 간편오버레이가 제대로 서있는곳
@@ -50,7 +52,8 @@ Layer _drawn(
   frames: const [],
 );
 
-Cut _cut(String id) => Cut(
+/// Cut [id]; its conte filed in a folder that hides it when [conteHidden].
+Cut _cut(String id, {bool conteHidden = false}) => Cut(
   id: CutId(id),
   name: id,
   duration: 12,
@@ -58,12 +61,22 @@ Cut _cut(String id) => Cut(
   camera: CutCamera.empty(),
   layers: [
     _drawn('$id-cel', name: 'Cel', kind: LayerKind.animation),
-    _drawn('$id-conte', name: 'Conte'),
+    _drawn('$id-conte', name: 'Conte').copyWith(
+      folderId: conteHidden ? LayerId('$id-folder') : null,
+    ),
     _drawn('$id-cam', name: 'Camera', kind: LayerKind.camera),
+    if (conteHidden)
+      Layer(
+        id: LayerId('$id-folder'),
+        name: 'F',
+        kind: LayerKind.folder,
+        isVisible: false,
+        frames: const [],
+      ),
   ],
 );
 
-Project _project() => Project(
+Project _project({bool conteHidden = false}) => Project(
   id: const ProjectId('folded-stand'),
   name: 'Folded stand',
   createdAt: DateTime.utc(2026, 10, 10),
@@ -71,7 +84,7 @@ Project _project() => Project(
     Track(
       id: _trackId,
       name: 'V1',
-      cuts: [_cut('a'), _cut('b')],
+      cuts: [_cut('a', conteHidden: conteHidden), _cut('b')],
       seLayers: [_drawn('s1', name: 'S1', kind: LayerKind.se)],
     ),
   ],
@@ -80,11 +93,16 @@ Project _project() => Project(
 EditorSessionManager _sessionOf(WidgetTester tester) =>
     tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 
-Future<EditorSessionManager> _pumpFolded(WidgetTester tester) async {
+Future<EditorSessionManager> _pumpFolded(
+  WidgetTester tester, {
+  bool conteHidden = false,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1500, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(
+      home: HomePage(initialProject: _project(conteHidden: conteHidden)),
+    ),
   );
   await tester.pumpAndSettle();
   await tester.tap(
@@ -199,5 +217,26 @@ void main() {
       closeTo(tester.widget<CollapsedRowOverlay>(_overlay).height, 0.5),
       reason: 'the room the fold keeps is the row\'s, read again',
     );
+  });
+
+  testWidgets('🚨the folded conte row wears the eye its row has on the '
+      'timeline: a folder above that hides the row dims it (F-185)', (
+    tester,
+  ) async {
+    final session = await _pumpFolded(tester, conteHidden: true);
+    await _standOn(
+      tester,
+      session,
+      LayerRowAddress(trackConteRowId(_trackId)),
+    );
+
+    final eye = tester.widget<LayerVisibilityToggleButton>(
+      find.descendant(
+        of: _inOverlay('storyboard-conte-label-t1'),
+        matching: find.byType(LayerVisibilityToggleButton),
+      ),
+    );
+    expect(eye.hiddenAbove, isTrue);
+    expect(eye.isVisible, isTrue, reason: 'its own switch keeps its value');
   });
 }
