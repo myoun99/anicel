@@ -14,6 +14,10 @@
 // release build. A local the loop's function checks itself is safe: the
 // check pins the loads below it.
 //
+// ⏳When the Dart the app builds with carries the upstream fix (look for
+// #63413 in the SDK's CHANGELOG), this law and the locals it asked for can
+// go; until then a `dart compile exe` of the shape is the quick witness.
+//
 // It is an instrument, so here is what it looks like when it lies:
 //   - it reads SOURCE, not types: a check of a name and a member read
 //     through the same name in the same loop is the shape, whatever the
