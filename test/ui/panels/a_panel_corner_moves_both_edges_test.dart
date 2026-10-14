@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+
+import '../../helpers/app_shortcuts.dart';
 
 /// 🗣️I-60 (유저 2026-10-02): 「패널의 꼭짓점 끌어서 x값y값 동시 조절하는기능
 /// 추가」.
@@ -56,6 +60,44 @@ void main() {
     expect(top.left, left.right, reason: '딱 그 앞까지');
     expect(top.right, right.left, reason: '딱 그 앞까지');
     expect(side.top, left.bottom, reason: '딱 그 앞까지');
+  });
+
+  testWidgets('…and with the region at the top of the window its corners '
+      'are at its foot, and its edges stop at them the same way', (
+    tester,
+  ) async {
+    await pumpApp(tester);
+    final keys = appShortcuts(tester);
+    keys.setActivators(EditorActionIds.regionOnTop, const [
+      SingleActivator(LogicalKeyboardKey.keyK, control: true, shift: true),
+    ]);
+    expect(
+      keys.conflictedActionIds,
+      isEmpty,
+      reason: '⛔premise: a chord no other action is on',
+    );
+    await tester.pump();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+
+    final foot = rectOf(tester, 'dock-resize-bottom');
+    final left = rectOf(tester, 'bottom-corner-left');
+    final right = rectOf(tester, 'bottom-corner-right');
+    final side = rectOf(tester, 'bottom-inset-left');
+    expect(
+      foot.top,
+      greaterThan(side.top),
+      reason: '⛔premise: the edge facing the artwork is its foot now',
+    );
+    expect(foot.overlaps(left) || foot.overlaps(right), isFalse);
+    expect(side.overlaps(left), isFalse);
+    expect(foot.left, left.right, reason: '딱 그 앞까지');
+    expect(foot.right, right.left, reason: '딱 그 앞까지');
+    expect(side.bottom, left.top, reason: '딱 그 앞까지');
   });
 
   testWidgets('a rail panel\'s corner moves its width edge and its height '
