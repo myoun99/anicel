@@ -160,6 +160,14 @@ class Host {
     }
     return sum;
   }
+  int negated(List<Layer> layers, Layer? preview) {
+    final has = !(preview == null);
+    var n = 0;
+    for (final layer in layers) {
+      if (has) n += preview.id.length;
+    }
+    return n;
+  }
 }
 ''';
     expect(checkedReadsInLoops('y.dart', planted), {
@@ -167,6 +175,7 @@ class Host {
       'y.dart called rows',
       'y.dart compared id',
       'y.dart typed _shape',
+      'y.dart negated preview',
     });
   });
 
@@ -220,6 +229,14 @@ class Host {
     for (final layer in layers) {
       if (has) n += last.id.length;
       last = layer;
+    }
+    return n;
+  }
+  int destructuredHere(Pass pass, List<int> xs) {
+    final (:mask, :size) = pass;
+    var n = 0;
+    for (final x in xs) {
+      n += mask == null ? 0 : mask[x];
     }
     return n;
   }
@@ -508,17 +525,10 @@ class _BoolsChecking extends RecursiveAstVisitor<void> {
   }
 }
 
-/// The body of the function [node] sits in — a parameter counts as in
-/// the body of the function it heads.
+/// The body of the function [node] sits in.
 FunctionBody? _bodyOf(AstNode node) {
   for (var n = node.parent; n != null; n = n.parent) {
     if (n is FunctionBody) return n;
-    if (n is FormalParameterList) {
-      final owner = n.parent;
-      if (owner is FunctionExpression) return owner.body;
-      if (owner is MethodDeclaration) return owner.body;
-      if (owner is ConstructorDeclaration) return owner.body;
-    }
   }
   return null;
 }
