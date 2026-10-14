@@ -334,7 +334,7 @@ class LayerController {
   /// reaches the row's head — nothing for a track's own row in a gap, which
   /// no cut addresses. What the row's opacity, blend, group fold and
   /// twirls are each written through (F-360 brought the third and fourth)
-  /// — a track's own row's twirls aside ([_twirledOnItsTrack]).
+  /// — a track's own row's twirls aside ([_twirled]).
   void _executeInItsCut(
     LayerId layerId,
     Command Function(CutId cutId) command,
@@ -432,88 +432,74 @@ class LayerController {
 
   /// The row's property-lane twirl — the fx and Transform lanes live under
   /// it — on every row of its head ([UpdateLayerLanesExpandedCommand]), or
-  /// on a track's own row alone ([_twirledOnItsTrack]).
-  void toggleLayerLanes(LayerId layerId) {
-    final onItsTrack = _twirledOnItsTrack(
-      layerId,
-      (was) => (
-        lanesExpanded: !was.lanesExpanded,
-        expandedLaneGroups: was.expandedLaneGroups,
-      ),
-    );
-    if (onItsTrack) {
-      return;
-    }
-    _executeInItsCut(
-      layerId,
-      (cutId) => UpdateLayerLanesExpandedCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        expanded: !requireLayerAnywhere(
-          _repository.requireProject(),
-          layerId,
-        ).lanesExpanded,
-      ),
-    );
-  }
+  /// on a track's own row alone ([_twirled]).
+  void toggleLayerLanes(LayerId layerId) => _twirled(
+    layerId,
+    onItsTrack: (was) => (
+      lanesExpanded: !was.lanesExpanded,
+      expandedLaneGroups: was.expandedLaneGroups,
+    ),
+    inItsCut: (cutId) => UpdateLayerLanesExpandedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      expanded: !requireLayerAnywhere(
+        _repository.requireProject(),
+        layerId,
+      ).lanesExpanded,
+    ),
+  );
 
   /// [laneId]'s group inside the row's twirl-down, twirled to [expanded] on
   /// every row of its head ([UpdateLayerLaneGroupExpandedCommand]), or on a
-  /// track's own row alone ([_twirledOnItsTrack]).
+  /// track's own row alone ([_twirled]).
   void setLayerLaneGroupExpanded(
     LayerId layerId,
     String laneId, {
     required bool expanded,
-  }) {
-    final onItsTrack = _twirledOnItsTrack(
-      layerId,
-      (was) => (
-        lanesExpanded: was.lanesExpanded,
-        expandedLaneGroups: expanded
-            ? {...was.expandedLaneGroups, laneId}
-            : ({...was.expandedLaneGroups}..remove(laneId)),
-      ),
-    );
-    if (onItsTrack) {
-      return;
-    }
-    _executeInItsCut(
-      layerId,
-      (cutId) => UpdateLayerLaneGroupExpandedCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        laneId: laneId,
-        expanded: expanded,
-      ),
-    );
-  }
+  }) => _twirled(
+    layerId,
+    onItsTrack: (was) => (
+      lanesExpanded: was.lanesExpanded,
+      expandedLaneGroups: expanded
+          ? {...was.expandedLaneGroups, laneId}
+          : ({...was.expandedLaneGroups}..remove(laneId)),
+    ),
+    inItsCut: (cutId) => UpdateLayerLaneGroupExpandedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      laneId: laneId,
+      expanded: expanded,
+    ),
+  );
 
-  /// A TRACK's own row — an S row, the V row by its lane carrier
-  /// ([trackRowTwirlsOf]) — twirled as [turn] says, in one step
-  /// ([UpdateTrackRowTwirlsCommand]); false for a row a cut holds, which is
-  /// twirled on its head.
+  /// Where [rowId]'s twirl is written, in one step either way: a TRACK's
+  /// own row — an S row, the V row by its lane carrier ([trackRowTwirlsOf])
+  /// — on its track, as [onItsTrack] turns it
+  /// ([UpdateTrackRowTwirlsCommand]); a row a cut holds on its head, by
+  /// [inItsCut] ([_executeInItsCut]).
   ///
-  /// ⚠️Not through [_executeInItsCut]: no cut holds a track's own row, and
-  /// in a gap there is none to address it in — the storyboard, which stands
-  /// there, twirls its S and V rows all the same.
-  bool _twirledOnItsTrack(
-    LayerId rowId,
-    RowTwirls Function(RowTwirls was) turn,
-  ) {
+  /// ⚠️A track's own row not through [_executeInItsCut]: no cut holds it,
+  /// and in a gap there is none to address it in — the storyboard, which
+  /// stands there, twirls its S and V rows all the same.
+  void _twirled(
+    LayerId rowId, {
+    required RowTwirls Function(RowTwirls was) onItsTrack,
+    required Command Function(CutId cutId) inItsCut,
+  }) {
     final was = trackRowTwirlsOf(_repository.requireProject(), rowId);
     if (was == null) {
-      return false;
+      _executeInItsCut(rowId, inItsCut);
+      return;
     }
     _historyManager.execute(
       UpdateTrackRowTwirlsCommand(
         repository: _repository,
         rowId: rowId,
-        twirls: turn(was),
+        twirls: onItsTrack(was),
       ),
     );
-    return true;
   }
 
   /// The audio counterpart of [toggleLayerVisibility]: silences the SE
