@@ -30,7 +30,7 @@ void main() {
       final rows = fixture.controller.layers;
 
       expect(identical(fixture.controller.layers, rows), isTrue);
-      expect(rows.removeLast, throwsUnsupportedError);
+      expect(() => rows.removeLast(), throwsUnsupportedError);
 
       fixture.controller.addLayerWithDefaults(
         layerId: const LayerId('layer-3'),
