@@ -24,6 +24,40 @@ void main() {
   Rect rectOf(WidgetTester tester, String key) =>
       tester.getRect(find.byKey(ValueKey<String>(key)));
 
+  // 🗣️I-60 (유저 2026-10-13): 「꼭짓점 스플리터를 우선으로, 이 가로나 세로
+  // 스플리터의 ui?를 딱 그 앞까지만 하도록 … 꼭짓점 반대도 마찬가지로 곡선
+  // 전에 끝나도록」.
+  testWidgets('🎯an edge grip runs the straight part of its edge alone: it '
+      'meets its corner without crossing it, and stops where a bare '
+      'corner\'s curve begins', (tester) async {
+    await pumpApp(tester);
+    const curve = AppShapes.floatingPanelRadius;
+
+    // R2 is on the right: its corner is the inner (left) one at its foot.
+    final panel = rectOf(tester, 'rail-group-body-rail-R2');
+    final width = rectOf(tester, 'dock-resize-rail-R2');
+    final height = rectOf(tester, 'dock-resize-rail-R2-height');
+    final corner = rectOf(tester, 'dock-resize-rail-R2-corner');
+    expect(height.overlaps(corner), isFalse);
+    expect(width.overlaps(corner), isFalse);
+    expect(height.left, corner.right, reason: '딱 그 앞까지');
+    expect(width.bottom, corner.top, reason: '딱 그 앞까지');
+    expect(height.right, panel.right - curve, reason: '곡선 전에');
+    expect(width.top, panel.top + curve, reason: '곡선 전에');
+
+    // The floating region faces the artwork with its top edge: a corner
+    // at each end of it, and each side edge starts below one.
+    final top = rectOf(tester, 'dock-resize-bottom');
+    final left = rectOf(tester, 'bottom-corner-left');
+    final right = rectOf(tester, 'bottom-corner-right');
+    final side = rectOf(tester, 'bottom-inset-left');
+    expect(top.overlaps(left) || top.overlaps(right), isFalse);
+    expect(side.overlaps(left), isFalse);
+    expect(top.left, left.right, reason: '딱 그 앞까지');
+    expect(top.right, right.left, reason: '딱 그 앞까지');
+    expect(side.top, left.bottom, reason: '딱 그 앞까지');
+  });
+
   testWidgets('a rail panel\'s corner moves its width edge and its height '
       'edge together', (tester) async {
     await pumpApp(tester);

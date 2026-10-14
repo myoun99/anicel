@@ -2005,8 +2005,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // as a straight bar.
       left: right ? null : 0,
       right: right ? 0 : null,
-      top: onTop ? EditorPanelTabs.stripHeight : 0,
-      bottom: onTop ? 0 : EditorPanelTabs.stripHeight,
+      top: onTop ? EditorPanelTabs.stripHeight : DockEdgeSplitter.endInset,
+      bottom: onTop ? DockEdgeSplitter.endInset : EditorPanelTabs.stripHeight,
       width: DockEdgeSplitter.thickness,
       child: DockEdgeSplitter(
         key: ValueKey<String>('bottom-inset-${right ? 'right' : 'left'}'),
@@ -2765,8 +2765,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Positioned _bottomHeightGrip(bool onTop, BoxConstraints constraints) {
     return Positioned(
-      left: 0,
-      right: 0,
+      left: DockEdgeSplitter.endInset,
+      right: DockEdgeSplitter.endInset,
       // 기하는 캔버스 향한 변에: the resize
       // handle rides whichever edge faces
       // the artwork, which flips with the

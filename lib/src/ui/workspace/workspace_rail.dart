@@ -668,8 +668,8 @@ class _WorkspaceRail {
   /// it. The room is handed in: a grip fires after other rails have built,
   /// so it must hold its own rail's answers, never a shared field's.
   Widget _widthGrip(String railId, _RailRoom room) => Positioned(
-    top: 0,
-    bottom: 0,
+    top: DockEdgeSplitter.endInset,
+    bottom: DockEdgeSplitter.endInset,
     left: room.right ? 0 : null,
     right: room.right ? null : 0,
     width: DockEdgeSplitter.thickness,
@@ -701,8 +701,8 @@ class _WorkspaceRail {
   /// so the gap below stays a gap. The rail extent is handed in for the
   /// same reason the width grip's room is.
   Widget _heightGrip(String railId, double railExtent) => Positioned(
-    left: 0,
-    right: 0,
+    left: DockEdgeSplitter.endInset,
+    right: DockEdgeSplitter.endInset,
     bottom: 0,
     height: DockEdgeSplitter.thickness,
     child: DockEdgeSplitter(

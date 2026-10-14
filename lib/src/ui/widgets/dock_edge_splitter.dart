@@ -41,11 +41,12 @@ import 'owning_axis_grip.dart';
 /// hairlineStrong -> gripHover -> accent).
 ///
 /// ★It does NOT round itself. It is laid inside the panel's own ClipPath,
-/// so the panel's silhouette cuts the band's outer corners and the lit edge
-/// follows the curve exactly — which a shape of its own could never do,
-/// because a 5px-wide band cannot carry a 14px corner (유저, R2 #11: 패널의
+/// so the panel's silhouette cuts the band's outer edge (유저, R2 #11: 패널의
 /// 옆부분을 형태그대로 색만 바꾸는 느낌). Whoever positions one is therefore
-/// responsible for putting it inside the clip.
+/// responsible for putting it inside the clip. ↩️It used to run the whole
+/// edge and follow the corner's curve too; a panel's edge grip now stops
+/// short of both ends ([endInset], I-60 2026-10-13: 「곡선 전에 끝나도록」),
+/// and a corner that takes both edges is a [DockCornerGrip].
 ///
 /// It used to paint an opaque [ColorScheme.surfaceContainerLow] band the
 /// whole time, OUTSIDE the clip. That band is what covered the floating
@@ -92,6 +93,17 @@ class DockEdgeSplitter extends StatefulWidget {
 
   /// The hit extent, and the band's extent: they are the same thing now.
   static const double thickness = 5;
+
+  /// How far a panel's edge grip stays off each END of its edge: it runs
+  /// along the straight part alone.
+  ///
+  /// 🗣️I-60 (유저 2026-10-13): 「아래 스플리터랑 꼭짓점 스플리터랑 영역이
+  /// 겹침. 꼭짓점 스플리터를 우선으로, 이 가로나 세로 스플리터의 ui?를 딱 그
+  /// 앞까지만 하도록 … 꼭짓점 반대도 마찬가지로 곡선 전에 끝나도록」. Where
+  /// the edge meets a corner grip it ends where the grip begins; where it
+  /// meets a bare corner it ends where the curve begins — one distance, as
+  /// the corner grip is as long as the curve ([DockCornerGrip.extent]).
+  static const double endInset = DockCornerGrip.extent;
 
   @override
   State<DockEdgeSplitter> createState() => _DockEdgeSplitterState();
