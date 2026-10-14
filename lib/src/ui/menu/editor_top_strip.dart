@@ -27,6 +27,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/kept_tail_row.dart';
 import '../text/app_strings.dart';
 import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
@@ -791,6 +792,12 @@ class EditorTopStrip extends StatelessWidget {
 /// own writing allows ([FieldSlider.narrowestIn]); and past that the group
 /// is one button.
 ///
+/// And past THAT — a window too narrow for the button beside the list's
+/// place, 320 (an iPad's third) — the group is all of it, smaller
+/// ([KeptTailRow]): the list button's place is the one kept to the end, in
+/// the answer's own words. ↩️The tabs were left less than that place, and
+/// their row ran 15px over (measured 2026-10-15).
+///
 /// 🔬Measured 2026-10-07 in the app's faces at 1×, one project open: the
 /// bars stand at 140 down to a 770 window and narrow from there; the group
 /// is the button under 740 in English and in Japanese, under 727 in Korean,
@@ -828,14 +835,12 @@ class _TabsAndBrushGroup extends StatelessWidget {
               _BrushGroup.fixedWidth,
           narrowest,
         );
-        return Row(
-          children: [
-            Expanded(child: tabs),
-            if (bars != null)
-              _BrushGroup(brushTool: tool, bars: bars)
-            else
-              _BrushGroupButton(brushTool: tool),
-          ],
+        return KeptTailRow(
+          headKeeps: _ProjectTabRow._minTabWidth,
+          head: tabs,
+          tail: bars != null
+              ? _BrushGroup(brushTool: tool, bars: bars)
+              : _BrushGroupButton(brushTool: tool),
         );
       },
     );

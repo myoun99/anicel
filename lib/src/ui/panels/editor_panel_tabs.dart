@@ -8,6 +8,7 @@ import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
+import '../widgets/kept_tail_row.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
@@ -473,19 +474,17 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     List<EditorPanelTab> tabs,
     EditorPanelTab active,
   ) {
+    // A link in the chain to the RAIL-DOCKED canvas: everything in the
+    // panel below this strip starts at this height, and a docked canvas is
+    // one of those things. 30 × 1.25 = 37.5 — unlike the 48s in the window
+    // chain, this one is off the grid at Windows' own scaling steps, and it
+    // is measurably what held the second canvas boundary off at every ratio
+    // while the editing canvas was already clean.
+    final height = DeviceGrid.of(context).position(EditorPanelTabs.stripHeight);
     return widget.chromeless
         ? null
         : Container(
-            // A link in the chain to the RAIL-DOCKED canvas: everything in
-            // the panel below this strip starts at this height, and a
-            // docked canvas is one of those things. 30 × 1.25 = 37.5 —
-            // unlike the 48s in the window chain, this one is off the grid
-            // at Windows' own scaling steps, and it is measurably what
-            // held the second canvas boundary off at every ratio while the
-            // editing canvas was already clean.
-            height: DeviceGrid.of(
-              context,
-            ).position(EditorPanelTabs.stripHeight),
+            height: height,
             color: colorScheme.surfaceContainerLow,
             // 🚨The strip is a TICK LAYER (I-22 ③): the sill carries the
             // transport, whose readouts move on a tick — the level meter on
@@ -548,79 +547,65 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                   // Buttons STRETCH the strip's full height so the selected
                   // tab meets the content edge-to-edge.
                   //
-                  // ★ONE Row, not a Stack overlay (2026-08-10). The trailing
+                  // ★ONE row, not a Stack overlay (2026-08-10). The trailing
                   // group used to be `Align`ed over the tabs and the tab count
                   // guessed 32px of room for it — which was fine while it held
                   // one chevron and wrong the moment the sill grew a transport
-                  // and a settings pill. A Row lays its INFLEXIBLE child out
-                  // first and hands the `Flexible` what is left, so the tab
-                  // count is measured against the room that actually exists
-                  // and cannot drift from what the trailing group costs.
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
-                      // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」
-                      //
-                      // `Expanded`, not `Flexible`. A loose `Flexible` is
-                      // only as wide as the tabs inside it, so the trailing
-                      // group sat immediately after them — reading as
-                      // left-aligned, and sliding sideways every time a tab was
-                      // added. Taking all the room pins the trailing group to
-                      // the right edge, which is the entire reason it was put
-                      // there (유저 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때
-                      // 재생 버튼이 밀린다」).
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            // How many fit. The overflow button costs one slot,
-                            // so it only appears when it actually buys room.
-                            final fits =
-                                (constraints.maxWidth /
-                                        EditorPanelTabs._tabExtent)
-                                    .floor();
-                            final overflowing = fits < tabs.length;
-                            final shown = overflowing
-                                ? math.max(0, fits - 1)
-                                : tabs.length;
-                            // Room for less than one tab — a timeline or a
-                            // storyboard docked in a rail, whose sill takes
-                            // nearly the rail's whole width — still holds the
-                            // overflow button, the one way to its tabs. It is
-                            // cut at the room's edge rather than laid out
-                            // past it: ↩️the Row overflowed by the button's
-                            // missing width and threw.
-                            return ClipRect(
-                              child: OverflowBox(
-                                alignment: AlignmentDirectional.centerStart,
-                                maxWidth: double.infinity,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (
-                                      var index = 0;
-                                      index < shown;
-                                      index += 1
-                                    )
-                                      _buildTabButton(index),
-                                    if (overflowing)
-                                      _TabOverflowButton(
-                                        groupId: widget.groupId,
-                                        hidden: tabs.sublist(shown),
-                                        activeTabId: widget.activeTabId,
-                                        onTabSelected: widget.onTabSelected,
-                                      ),
-                                  ],
-                                ),
+                  // and a settings pill. The row lays the trailing group out
+                  // first and hands the tabs what is left ([KeptTailRow]), so
+                  // the tab count is measured against the room that actually
+                  // exists and cannot drift from what the trailing group costs.
+                  //
+                  // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
+                  // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」 The tabs
+                  // take ALL the room the group leaves, which pins the group
+                  // to the right edge — the entire reason it was put there
+                  // (유저 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때 재생
+                  // 버튼이 밀린다」). ↩️A loose `Flexible` was only as wide as
+                  // the tabs inside it, so the group sat immediately after
+                  // them — reading as left-aligned, and sliding sideways every
+                  // time a tab was added.
+                  //
+                  // A strip too narrow for the group and one tab — a timeline
+                  // or a storyboard docked in a rail, whose sill takes nearly
+                  // the rail's whole width; a 340px window — shows the group
+                  // whole, smaller, and the tabs keep one tab's place: the
+                  // overflow button, the one way to them. ↩️The group was
+                  // laid out past the strip's end, and the button cut at the
+                  // room's edge (09-25) — 10px over at 340 (2026-10-15).
+                  KeptTailRow(
+                    headKeeps: EditorPanelTabs._tabExtent,
+                    head: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // How many fit. The overflow button costs one slot,
+                        // so it only appears when it actually buys room.
+                        final fits =
+                            (constraints.maxWidth / EditorPanelTabs._tabExtent)
+                                .floor();
+                        final overflowing = fits < tabs.length;
+                        final shown = overflowing
+                            ? math.max(0, fits - 1)
+                            : tabs.length;
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (var index = 0; index < shown; index += 1)
+                              _buildTabButton(index),
+                            if (overflowing)
+                              _TabOverflowButton(
+                                groupId: widget.groupId,
+                                hidden: tabs.sublist(shown),
+                                activeTabId: widget.activeTabId,
+                                onTabSelected: widget.onTabSelected,
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                      _buildSillTrailing(context, active),
-                    ],
+                          ],
+                        );
+                      },
+                    ),
+                    tail: SizedBox(
+                      height: height,
+                      child: _buildSillTrailing(context, active),
+                    ),
                   ),
                 ],
               ),

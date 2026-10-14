@@ -49,7 +49,8 @@ void main() {
     ),
   );
 
-  /// The bar's padding either side, and the gap before the cluster.
+  /// The bar's padding either side, and the gap before the cluster — kept
+  /// only where there is a leading to keep it from.
   final sides = TimelineCommandBar.padding.horizontal;
   const gap = 8.0;
 
@@ -58,7 +59,7 @@ void main() {
         '${withLeading ? 'with' : 'without'} a leading shows all of it, '
         'smaller — none of it runs off', (tester) async {
       const room = clusterWidth - 4;
-      final width = sides + gap + room;
+      final width = sides + (withLeading ? gap : 0) + room;
       await pumpBar(tester, width, withLeading: withLeading);
 
       expect(tester.takeException(), isNull);
