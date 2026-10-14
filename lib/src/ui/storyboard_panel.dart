@@ -201,7 +201,7 @@ import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
 import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline/memo_token.dart'
-    show ByIdentity, ByList, BySet, KeptPiece;
+    show ByIdentity, ByList, BySet, Kept, KeptPiece, keptWhileSame;
 import 'repaint_props.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
@@ -2152,21 +2152,26 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
-                                    children: [
-                                      // Track groups in TIMELINE order (R6 B3): the
-                                      // S rows sit ABOVE their V track, slots
-                                      // bottom-up like the timeline (top-down
-                                      // S2, S1, V — R7-④).
-                                      for (
-                                        var index = 0;
-                                        index < frame.project.tracks.length;
-                                        index++
-                                      )
-                                        ..._railRows.railRowsForTrack(
-                                          frame.project.tracks[index],
-                                          index,
-                                        ),
-                                    ],
+                                    // One pass of the rail's keep: a row it
+                                    // stops drawing is let go of.
+                                    children: _rows.railPass(
+                                      () => [
+                                        // Track groups in TIMELINE order (R6
+                                        // B3): the S rows sit ABOVE their V
+                                        // track, slots bottom-up like the
+                                        // timeline (top-down S2, S1, V —
+                                        // R7-④).
+                                        for (
+                                          var index = 0;
+                                          index < frame.project.tracks.length;
+                                          index++
+                                        )
+                                          ..._railRows.railRowsForTrack(
+                                            frame.project.tracks[index],
+                                            index,
+                                          ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 // The row selection, over the LAYER area
@@ -3568,6 +3573,7 @@ class _StoryboardLayerRowLabel extends KeptPiece {
 /// [rowId] at the press.
 class _StoryboardRailHead extends KeptPiece {
   const _StoryboardRailHead({
+    super.key,
     required this.rowId,
     required this.layer,
     required this.metrics,

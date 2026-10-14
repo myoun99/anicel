@@ -14,6 +14,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -23,22 +24,25 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show FxToggleButton, LayerMuteToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show LayerRowDragTarget;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 import '../../helpers/named_finders.dart';
 
 /// 🚨I-57 (10-14): A STORYBOARD BUILT AGAIN FOR NOTHING — OR ACROSS A CUT —
-/// HANDS BACK EVERY LABEL OF ITS RAIL AS IT WAS, and builds one again the
-/// moment what it shows changes.
+/// HANDS BACK EVERY ROW OF ITS RAIL AS IT WAS, its label and the drag
+/// wrapper on it, and builds one again the moment what it shows changes.
 ///
 /// Its host builds it again on every notify it hears — a cut crossed under
 /// the playhead among them — and every label of the rail was built again
 /// with it: 🔬953 of a crossing's 1,088 widget rebuilds on the AMMI OP, the
-/// heads (the timeline's own rows) 464 of them. A head is kept by its FACE,
-/// as the timeline's rail keeps its rows: a crossing that hands it the next
-/// cut's row of the same face hands it back whole, wearing the row it has
-/// in hand now.
+/// heads (the timeline's own rows) 464 of them; then the wrappers, 64 of
+/// the 330 left. A head is kept by its FACE, as the timeline's rail keeps
+/// its rows: a crossing that hands it the next cut's row of the same face
+/// hands it back whole, wearing the row it has in hand now. What a kept
+/// row's wrapper reads of the track it reads at the event.
 void main() {
   const trackId = TrackId('t1');
 
@@ -77,10 +81,17 @@ void main() {
     ],
   );
 
+  Layer seLayer(int n) => Layer(
+    id: LayerId('t1-s$n'),
+    name: 'S$n',
+    kind: LayerKind.se,
+    frames: const [],
+  );
+
   /// Cuts a and b, each with a camera and a conte of the same face — b's
   /// conte as [bConte] makes it, beside [bFolder] where given — on one
-  /// track with an S row.
-  Project film({Layer? bConte, Layer? bFolder}) => Project(
+  /// track with [seRows] S rows.
+  Project film({Layer? bConte, Layer? bFolder, int seRows = 1}) => Project(
     id: const ProjectId('rail-labels'),
     name: 'Rail labels',
     createdAt: DateTime.utc(2026, 10, 14),
@@ -88,14 +99,7 @@ void main() {
       Track(
         id: trackId,
         name: 'V1',
-        seLayers: [
-          Layer(
-            id: const LayerId('t1-s1'),
-            name: 'S1',
-            kind: LayerKind.se,
-            frames: const [],
-          ),
-        ],
+        seLayers: [for (var n = 1; n <= seRows; n += 1) seLayer(n)],
         cuts: [
           cutOf('a', conteLayer: conte('a')),
           cutOf('b', conteLayer: bConte ?? conte('b'), folder: bFolder),
@@ -148,30 +152,49 @@ void main() {
   final cameraLabel = key('storyboard-camera-label-t1');
   final conteLabel = key('storyboard-conte-label-t1');
   final seLabel = key('storyboard-se-label-t1-1');
+  final transitionLabel = key('storyboard-transition-label-t1');
+  final vLabel = key('storyboard-track-select-t1');
 
   Finder headIn(Finder label) => find.descendant(
     of: label,
     matching: find.byType(TimelineLayerControlsRow),
   );
 
-  /// Every label of the rail, as it is built: the S row's, the transition
-  /// row's and the V row's, and the two heads.
-  Map<String, Widget> labelsNow(WidgetTester tester) => {
+  /// The drag wrapper the rail puts on [label]'s row.
+  Finder wrapperOf(Finder label) => find
+      .ancestor(of: label, matching: find.byType(LayerRowDragTarget))
+      .first;
+
+  LayerRowDragTarget wrapper(WidgetTester tester, Finder label) =>
+      tester.widget(wrapperOf(label));
+
+  /// Every row of the rail as it is built: its label — a head's, the
+  /// timeline's row it builds — and the drag wrapper on it, for the S row,
+  /// the transition row, the V row and the two heads.
+  Map<String, Widget> rowsNow(WidgetTester tester) => {
     'se': tester.widget(seLabel),
-    'transition': tester.widget(key('storyboard-transition-label-t1')),
-    'v': tester.widget(key('storyboard-track-select-t1')),
+    'transition': tester.widget(transitionLabel),
+    'v': tester.widget(vLabel),
     'camera': tester.widget(headIn(cameraLabel)),
     'conte': tester.widget(headIn(conteLabel)),
+    for (final (name, label) in [
+      ('se', seLabel),
+      ('transition', transitionLabel),
+      ('v', vLabel),
+      ('camera', cameraLabel),
+      ('conte', conteLabel),
+    ])
+      '$name wrapper': wrapper(tester, label),
   };
 
-  void expectLabelsAsThey(
+  void expectRowsAsThey(
     WidgetTester tester,
     Map<String, Widget> before, {
     Set<String> builtAgain = const {},
   }) {
-    for (final MapEntry(:key, value: label) in labelsNow(tester).entries) {
+    for (final MapEntry(:key, value: row) in rowsNow(tester).entries) {
       expect(
-        label,
+        row,
         builtAgain.contains(key) ? isNot(same(before[key])) : same(before[key]),
         reason: key,
       );
@@ -187,27 +210,27 @@ void main() {
       )
       .isVisible;
 
-  testWidgets('built again for nothing, every label of its rail is the label '
-      'it had', (tester) async {
+  testWidgets('built again for nothing, every row of its rail — the label and '
+      'the drag wrapper on it — is the row it had', (tester) async {
     final session = await pumpPanel(tester, film());
-    final before = labelsNow(tester);
+    final before = rowsNow(tester);
 
     session.notifyChanged();
     await tester.pump();
 
-    expectLabelsAsThey(tester, before);
+    expectRowsAsThey(tester, before);
   });
 
-  testWidgets('🚨a cut crossed builds no label of the rail — each head wears '
+  testWidgets('🚨a cut crossed builds no row of the rail — each head wears '
       'the next cut\'s row of the same face', (tester) async {
     final session = await pumpPanel(tester, film());
     expect(session.activeCutId, const CutId('a'), reason: 'premise');
-    final before = labelsNow(tester);
+    final before = rowsNow(tester);
 
     session.selectCut(const CutId('b'));
     await tester.pump();
 
-    expectLabelsAsThey(tester, before);
+    expectRowsAsThey(tester, before);
   });
 
   testWidgets('🚨a head kept across a cut shows the eye of the row it wears '
@@ -276,12 +299,16 @@ void main() {
       tester,
       film(bConte: conte('b', name: 'Layout')),
     );
-    final before = labelsNow(tester);
+    final before = rowsNow(tester);
 
     session.selectCut(const CutId('b'));
     await tester.pump();
 
-    expectLabelsAsThey(tester, before, builtAgain: {'conte'});
+    expectRowsAsThey(
+      tester,
+      before,
+      builtAgain: {'conte', 'conte wrapper'},
+    );
     expect(
       find.descendant(of: conteLabel, matching: find.text('Layout')),
       findsOneWidget,
@@ -291,7 +318,7 @@ void main() {
   testWidgets('an S row\'s layer edited is its label built again — the eye '
       'it shows', (tester) async {
     final session = await pumpPanel(tester, film());
-    final before = labelsNow(tester);
+    final before = rowsNow(tester);
     expect(eyeOn(tester, seLabel), isTrue, reason: 'premise');
 
     SessionRowButtonPresses(
@@ -299,8 +326,125 @@ void main() {
     ).toggleVisibility(const LayerId('t1-s1'));
     await tester.pump();
 
-    expectLabelsAsThey(tester, before, builtAgain: {'se'});
+    expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
     expect(eyeOn(tester, seLabel), isFalse);
+  });
+
+  /// [project]'s tracks, each as [edit] makes it.
+  Project editTracks(Project project, Track Function(Track track) edit) =>
+      project.copyWith(
+        tracks: [for (final track in project.tracks) edit(track)],
+      );
+
+  testWidgets('🚨an S row added over S1 builds S1\'s wrapper again, its caret '
+      'at the slot it stands at now', (tester) async {
+    final session = await pumpPanel(tester, film());
+    expect(wrapper(tester, seLabel).slotBefore, 0, reason: 'premise');
+
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(seLayers: [...track.seLayers, seLayer(2)]),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+
+    expect(wrapper(tester, seLabel).slotBefore, 1);
+  });
+
+  testWidgets('🚨the V row\'s wrapper takes its group\'s height as an S row '
+      'opens its lanes', (tester) async {
+    await pumpPanel(tester, film());
+    final closed = wrapper(tester, vLabel).rowExtent;
+
+    await tester.tap(
+      find.descendant(of: seLabel, matching: find.byType(LayerFoldTwirl)),
+    );
+    await tester.pump();
+
+    expect(wrapper(tester, vLabel).rowExtent, greaterThan(closed));
+  });
+
+  testWidgets('🚨a kept S row\'s grip names the rows it carries as the track '
+      'holds them at the press', (tester) async {
+    final session = await pumpPanel(tester, film(seRows: 2));
+    session.rowSelection.value = [
+      const LayerRowAddress(LayerId('t1-s1')),
+      const LayerRowAddress(LayerId('t1-s2')),
+    ];
+    await tester.pump();
+    final before = wrapper(tester, seLabel);
+    // S2 is renamed: S1 shows nothing new and is kept.
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(
+          seLayers: [
+            for (final layer in track.seLayers)
+              if (layer.id == const LayerId('t1-s2'))
+                layer.copyWith(name: 'Rain')
+              else
+                layer,
+          ],
+        ),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+    expect(
+      wrapper(tester, seLabel),
+      same(before),
+      reason: 'premise: S1 is kept',
+    );
+
+    expect([
+      for (final chip in before.grip!()) chip.label,
+    ], unorderedEquals(['S1', 'Rain']));
+  });
+
+  testWidgets('🚨a kept conte row\'s grip names the seat as the track holds '
+      'it at the press', (tester) async {
+    final session = await pumpPanel(
+      tester,
+      film(bConte: conte('b', name: 'Layout')),
+    );
+    session.selectCut(const CutId('b'));
+    await tester.pump();
+    final before = wrapper(tester, conteLabel);
+    // a's conte — the one that speaks for the seat — is renamed; b's, the
+    // head, is as it was.
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(
+          cuts: [
+            for (final cut in track.cuts)
+              if (cut.id == const CutId('a'))
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers)
+                      if (layer.id == const LayerId('a-conte'))
+                        layer.copyWith(name: 'Plan')
+                      else
+                        layer,
+                  ],
+                )
+              else
+                cut,
+          ],
+        ),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+    expect(
+      wrapper(tester, conteLabel),
+      same(before),
+      reason: 'premise: the row is kept',
+    );
+
+    expect([for (final chip in before.grip!()) chip.label], ['Plan']);
   });
 
   testWidgets('🚨a solo the session answers is what the S row\'s speaker '

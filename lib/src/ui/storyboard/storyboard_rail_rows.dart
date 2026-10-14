@@ -1064,9 +1064,11 @@ class _StoryboardRailRows {
   /// ([StoryboardPanel.onResizeTrackLanes]) — the row's own edge, lit when
   /// the pointer comes to it — or the row alone when the host takes no
   /// resize. Every V row carries one, and each moves the height they share.
-  Widget _withTrackLaneSplitter(Track track, Widget row) {
-    final resize = _state.widget.onResizeTrackLanes;
-    if (resize == null) {
+  ///
+  /// The resize is the host's as it stands at the drag: the row is kept
+  /// with its splitter ([_StoryboardRowsAndLabels.trackDraggable]).
+  Widget _withTrackLaneSplitter(TrackId trackId, Widget row) {
+    if (_state.widget.onResizeTrackLanes == null) {
       return row;
     }
     return Stack(
@@ -1079,10 +1081,11 @@ class _StoryboardRailRows {
           height: DockEdgeSplitter.thickness,
           child: DockEdgeSplitter(
             key: ValueKey<String>(
-              'storyboard-track-lane-splitter-${track.id.value}',
+              'storyboard-track-lane-splitter-${trackId.value}',
             ),
             axis: Axis.horizontal,
-            onDragDelta: resize,
+            onDragDelta: (delta) =>
+                _state.widget.onResizeTrackLanes?.call(delta) ?? 0,
           ),
         ),
       ],
@@ -1094,62 +1097,59 @@ class _StoryboardRailRows {
   /// expanded.
   List<Widget> _vRowsFor(Track track, int index) {
     final vRows = <Widget>[
-      _withTrackLaneSplitter(
+      _state._rows.trackDraggable(
         track,
-        _state._rows.trackDraggable(
-          track,
-          index,
-          // ↩️F-19 (유저 2026-08-24): 「스토리보드패널의 버튼, **룰러 스크럽시
-          // 현재 인덱스의 컷에 따라 버튼이 갱신 안되고** … **손 떼야 갱신**되서
-          // 활성화되거나 하는데 어떻게 가능한가?」
-          //
-          // The button was this row's EYE, the one cell that showed which
-          // cut stands under the playhead. The panel deliberately does NOT
-          // rebuild on a tick (W4, the cursor-layer split), so the eye read
-          // the frame of the last panel rebuild — where the drag STARTED —
-          // until it took the subscription the overlay and the ruler take
-          // (09-28: on a tick layer of its own; it had been the whole row).
-          // The eye left the row with I-73 (2026-10-08, see
-          // [StoryboardTrackLabelRow.trackFxState]) and the subscription
-          // with it: nothing this row shows follows the playhead now.
-          //
-          // ⛔What that round ruled OUT stands for whatever follows the
-          // playhead next: NOT by making the ruler switch the active cut,
-          // which is what the report wondered aloud about (「애초에 룰러에
-          // 따라 액티브컷 전환하도록 하는게 구조적 해결일까」). The scrub PARKS
-          // on purpose — the whole preview machinery (D6's no-flash rules,
-          // the territory flag) exists because the active cut does not
-          // follow a drag — and switching it per move would put a cut
-          // activation on every pointer move.
-          StoryboardTrackLabelRow(
-            trackId: track.id,
-            trackLabel: storyboardVideoRowName(index),
-            laneHeight: _state.widget.trackLaneHeight,
-            laneExpanded: _state.widget.expandedTransformTracks.contains(
-              track.id.value,
-            ),
-            // The row's verbs ask for the track as the panel holds it at the
-            // press: the row is kept while what it shows holds, and it shows
-            // nothing of the track's cuts.
-            onToggleLane: _state.widget.onToggleTrackLane == null
-                ? null
-                : () => _actOnTrack(track.id, _state.widget.onToggleTrackLane),
-            // V-track selection (UI-R18 #6): tapping selects the track (its
-            // playhead-index cut becomes active). The highlight says THIS ROW
-            // IS SELECTED — not "the active cut lives here", which is what the
-            // cut block's own active border already says, and which could light
-            // at the same time as an S row.
-            active: _state.widget.selectedRow == TrackRowAddress(track.id),
-            onSelectTrack: _state.widget.onSelectTrack == null
-                ? null
-                : () => _state.widget.onSelectTrack!(track.id),
-            // R9 #21: the track's own display column.
-            trackFxState:
-                _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
-            onToggleTrackFx: _state.widget.onToggleTrackFx == null
-                ? null
-                : () => _actOnTrack(track.id, _state.widget.onToggleTrackFx),
+        index,
+        // ↩️F-19 (유저 2026-08-24): 「스토리보드패널의 버튼, **룰러 스크럽시
+        // 현재 인덱스의 컷에 따라 버튼이 갱신 안되고** … **손 떼야 갱신**되서
+        // 활성화되거나 하는데 어떻게 가능한가?」
+        //
+        // The button was this row's EYE, the one cell that showed which
+        // cut stands under the playhead. The panel deliberately does NOT
+        // rebuild on a tick (W4, the cursor-layer split), so the eye read
+        // the frame of the last panel rebuild — where the drag STARTED —
+        // until it took the subscription the overlay and the ruler take
+        // (09-28: on a tick layer of its own; it had been the whole row).
+        // The eye left the row with I-73 (2026-10-08, see
+        // [StoryboardTrackLabelRow.trackFxState]) and the subscription
+        // with it: nothing this row shows follows the playhead now.
+        //
+        // ⛔What that round ruled OUT stands for whatever follows the
+        // playhead next: NOT by making the ruler switch the active cut,
+        // which is what the report wondered aloud about (「애초에 룰러에
+        // 따라 액티브컷 전환하도록 하는게 구조적 해결일까」). The scrub PARKS
+        // on purpose — the whole preview machinery (D6's no-flash rules,
+        // the territory flag) exists because the active cut does not
+        // follow a drag — and switching it per move would put a cut
+        // activation on every pointer move.
+        StoryboardTrackLabelRow(
+          trackId: track.id,
+          trackLabel: storyboardVideoRowName(index),
+          laneHeight: _state.widget.trackLaneHeight,
+          laneExpanded: _state.widget.expandedTransformTracks.contains(
+            track.id.value,
           ),
+          // The row's verbs ask for the track as the panel holds it at the
+          // press: the row is kept while what it shows holds, and it shows
+          // nothing of the track's cuts.
+          onToggleLane: _state.widget.onToggleTrackLane == null
+              ? null
+              : () => _actOnTrack(track.id, _state.widget.onToggleTrackLane),
+          // V-track selection (UI-R18 #6): tapping selects the track (its
+          // playhead-index cut becomes active). The highlight says THIS ROW
+          // IS SELECTED — not "the active cut lives here", which is what the
+          // cut block's own active border already says, and which could light
+          // at the same time as an S row.
+          active: _state.widget.selectedRow == TrackRowAddress(track.id),
+          onSelectTrack: _state.widget.onSelectTrack == null
+              ? null
+              : () => _state.widget.onSelectTrack!(track.id),
+          // R9 #21: the track's own display column.
+          trackFxState:
+              _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
+          onToggleTrackFx: _state.widget.onToggleTrackFx == null
+              ? null
+              : () => _actOnTrack(track.id, _state.widget.onToggleTrackFx),
         ),
       ),
       if (_state.widget.expandedTransformTracks.contains(track.id.value)) ...[
