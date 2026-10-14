@@ -736,7 +736,17 @@ void main() {
   /// in the class that declares the fields they name — the scan holding
   /// every kept piece to naming its fields reads them there
   /// (`a_kept_piece_names_every_field_in_its_facts_test`).
-  const longClasses = 62;
+  ///
+  /// ⚠️62 → 63 on 2026-10-14, ONE name: `_BrushEditStroke` crossed
+  /// (600 → 604) in I-61's finger half — the stroke asks whether Shift is
+  /// held in ONE place, where it advances, and a finger resting on the
+  /// glass is the second answer there beside the keyboard (I-61-Q3), with
+  /// the comment saying whose answer it is. The keyboard half had left the
+  /// class at exactly 600 (`e916f1cef`). 🔬`clean_code_diff` between master
+  /// (`279933153`) and the lane names this one and no other class. ⛔Not
+  /// split to fit: both answers belong where the one question is asked, and
+  /// the comment that keeps it in one place stands beside them.
+  const longClasses = 63;
 
   late CleanCodeScan scan;
   setUpAll(() {
