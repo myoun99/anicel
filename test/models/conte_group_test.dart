@@ -189,7 +189,7 @@ void main() {
       final group = conteGroupOf(cut);
 
       expect(identical(conteGroupOf(cut), group), isTrue);
-      expect(() => group.removeLast(), throwsUnsupportedError);
+      expect(group.removeLast, throwsUnsupportedError);
     });
 
     test('a cut edited is another cut, and its group is read off it', () {
