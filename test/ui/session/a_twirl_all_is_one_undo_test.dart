@@ -43,16 +43,26 @@ void main() {
 
     await tester.tap(find.byKey(toggle));
     await tester.pumpAndSettle();
+    final opened = twirled(session);
     expect(
-      twirled(session).length,
+      opened.length,
       greaterThanOrEqualTo(2),
       reason: 'premise — the press turned more than one row',
     );
     expect(session.historyManager.undoCount, depth + 1, reason: 'one step');
 
+    // Once any row is open the same button shuts them all.
+    await tester.tap(find.byKey(toggle));
+    await tester.pumpAndSettle();
+    expect(twirled(session), isEmpty, reason: 'premise — it shut them');
+    expect(session.historyManager.undoCount, depth + 2, reason: 'one step');
+
     session.undo();
     await tester.pumpAndSettle();
-    expect(twirled(session), isEmpty, reason: 'one undo takes them all back');
+    expect(twirled(session), opened, reason: 'one undo opens them all again');
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(twirled(session), isEmpty, reason: 'one more shuts them all');
   }
 
   testWidgets('on the timeline', (tester) async {
