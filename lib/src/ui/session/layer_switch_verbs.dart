@@ -153,10 +153,20 @@ class LayerSwitchVerbs {
   }
 
   /// The row as the project holds it THIS instant — the one lookup the
-  /// three live reads below share (cut-owned rows and track fixtures
-  /// alike).
+  /// live reads below share (cut-owned rows and track fixtures alike).
   Layer _rowAnywhere(LayerId layerId) =>
       requireLayerAnywhere(_project.repository.requireProject(), layerId);
+
+  /// Whether [layerId]'s property lanes are twirled down right now — the
+  /// row's own (F-360).
+  ///
+  /// 🚨A LIVE READ, like [isLayerEyeOn]: the legend's twirl-all turns row
+  /// after row as ONE step, and the rail's sets are read back off the
+  /// document only when the step lands ([RailView.readFolds]) — while a
+  /// press spread across the selection may already have turned the next
+  /// row, which a stale read would turn back.
+  bool isLayerLanesOpen(LayerId layerId) =>
+      _rowAnywhere(layerId).lanesExpanded;
 
   /// Whether [layerId]'s TRANSFORM group is applied right now.
   ///

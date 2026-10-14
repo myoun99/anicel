@@ -929,12 +929,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             laneGraphLineOf: (key) =>
                 timelineLaneGraphLine(key, session: _session),
             // LIVE, as the hook asks: the widget's set is the one this build
-            // was handed, and a twirl replaces the session's set with a new
-            // one — so a sweep that toggles row after row inside one frame
-            // (the legend's 「all」, or a press spread across the selection)
-            // read every row it had already turned as still unturned.
-            laneOpenOf: (id) =>
-                _session.railView.expandedLaneLayerIds.value.contains(id),
+            // was handed — so a sweep that toggles row after row inside one
+            // frame (the legend's 「all」, or a press spread across the
+            // selection) read every row it had already turned as still
+            // unturned. ↩️It read the session's set, which a twirl replaced
+            // at once until the twirl was the row's (F-360): the set is read
+            // back off the document when a step lands, and the legend's
+            // 「all」 is one step.
+            laneOpenOf: _session.layerSwitches.isLayerLanesOpen,
             laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             onToggleLayerLanes: widget.onToggleLayerLanes,

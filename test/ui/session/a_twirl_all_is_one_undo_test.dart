@@ -5,6 +5,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -34,7 +35,9 @@ void main() {
 
   const toggle = ValueKey<String>('legend-lanes-toggle');
 
-  Future<void> pressAndUndo(
+  /// Presses the legend open and shut, then undoes each press — and
+  /// returns what the opening press turned.
+  Future<Set<LayerId>> pressAndUndo(
     WidgetTester tester,
     EditorSessionManager session,
   ) async {
@@ -63,9 +66,14 @@ void main() {
     session.undo();
     await tester.pumpAndSettle();
     expect(twirled(session), isEmpty, reason: 'one more shuts them all');
+    return opened;
   }
 
-  testWidgets('on the timeline', (tester) async {
+  /// The app on the default project and a second drawing row, the timeline
+  /// pulled up for lane rows — with the two drawing rows.
+  Future<({EditorSessionManager session, LayerId a, LayerId b})> timeline(
+    WidgetTester tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -75,16 +83,41 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
+    final a = session.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    final before = {for (final layer in session.layers) layer.id};
     session.layerStack.addLayerOfKind(LayerKind.animation);
     await tester.pumpAndSettle();
-    // Room for lane rows: pull the timeline dock up.
+    final b = session.layers.firstWhere((layer) => !before.contains(layer.id));
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
       const Offset(0, -520),
     );
     await tester.pumpAndSettle();
+    return (session: session, a: a, b: b.id);
+  }
 
-    await pressAndUndo(tester, session);
+  testWidgets('on the timeline', (tester) async {
+    final rig = await timeline(tester);
+
+    await pressAndUndo(tester, rig.session);
+  });
+
+  testWidgets('on the timeline, over rows selected together — the press on '
+      'one turns the other, and the sweep reaching it reads it turned', (
+    tester,
+  ) async {
+    final rig = await timeline(tester);
+    rig.session.rowSelection.value = [
+      LayerRowAddress(rig.a),
+      LayerRowAddress(rig.b),
+    ];
+    await tester.pumpAndSettle();
+
+    final opened = await pressAndUndo(tester, rig.session);
+
+    expect(opened, containsAll([rig.a, rig.b]), reason: 'both were opened');
   });
 
   testWidgets('on the storyboard — a camera row on each of two tracks', (
