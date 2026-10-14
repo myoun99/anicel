@@ -381,13 +381,49 @@ ClipMove? _moveOf(
   if (anim == null) {
     return null;
   }
-  final framesPerTick = frameAt(1) - frameAt(0);
-  ClipCurve? curveOf(
-    String type, {
-    String? axis,
-    int index = 0,
-    double unit = 1,
-  }) {
+  final curves = _AnimCurves(anim, span: span, frameAt: frameAt);
+  final scale = curves.of('ImageScale', unit: 100);
+  final x = curves.of('ImagePosition', axis: 'X');
+  final y = curves.of('ImagePosition', axis: 'Y', index: 1);
+  final scaleX = curves.of('ImageAspectScale', axis: 'X', unit: 100) ?? scale;
+  final scaleY =
+      curves.of('ImageAspectScale', axis: 'Y', index: 1, unit: 100) ?? scale;
+  final degrees = curves.of('ImageRotation');
+  final pivotX = curves.of('ImageCenter', axis: 'X');
+  final pivotY = curves.of('ImageCenter', axis: 'Y', index: 1);
+  if ([x, y, scaleX, scaleY, degrees, pivotX, pivotY].every(
+    (curve) => curve == null,
+  )) {
+    return null;
+  }
+  return (
+    span: span,
+    x: x ?? ClipCurve.none,
+    y: y ?? ClipCurve.none,
+    scaleX: scaleX ?? ClipCurve.none,
+    scaleY: scaleY ?? ClipCurve.none,
+    degrees: degrees ?? ClipCurve.none,
+    pivotX: pivotX ?? ClipCurve.none,
+    pivotY: pivotY ?? ClipCurve.none,
+  );
+}
+
+/// The curves a clip's `AnimInfo` keys, read on the timeline's frames
+/// ([frameAt]) — [_moveOf]'s values, each one asked by name.
+final class _AnimCurves {
+  _AnimCurves(this.anim, {required this.span, required this.frameAt})
+    : framesPerTick = frameAt(1) - frameAt(0);
+
+  final CmtNode anim;
+  final ClipSpan span;
+  final double Function(double tick) frameAt;
+  final double framesPerTick;
+
+  /// The value [type] names — by [axis] where it keys two — in [unit]s: its
+  /// `FCurve`'s keys, or else the value a `Param` of the same name holds
+  /// (the [index]-th of a pair), held from the clip's first frame. Null
+  /// where the clip holds neither.
+  ClipCurve? of(String type, {String? axis, int index = 0, double unit = 1}) {
     final curve = _childOf(anim, 'FCurve', {'Type': type, 'Axis': ?axis});
     final ticks = _numbers(curve, 'Frame');
     final values = _numbers(curve, 'Value');
@@ -411,31 +447,6 @@ ClipMove? _moveOf(
         ? ClipCurve.held(span.start.toDouble(), held / unit)
         : null;
   }
-
-  final scale = curveOf('ImageScale', unit: 100);
-  final x = curveOf('ImagePosition', axis: 'X');
-  final y = curveOf('ImagePosition', axis: 'Y', index: 1);
-  final scaleX = curveOf('ImageAspectScale', axis: 'X', unit: 100) ?? scale;
-  final scaleY =
-      curveOf('ImageAspectScale', axis: 'Y', index: 1, unit: 100) ?? scale;
-  final degrees = curveOf('ImageRotation');
-  final pivotX = curveOf('ImageCenter', axis: 'X');
-  final pivotY = curveOf('ImageCenter', axis: 'Y', index: 1);
-  if ([x, y, scaleX, scaleY, degrees, pivotX, pivotY].every(
-    (curve) => curve == null,
-  )) {
-    return null;
-  }
-  return (
-    span: span,
-    x: x ?? ClipCurve.none,
-    y: y ?? ClipCurve.none,
-    scaleX: scaleX ?? ClipCurve.none,
-    scaleY: scaleY ?? ClipCurve.none,
-    degrees: degrees ?? ClipCurve.none,
-    pivotX: pivotX ?? ClipCurve.none,
-    pivotY: pivotY ?? ClipCurve.none,
-  );
 }
 
 /// [keys] — [curve]'s, on the timeline's frames — with the way from each to
