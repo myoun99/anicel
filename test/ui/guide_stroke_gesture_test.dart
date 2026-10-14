@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -7,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
@@ -355,6 +357,202 @@ void main() {
         isTrue,
         reason: 'free after it',
       );
+    });
+  });
+
+  // 🗣️I-61-Q3 (유저 2026-10-14): 「손가락도 — 다른 손가락이 닿아 있는 동안
+  // 잠긴다」 — behind a switch of its own, off as it comes.
+  group('a finger resting on the glass', () {
+    void switchedOn({bool fingerDraws = true}) {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        strokeFingerModifier: true,
+        touchDragOneFinger: fingerDraws
+            ? CanvasTouchDragAction.draw
+            : CanvasTouchDragAction.navigate,
+      );
+      addTearDown(
+        () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+      );
+    }
+
+    Future<TestGesture> downAt(
+      WidgetTester tester,
+      Offset at, {
+      required PointerDeviceKind kind,
+      required int pointer,
+    }) async {
+      final contact = await tester.startGesture(
+        canvasGlobalOffset(tester, at),
+        kind: kind,
+        pointer: pointer,
+      );
+      await tester.pump();
+      return contact;
+    }
+
+    /// What rests: in a corner, away from every stroke — a finger, unless
+    /// said otherwise.
+    Future<TestGesture> rest(
+      WidgetTester tester, {
+      PointerDeviceKind kind = PointerDeviceKind.touch,
+    }) => downAt(tester, const Offset(190, 10), kind: kind, pointer: 9);
+
+    Future<void> to(WidgetTester tester, TestGesture pen, Offset at) async {
+      await pen.moveTo(canvasGlobalOffset(tester, at));
+      await tester.pump();
+    }
+
+    Future<void> lift(WidgetTester tester, TestGesture contact) async {
+      await contact.up();
+      await tester.pump();
+      await tester.pump();
+    }
+
+    /// A pen's stroke with a wobble across y = 120, the finger resting
+    /// while it crosses — the shape of the Shift test above. [meanwhile]
+    /// runs once the finger is down, before the wobble.
+    Future<void> wobbleWithAFingerOnTheWay(
+      WidgetTester tester, {
+      PointerDeviceKind drawnBy = PointerDeviceKind.stylus,
+      PointerDeviceKind resting = PointerDeviceKind.touch,
+      VoidCallback? meanwhile,
+    }) async {
+      final pen = await downAt(
+        tester,
+        const Offset(20, 100),
+        kind: drawnBy,
+        pointer: 3,
+      );
+      await to(tester, pen, const Offset(40, 120));
+      final finger = await rest(tester, kind: resting);
+      meanwhile?.call();
+      await to(tester, pen, const Offset(60, 124));
+      await to(tester, pen, const Offset(80, 116));
+      await to(tester, pen, const Offset(100, 124));
+      await lift(tester, finger);
+      await to(tester, pen, const Offset(130, 160));
+      await lift(tester, pen);
+    }
+
+    List<BrushDab> crossing() => [
+      for (final dab in dabs())
+        if (dab.center.x > 41 && dab.center.x < 99) dab,
+    ];
+
+    void wobbleKept() => expect(
+      crossing().any((dab) => (dab.center.y - 120).abs() > 1),
+      isTrue,
+      reason: 'the wobble is kept',
+    );
+
+    testWidgets('🚨with the switch on, one resting before the pen goes down '
+        'holds the whole stroke to the eight ways', (tester) async {
+      switchedOn(fingerDraws: false);
+      await tester.pumpWidget(app(CutGuides.empty));
+      final finger = await rest(tester);
+      final pen = await downAt(
+        tester,
+        const Offset(20, 20),
+        kind: PointerDeviceKind.stylus,
+        pointer: 3,
+      );
+      for (final at in const [
+        Offset(60, 66),
+        Offset(100, 94),
+        Offset(150, 154),
+      ]) {
+        await to(tester, pen, at);
+      }
+      await lift(tester, pen);
+      await lift(tester, finger);
+
+      final drawn = dabs();
+      expect(drawn.length, greaterThan(3));
+      for (final dab in drawn) {
+        expect(dab.center.y - 20, closeTo(dab.center.x - 20, 1e-6));
+      }
+    });
+
+    testWidgets('🚨put down in the middle of a stroke it holds it from there '
+        '— and lifted, the stroke is free again', (tester) async {
+      switchedOn();
+      await tester.pumpWidget(app(CutGuides.empty));
+
+      await wobbleWithAFingerOnTheWay(tester);
+
+      expect(crossing(), isNotEmpty);
+      for (final dab in crossing()) {
+        expect(dab.center.y, closeTo(120, 1e-6), reason: 'held across');
+      }
+      expect(
+        dabs().any((dab) => dab.center.x > 100 && dab.center.y > 121),
+        isTrue,
+        reason: 'free after it',
+      );
+    });
+
+    testWidgets('🚨with the switch off — as it comes — it is a palm resting: '
+        'the stroke is as it was drawn', (tester) async {
+      expect(AppInput.settings.value.strokeFingerModifier, isFalse);
+      await tester.pumpWidget(app(CutGuides.empty));
+
+      await wobbleWithAFingerOnTheWay(tester);
+
+      wobbleKept();
+    });
+
+    testWidgets('a FINGER\'s stroke takes a second finger as its Shift once '
+        'it has gone its way', (tester) async {
+      switchedOn();
+      await tester.pumpWidget(app(CutGuides.empty));
+
+      await wobbleWithAFingerOnTheWay(
+        tester,
+        drawnBy: PointerDeviceKind.touch,
+      );
+
+      expect(crossing(), isNotEmpty);
+      for (final dab in crossing()) {
+        expect(dab.center.y, closeTo(120, 1e-6), reason: 'held across');
+      }
+    });
+
+    testWidgets('⛔a finger is a FINGER: a pen resting while a finger draws '
+        'is not the stroke\'s Shift', (tester) async {
+      switchedOn();
+      await tester.pumpWidget(app(CutGuides.empty));
+
+      await wobbleWithAFingerOnTheWay(
+        tester,
+        drawnBy: PointerDeviceKind.touch,
+        resting: PointerDeviceKind.stylus,
+      );
+
+      wobbleKept();
+    });
+
+    testWidgets('⛔with the switch off nothing counts a finger (「off하면 '
+        '확실하게 제거」) — so one already resting when it goes on is not '
+        'counted', (tester) async {
+      await tester.pumpWidget(app(CutGuides.empty));
+
+      await wobbleWithAFingerOnTheWay(tester, meanwhile: switchedOn);
+
+      wobbleKept();
+    });
+
+    testWidgets('turned off under a resting finger, the stroke is free at '
+        'once', (tester) async {
+      switchedOn();
+      await tester.pumpWidget(app(CutGuides.empty));
+
+      await wobbleWithAFingerOnTheWay(
+        tester,
+        meanwhile: () =>
+            AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+      );
+
+      wobbleKept();
     });
   });
 }

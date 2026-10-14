@@ -179,4 +179,24 @@ void main() {
 
     debugDefaultTargetPlatformOverride = null;
   });
+
+  // 🗣️I-61-Q3 (유저 2026-10-14): 「해당 손가락 스트로크 수정자 기능 옵션으로
+  // on off 제공 … 기본값은 off」.
+  testWidgets('the finger stroke modifier is a switch of its own: off as it '
+      'comes, and pressed it is on — the navigation\'s left as it was', (
+    tester,
+  ) async {
+    await pumpDialog(tester);
+    final row = find.byKey(const ValueKey<String>('settings-stroke-finger'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final navigation = AppInput.settings.value.extraFingerModifier;
+    expect(AppInput.settings.value.strokeFingerModifier, isFalse);
+
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    expect(AppInput.settings.value.strokeFingerModifier, isTrue);
+    expect(AppInput.settings.value.extraFingerModifier, navigation);
+  });
 }

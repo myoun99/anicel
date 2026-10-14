@@ -27,6 +27,18 @@ class _BrushEditPress {
   final Set<int> _activeTouchPointers = <int>{};
   bool _multiTouchNavigation = false;
 
+  /// Fingers resting on the glass, each the stroke's Shift for as long as
+  /// it rests (I-61-Q3, [aFingerHoldsShift]) — counted only while
+  /// [AppInputSettings.strokeFingerModifier] is on, so that with it off
+  /// nothing of this runs at all (유저: 「off하면 확실하게 제거」).
+  final Set<int> _shiftFingers = <int>{};
+
+  /// Whether a finger holds the stroke's Shift now: one resting on the
+  /// glass that is not the one drawing.
+  bool get aFingerHoldsShift =>
+      AppInput.settings.value.strokeFingerModifier &&
+      _shiftFingers.any((finger) => finger != _state._activeDrawingPointer);
+
   /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
   /// on a sibling view, whose pointer this view will never see. A live
   /// sub-slop touch stroke here is really the first half of a pinch, so
@@ -120,6 +132,10 @@ class _BrushEditPress {
 
   void pointerDown(PointerDownEvent event) {
     _state._toolHolds.heardByTheView.add(event.pointer);
+    if (event.kind == PointerDeviceKind.touch &&
+        AppInput.settings.value.strokeFingerModifier) {
+      _shiftFingers.add(event.pointer);
+    }
     // (No deferred stroke commit to land first: pen-up commits inside its
     // own event now — R25-④'s one-frame deferral existed to hide a
     // synchronous re-materialize that the promotion round deleted.)
@@ -469,6 +485,7 @@ class _BrushEditPress {
   }
 
   void _forgetTouchPointer(int pointer) {
+    _shiftFingers.remove(pointer);
     _activeTouchPointers.remove(pointer);
     CanvasTouchContacts.remove(pointer);
     if (_activeTouchPointers.isEmpty) {

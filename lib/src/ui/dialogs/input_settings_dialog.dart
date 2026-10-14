@@ -206,6 +206,17 @@ class InputSettingsSection extends StatelessWidget {
                 settings.copyWith(extraFingerModifier: enabled),
               ),
             ),
+            // I-61-Q3 (유저 2026-10-14): 「옵션으로 on off 제공 … 기본값은
+            // off」 — beside the navigation's own, which is not this one.
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-stroke-finger'),
+              label: strings.inputStrokeFinger,
+              help: strings.inputStrokeFingerHelp,
+              value: settings.strokeFingerModifier,
+              onChanged: (enabled) => session.setInputSettings(
+                settings.copyWith(strokeFingerModifier: enabled),
+              ),
+            ),
             SettingsSwitchRow(
               tileKey: const ValueKey<String>('settings-flip-haptics'),
               label: strings.inputFlipHaptics,

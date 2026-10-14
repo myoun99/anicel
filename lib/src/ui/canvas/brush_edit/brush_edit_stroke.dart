@@ -310,7 +310,9 @@ class _BrushEditStroke {
   /// inside it and arrive together the moment it locks.
   ///
   /// 🗣️I-61: Shift held is the stroke's 45° lock (I-61-Q1 · Q2) — asked
-  /// HERE, of the keyboard, and nowhere else on the stroke's way.
+  /// HERE, and nowhere else on the stroke's way: of the keyboard, and of a
+  /// finger resting on the glass where the switch says so (I-61-Q3,
+  /// [_BrushEditPress.aFingerHoldsShift]).
   void advanceStrokeThroughGuides(CanvasPoint canvasPosition) {
     final lock = _state._strokeLock;
     if (lock == null) {
@@ -319,7 +321,9 @@ class _BrushEditStroke {
     }
     for (final locked in lock.follow(
       canvasPosition,
-      shift: HardwareKeyboard.instance.isShiftPressed,
+      shift:
+          HardwareKeyboard.instance.isShiftPressed ||
+          _state._press.aFingerHoldsShift,
     )) {
       advanceStrokeTo(locked);
     }

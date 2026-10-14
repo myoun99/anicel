@@ -38,6 +38,15 @@ void main() {
     expect(AppInput.timelineEditPanDevices, contains(PointerDeviceKind.stylus));
   });
 
+  // 🗣️I-61-Q3 (유저 2026-10-14): 「기본값은 off」 — and a file written before
+  // the switch was there reads it off too.
+  test('a finger resting is no stroke\'s Shift until the switch says so', () {
+    expect(const AppInputSettings().strokeFingerModifier, isFalse);
+    final before = const AppInputSettings().toJson()
+      ..remove('strokeFingerModifier');
+    expect(AppInputSettings.fromJson(before).strokeFingerModifier, isFalse);
+  });
+
   test('json + store round-trips', () async {
     const settings = AppInputSettings(
       touchDragOneFinger: CanvasTouchDragAction.flip,
@@ -236,6 +245,9 @@ void main() {
     final flipped = <String, AppInputSettings>{
       'extraFingerModifier': base.copyWith(
         extraFingerModifier: !base.extraFingerModifier,
+      ),
+      'strokeFingerModifier': base.copyWith(
+        strokeFingerModifier: !base.strokeFingerModifier,
       ),
       'flipHaptics': base.copyWith(flipHaptics: !base.flipHaptics),
       'autoCreateFrameOnDraw': base.copyWith(

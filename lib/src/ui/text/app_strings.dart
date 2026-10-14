@@ -564,6 +564,8 @@ enum AppStrings {
   String get inputDragThreeFingers => _s('inputDragThreeFingers');
   String get inputExtraFinger => _s('inputExtraFinger');
   String get inputExtraFingerHelp => _s('inputExtraFingerHelp');
+  String get inputStrokeFinger => _s('inputStrokeFinger');
+  String get inputStrokeFingerHelp => _s('inputStrokeFingerHelp');
   String get inputFlipHaptics => _s('inputFlipHaptics');
   String get inputFlipHapticsHelp => _s('inputFlipHapticsHelp');
   String get inputTwoFingerRotation => _s('inputTwoFingerRotation');
@@ -2054,6 +2056,10 @@ enum AppStrings {
     'inputExtraFingerHelp':
         'A finger added DURING a gesture constrains it — snap '
         'zoom/rotation/size, fine frame steps.',
+    'inputStrokeFinger': 'Finger stroke modifier',
+    'inputStrokeFingerHelp':
+        'A finger resting on the screen while you draw holds the stroke to '
+        'the nearest 45° — as Shift does.',
     'inputFlipHaptics': 'Flip haptics',
     'inputFlipHapticsHelp':
         'A tick each time the flip lands on a different drawing. Silent '
@@ -3259,6 +3265,10 @@ enum AppStrings {
     'inputExtraFingerHelp':
         'ジェスチャーの途中で指を足すと動作が制限されます — ズーム・回転・'
         'サイズのスナップ、フレームの微送り。',
+    'inputStrokeFinger': '指ストロークモディファイア',
+    'inputStrokeFingerHelp':
+        '描いている間、別の指を画面に置いているとストロークが最も近い '
+        '45° 方向に固定されます(Shift と同じ)。',
     'inputFlipHaptics': 'フリップの触覚フィードバック',
     'inputFlipHapticsHelp':
         'フリップが別の絵に着地するたびに小さく振動します。空白の上では'
@@ -4777,6 +4787,10 @@ enum AppStrings {
     'inputExtraFingerHelp':
         '제스처 도중에 손가락을 더하면 동작이 제한됩니다 — 줌·회전·크기 '
         '스냅, 프레임 미세 이동.',
+    'inputStrokeFinger': '손가락 스트로크 모디파이어',
+    'inputStrokeFingerHelp':
+        '그리는 동안 다른 손가락을 화면에 대고 있으면 획이 가장 가까운 45° '
+        '방향으로 잠깁니다(Shift 와 같음).',
     'inputFlipHaptics': '플립 진동',
     'inputFlipHapticsHelp':
         '플립이 다른 그림에 착지할 때마다 짧게 울립니다. 빈 공간에서는 '
@@ -6298,6 +6312,10 @@ enum AppStrings {
     'inputExtraFingerHelp':
         'Un doigt ajouté PENDANT un geste le contraint — zoom, rotation et '
         'taille par crans, avance image par image fine.',
+    'inputStrokeFinger': 'Modificateur de trait au doigt',
+    'inputStrokeFingerHelp':
+        'Un doigt posé sur l’écran pendant le tracé bloque le trait sur le '
+        '45° le plus proche — comme Maj.',
     'inputFlipHaptics': 'Retour haptique du feuilletage',
     'inputFlipHapticsHelp':
         'Une pulsation à chaque fois que le feuilletage arrive sur un autre '
@@ -7902,6 +7920,8 @@ enum AppStrings {
     'inputDragThreeFingers': '三指拖动',
     'inputExtraFinger': '加指修饰键',
     'inputExtraFingerHelp': '手势进行中再加一根手指会约束它 — 缩放/旋转/笔刷大小吸附，逐帧微调。',
+    'inputStrokeFinger': '手指笔画修饰键',
+    'inputStrokeFingerHelp': '绘制时另一根手指按在屏幕上，笔画会锁定到最近的45°方向（与Shift相同）。',
     'inputFlipHaptics': '翻页震动',
     'inputFlipHapticsHelp': '每当翻页落到另一张画上时轻震一下。空白处不震动，没有马达的设备也不会。',
     'inputTwoFingerRotation': '双指旋转',
