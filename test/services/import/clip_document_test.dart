@@ -599,8 +599,13 @@ void main() {
 
   /// A file of one 2D camera folder — resting at 1.5 times the frame, its
   /// pivot (100, 50) placed at (300, 200) — and a track whose one clip
-  /// moves it by [anim], from the timeline's tick [from] to its 120th.
-  ClipDocument cameraDocument(List<CmtSpec> anim, {double from = 0}) {
+  /// moves it by [anim], from the timeline's tick [from] to its 120th: a
+  /// camera's track, unless [trackKind] says otherwise.
+  ClipDocument cameraDocument(
+    List<CmtSpec> anim, {
+    double from = 0,
+    int trackKind = 2005,
+  }) {
     final rest = ByteData(184)
       ..setFloat64(40, 1.5)
       ..setFloat64(48, 1.5)
@@ -688,7 +693,7 @@ void main() {
         ..execute([
           50,
           0,
-          2005,
+          trackKind,
           clipUuidBytes(uuidCamera),
           '',
           externalId(6),
@@ -702,11 +707,11 @@ void main() {
     );
   }
 
-  ClipCameraMove moveOf(ClipDocument document) => document
+  ClipMove moveOf(ClipDocument document) => document
       .timelines
       .single
       .tracks[uuidCamera.replaceAll('-', '')]!
-      .cameraMoves
+      .moves
       .single;
   List<(double, double)> keys(ClipCurve curve) => [
     for (final key in curve.keys) (key.frame, key.value),
@@ -767,9 +772,8 @@ void main() {
         value: 150,
         attributes: {'Name': 'ImageScale'},
       ),
-      // Into a held key as into CLIP STUDIO's own (⚠️no sample shows what
-      // CLIP STUDIO moves at there), held from it, and the third names a
-      // curve the reader does not know.
+      // Into a held key flat, a key with no handles (test4), held from it,
+      // and the third names a curve the reader does not know.
       CmtSpec(
         'FCurve',
         'null',
@@ -821,7 +825,14 @@ void main() {
           'CLIP STUDIO\'s own way: still at the ends and where it turns '
           'back, and between, the gentler of the two ways\' slopes',
     );
-    expect(keys(move.scale), [(0.0, 1.5)], reason: 'its Param');
+    expect(
+      [keys(move.scaleX), keys(move.scaleY)],
+      [
+        [(0.0, 1.5)],
+        [(0.0, 1.5)],
+      ],
+      reason: 'its Param — a camera\'s one scale, on both axes',
+    );
     expect(keys(move.pivotX), [(0.0, 100.0)], reason: 'its pair');
     expect(keys(move.pivotY), [(0.0, 50.0)]);
     expect(keys(move.degrees), [
@@ -830,7 +841,7 @@ void main() {
       (24.0, 24.0),
       (36.0, 36.0),
     ]);
-    expect(ways(move.degrees), 'cubic 0.0 1.0, held, straight');
+    expect(ways(move.degrees), 'cubic 0.0 0.0, held, straight');
     expect(move.degrees.unread, isTrue, reason: 'a curve it does not know');
     expect(move.x.unread || move.y.unread, isFalse);
   });
@@ -854,8 +865,10 @@ void main() {
       ]),
     );
 
-    expect(keys(move.scale), [(0.0, 1.0), (12.0, 1.5)]);
-    expect(ways(move.scale), 'cubic 0.2 0.1');
+    for (final scale in [move.scaleX, move.scaleY]) {
+      expect(keys(scale), [(0.0, 1.0), (12.0, 1.5)]);
+      expect(ways(scale), 'cubic 0.2 0.1');
+    }
   });
 
   test('a value no curve keys is its Param, keyed where the clip starts — '
@@ -924,8 +937,8 @@ void main() {
 
   test('🎯「등속」 is `Linear`: from a Linear key the way runs straight, and '
       'is read (the user\'s zoom-and-turn sample — both keys Linear, its '
-      'zoom and turn on a straight ramp); ⚠️into one, a way comes at that '
-      'key\'s own slope, as into a held key (no sample shows it)', () {
+      'zoom and turn on a straight ramp); into one, a way arrives flat — a '
+      'key with no handles (test4)', () {
     final move = moveOf(
       cameraDocument(const [
         CmtSpec(
@@ -957,9 +970,86 @@ void main() {
       ]),
     );
 
-    expect(ways(move.scale), 'straight');
-    expect(ways(move.degrees), 'cubic 0.0 1.0, straight, cubic 1.0 0.0');
-    expect(move.scale.unread || move.degrees.unread, isFalse);
+    expect(ways(move.scaleX), 'straight');
+    expect(ways(move.degrees), 'cubic 0.0 0.0, straight, cubic 1.0 0.0');
+    expect(move.scaleX.unread || move.degrees.unread, isFalse);
+  });
+
+  test('🎯test4 (10-14): keys 야와라카 · 등속 · 홀드 · 야와라카 — each kind '
+      'is the way that leaves its key, and the way into the 등속 key '
+      'arrives flat, as CLIP STUDIO\'s frames came (0.04px; the key\'s own '
+      'slope there played 0.75px off)', () {
+    final move = moveOf(
+      cameraDocument(const [
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImagePosition', 'Axis': 'Y'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 18, 38, 58]),
+            CmtSpec('Value', 'Double[]', value: [307, 312, 349, 357]),
+            CmtSpec('LeftSlope', 'Double[]', value: [0, 0, 0, 0]),
+            CmtSpec('RightSlope', 'Double[]', value: [0, 0, 0, 0]),
+            CmtSpec(
+              'Interp',
+              'String[]',
+              value: ['Default', 'Linear', 'Constant', 'Default'],
+            ),
+          ],
+        ),
+      ]),
+    );
+
+    expect(ways(move.y), 'cubic 0.0 0.0, straight, held');
+    expect(move.y.unread, isFalse);
+  });
+
+  test('🎯any layer\'s track keys its placement the same way — a cel '
+      'folder\'s scale by axis, `ImageAspectScale` (test4), read over an '
+      '`ImageScale` — and a clip that keys none of it moves nothing', () {
+    final move = moveOf(
+      cameraDocument(trackKind: 2000, const [
+        CmtSpec(
+          'Param',
+          'Double2',
+          value: [100, 50],
+          attributes: {'Name': 'ImageAspectScale'},
+        ),
+        CmtSpec(
+          'FCurve',
+          'null',
+          attributes: {'Type': 'ImageAspectScale', 'Axis': 'Y'},
+          children: [
+            CmtSpec('Frame', 'Double[]', value: [0, 30]),
+            CmtSpec('Value', 'Double[]', value: [50, 200]),
+            CmtSpec('Interp', 'String[]', value: ['Linear', 'Default']),
+          ],
+        ),
+        CmtSpec(
+          'Param',
+          'Double',
+          value: 300,
+          attributes: {'Name': 'ImageScale'},
+        ),
+      ]),
+    );
+
+    expect(keys(move.scaleX), [(0.0, 1.0)], reason: 'its pair\'s X');
+    expect(keys(move.scaleY), [(0.0, 0.5), (12.0, 2.0)]);
+    expect(ways(move.scaleY), 'straight');
+
+    final shownOnly = cameraDocument(trackKind: 2000, const [
+      CmtSpec(
+        'Param',
+        'Int32',
+        value: 0,
+        attributes: {'Name': 'ImageCelName', 'Tag': '1'},
+      ),
+    ]);
+    expect(
+      shownOnly.timelines.single.tracks[uuidCamera.replaceAll('-', '')]!.moves,
+      isEmpty,
+    );
   });
 
   test('the shooting frame: its size, and its centre the canvas\'s moved by '

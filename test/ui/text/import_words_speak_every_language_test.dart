@@ -71,7 +71,7 @@ void main() {
     'clipSoundMissing',
     'clipSoundSpeed',
     'clipSoundVolume',
-    'clipCameraCurve',
+    'clipCurve',
     'clipBlend',
     'clipNotColour',
     'clipTransform',

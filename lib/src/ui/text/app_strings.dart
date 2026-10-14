@@ -3821,8 +3821,8 @@ enum AppStrings {
         '{name}: CLIP STUDIO では別の速度で再生しています — ここでは元の速度で再生します。',
     'importWarning.clipSoundVolume':
         '{name}: クリップの途中で音量が変わります — クリップの始まりの音量にしました。',
-    'importWarning.clipCameraCurve':
-        '{name}: 読み込めない補間のカメラキーがあります — その間はまっすぐ動きます。',
+    'importWarning.clipCurve':
+        '{name}: 読み込めない補間のキーがあります — その間はまっすぐ動きます。',
     'importWarning.unsupportedLayerKind':
         '{name}: このレイヤーの種類には対応していません。',
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
@@ -5341,8 +5341,8 @@ enum AppStrings {
         '{name}: CLIP STUDIO 에서는 다른 속도로 재생됩니다 — 여기서는 제 속도로 재생합니다.',
     'importWarning.clipSoundVolume':
         '{name}: 클립 안에서 음량이 바뀝니다 — 클립이 시작할 때의 음량으로 맞췄습니다.',
-    'importWarning.clipCameraCurve':
-        '{name}: 읽지 못하는 보간의 카메라 키가 있습니다 — 그 사이는 곧게 움직입니다.',
+    'importWarning.clipCurve':
+        '{name}: 읽지 못하는 보간의 키가 있습니다 — 그 사이는 곧게 움직입니다.',
     'importWarning.unsupportedLayerKind':
         '{name}: 이 레이어 종류는 지원되지 않습니다.',
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
@@ -6962,9 +6962,9 @@ enum AppStrings {
     'importWarning.clipSoundVolume':
         '{name} : son volume change au cours du clip — réglé sur celui du '
         'début du clip.',
-    'importWarning.clipCameraCurve':
-        '{name} : des clés de caméra suivent une courbe que cette importation '
-        'ne lit pas — la caméra va en ligne droite entre elles.',
+    'importWarning.clipCurve':
+        '{name} : des clés suivent une courbe que cette importation ne lit '
+        'pas — le calque va en ligne droite entre elles.',
     'importWarning.unsupportedLayerKind':
         "{name} : ce type de calque n'est pas pris en charge.",
     'importWarning.clipBlend':
@@ -8448,7 +8448,7 @@ enum AppStrings {
     'importWarning.clipSoundSpeed':
         '{name}：CLIP STUDIO 以其他速度播放——这里按原速播放。',
     'importWarning.clipSoundVolume': '{name}：音量在片段中途变化——已设为片段开始时的音量。',
-    'importWarning.clipCameraCurve': '{name}：部分摄像机关键帧使用了无法读取的插值——其间按直线移动。',
+    'importWarning.clipCurve': '{name}：部分关键帧使用了无法读取的插值——其间按直线移动。',
     'importWarning.unsupportedLayerKind': '{name}：不支持此图层类型。',
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',

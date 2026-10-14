@@ -31,18 +31,21 @@ typedef ClipSoundCue = ({
   bool volumeVaries,
 });
 
-/// How a 2D camera track's clip moves its camera (memory
-/// `csp-clip-format-notes` §3): each value of the camera's placement — its
-/// point, scale, turn and pivot — as CLIP STUDIO keys it over the clip
-/// ([ClipCurve]). A value the clip keys no curve for holds the clip's
-/// `Param`; one with neither is empty, and the camera keeps its rest there.
-/// [scale] is 1 at the camera's own size, as a placement's is (the file
-/// keys percent).
-typedef ClipCameraMove = ({
+/// How a track's clip moves its layer (memory `csp-clip-format-notes` §3):
+/// each value of the layer's placement — its point, scale, turn and pivot
+/// — as CLIP STUDIO keys it over the clip ([ClipCurve]). A 2D camera
+/// folder's placement is its camera's; any other layer's is its own (유저
+/// 10-14, test4: 「카메라 없이 레이어의 트랜스폼 키 움직임」). A value the
+/// clip keys no curve for holds the clip's `Param`; one with neither is
+/// empty, and the layer keeps its rest there. [scaleX] · [scaleY] are 1 at
+/// the layer's own size, as a placement's are (the file keys percent): a
+/// camera keys one `ImageScale`, a layer `ImageAspectScale` by axis.
+typedef ClipMove = ({
   ClipSpan span,
   ClipCurve x,
   ClipCurve y,
-  ClipCurve scale,
+  ClipCurve scaleX,
+  ClipCurve scaleY,
   ClipCurve degrees,
   ClipCurve pivotX,
   ClipCurve pivotY,
@@ -153,19 +156,16 @@ final class ClipCurve {
 }
 
 /// What one clip of a track says: [piece] — where it shows and the cels it
-/// keys — and, on a sound track, the [sound] it plays; on a 2D camera's,
-/// the [camera] move.
+/// keys — and, on a sound track, the [sound] it plays; on a track that
+/// keys its layer's placement, the [move].
 typedef ClipTrackClip = ({
   ClipPiece piece,
   ClipSoundCue? sound,
-  ClipCameraMove? camera,
+  ClipMove? move,
 });
 
 /// `TrackKind` of a sound track.
 const int _soundTrackKind = 4001;
-
-/// `TrackKind` of a 2D camera folder's track.
-const int _cameraTrackKind = 2005;
 
 /// One clip of a [kind] track's action mixer — an `ActionNodeClip` of the
 /// track's CMT document — read on a timeline of [fps]. A key holds until
@@ -207,9 +207,7 @@ ClipTrackClip? readTrackClip(
     sound: kind == _soundTrackKind
         ? _soundCueOf(clip, span, frameAt, fps)
         : null,
-    camera: kind == _cameraTrackKind
-        ? _cameraMoveOf(clip, span, frameAt)
-        : null,
+    move: _moveOf(clip, span, frameAt),
   );
 }
 
@@ -362,28 +360,34 @@ ClipSoundCue? _soundCueOf(
   );
 }
 
-/// How a 2D camera track's [clip] moves the camera (memory
-/// `csp-clip-format-notes` §3, measured on s6 and the user's camera
-/// samples): an `FCurve` per value — `ImagePosition` and `ImageCenter` by
-/// `Axis` X · Y, `ImageScale` and `ImageRotation` alone — its `Frame` ticks
-/// and `Value`s, each key's way to the next ([_curveOf]); a `Param` of the
-/// same name holds a value no curve keys (a pair for the two by axis).
-ClipCameraMove _cameraMoveOf(
+/// How a track's [clip] moves its layer (memory `csp-clip-format-notes`
+/// §3, measured on s6 and the user's camera samples): an `FCurve` per
+/// value — `ImagePosition` and `ImageCenter` by `Axis` X · Y,
+/// `ImageRotation` alone, and the scale a camera's `ImageScale` keys alone
+/// and a layer's `ImageAspectScale` by axis (test4, 10-14) — its `Frame`
+/// ticks and `Value`s, each key's way to the next ([_curveOf]); a `Param`
+/// of the same name holds a value no curve keys (a pair for the two by
+/// axis). Null for a clip that keys none of them — a cel folder's clip
+/// that only shows its cels, a sound's. ⚠️No sample keys both scales, nor
+/// the `Opacity` beside them (each clip's `Param` of 100): an
+/// `ImageAspectScale` is read over an `ImageScale`, and opacity not at
+/// all.
+ClipMove? _moveOf(
   CmtNode clip,
   ClipSpan span,
   double Function(double tick) frameAt,
 ) {
   final anim = clip.child('AnimInfo');
+  if (anim == null) {
+    return null;
+  }
   final framesPerTick = frameAt(1) - frameAt(0);
-  ClipCurve curveOf(
+  ClipCurve? curveOf(
     String type, {
     String? axis,
     int index = 0,
     double unit = 1,
   }) {
-    if (anim == null) {
-      return ClipCurve.none;
-    }
     final curve = _childOf(anim, 'FCurve', {'Type': type, 'Axis': ?axis});
     final ticks = _numbers(curve, 'Frame');
     final values = _numbers(curve, 'Value');
@@ -405,27 +409,43 @@ ClipCameraMove _cameraMoveOf(
     };
     return held is num
         ? ClipCurve.held(span.start.toDouble(), held / unit)
-        : ClipCurve.none;
+        : null;
   }
 
+  final scale = curveOf('ImageScale', unit: 100);
+  final x = curveOf('ImagePosition', axis: 'X');
+  final y = curveOf('ImagePosition', axis: 'Y', index: 1);
+  final scaleX = curveOf('ImageAspectScale', axis: 'X', unit: 100) ?? scale;
+  final scaleY =
+      curveOf('ImageAspectScale', axis: 'Y', index: 1, unit: 100) ?? scale;
+  final degrees = curveOf('ImageRotation');
+  final pivotX = curveOf('ImageCenter', axis: 'X');
+  final pivotY = curveOf('ImageCenter', axis: 'Y', index: 1);
+  if ([x, y, scaleX, scaleY, degrees, pivotX, pivotY].every(
+    (curve) => curve == null,
+  )) {
+    return null;
+  }
   return (
     span: span,
-    x: curveOf('ImagePosition', axis: 'X'),
-    y: curveOf('ImagePosition', axis: 'Y', index: 1),
-    scale: curveOf('ImageScale', unit: 100),
-    degrees: curveOf('ImageRotation'),
-    pivotX: curveOf('ImageCenter', axis: 'X'),
-    pivotY: curveOf('ImageCenter', axis: 'Y', index: 1),
+    x: x ?? ClipCurve.none,
+    y: y ?? ClipCurve.none,
+    scaleX: scaleX ?? ClipCurve.none,
+    scaleY: scaleY ?? ClipCurve.none,
+    degrees: degrees ?? ClipCurve.none,
+    pivotX: pivotX ?? ClipCurve.none,
+    pivotY: pivotY ?? ClipCurve.none,
   );
 }
 
 /// [keys] — [curve]'s, on the timeline's frames — with the way from each to
 /// the next as CLIP STUDIO draws it (memory `csp-clip-format-notes` §3,
-/// measured 2026-10-13 against the frames CLIP STUDIO wrote of the user's
-/// three camera samples, 0.06px): each axis apart, the cubic two keys'
+/// measured 2026-10-13 · 10-14 against the frames CLIP STUDIO wrote of the
+/// user's four camera samples, 0.06px): each axis apart, the cubic two keys'
 /// slopes make — or, from a `Constant` key, its value held to the next;
-/// from a `Linear` one, straight on to it (the zoom-and-turn sample's
-/// 「등속」, both keys `Linear`: the zoom and the turn on a straight ramp).
+/// from a `Linear` one, straight on to it. A key's kind is the way that
+/// LEAVES it (test4: keys 야와라카 · 등속 · 홀드 · 야와라카, the straight
+/// and the held way each after its own key, 0.03px).
 ///
 /// A key's slopes — value per frame, as the way before it arrives and the
 /// way after it leaves — are its own kind's. `Hermite`, a graph pulled,
@@ -433,14 +453,19 @@ ClipCameraMove _cameraMoveOf(
 /// nothing where CLIP STUDIO's output overshot by a tenth), divided by
 /// [slopeDivisor] — the timeline's frames a tick times the value's unit —
 /// to move it per frame: its `LeftSlope` arriving, its `RightSlope`
-/// leaving. A key of CLIP STUDIO's own — no `Interp` at all, `Default`,
-/// `Constant` or `Linear` — moves at the slope [_ownSlope] gives. ⚠️The
-/// slopes a file keeps beside such a key are not read: the ones the
-/// samples keep, a `Default` last key's and every `Constant` and `Linear`
-/// key's, are 0 — which a `Default` end's own slope is too. A way from or
-/// to a key of a kind this reader does not know runs straight, and is
-/// said. ↩️Every way that was not `Constant` ran straight (s6, 10-09: a
-/// guess, never held to an output).
+/// leaving. A key of CLIP STUDIO's own — no `Interp` at all, or `Default`
+/// — moves at the slope [_ownSlope] gives. A `Constant` or `Linear` key has
+/// no handles (유저 10-14: 「등속/홀드는 그래프의 키 옆에 핸들이
+/// 안생기지만 야와라카로하면 키 옆에 핸들 생겨서 ae처럼 그래프
+/// 조절할수있음」), and a way into one arrives flat — test4's 야와라카 way
+/// into its 등속 key came in still, 0.04px, where that key's own slope
+/// played 0.75px off. ⚠️The slopes a file keeps beside a key that is not
+/// `Hermite` are not read: the samples' are all 0 — what a `Default` end
+/// and a key with no handles move at anyway. A way from or to a key of a
+/// kind this reader does not know runs straight, and is said. ↩️Every way
+/// that was not `Constant` ran straight (s6, 10-09: a guess, never held to
+/// an output); then a way into a `Constant` or `Linear` key came at that
+/// key's own slope (10-13, before a sample mixed the kinds).
 ClipCurve _curveOf(
   CmtNode curve,
   List<ClipCurveKey> keys, {
@@ -462,9 +487,8 @@ ClipCurve _curveOf(
           arriving: arriving[i] / slopeDivisor,
           leaving: leaving[i] / slopeDivisor,
         ),
-        null || 'Default' || 'Constant' || 'Linear' => through(
-          _ownSlope(keys, i),
-        ),
+        null || 'Default' => through(_ownSlope(keys, i)),
+        'Constant' || 'Linear' => through(0),
         _ => null,
       },
   ];
@@ -495,9 +519,8 @@ ClipCurve _curveOf(
 /// freely to its output came out at exactly the gentler one, 2.00 and 2.00,
 /// and no other rule tried came within 1px). A key of two keys' curve is
 /// an end, so that way is slow out and slow in — After Effects' Easy Ease
-/// (the first sample). ⚠️A `Constant` or `Linear` key is read the same —
-/// what CLIP STUDIO moves at into one, or beside a held or a straight way,
-/// no sample shows: theirs are two keys of the one kind.
+/// (the first sample). ⚠️What it moves at beside a held or a straight way
+/// no sample shows: test4's keys of this kind stood at its curve's ends.
 double _ownSlope(List<ClipCurveKey> keys, int i) {
   if (i == 0 || i == keys.length - 1) {
     return 0;

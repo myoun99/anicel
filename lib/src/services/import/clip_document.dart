@@ -10,9 +10,9 @@ import 'clip_track_clip.dart';
 
 export 'clip_track_clip.dart'
     show
-        ClipCameraMove,
         ClipCelKey,
         ClipCurve,
+        ClipMove,
         ClipPiece,
         ClipSoundCue,
         ClipSpan;
@@ -181,7 +181,7 @@ final class ClipTrack {
     required this.pieces,
     required this.labels,
     this.sounds = const [],
-    this.cameraMoves = const [],
+    this.moves = const [],
   });
 
   /// `TrackKind`: 2000 animation folder · 2001 layer · 1000 folder ·
@@ -197,9 +197,10 @@ final class ClipTrack {
   /// A sound track's clips, as what each plays — in order of frame.
   final List<ClipSoundCue> sounds;
 
-  /// A 2D camera track's clips, as how each moves the camera — in order of
+  /// Its clips that key its layer's placement, as how each moves it — a 2D
+  /// camera folder's its camera, any other layer itself — in order of
   /// frame.
-  final List<ClipCameraMove> cameraMoves;
+  final List<ClipMove> moves;
 }
 
 /// One timeline — a cut.
@@ -716,8 +717,8 @@ final class _DocumentReader {
       sounds: [
         for (final clip in clips) ?clip.sound,
       ]..sort((a, b) => a.frame.compareTo(b.frame)),
-      cameraMoves: [
-        for (final clip in clips) ?clip.camera,
+      moves: [
+        for (final clip in clips) ?clip.move,
       ]..sort((a, b) => byStart(a.span, b.span)),
     );
   }
