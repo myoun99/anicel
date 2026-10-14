@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/canvas/flip_hud_controller.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
@@ -142,6 +144,18 @@ void main() {
         ),
       );
 
+  /// What the head's eye shows — handed down past the head's keep
+  /// (`RailEyes`), never the [TimelineLayerControlsRow.layer] the head was
+  /// built for.
+  bool eyeOn(WidgetTester tester) => tester
+      .widget<LayerVisibilityToggleButton>(
+        find.descendant(
+          of: label,
+          matching: find.byType(LayerVisibilityToggleButton),
+        ),
+      )
+      .isVisible;
+
   void standIn(EditorSessionManager session, int globalFrame) =>
       session.standOnRow(
         cameraRow,
@@ -217,13 +231,13 @@ void main() {
         before: (session) => standIn(session, 30),
       );
 
-      expect(head(tester).layer.isVisible, isFalse, reason: 'the view is off');
+      expect(eyeOn(tester), isFalse, reason: 'the view is off');
       expect(head(tester).opacityOverride, same(dim));
 
       await tester.tap(find.named('storyboard-layer-visibility-b-cam'));
       await tester.pumpAndSettle();
       expect(view.value, isTrue, reason: 'the eye turned the VIEW on');
-      expect(head(tester).layer.isVisible, isTrue);
+      expect(eyeOn(tester), isTrue);
 
       // The slider, pressed as the ROW (the 10-10 audit), still dims the
       // view rather than reaching for a layer's own opacity.

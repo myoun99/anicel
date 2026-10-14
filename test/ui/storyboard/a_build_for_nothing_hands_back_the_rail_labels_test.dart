@@ -56,7 +56,7 @@ void main() {
         },
       );
 
-  Cut cutOf(String id, {Layer? conteLayer}) => Cut(
+  Cut cutOf(String id, {Layer? conteLayer, Layer? folder}) => Cut(
     id: CutId(id),
     name: id,
     duration: 12,
@@ -72,13 +72,15 @@ void main() {
         kind: LayerKind.camera,
         frames: const [],
       ),
+      ?folder,
       ?conteLayer,
     ],
   );
 
   /// Cuts a and b, each with a camera and a conte of the same face — b's
-  /// conte as [bConte] makes it — on one track with an S row.
-  Project film({Layer? bConte}) => Project(
+  /// conte as [bConte] makes it, beside [bFolder] where given — on one
+  /// track with an S row.
+  Project film({Layer? bConte, Layer? bFolder}) => Project(
     id: const ProjectId('rail-labels'),
     name: 'Rail labels',
     createdAt: DateTime.utc(2026, 10, 14),
@@ -96,7 +98,7 @@ void main() {
         ],
         cuts: [
           cutOf('a', conteLayer: conte('a')),
-          cutOf('b', conteLayer: bConte ?? conte('b')),
+          cutOf('b', conteLayer: bConte ?? conte('b'), folder: bFolder),
         ],
       ),
     ],
@@ -104,12 +106,14 @@ void main() {
 
   /// The tab as the workspace mounts it, on [project]: built again on every
   /// notify the session makes — and on the camera VIEW [cameraView], which
-  /// is none. [turned] hears every lane twirl the rail turns.
+  /// is none. [turned] hears every lane twirl the rail turns; [openLanes]
+  /// are the layers whose lanes stand open.
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
     ValueNotifier<bool>? cameraView,
     List<LayerId>? turned,
+    Set<LayerId> openLanes = const {},
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -129,6 +133,7 @@ void main() {
               thumbnails: null,
               rowFilter: TimelineRowFilter.none,
               cameraViewEnabled: cameraView,
+              expandedLaneLayerIds: openLanes,
               onToggleLayerLanes: turned?.add,
             ),
           ),
@@ -234,6 +239,37 @@ void main() {
     expect(eyeOn(tester, cameraLabel), isFalse);
   });
 
+  testWidgets('🚨a head wears the eye its row has on the timeline: a folder '
+      'above that hides the row dims it (F-185)', (tester) async {
+    const folderId = LayerId('b-folder');
+    final session = await pumpPanel(
+      tester,
+      film(
+        bConte: conte('b').copyWith(folderId: folderId),
+        bFolder: Layer(
+          id: folderId,
+          name: 'F',
+          kind: LayerKind.folder,
+          isVisible: false,
+          frames: const [],
+        ),
+      ),
+    );
+    LayerVisibilityToggleButton eye() => tester.widget(
+      find.descendant(
+        of: conteLabel,
+        matching: find.byType(LayerVisibilityToggleButton),
+      ),
+    );
+    expect(eye().hiddenAbove, isFalse, reason: 'premise: a\'s conte');
+
+    session.selectCut(const CutId('b'));
+    await tester.pump();
+
+    expect(eye().hiddenAbove, isTrue);
+    expect(eye().isVisible, isTrue, reason: 'its own switch keeps its value');
+  });
+
   testWidgets('a head handed a row of another face is built again — it says '
       'the next cut\'s name', (tester) async {
     final session = await pumpPanel(
@@ -305,6 +341,44 @@ void main() {
     expect(shown(), LayerFxState.off);
   });
 
+  testWidgets('the S row\'s fx switch shows its layer\'s fx as the session '
+      'answers it', (tester) async {
+    final session = await pumpPanel(tester, film());
+    LayerFxState shown() => tester
+        .widget<FxToggleButton>(
+          find.ancestor(
+            of: find.named('storyboard-layer-fx-t1-s1'),
+            matching: find.byType(FxToggleButton),
+          ),
+        )
+        .state;
+    expect(shown(), LayerFxState.on, reason: 'premise');
+
+    session.effectsAndFx.toggleLayerFx(const LayerId('t1-s1'));
+    await tester.pump();
+
+    expect(shown(), LayerFxState.off);
+  });
+
+  testWidgets('the camera head\'s fx switch shows its camera\'s fx as the '
+      'session answers it', (tester) async {
+    final session = await pumpPanel(tester, film());
+    LayerFxState shown() => tester
+        .widget<FxToggleButton>(
+          find.descendant(
+            of: cameraLabel,
+            matching: find.byType(FxToggleButton),
+          ),
+        )
+        .state;
+    expect(shown(), LayerFxState.on, reason: 'premise');
+
+    session.effectsAndFx.toggleLayerFx(const LayerId('a-cam'));
+    await tester.pump();
+
+    expect(shown(), LayerFxState.off);
+  });
+
   testWidgets('🚨a kept head\'s twirl turns the row as the track holds it at '
       'the press, never as it was when the head was built', (tester) async {
     final turned = <LayerId>[];
@@ -320,14 +394,15 @@ void main() {
             track.copyWith(
               cuts: [
                 for (final cut in track.cuts)
-                  cut.id == const CutId('a')
-                      ? cut.copyWith(
-                          layers: [
-                            for (final layer in cut.layers)
-                              if (layer.id != const LayerId('a-conte')) layer,
-                          ],
-                        )
-                      : cut,
+                  if (cut.id == const CutId('a'))
+                    cut.copyWith(
+                      layers: [
+                        for (final layer in cut.layers)
+                          if (layer.id != const LayerId('a-conte')) layer,
+                      ],
+                    )
+                  else
+                    cut,
               ],
             ),
         ],
@@ -347,5 +422,49 @@ void main() {
     await tester.pump();
 
     expect(turned, [const LayerId('b-conte')]);
+  });
+
+  testWidgets('🚨the camera head\'s twirl too: the cameras it shuts are the '
+      'track\'s at the press', (tester) async {
+    final turned = <LayerId>[];
+    // Both cameras' lanes open — each opened on the timeline, in its cut.
+    final session = await pumpPanel(
+      tester,
+      film(),
+      turned: turned,
+      openLanes: {const LayerId('a-cam'), const LayerId('b-cam')},
+    );
+    session.selectCut(const CutId('b'));
+    await tester.pump();
+    final before = tester.widget(headIn(cameraLabel));
+    // Cut a goes: the head — b's camera, its lanes still open — shows
+    // nothing new and is kept.
+    session.repository.updateProject(
+      (project) => project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            track.copyWith(
+              cuts: [
+                for (final cut in track.cuts)
+                  if (cut.id != const CutId('a')) cut,
+              ],
+            ),
+        ],
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+    expect(
+      tester.widget(headIn(cameraLabel)),
+      same(before),
+      reason: 'premise: the head is kept',
+    );
+
+    await tester.tap(
+      find.descendant(of: cameraLabel, matching: find.byType(LayerFoldTwirl)),
+    );
+    await tester.pump();
+
+    expect(turned, [const LayerId('b-cam')]);
   });
 }
