@@ -112,10 +112,12 @@ Iterable<double> widthsDown(double from, double to) sync* {
 /// Narrows the window from [from] to [to] ([widthsDown]), asking [at] of
 /// every width, and returns the standings in the order they came.
 ///
-/// ⚠️Never to under 380: at 360 the TIMELINE panel's row runs over (248px
-/// for 252, measured 2026-10-14) — not the strip's, and every error at
-/// every width is this sweep's to fail on. ↩️It stopped at 480 while the
-/// timesheet's pill ran over under 438 (`canvas-bottom-bar-overflows-at-437`).
+/// ⚠️Never to under 360: at 340 the panel tabs' row runs over (10px,
+/// `editor_panel_tabs.dart`, measured 2026-10-14) — not the strip's, and
+/// every error at every width is this sweep's to fail on. ↩️It stopped at
+/// 480 while the timesheet's pill ran over under 438
+/// (`canvas-bottom-bar-overflows-at-437`), and at 380 while the timeline's
+/// command bar ran over at 360 (`timeline-row-overflows-at-360`).
 Future<List<Standing>> sweep(
   WidgetTester tester, {
   required double from,
@@ -173,7 +175,7 @@ void main() {
       final seen = await sweep(
         tester,
         from: 900,
-        to: 380,
+        to: 360,
         at: (width, standing) {
           // The tabs' place is kept at every width: the one tab stands in
           // it and never has to leave for the list.
@@ -263,7 +265,7 @@ void main() {
     await sweep(
       tester,
       from: 1400,
-      to: 380,
+      to: 360,
       at: (width, standing) {
         expect(
           inStrip(firstTab).evaluate().isNotEmpty ||

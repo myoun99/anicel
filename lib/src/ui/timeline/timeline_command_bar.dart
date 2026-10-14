@@ -76,8 +76,10 @@ class TimelineCommandBar extends StatelessWidget {
   final Widget cluster;
 
   /// The bar's FRAME — its tick layer, padding, row and overflow scroller —
-  /// one constant per shape, so every build hands the same frame back; the
-  /// two pieces reach their seats in it through [_BarPieces].
+  /// one per shape, made once, so every build hands the same frame back
+  /// (`final`: neither the row's layout delegate nor a `LayoutId` has a
+  /// const constructor); the two pieces reach their seats in it through
+  /// [_BarPieces].
   ///
   /// 🚨I-57 (10-13): the frame was made anew on every build, round a
   /// toolbar its host makes anew on every notify, and the whole bar was
@@ -97,13 +99,15 @@ class TimelineCommandBar extends StatelessWidget {
   /// dock's panel scroller and repainted the panel and the dock around it
   /// on every playback frame. Its lines hear their ticks, so nothing on
   /// the bar is built for one ([TickLayer.heard]).
-  static const Widget _frame = TickLayer.heard(
+  static final Widget _frame = TickLayer.heard(
     child: Padding(
       padding: padding,
-      child: Row(
+      child: CustomMultiChildLayout(
+        delegate: _BarLayout(),
         children: [
-          Expanded(
-            child: Padding(
+          LayoutId(
+            id: _Piece.leading,
+            child: const Padding(
               padding: EdgeInsets.symmetric(horizontal: leadingInset),
               // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
               // 스크롤바」): the app's bar exists only while the row
@@ -120,21 +124,36 @@ class TimelineCommandBar extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: 8),
-          _Seat(_Piece.cluster),
+          LayoutId(id: _Piece.cluster, child: _clusterSeat),
         ],
       ),
     ),
   );
 
   /// [_frame] with no leading: the cluster still pinned right.
-  static const Widget _frameWithoutLeading = TickLayer.heard(
+  static final Widget _frameWithoutLeading = TickLayer.heard(
     child: Padding(
       padding: padding,
-      child: Row(
-        children: [Spacer(), SizedBox(width: 8), _Seat(_Piece.cluster)],
+      child: CustomMultiChildLayout(
+        delegate: _BarLayout(),
+        children: [LayoutId(id: _Piece.cluster, child: _clusterSeat)],
       ),
     ),
+  );
+
+  /// The cluster's seat: at its own width where the bar holds it — and
+  /// where the bar is narrower than that, ALL of it, smaller.
+  ///
+  /// 🗣️THE PAGE STRIP'S LAW, as the canvas pill keeps it
+  /// (`canvas-bottom-bar-overflows-at-437`): a panel too narrow for what
+  /// the fold kept shows all of it, smaller — never a row that runs off,
+  /// never a control cut away. Here the leading's scroller is the fold,
+  /// and the cluster is what it keeps: in a 360px window the timeline's
+  /// bar had 248px for its 252 (`timeline-row-overflows-at-360`, measured
+  /// 2026-10-14). ⚠️Where it fits, nothing is scaled.
+  static const Widget _clusterSeat = FittedBox(
+    fit: BoxFit.scaleDown,
+    child: _Seat(_Piece.cluster),
   );
 
   @override
@@ -199,4 +218,47 @@ class _Seat extends StatelessWidget {
       _Piece.cluster => pieces.cluster,
     };
   }
+}
+
+/// Lays out the bar's row: the cluster pinned right at its own width — no
+/// wider than the bar less the gap before it — and the leading in what is
+/// left, each in the middle of the bar's height.
+///
+/// ↩️It was a `Row`, which lays a child that does not flex out with all
+/// the width there is: a cluster wider than the bar was laid out wider,
+/// and ran off it, instead of being shown smaller
+/// ([TimelineCommandBar._clusterSeat]).
+class _BarLayout extends MultiChildLayoutDelegate {
+  /// Between the leading's scroller and the cluster.
+  static const double _gap = 8;
+
+  @override
+  void performLayout(Size size) {
+    final cluster = layoutChild(
+      _Piece.cluster,
+      BoxConstraints(
+        maxWidth: math.max(0.0, size.width - _gap),
+        maxHeight: size.height,
+      ),
+    );
+    positionChild(
+      _Piece.cluster,
+      Offset(size.width - cluster.width, (size.height - cluster.height) / 2),
+    );
+    if (!hasChild(_Piece.leading)) {
+      return;
+    }
+    final width = math.max(0.0, size.width - cluster.width - _gap);
+    final leading = layoutChild(
+      _Piece.leading,
+      BoxConstraints(minWidth: width, maxWidth: width, maxHeight: size.height),
+    );
+    positionChild(
+      _Piece.leading,
+      Offset(0, (size.height - leading.height) / 2),
+    );
+  }
+
+  @override
+  bool shouldRelayout(_BarLayout oldDelegate) => false;
 }
