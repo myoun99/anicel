@@ -30,9 +30,10 @@ import 'value_control_pointers.dart';
 /// It hears the press ABOVE the panel (translucent), so it still hears it
 /// while the gate below has every tool standing down, and it claims the
 /// pointer at its down: a control the pan starts over or crosses never fires
-/// ([claimPointerForValueControl]). A finger still scrolls through the
-/// panel's own scrollers — native feel, fling included — unless its count
-/// is set to 「없음」 ([_FingerGatedDevices], [_fingerDown]).
+/// ([claimPointerForValueControl]). A finger drags the panel natively —
+/// fling included, and both ways at once like this pan (F-351,
+/// [TwoAxisDrag]) — unless its count is set to 「없음」
+/// ([_FingerGatedDevices], [_fingerDown]).
 class PanelPanDriver extends StatefulWidget {
   const PanelPanDriver({
     super.key,
@@ -205,8 +206,9 @@ class _PanelPanDriverState extends State<PanelPanDriver>
 /// (R26-rest-Q2).
 ///
 /// ⚠️Asked at the press, before the driver above has counted it: a scroller
-/// sits deeper and is offered the down first, so the finger being asked
-/// about is the one after those already down — hence the `+ 1`.
+/// — or a sheet's one drag ([TwoAxisDrag]) — sits deeper and is offered the
+/// down first, so the finger being asked about is the one after those
+/// already down — hence the `+ 1`.
 class _FingerGatedDevices extends SetBase<PointerDeviceKind> {
   _FingerGatedDevices(this._fingersDown);
 

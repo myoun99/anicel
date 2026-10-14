@@ -53,8 +53,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';
-import '../input/pen_friendly_scroll_controller.dart';
-import '../input/scroller_press_hold.dart';
+import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
@@ -325,8 +324,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// own group joins the cells law, exactly as on the horizontal grid.
   TimelineLaneRangeCallbacks? _laneRange;
 
-  late final ScrollController _frameScrollController;
-  late final ScrollController _layerScrollController;
+  // The layers and the frames are the sheet: one sheet, dragged both ways
+  // at once (F-351).
+  late final TwoAxisScrollController _frameScrollController;
+  late final TwoAxisScrollController _layerScrollController;
 
   /// Frame-axis offset + window bucket notifiers (UI-R9 #12a, the
   /// horizontal grid's structure transposed): scroll pixels move the rail
@@ -383,16 +384,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // Born where the axis stands, as on the rail (F-143) — an orientation
     // switch builds this sheet afresh (a fold did too, until 09-28), and a
     // newborn 0 would be recorded as a scroll.
-    _frameScrollController = PenFriendlyScrollController(
+    _frameScrollController = TwoAxisScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
     // The columns too, where the project left them (F-267).
-    _layerScrollController = PenFriendlyScrollController(
+    _layerScrollController = TwoAxisScrollController(
       initialScrollOffset: _keptLayerAxis?.value ?? 0,
     );
-    // The layers and the frames are the sheet: one surface scrolled two
-    // ways (F-202).
-    scrollTogether(_layerScrollController, _frameScrollController);
     _frameScrollController.addListener(_frameAxis.handleScroll);
     if (_keptLayerAxis case final kept?) {
       _letGoOfKeptColumns = followKeptAxis(
@@ -1308,15 +1306,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     behavior: ScrollConfiguration.of(
                                       context,
                                     ).copyWith(scrollbars: false),
-                                    child: _buildLayerHorizontalViewport(
-                                      colorScheme,
-                                      // THE drawing entrance — the columns
-                                      // and their headers come from here, so
-                                      // the silhouette column enters once,
-                                      // for both.
-                                      drawnEntries,
-                                      sectionRuns,
-                                      geometry,
+                                    child: TwoAxisDrag(
+                                      axes: [
+                                        _layerScrollController,
+                                        _frameScrollController,
+                                      ],
+                                      child: _buildLayerHorizontalViewport(
+                                        colorScheme,
+                                        // THE drawing entrance — the columns
+                                        // and their headers come from here,
+                                        // so the silhouette column enters
+                                        // once, for both.
+                                        drawnEntries,
+                                        sectionRuns,
+                                        geometry,
+                                      ),
                                     ),
                                   ),
                           ),

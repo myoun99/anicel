@@ -46,8 +46,7 @@ import 'timeline_legend_menus.dart';
 import 'timeline_layer_frame_body_layout.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/named.dart';
-import '../input/pen_friendly_scroll_controller.dart';
-import '../input/scroller_press_hold.dart';
+import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
@@ -161,8 +160,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _rowDrags.draggable,
   );
 
-  late final ScrollController _horizontalScrollController;
-  late final ScrollController _verticalScrollController;
+  // The rows and the frames are the grid: one sheet, dragged both ways at
+  // once (F-351).
+  late final TwoAxisScrollController _horizontalScrollController;
+  late final TwoAxisScrollController _verticalScrollController;
 
   /// The frame-axis scroll offset as a NOTIFIER (UI-R9 #12a): a scroll
   /// pixel updates this value only — the ruler's translate and the window
@@ -277,14 +278,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // after-layout re-read (F-95) found the newborn 0 and recorded it as a
     // scroll, over the position the host had kept. Born at the kept offset,
     // the re-read reads back what was kept and records nothing.
-    _horizontalScrollController = PenFriendlyScrollController(
+    _horizontalScrollController = TwoAxisScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
     // The rows too, where the project left them (F-267) — and the row
     // window is cut there from the first build, which runs before the
     // scrollable it windows has a position to read.
     final keptRows = _keptLayerAxis?.value ?? 0;
-    _verticalScrollController = PenFriendlyScrollController(
+    _verticalScrollController = TwoAxisScrollController(
       initialScrollOffset: keptRows,
     );
     _scroll.standAt(keptRows);
@@ -295,9 +296,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         isMounted: () => mounted,
       );
     }
-    // The rows and the frames are the grid: one surface scrolled two ways
-    // (F-202).
-    scrollTogether(_verticalScrollController, _horizontalScrollController);
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
@@ -1403,49 +1401,55 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 ).copyWith(
                                                   scrollbars: false,
                                                 ),
-                                            child: TimelineScrollViewport(
-                                              viewportKey: const ValueKey<String>(
-                                                'timeline-vertical-scroll-viewport',
-                                              ),
-                                              controller:
-                                                  _verticalScrollController,
-                                              axis: Axis.vertical,
-                                              child: KeyedSubtree(
-                                                key: const ValueKey<String>(
-                                                  'timeline-scrollable-body',
+                                            child: TwoAxisDrag(
+                                              axes: [
+                                                _verticalScrollController,
+                                                _horizontalScrollController,
+                                              ],
+                                              child: TimelineScrollViewport(
+                                                viewportKey: const ValueKey<String>(
+                                                  'timeline-vertical-scroll-viewport',
                                                 ),
-                                                child: TimelineLayerFrameBodyLayout(
-                                                  layerAxisScrollbarSlot:
-                                                      SizedBox(
-                                                        width: _metrics
-                                                            .verticalScrollbarWidth,
-                                                        height:
-                                                            verticalContentHeight,
-                                                      ),
-                                                  layerControlsRail:
-                                                      _rowBerths.counting(
-                                                        _railRows
-                                                            .buildLayerControlsRail(
-                                                              drawnRows,
-                                                              availableRailExtent,
-                                                              window,
-                                                              swipeColumns,
-                                                            ),
-                                                      ),
-                                                  railSplitterSlot:
-                                                      const SizedBox(
-                                                        width:
-                                                            LayerRailSplitter
-                                                                .thickness,
-                                                      ),
-                                                  frameGridArea:
-                                                      _buildFrameGridArea(
-                                                        drawnRows,
-                                                        window,
-                                                        rangeGesture,
-                                                        laneRange,
-                                                        verticalContentHeight,
-                                                      ),
+                                                controller:
+                                                    _verticalScrollController,
+                                                axis: Axis.vertical,
+                                                child: KeyedSubtree(
+                                                  key: const ValueKey<String>(
+                                                    'timeline-scrollable-body',
+                                                  ),
+                                                  child: TimelineLayerFrameBodyLayout(
+                                                    layerAxisScrollbarSlot:
+                                                        SizedBox(
+                                                          width: _metrics
+                                                              .verticalScrollbarWidth,
+                                                          height:
+                                                              verticalContentHeight,
+                                                        ),
+                                                    layerControlsRail:
+                                                        _rowBerths.counting(
+                                                          _railRows
+                                                              .buildLayerControlsRail(
+                                                                drawnRows,
+                                                                availableRailExtent,
+                                                                window,
+                                                                swipeColumns,
+                                                              ),
+                                                        ),
+                                                    railSplitterSlot:
+                                                        const SizedBox(
+                                                          width:
+                                                              LayerRailSplitter
+                                                                  .thickness,
+                                                        ),
+                                                    frameGridArea:
+                                                        _buildFrameGridArea(
+                                                          drawnRows,
+                                                          window,
+                                                          rangeGesture,
+                                                          laneRange,
+                                                          verticalContentHeight,
+                                                        ),
+                                                  ),
                                                 ),
                                               ),
                                             ),

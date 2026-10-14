@@ -5,10 +5,10 @@ import 'stylus_glide_stop.dart';
 import 'timeline_beat_lines.dart';
 
 /// The chrome both timeline grids wrap their whole tree in — the grid law,
-/// the stylus glide stop and the no-overscroll scroll configuration, in
-/// that order. The rail grid and the x-sheet each spelled the three (the
-/// audit's clone scan, 2026-09-06); the storyboard publishes the law alone
-/// because it has no glide to stop.
+/// the stylus glide stop, the no-overscroll scroll configuration and the
+/// canvas's pan, in that order. The rail grid and the x-sheet each spelled
+/// the first three (the audit's clone scan, 2026-09-06); the storyboard
+/// publishes the law alone because it has no glide to stop.
 ///
 /// PEN-9: a stylus approach stops a coasting fling — mid-glide the
 /// viewports ignore-pointer their children, so without the stop a pen
@@ -45,20 +45,22 @@ class TimelineGridShell extends StatelessWidget {
       framesPerSecond: framesPerSecond,
       child: StylusGlideStop(
         controllers: controllers,
-        // R26 #34: the canvas's pan — Space held, a button 「손바닥」 —
-        // moves the grid too ([PanelPanDriver]).
-        child: PanelPanDriver(
-          controllers: controllers,
-          // PEN-12 #7: no overscroll stretch/glow — the painterized ruler
-          // and rails mirror the offset and cannot stretch with the cells,
-          // so Android's stretch tore the two apart at the edges. A hard
-          // clamp matches the desktop feel everywhere.
-          child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(overscroll: false),
-            child: child,
-          ),
+        // PEN-12 #7: no overscroll stretch/glow — the painterized ruler
+        // and rails mirror the offset and cannot stretch with the cells,
+        // so Android's stretch tore the two apart at the edges. A hard
+        // clamp matches the desktop feel everywhere.
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(
+            context,
+          ).copyWith(overscroll: false),
+          // R26 #34: the canvas's pan — Space held, a button 「손바닥」 —
+          // moves the grid too ([PanelPanDriver]).
+          //
+          // 🚨UNDER the clamp, not over it: the driver hands the grid its
+          // devices with the finger gated (R26-rest-Q2), and a configuration
+          // below it read from up here took the ungated ones back — a finger
+          // set to 「없음」 still scrolled both grids (found by F-351's pin).
+          child: PanelPanDriver(controllers: controllers, child: child),
         ),
       ),
     );
