@@ -3,7 +3,7 @@ import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerDownEvent, computeHitSlop;
-import 'package:flutter/services.dart' show TextSelection;
+import 'package:flutter/services.dart' show HardwareKeyboard, TextSelection;
 
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
@@ -65,8 +65,8 @@ class CelTextScene {
 ///   the same code answers whatever is there — as a stroke's press on an
 ///   empty frame is still that stroke, `_BrushEditCelPress`).
 /// · A text by its LETTERS: inside it → the caret, and dragged a selection
-///   · on another text → confirm, take that one · on nothing → confirm and
-///   let go.
+///   — or with Ctrl held, the box's: dragged it moves (I-96) · on another
+///   text → confirm, take that one · on nothing → confirm and let go.
 /// · A text by its BOX — the one order every box on the canvas keeps
 ///   ([boxPressAt], F-222): its cross → the cross is carried · a corner →
 ///   scale · a side edge (a box only) → its width · inside → move, or let
@@ -123,6 +123,13 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
   final artwork = pressed.artwork;
   final layout = session.shown.layout;
   if (layout.boxContains(artwork)) {
+    // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
+    // 가능하도록. ae에도 있던 기능인거같은데」 — with it held the press is
+    // the box's, as it is with the text held by its box: dragged, it
+    // carries the text, and the letters stay held.
+    if (_carriesTheBox()) {
+      return _InsidePress(pressed.event, artwork, held: true);
+    }
     final at = layout.positionAt(artwork).offset;
     scene.tool.typeAt(TextSelection.collapsed(offset: at));
     return _LetterPress(pressed.event, base: at);
@@ -131,6 +138,14 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
     scene.tool.confirm();
     return null;
   });
+}
+
+/// Whether Ctrl is held — ⌘ on a Mac or an iPad, where Ctrl is ⌘
+/// (`canvasRotateHold`'s note) — asked of the keyboard as the press goes
+/// down.
+bool _carriesTheBox() {
+  final keys = HardwareKeyboard.instance;
+  return keys.isControlPressed || keys.isMetaPressed;
 }
 
 CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {

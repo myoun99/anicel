@@ -327,6 +327,52 @@ void main() {
       expect(textToolOf(tester).hold, CelTextHold.letters);
     });
 
+    // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
+    // 가능하도록. ae에도 있던 기능인거같은데」.
+    testWidgets('🚨with Ctrl held a drag inside the text being typed into '
+        'carries it — still typed into, and a click away lands it where it '
+        'was carried, as ONE step', (tester) async {
+      final c = await textToolInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await dragFrom(
+        tester,
+        Offset(c.dx + 10, c.dy + 30),
+        Offset(c.dx + 110.4, c.dy + 110.6),
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+
+      final tool = textToolOf(tester);
+      final carried = CanvasPoint(x: c.dx + 100, y: c.dy + 81);
+      expect(tool.hold, CelTextHold.letters);
+      expect(tool.letters!.content.anchor, carried);
+      expect(
+        tool.letters!.selection,
+        const TextSelection.collapsed(offset: 2),
+        reason: 'no caret was set',
+      );
+      expect(
+        tester.widget<EditableText>(textField()).focusNode.hasFocus,
+        isTrue,
+      );
+
+      await typeText(tester, 'hiya');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+
+      final landed = celOf(tester).texts.single;
+      expect(landed.content.text, 'hiya');
+      expect(landed.content.anchor, carried);
+      expect(history.undoCount, steps + 1);
+      final x = c.dx.toInt();
+      final y = c.dy.toInt();
+      expect(shownPixel(celOf(tester), x + 110, y + 91), black);
+      expect(shownPixel(celOf(tester), x + 10, y + 10), nothing);
+    });
+
     testWidgets('🚨Ctrl+Z while they are typed takes a step back in the '
         'LETTERS — history is not touched, and the text stays in hand', (
       tester,

@@ -17,6 +17,12 @@ import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart'
+    show
+        HardwareKeyboard,
+        KeyDownEvent,
+        LogicalKeyboardKey,
+        PhysicalKeyboardKey;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -138,6 +144,20 @@ void main() {
         .currentSurfaceOf(cel.key)
         .texts
         .firstWhere((text) => text.id == id);
+  }
+
+  /// [key] held down on the keyboard for the rest of the test.
+  void hold(LogicalKeyboardKey key) {
+    HardwareKeyboard.instance.handleKeyEvent(
+      KeyDownEvent(
+        physicalKey: key == LogicalKeyboardKey.metaLeft
+            ? PhysicalKeyboardKey.metaLeft
+            : PhysicalKeyboardKey.controlLeft,
+        logicalKey: key,
+        timeStamp: Duration.zero,
+      ),
+    );
+    addTearDown(HardwareKeyboard.instance.clearState);
   }
 
   group('a press on nothing', () {
@@ -1221,6 +1241,68 @@ void main() {
       expect(tool.hold, CelTextHold.box);
       expect(baker.asked, isEmpty, reason: 'nothing was typed');
       expect(textsOn(scene), [(4, 'ab'), (5, 'cd')]);
+    });
+
+    // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
+    // 가능하도록. ae에도 있던 기능인거같은데」.
+    group('with Ctrl held', () {
+      for (final key in [
+        LogicalKeyboardKey.controlLeft,
+        // Ctrl is ⌘ on a Mac or an iPad.
+        LogicalKeyboardKey.metaLeft,
+      ]) {
+        test('🚨(${key.keyLabel}) a press inside is the BOX\'S: dragged, it '
+            'carries the text a whole pixel at a time, its letters still '
+            'held, and lands with them', () async {
+          final (:tool, :scene, :baker, begun: _, traced: _) = table(
+            texts: [carried(4, says('ab'))],
+          );
+          press(scene, 12, 12);
+          tool.typeAt(const TextSelection.collapsed(offset: 2));
+          hold(key);
+
+          final down = press(scene, 9, 13)!;
+
+          expect(
+            tool.letters!.selection,
+            const TextSelection.collapsed(offset: 2),
+            reason: 'no caret was set',
+          );
+
+          move(scene, down, 14.6, 16.2);
+          up(scene, down, 14.6, 16.2);
+
+          expect(tool.hold, CelTextHold.letters);
+          expect(tool.letters!.content.anchor, CanvasPoint(x: 14, y: 11));
+          expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 8, y: 8));
+
+          tool.stopTyping();
+          while (baker.asked.any((bake) => !bake.answered)) {
+            await baker.pending.answer();
+          }
+
+          expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 14, y: 11));
+        });
+      }
+
+      test('let go where it went down, the caret goes there, as a press '
+          'without it puts it', () {
+        final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+          texts: [carried(4, says('ab'))],
+        );
+        press(scene, 12, 12);
+        tool.typeAt(const TextSelection.collapsed(offset: 2));
+        hold(LogicalKeyboardKey.controlLeft);
+
+        final click = press(scene, 9, 13)!;
+        up(scene, click, 9, 13);
+
+        expect(tool.hold, CelTextHold.letters);
+        expect(
+          tool.letters!.selection,
+          const TextSelection.collapsed(offset: 0),
+        );
+      });
     });
   });
 
