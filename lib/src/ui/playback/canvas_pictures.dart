@@ -6,6 +6,7 @@ import '../../models/playback_quality.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
+import '../quiet_turns.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_pictures.dart';
 
@@ -26,9 +27,17 @@ class CanvasPictures implements PlaybackPictures {
     required this.layerImages,
     required this.rowsOf,
     required this.qualityAt,
-  });
+    QuietTurns? quietTurns,
+  }) : quietTurns = quietTurns ?? QuietTurns.instance;
 
   final LayerFrameImageCache layerImages;
+
+  /// Where a row takes its turn to put its picture on the GPU ([make]).
+  final QuietTurns quietTurns;
+
+  /// How long a row has taken from its turn to its landing, at the most of
+  /// late.
+  final QuietSpan _rowSpan = QuietSpan();
 
   /// The rows [cut]'s frame [frameIndex] draws as images while a run plays
   /// it — the canvas's own tree with no row standing live.
@@ -170,10 +179,15 @@ class CanvasPictures implements PlaybackPictures {
   /// as many at once as the machine has workers for). Asked row by row, as
   /// each row's making waits for its own, the workers would thaw a frame's
   /// cels one after another.
+  ///
+  /// 🚨EACH ROW TAKES ITS TURN IN THE QUIET BETWEEN A RUN'S HELD FRAMES
+  /// ([QuietTurns]) once its cel is read, before its picture goes on the
+  /// GPU — a row at a time is what one turn fits.
   @override
   Future<bool> make(
     DemandedPicture picture, {
     required bool Function() shouldAbort,
+    bool Function() due = notDue,
   }) async {
     final level = qualityAt(picture.cut, picture.frameIndex);
     final cut = picture.cut;
@@ -204,6 +218,11 @@ class CanvasPictures implements PlaybackPictures {
           sourceEffects: row.sourceEffects,
           shouldAbort: shouldAbort,
           inkSuffices: row.inkSuffices,
+          turn: () => quietTurns.inAQuiet(
+            _rowSpan,
+            gone: shouldAbort,
+            due: due,
+          ),
         );
       } on Object catch (error, stack) {
         _failed[row.frameKey] = _failureKeyOf(row.frameKey);

@@ -1,4 +1,5 @@
 import '../../services/playback/frame_demand.dart';
+import '../quiet_turns.dart' show QuietTurns, notDue;
 
 /// What a frame's picture is made of, where the screen that shows it looks
 /// for it — asked by the one maker of playback's pictures, and through it by
@@ -31,8 +32,14 @@ abstract interface class PlaybackPictures {
 
   /// Makes [picture]: true when it landed, false when [shouldAbort] stood it
   /// down. Throws where its content cannot be read.
+  ///
+  /// What it puts on the GPU waits for the quiet between a run's held frames
+  /// ([QuietTurns]) — except while [due]: then the run's next held frame
+  /// shows what is being made, and the quiet that frame leaves comes too
+  /// late for it.
   Future<bool> make(
     DemandedPicture picture, {
     required bool Function() shouldAbort,
+    bool Function() due = notDue,
   });
 }

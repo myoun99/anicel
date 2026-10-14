@@ -23,6 +23,7 @@ import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
 import '../canvas/raster_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../quiet_turns.dart' show QuietTurn, QuietTurns;
 import '../../core/pin_counts.dart';
 
 /// One cached layer-frame render: the image, the CANVAS-SPACE rect its
@@ -124,6 +125,15 @@ typedef _MadeOf = ({
   CanvasSize canvasSize,
   List<double> sourceEffectSignature,
   bool inkSuffices,
+});
+
+/// What a banked image was made from: the content's revision, the canvas,
+/// the chain baked in, and the tiles it was pictured from.
+typedef _Source = ({
+  int revision,
+  CanvasSize canvasSize,
+  List<ResolvedLayerEffect> sourceEffects,
+  Map<TileCoord, Object> madeFrom,
 });
 
 /// A picture being made for a slot, and what it is being made of: the ask
@@ -291,6 +301,11 @@ class LayerFrameImageCache {
   /// the default costs a caller that forgets is the memory the ink would
   /// have saved.
   ///
+  /// [turn] is what the making waits for before it puts its work on the GPU
+  /// — its turn in the quiet between a run's held frames ([QuietTurns]);
+  /// none where null (the editing canvas's own). No turn stands the making
+  /// down, as [shouldAbort] does.
+  ///
   /// 🚨A PICTURE IS MADE ONCE ([_Makings]).
   Future<LayerFrameImage?> prepare({
     required BrushFrameKey key,
@@ -299,6 +314,7 @@ class LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) => _makings.once(
     (key, quality),
     (
@@ -315,6 +331,7 @@ class LayerFrameImageCache {
       sourceEffects: sourceEffects,
       shouldAbort: shouldAbort,
       inkSuffices: inkSuffices,
+      turn: turn,
     ),
   );
 
@@ -327,6 +344,7 @@ class LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) async {
     final cached = _drawable(
       validImageOrNull(
@@ -436,6 +454,43 @@ class LayerFrameImageCache {
       quality,
       storesInk: inkSuffices && !debugStoresWholeContent,
     );
+    // 🚨WHAT IS PUT ON THE GPU WAITS ITS TURN ([turn]): everything above is
+    // the CPU's and the workers', so the turn is taken here, and given back
+    // once the image is banked.
+    final QuietTurn? taken;
+    if (turn == null) {
+      taken = null;
+    } else {
+      taken = await turn();
+      if (taken == null) {
+        return null;
+      }
+    }
+    LayerFrameImage? made;
+    try {
+      made = await _composed(
+        (key, quality),
+        preview,
+        plan,
+        source: source,
+        shouldAbort: shouldAbort,
+      );
+    } finally {
+      made == null ? taken?.gaveUp() : taken?.landed();
+    }
+    return made;
+  }
+
+  /// [preview]'s image at [at]'s quality, put on the GPU and banked at [at]
+  /// — null when [shouldAbort] stood it down between its tile pictures.
+  Future<LayerFrameImage?> _composed(
+    (BrushFrameKey, PlaybackQuality) at,
+    BitmapSurface preview,
+    ({ui.Rect whole, ui.Rect? texels}) plan, {
+    required _Source source,
+    bool Function()? shouldAbort,
+  }) async {
+    final (_, quality) = at;
     final (:whole, :texels) = plan;
     // Per-tile GPU compose ([_firstStep] says over what): the editing canvas
     // keeps the on-screen frame's tiles decoded in the shared cache, so the
@@ -474,7 +529,7 @@ class LayerFrameImageCache {
       return null;
     }
     if (firstIsKept) {
-      return _bank((key, quality), (
+      return _bank(at, (
         image: firstImage,
         worldRect: first.over,
         extent: whole,
@@ -496,7 +551,7 @@ class LayerFrameImageCache {
     }
     assert(_isLevelOf(image, whole, quality.level));
     if (texels == null) {
-      return _bank((key, quality), (
+      return _bank(at, (
         image: image,
         worldRect: whole,
         extent: whole,
@@ -507,7 +562,7 @@ class LayerFrameImageCache {
     // Impeller Vulkan (`halving-rounds-differently-per-engine`).
     final ink = await _cutOut(image, texels);
     image.dispose();
-    return _bank((key, quality), (
+    return _bank(at, (
       image: ink,
       worldRect: _worldRectOfTexels(whole, texels, quality.level),
       extent: whole,
@@ -524,13 +579,7 @@ class LayerFrameImageCache {
   LayerFrameImage _bank(
     (BrushFrameKey, PlaybackQuality) at,
     ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored,
-    ({
-      int revision,
-      CanvasSize canvasSize,
-      List<ResolvedLayerEffect> sourceEffects,
-      Map<TileCoord, Object> madeFrom,
-    })
-    source,
+    _Source source,
   ) {
     _dropEntry(at);
     final result = LayerFrameImage(

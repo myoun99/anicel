@@ -513,6 +513,7 @@ class PlaybackPrerenderScheduler {
         shouldAbort: () =>
             _isStale(generation) ||
             (demand.yieldsToEditing && !_isQuietNow()),
+        due: () => _shownNextIsMissing(demand),
       );
     } catch (error, stack) {
       pictures.noteFailure(picture);
@@ -551,6 +552,15 @@ class PlaybackPrerenderScheduler {
   }
 
   bool _isStale(int generation) => _disposed || generation != _generation;
+
+  /// 🚨WHAT A RUN SHOWS NEXT IS NOT BACKGROUND WORK ([PlaybackPictures.make]):
+  /// while the frame under the playhead or the one after it has no picture,
+  /// nothing the walk makes waits for a quiet between the run's held frames
+  /// — the next held frame shows it, and the quiet that frame leaves comes
+  /// after it. A walk that keeps ahead of the playhead makes in the quiets.
+  bool _shownNextIsMissing(FrameDemand demand) =>
+      !has(demand.picturesAt(0) ?? const []) ||
+      !has(demand.picturesAt(1) ?? const []);
 
   Future<void> _idleGate(int generation) async {
     while (!_isStale(generation)) {

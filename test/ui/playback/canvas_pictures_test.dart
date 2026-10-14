@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -17,6 +19,7 @@ import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/quiet_turns.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 
@@ -367,6 +370,91 @@ void main() {
       reason: 'an image at a level no frame is drawn at is wanted by none',
     );
   });
+
+  group('🚨each row takes its turn in the quiet between a run\'s held frames '
+      'before its picture goes on the GPU', () {
+    ({int fromMicros, int untilMicros})? quiet;
+    late Completer<void> moved;
+
+    /// Frame 0 shows cel a, its row taking its turns in [quiet].
+    CanvasPictures inTheQuiet(LayerFrameImageCache images) {
+      quiet = (fromMicros: 0, untilMicros: 0);
+      moved = Completer<void>();
+      return CanvasPictures(
+        layerImages: images,
+        rowsOf: (cut, frame) => [row('a')],
+        qualityAt: (_, _) => PlaybackQuality.full,
+        quietTurns: QuietTurns(
+          clock: QuietClock(
+            quiet: () => quiet,
+            now: () => 0,
+            wait: (_) async {},
+            moved: () => moved.future,
+          ),
+        ),
+      );
+    }
+
+    testWidgets('a row the quiet has no room for is made once the quiet '
+        'moves', (tester) async {
+      await tester.runAsync(() async {
+        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
+        addTearDown(images.dispose);
+        final pictures = inTheQuiet(images);
+
+        var made = false;
+        final making = pictures
+            .make(at(0), shouldAbort: () => false)
+            .then((landed) => made = landed);
+        await pumpEventQueue();
+        expect(made, isFalse, reason: 'its turn has not come');
+        expect(held(images, 'a', PlaybackQuality.full), isFalse);
+
+        // The run stood: nothing is held, and there is no quiet to keep.
+        quiet = null;
+        moved.complete();
+        await making;
+
+        expect(made, isTrue);
+        expect(held(images, 'a', PlaybackQuality.full), isTrue);
+      });
+    });
+
+    testWidgets('🚨a row the run shows next is made at once, whatever the '
+        'quiet', (tester) async {
+      await tester.runAsync(() async {
+        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
+        addTearDown(images.dispose);
+        final pictures = inTheQuiet(images);
+
+        expect(
+          await pictures.make(at(0), shouldAbort: () => false, due: () => true),
+          isTrue,
+        );
+        expect(held(images, 'a', PlaybackQuality.full), isTrue);
+      });
+    });
+
+    testWidgets('a row stood down while it waits for its turn lands nothing', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
+        addTearDown(images.dispose);
+        final pictures = inTheQuiet(images);
+        var stoodDown = false;
+        final making = pictures.make(at(0), shouldAbort: () => stoodDown);
+        await pumpEventQueue();
+
+        stoodDown = true;
+        moved.complete();
+
+        expect(await making, isFalse);
+        expect(held(images, 'a', PlaybackQuality.full), isFalse);
+        expect(pictures.gaveUpOn(row('a')), isFalse, reason: 'not a failure');
+      });
+    });
+  });
 }
 
 /// A layer image cache that cannot read [key]'s cel.
@@ -384,6 +472,7 @@ class _ThrowsFor extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) {
     if (key == this.key) {
       thrown += 1;
@@ -396,6 +485,7 @@ class _ThrowsFor extends LayerFrameImageCache {
       sourceEffects: sourceEffects,
       shouldAbort: shouldAbort,
       inkSuffices: inkSuffices,
+      turn: turn,
     );
   }
 }

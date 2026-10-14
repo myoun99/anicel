@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★A CEL THAT LEAVES THE ACTIVE SLOT IS STILL ON SCREEN THE SAME FRAME
@@ -575,6 +576,7 @@ class _HandedImages extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) async => _noted(
     key,
     await super.prepare(
@@ -584,6 +586,7 @@ class _HandedImages extends LayerFrameImageCache {
       sourceEffects: sourceEffects,
       shouldAbort: shouldAbort,
       inkSuffices: inkSuffices,
+      turn: turn,
     ),
   );
 }

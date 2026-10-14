@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show CanvasLayerImageRequest;
 import 'package:anicel/src/ui/playback/canvas_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
@@ -1350,6 +1351,7 @@ class _OneByOne extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) async {
     await _held.putIfAbsent(key.frameId, Completer<void>.new).future;
     return null;
@@ -1372,6 +1374,7 @@ class _Gated extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) async {
     asked.add(key.frameId);
     await gate.future;
@@ -1394,6 +1397,7 @@ class _ThrowsAt extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) {
     if (key.frameId == frameId) {
       thrown += 1;
@@ -1406,6 +1410,7 @@ class _ThrowsAt extends LayerFrameImageCache {
       sourceEffects: sourceEffects,
       shouldAbort: shouldAbort,
       inkSuffices: inkSuffices,
+      turn: turn,
     );
   }
 }
