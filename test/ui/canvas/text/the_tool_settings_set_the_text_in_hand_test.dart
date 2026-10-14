@@ -173,6 +173,145 @@ void main() {
     expect(landed.align, TextCelAlign.center);
   });
 
+  group('the keyboard, while a text is typed into', () {
+    final typed = find.byKey(const ValueKey<String>('field-slider-type-input'));
+
+    /// The pencil of the bar [name], brought on screen and pressed.
+    Future<void> pencil(WidgetTester tester, String name) async {
+      await reach(tester, name);
+      await tester.tap(
+        find.descendant(
+          of: row(name),
+          matching: find.byKey(const ValueKey<String>('field-slider-type')),
+        ),
+      );
+      await pumpFrames(tester);
+    }
+
+    EditableText typedIn(WidgetTester tester, String name) =>
+        tester.widget<EditableText>(
+          find.descendant(
+            of: find.descendant(of: row(name), matching: typed),
+            matching: find.byType(EditableText),
+          ),
+        );
+
+    bool textHasTheKeyboard(WidgetTester tester) =>
+        tester.widget<EditableText>(textField()).focusNode.hasFocus;
+
+    // 🗣️유저 2026-10-14 (F-353): 「텍스트도구로 화면에 클릭해서 캐럿이
+    // 생긴상황. 즉 텍스트 편집중인 상황에서 크기쪽 연필누르면 텍스트 선택되지
+    // 않은 상태. 추가로 자간같은거 연필누르면 여러 박스가 강조색 되있는상태」.
+    testWidgets('🚨F-353: its pencil takes the keyboard, the number '
+        'selected — another bar\'s closes it, ONE field open — and the '
+        'keyboard goes back to the text when that one closes', (
+      tester,
+    ) async {
+      await pumpWithSettings(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      expect(textHasTheKeyboard(tester), isTrue, reason: '⛔fixture');
+
+      await pencil(tester, 'size');
+
+      final size = typedIn(tester, 'size');
+      expect(size.focusNode.hasFocus, isTrue);
+      expect(
+        size.controller.selection,
+        TextSelection(baseOffset: 0, extentOffset: size.controller.text.length),
+      );
+
+      // A face arrives in the engine meanwhile: the tool reads its texts
+      // again and tells whoever listens — and the keyboard stays put.
+      textToolOf(tester).celTextsChanged();
+      await pumpFrames(tester);
+
+      expect(typedIn(tester, 'size').focusNode.hasFocus, isTrue);
+
+      await pencil(tester, 'tracking');
+
+      expect(typed, findsOneWidget, reason: 'one field open');
+      expect(typedIn(tester, 'tracking').focusNode.hasFocus, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+
+      expect(typed, findsNothing);
+      expect(textToolOf(tester).letters, isNotNull, reason: 'still typing');
+      expect(textHasTheKeyboard(tester), isTrue);
+    });
+
+    testWidgets('🚨but letters TAKEN UP take the keyboard from whoever holds '
+        'it — the person pressed into a text', (tester) async {
+      await pumpWithSettings(tester);
+      // A field that keeps the keyboard through a press outside it, as a
+      // stock one does through a touch.
+      final elsewhere = FocusNode();
+      final field = OverlayEntry(
+        builder: (_) => Positioned(
+          left: 0,
+          top: 0,
+          width: 120,
+          child: Material(
+            child: TextField(focusNode: elsewhere, onTapOutside: (_) {}),
+          ),
+        ),
+      );
+      tester
+          .state<NavigatorState>(find.byType(Navigator).first)
+          .overlay!
+          .insert(field);
+      await pumpFrames(tester);
+      elsewhere.requestFocus();
+      await pumpFrames(tester);
+      expect(elsewhere.hasFocus, isTrue, reason: '⛔fixture');
+
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+
+      expect(textToolOf(tester).letters, isNotNull, reason: '⛔fixture');
+      expect(textHasTheKeyboard(tester), isTrue);
+      field.remove();
+      await pumpFrames(tester);
+      elsewhere.dispose();
+    });
+
+    testWidgets('🚨with letters SELECTED it reaches those alone — and the '
+        'keyboard is the text\'s again once it is set', (tester) async {
+      final c = await hiInHand(tester);
+      await clickAt(tester, c.dx + 20, c.dy + 12);
+      await dragFrom(
+        tester,
+        Offset(c.dx + 50, c.dy + 30),
+        Offset(c.dx + 95, c.dy + 30),
+      );
+      expect(
+        textToolOf(tester).letters!.selection,
+        const TextSelection(baseOffset: 1, extentOffset: 2),
+        reason: '⛔fixture',
+      );
+
+      await pencil(tester, 'size');
+      await tester.enterText(typed, '50');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await pumpFrames(tester);
+
+      expect(typed, findsNothing, reason: '⛔fixture: set');
+      expect(textHasTheKeyboard(tester), isTrue);
+      expect(
+        textToolOf(tester).letters!.selection,
+        const TextSelection(baseOffset: 1, extentOffset: 2),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      final spans = celOf(tester).texts.single.content.spans;
+      expect([for (final span in spans) span.text], ['h', 'i']);
+      expect(spans.last.style.fontSize, closeTo(50, 1e-9));
+      expect(spans.first.style.fontSize, isNot(closeTo(50, 1e-9)));
+    });
+  });
+
   testWidgets('with NOTHING in hand a setting is the next text\'s: the '
       'letters typed after it wear it', (tester) async {
     await pumpWithSettings(tester);

@@ -83,10 +83,41 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
   /// treats a commit as an undo step must not get two.
   bool _done = false;
 
+  final FocusNode _focus = FocusNode(debugLabel: 'inline-numeric-field');
+
+  /// Who held the keyboard when this field took it.
+  FocusNode? _keyboardWas;
+
+  /// 🚨F-353 (유저 2026-10-14: 「텍스트 편집중인 상황에서 크기쪽 연필누르면
+  /// 텍스트 선택되지 않은 상태. 추가로 자간같은거 연필누르면 여러 박스가
+  /// 강조색 되있는상태」): THE FIELD TAKES THE KEYBOARD FROM WHOEVER HOLDS IT,
+  /// and gives it back when it closes ([_giveTheKeyboardBack]). ↩️It was
+  /// `autofocus`, which takes the keyboard from NOBODY only: with a text
+  /// being typed on the canvas the field opened without it — its number
+  /// shown unselected, and no tap away ever closed it, so a second bar's
+  /// opened beside it.
+  @override
+  void initState() {
+    super.initState();
+    _keyboardWas = FocusManager.instance.primaryFocus;
+    _focus.requestFocus();
+  }
+
   @override
   void dispose() {
     _controller.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  /// The keyboard back to whoever held it when this field took it — the
+  /// text on the canvas goes on taking the letters — where this field
+  /// still holds it and that one is still there.
+  void _giveTheKeyboardBack() {
+    final was = _keyboardWas;
+    if (was != null && was.context != null && _focus.hasFocus) {
+      was.requestFocus();
+    }
   }
 
   void _submit() {
@@ -94,6 +125,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
       return;
     }
     _done = true;
+    _giveTheKeyboardBack();
     // Read half-width (F-355): a tap away commits a draft the IME still
     // holds as it is, which no formatter has seen.
     widget.onSubmit(toHalfWidthNumerals(_controller.text).trim());
@@ -120,6 +152,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
       return;
     }
     _done = true;
+    _giveTheKeyboardBack();
     widget.onCancel();
   }
 
@@ -137,7 +170,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
       child: TextField(
         key: widget.fieldKey,
         controller: _controller,
-        autofocus: true,
+        focusNode: _focus,
         textAlign: widget.textAlign,
         keyboardType:
             widget.keyboardType ??

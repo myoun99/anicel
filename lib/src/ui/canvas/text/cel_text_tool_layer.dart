@@ -9,6 +9,7 @@ import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/history_manager.dart' show HistoryMark;
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
+import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
 import '../../theme/app_theme.dart';
 import '../canvas_press.dart';
@@ -185,10 +186,23 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// ([CelTextTool.takeableOn]).
   void _facesChanged() => _tool.celTextsChanged();
 
+  /// The letters the keyboard was last handed to ([_syncField]).
+  TextEditingController? _lettersKeyed;
+
   /// The keyboard is the text's while its letters are held, and the caret
   /// blinks only then.
+  ///
+  /// 🚨F-353 (유저 2026-10-14: 「텍스트 편집중인 상황에서 크기쪽 연필누르면
+  /// 텍스트 선택되지 않은 상태」): letters TAKEN UP take the keyboard — the
+  /// person pressed into a text. While they stay in hand it is taken back
+  /// from NOBODY only: a field the person opened to type a number into keeps
+  /// it until it closes, and gives it back then (`InlineNumericField`).
+  /// ↩️It was taken back at every change of the tool — a bake landing, a
+  /// setting set — from whoever held it.
   void _syncField() {
-    if (_tool.letters == null) {
+    final letters = _tool.letters;
+    if (letters == null) {
+      _lettersKeyed = null;
       _caretBlink?.cancel();
       _caretBlink = null;
       return;
@@ -198,9 +212,13 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       const Duration(milliseconds: 500),
       (_) => _caretLit.value = !_caretLit.value,
     );
+    final taken = !identical(letters, _lettersKeyed);
+    _lettersKeyed = letters;
     if (!_fieldFocus.hasFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _tool.letters != null) {
+        if (mounted &&
+            _tool.letters != null &&
+            (taken || focusedTextField() == null)) {
           _fieldFocus.requestFocus();
         }
       });
