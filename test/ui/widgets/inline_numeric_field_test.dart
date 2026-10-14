@@ -46,6 +46,95 @@ void main() {
     expect(seen.cancelled, isEmpty);
   });
 
+  // F-353 (유저 2026-10-14): a field opened while a text on the canvas is
+  // typed into takes the keyboard from it — and it must go back.
+  group('the keyboard, taken from another field', () {
+    /// A field holding the keyboard, and a number field its host opens
+    /// beside it and closes on a commit or an abandonment.
+    Future<({FocusNode before, VoidCallback open})> beside(
+      WidgetTester tester,
+    ) async {
+      final before = FocusNode();
+      var open = false;
+      late StateSetter setOpen;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) {
+                setOpen = setState;
+                return Column(
+                  children: [
+                    TextField(focusNode: before),
+                    if (open)
+                      SizedBox(
+                        width: 80,
+                        child: InlineNumericField(
+                          initialText: '12',
+                          onSubmit: (_) => setState(() => open = false),
+                          onCancel: () => setState(() => open = false),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      before.requestFocus();
+      await tester.pump();
+      return (before: before, open: () => setOpen(() => open = true));
+    }
+
+    bool numberHasIt(WidgetTester tester) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byType(InlineNumericField),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode
+        .hasFocus;
+
+    testWidgets('🚨it takes it as it opens, and Enter gives it back — with '
+        'nothing typed', (tester) async {
+      final (:before, :open) = await beside(tester);
+      expect(before.hasFocus, isTrue, reason: '⛔fixture');
+
+      open();
+      await tester.pump();
+
+      expect(numberHasIt(tester), isTrue);
+      expect(before.hasFocus, isFalse);
+
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(InlineNumericField), findsNothing, reason: 'closed');
+      expect(before.hasFocus, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      before.dispose();
+    });
+
+    testWidgets('Escape gives it back', (tester) async {
+      final (:before, :open) = await beside(tester);
+      open();
+      await tester.pump();
+      expect(numberHasIt(tester), isTrue, reason: '⛔fixture');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(InlineNumericField), findsNothing, reason: 'closed');
+      expect(before.hasFocus, isTrue);
+      await tester.pumpWidget(const SizedBox());
+      before.dispose();
+    });
+  });
+
   testWidgets('Escape cancels and submits nothing', (tester) async {
     final seen = await pump(tester);
     await tester.tap(find.byType(TextField));

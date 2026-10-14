@@ -96,8 +96,9 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
   /// ⛔Nothing here hands the keyboard BACK when the field closes: Flutter
   /// does, as a focused node leaves the tree — to the node its scope had
   /// focused before it (`FocusAttachment.detach`,
-  /// `UnfocusDisposition.previouslyFocusedChild`). A give-back written here
-  /// on 2026-10-14 changed nothing: taken out, every test stayed green.
+  /// `UnfocusDisposition.previouslyFocusedChild`) — so the field holds it
+  /// until it goes, on Enter too ([build]). ↩️A give-back of the field's
+  /// own was written first (2026-10-14): a second answer to that question.
   @override
   void initState() {
     super.initState();
@@ -188,6 +189,12 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
           errorBorder: InputBorder.none,
           focusedErrorBorder: InputBorder.none,
         ),
+        // ⛔Enter does not let go of the keyboard. A stock field lets go of
+        // it to its SCOPE, which forgets who held it before — the text on
+        // the canvas then had it back only if the number changed something
+        // (F-353). Kept, the keyboard leaves with the field ([initState]),
+        // as it does on Escape and on a tap away.
+        onEditingComplete: () {},
         onSubmitted: (_) => _submit(),
         onTapOutside: (_) => _submitFromOutside(),
       ),
