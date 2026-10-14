@@ -11,6 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -29,6 +30,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show
@@ -40,6 +42,7 @@ import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// One second at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
@@ -58,7 +61,11 @@ Layer _seLayer() => Layer(
   ],
 );
 
-Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
+Project _project({
+  Cut Function(Cut cut)? mapCut,
+  List<Layer>? seLayers,
+  List<LayerEffect> trackEffects = const [],
+}) {
   var cut = Cut(
     id: const CutId('lane-cut'),
     name: 'Lane Cut',
@@ -80,13 +87,14 @@ Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
         cuts: [cut],
         // SE rows are TRACK-owned (global frame axis).
         seLayers: seLayers ?? [_seLayer()],
+        effects: trackEffects,
       ),
     ],
   );
 }
 
-/// Pumps the panel with host-style toggle wiring (view-state sets live in
-/// the harness, like StoryboardTabHost).
+/// Pumps the panel over a session holding [project], its twirls wired as
+/// the workspace wires them ([withStoryboardTwirls]).
 Future<void> _pumpPanel(
   WidgetTester tester, {
   required Project project,
@@ -107,39 +115,25 @@ Future<void> _pumpPanel(
   TimelineCurrentRowHooks? currentRowHooks,
   TimelineRowDragHooks? rowDragHooks,
 }) async {
-  final expandedAudio = <String>{};
-  final expandedTransform = <String>{};
-  final expandedGroups = <String>{};
+  final session = EditorSessionManager(initialProject: project);
+  addTearDown(session.dispose);
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: StatefulBuilder(
-          builder: (context, setState) => StoryboardPanel(
-            project: project,
+        body: withStoryboardTwirls(
+          session,
+          (twirls) => StoryboardPanel(
+            project: session.repository.requireProject(),
             activeCutId: activeCutId,
             onRowFramePress: onRowFramePress,
             pixelsPerFrame: 12,
             projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
-            expandedSeAudioRows: expandedAudio,
-            onToggleSeRowLane: (track, slot) => setState(() {
-              final key = StoryboardPanel.seRowKey(track, slot);
-              if (!expandedAudio.add(key)) {
-                expandedAudio.remove(key);
-              }
-            }),
-            expandedTransformTracks: expandedTransform,
-            onToggleTrackLane: (track) => setState(() {
-              if (!expandedTransform.add(track.id.value)) {
-                expandedTransform.remove(track.id.value);
-              }
-            }),
-            expandedTransformGroups: expandedGroups,
-            onToggleTransformGroup: (groupKey) => setState(() {
-              if (!expandedGroups.add(groupKey)) {
-                expandedGroups.remove(groupKey);
-              }
-            }),
+            expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+            onToggleLayerLanes: twirls.onToggleLayerLanes,
+            expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+            onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
+            layerLanesOpenOf: twirls.layerLanesOpenOf,
             trackLaneEditFor: trackLaneEditFor,
             layerLaneEdit: layerLaneEdit,
             playheadFrame: playheadFrame,
@@ -176,13 +170,26 @@ void main() {
   // a host hands it both verbs — and this host handed it neither.
   testWidgets('the legend twirls every row open and shut, like the '
       'timeline\'s', (tester) async {
-    await _pumpPanel(tester, project: _project());
+    // A track effect gives the V row lanes: the sweep turns the rows that
+    // have some, as the timeline's turns its layers' (F-360 — a twirl is the
+    // row's, and one with nothing under it is nothing to write).
+    await _pumpPanel(
+      tester,
+      project: _project(
+        trackEffects: [
+          LayerEffect.defaults(
+            id: const EffectId('lane-blur'),
+            kind: EffectKind.blur,
+          ),
+        ],
+      ),
+    );
 
     const laneToggle = ValueKey<String>('legend-lanes-toggle');
     const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-se-audio');
 
     // The V row's own state is read off its chevron: its lanes are its fx
-    // chain, and a track with no effects opens onto nothing to find.
+    // chain.
     bool vRowOpen() =>
         tester
             .appIconButton(

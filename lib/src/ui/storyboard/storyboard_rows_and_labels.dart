@@ -229,16 +229,15 @@ class _StoryboardRowsAndLabels {
     required PropertyLaneEditCallbacks? laneEdit,
     required bool active,
 
-    /// The group each header twirls, per LANE: a list's headers do not share
-    /// one (an S row's groups key by [laneGroupKey], the V row's effect chain
-    /// by effect).
+    /// The group each header twirls, per LANE, by [laneGroupKey] on the row
+    /// that keeps it — the layer's, a projection row's head's (I-73 ④ⓔ),
+    /// the V row's lane carrier — turned by
+    /// [StoryboardPanel.onToggleLaneGroupKey], the timeline's verb: a group's
+    /// twirl is its row's (F-360).
+    ///
+    /// ↩️An S and a V row's groups were the rail's own twirls
+    /// (`onToggleTransformGroup`), and a list said which verb turned it.
     required String Function(PropertyLaneRow lane) groupKeyOf,
-
-    /// What a header's chevron turns its group by, [groupKeyOf]'s key: the
-    /// rail's own twirls ([StoryboardPanel.onToggleTransformGroup]) unless
-    /// the rows twirl with the timeline's — a projection row's, whose head is
-    /// the timeline's row (I-73 ④ⓔ).
-    ValueChanged<String>? onToggleGroup,
     ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
 
@@ -269,7 +268,7 @@ class _StoryboardRowsAndLabels {
       layerRowHeight: laneHeight - 2,
       railColumns: layerRailColumnWidthsIn(_state.context),
     );
-    final toggleGroup = onToggleGroup ?? _state.widget.onToggleTransformGroup;
+    final toggleGroup = _state.widget.onToggleLaneGroupKey;
     Widget row(Layer shown, PropertyLaneRow lane) => TimelineLaneControlsRow(
       layer: shown,
       lane: lane,
@@ -893,7 +892,7 @@ class _StoryboardRowsAndLabels {
   }) {
     final widget = _state.widget;
     final layer = _trackSeAt(track, slot);
-    final toggleLane = widget.onToggleSeRowLane;
+    final toggleLanes = widget.onToggleLayerLanes;
     final trackId = track.id;
     return _StoryboardSeLabel(
       chromeless: chromeless,
@@ -904,16 +903,17 @@ class _StoryboardRowsAndLabels {
       active: layer != null && widget.selectedRow == LayerRowAddress(layer.id),
       onSelectLayer: widget.onSelectLayer,
       labelDoubleClick: widget.labelDoubleClick,
-      laneExpanded: widget.expandedSeAudioRows.contains(
-        StoryboardPanel.seRowKey(track, slot),
-      ),
+      laneExpanded: _state._railRows._seLanesOpen(track, slot),
       // Of the track as the panel holds it at the press: the label is kept
       // while what it shows holds, and it shows nothing of the track's cuts.
-      onToggleLane: toggleLane == null
+      // The twirl is the slot's SE row's own (F-360), the timeline's.
+      onToggleLane: toggleLanes == null
           ? null
           : () {
               if (_state._railRows._trackNamed(trackId) case final now?) {
-                toggleLane(now, slot);
+                if (_trackSeAt(now, slot) case final row?) {
+                  toggleLanes(row.id);
+                }
               }
             },
       onToggleLayerVisibility: widget.onToggleLayerVisibility,

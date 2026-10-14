@@ -5,6 +5,9 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
+import '../../models/track.dart';
+import '../../models/track_id.dart';
+import '../../models/track_transform_lane_carrier.dart';
 import '../../services/project_lookup.dart' show projectLayersAnywhere;
 import '../timeline/lane_graph.dart' show LaneGraphsView;
 import '../timeline/property_lane_model.dart'
@@ -71,26 +74,38 @@ class RailView {
   /// Layers whose AE-style property-lane twirl-down is open
   /// (`Layer.lanesExpanded`). The walk reads it too: property rows are
   /// stops (R10 #19).
+  ///
+  /// ⛔Layers ONLY: its readers take an id here for a layer's — the
+  /// timeline's legend shuts every row it holds, and counts them to say
+  /// whether anything is open. The V row is no layer; its twirl is its
+  /// track's ([twirledTrackIds]).
   ValueListenable<Set<LayerId>> get expandedLaneLayerIds =>
       _expandedLaneLayerIds;
   final _expandedLaneLayerIds = ValueNotifier(const <LayerId>{});
 
-  /// LANE GROUPS twirled open inside a layer's twirl-down (AE group
-  /// collapse — default collapsed; `Layer.expandedLaneGroups`). Keyed by
+  /// LANE GROUPS twirled open inside a row's twirl-down (AE group collapse
+  /// — default collapsed; `Layer.expandedLaneGroups`, and the V row's
+  /// `Track.expandedLaneGroups` on its lane carrier). Keyed by
   /// `laneGroupKey`, because a row carries more than one group: Transform,
   /// plus one header per R6 effect.
   ValueListenable<Set<String>> get expandedLaneGroupKeys =>
       _expandedLaneGroupKeys;
   final _expandedLaneGroupKeys = ValueNotifier(const <String>{});
 
-  /// The document the three above were last read off.
+  /// Tracks whose V row has its lanes — its fx chain — twirled down
+  /// (`Track.lanesExpanded`, F-360). The storyboard reads the track itself;
+  /// this tells it when to read again, as the sets above tell the rails.
+  ValueListenable<Set<TrackId>> get twirledTrackIds => _twirledTrackIds;
+  final _twirledTrackIds = ValueNotifier(const <TrackId>{});
+
+  /// The document the sets above were last read off.
   Project? _foldsReadOff;
 
-  /// The rows' folds and twirls as [project] holds them — the three sets
-  /// above, each told only where it changed. Asked after every history
-  /// change, after a write outside history that opens a fold (the standing
-  /// law's reveal), and when the session is made: a fold is not written
-  /// anywhere else. Free while the project is the one it last read.
+  /// The rows' folds and twirls as [project] holds them — the sets above,
+  /// each told only where it changed. Asked after every history change,
+  /// after a write outside history that opens a fold (the standing law's
+  /// reveal), and when the session is made: a fold is not written anywhere
+  /// else. Free while the project is the one it last read.
   void readFolds(Project? project) {
     if (identical(project, _foldsReadOff)) {
       return;
@@ -113,9 +128,19 @@ class RailView {
         groups.add(laneGroupKey(layer.id, laneId));
       }
     }
+    final tracks = <TrackId>{};
+    for (final track in project?.tracks ?? const <Track>[]) {
+      if (track.lanesExpanded) {
+        tracks.add(track.id);
+      }
+      for (final laneId in track.expandedLaneGroups) {
+        groups.add(laneGroupKey(trackTransformLaneCarrierId(track.id), laneId));
+      }
+    }
     _tell(_collapsedAttachBaseIds, folded);
     _tell(_expandedLaneLayerIds, twirled);
     _tell(_expandedLaneGroupKeys, groups);
+    _tell(_twirledTrackIds, tracks);
   }
 
   static void _tell<T>(ValueNotifier<Set<T>> rows, Set<T> next) {
@@ -138,27 +163,12 @@ class RailView {
     LaneGraphsView.none,
   );
 
-  /// The STORYBOARD rail's own twirls — its S rows' audio lanes (by
-  /// `StoryboardPanel.seRowKey`), its V tracks' lanes (by track id) and the
-  /// Transform groups under them (by `laneGroupKey`): that rail's row keys,
-  /// not a layer's lanes, so beside the timeline's sets above rather than in
-  /// them.
-  ///
-  /// ↩️The storyboard's tab host kept them, 「lost on tab switch for now …
-  /// hoist to the workspace if that stings」 — held only by the panel being
-  /// kept alive. A panel is built only while it shows now (유저 2026-10-14),
-  /// so here, with the timeline's, they outlive it.
-  final ValueNotifier<Set<String>> storyboardSeAudioRows = ValueNotifier(
-    const <String>{},
-  );
-
-  final ValueNotifier<Set<String>> storyboardTransformTracks = ValueNotifier(
-    const <String>{},
-  );
-
-  final ValueNotifier<Set<String>> storyboardTransformGroups = ValueNotifier(
-    const <String>{},
-  );
+  // ↩️The STORYBOARD rail kept three twirl sets of its own here — its S
+  // rows' lanes (by `seRowKey`), its V rows' lanes (by track id) and the
+  // groups under them — session-only, and the S rows' apart from the very
+  // rows the timeline twirls. They are the rows' and the tracks' since
+  // F-360's second half: the S rows' come in the sets above with every
+  // layer's, and a V row's are its track's ([twirledTrackIds]).
 
   /// The link table the graphs were last made to agree with.
   LayerLinkRegistry? _followed;
@@ -246,10 +256,8 @@ class RailView {
     _collapsedAttachBaseIds.dispose();
     _expandedLaneLayerIds.dispose();
     _expandedLaneGroupKeys.dispose();
+    _twirledTrackIds.dispose();
     laneGraphs.dispose();
-    storyboardSeAudioRows.dispose();
-    storyboardTransformTracks.dispose();
-    storyboardTransformGroups.dispose();
   }
 }
 

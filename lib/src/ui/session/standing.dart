@@ -17,6 +17,7 @@ import '../../models/track_camera_row.dart';
 import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
 import '../../models/track_projection_row.dart';
+import '../../models/track_row_twirls.dart' show trackRowTwirlsOf;
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -680,34 +681,32 @@ class Standing {
   /// [laneId] is a GROUP header closing, and it swallows its members alone
   /// — the header itself stays on screen and is where you land.
   ///
-  /// [panel] is the panel whose rail folded: each panel keeps its own
-  /// twirls, so a fold hands on where THAT panel stands.
+  /// [panel] is the panel whose rail folded, where the fold hands on first.
+  /// A twirl is its row's (F-360), so the storyboard's row that shows the
+  /// same lanes ([_storyboardRowShowing]) hands on there too.
   void handOffCurrentRowOnFold(
     LayerId layerId, {
     String? laneId,
     WorkingPanel panel = WorkingPanel.timeline,
   }) {
     if (laneId == null) {
-      final track = trackIdOfTransformLaneCarrier(layerId);
       handOffOnFold(
-        swallower: track == null
-            ? LayerRowAddress(layerId)
-            : TrackRowAddress(track),
+        swallower: _rowSwallowingLanesOf(layerId),
         vanished: (address) =>
             address is LaneRowAddress && address.layerId == layerId,
         panel: panel,
       );
-      // The storyboard row that shows this layer twirls with it (I-73 ④ⓔ —
-      // the camera row's head is the timeline's camera row): its lanes go
-      // too, and the row swallows them.
-      final projection = panel == WorkingPanel.timeline
-          ? _projectionRowShowing(layerId)
+      // The storyboard row that shows this row's lanes twirls with it (I-73
+      // ④ⓔ — the camera row's head is the timeline's camera row): its lanes
+      // go too, and the row swallows them.
+      final shown = panel == WorkingPanel.timeline
+          ? _storyboardRowShowing(layerId)
           : null;
-      if (projection != null) {
+      if (shown != null) {
         handOffOnFold(
-          swallower: LayerRowAddress(projection),
+          swallower: _rowSwallowingLanesOf(shown),
           vanished: (address) =>
-              address is LaneRowAddress && address.layerId == projection,
+              address is LaneRowAddress && address.layerId == shown,
           panel: WorkingPanel.storyboard,
         );
       }
@@ -718,19 +717,39 @@ class Standing {
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
       panel: panel,
     );
-    // …and a group the storyboard's projection row draws shuts there too
-    // (I-73 ④ⓔ): its header swallows the members you stood in.
-    final projection = panel == WorkingPanel.timeline
-        ? _projectionRowShowing(layerId)
+    // …and a group the storyboard's row draws shuts there too (I-73 ④ⓔ):
+    // its header swallows the members you stood in.
+    final shown = panel == WorkingPanel.timeline
+        ? _storyboardRowShowing(layerId)
         : null;
-    if (projection != null) {
+    if (shown != null) {
       handOffOnFold(
-        swallower: LaneRowAddress(projection, laneId),
-        vanished: (address) =>
-            currentRowIsInsideGroup(address, projection, laneId),
+        swallower: LaneRowAddress(shown, laneId),
+        vanished: (address) => currentRowIsInsideGroup(address, shown, laneId),
         panel: WorkingPanel.storyboard,
       );
     }
+  }
+
+  /// The row that swallows [rowId]'s lanes as they fold: the row itself —
+  /// or, for a V row's lanes, whose carrier is no layer, the TRACK's row.
+  TimelineRowAddress _rowSwallowingLanesOf(LayerId rowId) =>
+      switch (trackIdOfTransformLaneCarrier(rowId)) {
+        final track? => TrackRowAddress(track),
+        null => LayerRowAddress(rowId),
+      };
+
+  /// The storyboard's row that shows [layerId]'s lanes — a track's own row
+  /// (an S row, the V row's carrier) as itself, for the rails draw it as
+  /// one row; the camera row of its cut's track for its camera, a conte row
+  /// for a row of its conte group ([projectionRowIdOf]) — or null for
+  /// every other layer.
+  LayerId? _storyboardRowShowing(LayerId layerId) {
+    final project = _project.repository.requireProject();
+    if (trackRowTwirlsOf(project, layerId) != null) {
+      return layerId;
+    }
+    return _projectionRowShowing(layerId);
   }
 
   /// The storyboard's projection row that shows [layerId] — the camera row

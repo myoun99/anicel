@@ -5,8 +5,10 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/track_row_twirls.dart';
+import '../../models/track_transform_lane_carrier.dart';
 import '../../services/project_lookup.dart'
-    show cutIdOfLayer, layerAnywhereOrNull, requireCut;
+    show cutIdOfLayer, layerAnywhereOrNull, requireCut, rowTwirlsOf;
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
@@ -147,6 +149,11 @@ class SessionRowButtonPresses {
       );
 
   bool? _lanesOpen(LayerId id) {
+    // The V row: no layer, so no layer's lanes to ask about — its button is
+    // drawn only while its track has some, and its twirl is its track's.
+    if (trackIdOfTransformLaneCarrier(id) != null) {
+      return _twirlsOf(id)?.lanesExpanded;
+    }
     final layer = _row(id);
     if (layer == null ||
         timelineLanesForLayer(
@@ -169,7 +176,7 @@ class SessionRowButtonPresses {
   /// the screen (R5 #11), and that is a selection move, not part of the
   /// twirl this undoes.
   void _toggleLanesOf(LayerId id) {
-    final closing = _row(id)?.lanesExpanded ?? false;
+    final closing = _twirlsOf(id)?.lanesExpanded ?? false;
     session.layerSwitches.toggleLayerLanes(id);
     if (closing) {
       session.handOffCurrentRowOnFold(id);
@@ -189,13 +196,12 @@ class SessionRowButtonPresses {
   /// not undo — until F-360 put it on the row beside its twirl.
   void toggleLaneGroup(String groupKey) {
     final row = parseLaneGroupKey(groupKey);
-    // A key that names no row has no row to keep its twirl on — the
-    // storyboard's track lanes keep theirs on the storyboard.
-    final layer = row == null ? null : _row(row.layerId);
-    if (row == null || layer == null) {
+    // A key that names no row has no row to keep its twirl on.
+    final twirls = row == null ? null : _twirlsOf(row.layerId);
+    if (row == null || twirls == null) {
       return;
     }
-    final closing = layer.expandedLaneGroups.contains(row.laneId);
+    final closing = twirls.expandedLaneGroups.contains(row.laneId);
     if (closing) {
       // Closing: only this group's MEMBERS go, so the header is what
       // swallows them and where the standing row lands (R5 #11).
@@ -530,6 +536,10 @@ class SessionRowButtonPresses {
 
   Layer? _row(LayerId id) =>
       layerAnywhereOrNull(session.repository.requireProject(), id);
+
+  /// [id]'s twirls as the project holds them ([rowTwirlsOf]).
+  RowTwirls? _twirlsOf(LayerId id) =>
+      rowTwirlsOf(session.repository.requireProject(), id);
 
   /// The stack [id]'s row stands in — its own cut's, wherever that is: the
   /// storyboard's rail presses the conte rows of cuts that are not the

@@ -766,6 +766,24 @@ class ProjectRepository {
     _mutate(_track, trackId, (track) => track.copyWith(fxEnabled: fxEnabled));
   }
 
+  /// The V row's twirls (F-360): its lanes twirled down or not, and the
+  /// effect groups open inside them — the track's own, as a layer row's are
+  /// its own ([updateLayer]).
+  void updateTrackLanes({
+    required TrackId trackId,
+    required bool lanesExpanded,
+    required Set<String> expandedLaneGroups,
+  }) {
+    _mutate(
+      _track,
+      trackId,
+      (track) => track.copyWith(
+        lanesExpanded: lanesExpanded,
+        expandedLaneGroups: expandedLaneGroups,
+      ),
+    );
+  }
+
   void updateCutMetadata({
     required CutId cutId,
     required CutMetadata metadata,

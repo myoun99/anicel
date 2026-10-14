@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheetPainter, timelineLaneGround;
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// The V row's fx chain ON SCREEN: its lane rows show up under the Transform
 /// group, and grabbing a group header re-orders the chain — the layer rail's
@@ -54,40 +55,31 @@ Project _project(List<LayerEffect> effects) => Project(
   ],
 );
 
-/// The panel with the SESSION's own drag hooks — the host's wiring, so the
-/// gesture runs the real command path.
+/// The panel with the SESSION's own drag hooks and twirls — the host's
+/// wiring, so the gesture runs the real command path.
 Future<EditorSessionManager> _pumpPanel(
   WidgetTester tester,
   List<LayerEffect> effects,
 ) async {
   final session = EditorSessionManager(initialProject: _project(effects));
-  final expandedTracks = <String>{};
-  final expandedGroups = <String>{};
   await tester.binding.setSurfaceSize(const Size(1200, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: StatefulBuilder(
-          builder: (context, setState) => StoryboardPanel(
+        body: withStoryboardTwirls(
+          session,
+          (twirls) => StoryboardPanel(
             project: session.repository.requireProject(),
             activeCutId: _cut,
             pixelsPerFrame: 12,
             projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (_) => null,
-            expandedSeAudioRows: const <String>{},
-            expandedTransformTracks: expandedTracks,
-            onToggleTrackLane: (track) => setState(() {
-              if (!expandedTracks.add(track.id.value)) {
-                expandedTracks.remove(track.id.value);
-              }
-            }),
-            expandedTransformGroups: expandedGroups,
-            onToggleTransformGroup: (groupKey) => setState(() {
-              if (!expandedGroups.add(groupKey)) {
-                expandedGroups.remove(groupKey);
-              }
-            }),
+            expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+            onToggleLayerLanes: twirls.onToggleLayerLanes,
+            expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+            onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
+            layerLanesOpenOf: twirls.layerLanesOpenOf,
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onToggleTrackEffectEnabled: (track, effectId) =>
                 session.effectsAndFx.toggleTrackEffectEnabled(track.id, effectId),

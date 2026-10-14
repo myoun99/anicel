@@ -595,12 +595,6 @@ class StoryboardPanel extends StatefulWidget {
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.seLanePreview,
-    this.expandedSeAudioRows = const {},
-    this.onToggleSeRowLane,
-    this.expandedTransformTracks = const {},
-    this.onToggleTrackLane,
-    this.expandedTransformGroups = const {},
-    this.onToggleTransformGroup,
     this.trackLaneEditFor,
     this.laneRange,
     this.currentRowHooks,
@@ -621,8 +615,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleLayerTimesheet,
     this.layerOnTimesheetOf,
     this.layerEyeOnOf,
-    this.seRowLaneOpenOf,
-    this.trackLaneOpenOf,
+    this.layerLanesOpenOf,
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.onLayerBlendModeSelected,
@@ -1069,33 +1062,22 @@ class StoryboardPanel extends StatefulWidget {
   /// only — rail controls, commits and undo keep the repository lane.
   final Layer? seLanePreview;
 
-  /// Twirled-down S rows ([seRowKey]): the row's lanes — the list the
-  /// timeline's SE row twirls down ([propertyLanesForRow]). ↩️An enlarged
-  /// read-only waveform lane at first, the timeline Audio lane's storyboard
-  /// sibling, which is where the name comes from; the lanes are the
-  /// timeline's own since F-101.
-  final Set<String> expandedSeAudioRows;
-  final void Function(Track track, int slot)? onToggleSeRowLane;
+  // ↩️The S rows' and the V rows' twirls, and the groups under them, came
+  // in sets of this rail's own — S rows by `<trackId>-<slot>`, V rows by
+  // track id, a V effect's group by `<trackId>-fx-<effectId>` — that the
+  // host kept outside the document, and an S row twirled apart from the very
+  // row the timeline twirls. They are the rows' since F-360's second half:
+  // an S row's are its SE row's, read in [expandedLaneLayerIds] and
+  // [expandedLaneGroupKeys] as the timeline reads that row's, and a V row's
+  // its track's, read off the track (`Track.lanesExpanded`,
+  // `Track.expandedLaneGroups`) — both turned by [onToggleLayerLanes] and
+  // [onToggleLaneGroupKey], the V row by its lane carrier.
 
-  /// Twirled-down V tracks (track id value): the cut-level Transform group
-  /// under the track row (V-track full transform, R6 — the AE lanes plus
-  /// the cut-fade Opacity strip).
-  final Set<String> expandedTransformTracks;
-  final void Function(Track track)? onToggleTrackLane;
-
-  /// Twirled-open GROUP HEADERS (AE group collapse, default collapsed): track
-  /// id values for the V tracks, [laneGroupKey]s for the S rows — the
-  /// timeline's own keys, since an S row's groups are the row's groups
-  /// (F-101; ↩️they were [seRowKey]s while the S rows had the Transform group
-  /// alone). One set — the key shapes never collide.
-  final Set<String> expandedTransformGroups;
-  final void Function(String groupKey)? onToggleTransformGroup;
-
-  /// Lane edit hooks for the V track's OWN Transform lanes (R4b): the
-  /// host builds callbacks that edit [Track.transformTrack] at GLOBAL
-  /// frames (one undo per edit) — no cut needed. The carrier Layer the
-  /// substrate hands back is synthetic ([trackTransformLaneCarrierId]);
-  /// the closures capture their track. Null = display-only.
+  /// Lane edit hooks for the V track's OWN lanes — its fx chain (R4b): the
+  /// layer rows' own verbs, handed the row's lane carrier
+  /// ([trackTransformLaneCarrierId]), which they send home to the track —
+  /// at GLOBAL frames (one undo per edit), no cut needed. Null =
+  /// display-only.
   final PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor;
 
   /// The lane range feature's HOST hooks (the timeline's machinery; the
@@ -1207,12 +1189,12 @@ class StoryboardPanel extends StatefulWidget {
   /// A LIVE read of a layer’s own eye — see [layerOnTimesheetOf].
   final bool Function(LayerId layerId)? layerEyeOnOf;
 
-  /// LIVE reads of the two twirl sets, for the same reason as
-  /// [layerOnTimesheetOf]: the host mutates them and the new value reaches
-  /// this widget only on the next build, which is a frame too late for a
-  /// bulk-drag that started on one of those buttons.
-  final bool Function(Track track, int slot)? seRowLaneOpenOf;
-  final bool Function(Track track)? trackLaneOpenOf;
+  /// A LIVE read of a row's twirl — an S row's by its layer, a V row's by
+  /// its lane carrier — for the same reason as [layerOnTimesheetOf]: a
+  /// press writes it, and the new value reaches this widget only on the
+  /// next build, which is a frame too late for a bulk-drag that started on
+  /// one of those buttons.
+  final bool Function(LayerId layerId)? layerLanesOpenOf;
 
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
@@ -1409,9 +1391,6 @@ class StoryboardPanel extends StatefulWidget {
   /// shows the layer's own.
   final ValueListenable<bool>? cameraViewEnabled;
   final ValueListenable<double>? cameraDimOpacity;
-
-  /// The per-S-row view-state key: `<trackId>-<slot>`.
-  static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
 
   @override
   State<StoryboardPanel> createState() => _StoryboardPanelState();
@@ -1742,12 +1721,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   // `_cutWindowTransformOf` retired with the V row's transform: there is no
   // track lane for a cut window to project.
-
-  /// The group key one V-track EFFECT's lanes twirl under. The V row keeps
-  /// its own flat key space (its Transform group is keyed by the bare track
-  /// id), so an effect hangs its id off that.
-  static String trackEffectGroupKey(Track track, EffectId effectId) =>
-      '${track.id.value}-fx-${effectId.value}';
 
   // ── the rows and their labels: their own object ─────────────────────
   //

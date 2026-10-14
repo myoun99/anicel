@@ -1,5 +1,9 @@
 part of '../storyboard_panel.dart';
 
+/// A twirl as the rail draws it: the row it turns — a layer, or the V row's
+/// lane carrier — and whether this build reads it open.
+typedef _Twirl = ({LayerId id, bool open});
+
 /// THE RAIL'S ROWS AND LANES — the rows the storyboard's rail shows for
 /// a track and its SE rows, in display order, filtered; their extents,
 /// sections and geometry; the subject and row at a rail position; the
@@ -24,16 +28,16 @@ class _StoryboardRailRows {
   /// One V track's EFFECT lanes, below its Transform group — the same rows a
   /// layer's chain gets, one level up: this chain filters the whole
   /// composited cut (user 2026-08-08). Values resolve at GLOBAL frames, the
-  /// axis the keys live on.
+  /// axis the keys live on. Its groups open as the track keeps them, by
+  /// lane id as a layer row keeps its own (F-360, `Track.expandedLaneGroups`).
   List<PropertyLaneRow> _trackEffectLanes(Track track) {
     if (track.effects.isEmpty) {
       return const [];
     }
     return effectPropertyLanes(
       track.effects,
-      isExpanded: (effectId) => _state.widget.expandedTransformGroups.contains(
-        _StoryboardPanelState.trackEffectGroupKey(track, effectId),
-      ),
+      isExpanded: (effectId) =>
+          track.expandedLaneGroups.contains(effectGroupLaneId(effectId)),
       valueAt: (effectId, parameterId, time) => effectParameterValueAtTime(
         track.effects,
         effectId,
@@ -54,8 +58,8 @@ class _StoryboardRailRows {
     return [
       if (timelineRowOwnsTransform(subject: TimelineTransformSubject.track))
         transformGroupHeader(
-          expanded: _state.widget.expandedTransformGroups.contains(
-            track.id.value,
+          expanded: track.expandedLaneGroups.contains(
+            transformGroupHeaderLane.laneId,
           ),
         ),
       ..._trackEffectLanes(track),
@@ -84,7 +88,7 @@ class _StoryboardRailRows {
     return propertyLanesForRow(
       layer: layer,
       rows: track.seLayers,
-      expandedGroupKeys: _state.widget.expandedTransformGroups,
+      expandedGroupKeys: _state.widget.expandedLaneGroupKeys,
       valueSourceAt: (frameIndex) => (layer: layer, frame: frameIndex),
       // The display size comes from the SESSION, exactly as the V row's
       // lanes take it — never from "the cut that happens to be open", which
@@ -102,21 +106,16 @@ class _StoryboardRailRows {
   /// rows THIS rail draws — an S row per SE slot, a V row per track, and
   /// the camera row a track (I-73 ④ⓔ) — rather than a new idea about
   /// expansion.
-  bool get _anyLanesExpanded =>
-      _state.widget.expandedSeAudioRows.isNotEmpty ||
-      _state.widget.expandedTransformTracks.isNotEmpty ||
-      _state.widget.project.tracks.any(
-        (track) =>
-            _cameraLanesOpen(track) ||
-            _shownConteSeats(track).any((seat) => _conteLanesOpen(track, seat)),
-      );
+  bool get _anyLanesExpanded => _state.widget.project.tracks.any(
+    (track) =>
+        _ownTwirlsOf(track).any((twirl) => twirl.open) ||
+        _cameraLanesOpen(track) ||
+        _shownConteSeats(track).any((seat) => _conteLanesOpen(track, seat)),
+  );
 
   /// Whether the rail can twirl at all: a display-only mount (no hooks) has
   /// nothing for the legend button to act on, so it does not draw one.
-  bool get hasLaneTwirls =>
-      _state.widget.onToggleSeRowLane != null ||
-      _state.widget.onToggleTrackLane != null ||
-      _state.widget.onToggleLayerLanes != null;
+  bool get hasLaneTwirls => _state.widget.onToggleLayerLanes != null;
 
   void expandAllLanes() => _setAllLanes(expanded: true);
 
@@ -124,79 +123,94 @@ class _StoryboardRailRows {
 
   /// Toggles every lane row that is not already [expanded].
   ///
-  /// ⛔THE `contains` GUARD IS THE VERB. It looks redundant — the button
-  /// only says EXPAND while nothing is open — but it is what makes this an
-  /// expansion rather than a per-row toggle, and the nested group set can
-  /// leave a rail mixed: a blind sweep would close the one row you had
-  /// opened by hand while it opened its neighbours. Written once per
-  /// direction, the two guards were the same sentence with the sense
-  /// flipped, and only one of them could be right about it.
+  /// ⛔THE GUARD IS THE VERB. It looks redundant — the button only says
+  /// EXPAND while nothing is open — but it is what makes this an expansion
+  /// rather than a per-row toggle, and the nested group set can leave a
+  /// rail mixed: a blind sweep would close the one row you had opened by
+  /// hand while it opened its neighbours. Written once per direction, the
+  /// two guards were the same sentence with the sense flipped, and only one
+  /// of them could be right about it.
   ///
   /// ONE undo step for the press, as the timeline's
   /// ([RailSweepHistory.asOneStep]): a twirl the rows carry is written
   /// through history (F-360).
   void _setAllLanes({required bool expanded}) {
+    final toggle = _state.widget.onToggleLayerLanes;
+    if (toggle == null) {
+      return;
+    }
     RailSweepHistory.asOneStep(
       _state.context,
       expanded ? 'Expand all lanes' : 'Collapse all lanes',
       () {
         for (final track in _state.widget.project.tracks) {
-          _setTrackLanes(track, expanded: expanded);
+          _setTrackLanes(track, toggle, expanded: expanded);
         }
       },
     );
   }
 
-  /// [track]'s rows' twirls turned to [expanded] — its S rows, its V row
-  /// and its projection rows ([_setProjectionLanes]).
-  void _setTrackLanes(Track track, {required bool expanded}) {
-    final toggleSe = _state.widget.onToggleSeRowLane;
-    final toggleTrack = _state.widget.onToggleTrackLane;
-    final toggleLayer = _state.widget.onToggleLayerLanes;
-    if (toggleSe != null) {
-      for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-        final open = _state.widget.expandedSeAudioRows.contains(
-          StoryboardPanel.seRowKey(track, slot),
-        );
-        if (open != expanded) {
-          toggleSe(track, slot);
-        }
+  /// [track]'s rows' twirls turned to [expanded] — its own rows'
+  /// ([_ownTwirlsOf]) and its projection rows' (I-73 ④ⓔ): the camera
+  /// row's, and each conte row's that has lanes to show, each through the
+  /// layer its twirl turns ([_cameraTwirlOf], [_conteTwirlOf]).
+  void _setTrackLanes(
+    Track track,
+    ValueChanged<LayerId> toggle, {
+    required bool expanded,
+  }) {
+    for (final twirl in [
+      ..._ownTwirlsOf(track),
+      if (_cameraTwirlOf(track) case final camera?)
+        (id: camera, open: _cameraLanesOpen(track)),
+      for (final seat in _shownConteSeats(track))
+        if (_conteTwirlOf(track, seat) case final row?
+            when _conteLanes(track, seat).isNotEmpty)
+          (id: row, open: _conteLanesOpen(track, seat)),
+    ]) {
+      if (_openNow(twirl) != expanded) {
+        toggle(twirl.id);
       }
-    }
-    if (toggleTrack != null) {
-      final open = _state.widget.expandedTransformTracks.contains(
-        track.id.value,
-      );
-      if (open != expanded) {
-        toggleTrack(track);
-      }
-    }
-    if (toggleLayer != null) {
-      _setProjectionLanes(track, toggleLayer, expanded: expanded);
     }
   }
 
-  /// [track]'s projection rows' twirls turned to [expanded] (I-73 ④ⓔ): the
-  /// camera row's, and each conte row's that has lanes to show — each
-  /// through the layer its twirl turns ([_cameraTwirlOf], [_conteTwirlOf]).
-  void _setProjectionLanes(
-    Track track,
-    ValueChanged<LayerId> toggleLayer, {
-    required bool expanded,
-  }) {
-    final camera = _cameraTwirlOf(track);
-    if (camera != null && _cameraLanesOpen(track) != expanded) {
-      toggleLayer(camera);
-    }
-    for (final seat in _shownConteSeats(track)) {
-      final row = _conteTwirlOf(track, seat);
-      if (row != null &&
-          _conteLanes(track, seat).isNotEmpty &&
-          _conteLanesOpen(track, seat) != expanded) {
-        toggleLayer(row);
-      }
-    }
+  /// [track]'s OWN rows' twirls — an S row's per slot, the V row's — each
+  /// the row's (F-360): the S row's its SE row's, the timeline's row too
+  /// (F-101), the V row's its track's.
+  List<_Twirl> _ownTwirlsOf(Track track) => [
+    for (var slot = 0; slot < _seSlotCount(track); slot += 1)
+      ?_seTwirlOf(track, slot),
+    ?_trackTwirlOf(track),
+  ];
+
+  /// The twirl [track]'s S row at [slot] draws — null while the slot holds
+  /// no row, or its row no lanes.
+  _Twirl? _seTwirlOf(Track track, int slot) {
+    final row = _trackSeAt(track, slot);
+    return row == null || _seLanes(track, slot).isEmpty
+        ? null
+        : (id: row.id, open: _seLanesOpen(track, slot));
   }
+
+  /// The twirl [track]'s V row draws, by the row's lane carrier — null
+  /// while the track owns no lanes.
+  _Twirl? _trackTwirlOf(Track track) => _trackOwnLanes(track).isEmpty
+      ? null
+      : (id: trackTransformLaneCarrierId(track.id), open: track.lanesExpanded);
+
+  /// Whether [track]'s S row at [slot] has its lanes twirled down: its SE
+  /// row's own twirl, read as the timeline's SE row reads it.
+  bool _seLanesOpen(Track track, int slot) => switch (_trackSeAt(track, slot)) {
+    final row? => _state.widget.expandedLaneLayerIds.contains(row.id),
+    null => false,
+  };
+
+  /// Whether [twirl] is open RIGHT NOW: read live where the host can
+  /// ([StoryboardPanel.layerLanesOpenOf]) — the twirl-all turns row after
+  /// row as one step, and a press spread across the selection may already
+  /// have turned the next — else as this build reads it.
+  bool _openNow(_Twirl twirl) =>
+      _state.widget.layerLanesOpenOf?.call(twirl.id) ?? twirl.open;
 
   /// The S row, made draggable — the rail's row-order drag, on the third
   /// surface.
@@ -668,8 +682,6 @@ class _StoryboardRailRows {
   /// edge and pads only on the right, unlike the layer rail's bordered plate.
   List<RailToggleColumn<StoryboardRailRow>> _railSwipeColumns() {
     final toggleTimesheet = _state.widget.onToggleLayerTimesheet;
-    final toggleTrackLane = _state.widget.onToggleTrackLane;
-    final toggleSeRowLane = _state.widget.onToggleSeRowLane;
     return railSwipeColumns<StoryboardRailRow>(
       crossExtent: _state._naturalRailWidth,
       columns: layerRailColumnWidthsIn(_state.context),
@@ -685,10 +697,10 @@ class _StoryboardRailRows {
       timesheet: toggleTimesheet == null
           ? null
           : (valueOf: _rowOnTimesheet, toggle: _toggleRowTimesheet),
-      // Two verbs again, and a third row kind with neither: the V row's
-      // twirl opens the TRACK's transform lanes, an S row's opens that
-      // SLOT's audio and transform lanes, and the transition row has none.
-      laneToggle: toggleTrackLane == null && toggleSeRowLane == null
+      // One verb, and a row kind without it: the V row's twirl opens the
+      // TRACK's lanes, an S row's that SLOT's audio and transform lanes —
+      // each the row's own (F-360) — and the transition row has none.
+      laneToggle: _state.widget.onToggleLayerLanes == null
           ? null
           : (valueOf: _rowLaneOpen, toggle: _toggleRowLane),
     );
@@ -765,44 +777,26 @@ class _StoryboardRailRows {
     }
   }
 
-  /// The lane column's value: an SE row's lane state where it has lanes,
-  /// a V row's transform lanes where the track owns any — null elsewhere.
-  bool? _rowLaneOpen(StoryboardRailRow row) {
-    final toggleTrackLane = _state.widget.onToggleTrackLane;
-    final toggleSeRowLane = _state.widget.onToggleSeRowLane;
-    final slot = row.seSlot;
-    if (slot != null) {
-      final hasLanes = _seLanes(row.track, slot).isNotEmpty;
-      return toggleSeRowLane == null || !hasLanes
-          ? null
-          : (_state.widget.seRowLaneOpenOf?.call(row.track, slot) ??
-                _state.widget.expandedSeAudioRows.contains(
-                  StoryboardPanel.seRowKey(row.track, slot),
-                ));
-    }
-    if (row.layer != null) {
-      // The transition row: no twirl at all.
-      return null;
-    }
-    return toggleTrackLane == null || _trackOwnLanes(row.track).isEmpty
-        ? null
-        : (_state.widget.trackLaneOpenOf?.call(row.track) ??
-              _state.widget.expandedTransformTracks.contains(
-                row.track.id.value,
-              ));
-  }
+  /// The lane column's value: an S row's twirl where it has lanes, the V
+  /// row's where the track owns any — null elsewhere.
+  bool? _rowLaneOpen(StoryboardRailRow row) => switch (_twirlOfRow(row)) {
+    final twirl? => _openNow(twirl),
+    null => null,
+  };
 
   void _toggleRowLane(StoryboardRailRow row) {
-    final toggleTrackLane = _state.widget.onToggleTrackLane;
-    final toggleSeRowLane = _state.widget.onToggleSeRowLane;
-    final slot = row.seSlot;
-    if (slot != null) {
-      toggleSeRowLane?.call(row.track, slot);
-      return;
+    if (_twirlOfRow(row) case final twirl?) {
+      _state.widget.onToggleLayerLanes?.call(twirl.id);
     }
-    if (row.layer == null) {
-      toggleTrackLane?.call(row.track);
+  }
+
+  /// The twirl [row] draws in the lane column: its S row's, or the V
+  /// row's — the transition row has none.
+  _Twirl? _twirlOfRow(StoryboardRailRow row) {
+    if (row.seSlot case final slot?) {
+      return _seTwirlOf(row.track, slot);
     }
+    return row.layer == null ? _trackTwirlOf(row.track) : null;
   }
 
   List<Widget> railRowsForTrack(Track track, int index) {
@@ -883,10 +877,7 @@ class _StoryboardRailRows {
   List<Widget> _seRowsFor(Track track) => [
     for (final slot in _shownSeSlots(track)) ...[
       _state._rows.seLabelRow(track, slot),
-      if (_state.widget.expandedSeAudioRows.contains(
-        StoryboardPanel.seRowKey(track, slot),
-      ))
-        ..._seLaneLabels(track, slot),
+      if (_seLanesOpen(track, slot)) ..._seLaneLabels(track, slot),
     ],
   ];
 
@@ -1040,7 +1031,6 @@ class _StoryboardRailRows {
       carrier: labels.shown.copyWith(id: projection.rowId),
       lanes: labels.lanes,
       groupKeyOf: (lane) => laneGroupKey(labels.shown.id, lane.laneId),
-      onToggleGroup: _state.widget.onToggleLaneGroupKey,
       follow: stood == null ? null : follow,
       laneEdit: stood == null
           ? null
@@ -1144,15 +1134,16 @@ class _StoryboardRailRows {
           trackId: track.id,
           trackLabel: storyboardVideoRowName(index),
           laneHeight: _state.widget.trackLaneHeight,
-          laneExpanded: _state.widget.expandedTransformTracks.contains(
-            track.id.value,
-          ),
+          laneExpanded: track.lanesExpanded,
           // The row's verbs ask for the track as the panel holds it at the
           // press: the row is kept while what it shows holds, and it shows
-          // nothing of the track's cuts.
-          onToggleLane: _state.widget.onToggleTrackLane == null
+          // nothing of the track's cuts. The twirl is the track's own
+          // (F-360), turned by its lane carrier.
+          onToggleLane: _state.widget.onToggleLayerLanes == null
               ? null
-              : () => _actOnTrack(track.id, _state.widget.onToggleTrackLane),
+              : () => _state.widget.onToggleLayerLanes?.call(
+                  trackTransformLaneCarrierId(track.id),
+                ),
           // V-track selection (UI-R18 #6): tapping selects the track (its
           // playhead-index cut becomes active). The highlight says THIS ROW
           // IS SELECTED — not "the active cut lives here", which is what the
@@ -1170,7 +1161,7 @@ class _StoryboardRailRows {
               : () => _actOnTrack(track.id, _state.widget.onToggleTrackFx),
         ),
       ),
-      if (_state.widget.expandedTransformTracks.contains(track.id.value)) ...[
+      if (track.lanesExpanded) ...[
         // No Transform-group labels: a track row does not own one
         // ([timelineRowOwnsTransform]). Its twirl-down is the fx chain alone —
         // the same place a layer keeps its effects, and the same lane
@@ -1185,15 +1176,9 @@ class _StoryboardRailRows {
               name: 'V',
               frames: const [],
             ),
-            groupKeyOf: (lane) {
-              final parsed = parseEffectLaneId(lane.laneId);
-              return parsed == null
-                  ? track.id.value
-                  : _StoryboardPanelState.trackEffectGroupKey(
-                      track,
-                      parsed.effectId,
-                    );
-            },
+            // A layer row's own key ([laneGroupKey]), on the lane carrier.
+            groupKeyOf: (lane) =>
+                laneGroupKey(trackTransformLaneCarrierId(track.id), lane.laneId),
             lanes: _trackEffectLanes(track),
             // F-195: the V row's chain as an edit in flight shows it — the
             // one function its key strips read too.
@@ -1996,10 +1981,7 @@ class _StoryboardRailRows {
         railRow: (track: track, layer: layer, seSlot: slot, conteSeat: null),
         height: heights.se,
       ));
-      if (layer != null &&
-          _state.widget.expandedSeAudioRows.contains(
-            StoryboardPanel.seRowKey(track, slot),
-          )) {
+      if (layer != null && _seLanesOpen(track, slot)) {
         // One slot per lane the rail draws ([_seLanes]) — a phantom or a
         // missing slot here would shift every row under it (C5). The Audio
         // lane keeps no lane address, as it had: no key range lands on it.
@@ -2034,7 +2016,7 @@ class _StoryboardRailRows {
       // exactly how the ring lands on a neighbour: this table is what the
       // bands and the select-drag read, so a slot the rail no longer draws
       // shifts every row under it.
-      if (_state.widget.expandedTransformTracks.contains(track.id.value)) {
+      if (track.lanesExpanded) {
         final carrierId = trackTransformLaneCarrierId(track.id);
         for (final lane in _trackEffectLanes(track)) {
           slots.add((
@@ -2156,7 +2138,7 @@ class _StoryboardRailRows {
           onOpenCutLinks: _state.widget.onOpenCutLinks,
           onEditCutBlock: _state.widget.onEditCutBlock,
         ),
-        if (_state.widget.expandedTransformTracks.contains(track.id.value))
+        if (track.lanesExpanded)
           for (final strip in _trackTransformLaneStrips(
             track,
             index,
@@ -2391,9 +2373,7 @@ class _StoryboardRailRows {
             rowBuilder: (context, layer) => seRow(slot, layer),
           ),
         },
-        if (_state.widget.expandedSeAudioRows.contains(
-          StoryboardPanel.seRowKey(track, slot),
-        ))
+        if (_seLanesOpen(track, slot))
           for (final strip in _seLaneStrips(track, index, slot, width, scale))
             strip,
       ],

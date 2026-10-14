@@ -1548,12 +1548,10 @@ void main() {
         _project([track]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        expandedSeAudioRows: {
-          StoryboardPanel.seRowKey(track, 0),
-          StoryboardPanel.seRowKey(track, 1),
-        },
-        // An S row's groups key like the timeline's (F-101).
-        expandedTransformGroups: {
+        // An S row's twirl is its SE row's, and its groups key like the
+        // timeline's (F-101 · F-360).
+        expandedLaneLayerIds: {for (final row in track.seLayers) row.id},
+        expandedLaneGroupKeys: {
           for (final row in track.seLayers)
             laneGroupKey(row.id, transformGroupHeaderLane.laneId),
         },
@@ -1982,9 +1980,10 @@ void main() {
         _project([track]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        expandedSeAudioRows: {StoryboardPanel.seRowKey(track, 0)},
-        // An S row's groups key like the timeline's (F-101).
-        expandedTransformGroups: {
+        // An S row's twirl is its SE row's, and its groups key like the
+        // timeline's (F-101 · F-360).
+        expandedLaneLayerIds: {track.seLayers.single.id},
+        expandedLaneGroupKeys: {
           laneGroupKey(
             track.seLayers.single.id,
             transformGroupHeaderLane.laneId,
@@ -2036,8 +2035,8 @@ Future<void> _pumpStoryboardPanel(
   StoryboardStripSelectCallbacks? stripSelect,
   StoryboardMovieEndCallbacks? movieEnd,
   TimelineLaneRangeHooks? laneRange,
-  Set<String> expandedSeAudioRows = const {},
-  Set<String> expandedTransformGroups = const {},
+  Set<LayerId> expandedLaneLayerIds = const {},
+  Set<String> expandedLaneGroupKeys = const {},
   ValueChanged<TrackId>? onSelectTrack,
   int? playheadGlobalFrame,
   ValueChanged<int>? onSeekGlobalFrame,
@@ -2087,8 +2086,8 @@ Future<void> _pumpStoryboardPanel(
           stripSelect: stripSelect,
           movieEnd: movieEnd,
           laneRange: laneRange,
-          expandedSeAudioRows: expandedSeAudioRows,
-          expandedTransformGroups: expandedTransformGroups,
+          expandedLaneLayerIds: expandedLaneLayerIds,
+          expandedLaneGroupKeys: expandedLaneGroupKeys,
           onSelectTrack: onSelectTrack,
           playheadFrame: playheadGlobalFrame == null
               ? null

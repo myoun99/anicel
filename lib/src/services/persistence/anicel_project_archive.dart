@@ -65,6 +65,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v18 (2026-10-15, F-360's second half — the storyboard rail's twirls):
+/// a track keeps its V row's twirl and the effect groups open inside it —
+/// `lanesExpanded` and `expandedLaneGroups` on a track (`Track.toJson`),
+/// as a layer row keeps its own since v16. A v17 build reads neither and
+/// its next save writes the track back without them. The bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a track that says neither is a shut
+/// one at THIS version too (`Track.toJson` leaves each out until it is
+/// set), so a v17 file is such a document. The S rows' twirls needed no
+/// number: an S row is a layer, and kept its own since v16.
+///
 /// v17 (2026-10-14, F-343 — 「콘티행을 확실하게 글로벌행으로」): a track
 /// keeps the STRUCTURE its cuts' contes wear — `conte` on a track
 /// (`TrackConte.toJson`: the conte's head, and the rows and 공정 folders
@@ -277,7 +290,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 17;
+const int anicelFormatVersion = 18;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

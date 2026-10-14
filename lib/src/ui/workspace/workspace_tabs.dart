@@ -1027,9 +1027,11 @@ class _WorkspaceTabs {
               // here as it does on the timeline's rail (I-73).
               _state.widget.session.railView.collapsedAttachBaseIds,
               // Nor a twirl: the camera row opens its lanes, a conte row its
-              // lanes and their groups (I-73 ④ⓔ).
+              // lanes and their groups (I-73 ④ⓔ), an S row its SE row's, a
+              // V row its track's (F-360).
               _state.widget.session.railView.expandedLaneLayerIds,
               _state.widget.session.railView.expandedLaneGroupKeys,
+              _state.widget.session.railView.twirledTrackIds,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),

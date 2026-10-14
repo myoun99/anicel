@@ -8,7 +8,7 @@ import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_fill_reference_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
 import '../../services/project_lookup.dart'
-    show layerAnywhereOrNull, requireLayerAnywhere;
+    show layerAnywhereOrNull, requireLayerAnywhere, rowTwirlsOf;
 import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'active_cut_controllers.dart';
 import 'row_sweep.dart';
@@ -158,7 +158,8 @@ class LayerSwitchVerbs {
       requireLayerAnywhere(_project.repository.requireProject(), layerId);
 
   /// Whether [layerId]'s property lanes are twirled down right now — the
-  /// row's own (F-360).
+  /// row's own (F-360), and a V row's, by its lane carrier, its track's
+  /// ([rowTwirlsOf]).
   ///
   /// 🚨A LIVE READ, like [isLayerEyeOn]: the legend's twirl-all turns row
   /// after row as ONE step, and the rail's sets are read back off the
@@ -166,7 +167,9 @@ class LayerSwitchVerbs {
   /// press spread across the selection may already have turned the next
   /// row, which a stale read would turn back.
   bool isLayerLanesOpen(LayerId layerId) =>
-      _rowAnywhere(layerId).lanesExpanded;
+      rowTwirlsOf(_project.repository.requireProject(), layerId)
+          ?.lanesExpanded ??
+      false;
 
   /// Whether [layerId]'s TRANSFORM group is applied right now.
   ///
