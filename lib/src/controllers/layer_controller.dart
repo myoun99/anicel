@@ -329,6 +329,20 @@ class LayerController {
   CutId? _cutOfRow(LayerId layerId) =>
       cutIdOfLayer(_repository.requireProject(), layerId) ?? _cutId;
 
+  /// [command] for one row, addressed in its own cut ([_cutOfRow]) so it
+  /// reaches the row's head — nothing for a track's own row in a gap, which
+  /// no cut addresses. What the row's opacity, blend, group fold and
+  /// twirls are each written through (F-360 brought the third and fourth).
+  void _executeInItsCut(
+    LayerId layerId,
+    Command Function(CutId cutId) command,
+  ) {
+    final cutId = _cutOfRow(layerId);
+    if (cutId != null) {
+      _historyManager.execute(command(cutId));
+    }
+  }
+
   void _executeDisplayBatch({
     required List<LayerId> layerIds,
     required String debugLabel,
@@ -408,45 +422,33 @@ class LayerController {
   /// ↩️That last sentence was not so when it was written — the attach fold
   /// was a set on the rail's view (`RailView`), undone through a command of
   /// its own, and every reload opened it back up. It is so since F-360.
-  void toggleLayerCollapsed(LayerId layerId) {
-    final cutId = _cutOfRow(layerId);
-    if (cutId == null) {
-      return; // A track's own row in a gap: no cut to address it in.
-    }
-    final collapsed = requireLayerAnywhere(
-      _repository.requireProject(),
-      layerId,
-    ).collapsed;
-    _historyManager.execute(
-      UpdateLayerCollapsedCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        collapsed: !collapsed,
-      ),
-    );
-  }
+  void toggleLayerCollapsed(LayerId layerId) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerCollapsedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      collapsed: !requireLayerAnywhere(
+        _repository.requireProject(),
+        layerId,
+      ).collapsed,
+    ),
+  );
 
   /// The row's property-lane twirl — the fx and Transform lanes live under
   /// it — on every row of its head ([UpdateLayerLanesExpandedCommand]).
-  void toggleLayerLanes(LayerId layerId) {
-    final cutId = _cutOfRow(layerId);
-    if (cutId == null) {
-      return;
-    }
-    final expanded = requireLayerAnywhere(
-      _repository.requireProject(),
-      layerId,
-    ).lanesExpanded;
-    _historyManager.execute(
-      UpdateLayerLanesExpandedCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        expanded: !expanded,
-      ),
-    );
-  }
+  void toggleLayerLanes(LayerId layerId) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerLanesExpandedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      expanded: !requireLayerAnywhere(
+        _repository.requireProject(),
+        layerId,
+      ).lanesExpanded,
+    ),
+  );
 
   /// [laneId]'s group inside the row's twirl-down, twirled to [expanded] on
   /// every row of its head ([UpdateLayerLaneGroupExpandedCommand]).
@@ -454,21 +456,16 @@ class LayerController {
     LayerId layerId,
     String laneId, {
     required bool expanded,
-  }) {
-    final cutId = _cutOfRow(layerId);
-    if (cutId == null) {
-      return;
-    }
-    _historyManager.execute(
-      UpdateLayerLaneGroupExpandedCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        laneId: laneId,
-        expanded: expanded,
-      ),
-    );
-  }
+  }) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerLaneGroupExpandedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      laneId: laneId,
+      expanded: expanded,
+    ),
+  );
 
   /// The audio counterpart of [toggleLayerVisibility]: silences the SE
   /// row's sounds without touching them.
@@ -517,20 +514,15 @@ class LayerController {
   void setLayerBlendMode({
     required LayerId layerId,
     required LayerBlendMode blendMode,
-  }) {
-    final cutId = _cutOfRow(layerId);
-    if (cutId == null) {
-      return; // A track's own row in a gap: no cut to address it in.
-    }
-    _historyManager.execute(
-      UpdateLayerBlendModeCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        blendMode: blendMode,
-      ),
-    );
-  }
+  }) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerBlendModeCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      blendMode: blendMode,
+    ),
+  );
 
   /// Static opacity is the LINK GROUP'S, one value for every use of the
   /// layer, like the blend beside it. Per-use FADES belong to the local FX
@@ -539,20 +531,16 @@ class LayerController {
   /// ↩️It was per-use like the eye (T9: 「this one stopped reaching across
   /// the link」). 유저 2026-10-04 (F-278): 「불투명도도 공유하도록 …
   /// 보이기만 독립적으로 하고」 — the mirror is [UpdateLayerOpacityCommand]'s.
-  void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    final cutId = _cutOfRow(layerId);
-    if (cutId == null) {
-      return; // A track's own row in a gap: no cut to address it in.
-    }
-    _historyManager.execute(
-      UpdateLayerOpacityCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        opacity: opacity.clamp(0.0, 1.0).toDouble(),
-      ),
-    );
-  }
+  void setLayerOpacity({required LayerId layerId, required double opacity}) =>
+      _executeInItsCut(
+        layerId,
+        (cutId) => UpdateLayerOpacityCommand(
+          repository: _repository,
+          cutId: cutId,
+          layerId: layerId,
+          opacity: opacity.clamp(0.0, 1.0).toDouble(),
+        ),
+      );
 
   Cut? _findCutOrNull() {
     if (_cutId == null) {

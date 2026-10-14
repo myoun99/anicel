@@ -304,8 +304,21 @@ import '../../tool/refactor/clone_scan.dart';
 /// went with it.
 /// 🔬Measured on the lane against master (`279933153`, at 89): that one
 /// gone, none added.
+///
+/// 88 → 86 (2026-10-14, F-360 — a row's folds and twirls are the row's):
+/// the pairs `RailView.followLinks` · `followHeads` (52 tokens) and
+/// `LayerController.setLayerBlendMode` · `setLayerOpacity` (40) left. The
+/// rail no longer walks a link group or a head to make the twirls agree —
+/// a command writes them on every row of the head, as it wrote a folder's
+/// fold — so the two walks that did are gone. And a row's verb addressed
+/// in its own cut is ONE `_executeInItsCut`: the lane twirl and a lane
+/// group's twirl came as the third and fourth copies of the blend's and
+/// the opacity's guard-and-execute (the scan named them before they were
+/// merged), and the group fold had the same body.
+/// 🔬Measured on the lane against F-351's lane (`afcd0ea95`, at 88): those two
+/// gone, none added.
 void main() {
-  const ceiling = 88;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
