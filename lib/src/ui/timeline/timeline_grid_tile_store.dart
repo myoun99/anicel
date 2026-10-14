@@ -1,8 +1,6 @@
 import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
-import 'dart:developer' show Timeline;
-import 'dart:math' as math;
 import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
@@ -16,8 +14,7 @@ import '../../models/layer_id.dart';
 import '../../native/qa_native_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
-import '../present_pacing.dart' show quietForBackgroundGpuWork;
-import '../../services/playback/present_slot.dart' show quietBetweenHeldFrames;
+import '../quiet_turns.dart';
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
@@ -198,7 +195,7 @@ class TimelineGridTileStore {
     _ahead.clear();
     _warmInFlight.clear();
     _askedWhileWarm.clear();
-    _warmSpanMicros = 0;
+    _warmSpan.micros = 0;
     _drainsRunning = 0;
     _epoch += 1;
   }
@@ -497,7 +494,7 @@ class TimelineGridTileStore {
   /// turn. Asked for here instead, a few spans at a time, after each frame a
   /// clock's look changed what it shows — and rastered, baked and uploaded
   /// only in the quiet between that frame's raster and the next held one
-  /// ([_intoTheQuiet]): a first attempt that began them straight after the
+  /// ([QuietTurns]): a first attempt that began them straight after the
   /// frame had their uploads running beside its raster, which they slowed
   /// past its vblank.
   ///
@@ -646,26 +643,36 @@ class TimelineGridTileStore {
     var pagesLeft = pageTiles;
     try {
       while (_warmQueue(pagesLeft) != null) {
-        final quiet = warmUpQuiet.quiet();
-        if (quiet != null && !await _intoTheQuiet(quiet, epoch)) {
-          return;
-        }
-        final queue = _warmQueue(pagesLeft);
-        if (queue == null) {
-          return;
-        }
-        if (identical(queue, _warming)) {
-          pagesLeft -= 1;
-        }
-        final request = queue.remove(queue.keys.first)!;
-        final started = warmUpQuiet.now();
-        if (!await _rasterAndLand(engine, request, epoch, warm: true)) {
-          return;
-        }
-        _warmSpanMicros = math.max(
-          _warmSpanMicros * 3 ~/ 4,
-          warmUpQuiet.now() - started,
+        // 🚨A WARM SPAN IS RASTERED, BAKED AND UPLOADED IN THE QUIET
+        // BETWEEN TWO HELD FRAMES ([QuietTurns]): turned away — no room, or
+        // a [clear] came while it waited — the warm-up goes on after the
+        // next held frame, which asks again ([warmTheNextPage]). With
+        // nothing held there is no quiet to keep, and a warm span is taken
+        // in the same turn as the call that asked for it, as it always was.
+        final turn = await quietTurns.inThisQuiet(
+          _warmSpan,
+          gone: () => epoch != _epoch,
         );
+        if (turn == null) {
+          return;
+        }
+        var landed = false;
+        try {
+          final queue = _warmQueue(pagesLeft);
+          if (queue == null) {
+            return;
+          }
+          if (identical(queue, _warming)) {
+            pagesLeft -= 1;
+          }
+          final request = queue.remove(queue.keys.first)!;
+          landed = await _rasterAndLand(engine, request, epoch, warm: true);
+          if (!landed) {
+            return;
+          }
+        } finally {
+          landed ? turn.landed() : turn.gaveUp();
+        }
       }
     } finally {
       if (epoch == _epoch) {
@@ -674,44 +681,13 @@ class TimelineGridTileStore {
     }
   }
 
-  /// What a warm-up reads the quiet between held frames through.
+  /// Where a warm-up takes its turns in the quiet between held frames.
   @visibleForTesting
-  WarmUpQuiet warmUpQuiet = const WarmUpQuiet();
+  QuietTurns quietTurns = QuietTurns.instance;
 
   /// How long a warm span took from its raster to its landing, at the most
   /// of late — what one more has to fit in before the quiet ends.
-  int _warmSpanMicros = 0;
-
-  /// 🚨A WARM SPAN IS RASTERED, BAKED AND UPLOADED IN THE QUIET BETWEEN TWO
-  /// HELD FRAMES ([quietBetweenHeldFrames] has the measurement): waits for
-  /// [quiet] to begin, and answers false — the warm-up goes on after the
-  /// next held frame — when it has no room at all, when it is over, when it
-  /// ends before one more span would land, or when a [clear] came
-  /// meanwhile. A span longer than the quiet once does not shut the warm-up
-  /// out: each look turned away by a quiet too short shortens what is asked.
-  ///
-  /// With nothing held there is no quiet to keep, and a warm span is taken
-  /// in the same turn as the call that asked for it, as it always was.
-  Future<bool> _intoTheQuiet(
-    ({int fromMicros, int untilMicros}) quiet,
-    int epoch,
-  ) async {
-    final now = warmUpQuiet.now();
-    if (quiet.untilMicros <= quiet.fromMicros || now >= quiet.untilMicros) {
-      return false;
-    }
-    if (now < quiet.fromMicros) {
-      await warmUpQuiet.wait(Duration(microseconds: quiet.fromMicros - now));
-      if (epoch != _epoch) {
-        return false;
-      }
-    }
-    if (warmUpQuiet.now() + _warmSpanMicros > quiet.untilMicros) {
-      _warmSpanMicros = _warmSpanMicros * 3 ~/ 4;
-      return false;
-    }
-    return true;
-  }
+  final QuietSpan _warmSpan = QuietSpan();
 
   /// Once the queue has run dry, asks again for the first row it turned
   /// away that is still shown — through the latest request it turned away,
@@ -1131,28 +1107,6 @@ class TimelineGridTileStore {
   ) async {
     return uploadRawRgba(pixels, width: tileWidth, height: tileHeight);
   }
-}
-
-/// What a warm-up reads the quiet between held frames through: the quiet
-/// itself, the clock it is on, and the wait for it to begin — the
-/// display's, on the frame clock ([quietForBackgroundGpuWork]); a test
-/// hands its own.
-@immutable
-class WarmUpQuiet {
-  const WarmUpQuiet({
-    this.quiet = quietForBackgroundGpuWork,
-    this.now = _frameClockNow,
-    this.wait = _sleep,
-  });
-
-  final ({int fromMicros, int untilMicros})? Function() quiet;
-  final int Function() now;
-  final Future<void> Function(Duration) wait;
-
-  static int _frameClockNow() => Timeline.now;
-
-  static Future<void> _sleep(Duration duration) =>
-      Future<void>.delayed(duration);
 }
 
 class _TileRequest {

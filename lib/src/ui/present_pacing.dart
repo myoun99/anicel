@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui show FramePhase, FrameTiming, SceneBuilder;
 
@@ -59,6 +60,17 @@ void clockStopped(Object clock) {
 ({int fromMicros, int untilMicros})? quietForBackgroundGpuWork() {
   final binding = SchedulerBinding.instance;
   return binding is PresentPacing ? binding._quiet() : null;
+}
+
+/// Completes when the quiet between held frames may have moved
+/// ([quietForBackgroundGpuWork]): a frame was held — the quiet it leaves
+/// is the next — the last clock stopped, or no clock has looked for long
+/// enough that nothing will be held. At once where no quiet is kept.
+Future<void> quietMayHaveMoved() {
+  final binding = SchedulerBinding.instance;
+  return binding is PresentPacing
+      ? binding._quietMoves()
+      : Future<void>.value();
 }
 
 /// 🚨A CLOCK'S LOOK CLAIMS A REAL VBLANK, AND ITS FRAME HANDS ITS SCENE TO
@@ -138,8 +150,16 @@ mixin PresentPacing on WidgetsBinding {
   double? _heldVblank;
   final List<int> _heldGaps = <int>[];
 
-  /// No look for this long and no clock is running: nothing is held.
+  /// No look for this long: a clock that is running but no longer looks —
+  /// its ticker silenced, the route it is on not shown — holds nothing
+  /// either. (A clock that stopped holds nothing from that moment
+  /// ([clockStopped]).)
   static const int _runGoneMicros = 100000;
+
+  /// What waits for the quiet to move ([quietMayHaveMoved]), and what tells
+  /// it once no clock has looked for [_runGoneMicros].
+  Completer<void>? _quietMove;
+  Timer? _quietMoving;
 
   /// The clocks running now ([clockStarted]): while there are any, the
   /// compositor composes on every vblank.
@@ -154,6 +174,10 @@ mixin PresentPacing on WidgetsBinding {
     }
     if (_clocks.isNotEmpty != composing) {
       displayTiming?.composeEveryVblank(on: _clocks.isNotEmpty);
+      if (_clocks.isEmpty) {
+        // Nothing will be held: what waits for a quiet need not.
+        _quietMoved();
+      }
     }
   }
 
@@ -168,6 +192,7 @@ mixin PresentPacing on WidgetsBinding {
     _lookedAt = null;
     _heldVblank = null;
     _heldGaps.clear();
+    _quietMoved();
   }
 
   @override
@@ -241,6 +266,9 @@ mixin PresentPacing on WidgetsBinding {
       _heldGaps.add(((vblank - before) / period).round());
     }
     _heldVblank = vblank;
+    // Told now, before the scene this frame hands over is built: what it
+    // wakes runs once the frame is done, behind that scene.
+    _quietMoved();
   }
 
   double _periodOf(DisplayTiming timing) =>
@@ -253,7 +281,8 @@ mixin PresentPacing on WidgetsBinding {
     if (timing == null ||
         lookedAt == null ||
         vblank == null ||
-        _heldGaps.isEmpty) {
+        _heldGaps.isEmpty ||
+        _clocks.isEmpty) {
       return null;
     }
     if (timing.nowMicros - lookedAt > _runGoneMicros) {
@@ -274,6 +303,25 @@ mixin PresentPacing on WidgetsBinding {
       // hand-off ([budgetMicros]), and a millisecond.
       marginMicros: budgetMicros + 1000,
     );
+  }
+
+  Future<void> _quietMoves() {
+    if (_quiet() == null) {
+      return Future<void>.value();
+    }
+    _quietMoving ??= Timer(
+      const Duration(microseconds: _runGoneMicros),
+      _quietMoved,
+    );
+    return (_quietMove ??= Completer<void>()).future;
+  }
+
+  void _quietMoved() {
+    _quietMoving?.cancel();
+    _quietMoving = null;
+    final move = _quietMove;
+    _quietMove = null;
+    move?.complete();
   }
 
   void _learn(List<ui.FrameTiming> timings) {

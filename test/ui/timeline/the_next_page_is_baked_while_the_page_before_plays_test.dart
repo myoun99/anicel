@@ -19,6 +19,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart'
     show debugRawRgbaUploader;
+import 'package:anicel/src/ui/quiet_turns.dart';
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
@@ -520,19 +521,21 @@ void main() {
       quiet = null;
       waits.clear();
       uploads = 0;
-      store.warmUpQuiet = WarmUpQuiet(
-        quiet: () => quiet,
-        now: () => clock,
-        wait: (duration) {
-          final begun = Completer<void>();
-          waits.add((duration, begun));
-          return begun.future;
-        },
+      store.quietTurns = QuietTurns(
+        clock: QuietClock(
+          quiet: () => quiet,
+          now: () => clock,
+          wait: (duration) {
+            final begun = Completer<void>();
+            waits.add((duration, begun));
+            return begun.future;
+          },
+        ),
       );
     });
 
     tearDown(() {
-      store.warmUpQuiet = const WarmUpQuiet();
+      store.quietTurns = QuietTurns.instance;
       debugRawRgbaUploader = null;
     });
 

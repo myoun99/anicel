@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -558,6 +560,11 @@ void main() {
   });
 
   group('the quiet between held frames', () {
+    /// The run's clock: a quiet is kept only while one is running.
+    final clock = Object();
+    setUp(() => clockStarted(clock));
+    tearDown(() => clockStopped(clock));
+
     /// Holds a frame a film frame apart for each of [intervals], each its
     /// look's change; answers the last one's claim.
     Future<PresentClaim> holdChanges(
@@ -617,8 +624,10 @@ void main() {
       expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
     });
 
-    testWidgets('no clock looking for a while: nothing will be held, and '
-        'there is no quiet to keep', (tester) async {
+    testWidgets('a clock that has not looked for a while — its ticker '
+        'silenced — holds nothing, and there is no quiet to keep', (
+      tester,
+    ) async {
       final shown = await settle(tester);
       await holdChanges(tester, shown, [41700, 41700]);
       expect(quietForBackgroundGpuWork(), isNotNull, reason: '⛔premise');
@@ -627,6 +636,74 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(quietForBackgroundGpuWork(), isNull);
+    });
+
+    testWidgets('🚨the last clock stopped: no quiet, at once — a run that '
+        'stands to wait for its picture keeps nothing waiting for a quiet', (
+      tester,
+    ) async {
+      final shown = await settle(tester);
+      await holdChanges(tester, shown, [41700, 41700]);
+      expect(quietForBackgroundGpuWork(), isNotNull, reason: '⛔premise');
+
+      clockStopped(clock);
+
+      expect(quietForBackgroundGpuWork(), isNull);
+    });
+
+    group('what waits for the quiet to move is told', () {
+      /// Whether what waits, from now, has been told.
+      Future<bool Function()> waiting(WidgetTester tester) async {
+        var moved = false;
+        unawaited(quietMayHaveMoved().then((_) => moved = true));
+        await tester.pump();
+        return () => moved;
+      }
+
+      testWidgets('🚨when the next frame is held — the quiet it leaves is '
+          'the next', (tester) async {
+        final shown = await settle(tester);
+        await holdChanges(tester, shown, [41700, 41700]);
+        final moved = await waiting(tester);
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(moved(), isFalse, reason: 'nothing held since');
+
+        await holdChanges(tester, shown, [41700]);
+
+        expect(moved(), isTrue);
+      });
+
+      testWidgets('🚨when the last clock stops', (tester) async {
+        final shown = await settle(tester);
+        await holdChanges(tester, shown, [41700, 41700]);
+        final moved = await waiting(tester);
+        expect(moved(), isFalse, reason: '⛔premise');
+
+        clockStopped(clock);
+        await tester.pump();
+
+        expect(moved(), isTrue);
+      });
+
+      testWidgets('when no clock has looked for a while', (tester) async {
+        final shown = await settle(tester);
+        await holdChanges(tester, shown, [41700, 41700]);
+        final moved = await waiting(tester);
+        expect(moved(), isFalse, reason: '⛔premise');
+
+        await tester.pump(const Duration(milliseconds: 150));
+
+        expect(moved(), isTrue);
+      });
+
+      testWidgets('at once where no quiet is kept', (tester) async {
+        await settle(tester);
+        expect(quietForBackgroundGpuWork(), isNull, reason: '⛔premise');
+
+        final moved = await waiting(tester);
+
+        expect(moved(), isTrue);
+      });
     });
 
     testWidgets('⛔where the display says nothing, there is no quiet either', (
