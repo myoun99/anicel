@@ -121,6 +121,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(heavyBuilds, 2, reason: 'opened again, so built again');
   });
+
+  testWidgets('a cached tab is handed back only to itself, and only while it '
+      'is built for the same thing (I-7)', (tester) async {
+    Widget cachedPair(String activeTabId, Object identity, String said) {
+      EditorPanelTab tab(String id) => EditorPanelTab(
+        id: id,
+        label: id,
+        icon: Icons.timeline,
+        cachesContent: true,
+        builder: (context) => Text('$id for $said'),
+      ).builtFor(identity);
+      return MaterialApp(
+        home: Scaffold(
+          body: EditorPanelTabs(
+            tabs: [tab('timeline'), tab('storyboard')],
+            activeTabId: activeTabId,
+            onTabSelected: (_) {},
+          ),
+        ),
+      );
+    }
+
+    final project = Object();
+    await tester.pumpWidget(cachedPair('timeline', project, 'a'));
+    expect(find.text('timeline for a'), findsOneWidget);
+
+    await tester.pumpWidget(cachedPair('storyboard', project, 'a'));
+    expect(
+      find.text('storyboard for a'),
+      findsOneWidget,
+      reason: 'the tab put in front is built, not handed the one before',
+    );
+
+    await tester.pumpWidget(cachedPair('storyboard', Object(), 'b'));
+    expect(
+      find.text('storyboard for b'),
+      findsOneWidget,
+      reason: '🚨built for another project, the open tab is built again — '
+          'the cached one went on showing the project switched away from',
+    );
+  });
 }
 
 class _CounterBox extends StatefulWidget {
