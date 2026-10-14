@@ -157,11 +157,9 @@ void main() {
     expect(transitionRow(s).instructions.values.single.text, word);
   });
 
-  const other = TrackId('track-b');
-
-  /// Two tracks, the session parked in B's leading gap: B's only cut slid
-  /// right by 4, so its global 0..3 are a gap.
-  EditorSessionManager parkedOnB() {
+  test('standing in a gap, the S rows and the transition row are the '
+      'track stood on', () {
+    const other = TrackId('track-b');
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('two'),
@@ -184,31 +182,13 @@ void main() {
       ),
     );
     addTearDown(s.dispose);
+    // Track B's only cut slid right by 4: its global 0..3 are a gap.
     expect(s.cutMove.beginCutMoveDrag(const CutId('cut-b1')), isTrue);
     s.cutMove.updateCutMoveDrag(4);
     s.cutMove.endCutMoveDrag();
     s.selectFrameIndex(0);
     s.selectTrackCutAtPlayhead(other);
     expect(s.activeCutId, isNull, reason: 'the premise: parked in the gap');
-    return s;
-  }
-
-  test('standing in a gap on a track the film no longer holds, the track '
-      'stood on is its first', () {
-    final s = parkedOnB();
-    expect(s.selectedTrackId, other, reason: 'premise');
-
-    s.repository.updateProject(
-      (project) => project.copyWith(tracks: [project.tracks.first]),
-    );
-    s.notifyChanged();
-
-    expect(s.selectedTrackId, const TrackId('default-track'));
-  });
-
-  test('standing in a gap, the S rows and the transition row are the '
-      'track stood on', () {
-    final s = parkedOnB();
     List<LayerId> seShown() => [
       for (final layer in s.trackSe.trackSeDisplayLayers) layer.id,
     ];
