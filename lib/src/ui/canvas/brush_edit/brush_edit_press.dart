@@ -385,12 +385,12 @@ class _BrushEditPress {
     // (H43).
     _state._opening.stopWaiting();
     // A stroke can lift before it travelled far enough to name a ray; the
-    // snap settles on the best guess it has rather than swallowing a short
+    // lock settles on the best guess it has rather than swallowing a short
     // flick.
-    final session = _state._snapSession;
-    if (session != null) {
-      for (final snapped in session.finish()) {
-        _state._stroke.advanceStrokeTo(snapped);
+    final lock = _state._strokeLock;
+    if (lock != null) {
+      for (final locked in lock.finish()) {
+        _state._stroke.advanceStrokeTo(locked);
       }
     }
 

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
@@ -427,10 +428,11 @@ class _InteractiveBrushEditCanvasViewState
   /// interpolation, so every downstream route sees the smoothed chain.
   StrokeStabilizer? _stabilizer;
 
-  /// Perspective ray lock for the active stroke: created at pointer-down
-  /// when a perspective guide is snapping, and fed AFTER the stabilizer —
-  /// smoothing a snapped line would bend the straightness back out of it.
-  PerspectiveSnapSession? _snapSession;
+  /// The active stroke's lock — a snapping perspective's ray, or the eight
+  /// ways while Shift is held (I-61): created at pointer-down, and fed
+  /// AFTER the stabilizer — smoothing a snapped line would bend the
+  /// straightness back out of it.
+  StrokeLock? _strokeLock;
 
   /// The acting symmetry's copy transforms, frozen at pointer-down so an
   /// axis edited mid-stroke cannot tear the stroke in half. One identity

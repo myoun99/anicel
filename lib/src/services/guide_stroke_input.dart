@@ -1,10 +1,12 @@
+import 'dart:math' as math;
+
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
 import '../models/drawing_guide.dart';
 import 'guide_geometry.dart';
 
-/// How far a stroke must travel, in SCREEN pixels, before the perspective
-/// snap commits to a ray.
+/// How far a stroke must travel, in SCREEN pixels, before its ray lock
+/// commits to a ray.
 ///
 /// The first sample or two of a stroke point almost nowhere — pen jitter is
 /// the same size as the travel — and picking a ray from that noise would
@@ -12,9 +14,11 @@ import 'guide_geometry.dart';
 /// makes the choice stable. It is divided by zoom at stroke start, the same
 /// way the stabilizer freezes its rope length, so the feel does not change
 /// with magnification.
-const double kPerspectiveSnapLockTravel = 6.0;
+const double kRayLockTravel = 6.0;
 
-/// Locks a stroke onto ONE perspective ray and holds it there.
+/// Locks a stroke onto ONE ray of its candidates and holds it there — a
+/// perspective guide's ([RayLock.ofGuides]), or one of the eight ways Shift
+/// holds a stroke to ([RayLock.eightWays]).
 ///
 /// The ray is chosen once, shortly after the stroke starts, and never
 /// revisited: projecting each point onto whichever ray is nearest right now
@@ -33,20 +37,21 @@ const double kPerspectiveSnapLockTravel = 6.0;
 /// picture — so a stroke drawn in a posed row's artwork ([space]) hands its
 /// points OUT through the row's placement and takes the snapped ones back
 /// ([GuideSpace] has what measuring in the artwork got wrong).
-class PerspectiveSnapSession {
-  PerspectiveSnapSession._(
+class RayLock {
+  RayLock._(
     this._candidates,
     this._start,
     this._lockTravel,
     this._space,
   );
 
-  /// A session for [guides], or null when nothing is snapping — callers
-  /// skip the whole mechanism then and the stroke path is untouched.
+  /// A lock onto the rays of [guides], or null when nothing is snapping —
+  /// callers skip the whole mechanism then and the stroke path is
+  /// untouched.
   ///
   /// [start], and every point fed and handed back after it, is in the
   /// stroke's own [space].
-  static PerspectiveSnapSession? maybeStart({
+  static RayLock? ofGuides({
     required CutGuides guides,
     required CanvasPoint start,
     required double zoom,
@@ -54,13 +59,49 @@ class PerspectiveSnapSession {
   }) {
     final snapping = guides.snappingPerspectives.toList();
     if (snapping.isEmpty) return null;
+    return _onto(
+      (onCanvas) => snapCandidatesAt(snapping, onCanvas),
+      start: start,
+      zoom: zoom,
+      space: space,
+    );
+  }
+
+  /// A lock onto the nearest of the EIGHT WAYS from [start] — across, down
+  /// and the two diagonals of the canvas, 45° apart (I-61-Q1: 「Shift 는
+  /// 45° 잠금」; 유저 09-14: 「45도로 스냅하면 결과적으로 수직수평 구현되니
+  /// 로직 단순화」). Four lines: a line has no forward, so each is two ways
+  /// ([chooseSnapCandidate]).
+  static RayLock eightWays({
+    required CanvasPoint start,
+    required double zoom,
+    GuideSpace space = GuideSpace.canvas,
+  }) => _onto(
+    (onCanvas) => [
+      for (final (dx, dy) in const [
+        (1.0, 0.0),
+        (math.sqrt1_2, math.sqrt1_2),
+        (0.0, 1.0),
+        (-math.sqrt1_2, math.sqrt1_2),
+      ])
+        SnapCandidate(origin: onCanvas, dx: dx, dy: dy),
+    ],
+    start: start,
+    zoom: zoom,
+    space: space,
+  )!;
+
+  static RayLock? _onto(
+    List<SnapCandidate> Function(CanvasPoint onCanvas) candidatesAt, {
+    required CanvasPoint start,
+    required double zoom,
+    required GuideSpace space,
+  }) {
     final onCanvas = space.isCanvas ? start : space.toCanvas.apply(start);
-    final candidates = snapCandidatesAt(snapping, onCanvas);
+    final candidates = candidatesAt(onCanvas);
     if (candidates.isEmpty) return null;
-    final lockTravel = zoom > 0
-        ? kPerspectiveSnapLockTravel / zoom
-        : kPerspectiveSnapLockTravel;
-    return PerspectiveSnapSession._(candidates, onCanvas, lockTravel, space);
+    final lockTravel = zoom > 0 ? kRayLockTravel / zoom : kRayLockTravel;
+    return RayLock._(candidates, onCanvas, lockTravel, space);
   }
 
   final List<SnapCandidate> _candidates;
@@ -126,6 +167,91 @@ class PerspectiveSnapSession {
     final released = [for (final point in _held) chosen.project(point)];
     _held.clear();
     return released;
+  }
+}
+
+/// THE STROKE'S LOCK, A STRETCH AT A TIME: the rays of its guides — or,
+/// while Shift is held, the eight ways ([RayLock.eightWays]).
+///
+/// 🗣️I-61-Q2 (유저 2026-10-08): 「누르고 있는 동안만 — 누른 그 자리에서부터
+/// 잠긴다」 — held before the stroke, it locks from the start; pressed in
+/// the middle, from where the stroke has got to; let go, the stroke goes on
+/// free from there; and as often as it is pressed in one stroke. So a
+/// stretch begins at the press and at every change of Shift, where the
+/// stroke stands then, and its lock is made there — the points the last
+/// one still held let go of first.
+///
+/// ⚠️FREE IS AS THE GUIDES HAVE IT: let go of Shift, a stroke drawn with a
+/// snapping perspective goes on along a ray of that, chosen afresh where it
+/// was let go. Mine (유저 09-14: 「로직은 맡기니 단순화」) — Shift wins while
+/// it is held, and nothing else changes.
+///
+/// The guides, the zoom and the [space] are the stroke's, read once at its
+/// start: an edit landing mid-stroke changes no stretch of it.
+class StrokeLock {
+  StrokeLock({
+    required CutGuides guides,
+    required CanvasPoint start,
+    required double zoom,
+    GuideSpace space = GuideSpace.canvas,
+  }) : _guides = guides,
+       _zoom = zoom,
+       _space = space,
+       _end = start,
+       _lock = RayLock.ofGuides(
+         guides: guides,
+         start: start,
+         zoom: zoom,
+         space: space,
+       );
+
+  final CutGuides _guides;
+  final double _zoom;
+  final GuideSpace _space;
+
+  /// The lock of the stretch under way — null where it is free.
+  RayLock? _lock;
+
+  /// Whether Shift was held for the stretch under way.
+  bool _shift = false;
+
+  /// Where the stroke stands: the last point handed out, or its start.
+  CanvasPoint _end;
+
+  /// Feeds one stabilized point, with whether Shift is held now; returns
+  /// the points the stroke should advance through, in order.
+  ///
+  /// ★Asked at EVERY point, as the shape tool asks Shift of every move
+  /// (`_shapeKeepsRatioNow`): held before the press and pressed during the
+  /// drag are one question.
+  List<CanvasPoint> follow(CanvasPoint point, {required bool shift}) {
+    final out = <CanvasPoint>[];
+    if (shift != _shift) {
+      _shift = shift;
+      out.addAll(_handOut(_lock?.finish() ?? const []));
+      _lock = shift
+          ? RayLock.eightWays(start: _end, zoom: _zoom, space: _space)
+          : RayLock.ofGuides(
+              guides: _guides,
+              start: _end,
+              zoom: _zoom,
+              space: _space,
+            );
+    }
+    final lock = _lock;
+    out.addAll(_handOut(lock == null ? [point] : lock.follow(point)));
+    return out;
+  }
+
+  /// Pen-up: what the stretch under way still holds, settled
+  /// ([RayLock.finish]).
+  List<CanvasPoint> finish() => _handOut(_lock?.finish() ?? const []);
+
+  List<CanvasPoint> _handOut(List<CanvasPoint> points) {
+    if (points.isNotEmpty) {
+      _end = points.last;
+    }
+    return points;
   }
 }
 

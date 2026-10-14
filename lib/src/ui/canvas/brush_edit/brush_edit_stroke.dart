@@ -195,7 +195,7 @@ class _BrushEditStroke {
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
     // line that is already down.
-    _state._snapSession = PerspectiveSnapSession.maybeStart(
+    _state._strokeLock = StrokeLock(
       guides: _state.widget.guides,
       start: canvasPosition,
       zoom: _state.widget.viewport.zoom,
@@ -302,20 +302,26 @@ class _BrushEditStroke {
     _state._nextSequence += emitted.length;
   }
 
-  /// Stabilized point → perspective snap → the stroke.
+  /// Stabilized point → the stroke's lock → the stroke.
   ///
   /// Smoothing runs first because smoothing a snapped line would bend the
-  /// straightness back out of it. The snap can return NOTHING while it is
+  /// straightness back out of it. The lock can return NOTHING while it is
   /// still deciding which ray this stroke belongs to; those points are held
-  /// inside the session and arrive together the moment it locks.
+  /// inside it and arrive together the moment it locks.
+  ///
+  /// 🗣️I-61: Shift held is the stroke's 45° lock (I-61-Q1 · Q2) — asked
+  /// HERE, of the keyboard, and nowhere else on the stroke's way.
   void advanceStrokeThroughGuides(CanvasPoint canvasPosition) {
-    final session = _state._snapSession;
-    if (session == null) {
+    final lock = _state._strokeLock;
+    if (lock == null) {
       advanceStrokeTo(canvasPosition);
       return;
     }
-    for (final snapped in session.follow(canvasPosition)) {
-      advanceStrokeTo(snapped);
+    for (final locked in lock.follow(
+      canvasPosition,
+      shift: HardwareKeyboard.instance.isShiftPressed,
+    )) {
+      advanceStrokeTo(locked);
     }
   }
 
@@ -584,7 +590,7 @@ class _BrushEditStroke {
     _state._previousBaseDab = null;
     // Guides are re-read at the next pointer-down, so an axis moved between
     // strokes takes effect on the next one and never on this one.
-    _state._snapSession = null;
+    _state._strokeLock = null;
     _state._symmetryTransforms = const [];
     // The reservoir is per stroke: a new stroke starts with a clean brush.
     _state._groundMixer = null;

@@ -8,6 +8,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'brush_canvas_test_helpers.dart';
@@ -279,5 +280,73 @@ void main() {
     }
     expect(drawn.any((dab) => dab.center.x > 100), isTrue);
     expect(drawn.any((dab) => dab.center.x < 100), isTrue);
+  });
+
+  // 🗣️I-61 (유저 2026-10-08): Shift 는 45° 잠금(Q1) — 「누르고 있는 동안만
+  // — 누른 그 자리에서부터 잠긴다」(Q2). Keyboard only (10-02).
+  group('Shift held', () {
+    testWidgets('🚨puts a wobbly stroke on the nearest of the eight ways '
+        'from where the pen went down', (tester) async {
+      await tester.pumpWidget(app(CutGuides.empty));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+
+      await dragCanvas(tester, const [
+        Offset(20, 20),
+        Offset(60, 66),
+        Offset(100, 94),
+        Offset(150, 154),
+      ]);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      final drawn = dabs();
+      expect(drawn.length, greaterThan(3));
+      for (final dab in drawn) {
+        expect(dab.center.y - 20, closeTo(dab.center.x - 20, 1e-6));
+      }
+    });
+
+    testWidgets('🚨pressed in the middle of a stroke it locks it from '
+        'there — and let go, the stroke is free again', (tester) async {
+      await tester.pumpWidget(app(CutGuides.empty));
+      final pen = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(20, 100)),
+      );
+      await tester.pump();
+      Future<void> to(double x, double y) async {
+        await pen.moveTo(canvasGlobalOffset(tester, Offset(x, y)));
+        await tester.pump();
+      }
+
+      await to(40, 120);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await to(60, 124);
+      await to(80, 116);
+      await to(100, 124);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await to(130, 160);
+      await pen.up();
+      await tester.pump();
+      await tester.pump();
+
+      final drawn = dabs();
+      final held = [
+        for (final dab in drawn)
+          if (dab.center.x > 41 && dab.center.x < 99) dab,
+      ];
+      expect(held, isNotEmpty);
+      for (final dab in held) {
+        expect(dab.center.y, closeTo(120, 1e-6), reason: 'held across');
+      }
+      expect(
+        drawn.any((dab) => dab.center.x < 40 && dab.center.y < 119),
+        isTrue,
+        reason: 'free before it',
+      );
+      expect(
+        drawn.any((dab) => dab.center.x > 100 && dab.center.y > 121),
+        isTrue,
+        reason: 'free after it',
+      );
+    });
   });
 }
