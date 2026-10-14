@@ -323,7 +323,7 @@ class _BottomBarBuild {
     // gains a menu-open tap and nothing else.
     final settingsEntries = _settingsEntries(fold);
 
-    return Row(
+    final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(width: CanvasCapsule.barPillEnd),
@@ -387,6 +387,18 @@ class _BottomBarBuild {
         ]),
         const SizedBox(width: CanvasCapsule.barPillEnd),
       ],
+    );
+    // 🗣️THE PAGE STRIP'S LAW (`_PageStripSeat`): a panel too narrow for
+    // what the fold kept shows all of it, smaller — never a row that runs
+    // off the capsule, never a control cut away. At the narrowest the pill
+    // holds Fit and the gear, which never go, and below a 438px window the
+    // timesheet's rail is narrower than those two
+    // (`canvas-bottom-bar-overflows-at-437`, measured 2026-10-14).
+    // ⚠️The height is the bar's own, so a row that fits is its own size
+    // and nothing is scaled.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: SizedBox(height: constraints.maxHeight, child: row),
     );
   }
 

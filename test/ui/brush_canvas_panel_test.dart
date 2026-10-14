@@ -1091,8 +1091,11 @@ void main() {
       // 1px through the band where clusters actually shed — a coarser step
       // walked straight past a width that overflowed by 2px — and coarse
       // above it, where nothing sheds and only the arithmetic is on trial.
+      // 🚨From under the pill's LAST shape, Fit and the gear (a panel under
+      // 103px — the timesheet's rail below a 438px window): there all it
+      // can do is get smaller. ↩️From 120 it never looked.
       for (
-        var width = 120.0;
+        var width = 60.0;
         width <= 620.0;
         width += scale > 1 ? 4 : (width < 340 ? 1 : 8)
       ) {
