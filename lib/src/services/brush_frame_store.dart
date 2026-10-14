@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../core/in_flight.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
@@ -645,14 +646,10 @@ class BrushFrameStore {
     if (_bakedSurfaces.containsKey(key) || _keptAt(key, canvasSize) == null) {
       return Future<void>.value();
     }
-    // ⛔A block body: an arrow would hand `whenComplete` what `remove`
-    // answers — this very future — and it would wait on itself for ever.
-    return _thawing[key] ??= _thawOnAWorker(key, canvasSize).whenComplete(() {
-      _thawing.remove(key);
-    });
+    return _thawing.join(key, () => _thawOnAWorker(key, canvasSize));
   }
 
-  final Map<BrushFrameKey, Future<void>> _thawing = {};
+  final InFlight<BrushFrameKey, void> _thawing = InFlight();
 
   Future<void> _thawOnAWorker(BrushFrameKey key, CanvasSize canvasSize) =>
       celThawTurns.run(() async {

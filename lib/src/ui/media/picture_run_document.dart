@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../core/in_flight.dart';
 import '../../models/media_asset.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
@@ -80,7 +81,7 @@ final class PictureRunDocument implements ViewerDocument {
   final Map<int, ui.Size> _sizes = {};
 
   /// Pictures on their way open — one open per picture, however many asks.
-  final Map<int, Future<ViewerDocument>> _opening = {};
+  final InFlight<int, ViewerDocument> _opening = InFlight();
 
   /// Pages being rendered: their pictures are not let go under them.
   final Map<int, int> _rendering = {};
@@ -150,27 +151,23 @@ final class PictureRunDocument implements ViewerDocument {
       _open[pageIndex] = open;
       return Future.value(open);
     }
-    return _opening.putIfAbsent(pageIndex, () => _openAndKeep(pageIndex));
+    return _opening.join(pageIndex, () => _openAndKeep(pageIndex));
   }
 
   /// Opens [pageIndex]'s picture and keeps it — ONCE however many asks
   /// wait on it, so one that cannot stay is let go once.
   Future<ViewerDocument> _openAndKeep(int pageIndex) async {
-    try {
-      final opened = await _openOne(_files[pageIndex]);
-      if (opened == null || opened.pageCount == 0) {
-        await opened?.dispose();
-        throw StateError('the picture ${_files[pageIndex]} could not be read');
-      }
-      if (_disposed) {
-        await opened.dispose();
-        throw StateError('the run was let go of while it opened');
-      }
-      _keep(pageIndex, opened);
-      return opened;
-    } finally {
-      _opening.removeWhere((page, _) => page == pageIndex);
+    final opened = await _openOne(_files[pageIndex]);
+    if (opened == null || opened.pageCount == 0) {
+      await opened?.dispose();
+      throw StateError('the picture ${_files[pageIndex]} could not be read');
     }
+    if (_disposed) {
+      await opened.dispose();
+      throw StateError('the run was let go of while it opened');
+    }
+    _keep(pageIndex, opened);
+    return opened;
   }
 
   void _keep(int pageIndex, ViewerDocument picture) {

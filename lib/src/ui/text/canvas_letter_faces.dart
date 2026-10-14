@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/in_flight.dart';
 import '../theme/app_theme.dart' show AppTypography;
 
 /// Hands the engine one font file, to be drawn with under [engineFamily].
@@ -94,7 +95,7 @@ class CanvasLetterFaces {
   final Map<String, String> _inEngine = {};
 
   /// The sets being read now, by name.
-  final Map<String, Future<void>> _onTheirWay = {};
+  final InFlight<String, void> _onTheirWay = InFlight();
 
   /// The sets that could not be had after all — their files gone, or not
   /// ones the engine takes — until what is held is said again ([setHeld]).
@@ -140,7 +141,7 @@ class CanvasLetterFaces {
   /// nobody had.
   bool isOnItsWay(String? family) {
     sendFor(family);
-    return _onTheirWay.containsKey(_held[family]);
+    return _onTheirWay.isRunning(_held[family]);
   }
 
   /// Completes when none of [families] is on its way any more — null when
@@ -148,7 +149,7 @@ class CanvasLetterFaces {
   Future<void>? whenHere(Iterable<String?> families) {
     final waits = [
       for (final family in families)
-        if (isOnItsWay(family)) _onTheirWay[_held[family]]!,
+        if (isOnItsWay(family)) _onTheirWay.runOf(_held[family])!,
     ];
     return waits.isEmpty ? null : Future.wait(waits);
   }
@@ -162,14 +163,14 @@ class CanvasLetterFaces {
         files == null ||
         _notHad.contains(files) ||
         _inEngine.containsKey(files) ||
-        _onTheirWay.containsKey(files)) {
+        _onTheirWay.isRunning(files)) {
       return;
     }
-    _onTheirWay[files] = _fetch(family, files).whenComplete(() {
-      // What is taken off is this very future, done as of now.
-      unawaited(_onTheirWay.remove(files));
-      _changed();
-    });
+    unawaited(
+      _onTheirWay
+          .join(files, () => _fetch(family, files))
+          .whenComplete(_changed),
+    );
   }
 
   /// Reads [family]'s files — the set called [files], as it stands at this

@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import '../../core/in_flight.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
@@ -119,7 +120,7 @@ class MovieCelHydrator {
   /// Pictures being decoded right now: positions that show one frame of the
   /// file — and askers that come back before it lands — wait for ONE
   /// decode.
-  final Map<_MoviePicture, Future<BitmapSurface?>> _decoding = {};
+  final InFlight<_MoviePicture, BitmapSurface?> _decoding = InFlight();
 
   /// Pictures decoded before, for as long as the store still holds them —
   /// the next position showing the same movie frame takes the same
@@ -235,14 +236,7 @@ class MovieCelHydrator {
       return Future.value(kept);
     }
     _decoded.remove(at);
-    return _decoding[at] ??= _decode(movie, at).whenComplete(() {
-      // 🚨A BLOCK, NOT AN ARROW. `remove` answers what it removed — this
-      // very future — and a `whenComplete` callback that returns a future
-      // is waited for: the arrow made the decode wait on itself, and the
-      // playback warmer stopped for good at the first movie frame.
-      // What `remove` answers is dropped on purpose.
-      unawaited(_decoding.remove(at));
-    });
+    return _decoding.join(at, () => _decode(movie, at));
   }
 
   Future<BitmapSurface?> _decode(_OpenMovie movie, _MoviePicture at) async {
