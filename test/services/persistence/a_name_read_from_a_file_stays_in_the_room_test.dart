@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/media_asset.dart' show MediaCarry;
 import 'package:anicel/src/services/media/media_byte_source.dart'
     show MediaFileBytes;
@@ -34,16 +35,20 @@ void main() {
 
   final secret = Uint8List.fromList(List<int>.generate(4096, (i) => i & 0xFF));
 
+  /// The staging runs here, and the switch goes back as it was found.
+  late bool workersRanHere;
+
   setUp(() {
     root = Directory.systemTemp.createTempSync('anicel_room_names_test');
     store = MediaStagingStore(directoryPath: '${root.path}/room/Staged');
     Directory(store.directoryPath).createSync(recursive: true);
     outside = Directory('${root.path}/outside')..createSync();
-    MediaStagingStore.debugStageInline = true;
+    workersRanHere = debugWorkersRunHere;
+    debugWorkersRunHere = true;
   });
 
   tearDown(() {
-    MediaStagingStore.debugStageInline = false;
+    debugWorkersRunHere = workersRanHere;
     deleteTempQuietly(root);
   });
 

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -29,6 +30,11 @@ import '../helpers/project_scratch_folder.dart';
 /// here, a second ask is the same thaw, a cel that moved on keeps what it
 /// has, and a failure is quiet.
 void main() {
+  // The road production takes — a REAL worker. The corpus runs every
+  // worker's job here (`flutter_test_config.dart`).
+  setUp(() => debugWorkersRunHere = false);
+  tearDown(() => debugWorkersRunHere = true);
+
   const canvasSize = CanvasSize(width: 16, height: 16);
 
   BrushFrameKey key(String frame) => BrushFrameKey(

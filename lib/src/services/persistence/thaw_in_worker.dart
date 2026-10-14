@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'dart:isolate';
 
+import '../../core/on_a_worker.dart';
 import '../../core/turns.dart';
 import '../../core/worker_count.dart';
 import '../../models/bitmap_tile.dart';
@@ -19,7 +20,7 @@ import 'brush_drawing_binary_codec.dart';
 /// (`compressAnicelPayloadInWorker` says why).
 Future<AnicelLaidCel> layCelInWorker(AnicelCelBlob blob, TileBlocks blocks) {
   final sent = TransferableTypedData.fromList([blob.bytes]);
-  return Isolate.run(
+  return onAWorker(
     () => layCelEntry(
       AnicelCelBlob(sent.materialize().asUint8List()).decode(),
       tileBlocksHere(blocks),

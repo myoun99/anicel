@@ -1,9 +1,7 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:ui' as ui show ImageByteFormat;
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
+import '../../core/on_a_worker.dart';
 import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show ProjectClock;
@@ -71,15 +69,6 @@ class TrimmedPieces {
   /// A sound's length and picture as the project measures it — the
   /// conform's, the one wait the window and the sound's door both take.
   final Future<AudioPeaks?> Function(String path) _soundPeaks;
-
-  /// Test seam: cut on this isolate instead of a worker.
-  ///
-  /// 🚨A `testWidgets` clock never lets a real isolate finish — the same
-  /// reason, and the same shape, as [MediaStagingStore.debugStageInline]:
-  /// the same cut runs either way, and [cut] stays async either way.
-  /// `flutter_test_config.dart` turns it on for the suite.
-  @visibleForTesting
-  static bool debugCutInline = false;
 
   /// Cuts [source]'s kept span — [inFrame] .. [outFrame], null running to
   /// its end — into its piece, and answers the piece's address, with a real
@@ -156,7 +145,7 @@ class TrimmedPieces {
   Future<KeptSpan?> _movie(String source, String work, _Trim trim) async {
     final clock = _clock();
     final library = debugQaEngineLibraryPathOverride;
-    final written = await _run(() {
+    final written = await onAWorker(() {
       debugQaEngineLibraryPathOverride ??= library;
       return writeMovieSpan(source, work, trim: trim, clock: clock);
     });
@@ -175,7 +164,7 @@ class TrimmedPieces {
       outFrame: trim.outFrame,
     );
     final library = debugQaEngineLibraryPathOverride;
-    final wav = await _run(() {
+    final wav = await onAWorker(() {
       debugQaEngineLibraryPathOverride ??= library;
       return soundSpanAsWav(MediaFileBytes(source), kept, clock);
     });
@@ -244,7 +233,7 @@ class TrimmedPieces {
       }
       final width = first.width;
       final height = first.height;
-      final png = await _run(
+      final png = await onAWorker(
         () => encodeAnimatedPng(width: width, height: height, frames: frames),
       );
       File(work).writeAsBytesSync(png, flush: true);
@@ -297,9 +286,6 @@ class TrimmedPieces {
   /// A name nothing else in the room could be using.
   String _uniqueName(String what) =>
       '.$what-${DateTime.now().microsecondsSinceEpoch}';
-
-  static Future<T> _run<T>(T Function() job) =>
-      debugCutInline ? Future<T>.sync(job) : Isolate.run(job);
 
   static void _deleteIfThere(String path) {
     try {

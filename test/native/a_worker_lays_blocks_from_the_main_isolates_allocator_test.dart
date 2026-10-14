@@ -6,6 +6,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
@@ -34,11 +35,15 @@ void main() {
   setUp(() {
     QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = libraryPath;
+    // A REAL worker: the corpus runs every worker's job here
+    // (`flutter_test_config.dart`), where any pool would be the engine's.
+    debugWorkersRunHere = false;
   });
 
   tearDown(() {
     QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = null;
+    debugWorkersRunHere = true;
   });
 
   test('a block a worker got by the addresses it was told is the engine\'s '
