@@ -19,18 +19,16 @@ import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
-import 'timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
 import 'brush/transform_tool_options.dart';
 import 'editor_session_manager.dart';
+import 'session/rail_view.dart' show RailView;
 import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
-import 'panels/panel_visibility_scope.dart'
-    show PanelInSightValueListenable, PanelVisibilityScope;
 import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
@@ -212,12 +210,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     cameraDim: widget.cameraDimOpacity,
   );
 
-  /// Rail view state (twirled-down lanes, Transform group collapse).
-  /// Session-scoped like the timeline's lane expansion; lost on tab switch
-  /// for now (the host rebuilds) — hoist to the workspace if that stings.
-  final Set<String> _expandedSeAudioRows = {};
-  final Set<String> _expandedTransformTracks = {};
-  final Set<String> _expandedTransformGroups = {};
+  /// Rail view state (twirled-down lanes, Transform group collapse) — the
+  /// session's, beside the timeline's lane expansion ([RailView]), so it
+  /// outlives this host.
+  RailView get _railView => _session.railView;
 
   /// The view cluster, kept by what it shows across this host's rebuilds —
   /// the timeline panel's keep (F-244 ⑧).
@@ -247,14 +243,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.playbackRig.prerenderScheduler.progress,
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
-
-  /// The drag preview as this panel hears it: resting while the panel is
-  /// out of sight. 🔬Measured (storyboard-drags-lay-out-alone, 10-01): kept
-  /// alive behind the timeline, the strip, its gesture layers and its end
-  /// line rebuilt at every step of every timeline drag — the panel's parts
-  /// each subscribe, so the channel they all hear is gated once here.
-  late final PanelInSightValueListenable<TimelineDragPreview?> _dragPreview =
-      PanelInSightValueListenable(_session.dragPreview);
 
   /// The rail's row-order drag: the S rows re-order their track's list, the
   /// V rows the tracks.
@@ -313,24 +301,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
   );
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _dragPreview.sight = PanelVisibilityScope.maybeOf(context);
-  }
-
-  @override
-  void didUpdateWidget(covariant StoryboardTabHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _dragPreview.source = _session.dragPreview;
-  }
-
-  @override
-  void dispose() {
-    _dragPreview.dispose();
-    super.dispose();
-  }
-
   // ⛔"To start" (REC1-B) is a free function now
   // ([seekStoryboardPlayheadToTrackStart]): the button that calls it is the
   // 문턱's, built by the workspace. One implementation, two possible
@@ -341,16 +311,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// (R5 #11: 「what disappears never keeps the selection」), for this rail's
   /// own rows.
   void _toggleSetEntry(
-    Set<String> set,
+    ValueNotifier<Set<String>> twirls,
     String key, {
     required VoidCallback onFold,
   }) {
-    final folding = set.contains(key);
-    setState(() {
-      if (!set.add(key)) {
-        set.remove(key);
-      }
-    });
+    final folding = twirls.value.contains(key);
+    twirls.value = folding
+        ? ({...twirls.value}..remove(key))
+        : {...twirls.value, key};
     if (folding) {
       onFold();
     }
@@ -725,6 +693,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   listenable: Listenable.merge([
                     _session.voiceRecording.voiceRecordPreviewLane,
                     ?widget.cameraViewEnabled,
+                    // …and this rail's own twirls (its S rows' audio lanes,
+                    // its V tracks' lanes and their Transform groups), kept
+                    // above it so they outlive it ([RailView]).
+                    _railView.storyboardSeAudioRows,
+                    _railView.storyboardTransformTracks,
+                    _railView.storyboardTransformGroups,
                   ]),
                   builder: (context, _) => StoryboardPanel(
                     project: _session.repository.requireProject(),
@@ -738,7 +712,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     expandedLaneGroupKeys: widget.expandedLaneGroupKeys,
                     onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
-                    dragPreview: _dragPreview,
+                    dragPreview: _session.dragPreview,
                     // ↩️While playing, this named the PLAYING cut and the
                     // stop caught the active cut up; a run's crossing lands
                     // the cut it reaches since I-57 ②, so they are one.
@@ -953,25 +927,27 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         : null,
                     // Rail parity with the timeline rows: twirl-down audio
                     // lanes and the V track's cut-fade (Opacity) lane.
-                    expandedSeAudioRows: _expandedSeAudioRows,
+                    expandedSeAudioRows: _railView.storyboardSeAudioRows.value,
                     onToggleSeRowLane: (track, slot) => _toggleSetEntry(
-                      _expandedSeAudioRows,
+                      _railView.storyboardSeAudioRows,
                       StoryboardPanel.seRowKey(track, slot),
                       onFold: () =>
                           _foldLanes(track.seLayers.elementAtOrNull(slot)?.id),
                     ),
-                    expandedTransformTracks: _expandedTransformTracks,
+                    expandedTransformTracks:
+                        _railView.storyboardTransformTracks.value,
                     onToggleTrackLane: (track) => _toggleSetEntry(
-                      _expandedTransformTracks,
+                      _railView.storyboardTransformTracks,
                       track.id.value,
                       onFold: () =>
                           _foldLanes(trackTransformLaneCarrierId(track.id)),
                     ),
                     // AE group collapse for the V tracks' and S rows'
                     // Transform groups (default collapsed).
-                    expandedTransformGroups: _expandedTransformGroups,
+                    expandedTransformGroups:
+                        _railView.storyboardTransformGroups.value,
                     onToggleTransformGroup: (groupKey) => _toggleSetEntry(
-                      _expandedTransformGroups,
+                      _railView.storyboardTransformGroups,
                       groupKey,
                       onFold: () {
                         final group = parseLaneGroupKey(groupKey);
@@ -1116,10 +1092,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
                     layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
                     layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
-                    seRowLaneOpenOf: (track, slot) => _expandedSeAudioRows
+                    seRowLaneOpenOf: (track, slot) => _railView
+                        .storyboardSeAudioRows
+                        .value
                         .contains(StoryboardPanel.seRowKey(track, slot)),
-                    trackLaneOpenOf: (track) =>
-                        _expandedTransformTracks.contains(track.id.value),
+                    trackLaneOpenOf: (track) => _railView
+                        .storyboardTransformTracks
+                        .value
+                        .contains(track.id.value),
                     layerFxStateOf: _session.effectsAndFx.layerFxState,
                     onToggleLayerFx: _rowPresses.toggleFx,
                     // The conte rows' heads are the timeline's rows (I-73):

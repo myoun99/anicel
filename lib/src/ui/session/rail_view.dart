@@ -74,6 +74,28 @@ class RailView {
     LaneGraphsView.none,
   );
 
+  /// The STORYBOARD rail's own twirls — its S rows' audio lanes (by
+  /// `StoryboardPanel.seRowKey`), its V tracks' lanes (by track id) and the
+  /// Transform groups under them (by `laneGroupKey`): that rail's row keys,
+  /// not a layer's lanes, so beside the timeline's sets above rather than in
+  /// them.
+  ///
+  /// ↩️The storyboard's tab host kept them, 「lost on tab switch for now …
+  /// hoist to the workspace if that stings」 — held only by the panel being
+  /// kept alive. A panel is built only while it shows now (유저 2026-10-14),
+  /// so here, with the timeline's, they outlive it.
+  final ValueNotifier<Set<String>> storyboardSeAudioRows = ValueNotifier(
+    const <String>{},
+  );
+
+  final ValueNotifier<Set<String>> storyboardTransformTracks = ValueNotifier(
+    const <String>{},
+  );
+
+  final ValueNotifier<Set<String>> storyboardTransformGroups = ValueNotifier(
+    const <String>{},
+  );
+
   /// The link table the view state below was last made to agree with.
   LayerLinkRegistry? _followed;
 
@@ -175,6 +197,9 @@ class RailView {
     expandedLaneLayerIds.dispose();
     expandedLaneGroupKeys.dispose();
     laneGraphs.dispose();
+    storyboardSeAudioRows.dispose();
+    storyboardTransformTracks.dispose();
+    storyboardTransformGroups.dispose();
   }
 }
 

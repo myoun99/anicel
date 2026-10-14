@@ -345,29 +345,28 @@ void main() {
   bool inStoryboard(Element element) =>
       element.findAncestorWidgetOfExactType<StoryboardPanel>() != null;
 
-  // The storyboard is kept alive behind the timeline once it has been
-  // opened (`keepAlive`), and a timeline drag is not its to follow there.
-  for (final MapEntry(key: drag, value: verbs) in drags.entries) {
-    testWidgets('a $drag step in the timeline rebuilds nothing of the '
-        'storyboard kept behind it', (tester) async {
-      final session = await grabbed(tester, [
-        'timeline-mode-storyboard-button',
-        'timeline-mode-timeline-button',
-      ], verbs);
-      expect(
-        find.byType(StoryboardPanel, skipOffstage: false),
-        findsOneWidget,
-        reason: 'premise: the storyboard is kept behind the timeline',
-      );
-      final rebuilt = await rebuiltAtEveryStep(
-        tester,
-        session,
-        verbs,
-        inStoryboard,
-      );
-      expect(rebuilt, isEmpty, reason: rebuilt.join(', '));
-    });
-  }
+  // ↩️The storyboard stayed built behind the timeline once opened
+  // (`keepAlive`), and a step per drag pinned that a timeline drag rebuilt
+  // nothing of it there (10-01). A panel is built only while it shows now
+  // (유저 2026-10-14), so there is nothing of it behind the timeline to
+  // rebuild.
+  testWidgets('the storyboard put behind the timeline is not built — a '
+      'timeline drag has nothing of it to rebuild', (tester) async {
+    final verbs = drags.values.first;
+    final session = await grabbed(tester, [
+      'timeline-mode-storyboard-button',
+      'timeline-mode-timeline-button',
+    ], verbs);
+    verbs.update(session, 1);
+    await tester.pump();
+    expect(
+      find.byType(StoryboardPanel, skipOffstage: false),
+      findsNothing,
+      reason: 'opened once, then put behind the timeline',
+    );
+    verbs.cancel(session);
+    await tester.pump();
+  });
 
   // A step that changes nothing the strip shows — an SE row's comma, whose
   // rows are built outside the strip (R10-③) — rebuilds none of its rows.

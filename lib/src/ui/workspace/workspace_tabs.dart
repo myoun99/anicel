@@ -102,7 +102,10 @@ class _WorkspaceTabs {
     required Listenable listenable,
     required WidgetBuilder host,
   }) => TickLayer.host(
-    child: PanelAwareListenableBuilder(listenable: listenable, builder: host),
+    child: ListenableBuilder(
+      listenable: listenable,
+      builder: (context, _) => host(context),
+    ),
   );
 
   /// A frame panel's 문턱: the transport [panel]'s keys press too
@@ -136,14 +139,13 @@ class _WorkspaceTabs {
       label: label,
       icon: icon,
       locked: locked,
-      // Keeps its decoded pages/PDF document across tab switches.
-      keepAlive: true,
-      builder: (context) => PanelAwareListenableBuilder(
+      cachesContent: true,
+      builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
         // nothing here rebuilds it for them.
         listenable: _state.widget.session.languageSettings,
-        builder: (context) => MediaViewerTabHost(
+        builder: (context, _) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
           request: slot.request,
@@ -299,7 +301,7 @@ class _WorkspaceTabs {
           label: AppText.strings.panelCanvas,
           icon: Icons.image_outlined,
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // The one panel that opts out of the static bake. It is full
           // of repaint boundaries by design (the artwork, the cursor
           // deck, the ants each own one), and its live-stroke path must
@@ -843,9 +845,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          // The heavy frame-axis panels keep their subtree offstage
-          // across switches (R10-②) — switching back is instant.
-          keepAlive: true,
+          cachesContent: true,
           // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
           // ACTIVE tab's sill controls are mounted, so the timeline's
           // active-cut transport and the storyboard's all-cuts one share
@@ -862,8 +862,6 @@ class _WorkspaceTabs {
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
             // grids ride the frame cursor and never rebuild for them.
-            // Panel-aware (R12-①): notifies arriving while the tab sits
-            // offstage are deferred to one catch-up on re-activation.
             listenable: Listenable.merge([
               _state.widget.session,
               _state._timelineOrientation,
@@ -998,7 +996,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
@@ -1015,8 +1013,7 @@ class _WorkspaceTabs {
             // bar's own subscription). `frameSeekCommitted` sat in THIS
             // merge until 2026-08-05 and cost a whole-panel rebuild per
             // arrow press — measured at 38ms a step (12 build / 22 layout /
-            // 3 paint) with a six-cut project. Panel-aware (R12-①):
-            // offstage notifies defer to one catch-up on re-activation.
+            // 3 paint) with a six-cut project.
             // ↩️The thumbnail store sat here too, so every picture that
             // landed rebuilt the whole panel — at I-22's ten-minute zoom,
             // one per cut on the film. The blocks that ask repaint on it
@@ -1119,7 +1116,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // The sheet reads the project and the SAME picture store the
           // storyboard strip draws from, so a cell and its strip panel are
           // one render rather than two that must be kept in step.
@@ -1170,7 +1167,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
@@ -1223,17 +1220,18 @@ class _WorkspaceTabs {
           // to include the playhead, and would then stand itself down
           // for the whole of playback.
           staticRaster: false,
-          keepAlive: true,
+          cachesContent: true,
           builder: (context) => _panelHost(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
             // sheet layout never depends on it, and rebuilding the whole
-            // (keep-alive, often hidden) B4 document on every tool
-            // switch / color notch was measurably half the tool-switch
-            // jank. Only the ink overlay consumes the tool state, through
-            // its own boundary builder inside the host.
+            // B4 document on every tool switch / color notch was
+            // measurably half the tool-switch jank. Only the ink overlay
+            // consumes the tool state, through its own boundary builder
+            // inside the host.
             listenable: Listenable.merge([
               _state._views._timesheetViewport,
               _state._views._timesheetBrushAllowed,
+              _state._views._timesheetDataSheet,
               // F-90: a crossing, played or dragged over, turns the sheet
               // over to the cut under the playhead.
               _state.widget.session.cutUnderPlayhead.listenable,
@@ -1250,6 +1248,10 @@ class _WorkspaceTabs {
               brushAllowed: _state._views._timesheetBrushAllowed.value,
               onBrushAllowedChanged: (enabled) {
                 _state._views._timesheetBrushAllowed.value = enabled;
+              },
+              dataSheet: _state._views._timesheetDataSheet.value,
+              onDataSheetChanged: (shown) {
+                _state._views._timesheetDataSheet.value = shown;
               },
             ),
           ),

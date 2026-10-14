@@ -57,17 +57,18 @@ class _WorkspaceLayoutPersistence {
     }
     _state._storyboardTrackLaneHeight.value =
         StoryboardPanel.defaultTrackLaneHeight;
-    _state._rebuild(() {
-      _state._lockedTabIds = {EditorWorkspace.canvasTabId};
-      _state._openRails = defaultOpenRails();
-      _state._bottomDockCollapsed = false;
-      _state._regionOnTop = false;
-    });
     // Back to "nobody has said", which is the 2/3 default — not to 0,
     // which is now an arrangement rather than the absence of one.
     _state._bottomInsetOverride.value = null;
     _state._brushPresetView.value = const BrushPresetViewOptions();
+    // The open groups and the docks are ONE change to what the docks show.
     _state._mutatingLayout(() {
+      _state._rebuild(() {
+        _state._lockedTabIds = {EditorWorkspace.canvasTabId};
+        _state._openRails = defaultOpenRails();
+        _state._bottomDockCollapsed = false;
+        _state._regionOnTop = false;
+      });
       _state._layout.restore(docks: _EditorWorkspaceState._defaultDocks());
     });
   }
@@ -209,9 +210,4 @@ class _WorkspaceLayoutPersistence {
     'regionOnTop': _state._regionOnTop,
     'brushPresetView': _state._brushPresetView.value.toJson(),
   };
-
-  /// Whether the storyboard tab is the active tab of any section (visible
-  /// on screen).
-  bool get isStoryboardVisible =>
-      _state._layout.activeTabs.contains(EditorWorkspace.storyboardTabId);
 }

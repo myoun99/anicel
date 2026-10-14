@@ -58,13 +58,20 @@ class _WorkspaceRail {
       if (_state._openRails.contains(id)) id,
   ];
 
+  /// Whether [dockId] is on screen: every dock but a rail group the user
+  /// closed.
+  bool dockShows(String dockId) =>
+      !dockId.startsWith('rail-') || _state._openRails.contains(dockId);
+
   void _toggleRailGroup(String railId) {
     final opening = !_state._openRails.contains(railId);
-    _state._rebuild(() {
-      if (!_state._openRails.remove(railId)) {
-        _state._openRails.add(railId);
-      }
-    });
+    _state._mutatingLayout(
+      () => _state._rebuild(() {
+        if (!_state._openRails.remove(railId)) {
+          _state._openRails.add(railId);
+        }
+      }),
+    );
     if (opening) {
       _state._claimPanelOf(_state._layout.activeTabIn(railId));
     }
@@ -260,10 +267,18 @@ class _WorkspaceRail {
   /// "open". So every path that places a panel comes through here rather
   /// than each remembering on its own.
   void ensureRailOpen(String dockId) {
-    if (!dockId.startsWith('rail-') || _state._openRails.contains(dockId)) {
+    if (dockShows(dockId)) {
       return;
     }
-    _state._rebuild(() => _state._openRails.add(dockId));
+    _openRailGroup(dockId);
+  }
+
+  /// Opens the rail group [railId] — a change to what the docks show
+  /// ([_EditorWorkspaceState._mutatingLayout]).
+  void _openRailGroup(String railId) {
+    _state._mutatingLayout(
+      () => _state._rebuild(() => _state._openRails.add(railId)),
+    );
     _state._layoutPersistence.scheduleLayoutSave();
   }
 
@@ -340,8 +355,7 @@ class _WorkspaceRail {
   /// dropping something out of sight would be a silent move.
   void _dropIntoRailGroup(String railId, EditorPanelTabDragData data) {
     _state._placeTab(data, railId, _state._layout.tabsIn(railId).length);
-    _state._rebuild(() => _state._openRails.add(railId));
-    _state._layoutPersistence.scheduleLayoutSave();
+    _openRailGroup(railId);
   }
 
   /// One rail group's height: what it was left at, floored by what its

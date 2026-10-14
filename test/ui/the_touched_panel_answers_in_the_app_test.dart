@@ -246,9 +246,15 @@ void main() {
       await dropTab(tester, 'storyboard', rightRailButton(6));
       await dropTab(tester, 'timesheet', rightRailButton(6));
       expect(
-        find.byType(StoryboardPanel, skipOffstage: false),
+        find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
         findsOneWidget,
         reason: 'premise: still docked there, behind the sheet',
+      );
+      expect(
+        find.byType(StoryboardPanel, skipOffstage: false),
+        findsNothing,
+        reason: 'premise: a panel behind another is not built (유저 '
+            '2026-10-14)',
       );
       expect(session.workingPanel, WorkingPanel.timeline);
     });

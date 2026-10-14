@@ -38,6 +38,15 @@ class TimelineFrameAxisFollower {
     required this.isMounted,
   }) {
     frameAxisOffset.addListener(_followTheAxis);
+    // 🚨Born where the axis stands (F-143), its windows cut there too: a
+    // panel is built only while it shows (유저 2026-10-14), and a tab put
+    // back in front at a kept offset otherwise cut its rows and its ruler
+    // for the first page until a scroll crossed a span. 🧪Bucket 0 under a
+    // grid standing in bucket 58.
+    frameWindowBucket.value = timelineFrameWindowBucketOf(
+      offset: frameAxisOffset.value,
+      cellExtent: cellExtent(),
+    );
   }
 
   final ScrollController controller;
@@ -65,8 +74,12 @@ class TimelineFrameAxisFollower {
   final bool Function() isMounted;
 
   /// The endless room past the content's end, in frames — grown as the
-  /// user scrolls past the end, shrunk back once the scroll settles.
-  int trailingFrames = 0;
+  /// user scrolls past the end, shrunk back once the scroll settles; until
+  /// the scrollable is first read, the room reaching the axis
+  /// ([_reachingTheAxis]).
+  int get trailingFrames => _read ? _trailing : _reachingTheAxis();
+
+  int _trailing = 0;
 
   /// The frames the axis is BUILT for (UI-R12 #16): the cells scrolled
   /// into existence — the content and the endless room past it — and never
@@ -81,6 +94,51 @@ class TimelineFrameAxisFollower {
 
   int _builtWith(int trailing) =>
       math.max(baseFrameCount() + trailing, viewportFillFrames());
+
+  /// Whether the scrollable has been read since the follower was born
+  /// ([handleScroll]) — until then it is built reaching the axis.
+  bool _read = false;
+
+  /// The room grown to reach the view standing where the AXIS stands —
+  /// what a scrollable not yet read is built for.
+  ///
+  /// 🚨A panel is built where its axis was left: it is built only while it
+  /// shows (유저 2026-10-14), so a tab put back in front builds its grid
+  /// anew at the kept offset — and the kept offset may stand in the endless
+  /// room, which belonged to the grid that went. ↩️Built for none of it,
+  /// the new grid's first layout pulled the view back to the cut's end and
+  /// handed that back to the axis: 🧪1,334px lost on one switch. Its first
+  /// read keeps the room it was built for ([handleScroll]).
+  ///
+  /// ⛔Only until then: past it, the room is the one its scrolls grew. A
+  /// film that shortens under a view at its end pulls the view back
+  /// (F-119), and a grid that reached the axis on every build held the view
+  /// where the film no longer was.
+  ///
+  /// ⚠️Grown only where the frames built fall short of that view — not
+  /// where the fill papers it already, as it papers a view standing at the
+  /// start. A host reads the room for its own geometry (the storyboard's
+  /// frame end), and a room grown there for nothing painted that host again
+  /// on the frame after its first. 🧪The camera row of a storyboard built
+  /// again for nothing.
+  ///
+  /// ⚠️By the view the scrollable has once it has one — the room [_cutAt]
+  /// grows is measured by it, and a run's next page is built as that cut
+  /// builds it ([nextPage]). Before its first layout, a view the fill rounds
+  /// up to.
+  int _reachingTheAxis() {
+    final position = controller.hasClients ? controller.position : null;
+    final reached = endlessTrailingFrames(
+      baseFrameCount: baseFrameCount(),
+      currentTrailingFrames: _trailing,
+      scrollOffset: frameAxisOffset.value,
+      viewportExtent: position != null && position.hasViewportDimension
+          ? position.viewportDimension
+          : viewportFillFrames() * cellExtent(),
+      frameCellExtent: cellExtent(),
+    );
+    return _builtWith(reached) > _builtWith(_trailing) ? reached : _trailing;
+  }
 
   /// 🚨WHERE A PLAYING RUN'S NEXT PAGE TURN STANDS THIS AXIS: the bucket
   /// its windows are cut by there, and the frames it is built for there —
@@ -121,6 +179,9 @@ class TimelineFrameAxisFollower {
   late final _OnceAfterThisFrame _reread = _OnceAfterThisFrame(() {
     if (isMounted()) {
       handleScroll();
+      if (controller.hasClients) {
+        keepWindowWhereShown(controller.position, frameAxisOffset);
+      }
     }
   });
 
@@ -142,11 +203,21 @@ class TimelineFrameAxisFollower {
   /// owns it then, and this one only follows ([_followTheAxis]). Clamped to
   /// its own range, or pulled there by its own layout, it would hand the
   /// row a place the row never turned to.
+  ///
+  /// 🚨Its FIRST read keeps the room it was built for: born at the kept
+  /// offset, it was built for the room reaching it ([_reachingTheAxis]),
+  /// and the next build took it back otherwise. Kept, not built again — it
+  /// is the room this build already has.
   void handleScroll() {
-    if (!controller.hasClients) {
+    if (!controller.hasClients ||
+        !controller.position.hasViewportDimension) {
       return;
     }
     _watchScrollActivity();
+    if (!_read) {
+      _trailing = _reachingTheAxis();
+      _read = true;
+    }
     final offset = controller.offset;
     if (offset == frameAxisOffset.value) {
       return;
@@ -205,7 +276,7 @@ class TimelineFrameAxisFollower {
       frameWindowBucket.value = bucket;
     }
     if (trailing != trailingFrames) {
-      rebuild(() => trailingFrames = trailing);
+      rebuild(() => _trailing = trailing);
     }
   }
 
@@ -244,6 +315,10 @@ class TimelineFrameAxisFollower {
   /// The host calls this from the layout that sizes the axis's viewport:
   /// that pass is where every such correction happens. One callback a
   /// frame, however many layouts ask.
+  ///
+  /// And the window that layout gave the axis is kept beside it
+  /// ([keepWindowWhereShown]) — what the panel is revealed against when it
+  /// is brought forward again, before it is built.
   void rereadAfterLayout() => _reread.ask();
 
   void _watchScrollActivity() {
@@ -271,7 +346,7 @@ class TimelineFrameAxisFollower {
       allowShrink: true,
     );
     if (next != trailingFrames && isMounted()) {
-      rebuild(() => trailingFrames = next);
+      rebuild(() => _trailing = next);
     }
   }
 

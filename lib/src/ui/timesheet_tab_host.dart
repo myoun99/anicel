@@ -47,6 +47,8 @@ class TimesheetTabHost extends StatefulWidget {
     this.brushToolState,
     this.brushAllowed = false,
     this.onBrushAllowedChanged,
+    this.dataSheet = false,
+    this.onDataSheetChanged,
   });
 
   final EditorSessionManager session;
@@ -73,8 +75,7 @@ class TimesheetTabHost extends StatefulWidget {
   /// The editor's current brush/eraser LISTENABLE; required for ink
   /// input. A listenable, not a value (R18 UI-3): the sheet layout never
   /// depends on the tool state, so only the ink overlay subscribes —
-  /// tool switches and setting tweaks must not rebuild the whole
-  /// (keep-alive) document.
+  /// tool switches and setting tweaks must not rebuild the whole document.
   final ValueListenable<BrushToolState>? brushToolState;
 
   /// The sheet's brush switch (브러시 허용, owned above the tab group): off
@@ -83,6 +84,14 @@ class TimesheetTabHost extends StatefulWidget {
   /// Off by default, like every sheet's.
   final bool brushAllowed;
   final ValueChanged<bool>? onBrushAllowedChanged;
+
+  /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
+  /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
+  /// notation shorthand — for auditing exactly what the file will carry.
+  /// View state, session-only, owned above the tab group like the brush
+  /// switch beside it.
+  final bool dataSheet;
+  final ValueChanged<bool>? onDataSheetChanged;
 
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
@@ -110,11 +119,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   int? _documentFps;
   bool? _documentDataSheet;
 
-  /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
-  /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
-  /// notation shorthand — for auditing exactly what the file will carry.
-  /// View state, session-only.
-  bool _dataSheet = false;
+  bool get _dataSheet => widget.dataSheet;
 
   /// Null in the GAP state (no active cut, UI-R9 #3): the host renders the
   /// bare sheet background instead of a document.
@@ -298,7 +303,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   }
 
   /// Notation ⇄ data — the switch's press, and its key's (I-40).
-  void _toggleDataSheet() => setState(() => _dataSheet = !_dataSheet);
+  void _toggleDataSheet() => widget.onDataSheetChanged?.call(!_dataSheet);
 
   /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
   /// 2026-08-13) rather than in the pill.

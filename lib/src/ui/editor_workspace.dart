@@ -99,7 +99,6 @@ import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
 import 'panels/panel_flash.dart';
-import 'panels/panel_visibility_scope.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
@@ -171,6 +170,8 @@ import 'panels/tool_size_preset_panel.dart';
 import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../models/canvas_viewport.dart';
+import 'timeline/timeline_edge_auto_pan.dart'
+    show keptAxisWindows, revealKeptAxis;
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
@@ -1751,15 +1752,77 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     super.dispose();
   }
 
-  /// Runs a layout mutation and clamps the playhead when the storyboard
-  /// just came on screen (over-end playheads on non-last cuts must land
-  /// back on the counter frame — timeline parity).
+  /// Runs a change to what the docks show — a layout mutation, or a rail
+  /// group opening — and answers each frame panel it brought in front: the
+  /// storyboard's playhead is clamped (over-end playheads on non-last cuts
+  /// must land back on the counter frame — timeline parity), then the
+  /// playhead is shown on the panel's own axis ([_revealThePlayheadOn]).
+  ///
+  /// ⚠️A rail group opening is one of these changes: a panel in front of a
+  /// closed group is not on screen. ↩️It counted as shown wherever it was
+  /// in front, since before there were rails.
   void _mutatingLayout(VoidCallback mutate) {
-    final wasVisible = _layoutPersistence.isStoryboardVisible;
+    final before = _framePanelsInFront();
     mutate();
-    if (!wasVisible && _layoutPersistence.isStoryboardVisible) {
+    final cameForward = _framePanelsInFront().difference(before);
+    if (cameForward.contains(EditorWorkspace.storyboardTabId)) {
       clampPlayheadForStoryboard(widget.session);
     }
+    cameForward.forEach(_revealThePlayheadOn);
+  }
+
+  /// The frame panels in front of a dock that shows.
+  Set<String> _framePanelsInFront() => {
+    for (final tabId in const [
+      EditorWorkspace.timelineTabId,
+      EditorWorkspace.storyboardTabId,
+    ])
+      if (_layout.locateTab(tabId) case final at?
+          when _layout.activeTabIn(at.dockId) == tabId &&
+              _rail.dockShows(at.dockId))
+        tabId,
+  };
+
+  /// 🚨A FRAME PANEL BROUGHT FORWARD AGAIN SHOWS ITS PLAYHEAD (유저
+  /// 2026-10-14, panels-are-built-only-while-open-Q1: 「다시 열 때
+  /// 플레이헤드를 드러낸다」). A panel is built only while it shows, so one
+  /// put back in front is built anew where its axis was left — and a run
+  /// played meanwhile, or a walk on another panel, left the playhead
+  /// elsewhere. Once, as it comes forward, the walk's law ([revealKeptAxis]):
+  /// nothing moves while the playhead is in sight, else the least move that
+  /// shows it. ⚠️The cost the answer took: a view scrolled away from the
+  /// playhead on purpose is pulled back to it too.
+  ///
+  /// By VALUE, on the kept axis, before the panel is built — against the
+  /// window it last showed ([keptAxisWindows]) — so its first frame stands
+  /// there. A panel not shown since the project opened has no window, and
+  /// stands where the project left it (F-267).
+  void _revealThePlayheadOn(String tabId) {
+    final cursors = widget.session.playheadCursors;
+    final (railId, playhead, extent) = tabId == EditorWorkspace.timelineTabId
+        ? (
+            _timelineOrientation.value == TimelineOrientation.horizontal
+                ? LayerRailId.timeline
+                : LayerRailId.xsheet,
+            cursors.cutFrame.value,
+            _timelinePixelsPerFrame.value,
+          )
+        : (
+            LayerRailId.storyboard,
+            cursors.trackFrame.value,
+            _storyboardPixelsPerFrame.value,
+          );
+    final kept = _frameAxisOffsets[railId];
+    final window = kept == null ? null : keptAxisWindows[kept];
+    if (kept == null || window == null || playhead == null) {
+      return;
+    }
+    revealKeptAxis((
+      offset: kept,
+      viewport: window,
+      extent: extent,
+      at: playhead,
+    ));
   }
 
   /// A panel brought forward by ITS OWN BUTTON — its tab, the floor switch

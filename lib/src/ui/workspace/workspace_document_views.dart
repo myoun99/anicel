@@ -52,6 +52,11 @@ class _WorkspaceDocumentViews {
   /// alone used to start on.
   final ValueNotifier<bool> _timesheetBrushAllowed = ValueNotifier(false);
 
+  /// Whether the timesheet prints its DATA sheet (UI-R24 #1). ↩️The host
+  /// kept it, held only by the panel being kept alive; a panel is built only
+  /// while it shows now (유저 2026-10-14).
+  final ValueNotifier<bool> _timesheetDataSheet = ValueNotifier(false);
+
   /// Conte tab view state (#16 — the conte rides the same canvas shell):
   /// the sheet viewport and its brush switch, owned here like the
   /// timesheet's. The brush starts OFF: the conte's first verb is reading
@@ -124,6 +129,7 @@ class _WorkspaceDocumentViews {
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetBrushAllowed.dispose();
+    _timesheetDataSheet.dispose();
     _conteViewport.dispose();
     _conteBrushAllowed.dispose();
     _envelopeViewport.dispose();

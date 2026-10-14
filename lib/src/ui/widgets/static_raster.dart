@@ -8,7 +8,6 @@ import 'package:flutter/widgets.dart';
 import '../debug/measurement_mode.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../debug/repaint_cause.dart';
-import '../panels/panel_visibility_scope.dart';
 import 'raster_grid_fit.dart';
 
 /// Bakes its child into ONE image and blits that until the child actually
@@ -269,7 +268,6 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       enabled: enabled,
       maxConsecutiveCaptures: maxConsecutiveCaptures,
       devicePixelRatio: _devicePixelRatioOf(context),
-      visible: PanelVisibilityScope.maybeOf(context),
     );
   }
 
@@ -282,8 +280,7 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       ..debugLabel = debugLabel
       ..enabled = enabled
       ..maxConsecutiveCaptures = maxConsecutiveCaptures
-      ..devicePixelRatio = _devicePixelRatioOf(context)
-      ..visible = PanelVisibilityScope.maybeOf(context);
+      ..devicePixelRatio = _devicePixelRatioOf(context);
   }
 
   /// The EFFECTIVE ratio — this raster is sized in device pixels, so it
@@ -319,9 +316,6 @@ enum StandDownReason {
   /// nothing to fix.
   renderer,
 
-  /// The panel is parked behind another tab.
-  offstage,
-
   /// Changing on consecutive frames, so a snapshot costs more than it
   /// saves. Correct, and worth seeing.
   alive,
@@ -350,46 +344,12 @@ class RenderStaticRaster extends RenderProxyBox {
     required bool enabled,
     required int maxConsecutiveCaptures,
     required double devicePixelRatio,
-    ValueListenable<bool>? visible,
   }) : _enabled = enabled,
        _maxConsecutiveCaptures = maxConsecutiveCaptures,
-       _devicePixelRatio = devicePixelRatio,
-       _visible = visible;
+       _devicePixelRatio = devicePixelRatio;
 
-  /// Whether the panel this surface lives in is the ACTIVE tab of its
-  /// group, when there is one to ask.
-  ///
-  /// 🚨 A keep-alive tab that goes offstage keeps its whole subtree
-  /// mounted, so a baked surface back there holds a full-resolution RGBA
-  /// image of a panel nobody can see. Measured: one preset list held
-  /// 2,232,000 bytes after the dock had been switched to another tab.
-  ///
-  /// Asked here rather than by each caller because the alternative is a
-  /// rule every future panel author has to remember, and a panel that
-  /// forgets looks exactly like one that did not.
-  ValueListenable<bool>? _visible;
-  ValueListenable<bool>? get visible => _visible;
-  set visible(ValueListenable<bool>? value) {
-    if (identical(_visible, value)) {
-      return;
-    }
-    if (attached) {
-      _visible?.removeListener(_onGloballyEnabledChanged);
-    }
-    _visible = value;
-    if (attached) {
-      _visible?.addListener(_onGloballyEnabledChanged);
-    }
-    _dropRaster();
-    markNeedsPaint();
-  }
-
-  /// The gate the paint path reads: our own switch, the global one, and
-  /// being on screen at all.
-  bool get _bakingAllowed =>
-      _enabled &&
-      StaticRaster.globallyEnabled.value &&
-      (_visible?.value ?? true);
+  /// The gate the paint path reads: our own switch and the global one.
+  bool get _bakingAllowed => _enabled && StaticRaster.globallyEnabled.value;
 
   /// The point of the whole class: our own layer, so Flutter's dirty bit
   /// is the invalidation signal and an ancestor's repaint does not reach
@@ -580,7 +540,6 @@ class RenderStaticRaster extends RenderProxyBox {
     _hasEverPainted = false;
     StaticRaster.globallyEnabled.addListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.addListener(_onGloballyEnabledChanged);
-    _visible?.addListener(_onGloballyEnabledChanged);
   }
 
   @override
@@ -588,7 +547,6 @@ class RenderStaticRaster extends RenderProxyBox {
     StaticRaster.census.remove(this);
     StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
-    _visible?.removeListener(_onGloballyEnabledChanged);
     _dropRaster();
     super.detach();
   }
@@ -599,7 +557,6 @@ class RenderStaticRaster extends RenderProxyBox {
     StaticRaster.census.remove(this);
     StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
-    _visible?.removeListener(_onGloballyEnabledChanged);
     _dropRaster();
     super.dispose();
   }
@@ -655,9 +612,7 @@ class RenderStaticRaster extends RenderProxyBox {
       return;
     }
     if (!_bakingAllowed) {
-      _standDown = (_visible?.value ?? true)
-          ? StandDownReason.disabled
-          : StandDownReason.offstage;
+      _standDown = StandDownReason.disabled;
       _dropRaster();
       _paintThrough(context, offset);
       return;

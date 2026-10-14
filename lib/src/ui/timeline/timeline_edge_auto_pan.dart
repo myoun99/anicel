@@ -203,6 +203,24 @@ void keepWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
   }
 }
 
+/// The window each kept FRAME axis was last shown in, in pixels — what a
+/// panel brought forward again reveals its playhead against before it is
+/// laid out (유저 2026-10-14, panels-are-built-only-while-open-Q1). Written
+/// where its grid lays out on screen ([keepWindowWhereShown]); an axis no
+/// grid has shown since the project opened has none.
+///
+/// ⚠️This device's and this run's, so never saved: the project keeps where
+/// its axes stand (F-267), not how long a window showed them.
+final Expando<double> keptAxisWindows = Expando<double>('kept axis window');
+
+/// Writes the window [position] shows into [keptAxisWindows] for [kept] —
+/// while it [scrollableIsShown], as [keepWhereShown] writes where it stands.
+void keepWindowWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
+  if (scrollableIsShown(position)) {
+    keptAxisWindows[kept] = position.viewportDimension;
+  }
+}
+
 /// [kept] following [controller] for good — a panel's LAYER axis, the
 /// project's (F-267): every scroll of its scrollable writes it
 /// ([keepWhereShown]), and so does the first layout after it is built.
