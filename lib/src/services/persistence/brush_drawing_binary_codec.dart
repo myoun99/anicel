@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'anicel_payload_codec.dart';
@@ -65,49 +66,129 @@ class AnicelCelEntry {
   /// the isolate boundary) and its plate.
   final List<({int id, String content, List<AnicelTileRecord> plate})> texts;
 
-  BitmapSurface toSurface() {
-    return BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: tileSize,
-      tiles: _tilesOf(tiles, tileSize),
-      texts: [
-        for (final text in texts)
-          CelText(
-            id: text.id,
-            content: CelTextContent.fromJson(
-              jsonDecode(text.content) as Map<String, dynamic>,
-            ),
-            plate: _tilesOf(text.plate, tileSize),
-          ),
-      ],
-    );
-  }
+  BitmapSurface toSurface() => _surfaceOf(
+    (canvasSize: canvasSize, tileSize: tileSize, tiles: tiles, texts: texts),
+    (pixels) => BitmapTile(size: tileSize, pixels: pixels),
+  );
 }
 
 /// One tile as it crosses the save/open isolate boundary: where it sits and
 /// its raw straight-alpha RGBA bytes.
 typedef AnicelTileRecord = ({int x, int y, Uint8List pixels});
 
+/// A cel's picture in plain parts — where each tile sits with its pixels as
+/// [P], and the texts with their plates: the shape both sides of an isolate
+/// boundary make a surface of ([_surfaceOf]).
+typedef CelParts<P> = ({
+  CanvasSize canvasSize,
+  int tileSize,
+  List<({int x, int y, P pixels})> tiles,
+  List<({int id, String content, List<({int x, int y, P pixels})> plate})>
+  texts,
+});
+
+/// A cel laid on a worker ([layCelEntry]): each tile's `pixels` is the
+/// ADDRESS of the native block holding them, which the main isolate adopts
+/// ([laidCelSurface]).
+typedef AnicelLaidCel = CelParts<int>;
+
 List<AnicelTileRecord> _tileRecordsOf(Map<TileCoord, BitmapTile> tiles) => [
   for (final entry in tiles.entries)
     (x: entry.key.x, y: entry.key.y, pixels: entry.value.pixels),
 ];
 
-Map<TileCoord, BitmapTile> _tilesOf(
-  List<AnicelTileRecord> records,
-  int tileSize,
-) => {
-  for (final tile in records)
-    // 🎯The coordinate has ALWAYS lived beside the pixels here —
-    // Finalizable tiles cannot cross the save/open isolate boundary, so
-    // the durable shape never had one on the tile. It used to build the
-    // TileCoord twice per tile, once as the key and once for a field that
-    // no longer exists.
-    TileCoord(x: tile.x, y: tile.y): BitmapTile(
-      size: tileSize,
-      pixels: tile.pixels,
-    ),
-};
+/// [parts] made a surface, each tile's pixels made a tile by [tileOf]: the
+/// copy [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's
+/// blocks take ([laidCelSurface]) — one assembly for both.
+///
+/// ⚠️Every tile is made BEFORE what can refuse a damaged record — a text's
+/// JSON, the surface's own checks: a laid block not adopted yet is one
+/// nothing would ever free.
+BitmapSurface _surfaceOf<P>(
+  CelParts<P> parts,
+  BitmapTile Function(P pixels) tileOf,
+) {
+  Map<TileCoord, BitmapTile> tilesOf(
+    List<({int x, int y, P pixels})> records,
+  ) => {
+    for (final tile in records)
+      // 🎯The coordinate has ALWAYS lived beside the pixels here —
+      // Finalizable tiles cannot cross the save/open isolate boundary, so
+      // the durable shape never had one on the tile. It used to build the
+      // TileCoord twice per tile, once as the key and once for a field that
+      // no longer exists.
+      TileCoord(x: tile.x, y: tile.y): tileOf(tile.pixels),
+  };
+  final tiles = tilesOf(parts.tiles);
+  final plates = [for (final text in parts.texts) tilesOf(text.plate)];
+  return BitmapSurface(
+    canvasSize: parts.canvasSize,
+    tileSize: parts.tileSize,
+    tiles: tiles,
+    texts: [
+      for (final (index, text) in parts.texts.indexed)
+        CelText(
+          id: text.id,
+          content: CelTextContent.fromJson(
+            jsonDecode(text.content) as Map<String, dynamic>,
+          ),
+          plate: plates[index],
+        ),
+    ],
+  );
+}
+
+/// [entry] laid into native blocks from [blocks] — the copies
+/// [AnicelCelEntry.toSurface] makes, made on the worker that decoded the
+/// cel, so they cost the screen nothing (card
+/// `cel-thaw-holds-the-ui-thread`: ~40 ms of a first playback's late frames
+/// were these copies on the UI thread).
+///
+/// 🚨A block it could not get frees every block it got — nothing else knows
+/// they exist. ⚠️The tile size is asked BEFORE the first block: the main
+/// isolate's adoption asks it again, and must never be the first to refuse,
+/// for it would refuse with blocks not adopted yet.
+AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
+  BitmapTile.checkSize(entry.tileSize);
+  final got = <Pointer<Uint8>>[];
+  int laid(Uint8List pixels) {
+    final block = blocks.allocate(pixels.length);
+    got.add(block);
+    block.asTypedList(pixels.length).setAll(0, pixels);
+    return block.address;
+  }
+
+  List<({int x, int y, int pixels})> lay(List<AnicelTileRecord> records) => [
+    for (final tile in records)
+      (x: tile.x, y: tile.y, pixels: laid(tile.pixels)),
+  ];
+  try {
+    return (
+      canvasSize: entry.canvasSize,
+      tileSize: entry.tileSize,
+      tiles: lay(entry.tiles),
+      texts: [
+        for (final text in entry.texts)
+          (id: text.id, content: text.content, plate: lay(text.plate)),
+      ],
+    );
+  } on Object {
+    for (final block in got) {
+      blocks.free(block);
+    }
+    rethrow;
+  }
+}
+
+/// [laid]'s blocks adopted as its tiles, on the isolate whose allocator they
+/// came from ([BitmapTile.blocks]) — no pixel is copied here.
+BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
+  laid,
+  (address) => BitmapTile.adoptNative(
+    size: laid.tileSize,
+    pixels: Pointer<Uint8>.fromAddress(address),
+  ),
+);
 
 /// v3 (2026-10-06, the text tool — R9-rest): after the tiles comes the
 /// TEXTS the cel's picture carries — a count, then for each its id, what

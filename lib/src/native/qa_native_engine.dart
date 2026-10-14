@@ -10,6 +10,38 @@ import 'qa_engine_abi.dart';
 import 'native_scratch.dart';
 import 'native_upload_cache.dart';
 
+/// A block `qa_tile_alloc` answered, or the error it failed with — the one
+/// check both ways of reaching the allocator make ([QaNativeEngine.tileAlloc]
+/// and [QaTileBlocksAt.alloc]).
+Pointer<Uint8> qaTileBlockOrThrow(Pointer<Void> block, int byteLength) {
+  if (block == nullptr) {
+    throw StateError('qa_tile_alloc failed for $byteLength bytes');
+  }
+  return block.cast();
+}
+
+/// The engine's tile allocator bound from the addresses another isolate
+/// read off ITS engine ([QaNativeEngine.tileAllocAddress]) — so the blocks a
+/// worker fills here are the ones that isolate's tiles free.
+final class QaTileBlocksAt {
+  QaTileBlocksAt({required int alloc, required int free})
+    : _alloc =
+          Pointer<NativeFunction<Pointer<Void> Function(Int64)>>.fromAddress(
+            alloc,
+          ).asFunction<Pointer<Void> Function(int)>(),
+      _free = Pointer<NativeFunction<Void Function(Pointer<Void>)>>.fromAddress(
+        free,
+      ).asFunction<void Function(Pointer<Void>)>();
+
+  final Pointer<Void> Function(int size) _alloc;
+  final void Function(Pointer<Void> pixels) _free;
+
+  Pointer<Uint8> alloc(int byteLength) =>
+      qaTileBlockOrThrow(_alloc(byteLength), byteLength);
+
+  void free(Pointer<Uint8> block) => _free(block.cast());
+}
+
 /// The native engine core's FFI bindings (R18 A-track).
 ///
 /// LOAD-FALLBACK DISCIPLINE: every native function has a Dart REFERENCE
@@ -41,6 +73,7 @@ class QaNativeEngine {
     this._zeroBytes,
     this._widenBytes,
     this._tileAlloc,
+    this._tileAllocPointer,
     this._tileFree,
     this._tileFreePointer,
     this._tilePoolCachedBytes,
@@ -178,6 +211,8 @@ class QaNativeEngine {
   }
 
   final Pointer<Void> Function(int size) _tileAlloc;
+  final Pointer<NativeFunction<Pointer<Void> Function(Int64)>>
+  _tileAllocPointer;
   final void Function(Pointer<Void> pixels) _tileFree;
   final Pointer<NativeFinalizerFunction> _tileFreePointer;
   final int Function() _tilePoolCachedBytes;
@@ -189,13 +224,8 @@ class QaNativeEngine {
   /// commit's "fresh" buffers are recycled blocks, not mallocs — adoption
   /// (R19-Z) had drained the old Dart pool, costing ~1024 fresh mallocs
   /// per full-canvas 8K fill. Free via [tileFree] or [tileFinalizer].
-  Pointer<Uint8> tileAlloc(int byteLength) {
-    final pointer = _tileAlloc(byteLength);
-    if (pointer == nullptr) {
-      throw StateError('qa_tile_alloc failed for $byteLength bytes');
-    }
-    return pointer.cast();
-  }
+  Pointer<Uint8> tileAlloc(int byteLength) =>
+      qaTileBlockOrThrow(_tileAlloc(byteLength), byteLength);
 
   /// Returns a [tileAlloc] block to the C free list.
   void tileFree(Pointer<Uint8> pixels) {
@@ -205,6 +235,13 @@ class QaNativeEngine {
   /// Finalizer that frees [tileAlloc] blocks — BitmapTile attaches this
   /// when the engine is loaded (GC threads call qa_tile_free directly).
   late final NativeFinalizer tileFinalizer = NativeFinalizer(_tileFreePointer);
+
+  /// [tileAlloc] and [tileFree] by address, for a worker that fills blocks
+  /// THIS isolate's tiles adopt ([QaTileBlocksAt]): the worker's own probe
+  /// can load another binary, or none — a test's path override and its
+  /// forced fallback are statics, and statics do not cross isolates.
+  int get tileAllocAddress => _tileAllocPointer.address;
+  int get tileFreeAddress => _tileFreePointer.address;
 
   /// Bytes of tile blocks parked in the C free lists for reuse — resident,
   /// and nobody's picture. The memory census reads it.
@@ -998,6 +1035,10 @@ class QaNativeEngine {
             Pointer<Void> Function(Int64),
             Pointer<Void> Function(int)
           >('qa_tile_alloc');
+      final tileAllocPointer = library
+          .lookup<NativeFunction<Pointer<Void> Function(Int64)>>(
+            'qa_tile_alloc',
+          );
       final tileFree = library
           .lookupFunction<
             Void Function(Pointer<Void>),
@@ -1244,6 +1285,7 @@ class QaNativeEngine {
         zeroBytes,
         widenBytes,
         tileAlloc,
+        tileAllocPointer,
         tileFree,
         tileFreePointer,
         tilePoolCachedBytes,
