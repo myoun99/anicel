@@ -9,10 +9,12 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 import '../../helpers/storyboard_twirls.dart';
@@ -125,8 +127,8 @@ void main() {
     expect(opened, containsAll([rig.a, rig.b]), reason: 'both were opened');
   });
 
-  testWidgets('on the storyboard — a camera row on each of two tracks, and a '
-      'V row its fx chain twirls down under', (tester) async {
+  /// The storyboard tab on [_twoTracks], as the workspace wires its twirls.
+  Future<EditorSessionManager> storyboard(WidgetTester tester) async {
     final session = EditorSessionManager(initialProject: _twoTracks());
     addTearDown(session.dispose);
     await tester.binding.setSurfaceSize(const Size(1600, 1200));
@@ -153,6 +155,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    return session;
+  }
+
+  testWidgets('on the storyboard — a camera row on each of two tracks, and a '
+      'V row its fx chain twirls down under', (tester) async {
+    final session = await storyboard(tester);
 
     final opened = await pressAndUndo(tester, session);
 
@@ -161,6 +169,45 @@ void main() {
       contains(const TrackId('second-track')),
       reason: 'the V row is its track\'s, turned in the same step',
     );
+  });
+
+  testWidgets('on the storyboard, over S rows selected together — the press '
+      'on one turns the other, and the sweep reaching it reads it turned', (
+    tester,
+  ) async {
+    final session = await storyboard(tester);
+    final rows = session.repository.requireProject().tracks.first.seLayers;
+    session.rowSelection.value = [
+      for (final row in rows.take(2)) LayerRowAddress(row.id),
+    ];
+    await tester.pumpAndSettle();
+
+    final opened = await pressAndUndo(tester, session);
+
+    expect(
+      opened,
+      containsAll([for (final row in rows.take(2)) row.id]),
+      reason: 'both were opened',
+    );
+  });
+
+  testWidgets('on the storyboard, with the V row ALONE twirled down — the '
+      'button reads it open, and shuts it', (tester) async {
+    final session = await storyboard(tester);
+    SessionRowButtonPresses(
+      session,
+    ).toggleLanes(trackTransformLaneCarrierId(const TrackId('second-track')));
+    await tester.pumpAndSettle();
+    expect(
+      twirled(session),
+      {const TrackId('second-track')},
+      reason: 'premise',
+    );
+
+    await tester.tap(find.byKey(toggle));
+    await tester.pumpAndSettle();
+
+    expect(twirled(session), isEmpty, reason: 'it was open: the press shut it');
   });
 }
 

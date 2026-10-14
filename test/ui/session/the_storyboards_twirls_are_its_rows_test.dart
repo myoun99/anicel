@@ -109,6 +109,22 @@ void main() {
     }
   });
 
+  test('a V row\'s twirl is an edit of its track — the track is another '
+      'track, as a layer row twirled is another row', () {
+    final track = film().tracks.single;
+    for (final (name, twirled) in [
+      ('twirled', track.copyWith(lanesExpanded: true)),
+      ('a group open', track.copyWith(expandedLaneGroups: {fx})),
+    ]) {
+      expect(
+        twirled,
+        isNot(track),
+        reason: '$name: the file keeps it — and a round trip compared by '
+            'value sees it only so',
+      );
+    }
+  });
+
   test('🚨each of them is ONE undo step, and the undo puts it back', () {
     final s = sessionOn(film());
     final presses = SessionRowButtonPresses(s);
@@ -165,7 +181,7 @@ void main() {
   });
 
   group('a twirl that shuts hands the storyboard\'s stand to the row that '
-      'swallows it', () {
+      'swallows it — and the row selection that held what it shut', () {
     for (final (name, row, lane, swallower) in [
       (
         'an S row\'s lane — to the S row',
@@ -184,11 +200,19 @@ void main() {
         final s = sessionOn(film());
         final presses = SessionRowButtonPresses(s)..toggleLanes(row);
         s.standOnRow(lane, panel: WorkingPanel.storyboard);
+        s.rowSelection.value = [lane];
         expect(s.standing.storyboardStandingRow, lane, reason: 'premise');
 
         presses.toggleLanes(row);
 
         expect(s.standing.storyboardStandingRow, swallower);
+        // The stand reads a row the rail cannot show back as the track's;
+        // the selection keeps what it is handed.
+        expect(
+          s.rowSelection.value,
+          [swallower],
+          reason: 'what disappears never keeps the selection',
+        );
       });
     }
 

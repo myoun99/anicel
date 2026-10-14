@@ -394,6 +394,43 @@ void main() {
     expect(wrapper(tester, seLabel).slotBefore, 1);
   });
 
+  testWidgets('🚨an S row handed another row of the same face is built '
+      'again — its switches press the row it shows now', (tester) async {
+    // Two S rows that show the same: only which row each is tells them
+    // apart, and the label names its switches by it.
+    final session = await pumpPanel(
+      tester,
+      editTracks(
+        film(seRows: 2),
+        (track) => track.copyWith(
+          seLayers: [
+            for (final row in track.seLayers) row.copyWith(name: 'S'),
+          ],
+        ),
+      ),
+    );
+    String eyeName() => tester
+        .widget<LayerVisibilityToggleButton>(
+          find.descendant(
+            of: seLabel,
+            matching: find.byType(LayerVisibilityToggleButton),
+          ),
+        )
+        .name;
+    expect(eyeName(), 'storyboard-layer-visibility-t1-s1', reason: 'premise');
+
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(seLayers: track.seLayers.reversed.toList()),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+
+    expect(eyeName(), 'storyboard-layer-visibility-t1-s2');
+  });
+
   testWidgets('🚨the V row\'s wrapper takes its group\'s height as an S row '
       'opens its lanes', (tester) async {
     await pumpPanel(tester, film());
