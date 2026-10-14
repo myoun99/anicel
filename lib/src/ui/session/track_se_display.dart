@@ -179,20 +179,29 @@ class TrackSeDisplay {
         _selection.selectedTrackId,
         ByIdentity(preview),
       ),
-      build: () {
-        final window = trackSeWindow;
-        return List.unmodifiable([
-          for (final layer in _selection.activeTrack.seLayers)
-            _trackSeDisplayCloneFor(
-              window,
-              preview != null && preview.id == layer.id ? preview : layer,
-            ),
-        ]);
-      },
+      build: () => _listed(preview),
     );
   }
 
   final _shown = IdentityMemo<List<Layer>>();
+
+  /// [trackSeDisplayLayers] as listed with [preview] in flight.
+  ///
+  /// 🚨A PARAMETER, NOT THE CLOSURE'S CAPTURE (I-57, 2026-10-14): listed
+  /// inside the memo's closure, `preview` was a capture checked inside the
+  /// loop, and the AOT compiler read it past its check — every release
+  /// build died at start with no take rolling
+  /// (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+  List<Layer> _listed(Layer? preview) {
+    final window = trackSeWindow;
+    return List.unmodifiable([
+      for (final layer in _selection.activeTrack.seLayers)
+        _trackSeDisplayCloneFor(
+          window,
+          preview != null && preview.id == layer.id ? preview : layer,
+        ),
+    ]);
+  }
 
   /// A row as a drag step leaves it, on its OWN axis, in the two forms a
   /// drag preview publishes: [shown] for the panels that draw the open cut
