@@ -2103,19 +2103,25 @@ void main() {
     });
 
     test('a cut whose timeline keys no move of the layer has it stand as it '
-        'is drawn — the 겸용 cuts share the row, each its own moves', () {
+        'is drawn — the 겸용 cuts share the row, each its own moves, '
+        'whichever of them keys one', () {
       final picture = layer('BG');
+      final later = layer('FG');
 
       final cuts = plan(
-        root([picture]),
+        root([later, picture]),
         [
           timeline([
             moving(picture, kind: 2001, [
               move((start: 0, end: 12), x: ClipCurve.held(0, 330)),
             ]),
+            shownOver(later, [(start: 0, end: 12)]),
           ]),
           timeline(name: 'c2', [
             shownOver(picture, [(start: 0, end: 12)]),
+            moving(later, kind: 2001, [
+              move((start: 0, end: 12), y: ClipCurve.held(0, 200)),
+            ]),
           ]),
         ],
       ).cuts;
@@ -2128,6 +2134,39 @@ void main() {
             'pivot where test4\'s layer kept it, the canvas\'s centre',
       );
       expect(row(cuts.last, 'BG').transformTrack.isEmpty, isTrue);
+      expect(
+        painted(cuts.last, 'FG', 0, CanvasPoint(x: 40, y: 50)),
+        CanvasPoint(x: 40, y: 70),
+        reason:
+            'a layer only a later timeline moves moves there — along the one '
+            'axis its clip keys, its point resting on the centre the other',
+      );
+      expect(row(cuts.first, 'FG').transformTrack.isEmpty, isTrue);
+    });
+
+    test('the scale is keyed where either of its curves is — a layer keys '
+        'one an axis (ImageAspectScale), where a camera keys one', () {
+      final picture = layer('BG');
+
+      final track = row(
+        plan(
+          root([picture]),
+          [
+            timeline([
+              moving(picture, kind: 2001, [
+                move(
+                  (start: 0, end: 12),
+                  scaleX: ramp({0: 1.5, 11: 1.5}),
+                  scaleY: ramp({0: 0.5, 6: 0.5, 11: 0.5}),
+                ),
+              ]),
+            ]),
+          ],
+        ).cuts.single,
+        'BG',
+      ).transformTrack;
+
+      expect(track.scale.keys.keys, [0, 6, 11]);
     });
 
     test('keys on a curve the import does not read are said for a layer as '
