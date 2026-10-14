@@ -41,7 +41,7 @@ void main() {
 
   /// Two tiles of distinct bytes — a thaw that laid one tile's pixels in
   /// the other's block reads wrong.
-  BitmapSurface inkSurface({int seed = 1}) {
+  BitmapSurface inkSurface({int seed = 1, CanvasSize canvas = canvasSize}) {
     BitmapTile tile(int salt) {
       final pixels = Uint8List(8 * 8 * 4);
       for (var i = 0; i < pixels.length; i += 1) {
@@ -51,7 +51,7 @@ void main() {
     }
 
     return BitmapSurface(
-      canvasSize: canvasSize,
+      canvasSize: canvas,
       tileSize: 8,
       tiles: {
         TileCoord(x: 0, y: 0): tile(3),
@@ -90,6 +90,31 @@ void main() {
         tileSize: blob.tileSize,
       ),
     });
+  }
+
+  /// [body] run while every worker's turn is taken — as by a frame's other
+  /// rows — and the turns given back after it, whatever it did.
+  Future<void> whileEveryTurnIsTaken(Future<void> Function() body) async {
+    final held = Completer<void>();
+    final holding = [
+      for (var i = 0; i < celThawTurns.atOnce; i += 1)
+        celThawTurns.run(() => held.future),
+    ];
+    try {
+      await body();
+    } finally {
+      held.complete();
+      await Future.wait(holding);
+    }
+  }
+
+  /// Whether [thaws] have all answered once what is queued has run — none
+  /// of them waiting for a worker's turn.
+  Future<bool> answeredAtOnce(List<Future<void>> thaws) async {
+    var answered = false;
+    unawaited(Future.wait(thaws).then((_) => answered = true));
+    await pumpEventQueue();
+    return answered;
   }
 
   test('🚨a parked cel thawed ahead is hot when it completes — the read '
@@ -158,34 +183,60 @@ void main() {
     final hotKey = key('hot');
     final hot = inkSurface();
     store.storeBakedSurface(hotKey, hot);
-    // Every worker's turn taken, as by a frame's other rows.
-    final held = Completer<void>();
-    final holding = [
-      for (var i = 0; i < celThawTurns.atOnce; i += 1)
-        celThawTurns.run(() => held.future),
-    ];
-    try {
-      var answered = false;
-      unawaited(
-        Future.wait([
+
+    await whileEveryTurnIsTaken(() async {
+      expect(
+        await answeredAtOnce([
           store.thawAhead(hotKey, canvasSize: canvasSize),
           store.thawAhead(key('empty'), canvasSize: canvasSize),
           store.thawAhead(
             other,
             canvasSize: const CanvasSize(width: 32, height: 32),
           ),
-        ]).then((_) => answered = true),
+        ]),
+        isTrue,
+        reason: 'none of them stood in line',
       );
-      await pumpEventQueue();
-      expect(answered, isTrue, reason: 'none of them stood in line');
-    } finally {
-      held.complete();
-      await Future.wait(holding);
-    }
+    });
 
     expect(store.hotBakedSurfaceOrNull(hotKey), same(hot));
     expect(store.celHasRenderableContent(key('empty')), isFalse);
     expect(store.isCelCold(other), isTrue, reason: 'still parked');
+  });
+
+  test('a cel hot and still in its file answers at once too — read here, it '
+      'keeps its ref, and nothing is left to thaw', () async {
+    final store = BrushFrameStore();
+    final k = key('f');
+    await keepInAFile(store, k, inkSurface(seed: 5));
+    final read = store.bakedSurfaceOrNull(k);
+    expect(store.isCelFileBacked(k), isTrue, reason: 'premise: still kept');
+
+    await whileEveryTurnIsTaken(() async {
+      expect(
+        await answeredAtOnce([store.thawAhead(k, canvasSize: canvasSize)]),
+        isTrue,
+      );
+    });
+
+    expect(store.hotBakedSurfaceOrNull(k), same(read));
+  });
+
+  test('a cel kept anew at another size while it waits for a worker thaws '
+      'nothing — a read at the size it was asked at never would', () async {
+    final store = BrushFrameStore();
+    final k = key('a');
+    store.restoreBaked({k: blobOf(k, inkSurface())});
+    late final Future<void> thaw;
+
+    await whileEveryTurnIsTaken(() async {
+      thaw = store.thawAhead(k, canvasSize: canvasSize);
+      const bigger = CanvasSize(width: 32, height: 32);
+      store.restoreBaked({k: blobOf(k, inkSurface(canvas: bigger))});
+    });
+    await thaw;
+
+    expect(store.isCelCold(k), isTrue, reason: 'still parked, at its size');
   });
 
   test('🚨a cel drawn on while it thaws keeps the drawing — the thaw is let '
