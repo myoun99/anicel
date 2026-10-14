@@ -3719,19 +3719,6 @@ class _StoryboardRailHead extends KeptPiece {
   }
 }
 
-/// The TRACK-owned TRANSITION row on the global frame axis: the O.L / F.I /
-/// F.O spans exactly as stored, marks and grips included.
-///
-/// This is the surface that AUTHORS them. The cut timeline shows the same
-/// spans projected onto each participating cut and read-only, which is why
-/// the two surfaces state a span's position differently on purpose — here it
-/// straddles the cut boundary it fires across; there each cut sees the whole
-/// mark on its own side.
-///
-/// Everything drawn here is the direction row's own machinery: the paper
-/// span, [timelineRowInstructionOverlays] for the marks and
-/// [TimelineBlockEdgeGrip] for the edges. Nothing about a mark is re-drawn
-/// for this row.
 /// Whether the live [selection] covers [row] at [frame] — the storyboard's
 /// one range test, for the SE row, the transition row and the cut row
 /// (the audit's clone scan, 2026-09-03).
@@ -3924,6 +3911,19 @@ mixin _StoryboardRowRunLabels {
   );
 }
 
+/// The TRACK-owned TRANSITION row on the global frame axis: the O.L / F.I /
+/// F.O spans exactly as stored, marks and grips included.
+///
+/// This is the surface that AUTHORS them. The cut timeline shows the same
+/// spans projected onto each participating cut and read-only, which is why
+/// the two surfaces state a span's position differently on purpose — here it
+/// straddles the cut boundary it fires across; there each cut sees the whole
+/// mark on its own side.
+///
+/// Everything drawn here is the direction row's own machinery: the paper
+/// span, [timelineRowInstructionOverlays] for the marks and
+/// [TimelineBlockEdgeGrip] for the edges. Nothing about a mark is re-drawn
+/// for this row.
 class _StoryboardTransitionRow extends KeptPiece
     with _StoryboardRowRunLabels {
   const _StoryboardTransitionRow({
