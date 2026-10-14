@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
@@ -38,18 +40,22 @@ import '../../helpers/named_finders.dart';
 void main() {
   final transform = transformGroupHeaderLane.laneId;
   const blur = EffectId('v-blur');
+  const hue = EffectId('v-hue');
   final fx = effectGroupLaneId(blur);
   final carrier = trackTransformLaneCarrierId(conteTrackId);
 
-  /// The conte track with an effect on its V row — a V row has lanes only
-  /// with one.
+  /// The conte track with effects on its V row — a V row has lanes only
+  /// with one, and two give its chain two groups.
   Project film() {
     final project = conteTrackProject();
     return project.copyWith(
       tracks: [
         for (final track in project.tracks)
           track.copyWith(
-            effects: [LayerEffect.defaults(id: blur, kind: EffectKind.blur)],
+            effects: [
+              LayerEffect.defaults(id: blur, kind: EffectKind.blur),
+              LayerEffect.defaults(id: hue, kind: EffectKind.hueSaturation),
+            ],
           ),
       ],
     );
@@ -178,6 +184,46 @@ void main() {
     expect(seRowOf(s).expandedLaneGroups, {transform});
     expect(trackOf(s).lanesExpanded, isTrue);
     expect(trackOf(s).expandedLaneGroups, {fx});
+  });
+
+  test('🚨the groups open in a row are kept beside its twirl: its lanes shut '
+      'and open again keep them, a group opened keeps the others, and a '
+      'group shut goes alone', () {
+    for (final (name, row, first, second, open, groups) in [
+      (
+        'an S row',
+        conteSeId,
+        transform,
+        seNameTagGroupLaneId,
+        (EditorSessionManager s) => seRowOf(s).lanesExpanded,
+        (EditorSessionManager s) => seRowOf(s).expandedLaneGroups,
+      ),
+      (
+        'the V row',
+        carrier,
+        fx,
+        effectGroupLaneId(hue),
+        (EditorSessionManager s) => trackOf(s).lanesExpanded,
+        (EditorSessionManager s) => trackOf(s).expandedLaneGroups,
+      ),
+    ]) {
+      final s = sessionOn(film());
+      final presses = SessionRowButtonPresses(s)
+        ..toggleLanes(row)
+        ..toggleLaneGroup(laneGroupKey(row, first))
+        ..toggleLaneGroup(laneGroupKey(row, second));
+      expect(groups(s), {first, second}, reason: '$name: both open');
+
+      presses.toggleLanes(row);
+      expect(open(s), isFalse, reason: '$name: premise — its lanes shut');
+      expect(groups(s), {first, second}, reason: '$name: shut, still kept');
+
+      presses.toggleLanes(row);
+      expect(groups(s), {first, second}, reason: '$name: open again as left');
+
+      presses.toggleLaneGroup(laneGroupKey(row, first));
+      expect(groups(s), {second}, reason: '$name: the one shut, only it');
+    }
   });
 
   group('a twirl that shuts hands the storyboard\'s stand to the row that '
