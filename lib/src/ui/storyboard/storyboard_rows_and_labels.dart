@@ -638,28 +638,15 @@ class _StoryboardRowsAndLabels {
   /// The camera row's label: its head, wearing the camera in hand, or its
   /// slots reserved and empty.
   _RailLabel _cameraLabelOf(Track track, {bool chromeless = false}) {
-    final widget = _state.widget;
-    final rowId = trackCameraRowId(track.id);
     final head = _state._railRows._cameraHeadAt(track);
     if (head == null || !_headVerbsWired) {
       return (
-        piece: _headlessLabel(
-          track,
-          (
-            id: rowId,
-            kind: LayerKind.camera,
-            keyName: 'camera',
-            name: trackCameraRowName(
-              track.cuts,
-              standingIn: widget.activeCutId,
-            ),
-            height: _state._rowHeights.camera,
-          ),
-          chromeless: chromeless,
-        ),
+        piece: _cameraHeadless(track, chromeless: chromeless),
         wears: null,
       );
     }
+    final widget = _state.widget;
+    final rowId = trackCameraRowId(track.id);
     final view = widget.cameraViewEnabled;
     final shown = view == null
         ? head.layer
@@ -700,6 +687,26 @@ class _StoryboardRowsAndLabels {
       wears: (layer: shown, stack: head.cut.layers),
     );
   }
+
+  /// The camera row's slots reserved and empty — in a gap, or while the
+  /// host has not wired the head's verbs — under the name the row goes by.
+  _StoryboardLayerRowLabel _cameraHeadless(
+    Track track, {
+    required bool chromeless,
+  }) => _headlessLabel(
+    track,
+    (
+      id: trackCameraRowId(track.id),
+      kind: LayerKind.camera,
+      keyName: 'camera',
+      name: trackCameraRowName(
+        track.cuts,
+        standingIn: _state.widget.activeCutId,
+      ),
+      height: _state._rowHeights.camera,
+    ),
+    chromeless: chromeless,
+  );
 
   /// A PROJECTION row's label while it has no head to wear, or the host has
   /// not wired the head's verbs: its slots reserved and empty
