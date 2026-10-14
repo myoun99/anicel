@@ -253,7 +253,15 @@ void main() {
     await dragCanvas(tester, const [Offset(60, 100), Offset(63, 101)]);
 
     expect(commits, hasLength(1));
-    expect(dabs(), isNotEmpty);
+    // To where the pen went, on the ray — not the press's dab alone: what
+    // the lock held when the pen lifted is laid too.
+    final reach = dabs()
+        .map((dab) => dab.center.x)
+        .reduce((a, b) => a > b ? a : b);
+    expect(reach, closeTo(63, 0.5));
+    for (final dab in dabs()) {
+      expect(dab.center.y, closeTo(100, 1e-6));
+    }
   });
 
   testWidgets('snap and symmetry compose: constrain first, then copy', (
