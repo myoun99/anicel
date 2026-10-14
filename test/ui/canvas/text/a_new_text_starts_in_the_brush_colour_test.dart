@@ -1,8 +1,6 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
-import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
-import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings_values.dart';
@@ -15,13 +13,16 @@ import '../../../helpers/cel_text_hand.dart';
 import '../../../helpers/cel_text_held_baker.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 
-/// F-334: A NEW TEXT STARTS IN THE BRUSH'S COLOUR — the first one, and the
-/// tool keeps that colour as its own.
+/// F-342: A NEW TEXT IS SET IN THE BRUSH'S COLOUR — the brush's as it is
+/// when the text is made. The tool has no colour of its own: with no text
+/// in hand, its colour setting IS the brush's.
 ///
-/// 🗣️유저 2026-10-10: 「텍스트툴 처음 생성되는 색 기본값 검정말고 브러시?
-/// 색으로 생성」 → F-334-Q1 「자기 색은 두고, 처음만 붓 색」: 「처음
-/// 생성될떄만 기본값을 붓색. 이후로 편집도중 브러시 색 바꾼다고 텍스트색
-/// 안바뀜. 진짜 초기값만 브러시색으로 해두는것」.
+/// 🗣️유저 2026-10-12 (F-342): 「색도 그냥 결정되돌림. 생성시 브러시색
+/// 따라가도록」 — F-334-Q1's other answer, 「새 텍스트는 늘 지금 붓 색」:
+/// 「텍스트를 고르지 않은 채 도구 설정의 색을 바꾸면 붓 색이 바뀐다(색이
+/// 하나). 텍스트를 고르고 바꾸면 그 텍스트만」. ↩️F-334-Q1 (2026-10-10) had
+/// taken 「자기 색은 두고, 처음만 붓 색」: the first text's brush colour became
+/// the tool's own, and the brush moved after reached no text.
 void main() {
   const red = 0xFFCC2233;
   const blue = 0xFF2233CC;
@@ -29,18 +30,21 @@ void main() {
   const black = 0xFF000000;
 
   group('the hand', () {
-    /// The hand over an empty cel — or one carrying [text] — with the
-    /// tool's values as a run of the app starts them, and the settings'
-    /// law over them reading [brushColour].
-    ({TextHand hand, TextToolSettingsValues Function(int? brush) values})
-    handWith({CelTextContent? text}) {
+    /// The hand over an empty cel — or one carrying [text], taken by its
+    /// box — with the tool's values as a run of the app starts them, and
+    /// the settings' law over them, reading the brush's colour and setting
+    /// it.
+    ({TextHand hand, TextToolSettingsValues Function() values}) handWith({
+      CelTextContent? text,
+    }) {
       final hand = textHand(bake: HeldBaker().call, text: text);
       return (
         hand: hand,
-        values: (brush) => TextToolSettingsValues(
+        values: () => TextToolSettingsValues(
           options: hand.options,
           tool: hand.tool,
-          brushColour: brush,
+          brushColour: hand.host.brushColour,
+          onBrushColour: (colour) => hand.host.brushColour = colour,
         ),
       );
     }
@@ -51,68 +55,68 @@ void main() {
       return hand.tool.letterStylesSpokenFor!.single.color;
     }
 
-    test('🚨the FIRST text is set in the brush\'s colour — and the tool keeps '
-        'it: the next is set in it whatever the brush\'s became', () {
+    test('🚨every new text is set in the brush\'s colour as it is when the '
+        'text is made', () {
       final (:hand, values: _) = handWith();
-      expect(
-        hand.options.value,
-        TextToolOptions.defaults,
-        reason: '⛔fixture: the tool as a run of the app starts it',
-      );
 
       hand.host.brushColour = red;
       expect(beginAText(hand), red);
       hand.tool.confirm();
 
       hand.host.brushColour = blue;
-      expect(
-        beginAText(hand),
-        red,
-        reason: '「이후로 … 브러시 색 바꾼다고 텍스트색 안바뀜」',
-      );
+      expect(beginAText(hand), blue, reason: '「생성시 브러시색 따라가도록」');
     });
 
-    test('until then the settings show the brush\'s colour, following it — '
-        'and after it, the tool\'s own', () {
+    test('with no text in hand the settings show the brush\'s colour, '
+        'following it', () {
       final (:hand, :values) = handWith();
-      int shown(int brush) => values(brush).letter((style) => style.color).value;
+      int shown() => values().letter((style) => style.color).value;
 
-      expect(shown(red), red);
-      expect(shown(blue), blue);
-
-      hand.host.brushColour = green;
-      beginAText(hand);
-      hand.tool.confirm();
-
-      expect(shown(red), green);
+      hand.host.brushColour = red;
+      expect(shown(), red);
+      hand.host.brushColour = blue;
+      expect(shown(), blue);
     });
 
-    test('a colour picked in the settings before any text is the first '
-        'text\'s — the brush\'s is not read', () {
+    test('🚨a colour picked in the settings with NO text in hand is the '
+        'brush\'s — the next text\'s by it — and the tool keeps none', () {
       final (:hand, :values) = handWith();
-
-      values(red).setColour(green);
       hand.host.brushColour = red;
 
+      values().setColour(green);
+
+      expect(hand.host.brushColour, green, reason: '「색이 하나」');
+      expect(hand.options.value, TextToolOptions.defaults);
       expect(beginAText(hand), green);
     });
 
-    test('the brush\'s own colour picked there (「현재 색 반영」) is the tool\'s '
-        'own all the same — the brush moved after reaches no text', () {
-      final (:hand, :values) = handWith();
+    test('🚨a colour picked with a text IN HAND is that text\'s alone: the '
+        'brush\'s stays, and the next text is set in it', () {
+      final (:hand, :values) = handWith(
+        text: CelTextContent(
+          spans: const [CelTextSpan(text: 'ab', style: TextLetterStyle())],
+          anchor: CanvasPoint(x: 40, y: 40),
+        ),
+      );
+      expect(hand.tool.session, isNotNull, reason: '⛔fixture: taken');
+      hand.host.brushColour = red;
 
-      values(red).setColour(red);
-      hand.host.brushColour = blue;
+      values().setColour(green);
 
+      expect(hand.tool.letterStylesSpokenFor, [
+        const TextLetterStyle(color: green),
+      ]);
+      expect(hand.host.brushColour, red);
       expect(beginAText(hand), red);
     });
 
-    test('a setting other than the colour — of the letters or of the box — '
-        'gives the tool no colour of its own', () {
+    test('a setting of the letters or of the box with no text in hand is '
+        'the next text\'s — and its colour is still the brush\'s', () {
       final (:hand, :values) = handWith();
+      hand.host.brushColour = red;
 
-      values(red).setLetters((style) => style.copyWith(fontSize: 30));
-      values(red).setAlign(TextCelAlign.center);
+      values().setLetters((style) => style.copyWith(fontSize: 30));
+      values().setAlign(TextCelAlign.center);
       hand.host.brushColour = blue;
       beginAText(hand);
 
@@ -121,8 +125,8 @@ void main() {
       expect(hand.tool.letterStylesSpokenFor!.single.color, blue);
     });
 
-    test('a text TAKEN in hand is not a text set: the tool still has no '
-        'colour of its own', () {
+    test('a text TAKEN in hand gives the next text nothing of its '
+        'colour', () {
       final (:hand, values: _) = handWith(
         text: CelTextContent(
           spans: const [
@@ -139,8 +143,8 @@ void main() {
       expect(beginAText(hand), blue);
     });
 
-    test('with no brush to read, a text is set in the colour the tool was made '
-        'in — and the tool keeps taking the brush\'s once there is one', () {
+    test('with no brush to read, a text is set in the colour its letters '
+        'were made in', () {
       final (:hand, values: _) = handWith();
 
       expect(beginAText(hand), black);
@@ -164,6 +168,7 @@ void main() {
       WidgetTester tester,
       ValueNotifier<TextToolOptions> options, {
       required int brush,
+      required ValueChanged<int> onBrushColour,
     }) => tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
@@ -175,49 +180,43 @@ void main() {
               options: options,
               commands: null,
               currentColorOf: () => brush,
+              onBrushColour: onBrushColour,
             ),
           ),
         ),
       ),
     );
 
-    testWidgets('the colour row shows the brush\'s colour while the tool has '
-        'none of its own — and 「현재 색 반영」 there makes it the tool\'s', (
+    testWidgets('with no text in hand the colour row is the brush\'s: it '
+        'shows it, and a colour typed in its window is set on it', (
       tester,
     ) async {
       final options = ValueNotifier(TextToolOptions.defaults);
       addTearDown(options.dispose);
+      final brushes = <int>[];
 
-      await pumpOver(tester, options, brush: red);
+      await pumpOver(tester, options, brush: red, onBrushColour: brushes.add);
       expect(swatch(tester).color, red);
-      await pumpOver(tester, options, brush: blue);
+      await pumpOver(tester, options, brush: blue, onBrushColour: brushes.add);
       expect(swatch(tester).color, blue, reason: 'it follows the brush');
 
       await tester.tap(find.byKey(const ValueKey<String>('text-tool-color')));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('color-picker-use-current')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('color-status-hex')));
       await tester.pumpAndSettle();
-      await pumpOver(tester, options, brush: red);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('color-status-hex-input')),
+        '22CC33',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
 
-      expect(swatch(tester).color, blue);
+      expect(brushes.last, green);
+      expect(options.value, TextToolOptions.defaults, reason: 'none kept');
     });
   });
 
   group('the real app', () {
-    /// The brush in hand on the canvas the text tool works on.
-    ValueNotifier<BrushToolState> brushOf(WidgetTester tester) =>
-        tester
-                .widget<BrushCanvasPanel>(
-                  find.ancestor(
-                    of: textLayer(),
-                    matching: find.byType(BrushCanvasPanel),
-                  ),
-                )
-                .brushToolState!
-            as ValueNotifier<BrushToolState>;
-
     void paintWith(WidgetTester tester, int colour) {
       final brush = brushOf(tester);
       brush.value = brush.value.copyWith(color: colour);
@@ -238,8 +237,8 @@ void main() {
         .style
         .color;
 
-    testWidgets('🚨the first text is set in the brush\'s colour, and the next '
-        'in the same after the brush\'s moved', (tester) async {
+    testWidgets('🚨a text is set in the brush\'s colour, and the next one, '
+        'after the brush\'s moved, in the brush\'s new one', (tester) async {
       await pumpTextToolApp(tester);
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
@@ -258,7 +257,8 @@ void main() {
       await pumpFrames(tester);
       await setAt(tester, c + const Offset(0, 120), 'yo');
 
-      expect(colourOf(tester, 'yo'), red);
+      expect(colourOf(tester, 'yo'), blue);
+      expect(colourOf(tester, 'hi'), red, reason: 'a text set keeps its own');
     });
   });
 }

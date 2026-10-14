@@ -95,6 +95,35 @@ void main() {
     expect(back.anchor, CanvasPoint(x: c.dx, y: c.dy));
   });
 
+  // 🗣️F-342 (유저 2026-10-12): 「마지막으로 사용한 크기값 기억해서 그거대로
+  // 만들도록」.
+  testWidgets('🚨the size a CORNER gave a text is the next text\'s', (
+    tester,
+  ) async {
+    final c = await hiInHandByItsBox(tester);
+    final layout = textToolOf(tester).session!.shown.layout;
+    final corner = layout.boxCorners[2];
+    final middle = layout.onCanvas.centre;
+
+    await dragFrom(tester, corner, middle + (corner - middle) * 2);
+    expect(
+      celOf(tester).texts.single.content.spans.single.style.fontSize,
+      closeTo(96, 1e-6),
+      reason: '⛔fixture',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pumpFrames(tester);
+    await clickAt(tester, c.dx, c.dy + 200);
+    await typeText(tester, 'yo');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await pumpFrames(tester);
+
+    final yo = celOf(tester).texts.singleWhere(
+      (text) => text.content.text == 'yo',
+    );
+    expect(yo.content.spans.single.style.fontSize, closeTo(96, 1e-6));
+  });
+
   testWidgets('a drag OUTSIDE the box turns the text about the box\'s '
       'centre — one step, the text still in hand', (tester) async {
     final c = await hiInHandByItsBox(tester);

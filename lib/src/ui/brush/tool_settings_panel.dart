@@ -306,8 +306,10 @@ class ToolSettingsPanel extends StatelessWidget {
     CanvasTool.text => TextToolSettings(
       options: textOptions,
       commands: textCommands,
-      // The brush's colour, for the colour window's 「현재 색 반영」.
+      // The brush's colour: the next text's, and what the colour window's
+      // 「현재 색 반영」 copies.
       currentColorOf: () => state.color,
+      onBrushColour: (color) => onChanged(state.copyWith(color: color)),
       fonts: textFonts,
     ),
     // Guides get their knobs HERE, like every other tool. There is no

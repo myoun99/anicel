@@ -44,6 +44,7 @@ class TextToolSettings extends StatelessWidget {
     required this.options,
     required this.commands,
     this.currentColorOf,
+    this.onBrushColour,
     this.fonts,
   });
 
@@ -61,10 +62,14 @@ class TextToolSettings extends StatelessWidget {
   final CelTextCommands? commands;
 
   /// The brush's colour — what 「현재 색 반영」 copies into a colour here, and
-  /// the next text's while the tool has none of its own
-  /// ([TextToolOptions.takesTheBrushColour]). Null where there is no brush
-  /// to read.
+  /// the next text's ([TextToolOptions.letters]). Null where there is no
+  /// brush to read.
   final int Function()? currentColorOf;
+
+  /// Sets the brush's colour — the colour row's with no text in hand
+  /// ([TextToolSettingsValues.setColour]). Null where there is no brush to
+  /// set.
+  final ValueChanged<int>? onBrushColour;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -76,6 +81,7 @@ class TextToolSettings extends StatelessWidget {
         options: options,
         tool: commands?.tool,
         brushColour: currentColorOf?.call(),
+        onBrushColour: onBrushColour,
       );
       final strings = AppText.strings;
       final section = ToolSettingsSection(

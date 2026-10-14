@@ -200,7 +200,8 @@ void main() {
             .value,
         isTrue,
       );
-      expect(swatch(tester, 'color').color, 0xFF102030);
+      // The brush's, whatever colour the letters were made in (F-342).
+      expect(swatch(tester, 'color').color, 0xFFAABBCC);
       expect(swatch(tester, 'outline').color, isNull);
       expect(pill(tester, 'align-center').selected, isTrue);
       expect(pill(tester, 'align-left').selected, isFalse);
@@ -618,7 +619,11 @@ void main() {
       expect(wheel, findsNothing, reason: '⛔fixture: the window closed');
       expect(hand.host.ran, hasLength(1));
       expect(landedOn(hand.cel).spans.single.style.color, picked);
-      expect(hand.options.value.letters(brushColour: null).color, picked);
+      expect(
+        hand.options.value,
+        const TextToolOptions(letters: plain),
+        reason: 'the text\'s alone — the next is set in the brush\'s (F-342)',
+      );
     });
 
     testWidgets('「현재 색 반영」 brings the brush\'s colour to the letters', (
@@ -1078,10 +1083,13 @@ void main() {
     );
   });
 
-  testWidgets('🚨in the tool settings PANEL the colour window\'s 「현재 색 '
-      '반영」 is the BRUSH\'s colour', (tester) async {
+  // 🗣️F-342 (유저 2026-10-12): 「색도 그냥 결정되돌림. 생성시 브러시색
+  // 따라가도록」 — the tool has no colour of its own.
+  testWidgets('🚨in the tool settings PANEL the colour, with no text in '
+      'hand, is the BRUSH\'s: shown, and set', (tester) async {
     final options = ValueNotifier(const TextToolOptions(letters: plain));
     addTearDown(options.dispose);
+    final states = <BrushToolState>[];
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
@@ -1095,7 +1103,7 @@ void main() {
                   tool: CanvasTool.text,
                   color: 0xFF336699,
                 ),
-                onChanged: (_) {},
+                onChanged: states.add,
                 fillOptions: const FloodFillOptions(),
                 onFillOptionsChanged: (_) {},
                 textOptions: options,
@@ -1105,15 +1113,22 @@ void main() {
         ),
       ),
     );
+    expect(swatch(tester, 'color').color, 0xFF336699);
 
     await tester.tap(row('color'));
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('color-picker-use-current')),
+    await tester.tap(find.byKey(const ValueKey<String>('color-status-hex')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('color-status-hex-input')),
+      '22CC33',
     );
-    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
 
-    expect(options.value.letters(brushColour: null).color, 0xFF336699);
+    expect(states.last.color, 0xFF22CC33);
+    expect(states.last.tool, CanvasTool.text, reason: 'the colour alone');
+    expect(options.value, const TextToolOptions(letters: plain));
   });
 
   testWidgets('a host that owns no settings and holds no text shows the '

@@ -43,12 +43,12 @@ abstract interface class CelTextToolHost {
   /// What the next text starts as (the tool settings).
   TextToolOptions get options;
 
-  /// What setting a text leaves [options] as ([TextToolOptions.seeded]).
+  /// What the hand leaves [options] as: a text sized by its corner gives
+  /// the next text its size (F-342).
   set options(TextToolOptions options);
 
-  /// The brush's colour — the next text's while the tool has none of its
-  /// own ([TextToolOptions.takesTheBrushColour]). Null where there is no
-  /// brush to read.
+  /// The brush's colour — the next text's ([TextToolOptions.letters]).
+  /// Null where there is no brush to read.
   int? get brushColour;
 
   /// The cel under the tool — the one a press sets a text on or takes one
@@ -298,17 +298,12 @@ class CelTextTool extends ChangeNotifier {
     HistoryMark? celMadeSince,
   }) {
     confirm();
-    // The text is set in the brush's colour while the tool has none of its
-    // own — and from here the tool keeps that colour (F-334-Q1).
-    final options = host.options = host.options.seeded(
-      brushColour: host.brushColour,
-    );
     _hold(
       _Holding(
         _sessionOn(
           cel,
           standing: null,
-          content: options.newTextAt(anchor, wrapWidth: wrapWidth),
+          content: host.options.newTextAt(anchor, wrapWidth: wrapWidth),
         ),
         cel,
         celMadeSince: celMadeSince,

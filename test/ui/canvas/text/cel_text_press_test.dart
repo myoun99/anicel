@@ -960,6 +960,87 @@ void main() {
     });
   });
 
+  // 🗣️F-342 (유저 2026-10-12): 「마지막으로 사용한 크기값 기억해서 그거대로
+  // 만들도록」. The next text is set at 8 here.
+  group('the size a corner gives a text', () {
+    /// Takes [content] by its box: its box's bottom right corner, the
+    /// middle of that box, and where the corner is twice as far from it.
+    ({Offset corner, Offset doubled}) taken(
+      CelTextScene scene,
+      CelTextTool tool,
+    ) {
+      final down = press(scene, 10, 10)!;
+      up(scene, down, 10, 10);
+      final layout = tool.session!.shown.layout;
+      final corner = celTextHandlesOf(layout)[2];
+      final middle = layout.onCanvas.centre;
+      return (corner: corner, doubled: middle + (corner - middle) * 2);
+    }
+
+    double nextSize(CelTextTool tool) =>
+        tool.host.options.letters(brushColour: null).fontSize;
+
+    test('🚨is the next text\'s', () async {
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      final (:corner, :doubled) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      move(scene, down, doubled.dx, doubled.dy);
+      up(scene, down, doubled.dx, doubled.dy);
+      await baker.pending.answer();
+
+      expect(
+        textOf(scene, 4).content.spans.single.style.fontSize,
+        closeTo(16, 1e-9),
+        reason: '⛔fixture',
+      );
+      expect(nextSize(tool), closeTo(16, 1e-9));
+    });
+
+    test('a corner press that goes away gives the next text nothing', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      final (:corner, :doubled) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      move(scene, down, doubled.dx, doubled.dy);
+      expect(
+        tool.contentInHand!.spans.single.style.fontSize,
+        closeTo(16, 1e-9),
+        reason: '⛔fixture: it was following the hand',
+      );
+      down.cancel(scene);
+
+      expect(nextSize(tool), 8);
+    });
+
+    test('a corner let go where it went down gives the next text nothing '
+        'of the size the text had', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [
+          carried(
+            4,
+            CelTextContent(
+              spans: const [
+                CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 12)),
+              ],
+              anchor: CanvasPoint(x: 8, y: 8),
+            ),
+          ),
+        ],
+      );
+      final (:corner, doubled: _) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      up(scene, down, corner.dx, corner.dy);
+
+      expect(nextSize(tool), 8);
+    });
+  });
+
   group('with a text in hand by its letters', () {
     test('a press inside sets the caret, and dragged, selects from it; a '
         'press on another text confirms and takes that one', () async {

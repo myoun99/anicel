@@ -466,6 +466,23 @@ final class _ScalePress extends _BoxEditPress {
           CanvasPoint(x: centre.dx, y: centre.dy),
         ),
       );
+
+  /// 🗣️F-342 (유저 2026-10-12): 「마지막으로 사용한 크기값 기억해서 그거대로
+  /// 만들도록」 — the size the corner gave the text is the next text's, as a
+  /// size set in the tool settings is: its first letter's.
+  @override
+  void up(CelTextScene scene, Offset local) {
+    super.up(scene, local);
+    final sized = scene.tool.contentInHand;
+    if (sized == null || sized == start || sized.spans.isEmpty) {
+      return;
+    }
+    final size = sized.spans.first.style.fontSize;
+    final host = scene.tool.host;
+    host.options = host.options.withLetters(
+      (letters) => letters.copyWith(fontSize: size),
+    );
+  }
 }
 
 /// On an edge of a box its letters run between: its room, in whole pixels,
