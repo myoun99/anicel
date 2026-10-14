@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -17,6 +18,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 
 import '../helpers/project_scratch_folder.dart';
 
@@ -66,6 +68,30 @@ void main() {
       entry.key: entry.value.pixels.toList(),
   };
 
+  /// [source] kept as an opened project keeps it: a stretch of its file,
+  /// which the store reads and never lets go of while the bytes are the
+  /// same.
+  Future<void> keepInAFile(
+    BrushFrameStore store,
+    BrushFrameKey k,
+    BitmapSurface source,
+  ) async {
+    final directory = await Directory.systemTemp.createTemp('qa-thaw-ahead');
+    deleteAfterSessionEnds(directory);
+    final blob = blobOf(k, source);
+    final path = '${directory.path}/cel.bin';
+    File(path).writeAsBytesSync(blob.bytes);
+    store.restoreFromFile({
+      k: AnicelCelFileRef(
+        filePath: path,
+        dataOffset: 0,
+        length: blob.bytes.length,
+        canvasSize: canvasSize,
+        tileSize: blob.tileSize,
+      ),
+    });
+  }
+
   test('🚨a parked cel thawed ahead is hot when it completes — the read '
       'after it thaws nothing, and shows the picture the read here '
       'would have made', () async {
@@ -91,23 +117,10 @@ void main() {
 
   test('a cel in the saved file thawed ahead is hot, and its ref stays — '
       'the file still holds those bytes', () async {
-    final directory = await Directory.systemTemp.createTemp('qa-thaw-ahead');
-    deleteAfterSessionEnds(directory);
     final store = BrushFrameStore();
     final k = key('f');
     final source = inkSurface(seed: 5);
-    final blob = blobOf(k, source);
-    final path = '${directory.path}/cel.bin';
-    File(path).writeAsBytesSync(blob.bytes);
-    store.restoreFromFile({
-      k: AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-      ),
-    });
+    await keepInAFile(store, k, source);
 
     await store.thawAhead(k, canvasSize: canvasSize);
 
@@ -135,8 +148,9 @@ void main() {
     );
   });
 
-  test('nothing to thaw, nothing moves — a hot cel, an empty one, and one '
-      'kept at another size, which a read at this size never thaws', () async {
+  test('nothing to thaw, nothing moves, and nothing waits for a worker — a '
+      'hot cel, an empty one, and one kept at another size, which a read at '
+      'this size never thaws', () async {
     final store = BrushFrameStore();
     final other = key('other');
     // A restore swaps the WHOLE store, so it goes first.
@@ -144,13 +158,30 @@ void main() {
     final hotKey = key('hot');
     final hot = inkSurface();
     store.storeBakedSurface(hotKey, hot);
-
-    await store.thawAhead(hotKey, canvasSize: canvasSize);
-    await store.thawAhead(key('empty'), canvasSize: canvasSize);
-    await store.thawAhead(
-      other,
-      canvasSize: const CanvasSize(width: 32, height: 32),
-    );
+    // Every worker's turn taken, as by a frame's other rows.
+    final held = Completer<void>();
+    final holding = [
+      for (var i = 0; i < celThawTurns.atOnce; i += 1)
+        celThawTurns.run(() => held.future),
+    ];
+    try {
+      var answered = false;
+      unawaited(
+        Future.wait([
+          store.thawAhead(hotKey, canvasSize: canvasSize),
+          store.thawAhead(key('empty'), canvasSize: canvasSize),
+          store.thawAhead(
+            other,
+            canvasSize: const CanvasSize(width: 32, height: 32),
+          ),
+        ]).then((_) => answered = true),
+      );
+      await pumpEventQueue();
+      expect(answered, isTrue, reason: 'none of them stood in line');
+    } finally {
+      held.complete();
+      await Future.wait(holding);
+    }
 
     expect(store.hotBakedSurfaceOrNull(hotKey), same(hot));
     expect(store.celHasRenderableContent(key('empty')), isFalse);
@@ -169,6 +200,61 @@ void main() {
     await thaw;
 
     expect(store.bakedSurfaceOrNull(k), same(drawn));
+  });
+
+  test('🚨a cel READ here while it thaws keeps what the read made — the '
+      'thaw is let go, though the file still holds the bytes both '
+      'read', () async {
+    final store = BrushFrameStore();
+    final k = key('f');
+    await keepInAFile(store, k, inkSurface(seed: 5));
+
+    final thaw = store.thawAhead(k, canvasSize: canvasSize);
+    final read = store.bakedSurfaceOrNull(k);
+    await thaw;
+
+    expect(read, isNotNull, reason: 'premise: the read thawed it here');
+    expect(store.hotBakedSurfaceOrNull(k), same(read));
+  });
+
+  test('a cel that cooled after its thaw thaws again when asked — a thaw '
+      'that ended is no answer for ever', () async {
+    final store = BrushFrameStore();
+    final k = key('f');
+    final source = inkSurface(seed: 5);
+    await keepInAFile(store, k, source);
+    await store.thawAhead(k, canvasSize: canvasSize);
+    // The cel used last never cools, so another is used after it.
+    store
+      ..storeBakedSurface(key('after'), inkSurface())
+      ..hotCelByteBudget = 0
+      ..coolToBudget();
+    await store.drainCooling();
+    expect(store.hotBakedSurfaceOrNull(k), isNull, reason: 'premise: cooled');
+    store.hotCelByteBudget = 1 << 30;
+
+    await store.thawAhead(k, canvasSize: canvasSize);
+
+    expect(pixelsOf(store.hotBakedSurfaceOrNull(k)!), pixelsOf(source));
+  });
+
+  test('a linked row\'s key thaws the one cel its rows share', () async {
+    final store = BrushFrameStore();
+    final bank = key('a');
+    const window = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('linked'),
+      frameId: FrameId('a'),
+    );
+    store
+      ..restoreBaked({bank: blobOf(bank, inkSurface())})
+      ..setLinkResolver((k) => k == window ? bank : k);
+
+    await store.thawAhead(window, canvasSize: canvasSize);
+
+    expect(store.isCelCold(bank), isFalse);
   });
 
   test('a cel emptied while it thaws stays empty', () async {
