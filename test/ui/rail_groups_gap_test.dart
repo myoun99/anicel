@@ -6,13 +6,20 @@
 // inside their own insets, so "the second is below the first" held with
 // no gap at all. This pin reads the group boxes through the grips that lie
 // on their edges: the first group's height grip along its bottom, the
-// second group's side grip along its full height.
+// second group's side grip along its height.
+//
+// ⚠️A grip stops one corner short of each end of its edge (I-60: 「곡선
+// 전에 끝나도록」), so a box read off a grip's span is that span and one
+// corner more at each end.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
+
+const _corner = DockEdgeSplitter.endInset;
 
 void main() {
   testWidgets('the second group starts one rail gap below the first', (
@@ -35,7 +42,7 @@ void main() {
     final firstBottom = tester
         .getRect(find.byKey(ValueKey<String>('dock-resize-$first-height')))
         .bottom;
-    final secondTop = tester.getRect(secondSide).top;
+    final secondTop = tester.getRect(secondSide).top - _corner;
     // The rail's gap between groups: _EditorWorkspaceState._railGroupGap.
     expect(
       secondTop - firstBottom,
@@ -53,8 +60,8 @@ void main() {
           ),
         )
         .first;
-    final firstTop = tester.getRect(firstSide).top;
-    final secondBottom = tester.getRect(secondSide).bottom;
+    final firstTop = tester.getRect(firstSide).top - _corner;
+    final secondBottom = tester.getRect(secondSide).bottom + _corner;
     expect(
       tester.getSize(column).height,
       closeTo(secondBottom - firstTop, 0.5),
@@ -80,10 +87,10 @@ void main() {
     final dock = tester.getRect(
       find.byKey(const ValueKey<String>('editor-panel-dock-right')),
     );
-    final group = tester.getRect(
+    final grip = tester.getRect(
       find.byKey(ValueKey<String>('dock-resize-$sheet-height')),
     );
-    expect(group.left, closeTo(dock.left, 0.5));
-    expect(dock.right - group.right, closeTo(8, 0.5));
+    expect(grip.left - _corner, closeTo(dock.left, 0.5));
+    expect(dock.right - (grip.right + _corner), closeTo(8, 0.5));
   });
 }
