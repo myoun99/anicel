@@ -361,6 +361,19 @@ class LayerFrameImageCache {
       // The cel moved on while the snapshot was out: build it like any miss.
     }
 
+    // 🚨A CEL STILL COLD, OR STILL IN THE FILE, IS THAWED AHEAD — OFF THE UI
+    // THREAD ([BrushFrameStore.thawAhead], card cel-thaw-holds-the-ui-thread):
+    // inflated and laid into its tiles on a worker, and read below once it
+    // is hot. 🔬Read here instead, a cel held the UI thread 16–19 ms (line
+    // art at 1920×1080), and a cut's first play 60–70 ms at a time (I-57,
+    // 2026-10-15). Waited for before the content and the revision are
+    // read, so an edit made while it thaws is what they see; never STARTED
+    // when the editor just went hot.
+    if (shouldAbort?.call() ?? false) {
+      return null;
+    }
+    await frameStore.thawAhead(key, canvasSize: canvasSize);
+
     // Content oracle, not a command check (R19 P3a): an OPENED cel's
     // picture is its baked raster and carries no commands at all — the
     // old command-emptiness guard blanked every loaded cel in playback.
@@ -375,10 +388,11 @@ class LayerFrameImageCache {
     }
     final revision = _currentRevision(key);
 
-    // The cel's thaw is the one slice on this path nothing can stand down:
-    // a cel still cold, or still in the file, is read and inflated inside
-    // this call (🔬1.4–17 ms a cel on the Windows app, 2026-10-07 — board
-    // F-296) — never START it when the editor just went hot.
+    // What the worker did not thaw — a thaw that failed, a cel cooled again
+    // since — is read and inflated inside this call, the one slice on this
+    // path nothing can stand down (🔬1.4–17 ms a cel on the Windows app,
+    // 2026-10-07 — board F-296): never START it when the editor just went
+    // hot.
     // 🪦It said 「the display-cache replay … grows with the cel's stroke
     // count」 until then; no stroke has been replayed since the baked raster
     // became the cel (R19 P3b, `BrushFrameDisplayCacheService`).

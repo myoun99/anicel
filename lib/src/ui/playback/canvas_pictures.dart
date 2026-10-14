@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
@@ -161,6 +163,13 @@ class CanvasPictures implements PlaybackPictures {
   /// 10-10, camera view, profile: the whole cut made +0.3–15% LATER). What
   /// a walk gains from is asking for the NEXT frames before it waits
   /// ([PlaybackPrerenderScheduler]'s ask ahead).
+  ///
+  /// 🚨BUT EVERY ROW'S CEL IS THAWED AT ONCE (card
+  /// cel-thaw-holds-the-ui-thread): a thaw holds no picture, only the
+  /// cel's own tiles, and runs on a worker ([BrushFrameStore.thawAhead] —
+  /// as many at once as the machine has workers for). Asked row by row, as
+  /// each row's making waits for its own, the workers would thaw a frame's
+  /// cels one after another.
   @override
   Future<bool> make(
     DemandedPicture picture, {
@@ -168,8 +177,21 @@ class CanvasPictures implements PlaybackPictures {
   }) async {
     final level = qualityAt(picture.cut, picture.frameIndex);
     final cut = picture.cut;
+    final rows = rowsOf(cut, picture.frameIndex);
+    if (!shouldAbort()) {
+      for (final row in rows) {
+        if (!_rowIsThere(row, cut, level) && !gaveUpOn(row)) {
+          unawaited(
+            layerImages.frameStore.thawAhead(
+              row.frameKey,
+              canvasSize: cut.canvasSize,
+            ),
+          );
+        }
+      }
+    }
     (Object, StackTrace)? thrown;
-    for (final row in rowsOf(cut, picture.frameIndex)) {
+    for (final row in rows) {
       if (_rowIsThere(row, cut, level) || gaveUpOn(row)) {
         continue;
       }
