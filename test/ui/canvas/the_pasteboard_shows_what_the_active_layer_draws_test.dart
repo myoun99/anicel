@@ -26,7 +26,9 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 /// 🚨★★★WHAT THE ACTIVE LAYER DRAWS ON THE PASTEBOARD SHOWS WHILE IT IS
@@ -401,6 +403,48 @@ void main() {
         surface: liftedPainter,
         surfaceOffset: CanvasPoint(x: where.left, y: where.top),
         clip: canvasSize.pasteboardRect,
+      ),
+    );
+  });
+
+  // F-344: the text in hand floats as the painter's OWN landing preview,
+  // over a hole that can hold nothing — a new text on an empty cel.
+  testWidgets('🚨the text in hand shows on the pasteboard', (tester) async {
+    final floatTiles = BitmapTileImageCache();
+    final plate = surfaceWith({
+      TileCoord(x: 0, y: 0): BitmapTile(
+        size: tileSize,
+        pixels: redRgba(),
+      ),
+    });
+    await decodeAll(tester, floatTiles, plate);
+    final landing = ValueNotifier<LandingPreview?>(null);
+    addTearDown(landing.dispose);
+    final stack = await pumpStack(
+      tester,
+      painter: BitmapSurfacePainter(
+        surface: surfaceWith(const {}),
+        landingPreview: landing,
+        tileImageCache: BitmapTileImageCache(),
+        showTransparentBackground: false,
+      ),
+    );
+    final platePainter = BitmapSurfacePainter(
+      surface: plate,
+      tileImageCache: floatTiles,
+      showTransparentBackground: false,
+    );
+    await expectShownOnThePasteboard(
+      tester,
+      what: 'the text in hand',
+      stack: stack,
+      draw: (where) async => landing.value = CelTextFloat(
+        held: SelectionFloatPaint(
+          surface: platePainter,
+          surfaceOffset: CanvasPoint(x: where.left, y: where.top),
+          clip: canvasSize.pasteboardRect,
+        ),
+        above: null,
       ),
     );
   });

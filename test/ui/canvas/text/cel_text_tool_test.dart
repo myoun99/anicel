@@ -1322,6 +1322,21 @@ void main() {
       expect(host.redrawn, taken + 1, reason: 'lifted off');
     });
 
+    test('🚨F-344: the text in hand landed as it is shown is put back — '
+        'and the panel is told', () {
+      final standing = carried(4, said([run('ab')]));
+      final (:tool, :host, baker: _, :cel) = hand(texts: [standing]);
+      tool.takeText(cel, standing);
+      final session = tool.session!;
+      session.showMoved(session.moveOrigin, dx: 4, dy: 0);
+      final carrying = host.redrawn;
+
+      expect(tool.landShown(), isTrue);
+
+      expect(host.redrawn, carrying + 1, reason: 'put back');
+      expect(tool.shownSurfaceFor(cel.key, pictureOf(cel)), isNull);
+    });
+
     test('🚨F-344: the text in hand landed as it is shown tells the panel '
         'ONCE that it is put back — with another let go of still owed its '
         'landing', () {

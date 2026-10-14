@@ -275,9 +275,10 @@ void main() {
 
   // 🚨F-344: the text in hand floats as the live painter's OWN landing
   // preview (`BitmapSurfacePainter.landingPreview`), over a hole that can
-  // be empty — a new text on an empty cel. A route that draws its slot by
-  // the slot's extent has to be told the float is part of what the
-  // painter draws, or it cuts the float away.
+  // be empty — a new text on an empty cel — and every route the live row
+  // takes draws it, as each draws a lifted selection's float above. (Past
+  // the page, where the slot's extent says what is drawn:
+  // `the_pasteboard_shows_what_the_active_layer_draws_test`.)
   for (final MapEntry(key: name, value: paint) in routes.entries) {
     testWidgets('$name: the live painter\'s own float is drawn over a cel '
         'with nothing on it', (tester) async {
