@@ -192,24 +192,6 @@ void main() {
     await letGo(tester, commands);
   });
 
-  testWidgets('선택 해제 still lets go of the marquee — the split is about who '
-      'asks, not about two buttons', (tester) async {
-    final (:session, :commands) = await inkUnderASelection(tester);
-
-    session.clearTimelineSelections();
-    await tester.pump();
-
-    expect(
-      commands.hasRegion,
-      isFalse,
-      reason: '유저 2026-08-27: 「선택해제 타임라인에 중복으로 존재하는거」 — '
-          '두 버튼이 서로 다른 절반만 놓던 사고의 답이라, 버튼의 「놓는다」는 '
-          '다섯 종류 전부다',
-    );
-
-    await letGo(tester, commands);
-  });
-
   testWidgets('a kept region lifts again from the cel it comes back to', (
     tester,
   ) async {

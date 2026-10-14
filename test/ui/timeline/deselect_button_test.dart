@@ -55,12 +55,17 @@ void main() {
 
   /// A marquee on the artwork. ⚠️Pumped, not settled, from here on: a
   /// marquee's ants never settle.
+  ///
+  /// ⚠️`idle` before the pump: the selection's news is microtask-deferred
+  /// (`notifySessionChanged`), and with no frame already due a pump alone
+  /// delivers it without building what it changed.
   Future<void> drawMarquee(WidgetTester tester) async {
     marqueeOf(tester).setRegion(
       CanvasSelectionRegion.shape(
         CanvasSelectionShape.rect(left: 0, top: 0, right: 8, bottom: 8),
       ),
     );
+    await tester.idle();
     await tester.pump();
     expect(marqueeOf(tester).region, isNotNull, reason: '⛔premise');
   }
