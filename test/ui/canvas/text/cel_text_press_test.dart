@@ -999,6 +999,31 @@ void main() {
       expect(nextSize(tool), closeTo(16, 1e-9));
     });
 
+    test('a text of two sizes gives its FIRST letter\'s', () async {
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
+        texts: [
+          carried(
+            4,
+            CelTextContent(
+              spans: const [
+                CelTextSpan(text: 'a', style: letters),
+                CelTextSpan(text: 'b', style: TextLetterStyle(fontSize: 16)),
+              ],
+              anchor: CanvasPoint(x: 8, y: 8),
+            ),
+          ),
+        ],
+      );
+      final (:corner, :doubled) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      move(scene, down, doubled.dx, doubled.dy);
+      up(scene, down, doubled.dx, doubled.dy);
+      await baker.pending.answer();
+
+      expect(nextSize(tool), closeTo(16, 1e-9));
+    });
+
     test('a corner press that goes away gives the next text nothing', () {
       final (:tool, :scene, baker: _, begun: _, traced: _) = table(
         texts: [carried(4, says('ab'))],
