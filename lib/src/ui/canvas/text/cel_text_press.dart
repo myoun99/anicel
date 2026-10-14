@@ -5,7 +5,6 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerDownEvent, computeHitSlop;
 import 'package:flutter/services.dart' show TextSelection;
 
-import '../../../models/bitmap_surface.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/cel_text_box_edits.dart';
@@ -53,10 +52,6 @@ class CelTextScene {
   })
   onBegin;
 }
-
-/// [cel]'s picture as it stands.
-BitmapSurface _pictureOf(CelTextCel cel) =>
-    cel.coordinator.currentSurfaceOf(cel.key);
 
 /// THE PRESS TABLE (R9-rest, taken by 유저 on 2026-10-06): what a press at
 /// [artwork] takes hold of, by what the tool has in hand. Null when the
@@ -120,7 +115,7 @@ CelTextPress? _takeOr(_Pressed pressed, CelTextPress? Function() otherwise) {
     return otherwise();
   }
   scene.tool.takeText(cel, other);
-  return _InsidePress(event, artwork, cel: cel, held: false);
+  return _InsidePress(event, artwork, held: false);
 }
 
 CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
@@ -185,7 +180,7 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
       lettersDepth: layout.lettersDepth,
       byLeadingEdge: hit!.handle == _leadingDepthHandle,
     ),
-    BoxPress.inside => _InsidePress(event, artwork, cel: cel, held: true),
+    BoxPress.inside => _InsidePress(event, artwork, held: true),
     // Outside the box: another text if one is there. Else on stage it is
     // the turn — and off it nothing to turn about, so the press lets go.
     BoxPress.turn || null => _takeOr(pressed, () {
@@ -339,27 +334,14 @@ final class _LetterPress extends CelTextPress {
 /// the canvas does (09-22); let go where it went down on a text that was
 /// [held] before the press, it opens the letters there.
 final class _InsidePress extends CelTextPress {
-  _InsidePress(
-    super.event,
-    this.artwork, {
-    required this.cel,
-    required this.held,
-  });
+  _InsidePress(super.event, this.artwork, {required this.held});
 
   final Offset artwork;
-
-  /// The cel the text is on: its picture is the grid a moved plate is cut
-  /// on.
-  final CelTextCel cel;
   final bool held;
-
-  /// The text as it stood when the drag began — null until it is one.
-  CelTextMoveOrigin? _origin;
 
   @override
   void _move(CelTextScene scene, Offset local, Offset artwork) {
-    final session = scene.tool.session;
-    if (session == null || !dragged) {
+    if (!dragged) {
       return;
     }
     final travel = TransformBoxLaw.wholePixels(
@@ -368,18 +350,13 @@ final class _InsidePress extends CelTextPress {
         y: artwork.dy - this.artwork.dy,
       ),
     );
-    session.showMoved(
-      _origin ??= session.moveOrigin,
-      _pictureOf(cel),
-      dx: travel.x.toInt(),
-      dy: travel.y.toInt(),
-    );
+    scene.tool.carry(dx: travel.x.toInt(), dy: travel.y.toInt());
   }
 
   @override
   void up(CelTextScene scene, Offset local) {
     final session = scene.tool.session;
-    if (_origin != null) {
+    if (scene.tool.carrying) {
       scene.tool.landEdit();
     } else if (held && session != null) {
       scene.tool.typeAt(
@@ -392,10 +369,10 @@ final class _InsidePress extends CelTextPress {
 
   @override
   void cancel(CelTextScene scene) {
-    final origin = _origin;
-    if (origin != null) {
-      scene.tool.session?.showMoved(origin, _pictureOf(cel), dx: 0, dy: 0);
-      scene.tool.landEdit();
+    if (scene.tool.carrying) {
+      scene.tool
+        ..carry(dx: 0, dy: 0)
+        ..landEdit();
     }
   }
 }

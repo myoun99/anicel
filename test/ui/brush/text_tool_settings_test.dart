@@ -27,10 +27,13 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/cel_text_hand.dart';
 import '../../helpers/tool_setting_action_probe.dart';
 
+/// A box as tall as every row of the settings.
+const double _asTallAsTheRows = 900;
+
 /// R9-rest (the text tool): THE ROWS OF ITS SETTINGS — the layout 유저 took
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
 /// face, size, tracking, bold, colour, outline, outline width, the
-/// smoothing of the letters' edges · 상자 —
+/// smoothing of the letters' edges · 상자 — its place (I-95),
 /// alignment, box width, line spacing, background · and at the foot
 /// 「래스터라이즈」.
 ///
@@ -38,6 +41,16 @@ import '../../helpers/tool_setting_action_probe.dart';
 /// there. Here: every row is there, shows what it should, and a hand on it
 /// reaches the text — once a drag, once a window.
 void main() {
+  /// The test's window made tall enough for [_asTallAsTheRows]: the list
+  /// builds only the rows it shows, and the window's own 600 left the foot
+  /// unbuilt once 「위치」 (I-95) took its three rows.
+  Future<void> standTall(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(
+      const Size(800, _asTallAsTheRows + 100),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  }
+
   const plain = TextLetterStyle(fontSize: 16);
   const red = TextLetterStyle(fontSize: 16, color: 0xFFFF0000);
 
@@ -63,11 +76,12 @@ void main() {
     WidgetTester tester, {
     CelTextContent? text,
     TextToolOptions next = const TextToolOptions(letters: plain),
-    double height = 640,
+    double height = _asTallAsTheRows,
   }) async {
     final hand = textHand(bake: bakesAtOnce, text: text, next: next);
     final commands = CelTextCommands()..bind(hand.tool);
     addTearDown(commands.dispose);
+    await standTall(tester);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
@@ -141,6 +155,11 @@ void main() {
       'outline',
       'outline-width',
       'antialias',
+      // I-95: the place, at the head of the box's rows.
+      'x',
+      'y',
+      'centre-across',
+      'centre-down',
       'writing',
       'align',
       'box-width',
@@ -1118,13 +1137,14 @@ void main() {
 
   testWidgets('a host that owns no settings and holds no text shows the '
       'defaults, and its controls are shut', (tester) async {
+    await standTall(tester);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
         home: const Scaffold(
           body: SizedBox(
             width: 260,
-            height: 640,
+            height: _asTallAsTheRows,
             child: TextToolSettings(options: null, commands: null),
           ),
         ),

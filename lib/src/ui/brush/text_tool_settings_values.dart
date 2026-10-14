@@ -1,5 +1,8 @@
+import 'dart:ui' show Offset;
+
 import 'package:flutter/foundation.dart';
 
+import '../../models/canvas_point.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import '../canvas/text/cel_text_tool.dart';
@@ -161,6 +164,71 @@ class TextToolSettingsValues {
   /// text in hand alone: the next text's is the hand's to say.
   void setWraps(bool wraps) =>
       tool?.changeBox(wraps ? celTextBoxed : celTextUnboxed);
+
+  // ── its place ───────────────────────────────────────────────────────
+
+  /// Where the middle of the text in hand's box stands — on the canvas,
+  /// from its top left corner, in its pixels, turned as the box is — and
+  /// null with none in hand: the next text stands where the hand puts it.
+  ///
+  /// 🗣️I-95 (유저 2026-10-12): 「텍스트도구에도 변형도구처럼 위치값 존재 …
+  /// 프리미어처럼 글자 캔버스에서 가로중앙정렬해서 중앙에 넣는다던가」 —
+  /// I-95-Q1 (10-14): 「상자의 가운데 — 캔버스 왼쪽 위에서 잰 픽셀」, and
+  /// 「개념적으로 트랜스폼이랑 같은 인식임. 화면 내에서 어디에 자리하고
+  /// 있는지가 중요한 개념」.
+  Offset? get boxCentre => tool?.session?.shown.layout.onCanvas.centre;
+
+  /// The text in hand carried a further [dx] across and [dy] down, in
+  /// whole pixels — the carry a hand on its box makes
+  /// ([CelTextTool.carry]), which [settle] lands.
+  void carryBy({int dx = 0, int dy = 0}) {
+    final tool = this.tool;
+    if (tool == null) {
+      return;
+    }
+    final carried = tool.carried;
+    tool.carry(dx: carried.dx + dx, dy: carried.dy + dy);
+  }
+
+  /// The text in hand moved so the middle of its box stands at [x] across
+  /// the canvas, or at [y] down it — exactly there, as a number typed into
+  /// the transform tool's place puts its box.
+  ///
+  /// ⚠️Stood off the anchor of the text SHOWN, which the middle was
+  /// measured on: a text is shown as it was until it is set again, and a
+  /// second number typed before that would otherwise go from the first's
+  /// place by the distance the first had already gone.
+  void setBoxCentre({double? x, double? y}) {
+    final shown = tool?.session?.shown;
+    if (shown == null) {
+      return;
+    }
+    final centre = shown.layout.onCanvas.centre;
+    final stood = shown.content.anchor;
+    tool?.changeBox(
+      (text) => text.copyWith(
+        anchor: CanvasPoint(
+          x: x == null ? text.anchor.x : stood.x + x - centre.dx,
+          y: y == null ? text.anchor.y : stood.y + y - centre.dy,
+        ),
+      ),
+    );
+  }
+
+  /// The text in hand moved so the middle of its box stands on the middle
+  /// line of the canvas — the one down it, [across] its width, or the one
+  /// across it.
+  void centreBox({required bool across}) {
+    final canvas = tool?.session?.canvasSize;
+    if (canvas == null) {
+      return;
+    }
+    if (across) {
+      setBoxCentre(x: canvas.width / 2);
+    } else {
+      setBoxCentre(y: canvas.height / 2);
+    }
+  }
 
   /// A value that was being dragged — a colour, picked in a window that
   /// says only when it closed — has come to rest.

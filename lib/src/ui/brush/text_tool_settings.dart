@@ -11,9 +11,11 @@ import '../shortcuts/panel_keys.dart';
 import '../text/app_strings.dart';
 import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
+import '../text/readout_text.dart' show columnValueText;
 import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart';
+import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
@@ -641,6 +643,7 @@ class _BoxRows extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: [
+      ..._place(),
       _writing(),
       _alignment(),
       _boxWidth(),
@@ -648,6 +651,74 @@ class _BoxRows extends StatelessWidget {
       _background(),
     ],
   );
+
+  /// Where the middle of the text in hand's box stands (I-95,
+  /// [TextToolSettingsValues.boxCentre]) — in the transform tool's own
+  /// boxes and rows: X on the name's line, Y under it. A scrub or a step
+  /// carries the text as a hand does, one step back a scrub; a number
+  /// typed stands it there exactly. Under them, the two that stand it on
+  /// the canvas's middle lines. With none in hand all keep their places,
+  /// dimmed.
+  List<Widget> _place() {
+    final strings = AppText.strings;
+    final centre = values.boxCentre;
+    Widget box({
+      required String keyValue,
+      required String name,
+      required bool across,
+    }) => DragValueLabel.box(
+      keyValue: keyValue,
+      name: name,
+      text: centre == null
+          ? ''
+          : columnValueText(across ? centre.dx : centre.dy),
+      enabled: centre != null,
+      onDragDelta: (units) => across
+          ? values.carryBy(dx: units.round())
+          : values.carryBy(dy: units.round()),
+      onOperationEnd: values.settle,
+      onEditSubmit: (raw) {
+        final typed = double.tryParse(raw.trim());
+        if (typed == null) {
+          return;
+        }
+        if (across) {
+          values.setBoxCentre(x: typed);
+        } else {
+          values.setBoxCentre(y: typed);
+        }
+      },
+    );
+    return [
+      ToolSettingRow.bar(
+        label: strings.trPosition,
+        bar: box(keyValue: 'text-tool-x', name: 'X', across: true),
+      ),
+      ToolSettingRow.bar(
+        label: '',
+        bar: box(keyValue: 'text-tool-y', name: 'Y', across: false),
+      ),
+      ToolSettingRow.pair(
+        label: '',
+        first: ToolSettingAction.glyph(
+          keyValue: 'text-tool-centre-across',
+          label: strings.textToolCentreAcross,
+          glyph: const Icon(Icons.align_horizontal_center),
+          onPressed: centre == null
+              ? null
+              : () => values.centreBox(across: true),
+        ),
+        second: ToolSettingAction.glyph(
+          keyValue: 'text-tool-centre-down',
+          label: strings.textToolCentreDown,
+          glyph: const Icon(Icons.align_vertical_center),
+          onPressed: centre == null
+              ? null
+              : () => values.centreBox(across: false),
+        ),
+      ),
+    ];
+  }
 
   /// Lines, or columns (縦書き) — of the text in hand, which is then
   /// written the other way where it stands, and of the next text.

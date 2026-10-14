@@ -1442,6 +1442,8 @@ enum AppStrings {
   String get textToolAlignLeft => _s('textToolAlignLeft');
   String get textToolAlignCenter => _s('textToolAlignCenter');
   String get textToolAlignRight => _s('textToolAlignRight');
+  String get textToolCentreAcross => _s('textToolCentreAcross');
+  String get textToolCentreDown => _s('textToolCentreDown');
   String get textToolBoxWidth => _s('textToolBoxWidth');
   String get textToolWidthAuto => _s('textToolWidthAuto');
   String get textToolWidthFixed => _s('textToolWidthFixed');
@@ -2592,6 +2594,8 @@ enum AppStrings {
     'textToolAlignLeft': 'Left',
     'textToolAlignCenter': 'Center',
     'textToolAlignRight': 'Right',
+    'textToolCentreAcross': 'Center horizontally',
+    'textToolCentreDown': 'Center vertically',
     'textToolBoxWidth': 'Box width',
     'textToolWidthAuto': 'Auto',
     'textToolWidthFixed': 'Fixed',
@@ -4001,6 +4005,8 @@ enum AppStrings {
     'textToolAlignLeft': '左',
     'textToolAlignCenter': '中央',
     'textToolAlignRight': '右',
+    'textToolCentreAcross': '左右中央',
+    'textToolCentreDown': '上下中央',
     'textToolBoxWidth': 'ボックス幅',
     'textToolWidthAuto': '自動',
     'textToolWidthFixed': '固定',
@@ -5516,6 +5522,8 @@ enum AppStrings {
     'textToolAlignLeft': '왼쪽',
     'textToolAlignCenter': '가운데',
     'textToolAlignRight': '오른쪽',
+    'textToolCentreAcross': '가로 가운데',
+    'textToolCentreDown': '세로 가운데',
     'textToolBoxWidth': '상자 폭',
     'textToolWidthAuto': '자동',
     'textToolWidthFixed': '고정',
@@ -7161,6 +7169,8 @@ enum AppStrings {
     'textToolAlignLeft': 'Gauche',
     'textToolAlignCenter': 'Centre',
     'textToolAlignRight': 'Droite',
+    'textToolCentreAcross': 'Centrer horizontalement',
+    'textToolCentreDown': 'Centrer verticalement',
     'textToolBoxWidth': 'Largeur du bloc',
     'textToolWidthAuto': 'Auto',
     'textToolWidthFixed': 'Fixe',
@@ -8617,6 +8627,8 @@ enum AppStrings {
     'textToolAlignLeft': '左',
     'textToolAlignCenter': '居中',
     'textToolAlignRight': '右',
+    'textToolCentreAcross': '水平居中',
+    'textToolCentreDown': '垂直居中',
     'textToolBoxWidth': '框宽度',
     'textToolWidthAuto': '自动',
     'textToolWidthFixed': '固定',

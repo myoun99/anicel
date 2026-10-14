@@ -8,6 +8,8 @@ import '../../../models/canvas_point.dart';
 import '../../../models/canvas_size.dart';
 import '../../../models/cel_text.dart';
 import '../../../models/text_cel_style.dart';
+import '../../../services/bitmap_surface_geometry.dart'
+    show celTextContentMoved;
 import '../../../services/brush_frame_editing_coordinator.dart';
 import '../../../services/cache_invalidation_executor.dart';
 import '../../../services/cel_text_edits.dart';
@@ -105,6 +107,12 @@ class _Holding {
   /// has its cross in the middle, with nothing anywhere to put back.
   Offset crossOffCentre = Offset.zero;
 
+  /// The carry of the text under way ([CelTextTool.carry]): where it stood
+  /// when it began — as shown, and as a setting finds it — and how far it
+  /// has gone, until it lands ([CelTextTool.landEdit]).
+  ({CelTextMoveOrigin origin, CelTextContent content, int dx, int dy})?
+  carry;
+
   /// Whether this text was let go of TO BECOME DRAWING
   /// ([CelTextTool.turnIntoDrawing]): once it has landed it is laid into
   /// its cel's drawing, and for the tool it is no text from the moment
@@ -185,6 +193,50 @@ class CelTextTool extends ChangeNotifier {
   /// Told when the cross is carried ([carryCross]).
   Listenable get crossCarried => _crossCarried;
   final _Telling _crossCarried = _Telling();
+
+  /// Whether a carry of the text in hand is under way ([carry]).
+  bool get carrying => _held?.carry != null;
+
+  /// How far the text in hand has been carried since the carry under way
+  /// began, in whole pixels — nothing while none is ([carry]).
+  ({int dx, int dy}) get carried {
+    final carry = _held?.carry;
+    return carry == null ? (dx: 0, dy: 0) : (dx: carry.dx, dy: carry.dy);
+  }
+
+  /// The text in hand shown [dx] across and [dy] down, in whole pixels,
+  /// from where it stood when this carry began — by a hand on its box, or
+  /// by the steps of its place in the tool settings (I-95): ONE carry,
+  /// whichever moves it. Its pixels go with it rather than being set
+  /// again, where they can (`CelTextSession.showMoved`); with its letters
+  /// held it is set where it goes. [landEdit] lands it, and a carry after
+  /// that begins where this one ended.
+  void carry({required int dx, required int dy}) {
+    final held = _held;
+    if (held == null) {
+      return;
+    }
+    final session = held.session;
+    final from =
+        held.carry ??
+        (
+          origin: session.moveOrigin,
+          content: _contentInHand(session),
+          dx: 0,
+          dy: 0,
+        );
+    held.carry = (origin: from.origin, content: from.content, dx: dx, dy: dy);
+    if (_letters != null) {
+      showEdit(celTextContentMoved(from.content, dx: dx, dy: dy));
+      return;
+    }
+    session.showMoved(
+      from.origin,
+      held.cel.coordinator.currentSurfaceOf(held.cel.key),
+      dx: dx,
+      dy: dy,
+    );
+  }
 
   /// The way out of the hand: the landing of what it lets go of, and the
   /// texts let go of that still owe theirs ([_CelTextWayOut]).
@@ -438,6 +490,7 @@ class CelTextTool extends ChangeNotifier {
   /// [showEdit] showed lands as one step. While the LETTERS are held it is
   /// part of that visit instead — one step back there — and lands with it.
   void landEdit() {
+    _held?.carry = null;
     _editGoesOn = false;
     if (_letters == null) {
       _wayOut.landHeld(thenLetGo: false);

@@ -1,12 +1,18 @@
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
     show ToolSettingAction;
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
+import 'package:anicel/src/ui/text/readout_text.dart' show columnValueText;
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -665,5 +671,157 @@ void main() {
           c.dy.toInt() + y,
         ),
     ], before);
+  });
+
+  // 🗣️I-95 (유저 2026-10-12): 「텍스트도구에도 변형도구처럼 위치값 존재 …
+  // 프리미어처럼 글자 캔버스에서 가로중앙정렬해서 중앙에 넣는다던가」 —
+  // I-95-Q1 (10-14): 「개념적으로 트랜스폼이랑 같은 인식임」.
+  group('「위치」', () {
+    /// The middle of the box of the cel's one text, as it landed.
+    Offset landedCentre(WidgetTester tester) =>
+        celTextBoxOf(celOf(tester).texts.single.content).centre;
+
+    /// The box [name] reading [number].
+    Finder reading(String name, double number) => find.descendant(
+      of: row(name),
+      matching: find.text(columnValueText(number)),
+    );
+
+    DragValueLabel box(WidgetTester tester, String name) =>
+        tester.widget<DragValueLabel>(
+          find.ancestor(of: row(name), matching: find.byType(DragValueLabel)),
+        );
+
+    testWidgets('🚨X and Y read where the middle of the box stands — a '
+        'number typed stands it there, and a step goes a pixel on: a step '
+        'back each, the text still in hand', (tester) async {
+      await hiInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = landedCentre(tester);
+      await reach(tester, 'x');
+
+      expect(reading('x', before.dx), findsOneWidget);
+      expect(reading('y', before.dy), findsOneWidget);
+
+      await tester.tap(row('x-edit'));
+      await pumpFrames(tester);
+      await tester.enterText(row('x-input'), '500');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await pumpFrames(tester);
+
+      expect(
+        landedCentre(tester),
+        offsetMoreOrLessEquals(Offset(500, before.dy)),
+      );
+      expect(reading('x', 500), findsOneWidget);
+      expect(history.undoCount, steps + 1);
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
+
+      await press(tester, 'x-step-up');
+
+      expect(
+        landedCentre(tester),
+        offsetMoreOrLessEquals(Offset(501, before.dy)),
+      );
+      expect(history.undoCount, steps + 2);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester).dx, moreOrLessEquals(500));
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(before));
+    });
+
+    testWidgets('🚨a scrub on X carries the text a whole pixel at a time and '
+        'lands nothing as it goes — and is ONE step back', (tester) async {
+      await hiInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = landedCentre(tester);
+      await reach(tester, 'x');
+
+      // ⚠️A hand-driven gesture, not `tester.drag`: that delivers the whole
+      // travel as ONE update, and would pass on a box that landed each.
+      final scrub = await tester.startGesture(
+        tester.getCenter(row('x')),
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var i = 0; i < 4; i += 1) {
+        await scrub.moveBy(const Offset(10, 0));
+        await tester.pump();
+      }
+      final carried =
+          textToolOf(tester).session!.shown.layout.onCanvas.centre - before;
+
+      expect(carried.dx, greaterThan(0), reason: '⛔전제: it was carried');
+      expect(carried.dx, moreOrLessEquals(carried.dx.roundToDouble()));
+      expect(carried.dy, moreOrLessEquals(0));
+      expect(history.undoCount, steps, reason: 'nothing landed as it went');
+
+      await scrub.up();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(before + carried));
+      expect(history.undoCount, steps + 1);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(before));
+    });
+
+    testWidgets('가로 가운데 · 세로 가운데 stand it on the canvas\'s middle '
+        'lines, a step each — and with nothing in hand all of 「위치」 keeps '
+        'its place, dimmed', (tester) async {
+      await pumpWithSettings(tester);
+      await reach(tester, 'x');
+
+      for (final name in ['x', 'y']) {
+        expect(box(tester, name).enabled, isFalse, reason: name);
+      }
+      for (final name in ['centre-across', 'centre-down']) {
+        expect(
+          tester.toolSettingAction(row(name)).onPressed,
+          isNull,
+          reason: name,
+        );
+      }
+
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = landedCentre(tester);
+      final middle = Offset(
+        defaultCutCanvasSize.width / 2,
+        defaultCutCanvasSize.height / 2,
+      );
+      for (final (stands, middleOf) in [
+        (before.dx, middle.dx),
+        (before.dy, middle.dy),
+      ]) {
+        expect(stands, isNot(moreOrLessEquals(middleOf)), reason: '⛔fixture');
+      }
+
+      await press(tester, 'centre-across');
+
+      expect(
+        landedCentre(tester),
+        offsetMoreOrLessEquals(Offset(middle.dx, before.dy)),
+      );
+
+      await press(tester, 'centre-down');
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(middle));
+      expect(history.undoCount, steps + 2);
+    });
   });
 }
