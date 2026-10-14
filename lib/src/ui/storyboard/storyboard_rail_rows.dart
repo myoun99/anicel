@@ -337,7 +337,8 @@ class _StoryboardRailRows {
 
   /// Whether [track]'s conte row at [seat] has its lanes twirled down
   /// (I-73 ④ⓔ): whether a row at its seat has — the rows that wear one head
-  /// twirl as one (F-302, [RailView.followHeads]).
+  /// twirl as one, the twirl's command writing it on every one of them
+  /// (F-360, `headMirrorTargets`).
   bool _conteLanesOpen(Track track, int seat) {
     final open = _state.widget.expandedLaneLayerIds;
     return open.isNotEmpty &&

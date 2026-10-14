@@ -35,7 +35,8 @@ Layer? cameraHeadOf(Iterable<Cut> cuts) {
 }
 
 /// The cameras of [cuts] — the rows that wear a track's one camera head,
-/// and so twirl as one and show one graph (`RailView.followHeads`).
+/// and so twirl as one (the twirl's command writes every one of them,
+/// `headMirrorTargets`) and show one graph (`RailView.followHeads`).
 List<LayerId> cameraHeadFamilyOf(Iterable<Cut> cuts) => [
   for (final cut in cuts)
     if (cut.layers.cameraLayer case final camera?) camera.id,
