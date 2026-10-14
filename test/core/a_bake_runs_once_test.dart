@@ -27,6 +27,32 @@ void main() {
     expect(await second, 7);
   });
 
+  test('🚨a bake that fails is no answer — the asks while it ran share its '
+      'failure, and the next ask bakes anew', () async {
+    final lru = BakeOnceLru<String, int>(capacity: 4);
+    var bakes = 0;
+    final gate = Completer<int>();
+    Future<int> slipped() {
+      bakes += 1;
+      return gate.future;
+    }
+
+    final first = lru.ensure('a', slipped);
+    final second = lru.ensure('a', slipped);
+    gate.completeError(StateError('the GPU slipped'));
+    await expectLater(first, throwsStateError);
+    await expectLater(second, throwsStateError);
+    expect(bakes, 1, reason: 'one bake while it ran');
+    expect(lru.isDone('a'), isFalse);
+
+    final again = await lru.ensure('a', () async {
+      bakes += 1;
+      return 7;
+    });
+    expect((again, bakes), (7, 2), reason: 'baked anew');
+    expect(lru.peek('a'), 7, reason: 'and kept');
+  });
+
   test('a finished bake answers without baking again', () async {
     final lru = BakeOnceLru<String, int>(capacity: 4);
     var bakes = 0;

@@ -68,12 +68,6 @@ final Map<int, int> _counts = {};
 /// Maps of futures that are not work shared in flight — and the law's own.
 const _notAnotherInFlight = <String, String>{
   'lib/src/core/in_flight.dart: _runs': 'the one law — what every other joins',
-  'lib/src/core/bake_once_lru.dart: _baking':
-      'the same law but for a bake that FAILS: `.then` keeps its failure as '
-      'the answer for good, where the law lets it go and bakes it again at '
-      'the next ask. Which of the two a brush preview and a timeline glyph '
-      'want is their owners\' to say (card `cel-thaw-holds-the-ui-thread`, '
-      '2026-10-15) — joining the law would decide it for them',
   'lib/src/ui/session/movie_cel_hydrator.dart: _opened':
       'no run in flight: a movie\'s open is KEPT, a failed one with it, so a '
       'movie that would not open is not asked again at every frame',
