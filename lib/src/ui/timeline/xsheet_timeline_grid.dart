@@ -344,9 +344,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// .layerAxisOffset]) — read ONCE, as the frame axis's is.
   late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
 
-  /// Lets go of [_keptLayerAxis] ([followKeptAxis]) — null when nobody
-  /// keeps it.
-  VoidCallback? _letGoOfKeptColumns;
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
+  late final VoidCallback _letGoOfKeptColumns;
 
   /// The frame axis following its controller — the rail's follower, the
   /// same object, transposed by nothing but which controller it holds.
@@ -392,13 +391,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       initialScrollOffset: _keptLayerAxis?.value ?? 0,
     );
     _frameScrollController.addListener(_frameAxis.handleScroll);
-    if (_keptLayerAxis case final kept?) {
-      _letGoOfKeptColumns = followKeptAxis(
-        _layerScrollController,
-        kept,
-        isMounted: () => mounted,
-      );
-    }
+    _letGoOfKeptColumns = followKeptAxis(
+      _layerScrollController,
+      _keptLayerAxis,
+      isMounted: () => mounted,
+    );
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
     widget.hooks.frameCursor.addListener(_reveal.handlePlaybackPage);
@@ -444,7 +441,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _frameScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
-    _letGoOfKeptColumns?.call();
+    _letGoOfKeptColumns();
     _layerScrollController.dispose();
     _frameWindowBucket.removeListener(_frameScroll.handleFrameWindowBucket);
     _frameGeometry.dispose();

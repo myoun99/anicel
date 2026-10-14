@@ -1468,9 +1468,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   late final TwoAxisScrollController _verticalController =
       TwoAxisScrollController(initialScrollOffset: _keptLayerAxis?.value ?? 0);
 
-  /// Lets go of [_keptLayerAxis] ([followKeptAxis]) — null when nobody
-  /// keeps it.
-  VoidCallback? _letGoOfKeptRows;
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
+  late final VoidCallback _letGoOfKeptRows;
 
   /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounted
   /// this panel until 09-28, and a newborn 0 was read back after layout and
@@ -1573,13 +1572,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   void initState() {
     super.initState();
     _horizontalController.addListener(_frameAxis.handleScroll);
-    if (_keptLayerAxis case final kept?) {
-      _letGoOfKeptRows = followKeptAxis(
-        _verticalController,
-        kept,
-        isMounted: () => mounted,
-      );
-    }
+    _letGoOfKeptRows = followKeptAxis(
+      _verticalController,
+      _keptLayerAxis,
+      isMounted: () => mounted,
+    );
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.playheadFrame?.addListener(_handlePlaybackPage);
     _bindSheet(widget.rowsChannel);
@@ -1692,7 +1689,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
     _frameAxis.dispose();
-    _letGoOfKeptRows?.call();
+    _letGoOfKeptRows();
     _standing.dispose();
     _verticalController.dispose();
     _horizontalController.dispose();

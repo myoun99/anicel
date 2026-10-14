@@ -233,11 +233,19 @@ void keepWindowWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
 ///
 /// Being born where [kept] stands is the caller's (`initialScrollOffset`).
 /// The answer lets go.
+///
+/// A panel whose host keeps no layer axis — null [kept] — follows none, and
+/// its answer lets go of nothing. Asked here, once: the timeline, the
+/// x-sheet and the conte each asked it for themselves, and F-351's two-way
+/// drag made the three alike enough for the clone scan to count the third.
 VoidCallback followKeptAxis(
   ScrollController controller,
-  ValueNotifier<double> kept, {
+  ValueNotifier<double>? kept, {
   required bool Function() isMounted,
 }) {
+  if (kept == null) {
+    return _keepsNothing;
+  }
   void keep() {
     if (controller.hasClients) {
       keepWhereShown(controller.position, kept);
@@ -252,6 +260,8 @@ VoidCallback followKeptAxis(
   });
   return () => controller.removeListener(keep);
 }
+
+void _keepsNothing() {}
 
 /// One axis kept as a VALUE rather than by a scrollable — the folded row's,
 /// which stands at the host's kept offset (F-143): where it stands, how

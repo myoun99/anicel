@@ -215,9 +215,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// — read ONCE, as the frame axis's is.
   late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
 
-  /// Lets go of [_keptLayerAxis] ([followKeptAxis]) — null when nobody
-  /// keeps it.
-  VoidCallback? _letGoOfKeptRows;
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
+  late final VoidCallback _letGoOfKeptRows;
 
   /// The frame axis following its controller (UI-R9 #11/#12a): the
   /// activity watch for the lazy endless SHRINK (never rescale the extent
@@ -289,13 +288,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       initialScrollOffset: keptRows,
     );
     _scroll.standAt(keptRows);
-    if (_keptLayerAxis case final kept?) {
-      _letGoOfKeptRows = followKeptAxis(
-        _verticalScrollController,
-        kept,
-        isMounted: () => mounted,
-      );
-    }
+    _letGoOfKeptRows = followKeptAxis(
+      _verticalScrollController,
+      _keptLayerAxis,
+      isMounted: () => mounted,
+    );
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
@@ -370,7 +367,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _horizontalScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
-    _letGoOfKeptRows?.call();
+    _letGoOfKeptRows();
     _verticalScrollController
       ..removeListener(_scroll.handleVerticalScroll)
       ..dispose();

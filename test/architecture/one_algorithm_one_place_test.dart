@@ -293,8 +293,19 @@ import '../../tool/refactor/clone_scan.dart';
 /// this back.
 /// 🔬Measured on the lane against master (`a33780650`, at 87): these two
 /// added, none gone.
+///
+/// 89 → 88 (2026-10-14, F-351 — a sheet's two axes dragged as one). Its
+/// first send came back at 90: born on the same two-way controllers, the
+/// timeline grid's `initState` made a THIRD of the follow a kept layer
+/// axis gets — 「if the host keeps one, follow it」 — beside the x-sheet's
+/// and the conte panel's (42 and 41 tokens). Three copies of one guard is
+/// the rule of three met: `followKeptAxis` asks it, once, for a null axis
+/// too. The pair the conte panel and the x-sheet had made before the lane
+/// went with it.
+/// 🔬Measured on the lane against master (`279933153`, at 89): that one
+/// gone, none added.
 void main() {
-  const ceiling = 89;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
