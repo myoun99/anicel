@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/straight_rgba_image.dart';
+import 'package:anicel/src/ui/quiet_turns.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
@@ -52,6 +53,28 @@ class _WordPainter extends CustomPainter with RepaintOnWordBakes {
 
   @override
   bool shouldRepaint(_WordPainter oldDelegate) => false;
+}
+
+/// Paints [word] once — the paint that asks for its bake — and nothing
+/// after it.
+class _PaintsOnce extends CustomPainter with RepaintOnWordBakes {
+  _PaintsOnce(this.word, this.fit);
+
+  final TextPainter word;
+  final WordFit fit;
+  bool _painted = false;
+
+  @override
+  void paintWords(Canvas canvas, Size size) {
+    if (_painted) {
+      return;
+    }
+    _painted = true;
+    paintFittedText(canvas, word, Offset.zero, fit);
+  }
+
+  @override
+  bool shouldRepaint(_PaintsOnce oldDelegate) => false;
 }
 
 /// The colour of the most inked pixel [paint] leaves on a [size] canvas.
@@ -458,6 +481,63 @@ void main() {
         ),
       ),
       reason: 'and was baked once it had',
+    );
+  });
+
+  testWidgets('🚨a word is recorded in the paint that asks for its bake, and '
+      'rastered, read back and uploaded in its turn in the quiet between a '
+      'run\'s held frames — the painter may be gone by then', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    ({int fromMicros, int untilMicros})? quiet = (
+      fromMicros: 0,
+      untilMicros: 0,
+    );
+    final moved = Completer<void>();
+    BakedWords.instance.quietTurns = QuietTurns(
+      clock: QuietClock(
+        quiet: () => quiet,
+        now: () => 0,
+        moved: () => moved.future,
+      ),
+    );
+    addTearDown(() => BakedWords.instance.quietTurns = QuietTurns.instance);
+    const fit = (x: 0.25, y: 1.0);
+    final word = _word('조용한 때', fontSize: 12);
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: _PaintsOnce(word, fit),
+        ),
+      ),
+    );
+    // What the paint laid out is let go: the bake holds its recording.
+    word.dispose();
+    final before = BakedWords.instance.debugLandingFrames;
+    for (var i = 0; i < 10; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(
+      BakedWords.instance.debugLandingFrames,
+      before,
+      reason: 'the quiet has no room: the bake waits its turn',
+    );
+
+    // The run stood: nothing is held, and there is no quiet to keep.
+    quiet = null;
+    moved.complete();
+    await pumpUntilAWordBakeLands(tester);
+
+    final again = _word('조용한 때', fontSize: 12);
+    addTearDown(again.dispose);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(),
+      reason: 'it landed: the word is drawn from its bake',
     );
   });
 

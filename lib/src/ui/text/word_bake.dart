@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../core/bake_once_lru.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
+import '../quiet_turns.dart';
 
 /// A word's coverage as its final device pixels: [alpha] is [width] ×
 /// [height], one byte a pixel, with a one-pixel margin on every side; the
@@ -109,6 +110,19 @@ Future<BakedWordCoverage?> bakeWordCoverage(
   required double dpr,
   required double? fontSize,
 }) async {
+  final word = recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize);
+  return word == null ? null : bakeRecordedWord(word);
+}
+
+/// [painter] as [bakeWordCoverage] rasters it — recorded, not yet
+/// rastered: what a paint that asks for a bake keeps of the word, the
+/// painter being that paint's ([BakedWords]). Null for a word of no size.
+RecordedWord? recordWord(
+  TextPainter painter, {
+  required ({double x, double y}) fit,
+  required double dpr,
+  required double? fontSize,
+}) {
   if (painter.width <= 0 || painter.height <= 0) {
     return null;
   }
@@ -121,9 +135,42 @@ Future<BakedWordCoverage?> bakeWordCoverage(
     ..translate(times.toDouble(), times.toDouble())
     ..scale(dpr * times);
   painter.paint(canvas, Offset.zero);
-  final picture = recorder.endRecording();
-  final bigWidth = ((painter.width * dpr).ceil() + 2) * times;
-  final bigHeight = ((painter.height * dpr).ceil() + 2) * times;
+  return RecordedWord._(
+    picture: recorder.endRecording(),
+    times: times,
+    width: painter.width,
+    height: painter.height,
+    fit: fit,
+    dpr: dpr,
+  );
+}
+
+/// A word recorded for its bake ([recordWord]): its picture, until
+/// [bakeRecordedWord] gives it back, and what reading its raster takes.
+final class RecordedWord {
+  RecordedWord._({
+    required this.picture,
+    required this.times,
+    required this.width,
+    required this.height,
+    required this.fit,
+    required this.dpr,
+  });
+
+  final ui.Picture picture;
+  final int times;
+  final double width;
+  final double height;
+  final ({double x, double y}) fit;
+  final double dpr;
+}
+
+/// [word]'s raster read back as its coverage ([bakeWordCoverage]); its
+/// picture is given back whatever comes of it.
+Future<BakedWordCoverage?> bakeRecordedWord(RecordedWord word) async {
+  final RecordedWord(:picture, :times, :fit, :dpr) = word;
+  final bigWidth = ((word.width * dpr).ceil() + 2) * times;
+  final bigHeight = ((word.height * dpr).ceil() + 2) * times;
   // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
   // survive a failed bake; and `toByteData` is awaited, so the image used to
   // survive a failed read. Both are given back by structure now.
@@ -147,13 +194,13 @@ Future<BakedWordCoverage?> bakeWordCoverage(
     big[i] = data.getUint8(i * 4 + 3);
   }
   // The box the word is blitted by: its narrowed ink, and a pixel round it.
-  final width = (painter.width * fit.x * dpr).ceil() + 2;
-  final height = (painter.height * fit.y * dpr).ceil() + 2;
+  final width = (word.width * fit.x * dpr).ceil() + 2;
+  final height = (word.height * fit.y * dpr).ceil() + 2;
   return BakedWordCoverage(
     width: width,
     height: height,
-    logicalWidth: painter.width * fit.x,
-    logicalHeight: painter.height * fit.y,
+    logicalWidth: word.width * fit.x,
+    logicalHeight: word.height * fit.y,
     // ⛔No arm for the word that needs no average: the average of one pixel
     // IS that pixel ([boxFilterA8]), so the raster comes through it as it
     // is.
@@ -371,7 +418,7 @@ bool paintBakedWord(
       height: painter.height,
     ),
     fit,
-    () => bakeWordCoverage(painter, fit: fit, dpr: dpr, fontSize: fontSize),
+    () => recordWord(painter, fit: fit, dpr: dpr, fontSize: fontSize),
   );
   if (baked == null) {
     return false;
@@ -521,13 +568,13 @@ final class BakedWords {
   }
 
   /// [word]'s bake at [fit] once it landed, else its latest at another
-  /// narrowing (null: none yet) — asking [bake] for the exact one, and
+  /// narrowing (null: none yet) — asking [record] for the exact one, and
   /// putting whoever paints down as waiting for it. ⛔Not for a bake that
   /// is done and came to nothing: nothing will land.
   ui.Image? _bakeFor(
     _Word word,
     ({double x, double y}) fit,
-    Future<BakedWordCoverage?> Function() bake,
+    RecordedWord? Function() record,
   ) {
     final key = (word: word, x: fit.x, y: fit.y);
     final exact = _images.peek(key);
@@ -540,7 +587,7 @@ final class BakedWords {
         (_waiting[word] ??= {}).add(waiter);
       }
       if (!_baking.contains(word)) {
-        unawaited(_images.ensure(key, () => _land(key, bake)));
+        unawaited(_images.ensure(key, () => _land(key, record)));
       }
     }
     final latest = _latestOf[word];
@@ -552,17 +599,42 @@ final class BakedWords {
   /// through are drawn from the bake it has instead of each baked in turn.
   final Set<_Word> _baking = {};
 
+  /// Where a bake takes its turn to put the word on the GPU ([_land]).
+  @visibleForTesting
+  QuietTurns quietTurns = QuietTurns.instance;
+
+  /// How long a bake has taken from its turn to its landing, at the most of
+  /// late.
+  final QuietSpan _bakeSpan = QuietSpan();
+
+  /// A bake asked for is waited for: a word shown from a stand-in is shown
+  /// from its bake once it lands.
+  static bool _neverGone() => false;
+
   /// The bake of [key], and its waiters woken once it is done — landed, or
   /// come to nothing: a waiter for another narrowing of the word asks for
   /// its own when it paints again.
+  ///
+  /// 🚨THE WORD IS RECORDED IN THE PAINT THAT ASKED, AND RASTERED, READ BACK
+  /// AND UPLOADED IN ITS TURN in the quiet between a run's held frames
+  /// ([QuietTurns]) — 🔬6–18 of them queued the first pass's page turns
+  /// 12–19 ms (release, 2026-10-15). Recorded then because the painter is
+  /// that paint's: laid out again, or gone, by the time the turn comes.
+  /// The stand-in the word is drawn from meanwhile is what it always was.
   Future<ui.Image?> _land(
     _Bake key,
-    Future<BakedWordCoverage?> Function() bake,
+    RecordedWord? Function() record,
   ) async {
     _baking.add(key.word);
+    final recorded = record();
+    QuietTurn? turn;
     var landed = false;
     try {
-      final coverage = await bake();
+      if (recorded == null) {
+        return null;
+      }
+      turn = await quietTurns.inAQuiet(_bakeSpan, gone: _neverGone);
+      final coverage = await bakeRecordedWord(recorded);
       if (coverage == null) {
         return null;
       }
@@ -579,6 +651,7 @@ final class BakedWords {
       // A bake the engine refused leaves the word painted as it always was.
       return null;
     } finally {
+      landed ? turn?.landed() : turn?.gaveUp();
       _baking.remove(key.word);
       final waiters = _waiting.remove(key.word);
       if (waiters != null) {
