@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/bounded_memo.dart';
 import '../models/brush_dab.dart';
 
 /// 🚨★★★A DAB LAYS ITS SHARE OF ONE STAMP PER TENTH OF ITS SIZE (유저
@@ -55,7 +56,7 @@ const int eveningTableSteps = 1024;
 /// dabs in a debug build (2026-10-01: a 301-dab size-30 commit, 2.0 ms →
 /// 2.8 ms). A full cache starts over instead; [_lastShare] answers the run
 /// of dabs one move lays, which share one step.
-final Map<double, Float64List> _tables = <double, Float64List>{};
+final BoundedMemo<double, Float64List> _tables = BoundedMemo(_tableCap);
 const int _tableCap = 64;
 double _lastShare = -1;
 Float64List? _lastTable;
@@ -76,18 +77,14 @@ Float64List eveningTableFor(double share) {
   if (last != null && share == _lastShare) {
     return last;
   }
-  var table = _tables[share];
-  if (table == null) {
-    if (_tables.length >= _tableCap) {
-      _tables.clear();
-    }
-    table = Float64List(eveningTableSteps + 2);
+  final table = _tables.resolve(share, () {
+    final built = Float64List(eveningTableSteps + 2);
     for (var i = 0; i <= eveningTableSteps; i += 1) {
-      table[i] = 1.0 - math.pow(1.0 - i / eveningTableSteps, share);
+      built[i] = 1.0 - math.pow(1.0 - i / eveningTableSteps, share);
     }
-    table[eveningTableSteps + 1] = table[eveningTableSteps];
-    _tables[share] = table;
-  }
+    built[eveningTableSteps + 1] = built[eveningTableSteps];
+    return built;
+  });
   _lastShare = share;
   _lastTable = table;
   return table;

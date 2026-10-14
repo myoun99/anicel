@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import '../../core/bounded_memo.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong;
 import 'frame_window_semantics.dart';
 
@@ -320,7 +321,10 @@ final Expando<int> _secondsLabelEveryOf = Expando<int>('secondsLabelEvery');
 /// [TimelineRulerScale.writtenAt]: what each scale has laid out, by layout,
 /// frame and whether it is the playhead's pair.
 final Expando<
-  Map<(TimelineRulerGlyphLayout, int, bool), List<TimelineGlyphPlacement>>
+  BoundedMemo<
+    (TimelineRulerGlyphLayout, int, bool),
+    List<TimelineGlyphPlacement>
+  >
 >
 _writtenOf = Expando('written');
 
@@ -589,18 +593,10 @@ final class TimelineRulerScale {
     TimelineRulerGlyphLayout layout,
     int frameIndex, {
     required bool current,
-  }) {
-    final written = _writtenOf[this] ??= {};
-    final key = (layout, frameIndex, current);
-    final held = written[key];
-    if (held != null) {
-      return held;
-    }
-    if (written.length >= _writtenHeld) {
-      written.clear();
-    }
-    return written[key] = layout(this, frameIndex, current: current);
-  }
+  }) => (_writtenOf[this] ??= BoundedMemo(_writtenHeld)).resolve(
+    (layout, frameIndex, current),
+    () => layout(this, frameIndex, current: current),
+  );
 
   /// The paper under [frames] — each stretch of one ground as ONE rect, and
   /// on it THE boundary line wherever the law rules one: the grid law's ink

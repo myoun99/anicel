@@ -56,4 +56,17 @@ void main() {
 
     expect(out.alpha, [128, 128, 128, 128]);
   });
+
+  // The path a dab is built on asks for the levels thousands of times a
+  // stroke ([brushTipMaskWithCachedLevels]); a 256² texture is 65k pixels.
+  test('levels asked again hand back the mask they baked', () {
+    final mask = maskOf(const [0, 80, 160, 255]);
+
+    final first = brushTipMaskWithCachedLevels(mask, invert: true);
+    brushTipMaskWithCachedLevels(mask, brightness: 0.5);
+    expect(
+      identical(brushTipMaskWithCachedLevels(mask, invert: true), first),
+      isTrue,
+    );
+  });
 }
