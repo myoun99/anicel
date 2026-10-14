@@ -317,6 +317,20 @@ final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
 /// [TimelineRulerScale.secondsLabelEverySeconds], measured once per scale.
 final Expando<int> _secondsLabelEveryOf = Expando<int>('secondsLabelEvery');
 
+/// [TimelineRulerScale.writtenAt]: what each scale has laid out, by layout,
+/// frame and whether it is the playhead's pair.
+final Expando<
+  Map<(TimelineRulerGlyphLayout, int, bool), List<TimelineGlyphPlacement>>
+>
+_writtenOf = Expando('written');
+
+/// How many frames' writing a scale holds laid out ([TimelineRulerScale
+/// .writtenAt]) before it lets them all go. A playing tick asks for a
+/// dozen; a window that walks more frames than this lays itself out as it
+/// did before a scale held any, and a run down a long cut lays the strip
+/// out again rather than holding every frame it passed.
+const int _writtenHeld = 512;
+
 /// The frame SCALE a frame-axis strip draws: the bounds, the playhead and
 /// playback range, the leading spacer along the main axis, the metrics and
 /// colours, the fps and label mode, and the self-windowing inputs.
@@ -555,10 +569,37 @@ final class TimelineRulerScale {
       frameIndex < window.endIndexExclusive;
       frameIndex += step
     ) {
-      for (final glyph in layout(this, frameIndex, current: false)) {
+      for (final glyph in writtenAt(layout, frameIndex, current: false)) {
         glyph.paint(canvas);
       }
     }
+  }
+
+  /// What [layout] writes at [frameIndex] on this scale — laid out the
+  /// first time it is asked and handed back after that.
+  ///
+  /// 🚨I-57 (10-15, profile, the user's project): the playhead's writing
+  /// walks the frames round the playhead on every tick of a run, and laid
+  /// each one's number and second out again — styles made, the glyph cache
+  /// asked, the second's corner placed: a dozen layouts a tick at 12µs, the
+  /// dearest paint of a playing frame (0.24ms). A layout reads nothing but
+  /// the scale it is handed, and a scale is the strip as one build stands
+  /// it, so a frame's writing is the same every time it is asked.
+  List<TimelineGlyphPlacement> writtenAt(
+    TimelineRulerGlyphLayout layout,
+    int frameIndex, {
+    required bool current,
+  }) {
+    final written = _writtenOf[this] ??= {};
+    final key = (layout, frameIndex, current);
+    final held = written[key];
+    if (held != null) {
+      return held;
+    }
+    if (written.length >= _writtenHeld) {
+      written.clear();
+    }
+    return written[key] = layout(this, frameIndex, current: current);
   }
 
   /// The paper under [frames] — each stretch of one ground as ONE rect, and

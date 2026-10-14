@@ -39,7 +39,7 @@ timelineRulerPlayheadWriting({
   required int frame,
   required TimelineRulerGlyphLayout layout,
 }) {
-  final pair = layout(scale, frame, current: true);
+  final pair = scale.writtenAt(layout, frame, current: true);
   final covered = <Rect>[];
   final standing = <TimelineGlyphPlacement>[];
   final reach = _writingReach(
@@ -57,7 +57,7 @@ timelineRulerPlayheadWriting({
     frameIndex < reach.endIndexExclusive;
     frameIndex += step
   ) {
-    for (final glyph in layout(scale, frameIndex, current: false)) {
+    for (final glyph in scale.writtenAt(layout, frameIndex, current: false)) {
       final rect = glyph.rect;
       if (pair.any((mine) => mine.rect.overlaps(rect))) {
         covered.add(rect);
@@ -117,7 +117,7 @@ timelineRulerPlayheadWriting({
     if (scale.showSeconds && lastFullSecond >= window.startIndex)
       lastFullSecond,
   ]) {
-    final extent = widestOf(layout(scale, probe, current: true));
+    final extent = widestOf(scale.writtenAt(layout, probe, current: true));
     widest = extent > widest ? extent : widest;
   }
   final cells = ((widestOf(pair) + 2 * widest + 4) / cell).ceil() + 1;

@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
     show XSheetFrameRailPainter;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/recording_ruler_layout.dart';
 
 /// The frame SCALE the ruler and the X-sheet's rail both draw, as one value
 /// object (the audit's clone scan, 2026-09-06): the eleven inputs, their
@@ -736,6 +737,35 @@ void main() {
         expect(ruled.length, greaterThan(2), reason: 'the premise');
         expect(lines.starts.map(along), ruled, reason: '$axis');
       }
+    });
+  });
+
+  // 🚨I-57 (10-15, profile, the user's project): the strip laid every
+  // frame's writing out again at each repaint, and the playhead's writing
+  // over it on every tick of a run ([TimelineRulerScale.writtenAt]).
+  group('a scale lays a frame\'s writing out once', () {
+    test('a window painted again lays nothing out', () {
+      final strip = scale();
+      final recorded = recordingRulerLayout();
+      strip.paintWindow(_Rects(), recorded.layout);
+      expect(recorded.asked, isNotEmpty, reason: 'premise: the window wrote');
+      recorded.asked.clear();
+      strip.paintWindow(_Rects(), recorded.layout);
+      expect(recorded.asked, isEmpty);
+    });
+
+    test('a run down a long cut does not hold every frame it passed', () {
+      final strip = scale(
+        frameEndIndexExclusive: 2000,
+        playbackFrameCount: 2000,
+      );
+      final recorded = recordingRulerLayout();
+      for (var frame = 0; frame < 2000; frame += 1) {
+        strip.writtenAt(recorded.layout, frame, current: false);
+      }
+      recorded.asked.clear();
+      strip.writtenAt(recorded.layout, 0, current: false);
+      expect(recorded.asked, [(frame: 0, current: false)]);
     });
   });
 }
