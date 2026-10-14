@@ -662,6 +662,8 @@ void main() {
     'textToolAlignLeft': (s) => s.textToolAlignLeft,
     'textToolAlignCenter': (s) => s.textToolAlignCenter,
     'textToolAlignRight': (s) => s.textToolAlignRight,
+    'textToolCentreAcross': (s) => s.textToolCentreAcross,
+    'textToolCentreDown': (s) => s.textToolCentreDown,
     'textToolBoxWidth': (s) => s.textToolBoxWidth,
     'textToolWidthAuto': (s) => s.textToolWidthAuto,
     'textToolWidthFixed': (s) => s.textToolWidthFixed,

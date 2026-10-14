@@ -772,6 +772,8 @@ abstract final class EditorActionIds {
   static const cutStampReset = 'cut-stamp-reset';
   static const cutStampRegisterTip = 'cut-stamp-register-tip';
   static const guideAddVanishingPoint = 'guide-add-vanishing-point';
+  static const textCentreAcross = 'text-centre-across';
+  static const textCentreDown = 'text-centre-down';
   static const textIntoDrawing = 'text-into-drawing';
 
   static const canvasRotateCcw = 'canvas-rotate-ccw';
@@ -1394,6 +1396,23 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   EditorActionDefinition.composed(
     id: EditorActionIds.textDeleteText,
     name: (language) => AppStrings.of(language).textToolDeleteText,
+    shelf: ShortcutShelf.texts,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  // I-95: the two under the text tool's X and Y that stand the text in hand
+  // on the canvas's middle lines — named in their buttons' own words, as
+  // 래스터라이즈 is.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.textCentreAcross,
+    name: (language) => AppStrings.of(language).textToolCentreAcross,
+    shelf: ShortcutShelf.texts,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  EditorActionDefinition.composed(
+    id: EditorActionIds.textCentreDown,
+    name: (language) => AppStrings.of(language).textToolCentreDown,
     shelf: ShortcutShelf.texts,
     defaultActivators: const [],
     panelButton: true,

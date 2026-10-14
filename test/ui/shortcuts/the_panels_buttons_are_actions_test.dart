@@ -21,6 +21,8 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
 import 'package:anicel/src/services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker;
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -35,6 +37,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/shortcuts/panel_keys.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
@@ -64,6 +67,8 @@ const toolSettingsButtons = [
   EditorActionIds.cutStampReset,
   EditorActionIds.cutStampRegisterTip,
   EditorActionIds.guideAddVanishingPoint,
+  EditorActionIds.textCentreAcross,
+  EditorActionIds.textCentreDown,
   EditorActionIds.textIntoDrawing,
 ];
 
@@ -316,6 +321,8 @@ void main() {
           '스탬프 초기화',
           '팁으로 등록…',
           '소실점 추가',
+          '가로 가운데',
+          '세로 가운데',
           '래스터라이즈',
         ],
       );
@@ -472,6 +479,33 @@ void main() {
       expect(celOf(tester).texts, isEmpty);
       expect(celOf(tester).tiles, isNotEmpty);
       expect(textToolOf(tester).session, isNull);
+    });
+
+    testWidgets('the text tool\'s 가로 가운데 and 세로 가운데 stand the text in '
+        'hand on the canvas\'s middle lines', (tester) async {
+      await pumpTextToolApp(tester);
+      await openRailGroup(tester, right: false, slot: 2);
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      Offset centre() =>
+          celTextBoxOf(celOf(tester).texts.single.content).centre;
+      final before = centre();
+      final middle = Offset(
+        defaultCutCanvasSize.width / 2,
+        defaultCutCanvasSize.height / 2,
+      );
+      expect(before.dx, isNot(moreOrLessEquals(middle.dx)), reason: '⛔fixture');
+      expect(before.dy, isNot(moreOrLessEquals(middle.dy)), reason: '⛔fixture');
+
+      await pressKeyOf(tester, EditorActionIds.textCentreAcross);
+      expect(centre(), offsetMoreOrLessEquals(Offset(middle.dx, before.dy)));
+
+      await pressKeyOf(tester, EditorActionIds.textCentreDown);
+      expect(centre(), offsetMoreOrLessEquals(middle));
     });
   });
 

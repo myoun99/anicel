@@ -96,12 +96,20 @@ class TextToolSettings extends StatelessWidget {
           _IntoDrawingButton(commands: commands),
         ],
       );
-      // A key presses the 🗑 and 래스터라이즈 as the text tool's settings
-      // (I-40).
+      // A key presses the 🗑, the two centrings and 래스터라이즈 as the text
+      // tool's settings (I-40).
       return PanelKeysBinding(
         tool: CanvasTool.text,
         buttons: {
           EditorActionIds.textDeleteText: _TextInHandRow.deleteOf(commands),
+          EditorActionIds.textCentreAcross: _BoxRows.centreOf(
+            values,
+            across: true,
+          ),
+          EditorActionIds.textCentreDown: _BoxRows.centreOf(
+            values,
+            across: false,
+          ),
           EditorActionIds.textIntoDrawing: _IntoDrawingButton.turnOf(
             commands,
           ),
@@ -638,6 +646,16 @@ class _BoxRows extends StatelessWidget {
   static const double _loosest = 3;
   static const double _pitchStep = 0.05;
 
+  /// What a centring presses, button or key: the text in hand stood on the
+  /// canvas's middle line [across] (or down) — nothing while none is in
+  /// hand.
+  static VoidCallback? centreOf(
+    TextToolSettingsValues values, {
+    required bool across,
+  }) => values.boxCentre == null
+      ? null
+      : () => values.centreBox(across: across);
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -704,17 +722,15 @@ class _BoxRows extends StatelessWidget {
           keyValue: 'text-tool-centre-across',
           label: strings.textToolCentreAcross,
           glyph: const Icon(Icons.align_horizontal_center),
-          onPressed: centre == null
-              ? null
-              : () => values.centreBox(across: true),
+          shortcuts: const [EditorActionIds.textCentreAcross],
+          onPressed: centreOf(values, across: true),
         ),
         second: ToolSettingAction.glyph(
           keyValue: 'text-tool-centre-down',
           label: strings.textToolCentreDown,
           glyph: const Icon(Icons.align_vertical_center),
-          onPressed: centre == null
-              ? null
-              : () => values.centreBox(across: false),
+          shortcuts: const [EditorActionIds.textCentreDown],
+          onPressed: centreOf(values, across: false),
         ),
       ),
     ];
