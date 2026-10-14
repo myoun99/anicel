@@ -26,6 +26,7 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
     show debugLastSubtreeRaster;
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
@@ -348,6 +349,7 @@ void main() {
 
     BitmapSurfacePainter inkedPainter({
       ValueListenable<CutStampPreview?>? stampPreview,
+      ValueListenable<LandingPreview?>? landingPreview,
     }) {
       final tile = sharedTile;
       return BitmapSurfacePainter(
@@ -358,6 +360,7 @@ void main() {
         ),
         showTransparentBackground: false,
         stampPreview: stampPreview,
+        landingPreview: landingPreview,
       );
     }
 
@@ -372,6 +375,7 @@ void main() {
       bool disableBuffer = false,
       SelectionFloatOverlay? floatOverlay,
       ValueListenable<CutStampPreview?>? stampPreview,
+      ValueListenable<LandingPreview?>? landingPreview,
       TestRecordingCanvas? recordInto,
       TransformPose? pose,
       double panX = 0,
@@ -405,6 +409,7 @@ void main() {
                   viewport: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
                   activeSurfacePainter: inkedPainter(
                     stampPreview: stampPreview,
+                    landingPreview: landingPreview,
                   ),
                   paintPaper: true,
                   paperBackground: ProjectBackground.defaultBackground,
@@ -713,6 +718,31 @@ void main() {
         debugLiveLayerRodeTheDraws,
         isTrue,
         reason: 'a hover that ended must not leave the layer buffered',
+      );
+    });
+
+    testWidgets('🚨F-344: a LANDING PREVIEW takes the buffer too — the text '
+        'in hand floats over its hole as part of the layer', (tester) async {
+      // The ghost's reason, said of what the text tool floats over the hole
+      // its text left: it overlaps the pixels under it, so the layer's
+      // opacity and blend go on the buffer that holds both, never on each.
+      final preview = ValueNotifier<LandingPreview?>(
+        SelectionFloatPaint(
+          surface: inkedPainter(),
+          surfaceOffset: CanvasPoint(x: 2, y: 2),
+        ),
+      );
+      addTearDown(preview.dispose);
+
+      await paintActive(tester, effects: const [], landingPreview: preview);
+      expect(debugLiveLayerRodeTheDraws, isFalse);
+
+      preview.value = null;
+      await paintActive(tester, effects: const [], landingPreview: preview);
+      expect(
+        debugLiveLayerRodeTheDraws,
+        isTrue,
+        reason: 'a carry that ended must not leave the layer buffered',
       );
     });
 

@@ -20,6 +20,14 @@ import '../selection_float_overlay.dart';
 /// plate moved (`CelTextSession.showMoved`), which is [held]'s pixels at
 /// its offset. The texts above it are over it on the cel, so they are over
 /// it here too.
+///
+/// ⚠️BUT NOT WHERE IT LIES OVER INK, in two ways, both measured
+/// (`a_carried_text_shows_what_it_lands_as_test`): its partly clear pixels
+/// are blended here where the landing stamps them — one apart at most, the
+/// cost of the transform tool's float too — and on a row with a colour key
+/// each of the two is keyed by itself, where the landing keys the text
+/// with the ink under it. Which of those the hand should see is the user's
+/// (F-344-Q1).
 @immutable
 class CelTextFloat implements LandingPreview {
   const CelTextFloat({required this.held, required this.above});

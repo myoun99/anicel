@@ -1261,6 +1261,29 @@ void main() {
       expect(hole(), isNull);
     });
 
+    test('🚨F-344: letters typed into a text in hand tell the panel once, as '
+        'the text lifts off — each bake after that is told on shownInHand '
+        'alone', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      final begun = host.redrawn;
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      expect(host.redrawn, begun + 1, reason: 'lifted off');
+      var shown = 0;
+      tool.shownInHand.addListener(() => shown += 1);
+
+      for (final words in ['ab', 'abc']) {
+        typeInto(tool, words);
+        await baker.pending.answer();
+      }
+
+      expect(host.redrawn, begun + 1, reason: 'still lifted');
+      expect(shown, 2);
+      final floating = tool.floatingOn(cel.key, pictureOf(cel))!;
+      expect(floating.pixels.plate, same(tool.session!.shown.plate));
+    });
+
     test('a NEW text has nothing above it: its hole is its cel, and it '
         'floats over all of the cel\'s texts', () async {
       final standing = carried(4, said([run('ab')]));

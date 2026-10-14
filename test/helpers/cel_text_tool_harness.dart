@@ -11,6 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -69,7 +70,11 @@ const textToolSecondKey = BrushFrameKey(
 
 /// One cut, one layer, a drawing at the first frame — and with [drawings]
 /// two, another at the second. Every frame after them is EMPTY: no cel.
-Project textToolProject({int drawings = 1}) => Project(
+/// The layer wears [effects].
+Project textToolProject({
+  int drawings = 1,
+  List<LayerEffect> effects = const [],
+}) => Project(
   id: const ProjectId('text-tool-project'),
   name: 'Text Tool',
   createdAt: DateTime.utc(2026),
@@ -87,6 +92,7 @@ Project textToolProject({int drawings = 1}) => Project(
             Layer(
               id: textToolLayerId,
               name: 'Text Tool Layer',
+              effects: effects,
               frames: [
                 for (final (index, id) in _drawings.take(drawings).indexed)
                   Frame(
