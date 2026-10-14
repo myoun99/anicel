@@ -21,8 +21,6 @@ import 'package:anicel/src/services/font_library_service.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
-import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
@@ -246,19 +244,6 @@ CelTextTool textToolOf(WidgetTester tester) =>
 /// The cel under the text tool — null on a frame that has none.
 CelTextCel? celUnderTool(WidgetTester tester) =>
     tester.widget<CelTextToolLayer>(find.byType(CelTextToolLayer)).cel;
-
-/// The brush in hand on the canvas the text tool works on — a new text is
-/// set in its colour (F-342).
-ValueNotifier<BrushToolState> brushOf(WidgetTester tester) =>
-    tester
-            .widget<BrushCanvasPanel>(
-              find.ancestor(
-                of: textLayer(),
-                matching: find.byType(BrushCanvasPanel),
-              ),
-            )
-            .brushToolState!
-        as ValueNotifier<BrushToolState>;
 
 /// What the text tool draws over the canvas: the box, the handles, the
 /// caret.

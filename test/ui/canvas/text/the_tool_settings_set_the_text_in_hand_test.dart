@@ -191,28 +191,6 @@ void main() {
     expect(stylesOnCel(tester).single.bold, isTrue);
   });
 
-  // 🗣️F-342 (유저 2026-10-12): 「색도 그냥 결정되돌림. 생성시 브러시색
-  // 따라가도록」 — the tool has no colour of its own.
-  testWidgets('🚨with NOTHING in hand the colour is the BRUSH\'s: picked '
-      'there, it is the brush that takes it', (tester) async {
-    await pumpWithSettings(tester);
-    final history = sessionOf(tester).historyManager;
-    final steps = history.undoCount;
-
-    await press(tester, 'color');
-    await tester.tap(find.byKey(const ValueKey<String>('color-status-hex')));
-    await pumpFrames(tester);
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('color-status-hex-input')),
-      '22CC33',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await pumpFrames(tester);
-
-    expect(brushOf(tester).value.color, 0xFF22CC33);
-    expect(history.undoCount, steps, reason: 'nothing to land on');
-  });
-
   testWidgets('the delete beside the text\'s name takes it off its cel — '
       'one step', (tester) async {
     await hiInHand(tester);

@@ -11,12 +11,9 @@ import '../../models/text_cel_style.dart';
 /// 상태에서 도구설정에서 폰트바꾸면 해당 텍스트박스 설정 자동으로 바꿈」), while
 /// these stand for the text nobody has set yet.
 ///
-/// 🗣️F-342 (유저 2026-10-12) of the colour: 「색도 그냥 결정되돌림. 생성시
-/// 브러시색 따라가도록」 — the tool has NO colour of its own: a new text is
-/// set in the brush's colour as it is when the text is made ([letters]).
-/// ↩️On 2026-10-06 the tool had one, black (「기본값은 검정이고 텍스트편집툴
-/// 프로들 다 이렇게하잖아」), and ↩️F-334-Q1 (2026-10-10, 「자기 색은 두고,
-/// 처음만 붓 색」) kept it, only STARTING it as the brush's.
+/// 🗣️유저 2026-10-06 of the colour: 「기본값은 검정이고 텍스트편집툴 프로들 다
+/// 이렇게하잖아」 — the tool has a colour of its own. ↩️Where it STARTS moved
+/// on 2026-10-10 ([takesTheBrushColour]): the brush's, not black.
 ///
 /// ⚠️No width here. Whether a text grows or wraps is said by the hand — a
 /// click starts one that grows, a drag one as wide as the drag (유저
@@ -24,6 +21,7 @@ import '../../models/text_cel_style.dart';
 class TextToolOptions {
   const TextToolOptions({
     TextLetterStyle letters = const TextLetterStyle(),
+    this.takesTheBrushColour = false,
     this.align = TextCelAlign.left,
     this.lineHeight = CelTextContent.defaultLineHeight,
     this.backgroundColor,
@@ -31,13 +29,26 @@ class TextToolOptions {
   }) : _letters = letters;
 
   /// What the tool starts as in a run of the app: the app's face at 48, no
-  /// outline.
-  static const TextToolOptions defaults = TextToolOptions();
+  /// outline — in the brush's colour until a text is set.
+  static const TextToolOptions defaults = TextToolOptions(
+    takesTheBrushColour: true,
+  );
 
   /// How the letters of the next text are set, until the person says
-  /// otherwise. Read through [letters]: their colour is the next text's
-  /// only where there is no brush to read.
+  /// otherwise. Read through [letters]: their colour is not the next text's
+  /// while [takesTheBrushColour].
   final TextLetterStyle _letters;
+
+  /// Whether the next text's letters wear the BRUSH's colour — the tool has
+  /// none of its own yet.
+  ///
+  /// 🗣️F-334-Q1 (유저 2026-10-10, 「자기 색은 두고, 처음만 붓 색」): 「처음
+  /// 생성될떄만 기본값을 붓색. 이후로 편집도중 브러시 색 바꾼다고 텍스트색
+  /// 안바뀜. 진짜 초기값만 브러시색으로 해두는것」. True until the FIRST text
+  /// is set — it is set in the brush's colour, and the tool keeps that colour
+  /// as its own ([seeded]) — or a colour is picked in the tool settings
+  /// first ([withColour]). After either, the brush's colour reaches no text.
+  final bool takesTheBrushColour;
 
   final TextCelAlign align;
 
@@ -51,16 +62,40 @@ class TextToolOptions {
   /// ([CelTextContent.vertical]).
   final bool vertical;
 
-  /// The letters of the next text, in [brushColour]. Null where there is no
-  /// brush to read: the colour they were made in.
+  /// The letters of the next text — in [brushColour] while the tool takes
+  /// the brush's. Null where there is no brush to read: the colour they
+  /// were made in.
   TextLetterStyle letters({required int? brushColour}) =>
-      brushColour == null ? _letters : _letters.copyWith(color: brushColour);
+      seeded(brushColour: brushColour)._letters;
 
-  /// These with [change] made on the letters.
+  /// These once a text is set with them: the brush's colour, while they
+  /// take it, the tool's own from here — whatever the brush's does after.
+  /// As they are where there is no brush to read, and once the tool has a
+  /// colour of its own.
+  TextToolOptions seeded({required int? brushColour}) =>
+      takesTheBrushColour && brushColour != null
+      ? withColour(brushColour)
+      : this;
+
+  /// These with [color] the letters' colour, the tool's OWN — a colour
+  /// picked in the tool settings, the brush's own colour picked through
+  /// 「현재 색 반영」 too.
+  TextToolOptions withColour(int color) =>
+      _with(_letters.copyWith(color: color), takesTheBrushColour: false);
+
+  /// These with [change] made on the letters. ⚠️Not on their colour: a
+  /// colour in them is the next text's only once the tool has its own, and
+  /// [withColour] is what gives it one.
   TextToolOptions withLetters(
     TextLetterStyle Function(TextLetterStyle letters) change,
-  ) => TextToolOptions(
-    letters: change(_letters),
+  ) => _with(change(_letters), takesTheBrushColour: takesTheBrushColour);
+
+  TextToolOptions _with(
+    TextLetterStyle letters, {
+    required bool takesTheBrushColour,
+  }) => TextToolOptions(
+    letters: letters,
+    takesTheBrushColour: takesTheBrushColour,
     align: align,
     lineHeight: lineHeight,
     backgroundColor: backgroundColor,
@@ -88,6 +123,7 @@ class TextToolOptions {
     bool? vertical,
   }) => TextToolOptions(
     letters: _letters,
+    takesTheBrushColour: takesTheBrushColour,
     align: align ?? this.align,
     lineHeight: lineHeight ?? this.lineHeight,
     backgroundColor: identical(backgroundColor, _sentinel)
@@ -101,14 +137,21 @@ class TextToolOptions {
       identical(this, other) ||
       other is TextToolOptions &&
           other._letters == _letters &&
+          other.takesTheBrushColour == takesTheBrushColour &&
           other.align == align &&
           other.lineHeight == lineHeight &&
           other.backgroundColor == backgroundColor &&
           other.vertical == vertical;
 
   @override
-  int get hashCode =>
-      Object.hash(_letters, align, lineHeight, backgroundColor, vertical);
+  int get hashCode => Object.hash(
+    _letters,
+    takesTheBrushColour,
+    align,
+    lineHeight,
+    backgroundColor,
+    vertical,
+  );
 
   static const Object _sentinel = Object();
 }

@@ -26,8 +26,7 @@ typedef ShownLetterSetting<T> = ({T value, bool mixed});
 ///   ([TextToolOptions]).
 /// · WRITE: on BOTH — the text in hand, by that same range, and the next
 ///   text's values. Taking a text in hand changes neither: only a change
-///   made here does. The colour alone is the text in hand's, or with none
-///   the brush's ([setColour]).
+///   made here does.
 ///
 /// [settled] false is a value still being dragged: it shows, and lands with
 /// the one that follows it ([CelTextTool.changeLetters]).
@@ -36,7 +35,6 @@ class TextToolSettingsValues {
     required this.options,
     required this.tool,
     this.brushColour,
-    this.onBrushColour,
   });
 
   /// The next text's values. Null in a host that does not own them.
@@ -45,13 +43,10 @@ class TextToolSettingsValues {
   /// The hand of the canvas on screen. Null where no canvas holds one.
   final CelTextTool? tool;
 
-  /// The brush's colour — the next text's ([TextToolOptions.letters]). Null
-  /// where there is no brush to read.
+  /// The brush's colour — the next text's while the tool has none of its
+  /// own ([TextToolOptions.takesTheBrushColour]). Null where there is no
+  /// brush to read.
   final int? brushColour;
-
-  /// Sets the brush's colour — what the colour does with no text in hand
-  /// ([setColour]). Null where there is no brush to set.
-  final ValueChanged<int>? onBrushColour;
 
   TextToolOptions get _next => options?.value ?? TextToolOptions.defaults;
 
@@ -80,7 +75,8 @@ class TextToolSettingsValues {
   /// Makes [change] on the letters the setting speaks for, and on the next
   /// text's.
   ///
-  /// ⚠️Not the colour — [setColour]: the next text's is the brush's.
+  /// ⚠️Not the colour — [setColour]: a colour set here would not be the
+  /// next text's while the tool takes the brush's.
   void setLetters(
     TextLetterStyle Function(TextLetterStyle style) change, {
     bool settled = true,
@@ -89,24 +85,15 @@ class TextToolSettingsValues {
     _setNext((next) => next.withLetters(change));
   }
 
-  /// Sets the letters' colour on the text in hand as [setLetters] sets a
-  /// letter setting — and with none in hand, the BRUSH's: the tool has no
-  /// colour of its own ([TextToolOptions]).
-  ///
-  /// 🗣️F-342 (유저 2026-10-12, 「색도 그냥 결정되돌림」) took F-334-Q1's
-  /// other answer, 「새 텍스트는 늘 지금 붓 색」: 「텍스트를 고르지 않은 채
-  /// 도구 설정의 색을 바꾸면 붓 색이 바뀐다(색이 하나). 텍스트를 고르고 바꾸면
-  /// 그 텍스트만」.
+  /// Sets the letters' colour as [setLetters] sets a letter setting — and
+  /// on the next text's it is the tool's OWN from here, the brush's no
+  /// longer read (F-334-Q1: 「자기 색은 두고, 처음만 붓 색」).
   void setColour(int color, {bool settled = true}) {
-    final tool = this.tool;
-    if (tool != null && tool.contentInHand != null) {
-      tool.changeLetters(
-        (style) => style.copyWith(color: color),
-        settled: settled,
-      );
-      return;
-    }
-    onBrushColour?.call(color);
+    tool?.changeLetters(
+      (style) => style.copyWith(color: color),
+      settled: settled,
+    );
+    _setNext((next) => next.withColour(color));
   }
 
   // ── the box ─────────────────────────────────────────────────────────
