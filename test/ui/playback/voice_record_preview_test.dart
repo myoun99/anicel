@@ -76,6 +76,16 @@ void main() {
       trackSeDisplayOf(manager).trackSeDisplayLayers.first.audioClips.single.filePath,
       EditorVoiceRecording.voiceRecordPreviewPath,
     );
+    // And so do the rows every reader is handed: the take is another state,
+    // so they are made again for it — not handed back from before the roll.
+    expect(
+      manager.layers
+          .singleWhere((layer) => layer.id == laneId)
+          .audioClips
+          .single
+          .filePath,
+      EditorVoiceRecording.voiceRecordPreviewPath,
+    );
 
     expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
     expect(manager.voiceRecording.voiceRecordPreviewLane.value, isNull);
