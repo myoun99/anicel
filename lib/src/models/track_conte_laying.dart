@@ -314,6 +314,10 @@ const _fillPrefix = 'conte-fill:';
 
 /// [cut] without those of [fills] it holds — a row filed in one of them
 /// filed where that one was — or [cut] itself when it holds none.
+///
+/// ⛔The re-filing is 폴더 해산's law (`DissolveFolderCommand`), kept apart
+/// as its SECOND (the rule of three): the command walks one folder through
+/// the repository for its undo, this a set of them in one pure pass.
 Cut cutWithoutConteFills(Cut cut, Set<LayerId> fills) {
   final gone = {
     for (final layer in cut.layers)

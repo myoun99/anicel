@@ -317,8 +317,31 @@ import '../../tool/refactor/clone_scan.dart';
 /// merged), and the group fold had the same body.
 /// 🔬Measured on the lane against F-351's lane (`afcd0ea95`, at 88): those two
 /// gone, none added.
+///
+/// 86 → 87 (2026-10-15, F-343 — a track's conte is one structure every
+/// cut's conte wears). The new pair is named:
+///
+///     41 tokens
+///       lib/src/models/track_conte_laying.dart  cutWithoutConteFills
+///       lib/src/ui/brush/brush_preset_library.dart
+///         BrushPresetLibrary._importBrushFile
+///
+/// The reading DISMISSES the run: it is the filter both spell — the
+/// entries a set names, as a map, and nothing to do when there are none —
+/// over a cut's rows (the fills a write gave, each with the folder it is
+/// filed in) and over a brush file's hand settings (those whose brush
+/// landed). One indexes a list and the other narrows a map; a shared
+/// helper would only name the comprehension.
+/// What the fills' half does past the run IS a law met before, 폴더 해산's
+/// (`DissolveFolderCommand`): a row filed in a folder that goes is filed
+/// where that folder was. ⛔Not merged: the SECOND, and the rule of three
+/// holds — the command walks one folder through the repository for its
+/// undo, the fills a set of them in one pure pass. 🔜A third place that
+/// takes folders out and keeps what they held merges the walk.
+/// 🔬Measured on the lane against F-360's lane (`9760c59bc`, at 86): this
+/// one added, none gone.
 void main() {
-  const ceiling = 86;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
