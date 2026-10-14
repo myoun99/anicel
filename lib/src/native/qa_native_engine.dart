@@ -69,6 +69,7 @@ class QaNativeEngine {
     this._alphaBoundsTiles,
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
+    this._premultiplyRgbaRows,
     this._copyBytes,
     this._zeroBytes,
     this._widenBytes,
@@ -183,6 +184,51 @@ class QaNativeEngine {
 
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int pixelCount)
   _premultiplyRgbaCopy;
+
+  final void Function(
+    Pointer<Uint8> dst,
+    int dstStride,
+    Pointer<Uint8> src,
+    int srcStride,
+    int width,
+    int rows,
+  )
+  _premultiplyRgbaRows;
+
+  /// [rows] rows of [width] straight pixels at [source], [sourceStride]
+  /// bytes apart, premultiplied into [target] at rows [targetStride] bytes
+  /// apart, in ONE call (`qa_premultiply_rgba_rows`, ABI 46) — the kernel
+  /// of [premultipliedTileScratch] between two strides, so a tile can be
+  /// laid into a picture of several where a call a row would cost more
+  /// than the row.
+  void premultiplyRgbaRows({
+    required Pointer<Uint8> target,
+    required int targetStride,
+    required Pointer<Uint8> source,
+    required int sourceStride,
+    required int width,
+    required int rows,
+  }) => _premultiplyRgbaRows(
+    target,
+    targetStride,
+    source,
+    sourceStride,
+    width,
+    rows,
+  );
+
+  final _tilesPictureScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+
+  /// The engine's buffer for the bytes of ONE picture of several tiles —
+  /// at least [byteLength] of them, holding whatever the last picture left
+  /// there. Valid until the next ask: the upload that reads it consumes
+  /// the bytes inside its own call, so one buffer serves every picture,
+  /// and nothing holds it across an await.
+  ///
+  /// ⛔Not a buffer a picture: a block is a megabyte, and a fresh one each
+  /// time is fresh pages for the system to fault in and clear.
+  Pointer<Uint8> tilesPictureScratch(int byteLength) =>
+      _tilesPictureScratch.ensure(byteLength);
 
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int length)
   _copyBytes;
@@ -1015,6 +1061,18 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_premultiply_rgba_copy');
+      final premultiplyRgbaRows = library
+          .lookupFunction<
+            Void Function(
+              Pointer<Uint8>,
+              Int64,
+              Pointer<Uint8>,
+              Int64,
+              Int32,
+              Int32,
+            ),
+            void Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int, int)
+          >('qa_premultiply_rgba_rows');
       final copyBytes = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
@@ -1281,6 +1339,7 @@ class QaNativeEngine {
         alphaBoundsTiles,
         preBlendTiles,
         premultiplyRgbaCopy,
+        premultiplyRgbaRows,
         copyBytes,
         zeroBytes,
         widenBytes,

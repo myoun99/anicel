@@ -242,7 +242,11 @@ import 'dart:io';
 ///   on every vblank while a clock runs, so a picture handed over between
 ///   two vblanks is taken at the second of them however idle the desktop
 ///   leaves it (`QaDisplayTiming.composeEveryVblank`; the same board card).
-const int kQaEngineAbiVersion = 45;
+/// - v46: `qa_premultiply_rgba_rows` — the premultiplied copy between two
+///   row strides, so the tiles of a cel nobody has pictured go up a block
+///   at a time with one call a tile (`surfaceRegionPicture`,
+///   board a-cold-cel-composes-tile-by-tile).
+const int kQaEngineAbiVersion = 46;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

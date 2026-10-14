@@ -1322,6 +1322,23 @@ QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
   qa_premultiply_rgba_copy(pixels, pixels, pixel_count);
 }
 
+// The same copy a row at a time between two strides (ABI 46): [rows] rows
+// of [width] straight pixels, [src_stride] bytes apart, premultiplied into
+// [dst] at rows [dst_stride] bytes apart - a tile laid into a picture of
+// several tiles in one call, where a call a row costs more than its pixels.
+QA_EXPORT void qa_premultiply_rgba_rows(
+    uint8_t* dst,
+    int64_t dst_stride,
+    const uint8_t* src,
+    int64_t src_stride,
+    int32_t width,
+    int32_t rows) {
+  for (int32_t y = 0; y < rows; y += 1) {
+    qa_premultiply_rgba_copy(dst + (ptrdiff_t)y * dst_stride,
+                             src + (ptrdiff_t)y * src_stride, width);
+  }
+}
+
 // Plain memcpy exposed to Dart (R19-Z): native-to-native tile staging at
 // true memcpy speed - the VM's typed-data setRange was several times
 // slower in debug builds, and staging copies 256KB per touched tile.
@@ -6128,4 +6145,6 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v45: qa_display_compose_every_vblank - the compositor kept composing on
 // every vblank while a clock runs, so a picture handed over between two
 // vblanks is taken at the second of them however idle the desktop is.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 45; }
+// v46: qa_premultiply_rgba_rows - the premultiplied copy between two row
+// strides, so a block of tiles becomes one picture with one call a tile.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 46; }
