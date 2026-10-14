@@ -65,7 +65,6 @@ import '../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../services/playback/frame_demand.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
-import '../core/identity_memo.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
 import 'session/cut_placement.dart';
@@ -926,20 +925,8 @@ class EditorSessionManager extends ChangeNotifier
   /// is active — the cut's own track wins — and falls back to the stored
   /// selection (then the first track) only when there is no active cut or
   /// the stored track is gone.
-  ///
-  /// Answered once per project, cut stood in and stored track
-  /// ([IdentityMemo]): the session's other derivations key on it, and it
-  /// walked every cut of the film per ask.
   @override
-  TrackId get selectedTrackId => _selectedTrack.resolve(
-    identity: repository.requireProject(),
-    key: (editingSession.activeCutId, editingSession.selectedTrackId),
-    build: _selectedTrackIdOf,
-  );
-
-  final _selectedTrack = IdentityMemo<TrackId>();
-
-  TrackId _selectedTrackIdOf() {
+  TrackId get selectedTrackId {
     final project = repository.requireProject();
     final cutTrackId = trackIdOfCut(project, editingSession.activeCutId);
     if (cutTrackId != null) {

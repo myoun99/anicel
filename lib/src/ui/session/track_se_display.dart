@@ -1,4 +1,3 @@
-import '../../core/identity_memo.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -9,7 +8,6 @@ import '../../models/track_projection_row.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_transform_lane_carrier.dart';
-import '../timeline/memo_token.dart' show ByIdentity;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
@@ -162,37 +160,17 @@ class TrackSeDisplay {
   /// While a take rolls, the armed lane shows its PREVIEW state (REC1-C):
   /// the in-flight take landed by the same planner the stop will use —
   /// commits and undo keep reading the repository lane untouched.
-  ///
-  /// 🚨ONE LIST PER STATE (I-57, 10-14): the project, the cut stood in, the
-  /// track it stands on and the take in flight are all it reads, so it is
-  /// listed once for them and handed back until one changes
-  /// ([IdentityMemo]). Listed per ask, it was listed 578 times a cut
-  /// crossing on the AMMI OP — every `layers` the session composed and
-  /// every picture of the track stack asked — each ask walking the track's
-  /// cuts for the window.
   List<Layer> get trackSeDisplayLayers {
+    final window = trackSeWindow;
     final preview = _voiceRecording.voiceRecordPreviewLane.value;
-    return _shown.resolve(
-      identity: _project.repository.requireProject(),
-      key: (
-        _project.activeCutId,
-        _selection.selectedTrackId,
-        ByIdentity(preview),
-      ),
-      build: () {
-        final window = trackSeWindow;
-        return List.unmodifiable([
-          for (final layer in _selection.activeTrack.seLayers)
-            _trackSeDisplayCloneFor(
-              window,
-              preview != null && preview.id == layer.id ? preview : layer,
-            ),
-        ]);
-      },
-    );
+    return [
+      for (final layer in _selection.activeTrack.seLayers)
+        _trackSeDisplayCloneFor(
+          window,
+          preview != null && preview.id == layer.id ? preview : layer,
+        ),
+    ];
   }
-
-  final _shown = IdentityMemo<List<Layer>>();
 
   /// A row as a drag step leaves it, on its OWN axis, in the two forms a
   /// drag preview publishes: [shown] for the panels that draw the open cut
