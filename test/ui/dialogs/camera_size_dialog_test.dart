@@ -11,6 +11,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/dialogs/camera_size_dialog.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/ime_draft.dart';
+
 void main() {
   Future<List<CanvasSize?>> open(
     WidgetTester tester, {
@@ -162,6 +164,23 @@ void main() {
       findsOneWidget,
     );
     expect(results, isEmpty);
+  });
+
+  // 🐛F-355: a 全角 IME's draft is not changed under it — the size reads its
+  // numerals half-width, the apply pressed before the IME commits.
+  testWidgets('a width typed as a 全角 draft applies', (tester) async {
+    final results = await open(tester);
+    await composeDraft(
+      tester,
+      find.byKey(const ValueKey<String>('camera-size-width-field')),
+      '１２８０',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('camera-size-apply-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(results, [const CanvasSize(width: 1280, height: 1080)]);
   });
 
   testWidgets('cancel pops nothing', (tester) async {

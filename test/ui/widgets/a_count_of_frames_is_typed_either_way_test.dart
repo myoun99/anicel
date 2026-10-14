@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/frame_count_field.dart';
 
+import '../../helpers/ime_draft.dart';
+
 /// 🗣️I-24 (유저 2026-09-14): 「코마 수 설정창에서 기존처럼 프레임수로 정하는거랑
 /// 추가로 초수+코마로 조절하는거 신설. 버튼으로 각각 옵션 변경가능. 초수+코마는
 /// 특히 +를 텍스트로 쓰게한다거나 하지말고 초수랑 코마랑 제대로 칸 나눠서
@@ -88,6 +90,48 @@ void main() {
     await tester.pump();
     expect(textOf(tester, 'n-field'), '60');
     expect(count, 60);
+  });
+
+  // 🐛F-355: a draft a 全角 IME still composes is the field's to read, not
+  // to change — and a focus lost mid-draft keeps it as it is.
+  testWidgets('a 全角 draft counts as the number it shows, either way', (
+    tester,
+  ) async {
+    int? count;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FrameCountField(
+            keyPrefix: 'n',
+            label: 'Count',
+            framesPerSecond: 24,
+            onChanged: (value) => count = value,
+          ),
+        ),
+      ),
+    );
+
+    await composeDraft(
+      tester,
+      find.byKey(const ValueKey<String>('n-field')),
+      '３０',
+    );
+    expect(count, 30);
+
+    await tester.tap(find.byKey(const ValueKey<String>('n-entry-seconds')));
+    await tester.pump();
+    await composeDraft(
+      tester,
+      find.byKey(const ValueKey<String>('n-seconds-field')),
+      '２',
+    );
+    expect(count, 2 * 24 + 6);
+    await composeDraft(
+      tester,
+      find.byKey(const ValueKey<String>('n-koma-field')),
+      '１２',
+    );
+    expect(count, 2 * 24 + 12);
   });
 
   testWidgets('the N window applies a count typed as seconds+frames', (

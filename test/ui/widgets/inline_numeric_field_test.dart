@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
 
+import '../../helpers/ime_draft.dart';
+
 void main() {
   Future<({List<String> submitted, List<int> cancelled})> pump(
     WidgetTester tester,
@@ -52,5 +54,55 @@ void main() {
     await tester.pump();
     expect(seen.cancelled, hasLength(1));
     expect(seen.submitted, isEmpty);
+  });
+
+  // 🐛F-355 (유저 2026-10-13): 「５０이라고 입력할때 숫자가 두번 등록되는거같은?
+  // 5500 이런식으로 … ５０인상태에도 엔터하면 50으로 등록되는? 그런거 원함」.
+  group('a 全角 IME', () {
+    String shown(WidgetTester tester) =>
+        tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+    testWidgets('🚨nothing goes back to it while it composes — on Windows '
+        'that doubled what was typed next', (tester) async {
+      await pump(tester);
+      await tester.showKeyboard(find.byType(TextField));
+      tester.testTextInput.log.clear();
+
+      await composeDraft(tester, find.byType(TextField), '５０');
+
+      expect(shown(tester), '５０', reason: '⛔fixture: the draft arrived');
+      expect(
+        tester.testTextInput.log.where(
+          (call) => call.method == 'TextInput.setEditingState',
+        ),
+        isEmpty,
+      );
+    });
+
+    testWidgets('what it commits shows half-width, and Enter submits it', (
+      tester,
+    ) async {
+      final seen = await pump(tester);
+      await composeDraft(tester, find.byType(TextField), '５０');
+
+      await commitDraft(tester, '５０');
+      expect(shown(tester), '50');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      expect(seen.submitted, ['50']);
+    });
+
+    testWidgets('a tap away from a draft submits its numerals half-width', (
+      tester,
+    ) async {
+      final seen = await pump(tester);
+      await composeDraft(tester, find.byType(TextField), '５０');
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pump();
+
+      expect(seen.submitted, ['50']);
+    });
   });
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../text/full_width_numerals.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -24,7 +23,6 @@ class AppPromptDialog extends StatefulWidget {
     this.titleIcon,
     this.emptyError,
     this.multiline = false,
-    this.numeric = false,
     this.windowKey,
     this.fieldKey,
     this.cancelKey,
@@ -61,7 +59,6 @@ class AppPromptDialog extends StatefulWidget {
     this.titleIcon,
     this.emptyError,
     this.multiline = false,
-    this.numeric = false,
     this.extra,
     this.fieldTrailing,
     this.width,
@@ -99,10 +96,6 @@ class AppPromptDialog extends StatefulWidget {
   /// Multi-line entry (notes, dialogue). Enter then inserts a newline
   /// instead of submitting.
   final bool multiline;
-
-  /// Digits only, with the numeric keyboard. The caller still parses the
-  /// popped string — the window's job is to stop non-digits arriving.
-  final bool numeric;
 
   final Key? windowKey;
   final Key? fieldKey;
@@ -184,12 +177,7 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
           autofocus: true,
           minLines: widget.multiline ? 8 : 1,
           maxLines: widget.multiline ? 12 : 1,
-          keyboardType: widget.multiline
-              ? TextInputType.multiline
-              : widget.numeric
-              ? TextInputType.number
-              : null,
-          inputFormatters: widget.numeric ? halfWidthDigitsOnly : null,
+          keyboardType: widget.multiline ? TextInputType.multiline : null,
           decoration: InputDecoration(errorText: _errorText),
           onChanged: (_) {
             if (_errorText != null) {

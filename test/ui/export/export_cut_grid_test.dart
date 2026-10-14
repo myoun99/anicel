@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/export/export_cut_grid.dart';
 
+import '../../helpers/ime_draft.dart';
+
 void main() {
   ExportCutEntry entry(int number, {List<String>? ids, String? label}) => (
     ids: [for (final id in ids ?? ['c$number']) CutId(id)],
@@ -71,6 +73,17 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
     expect(range, (2, 7));
+
+    // 🐛F-355: a 全角 IME's draft is not changed under it — the range reads
+    // its numerals half-width, the minus between them too.
+    await composeDraft(
+      tester,
+      find.byKey(const ValueKey<String>('export-cut-grid-range')),
+      '３－９',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(range, (3, 9));
   });
 
   testWidgets('a 겸용 group is ONE cell: it prints the joined name and its '

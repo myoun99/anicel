@@ -324,7 +324,7 @@ class _FpsWindowState extends State<_FpsWindow> {
   }
 
   int? get _customFps {
-    final fps = int.tryParse(_customController.text.trim());
+    final fps = halfWidthInt(_customController.text);
     return fps != null && fps >= 1 ? fps : null;
   }
 

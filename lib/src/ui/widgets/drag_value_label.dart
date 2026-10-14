@@ -128,9 +128,9 @@ class DragValueLabel extends StatefulWidget {
   final _Face _face;
 
   /// Whether the typed value is a whole number with no sign: the field
-  /// takes digits alone (full-width ones converted) on the number pad —
-  /// what `AppPromptDialog.numeric` means for its field. The readouts that
-  /// type a sign or a point leave it false.
+  /// takes digits alone (full-width ones converted) on the number pad
+  /// ([halfWidthDigitsOnly]). The readouts that type a sign or a point
+  /// leave it false.
   final bool digitsOnly;
 
   /// Called ONCE at the top of an operation — a scrub, a step, a notch of

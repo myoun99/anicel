@@ -950,7 +950,7 @@ class _DigitsFieldState extends State<_DigitsField> {
         keyboardType: TextInputType.number,
         inputFormatters: halfWidthDigitsOnly,
         onChanged: (value) {
-          final parsed = int.tryParse(value.trim());
+          final parsed = halfWidthInt(value);
           if (parsed != null) {
             widget.onChanged(parsed);
           }

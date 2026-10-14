@@ -9,9 +9,10 @@ import '../text/full_width_numerals.dart';
 /// into wants the identical field: it takes focus the moment it appears
 /// with its text selected, Escape abandons the edit, Enter or a tap
 /// anywhere else commits it, and a Japanese IME sitting in 全角 has its
-/// numerals converted as they arrive so no downstream parser ever sees
-/// them (R9 #15). Three copies of that had drifted apart — the canvas
-/// readouts', the slider's, and the colour window's about to be a fourth.
+/// numerals made half-width — once it commits them, and in what is
+/// submitted — so no host's parser ever sees them (R9 #15 · F-355). Three
+/// copies of that had drifted apart — the canvas readouts', the slider's,
+/// and the colour window's about to be a fourth.
 ///
 /// What is deliberately NOT here is the ENTRY GESTURE. The host decides
 /// what turns into this field and when, because that is the only part
@@ -36,8 +37,8 @@ class InlineNumericField extends StatefulWidget {
   /// replaces it — the readout you tapped IS the thing you are replacing.
   final String initialText;
 
-  /// The raw text on commit; the host parses and clamps, because only the
-  /// host knows the units.
+  /// The text on commit, its numerals half-width; the host parses and
+  /// clamps, because only the host knows the units.
   final ValueChanged<String> onSubmit;
 
   /// Escape, and any other abandonment. The host restores its readout.
@@ -93,7 +94,9 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
       return;
     }
     _done = true;
-    widget.onSubmit(_controller.text.trim());
+    // Read half-width (F-355): a tap away commits a draft the IME still
+    // holds as it is, which no formatter has seen.
+    widget.onSubmit(toHalfWidthNumerals(_controller.text).trim());
   }
 
   /// Tapping AWAY commits what you typed — but if you typed nothing, it

@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/dialogs/timesheet_format_window.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/ime_draft.dart';
+
 const _bar = ValueKey<String>('timesheet-format-exposure-bar');
 const _threshold = ValueKey<String>('timesheet-format-exposure-bar-threshold');
 const _seFill = ValueKey<String>('timesheet-format-se-empty-fill');
@@ -141,6 +143,34 @@ void main() {
     await _press(tester, _save);
     expect(result!.exposureBarThreshold, 4);
     expect(result!.seEmptyFill, isFalse);
+  });
+
+  // 🐛F-355: a 全角 IME's draft is not changed under it — N reads its
+  // numerals half-width, the save pressed before the IME commits.
+  testWidgets('N typed as a 全角 draft is saved', (tester) async {
+    TimesheetInfo? result;
+    await _openWindow(tester, TimesheetInfo.empty, (r) => result = r);
+    await _press(tester, _bar);
+
+    await composeDraft(tester, find.byKey(_threshold), '６');
+    await _press(tester, _save);
+
+    expect(result!.exposureBarThreshold, 6);
+  });
+
+  testWidgets('N the IME commits shows half-width, digits alone', (
+    tester,
+  ) async {
+    await _openWindow(tester, TimesheetInfo.empty, (_) {});
+    await _press(tester, _bar);
+
+    await composeDraft(tester, find.byKey(_threshold), '６ａ');
+    await commitDraft(tester, '６ａ');
+
+    expect(
+      tester.widget<TextField>(find.byKey(_threshold)).controller!.text,
+      '6',
+    );
   });
 
   testWidgets('N keeps its place while the bar is off — it refuses typing '

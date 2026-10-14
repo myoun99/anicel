@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../models/cut_id.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
+import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../repaint_props.dart';
 
@@ -59,7 +59,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
   }
 
   void _applyRange() {
-    final raw = _rangeController.text.trim();
+    final raw = toHalfWidthNumerals(_rangeController.text).trim();
     final match = RegExp(r'^(\d+)\s*-\s*(\d+)$').firstMatch(raw);
     if (match == null) {
       final single = int.tryParse(raw);
@@ -144,9 +144,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
                 controller: _rangeController,
                 enabled: widget.enabled,
                 style: theme.textTheme.labelSmall,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[\d\-\s]')),
-                ],
+                inputFormatters: halfWidthNumberRanges,
                 decoration: const InputDecoration(
                   isDense: true,
                   hintText: '1-200',
