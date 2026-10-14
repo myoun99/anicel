@@ -11,6 +11,8 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/session/trimmed_pieces.dart';
+import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
+    show debugTilePictureClock;
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
@@ -130,7 +132,7 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // notice for every file after it.
   debugDriveNoticeShown = false;
   AppStorage.debugAllFilesAccessOverride = null;
-  // 🚨SET rather than reset, and it is the only one here that is. Carrying
+  // 🚨SET rather than reset, as are the two after it. Carrying
   // a file secures its bytes in an isolate so a big movie stops freezing
   // the app; a `testWidgets` clock is fake, so awaiting a real isolate is a
   // hang and every voice-take and import widget test stopped at「did not
@@ -144,6 +146,15 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // The same fake-clock reason: cutting a trimmed file's piece runs in a
   // worker in the app, and a widget test cannot await one.
   TrimmedPieces.debugCutInline = true;
+  // The same again: a compose that makes tile pictures in turn gives way
+  // through a turn of the REAL event queue (a port message), which a
+  // `testWidgets` clock never waits — a test that settles a cold cel looks
+  // before the cel lands. Read off the wall, a run is two milliseconds a
+  // loaded machine can spend before a compose's first picture (🔬a first
+  // call's compile alone took 0.56 ms on an idle one, 2026-10-15), and
+  // `static_bake_render_parity_test` failed only inside a full run. Held,
+  // no run ends; the group that studies the run holds a clock of its own.
+  debugTilePictureClock = () => 0;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;

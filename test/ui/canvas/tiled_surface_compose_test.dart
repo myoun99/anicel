@@ -440,11 +440,15 @@ void main() {
       return abandoned();
     };
 
+    // The corpus holds a clock of its own (`flutter_test_config.dart`): it
+    // is handed back, not dropped for the wall's.
+    int Function()? corpusClock;
     setUp(() {
       clock = 0;
+      corpusClock = debugTilePictureClock;
       debugTilePictureClock = () => clock;
     });
-    tearDown(() => debugTilePictureClock = null);
+    tearDown(() => debugTilePictureClock = corpusClock);
 
     testWidgets('🚨what was waiting in the event queue is heard before a '
         'compose longer than a run is done — and a compose somebody waits '
