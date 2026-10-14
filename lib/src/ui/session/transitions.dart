@@ -1,6 +1,5 @@
 import 'dart:collection' show SplayTreeMap;
 import 'package:flutter/foundation.dart' show ValueListenable;
-import '../../core/identity_memo.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -163,31 +162,10 @@ class Transitions {
   /// NOT describe where the span really is — the global row does that, and
   /// an edit made on this row is written THERE, to the span the mark was
   /// drawn from ([transitionSpanStartShownInCutAt]).
-  Layer get trackTransitionDisplayLayer => _openCutProjection.display;
-
-  /// [trackTransitionDisplayLayer] with what its walk found — the marks
-  /// whose spans cross the cut, and where each came from — the one answer
-  /// that row and the readers of its walk read.
   ///
-  /// 🚨ONE PROJECTION PER STATE (I-57, 10-14): the project, the cut stood
-  /// in, the track it stands on and the language its spans are named in
-  /// are all it reads, so it is projected once for them and handed back
-  /// until one changes ([IdentityMemo]). Projected per ask, it was asked
-  /// 327 times a cut crossing on the AMMI OP — every `layers` the session
-  /// composed asked it — and each ask named the row's spans by walking the
-  /// track's cuts.
-  _OpenCutProjection get _openCutProjection => _projection.resolve(
-    identity: _project.repository.requireProject(),
-    key: (_project.activeCutId, _selection.selectedTrackId, AppText.strings),
-    build: _projectOntoTheOpenCut,
-  );
-
-  final _projection = IdentityMemo<_OpenCutProjection>();
-
-  /// The walk behind [_openCutProjection], cached on the same terms as the
-  /// SE clones: same source layer + same window = the same instance back,
-  /// so identity-keyed row memos hold across the states that keep both.
-  _OpenCutProjection _projectOntoTheOpenCut() {
+  /// Cached on the same terms as the SE clones: same source layer + same
+  /// window = the same instance back, so identity-keyed row memos hold.
+  Layer get trackTransitionDisplayLayer {
     final track = _selection.activeTrack;
     final source = names.rowNamed(track, track.transitionLayer);
     final cutStart = _project.activeCutGlobalStartFrame;
@@ -197,7 +175,7 @@ class Transitions {
         identical(cached.source, source) &&
         cached.cutStart == cutStart &&
         cached.duration == duration) {
-      return cached;
+      return cached.display;
     }
     final walk = _projectOntoCut(
       source,
@@ -207,7 +185,7 @@ class Transitions {
       // above names both, and need not name this.
       lead: _openCutLead,
     );
-    return _transitionDisplayClone = (
+    _transitionDisplayClone = (
       source: source,
       cutStart: cutStart,
       duration: duration,
@@ -215,6 +193,7 @@ class Transitions {
       crossing: walk.crossing,
       origins: walk.origins,
     );
+    return walk.display;
   }
 
   /// The projection walk onto the cut that stands on `[cutStart, cutStart
@@ -262,7 +241,15 @@ class Transitions {
     );
   }
 
-  _OpenCutProjection? _transitionDisplayClone;
+  ({
+    Layer source,
+    int cutStart,
+    int duration,
+    Layer display,
+    Set<int> crossing,
+    Map<int, int> origins,
+  })?
+  _transitionDisplayClone;
 
   /// The transition row in the SE rows' spill-in map
   /// (`TrackSe.trackSeSpillInLeadFrames`): its id, with how far into its
@@ -276,12 +263,12 @@ class Transitions {
   /// span lives on — the earlier cut does not draw a fade that is not its
   /// own.
   Map<LayerId, int> get transitionSpillInLeadFrames {
-    final projection = _openCutProjection;
-    final start = projection.origins[0];
+    final row = trackTransitionDisplayLayer;
+    final start = _transitionDisplayClone?.origins[0];
     final cutStart = _project.activeCutGlobalStartFrame;
     return start == null || start >= cutStart
         ? const {}
-        : {projection.display.id: cutStart - start};
+        : {row.id: cutStart - start};
   }
 
   /// D26: the crossing-fade warning for the CUT-VIEW transition row, by
@@ -289,10 +276,15 @@ class Transitions {
   /// in [trackTransitionDisplayLayer]'s own projection walk with the SAME
   /// predicate the apply gate reads ([oneSidedSpanCrossesOwnCut]) — the
   /// T25 one-sentence law: the refusal and the warning cannot drift.
-  String? transitionCrossingWarningInCutAt(int projectedStartKey) =>
-      _openCutProjection.crossing.contains(projectedStartKey)
-      ? AppText.strings.tlTransitionCrossingWarning
-      : null;
+  String? transitionCrossingWarningInCutAt(int projectedStartKey) {
+    // Resolve the clone first so the cache always answers for the active
+    // cut the row is actually showing.
+    trackTransitionDisplayLayer;
+    return (_transitionDisplayClone?.crossing.contains(projectedStartKey) ??
+            false)
+        ? AppText.strings.tlTransitionCrossingWarning
+        : null;
+  }
 
   /// D31 × D26: the transition row the printed SHEET consumes — the
   /// cut-view projection MINUS the spans the apply gate refuses (the
@@ -486,12 +478,11 @@ class Transitions {
   /// drawn from this cut's frame 0 at its full length, so the frame under
   /// the hand need not be one of its own.
   int? transitionSpanStartShownInCutAt(int localFrame) {
-    final projection = _openCutProjection;
     final shown = instructionSpanCovering(
-      projection.display.instructions,
+      trackTransitionDisplayLayer.instructions,
       localFrame,
     );
-    return shown == null ? null : projection.origins[shown.key];
+    return shown == null ? null : _transitionDisplayClone?.origins[shown.key];
   }
 
   /// [transitionSpanStartShownInCutAt] for the verbs that EDIT — open, delete,
@@ -684,16 +675,3 @@ class Transitions {
   TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) =>
       transitionSpanOfEvent(entry, _camera.cameraInstructionSet);
 }
-
-/// The transition row projected onto the open cut ([Transitions]): the
-/// row it was projected from, the cut's place and length it was projected
-/// onto, the clone, the projected keys of the one-sided spans that cross
-/// the cut, and where each projected mark came from.
-typedef _OpenCutProjection = ({
-  Layer source,
-  int cutStart,
-  int duration,
-  Layer display,
-  Set<int> crossing,
-  Map<int, int> origins,
-});

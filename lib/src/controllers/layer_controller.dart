@@ -1,4 +1,3 @@
-import '../core/identity_memo.dart';
 import '../models/attached_layer_resolve.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -64,37 +63,13 @@ class LayerController {
 
   LayerId? _activeLayerId;
 
-  /// The cut's rows as every reader reads them: its own layers, the
-  /// track's SE rows and its transition row.
-  ///
-  /// 🚨ONE LIST PER STATE (I-57, 10-14): composed once for the cut and the
-  /// clones the session hands it, and handed back until one of them is
-  /// another object ([IdentityMemo]). Composed per ask, it was composed
-  /// 326 times a cut crossing on the AMMI OP — every `layerById` and every
-  /// `activeLayerId` asks it — each ask walking the film for the cut.
   List<Layer> get layers {
-    final cut = _cut.resolve(
-      identity: _repository.requireProject(),
-      build: () => (found: _findCutOrNull()),
-    ).found;
+    final cut = _findCutOrNull();
     if (cut == null) {
       // Gap state: no rows at all — not even the track SE clones (the
       // timeline shows its empty state).
       return const <Layer>[];
     }
-    final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
-    final transition = _trackTransitionDisplayLayer?.call();
-    return _layers.resolve(
-      identity: cut,
-      key: (trackSe, transition),
-      build: () => _composed(cut, trackSe, transition),
-    );
-  }
-
-  final _cut = IdentityMemo<({Cut? found})>();
-  final _layers = IdentityMemo<List<Layer>>();
-
-  List<Layer> _composed(Cut cut, List<Layer> trackSe, Layer? transition) {
     final cutLayers = cut.layers;
     // SYNCED attach rows join as DISPLAY clones whose timeline mirrors
     // the base through the cell links (W5) — the same read-clone pattern
@@ -104,11 +79,13 @@ class LayerController {
     final displayed = [
       for (final layer in cutLayers) attachedRowAsShown(layer, cutLayers),
     ];
+    final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
     // The TRANSITION row joins on the same terms as the SE rows: track
     // owned, read here through a display clone, written only on the global
     // axis. It sorts into the camera section by kind like any other row.
+    final transition = _trackTransitionDisplayLayer?.call();
     if (trackSe.isEmpty && transition == null) {
-      return List.unmodifiable(displayed);
+      return displayed;
     }
     final composed = [...displayed, ...trackSe];
     if (transition != null) {
@@ -125,7 +102,7 @@ class LayerController {
         transition,
       );
     }
-    return List.unmodifiable(composed);
+    return composed;
   }
 
   LayerId? get activeLayerId {
