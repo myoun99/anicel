@@ -38,13 +38,17 @@ LayerId? stableLayerIdAfterDeleting({
 }
 
 /// Which layer stands after a list change: a layer the change inserted
-/// wins, an active layer the change removed hands off by
-/// [stableLayerIdAfterDeleting], and otherwise the active layer keeps its
-/// place.
+/// wins, an active layer the change removed hands off — to [handBackTo]
+/// where it is still there, by [stableLayerIdAfterDeleting] otherwise —
+/// and otherwise the active layer keeps its place.
+///
+/// [handBackTo] is the row an undo's edit found the user on (F-350): the
+/// undo of a new row hands the stand back to the row it was added from.
 LayerId? preferredLayerAfterLayerListChange({
   required List<Layer> beforeLayers,
   required List<Layer> afterLayers,
   required LayerId? previousActiveLayerId,
+  LayerId? handBackTo,
 }) {
   final afterIds = afterLayers.map((layer) => layer.id).toSet();
   final beforeIds = beforeLayers.map((layer) => layer.id).toSet();
@@ -57,6 +61,9 @@ LayerId? preferredLayerAfterLayerListChange({
 
   if (previousActiveLayerId != null &&
       !afterIds.contains(previousActiveLayerId)) {
+    if (handBackTo != null && afterIds.contains(handBackTo)) {
+      return handBackTo;
+    }
     return stableLayerIdAfterDeleting(
       beforeLayers: beforeLayers,
       deletedLayerId: previousActiveLayerId,

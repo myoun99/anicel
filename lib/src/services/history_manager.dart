@@ -114,6 +114,10 @@ class HistoryManager extends ChangeNotifier {
   StandingPlace? get undoPlace =>
       _undoStack.isEmpty ? null : places.of(_undoStack.last);
 
+  /// Where the next undo's edit found the user ([HistoryPlaces.foundAt]).
+  StandingPlace? get undoFound =>
+      _undoStack.isEmpty ? null : places.foundAt(_undoStack.last);
+
   /// Where the next redo's edit was made, or null when nothing says.
   ///
   /// ⚠️A walk back never says: it is not an edit, so nothing ever stamps

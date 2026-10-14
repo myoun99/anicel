@@ -131,6 +131,28 @@ void main() {
       );
     });
 
+    test('F-350: handed a row to go back to, it goes there while the row is '
+        'still in the list — by the deletion law once it is not', () {
+      expect(
+        preferredLayerAfterLayerListChange(
+          beforeLayers: _layers(['a', 'b', 'c']),
+          afterLayers: _layers(['a', 'c']),
+          previousActiveLayerId: const LayerId('b'),
+          handBackTo: const LayerId('a'),
+        ),
+        const LayerId('a'),
+      );
+      expect(
+        preferredLayerAfterLayerListChange(
+          beforeLayers: _layers(['a', 'b', 'c']),
+          afterLayers: _layers(['c']),
+          previousActiveLayerId: const LayerId('b'),
+          handBackTo: const LayerId('a'),
+        ),
+        const LayerId('c'),
+      );
+    });
+
     test('otherwise the active layer keeps its place', () {
       expect(
         preferredLayerAfterLayerListChange(

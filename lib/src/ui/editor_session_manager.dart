@@ -1927,7 +1927,11 @@ class EditorSessionManager extends ChangeNotifier
   /// its reason — that a hasty merge leaves one flag answering two
   /// questions — does not apply here: the difference becomes the ARGUMENT,
   /// so there is no flag and nothing to read twice.
-  void _stepHistory(void Function() move) {
+  ///
+  /// [found] is where the step's edit found the user, for an undo: a row
+  /// the undo takes away from under them hands them back there (F-350,
+  /// [HistoryPlaces.foundAt]).
+  void _stepHistory(void Function() move, {StandingPlace? found}) {
     final documentBefore = repository.currentProject;
     final beforeLayers = List<Layer>.of(
       activeCutOrNull?.layers ?? const <Layer>[],
@@ -1984,6 +1988,7 @@ class EditorSessionManager extends ChangeNotifier
       beforeLayers: beforeLayers,
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
+      handBackTo: found?.cut == activeCutId ? found?.layer : null,
     );
     // F-169, the standing law's two questions. A row the step brought BACK
     // is where you stood when it went (② 「언두시에 접혀있는 레이어로 이동하면
@@ -2033,7 +2038,10 @@ class EditorSessionManager extends ChangeNotifier
     }
     historyPictures.step(
       undo: true,
-      apply: () => _stepHistory(historyManager.undo),
+      apply: () => _stepHistory(
+        historyManager.undo,
+        found: historyManager.undoFound,
+      ),
     );
   }
 

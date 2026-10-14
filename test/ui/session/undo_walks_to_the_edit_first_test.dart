@@ -492,4 +492,29 @@ void main() {
     s.undo();
     expect(s.layers.length, rows, reason: '걷지 않고 바로 되돌린다');
   });
+
+  // 🗣️F-350 (유저 2026-10-12): 「레이어 여러개 생성하고 언두할때 매번 카메라
+  // 레이어로 이동하는 1개 과정이 있음. 한번에 바로 삭제해야하는데」.
+  test('🎯rows added one after another come off one undo each — the row a '
+      'take-back leaves the user on is the one they added it from', () {
+    final s = session();
+    final start = s.activeLayerId!;
+    final rows = s.layers.length;
+    s.layerStack.addLayer();
+    final first = s.activeLayerId!;
+    s.layerStack.addLayer();
+    final second = s.activeLayerId!;
+    s.layerStack.addLayer();
+    expect(s.layers.length, rows + 3, reason: '⛔전제: 셋을 만들었다');
+
+    s.undo();
+    expect(s.layers.length, rows + 2);
+    expect(s.activeLayerId, second);
+    s.undo();
+    expect(s.layers.length, rows + 1, reason: '걷지 않고 바로 지운다');
+    expect(s.activeLayerId, first);
+    s.undo();
+    expect(s.layers.length, rows);
+    expect(s.activeLayerId, start);
+  });
 }
