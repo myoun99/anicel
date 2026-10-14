@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
@@ -173,19 +174,24 @@ void main() {
   testWidgets('🎯a tap on the timeline lets go of the timeline\'s selection '
       'and leaves the marquee (T10 · F-86)', (tester) async {
     final session = await pump(tester);
-    await sweepFrames(tester, session);
+    final layer = session.activeLayerId!;
+    session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(layer));
+    await tester.pump();
+    expect(session.rowSelection.value, isNotEmpty, reason: '⛔premise');
     await drawMarquee(tester);
 
-    // INSIDE the swept frames: the press keeps them — it could be the start
-    // of a move — and it is the release, the press settling as a tap, that
-    // lets them go.
+    // On the selected row: the press keeps the selection — it could be the
+    // start of a move — and it is the release, the press settling as a tap,
+    // that lets it go. ⚠️A ROW selection, not a frame band: the cells' band
+    // layer lets a band go on its own tap, so a band goes whatever the
+    // release lets go of (a mutant that cut the release off lived on one).
     await tester.tapAt(
-      timelineCellCenter(tester, session.layers.first.id.value, 1),
+      timelineCellCenter(tester, layer.value, 1),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(session.frameRangeSelection.value, isNull);
+    expect(session.rowSelection.value, isEmpty);
     expect(marqueeOf(tester).region, isNotNull);
   });
 }
