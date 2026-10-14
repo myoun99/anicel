@@ -681,27 +681,22 @@ class Standing {
   /// [laneId] is a GROUP header closing, and it swallows its members alone
   /// — the header itself stays on screen and is where you land.
   ///
-  /// [panel] is the panel whose rail folded, where the fold hands on first.
-  /// A twirl is its row's (F-360), so the storyboard's row that shows the
-  /// same lanes ([_storyboardRowShowing]) hands on there too.
-  void handOffCurrentRowOnFold(
-    LayerId layerId, {
-    String? laneId,
-    WorkingPanel panel = WorkingPanel.timeline,
-  }) {
+  /// A twirl is its row's (F-360), whichever rail pressed it: the fold hands
+  /// on where the timeline stands, and where the storyboard stands in the
+  /// row that shows the same lanes ([_storyboardRowShowing]).
+  /// ↩️It took the panel whose rail folded and handed on there alone, while
+  /// the storyboard's rail kept twirls of its own.
+  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
     if (laneId == null) {
       handOffOnFold(
         swallower: _rowSwallowingLanesOf(layerId),
         vanished: (address) =>
             address is LaneRowAddress && address.layerId == layerId,
-        panel: panel,
       );
       // The storyboard row that shows this row's lanes twirls with it (I-73
       // ④ⓔ — the camera row's head is the timeline's camera row): its lanes
       // go too, and the row swallows them.
-      final shown = panel == WorkingPanel.timeline
-          ? _storyboardRowShowing(layerId)
-          : null;
+      final shown = _storyboardRowShowing(layerId);
       if (shown != null) {
         handOffOnFold(
           swallower: _rowSwallowingLanesOf(shown),
@@ -715,13 +710,10 @@ class Standing {
     handOffOnFold(
       swallower: LaneRowAddress(layerId, laneId),
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
-      panel: panel,
     );
     // …and a group the storyboard's row draws shuts there too (I-73 ④ⓔ):
     // its header swallows the members you stood in.
-    final shown = panel == WorkingPanel.timeline
-        ? _storyboardRowShowing(layerId)
-        : null;
+    final shown = _storyboardRowShowing(layerId);
     if (shown != null) {
       handOffOnFold(
         swallower: LaneRowAddress(shown, laneId),

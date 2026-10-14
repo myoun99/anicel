@@ -437,16 +437,18 @@ void main() {
     });
   });
 
-  group('a fold hands on where ITS panel stands (R5 #11, both rails)', () {
-    test('an S row\'s lanes folding in the storyboard hand the storyboard '
-        'its row', () {
+  // F-360: a twirl is its ROW's — an S row's is its SE row's, the one the
+  // timeline twirls — so whichever rail presses it, it shuts on both.
+  group('a fold hands on where its lanes were shown (R5 #11, both '
+      'rails)', () {
+    test('an S row\'s lanes folding hand the storyboard its row', () {
       final s = session();
       s.standOnRow(
         const LaneRowAddress(seId, 'position'),
         panel: WorkingPanel.storyboard,
       );
       final seated = s.activeLayerId;
-      s.handOffCurrentRowOnFold(seId, panel: WorkingPanel.storyboard);
+      s.handOffCurrentRowOnFold(seId);
       expect(
         s.currentRow,
         const LayerRowAddress(seId),
@@ -474,7 +476,7 @@ void main() {
       s.rowSelectionVerbs.beginRowSelection(LaneRowAddress(carrier, 'opacity'));
       s.rowSelection.value = [LaneRowAddress(carrier, 'opacity')];
 
-      s.handOffCurrentRowOnFold(carrier, panel: WorkingPanel.storyboard);
+      s.handOffCurrentRowOnFold(carrier);
       expect(s.currentRow, const TrackRowAddress(trackId));
       expect(
         s.rowSelection.value,
@@ -484,22 +486,19 @@ void main() {
       );
     });
 
-    test('a group folding in the storyboard hands its header', () {
+    test('a group folding hands the storyboard its header', () {
       final s = session();
       s.standOnRow(
         const LaneRowAddress(seId, 'position'),
         panel: WorkingPanel.storyboard,
       );
-      s.handOffCurrentRowOnFold(
-        seId,
-        laneId: 'transform-group',
-        panel: WorkingPanel.storyboard,
-      );
+      s.handOffCurrentRowOnFold(seId, laneId: 'transform-group');
       expect(s.currentRow, const LaneRowAddress(seId, 'transform-group'));
     });
 
-    test('the timeline\'s fold leaves the storyboard\'s lane, and the '
-        'storyboard\'s leaves the timeline\'s', () {
+    test('🚨each panel hands on only what it showed: a fold of a row the '
+        'storyboard does not show leaves its lane, and the S row\'s fold '
+        'shuts it there too', () {
       final s = session();
       // ↩️F-187: a storyboard stand seats the timeline too, so the timeline's
       // lane is stood on AFTER it — a timeline pick leaves the storyboard's
@@ -511,17 +510,23 @@ void main() {
       s.standOnRow(const LaneRowAddress(celA, 'opacity'));
       s.claimStoryboardRow();
 
-      s.handOffCurrentRowOnFold(seId);
+      s.handOffCurrentRowOnFold(celA);
       expect(
         s.currentRow,
         const LaneRowAddress(seId, 'position'),
-        reason: 'the timeline folded ITS copy of the row — the storyboard '
-            'still shows the lane',
+        reason: 'the storyboard shows no lane of that row',
       );
-
-      s.handOffCurrentRowOnFold(celA, panel: WorkingPanel.storyboard);
       s.claimTimelineRow();
-      expect(s.currentRow, const LaneRowAddress(celA, 'opacity'));
+      expect(s.currentRow, const LayerRowAddress(celA), reason: 'its own');
+
+      s.claimStoryboardRow();
+      s.handOffCurrentRowOnFold(seId);
+      expect(
+        s.currentRow,
+        const LayerRowAddress(seId),
+        reason: 'one twirl, shut on both panels — ↩️it was the timeline\'s '
+            'copy of the row, and the storyboard went on showing the lane',
+      );
     });
   });
 

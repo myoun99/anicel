@@ -921,11 +921,8 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   void selectRow(TimelineRowAddress row) => standing.selectRow(row);
-  void handOffCurrentRowOnFold(
-    LayerId layerId, {
-    String? laneId,
-    WorkingPanel panel = WorkingPanel.timeline,
-  }) => standing.handOffCurrentRowOnFold(layerId, laneId: laneId, panel: panel);
+  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
+      standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
   void handOffCurrentRowOnAttachFold(LayerId baseId) =>
       standing.handOffCurrentRowOnAttachFold(baseId);
   void claimTimelineRow() => standing.claimTimelineRow();
