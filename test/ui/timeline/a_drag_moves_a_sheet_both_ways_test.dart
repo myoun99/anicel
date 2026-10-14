@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
 /// 🗣️F-351 (유저 2026-10-12): 「스페이스바로 타임라인쪽 조작하면 가로/세로
 /// 스크롤 통합해서 캔버스 조작하듯이 팬 되는데, 법 통일해서 터치로 해당영역
@@ -76,6 +77,15 @@ void main() {
   ];
 
   for (final sheet in sheets) {
+    /// The sheet's panel squeezed into its floor ([OverflowScrollers]), the
+    /// floor scrolling both ways — so a pull the sheet does not take has
+    /// somewhere else to go.
+    ///
+    /// ⚠️Unsqueezed, nothing else on the screen asks for a pull: once the
+    /// cells' taps let go, the sheet's drag is all that is left and wins by
+    /// default. What decides who takes a pull — the slop, each axis's own —
+    /// and what stops a coast under a press went unasked, and four mutants
+    /// lived (F-351, 2026-10-14).
     Future<void> pumpSheet(WidgetTester tester) async {
       // Wide enough for the cells beside the rail to be a panel's worth.
       await tester.binding.setSurfaceSize(const Size(900, 600));
@@ -83,7 +93,13 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           scrollBehavior: const AppScrollBehavior(),
-          home: Scaffold(body: sheet.panel()),
+          home: Scaffold(
+            body: OverflowScrollers(
+              minWidth: 1000,
+              minHeight: 700,
+              child: sheet.panel(),
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -111,11 +127,23 @@ void main() {
       return Offset(along(Axis.horizontal), along(Axis.vertical));
     }
 
+    /// Where the scrollers around the sheet stand — the floor's.
+    List<ScrollPosition> theFloor(WidgetTester tester) => [
+      for (final scroller in tester.stateList<ScrollableState>(
+        find.ancestor(
+          of: find.byKey(ValueKey<String>(sheet.outer)),
+          matching: find.byType(Scrollable),
+        ),
+      ))
+        scroller.position,
+    ];
+
     /// A point on the sheet's cells: the middle of what shows of its inner
     /// scroll view.
     Offset onTheCells(WidgetTester tester) => tester
         .getRect(find.byKey(ValueKey<String>(sheet.inner)))
         .intersect(tester.getRect(find.byKey(ValueKey<String>(sheet.outer))))
+        .intersect(tester.getRect(find.byType(OverflowScrollers)))
         .center;
 
     /// [fingers] land together on the cells and travel ten steps of [step].
@@ -167,11 +195,23 @@ void main() {
             everyElement(greaterThan(200)),
             reason: '⛔fixture premise: the sheet scrolls both ways',
           );
+          expect(
+            [for (final position in theFloor(tester)) position.maxScrollExtent],
+            [greaterThan(0), greaterThan(0)],
+            reason: '⛔fixture premise: so does the floor, and nothing else '
+                'is around the sheet',
+          );
 
           await drag(tester, step: step);
 
           expect(standing(tester).dx, closeTo(travelOf(step).dx, 0.5));
           expect(standing(tester).dy, closeTo(travelOf(step).dy, 0.5));
+          expect(
+            [for (final position in theFloor(tester)) position.pixels],
+            everyElement(0),
+            reason: 'F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 '
+                '안새게」',
+          );
         });
       }
 
