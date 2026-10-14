@@ -88,8 +88,10 @@ void main() {
   const carriers = <String, int>{
     'lib/src/services/bitmap_surface_geometry.dart': 3,
     'lib/src/services/undo_surface_snapshot.dart': 1,
-    // Read back from an entry, and written into one.
-    'lib/src/services/persistence/brush_drawing_binary_codec.dart': 2,
+    // Read back from an entry, written into one, and laid on a worker for
+    // the main isolate to adopt (`layCelEntry`, card
+    // `cel-thaw-holds-the-ui-thread`).
+    'lib/src/services/persistence/brush_drawing_binary_codec.dart': 3,
   };
 
   const model = 'lib/src/models/bitmap_surface.dart';
