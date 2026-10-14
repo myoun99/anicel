@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -151,5 +154,43 @@ void main() {
       isTrue,
       reason: '⛔the one button lets go of EVERYTHING, not the timeline half',
     );
+  });
+
+  // The key is the button's — it wears it in its tooltip. ↩️It kept the
+  // marquee-only road of 07-11 when this button took all five, and Ctrl+D
+  // left a timeline selection on screen.
+  testWidgets('🎯its key lets go of what it lets go of — the timeline\'s '
+      'selection and the marquee', (tester) async {
+    final session = await pump(tester);
+    // ⚠️Pumped, not settled: a marquee's ants never settle.
+    Future<void> pressCtrlD() async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyD);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+    }
+
+    session.updateFrameRangeSelectionDrag(
+      layerId: session.layers.first.id,
+      anchorIndex: 0,
+      headIndex: 2,
+    );
+    await tester.pumpAndSettle();
+    expect(session.frameRangeSelection.value, isNotNull, reason: '⛔premise');
+    await pressCtrlD();
+    expect(session.frameRangeSelection.value, isNull);
+
+    final marquee = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .canvasSelectionCommands!;
+    marquee.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 0, right: 8, bottom: 8),
+      ),
+    );
+    await tester.pump();
+    expect(marquee.region, isNotNull, reason: '⛔premise');
+    await pressCtrlD();
+    expect(marquee.region, isNull);
   });
 }

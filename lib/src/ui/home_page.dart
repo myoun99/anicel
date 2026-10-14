@@ -1099,8 +1099,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _canvasViewCommands.fit();
       case EditorActionIds.canvasResetView:
         _canvasViewCommands.resetView();
+      // 🗣️The key lets go of what its button lets go of — all five kinds
+      // (유저 2026-08-27: 「선택해제 타임라인에 중복으로 존재하는거」). ↩️It
+      // kept the marquee-only road of 07-11 when the button took all five.
       case EditorActionIds.selectionDeselect:
-        _canvasSelectionCommands.deselect();
+        _session.clearAllSelections();
+      case EditorActionIds.selectionInvert:
+        _invertSelection();
       case EditorActionIds.layerUp:
         _timelineLayerNav.step(-1);
         _session.revealSelection();
@@ -1213,6 +1218,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final panel = _workingPanel;
     if (panel.canSetComma) {
       panel.setComma(comma);
+    }
+  }
+
+  /// 선택 반전 by key, whatever tool is in hand (I-40-Q8) — out to the
+  /// pasteboard wall of the cut on screen, as its button in the Select
+  /// tool's settings does; nothing without a cut to take the wall from.
+  void _invertSelection() {
+    final canvas = _session.activeCutOrNull?.canvasSize;
+    if (canvas != null) {
+      _canvasSelectionCommands.invertSelection(canvasSize: canvas);
     }
   }
 

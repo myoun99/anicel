@@ -781,7 +781,7 @@ class _SelectionSettings extends StatelessWidget {
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.
-    final section = ToolSettingsSection(
+    return ToolSettingsSection(
       tool: 'selection',
       title: AppText.strings.toolSelect,
       children: [
@@ -850,7 +850,8 @@ class _SelectionSettings extends StatelessWidget {
               // 선택툴일때의 툴설정. 버튼.」 In its place whatever is
               // selected (with nothing selected it selects the whole wall),
               // and greyed — never gone — when there is no canvas to take
-              // the wall from.
+              // the wall from. Its key answers under every tool, in the
+              // shell (I-40-Q8), and runs this same verb.
               if (commands != null)
                 ToolSettingAction(
                   keyValue: 'selection-invert-button',
@@ -862,12 +863,6 @@ class _SelectionSettings extends StatelessWidget {
           ],
         ),
       ],
-    );
-    // A key presses 선택 반전 as the Select tool's settings (I-40).
-    return PanelKeysBinding(
-      tool: CanvasTool.select,
-      buttons: {EditorActionIds.selectionInvert: invert},
-      child: section,
     );
   }
 }

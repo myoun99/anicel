@@ -17,7 +17,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
@@ -41,7 +40,6 @@ import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/cel_text_tool_harness.dart';
-import '../../helpers/tool_setting_action_probe.dart';
 
 const k = LogicalKeyboardKey.keyK;
 
@@ -59,7 +57,6 @@ const panelButtons = [
 
 /// The tool settings' own buttons, by the tool whose settings hold them.
 const toolSettingsButtons = [
-  EditorActionIds.selectionInvert,
   EditorActionIds.transformFlipHorizontal,
   EditorActionIds.transformFlipVertical,
   EditorActionIds.transformReset,
@@ -76,8 +73,13 @@ EditorShortcutBindings bindings(WidgetTester tester) =>
 /// The action [pressKeyOf] last recorded [k] for.
 String? _held;
 
-/// Records [k] for [actionId] — alone — and presses it.
-Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
+/// Records [k] for [actionId] — alone — and presses it. ⚠️[settle] false
+/// where the press leaves a marquee, whose ants never settle.
+Future<void> pressKeyOf(
+  WidgetTester tester,
+  String actionId, {
+  bool settle = true,
+}) async {
   if (_held case final before? when before != actionId) {
     bindings(tester).resetAction(before);
   }
@@ -85,7 +87,7 @@ Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
   bindings(tester).setActivators(actionId, const [SingleActivator(k)]);
   await tester.pump();
   await tester.sendKeyEvent(k);
-  await tester.pumpAndSettle();
+  await (settle ? tester.pumpAndSettle() : tester.pump());
 }
 
 Future<void> pumpHome(WidgetTester tester) async {
@@ -127,7 +129,6 @@ Future<PanelKeys> pumpToolSettings(
   required CanvasTool tool,
   double height = 960,
   CanvasSelectionCommands? selectionCommands,
-  CanvasSize? canvasSize,
   CutPieceSlot? cutPieceSlot,
   VoidCallback? onCutPasteAtOrigin,
   VoidCallback? onRegisterCutPieceAsTip,
@@ -147,7 +148,6 @@ Future<PanelKeys> pumpToolSettings(
       fillOptions: const FloodFillOptions(),
       onFillOptionsChanged: (_) {},
       selectionCommands: selectionCommands,
-      canvasSize: canvasSize,
       cutPieceSlot: cutPieceSlot,
       onCutPasteAtOrigin: onCutPasteAtOrigin,
       onRegisterCutPieceAsTip: onRegisterCutPieceAsTip,
@@ -309,7 +309,6 @@ void main() {
       expect(
         [for (final id in toolSettingsButtons) editorActionLabel(id)],
         [
-          '선택 반전',
           '변형 좌우 반전',
           '변형 상하 반전',
           '변형 초기화',
@@ -480,40 +479,28 @@ void main() {
   // the tool in hand — and only then: with another tool in hand they are
   // not the panel on screen.
   group('a key presses the tool settings\' button', () {
-    testWidgets('선택 반전 inverts — twice, back to nothing — and with no '
-        'canvas to take the wall from, the dead button presses nothing', (
-      tester,
-    ) async {
-      final commands = selectionChannel();
-      final keys = await pumpToolSettings(
-        tester,
-        tool: CanvasTool.select,
-        selectionCommands: commands,
-        canvasSize: const CanvasSize(width: 64, height: 48),
-      );
+    // 🗣️The one that is not the tool's alone (유저 2026-10-11, I-40-Q8:
+    // 「어느 도구에서나(선택 해제처럼)」): its button stays in the Select
+    // tool's settings, and its key answers in the shell.
+    testWidgets('🎯선택 반전\'s key inverts with the brush in hand as with '
+        'the Select tool — and inverts back', (tester) async {
+      await pumpHome(tester);
+      final commands = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .canvasSelectionCommands!;
 
-      keys.press(EditorActionIds.selectionInvert, CanvasTool.brush);
-      expect(commands.region, isNull, reason: 'another tool in hand');
-      keys.press(EditorActionIds.selectionInvert, CanvasTool.select);
-      expect(commands.region, isNotNull);
-      keys.press(EditorActionIds.selectionInvert, CanvasTool.select);
-      expect(commands.region, isNull);
-
-      final none = selectionChannel();
-      final dead = await pumpToolSettings(
-        tester,
-        tool: CanvasTool.select,
-        selectionCommands: none,
-      );
-      expect(
-        tester.toolSettingAction(
-          find.byKey(const ValueKey<String>('selection-invert-button')),
-        ).onPressed,
-        isNull,
-        reason: '⛔premise',
-      );
-      dead.press(EditorActionIds.selectionInvert, CanvasTool.select);
-      expect(none.region, isNull);
+      for (final tool in const ['brush', 'select']) {
+        await takeUp(tester, tool);
+        expect(commands.region, isNull, reason: '⛔premise, $tool');
+        await pressKeyOf(
+          tester,
+          EditorActionIds.selectionInvert,
+          settle: false,
+        );
+        expect(commands.region, isNotNull, reason: tool);
+        await pressKeyOf(tester, EditorActionIds.selectionInvert);
+        expect(commands.region, isNull, reason: tool);
+      }
     });
 
     testWidgets('🚨the transform\'s flips and 초기화 — at the foot of a list '

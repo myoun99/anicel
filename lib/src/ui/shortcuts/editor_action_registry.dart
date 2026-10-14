@@ -743,6 +743,7 @@ abstract final class EditorActionIds {
   static const toolCutWhole = 'tool-cut-whole';
   static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
+  static const selectionInvert = 'selection-invert';
   static const layerUp = 'layer-up';
   static const layerDown = 'layer-down';
   static const selectionTransformCancel = 'selection-transform-cancel';
@@ -764,7 +765,6 @@ abstract final class EditorActionIds {
 
   /// The tool settings' own buttons (I-40), pressed the same way, as the
   /// settings of the tool in hand.
-  static const selectionInvert = 'selection-invert';
   static const transformFlipHorizontal = 'transform-flip-horizontal';
   static const transformFlipVertical = 'transform-flip-vertical';
   static const transformReset = 'transform-reset';
@@ -1549,12 +1549,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   // I-40: the Select and Transform tools' settings buttons. Their 다각형
   // 닫기 and 적용 are 확정's own halves and name it ([confirm]).
+  //
+  // 🗣️선택 반전 is not pressed AS the settings: it answers whatever tool is
+  // in hand, as 선택 해제 does (유저 2026-10-11, I-40-Q8: 「어느
+  // 도구에서나(선택 해제처럼)」). Its button keeps its place in the Select
+  // tool's settings and runs the same verb.
   EditorActionDefinition.composed(
     id: EditorActionIds.selectionInvert,
     name: (language) => AppStrings.of(language).selectionInvert,
     shelf: ShortcutShelf.selection,
     defaultActivators: const [],
-    panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.transformFlipHorizontal,
