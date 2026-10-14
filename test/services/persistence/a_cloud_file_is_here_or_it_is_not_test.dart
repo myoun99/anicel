@@ -147,11 +147,23 @@ void main() {
     expect(told, inInclusiveRange(1, 4));
   });
 
+  /// Counted on the wait's own clock, held here, as THE BEAT above is.
+  /// ↩️It ran 60 real milliseconds, and a busy machine spent them before
+  /// the wait's first slice — the wait ran out before it spoke, and the pin
+  /// went red with nothing seen at all (board
+  /// `the-cloud-wait-saw-pin-runs-out-before-it-speaks`).
   test('🚨the wait reports WHAT IT SAW, so the sentence can be true', () async {
     final path = at('slowly.anicel');
     File(path).writeAsBytesSync(const [1, 2, 3]);
     FolderPicker.debugArrival = (_) async => FileArrival.partway;
     FolderPicker.debugDownloadRequester = (_) async {};
+    var now = Duration.zero;
+    FolderPicker.debugWaitClock = () => (
+      elapsed: () => now,
+      sleep: (slice, _) async {
+        now += slice;
+      },
+    );
     final arrivals = <FileArrival>[];
 
     await expectLater(
