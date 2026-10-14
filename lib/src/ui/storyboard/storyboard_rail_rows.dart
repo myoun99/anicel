@@ -1122,15 +1122,18 @@ class _StoryboardRailRows {
           // follow a drag — and switching it per move would put a cut
           // activation on every pointer move.
           StoryboardTrackLabelRow(
-            track: track,
+            trackId: track.id,
             trackLabel: storyboardVideoRowName(index),
             laneHeight: _state.widget.trackLaneHeight,
             laneExpanded: _state.widget.expandedTransformTracks.contains(
               track.id.value,
             ),
+            // The row's verbs ask for the track as the panel holds it at the
+            // press: the row is kept while what it shows holds, and it shows
+            // nothing of the track's cuts.
             onToggleLane: _state.widget.onToggleTrackLane == null
                 ? null
-                : () => _state.widget.onToggleTrackLane!(track),
+                : () => _actOnTrack(track.id, _state.widget.onToggleTrackLane),
             // V-track selection (UI-R18 #6): tapping selects the track (its
             // playhead-index cut becomes active). The highlight says THIS ROW
             // IS SELECTED — not "the active cut lives here", which is what the
@@ -1145,7 +1148,7 @@ class _StoryboardRailRows {
                 _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
             onToggleTrackFx: _state.widget.onToggleTrackFx == null
                 ? null
-                : () => _state.widget.onToggleTrackFx!(track),
+                : () => _actOnTrack(track.id, _state.widget.onToggleTrackFx),
           ),
         ),
       ),
@@ -1665,6 +1668,22 @@ class _StoryboardRailRows {
         },
       );
 
+  /// The track [trackId] names, as the panel holds it now — what a kept
+  /// row's verb asks for at the press (I-57, 10-14): a TRACK closed over
+  /// where the row was built would be the track as it stood then, before a
+  /// cut came or an S row went, while the row showed nothing that changed.
+  Track? _trackNamed(TrackId trackId) => _state.widget.project.tracks
+      .where((track) => track.id == trackId)
+      .firstOrNull;
+
+  /// [verb] on the track [trackId] names at the press ([_trackNamed]) —
+  /// nothing once it is gone.
+  void _actOnTrack(TrackId trackId, ValueChanged<Track>? verb) {
+    if (_trackNamed(trackId) case final track?) {
+      verb?.call(track);
+    }
+  }
+
   /// The group's rows in VISUAL order with their heights — mirrored from
   /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
   /// row kind must land in both, or the band drifts off its rows.
@@ -1681,18 +1700,14 @@ class _StoryboardRailRows {
   /// "offset ÷ my own height" worked everywhere else and failed here.
   ///
   /// 🚨Asked at the drag, of the track [trackId] names as the panel holds
-  /// it THEN. A row is kept while what it shows holds (I-57, 10-14), and a
-  /// kept row drags with the lookup it was built with: a TRACK closed over
-  /// there would be the track as it stood then — before a cut came or an
-  /// S row went — while the row itself showed nothing that changed.
+  /// it THEN ([_trackNamed]): a kept row drags with the lookup it was
+  /// built with.
   TimelineRowAddress? _railRowAtCrossOffset({
     required TrackId trackId,
     required TimelineRowAddress anchorRow,
     required double crossOffset,
   }) {
-    final track = _state.widget.project.tracks
-        .where((track) => track.id == trackId)
-        .firstOrNull;
+    final track = _trackNamed(trackId);
     if (track == null) {
       return null;
     }

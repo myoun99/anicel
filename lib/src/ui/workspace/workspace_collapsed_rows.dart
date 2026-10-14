@@ -190,7 +190,7 @@ class _WorkspaceCollapsedRows {
       railChild: track == null
           ? null
           : StoryboardTrackLabelRow(
-              track: track,
+              trackId: track.id,
               // The panel names its V rows by POSITION, and this is the
               // selected one; a film has one track (전제 8), so the index
               // is 0.

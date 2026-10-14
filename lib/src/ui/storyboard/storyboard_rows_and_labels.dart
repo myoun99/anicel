@@ -280,7 +280,7 @@ class _StoryboardRowsAndLabels {
     final layer = track.transitionLayer;
     return _StoryboardLayerRowLabel(
       chromeless: chromeless,
-      track: track,
+      trackId: track.id,
       rowId: layer.id,
       kind: LayerKind.transition,
       keyName: 'transition',
@@ -395,8 +395,7 @@ class _StoryboardRowsAndLabels {
       LayerRowAddress(rowId),
       standingIn: _state.widget.activeCutId,
     );
-    final verbs = _timelineHeadVerbs(rowId);
-    if (head == null || verbs == null) {
+    if (head == null || !_headVerbsWired) {
       return _headlessLabel(
         track,
         (
@@ -455,61 +454,62 @@ class _StoryboardRowsAndLabels {
   );
 
   Widget _cameraLabel(Track track, {bool chromeless = false}) {
+    final widget = _state.widget;
     final rowId = trackCameraRowId(track.id);
-    final active = _state.widget.selectedRow == LayerRowAddress(rowId);
-    final head = _state._railRows._cameraHeadOf(track);
-    final verbs = _timelineHeadVerbs(rowId);
-    if (head == null || verbs == null) {
+    final head = _state._railRows._cameraHeadAt(track);
+    if (head == null || !_headVerbsWired) {
       return _headlessLabel(
         track,
         (
           id: rowId,
           kind: LayerKind.camera,
           keyName: 'camera',
-          name: trackCameraRowName(
-            track.cuts,
-            standingIn: _state.widget.activeCutId,
-          ),
+          name: trackCameraRowName(track.cuts, standingIn: widget.activeCutId),
           height: _state._rowHeights.camera,
         ),
         chromeless: chromeless,
       );
     }
-    final select = _state.widget.onSelectLayer;
-    final view = _state.widget.cameraViewEnabled;
+    final view = widget.cameraViewEnabled;
+    final shown = view == null
+        ? head.layer
+        : head.layer.copyWith(isVisible: view.value);
+    final trackId = track.id;
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-camera-label-${track.id.value}'),
-      child: TimelineLayerControlsRow(
-        chromeless: chromeless,
-        keyPrefix: 'storyboard',
-        layer: view == null ? head : head.copyWith(isVisible: view.value),
-        active: active,
-        // Its twirl — the timeline's camera row's — opens the row's lanes
-        // under it (I-73 ④ⓔ): the camera's, which every camera has.
-        hasLanes: true,
-        lanesExpanded: _state._railRows._cameraLanesOpen(track),
-        onToggleLanes: _twirlTurning(
-          () => _state._railRows._cameraTwirlOf(track),
+      child: _wearing(
+        (layer: shown, stack: head.cut.layers),
+        _StoryboardRailHead(
+          rowId: rowId,
+          chromeless: chromeless,
+          layer: shown,
+          active: widget.selectedRow == LayerRowAddress(rowId),
+          // Its twirl — the timeline's camera row's — opens the row's lanes
+          // under it (I-73 ④ⓔ): the camera's, which every camera has.
+          hasLanes: true,
+          lanesExpanded: _state._railRows._cameraLanesOpen(track),
+          onToggleLanes: _twirlTurning(
+            () => switch (_state._railRows._trackNamed(trackId)) {
+              final now? => _state._railRows._cameraTwirlOf(now),
+              null => null,
+            },
+          ),
+          metrics: _headMetrics(_state._rowHeights.camera),
+          onSelectLayer: widget.onSelectLayer,
+          labelDoubleClick: widget.labelDoubleClick,
+          onToggleLayerVisibility: widget.onToggleLayerVisibility,
+          onLayerOpacityChanged: widget.onLayerOpacityChanged,
+          onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
+          opacityOverride: widget.cameraDimOpacity,
+          onLayerMarkSelected: widget.onLayerMarkSelected,
+          // This rail has the blend column, as the conte heads say: a camera
+          // keeps its slot empty, so the columns stand over the rows' own.
+          onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
+          fxState:
+              widget.layerFxStateOf?.call(head.layer.id) ?? LayerFxState.on,
+          onToggleLayerFx: widget.onToggleLayerFx,
+          onOpenCameraPath: widget.onOpenCameraPath,
         ),
-        metrics: TimelineGridMetrics.defaults.copyWith(
-          layerControlsWidth: _state._naturalRailWidth,
-          layerRowHeight: _state._rowHeights.camera,
-          railColumns: layerRailColumnWidthsIn(_state.context),
-        ),
-        onSelectLayer: (_) => select?.call(rowId),
-        labelDoubleClick: _renameOn(rowId),
-        onToggleLayerVisibility: verbs.toggleEye,
-        onLayerOpacityChanged: verbs.setOpacity,
-        onLayerOpacityChangeEnd: verbs.endOpacity,
-        opacityOverride: _state.widget.cameraDimOpacity,
-        onLayerMarkSelected: verbs.pickMark,
-        // This rail has the blend column, as the conte heads say: a camera
-        // keeps its slot empty, so the columns stand over the rows' own.
-        onLayerBlendModeSelected: verbs.pickBlend,
-        fxState:
-            _state.widget.layerFxStateOf?.call(head.id) ?? LayerFxState.on,
-        onToggleLayerFx: verbs.toggleFx,
-        onOpenCameraPath: _state.widget.onOpenCameraPath,
       ),
     );
   }
@@ -530,7 +530,7 @@ class _StoryboardRowsAndLabels {
     bool chromeless = false,
   }) => _StoryboardLayerRowLabel(
     chromeless: chromeless,
-    track: track,
+    trackId: track.id,
     rowId: row.id,
     kind: row.kind,
     keyName: row.keyName,
@@ -541,46 +541,35 @@ class _StoryboardRowsAndLabels {
     onSelectLayer: _state.widget.onSelectLayer,
   );
 
-  /// The verbs a head that is the timeline's own row cannot stand without —
-  /// its eye, its opacity, its label and its blend, which that row takes as
-  /// given — pressed on the projection ROW [rowId], or null while the host
-  /// has not wired them all.
-  ///
-  /// The row is what the selection holds and a stand names, so a press made
-  /// there is a press inside the selection when the row is in it
-  /// (row-buttons-act-on-the-selection); the session lands it on the row in
-  /// hand (`RowSelection.layerActedOn`). ↩️They pressed the layer the label
-  /// wears — one cut's, which no selection on this rail holds — so a press
-  /// on a selected conte row changed that row alone (the 10-10 audit).
-  _TimelineHeadVerbs? _timelineHeadVerbs(LayerId rowId) {
+  /// Whether the host wired the verbs a head that is the timeline's own row
+  /// cannot stand without — its eye, its opacity, its label and its blend,
+  /// which that row takes as given ([_StoryboardRailHead]).
+  bool get _headVerbsWired {
     final widget = _state.widget;
-    final toggleEye = widget.onToggleLayerVisibility;
-    final setOpacity = widget.onLayerOpacityChanged;
-    final pickMark = widget.onLayerMarkSelected;
-    final pickBlend = widget.onLayerBlendModeSelected;
-    if (toggleEye == null ||
-        setOpacity == null ||
-        pickMark == null ||
-        pickBlend == null) {
-      return null;
-    }
-    final endOpacity = widget.onLayerOpacityChangeEnd;
-    final toggleFx = widget.onToggleLayerFx;
-    final toggleGroupFold = widget.onToggleAttachGroup;
-    return (
-      toggleEye: (_) => toggleEye(rowId),
-      setOpacity: (_, opacity) => setOpacity(rowId, opacity),
-      endOpacity: endOpacity == null
-          ? null
-          : (_, opacity) => endOpacity(rowId, opacity),
-      pickMark: (_, edit) => pickMark(rowId, edit),
-      pickBlend: (_, mode) => pickBlend(rowId, mode),
-      toggleFx: toggleFx == null ? null : (_) => toggleFx(rowId),
-      toggleGroupFold: toggleGroupFold == null
-          ? null
-          : (_) => toggleGroupFold(rowId),
-    );
+    return widget.onToggleLayerVisibility != null &&
+        widget.onLayerOpacityChanged != null &&
+        widget.onLayerMarkSelected != null &&
+        widget.onLayerBlendModeSelected != null;
   }
+
+  /// The metrics a head is laid out at: this rail's width, [rowHeight].
+  TimelineGridMetrics _headMetrics(double rowHeight) =>
+      TimelineGridMetrics.defaults.copyWith(
+        layerControlsWidth: _state._naturalRailWidth,
+        layerRowHeight: rowHeight,
+        railColumns: layerRailColumnWidthsIn(_state.context),
+      );
+
+  /// [head] wearing [wears]' layer — the one its row has in hand NOW,
+  /// which a kept head may have been built for another of ([BerthRow]):
+  /// its eye shows that layer's, as the folders of [wears]' stack gate it
+  /// ([RailEyes]) — the timeline rail's own answer for the layer (F-185).
+  Widget _wearing(({Layer layer, List<Layer> stack}) wears, Widget head) =>
+      RailEyes.forLayers(
+        [wears.layer],
+        stack: wears.stack,
+        child: BerthRow(layer: wears.layer, child: head),
+      );
 
   /// [head]'s row as the timeline's rail builds it, at this rail's width
   /// and the conte rows' height — standing for [seat] of [track]: lit when
@@ -591,65 +580,54 @@ class _StoryboardRowsAndLabels {
     ({Cut cut, Layer row}) head, {
     bool chromeless = false,
   }) {
+    final widget = _state.widget;
     final rowId = trackConteRowId(track.id, seat: seat);
-    // Its caller stood down without them ([_conteLabel]).
-    final verbs = _timelineHeadVerbs(rowId)!;
-    final select = _state.widget.onSelectLayer;
-    return TimelineLayerControlsRow(
-      chromeless: chromeless,
-      keyPrefix: 'storyboard',
-      layer: head.row,
-      active: _state.widget.selectedRow == LayerRowAddress(rowId),
-      // Its twirl — the timeline row's — opens the row's lanes under it
-      // (I-73 ④ⓔ), the rows at its seat in every cut as one; a row riding
-      // the conte has none to open, as on the timeline.
-      hasLanes: _state._railRows._conteLanes(track, seat).isNotEmpty,
-      lanesExpanded: _state._railRows._conteLanesOpen(track, seat),
-      onToggleLanes: _twirlTurning(
-        () => _state._railRows._conteTwirlOf(track, seat),
+    final trackId = track.id;
+    return _wearing(
+      (layer: head.row, stack: head.cut.layers),
+      _StoryboardRailHead(
+        rowId: rowId,
+        chromeless: chromeless,
+        layer: head.row,
+        active: widget.selectedRow == LayerRowAddress(rowId),
+        // Its twirl — the timeline row's — opens the row's lanes under it
+        // (I-73 ④ⓔ), the rows at its seat in every cut as one; a row riding
+        // the conte has none to open, as on the timeline.
+        hasLanes: _state._railRows._conteLanes(track, seat).isNotEmpty,
+        lanesExpanded: _state._railRows._conteLanesOpen(track, seat),
+        onToggleLanes: _twirlTurning(
+          () => switch (_state._railRows._trackNamed(trackId)) {
+            final now? => _state._railRows._conteTwirlOf(now, seat),
+            null => null,
+          },
+        ),
+        metrics: _headMetrics(_state._rowHeights.conte),
+        onSelectLayer: widget.onSelectLayer,
+        labelDoubleClick: widget.labelDoubleClick,
+        onToggleLayerVisibility: widget.onToggleLayerVisibility,
+        onLayerOpacityChanged: widget.onLayerOpacityChanged,
+        onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
+        opacityDragPreview: widget.opacityDragPreview,
+        onLayerMarkSelected: widget.onLayerMarkSelected,
+        fxState: widget.layerFxStateOf?.call(head.row.id) ?? LayerFxState.on,
+        onToggleLayerFx: widget.onToggleLayerFx,
+        onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
+        // An attach row says which side of its base it rides, and wears the
+        // base's composite — the timeline row's own two answers, asked of
+        // the stack the head stands in.
+        attachArrowPlacement: attachArrowPlacement(head.row, head.cut.layers),
+        wearsBaseComposite: attachRowWearsBaseComposite(
+          head.row,
+          head.cut.layers,
+        ),
+        // The base's twirl folds the attach rows riding it (UI-R20 #9).
+        hasGroupFold: seat == 0 && conteSeatsOf(track.cuts).length > 1,
+        groupFoldExpanded: !widget.collapsedAttachBaseIds.contains(
+          head.row.id,
+        ),
+        onToggleGroupFold: widget.onToggleAttachGroup,
       ),
-      metrics: TimelineGridMetrics.defaults.copyWith(
-        layerControlsWidth: _state._naturalRailWidth,
-        layerRowHeight: _state._rowHeights.conte,
-        railColumns: layerRailColumnWidthsIn(_state.context),
-      ),
-      onSelectLayer: (_) => select?.call(rowId),
-      labelDoubleClick: _renameOn(rowId),
-      onToggleLayerVisibility: verbs.toggleEye,
-      onLayerOpacityChanged: verbs.setOpacity,
-      onLayerOpacityChangeEnd: verbs.endOpacity,
-      opacityDragPreview: _state.widget.opacityDragPreview,
-      onLayerMarkSelected: verbs.pickMark,
-      fxState:
-          _state.widget.layerFxStateOf?.call(head.row.id) ?? LayerFxState.on,
-      onToggleLayerFx: verbs.toggleFx,
-      onLayerBlendModeSelected: verbs.pickBlend,
-      // An attach row says which side of its base it rides, and wears the
-      // base's composite — the timeline row's own two answers, asked of the
-      // stack the head stands in.
-      attachArrowPlacement: attachArrowPlacement(head.row, head.cut.layers),
-      wearsBaseComposite: attachRowWearsBaseComposite(
-        head.row,
-        head.cut.layers,
-      ),
-      // The base's twirl folds the attach rows riding it (UI-R20 #9).
-      hasGroupFold: seat == 0 && conteSeatsOf(track.cuts).length > 1,
-      groupFoldExpanded: !_state.widget.collapsedAttachBaseIds.contains(
-        head.row.id,
-      ),
-      onToggleGroupFold: verbs.toggleGroupFold,
     );
-  }
-
-  /// A projection row's label double click (I-48's rename), pressed on the
-  /// ROW [rowId] — what the selection holds and the press stands on — not
-  /// its head's layer, which is one cut's: the rename finds the name there
-  /// (`LayerVerbs.renameableOf`), wherever the head stands (F-322: 「더블클릭
-  /// 으로 레이어 이름바꾸는거 … 통일」). ↩️It pressed the head's layer, and
-  /// a head standing in a cut other than the active one renamed nothing.
-  TimelineLabelDoubleClick? _renameOn(LayerId rowId) {
-    final doubleClick = _state.widget.labelDoubleClick;
-    return doubleClick == null ? null : (_) => doubleClick(rowId);
   }
 
   /// A projection row's lane twirl, as its head presses it (I-73 ④ⓔ): the
@@ -767,34 +745,43 @@ class _StoryboardRowsAndLabels {
   }
 
   Widget _seLabel(Track track, int slot, {bool chromeless = false}) {
-    final trackLayer = _trackSeAt(track, slot);
+    final widget = _state.widget;
+    final layer = _trackSeAt(track, slot);
+    final toggleLane = widget.onToggleSeRowLane;
+    final trackId = track.id;
     return _StoryboardSeLabel(
       chromeless: chromeless,
-      track: track,
+      trackId: trackId,
       slot: slot,
+      layer: layer,
       height: _state._rowHeights.se,
-      active:
-          trackLayer != null &&
-          _state.widget.selectedRow == LayerRowAddress(trackLayer.id),
-      onSelectLayer: _state.widget.onSelectLayer,
-      labelDoubleClick: _state.widget.labelDoubleClick,
-      laneExpanded: _state.widget.expandedSeAudioRows.contains(
+      active: layer != null && widget.selectedRow == LayerRowAddress(layer.id),
+      onSelectLayer: widget.onSelectLayer,
+      labelDoubleClick: widget.labelDoubleClick,
+      laneExpanded: widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       ),
-      onToggleLane: _state.widget.onToggleSeRowLane == null
+      // Of the track as the panel holds it at the press: the label is kept
+      // while what it shows holds, and it shows nothing of the track's cuts.
+      onToggleLane: toggleLane == null
           ? null
-          : () => _state.widget.onToggleSeRowLane!(track, slot),
-      activeLayer: _activeSlotLayerOf(track, _state.widget.activeCutId, slot),
-      onToggleLayerVisibility: _state.widget.onToggleLayerVisibility,
-      onOpenLayerMixer: _state.widget.onOpenLayerMixer,
-      isLayerSoloed: _state.widget.isLayerSoloed,
-      onLayerOpacityChanged: _state.widget.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
-      onLayerMarkSelected: _state.widget.onLayerMarkSelected,
-      onToggleLayerTimesheet: _state.widget.onToggleLayerTimesheet,
-      layerFxStateOf: _state.widget.layerFxStateOf,
-      onToggleLayerFx: _state.widget.onToggleLayerFx,
-      opacityDragPreview: _state.widget.opacityDragPreview,
+          : () {
+              if (_state._railRows._trackNamed(trackId) case final now?) {
+                toggleLane(now, slot);
+              }
+            },
+      onToggleLayerVisibility: widget.onToggleLayerVisibility,
+      onOpenLayerMixer: widget.onOpenLayerMixer,
+      soloed: layer != null && (widget.isLayerSoloed?.call(layer.id) ?? false),
+      onLayerOpacityChanged: widget.onLayerOpacityChanged,
+      onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
+      onLayerMarkSelected: widget.onLayerMarkSelected,
+      onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
+      fxState: layer == null
+          ? LayerFxState.on
+          : widget.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
+      onToggleLayerFx: widget.onToggleLayerFx,
+      opacityDragPreview: widget.opacityDragPreview,
     );
   }
 

@@ -11,6 +11,7 @@ import '../models/attached_layer_resolve.dart'
         attachArrowPlacement,
         attachRowWearsBaseComposite,
         isSyncedAttachedLayer;
+import '../models/attached_placement.dart' show AttachedPlacement;
 import '../models/canvas_size.dart';
 import '../models/conte_group.dart';
 import '../models/cut.dart';
@@ -60,6 +61,8 @@ import 'timeline/layer_opacity_field.dart';
 import 'timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
+import 'timeline/berth_row.dart' show BerthRow;
+import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'widgets/dock_edge_splitter.dart';
@@ -207,7 +210,7 @@ import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
-    show TimelineLayerControlsRow;
+    show ControlsRowFace, TimelineLayerControlsRow;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
@@ -248,20 +251,6 @@ typedef StoryboardRailRow = ({
   Layer? layer,
   int? seSlot,
   int? conteSeat,
-});
-
-/// The verbs of a head that is the timeline's own row — a conte row's and
-/// the camera row's ([_StoryboardRowsAndLabels.conteLabelRow],
-/// [_StoryboardRowsAndLabels.cameraLabelRow]): the four it takes as given,
-/// and the three a host may leave unwired.
-typedef _TimelineHeadVerbs = ({
-  ValueChanged<LayerId> toggleEye,
-  void Function(LayerId layerId, double opacity) setOpacity,
-  void Function(LayerId layerId, double opacity)? endOpacity,
-  void Function(LayerId layerId, LayerMarkEdit edit) pickMark,
-  void Function(LayerId layerId, LayerBlendMode mode) pickBlend,
-  ValueChanged<LayerId>? toggleFx,
-  ValueChanged<LayerId>? toggleGroupFold,
 });
 
 /// One row of a track group's rail, as the strip column lays it out.
@@ -2921,21 +2910,6 @@ int _seSlotCount(Track track) => track.seLayers.length;
 Layer? _trackSeAt(Track track, int slot) =>
     slot >= 0 && slot < track.seLayers.length ? track.seLayers[slot] : null;
 
-/// The [slot]th SE layer for the rail's timeline-parity controls; null
-/// only while the active cut lives on ANOTHER track. A GAP (no active
-/// cut) keeps the controls up (UI-R10 #12): the SE rows are TRACK-owned —
-/// standing in a gap merely means no cut is selected.
-Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
-  // The controls belong to the ROW, and the row belongs to the track. A
-  // gap kept them up already (UI-R10 #12, "the SE rows are TRACK-owned");
-  // the active cut living on ANOTHER track is the same statement, so it
-  // gets the same answer (user, 2026-08-09).
-  return _trackSeAt(track, slot);
-}
-
-/// SE slot rows in the rail: the same bordered-row language as the track
-/// row above them, compact like the timeline's SE rows — with the timeline
-/// rows' controls and a lane chevron (twirl-down waveform strip).
 /// The chrome every storyboard rail label sits in: the select target, the
 /// fixed-width cell with its border and active tint, and the row's
 /// semantics node.
@@ -3115,43 +3089,52 @@ Widget _storyboardRowName(
   );
 }
 
-class _StoryboardSeLabel extends StatelessWidget {
+/// SE slot rows in the rail: the same bordered-row language as the track
+/// row above them, compact like the timeline's SE rows — with the timeline
+/// rows' controls and a lane chevron (twirl-down waveform strip).
+class _StoryboardSeLabel extends KeptPiece {
   const _StoryboardSeLabel({
-    required this.track,
+    required this.trackId,
     required this.slot,
+    required this.layer,
     required this.height,
     this.chromeless = false,
     this.laneExpanded = false,
     this.onToggleLane,
-    this.activeLayer,
     this.active = false,
     this.onSelectLayer,
     this.labelDoubleClick,
     this.onToggleLayerVisibility,
     this.onOpenLayerMixer,
-    this.isLayerSoloed,
+    this.soloed = false,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
-    this.layerFxStateOf,
+    this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.opacityDragPreview,
   });
 
-  final Track track;
+  /// The track whose row this is — its keys' word.
+  final TrackId trackId;
   final int slot;
+
+  /// The track's layer at [slot] — null while the track has fewer rows —
+  /// which the row names, selects and wears the timeline row's controls
+  /// of.
+  ///
+  /// The controls belong to the ROW, and the row belongs to the track. A
+  /// gap kept them up already (UI-R10 #12, "the SE rows are TRACK-owned");
+  /// the active cut living on ANOTHER track is the same statement, so it
+  /// gets the same answer (user, 2026-08-09).
+  final Layer? layer;
 
   /// The row's height where the panel is shown ([_StoryboardRowHeights.se]).
   final double height;
 
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
-
-  /// The ACTIVE cut's layer behind this slot (null while the active cut
-  /// lives on another track or has no such slot) — the timeline-parity
-  /// controls act on it.
-  final Layer? activeLayer;
 
   /// Whether this row is THE selected row — the same highlight the
   /// timeline row shows (W3 identity keeps them in sync automatically).
@@ -3171,8 +3154,9 @@ class _StoryboardSeLabel extends StatelessWidget {
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
 
-  /// Whether that row is soloed (the speaker's accent tint).
-  final bool Function(LayerId layerId)? isLayerSoloed;
+  /// Whether [layer] is soloed (the speaker's accent tint) — the session's
+  /// answer, which the layer cannot see change.
+  final bool soloed;
 
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
 
@@ -3184,7 +3168,8 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// B5③: the timeline rows' sheet toggle, on this rail too.
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
 
-  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
+  /// [layer]'s fx switch as the session answers it.
+  final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// The session's live opacity-drag preview (UI-R6 #2): while the master
@@ -3196,22 +3181,51 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// Drawn without its ground — the folded overlay's ([_StoryboardFolded]).
   final bool chromeless;
 
+  /// What the row shows: its layer by identity — every switch it draws is
+  /// the layer's own — and what the session answers for it.
+  ///
+  /// 🚨I-57 (10-14): built again with the panel on every notify and every
+  /// cut crossed — 🔬240 of a crossing's 1,088 rebuilds on the AMMI OP, for
+  /// three rows that showed nothing new.
   @override
-  Widget build(BuildContext context) {
-    final layer = activeLayer;
-    final trackLayer = _trackSeAt(track, slot);
+  Object? get facts => (
+    trackId,
+    slot,
+    ByIdentity(layer),
+    height,
+    laneExpanded,
+    onToggleLane != null,
+    active,
+    onSelectLayer != null,
+    labelDoubleClick != null,
+    onToggleLayerVisibility != null,
+    onOpenLayerMixer != null,
+    soloed,
+    onLayerOpacityChanged != null,
+    onLayerOpacityChangeEnd != null,
+    onLayerMarkSelected != null,
+    onToggleLayerTimesheet != null,
+    fxState,
+    onToggleLayerFx != null,
+    ByIdentity(opacityDragPreview),
+    chromeless,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
+    final layer = this.layer;
     final onSelect = onSelectLayer;
     // Rows stack FLUSH like the timeline rail — no inter-row padding
     // (R7-⑤); the 1px borders carry the separation.
     return _StoryboardLabelShell(
       selectKey: ValueKey<String>(
-        'storyboard-se-label-${track.id.value}-${slot + 1}',
+        'storyboard-se-label-${trackId.value}-${slot + 1}',
       ),
       chromeless: chromeless,
-      onTap: trackLayer == null || onSelect == null
+      onTap: layer == null || onSelect == null
           ? null
-          : () => onSelect(trackLayer.id),
-      layerId: trackLayer?.id,
+          : () => onSelect(layer.id),
+      layerId: layer?.id,
       labelDoubleClick: labelDoubleClick,
       height: height,
       active: active,
@@ -3231,7 +3245,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                         child: LayerFoldTwirl(
                           name:
                               'storyboard-se-lane-toggle-'
-                              '${track.id.value}-${slot + 1}',
+                              '${trackId.value}-${slot + 1}',
                           expanded: laneExpanded,
                           tooltip: layerLaneTwirlTooltip(
                             expanded: laneExpanded,
@@ -3261,12 +3275,12 @@ class _StoryboardSeLabel extends StatelessWidget {
                     : null,
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
-                  idValue: '${track.id.value}-s${slot + 1}',
+                  idValue: '${trackId.value}-s${slot + 1}',
                   kind: LayerKind.se,
                   height: height,
-                  onTap: trackLayer == null || onSelect == null
+                  onTap: layer == null || onSelect == null
                       ? null
-                      : () => onSelect(trackLayer.id),
+                      : () => onSelect(layer.id),
                 ),
               ),
               Expanded(
@@ -3276,7 +3290,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                     context,
                     // The TRACK layer's stored name — the same label the
                     // timeline row shows (W3 ordering unification).
-                    trackLayer?.name ?? 'S${slot + 1}',
+                    layer?.name ?? 'S${slot + 1}',
                     active: active,
                     // The layer the eye beside it shows.
                     shown: layer?.isVisible ?? true,
@@ -3297,8 +3311,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                     ? RailSwipeColumnPointer(
                         child: FxToggleButton(
                           name: 'storyboard-layer-fx-${layer.id}',
-                          state:
-                              layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
+                          state: fxState,
                           onToggle: () => onToggleLayerFx!(layer.id),
                         ),
                       )
@@ -3318,7 +3331,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                         child: LayerMuteToggleButton(
                           name: 'storyboard-layer-mute-${layer.id}',
                           muted: layer.muted,
-                          soloed: isLayerSoloed?.call(layer.id) ?? false,
+                          soloed: soloed,
                           onOpenMixer: (anchorContext) =>
                               onOpenLayerMixer!(anchorContext, layer.id),
                         ),
@@ -3345,16 +3358,16 @@ class _StoryboardSeLabel extends StatelessWidget {
 }
 
 /// The rail label of a track's row that is ONE layer row and no S slot: the
-/// TRANSITION row — the track's O.L / F.I / F.O row — and the track's CONTE
-/// row (I-73).
+/// TRANSITION row — the track's O.L / F.I / F.O row — and a PROJECTION row
+/// (a conte row, the camera row — I-73) while it has no head to wear.
 ///
 /// What follows is said of the transition row, whose label this was alone
-/// until the conte row took the same skeleton. The conte row hands it no
-/// [layer] yet, so its control slots stand empty and reserved: its head is
-/// to be the timeline's own, one for every cut (I-73 ③, 유저 2026-10-08:
-/// 「콘티행도 동일하게 하고싶으니까 어태치 접기펼치기버튼등 동일하게
-/// 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어 권고한대로 머리만 한벌
-/// ok」).
+/// until the conte row took the same skeleton. A projection row hands it no
+/// [layer], so its control slots stand empty and reserved; with a head it
+/// is the timeline's own row, one for every cut ([_StoryboardRailHead] —
+/// I-73 ③, 유저 2026-10-08: 「콘티행도 동일하게 하고싶으니까 어태치
+/// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어
+/// 권고한대로 머리만 한벌 ok」).
 ///
 /// The rail's shared column skeleton, like every other row — and the
 /// timeline row's three controls with it (B5③ 2026-08-17, ordered twice):
@@ -3373,9 +3386,9 @@ class _StoryboardSeLabel extends StatelessWidget {
 /// delete are one verb now — [editTransitionSpanInstance], reached from the
 /// frame pill's Edit Instance and from the row's double-tap — so a second
 /// entrance on the rail is the predecessor, not a convenience.
-class _StoryboardLayerRowLabel extends StatelessWidget {
+class _StoryboardLayerRowLabel extends KeptPiece {
   const _StoryboardLayerRowLabel({
-    required this.track,
+    required this.trackId,
     required this.rowId,
     required this.kind,
     required this.keyName,
@@ -3391,7 +3404,8 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
     this.onToggleLayerTimesheet,
   });
 
-  final Track track;
+  /// The track whose row this is — its keys' word.
+  final TrackId trackId;
 
   /// The address the row is picked by: the transition layer's own id, or
   /// the conte row's ([trackConteRowId]) — a row no one cut's layer names.
@@ -3407,8 +3421,9 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
   final String name;
 
   /// The layer the row's controls act on and its double click renames —
-  /// the transition layer. Null leaves every control slot empty (the conte
-  /// row, until I-73 ③).
+  /// the transition layer. Null leaves every control slot empty: a
+  /// projection row with no head to wear
+  /// ([_StoryboardRowsAndLabels._headlessLabel]).
   final Layer? layer;
 
   /// Whether this row is THE selected row (same highlight as every other).
@@ -3427,8 +3442,31 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
   /// Drawn without its ground — the folded overlay's ([_StoryboardFolded]).
   final bool chromeless;
 
+  /// What the row shows: its layer by identity — the controls it draws are
+  /// the layer's own — or, with none, its name and its glyph.
+  ///
+  /// 🚨I-57 (10-14): built again with the panel on every notify and every
+  /// cut crossed, as every rail label was.
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (
+    trackId,
+    rowId,
+    kind,
+    keyName,
+    name,
+    ByIdentity(layer),
+    active,
+    height,
+    onSelectLayer != null,
+    labelDoubleClick != null,
+    onToggleLayerVisibility != null,
+    onLayerMarkSelected != null,
+    onToggleLayerTimesheet != null,
+    chromeless,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
     final onSelect = onSelectLayer;
     final layer = this.layer;
     final onToggleTimesheet = onToggleLayerTimesheet;
@@ -3436,7 +3474,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
     final onToggleVisibility = onToggleLayerVisibility;
     return _StoryboardLabelShell(
       selectKey: ValueKey<String>(
-        'storyboard-$keyName-label-${track.id.value}',
+        'storyboard-$keyName-label-${trackId.value}',
       ),
       chromeless: chromeless,
       onTap: onSelect == null ? null : () => onSelect(rowId),
@@ -3468,7 +3506,7 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
                       ),
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
-                  idValue: '${track.id.value}-$keyName',
+                  idValue: '${trackId.value}-$keyName',
                   kind: kind,
                   height: height,
                   onTap: onSelect == null ? null : () => onSelect(rowId),
@@ -3504,6 +3542,179 @@ class _StoryboardLayerRowLabel extends StatelessWidget {
               ),
             ],
           ),
+    );
+  }
+}
+
+/// A PROJECTION row's head — a conte row's, the camera row's (I-73): THE
+/// TIMELINE'S OWN ROW ([TimelineLayerControlsRow]) wearing the layer the
+/// row has in hand, at this rail's width and the row's height.
+///
+/// 🚨I-57 (10-14): built again with the panel on every notify and every cut
+/// crossed — 🔬464 of a crossing's 1,088 rebuilds on the AMMI OP, five
+/// heads. Kept by its FACE ([ControlsRowFace]), as the timeline's rail
+/// keeps its rows (I-57 ㉣): a crossing that hands the row a layer of the
+/// same face hands it back whole, and what in it asks WHICH layer it wears
+/// asks [BerthRow] above it — the eye through [RailEyes] beside that
+/// ([_StoryboardRowsAndLabels._wearing]).
+///
+/// Every press acts on the ROW [rowId] — what the selection holds and a
+/// stand names — so a press made there is a press inside the selection
+/// when the row is in it (row-buttons-act-on-the-selection); the session
+/// lands it on the row in hand (`RowSelection.layerActedOn`). ↩️They
+/// pressed the layer the label wears — one cut's, which no selection on
+/// this rail holds — so a press on a selected conte row changed that row
+/// alone (the 10-10 audit). The verbs here are the host's, each handed
+/// [rowId] at the press.
+class _StoryboardRailHead extends KeptPiece {
+  const _StoryboardRailHead({
+    required this.rowId,
+    required this.layer,
+    required this.metrics,
+    required this.active,
+    required this.fxState,
+    this.chromeless = false,
+    this.hasLanes = false,
+    this.lanesExpanded = false,
+    this.onToggleLanes,
+    this.onSelectLayer,
+    this.labelDoubleClick,
+    this.onToggleLayerVisibility,
+    this.onLayerOpacityChanged,
+    this.onLayerMarkSelected,
+    this.onLayerBlendModeSelected,
+    this.onLayerOpacityChangeEnd,
+    this.onToggleLayerFx,
+    this.opacityOverride,
+    this.opacityDragPreview,
+    this.onOpenCameraPath,
+    this.attachArrowPlacement,
+    this.wearsBaseComposite = false,
+    this.hasGroupFold = false,
+    this.groupFoldExpanded = true,
+    this.onToggleGroupFold,
+  });
+
+  /// The row the head stands for — a conte row's seat
+  /// ([trackConteRowId]), the camera row ([trackCameraRowId]).
+  final LayerId rowId;
+
+  /// The layer the row has in hand — a cut's, which the row wears.
+  final Layer layer;
+  final TimelineGridMetrics metrics;
+
+  /// Whether the row is the one stood on.
+  final bool active;
+  final LayerFxState fxState;
+  final bool chromeless;
+  final bool hasLanes;
+  final bool lanesExpanded;
+
+  /// The twirl, turned through the row it names at the press
+  /// ([_StoryboardRowsAndLabels._twirlTurning]).
+  final ValueChanged<LayerId>? onToggleLanes;
+  final ValueChanged<LayerId>? onSelectLayer;
+
+  /// Its double click (I-48's rename), pressed on the ROW [rowId] — what
+  /// the selection holds and the press stands on — not the layer it wears,
+  /// which is one cut's: the rename finds the name there
+  /// (`LayerVerbs.renameableOf`), wherever the head stands (F-322:
+  /// 「더블클릭으로 레이어 이름바꾸는거 … 통일」). ↩️It pressed the head's
+  /// layer, and a head standing in a cut other than the active one renamed
+  /// nothing.
+  final TimelineLabelDoubleClick? labelDoubleClick;
+  final ValueChanged<LayerId>? onToggleLayerVisibility;
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
+  final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
+  final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
+  final void Function(LayerId layerId, LayerBlendMode mode)?
+  onLayerBlendModeSelected;
+  final ValueChanged<LayerId>? onToggleLayerFx;
+
+  /// The camera row's slider: the view's dim, not the layer's opacity.
+  final ValueListenable<double>? opacityOverride;
+  final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
+  opacityDragPreview;
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
+  final AttachedPlacement? attachArrowPlacement;
+  final bool wearsBaseComposite;
+  final bool hasGroupFold;
+  final bool groupFoldExpanded;
+  final ValueChanged<LayerId>? onToggleGroupFold;
+
+  /// What the head shows: its layer's FACE — never which layer, which a
+  /// crossing changes — and what the session answers for the row. The eye
+  /// is not here: it rides past the keep ([RailEyes]).
+  @override
+  Object? get facts => (
+    rowId,
+    ControlsRowFace(layer),
+    metrics,
+    active,
+    fxState,
+    chromeless,
+    hasLanes,
+    lanesExpanded,
+    onToggleLanes != null,
+    onSelectLayer != null,
+    labelDoubleClick != null,
+    onToggleLayerVisibility != null,
+    onLayerOpacityChanged != null,
+    onLayerOpacityChangeEnd != null,
+    onLayerMarkSelected != null,
+    onLayerBlendModeSelected != null,
+    onToggleLayerFx != null,
+    ByIdentity(opacityOverride),
+    ByIdentity(opacityDragPreview),
+    onOpenCameraPath != null,
+    attachArrowPlacement,
+    wearsBaseComposite,
+    hasGroupFold,
+    groupFoldExpanded,
+    onToggleGroupFold != null,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
+    final doubleClick = labelDoubleClick;
+    final endOpacity = onLayerOpacityChangeEnd;
+    final pickBlend = onLayerBlendModeSelected;
+    final toggleFx = onToggleLayerFx;
+    final toggleGroupFold = onToggleGroupFold;
+    return TimelineLayerControlsRow(
+      chromeless: chromeless,
+      keyPrefix: 'storyboard',
+      layer: layer,
+      active: active,
+      hasLanes: hasLanes,
+      lanesExpanded: lanesExpanded,
+      onToggleLanes: onToggleLanes,
+      metrics: metrics,
+      onSelectLayer: (_) => onSelectLayer?.call(rowId),
+      labelDoubleClick: doubleClick == null ? null : (_) => doubleClick(rowId),
+      onToggleLayerVisibility: (_) => onToggleLayerVisibility?.call(rowId),
+      onLayerOpacityChanged: (_, opacity) =>
+          onLayerOpacityChanged?.call(rowId, opacity),
+      onLayerOpacityChangeEnd: endOpacity == null
+          ? null
+          : (_, opacity) => endOpacity(rowId, opacity),
+      opacityOverride: opacityOverride,
+      opacityDragPreview: opacityDragPreview,
+      onLayerMarkSelected: (_, edit) =>
+          onLayerMarkSelected?.call(rowId, edit),
+      onLayerBlendModeSelected: pickBlend == null
+          ? null
+          : (_, mode) => pickBlend(rowId, mode),
+      fxState: fxState,
+      onToggleLayerFx: toggleFx == null ? null : (_) => toggleFx(rowId),
+      onOpenCameraPath: onOpenCameraPath,
+      attachArrowPlacement: attachArrowPlacement,
+      wearsBaseComposite: wearsBaseComposite,
+      hasGroupFold: hasGroupFold,
+      groupFoldExpanded: groupFoldExpanded,
+      onToggleGroupFold: toggleGroupFold == null
+          ? null
+          : (_) => toggleGroupFold(rowId),
     );
   }
 }
@@ -4714,10 +4925,10 @@ String storyboardVideoRowName(int index) =>
 /// timeline's folded row already mounts its real `TimelineLayerControlsRow`
 /// rather than re-listing its slots, and 「트랙이 보여야 하는데 프레임이
 /// 보인다」 was the storyboard having no such row to mount at all.
-class StoryboardTrackLabelRow extends StatelessWidget {
+class StoryboardTrackLabelRow extends KeptPiece {
   const StoryboardTrackLabelRow({
     super.key,
-    required this.track,
+    required this.trackId,
     required this.trackLabel,
     required this.laneHeight,
     this.laneExpanded = false,
@@ -4740,7 +4951,8 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   /// to read it wherever it paints.
   final bool chromeless;
 
-  final Track track;
+  /// The track whose row this is — its keys' word.
+  final TrackId trackId;
   final String trackLabel;
 
   /// Kept in lockstep with the strip row's: the rail and the strips are two
@@ -4778,14 +4990,33 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   final LayerFxState trackFxState;
   final VoidCallback? onToggleTrackFx;
 
+  /// What the row shows: its name and its switches — nothing of the
+  /// track's cuts.
+  ///
+  /// 🚨I-57 (10-14): built again with the panel on every notify and every
+  /// cut crossed, as every rail label was.
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (
+    trackId,
+    trackLabel,
+    laneHeight,
+    laneExpanded,
+    onToggleLane != null,
+    active,
+    onSelectTrack != null,
+    trackFxState,
+    onToggleTrackFx != null,
+    chromeless,
+  );
+
+  @override
+  Widget buildKept(BuildContext context) {
     // V-track selection (UI-R18 #6): the S-row tap/highlight language on
     // the V row — tap selects the TRACK, the active treatment speaks
     // through the background alone.
     return _StoryboardLabelShell(
-      selectKey: ValueKey<String>('storyboard-track-select-${track.id.value}'),
-      rowKey: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
+      selectKey: ValueKey<String>('storyboard-track-select-${trackId.value}'),
+      rowKey: ValueKey<String>('storyboard-track-label-row-${trackId.value}'),
       onTap: onSelectTrack,
       height: laneHeight,
       active: active,
@@ -4810,7 +5041,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     : RailSwipeColumnPointer(
                         child: LayerFoldTwirl(
                           name:
-                              'storyboard-track-lane-toggle-${track.id.value}',
+                              'storyboard-track-lane-toggle-${trackId.value}',
                           expanded: laneExpanded,
                           tooltip: layerLaneTwirlTooltip(
                             expanded: laneExpanded,
@@ -4822,7 +5053,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                 // strip by override rather than a kind.
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
-                  idValue: 'v-${track.id.value}',
+                  idValue: 'v-${trackId.value}',
                   icon: _vRowGlyph,
                   semanticLabel: AppText.strings.sbVideoTrack,
                   onTap: onSelectTrack,
@@ -4836,7 +5067,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     Text(
                       trackLabel,
                       key: ValueKey<String>(
-                        'storyboard-track-label-${track.id.value}',
+                        'storyboard-track-label-${trackId.value}',
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -4882,7 +5113,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     ? null
                     : RailSwipeColumnPointer(
                         child: FxToggleButton(
-                          name: 'storyboard-track-fx-${track.id.value}',
+                          name: 'storyboard-track-fx-${trackId.value}',
                           subject: RailSubject.track,
                           state: trackFxState,
                           onToggle: onToggleTrackFx!,
