@@ -765,48 +765,14 @@ class _BoxRows extends StatelessWidget {
   /// dimmed.
   List<Widget> _place() {
     final strings = AppText.strings;
-    // The number as it reads — null with none in hand.
-    Widget box({
-      required String keyValue,
-      required String name,
-      required bool across,
-    }) => reading.follow(
-      (values) {
-        final centre = values.boxCentre;
-        return centre == null
-            ? null
-            : columnValueText(across ? centre.dx : centre.dy);
-      },
-      (number) => DragValueLabel.box(
-        keyValue: keyValue,
-        name: name,
-        text: number ?? '',
-        enabled: number != null,
-        onDragDelta: (units) => across
-            ? reading.now.carryBy(dx: units.round())
-            : reading.now.carryBy(dy: units.round()),
-        onOperationEnd: () => reading.now.settle(),
-        onEditSubmit: (raw) {
-          final typed = double.tryParse(raw.trim());
-          if (typed == null) {
-            return;
-          }
-          if (across) {
-            reading.now.setBoxCentre(x: typed);
-          } else {
-            reading.now.setBoxCentre(y: typed);
-          }
-        },
-      ),
-    );
     return [
       ToolSettingRow.bar(
         label: strings.trPosition,
-        bar: box(keyValue: 'text-tool-x', name: 'X', across: true),
+        bar: _valueBox(keyValue: 'text-tool-x', name: 'X', across: true),
       ),
       ToolSettingRow.bar(
         label: '',
-        bar: box(keyValue: 'text-tool-y', name: 'Y', across: false),
+        bar: _valueBox(keyValue: 'text-tool-y', name: 'Y', across: false),
       ),
       reading.follow(
         (values) => values.boxCentre != null,
@@ -830,6 +796,43 @@ class _BoxRows extends StatelessWidget {
       ),
     ];
   }
+
+  /// One of the place's numbers, X [across] or Y, as it reads — none with
+  /// nothing in hand. A box of its own, as each of the transform tool's is
+  /// (`_valueBox` there).
+  Widget _valueBox({
+    required String keyValue,
+    required String name,
+    required bool across,
+  }) => reading.follow(
+    (values) {
+      final centre = values.boxCentre;
+      return centre == null
+          ? null
+          : columnValueText(across ? centre.dx : centre.dy);
+    },
+    (number) => DragValueLabel.box(
+      keyValue: keyValue,
+      name: name,
+      text: number ?? '',
+      enabled: number != null,
+      onDragDelta: (units) => across
+          ? reading.now.carryBy(dx: units.round())
+          : reading.now.carryBy(dy: units.round()),
+      onOperationEnd: () => reading.now.settle(),
+      onEditSubmit: (raw) {
+        final typed = double.tryParse(raw.trim());
+        if (typed == null) {
+          return;
+        }
+        if (across) {
+          reading.now.setBoxCentre(x: typed);
+        } else {
+          reading.now.setBoxCentre(y: typed);
+        }
+      },
+    ),
+  );
 
   /// Lines, or columns (縦書き) — of the text in hand, which is then
   /// written the other way where it stands, and of the next text.
