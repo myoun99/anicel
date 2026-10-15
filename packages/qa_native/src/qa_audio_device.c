@@ -824,9 +824,31 @@ typedef struct {
   volatile ma_uint64 write_total;
   volatile ma_uint64 read_total;
   volatile ma_uint64 dropped_frames;
+
+  // THE CAPTURE'S CLOCK LINE (take-head-trims-at-the-playback-start,
+  // 10-15), the playback's own shape (`clock_position`): each callback
+  // says how many frames the ring had been given when it returned, and
+  // when it was asked for them — so a take is placed by what the
+  // microphone had taken in at the moment its anchor was HEARD, both
+  // lines read on qa_clock_now_us. One writer — the callback — read whole
+  // through `clock_seq`; a point with no time (0) is no point.
+  volatile ma_uint32 clock_seq;
+  volatile ma_uint64 clock_frames;
+  volatile ma_uint64 clock_time_us;
 } qa_capture_state;
 
 static qa_capture_state g_capture;
+
+// The capture callback's last word: the frames given, and when it was
+// asked. ⚠️The playback's stamp (qa_audio_stamp_clock) is the same
+// seqlock with an arm serial on top — a third would make them one.
+static void qa_capture_stamp_clock(int64_t frames, int64_t time_us) {
+  const ma_uint32 seq = ma_atomic_load_32(&g_capture.clock_seq);
+  ma_atomic_store_32(&g_capture.clock_seq, seq + 1);
+  ma_atomic_store_64(&g_capture.clock_frames, (ma_uint64)frames);
+  ma_atomic_store_64(&g_capture.clock_time_us, (ma_uint64)time_us);
+  ma_atomic_store_32(&g_capture.clock_seq, seq + 2);
+}
 
 static void qa_audio_capture_callback(ma_device* device,
                                       void* output,
@@ -834,6 +856,7 @@ static void qa_audio_capture_callback(ma_device* device,
                                       ma_uint32 frame_count) {
   (void)device;
   (void)output;
+  const int64_t asked_at_us = qa_clock_now_us();
   if (input == NULL || g_capture.ring == NULL) {
     return;
   }
@@ -868,6 +891,7 @@ static void qa_audio_capture_callback(ma_device* device,
   // Publish AFTER the copy: the reader must never see an index that
   // covers bytes still being written.
   ma_atomic_store_64(&g_capture.write_total, (ma_uint64)(written + floats));
+  qa_capture_stamp_clock((written + floats) / channels, asked_at_us);
 }
 
 // Opens the capture device and starts delivering into the ring.
@@ -920,6 +944,8 @@ QA_EXPORT int32_t qa_audio_capture_start(int32_t sample_rate,
   ma_atomic_store_64(&g_capture.write_total, 0);
   ma_atomic_store_64(&g_capture.read_total, 0);
   ma_atomic_store_64(&g_capture.dropped_frames, 0);
+  // No callback of this capture has spoken: the last one's point is gone.
+  ma_atomic_store_64(&g_capture.clock_time_us, 0);
   // Open BEFORE start: the callback checks ring != NULL, and start makes
   // it live immediately.
   g_capture.open = 1;
@@ -987,6 +1013,44 @@ QA_EXPORT int32_t qa_audio_capture_sample_rate(void) {
 // a silently shortened file.
 QA_EXPORT int64_t qa_audio_capture_dropped_frames(void) {
   return (int64_t)ma_atomic_load_64(&g_capture.dropped_frames);
+}
+
+// Frames the ring has been given so far — the capture's stair.
+QA_EXPORT int64_t qa_audio_capture_frames(void) {
+  if (!g_capture.open || g_capture.channels <= 0) {
+    return 0;
+  }
+  return (int64_t)ma_atomic_load_64(&g_capture.write_total) /
+         (int64_t)g_capture.channels;
+}
+
+// The latest point of the capture's line: out2[0] = the frames the ring
+// had been given when that callback returned, out2[1] = when it was asked
+// for them, on qa_audio_clock_now_us's clock. 0 = none open, or no
+// callback of this capture has spoken yet.
+QA_EXPORT int32_t qa_audio_capture_clock(int64_t* out2) {
+  if (out2 == NULL || !g_capture.open) {
+    return 0;
+  }
+  for (int attempt = 0; attempt < 16; attempt += 1) {
+    const ma_uint32 before = ma_atomic_load_32(&g_capture.clock_seq);
+    if (before & 1u) {
+      continue;
+    }
+    const int64_t frames = (int64_t)ma_atomic_load_64(&g_capture.clock_frames);
+    const int64_t time_us =
+        (int64_t)ma_atomic_load_64(&g_capture.clock_time_us);
+    if (ma_atomic_load_32(&g_capture.clock_seq) != before) {
+      continue;
+    }
+    if (time_us == 0) {
+      return 0;
+    }
+    out2[0] = frames;
+    out2[1] = time_us;
+    return 1;
+  }
+  return 0;
 }
 
 // The capture path's own buffering, in samples — how far behind "now" the

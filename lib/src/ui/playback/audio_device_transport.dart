@@ -23,10 +23,14 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
+import '../../services/playback/device_clock_line.dart'
+    show DeviceClockReading;
 import '../../services/playback/first_look_start.dart';
 import '../../services/playback/heard_on_the_device.dart';
+import '../../services/playback/take_head.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
+import 'audio_recorder.dart';
 import '../../models/audio_sync_settings.dart';
 import 'audio_windowed_upload.dart';
 import 'canvas_playback_controller.dart';
@@ -419,6 +423,7 @@ class AudioDeviceTransport {
             : null;
       },
     );
+    _measureTheTake(device, clock);
     // 🚨THE PICTURE READS THE LINE, NOT THE STAIR (유저 2026-10-08:
     // 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로 어떻게 안되나」).
     // The device's own count climbs one callback at a time; the line
@@ -438,5 +443,67 @@ class AudioDeviceTransport {
       frame = _armFrame;
     }
     return ClockReading(globalFrame: frame);
+  }
+
+  /// Measures [recorder]'s head ([samplesBeforeTheAnchor]) at the first look
+  /// of this clock that hears [anchorFrame] — a frame on this transport's
+  /// own axis — and hands it to [measured], once. A take that stops before
+  /// then is let go.
+  void measureTakeHead(
+    AudioRecorder recorder, {
+    required int anchorFrame,
+    required void Function(int head) measured,
+  }) => _take = (
+    recorder: recorder,
+    anchorFrame: anchorFrame,
+    measured: measured,
+  );
+
+  /// The take [measureTakeHead] waits on, until a look hears its anchor.
+  ({
+    AudioRecorder recorder,
+    int anchorFrame,
+    void Function(int head) measured,
+  })?
+  _take;
+
+  /// The waiting take's head, if this look hears its anchor: what is heard
+  /// NOW — read as one who listens ([HeardOnTheDevice.heardNow]) — and what
+  /// the microphone had taken in at that same moment on the device's clock.
+  void _measureTheTake(QaAudioDevice device, DeviceClockReading clock) {
+    final take = _take;
+    if (take == null) {
+      return;
+    }
+    if (!take.recorder.isRecording) {
+      _take = null;
+      return;
+    }
+    if (clock.point == null) {
+      return; // The run's first callback has not drawn the line yet.
+    }
+    final heard = _heard.heardNow(
+      clock,
+      latencySamples: device.latencySamples,
+      userOffsetSamples: _resolveUserOffsetSamples(_deviceRate),
+    );
+    final anchor = _rate.frameToSample(take.anchorFrame, _deviceRate);
+    if (heard < anchor) {
+      return;
+    }
+    final captured = take.recorder.capturedAt(clock.nowMicros);
+    if (captured == null) {
+      return;
+    }
+    _take = null;
+    take.measured(
+      samplesBeforeTheAnchor(
+        heard: heard,
+        anchor: anchor,
+        deviceRate: _deviceRate,
+        captured: captured,
+        captureRate: take.recorder.sampleRate,
+      ),
+    );
   }
 }

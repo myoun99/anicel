@@ -98,11 +98,26 @@ final class HeardOnTheDevice {
           _deviceRate ~/
           Duration.microsecondsPerSecond;
     }
-    // What is HEARD trails the count by the device's latency (the user's
-    // own correction on top) — taken off BEFORE the count is folded into
-    // the loop: the lap that is heard is not the lap that is handed.
-    final heard = count - latencySamples + userOffsetSamples;
+    // Taken off BEFORE the count is folded into the loop: the lap that is
+    // heard is not the lap that is handed.
+    final heard = _heardOf(count, latencySamples, userOffsetSamples);
     final furthest = _furthest = math.max(_furthest ?? heard, heard);
     return _line.foldedIntoTheLap(furthest);
   }
+
+  /// The sample heard at [clock]'s own time, counted on through every lap —
+  /// the reading of one who LISTENS rather than one who shows: a take placed
+  /// by the moment its anchor was heard (`AudioRecorder.capturedAt`). Not
+  /// held to the furthest a picture's reading got (those are read at the
+  /// moments frames are shown, ahead of now) and not folded into the lap.
+  int heardNow(
+    DeviceClockReading clock, {
+    required int latencySamples,
+    required int userOffsetSamples,
+  }) => _heardOf(_line.read(clock), latencySamples, userOffsetSamples);
+
+  /// What is HEARD of a [count] handed: it trails the count by the device's
+  /// latency, and the user's own correction is on top.
+  static int _heardOf(int count, int latencySamples, int userOffsetSamples) =>
+      count - latencySamples + userOffsetSamples;
 }

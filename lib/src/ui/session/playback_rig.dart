@@ -19,7 +19,8 @@ import '../../models/cut.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
-import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
+import '../../native/qa_audio_device.dart'
+    show QaAudioDevice, audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
 import '../playback/audio_device_transport.dart';
 import '../playback/audio_playback_sync.dart';
@@ -265,6 +266,15 @@ class PlaybackRig implements PlaybackRun {
         frameRateDenominator: _settings.projectFrameRate.denominator,
       );
 
+  /// The output [audioDeviceTransport] plays on: [audioOutputUnlessTesting],
+  /// or what a test hands in — a device IT opened on the null backend, so
+  /// the bench can hear a run the session plays (the transport's own tests
+  /// hand theirs in the same way). ⛔Never the hardware: the transport plays
+  /// on an open device as it stands and opens only a closed one — or
+  /// reopens on a changed output setting, which a test that hands one in
+  /// leaves alone.
+  QaAudioDevice? Function() debugTransportOutput = audioOutputUnlessTesting;
+
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
   /// samples handed to the device, and cumulative drift is structurally
@@ -276,7 +286,7 @@ class PlaybackRig implements PlaybackRun {
     resolveProject: () => _project.repository.currentProject,
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
-    resolveDevice: audioOutputUnlessTesting,
+    resolveDevice: () => debugTransportOutput(),
     resolveUserOffsetSamples: userOffsetSamples,
     resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,

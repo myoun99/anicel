@@ -169,6 +169,17 @@ final class QaAudioDevice {
       .lookupFunction<Int64 Function(), int Function()>(
         'qa_audio_capture_latency_samples',
       );
+  late final _captureFrames = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_capture_frames',
+      );
+  late final _captureClock = _library
+      .lookupFunction<Int32 Function(Pointer<Int64>), int Function(Pointer<Int64>)>(
+        'qa_audio_capture_clock',
+      );
+
+  /// Where [readCaptureClock] has the native side write its two numbers.
+  late final Pointer<Int64> _captureClockOut = calloc<Int64>(2);
 
   /// Opens the output device, returning its ACTUAL sample rate (0 = the
   /// device could not be opened).
@@ -391,6 +402,30 @@ final class QaAudioDevice {
 
   /// The capture path's own buffering in samples (typically 10-30 ms).
   int get captureLatencySamples => _captureLatency();
+
+  /// The capture's clock, read in [readClock]'s order — the latest
+  /// callback's word (the frames the ring had been given when it returned,
+  /// and when it was asked, on [clockNowMicros]'s clock; null before the
+  /// capture's first callback), then the frames given as they stand, then
+  /// the time. The playback's shape, so the two lines are read alike.
+  ({
+    ({int positionSamples, int atMicros})? point,
+    int stairSamples,
+    int nowMicros,
+  })
+  readCaptureClock() {
+    final point = _captureClock(_captureClockOut) == 0
+        ? null
+        : (
+            positionSamples: _captureClockOut[0],
+            atMicros: _captureClockOut[1],
+          );
+    return (
+      point: point,
+      stairSamples: _captureFrames(),
+      nowMicros: _clockNow(),
+    );
+  }
 }
 
 /// The enumeration index, on the [capture] side or the playback side, for

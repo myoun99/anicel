@@ -6147,4 +6147,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // vblanks is taken at the second of them however idle the desktop is.
 // v46: qa_premultiply_rgba_rows - the premultiplied copy between two row
 // strides, so a block of tiles becomes one picture with one call a tile.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 46; }
+// v47: qa_audio_capture_clock / qa_audio_capture_frames - the capture's own
+// clock line, so a take is placed by what the microphone had taken in when
+// its anchor was heard.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 47; }

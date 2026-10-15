@@ -246,7 +246,11 @@ import 'dart:io';
 ///   row strides, so the tiles of a cel nobody has pictured go up a block
 ///   at a time with one call a tile (`surfaceRegionPicture`,
 ///   board a-cold-cel-composes-tile-by-tile).
-const int kQaEngineAbiVersion = 46;
+/// - v47: `qa_audio_capture_clock` / `qa_audio_capture_frames` — the
+///   capture's own clock line, the playback's shape, so a take is placed by
+///   what the microphone had taken in when its anchor was HEARD
+///   (`AudioRecorder.capturedAt`, board take-head-trims-at-the-playback-start).
+const int kQaEngineAbiVersion = 47;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

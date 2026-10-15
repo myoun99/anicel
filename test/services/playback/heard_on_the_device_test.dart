@@ -146,4 +146,45 @@ void main() {
       expect(read(480, 1110000), 480, reason: 'a lap on, at its top');
     });
   });
+
+  // take-head-trims-at-the-playback-start (10-15): a take is placed by the
+  // moment its anchor was heard.
+  group('🚨one who LISTENS reads now — not held to how far a picture got', () {
+    test('the line now, less the latency, with the user\'s correction on', () {
+      final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
+        ..arm(deviceRate: rate, carriesFor: 4800);
+      expect(
+        heard.heardNow(
+          readAt(1010000),
+          latencySamples: 1440,
+          userOffsetSamples: 480,
+        ),
+        48480 - 1440 + 480,
+        reason: 'handed 48000 at 1s, ten milliseconds on',
+      );
+    });
+
+    test('a picture\'s reading at the moment its frame is shown — ahead of '
+        'now — does not carry the listener\'s with it', () {
+      final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
+        ..arm(deviceRate: rate, carriesFor: 4800);
+      final shown = heard.heard(
+        readAt(1010000),
+        frameTime: const Duration(microseconds: 1040000),
+        latencySamples: 0,
+        userOffsetSamples: 0,
+      );
+      expect(shown, 48480 + 1440, reason: 'fixture: thirty milliseconds on');
+
+      expect(
+        heard.heardNow(
+          readAt(1010000),
+          latencySamples: 0,
+          userOffsetSamples: 0,
+        ),
+        48480,
+        reason: 'what is heard NOW, the furthest a picture got held out',
+      );
+    });
+  });
 }

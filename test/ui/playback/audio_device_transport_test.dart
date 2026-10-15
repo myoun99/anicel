@@ -22,6 +22,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_device_transport.dart';
 import 'package:anicel/src/ui/playback/audio_playback_sync.dart';
+import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/native_engine_path.dart';
@@ -890,6 +891,137 @@ void main() {
             'this read frame 0',
       );
 
+      controller.stop();
+      transport.dispose();
+      store.dispose();
+    }, skip: skip);
+  });
+
+  // take-head-trims-at-the-playback-start (10-15): a take is placed by what
+  // the microphone had taken in when its anchor was heard.
+  group('🚨a take\'s head is what the microphone had taken in when its '
+      'anchor was HEARD', () {
+    /// A take of the null microphone with a roll under it that starts
+    /// [late] after the microphone, at frame 2; the head of anchor frame 2
+    /// as the clock's looks measure it, and measured again [readAgainAfter]
+    /// later.
+    Future<({int head, int again})> takeWithItsRoll({
+      Duration late = Duration.zero,
+      Duration readAgainAfter = Duration.zero,
+    }) async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final transport = buildTransport(store);
+      final recorder = AudioRecorder(device: device);
+      expect(recorder.start(sampleRate: 48000, useNullBackend: true), 48000);
+      await Future<void>.delayed(late);
+
+      controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 2);
+      Future<int> measure() async {
+        final heads = <int>[];
+        transport.measureTakeHead(
+          recorder,
+          anchorFrame: 2,
+          measured: heads.add,
+        );
+        expect(
+          await _waitFor(() {
+            transport.clockStatus(); // a look, a vsync at a time
+            return heads.isNotEmpty;
+          }),
+          isTrue,
+          reason: 'the anchor was never heard',
+        );
+        transport.clockStatus();
+        expect(heads, hasLength(1), reason: 'measured once, and it stands');
+        return heads.single;
+      }
+
+      final head = await measure();
+      await Future<void>.delayed(readAgainAfter);
+      final again = await measure();
+
+      recorder.stop();
+      controller.stop();
+      transport.dispose();
+      store.dispose();
+      return (head: head, again: again);
+    }
+
+    test('a roll that starts a third of a second after the microphone puts '
+        'a third of a second more on the head', () async {
+      final onTime = await takeWithItsRoll();
+      final late = await takeWithItsRoll(
+        late: const Duration(milliseconds: 333),
+      );
+      expect(
+        late.head - onTime.head,
+        closeTo(16000, 2400),
+        reason: '↩️the head was estimated — the output latency, as if the '
+            'roll started the instant the microphone did: these two read the '
+            'same',
+      );
+    }, skip: skip);
+
+    test('the head is of the moment the anchor was heard: measured a quarter '
+        'second later, it measures the same', () async {
+      final take = await takeWithItsRoll(
+        readAgainAfter: const Duration(milliseconds: 250),
+      );
+      expect(
+        take.again,
+        closeTo(take.head, 960),
+        reason: 'what was taken in since comes off with the time since',
+      );
+    }, skip: skip);
+
+    test('an anchor not heard yet is not measured, and a take whose '
+        'microphone is not taking in is let go', () async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final transport = buildTransport(store);
+      final recorder = AudioRecorder(device: device);
+      Future<void> takeIn() async {
+        expect(recorder.start(sampleRate: 48000, useNullBackend: true), 48000);
+        expect(
+          await _waitFor(() => device.readCaptureClock().point != null),
+          isTrue,
+          reason: 'fixture: the microphone is taking in',
+        );
+      }
+
+      await takeIn();
+      controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 2);
+      transport.clockStatus(); // the clock's first look starts the device
+      final heads = <int>[];
+      transport.measureTakeHead(recorder, anchorFrame: 9, measured: heads.add);
+      transport.clockStatus();
+      expect(heads, isEmpty, reason: 'frame 9 is most of a second ahead');
+
+      expect(
+        await _waitFor(
+          () => (transport.clockStatus()?.globalFrame ?? 0) >= 3,
+        ),
+        isTrue,
+        reason: 'fixture: frame 2 has been heard',
+      );
+      recorder.stop();
+      transport.measureTakeHead(recorder, anchorFrame: 2, measured: heads.add);
+      transport.clockStatus();
+      await takeIn();
+      transport.clockStatus();
+      expect(
+        heads,
+        isEmpty,
+        reason: 'looked at with nothing recording, the take was let go — '
+            'the microphone that starts after is another take',
+      );
+
+      recorder.stop();
       controller.stop();
       transport.dispose();
       store.dispose();

@@ -30,6 +30,7 @@ import '../../services/audio/audio_mixer_reference.dart'
 import '../playback/audio_input_monitor.dart';
 import '../playback/audio_playback_schedule.dart' show ScheduledAudioClip;
 import '../../services/audio/wav16_header.dart' show wav16Bytes;
+import '../../services/playback/take_head.dart';
 import '../../services/commands/update_media_assets_command.dart';
 import '../../models/se_take_placement.dart';
 import '../../services/audio/audio_peaks_extractor.dart'
@@ -230,7 +231,16 @@ class EditorVoiceRecording {
   LayerId? _voiceRecordLaneId;
   int _voiceRecordAnchorFrame = 0;
   int? _voiceRecordPunchEndFrame;
-  int _voiceRecordHeadTrimSamples = 0;
+
+  /// The take's head ESTIMATED at the press — the same reading as
+  /// [_voiceRecordHeadMeasured] with the roll taken to start the instant the
+  /// microphone did — which stands until the roll measures it.
+  int _voiceRecordHeadEstimate = 0;
+
+  /// The take's head MEASURED once its anchor was heard
+  /// ([samplesBeforeTheAnchor]); null until then — and for a run the device
+  /// does not carry, which has no heard line to measure by.
+  int? _voiceRecordHeadMeasured;
   bool _voiceRecordStartedRoll = false;
 
   // 🪦**THE TAKE SHELF IS GONE, AND SO IS ITS BOOKKEEPING** (유저
@@ -657,6 +667,13 @@ class EditorVoiceRecording {
     voiceRecordPreviewLane.value = plan?.layer;
   }
 
+  /// Where the transport's own axis starts on the track: a cut-scoped
+  /// transport plays the cut's frames from 0.
+  int _transportAxisShift() =>
+      playback.isActive && playback.scope == PlaybackScope.activeCut
+      ? playback.trackFrameOf(0)
+      : 0;
+
   /// The frame the roll last showed during this take; null until it rolls.
   int? _voiceRecordLastGlobal;
 
@@ -778,13 +795,16 @@ class EditorVoiceRecording {
     _voiceRecordLaneId = laneId;
     _voiceRecordAnchorFrame = punch.anchor;
     _voiceRecordPunchEndFrame = punch.end;
-    // The performer speaks against what they HEAR, which runs the output
-    // latency behind the mix clock — that much comes off the take's head
-    // (the DAW recording-compensation rule) — plus the run-up between
-    // the roll start and the punch-in.
-    _voiceRecordHeadTrimSamples =
+    // What the microphone will have taken in when the anchor is heard, with
+    // the roll taken to start the instant the microphone does: the output
+    // latency, the run-up between the roll start and the punch-in (and the
+    // count-in, [_rollVoiceTransport]), and what the microphone holds of its
+    // own — the DAW's round-trip compensation. The roll measures it, below.
+    _voiceRecordHeadEstimate =
         audioDeviceTransport.report.reportedLatencySamples +
-        projectFrameRate.frameToSample(punch.anchor - rollStart, opened.rate);
+        projectFrameRate.frameToSample(punch.anchor - rollStart, opened.rate) +
+        opened.recorder.latencySamples;
+    _voiceRecordHeadMeasured = null;
     isVoiceRecording.value = true;
     // Capture-chain snapshot (REC1-D): gain and channel fold ride the
     // whole take; the clip light re-arms per take.
@@ -810,6 +830,13 @@ class EditorVoiceRecording {
       rate: opened.rate,
     );
     _armVoiceCues(anchor: punch.anchor, rollStart: rollStart);
+    // The clock that hears the anchor measures the head — once, and it
+    // stands; a take that stops first keeps the estimate.
+    audioDeviceTransport.measureTakeHead(
+      opened.recorder,
+      anchorFrame: punch.anchor - _transportAxisShift(),
+      measured: (head) => _voiceRecordHeadMeasured = head,
+    );
     _syncVoiceRecordPreview();
     notifyListeners(); // Armed-lane mute + cue clips join the schedules.
     return VoiceRecordStartResult.started;
@@ -921,7 +948,7 @@ class EditorVoiceRecording {
       _startVoiceRoll(rollStart);
       return;
     }
-    _voiceRecordHeadTrimSamples += countInSeconds * rate;
+    _voiceRecordHeadEstimate += countInSeconds * rate;
     if (audioSyncSettings.value.cueBeeps) {
       _playCountInBeeps(countInSeconds);
     }
@@ -958,10 +985,7 @@ class EditorVoiceRecording {
     }
     // A cut-scoped transport plays its own axis, so the cues have to be
     // stated in it.
-    final axisShift =
-        playback.isActive && playback.scope == PlaybackScope.activeCut
-        ? playback.trackFrameOf(0)
-        : 0;
+    final axisShift = _transportAxisShift();
     final settingsNow = audioSyncSettings.value;
     if (settingsNow.cueBeeps) {
       _voiceRecordCueClips = _countdownBeeps(
@@ -1051,7 +1075,7 @@ class EditorVoiceRecording {
       laneId: laneId,
       anchorFrame: _voiceRecordAnchorFrame,
       punchEndFrame: _voiceRecordPunchEndFrame,
-      headTrimSamples: _voiceRecordHeadTrimSamples,
+      headTrimSamples: _voiceRecordHeadMeasured ?? _voiceRecordHeadEstimate,
       gainDb: _voiceRecordGainDb,
       channelMode: _voiceRecordChannelMode,
       denoise: _voiceRecordDenoise,
@@ -1072,8 +1096,9 @@ class EditorVoiceRecording {
   }
 
   /// Lands a finished take (split out so tests can drive it with a made
-  /// recording): trims the head (latency + punch run-up), clamps to the
-  /// punch window, writes the WAV, and swaps the lane through the
+  /// recording): takes [headTrimSamples] off its head — or, below nothing,
+  /// puts that much silence before it ([samplesBeforeTheAnchor]) — clamps
+  /// to the punch window, writes the WAV, and swaps the lane through the
   /// tape-style planner — pool entry and lane swap in ONE undo step.
   Future<bool> placeVoiceRecording(
     AudioRecording recording, {
@@ -1099,6 +1124,13 @@ class EditorVoiceRecording {
         return false; // Shorter than the run-up it rode on: nothing real.
       }
       samples = Float32List.sublistView(samples, trimFloats);
+    } else if (headTrimSamples < 0) {
+      // The anchor was heard before the microphone opened — a take begun
+      // mid-roll, on the frame it was pressed on: what it says starts
+      // that much after the anchor.
+      final padFloats = -headTrimSamples * recording.channels;
+      samples = Float32List(padFloats + samples.length)
+        ..setRange(padFloats, padFloats + samples.length, samples);
     }
     // Suppression first, on the trimmed raw capture (per channel, the
     // OBS filter order) — the RNNoise round. A declined pass (no native
