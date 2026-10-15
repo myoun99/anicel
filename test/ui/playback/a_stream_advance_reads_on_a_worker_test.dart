@@ -224,6 +224,47 @@ void main() {
     expect(released, made, reason: 'a buffer nothing landed in leaked');
   });
 
+  test('🚨and on the worker\'s road, windows that did not land whole are '
+      'none at all', () async {
+    final device = openNull();
+    final (store, _) = await streamingStore();
+    final plan = planAround(store, mixOf(['a', 'b']), 5000);
+    for (final file in directory.listSync().whereType<File>()) {
+      file.deleteSync();
+    }
+
+    expect(await readStreamWindowsOnAWorker(plan.reads, device), isNull);
+  }, skip: skip);
+
+  group('the hands a worker is sent', () {
+    test('make the device\'s own buffers, and let go of them as its lists '
+        'do', () {
+      final device = openNull();
+      final hands = audioBuffersHere(device.buffers);
+      final buffer = hands.make(8);
+      final samples = device.adoptSamples(buffer.address, 8);
+      expect(device.debugHoldsOf(samples), 1, reason: 'its maker\'s');
+      // A hold of the test's own, for the hands to let go of.
+      DynamicLibrary.open(libraryPath!)
+          .lookupFunction<
+            Pointer<Float> Function(Pointer<Float>),
+            Pointer<Float> Function(Pointer<Float>)
+          >('qa_audio_buffer_retain')(buffer);
+      expect(device.debugHoldsOf(samples), 2);
+
+      hands.release(buffer);
+
+      expect(device.debugHoldsOf(samples), 1, reason: 'the list\'s alone');
+    }, skip: skip);
+
+    test('throw where the memory is not there, rather than hand back a '
+        'buffer that is none', () {
+      final hands = audioBuffersHere(openNull().buffers);
+
+      expect(() => hands.make(-1), throwsStateError);
+    }, skip: skip);
+  });
+
   test('🎯a window that plays reads on a worker unless a test holds the '
       'read', () {
     expect(
