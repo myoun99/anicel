@@ -224,6 +224,15 @@ void main() {
     expect(released, made, reason: 'a buffer nothing landed in leaked');
   });
 
+  test('🎯a window that plays reads on a worker unless a test holds the '
+      'read', () {
+    expect(
+      AudioStreamingWindow().readWindows,
+      same(readStreamWindowsOnAWorker),
+      reason: 'the advance read on the thread that draws again',
+    );
+  });
+
   group('an advance that lands', () {
     late QaAudioDevice device;
     late AudioConformStore store;
