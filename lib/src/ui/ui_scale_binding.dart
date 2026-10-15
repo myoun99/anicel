@@ -1,13 +1,12 @@
 import 'dart:collection' show Queue;
-import 'dart:io' show Platform;
 import 'dart:ui' as ui show PointerDataPacket;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'look_only_frames.dart';
+import 'platform_semantics_gate.dart';
 import 'present_pacing.dart';
 import 'ui_scale.dart';
 import 'session/cache_budgets.dart';
@@ -146,7 +145,11 @@ mixin UiScaleViewConfiguration on RendererBinding {
 }
 
 class AnicelBinding extends WidgetsFlutterBinding
-    with UiScaleViewConfiguration, LookOnlyFrames, PresentPacing {
+    with
+        UiScaleViewConfiguration,
+        LookOnlyFrames,
+        PresentPacing,
+        PlatformSemanticsGate {
   /// Initializes the binding (creating it on the first call, as
   /// `WidgetsFlutterBinding.ensureInitialized` does) and starts following
   /// the UI scale.
@@ -191,57 +194,6 @@ class AnicelBinding extends WidgetsFlutterBinding
     // H30: a shortcut must not rebuild every button — see the method.
     applyFocusHighlightPolicy(focusManager);
   }
-
-  /// 🚨★★★**A DEBUG BUILD ON WINDOWS DOES NOT TAKE THE PLATFORM'S
-  /// ACCESSIBILITY REQUEST** (유저 2026-09-24,
-  /// `debug-frames-pay-a-semantics-walk-Q1`: 「디버그에서는 받지 않는다」).
-  ///
-  /// Windows turns the accessibility tree on for any Flutter window on this
-  /// machine, and a DEBUG build then walks the whole render tree and the
-  /// whole semantics tree every frame — `PipelineOwner.flushSemantics`'s
-  /// asserts check every node's parent data and every invisible node, changed
-  /// or not. Measured on the real app: SEMANTICS 116.6 ms over twelve pen
-  /// moves in debug against 3.5 ms in profile, two thirds of the UI thread
-  /// while drawing — and on Windows the UI thread is the window's thread,
-  /// where the pen arrives. Profile and release keep answering the platform
-  /// as they always did.
-  ///
-  /// 🚨**THE GATE IS THE QUESTION THE FRAMEWORK ASKS, NOT THE PLATFORM'S
-  /// CALLBACK.** A pipeline owner keeps a semantics owner only while this
-  /// answers yes, so the request is refused whenever it came.
-  /// ↩️Until 2026-10-10 the binding emptied `onSemanticsEnabledChanged` as
-  /// it started (19e0bab1c), on the belief that no request could come
-  /// sooner — the runner shows the window after the first frame. But the
-  /// framework reads the platform's flag AS THE BINDING IS MADE, and on the
-  /// Surface Pro 11 the flag is up at the first line of `main` (the real
-  /// app, 2026-10-10: platform on at start · binding on · callback empty).
-  /// That device's debug build walked the whole tree every frame — 8.4 ms
-  /// of a playback frame, more than its paint.
-  ///
-  /// ⚠️To read a debug build with a screen reader, start it with
-  /// `ANICEL_DEBUG_SEMANTICS=1`.
-  @override
-  bool get semanticsEnabled =>
-      !_refusesPlatformSemantics && super.semanticsEnabled;
-
-  /// A field and not a getter: the framework asks [semanticsEnabled] while
-  /// the binding is still being made, before any `initInstances` body runs.
-  final bool _refusesPlatformSemantics = refusesPlatformSemantics(
-    debugBuild: kDebugMode,
-    onWindows: Platform.isWindows,
-    environment: Platform.environment,
-  );
-
-  /// Whether a build turns the platform's accessibility request away — see
-  /// [semanticsEnabled].
-  static bool refusesPlatformSemantics({
-    required bool debugBuild,
-    required bool onWindows,
-    required Map<String, String> environment,
-  }) =>
-      debugBuild &&
-      onWindows &&
-      environment['ANICEL_DEBUG_SEMANTICS'] != '1';
 
   /// 🚨★★★**THE FOCUS HIGHLIGHT MODE STAYS PUT — THE INPUT DEVICE DOES NOT
   /// FLIP IT.** H30 (유저 실기 2026-09-10): 「그리다가 언두하고 빠르게 다음
