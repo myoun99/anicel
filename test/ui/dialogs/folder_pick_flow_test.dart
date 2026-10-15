@@ -27,6 +27,7 @@ void main() {
 
   tearDown(() {
     FolderPicker.debugFolderPicker = null;
+    FolderPicker.debugOperatingSystem = null;
     debugOperatingSystemOverride = null;
     AppStorage.debugAllFilesAccessOverride = null;
   });
@@ -155,5 +156,25 @@ void main() {
     for (final oneFile in const [true, false]) {
       expect(outputsAskedTheirPlaceFirst('ios', oneFile: oneFile), isFalse);
     }
+  });
+
+  test('🚨a file handed over and never written again goes the export '
+      'window\'s road for one file on every platform — a Mac asks its save '
+      'window first like Windows, not the iPad\'s make-first (F-221 ③, 유저 '
+      '2026-10-06: 「맥도 그럼 윈도랑 통일할수있으면 통일」)', () {
+    for (final os in const ['windows', 'linux', 'macos', 'ios', 'android']) {
+      FolderPicker.debugOperatingSystem = os;
+      expect(
+        writtenFileIsStagedFirst,
+        !outputsAskedTheirPlaceFirst(os, oneFile: true),
+        reason: os,
+      );
+    }
+    FolderPicker.debugOperatingSystem = 'macos';
+    expect(
+      writtenFileIsStagedFirst,
+      isFalse,
+      reason: 'the Mac\'s, which made first until 2026-10-15',
+    );
   });
 }

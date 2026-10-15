@@ -923,9 +923,12 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
 ///
 /// So the roads are the same and the reasons are the ones already written
 /// down: desktop has a save panel, so [pickSaveFileForUser] answers
-/// with a path and this writes there. iOS has none — Apple never built one
-/// — so the file is written into the app container FIRST and
-/// [exportFileForUser] moves it where the picker says.
+/// with a path and this writes there — or, where that path is the one the
+/// sandbox lets it write (macOS), makes the file in a room of its own and
+/// moves it there ([_writtenOnto]). iOS has none — Apple never built one —
+/// and Android's makes the file the moment a place is picked, so there the
+/// file is written into the app container FIRST and [exportFileForUser]
+/// moves it where the picker says.
 ///
 /// ⛔The container copy is deleted on the desktop road and MOVED on the
 /// scoped one, so neither leaves a second copy behind (유저 08-27: 「사본
@@ -959,12 +962,9 @@ Future<String?> handWrittenFileToUser(
       return null;
     }
     // Straight to the destination — the desktop law, and the reason Save
-    // As stopped staging and moving (a cross-volume rename cannot work).
-    if (await write(picked)) {
-      return picked;
-    }
-    _discardQuietly(File(picked));
-    return null;
+    // As stopped staging and moving (a cross-volume rename cannot work) —
+    // where the place allows it ([_writtenOnto]).
+    return await _writtenOnto(picked, write) ? picked : null;
   }
   final grant = await placeStagedFileForUser(
     context,
@@ -976,16 +976,61 @@ Future<String?> handWrittenFileToUser(
   return grant?.path ?? grant?.document?.uri;
 }
 
+/// [write] at [place], where the save window answered: straight there — or,
+/// where that path is all the place allows, no temp file beside it and no
+/// folder around it ([aPlacedFileIsMovedOntoItsPlaceHere], macOS's
+/// sandbox), made in a room of its own and moved onto it, as the export
+/// window's lone file is. Whether a file stands at [place] after. A write
+/// that failed leaves nothing of its own: straight there, what it made at
+/// [place] is swept ([_discardQuietly]) — in a room, it goes with the room,
+/// and whatever stood at [place] before was never touched.
+///
+/// ⛔Not merged with that run's `_madeInARoomAndMovedOnto`: the SECOND
+/// room-and-move, and the rule of three holds — the run's room is its
+/// outbox, read by everything the run writes. The third merges them.
+Future<bool> _writtenOnto(
+  String place,
+  Future<bool> Function(String path) write,
+) async {
+  if (!aPlacedFileIsMovedOntoItsPlaceHere) {
+    if (await write(place)) {
+      return true;
+    }
+    _discardQuietly(File(place));
+    return false;
+  }
+  final room = Directory.systemTemp.createTempSync('anicel_stage_');
+  try {
+    final made = File('${room.path}/${fileNameOfPath(place)}');
+    if (!await write(made.path) || !made.existsSync()) {
+      return false;
+    }
+    moveFileOnto(made.path, place);
+    return true;
+  } finally {
+    _discardStaging(room);
+  }
+}
+
 /// Whether [handWrittenFileToUser] writes its file into the app FIRST, for
-/// the OS picker to place after — where there is no save window to ask the
-/// place before (iOS, Android).
+/// the OS picker to place after — where no save window asks the place
+/// before it is made (iOS, Android: [FolderPicker.aSaveWindowAnswersAPath],
+/// the law [outputsAskedTheirPlaceFirst] answers the export window's one
+/// file by). Read through the picker's own OS, as the save window it opens
+/// and the move onto its answer are ([aPlacedFileIsMovedOntoItsPlaceHere]).
 ///
 /// A caller that says what its write is doing asks it here, so its words
 /// follow the road the door takes: on this road a finished write is READY,
 /// not saved — the picker can still be backed out of (유저 2026-08-31:
 /// 「로딩창뜨고, 준비가 완료됐습니다 띄우고 … 픽커 완료되고 나서
 /// 로딩/저장완료 안내창 띄우는게 직관적」).
-bool get writtenFileIsStagedFirst => FolderPicker.grantsAreScoped;
+///
+/// ↩️It was [FolderPicker.grantsAreScoped], which sent macOS down iOS's road
+/// — the app wrote first and a picker placed it — while the export window's
+/// one file asked macOS's save window first (F-221 ③, 유저 2026-10-06:
+/// 「맥도 그럼 윈도랑 통일할수있으면 통일」). The macOS runner showed the two
+/// apart (2026-10-15, board mac-one-file-hand-over-still-makes-first).
+bool get writtenFileIsStagedFirst => !FolderPicker.aSaveWindowAnswersAPath;
 
 /// THE SCOPED ROAD: writes a file called [suggestedName] into a staging
 /// directory of its own via [write], hands it to the OS picker, and

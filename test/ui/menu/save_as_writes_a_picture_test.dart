@@ -40,10 +40,12 @@ void main() {
   late Directory folder;
 
   setUp(() {
-    // The desktop's road — a save window that answers with a path — wherever
-    // this runs: a sandboxed Mac writes into the app first and its picker
-    // places the file, the iPad's road the last test pins (the macOS CI
-    // runner, 2026-10-15: three tests waited on a picker nobody answered).
+    // The straight road — a save window that answers with a path, written
+    // where it said — wherever this runs. A Mac asks the same window and
+    // moves the picture there from a room of its own (a test below), and
+    // the iPad's road is the last test's. (The macOS CI runner, 2026-10-15:
+    // three tests waited on a picker nobody answered — a Mac took the
+    // iPad's road then, board mac-one-file-hand-over-still-makes-first.)
     FolderPicker.debugOperatingSystem = 'windows';
     folder = Directory.systemTemp.createTempSync('save-as-picture');
     deleteAfterSessionEnds(folder);
@@ -388,6 +390,34 @@ void main() {
       expect(rowOf(strip, tester, 'file-export').enabled, isFalse);
       expect(rowOf(strip, tester, 'file-save-as').enabled, isTrue);
     });
+  });
+
+  testWidgets('🎯a Mac asks its save window first, as here — the picture '
+      'lands where it said with nothing beside it, and the write IS the save '
+      '(F-221 ③)', (tester) async {
+    FolderPicker.debugOperatingSystem = 'macos';
+    final strip = await pumpApp(tester);
+    final session = strip.projects.active;
+    drawOnCurrentFrame(session);
+    final target = '${folder.path}${Platform.pathSeparator}frame.png';
+    FolderPicker.debugSaveDestinationPicker = ({
+      required String suggestedName,
+      String? initialDirectory,
+    }) async => FolderGrant.granted(path: target, kind: GrantKind.file);
+
+    await pressRow(tester, 'menu-file-save-as-png');
+    final watched = await watchUntil(
+      tester,
+      () => File(target).existsSync() && noWindowUp(),
+    );
+
+    expect(File(target).readAsBytesSync().sublist(1, 4), 'PNG'.codeUnits);
+    expect(folder.listSync(), hasLength(1), reason: 'nothing beside it');
+    expect(watched.labels, [
+      AppText.strings.saveProgressRunning,
+      AppText.strings.saveProgressDone,
+    ], reason: 'no picker after it to back out of: SAVED, never READY');
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨where the picker PLACES it (iPad), the write says READY and '
