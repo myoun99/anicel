@@ -175,7 +175,6 @@ class PlaybackRig implements PlaybackRun {
         idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
             ? Duration.zero
             : const Duration(milliseconds: 1200),
-        afterFrameCached: playbackCache.enforcePlaybackCacheBudget,
         // A movie kept as a reference decodes before its frame composes.
         beforeCompose: _movieCels.hydrate,
       );

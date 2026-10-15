@@ -85,7 +85,10 @@ class PlaybackCacheBudget implements PictureRoom {
     _enforcer?.maxBytes = _debugMaxBytes ?? bytes;
   }
 
-  /// The playback cache's trim, run by the warmer after each picture lands.
+  /// The playback cache's trim, run when the line moves under what is held —
+  /// the allowance, a run that borrows it, a memory warning. ⛔Not after a
+  /// picture lands: the warmer asks the room again then ([makeRoomFor]),
+  /// which never lets go of what it just made (F-365).
   ///
   /// 🚨WHAT IS LET GO IS WHAT IS WANTED LATEST ([FrameDemand] — the one
   /// order the warmer makes pictures in). ↩️B1 had to DERIVE a kept range

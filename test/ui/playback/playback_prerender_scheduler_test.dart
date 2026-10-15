@@ -331,9 +331,9 @@ void main() {
       final scheduler = PlaybackPrerenderScheduler(
         pictures: f.pictures,
         resolveCut: (_) => cut(),
-        afterFrameCached: () => warmed += 1,
         idleDelay: Duration.zero,
       );
+      scheduler.landings.addListener(() => warmed += 1);
       var reports = 0;
       scheduler.progress.addListener(() => reports += 1);
       void warm() => scheduler.requestWarmCut(
@@ -1139,6 +1139,39 @@ void main() {
         await rested(scheduler);
 
         expect(there(f.pictures), [false, true, false, false]);
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 1, total: 1),
+          reason: 'and no other: for the next one there is no room',
+        );
+        scheduler.dispose();
+        f.layerImages.dispose();
+      });
+    });
+
+    testWidgets('where the clock does not wait, the picture the walk starts '
+        'on is made whatever the room — a run that never waits still shows '
+        'something new (F-365)', (tester) async {
+      await tester.runAsync(() async {
+        final f = inked();
+        final room = _Room(f.pictures, 0);
+        final scheduler = PlaybackPrerenderScheduler(
+          pictures: f.pictures,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+        );
+        room.demand = () => scheduler.demand;
+
+        playhead = 1;
+        scheduler.follow(run(lead: (_) => 2));
+        await rested(scheduler);
+
+        expect(
+          there(f.pictures),
+          [false, false, false, true],
+          reason: 'two frames on from the playhead',
+        );
         expect(
           scheduler.progress.value,
           const PrerenderProgress(cached: 1, total: 1),

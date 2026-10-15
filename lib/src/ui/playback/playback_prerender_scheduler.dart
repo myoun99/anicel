@@ -42,7 +42,7 @@ class PrerenderProgress {
 }
 
 /// The room playback's pictures have, asked by their maker before it makes
-/// one.
+/// one — and again once it has landed ([PlaybackPrerenderScheduler._landed]).
 abstract interface class PictureRoom {
   /// The bytes pictures may hold now.
   int get bytes;
@@ -78,7 +78,6 @@ class PlaybackPrerenderScheduler {
     required this.pictures,
     required this.resolveCut,
     this.room,
-    this.afterFrameCached,
     this.beforeCompose,
     this.idleDelay = const Duration(milliseconds: 400),
   });
@@ -90,9 +89,6 @@ class PlaybackPrerenderScheduler {
 
   /// Null = there is room for everything (a test that fills no budget).
   final PictureRoom? room;
-
-  /// Called after each composited frame (budget enforcement hook).
-  final void Function()? afterFrameCached;
 
   /// Fills what a frame's composite reads from OUTSIDE the cel store before
   /// the frame is composed — a movie kept as a reference is decoded here, so
@@ -433,11 +429,14 @@ class PlaybackPrerenderScheduler {
       final step = (lead + reached) % length;
       final madeRoom =
           room?.makeRoomFor(bytes: pictureBytes, step: step) ?? true;
-      // 🚨THE PICTURE UNDER THE PLAYHEAD IS MADE WHATEVER THE ROOM. It is the
+      // 🚨THE PICTURE THE WALK STARTS ON IS MADE WHATEVER THE ROOM. It is the
       // one a screen is about to show and the one a run that waits is
       // waiting for: an allowance with no room for it — every picture held
       // is on a screen — would stand that run for good. It is one picture.
-      if (!madeRoom && step != 0) {
+      // ↩️It was the picture under the playhead, and a walk that starts
+      // ahead of it — where the clock will not wait — never made it: under
+      // a line that small such a run showed nothing new at all (F-365).
+      if (!madeRoom && reached != 0) {
         // No more fits: what is held is the window.
         _progress.value = PrerenderProgress(cached: reached, total: reached);
         await _rest(generation);
@@ -467,8 +466,7 @@ class PlaybackPrerenderScheduler {
         await _wait(Duration.zero);
         continue;
       }
-      afterFrameCached?.call();
-      _landings.value += 1;
+      _landed(step);
       _changes.value += 1;
       // Yield so interactive work interleaves between pictures.
       await _wait(Duration.zero);
@@ -549,6 +547,33 @@ class PlaybackPrerenderScheduler {
         ? took
         : (_composeTime * 3 + took) ~/ 4;
     return true;
+  }
+
+  /// A picture made for [step] has landed: the room is asked again, by what
+  /// it does weigh, and whoever counts landings hears of it.
+  ///
+  /// 🚨WHAT THE WALK MADE, THE BUDGET KEEPS (F-365, 유저 2026-10-15 · iPad
+  /// · AMMI OP: 「재생전 렌더링은 3번컷 처음부분에서 막혀서 그이후로
+  /// 재생해도 재생안되고」). The room was made by what the picture was
+  /// estimated to weigh — a canvas's worth a row — and a row weighs its
+  /// content: rounded up to its tiles, or inked out onto the pasteboard, it
+  /// weighs more. Asked again, the room lets go, as it did before the
+  /// picture was made, only of pictures wanted after it: the line is
+  /// overrun by what the estimates missed, no more, and the walk's next ask
+  /// finds no room and rests. ↩️A trim of everything but the frame under
+  /// the playhead ran here, and the picture just made — the one wanted
+  /// latest — was what it let go of: the walk found it missing, made it
+  /// again, and never rested; a run that renders first waits for the walk
+  /// to rest.
+  ///
+  /// ★The law the export holds its rows by ([HeldRows]: by what a row does
+  /// weigh, never letting go of one shown sooner). ⛔Not the media viewer's
+  /// `keeping` — the page that landed and nothing else: its room is asked by
+  /// the very size that lands. Here, keeping only what landed would let go
+  /// of the picture before it, and the walk would make the two in turn.
+  void _landed(int step) {
+    room?.makeRoomFor(bytes: 0, step: step);
+    _landings.value += 1;
   }
 
   bool _isStale(int generation) => _disposed || generation != _generation;
@@ -677,8 +702,7 @@ final class _AskedAhead {
         _onTheirWay.remove(key);
         if (!scheduler._isStale(_generation)) {
           if (landed) {
-            scheduler.afterFrameCached?.call();
-            scheduler._landings.value += 1;
+            scheduler._landed(step);
           }
           scheduler._changes.value += 1;
         }
