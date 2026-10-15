@@ -224,6 +224,30 @@ void main() {
     expect(released, made, reason: 'a buffer nothing landed in leaked');
   });
 
+  test('a window that holds nothing (asked past its file\'s end) makes no '
+      'buffer, and lands as an empty window', () async {
+    final device = openNull();
+    final (store, _) = await streamingStore();
+    final reader = planAround(store, mixOf(['a']), 5000).reads.single.reader;
+    final past = (reader: reader, start: reader.length + 10, count: 100);
+    final made = <int>[];
+    final hands = (
+      make: (int floats) {
+        made.add(floats);
+        return calloc<Float>(floats);
+      },
+      release: (Pointer<Float> buffer) => calloc.free(buffer),
+    );
+
+    expect(readStreamWindowsInto([past], hands), [
+      (startSample: reader.length, address: 0, floats: 0),
+    ]);
+    expect(made, isEmpty, reason: 'a buffer for nothing, which nothing frees');
+    final windows = (await readStreamWindowsOnAWorker([past], device))!;
+    expect(windows.single.samples, isEmpty);
+    expect(windows.single.sourceStart, reader.length);
+  }, skip: skip);
+
   test('🚨and on the worker\'s road, windows that did not land whole are '
       'none at all', () async {
     final device = openNull();
