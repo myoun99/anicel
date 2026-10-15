@@ -250,7 +250,11 @@ import 'dart:io';
 ///   capture's own clock line, the playback's shape, so a take is placed by
 ///   what the microphone had taken in when its anchor was HEARD
 ///   (`AudioRecorder.capturedAt`, board take-head-trims-at-the-playback-start).
-const int kQaEngineAbiVersion = 47;
+/// - v48: `qa_audio_buffer_new` / `_retain` / `_release` / `_holds`, and a
+///   `qa_audio_device_set_schedule` that names buffers — the device's PCM
+///   is made once in C memory and a schedule copies none of it
+///   (`QaAudioDevice.setSchedule`, board play-press-first-frame-stall).
+const int kQaEngineAbiVersion = 48;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

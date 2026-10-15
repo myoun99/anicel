@@ -565,6 +565,86 @@ void main() {
     }, skip: skip);
   });
 
+  group('the device plays its own PCM where it lies '
+      '(play-press-first-frame-stall)', () {
+    // Ten seconds, so a source runs out long after every wait below.
+    const frames = 48000 * 10;
+
+    List<AudioMixClip> clipsOver(int sources) => [
+      for (var index = 0; index < sources; index += 1)
+        AudioMixClip(sourceIndex: index, startSample: 0, endSample: frames),
+    ];
+
+    test('a list the device made is held by its maker and by each source '
+        'that plays it, and by nothing a schedule leaves behind', () {
+      final device = openNull();
+      final made = device.newSamples(frames * 2)!;
+      expect(device.debugHoldsOf(made), 1, reason: 'its maker');
+
+      final source = AudioMixSource(samples: made, channels: 2);
+      expect(
+        device.setSchedule(clips: clipsOver(2), sources: [source, source]),
+        isTrue,
+      );
+      expect(
+        device.debugHoldsOf(made),
+        3,
+        reason: 'its maker and both sources of the slot playing it — the '
+            'call let go of its own',
+      );
+
+      expect(device.setSchedule(clips: const [], sources: const []), isTrue);
+      expect(
+        device.debugHoldsOf(made),
+        1,
+        reason: 'the replaced slot let go of what it played',
+      );
+    }, skip: skip);
+
+    test('a list the device made plays where it lies: what is written into '
+        'it after the schedule is what is heard', () async {
+      final device = openNull();
+      final made = device.newSamples(frames * 2)!
+        ..fillRange(0, frames * 2, 0.25);
+      device.setSchedule(
+        clips: clipsOver(1),
+        sources: [AudioMixSource(samples: made, channels: 2)],
+      );
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+
+      made.fillRange(0, made.length, 0.6);
+      expect(
+        await waitFor(() => device.peakFor(0) > 0.55),
+        isTrue,
+        reason: 'the slot plays the buffer itself — nothing was copied',
+      );
+      device.stop();
+    }, skip: skip);
+
+    test('a list the device did not make plays as it was when scheduled — '
+        'the callback never reads the Dart heap', () async {
+      final device = openNull();
+      final plain = Float32List(frames * 2)..fillRange(0, frames * 2, 0.25);
+      device.setSchedule(
+        clips: clipsOver(1),
+        sources: [AudioMixSource(samples: plain, channels: 2)],
+      );
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+
+      plain.fillRange(0, plain.length, 0.6);
+      expect(
+        await waitFor(() => device.peakFor(0) > 0.3, millis: 300),
+        isFalse,
+        reason: 'the schedule plays a copy made when it was set',
+      );
+      expect(device.peakFor(0), closeTo(0.25, 0.01));
+      expect(device.debugHoldsOf(plain), -1);
+      device.stop();
+    }, skip: skip);
+  });
+
   group('capture (AUDIO-PRO R5)', () {
     test('the null backend captures: open, deliver, drain, stop', () async {
       final device = QaAudioDevice.instance!;

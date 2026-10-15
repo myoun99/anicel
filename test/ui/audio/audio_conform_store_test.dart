@@ -158,6 +158,44 @@ void main() {
     store.dispose();
   });
 
+  test('🚨the PCM the device plays lands where the device plays it: the '
+      'conform and each rate it is converted to are placed once, as they '
+      'land', () async {
+    final placed = <Float32List>[];
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => _usableResult(),
+      resampleRunner: (request) async => Float32List.fromList([0.9]),
+      placeForPlayback: (floats) {
+        final samples = Float32List(floats);
+        placed.add(samples);
+        return samples;
+      },
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+
+    expect(placed, hasLength(1));
+    expect(store.samplesFor('a.wav'), same(placed[0]));
+    expect(store.samplesAtRate('a.wav', 48000), same(placed[0]));
+    expect(placed[0], _usableResult().samples);
+    final landed = store.resultFor('a.wav')!;
+    expect(landed.isUsable, isTrue);
+    expect(store.peaksFor('a.wav')?.peaks, hasLength(1));
+    expect((landed.channels, landed.sampleRate, landed.frames), (2, 48000, 2));
+
+    expect(store.samplesAtRate('a.wav', 44100), isNull);
+    await pumpEventQueue();
+    expect(placed, hasLength(2));
+    expect(store.samplesAtRate('a.wav', 44100), same(placed[1]));
+    expect(placed[1], Float32List.fromList([0.9]));
+
+    store.samplesAtRate('a.wav', 48000);
+    store.samplesAtRate('a.wav', 44100);
+    expect(placed, hasLength(2), reason: 'what landed is placed once');
+    store.dispose();
+  });
   test('a project-rate change makes cached entries stale on their own — '
       'undo and redo self-heal without hooks', () async {
     var projectRate = 48000;

@@ -549,10 +549,10 @@ int qaAudioEnvelopeTotal(List<AudioMixClip> clips) {
 /// [qaAudioWriteClips] names.
 ///
 /// What genuinely differs between the two paths stays with each caller:
-/// the device flattens its PCM into one block with an offset table
-/// (the C copies it), the mixer callocs a buffer per source and points
-/// the struct at it. That is a value — the `samples` pointer handed to
-/// [writeSource] — not a mode.
+/// the device points each struct at a buffer of its own that it holds
+/// for the call (the slot holds it after), the mixer callocs a buffer per
+/// source and points the struct at it. That is a value — the `samples`
+/// pointer handed to [writeSource] — not a mode.
 final class QaAudioScheduleArrays {
   factory QaAudioScheduleArrays(
     List<AudioMixClip> clips,
@@ -591,9 +591,8 @@ final class QaAudioScheduleArrays {
   final Pointer<QaAudioEnvelopeKeyStruct> envelopeArray;
   final int envelopeTotal;
 
-  /// Writes [source]'s struct at [index], pointed at [samples] — the C
-  /// copy's `nullptr` for the device path, a Dart-owned buffer for the
-  /// mixer's.
+  /// Writes [source]'s struct at [index], pointed at [samples] — a device
+  /// buffer for the device path, a Dart-owned buffer for the mixer's.
   void writeSource(int index, AudioMixSource source, Pointer<Float> samples) {
     final target = sourceArray[index];
     target.sourceStart = source.sourceStart;

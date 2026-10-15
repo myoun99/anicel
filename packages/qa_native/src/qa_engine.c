@@ -6150,4 +6150,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v47: qa_audio_capture_clock / qa_audio_capture_frames - the capture's own
 // clock line, so a take is placed by what the microphone had taken in when
 // its anchor was heard.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 47; }
+// v48: qa_audio_buffer_new / _retain / _release / _holds, and a set_schedule
+// that names buffers - the device's PCM is made once in C memory, and a
+// schedule copies none of it.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 48; }

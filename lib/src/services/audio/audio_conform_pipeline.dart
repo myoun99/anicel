@@ -158,6 +158,22 @@ class ConformResult {
 
   final String? error;
 
+  /// This result with its PCM in another place — the same sound, wherever
+  /// it lives (`AudioConformStore.placeForPlayback`). On the class, so no
+  /// field is left behind by a copy spelled out somewhere else.
+  ConformResult withSamples(Float32List samples) => ConformResult(
+    outcome: outcome,
+    conformBytes: conformBytes,
+    peaks: peaks,
+    samples: samples,
+    channels: channels,
+    sampleRate: sampleRate,
+    frames: frames,
+    speedNumerator: speedNumerator,
+    speedDenominator: speedDenominator,
+    error: error,
+  );
+
   bool get isUsable =>
       outcome == ConformOutcome.built || outcome == ConformOutcome.reused;
 

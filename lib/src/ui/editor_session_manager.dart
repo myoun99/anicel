@@ -79,6 +79,7 @@ import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
+import '../native/qa_audio_device.dart' show audioOutputUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'session/cache_budgets.dart';
@@ -1634,6 +1635,8 @@ class EditorSessionManager extends ChangeNotifier
               runner: Platform.environment['FLUTTER_TEST'] == 'true'
                   ? (request) => Future.value(runConformHere(request))
                   : null,
+              placeForPlayback: (floats) =>
+                  audioOutputUnlessTesting()?.newSamples(floats),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.
