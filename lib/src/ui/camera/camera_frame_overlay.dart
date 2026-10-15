@@ -142,7 +142,7 @@ class CameraFrameBox extends StatelessWidget {
     required this.cameraFrameSize,
     required this.canvasSize,
     required this.viewport,
-    required this.claimsCanvas,
+    required this.presses,
     required this.onCancelled,
     this.move,
     this.zoom,
@@ -156,7 +156,7 @@ class CameraFrameBox extends StatelessWidget {
   /// The cut's canvas — the stage the turn keeps to.
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
-  final bool claimsCanvas;
+  final RowBoxPresses presses;
   final VoidCallback onCancelled;
   final RowBoxLanding<CanvasPoint>? move;
   final RowBoxLanding<double>? zoom;
@@ -189,7 +189,7 @@ class CameraFrameBox extends StatelessWidget {
       ),
       canvasSize: canvasSize,
       viewport: viewport,
-      claimsCanvas: claimsCanvas,
+      presses: presses,
       // The frame's own hairline is the outline ([CameraFrameOverlay]).
       outlined: false,
       onCancelled: onCancelled,

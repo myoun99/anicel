@@ -95,6 +95,24 @@ class SheetPhotoEdits {
     return any;
   }
 
+  /// [photos] made of the photos [key]'s cel carries, as ONE step of
+  /// [history] named [description] — what a hand does to a photo held on a
+  /// sheet (`SheetPhotoHold`): a move, a scale, a turn, the photo taken
+  /// off.
+  void edit(
+    BrushFrameKey key, {
+    required String description,
+    required List<CelPhoto> Function(List<CelPhoto> photos) photos,
+    required HistoryManager history,
+  }) {
+    for (final store in _stores()) {
+      if (_stepOn(store, key, description, photos) case final step?) {
+        history.execute(step);
+        return;
+      }
+    }
+  }
+
   /// [photos] made of the photos of every cel [named] says, each a step of
   /// [history].
   void _edit(
@@ -105,25 +123,39 @@ class SheetPhotoEdits {
     for (final store in _stores()) {
       for (final MapEntry(:key, value: paths)
           in store.celPhotoPathsByKey.entries) {
-        final size = named(key, paths)
-            ? store.bakedSurfaceOrNull(key)?.canvasSize
-            : null;
-        if (size == null) {
+        if (!named(key, paths)) {
           continue;
         }
-        history.execute(
-          CelPhotoEditCommand(
-            coordinator: BrushFrameEditingCoordinator.overInk(
-              store: store,
-              canvasSize: size,
-              initialFrameKey: key,
-            ),
-            frameKey: key,
-            description: 'Edit photos',
-            photos: photos,
-          ),
-        );
+        if (_stepOn(store, key, 'Edit photos', photos) case final step?) {
+          history.execute(step);
+        }
       }
     }
+  }
+
+  /// The step that makes [photos] of the photos [key]'s cel carries in
+  /// [store], through a coordinator of its own at the cel's size — null
+  /// where [store] holds no picture of [key], or [photos] changes nothing
+  /// there: a step that changed nothing is one Ctrl+Z that does nothing.
+  static CelPhotoEditCommand? _stepOn(
+    BrushFrameStore store,
+    BrushFrameKey key,
+    String description,
+    List<CelPhoto> Function(List<CelPhoto> photos) photos,
+  ) {
+    final picture = store.bakedSurfaceOrNull(key);
+    if (picture == null || identical(photos(picture.photos), picture.photos)) {
+      return null;
+    }
+    return CelPhotoEditCommand(
+      coordinator: BrushFrameEditingCoordinator.overInk(
+        store: store,
+        canvasSize: picture.canvasSize,
+        initialFrameKey: key,
+      ),
+      frameKey: key,
+      description: description,
+      photos: photos,
+    );
   }
 }

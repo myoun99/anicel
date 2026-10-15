@@ -1,3 +1,5 @@
+import 'dart:ui' show Rect;
+
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../core/turn_trig.dart';
@@ -78,6 +80,22 @@ LayerPlacement placementOf(LayerPoseSample sample, CanvasSize canvasSize) =>
         anchorPoint: sample.anchorPoint,
       ),
     );
+
+/// [rect]'s four corners where [placement] carries them — top-left,
+/// top-right, bottom-right, bottom-left: the order a box wears them.
+///
+/// ⛔ONE spelling of them. A picture rasterized onto a cel, a reference
+/// row's box, a row's ink where the canvas shows it and a photo's box on a
+/// sheet (I-97) each listed the four on their own.
+List<CanvasPoint> placedCorners(LayerPlacement placement, Rect rect) => [
+  for (final corner in [
+    rect.topLeft,
+    rect.topRight,
+    rect.bottomRight,
+    rect.bottomLeft,
+  ])
+    placement.apply(CanvasPoint(x: corner.dx, y: corner.dy)),
+];
 
 /// [placement] as the matrix a `Canvas` takes. [rasterScale] restates the
 /// same canvas-space placement in a scaled raster (a level of the display's

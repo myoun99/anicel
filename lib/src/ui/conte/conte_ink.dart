@@ -14,6 +14,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
+import '../session/sheet_photo_hold.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_ink_controller.dart';
@@ -166,6 +167,7 @@ class ConteInkLayer extends StatelessWidget {
     this.beforeLanding,
     this.imageFor,
     this.imageRepaint,
+    this.photoHold,
   });
 
   final ConteInkController controller;
@@ -215,6 +217,9 @@ class ConteInkLayer extends StatelessWidget {
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
+  /// Forwarded to [SheetInkLayer.photoHold].
+  final SheetPhotoHold? photoHold;
+
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
@@ -257,6 +262,7 @@ class ConteInkLayer extends StatelessWidget {
       },
       imageFor: imageFor,
       imageRepaint: imageRepaint,
+      photoHold: photoHold,
     );
   }
 }

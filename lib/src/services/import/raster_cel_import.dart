@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
@@ -304,25 +305,15 @@ Future<BitmapSurface> rasterizeImageToSurface({
 
 /// The canvas rect [placement] lays [image]'s pixels over — its four
 /// corners' bounds, so a turned picture is covered whole.
-ui.Rect _placedBounds(LayerPlacement placement, ui.Image image) {
-  final width = image.width.toDouble();
-  final height = image.height.toDouble();
-  final corners = [
-    for (final (x, y) in [
-      (0.0, 0.0),
-      (width, 0.0),
-      (width, height),
-      (0.0, height),
-    ])
-      placement.apply(CanvasPoint(x: x, y: y)),
-  ];
-  return ui.Rect.fromLTRB(
-    corners.map((point) => point.x).reduce(math.min),
-    corners.map((point) => point.y).reduce(math.min),
-    corners.map((point) => point.x).reduce(math.max),
-    corners.map((point) => point.y).reduce(math.max),
-  );
-}
+ui.Rect _placedBounds(LayerPlacement placement, ui.Image image) =>
+    pointsBounds([
+      for (final corner in placedCorners(
+        placement,
+        ui.Offset.zero &
+            ui.Size(image.width.toDouble(), image.height.toDouble()),
+      ))
+        ui.Offset(corner.x, corner.y),
+    ]);
 
 /// Bakes [tiles] — a decoded picture already cut into cel tiles of
 /// [defaultCelTileSize], straight RGBA, by their place in tiles — as [key]'s

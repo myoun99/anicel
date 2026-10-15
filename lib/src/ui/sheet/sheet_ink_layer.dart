@@ -7,6 +7,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cel_photo.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/brush_edit_session_state.dart';
@@ -27,6 +28,7 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../session/sheet_photo_hold.dart';
 import '../sheet_painting.dart'
     show
         SheetDeviceGrid,
@@ -36,6 +38,7 @@ import '../sheet_painting.dart'
         pictureShowsOnScreen;
 import '../widgets/cursor_notice.dart' show cursorNotices;
 import 'sheet_image_cache.dart' show SheetImageLookup;
+import 'sheet_photo_boxes.dart';
 import 'sheet_photos.dart' show SheetPhotosPainter;
 
 /// A window the sheet's brush draws through: where it sits on the paper,
@@ -714,6 +717,7 @@ class SheetInkLayer extends StatefulWidget {
     required this.onStrokeCommitted,
     this.imageFor,
     this.imageRepaint,
+    this.photoHold,
   });
 
   final List<SheetWindow> windows;
@@ -752,6 +756,12 @@ class SheetInkLayer extends StatefulWidget {
   /// what says one has landed.
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
+
+  /// The project's hand for the photos on its sheets (I-97): a press of
+  /// the tool on one takes it, into the box every box on the canvas wears
+  /// ([SheetPhotoBoxes]) — null where nobody holds them, and a photo is
+  /// then only drawn.
+  final SheetPhotoHold? photoHold;
 
   @override
   State<SheetInkLayer> createState() => _SheetInkLayerState();
@@ -811,6 +821,27 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
     return (position - Offset(viewport.panX, viewport.panY)) / viewport.zoom;
   }
 
+  /// Whether a press at [position], a point of this layer, is [window]'s:
+  /// it is the window on top there ([sheetInkOwnerAt]).
+  bool _owns(SheetWindow window, Offset position) => identical(
+    sheetInkOwnerAt(widget.windows, _paperOf(position)),
+    window,
+  );
+
+  /// A press past this layer lets go of the photo held on it, as a press
+  /// past its cell does (I-97-Q4 「칸 밖은 해제」) — on another sheet, on
+  /// another panel.
+  void _pressedOutside(PointerDownEvent event) {
+    final hold = widget.photoHold;
+    final held = hold?.held;
+    if (hold == null || held == null || !sheetPhotoPress(event)) {
+      return;
+    }
+    if (widget.windows.any((window) => window.key == held.key)) {
+      hold.letGoOf(held);
+    }
+  }
+
   /// The refusal of the window a press at [position] lands on, at the
   /// cursor — the canvas's notice for a press on an empty cell it may not
   /// fill.
@@ -866,17 +897,51 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       ),
       widget.viewport,
     );
+    final hold = widget.photoHold;
     // It claims the press, after the window it lands on has heard it — and
     // where that window refuses the pen, says why, as the canvas does.
-    return Listener(
+    final layer = Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: (event) => _refuseAt(event.localPosition),
       child: Stack(
         children: [
           for (final (:index, window: _, :region) in keeping)
             Positioned.fill(child: _framed(context, shown[index], region)),
+          // The photos over every window's brush (I-97-Q3): a press on one
+          // is the photo's, and no stroke starts there.
+          if (hold != null)
+            Positioned.fill(
+              child: SheetPhotoBoxes(
+                hold: hold,
+                keyPrefix: widget.keyPrefix,
+                windows: [
+                  for (final entry in keeping) _photoWindowOf(entry.window),
+                ],
+              ),
+            ),
         ],
       ),
+    );
+    return hold == null
+        ? layer
+        : TapRegion(onTapOutside: _pressedOutside, child: layer);
+  }
+
+  /// The photos [window]'s cel carries now.
+  List<CelPhoto> _photosOf(SheetWindow window) =>
+      widget.sessionStateFor(window).canvasState.currentSurface.photos;
+
+  /// [window] as its photos' boxes see it.
+  SheetPhotoWindow _photoWindowOf(SheetWindow window) {
+    final surface = widget.sessionStateFor(window).canvasState.currentSurface;
+    return (
+      id: window.id,
+      key: window.key,
+      photosNow: () => _photosOf(window),
+      canvasSize: surface.canvasSize,
+      viewport: window.inkViewport(widget.viewport),
+      laid: window.viewLaidBy(widget.viewport),
+      owns: (position) => _owns(window, position),
     );
   }
 
@@ -892,10 +957,7 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       shows: shown.shows,
       // The press is its own where it is the window on top, and the stroke
       // with it wherever the pen goes after (H49).
-      owns: (position) => identical(
-        sheetInkOwnerAt(widget.windows, _paperOf(position)),
-        window,
-      ),
+      owns: (position) => _owns(window, position),
       yieldsTo: shown.yieldsTo,
       // Its photos under its ink (I-97), each on a boundary of its own: a
       // stroke repaints the view and not them. ⛔Both always — a child that
@@ -949,16 +1011,33 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
   }
 
   /// [window]'s photos (I-97) on the surface it shows now, through its
-  /// view's viewport — what the print runs too ([printSheetInkAsLive]).
-  Widget _photos(BuildContext context, SheetWindow window) => CustomPaint(
-    painter: SheetPhotosPainter(
-      photos: widget.sessionStateFor(window).canvasState.currentSurface.photos,
-      viewport: window.inkViewport(widget.viewport),
-      devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-      imageFor: widget.imageFor,
-      repaint: widget.imageRepaint,
-    ),
-  );
+  /// view's viewport — what the print runs too ([printSheetInkAsLive]) —
+  /// the one a grab has where it has it, before it lands.
+  ///
+  /// ⚠️The cel is read when the hand says something, not when this layer
+  /// was last built: a grab let go lands its step and stops showing in the
+  /// same breath, and a frame that drew what the cel carried before the
+  /// step is the photo jumping back to where it stood.
+  Widget _photos(BuildContext context, SheetWindow window) {
+    final viewport = window.inkViewport(widget.viewport);
+    final ratio = EffectiveDevicePixelRatio.of(context);
+    final hold = widget.photoHold;
+    return ListenableBuilder(
+      listenable: Listenable.merge([hold]),
+      builder: (context, _) {
+        final photos = _photosOf(window);
+        return CustomPaint(
+          painter: SheetPhotosPainter(
+            photos: hold?.shownOn(window.key, photos) ?? photos,
+            viewport: viewport,
+            devicePixelRatio: ratio,
+            imageFor: widget.imageFor,
+            repaint: widget.imageRepaint,
+          ),
+        );
+      },
+    );
+  }
 
   /// [view] — a window's — laid as the window says
   /// ([SheetWindow.viewLaidBy]): the sheet's ink wider than its surface's own

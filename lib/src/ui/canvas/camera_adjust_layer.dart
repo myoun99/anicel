@@ -90,7 +90,7 @@ class CameraAdjustLayer extends StatelessWidget {
               viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.
-              claimsCanvas: false,
+              presses: RowBoxPresses.handles,
               onCancelled: adjust.dropShowing,
               // The box stands at scale 1 over the size the grab began at,
               // so what it lands is that size's two factors.

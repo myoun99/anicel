@@ -89,6 +89,29 @@ typedef RowBoxTangent = ({
   RowBoxLanding<CanvasPoint> landing,
 });
 
+/// Which presses a box takes ([RowTransformBox.presses]).
+///
+/// ⛔Three answers, and not a flag with a stage beside it: told apart by
+/// whether a stage was handed in, the stage would answer two questions —
+/// where the box turns, and which presses are its.
+enum RowBoxPresses {
+  /// Its cross, its handles and a path's tangents alone — under the two
+  /// tools that draw an area on the empty canvas the rest is theirs
+  /// (F-222-box-Q4).
+  handles,
+
+  /// Every press in the viewport: standing on the row, the box takes the
+  /// empty canvas under every other tool (F-222-box-Q4 「선택 · 잘라내기만
+  /// 빼고 모든 도구」), and a press it takes nothing by does nothing.
+  viewport,
+
+  /// The presses it takes something by — its cross, a handle, a tangent,
+  /// the inside, the turn on its stage — and no other: what lies under it
+  /// has the rest. A photo held on a sheet: a press past the cell it lies
+  /// in is the tool's as ever (I-97-Q4).
+  taken,
+}
+
 /// A ROW's transform box on the canvas — a layer's fx transform, the
 /// camera's frame, an SE name tag — under the one law every box keeps
 /// (F-222): a press takes the cross, a handle, a path's tangent, the
@@ -106,11 +129,7 @@ typedef RowBoxTangent = ({
 /// puts its anchor, by construction. What its handles are is its scale's
 /// to say ([RowBoxScale]).
 ///
-/// ⚠️[claimsCanvas] says whose the empty canvas is. Standing on the row, the
-/// box takes every press under every tool but the two that draw an area on
-/// the empty canvas (F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」):
-/// under those it takes its cross, its corners and a path's knobs alone, and
-/// the rest falls to the tool beneath.
+/// ⚠️[presses] says whose the empty canvas is ([RowBoxPresses]).
 class RowTransformBox extends StatefulWidget {
   const RowTransformBox({
     super.key,
@@ -118,15 +137,17 @@ class RowTransformBox extends StatefulWidget {
     required this.pose,
     required this.canvasSize,
     required this.viewport,
-    required this.claimsCanvas,
+    required this.presses,
     required this.onCancelled,
     this.outlined = true,
     this.move,
     this.scale,
     this.turn,
     this.turnSpace,
+    this.stage,
     this.cross,
     this.tangents = const [],
+    this.onPressedPast,
   });
 
   /// The box on the CANVAS, corner by corner (top-left, top-right,
@@ -141,9 +162,8 @@ class RowTransformBox extends StatefulWidget {
   final CanvasSize canvasSize;
   final CanvasViewport viewport;
 
-  /// Every press in the viewport is the box's, rather than its handles'
-  /// alone.
-  final bool claimsCanvas;
+  /// Which presses in the viewport are the box's.
+  final RowBoxPresses presses;
 
   /// A grab went away with nothing to keep — what it showed is dropped.
   final VoidCallback onCancelled;
@@ -175,6 +195,16 @@ class RowTransformBox extends StatefulWidget {
   /// folders above could only move, turn and scale evenly — true until a
   /// folder's scale became two numbers (F-256-Q1).
   final CanvasPoint Function(CanvasPoint onCanvas)? turnSpace;
+
+  /// Where outside the box it turns, as points of the canvas — null for the
+  /// canvas's own stage, the pasteboard.
+  ///
+  /// 🗣️I-97-Q4 (유저 2026-10-15): a photo held on a sheet turns outside its
+  /// box within the cell it lies in — 「그 칸 안은 회전, 칸 밖은 해제」.
+  final bool Function(CanvasPoint at)? stage;
+
+  /// A press the box did not take went down — what lies under it has it.
+  final ValueChanged<PointerDownEvent>? onPressedPast;
 
   /// The cross: where it stands on the canvas ([at]), the point a drag
   /// carries ([value], moved by the drag's travel), and where that lands.
@@ -213,6 +243,12 @@ class _RowTransformBoxState extends State<RowTransformBox> {
   /// edge's travel is read against the box it was grabbed on.
   int _grabbedHandle = -1;
   List<CanvasPoint> _startCorners = const [];
+
+  /// The press as the box answered it when the pointer went DOWN — what the
+  /// drag that begins there takes. The box may be built anew in between: a
+  /// photo taken by the press that drags it wears its handles by the time
+  /// the drag begins, and on a small one the press would land on a handle.
+  BoxPressHit? _downHit;
 
   /// The pointer's screen distance from the pivot at the press — a scale is
   /// the ratio of the distance now to it.
@@ -290,22 +326,21 @@ class _RowTransformBoxState extends State<RowTransformBox> {
         ).containsPoint(widget.viewport.viewportOffsetToCanvas(press)),
     onStage: (press) {
       final at = widget.viewport.viewportOffsetToCanvas(press);
-      return widget.canvasSize.containsPasteboardPoint(x: at.x, y: at.y);
+      return widget.stage?.call(at) ??
+          widget.canvasSize.containsPasteboardPoint(x: at.x, y: at.y);
     },
     turns: widget.turn != null,
   );
 
-  /// Whether a press at [local] is the box's — see
-  /// [RowTransformBox.claimsCanvas].
-  bool _claims(Offset local) {
-    if (widget.claimsCanvas) {
-      return true;
-    }
-    final press = _pressAt(local)?.press;
-    return press == BoxPress.anchor ||
-        press == BoxPress.handle ||
-        press == BoxPress.tangent;
-  }
+  /// Whether a press at [local] is the box's ([RowTransformBox.presses]).
+  bool _claims(Offset local) => switch (widget.presses) {
+    RowBoxPresses.viewport => true,
+    RowBoxPresses.taken => _pressAt(local) != null,
+    RowBoxPresses.handles => switch (_pressAt(local)?.press) {
+      BoxPress.anchor || BoxPress.handle || BoxPress.tangent => true,
+      _ => false,
+    },
+  };
 
   void _begin(DragStartDetails details) {
     final local = details.localPosition;
@@ -318,7 +353,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
       _grab = null;
       return;
     }
-    final hit = _pressAt(local);
+    final hit = _downHit;
     _grab = hit?.press;
     _grabbedHandle = hit?.handle ?? -1;
     _startCorners = widget.corners;
@@ -579,8 +614,25 @@ class _RowTransformBoxState extends State<RowTransformBox> {
 
   @override
   Widget build(BuildContext context) {
-    final corners = _screenCorners;
-    // A press the box does not claim falls to the tool beneath.
+    // A press the box does not claim falls to the tool beneath — and is
+    // told of ([RowTransformBox.onPressedPast]): see-through, this hears it
+    // and stops nothing. ⛔In the tree whatever is told: a box that begins
+    // to tell mid-press (a photo taken by the press that drags it) would
+    // otherwise build the tree under it anew, and lose the grab it is in.
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (widget.onPressedPast case final told?
+            when !_claims(event.localPosition)) {
+          told(event);
+        }
+      },
+      child: _claimed(_screenCorners),
+    );
+  }
+
+  /// The box over the presses it claims ([_claims]).
+  Widget _claimed(List<Offset> corners) {
     return HitGate(
       admits: _claims,
       // PEN-13: raw contact tracking for the touch gate — the pan callbacks
@@ -615,8 +667,12 @@ class _RowTransformBoxState extends State<RowTransformBox> {
                     recognizer.gestureSettings =
                         MediaQuery.maybeGestureSettingsOf(context);
                     // The handles are small: the press is decided where the
-                    // pointer went DOWN, not where the drag was accepted.
+                    // pointer went DOWN, and as the box stood then
+                    // ([_downHit]) — not where or when the drag was
+                    // accepted.
                     recognizer.dragStartBehavior = DragStartBehavior.down;
+                    recognizer.onDown = (details) =>
+                        _downHit = _pressAt(details.localPosition);
                     recognizer.onStart = _begin;
                     recognizer.onUpdate = _update;
                     recognizer.onEnd = (_) => _end();

@@ -759,6 +759,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         beforeLanding: _makeWhatTheStrokeLandsIn,
         imageFor: widget.imageFor,
         imageRepaint: widget.imageRepaint,
+        photoHold: _session.sheetPhotoHold,
       ),
     );
   }

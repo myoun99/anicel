@@ -1176,8 +1176,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the
-        // panel's delete (the frames and rows selected there).
-        if (_canvasTextCommands.holdsText) {
+        // panel's delete (the frames and rows selected there). A photo
+        // held on a sheet (I-97-Q3) is taken off its cel as its pill's
+        // delete takes it — ahead of the text: any press of a tool past
+        // the photo lets go of it, so one still held is the last thing
+        // the hand took.
+        final photo = _session.sheetPhotoHold;
+        if (photo.held != null) {
+          photo.delete();
+        } else if (_canvasTextCommands.holdsText) {
           _canvasTextCommands.deleteText();
         } else {
           _workingPanel
@@ -1234,6 +1241,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _abandonPolygonOrCancelTransform() {
+    // I-97-Q4: Escape lets go of a photo held on a sheet, as a press past
+    // its cell does — first: any press of a tool past the photo lets go of
+    // it, so one still held is the last thing the hand took.
+    final photo = _session.sheetPhotoHold;
+    if (photo.held != null) {
+      photo.letGo();
+      return;
+    }
     // I-79: Escape closes a canvas being adjusted on the canvas — its ✕.
     if (_session.canvasAdjust.isOpen) {
       _session.canvasAdjust.end();

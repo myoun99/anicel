@@ -9,6 +9,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
+import '../session/sheet_photo_hold.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import 'timesheet_document_painter.dart';
@@ -56,6 +57,7 @@ class TimesheetInkLayer extends StatelessWidget {
     this.cacheInvalidationSink,
     this.imageFor,
     this.imageRepaint,
+    this.photoHold,
   });
 
   final TimesheetInkController controller;
@@ -77,6 +79,9 @@ class TimesheetInkLayer extends StatelessWidget {
   /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
   final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
+
+  /// Forwarded to [SheetInkLayer.photoHold].
+  final SheetPhotoHold? photoHold;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -110,6 +115,7 @@ class TimesheetInkLayer extends StatelessWidget {
       ),
       imageFor: imageFor,
       imageRepaint: imageRepaint,
+      photoHold: photoHold,
     );
   }
 }

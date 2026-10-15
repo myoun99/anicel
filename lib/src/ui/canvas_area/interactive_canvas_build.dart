@@ -1114,13 +1114,15 @@ class _HostFrame {
   /// and its handles worked (I-89-Q9).
   final bool walksAPath;
 
-  /// Whether the row's box takes every press on the canvas, rather than its
-  /// cross, corners and a path's knobs alone ([RowTransformBox.claimsCanvas]).
+  /// Which presses on the canvas the row's box takes: every one, or its
+  /// cross, corners and a path's knobs alone ([RowTransformBox.presses]).
   ///
   /// 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」: standing on the
   /// row, the box takes the empty canvas under every tool but the two that
   /// draw an area on it — a selection is not stopped by the kind of row
   /// you stand on.
-  bool get boxClaimsCanvas =>
-      tool != CanvasTool.select && tool != CanvasTool.cut;
+  RowBoxPresses get boxPresses =>
+      tool == CanvasTool.select || tool == CanvasTool.cut
+      ? RowBoxPresses.handles
+      : RowBoxPresses.viewport;
 }

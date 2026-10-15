@@ -160,7 +160,7 @@ void main() {
               cameraFrameSize: frameSize,
               canvasSize: const CanvasSize(width: 1920, height: 1080),
               viewport: CanvasViewport(zoom: 0.5),
-              claimsCanvas: true,
+              presses: RowBoxPresses.viewport,
               onCancelled: () {},
               move: into('move'),
               zoom: into('zoom'),

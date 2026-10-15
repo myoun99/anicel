@@ -79,7 +79,7 @@ import '../models/layer_kind.dart';
 import '../models/reference_swap.dart' show referenceRedrawFor;
 import '../services/import/raster_cel_import.dart' show picturePlacement;
 import '../services/layer_pose_matrix.dart'
-    show LayerPlacement, canvasToArtwork, placementOf;
+    show LayerPlacement, canvasToArtwork, placedCorners, placementOf;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart'
     show
@@ -1095,7 +1095,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       pose: pose,
       canvasSize: canvasSize,
       viewport: viewport,
-      claimsCanvas: frame.boxClaimsCanvas,
+      presses: frame.boxPresses,
       onCancelled: session.laneVerbs.endLaneEditPreview,
       move: box
           ? _handleLandings<CanvasPoint>(
@@ -1195,23 +1195,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       changed: (value) => verbs.previewReferencePose(row.id, poseOf(value)),
       committed: (value) => verbs.editReferencePose(row.id, poseOf(value)),
     );
-    final laid = picturePlacement(pose, reference.pictureSize);
-    final width = reference.pictureSize.width.toDouble();
-    final height = reference.pictureSize.height.toDouble();
+    final picture = reference.pictureSize;
     return RowTransformBox(
       corners: [
-        for (final (x, y) in [
-          (0.0, 0.0),
-          (width, 0.0),
-          (width, height),
-          (0.0, height),
-        ])
-          toCanvas(laid.apply(CanvasPoint(x: x, y: y))),
+        for (final corner in placedCorners(
+          picturePlacement(pose, picture),
+          Offset.zero &
+              Size(picture.width.toDouble(), picture.height.toDouble()),
+        ))
+          toCanvas(corner),
       ],
       pose: pose.copyWith(center: toCanvas(pose.center)),
       canvasSize: canvasSize,
       viewport: viewport,
-      claimsCanvas: frame.boxClaimsCanvas,
+      presses: frame.boxPresses,
       onCancelled: verbs.endLaneEditPreview,
       move: landing<CanvasPoint>(
         (dropped) => pose.copyWith(center: fromCanvas(dropped)),
@@ -1258,7 +1255,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       ),
       canvasSize: canvasSize,
       viewport: viewport,
-      claimsCanvas: frame.boxClaimsCanvas,
+      presses: frame.boxPresses,
       onCancelled: session.laneVerbs.endLaneEditPreview,
       move: frame.boxGrabbable
           ? _handleLandings<CanvasPoint>(
@@ -1373,7 +1370,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cameraFrameSize: session.camera.cameraFrameSize,
         canvasSize: canvasSize,
         viewport: viewport,
-        claimsCanvas: frame.boxClaimsCanvas,
+        presses: frame.boxPresses,
         onCancelled: session.laneVerbs.endLaneEditPreview,
         move: move,
         zoom: zoom,

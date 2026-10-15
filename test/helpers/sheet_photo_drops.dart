@@ -11,8 +11,13 @@ import 'package:anicel/src/ui/sheet/sheet_photos.dart';
 /// Drives a sheet's photo entrance ([SheetPhotoDrop]) as the pool's drag
 /// reaches it — one helper for the three sheets that have one.
 
-SheetPhotoDrop sheetPhotoEntrance(WidgetTester tester) =>
-    tester.widget<SheetPhotoDrop>(find.byType(SheetPhotoDrop));
+SheetPhotoDrop sheetPhotoEntrance(WidgetTester tester, {Finder? within}) =>
+    tester.widget<SheetPhotoDrop>(_entrance(within));
+
+/// The entrance — the one inside [within], where two sheets are up.
+Finder _entrance(Finder? within) => within == null
+    ? find.byType(SheetPhotoDrop)
+    : find.descendant(of: within, matching: find.byType(SheetPhotoDrop));
 
 /// The entrance's drop target — what the dragged file's chip asks.
 MediaAssetDropTarget sheetPhotoTarget(WidgetTester tester) =>
@@ -23,10 +28,14 @@ MediaAssetDropTarget sheetPhotoTarget(WidgetTester tester) =>
       ),
     );
 
-/// Where the paper point [paper] is on the screen.
-Offset sheetPaperOnScreen(WidgetTester tester, Offset paper) {
-  final viewport = sheetPhotoEntrance(tester).viewport;
-  return tester.getTopLeft(find.byType(SheetPhotoDrop)) +
+/// Where the paper point [paper] of the sheet [within] is on the screen.
+Offset sheetPaperOnScreen(
+  WidgetTester tester,
+  Offset paper, {
+  Finder? within,
+}) {
+  final viewport = sheetPhotoEntrance(tester, within: within).viewport;
+  return tester.getTopLeft(_entrance(within)) +
       Offset(
         viewport.panX + viewport.zoom * paper.dx,
         viewport.panY + viewport.zoom * paper.dy,

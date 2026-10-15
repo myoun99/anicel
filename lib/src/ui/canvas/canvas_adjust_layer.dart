@@ -78,7 +78,7 @@ class CanvasAdjustLayer extends StatelessWidget {
               viewport: viewport,
               // The canvas stays the tools' and the view's: a press is the
               // box's on its handles alone.
-              claimsCanvas: false,
+              presses: RowBoxPresses.handles,
               onCancelled: adjust.dropShowing,
               scale: RowBoxEdges((
                 changed: (edges) => adjust.show(to(edges)),

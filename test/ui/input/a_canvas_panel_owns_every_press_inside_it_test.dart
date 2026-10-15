@@ -488,7 +488,7 @@ void main() {
                 pose: TransformPose(center: CanvasPoint(x: 100, y: 80)),
                 canvasSize: const CanvasSize(width: 400, height: 300),
                 viewport: CanvasViewport(),
-                claimsCanvas: false,
+                presses: RowBoxPresses.handles,
                 onCancelled: () {},
                 cross: (
                   at: CanvasPoint(x: 100, y: 80),

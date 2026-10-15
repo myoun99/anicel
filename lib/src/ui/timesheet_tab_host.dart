@@ -514,6 +514,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 cacheInvalidationSink: _cacheInvalidationSink,
                                 imageFor: widget.imageFor,
                                 imageRepaint: widget.imageRepaint,
+                                photoHold: session.sheetPhotoHold,
                               ),
                             ),
                           // A pool picture dropped on a page is its photo

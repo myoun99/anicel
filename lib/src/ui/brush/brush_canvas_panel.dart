@@ -90,9 +90,11 @@ import 'tool_cursor_sprite.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/selection_drag.dart' show DrawnShapePath;
 import '../../services/layer_pose_paint.dart';
+import '../../services/layer_pose_matrix.dart' show placedCorners;
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
+import '../../core/point_bounds.dart';
 import 'canvas_selection_commands.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
@@ -2413,18 +2415,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (bounds == null || placement == null) {
       return bounds;
     }
-    final corners = [
-      for (final x in [bounds.left, bounds.rightExclusive])
-        for (final y in [bounds.top, bounds.bottomExclusive])
-          placement.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
-    ];
-    final xs = [for (final corner in corners) corner.x];
-    final ys = [for (final corner in corners) corner.y];
+    final shown = pointsBounds([
+      for (final corner in placedCorners(
+        placement,
+        Rect.fromLTRB(
+          bounds.left.toDouble(),
+          bounds.top.toDouble(),
+          bounds.rightExclusive.toDouble(),
+          bounds.bottomExclusive.toDouble(),
+        ),
+      ))
+        Offset(corner.x, corner.y),
+    ]);
     return (
-      left: xs.reduce(math.min).floor(),
-      top: ys.reduce(math.min).floor(),
-      rightExclusive: xs.reduce(math.max).ceil(),
-      bottomExclusive: ys.reduce(math.max).ceil(),
+      left: shown.left.floor(),
+      top: shown.top.floor(),
+      rightExclusive: shown.right.ceil(),
+      bottomExclusive: shown.bottom.ceil(),
     );
   }
 

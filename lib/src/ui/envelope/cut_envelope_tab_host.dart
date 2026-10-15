@@ -266,6 +266,7 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     cacheInvalidationSink: _cacheInvalidationSink,
                     imageFor: widget.imageFor,
                     imageRepaint: widget.imageRepaint,
+                    photoHold: session.sheetPhotoHold,
                   ),
                 ),
               // A pool picture dropped on a box is its photo (I-97).

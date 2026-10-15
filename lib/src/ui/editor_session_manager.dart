@@ -19,6 +19,7 @@ import 'session/drags/media_placement_drag.dart';
 import 'canvas/after_frame_once.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/canvas_adjust.dart';
+import 'session/sheet_photo_hold.dart';
 import 'session/editor_app_settings.dart';
 import 'session/editor_voice_recording.dart';
 import '../models/app_accents.dart';
@@ -877,6 +878,19 @@ class EditorSessionManager extends ChangeNotifier
   /// window opens it, the canvas shows its box and pill.
   final CanvasAdjust canvasAdjust = CanvasAdjust();
 
+  /// The photos on this project's sheets (I-97), as the pool and a hand
+  /// edit them.
+  late final SheetPhotoEdits sheetPhotoEdits = SheetPhotoEdits(
+    () => renderCaches.sheetInkStores,
+  );
+
+  /// This project's photo held on a sheet (I-97-Q3) — its box up and its
+  /// pill under it.
+  late final SheetPhotoHold sheetPhotoHold = SheetPhotoHold(
+    edits: sheetPhotoEdits,
+    history: historyManager,
+  );
+
   // Where the user stands (Round 6): cut, row and layer.
   late final Standing standing = Standing(project: this, selection: this, changes: this, timeline: this, controllers: activeCutControllers, rowSelectionVerbs: rowSelectionVerbs, solo: visibilitySolo, trackSe: trackSe, rangeSelections: rangeSelections, selectTrackCutAtPlayhead: selectTrackCutAtPlayhead, brushInputActive: brushInputActive, sessionDisposed: () => disposed, playbackRig: playbackRig, railView: railView, fxEnabledOf: (layerId) => effectsAndFx.isLayerFxEnabled(layerId), activeCutHasLayer: (layerId) => activeCutSpan.activeCutHasLayer(layerId));
 
@@ -1576,6 +1590,7 @@ class EditorSessionManager extends ChangeNotifier
     brushInputActive.dispose,
     dragPreview.dispose,
     canvasAdjust.dispose,
+    sheetPhotoHold.dispose,
     // F-363's two listeners come off before the slider's notifier goes.
     () => opacityVerbs.dragPreview.removeListener(cameraViewMode.read),
     () => removeListener(cameraViewMode.read),
@@ -3505,7 +3520,7 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
-    sheetPhotos: SheetPhotoEdits(() => renderCaches.sheetInkStores),
+    sheetPhotos: sheetPhotoEdits,
   );
 
   // ── the fonts registered with the project: their own object ─────────
