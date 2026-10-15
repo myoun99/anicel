@@ -318,10 +318,13 @@ class AudioDeviceTransport {
     _armFrame = frame;
     _needsLoopRearm = loop && frame != 0;
     final startSample = _rate.frameToSample(frame, _deviceRate);
-    // Streaming windows re-center on the arm point (a seek can land
-    // anywhere in a long clip) — one synchronous read at a press, the
-    // same budget as opening any file on click.
-    if (_window.hasStreaming) {
+    // A streaming window re-centres on the arm point where it does not hold
+    // it already — a seek can land anywhere in a long clip — by the rule
+    // that moves it under a playing stream (`followPlayback`). ↩️Every arm
+    // re-centred, and a run going on from where its activation had just
+    // centred the window read and copied it twice: 🔬66ms and a GC on the
+    // AMMI OP press (play-press-first-frame-stall, 10-15).
+    if (_window.wantsRecentreAt(startSample, _deviceRate)) {
       _uploadWindow(startSample);
     }
     _armDevice(device, startSample: startSample, looping: loop && frame == 0);
