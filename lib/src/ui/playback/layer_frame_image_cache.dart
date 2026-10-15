@@ -127,15 +127,6 @@ typedef _MadeOf = ({
   bool inkSuffices,
 });
 
-/// What a banked image was made from: the content's revision, the canvas,
-/// the chain baked in, and the tiles it was pictured from.
-typedef _Source = ({
-  int revision,
-  CanvasSize canvasSize,
-  List<ResolvedLayerEffect> sourceEffects,
-  Map<TileCoord, Object> madeFrom,
-});
-
 /// A picture being made for a slot, and what it is being made of: the ask
 /// that started it.
 final class _Making {
@@ -468,105 +459,17 @@ class LayerFrameImageCache {
     }
     LayerFrameImage? made;
     try {
-      made = await _composed(
-        (key, quality),
+      final stored = await _composed(
         preview,
         plan,
-        source: source,
+        quality,
         shouldAbort: shouldAbort,
       );
+      made = stored == null ? null : _bank((key, quality), stored, source);
     } finally {
       made == null ? taken?.gaveUp() : taken?.landed();
     }
     return made;
-  }
-
-  /// [preview]'s image at [at]'s quality, put on the GPU and banked at [at]
-  /// — null when [shouldAbort] stood it down between its tile pictures.
-  Future<LayerFrameImage?> _composed(
-    (BrushFrameKey, PlaybackQuality) at,
-    BitmapSurface preview,
-    ({ui.Rect whole, ui.Rect? texels}) plan, {
-    required _Source source,
-    bool Function()? shouldAbort,
-  }) async {
-    final (_, quality) = at;
-    final (:whole, :texels) = plan;
-    // Per-tile GPU compose ([_firstStep] says over what): the editing canvas
-    // keeps the on-screen frame's tiles decoded in the shared cache, so the
-    // post-stroke rebuild draws existing tile images instead of assembling +
-    // uploading the whole canvas — cost follows the CHANGED tiles, not the
-    // canvas.
-    //
-    // 🚨★★★ONE WAIT AN IMAGE, AT ANY LEVEL. Below the first level the compose
-    // is the first step of a chain — halved, halved again, cut — and only
-    // the chain's LAST step is the snapshot that is kept: every step before
-    // it is rastered deferred and drawn straight into the next, the way the
-    // synchronous road has always chained them ([_composedNow]).
-    // ↩️Each step was a snapshot waited for until 2026-10-07 — up to three
-    // waits for a half image and four for a quarter, the first of them the
-    // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
-    // 무거워지는거같은데 맞나?」).
-    final first = _firstStep(preview, plan, quality.level);
-    final firstIsKept = quality.level <= 1;
-    final ui.Image? firstImage;
-    if (first.halved) {
-      firstImage = await composeHalvedSurfaceImage(
-        preview,
-        shouldAbort: shouldAbort,
-        over: first.over,
-        deferred: !firstIsKept,
-      );
-    } else {
-      firstImage = (await composePositionedSurfaceImage(
-        preview,
-        reuse: BitmapTileImageCache.instance,
-        shouldAbort: shouldAbort,
-        over: first.over,
-      ))?.image;
-    }
-    if (firstImage == null) {
-      return null;
-    }
-    if (firstIsKept) {
-      return _bank(at, (
-        image: firstImage,
-        worldRect: first.over,
-        extent: whole,
-      ), source);
-    }
-    // Down to the level, one exact 2×2 box at a time ([halvingPicture]) —
-    // never one reduction straight to the size, which aliases past 2× and,
-    // as `medium`, mipmaps on one engine and not the other.
-    var image = firstImage;
-    for (var i = 1; i < quality.level; i += 1) {
-      // The last step when nothing is cut out after it.
-      final kept = texels == null && i == quality.level - 1;
-      final halved = kept
-          ? await _halved(image)
-          : _halvedNow(image, snapshot: false).deferred;
-      // The halving keeps what it drew; only the handle is ours to drop.
-      image.dispose();
-      image = halved;
-    }
-    assert(_isLevelOf(image, whole, quality.level));
-    if (texels == null) {
-      return _bank(at, (
-        image: image,
-        worldRect: whole,
-        extent: whole,
-      ), source);
-    }
-    // Cut out of the level of the WHOLE image, never halved on its own: the
-    // halving is the engine's, and a smaller image is halved differently on
-    // Impeller Vulkan (`halving-rounds-differently-per-engine`).
-    final ink = await _cutOut(image, texels);
-    image.dispose();
-    return _bank(at, (
-      image: ink,
-      worldRect: _worldRectOfTexels(whole, texels, quality.level),
-      extent: whole,
-    ), source);
   }
 
   /// Banks a freshly composed image as the entry for [at], replacing
@@ -579,7 +482,13 @@ class LayerFrameImageCache {
   LayerFrameImage _bank(
     (BrushFrameKey, PlaybackQuality) at,
     ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) stored,
-    _Source source,
+    ({
+      int revision,
+      CanvasSize canvasSize,
+      List<ResolvedLayerEffect> sourceEffects,
+      Map<TileCoord, Object> madeFrom,
+    })
+    source,
   ) {
     _dropEntry(at);
     final result = LayerFrameImage(
@@ -882,9 +791,90 @@ class LayerFrameImageCache {
 
 // --- The steps a stored image is made of ------------------------------
 //
-// Plain functions of their inputs: the sync road's whole chain, halving a
+// Plain functions of their inputs: each road's whole chain, halving a
 // level, finding and cutting out the ink. Each step has a synchronous twin
 // for the sync road.
+
+/// [preview] put on the GPU at [quality] under [plan] — the cel's first
+/// step ([_firstStep]), halved down to the level, and its ink cut out of
+/// that when [plan] keeps the ink — each step waited for as it lands, where
+/// [_composedNow] answers inside the call. Null when [shouldAbort] stood it
+/// down between its tile pictures.
+Future<({ui.Image image, ui.Rect worldRect, ui.Rect extent})?> _composed(
+  BitmapSurface preview,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  PlaybackQuality quality, {
+  bool Function()? shouldAbort,
+}) async {
+  final (:whole, :texels) = plan;
+  // Per-tile GPU compose ([_firstStep] says over what): the editing canvas
+  // keeps the on-screen frame's tiles decoded in the shared cache, so the
+  // post-stroke rebuild draws existing tile images instead of assembling +
+  // uploading the whole canvas — cost follows the CHANGED tiles, not the
+  // canvas.
+  //
+  // 🚨★★★ONE WAIT AN IMAGE, AT ANY LEVEL. Below the first level the compose
+  // is the first step of a chain — halved, halved again, cut — and only
+  // the chain's LAST step is the snapshot that is kept: every step before
+  // it is rastered deferred and drawn straight into the next, the way the
+  // synchronous road has always chained them ([_composedNow]).
+  // ↩️Each step was a snapshot waited for until 2026-10-07 — up to three
+  // waits for a half image and four for a quarter, the first of them the
+  // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
+  // 무거워지는거같은데 맞나?」).
+  final first = _firstStep(preview, plan, quality.level);
+  final firstIsKept = quality.level <= 1;
+  final ui.Image? firstImage;
+  if (first.halved) {
+    firstImage = await composeHalvedSurfaceImage(
+      preview,
+      shouldAbort: shouldAbort,
+      over: first.over,
+      deferred: !firstIsKept,
+    );
+  } else {
+    firstImage = (await composePositionedSurfaceImage(
+      preview,
+      reuse: BitmapTileImageCache.instance,
+      shouldAbort: shouldAbort,
+      over: first.over,
+    ))?.image;
+  }
+  if (firstImage == null) {
+    return null;
+  }
+  if (firstIsKept) {
+    return (image: firstImage, worldRect: first.over, extent: whole);
+  }
+  // Down to the level, one exact 2×2 box at a time ([halvingPicture]) —
+  // never one reduction straight to the size, which aliases past 2× and,
+  // as `medium`, mipmaps on one engine and not the other.
+  var image = firstImage;
+  for (var i = 1; i < quality.level; i += 1) {
+    // The last step when nothing is cut out after it.
+    final kept = texels == null && i == quality.level - 1;
+    final halved = kept
+        ? await _halved(image)
+        : _halvedNow(image, snapshot: false).deferred;
+    // The halving keeps what it drew; only the handle is ours to drop.
+    image.dispose();
+    image = halved;
+  }
+  assert(_isLevelOf(image, whole, quality.level));
+  if (texels == null) {
+    return (image: image, worldRect: whole, extent: whole);
+  }
+  // Cut out of the level of the WHOLE image, never halved on its own: the
+  // halving is the engine's, and a smaller image is halved differently on
+  // Impeller Vulkan (`halving-rounds-differently-per-engine`).
+  final ink = await _cutOut(image, texels);
+  image.dispose();
+  return (
+    image: ink,
+    worldRect: _worldRectOfTexels(whole, texels, quality.level),
+    extent: whole,
+  );
+}
 
 /// [preview] composed inside the call at [quality] — the cel's first step
 /// ([_firstStep]), halved down to the level, and, when [storesInk] below the

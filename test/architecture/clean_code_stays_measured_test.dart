@@ -580,7 +580,20 @@ void main() {
   /// the view. 🔬The lane's scan against master (`a81501886`, at 410 before
   /// the two lowerings above landed) named that one gone and `_cutFadeWash`
   /// held at sixty — the camera's frame for its unit — not added.
-  const longBodies = 407;
+  ///
+  /// ⚠️407 → 408 on 2026-10-15, named as the rule above asks
+  /// (playback-frame-raster-is-the-whole-window — background GPU work takes
+  /// its turn in the quiet between a run's held frames): the asynchronous
+  /// road's chain left `LayerFrameImageCache._prepareNow` (still over: its
+  /// thaw, its content checks and its keys are the CPU's half) as
+  /// `_composed` (70), so the turn is taken before it and given back once
+  /// it lands. It is the twin of `_composedNow` (65, already counted) in
+  /// shape — a plain function of the surface, the plan and the quality,
+  /// banked by the caller. 🔬`clean_code_diff` against master (`01986af08`)
+  /// named that one added and nothing gone. ⛔Not split to fit: the chain's
+  /// law (one wait an image, at any level) is one statement over the whole
+  /// chain, and its sync twin keeps the same shape.
+  const longBodies = 408;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -746,7 +759,13 @@ void main() {
   /// (`279933153`) and the lane names this one and no other class. ⛔Not
   /// split to fit: both answers belong where the one question is asked, and
   /// the comment that keeps it in one place stands beside them.
-  const longClasses = 63;
+  ///
+  /// ⚠️63 → 62 on 2026-10-15, following one down: `LayerFrameImageCache`
+  /// left the count — the asynchronous road's chain went out of the class
+  /// beside its synchronous twin as a plain function (`_composed`, counted
+  /// among the long bodies above). 🔬`clean_code_diff` against master
+  /// (`01986af08`) named that one gone and none added.
+  const longClasses = 62;
 
   late CleanCodeScan scan;
   setUpAll(() {
