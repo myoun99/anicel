@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
-import 'package:flutter/services.dart' show FontLoader;
+import 'package:flutter/services.dart' show FontLoader, rootBundle;
 
 /// Loads the app's own faces — BIZ UDPGothic and 나눔고딕, both weights,
 /// by the names and files `AppTypography` declares (the ones `pubspec.yaml`
@@ -28,14 +28,15 @@ final _faces = [
   (AppTypography.bundledFallback.single, AppTypography.bundledFallbackFiles),
 ];
 
-/// The icon font from the Flutter SDK running this test: the tester sits
-/// in `artifacts/engine/<platform>/`, the font in `artifacts/material_fonts/`.
+/// The icon font as this test's own asset bundle carries it — the copy the
+/// tool puts there for `uses-material-design`, by the name the tool gives
+/// it.
+///
+/// ↩️It was read from the SDK's cache beside the tester, as
+/// `artifacts/material_fonts/materialicons-regular.otf`: Windows and macOS
+/// found it, and Linux CI had no such file (PR #1481, 10-15).
 Future<void> loadIcons() async {
-  final artifacts = File(Platform.resolvedExecutable).parent.parent.parent;
-  final bytes = File(
-    '${artifacts.path}/material_fonts/materialicons-regular.otf',
-  ).readAsBytesSync();
   final loader = FontLoader('MaterialIcons')
-    ..addFont(Future.value(ByteData.view(bytes.buffer)));
+    ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
   await loader.load();
 }
