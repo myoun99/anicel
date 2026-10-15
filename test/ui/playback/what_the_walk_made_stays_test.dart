@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -153,16 +155,29 @@ void main() {
       rig.playbackCache.playbackCacheByteBudget = line;
       expect(images.estimatedBytes, made, reason: 'premise');
 
+      // The walk comes to rest — or, making and letting go of the same
+      // pictures, lands more of them than there are to make: whichever is
+      // seen first is the answer, and no wall clock is asked.
+      final settled = Completer<bool>();
       var landed = 0;
-      rig.prerenderScheduler.landings.addListener(() => landed += 1);
+      rig.prerenderScheduler.landings.addListener(() {
+        landed += 1;
+        if (landed > 4 && !settled.isCompleted) {
+          settled.complete(false);
+        }
+      });
       rig.setPlaybackMode(PlaybackMode.renderFirst);
       rig.playback.play(scope: PlaybackScope.allCuts, startGlobalFrame: 0);
       expect(rig.playbackCache.playbackCacheByteBudget, line, reason: 'seam');
 
-      final rested = await Future.any([
-        rig.prerenderScheduler.idle.then((_) => true),
-        Future<bool>.delayed(const Duration(seconds: 3), () => false),
-      ]);
+      unawaited(
+        rig.prerenderScheduler.idle.then((_) {
+          if (!settled.isCompleted) {
+            settled.complete(true);
+          }
+        }),
+      );
+      final rested = await settled.future;
       expect(
         rested,
         isTrue,
