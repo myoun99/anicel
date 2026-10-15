@@ -172,15 +172,14 @@ class AudioStreamingWindow {
     if (held == null || device == null) {
       return false;
     }
-    final prepared = windowedMixUpload(
+    final prepared = planWindowedMixUpload(
       mix: held,
       conformStore: conformStore,
       deviceRate: deviceRate,
       centerSample: centerSample,
       backSeconds: backSeconds,
       aheadSeconds: aheadSeconds,
-      place: device.newSamples,
-    );
+    )?.readHere(place: device.newSamples);
     return prepared != null && _put(device, prepared, centerSample);
   }
 

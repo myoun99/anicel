@@ -27,14 +27,14 @@ windowedUpload({
   required AudioConformStore conformStore,
   required int deviceRate,
   required int centerSample,
-}) => windowedMixUpload(
+}) => planWindowedMixUpload(
   mix: mix,
   conformStore: conformStore,
   deviceRate: deviceRate,
   centerSample: centerSample,
   backSeconds: AudioStreamingWindow.backSeconds,
   aheadSeconds: AudioStreamingWindow.aheadSeconds,
-);
+)?.readHere();
 
 void main() {
   late Directory directory;

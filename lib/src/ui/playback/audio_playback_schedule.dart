@@ -481,6 +481,13 @@ final class WindowedUploadPlan {
       hasStreaming: hasStreaming,
     );
   }
+
+  /// The upload with every window read here ([streamWindowReadHere]) —
+  /// into what [place] makes for each, when it makes one.
+  WindowedUpload readHere({Float32List? Function(int floats)? place}) =>
+      withWindows([
+        for (final read in reads) streamWindowReadHere(read, place: place),
+      ]);
 }
 
 /// Plans the device upload for [mix] — resident PCM for ordinary clips, a
@@ -554,29 +561,4 @@ WindowedUploadPlan? planWindowedMixUpload({
     reads: reads,
     hasStreaming: resident.hasStreaming,
   );
-}
-
-/// The device upload for [mix] with every window read here
-/// ([planWindowedMixUpload], [streamWindowReadHere]) — into what [place]
-/// makes for each, when it makes one.
-WindowedUpload? windowedMixUpload({
-  required AudioMixSchedule mix,
-  required AudioConformStore conformStore,
-  required int deviceRate,
-  required int centerSample,
-  required int backSeconds,
-  required int aheadSeconds,
-  Float32List? Function(int floats)? place,
-}) {
-  final plan = planWindowedMixUpload(
-    mix: mix,
-    conformStore: conformStore,
-    deviceRate: deviceRate,
-    centerSample: centerSample,
-    backSeconds: backSeconds,
-    aheadSeconds: aheadSeconds,
-  );
-  return plan?.withWindows([
-    for (final read in plan.reads) streamWindowReadHere(read, place: place),
-  ]);
 }
