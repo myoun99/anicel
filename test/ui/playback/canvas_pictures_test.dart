@@ -454,6 +454,47 @@ void main() {
         expect(pictures.gaveUpOn(row('a')), isFalse, reason: 'not a failure');
       });
     });
+
+    testWidgets('🚨a row that lands says how long a row takes: the next one '
+        'that would land past the quiet waits for the quiet after it', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final images = LayerFrameImageCache(frameStore: storeOf(['a', 'b']));
+        addTearDown(images.dispose);
+        // Each look at the clock is a millisecond on, and each quiet ends
+        // 2.5ms after it is asked for: room for a row that takes nothing,
+        // none for one that took a look's millisecond.
+        var now = 0;
+        final moved = Completer<void>();
+        final pictures = CanvasPictures(
+          layerImages: images,
+          rowsOf: (cut, frame) => [row(frame == 0 ? 'a' : 'b')],
+          qualityAt: (_, _) => PlaybackQuality.full,
+          quietTurns: QuietTurns(
+            clock: QuietClock(
+              quiet: () => (fromMicros: 0, untilMicros: now + 2500),
+              now: () => now += 1000,
+              wait: (_) async {},
+              moved: () => moved.future,
+            ),
+          ),
+        );
+        expect(await pictures.make(at(0), shouldAbort: () => false), isTrue);
+
+        var made = false;
+        final making = pictures
+            .make(at(1), shouldAbort: () => false)
+            .then((landed) => made = landed);
+        await pumpEventQueue();
+        expect(made, isFalse, reason: 'the row before it took longer');
+
+        // Each quiet too short for it asks a row for less.
+        moved.complete();
+        expect(await making, isTrue);
+        expect(held(images, 'b', PlaybackQuality.full), isTrue);
+      });
+    });
   });
 }
 
