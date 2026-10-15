@@ -253,20 +253,11 @@ class LayerController {
     required List<LayerId> layerIds,
     required bool visible,
   }) => _executeDisplayBatch(
-    layerIds: _eyeRowsOf(layerIds),
+    layerIds: eyeMirrorRows(_repository.requireProject(), layerIds),
     debugLabel: 'Set layer visibility',
     apply: (layer) =>
         layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible),
   );
-
-  /// The rows the eyes of [layerIds] are written to ([eyeMirrorRows]) —
-  /// each row, a camera with every camera of its track — once each.
-  List<LayerId> _eyeRowsOf(List<LayerId> layerIds) {
-    final project = _repository.requireProject();
-    return {
-      for (final layerId in layerIds) ...eyeMirrorRows(project, layerId),
-    }.toList();
-  }
 
   /// Sets static opacity on MANY layers as ONE undo step — the master bar —
   /// each one's link group with it ([setLayerOpacity]).
@@ -397,15 +388,9 @@ class LayerController {
     //
     // 🚨AND A TRACK'S CAMERAS WEAR ONE EYE — the camera view's switch
     // (F-363, 유저 2026-10-15: 「레이어가 눈이랑 불투명도 바꾸면 언두
-    // 저장되니까. 기본적으로 레이어 버튼은 그게 기준」): written here to every
-    // one of them ([eyeMirrorRows]), as their name is by its command.
-    _executeDisplayBatch(
-      layerIds: _eyeRowsOf([layerId]),
-      debugLabel: 'Toggle layer visibility',
-      apply: (layer) => layer.isVisible == nextVisible
-          ? layer
-          : layer.copyWith(isVisible: nextVisible),
-    );
+    // 저장되니까. 기본적으로 레이어 버튼은 그게 기준」): written to every one
+    // of them ([eyeMirrorRows]) as any set of eyes is.
+    setLayersVisible(layerIds: [layerId], visible: nextVisible);
   }
 
   /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold

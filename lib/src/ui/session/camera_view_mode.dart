@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart' show LayerFolderQueries;
 import '../../models/track_camera_head.dart' show cameraHeadOf;
 import 'layer_switch_verbs.dart';
 import 'opacity_verbs.dart';
@@ -68,7 +69,11 @@ class CameraViewMode {
       _enabled.value = false;
       return;
     }
-    _enabled.value = camera.isVisible;
+    // Asked as `rowVisible`, the hidden-folder law's one door (ratcheted by
+    // `hidden_folder_is_hidden_test`): a camera lives in no folder — its
+    // place is the top of its section (A5-4) — so the singleton stack it
+    // stands in is its own, as the transition's is.
+    _enabled.value = <Layer>[camera].rowVisible(camera);
     final dragging = _opacity.dragPreview.value;
     _dim.value = dragging != null && dragging.layerIds.contains(camera.id)
         ? dragging.opacity

@@ -266,16 +266,18 @@ List<LayerId> headMirrorRows(
     target.layerId,
 ];
 
-/// The rows an EYE write lands on: [layerId] alone — a row's eye is each
-/// use's own (T9, `UpdateLayerDisplayCommand`), and a track's conte rows
-/// have theirs laid by its structure (F-343) — but for a CAMERA, every
-/// camera of its track ([cameraHeadTargets]), whose head the eye is
-/// (F-363).
-List<LayerId> eyeMirrorRows(Project project, LayerId layerId) =>
-    switch (cameraHeadTargets(project, layerId)) {
+/// The rows an EYE write to [layerIds] lands on, once each: each row alone
+/// — a row's eye is each use's own (T9, `UpdateLayerDisplayCommand`), and a
+/// track's conte rows have theirs laid by its structure (F-343) — but for a
+/// CAMERA, every camera of its track ([cameraHeadTargets]), whose head the
+/// eye is (F-363).
+List<LayerId> eyeMirrorRows(Project project, Iterable<LayerId> layerIds) => {
+  for (final layerId in layerIds)
+    ...switch (cameraHeadTargets(project, layerId)) {
       [] => [layerId],
       final cameras => [for (final camera in cameras) camera.layerId],
-    };
+    },
+}.toList();
 
 /// The rows that EXIST as one with ([cutId], [layerId]) — what a delete
 /// takes together.
