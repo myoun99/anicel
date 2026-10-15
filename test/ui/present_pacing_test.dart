@@ -42,8 +42,15 @@ class _Display implements DisplayTiming {
   Duration? _readIn;
   int _reads = 0;
 
+  /// Now, between frames: when a test says it.
+  int? between;
+
   @override
   int get nowMicros {
+    final between = this.between;
+    if (between != null) {
+      return between;
+    }
     final frame = SchedulerBinding.instance.currentSystemFrameTimeStamp;
     if (_readIn != frame) {
       _readIn = frame;
@@ -110,6 +117,17 @@ class _PacedBinding extends AutomatedTestWidgetsFlutterBinding
 
   @override
   DisplayTiming? get displayTiming => display;
+
+  /// What each held frame was told of the raster thread getting past its
+  /// scene, oldest first: the test says when.
+  final List<Completer<void>> behind = [];
+
+  @override
+  Future<void> rasterBehind() {
+    final past = Completer<void>();
+    behind.add(past);
+    return past.future;
+  }
 }
 
 /// 🚨A CLOCK'S LOOK CLAIMS A REAL VBLANK, AND ITS FRAME HANDS ITS SCENE TO
@@ -127,7 +145,8 @@ void main() {
     display = _Display();
     binding
       ..display = display
-      ..debugForgetClaims();
+      ..debugForgetClaims()
+      ..behind.clear();
     expected = PresentClaims();
   });
 
@@ -394,32 +413,49 @@ void main() {
     expect(find.text('1'), findsOneWidget);
   });
 
-  testWidgets('🚨the scenes\' lengths are learned from the frames it paced: '
-      'what their timings say moves the next hand-off', (tester) async {
+  /// The raster thread is seen past the last held frame's scene [late]
+  /// after a raster [ranFor] long ended.
+  Future<void> seenPast(
+    WidgetTester tester, {
+    required int ranFor,
+    required int late,
+  }) async {
+    display.between = display.seamNow + ranFor + late;
+    binding.behind.removeLast().complete();
+    await tester.pump();
+    display.between = null;
+  }
+
+  /// A held frame, its claim mirrored with the lengths read so far.
+  Future<void> heldFrame(
+    WidgetTester tester,
+    ValueNotifier<int> shown,
+    RasterSpread read,
+  ) async {
+    lookNext((_) {
+      expectedClaim(spread: read);
+      frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+  }
+
+  testWidgets('🚨a held frame\'s length is read as its raster ends — the '
+      'moment the raster thread is seen past its scene, less how late it is '
+      'seen — and moves the next hand-off at once', (tester) async {
     final shown = await settle(tester);
     final learned = RasterSpread();
     for (var round = 0; round < 8; round += 1) {
-      lookNext((_) {
-        expectedClaim();
-        frameShownAt();
-        shown.value += 1;
-        changedInTheLook();
-      });
-      await tester.pump(vsync);
-      final released = display.seamNow;
+      await heldFrame(tester, shown, learned);
+      expect(binding.behind, hasLength(1), reason: 'one look behind it');
       final ranFor = 1500 + round * 10;
+      await seenPast(
+        tester,
+        ranFor: ranFor,
+        late: PresentPacing.seenLateUnmeasuredMicros,
+      );
       learned.add(ranFor);
-      binding.platformDispatcher.onReportTimings!([
-        FrameTiming(
-          vsyncStart: 0,
-          buildStart: 0,
-          buildFinish: 0,
-          rasterStart: 0,
-          rasterFinish: released + ranFor,
-          rasterFinishWallTime: 0,
-          frameNumber: binding.platformDispatcher.frameData.frameNumber,
-        ),
-      ]);
     }
     display.waits.clear();
     PresentClaim? claim;
@@ -449,7 +485,7 @@ void main() {
     );
   });
 
-  testWidgets('a frame that was not held is not learned — how long a page '
+  testWidgets('a frame that was not held reads no length — how long a page '
       'turn took says nothing of where a change lands', (tester) async {
     final shown = await settle(tester);
     for (var round = 0; round < 8; round += 1) {
@@ -471,10 +507,62 @@ void main() {
         ),
       ]);
     }
+    expect(binding.behind, isEmpty, reason: 'nothing looks behind them');
     PresentClaim? claim;
 
     lookNext((_) {
       claim = expectedClaim();
+      frameShownAt();
+      shown.value += 1;
+      changedInTheLook();
+    });
+    await tester.pump(vsync);
+
+    expect(display.waits, [claim!.handOffMicros]);
+  });
+
+  testWidgets('🚨how late the raster thread is seen past a scene is what the '
+      'frames\' timings last said — every length read after them is read '
+      'less that', (tester) async {
+    final shown = await settle(tester);
+    final read = RasterSpread();
+    for (var round = 0; round < 8; round += 1) {
+      await heldFrame(tester, shown, read);
+      final rasterEnd = display.seamNow + 1500;
+      await seenPast(tester, ranFor: 1500, late: 900);
+      // The first is read before any timing has said how late the thread
+      // is seen past a scene.
+      read.add(
+        round == 0
+            ? 1500 + 900 - PresentPacing.seenLateUnmeasuredMicros
+            : 1500,
+      );
+      // Its timing: the raster ended 900µs before the thread was seen past
+      // it. (Every frame a test draws is frame 1 to the engine, so each
+      // timing comes before the next frame.)
+      binding.platformDispatcher.onReportTimings!([
+        FrameTiming(
+          vsyncStart: 0,
+          buildStart: 0,
+          buildFinish: 0,
+          rasterStart: 0,
+          rasterFinish: rasterEnd,
+          rasterFinishWallTime: 0,
+          frameNumber: binding.platformDispatcher.frameData.frameNumber,
+        ),
+      ]);
+    }
+    for (var round = 0; round < 8; round += 1) {
+      await heldFrame(tester, shown, read);
+      final ranFor = 1000 + round * 10;
+      await seenPast(tester, ranFor: ranFor, late: 900);
+      read.add(ranFor);
+    }
+    display.waits.clear();
+    PresentClaim? claim;
+
+    lookNext((_) {
+      claim = expectedClaim(spread: read);
       frameShownAt();
       shown.value += 1;
       changedInTheLook();

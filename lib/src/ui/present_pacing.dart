@@ -1,6 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui show FramePhase, FrameTiming, SceneBuilder;
+import 'dart:ui' as ui
+    show
+        Canvas,
+        FramePhase,
+        FrameTiming,
+        Paint,
+        PictureRecorder,
+        Rect,
+        SceneBuilder;
 
 import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 import 'package:flutter/scheduler.dart' show SchedulerBinding, TimingsCallback;
@@ -137,11 +145,23 @@ mixin PresentPacing on WidgetsBinding {
   /// the only frame that is held for its claim's hand-off.
   bool _changed = false;
 
-  /// Each paced frame by its number, with the moment its seam let it go —
-  /// waiting for the frame's timings to say when its raster ended.
-  final Map<int, int> _paced = <int, int>{};
+  /// Each paced frame by its number: the moment its seam let it go, and the
+  /// moment the raster thread was seen past its scene ([rasterBehind]) —
+  /// waiting for the frame's timings to say when its raster really ended
+  /// ([_seenLate]).
+  final Map<int, ({int released, int? seen})> _paced =
+      <int, ({int released, int? seen})>{};
 
   TimingsCallback? _learning;
+
+  /// How long after a scene's raster ends the raster thread is seen past it
+  /// ([rasterBehind]) — the fence's own raster and its way back to this
+  /// thread — as the frames' timings last said: the median of a batch.
+  int _seenLate = seenLateUnmeasuredMicros;
+
+  /// Before the frames' timings have said: the median on the glass
+  /// (2026-10-15, release, 144Hz, 742 held frames — p10 0.39 · p90 0.81ms).
+  static const int seenLateUnmeasuredMicros = 540;
 
   /// When a clock last looked, the vblank the last held frame claimed, and
   /// how many refreshes apart the last held frames claimed theirs: what the
@@ -189,6 +209,7 @@ mixin PresentPacing on WidgetsBinding {
     _claims.forget();
     _spread = RasterSpread();
     _paced.clear();
+    _seenLate = seenLateUnmeasuredMicros;
     _lookedAt = null;
     _heldVblank = null;
     _heldGaps.clear();
@@ -255,7 +276,9 @@ mixin PresentPacing on WidgetsBinding {
     if (_paced.length > 256) {
       _paced.clear();
     }
-    _paced[platformDispatcher.frameData.frameNumber] = timing.nowMicros;
+    final frame = platformDispatcher.frameData.frameNumber;
+    final released = timing.nowMicros;
+    _paced[frame] = (released: released, seen: null);
     final period = _periodOf(timing);
     final vblank = claim.shownAtMicros - presentShownAfterVblanks * period;
     final before = _heldVblank;
@@ -266,9 +289,60 @@ mixin PresentPacing on WidgetsBinding {
       _heldGaps.add(((vblank - before) / period).round());
     }
     _heldVblank = vblank;
+    // Laid from a microtask: those run once the frame has handed its scene
+    // to the raster thread, and this one before what the quiet's waiters
+    // post behind it (🔬10-15: 1 of 742 came back before the raster's end;
+    // laid from a timer, the median came back 0.16ms later).
+    scheduleMicrotask(() => _seeTheRasterEnd(frame, released));
     // Told now, before the scene this frame hands over is built: what it
     // wakes runs once the frame is done, behind that scene.
     _quietMoved();
+  }
+
+  /// 🚨A HELD FRAME'S LENGTH IS READ AS ITS RASTER ENDS (2026-10-15, the
+  /// glass): the moment the raster thread is seen past the frame's scene
+  /// ([rasterBehind]), less how late it is seen ([_seenLate]).
+  ///
+  /// The frames' own timings say it exactly, but a release build hands them
+  /// over about once a second (debug and profile every 100ms — the latch was
+  /// measured in profile), and a run's first second taught the next: the
+  /// held frames of a cut played from nothing took 3–11ms the first time a
+  /// film frame was shown and 2–3ms every time after, and a hand-off placed
+  /// for the long ones put 20 film frames in a row a refresh early (cut 302,
+  /// 1.04–1.96s). Replayed over two runs' own lengths (742 held frames),
+  /// reading each as it ends put 11.5 film changes a refresh off where the
+  /// second's batches put 19.1.
+  void _seeTheRasterEnd(int frame, int released) {
+    unawaited(
+      rasterBehind().then((_) {
+        final timing = displayTiming;
+        if (timing == null) {
+          return;
+        }
+        final seen = timing.nowMicros;
+        if (_paced.containsKey(frame)) {
+          _paced[frame] = (released: released, seen: seen);
+        }
+        _spread.add(seen - _seenLate - released);
+      }, onError: (Object _) {}),
+    );
+  }
+
+  /// Completes once the raster thread is past everything handed to it before
+  /// the call: an image of next to nothing, rastered behind it. A test hands
+  /// its own.
+  @protected
+  Future<void> rasterBehind() async {
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(
+      recorder,
+    ).drawRect(const ui.Rect.fromLTWH(0, 0, 1, 1), ui.Paint());
+    final picture = recorder.endRecording();
+    try {
+      (await picture.toImage(1, 1)).dispose();
+    } finally {
+      picture.dispose();
+    }
   }
 
   double _periodOf(DisplayTiming timing) =>
@@ -324,14 +398,22 @@ mixin PresentPacing on WidgetsBinding {
     move?.complete();
   }
 
+  /// The frames' timings say how late the raster thread was seen past each
+  /// paced scene ([_seeTheRasterEnd]) — what every length read after them
+  /// is read less.
   void _learn(List<ui.FrameTiming> timings) {
+    final late = <int>[];
     for (final frame in timings) {
-      final released = _paced.remove(frame.frameNumber);
-      if (released != null) {
-        _spread.add(
-          frame.timestampInMicroseconds(ui.FramePhase.rasterFinish) - released,
+      final seen = _paced.remove(frame.frameNumber)?.seen;
+      if (seen != null) {
+        late.add(
+          seen - frame.timestampInMicroseconds(ui.FramePhase.rasterFinish),
         );
       }
+    }
+    if (late.isNotEmpty) {
+      late.sort();
+      _seenLate = late[late.length ~/ 2];
     }
   }
 }
