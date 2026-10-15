@@ -697,13 +697,14 @@ void main() {
     /// Every one of [four]'s cels drawn on — across all four of its tiles
     /// and inside its canvas, so each frame has a picture of the canvas's
     /// size ([pictureBytes]) to make. ⚠️A dab past the edge puts the cel on
-    /// the pasteboard's tiles, and its picture is then theirs.
+    /// the pasteboard's tiles, and its picture is then theirs: [heavy]'s is
+    /// inked past every edge, and weighs more than the room it is asked by.
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
       CanvasPictures pictures,
     })
-    inked() {
+    inked({int? heavy}) {
       final store = BrushFrameStore();
       for (var index = 0; index < 4; index += 1) {
         BrushFrameEditingCoordinator(
@@ -723,7 +724,7 @@ void main() {
             BrushDab(
               center: CanvasPoint(x: 4, y: 4),
               color: 0xFF000000,
-              size: 6,
+              size: index == heavy ? 14 : 6,
               opacity: 1,
               flow: 1,
               hardness: 1,
@@ -1143,6 +1144,43 @@ void main() {
           scheduler.progress.value,
           const PrerenderProgress(cached: 1, total: 1),
           reason: 'and no other: for the next one there is no room',
+        );
+        scheduler.dispose();
+        f.layerImages.dispose();
+      });
+    });
+
+    testWidgets('a picture heavier than its room makes room for itself once '
+        'it lands — out of the pictures wanted after it, never itself '
+        '(F-365)', (tester) async {
+      await tester.runAsync(() async {
+        final f = inked(heavy: 1);
+        await f.pictures.make((
+          cut: four(),
+          frameIndex: 2,
+        ), shouldAbort: () => false);
+        final room = _Room(f.pictures, 3 * pictureBytes);
+        final scheduler = PlaybackPrerenderScheduler(
+          pictures: f.pictures,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+        );
+        room.demand = () => scheduler.demand;
+
+        scheduler.follow(run());
+        await rested(scheduler);
+
+        expect(
+          there(f.pictures),
+          [true, true, false, false],
+          reason: 'frame 1 came heavier than the room it was asked by: the '
+              'picture wanted after it went, and the walk rests',
+        );
+        expect(
+          f.layerImages.estimatedBytes,
+          greaterThan(3 * pictureBytes),
+          reason: '⛔premise: over the line by what the estimate missed',
         );
         scheduler.dispose();
         f.layerImages.dispose();
