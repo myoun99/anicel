@@ -40,6 +40,11 @@ void main() {
   late Directory folder;
 
   setUp(() {
+    // The desktop's road — a save window that answers with a path — wherever
+    // this runs: a sandboxed Mac writes into the app first and its picker
+    // places the file, the iPad's road the last test pins (the macOS CI
+    // runner, 2026-10-15: three tests waited on a picker nobody answered).
+    FolderPicker.debugOperatingSystem = 'windows';
     folder = Directory.systemTemp.createTempSync('save-as-picture');
     deleteAfterSessionEnds(folder);
   });
