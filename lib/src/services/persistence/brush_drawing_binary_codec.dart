@@ -14,11 +14,13 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_photo.dart';
 import '../../models/cel_text.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/media_reference.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
 
@@ -37,6 +39,7 @@ class AnicelCelEntry {
     required this.tileSize,
     required this.tiles,
     this.texts = const [],
+    this.photos = const [],
   });
 
   factory AnicelCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
@@ -53,6 +56,7 @@ class AnicelCelEntry {
             plate: _tileRecordsOf(text.plate),
           ),
       ],
+      photos: _photoRecordsOf(surface.photos),
     );
   }
 
@@ -66,8 +70,17 @@ class AnicelCelEntry {
   /// the isolate boundary) and its plate.
   final List<({int id, String content, List<AnicelTileRecord> plate})> texts;
 
+  /// The photos the picture carries, bottom → top (I-97 — a sheet's ink).
+  final List<AnicelPhotoRecord> photos;
+
   BitmapSurface toSurface() => _surfaceOf(
-    (canvasSize: canvasSize, tileSize: tileSize, tiles: tiles, texts: texts),
+    (
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: tiles,
+      texts: texts,
+      photos: photos,
+    ),
     (pixels) => BitmapTile(size: tileSize, pixels: pixels),
   );
 }
@@ -76,15 +89,20 @@ class AnicelCelEntry {
 /// its raw straight-alpha RGBA bytes.
 typedef AnicelTileRecord = ({int x, int y, Uint8List pixels});
 
+/// One photo as it crosses the save/open isolate boundary: its id and its
+/// reference as JSON — plain data, as a text's settings are.
+typedef AnicelPhotoRecord = ({int id, String reference});
+
 /// A cel's picture in plain parts — where each tile sits with its pixels as
-/// [P], and the texts with their plates: the shape both sides of an isolate
-/// boundary make a surface of ([_surfaceOf]).
+/// [P], the texts with their plates, and the photos: the shape both sides
+/// of an isolate boundary make a surface of ([_surfaceOf]).
 typedef CelParts<P> = ({
   CanvasSize canvasSize,
   int tileSize,
   List<({int x, int y, P pixels})> tiles,
   List<({int id, String content, List<({int x, int y, P pixels})> plate})>
   texts,
+  List<AnicelPhotoRecord> photos,
 });
 
 /// A cel laid on a worker ([layCelEntry]): each tile's `pixels` is the
@@ -97,13 +115,18 @@ List<AnicelTileRecord> _tileRecordsOf(Map<TileCoord, BitmapTile> tiles) => [
     (x: entry.key.x, y: entry.key.y, pixels: entry.value.pixels),
 ];
 
+List<AnicelPhotoRecord> _photoRecordsOf(List<CelPhoto> photos) => [
+  for (final photo in photos)
+    (id: photo.id, reference: jsonEncode(photo.reference.toJson())),
+];
+
 /// [parts] made a surface, each tile's pixels made a tile by [tileOf]: the
 /// copy [AnicelCelEntry.toSurface] makes, or the adoption a laid cel's
 /// blocks take ([laidCelSurface]) — one assembly for both.
 ///
 /// ⚠️Every tile is made BEFORE what can refuse a damaged record — a text's
-/// JSON, the surface's own checks: a laid block not adopted yet is one
-/// nothing would ever free.
+/// or a photo's JSON, the surface's own checks: a laid block not adopted
+/// yet is one nothing would ever free.
 BitmapSurface _surfaceOf<P>(
   CelParts<P> parts,
   BitmapTile Function(P pixels) tileOf,
@@ -133,6 +156,15 @@ BitmapSurface _surfaceOf<P>(
             jsonDecode(text.content) as Map<String, dynamic>,
           ),
           plate: plates[index],
+        ),
+    ],
+    photos: [
+      for (final photo in parts.photos)
+        CelPhoto(
+          id: photo.id,
+          reference: MediaReference.fromJson(
+            jsonDecode(photo.reference) as Map<String, dynamic>,
+          ),
         ),
     ],
   );
@@ -171,6 +203,7 @@ AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
         for (final text in entry.texts)
           (id: text.id, content: text.content, plate: lay(text.plate)),
       ],
+      photos: entry.photos,
     );
   } on Object {
     for (final block in got) {
@@ -190,6 +223,11 @@ BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
   ),
 );
 
+/// v4 (2026-10-15, a sheet's photos — I-97): after the texts come the
+/// PHOTOS the picture carries — a count, then for each its id and its
+/// reference (JSON: the pool file, where it stands, its own size). A cel
+/// with none writes a zero.
+///
 /// v3 (2026-10-06, the text tool — R9-rest): after the tiles comes the
 /// TEXTS the cel's picture carries — a count, then for each its id, what
 /// the person set (JSON) and its plate's tiles, written as the drawing's
@@ -197,7 +235,7 @@ BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
 ///
 /// v2 (pasteboard): tile coords are SIGNED i32 — pasteboard tiles sit at
 /// negative coords. v1 files (u32 coords) still decode.
-const int anicelCelBinaryVersion = 3;
+const int anicelCelBinaryVersion = 4;
 
 /// The same bytes [encodeCelEntry] writes, taken straight off the
 /// SURFACE — without the defensive pixel copy per tile that building
@@ -232,6 +270,7 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
     );
     writer.tilesOf(text.plate);
   }
+  writer.celPhotos(_photoRecordsOf(surface.photos));
   return writer.takeBytes();
 }
 
@@ -252,6 +291,7 @@ Uint8List encodeCelEntry(AnicelCelEntry entry) {
     writer.celTextHeader(text.id, text.content, text.plate.length);
     writer.tileRecords(text.plate);
   }
+  writer.celPhotos(entry.photos);
   return writer.takeBytes();
 }
 
@@ -308,6 +348,12 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
                 content: reader.longString(),
                 plate: tiles(reader.u32()),
               ),
+          ],
+    photos: version < 4
+        ? const []
+        : [
+            for (var i = reader.u32(); i > 0; i -= 1)
+              (id: reader.i32(), reference: reader.longString()),
           ],
   );
 }
@@ -552,6 +598,17 @@ class _ByteWriter {
     i32(id);
     longString(contentJson);
     u32(plateTileCount);
+  }
+
+  /// The photos of the cel stream (v4): how many, then each one's id and
+  /// its reference as JSON. Written in ONE place for the header's reason
+  /// above.
+  void celPhotos(List<AnicelPhotoRecord> photos) {
+    u32(photos.length);
+    for (final photo in photos) {
+      i32(photo.id);
+      longString(photo.reference);
+    }
   }
 
   /// A text's settings: a string that can outgrow [string]'s 16-bit length

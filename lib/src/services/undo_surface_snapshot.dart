@@ -3,6 +3,7 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
 import '../models/tile_coord.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
@@ -179,6 +180,11 @@ class UndoSurfaceSnapshot {
   /// reason: only a snapshot that has let go of its picture needs them
   /// apart from it.
   List<_SaidText>? _texts;
+
+  /// The picture's photos (I-97), kept here beside [_texts] and for its
+  /// reason: they are no tiles, so nothing parked brings them back. Each is
+  /// a few numbers — the pool file stays where it is.
+  List<CelPhoto>? _photos;
 
   /// WHERE the tiles somebody else is holding are — places only: which
   /// tile of the picture, never the tile.
@@ -453,7 +459,8 @@ class UndoSurfaceSnapshot {
 
   /// The picture [kept] is the tiles of: the drawing's as its tiles, and
   /// each text — what it says pinned in [_texts] — with the plate tiles
-  /// kept for it. A text none are kept for is a text with no plate.
+  /// kept for it. A text none are kept for is a text with no plate. Its
+  /// photos are the ones pinned in [_photos].
   BitmapSurface _pictureOf(Map<KeptTilePlace, BitmapTile> kept) {
     final drawing = <TileCoord, BitmapTile>{};
     final plates = <int, Map<TileCoord, BitmapTile>>{};
@@ -476,6 +483,7 @@ class UndoSurfaceSnapshot {
             plate: plates[text.id] ?? const {},
           ),
       ],
+      photos: _photos ?? const [],
     );
   }
 
@@ -547,7 +555,7 @@ class UndoSurfaceSnapshot {
     // ⚠️The picture as it would be with these tiles alone: a cel's own
     // stream, so an owned plate tile goes out under its text and comes
     // back under it.
-    _pinTexts();
+    _pinTextsAndPhotos();
     final body = encodeCelEntryFromSurface(key, _pictureOf(owned));
     final compressed = await compressAnicelPayloadInWorker(body);
     final blob = AnicelCelBlob.fromCompressedBody(
@@ -600,7 +608,7 @@ class UndoSurfaceSnapshot {
     final surface = _surface;
     if (surface != null) {
       final owned = _owned;
-      _pinTexts();
+      _pinTextsAndPhotos();
       _sharedPlaces = {
         for (final place in surface.keptTiles.keys)
           if (owned == null || !owned.containsKey(place)) place,
@@ -610,16 +618,18 @@ class UndoSurfaceSnapshot {
     _surface = null;
   }
 
-  /// Pins what each text SAYS ([_texts]) while the picture is still here
-  /// to be read — once, by whichever needs it first: the park, which writes
-  /// the picture's own stream, or the letting go.
-  void _pinTexts() {
+  /// Pins what each text SAYS ([_texts]) and the photos ([_photos]) while
+  /// the picture is still here to be read — once, by whichever needs them
+  /// first: the park, which writes the picture's own stream, or the letting
+  /// go.
+  void _pinTextsAndPhotos() {
     final surface = _surface;
     if (surface != null) {
       _texts ??= [
         for (final text in surface.texts)
           (id: text.id, content: text.content),
       ];
+      _photos ??= surface.photos;
     }
   }
 

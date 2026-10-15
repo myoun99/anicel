@@ -65,6 +65,18 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v19 (2026-10-15, I-97 — a sheet's photos; 유저 I-97-Q1 「사진으로
+/// 남게(셀의 텍스트처럼)」): a cel's entry carries the PHOTOS laid on its
+/// picture after its texts (cel stream v4, `anicelCelBinaryVersion`) — a
+/// sheet's ink holds them, and any other entry writes a zero. A v18 build
+/// stops at such an entry with 「Unsupported cel entry version」 the first
+/// time it shows that cel, so the bump refuses the whole file up front
+/// instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
+///
+/// ⚠️It did not move the floor ([anicelOldestReadFormatVersion]): v18 files
+/// open here unchanged — their cel streams say v3 and are read as v3, with
+/// no photos.
+///
 /// v18 (2026-10-15, F-360's second half — the storyboard rail's twirls):
 /// a track keeps its V row's twirl and the effect groups open inside it —
 /// `lanesExpanded` and `expandedLaneGroups` on a track (`Track.toJson`),
@@ -290,7 +302,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 18;
+const int anicelFormatVersion = 19;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

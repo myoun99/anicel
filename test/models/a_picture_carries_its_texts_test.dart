@@ -1,16 +1,19 @@
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/cel_photo_fixture.dart';
 import '../helpers/cel_text_fixture.dart';
 
 /// R9-rest (the text tool, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일.
 /// 복사/링크도 같이감」): a cel's texts live in the picture's own value, so
 /// every surface DERIVED from one — a stroke's commit, an erase, a rebuild —
 /// has to hand them on. A derivation that let them fall would make one
-/// stroke delete every letter on the cel.
+/// stroke delete every letter on the cel. A sheet's photos live there too
+/// (I-97 — 「사진으로 남게(셀의 텍스트처럼)」), and are asked the same.
 void main() {
   final here = TileCoord(x: 0, y: 0);
   final there = TileCoord(x: 1, y: 0);
@@ -180,6 +183,85 @@ void main() {
     test('a picture with no text writes no texts — the JSON it wrote before '
         'texts existed', () {
       expect(drawingOf({here: ink}).toJson().containsKey('texts'), isFalse);
+    });
+  });
+
+  group('a sheet\'s photos (I-97)', () {
+    final photos = [
+      photoOf(1),
+      photoOf(2, path: 'C:/pool/other.jpg', center: CanvasPoint(x: 3, y: 4)),
+    ];
+    BitmapSurface sheet() => picture().withPhotos(photos);
+
+    test('ride every surface made from the picture', () {
+      final derived = {
+        'tiles put': sheet().putTiles([(coord: there, tile: ink)]),
+        'a commit\'s materialized tiles': sheet().putMaterializedTiles([
+          (coord: here, tile: BitmapTile.blank(size: celTextTestTileSize)),
+        ]),
+        'a copy-on-write rebuild': sheet().withRebuiltTiles({there: ink}),
+        'a copy with another canvas': sheet().copyWith(
+          canvasSize: const CanvasSize(width: 64, height: 64),
+        ),
+        'other texts': sheet().withTexts(const []),
+      };
+
+      for (final MapEntry(key: road, value: next) in derived.entries) {
+        expect(next.photos, photos, reason: road);
+      }
+    });
+
+    test('given others, it is the same drawing — the very tile map — and '
+        'the same texts', () {
+      final drawn = picture();
+
+      final withPhotos = drawn.withPhotos(photos);
+
+      expect(withPhotos.photos, photos);
+      expect(identical(withPhotos.tiles, drawn.tiles), isTrue);
+      expect(withPhotos.texts, same(drawn.texts));
+      expect(drawn.photos, isEmpty, reason: 'the source is not written');
+    });
+
+    test('given the list it already holds, it is itself', () {
+      final withPhotos = sheet();
+
+      expect(
+        identical(withPhotos.withPhotos(withPhotos.photos), withPhotos),
+        isTrue,
+      );
+    });
+
+    test('cannot be written through the surface', () {
+      expect(() => sheet().photos.add(photoOf(3)), throwsUnsupportedError);
+    });
+
+    test('a photo alone is something — a sheet that holds only a photo '
+        'holds a picture', () {
+      final onlyPhoto = drawingOf(const {}).withPhotos([photoOf(1)]);
+
+      expect(onlyPhoto.holdsNothing, isFalse);
+    });
+
+    test('two pictures with other photos, or the same in another order, are '
+        'not equal', () {
+      expect(sheet(), picture().withPhotos([...photos]));
+      expect(sheet().hashCode, picture().withPhotos([...photos]).hashCode);
+      expect(sheet(), isNot(picture()));
+      expect(
+        sheet(),
+        isNot(picture().withPhotos(photos.reversed.toList())),
+        reason: 'the order is which photo is on top',
+      );
+    });
+
+    test('a picture reads back from JSON with its photos, and one with none '
+        'writes none', () {
+      final read = BitmapSurface.fromJson(throughJson(sheet().toJson()));
+
+      expect(read, sheet());
+      expect(read.photos.map((photo) => photo.id), [1, 2]);
+      expect(picture().toJson().containsKey('photos'), isFalse);
     });
   });
 }

@@ -11,6 +11,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
+import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/cel_text_fixture.dart';
 
 /// A cel laid on a worker ([layCelEntry]) and adopted on the main isolate
@@ -23,7 +24,7 @@ void main() {
   final b = TileCoord(x: 1, y: 0);
 
   /// A drawing of two tiles and a text with a plate — every block a laid
-  /// cel holds.
+  /// cel holds — and a photo, which holds none.
   BitmapSurface picture() => drawingOf({
     a: tileOf({
       (1, 1): [9, 9, 9, 255],
@@ -41,7 +42,7 @@ void main() {
         }),
       },
     ),
-  ]);
+  ]).withPhotos([photoOf(1)]);
 
   AnicelCelEntry entryOf(BitmapSurface surface) =>
       AnicelCelEntry.fromSurface(celTextTestKey, surface);
@@ -77,7 +78,8 @@ void main() {
   }
 
   test('what it laid is the cel — adopted here, the same tiles, the same '
-      'texts and their plates as the copy the main isolate made', () {
+      'texts and their plates, and the same photos as the copy the main '
+      'isolate made', () {
     final entry = entryOf(picture());
     final copied = entry.toSurface();
 
@@ -95,6 +97,8 @@ void main() {
       bytesByCoord(laid.texts.single.plate),
       bytesByCoord(copied.texts.single.plate),
     );
+    expect(laid.photos, copied.photos);
+    expect(laid.photos, [photoOf(1)], reason: 'fixture: one came across');
   });
 
   test('🚨a block it could not get frees every block it got — nothing else '

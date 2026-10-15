@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
+import 'cel_photo.dart';
 import 'cel_text.dart';
 import 'pasteboard_bounds.dart';
 import 'placed_tile.dart';
@@ -59,14 +60,21 @@ typedef KeptTilePlace = ({int? text, TileCoord coord});
 /// and a selection lifts. What a cel SHOWS is those with the texts laid over
 /// them (`celSurfaceWithTextsLaid`), and nothing that draws or reads a
 /// picture may take the tiles of a surface that still carries texts.
+///
+/// A sheet's ink keeps its PHOTOS here too, under the drawing (I-97,
+/// [photos]) — for the same reason, by the same roads. ⚠️They are no pixels
+/// of the picture: nothing that reads its tiles sees them, and the sheet's
+/// ink is what draws them, from the pool's file.
 class BitmapSurface {
   BitmapSurface({
     required this.canvasSize,
     this.tileSize = defaultCelTileSize,
     Map<TileCoord, BitmapTile> tiles = const {},
     List<CelText> texts = const [],
+    List<CelPhoto> photos = const [],
   }) : _tiles = Map<TileCoord, BitmapTile>.unmodifiable(tiles),
-       texts = List<CelText>.unmodifiable(texts) {
+       texts = List<CelText>.unmodifiable(texts),
+       photos = List<CelPhoto>.unmodifiable(photos) {
     _validateTileSize(tileSize);
     _validateCanvasSize(canvasSize);
     for (final entry in _tiles.entries) {
@@ -102,13 +110,15 @@ class BitmapSurface {
   /// 🚨★★★**[texts] RIDES EVERY DERIVATION.** A commit builds its surface
   /// through here, and a derivation that let the texts fall would make one
   /// stroke delete every letter on the cel. It is `required` for that reason
-  /// alone: nobody deriving a surface gets to forget the question.
+  /// alone: nobody deriving a surface gets to forget the question. [photos]
+  /// ride for the same reason (I-97): a stroke over a photo keeps it.
   BitmapSurface._derived({
     required this.canvasSize,
     required this.tileSize,
     required Map<TileCoord, BitmapTile> tiles,
     required Iterable<PlacedTile> added,
     required this.texts,
+    required this.photos,
   }) : _tiles = UnmodifiableMapView(tiles) {
     for (final placed in added) {
       _validateTileEntry(placed.coord, placed.tile, this);
@@ -122,7 +132,8 @@ class BitmapSurface {
     : canvasSize = from.canvasSize,
       tileSize = from.tileSize,
       _tiles = from._tiles,
-      texts = List<CelText>.unmodifiable(texts) {
+      texts = List<CelText>.unmodifiable(texts),
+      photos = from.photos {
     for (final text in this.texts) {
       // A text this surface already carried was checked when it came in.
       if (!from.texts.any((kept) => identical(kept, text))) {
@@ -130,6 +141,15 @@ class BitmapSurface {
       }
     }
   }
+
+  /// [from]'s very tiles and texts under other [photos] — nothing of the
+  /// grid to check: a photo stands on the picture, not in its tiles.
+  BitmapSurface._withPhotos(BitmapSurface from, List<CelPhoto> photos)
+    : canvasSize = from.canvasSize,
+      tileSize = from.tileSize,
+      _tiles = from._tiles,
+      texts = from.texts,
+      photos = List<CelPhoto>.unmodifiable(photos);
 
   final CanvasSize canvasSize;
   final int tileSize;
@@ -140,14 +160,26 @@ class BitmapSurface {
   /// 쌓임. 즉 그림/텍스트/텍스트 이런식」. Read-only.
   final List<CelText> texts;
 
+  /// The photos laid UNDER the drawing, bottom → top — a sheet's ink's own
+  /// (I-97; 유저 2026-10-15: 「사진으로 남게(셀의 텍스트처럼)」). Read-only.
+  final List<CelPhoto> photos;
+
   /// This picture with [texts] in place of its own; the drawing is the
   /// same tiles. The surface itself when [texts] is the list it holds.
   BitmapSurface withTexts(List<CelText> texts) =>
       identical(texts, this.texts) ? this : BitmapSurface._withTexts(this, texts);
 
-  /// Whether this picture holds nothing at all — no tile and no text. A
-  /// tile may still be blank; that is [BitmapTile.hasInk]'s question.
-  bool get holdsNothing => _tiles.isEmpty && texts.isEmpty;
+  /// This picture with [photos] in place of its own; the drawing and the
+  /// texts are the same. The surface itself when [photos] is its own list.
+  BitmapSurface withPhotos(List<CelPhoto> photos) =>
+      identical(photos, this.photos)
+      ? this
+      : BitmapSurface._withPhotos(this, photos);
+
+  /// Whether this picture holds nothing at all — no tile, no text and no
+  /// photo. A tile may still be blank; that is [BitmapTile.hasInk]'s
+  /// question.
+  bool get holdsNothing => _tiles.isEmpty && texts.isEmpty && photos.isEmpty;
 
   /// How many tiles this picture keeps in memory: the drawing's, and every
   /// text's plate.
@@ -328,6 +360,7 @@ class BitmapSurface {
       tiles: updated,
       added: tilesToPut,
       texts: texts,
+      photos: photos,
     );
   }
 
@@ -371,6 +404,7 @@ class BitmapSurface {
       tiles: updated,
       added: kept,
       texts: texts,
+      photos: photos,
     );
   }
 
@@ -402,12 +436,14 @@ class BitmapSurface {
     int? tileSize,
     Map<TileCoord, BitmapTile>? tiles,
     List<CelText>? texts,
+    List<CelPhoto>? photos,
   }) {
     return BitmapSurface(
       canvasSize: canvasSize ?? this.canvasSize,
       tileSize: tileSize ?? this.tileSize,
       tiles: tiles ?? _tiles,
       texts: texts ?? this.texts,
+      photos: photos ?? this.photos,
     );
   }
 
@@ -423,6 +459,8 @@ class BitmapSurface {
         {'coord': entry.key.toJson(), 'tile': entry.value.toJson()},
     ],
     if (texts.isNotEmpty) 'texts': [for (final text in texts) text.toJson()],
+    if (photos.isNotEmpty)
+      'photos': [for (final photo in photos) photo.toJson()],
   };
 
   factory BitmapSurface.fromJson(Map<String, dynamic> json) {
@@ -450,6 +488,10 @@ class BitmapSurface {
         for (final text in json['texts'] as List? ?? const [])
           CelText.fromJson(text as Map<String, dynamic>),
       ],
+      photos: [
+        for (final photo in json['photos'] as List? ?? const [])
+          CelPhoto.fromJson(photo as Map<String, dynamic>),
+      ],
     );
   }
 
@@ -460,7 +502,8 @@ class BitmapSurface {
           other.canvasSize == canvasSize &&
           other.tileSize == tileSize &&
           mapEquals(other._tiles, _tiles) &&
-          listEquals(other.texts, texts);
+          listEquals(other.texts, texts) &&
+          listEquals(other.photos, photos);
 
   @override
   int get hashCode => Object.hash(
@@ -470,6 +513,7 @@ class BitmapSurface {
       _tiles.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
     Object.hashAll(texts),
+    Object.hashAll(photos),
   );
 
   @override

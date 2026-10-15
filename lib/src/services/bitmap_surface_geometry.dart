@@ -5,6 +5,7 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
@@ -201,6 +202,7 @@ BitmapSurface resizeBitmapSurfaceCanvas(
           entry.key: entry.value,
     },
     texts: _textsMoved(surface, dx: 0, dy: 0, canvasSize: canvasSize),
+    photos: _photosMoved(surface, dx: 0, dy: 0),
   );
 }
 
@@ -249,6 +251,32 @@ BitmapSurface celTextPlateSurface(
   required CanvasSize canvasSize,
   required int tileSize,
 }) => BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: plate);
+
+/// [surface]'s photos as a move of its pixels by ([dx], [dy]) leaves them:
+/// each where the picture now is. A photo stands on the picture's grid
+/// (I-97), so it moves by the very offset the drawing does — and nothing is
+/// clamped, as nothing is for a text (the tool law above).
+///
+/// ⚠️The reference row's resize moves its pose by the same arithmetic
+/// (`translateLayerForResize`): two spellings of 「a reference moves with
+/// the content」, left two by the rule of three until a third appears.
+List<CelPhoto> _photosMoved(
+  BitmapSurface surface, {
+  required int dx,
+  required int dy,
+}) => [
+  for (final photo in surface.photos)
+    photo.withReference(
+      photo.reference.copyWith(
+        pose: photo.reference.pose.copyWith(
+          center: CanvasPoint(
+            x: photo.reference.pose.center.x + dx,
+            y: photo.reference.pose.center.y + dy,
+          ),
+        ),
+      ),
+    ),
+];
 
 /// [content] standing ([dx], [dy]) whole pixels from where it stood — the
 /// number its plate's pixels were set from, moved as they are
@@ -338,6 +366,7 @@ BitmapSurface translateBitmapSurface(
       tileSize: tileSize,
       tiles: rebased,
       texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
+      photos: _photosMoved(surface, dx: dx, dy: dy),
     );
   }
 
@@ -420,6 +449,7 @@ BitmapSurface translateBitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSize,
     texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
+    photos: _photosMoved(surface, dx: dx, dy: dy),
   ).putMaterializedTiles([
     for (final entry in buffers.entries)
       (

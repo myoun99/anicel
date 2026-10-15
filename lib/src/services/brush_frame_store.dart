@@ -1110,8 +1110,10 @@ class BrushFrameStore {
       // ★A TEXT IS PICTURE (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a
       // cel that carries one has something to show whatever its tiles hold,
       // so every reader of this oracle — the row's image, the block's tint,
-      // the pixel buttons — counts it without being told about texts.
+      // the pixel buttons — counts it without being told about texts. A
+      // sheet's photo is kept with its picture the same way (I-97).
       return baked.texts.isNotEmpty ||
+          baked.photos.isNotEmpty ||
           baked.tiles.values.any((tile) => tile.hasInk);
     }
     // ⛔Cold and file-backed cels answer by membership, deliberately: asking
