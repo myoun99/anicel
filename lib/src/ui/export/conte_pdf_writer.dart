@@ -329,8 +329,7 @@ class _ContePdfPageWriter {
       }
     }
     if (image != null) {
-      final laid = placement.rasterRect(image.width, image.height);
-      _g.drawImage(image, laid.left, _y(laid.bottom), laid.width, laid.height);
+      _drawnIn(image, placement.rasterRect(image.width, image.height));
     }
     _g.restoreContext();
   }
