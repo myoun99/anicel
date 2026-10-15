@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/named_finders.dart';
 import '../../helpers/words_cut_off.dart';
 
 /// 🚨text-scale-rail-columns (유저 2026-09-25, answering
@@ -37,18 +41,14 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
 
-  /// A row's opacity bar under [scope] — every rail keys it
+  /// A row's opacity bar under [scope] — every rail names it
   /// `<surface>-layer-opacity-<id>`.
   Rect rowOpacityBar(WidgetTester tester, Finder scope) => tester.getRect(
     find
         .descendant(
           of: scope,
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget.key is ValueKey<String> &&
-                (widget.key! as ValueKey<String>).value.contains(
-                  '-layer-opacity-',
-                ),
+          matching: find.namedWhere(
+            (name) => name.contains('-layer-opacity-'),
           ),
         )
         .first,
@@ -107,15 +107,7 @@ void main() {
           find.byKey(const ValueKey<String>('legend-opacity')),
         );
         final rowBar = tester.getRect(
-          find
-              .byWidgetPredicate(
-                (widget) =>
-                    widget.key is ValueKey<String> &&
-                    (widget.key! as ValueKey<String>).value.contains(
-                      '-layer-opacity-',
-                    ),
-              )
-              .first,
+          find.namedWhere((name) => name.contains('-layer-opacity-')).first,
         );
         expect(master.left, closeTo(rowBar.left, 0.5));
         expect(master.width, closeTo(rowBar.width, 0.5));
@@ -153,8 +145,7 @@ void main() {
           tester.getSize(legend).height,
           closeTo(
             XSheetTimelineGrid.naturalHeaderBlockExtent(
-              hasOnionColumn: true,
-              hasBlendColumn: true,
+              optionalColumns: (onion: true, blend: true),
               columns: layerRailColumnWidthsIn(tester.element(legend)),
             ),
             0.5,
@@ -179,7 +170,18 @@ void main() {
         expect(wordsCutAcross(board), isEmpty);
         expect(
           StoryboardPanel.railWidthIn(tester.element(board)),
-          scale == 1.0 ? 443 : greaterThan(443),
+          scale == 1.0 ? 519 : greaterThan(519),
+        );
+        // It pays for the columns the timeline's pays for — the same
+        // growth, from its own width.
+        final columns = layerRailColumnWidthsIn(tester.element(board));
+        expect(
+          StoryboardPanel.railWidthIn(tester.element(board)) - 519,
+          closeTo(
+            timelineLayerControlsWidthFor(columns) -
+                timelineLayerControlsWidth,
+            0.01,
+          ),
         );
 
         // Its legend's master bar sits over its S rows' bars.
@@ -187,6 +189,56 @@ void main() {
         final master = legendOpacity(tester, board);
         expect(master.left, closeTo(bar.left, 0.5));
         expect(master.width, closeTo(bar.width, 0.5));
+      });
+
+      testWidgets('the folded row takes the rail the open panel takes — its '
+          'width and its columns', (tester) async {
+        // 「레이어영역의 가로길이같은거 타임라인 그대로 가져와. 그래야 열의
+        // 규격이 맞을거니까」 (유저 2026-08-13) — at every text size. ↩️The
+        // folded row took the 1× rail, so under a larger one its columns and
+        // its frames stood apart from the open panel's.
+        atTextScale(tester, scale);
+        await tester.pumpWidget(const AnicelApp());
+        await tester.pumpAndSettle();
+        final panel = find.byType(TimelinePanel);
+        final open = tester
+            .widget<LayerRailWindow>(
+              find
+                  .descendant(of: panel, matching: find.byType(LayerRailWindow))
+                  .first,
+            )
+            .naturalExtent;
+        final openBar = rowOpacityBar(tester, panel);
+        expect(
+          open,
+          closeTo(
+            timelineLayerControlsWidthFor(
+              layerRailColumnWidthsIn(tester.element(panel)),
+            ),
+            0.5,
+          ),
+          reason: '⛔premise: the open rail is as wide as its columns ask',
+        );
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('floating-bottom-collapse')),
+        );
+        await tester.pumpAndSettle();
+
+        final folded = find.byType(CollapsedRowOverlay);
+        expect(folded, findsOneWidget, reason: '⛔premise: the panel folded');
+        expect(
+          tester
+              .widget<LayerRailWindow>(
+                find.descendant(
+                  of: folded,
+                  matching: find.byType(LayerRailWindow),
+                ),
+              )
+              .naturalExtent,
+          open,
+        );
+        expect(rowOpacityBar(tester, folded).width, openBar.width);
       });
     });
   }

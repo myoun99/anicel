@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import '../../helpers/dart_sources.dart';
+import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_twirls.dart';
 
 /// 🚨★★★EVERY BUTTON IN `lib/src/ui` CLAIMS ITS PRESS.
 ///
@@ -145,12 +147,11 @@ void main() {
     // ↓2026-09-30, the app's one grouped choice (pill-group-everywhere):
     // the brush edge's and the read source's `SegmentedButton` became a
     // claimed `PillStrip` — brush settings 1 → gone, tool settings 9 → 8.
+    // ↓2026-10-10, tool-settings-panel-tidy: a tool's actions became one
+    // claimed box (`ToolSettingAction`) — tool settings 8 → gone. (16 → 15
+    // on 2026-09-22: the scale anchor's SegmentedButton went with the
+    // setting itself.)
     'lib/src/ui/brush/guide_panels.dart': 1,
-    // 16 → 15 on 2026-09-22: the scale anchor's SegmentedButton went with
-    // the setting itself (유저 gave the modifier a touch entrance instead,
-    // so a persistent choice and a held key were two entrances to one
-    // question). The ratchet only ever comes DOWN.
-    'lib/src/ui/brush/tool_settings_panel.dart': 8,
     // ↓2026-09-30, F-230: the nine framework dropdowns became the shared
     // flyout's button, which claims — audio settings 3, input settings 3,
     // the linked cut, the instruction and the language dialogs → gone.
@@ -158,7 +159,9 @@ void main() {
     // flyout too — canvas size 1 → gone. I-80: the camera size's after
     // them — camera size 1 → gone.
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
-    'lib/src/ui/import/import_dialog.dart': 2,
+    // ↓2026-10-09, F-282: the import window's own two pickers went to the
+    // one door (the open button picks; the window takes what it is handed)
+    // — import window 2 → gone.
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,
     'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
@@ -490,7 +493,7 @@ void main() {
       'xsheet-layer-onion-$layerId',
       'xsheet-layer-fill-reference-$layerId',
     ]) {
-      final finder = find.byKey(ValueKey<String>(id));
+      final finder = find.named(id);
       expect(finder, findsOneWidget, reason: '$id is not on the sheet');
       expect(
         await claimedWhileDown(tester, finder, pointer: pointer++),
@@ -518,10 +521,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -535,13 +542,15 @@ void main() {
     await tester.pumpAndSettle();
 
     var pointer = 55;
-    for (final id in const [
-      'storyboard-track-lane-toggle-default-track',
-      'storyboard-se-lane-toggle-default-track-1',
-      'legend-lanes-toggle',
-      'legend-mute',
+    for (final (id, finder) in [
+      for (final name in const [
+        'storyboard-track-lane-toggle-default-track',
+        'storyboard-se-lane-toggle-default-track-1',
+      ])
+        (name, find.named(name)),
+      for (final key in const ['legend-lanes-toggle', 'legend-mute'])
+        (key, find.byKey(ValueKey<String>(key))),
     ]) {
-      final finder = find.byKey(ValueKey<String>(id));
       expect(finder, findsOneWidget, reason: '$id is not on the storyboard');
       expect(
         await claimedWhileDown(tester, finder, pointer: pointer++),

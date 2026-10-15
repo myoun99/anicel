@@ -77,6 +77,11 @@ void main() {
       1,
       'the ×1.25 zoom step — a zoom times a factor, no frame count',
     ),
+    'lib/src/ui/timeline/timeline_frame_axis_follower.dart': (
+      1,
+      'the view a scrollable not yet laid out is taken to have — the frames '
+          'that paper it: a length, not a boundary',
+    ),
   };
 
   Iterable<File> frameAxisSources() => [

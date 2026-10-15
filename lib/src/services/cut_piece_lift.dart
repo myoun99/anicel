@@ -1,20 +1,34 @@
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
+import '../models/brush_frame_key.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/cut_piece.dart';
 import '../models/dirty_region.dart';
+import 'brush_frame_editing_coordinator.dart';
+import 'cache_invalidation_executor.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
+import 'command.dart';
+import 'commands/brush_lift_move_history_command.dart';
+
+/// What a cut READ off a cel: the piece, and the lift it was packed from —
+/// what [cutPixelsTaken] takes off the cel when the cut is to take them.
+typedef CutRead = ({CutPiece piece, SelectionPixels lifted});
 
 /// Reads the pixels under [region] out of [surface] and packs them into a
-/// [CutPiece]. Returns null when the outline covers nothing paintable.
+/// [CutPiece], the lift kept beside it ([CutRead]). Returns null when the
+/// outline covers nothing paintable.
 ///
 /// This is the CUT verb, and it differs from the selection MOVE lift next
 /// door in exactly one way that matters: it produces only the piece, never
 /// the erase that would remove the source. 유저 확정: "잘라내기는 원본 남기는
 /// 복사" — the cut tool copies, and nothing about it can be routed into a
 /// path that also deletes.
+/// ↩️I-90 (유저 2026-10-10) asked for a cut that DOES take what it cuts —
+/// 「원본 삭제」 on the cut tool, 「픽셀 잘라내기」 in 색 편집. It is still not
+/// in here: the read stays a read, and the taking is a step of its own,
+/// asked for by name ([cutPixelsTaken]).
 ///
 /// The mask is HARD-EDGED on purpose, and not merely by inheriting a
 /// default. Japanese line art is two-value, and a soft edge writes the
@@ -33,7 +47,7 @@ import 'canvas_selection_region.dart';
 /// pixel-verbs-mask-options: 「선택의 aa 따르게」) — the same reading the
 /// move's lift gives it. ⛔The cut tool's own outline and a whole picture
 /// pass nothing: the hard edge above is their law, not a default.
-CutPiece? buildCutPiece({
+CutRead? readCutPiece({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
   SelectionMaskOptions options = SelectionMaskOptions.none,
@@ -54,17 +68,45 @@ CutPiece? buildCutPiece({
     return null;
   }
   final box = lifted.box;
-  return CutPiece(
-    image: BrushStampImage(
-      id: _nextCutPieceId(),
-      width: box.width,
-      height: box.height,
-      rgba: lifted.rgba,
+  return (
+    piece: CutPiece(
+      image: BrushStampImage(
+        id: _nextCutPieceId(),
+        width: box.width,
+        height: box.height,
+        rgba: lifted.rgba,
+      ),
+      originLeft: box.left,
+      originTop: box.top,
     ),
-    originLeft: box.left,
-    originTop: box.top,
+    lifted: lifted,
   );
 }
+
+/// The step that takes what [read] cut off [key]'s cel, as one undo — the
+/// move's erase ([selectionEraseDab]): a pixel the piece took whole leaves
+/// whole, so nothing it took stays behind in part.
+///
+/// 🗣️I-90 (유저 2026-10-10): 「잘라내기시 해당 그림 없애는것」 · 「원본대상
+/// 삭제하고 복사한단느낌. 진짜 단어 그대로 잘라내기」 — the cut tool's
+/// 「원본 삭제」 and 색 편집's 「픽셀 잘라내기」 both take through here.
+Command cutPixelsTaken({
+  required BrushFrameEditingCoordinator coordinator,
+  required BrushFrameKey key,
+  required CutRead read,
+  CacheInvalidationSink? cacheInvalidationSink,
+}) => BrushLiftMoveHistoryCommand(
+  coordinator: coordinator,
+  frameKey: key,
+  preLiftSurface: coordinator.currentSurfaceOf(key),
+  landingDabs: [
+    selectionEraseDab(read.lifted, id: 'cut-erase-${read.piece.image.id}'),
+  ],
+  description: 'Cut pixels',
+  // Without a sink the canvas keeps the old composite until you leave the
+  // frame — the pixels change and every cache serves what it had.
+  cacheInvalidationSink: cacheInvalidationSink,
+);
 
 /// The id a NEW piece's pixels go by — minted here, where a piece is made,
 /// and nowhere else.
@@ -100,7 +142,7 @@ var _cutPieceSequence = 0;
 /// straight RGBA of the box the region chose
 /// ([CanvasSelectionRegion.pixelBoxWithin]), at that size — so the piece
 /// holds the SOURCE's pixels, whatever zoom the drag was made at. The laws
-/// are [buildCutPiece]'s: a hard mask, no blank piece for an empty drag
+/// are [readCutPiece]'s: a hard mask, no blank piece for an empty drag
 /// (the slot outlives frames, cuts and projects), and its id minted here.
 ///
 /// The origin is the box's place on the PICTURE, which is what paste at

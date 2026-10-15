@@ -1,13 +1,16 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer.dart';
-import '../../models/layer_effect.dart' show effectParameterValueAt;
+import '../../models/layer_effect.dart' show effectParameterValueAtTime;
 import '../../models/layer_kind.dart';
+import '../../models/reference_swap.dart' show referenceRedrawFor;
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
+import 'reference_lane_policy.dart'
+    show referenceGroupLaneId, referencePropertyLanes;
 import 'scale_lane_form.dart';
 import 'se_audio_lane.dart' show seAudioLanesFor;
 import 'se_name_tag_lane_policy.dart'
@@ -34,7 +37,9 @@ import 'transform_lane_policy.dart'
 /// two things that ARE the rail's come in as arguments:
 ///
 ///  * [valueSourceAt] — the row and frame a lane's value at a rail frame is
-///    read off;
+///    read off. Null leaves the lanes without a value: a rail with no cut to
+///    read them in (the storyboard's conte rows in a gap, I-73 ④ⓔ). An S row
+///    is never read so, and its name tag would resolve on the row itself;
 ///  * [poseCentre] — the frame an unkeyed pose sits in the middle of: the
 ///    open cut's canvas on a cut's rail, the camera frame on a track's rail,
 ///    where a row spans cuts and following the open one showed another
@@ -50,9 +55,10 @@ List<PropertyLaneRow> propertyLanesForRow({
   required Layer layer,
   required List<Layer> rows,
   required Set<String> expandedGroupKeys,
-  required ({Layer layer, int frame}) Function(int frameIndex) valueSourceAt,
+  required ({Layer layer, int frame}) Function(int frameIndex)? valueSourceAt,
   required CanvasSize? poseCentre,
 }) {
+  final source = valueSourceAt;
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
   // — no lanes of their own in v1. R9: the 공정 ORGANIZER folder joins
   // them. It follows its base like its members do, so a transform or
@@ -101,29 +107,34 @@ List<PropertyLaneRow> propertyLanesForRow({
       layer.transformTrack,
       scaleForm: scaleLaneFormOf(layer),
       includeAnchorAndOpacity: true,
-      poseAt: centre == null
+      poseAt: centre == null || source == null
           ? null
-          : (frameIndex) {
-              final at = valueSourceAt(frameIndex);
-              return at.layer.transformTrack.resolveAt(
-                frameIndex: at.frame,
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return at.layer.transformTrack.resolveAtTime(
+                time: at.time,
                 orElse: () => layerIdentityPose(centre),
               );
             },
-      anchorAt: centre == null
+      anchorAt: centre == null || source == null
           ? null
-          : (frameIndex) {
-              final at = valueSourceAt(frameIndex);
-              return resolveAnchorTrackAt(
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return resolveAnchorTrackAtTime(
                     at.layer.transformTrack.anchorPoint,
-                    at.frame,
+                    at.time,
                   ) ??
                   layerIdentityPose(centre).center;
             },
-      opacityAt: (frameIndex) {
-        final at = valueSourceAt(frameIndex);
-        return resolveOpacityTrackAt(at.layer.transformTrack.opacity, at.frame);
-      },
+      opacityAt: source == null
+          ? null
+          : (time) {
+              final at = _sourceAtTime(source, time);
+              return resolveOpacityTrackAtTime(
+                at.layer.transformTrack.opacity,
+                at.time,
+              );
+            },
     );
   }
 
@@ -140,15 +151,17 @@ List<PropertyLaneRow> propertyLanesForRow({
       isExpanded: (effectId) => expandedGroupKeys.contains(
         laneGroupKey(layer.id, effectGroupLaneId(effectId)),
       ),
-      valueAt: (effectId, parameterId, frameIndex) {
-        final at = valueSourceAt(frameIndex);
-        return effectParameterValueAt(
-          at.layer.effects,
-          effectId,
-          parameterId,
-          at.frame,
-        );
-      },
+      valueAt: source == null
+          ? null
+          : (effectId, parameterId, time) {
+              final at = _sourceAtTime(source, time);
+              return effectParameterValueAtTime(
+                at.layer.effects,
+                effectId,
+                parameterId,
+                at.time,
+              );
+            },
     );
   }
 
@@ -176,7 +189,8 @@ List<PropertyLaneRow> propertyLanesForRow({
             laneGroupKey(layer.id, seNameTagGroupLaneId),
           ),
           resolveAt: (frameIndex) {
-            final at = valueSourceAt(frameIndex);
+            final at =
+                source?.call(frameIndex) ?? (layer: layer, frame: frameIndex);
             return (at.layer.seNameTag ?? const SeNameTag()).resolveAt(
               at.frame,
             );
@@ -206,9 +220,34 @@ List<PropertyLaneRow> propertyLanesForRow({
       // app already DOES: the pose wraps the draw while the effect filters
       // sit inside it, so the transform is genuinely last. Only the reading
       // order was upside down.
+      //
+      // I-68: a row that SHOWS a file has its reference fx before them all
+      // — where the file stands is laid when its pixels are made, before
+      // any effect or transform reads them.
+      final reference = layer.mediaReference;
       return [
+        if (reference != null && referenceRedrawFor(layer) != null)
+          ...referencePropertyLanes(
+            reference,
+            expanded: expandedGroupKeys.contains(
+              laneGroupKey(layer.id, referenceGroupLaneId),
+            ),
+          ),
         ...layerEffectLanes(),
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];
   }
+}
+
+/// Where a lane on a row reads its value at [time] — a frame, or between
+/// two (a header graph's curve, I-89 ③): the row and frame [source] reads
+/// the time's own frame off, carried the rest of the way. A projection
+/// moves a row's frames, never the time between them.
+({Layer layer, double time}) _sourceAtTime(
+  ({Layer layer, int frame}) Function(int frameIndex) source,
+  double time,
+) {
+  final frame = time.floor();
+  final at = source(frame);
+  return (layer: at.layer, time: at.frame + (time - frame));
 }

@@ -56,6 +56,10 @@ TvppClipConversion convertTvppClip(
     if (layer.kind == TvppLayerKind.camera) {
       continue; // the camera layer is the clip's camera, not a row.
     }
+    if (layer.kind == TvppLayerKind.unknown) {
+      warnings.add(unsupportedLayerKind(layer.name));
+      continue;
+    }
     position += 1;
 
     if (layer.kind == TvppLayerKind.folder) {
@@ -73,6 +77,7 @@ TvppClipConversion convertTvppClip(
           groupColor: null,
           blocks: const [],
           isFolder: true,
+          collapsed: layer.collapsed,
         ),
       );
       topFirstParentLayerId.add(layer.parentId);
@@ -181,6 +186,7 @@ TvppClipConversion convertTvppClip(
               blocks: layer.blocks,
               isFolder: layer.isFolder,
               parentIndex: parentBottom,
+              collapsed: layer.collapsed,
             ),
     );
   }
@@ -193,18 +199,6 @@ TvppClipConversion convertTvppClip(
     parseTvppCameraProfiles(clip.cameraDataText),
     frameCount: clip.frameCount,
   );
-  final keyframes = [
-    for (final p in clip.cameraPoints)
-      TvpCameraPose(
-        frame: p.instant + 1,
-        x: p.x,
-        y: p.y,
-        angleDegrees: p.rotationDegrees,
-        scale: p.zoomFactor,
-        sizeX: p.sizeX,
-        sizeY: p.sizeY,
-      ),
-  ];
 
   return TvppClipConversion(
     result: TvpImportClip(
@@ -222,7 +216,7 @@ TvppClipConversion convertTvppClip(
       camera: TvpCamera(
         width: clip.width,
         height: clip.height,
-        keyframes: poses.isEmpty ? const [] : keyframes,
+        keyedOn: tvppCameraKeyFrames(clip.cameraPoints),
         positions: poses,
       ),
       layers: layers,

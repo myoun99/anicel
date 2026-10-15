@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
+import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 import 'timeline_row_chrome_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -97,6 +98,7 @@ void main() {
           metrics: const TimelineGridMetrics(
             frameCellWidth: 48,
             layerRowHeight: 52,
+            layerControlsWidth: classicRailWidth,
           ),
         ),
       ),

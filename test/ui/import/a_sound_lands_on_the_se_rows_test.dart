@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -316,8 +318,41 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('in the window a sound\'s Into is the SE rows, locked, and it '
-      'asks no fit — pressing Import lands it on S1', (tester) async {
+  // A cut an O.L arrives into is drawn its のりしろ before its place on the
+  // track, so its first frame — the timeline's first column, where a
+  // picture that came in with the sound starts (「같은 시작」) — plays that
+  // much early. ↩️The sound started at the cut's place, the のりしろ after
+  // that picture (I-73-ol-index-space).
+  testWidgets('🚨with an O.L arriving into the open cut the sound starts on '
+      'the cut\'s OWN first frame — where its first column plays', (
+    tester,
+  ) async {
+    final s = session();
+    final first = s.requireActiveCut;
+    final second = createDefaultCut(
+      cutId: const CutId('sound-ol-cut'),
+      name: '2',
+      layerId: const LayerId('sound-ol-cut-layer'),
+      canvasSize: first.canvasSize,
+    );
+    s.repository.insertCut(trackId: s.activeTrack.id, cut: second);
+    s.selectCut(second.id);
+    final stands = s.activeCutGlobalStartFrame;
+    s.transitions.updateTransitionInstructions({
+      stands - 6: const InstructionEvent(instructionId: 'ol', length: 12),
+    });
+    expect(s.activeCutMediaStartFrame, stands - 6, reason: 'the premise');
+
+    expect(await place(tester, s), isTrue);
+
+    final s1 = s.activeTrack.seLayers.first;
+    expect(s1.timeline[stands - 6], isNotNull);
+    expect(s1.timeline[stands], isNull, reason: 'not at the cut\'s place');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('in the window a sound\'s Into is the SE rows — pressing Import '
+      'lands it on S1', (tester) async {
     final path = await tester.runAsync(() => writeSound('door.wav', 1));
     final s = session();
     final start = s.activeCutGlobalStartFrame;
@@ -334,11 +369,6 @@ void main() {
           .widget<Text>(find.descendant(of: into, matching: find.byType(Text)))
           .data,
       AppText.strings.imIntoSeRow,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('import-column-fit')),
-      findsNothing,
-      reason: 'only a sound in the batch: no fit to ask',
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));

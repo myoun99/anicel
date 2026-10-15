@@ -64,6 +64,12 @@ void main() {
         'lib/src/ui/export/still_image_encoders.dart': 1,
       });
     });
+
+    test('a PNG file is laid out in one place — the engine\'s aside', () {
+      expect(callersOf("'IHDR'"), {
+        'lib/src/services/media/png_writing.dart': 1,
+      }, reason: 'F-335 made the third writer; the pieces are spelled once');
+    });
   });
 
   group('the shared pieces', () {
@@ -134,10 +140,20 @@ void main() {
       expect(frameUnderThePlayhead(session)!.frameIndex, 0);
     });
 
-    test('the bytes: PNG is the engine\'s own, JPG has an encoder', () {
+    test('the bytes: a PNG that keeps its alpha is the engine\'s own; one in '
+        'RGB (F-335) and a JPG have an encoder', () {
       expect(
         stillEncoderFor(const ExportFormatSelection(kind: ExportMediaKind.still)),
         isNull,
+      );
+      expect(
+        stillEncoderFor(
+          const ExportFormatSelection(
+            kind: ExportMediaKind.still,
+            channels: ExportChannels.rgb,
+          ),
+        ),
+        isNotNull,
       );
       expect(
         stillEncoderFor(

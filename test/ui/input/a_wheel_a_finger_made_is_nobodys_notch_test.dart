@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/pinch_recognised_at.dart';
+
 /// 🚨★★★A WHEEL THAT A FINGER MADE IS NOBODY'S NOTCH.
 ///
 /// 유저 실기 2026-09-17 (보조 손가락 핀치 줌 스냅, 터치): 「작동은 함. 근데
@@ -86,15 +88,11 @@ void main() {
 
     // Two fingers pinch out to about 2×, then the MODIFIER lands: the zoom
     // is held on the nearest stop of [100, 200, 300].
-    final first = await tester.startGesture(
+    final (first, second) = await pinchRecognisedAt(
+      tester,
       const Offset(300, 300),
-      kind: PointerDeviceKind.touch,
-      pointer: 41,
-    );
-    final second = await tester.startGesture(
       const Offset(400, 300),
-      kind: PointerDeviceKind.touch,
-      pointer: 42,
+      pointer: 41,
     );
     await first.moveBy(const Offset(-50, 0));
     await second.moveBy(const Offset(50, 0));
@@ -136,15 +134,11 @@ void main() {
     tester,
   ) async {
     final emitted = await pumpCanvas(tester);
-    final first = await tester.startGesture(
+    final (first, second) = await pinchRecognisedAt(
+      tester,
       const Offset(300, 300),
-      kind: PointerDeviceKind.touch,
-      pointer: 41,
-    );
-    final second = await tester.startGesture(
       const Offset(400, 300),
-      kind: PointerDeviceKind.touch,
-      pointer: 42,
+      pointer: 41,
     );
     await first.moveBy(const Offset(-25, 0));
     await second.moveBy(const Offset(25, 0));

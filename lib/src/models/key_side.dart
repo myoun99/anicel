@@ -1,0 +1,410 @@
+/// THE TWO SIDES OF A KEY (I-89).
+///
+/// 🗣️유저 2026-10-10: 「키 양쪽. 업계 표준인 전문 툴대로 하고싶어. 그게
+/// ae고」 — a key shapes the segment ARRIVING at it with its in side and the
+/// one LEAVING it with its out side, After Effects' temporal interpolation.
+/// A segment is the out side of the key it leaves and the in side of the
+/// key it reaches, so the curve one segment draws ([segmentProgress]) is
+/// what those two sides say together. ↩️A key carried ONE type, linear or
+/// hold, for the segment leaving it — 「지금 리니어/홀드 있는거라던가는
+/// 아주 초기단계니까 다 갈아엎어도되고」.
+library;
+
+import '../core/cubic_curve.dart';
+
+/// What the side LEAVING a key does: shape the segment the way any side
+/// can ([KeySide]), or [hold] the key's value until the next key.
+///
+/// ⛔A hold is an OUT side only (I-89, 「홀드(나가는 쪽)」): a segment
+/// arriving at a key while still holding the value before it is the
+/// segment the key before LEAVES with a hold, so a hold on an in side
+/// would be a second way to say one thing. The in side is typed [KeySide],
+/// which has no hold to say it with.
+sealed class KeyExit {
+  const KeyExit();
+
+  /// AE's Hold: the value stays where the key put it until the next key.
+  static const KeyExit hold = KeyHold._();
+
+  Object toJson();
+
+  /// [toJson] read back.
+  static KeyExit fromJson(Object? json) =>
+      json == KeyHold._json ? hold : KeySide.fromJson(json);
+}
+
+/// [KeyExit.hold]'s type.
+final class KeyHold extends KeyExit {
+  const KeyHold._();
+
+  static const String _json = 'hold';
+
+  @override
+  Object toJson() => _json;
+
+  @override
+  String toString() => 'KeyExit.hold';
+}
+
+/// How one side of a key moves the value near the key — either side.
+sealed class KeySide extends KeyExit {
+  const KeySide();
+
+  /// AE's Linear: a straight ramp.
+  static const KeySide linear = LinearSide._();
+
+  /// AE's Auto Bezier: smooth THROUGH the key.
+  static const KeySide auto = AutoSide._();
+
+  /// [toJson] read back. A side this build has no word for is a file it
+  /// cannot read, and says so — and so is an in side that holds.
+  static KeySide fromJson(Object? json) => switch (json) {
+    LinearSide._json => linear,
+    AutoSide._json => auto,
+    {'kind': EaseSide._json} => EaseSide.fromJson(
+      json as Map<String, dynamic>,
+    ),
+    _ => throw FormatException('Unknown key side: $json'),
+  };
+}
+
+/// [KeySide.linear]'s type.
+final class LinearSide extends KeySide {
+  const LinearSide._();
+
+  static const String _json = 'linear';
+
+  @override
+  Object toJson() => _json;
+
+  @override
+  String toString() => 'KeySide.linear';
+}
+
+/// [KeySide.auto]'s type: the speed at the key is the one its neighbours'
+/// values imply ([autoSideSpeed]).
+final class AutoSide extends KeySide {
+  const AutoSide._();
+
+  static const String _json = 'auto';
+
+  @override
+  Object toJson() => _json;
+
+  @override
+  String toString() => 'KeySide.auto';
+}
+
+/// AE's Bezier side: the value slows toward the key for [influence] of the
+/// segment and moves at [speed] times the segment's average when it gets
+/// there — 0 stops at the key, AE's Easy Ease.
+final class EaseSide extends KeySide {
+  const EaseSide({this.influence = easeInfluence, this.speed = 0})
+    : assert(influence > 0 && influence <= 1),
+      assert(speed > double.negativeInfinity && speed < double.infinity);
+
+  /// [toJson] read back; [KeySide.fromJson] is the door.
+  factory EaseSide.fromJson(Map<String, dynamic> json) {
+    final influence = (json['influence'] as num).toDouble();
+    final speed = (json['speed'] as num).toDouble();
+    if (!(influence > 0 && influence <= 1) || !speed.isFinite) {
+      throw FormatException('Key ease out of range: $json');
+    }
+    return EaseSide(influence: influence, speed: speed);
+  }
+
+  /// AE's Easy Ease: a third of the segment, 33.33%.
+  static const double easeInfluence = 1 / 3;
+
+  /// 「급하게」's speed at its key: twice its segment's average (유저 10-11
+  /// 「기본속도는 추천대로」) — against 「천천히」 on the far side the speed
+  /// then falls, or rises, evenly all the way: a thrown thing sliding to
+  /// rest, a dropped one falling.
+  static const double fastSpeed = 2;
+
+  /// The least influence a side is given: 1%, the floor the key window's
+  /// 세기 has stood at since I-89 ② (mine — AE's own goes down to 0.1%) and
+  /// a graph's handle (③) stops at, so the two ways to set it stop alike.
+  static const double leastInfluence = 0.01;
+
+  static const String _json = 'ease';
+
+  /// How far into the segment the side reaches, 0 < influence ≤ 1 — AE's
+  /// influence %.
+  final double influence;
+
+  /// The value's speed at the key, as a multiple of the segment's average.
+  final double speed;
+
+  EaseSide copyWith({double? influence, double? speed}) => EaseSide(
+    influence: influence ?? this.influence,
+    speed: speed ?? this.speed,
+  );
+
+  @override
+  Object toJson() => {'kind': _json, 'influence': influence, 'speed': speed};
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EaseSide && other.influence == influence && other.speed == speed;
+
+  @override
+  int get hashCode => Object.hash(influence, speed);
+
+  @override
+  String toString() => 'EaseSide($influence, $speed)';
+}
+
+/// What a side IS — what its half of the key's mark draws, what a union
+/// compares and what the key window offers (I-89 ②). An ease at 33% and
+/// one at 50% are one kind.
+enum KeySideKind {
+  /// AE's Linear — half a diamond.
+  linear('Linear'),
+
+  /// AE's Bezier, 「천천히」: no faster at the key than its segment's
+  /// average — half an hourglass.
+  ease('Ease'),
+
+  /// AE's Bezier faster at the key than its segment's average, 「급하게」
+  /// (유저 10-11 「급하게는 역시 필요하네」 — AE draws it as an ease) — half
+  /// a four-pointed star.
+  fast('Fast'),
+
+  /// AE's Auto Bezier, 「부드럽게 지나감」 — half a disc.
+  auto('Smooth'),
+
+  /// AE's Hold — half a square. Only ever a leaving side ([KeyExit]).
+  hold('Hold');
+
+  const KeySideKind(this.label);
+
+  /// The kind's English name; every other language's is the string
+  /// tables' (I-4's contract — `labelFor` in `model_vocabulary.dart`).
+  final String label;
+}
+
+/// [side]'s kind.
+///
+/// An ease is 「급하게」 FASTER than its segment's average at the key (유저
+/// 10-11, A안: 「그 쪽 속도가 구간 평균보다 큰 쪽」) and 「천천히」 otherwise —
+/// the average itself too — so one side is one kind, whatever a handle
+/// pulls its speed to (「겹치지만 않으면되니 알아서해줘」).
+KeySideKind keySideKindOf(KeyExit side) => switch (side) {
+  LinearSide() => KeySideKind.linear,
+  EaseSide(:final speed) when speed > 1 => KeySideKind.fast,
+  EaseSide() => KeySideKind.ease,
+  AutoSide() => KeySideKind.auto,
+  KeyHold() => KeySideKind.hold,
+};
+
+/// A write to ONE side of a key, as the key window and a graph's handle
+/// give it (I-89 ② ③): the KIND the side becomes, and the INFLUENCE and
+/// the SPEED its ease takes, any of them — each only what was picked.
+///
+/// A side already of [side]'s kind keeps its own — an ease its influence
+/// and its speed — so picking the kind a key has changes nothing, which is
+/// what lights a choice: by kind, as the key's mark draws it, not by its
+/// numbers.
+final class KeySideEdit<S extends KeyExit> {
+  const KeySideEdit({this.side, this.influence, this.speed})
+    : assert(influence == null || (influence > 0 && influence <= 1)),
+      assert(
+        speed == null ||
+            (speed > double.negativeInfinity && speed < double.infinity),
+      );
+
+  /// What a side of another kind becomes — the kind picked, at its
+  /// defaults (an ease is AE's Easy Ease). Null leaves the kind as it is.
+  final S? side;
+
+  /// The influence an ease takes — AE's influence %. Null leaves it as it
+  /// is; a side that is no ease has none to take.
+  final double? influence;
+
+  /// The speed an ease takes, as a multiple of its segment's average — AE's
+  /// Keyframe Velocity, which a graph's handle sets with the influence.
+  /// Null leaves it as it is; a side that is no ease has none to take.
+  final double? speed;
+
+  /// [current] with this edit on it.
+  S applyTo(S current) {
+    final side = this.side;
+    final kept = side == null || keySideKindOf(side) == keySideKindOf(current)
+        ? current
+        : side;
+    return kept is EaseSide && (influence != null || speed != null)
+        // An ease is a KeySide, so it is an S whichever side this edits.
+        ? kept.copyWith(influence: influence, speed: speed) as S
+        : kept;
+  }
+}
+
+/// A write to a key's sides: each side edited as its [KeySideEdit] says,
+/// the side left out as it was — AE's Easy Ease In touches the in side
+/// alone, its Easy Ease both.
+class KeySidesEdit {
+  const KeySidesEdit({this.incoming, this.outgoing});
+
+  /// Both sides straight — AE's Linear.
+  static const KeySidesEdit linear = KeySidesEdit(
+    incoming: KeySideEdit(side: KeySide.linear),
+    outgoing: KeySideEdit(side: KeySide.linear),
+  );
+
+  /// The value held from the key on — AE's Toggle Hold Keyframe.
+  static const KeySidesEdit hold = KeySidesEdit(
+    outgoing: KeySideEdit(side: KeyExit.hold),
+  );
+
+  final KeySideEdit<KeySide>? incoming;
+  final KeySideEdit<KeyExit>? outgoing;
+
+  /// A key's sides with this edit on them.
+  ({KeySide incoming, KeyExit outgoing}) applyTo({
+    required KeySide incoming,
+    required KeyExit outgoing,
+  }) => (
+    incoming: this.incoming?.applyTo(incoming) ?? incoming,
+    outgoing: this.outgoing?.applyTo(outgoing) ?? outgoing,
+  );
+}
+
+/// What [sides] say TOGETHER — a row of the key window, over every key it
+/// covers (I-89 ②): the kind they all are, null where they differ; whether
+/// they are all [eases] — 「천천히」 and 「급하게」 alike, each with an
+/// influence to take — and then the influence they all take, null where
+/// those differ. The rule the window's name follows (「다르면 …」): it shows
+/// what the keys agree on.
+({KeySideKind? kind, bool eases, double? influence}) keySidesTogether(
+  List<KeyExit> sides,
+) {
+  final eases = sides.isNotEmpty && sides.every((side) => side is EaseSide);
+  return (
+    kind: {for (final side in sides) keySideKindOf(side)}.singleOrNull,
+    eases: eases,
+    influence: eases
+        ? {
+            for (final side in sides)
+              if (side is EaseSide) side.influence,
+          }.singleOrNull
+        : null,
+  );
+}
+
+/// Where a side's Bézier handle sits in a segment's unit square:
+/// [influence] of the way in time, moving at [speed] times the segment's
+/// average.
+typedef KeyHandle = ({double influence, double speed});
+
+/// A straight ramp's handle — a third of the way, at the average speed —
+/// and the handle every side but an ease takes: an auto side with the
+/// speed its neighbours imply put in.
+const KeyHandle linearKeyHandle = (influence: 1 / 3, speed: 1);
+
+/// The handle [side] puts in its segment. [autoSpeed] is read only for an
+/// auto side.
+KeyHandle keyHandleOf(KeySide side, double Function() autoSpeed) =>
+    switch (side) {
+      LinearSide() => linearKeyHandle,
+      EaseSide(:final influence, :final speed) => (
+        influence: influence,
+        speed: speed,
+      ),
+      AutoSide() => (influence: linearKeyHandle.influence, speed: autoSpeed()),
+    };
+
+/// The speed an auto side moves at through its key, given how far the
+/// neighbour on the key's far side [reach]es along the segment's own line —
+/// in the segment's units (its two keys 0 and 1) per its own length in
+/// time, i.e. the Catmull-Rom tangent over the segment's average speed.
+///
+/// ⛔Clamped to 0..3: an auto side never overshoots. A key between a rise
+/// and a fall (a negative reach) stops level, and a pull steeper than the
+/// segment can take stops at 3, where the handle sits level with the far
+/// key and the curve stays between the two keys' values. This is the
+/// smooth default the tools ship (Blender's Auto Clamped, Maya's clamped
+/// tangents); I-89 asks only for 「이웃 값이 정하는 속도」, so the clamp is
+/// mine (2026-10-10) — a curve that leaves the two values it joins is what
+/// an ease or a graph handle asks for on purpose.
+double autoSideSpeed(double reach) => reach.clamp(0.0, 3.0).toDouble();
+
+/// Where [handle] stands in its segment's unit square: [leaving], from the
+/// key the segment leaves — (influence, influence · speed); else from the
+/// key it arrives at — (1 − influence, 1 − influence · speed). The point
+/// [segmentProgress] bends the segment by, and the one a header graph draws
+/// the handle at and pulls it from (I-89 ③), so the two are one point.
+({double x, double y}) keyHandlePoint(
+  KeyHandle handle, {
+  required bool leaving,
+}) {
+  final reach = handle.influence;
+  final rise = handle.influence * handle.speed;
+  return leaving ? (x: reach, y: rise) : (x: 1 - reach, y: 1 - rise);
+}
+
+/// The influence a handle at [x] of its segment's time stands for,
+/// [leaving] the key or arriving at it — held to the reach a side may take
+/// ([EaseSide.leastInfluence] to all of the segment), in a value graph and
+/// a speed graph alike (I-89 ③).
+double keyHandleInfluenceAt(double x, {required bool leaving}) =>
+    (leaving ? x : 1 - x).clamp(EaseSide.leastInfluence, 1.0).toDouble();
+
+/// [keyHandlePoint] read back: the handle that stands at [x], [y] of the
+/// unit square, [leaving] or arriving — its influence held to the reach a
+/// side may take ([keyHandleInfluenceAt]), its speed what rising to [y]
+/// over that influence takes.
+KeyHandle keyHandleAt(double x, double y, {required bool leaving}) {
+  final influence = keyHandleInfluenceAt(x, leaving: leaving);
+  return (influence: influence, speed: (leaving ? y : 1 - y) / influence);
+}
+
+/// How far a segment has come at [x], the fraction of its TIME gone (0..1):
+/// the unit cubic Bézier through (0, 0), the [leaving] key's handle
+/// (`influence`, `influence · speed`), the [arriving] key's handle
+/// (`1 − influence`, `1 − influence · speed`) and (1, 1) — AE's temporal
+/// curve over one segment, its speeds relative to the segment's average.
+/// Two straight ramps' handles lie on the diagonal, so they give x itself.
+///
+/// Each influence stays within the segment, so the curve's time runs
+/// forward wherever the two reach; the progress leaves 0..1 only where a
+/// speed asks for an overshoot.
+double segmentProgress(
+  double x, {
+  required KeyHandle leaving,
+  required KeyHandle arriving,
+}) {
+  if (x <= 0) {
+    return 0;
+  }
+  if (x >= 1) {
+    return 1;
+  }
+  final (x: x1, y: y1) = keyHandlePoint(leaving, leaving: true);
+  final (x: x2, y: y2) = keyHandlePoint(arriving, leaving: false);
+  double bezier(double t, double p1, double p2) => cubicAt(t, 0, p1, p2, 1);
+
+  // Newton's step where it lands inside the bracket, a halving where it
+  // does not: with both handles' times inside the segment the curve's time
+  // never runs back, so the bracket always holds the one answer.
+  var lo = 0.0;
+  var hi = 1.0;
+  var t = x;
+  for (var step = 0; step < 32; step += 1) {
+    final off = bezier(t, x1, x2) - x;
+    if (off.abs() < 1e-10) {
+      break;
+    }
+    if (off > 0) {
+      hi = t;
+    } else {
+      lo = t;
+    }
+    final u = 1 - t;
+    final slope = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2);
+    final next = slope.abs() > 1e-12 ? t - off / slope : (lo + hi) / 2;
+    t = next > lo && next < hi ? next : (lo + hi) / 2;
+  }
+  return bezier(t, y1, y2);
+}

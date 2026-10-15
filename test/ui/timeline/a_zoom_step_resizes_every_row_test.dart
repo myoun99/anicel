@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-244: EVERY ROW IS AS LONG AS THE CUT IT SHOWS, AFTER A ZOOM STEP TOO.
 ///
 /// A row sits on a tick layer of its own size (a drag step lays out alone),
@@ -32,14 +34,13 @@ void main() {
     session.layerStack.addLayer();
     await tester.pumpAndSettle();
 
-    // The rows body's own keys: 'timeline-row-<layer>-<cells|lane>' — not
+    // The rows body's own names: 'timeline-row-<layer>-<cells|lane>' — not
     // the cells widget inside ('timeline-row-cells-<layer>').
-    final rows = find.byWidgetPredicate((widget) {
-      final key = widget.key;
-      return key is ValueKey<String> &&
-          key.value.startsWith('timeline-row-') &&
-          !key.value.startsWith('timeline-row-cells-');
-    });
+    final rows = find.namedWhere(
+      (name) =>
+          name.startsWith('timeline-row-') &&
+          !name.startsWith('timeline-row-cells-'),
+    );
     List<double> widths() => [
       for (final row in rows.evaluate())
         (row.renderObject! as RenderBox).size.width,

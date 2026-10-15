@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import '../../native/qa_audio_device.dart';
+import '../../services/playback/device_clock_line.dart';
 
 /// A finished take: what the microphone delivered, plus what it means.
 class AudioRecording {
@@ -59,7 +60,20 @@ class AudioRecorder {
   int _channels = 0;
   int _sampleRate = 0;
 
+  /// The capture's line through its stair — the playback's own reading
+  /// ([DeviceClockLine]), so the two clocks a take is placed by are read
+  /// alike ([capturedAt]).
+  final DeviceClockLine _line = DeviceClockLine();
+
   bool get isRecording => _timer != null;
+
+  /// The rate the take is delivered at — what [start] returned.
+  int get sampleRate => _sampleRate;
+
+  /// What the microphone holds of its own before it hands it over
+  /// ([QaAudioDevice.captureLatencySamples]); 0 with nothing recording.
+  int get latencySamples =>
+      isRecording ? (_device?.captureLatencySamples ?? 0) : 0;
 
   /// Starts capturing at [sampleRate] (the project rate — what lands in
   /// the chunks needs no conform). Returns the delivered rate, or 0 when
@@ -95,6 +109,7 @@ class AudioRecorder {
     }
     _channels = device.captureChannels;
     _sampleRate = rate;
+    _line.arm(deviceRate: rate, carriesFor: device.captureLatencySamples);
     _chunks.clear();
     // One second of scratch: far more than a 30 ms drain ever needs, so
     // the inner loop below almost always finishes in one read.
@@ -119,6 +134,30 @@ class AudioRecorder {
       _chunks.add(chunk);
       onChunk?.call(chunk, _channels);
     }
+  }
+
+  /// How many frames the microphone had taken in at [atMicros], on the
+  /// device clock (`QaAudioDevice.clockNowMicros`): those the ring had been
+  /// given by then, on the capture's line, and those still in the device's
+  /// own buffer ([QaAudioDevice.captureLatencySamples]) — the take's sample
+  /// at that moment. Null with no capture running, or before its first
+  /// callback.
+  int? capturedAt(int atMicros) {
+    final device = _device;
+    if (device == null || !isRecording) {
+      return null;
+    }
+    final clock = device.readCaptureClock();
+    final point = clock.point;
+    if (point == null) {
+      return null;
+    }
+    return _line.read((
+          point: point,
+          stairSamples: clock.stairSamples,
+          nowMicros: atMicros,
+        )) +
+        device.captureLatencySamples;
   }
 
   /// Stops the take and returns it, or null when nothing was recording.

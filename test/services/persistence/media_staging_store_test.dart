@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/media_asset.dart'
     show MediaCarry, mediaCarryNamed, mediaNameParts, mintMediaCarry;
@@ -632,7 +633,7 @@ void main() {
 
   /// 🚨★★★**THE ROAD PRODUCTION ACTUALLY TAKES.**
   ///
-  /// `flutter_test_config.dart` turns [MediaStagingStore.debugStageInline]
+  /// `flutter_test_config.dart` turns [debugWorkersRunHere]
   /// ON for the whole suite, because a `testWidgets` clock is fake and
   /// awaiting a real isolate there is a hang rather than a wait. That is
   /// the right trade for the widget tests — and it would leave the shipping
@@ -641,8 +642,8 @@ void main() {
   /// This is that something. It is a plain `test`, so the clock is real and
   /// the isolate genuinely runs.
   group('across a real isolate', () {
-    setUp(() => MediaStagingStore.debugStageInline = false);
-    tearDown(() => MediaStagingStore.debugStageInline = true);
+    setUp(() => debugWorkersRunHere = false);
+    tearDown(() => debugWorkersRunHere = true);
 
     test('🚨the bytes land, and they are the source\'s own', () async {
       final path = sourceFile('take.wav');

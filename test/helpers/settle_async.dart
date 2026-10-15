@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/media/viewer_page_loading.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Interleaves REAL time with pumped time until [ready], and answers whether
@@ -38,4 +39,26 @@ Future<bool> settleAsync(
     everyFrame?.call();
   }
   return ready();
+}
+
+/// Lands what the surfaces showing a document's pages asked for — in real
+/// time ([settleAsync]) — until none of them says it is loading, and then
+/// settles the frames.
+///
+/// 🚨F-315: a surface whose page has not landed stands a spinner at its
+/// middle ([ViewerPageLoading]), an animation that never stops — so
+/// `pumpAndSettle` waits on it for good, and a pumped clock never lands the
+/// page that would take it down. A test that settled straight after a file
+/// opened waits for its page first.
+///
+/// ⚠️It pumps before it asks: a tree not built since the file was asked for
+/// holds no spinner yet, and the wait would end before it began.
+Future<void> settleLoadedPages(WidgetTester tester) async {
+  await tester.pump();
+  final drawn = await settleAsync(
+    tester,
+    () => find.byType(ViewerPageLoading).evaluate().isEmpty,
+  );
+  expect(drawn, isTrue, reason: 'a page never landed: the spinner stayed up');
+  await tester.pumpAndSettle();
 }

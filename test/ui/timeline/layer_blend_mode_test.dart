@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// R26 #30/#30-1: the layer's composite blend mode — model round-trip,
 /// the shared composite visit, cache identity, the session commit and
 /// the toolbar's PS/CSP-style blend dropdown (user rule 07-22: the type
@@ -114,13 +116,13 @@ void main() {
       kind: LayerKind.animation,
       frames: const [],
     );
-    const chipKey = ValueKey<String>('timeline-layer-blend-a');
+    final chip = find.named('timeline-layer-blend-a');
 
     await tester.pumpWidget(rowHost(drawing, AppLanguage.en));
-    expect(find.byKey(chipKey), findsOneWidget);
+    expect(chip, findsOneWidget);
     expect(find.text('Normal'), findsOneWidget);
 
-    await tester.tap(find.byKey(chipKey));
+    await tester.tap(chip);
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
@@ -156,7 +158,7 @@ void main() {
         AppLanguage.en,
       ),
     );
-    expect(find.byKey(chipKey), findsNothing);
+    expect(chip, findsNothing);
 
     // ...and the toolbar's dropdown is gone for good.
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -221,22 +223,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    const chipKey = ValueKey<String>('timeline-layer-blend-a');
+    final chip = find.named('timeline-layer-blend-a');
     // The SHARED control, not a bespoke label: the same widget the brush
     // panel's blend row mounts.
     expect(
-      find.byKey(chipKey),
+      chip,
       findsOneWidget,
-      reason: 'the blend control keeps its key across the widget swap',
+      reason: 'the blend control keeps its name across the widget swap',
     );
-    expect(tester.widget(find.byKey(chipKey)), isA<PanelFlyoutButton>());
+    expect(tester.widget(chip), isA<PanelFlyoutButton>());
 
     // The user asked for the caret to go — text-only button.
     expect(
-      find.descendant(
-        of: find.byKey(chipKey),
-        matching: find.byIcon(Icons.arrow_drop_down),
-      ),
+      find.descendant(of: chip, matching: find.byIcon(Icons.arrow_drop_down)),
       findsNothing,
       reason: 'R28 #2: the layer rail drops the dropdown caret',
     );
@@ -244,12 +243,9 @@ void main() {
     // ...and the label sits CENTERED in the reserved slot, so the button
     // lines up under the legend's BLND header instead of hugging the
     // opacity bar on its left.
-    final slot = find.ancestor(
-      of: find.byKey(chipKey),
-      matching: find.byType(SizedBox),
-    );
+    final slot = find.ancestor(of: chip, matching: find.byType(SizedBox));
     final slotCenter = tester.getCenter(slot.first).dx;
-    final buttonCenter = tester.getCenter(find.byKey(chipKey)).dx;
+    final buttonCenter = tester.getCenter(chip).dx;
     expect(
       (buttonCenter - slotCenter).abs(),
       lessThan(1.0),

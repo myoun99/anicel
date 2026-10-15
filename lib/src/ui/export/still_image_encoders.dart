@@ -1,10 +1,13 @@
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../core/argb_channels.dart';
 import '../../models/export_format_selection.dart';
 import '../../native/qa_image_encoder.dart';
+import '../../services/media/png_writing.dart';
 import 'png_sequence_export_service.dart';
+import 'png_srgb.dart';
 
 /// The bytes a still file in [format] is written as, where they are not the
 /// default's — the engine PNG ([PngSequenceExportService]); null keeps that.
@@ -12,16 +15,25 @@ import 'png_sequence_export_service.dart';
 /// ↩️The export window spelled this for itself; it lives here since
 /// 「다른 이름으로 저장」 writes the same picture (backlog-21-Q7), so the
 /// window's files and Save As's are one encoder.
+///
+/// 🗣️F-335 (유저 10-10): 「알파채널 아예없는걸 원하거든? RGBA가 아닌 RGB는
+/// 그게 효율적이잖아」 → 「그렇게하자」 — a PNG asked for RGB has no alpha
+/// channel in the file ([_encodeRgbPng]). The engine's encoder cannot write
+/// one: it writes RGBA whatever the picture holds, so it keeps only the PNGs
+/// that keep their alpha.
 ExportImageEncoder? stillEncoderFor(ExportFormatSelection format) {
-  if (format.stillFormat != ExportStillFormat.jpg) {
-    return null;
+  if (format.stillFormat == ExportStillFormat.jpg) {
+    return (image) => _encodeJpg(image, format);
   }
-  return (image) => _encodeJpg(image, format);
+  if (format.stillFormat == ExportStillFormat.png && !format.wantsAlpha) {
+    return (image) => _encodeRgbPng(image, format.backgroundArgb);
+  }
+  return null;
 }
 
-/// Flattens un-premultiplied RGBA over the format's background and
-/// hands RGB24 to the native stb encoder. Null = no encoder (an older
-/// binary) — the file skips rather than lying.
+/// [image] over the format's background as RGB24 for the native stb
+/// encoder. Null = no encoder (an older binary) — the file skips rather
+/// than lying.
 Future<List<int>?> _encodeJpg(
   ui.Image image,
   ExportFormatSelection format,
@@ -30,33 +42,119 @@ Future<List<int>?> _encodeJpg(
   if (encoder == null) {
     return null;
   }
-  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-  if (data == null) {
+  final rgba = await _rgbaOf(image);
+  if (rgba == null) {
     return null;
   }
-  final rgba = data.buffer.asUint8List();
-  final pixelCount = image.width * image.height;
-  final rgb = Uint8List(pixelCount * 3);
-  final bg = format.backgroundArgb;
-  final bgR = argbRed(bg);
-  final bgG = argbGreen(bg);
-  final bgB = argbBlue(bg);
-  for (var i = 0; i < pixelCount; i += 1) {
-    final a = rgba[i * 4 + 3];
-    if (a == 255) {
-      rgb[i * 3] = rgba[i * 4];
-      rgb[i * 3 + 1] = rgba[i * 4 + 1];
-      rgb[i * 3 + 2] = rgba[i * 4 + 2];
-    } else {
-      rgb[i * 3] = (rgba[i * 4] * a + bgR * (255 - a)) ~/ 255;
-      rgb[i * 3 + 1] = (rgba[i * 4 + 1] * a + bgG * (255 - a)) ~/ 255;
-      rgb[i * 3 + 2] = (rgba[i * 4 + 2] * a + bgB * (255 - a)) ~/ 255;
-    }
-  }
+  final rgb = Uint8List(image.width * image.height * 3);
+  _overGround(rgba, format.backgroundArgb, rgb);
   return encoder.encodeJpg(
     rgb: rgb,
     width: image.width,
     height: image.height,
     quality: format.jpgQuality,
   );
+}
+
+/// [image] over [groundArgb] as a PNG of three channels — colour type 2,
+/// no alpha at all — with the sRGB stamp every PNG this app hands out
+/// carries ([tagPngAsSrgb]).
+///
+/// The work runs in an isolate of its own: the engine's encoder never held
+/// the UI isolate, and five filters over every byte would (about 100 ms a
+/// 2436×1678 frame — a run of frames would stall the window's cancel).
+Future<List<int>?> _encodeRgbPng(ui.Image image, int groundArgb) async {
+  final rgba = await _rgbaOf(image);
+  if (rgba == null) {
+    return null;
+  }
+  final picture = (
+    rgba: rgba,
+    width: image.width,
+    height: image.height,
+    groundArgb: groundArgb,
+  );
+  return tagPngAsSrgb(await Isolate.run(() => _rgbPngOf(picture)));
+}
+
+/// What [_rgbPngOf] is handed: bytes and numbers, all an isolate can carry.
+typedef _RgbPicture = ({
+  Uint8List rgba,
+  int width,
+  int height,
+  int groundArgb,
+});
+
+/// [picture] as a PNG without alpha, its rows deflated twice in one pass —
+/// under libpng's per-row filter guess, and unfiltered — and the smaller
+/// kept.
+///
+/// ⚠️BOTH, because the guess loses to no filter at all on a picture of flat
+/// colours and wins on gradients (measured 10-11 against the engine's RGBA
+/// PNG of the same picture: a cel 2436×1678 — engine 812,659 B · filtered
+/// 732,890 B · unfiltered 588,376 B; a page of lines and boxes the same
+/// size — 2,814,565 B · 2,456,257 B · 1,858,095 B; a picture of gradients
+/// 1920×1080 — engine 1,180,600 B, this 1,083,146 B). Kept to one, a cel or
+/// a gradient each pays for the other's.
+Uint8List _rgbPngOf(_RgbPicture picture) {
+  final width = picture.width;
+  final filtered = PngImageData(width: width, bytesPerPixel: 3);
+  final unfiltered = PngImageData(
+    width: width,
+    bytesPerPixel: 3,
+    filtered: false,
+  );
+  final row = Uint8List(width * 3);
+  final stride = width * 4;
+  for (var y = 0; y < picture.height; y += 1) {
+    _overGround(
+      Uint8List.sublistView(picture.rgba, y * stride, (y + 1) * stride),
+      picture.groundArgb,
+      row,
+    );
+    filtered.add(row);
+    unfiltered.add(row);
+  }
+  final underFilters = filtered.finish();
+  final asTheyAre = unfiltered.finish();
+  return encodeStillPng(
+    width: width,
+    height: picture.height,
+    colourType: pngRgb,
+    imageData: underFilters.length <= asTheyAre.length
+        ? underFilters
+        : asTheyAre,
+  );
+}
+
+/// [image]'s pixels as the engine reads them back — RGBA, the colour
+/// premultiplied by its alpha (`ImageByteFormat.rawRgba`).
+Future<Uint8List?> _rgbaOf(ui.Image image) async {
+  final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  return data == null ? null : Uint8List.sublistView(data);
+}
+
+/// Premultiplied [rgba] laid over [groundArgb] into [rgb], three bytes a
+/// pixel.
+///
+/// ↩️It was the straight-alpha sum, `(c·a + ground·(255−a)) / 255`, on
+/// premultiplied bytes — the same answer wherever a pixel is opaque, which
+/// is every pixel an opaque ground is drawn under
+/// (`ExportFrameRenderer.forFormat`), and too dark anywhere else.
+void _overGround(Uint8List rgba, int groundArgb, Uint8List rgb) {
+  final red = argbRed(groundArgb);
+  final green = argbGreen(groundArgb);
+  final blue = argbBlue(groundArgb);
+  for (var p = 0, q = 0; p < rgba.length; p += 4, q += 3) {
+    final rest = 255 - rgba[p + 3];
+    if (rest == 0) {
+      rgb[q] = rgba[p];
+      rgb[q + 1] = rgba[p + 1];
+      rgb[q + 2] = rgba[p + 2];
+    } else {
+      rgb[q] = rgba[p] + red * rest ~/ 255;
+      rgb[q + 1] = rgba[p + 1] + green * rest ~/ 255;
+      rgb[q + 2] = rgba[p + 2] + blue * rest ~/ 255;
+    }
+  }
 }

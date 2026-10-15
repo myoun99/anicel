@@ -9,6 +9,7 @@ import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/history_manager.dart' show HistoryMark;
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
+import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
 import '../../theme/app_theme.dart';
 import '../canvas_press.dart';
@@ -73,7 +74,8 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
 
   /// A text whose press came up before the cel it had asked for arrived:
   /// it begins when the cel does ([_celChanged]).
-  ({CanvasPoint anchor, double? wrapWidth})? _textAwaitingCel;
+  ({CanvasPoint anchor, double? wrapWidth, double? minHeight})?
+  _textAwaitingCel;
 
   /// Where history stood when a press made the cel its text is to be set
   /// on — until that text begins, and the two land as one step
@@ -135,7 +137,11 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       _tool.confirm();
       if (awaited != null && widget.cel != null) {
         // The press that made this cel came up before it was here.
-        _beginText(awaited.anchor, wrapWidth: awaited.wrapWidth);
+        _beginText(
+          awaited.anchor,
+          wrapWidth: awaited.wrapWidth,
+          minHeight: awaited.minHeight,
+        );
       }
     });
   }
@@ -143,10 +149,18 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// A press on nothing came up: its text begins on the cel under the tool
   /// — or, where the press made that cel and it is not here yet, when it
   /// comes ([_celChanged]).
-  void _beginText(CanvasPoint anchor, {double? wrapWidth}) {
+  void _beginText(
+    CanvasPoint anchor, {
+    double? wrapWidth,
+    double? minHeight,
+  }) {
     final cel = widget.cel;
     if (cel == null) {
-      _textAwaitingCel = (anchor: anchor, wrapWidth: wrapWidth);
+      _textAwaitingCel = (
+        anchor: anchor,
+        wrapWidth: wrapWidth,
+        minHeight: minHeight,
+      );
       return;
     }
     final celMadeSince = _celMadeSince;
@@ -155,6 +169,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       cel,
       anchor,
       wrapWidth: wrapWidth,
+      minHeight: minHeight,
       celMadeSince: celMadeSince,
     );
   }
@@ -185,10 +200,24 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// ([CelTextTool.takeableOn]).
   void _facesChanged() => _tool.celTextsChanged();
 
+  /// The letters the keyboard was last handed to ([_syncField]).
+  TextEditingController? _lettersKeyed;
+
   /// The keyboard is the text's while its letters are held, and the caret
   /// blinks only then.
+  ///
+  /// 🚨F-353 (유저 2026-10-14: 「텍스트 편집중인 상황에서 크기쪽 연필누르면
+  /// 텍스트 선택되지 않은 상태」): letters TAKEN UP take the keyboard — the
+  /// person pressed into a text. While they stay in hand it is taken back
+  /// from NOBODY only — from no text field: a field the person opened to
+  /// type a number into keeps it until it closes, and the keyboard comes
+  /// back as it leaves (`InlineNumericField`). ↩️It was taken back at every
+  /// change of the tool — a bake landing, a setting set — from whoever held
+  /// it.
   void _syncField() {
-    if (_tool.letters == null) {
+    final letters = _tool.letters;
+    if (letters == null) {
+      _lettersKeyed = null;
       _caretBlink?.cancel();
       _caretBlink = null;
       return;
@@ -198,9 +227,13 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       const Duration(milliseconds: 500),
       (_) => _caretLit.value = !_caretLit.value,
     );
+    final taken = !identical(letters, _lettersKeyed);
+    _lettersKeyed = letters;
     if (!_fieldFocus.hasFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _tool.letters != null) {
+        if (mounted &&
+            _tool.letters != null &&
+            (taken || focusedTextField() == null)) {
           _fieldFocus.requestFocus();
         }
       });
@@ -358,7 +391,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
                   stage: widget.stage,
                   restingBoxes: cel == null || picture == null
                       ? const []
-                      : _tool.restingBoxesOn(cel.key, picture),
+                      : _tool.onCanvas.restingBoxesOn(cel.key, picture),
                   tracedBox: _tracedBox,
                   caretLit: _caretLit,
                   color: AppColors.accent,

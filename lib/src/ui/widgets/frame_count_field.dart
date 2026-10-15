@@ -68,13 +68,13 @@ class _FrameCountFieldState extends State<FrameCountField> {
   }
 
   int? get _count => switch (_entry) {
-    FrameCountEntry.frames => int.tryParse(_frames.text),
+    FrameCountEntry.frames => halfWidthInt(_frames.text),
     FrameCountEntry.secondsPlusFrames =>
       _seconds.text.isEmpty && _koma.text.isEmpty
           ? null
           : framesOfSecondsAndFrames(
-              int.tryParse(_seconds.text) ?? 0,
-              int.tryParse(_koma.text) ?? 0,
+              halfWidthInt(_seconds.text) ?? 0,
+              halfWidthInt(_koma.text) ?? 0,
               widget.framesPerSecond,
             ),
   };

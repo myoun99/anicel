@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 Project _project() {
   return Project(
@@ -63,18 +64,16 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final fxButton = find.byKey(
-        const ValueKey<String>('timeline-layer-fx-fx-draw'),
-      );
+      final fxButton = find.named('timeline-layer-fx-fx-draw');
       expect(fxButton, findsOneWidget);
       // SE rows bypass the dialogue transform, the camera row bypasses the
       // camera work on the render routes — the switch sits on every kind.
       expect(
-        find.byKey(const ValueKey<String>('timeline-layer-fx-fx-se')),
+        find.named('timeline-layer-fx-fx-se'),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('timeline-layer-fx-fx-cam')),
+        find.named('timeline-layer-fx-fx-cam'),
         findsOneWidget,
       );
 
@@ -116,9 +115,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final fxButton = find.byKey(
-        const ValueKey<String>('xsheet-layer-fx-fx-draw'),
-      );
+      final fxButton = find.named('xsheet-layer-fx-fx-draw');
       expect(fxButton, findsOneWidget);
       await tester.tap(fxButton);
       await tester.pumpAndSettle();

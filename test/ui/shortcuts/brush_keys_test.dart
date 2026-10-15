@@ -10,6 +10,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,11 +28,13 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 const inks = BrushGroupId('inks');
@@ -139,8 +142,8 @@ void main() {
       for (final row in rows) {
         expect(row.defaultActivators, isEmpty, reason: row.id);
         expect(
-          row.category,
-          brushActionCategories[row.brushPress!.tool],
+          row.shelf,
+          brushActionShelves[row.brushPress!.tool],
           reason: row.id,
         );
         expect(isBrushActionId(row.id), isTrue, reason: row.id);
@@ -150,8 +153,8 @@ void main() {
     test('every tool that holds a brush of its own has rows, under a '
         'heading of its own', () {
       final holders = CanvasTool.values.where(canvasToolPaints).toList();
-      expect(brushActionCategories.keys, holders);
-      expect(brushActionCategories.values.toSet(), hasLength(holders.length));
+      expect(brushActionShelves.keys, holders);
+      expect(brushActionShelves.values.toSet(), hasLength(holders.length));
       expect(
         {for (final row in rows) row.brushPress!.tool},
         holders.toSet(),
@@ -329,7 +332,7 @@ void main() {
         final saved =
             jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
         expect(
-          ((saved['overrides'] as Map)['anicel'] as Map).keys,
+          ((saved['overrides'] as Map)[next.preset.name] as Map).keys,
           containsAll([presetId('maru'), EditorActionIds.undo]),
         );
         expect((saved['touch'] as Map).keys, contains(groupId(inks)));
@@ -354,15 +357,15 @@ void main() {
     });
   });
 
-  test('each tool\'s brush category has a word in every language — and a '
+  test('each tool\'s brush shelf has a word in every language — and a '
       'word of its own', () {
     for (final language in AppLanguage.values) {
       if (language == AppLanguage.en) {
         continue;
       }
       final words = [
-        for (final category in brushActionCategories.values)
-          AppStrings.of(language).shortcutCategory(category, ''),
+        for (final shelf in brushActionShelves.values)
+          AppStrings.of(language).shortcutShelfName(shelf.name, ''),
       ];
       expect(words, everyElement(isNotEmpty), reason: language.name);
       expect(words.toSet(), hasLength(words.length), reason: language.name);
@@ -415,6 +418,30 @@ void main() {
   });
 
   group('the shortcut window', () {
+    final list = find.byKey(const ValueKey<String>('shortcut-action-list'));
+
+    /// Turns the mouse wheel over the list by [dy].
+    ///
+    /// ⚠️Not a drag: a fold row is pressed anywhere on itself (유저
+    /// 2026-10-09), so it is a control, and a drag that starts on a control
+    /// is that control's and no scroll — a list of shut headings is almost
+    /// all fold rows. The wheel turns the list wherever it stands.
+    Future<void> wheel(WidgetTester tester, double dy) async {
+      final pointer = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(pointer.hover(tester.getCenter(list)));
+      await tester.sendEventToBinding(pointer.scroll(Offset(0, dy)));
+      await tester.pump();
+    }
+
+    /// Turns the wheel down until [finder] is built, then shows it.
+    Future<void> wheelUntilVisible(WidgetTester tester, Finder finder) async {
+      for (var turn = 0; turn < 200 && finder.evaluate().isEmpty; turn += 1) {
+        await wheel(tester, 300);
+      }
+      await tester.ensureVisible(finder);
+      await tester.pump();
+    }
+
     Future<EditorShortcutBindings> pump(WidgetTester tester) async {
       final bindings = EditorShortcutBindings()
         ..setBrushActions(brushActionsOf(groups, presets));
@@ -427,13 +454,25 @@ void main() {
         ),
       );
       await tester.pump();
+      // Every shelf stands shut (menu-rows-and-panels-are-shortcut-rows,
+      // the brush bundles' own law): these cases are about what stands
+      // INSIDE the two brush shelves, so they open them first — their
+      // place, then each — as a person would.
+      for (final shelf in [
+        ShortcutShelf.toolLibrary,
+        ...brushActionShelves.values,
+      ]) {
+        final twirl = find.named('shortcut-bundle-shelf-${shelf.name}');
+        await wheelUntilVisible(tester, twirl);
+        await tester.tap(twirl);
+        await tester.pump();
+      }
       return bindings;
     }
 
     Finder rowOf(String actionId) =>
         find.byKey(ValueKey<String>('shortcut-record-$actionId'));
-    Finder twirlOf(String bundle) =>
-        find.byKey(ValueKey<String>('shortcut-bundle-$bundle'));
+    Finder twirlOf(String bundle) => find.named('shortcut-bundle-$bundle');
 
     /// Whether [bundle]'s twirl stands open — as the twirl itself was told.
     bool isOpen(WidgetTester tester, String bundle) => tester
@@ -441,11 +480,10 @@ void main() {
           find.byWidgetPredicate(
             (widget) =>
                 widget is LayerFoldTwirl &&
-                widget.keyValue == 'shortcut-bundle-$bundle',
+                widget.name == 'shortcut-bundle-$bundle',
           ),
         )
         .expanded;
-    final list = find.byKey(const ValueKey<String>('shortcut-action-list'));
     final search = find.byKey(const ValueKey<String>('shortcut-search-field'));
 
     /// The rows of [tool]'s brushes the list holds, in order — built or not:
@@ -465,41 +503,41 @@ void main() {
       ];
     }
 
-    /// The category headings the list holds, in order — read the same way.
-    List<String> headings(WidgetTester tester) {
+    /// The brush shelves whose headings the list holds, in order — read the
+    /// same way.
+    List<ShortcutShelf> headings(WidgetTester tester) {
       final children =
           (tester.widget<ListView>(list).childrenDelegate
                   as SliverChildListDelegate)
               .children;
       return [
         for (final child in children)
-          if (child case Padding(child: Text(:final data?)))
-            if (brushActionCategories.values.contains(data)) data,
+          if (child.key case ValueKey<String>(:final value)
+              when value.startsWith('shortcut-shelf-'))
+            if (ShortcutShelf.values.byName(
+                  value.substring('shortcut-shelf-'.length),
+                )
+                case final shelf
+                when brushActionShelves.values.contains(shelf))
+              shelf,
       ];
     }
 
     /// Brings [finder]'s row into view from wherever the list stands. ⚠️A
-    /// row ABOVE what is shown is not built, and dragging on down would
+    /// row ABOVE what is shown is not built, and turning on down would
     /// never meet it — so a row that is not there is looked for from the
     /// top.
     Future<void> bringIn(WidgetTester tester, Finder finder) async {
       if (finder.evaluate().isEmpty) {
-        await tester.drag(list, const Offset(0, 100000));
-        await tester.pump();
+        await wheel(tester, -100000);
       }
-      await tester.dragUntilVisible(
-        finder,
-        list,
-        const Offset(0, -300),
-        maxIteration: 200,
-      );
-      await tester.pump();
+      await wheelUntilVisible(tester, finder);
     }
 
     testWidgets('holds a bundle per group, shut — once under each tool\'s '
         'heading: the titles, and no brush', (tester) async {
       await pump(tester);
-      expect(headings(tester), brushActionCategories.values);
+      expect(headings(tester), brushActionShelves.values);
       for (final tool in [brushTool, eraser]) {
         expect(brushRows(tester, tool), [
           groupId(inks, tool),
@@ -509,7 +547,6 @@ void main() {
         ], reason: tool.name);
       }
       await bringIn(tester, twirlOf(groupId(inks)));
-      expect(find.text(brushActionCategories[brushTool]!), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('shortcut-row-brush-root')),
@@ -524,6 +561,44 @@ void main() {
           reason: bundle,
         );
       }
+      final shelf = brushActionShelves[brushTool]!;
+      final heading = find.byKey(
+        ValueKey<String>('shortcut-shelf-${shelf.name}'),
+      );
+      await bringIn(tester, heading);
+      expect(
+        find.descendant(of: heading, matching: find.text(shelf.label)),
+        findsOneWidget,
+      );
+    });
+
+    // 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「그냥 그
+    // 줄 누르면 열리도록 … 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+    testWidgets('a group\'s title folds by its words — its record button '
+        'records and folds nothing — and its brushes\' words start under '
+        'the title\'s', (tester) async {
+      await pump(tester);
+      final title = find.byKey(
+        ValueKey<String>('shortcut-row-${groupId(inks)}'),
+      );
+      final words = find.descendant(of: title, matching: find.text('Inks'));
+      await bringIn(tester, words);
+      await tester.tap(words);
+      await tester.pump();
+      expect(isOpen(tester, groupId(inks)), isTrue);
+      expect(
+        tester.getRect(find.text('G pen')).left,
+        tester.getRect(words).left,
+      );
+
+      await tester.tap(rowOf(groupId(inks)));
+      await tester.pump();
+      expect(isOpen(tester, groupId(inks)), isTrue);
+      expect(
+        find.byKey(const ValueKey<String>('shortcut-recording-hint')),
+        findsOneWidget,
+        reason: 'the button on the row kept its own press',
+      );
     });
 
     testWidgets('a twirl opens its bundle and shuts it again — the root '
@@ -665,7 +740,7 @@ void main() {
         findsNWidgets(2),
         reason: 'one under each tool\'s heading',
       );
-      expect(headings(tester), brushActionCategories.values);
+      expect(headings(tester), brushActionShelves.values);
     });
 
     testWidgets('a tool\'s heading found shows that tool\'s rows alone', (
@@ -676,7 +751,7 @@ void main() {
       await tester.pump();
       expect(brushRows(tester), isEmpty);
       expect(brushRows(tester, eraser), isNotEmpty);
-      expect(headings(tester), [brushActionCategories[eraser]]);
+      expect(headings(tester), [brushActionShelves[eraser]]);
     });
 
     testWidgets('a group\'s key is recorded on its title row — the row of '

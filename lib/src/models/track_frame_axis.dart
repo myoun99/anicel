@@ -13,13 +13,47 @@ import 'range_snap.dart';
 /// index runs over that cut's end, which is the same runway grammar the
 /// timeline's endless frame axis already speaks. `ownerOf` returns null
 /// only in the leading gap before the first cut.
+///
+/// 🚨A CUT'S OWN FRAME 0 IS ITS MEDIA START, not its place on the track:
+/// a cut an O.L arrives into is drawn [leads] frames before its conte
+/// begins (F-227), and its rows' keys, the timeline's columns and
+/// playback's `localFrameIndex` all count from there (`cutMediaStartFrame`
+/// says where that was settled). So a frame of the cut's own is
+/// [mediaStartOf] plus its index, and every conversion here says so.
+///
+/// ↩️The conversions counted from the cut's START (I-73-ol-index-space,
+/// 🧪2026-10-08: two 24-frame cuts joined by a 12-frame O.L — the
+/// storyboard's playhead on the track's frame 30 left the session on the
+/// receiving cut's frame 6, whose picture plays at frame 24; a sound at
+/// frame 30 stood six columns left of the picture it is heard with).
 class TrackFrameAxis {
-  TrackFrameAxis(this.entries);
+  TrackFrameAxis(this.entries, {Map<CutId, int> leads = const {}})
+    : _leads = leads;
 
   /// The active track's cut ranges in sequence order (the same entries the
   /// storyboard layout builds — one cumulative pass over leading gaps and
   /// durations).
   final List<StoryboardTimelineLayoutEntry> entries;
+
+  /// How many of each cut's OWN frames come before its place on the track
+  /// — the のりしろ an O.L arriving into it asks
+  /// (`CutTransitionHandles.head`). A cut that is not there has none.
+  final Map<CutId, int> _leads;
+
+  /// [cutId]'s のりしろ before its conte, in frames — any cut of the
+  /// project's, whichever track's cuts [entries] holds: the session hands
+  /// every axis the one map (`ProjectSettings`).
+  int leadOf(CutId cutId) => _leads[cutId] ?? 0;
+
+  /// The track frame [entry]'s cut shows at its own frame 0.
+  int _mediaStartOf(StoryboardTimelineLayoutEntry entry) =>
+      entry.startFrame - leadOf(entry.cutId);
+
+  /// The track frame [cutId]'s own frame 0 shows; null for unknown cuts.
+  int? mediaStartOf(CutId cutId) {
+    final entry = entryFor(cutId);
+    return entry == null ? null : _mediaStartOf(entry);
+  }
 
   bool get isEmpty => entries.isEmpty;
 
@@ -109,67 +143,57 @@ class TrackFrameAxis {
     return null;
   }
 
-  /// The global frame of ([cutId], [localFrame]); null for unknown cuts.
+  /// The global frame of ([cutId], [localFrame]) — the track frame the
+  /// cut's own frame plays at; null for unknown cuts.
   int? globalOf(CutId cutId, int localFrame) {
     final entry = entryFor(cutId);
     if (entry == null) {
       return null;
     }
-    return entry.startFrame + localFrame;
+    return _mediaStartOf(entry) + localFrame;
   }
 
-  /// ([cutId], cut-local frame) for [globalFrame] under the owner rule;
+  /// ([cutId], the cut's own frame) for [globalFrame] under the owner rule;
   /// null in the leading gap before the first cut.
   ({CutId cutId, int localFrame})? localOf(int globalFrame) {
     final owner = ownerOf(globalFrame);
     if (owner == null) {
       return null;
     }
-    return (cutId: owner.cutId, localFrame: globalFrame - owner.startFrame);
+    return (cutId: owner.cutId, localFrame: localIn(owner, globalFrame));
   }
 
-  /// The last local frame of [cutId]'s TERRITORY — its frames plus its
-  /// trailing gap; null for the last cut (endless runway) or unknown cuts.
-  int? territoryLastLocalOf(CutId cutId) {
-    for (var index = 0; index < entries.length - 1; index += 1) {
-      if (entries[index].cutId == cutId) {
-        return entries[index + 1].startFrame - entries[index].startFrame - 1;
-      }
-    }
-    return null;
-  }
-
-  /// ([cutId], [localFrame]) as a global frame, clamped into the cut's
-  /// territory — a stale over-end local index never addresses the next
-  /// cut. Null for unknown cuts.
-  int? clampedGlobalOf(CutId cutId, int localFrame) {
-    final entry = entryFor(cutId);
-    if (entry == null) {
-      return null;
-    }
-    final local = localFrame < 0 ? 0 : localFrame;
-    final territoryLast = territoryLastLocalOf(cutId);
-    return entry.startFrame +
-        (territoryLast == null || local <= territoryLast
-            ? local
-            : territoryLast);
-  }
+  /// [globalFrame] as a frame of [entry]'s cut's own — [globalOf] read the
+  /// other way, for a caller that already holds the cut.
+  int localIn(StoryboardTimelineLayoutEntry entry, int globalFrame) =>
+      globalFrame - _mediaStartOf(entry);
 
   /// ([cutId], [localFrame]) as a global frame, clamped to the CUT itself
   /// (its last frame — never the trailing gap). The timeline's over-end
   /// runway is a clipped view of the cut (UI-R9 #4): displaying it on the
   /// global axis must stop at the cut end, not leak into the gap. Null for
   /// unknown cuts.
+  ///
+  /// The same at the cut's HEAD: a frame of the のりしろ before its conte
+  /// plays over the cut in front, and stands on this cut's first frame
+  /// here — the cut's own block, as at its end.
+  ///
+  /// The ONE clamp the storyboard's playhead asks; the name tags a cut's
+  /// frame puts on the canvas (`SeEntries.seNameTagsForCutFrame`) ask it
+  /// past the frames the film plays — ↩️in the のりしろ too, until
+  /// I-73-ol-index-space-Q1 gave the margins what is heard then.
+  /// ⚠️MUTANT SURVIVES, equivalent (measured 2026-09-08, where the tags
+  /// held this clamp for themselves): `>` → `>=` clamps a frame that
+  /// already IS the last to itself — and `<` → `<=` the first, the same.
   int? clampedToCutGlobalOf(CutId cutId, int localFrame) {
     final entry = entryFor(cutId);
     if (entry == null) {
       return null;
     }
-    final lastLocal = entry.duration < 1 ? 0 : entry.duration - 1;
-    final local = localFrame < 0
-        ? 0
-        : (localFrame > lastLocal ? lastLocal : localFrame);
-    return entry.startFrame + local;
+    final lastFrame = entry.duration < 1 ? 0 : entry.duration - 1;
+    final intoConte = localFrame - leadOf(cutId);
+    return entry.startFrame +
+        (intoConte < 0 ? 0 : (intoConte > lastFrame ? lastFrame : intoConte));
   }
 
   /// Where the STORYBOARD stands for an EDITING playhead: a gap parking at

@@ -161,7 +161,7 @@ void main() {
     // Two layers, both twirled open, each contributing one lane row.
     final twoLayers = [_layer('lower'), _layer('upper')];
     List<PropertyLaneRow> oneLane(Layer layer) => const [
-      PropertyLaneRow(laneId: 'position', label: 'Position', keyedFrames: {}),
+      PropertyLaneRow(laneId: 'position', label: 'Position', keyMarks: {}),
     ];
 
     TimelineRowAddress? walk(TimelineRowAddress from, int direction) =>

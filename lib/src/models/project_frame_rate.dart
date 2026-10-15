@@ -301,3 +301,52 @@ int framesOfSecondsAndFrames(int seconds, int frames, int framesPerSecond) {
     denominator: denominator ~/ divisor,
   );
 }
+
+/// The rate a movie running at [movie] frames per second runs at when it
+/// is [project]'s PULLDOWN PARTNER — 23.976 to a 24 project and 24 to a
+/// 23.976 one, 29.97↔30, 59.94↔60 — or null when it is not.
+///
+/// 🗣️import-movie-fps-mismatch-notice (유저 10-06: 「알리는게 좋겠어」 ·
+/// 「셋다 맞고」): such a movie is named on import, and the project may take
+/// its rate. A difference that is no pair (a 30 movie in a 24 project) is
+/// not named — its frames never lined up with the project's to begin with.
+///
+/// A decoder may spell 24000/1001 as 2997/125 or 23976/1000, so the movie
+/// matches the partner within a quarter of the 0.1% that parts the two:
+/// never [project] itself.
+ProjectFrameRate? pulldownPartnerOf(
+  ProjectFrameRate project,
+  ({int numerator, int denominator}) movie,
+) {
+  final base = project.countingBase;
+  final ntsc = ProjectFrameRate.ntsc(base);
+  final ProjectFrameRate partner;
+  if (project.isInteger) {
+    partner = ntsc;
+  } else if (project == ntsc) {
+    partner = ProjectFrameRate.integer(base);
+  } else {
+    return null;
+  }
+  final apart =
+      (movie.numerator * partner.denominator -
+              partner.numerator * movie.denominator)
+          .abs();
+  return apart * 4000 <= partner.numerator * movie.denominator
+      ? partner
+      : null;
+}
+
+/// [frame] of a [from] clock as the [to] frame that begins nearest the
+/// same moment — what a SOUND's IN or OUT becomes when the project changes
+/// rate and its sound keeps its real time (「오디오 타이밍 유지」). A movie's
+/// keeps its PICTURE instead, through its own clock (`MovieClock`).
+int frameAtSameTime(
+  int frame, {
+  required ProjectFrameRate from,
+  required ProjectFrameRate to,
+}) {
+  final scaled = frame * to.numerator * from.denominator;
+  final per = to.denominator * from.numerator;
+  return (2 * scaled + per) ~/ (2 * per);
+}

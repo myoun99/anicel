@@ -18,13 +18,15 @@ import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/png_chunks.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재 보이는대로
 /// png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로 클립하는건
 /// 당연」 — Q7 (09-30): 「내보내기 「이미지」와 같은 깨끗한 한 장」, Q1
 /// (10-08): 「「다른 이름으로 저장」에 둘째 단 — 프로젝트(.anicel) · PNG ·
-/// JPG」.
+/// JPG」, F-335 (10-10): 「다른이름저장의 png, 형식 기본값 RGB의
+/// 배경흰색으로」.
 ///
 /// The picture is the image tab's own (`writeFrameImage`), so what is pinned
 /// here is the road to it: where it is chosen, what it is asked, what it
@@ -38,6 +40,11 @@ void main() {
   late Directory folder;
 
   setUp(() {
+    // The desktop's road — a save window that answers with a path — wherever
+    // this runs: a sandboxed Mac writes into the app first and its picker
+    // places the file, the iPad's road the last test pins (the macOS CI
+    // runner, 2026-10-15: three tests waited on a picker nobody answered).
+    FolderPicker.debugOperatingSystem = 'windows';
     folder = Directory.systemTemp.createTempSync('save-as-picture');
     deleteAfterSessionEnds(folder);
   });
@@ -187,8 +194,9 @@ void main() {
     expect(asked.single, endsWith('.anicel'));
   });
 
-  testWidgets('🚨PNG: the frame under the playhead, the canvas\'s size, '
-      'written where it was put — and the project stays the file it was', (
+  testWidgets('🚨PNG: the frame under the playhead, the canvas\'s size, on '
+      'white, written where it was put — and the project stays the file it '
+      'was', (
     tester,
   ) async {
     final strip = await pumpApp(tester);
@@ -224,6 +232,11 @@ void main() {
     ]);
     final bytes = File(target).readAsBytesSync();
     expect(bytes.sublist(1, 4), 'PNG'.codeUnits, reason: 'a PNG file');
+    expect(
+      pngColourTypeOf(bytes),
+      2,
+      reason: 'F-335: 「알파채널 아예없는걸」 — RGB, no alpha channel at all',
+    );
     final picture = await pixelsOf(tester, bytes, [
       (10, 10),
       (canvas.width - 1, canvas.height - 1),
@@ -233,11 +246,16 @@ void main() {
       (canvas.width, canvas.height),
       reason: 'the canvas, not the camera, and no pasteboard',
     );
-    expect(picture.rgba.first[3], greaterThan(0), reason: 'the dab is in it');
     expect(
-      picture.rgba.last[3],
-      0,
-      reason: 'the image tab\'s PNG keeps its alpha: no ground under it',
+      picture.rgba.first.take(3),
+      everyElement(lessThan(200)),
+      reason: 'the dab is in it',
+    );
+    expect(
+      picture.rgba.last,
+      [255, 255, 255, 255],
+      reason: 'F-335: RGB on white — where the image tab\'s PNG keeps its '
+          'alpha, no ground under it',
     );
     expect(watched.labels, [
       AppText.strings.saveProgressRunning,

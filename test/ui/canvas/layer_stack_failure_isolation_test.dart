@@ -13,6 +13,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/models/composite_tree.dart';
 
 /// D10: a cel the store cannot build is ONE row's problem.
@@ -56,6 +57,7 @@ class _ThrowingCache extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) async => null;
 }
 

@@ -71,7 +71,8 @@ class _WorkspaceCollapsedRows {
   /// today. If it ever grows a second, that function is where it grows and
   /// this line follows it there.
   double collapsedRowHeight() => _collapsedRowIsStoryboard
-      ? _state._storyboardLaneHeight(_state.context)
+      ? _state._foldedStoryboard.row()?.height ??
+            _state._storyboardLaneHeight(_state.context)
       : timelineLayerRowHeightIn(_state.context);
 
   Widget _collapsedRow() {
@@ -154,6 +155,14 @@ class _WorkspaceCollapsedRows {
   /// panel it folded.
   Widget _collapsedTrackRow() {
     final session = _state.widget.session;
+    // Standing on another row than the V row, the folded row is that one
+    // (F-322, [_WorkspaceFoldedStoryboard]).
+    if (_state._foldedStoryboard.row() case final folded?) {
+      return _state._foldedStoryboard.overlay(
+        folded,
+        _follows(session.playheadCursors.trackFrame),
+      );
+    }
     // ⛔The session's track axis, not a walk of its own: this narrowed the
     // layout to the selected track by hand, the same walk
     // [EditorSessionManager.trackFrameAxis] makes (one track a film, 전제 8,
@@ -181,11 +190,11 @@ class _WorkspaceCollapsedRows {
       railChild: track == null
           ? null
           : StoryboardTrackLabelRow(
-              track: track,
-              // The panel labels its V rows by POSITION, and this is the
+              trackId: track.id,
+              // The panel names its V rows by POSITION, and this is the
               // selected one; a film has one track (전제 8), so the index
-              // is 0 and the label is V1.
-              trackLabel: 'V1',
+              // is 0.
+              trackLabel: storyboardVideoRowName(0),
               laneHeight: height,
               chromeless: true,
             ),
@@ -323,6 +332,7 @@ class _WorkspaceCollapsedRows {
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
       onOpenLayerLinks: (_, _) async {},
+      onOpenCameraPath: (_) async {},
       onLayerBlendModeSelected: (_, _) {},
     );
     // Its eye is the rail's, a folder above that hides the row included
@@ -339,16 +349,27 @@ class _WorkspaceCollapsedRows {
   /// differ: the strip is its own height by design, while every horizontal
   /// measurement — rail width, section gutter, frame cell — comes from the
   /// panel so the columns line up under it.
-  TimelineGridMetrics _collapsedMetrics() => TimelineGridMetrics(
-    minimumVisibleFrameCells:
-        TimelineGridMetrics.defaults.minimumVisibleFrameCells,
-    layerControlsWidth: TimelineGridMetrics.defaults.layerControlsWidth,
-    frameCellWidth: _state._timelinePixelsPerFrame.value,
-    layerRowHeight: collapsedRowHeight(),
-    verticalScrollbarWidth: TimelineGridMetrics.defaults.verticalScrollbarWidth,
-    sectionLabelGutterWidth:
-        TimelineGridMetrics.defaults.sectionLabelGutterWidth,
-  );
+  ///
+  /// The rail's columns with them, grown with their words as the panel's
+  /// are ([layerRailColumnWidthsIn], text-scale-rail-columns): ↩️this read
+  /// the 1× rail, so under a larger OS text the folded row's columns and
+  /// its frames stood apart from the open panel's (the storyboard's
+  /// folded row already took its rail as its panel does).
+  TimelineGridMetrics _collapsedMetrics() {
+    final railColumns = layerRailColumnWidthsIn(_state.context);
+    return TimelineGridMetrics(
+      minimumVisibleFrameCells:
+          TimelineGridMetrics.defaults.minimumVisibleFrameCells,
+      layerControlsWidth: timelineLayerControlsWidthFor(railColumns),
+      railColumns: railColumns,
+      frameCellWidth: _state._timelinePixelsPerFrame.value,
+      layerRowHeight: collapsedRowHeight(),
+      verticalScrollbarWidth:
+          TimelineGridMetrics.defaults.verticalScrollbarWidth,
+      sectionLabelGutterWidth:
+          TimelineGridMetrics.defaults.sectionLabelGutterWidth,
+    );
+  }
 
   /// ⑩ 구조 = 리빌드: everything that changes the collapsed row's SHAPE.
   ///
@@ -383,6 +404,8 @@ class _WorkspaceCollapsedRows {
   /// on screen (I-7). They read the project's own notifiers, so a pair
   /// made once for the window would go on hearing the first project.
   void bindSession(EditorSessionManager session) {
+    // The folded storyboard is the row it stands on (F-322).
+    _state._foldedStoryboard.bindSession(session);
     _collapsedRowStructure = Listenable.merge([
       session,
       session.railView.expandedLaneLayerIds,
@@ -495,7 +518,8 @@ class _WorkspaceCollapsedRows {
             // The CAMERA row's union summary (B4) — the same shared
             // markers the timeline row mounts; ⑩ root C says this overlay
             // mounts the real row, columns and all.
-            unionLane: timelineCameraUnionLane(layer: layer, session: session),
+            unionLaneFor: (layer) =>
+                timelineCameraUnionLane(layer: layer, session: session),
             // `commaDrag`/`rangeGesture` stay null — display-only, same
             // reason.
             onSelectLayer: (_) {},
@@ -516,6 +540,7 @@ class _WorkspaceCollapsedRows {
         TimelineCursorLayer(
           frameCursor: session.playheadCursors.cutFrame,
           rows: [displayRow],
+          edges: TimelineRowEdges.uniform(1, metrics.layerRowHeight),
           activeLayerId: layer.id,
           currentRow: session.standing.currentRowListenable,
           frameStartIndex: geometry.value.frameStartIndex,

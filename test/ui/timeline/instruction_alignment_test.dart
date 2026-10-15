@@ -8,7 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
     show TimelineBlockColumn;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
+import 'package:anicel/src/ui/timeline/timeline_span_name.dart'
     show instructionLabelInset;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 

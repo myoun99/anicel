@@ -33,6 +33,7 @@ void main() {
     double x = 0,
     double y = 0,
     double? wrapWidth,
+    double? minHeight,
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
     double lineHeight = 1,
@@ -43,6 +44,7 @@ void main() {
         spans: spans,
         anchor: CanvasPoint(x: x, y: y),
         wrapWidth: wrapWidth,
+        minHeight: minHeight,
         rotationDegrees: turn,
         align: align,
         lineHeight: lineHeight,
@@ -167,6 +169,22 @@ void main() {
       expect(letter(layout, 2), at(-40, 0, 20, 20));
       expect(letter(layout, 4), at(-60, 0, 20, 20));
       expect(layout.wrapPlaces, [2, 4]);
+    });
+
+    // F-317: how tall a box is at least is, in columns, how WIDE.
+    test('🚨a box at least WIDER than its columns is that wide: they stand '
+        'at its right, and it reaches LEFT past them — and with more '
+        'columns than that, it grows to hold them all', () {
+      final wide = set([run('あいうえお')], wrapWidth: 40, minHeight: 100);
+
+      expect(wide.block, at(-100, 0, 100, 40));
+      expect(wide.lettersDepth, 60);
+      expect(letter(wide, 0), at(-20, 0, 20, 20));
+      expect(letter(wide, 4), at(-60, 0, 20, 20));
+
+      final grown = set([run('あいうえお')], wrapWidth: 40, minHeight: 30);
+
+      expect(grown.block, at(-60, 0, 60, 40));
     });
 
     test('is as long as the box whatever it holds, and the alignment places '

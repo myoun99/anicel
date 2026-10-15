@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// R27 #4/#9: a rail row's opacity slider routes by ROW KIND — the camera
 /// row's slider IS the camera-view dim notifier, every other row's is the
 /// session's layer opacity. Preview (per move) and commit (on release) take
@@ -49,7 +51,7 @@ void main() {
 
   FieldSlider sliderFor(WidgetTester tester, LayerId layerId) =>
       tester.widget<FieldSlider>(
-        find.byKey(ValueKey<String>('timeline-layer-opacity-$layerId')),
+        find.named('timeline-layer-opacity-$layerId'),
       );
 
   double opacityOf(EditorSessionManager session, LayerId layerId) =>

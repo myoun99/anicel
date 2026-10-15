@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// F-311 (유저 2026-10-06): 「폴더의 블록 드래그로 이동할 수 있게」 — the
 /// grid's half. A folder's row is a cells row like any other, so a press on
 /// its selected block asks the host to move with the FOLDER's own id; what
@@ -107,7 +109,7 @@ void main() {
         ),
       ),
     );
-    final row = find.byKey(const ValueKey<String>('timeline-range-gesture-f'));
+    final row = find.named('timeline-range-gesture-f');
     expect(row, findsOneWidget, reason: 'the folder\'s row takes the drag');
 
     final gesture = await tester.startGesture(

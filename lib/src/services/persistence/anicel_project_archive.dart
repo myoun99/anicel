@@ -65,6 +65,118 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v18 (2026-10-15, F-360's second half — the storyboard rail's twirls):
+/// a track keeps its V row's twirl and the effect groups open inside it —
+/// `lanesExpanded` and `expandedLaneGroups` on a track (`Track.toJson`),
+/// as a layer row keeps its own since v16. A v17 build reads neither and
+/// its next save writes the track back without them. The bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a track that says neither is a shut
+/// one at THIS version too (`Track.toJson` leaves each out until it is
+/// set), so a v17 file is such a document. The S rows' twirls needed no
+/// number: an S row is a layer, and kept its own since v16.
+///
+/// v17 (2026-10-14, F-343 — 「콘티행을 확실하게 글로벌행으로」): a track
+/// keeps the STRUCTURE its cuts' contes wear — `conte` on a track
+/// (`TrackConte.toJson`: the conte's head, and the rows and 공정 folders
+/// riding it, in order, each with what it wears) — and each row riding a
+/// conte names its row of it, `conteKey` on a layer. A v16 build reads
+/// neither: it opens the contes as each cut holds them, and its next save
+/// writes them back without the structure, so the rows it added to one
+/// cut's conte stay that cut's. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a track that says no structure has
+/// it laid from its cuts' contes on the first write, seat by seat — the
+/// rule every write keeps for a row that names none
+/// (`trackWithItsConteLaid`) — so a v16 file is such a document.
+///
+/// v16 (2026-10-14, F-360 — 유저: 「어태치레이어 분명 접은채로 저장했는데
+/// 다시열면 펼쳐져있음 … 제대로 기록되도록」): a row keeps its folds and
+/// twirls — a base's attach group in `collapsed` beside a folder's, and
+/// `lanesExpanded` and `expandedLaneGroups` on a layer (`Layer.toJson`). A
+/// v15 build reads the attach fold as nothing and the twirls not at all,
+/// and its next save writes the rows back without the twirls — opened as
+/// the person left them here, saved there, and open again. The bump turns
+/// that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a row that says none of them is an
+/// open one at THIS version too (`Layer.toJson` leaves each out until it is
+/// set), so a v15 file is such a document.
+///
+/// v15 (2026-10-12, I-89 ④ — a roving key, After Effects' Rove Across
+/// Time; I-89 ①: 「위치에만, 처음 · 끝 키 시간 고정, 가운데 키는 시간을
+/// 풀어 속도를 고르게」): a position key between others may give up its
+/// time — `rove` on a key (`PropertyTrack.toJson`, written only where it
+/// roves) — and the keys either side that keep theirs walk the way through
+/// it at one pace. A v14 build reads a key without the word: it holds the
+/// key to the frame it was placed on, so the walk around it speeds and
+/// slows again, and its next save writes the key back without it. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a key that does not say keeps its
+/// time at THIS version too, so a v14 file was such a document.
+///
+/// v14 (2026-10-12, I-89 ④ — the path a position walks in space, After
+/// Effects' spatial interpolation): a key says how the path bends through
+/// it — `path` on a key (`PropertyTrack.toJson`): `auto`, or the handle's
+/// `tangent`, written only where it bends (`KeyPath.toJson`). A v13 build
+/// reads a key without the word: it walks every bent path in straight
+/// lines, and its next save writes the keys back without it. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a key that does not say is a straight
+/// one at THIS version too, so a v13 file was such a document.
+///
+/// v13 (2026-10-10, I-89 — 유저 10-10 「키 양쪽. 업계 표준인 전문 툴대로
+/// 하고싶어. 그게 ae고」): a key eases with two sides, After Effects'
+/// incoming and outgoing temporal interpolation — `in` and `out` on a key
+/// (`PropertyTrack.toJson`, each written only where it is not linear;
+/// `KeyExit.toJson`), where a key carried one `interpolation` for the
+/// segment leaving it. A v12 build reads neither word: it opens every eased
+/// key as a straight one and every hold as a ramp, and its next save
+/// writes them back so — the bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⛔The one `interpolation` is NOT read here (the save law), and with it
+/// goes every file older than this one ([anicelOldestReadFormatVersion]).
+/// What to carry when one is asked for: each key's `interpolation: hold`
+/// becomes `out: hold`, and a key without the word stays without either.
+///
+/// v12 (2026-10-10, I-68 — the reference fx): a media reference says WHERE
+/// its file's picture stands — `pose`, its centre on the canvas with a
+/// scale per axis over the picture's own pixels and a turn about that
+/// centre — and `size`, the picture's own size (`MediaReference.toJson`);
+/// and each cel of a row that shows a still, a GIF or a PDF says which
+/// picture of the file it is (`filePicture`, `Frame.toJson`). A v11 build
+/// reads a reference without them and fits the file to the canvas as it is
+/// each time it lays it — a movie at every decode, a still when it is
+/// swapped — so a canvas grown since puts the picture in its middle, and its
+/// next save writes the reference and the cels back without them. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔A reference without them is NOT read (the save law), and with it goes
+/// every file older than this one ([anicelOldestReadFormatVersion]): where
+/// such a reference's picture stands is written nowhere in it. What to
+/// carry when one is asked for: each layer's `mediaReference` gets `size` —
+/// its file's picture (a movie's frame, a PDF's first page at 1:1) — and
+/// the `pose` its picture stands at NOW. A movie's is its pool entry's fit
+/// (the entry's `fit`, `contain` when it says none) on the cut's canvas,
+/// every frame having been fitted so (`fitPose`). A still's, a sequence's
+/// and a PDF's is that too, unless the cut's canvas was resized after the
+/// file was placed: that moved its cels by the resize's offset, so read the
+/// offset off a cel — where its picture lies against the fit's rect — and
+/// move the pose's centre by it. Each cel of such a row gets the picture of
+/// the file it shows: a still's `0`, a GIF's frame and a PDF's page found
+/// by matching the cel against the file's pictures. A cel left without one
+/// keeps its row from being laid again, and that is all.
+///
 /// v11 (2026-10-08, F-301 — 유저 10-05 「타임시트의 메모란은 페이지별로
 /// 다름 … 페이지별로 독립」): a cut's memo is one per page of its timesheet
 /// (`CutMetadata.pageNotes`, a list written only when a page has one)
@@ -178,7 +290,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 11;
+const int anicelFormatVersion = 18;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -198,7 +310,10 @@ const int anicelFormatVersion = 11;
 /// 6: a scale's one number is no longer read (v6 above).
 /// 10: a timesheet's strip ink is no longer read (v10 above).
 /// 11: a cut's one note is no longer read (v11 above).
-const int anicelOldestReadFormatVersion = 11;
+/// 12: a reference that does not say where it stands is no longer read
+/// (v12 above).
+/// 13: a key's one interpolation is no longer read (v13 above).
+const int anicelOldestReadFormatVersion = 13;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the

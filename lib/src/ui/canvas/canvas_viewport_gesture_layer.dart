@@ -54,6 +54,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     this.strokeActive = _never,
     this.touchLocked = _never,
     this.rotationEnabled = true,
+    this.turnAnchor,
     this.oneFingerAction,
     this.primaryPressPans = false,
     this.onInvokeAction,
@@ -116,6 +117,11 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   /// timesheet).
   final bool rotationEnabled;
 
+  /// Where the view turns about under the 「회전」 key (I-88) — the panel's
+  /// middle, the anchor its own turn buttons use — asked as a turn begins.
+  /// Null turns about this layer's middle: a layer pumped on its own.
+  final ViewportPoint Function()? turnAnchor;
+
   /// What ONE finger does here when this host answers the slot itself —
   /// null follows the user's slot ([AppInput.touchDragActionFor]). Two and
   /// three fingers keep the user's slots.
@@ -155,6 +161,14 @@ class _CanvasViewportGestureLayerState
   int? _panPointer;
   Offset? _panStartLocalPosition;
   CanvasViewport? _panStartViewport;
+
+  /// The press turning the view under the 「회전」 key (I-88): its pointer,
+  /// the anchor it turns about, its angle about that anchor when it went
+  /// down, and the view it turns from.
+  int? _turnPointer;
+  ViewportPoint? _turnAnchor;
+  double? _turnStartAngle;
+  CanvasViewport? _turnStartViewport;
   CanvasViewport? _panZoomStartViewport;
 
   /// Non-null once the trackpad rotation crossed the deadzone: the fixed
@@ -259,10 +273,16 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (_panPointer != null || widget.strokeActive()) {
+    if (_panPointer != null || _turnPointer != null || widget.strokeActive()) {
       return;
     }
-    if (canvasPressPans(event.buttons) || _primaryPressPans(event)) {
+    if (canvasPressTurns(event.buttons)) {
+      // The 「회전」 key's press is the view's from its down — and on a host
+      // whose content does not turn, nobody's: the tools stood down for it.
+      if (widget.rotationEnabled) {
+        _beginTurn(event.pointer, event.localPosition);
+      }
+    } else if (canvasPressPans(event.buttons) || _primaryPressPans(event)) {
       // A pan press is this canvas's gesture from its down: the held key or
       // the mapped button said so before anything moved.
       _beginPan(event.pointer, event.localPosition);
@@ -283,6 +303,41 @@ class _CanvasViewportGestureLayerState
     _holdForTheGesture(pointer);
   }
 
+  void _beginTurn(int pointer, Offset at) {
+    final anchor = widget.turnAnchor?.call() ?? _middle;
+    _turnPointer = pointer;
+    _turnAnchor = anchor;
+    _turnStartAngle = _angleAbout(anchor, at);
+    _turnStartViewport = _liveViewport;
+    _holdForTheGesture(pointer);
+  }
+
+  ViewportPoint get _middle {
+    final size = (context.findRenderObject()! as RenderBox).size;
+    return ViewportPoint(x: size.width / 2, y: size.height / 2);
+  }
+
+  static double _angleAbout(ViewportPoint anchor, Offset at) =>
+      math.atan2(at.dy - anchor.y, at.dx - anchor.x) * 180 / math.pi;
+
+  /// The view turned by the angle the press has swept about the anchor
+  /// since it went down, landing as the twist's does ([_snappedRotation]).
+  void _turnTo(Offset at) {
+    final anchor = _turnAnchor;
+    final startAngle = _turnStartAngle;
+    final start = _turnStartViewport;
+    if (anchor == null || startAngle == null || start == null) {
+      return;
+    }
+    final swept = wrapDegrees(_angleAbout(anchor, at) - startAngle);
+    _emit(
+      start.rotatedAround(
+        nextRotationDegrees: _snappedRotation(start.rotationDegrees + swept),
+        anchor: anchor,
+      ),
+    );
+  }
+
   void _handlePointerMove(PointerMoveEvent event) {
     if (_touchPositions.containsKey(event.pointer)) {
       _touchPositions[event.pointer] = event.localPosition;
@@ -301,6 +356,10 @@ class _CanvasViewportGestureLayerState
       if (_panPointer == null && !widget.strokeActive()) {
         _beginPan(event.pointer, event.localPosition);
       }
+    }
+    if (event.pointer == _turnPointer) {
+      _turnTo(event.localPosition);
+      return;
     }
     if (event.pointer != _panPointer) {
       return;
@@ -330,6 +389,9 @@ class _CanvasViewportGestureLayerState
     }
     if (event.pointer == _panPointer) {
       _clearPan();
+    }
+    if (event.pointer == _turnPointer) {
+      _clearTurn();
     }
   }
 
@@ -376,8 +438,9 @@ class _CanvasViewportGestureLayerState
   bool _navModifierActive = false;
   double? _navModifierLockRotation;
 
-  // Brush-size state.
-  bool _brushSizeActive = false;
+  // Brush-size state: where the drag measures from, taken where it was
+  // recognised (`_updateBrushSize`). Until then the drag has not started.
+  Offset? _brushSizeOrigin;
 
   /// PEN-14: the viewport as the engine last EMITTED it. Mid-gesture,
   /// `widget.viewport` lags the emissions by however long the parent
@@ -586,14 +649,22 @@ class _CanvasViewportGestureLayerState
           anchor: _groupCentroid(_groupDownPositions),
           frameStep: _flipFrameStep,
         );
+      // 🗣️F-260 (유저 10-02): 「시작되면 그때까지 입력된 이동 값이 한번에
+      // 입력되서 화면이 갑자기 순간적으로 크게이동되는데 … 시작되기로 인식한
+      // 순간 … 을 기점으로 시작하게하면 부드럽게 이동시작할거같은데」.
+      // ↩️The view anchored at the DOWN positions, so the slop this lock had
+      // waited out landed in one frame — the merged engine kept the old
+      // draw-mode pinch's whole-travel reading (PEN-12b), nobody's ask.
+      // ★A continuous action starts where it was RECOGNISED, as the twist
+      // already did past its dead zone and as a scroller's drag does. Its
+      // origin is taken at the end of THIS batch (`_updateNavigate`,
+      // `_updateBrushSize`), off every finger's freshest position: read
+      // here, a pinch's other finger is still a frame behind, and the zoom
+      // measured against it would stay wrong for the whole gesture (F-11).
+      // ⛔Not the flip: its lock IS its first step (H30), so it already
+      // starts there.
       case CanvasTouchDragAction.navigate:
-        // Anchor at the DOWN positions: the whole travel since touchdown
-        // counts (the legacy pinch contract — nothing swallowed by the
-        // lock slop, and a single-event jump still navigates in full).
-        _anchorNavigate(fromDownPositions: true);
       case CanvasTouchDragAction.brushSize:
-        _brushSizeActive = true;
-        widget.onBrushSizeDragStart?.call();
       // The brush view owns a DRAW group's stroke; the engine stands by.
       case CanvasTouchDragAction.draw:
       case CanvasTouchDragAction.none:
@@ -676,11 +747,10 @@ class _CanvasViewportGestureLayerState
     widget.flipHud?.refresh(frameStep: _flipFrameStep);
   }
 
-  void _anchorNavigate({bool fromDownPositions = false}) {
-    final source = fromDownPositions ? _groupDownPositions : _touchPositions;
+  void _anchorNavigate() {
     final positions = {
       for (final pointer in _groupPointers)
-        pointer: source[pointer] ?? Offset.zero,
+        pointer: _touchPositions[pointer] ?? Offset.zero,
     };
     _navStartFocal = _groupCentroid(positions);
     if (_groupPointers.length >= 2) {
@@ -742,6 +812,9 @@ class _CanvasViewportGestureLayerState
     final startFocal = _navStartFocal;
     final startViewport = _navStartViewport;
     if (startFocal == null || startViewport == null) {
+      // The batch that locked the group: the gesture starts here (F-260,
+      // `_lockGroup`), and nothing has moved since.
+      _anchorNavigate();
       return;
     }
     final settings = AppInput.settings.value;
@@ -831,11 +904,18 @@ class _CanvasViewportGestureLayerState
   }
 
   void _updateBrushSize() {
-    final downCentroid = _groupCentroid(_groupDownPositions);
     final nowCentroid = _groupCentroid(_touchPositions);
+    final origin = _brushSizeOrigin;
+    if (origin == null) {
+      // The batch that locked the group: the drag starts here (F-260,
+      // `_lockGroup`).
+      _brushSizeOrigin = nowCentroid;
+      widget.onBrushSizeDragStart?.call();
+      return;
+    }
     // Vertical only (가로축은 의도적으로 비움): up = bigger.
     widget.onBrushSizeDragUpdate?.call(
-      downCentroid.dy - nowCentroid.dy,
+      origin.dy - nowCentroid.dy,
       snap:
           _modifierPointers.isNotEmpty &&
           AppInput.settings.value.extraFingerModifier,
@@ -851,7 +931,7 @@ class _CanvasViewportGestureLayerState
       return;
     }
     // Any BASE finger lifting ends the gesture whole.
-    if (_brushSizeActive) {
+    if (_brushSizeOrigin != null) {
       widget.onBrushSizeDragEnd?.call();
     }
     _resetControlEngine();
@@ -875,7 +955,7 @@ class _CanvasViewportGestureLayerState
     _navStartViewport = null;
     _navModifierActive = false;
     _navModifierLockRotation = null;
-    _brushSizeActive = false;
+    _brushSizeOrigin = null;
   }
 
   static double _touchAngleDegrees(Offset first, Offset second) {
@@ -963,6 +1043,13 @@ class _CanvasViewportGestureLayerState
     _panPointer = null;
     _panStartLocalPosition = null;
     _panStartViewport = null;
+  }
+
+  void _clearTurn() {
+    _turnPointer = null;
+    _turnAnchor = null;
+    _turnStartAngle = null;
+    _turnStartViewport = null;
   }
 
   void _emit(CanvasViewport viewport) {

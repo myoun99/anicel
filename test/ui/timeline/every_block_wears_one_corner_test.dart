@@ -62,6 +62,9 @@ void main() {
       'lib/src/ui/timeline/collapsed_row_overlay.dart': 1,
       // A name TAG in the SE lane preview, not a block.
       'lib/src/ui/timeline/se_name_tag_lane_preview.dart': 1,
+      // A smooth pass's half DISC on a key's mark (I-89 ②) — its arc's
+      // radius, not a corner.
+      'lib/src/ui/timeline/key_mark_glyph.dart': 1,
     };
     final numbered = RegExp(r'Radius\.circular\(\s*[0-9]');
     final found = <String, int>{};

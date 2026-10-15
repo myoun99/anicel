@@ -25,12 +25,11 @@ import '../../helpers/export_preview_probe.dart';
 /// 재생ui 넣고」.
 ///
 /// The panel alone, over documents made here: what it wears, the pixels it
-/// asks a page at, the picture it keeps up while another is on its way, and
-/// its run.
+/// asks a page at, what it shows while a page is on its way, and its run.
 ///
 /// ⚠️A page lands when the TEST says so ([land]): a render left to the
 /// raster's own timing lands between two pumps or does not, and every
-/// 「still the last picture」 below would be measuring that.
+/// 「still loading」 below would be measuring that.
 void main() {
   late EditorSessionManager session;
   late ValueNotifier<int> at;
@@ -55,6 +54,7 @@ void main() {
   const small = CanvasSize(width: 64, height: 36);
   const transport = ValueKey<String>('canvas-transport');
   const strip = ValueKey<String>('canvas-page-strip');
+  final loading = find.byKey(const ValueKey<String>('export-preview-loading'));
 
   /// A document of [pages] pages whose renders wait for [land].
   ExportPreviewDocument document({
@@ -254,6 +254,17 @@ void main() {
       expect(painter(tester).ground, ViewportPageGround.none);
     });
 
+    testWidgets('🗣️F-315: its 1:1 is on the pill, as the viewer\'s is', (
+      tester,
+    ) async {
+      await pump(tester, document());
+      expect(
+        find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+        findsOneWidget,
+        reason: 'it was one tap away, behind the gear',
+      );
+    });
+
     testWidgets('its stage is a canvas-base panel\'s: no pasteboard, on '
         'black (F-179 · F-272)', (tester) async {
       await pump(tester, document());
@@ -353,45 +364,63 @@ void main() {
       expect(pagesAsked(), [0, 3]);
     });
 
-    testWidgets('🚨a hand on the track: the last picture drawn stays up until '
-        'the frame it stops on lands', (tester) async {
+    // 🗣️F-315 (유저 2026-10-08): 「준비안된상태면 지금 이전그림 보여주는데
+    // 그게아니라 … 로딩창같은거 해당패널중앙에 위젯 띄우도록」.
+    testWidgets('🚨a hand on the track: the frame it stands on is drawn, or '
+        'the panel says it is loading — never the frame before', (
+      tester,
+    ) async {
       await pump(tester, document());
+      expect(loading, findsOneWidget, reason: 'nothing has landed yet');
       final first = await landed(tester, 0);
+      expect(loading, findsNothing);
 
       at.value = 2;
       await tester.pump();
       expect(tester.exportTransport.currentFrame, 2);
       expect(
-        identical(tester.exportPreviewImage, first),
-        isTrue,
-        reason: 'it went blank between frames',
+        tester.exportPreviewImage,
+        isNull,
+        reason: 'the frame before stood in for it',
       );
+      expect(loading, findsOneWidget);
 
       await land(tester);
+      expect(tester.exportPreviewImage, isNotNull);
       expect(identical(tester.exportPreviewImage, first), isFalse);
+      expect(loading, findsNothing);
       // A frame already drawn is there the moment it is turned back to.
       at.value = 0;
       await tester.pump();
       expect(identical(tester.exportPreviewImage, first), isTrue);
+      expect(loading, findsNothing);
       expect(pending, isEmpty, reason: 'and nothing is asked for it again');
     });
 
-    testWidgets('🚨a setting that changes the LOOK keeps the picture up until '
-        'the new one lands — through a second change too', (tester) async {
+    testWidgets('🚨a setting that changes the LOOK takes the picture down: the '
+        'panel says it is loading until the new one lands — through a second '
+        'change too', (tester) async {
       await pump(tester, document(look: 'a'));
       final first = await landed(tester, 0);
       asks.clear();
 
       await pump(tester, document(look: 'b'));
-      expect(identical(tester.exportPreviewImage, first), isTrue);
+      expect(
+        tester.exportPreviewImage,
+        isNull,
+        reason: 'the look before stood in for it',
+      );
+      expect(loading, findsOneWidget);
       expect(asks, hasLength(1), reason: 'the page is owed a new render');
 
       await pump(tester, document(look: 'c'));
-      expect(identical(tester.exportPreviewImage, first), isTrue);
+      expect(tester.exportPreviewImage, isNull);
+      expect(loading, findsOneWidget);
 
       await land(tester);
-      expect(identical(tester.exportPreviewImage, first), isFalse);
       expect(tester.exportPreviewImage, isNotNull);
+      expect(identical(tester.exportPreviewImage, first), isFalse);
+      expect(loading, findsNothing);
     });
 
     testWidgets('after a change of look every page is owed a new render — a '

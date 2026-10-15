@@ -1,3 +1,4 @@
+import '../core/identity_memo.dart';
 import '../models/attached_layer_resolve.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -7,13 +8,17 @@ import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
+import '../models/track_row_twirls.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
 import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
+import '../services/commands/update_layer_lane_group_expanded_command.dart';
+import '../services/commands/update_layer_lanes_expanded_command.dart';
 import '../services/commands/update_layer_opacity_command.dart';
+import '../services/commands/update_track_row_twirls_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
@@ -62,13 +67,37 @@ class LayerController {
 
   LayerId? _activeLayerId;
 
+  /// The cut's rows as every reader reads them: its own layers, the
+  /// track's SE rows and its transition row.
+  ///
+  /// 🚨ONE LIST PER STATE (I-57, 10-14): composed once for the cut and the
+  /// clones the session hands it, and handed back until one of them is
+  /// another object ([IdentityMemo]). Composed per ask, it was composed
+  /// 326 times a cut crossing on the AMMI OP — every `layerById` and every
+  /// `activeLayerId` asks it — each ask walking the film for the cut.
   List<Layer> get layers {
-    final cut = _findCutOrNull();
+    final cut = _cut.resolve(
+      identity: _repository.requireProject(),
+      build: () => (found: _findCutOrNull()),
+    ).found;
     if (cut == null) {
       // Gap state: no rows at all — not even the track SE clones (the
       // timeline shows its empty state).
       return const <Layer>[];
     }
+    final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
+    final transition = _trackTransitionDisplayLayer?.call();
+    return _layers.resolve(
+      identity: cut,
+      key: (trackSe, transition),
+      build: () => _composed(cut, trackSe, transition),
+    );
+  }
+
+  final _cut = IdentityMemo<({Cut? found})>();
+  final _layers = IdentityMemo<List<Layer>>();
+
+  List<Layer> _composed(Cut cut, List<Layer> trackSe, Layer? transition) {
     final cutLayers = cut.layers;
     // SYNCED attach rows join as DISPLAY clones whose timeline mirrors
     // the base through the cell links (W5) — the same read-clone pattern
@@ -78,13 +107,11 @@ class LayerController {
     final displayed = [
       for (final layer in cutLayers) attachedRowAsShown(layer, cutLayers),
     ];
-    final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
     // The TRANSITION row joins on the same terms as the SE rows: track
     // owned, read here through a display clone, written only on the global
     // axis. It sorts into the camera section by kind like any other row.
-    final transition = _trackTransitionDisplayLayer?.call();
     if (trackSe.isEmpty && transition == null) {
-      return displayed;
+      return List.unmodifiable(displayed);
     }
     final composed = [...displayed, ...trackSe];
     if (transition != null) {
@@ -101,7 +128,7 @@ class LayerController {
         transition,
       );
     }
-    return composed;
+    return List.unmodifiable(composed);
   }
 
   LayerId? get activeLayerId {
@@ -275,21 +302,47 @@ class LayerController {
     ),
   );
 
-  /// One [command] per layer of [layerIds] — addressed in this controller's
-  /// cut, so each reaches its link group — as ONE undo step. Nothing in the
-  /// gap state: [layers] is empty there.
+  /// One [command] per layer of [layerIds] — each addressed in its own cut
+  /// ([_cutOfRow]), so it reaches its link group — as ONE undo step. A row
+  /// with no cut to be addressed in is passed by.
   void _executeAcrossLinks({
     required List<LayerId> layerIds,
     required String debugLabel,
     required Command Function(CutId cutId, LayerId layerId) command,
   }) {
-    final cutId = _cutId;
-    if (cutId == null) {
-      return;
+    final commands = [
+      for (final layerId in layerIds)
+        if (_cutOfRow(layerId) case final cutId?) command(cutId, layerId),
+    ];
+    if (commands.isNotEmpty) {
+      _executeAsOneStep(debugLabel, commands);
     }
-    _executeAsOneStep(debugLabel, [
-      for (final layerId in layerIds) command(cutId, layerId),
-    ]);
+  }
+
+  /// The cut a row's command is addressed in: the cut that HOLDS it, else
+  /// this controller's — a track's own row is held by none, and takes the
+  /// active cut as it always did (null in a gap: nothing to address it in).
+  ///
+  /// ↩️It was this controller's cut for every row, 「nothing in the gap
+  /// state」. The storyboard draws ONE head for a track's conte rows (I-73)
+  /// and presses it under whichever cut is active, or in a gap: the row is
+  /// some cut's, and that cut is where its link group and its seat are.
+  CutId? _cutOfRow(LayerId layerId) =>
+      cutIdOfLayer(_repository.requireProject(), layerId) ?? _cutId;
+
+  /// [command] for one row, addressed in its own cut ([_cutOfRow]) so it
+  /// reaches the row's head — nothing for a track's own row in a gap, which
+  /// no cut addresses. What the row's opacity, blend, group fold and
+  /// twirls are each written through (F-360 brought the third and fourth)
+  /// — a track's own row's twirls aside ([_twirled]).
+  void _executeInItsCut(
+    LayerId layerId,
+    Command Function(CutId cutId) command,
+  ) {
+    final cutId = _cutOfRow(layerId);
+    if (cutId != null) {
+      _historyManager.execute(command(cutId));
+    }
   }
 
   void _executeDisplayBatch({
@@ -323,6 +376,14 @@ class LayerController {
     // called "the visibility-toggle precedent" — but this repo already
     // undid eighteen other layer edits, including the layer's NAME, so
     // the eye was the outlier and not the rule.
+    //
+    // 🚨A TRACK'S CONTE ROWS WEAR ONE EYE (I-73, 유저 2026-10-08: 「6.
+    // 이거만 눈이랑 불투명도조차 링크하도록. 그거마저 머리로서 하나로되도록
+    // 통일」) — the one row whose eye is its head's, where a link group's is
+    // still each use's own (T9, [UpdateLayerDisplayCommand]). The pressed
+    // row takes it, and the track's conte structure lays it on the rest
+    // (F-343, `trackWithItsConteLaid`) — ↩️where every row at the seat was
+    // written here.
     _historyManager.execute(
       UpdateLayerDisplayCommand(
         repository: _repository,
@@ -334,12 +395,12 @@ class LayerController {
   }
 
   /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold
-  /// for every use of the row. Folder rows use it to swallow their members;
-  /// the eye, static opacity and blend a folder carries need no method of
-  /// their own, because a folder IS a layer and rides
-  /// [toggleLayerVisibility] / [setLayerOpacity] / [setLayerBlendMode] —
-  /// the eye per-use since T9, the opacity and the blend its link group's
-  /// (F-278).
+  /// for every use of the row. Folder rows use it to swallow their members,
+  /// bases their attach group (F-360); the eye, static opacity and blend a
+  /// folder carries need no method of their own, because a folder IS a
+  /// layer and rides [toggleLayerVisibility] / [setLayerOpacity] /
+  /// [setLayerBlendMode] — the eye per-use since T9, the opacity and the
+  /// blend its link group's (F-278).
   ///
   /// ↩️It was per-use like the eye. 유저 2026-10-05 (F-302): 「겸용컷 …
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
@@ -352,21 +413,91 @@ class LayerController {
   /// no: the rule is 「무언가를 바꾸는 동작은 기본 이럼」, and a fold is
   /// something you did and may want back. Attach rows need no separate
   /// answer: they fold through this same `collapsed` field.
-  void toggleLayerCollapsed(LayerId layerId) {
-    final cutId = _cutId;
-    if (cutId == null) {
-      return; // Gap state: no rows ([layers] is empty there).
+  ///
+  /// ↩️That last sentence was not so when it was written — the attach fold
+  /// was a set on the rail's view (`RailView`), undone through a command of
+  /// its own, and every reload opened it back up. It is so since F-360.
+  void toggleLayerCollapsed(LayerId layerId) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerCollapsedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      collapsed: !requireLayerAnywhere(
+        _repository.requireProject(),
+        layerId,
+      ).collapsed,
+    ),
+  );
+
+  /// The row's property-lane twirl — the fx and Transform lanes live under
+  /// it — on every row of its head ([UpdateLayerLanesExpandedCommand]), or
+  /// on a track's own row alone ([_twirled]).
+  void toggleLayerLanes(LayerId layerId) => _twirled(
+    layerId,
+    onItsTrack: (was) => (
+      lanesExpanded: !was.lanesExpanded,
+      expandedLaneGroups: was.expandedLaneGroups,
+    ),
+    inItsCut: (cutId) => UpdateLayerLanesExpandedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      expanded: !requireLayerAnywhere(
+        _repository.requireProject(),
+        layerId,
+      ).lanesExpanded,
+    ),
+  );
+
+  /// [laneId]'s group inside the row's twirl-down, twirled to [expanded] on
+  /// every row of its head ([UpdateLayerLaneGroupExpandedCommand]), or on a
+  /// track's own row alone ([_twirled]).
+  void setLayerLaneGroupExpanded(
+    LayerId layerId,
+    String laneId, {
+    required bool expanded,
+  }) => _twirled(
+    layerId,
+    onItsTrack: (was) => (
+      lanesExpanded: was.lanesExpanded,
+      expandedLaneGroups: expanded
+          ? {...was.expandedLaneGroups, laneId}
+          : ({...was.expandedLaneGroups}..remove(laneId)),
+    ),
+    inItsCut: (cutId) => UpdateLayerLaneGroupExpandedCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      laneId: laneId,
+      expanded: expanded,
+    ),
+  );
+
+  /// Where [rowId]'s twirl is written, in one step either way: a TRACK's
+  /// own row — an S row, the V row by its lane carrier ([trackRowTwirlsOf])
+  /// — on its track, as [onItsTrack] turns it
+  /// ([UpdateTrackRowTwirlsCommand]); a row a cut holds on its head, by
+  /// [inItsCut] ([_executeInItsCut]).
+  ///
+  /// ⚠️A track's own row not through [_executeInItsCut]: no cut holds it,
+  /// and in a gap there is none to address it in — the storyboard, which
+  /// stands there, twirls its S and V rows all the same.
+  void _twirled(
+    LayerId rowId, {
+    required RowTwirls Function(RowTwirls was) onItsTrack,
+    required Command Function(CutId cutId) inItsCut,
+  }) {
+    final was = trackRowTwirlsOf(_repository.requireProject(), rowId);
+    if (was == null) {
+      _executeInItsCut(rowId, inItsCut);
+      return;
     }
-    final collapsed = requireLayerAnywhere(
-      _repository.requireProject(),
-      layerId,
-    ).collapsed;
     _historyManager.execute(
-      UpdateLayerCollapsedCommand(
+      UpdateTrackRowTwirlsCommand(
         repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        collapsed: !collapsed,
+        rowId: rowId,
+        twirls: onItsTrack(was),
       ),
     );
   }
@@ -418,20 +549,15 @@ class LayerController {
   void setLayerBlendMode({
     required LayerId layerId,
     required LayerBlendMode blendMode,
-  }) {
-    final cutId = _cutId;
-    if (cutId == null) {
-      return; // Gap state: no rows ([layers] is empty there).
-    }
-    _historyManager.execute(
-      UpdateLayerBlendModeCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        blendMode: blendMode,
-      ),
-    );
-  }
+  }) => _executeInItsCut(
+    layerId,
+    (cutId) => UpdateLayerBlendModeCommand(
+      repository: _repository,
+      cutId: cutId,
+      layerId: layerId,
+      blendMode: blendMode,
+    ),
+  );
 
   /// Static opacity is the LINK GROUP'S, one value for every use of the
   /// layer, like the blend beside it. Per-use FADES belong to the local FX
@@ -440,20 +566,16 @@ class LayerController {
   /// ↩️It was per-use like the eye (T9: 「this one stopped reaching across
   /// the link」). 유저 2026-10-04 (F-278): 「불투명도도 공유하도록 …
   /// 보이기만 독립적으로 하고」 — the mirror is [UpdateLayerOpacityCommand]'s.
-  void setLayerOpacity({required LayerId layerId, required double opacity}) {
-    final cutId = _cutId;
-    if (cutId == null) {
-      return; // Gap state: no rows ([layers] is empty there).
-    }
-    _historyManager.execute(
-      UpdateLayerOpacityCommand(
-        repository: _repository,
-        cutId: cutId,
-        layerId: layerId,
-        opacity: opacity.clamp(0.0, 1.0).toDouble(),
-      ),
-    );
-  }
+  void setLayerOpacity({required LayerId layerId, required double opacity}) =>
+      _executeInItsCut(
+        layerId,
+        (cutId) => UpdateLayerOpacityCommand(
+          repository: _repository,
+          cutId: cutId,
+          layerId: layerId,
+          opacity: opacity.clamp(0.0, 1.0).toDouble(),
+        ),
+      );
 
   Cut? _findCutOrNull() {
     if (_cutId == null) {

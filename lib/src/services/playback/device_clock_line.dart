@@ -3,7 +3,8 @@ import 'dart:math' as math;
 /// One reading of the device's clock, taken in the order that makes sense
 /// of it (`QaAudioDevice.readClock`): the latest callback's word — what had
 /// been handed, and when it was asked — or null when none has spoken since
-/// the arm; the device's own count as it stands, the stair; the time now.
+/// the arm; the device's own count as it stands, the stair; the time it is
+/// read at — now, or the time of the frame that reads it.
 typedef DeviceClockReading = ({
   ({int positionSamples, int atMicros})? point,
   int stairSamples,
@@ -39,19 +40,16 @@ typedef DeviceClockReading = ({
 /// back at the next: the picture's frames would wander by the callbacks'
 /// lateness, which is the stair's fault in a smaller size.
 ///
-/// Four things it holds to:
+/// Three things it holds to:
 ///
 /// - 🚨NEVER BEHIND THE STAIR. What the stair says has been handed HAS
 ///   been handed: a frame changes no later than it did when the stair
-///   alone was read.
+///   alone was read. ⚠️By the time the stair was read: a time before the
+///   latest point (a frame's own time) is read on the line alone.
 /// - 🚨NEVER AHEAD OF THE SOUND. The count runs on from the latest point
 ///   only as far as the device has something to play ([arm]'s
 ///   `carriesFor` — what its buffer holds). A device whose callbacks have
 ///   stopped has run dry by then, and the clock stands where the sound did.
-/// - 🚨NEVER A STEP BACK. The highest line is dropped for a lower one when
-///   the point it rested on grows old ([_remembersFor]); read across that
-///   seam the count would dip a hair, and a frame that steps back reads as
-///   the lap wrapping. The count kept is the furthest one read.
 /// - 🚨COUNTED ON THROUGH EVERY LAP. A device that loops wraps its own
 ///   count; this one does not. What is HEARD trails what is handed by the
 ///   device's latency, so the lap a listener is in is not the lap the
@@ -61,15 +59,17 @@ typedef DeviceClockReading = ({
 ///   back to its first frame the moment the last sample was HANDED, a
 ///   latency before it was heard, and the lap's last frame was shown that
 ///   much short.
+///
+/// ⚠️It may dip a hair: the highest line is dropped for a lower one when the
+/// point it rested on grows old ([_remembersFor]). What is heard never steps
+/// back (`HeardOnTheDevice` keeps the furthest), and that is the one place
+/// that says so — this count is not a clock by itself.
 class DeviceClockLine {
   /// How long a point is remembered. Long enough to hold a callback that
   /// came on time (a few of them are asked for a second); short enough to
   /// follow a device whose own rate is a hair under the one it says — the
   /// line then sinks slowly, and a point kept for ever would hold it up.
   static const int _remembersFor = 500 * Duration.microsecondsPerMillisecond;
-
-  /// The furthest count read under this arm, counted on through every lap.
-  int _furthest = 0;
 
   /// The laps the device has wrapped through under this arm, and the point
   /// last read — a wrap is known by a point whose count stepped back.
@@ -99,7 +99,6 @@ class DeviceClockLine {
     required int carriesFor,
     int lapSamples = 0,
   }) {
-    _furthest = 0;
     _deviceRate = deviceRate;
     _carriesFor = carriesFor;
     _lapSamples = lapSamples;
@@ -138,12 +137,14 @@ class DeviceClockLine {
       if (-stairAhead > _lapSamples ~/ 2) {
         stairAhead += _lapSamples;
       }
-      read = math.max(
-        handed + stairAhead,
-        math.min(handed + _carriesFor, onTheLine),
-      );
+      final onIt = math.min(handed + _carriesFor, onTheLine);
+      // The stair is what has been handed by the time it was READ. A time
+      // before its point — a frame's own time, read by a tick that ran
+      // after a callback (the-clock-is-read-when-the-tick-runs) — is held to
+      // what had been handed then, and that is the line.
+      read = now < at ? onIt : math.max(handed + stairAhead, onIt);
     }
-    return _furthest = math.max(_furthest, read);
+    return read;
   }
 
   /// [samples] — a count kept on through every lap, the latency already off

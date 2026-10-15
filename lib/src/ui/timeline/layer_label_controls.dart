@@ -27,6 +27,10 @@ import '../text/vertical_writing_text.dart';
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
 import 'axis_turn.dart';
+import 'berth_row.dart';
+import 'memo_token.dart' show KeptPiece;
+import '../widgets/named.dart';
+import '../widgets/rail_glyph_button.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -101,7 +105,7 @@ class LayerSectionBandCell extends StatelessWidget {
 /// hides SE and CAM, and nothing else in that menu was wanted. The x-sheet
 /// band never had the flyout, so deleting it is also what finally makes
 /// the two surfaces agree.
-class SectionBandZone extends StatelessWidget {
+class SectionBandZone extends KeptPiece {
   const SectionBandZone({super.key, required this.label, this.extent});
 
   final String label;
@@ -117,8 +121,15 @@ class SectionBandZone extends StatelessWidget {
   static const double fontSize = 9;
   static const double lineHeight = 1.15;
 
+  /// What the band shows. ↩️Built again with its rail, the band handed its
+  /// LayoutBuilder a new builder, which ran again in layout and so painted
+  /// the rail's whole viewport (I-57, 10-14 — 🔬78 render objects of a
+  /// storyboard crossing).
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (label, extent);
+
+  @override
+  Widget buildKept(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
       width: layerSectionLabelSlotWidth,
@@ -273,21 +284,27 @@ const double layerOpacitySlotWidth = 51;
 /// slot, immediately right of the opacity bar, per the user's placement.
 const double layerBlendSlotWidth = 58;
 
-/// The rail's two columns that hold WORDS — the opacity bar's digits (and
-/// the legend's resting OPAC) and the blend chip's mode — as wide as they
-/// are where the rail is shown. Every other column holds an icon, and icons
-/// do not follow the OS text size.
+/// The rail's columns that hold WORDS — the opacity bar's digits (and the
+/// legend's resting OPAC), the blend chip's mode and a lane's value
+/// boxes ([layerLaneValueSlotWidth]) — as wide as they are where the
+/// rail is shown. Every other column holds an icon, and icons do not
+/// follow the OS text size.
 ///
 /// 🚨text-scale-rail-columns (유저 2026-09-25, 「칸도 글자 따라 넓어진다」):
 /// a column's 1× slot plus as much as its widest word grew — 0 at 1×, so
 /// nothing drawn at 1× moves — and the rail pays for it, as it paid for the
 /// blend column (R27 #6). 🔬At 1.5× 「100」 wanted 35.5 in the bar's 26.
-typedef LayerRailColumnWidths = ({double opacity, double blend});
+typedef LayerRailColumnWidths = ({
+  double opacity,
+  double blend,
+  double laneValue,
+});
 
 /// The columns at 1× — what a surface that never asks draws.
 const LayerRailColumnWidths layerRailColumnWidthsAtOne = (
   opacity: layerOpacitySlotWidth,
   blend: layerBlendSlotWidth,
+  laneValue: layerLaneValueSlotWidth,
 );
 
 /// [LayerRailColumnWidths] where [context] lays its text out.
@@ -312,6 +329,10 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
         layerOpacitySlotWidth +
         FieldSlider.widthGrowthIn(context, const ['100', 'OPAC']),
     blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
+    // Two boxes, each as much wider as its name and its widest number.
+    laneValue:
+        layerLaneValueSlotWidth +
+        2 * FieldSlider.widthGrowthIn(context, const [_laneValueWidest]),
   );
   _railColumnsMemo = (key: key, columns: columns);
   return columns;
@@ -329,11 +350,58 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
 /// `Position` therefore parked their numbers at different x on adjacent
 /// rows. The alignment was never the problem; there was nothing to align
 /// to.
-const double layerLaneValueSlotWidth = 80;
+///
+/// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 안 A): the value is the
+/// tool settings' NUMBER BOXES — one for each number, a pair side by
+/// side — and the column is two boxes holding a four-digit coordinate
+/// with room to spare: 「A로하란거, 지금 너무 공간 빡빡하거든? 공간
+/// 많으니까 다 쓰란건아닌데 좀 더 여유롭게 크게하자」. Each box carries its
+/// hands after it, its ± and its pencil ([FieldSlider.handsReach]), as a
+/// settings box does (「상자에 한걸음 올리기 내리기버튼들도 동일하게」), and
+/// the rail pays the column's growth: 「값 칸이 188에서 약 260px로 넓어지고,
+/// 레일도 그만큼 넓어집니다」 (asked 2026-10-10, 「문제없는데」). ↩️80px, the
+/// value written in blue and shrunk to fit it; then 188, two bare boxes.
+const double layerLaneValueSlotWidth =
+    2 * _laneValueBoxWidth + layerLaneValueBoxGap + layerLaneValueHandsWidth;
+
+/// What a pair's HANDS take of the column — each box's ± and pencil
+/// ([FieldSlider.handsReach]) — the room the rail pays along its length for
+/// them (`timelineLayerControlsWidth`) — and the sheet's stood-up header
+/// none of: there a lane's value row, turned, fits in the lane's own column
+/// under its name (`XSheetTimelineGrid.naturalHeaderBlockExtent`).
+const double layerLaneValueHandsWidth = 2 * FieldSlider.handsReach;
+
+/// One of the column's boxes at 1×, before its hands.
+const double _laneValueBoxWidth = 91;
+
+/// Between a pair's two boxes: the tool settings' gap between two cells.
+const double layerLaneValueBoxGap = 6;
+
+/// What one of the column's boxes says at its widest: its name and a
+/// four-digit coordinate with its sign.
+const String _laneValueWidest = 'X -0000.00';
 
 /// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
 const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
+
+/// The HEADER GRAPH's button (I-89 ③) — a Transform or effect header's,
+/// the camera row's (the row being its own Transform group, ㉙) — at the
+/// end of its row's name (유저 2026-10-10 시안: [twirl][name][graph][reset]
+/// [fx]). ↩️A column of the trailing run, reserved on every row, until
+/// 2026-10-12: a row's own buttons come out of its name (I-89 Q1).
+const double layerGraphSlotWidth = 22;
+
+/// A member lane's COLOUR CHIPS (I-89 ③): one 9×9 swatch per number its
+/// line draws, while its group's graph draws it — reserved on every member
+/// row of a rail that draws graphs, so a name never moves when its chips
+/// come (⛔없다가 생기는 UI 금지).
+const double layerLaneChipsSlotWidth = 22;
+
+/// A member lane's PIN (I-89 ③, AE's graph editor set): the lane drawn in
+/// every open graph. Right before the value, so it stands in one column
+/// whichever lanes carry a chain before it.
+const double layerLanePinSlotWidth = 22;
 
 /// Whether [kind] carries a blend mode at all. Only the ACTION-section
 /// kinds composite artwork — plus FOLDERS, which blend their whole group
@@ -394,7 +462,7 @@ double layerBlendColumnGrowthIn(BuildContext context) => TextMeasure(
 class LayerBlendModeChip extends StatelessWidget {
   const LayerBlendModeChip({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.optionKeyPrefix,
     required this.blendMode,
     required this.onBlendModeSelected,
@@ -414,8 +482,9 @@ class LayerBlendModeChip extends StatelessWidget {
   /// axis, so on the sheet it drew a 58-wide chip inside a 28px column.
   final Axis axis;
 
-  /// The full widget key string ('timeline-layer-blend-a').
-  final String keyValue;
+  /// What a finder calls the chip ('timeline-layer-blend-a') — a [Named],
+  /// as a [RailGlyphButton.name] is and for its reason.
+  final String name;
 
   /// Prefix for the flyout option keys
   /// ('timeline-layer-blend-option-' + mode name).
@@ -457,30 +526,32 @@ class LayerBlendModeChip extends StatelessWidget {
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
-        child: PanelFlyoutButton(
-          key: ValueKey<String>(keyValue),
-          axis: axis,
-          label: blendMode.labelFor(language),
-          tooltip: isGroup
-              ? AppText.strings.railFolderBlendMode
-              : AppText.strings.railLayerBlendMode,
-          showCaret: false,
-          expand: true,
-          fontSize: _blendFontSize,
-          fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
-          labelColor: nonNormal
-              ? AppColors.accent
-              : colorScheme.onSurfaceVariant,
-          padding: vertical
-              ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
-              : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-          entriesBuilder: () => LayerBlendMode.optionsFor(
-            isGroup: isGroup,
-          ).asFlyoutChoices(
-            current: blendMode,
-            keyPrefix: optionKeyPrefix,
-            labelOf: (mode) => mode.labelFor(language),
-            onPicked: onBlendModeSelected,
+        child: Named(
+          name,
+          child: PanelFlyoutButton(
+            axis: axis,
+            label: blendMode.labelFor(language),
+            tooltip: isGroup
+                ? AppText.strings.railFolderBlendMode
+                : AppText.strings.railLayerBlendMode,
+            showCaret: false,
+            expand: true,
+            fontSize: _blendFontSize,
+            fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
+            labelColor: nonNormal
+                ? AppColors.accent
+                : colorScheme.onSurfaceVariant,
+            padding: vertical
+                ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
+                : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+            entriesBuilder: () => LayerBlendMode.optionsFor(
+              isGroup: isGroup,
+            ).asFlyoutChoices(
+              current: blendMode,
+              keyPrefix: optionKeyPrefix,
+              labelOf: (mode) => mode.labelFor(language),
+              onPicked: onBlendModeSelected,
+            ),
           ),
         ),
       ),
@@ -576,32 +647,43 @@ Widget fxGlyph({
   required bool active,
   double fontSize = 13,
   bool mixed = false,
-}) {
-  final onSurface = Theme.of(context).colorScheme.onSurface;
-  return Text(
-    'fx',
-    // The switch's ICON, drawn in type — and icons do not follow the OS
-    // text size (the viewport pill's `1:1` is the same case). Scaled as
-    // text it folded onto two lines in its slot at 1.5×
-    // (text-scale-rail-rows); the eye and the bucket beside it keep theirs.
-    textScaler: TextScaler.noScaling,
-    style: TextStyle(
-      fontSize: fontSize,
-      fontStyle: FontStyle.italic,
-      fontWeight: FontWeight.w700,
-      // MIXED (R8): the row's master says "some of my groups are off" — the
-      // accent held back to half, so it reads as neither fully on nor off.
-      color: mixed
-          ? AppColors.accent.withValues(alpha: 0.5)
-          : active
-          ? AppColors.accent
-          : onSurface.withValues(alpha: 0.35),
-      // …plus a mark the colour-blind eye can still read.
-      decoration: mixed ? TextDecoration.underline : TextDecoration.none,
-      decorationColor: AppColors.accent.withValues(alpha: 0.5),
-    ),
-  );
-}
+}) => Text(
+  'fx',
+  // The switch's ICON, drawn in type — and icons do not follow the OS
+  // text size (the viewport pill's `1:1` is the same case). Scaled as
+  // text it folded onto two lines in its slot at 1.5×
+  // (text-scale-rail-rows); the eye and the bucket beside it keep theirs.
+  textScaler: TextScaler.noScaling,
+  style: fxGlyphStyle(
+    context: context,
+    active: active,
+    fontSize: fontSize,
+    mixed: mixed,
+  ),
+);
+
+/// The `fx` glyph's type — what [fxGlyph] sets it in, and what the rail's
+/// fx switch draws it in ([RailTextGlyph]); one style for both.
+TextStyle fxGlyphStyle({
+  required BuildContext context,
+  required bool active,
+  double fontSize = 13,
+  bool mixed = false,
+}) => TextStyle(
+  fontSize: fontSize,
+  fontStyle: FontStyle.italic,
+  fontWeight: FontWeight.w700,
+  // MIXED (R8): the row's master says "some of my groups are off" — the
+  // accent held back to half, so it reads as neither fully on nor off.
+  color: mixed
+      ? AppColors.accent.withValues(alpha: 0.5)
+      : active
+      ? AppColors.accent
+      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+  // …plus a mark the colour-blind eye can still read.
+  decoration: mixed ? TextDecoration.underline : TextDecoration.none,
+  decorationColor: AppColors.accent.withValues(alpha: 0.5),
+);
 
 /// The ONE eye: whether this row shows.
 ///
@@ -612,7 +694,7 @@ Widget fxGlyph({
 class LayerVisibilityToggleButton extends StatelessWidget {
   const LayerVisibilityToggleButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.isVisible,
     required this.onToggle,
     this.hiddenAbove = false,
@@ -631,8 +713,9 @@ class LayerVisibilityToggleButton extends StatelessWidget {
   /// layer's Show/Hide pair, which is what every rail wants.
   final String? tooltip;
 
-  /// The full widget key string ('timeline-layer-visibility-a').
-  final String keyValue;
+  /// What a finder calls the eye ('timeline-layer-visibility-a') — its
+  /// [RailGlyphButton.name].
+  final String name;
 
   final bool isVisible;
   final VoidCallback onToggle;
@@ -649,13 +732,13 @@ class LayerVisibilityToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: AppIconButton(
-        keyValue: keyValue,
+      child: RailGlyphButton(
+        name: name,
         tooltip: tooltip ?? _showHide(AppText.strings),
         // The rail's slot, promised by the column skeleton — see
         // [AppIconButtonBox].
         size: AppIconButtonBox(width: size, height: 26, iconSize: iconSize),
-        icon: Icon(
+        glyph: RailIconGlyph(
           isVisible ? Icons.visibility : Icons.visibility_off,
           // 🚨F-58 (유저): 「비지블off일경우 색라벨이 불투명도가 낮아지는데.
           // 이거 멋대로 추가한건데 맘에드니 채용. 근데 내가말한건 **비지블off시
@@ -696,7 +779,7 @@ class LayerVisibilityToggleButton extends StatelessWidget {
 class LayerMuteToggleButton extends StatelessWidget {
   const LayerMuteToggleButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.muted,
     required this.onOpenMixer,
     this.soloed = false,
@@ -704,8 +787,9 @@ class LayerMuteToggleButton extends StatelessWidget {
     this.height = 26,
   });
 
-  /// The full widget key string ('timeline-layer-mute-a').
-  final String keyValue;
+  /// What a finder calls the speaker ('timeline-layer-mute-a') — its
+  /// [RailGlyphButton.name].
+  final String name;
 
   final bool muted;
 
@@ -721,15 +805,15 @@ class LayerMuteToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppIconButton(
-      keyValue: keyValue,
+    return RailGlyphButton(
+      name: name,
       // One meaning on all three rails, so the label is the control's, not
       // the host's. It also carries the button's semantics name — the
       // hardcoded English 'Mute layer'/'Unmute layer' went out with the
       // toggle, and a door needs to say where it goes.
       tooltip: AppText.strings.layerAudioTitle,
       size: AppIconButtonBox(width: width, height: height, iconSize: 16),
-      icon: Icon(
+      glyph: RailIconGlyph(
         muted ? Icons.volume_off : Icons.volume_up,
         color: soloed ? Theme.of(context).colorScheme.primary : null,
       ),
@@ -750,16 +834,17 @@ class LayerMuteToggleButton extends StatelessWidget {
 class FxToggleButton extends StatelessWidget {
   const FxToggleButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.state,
     required this.onToggle,
     this.subject = RailSubject.layer,
     this.size = layerFxSlotWidth,
   });
 
-  /// The full widget key string — callers spell their own identity in
-  /// ('timeline-layer-fx-a', 'storyboard-cut-fx-3').
-  final String keyValue;
+  /// What a finder calls the switch — its [RailGlyphButton.name]; callers
+  /// spell their own identity in ('timeline-layer-fx-a',
+  /// 'storyboard-cut-fx-3').
+  final String name;
 
   /// R8: the row's FX as ONE value, so "on/off" and "mixed" cannot drift
   /// apart on their way here. A layer row is a MASTER over its per-group
@@ -791,17 +876,19 @@ class FxToggleButton extends StatelessWidget {
     return SizedBox(
       width: size,
       height: 26,
-      child: AppIconButton(
-        keyValue: keyValue,
+      child: RailGlyphButton(
+        name: name,
         tooltip: _tooltipFor(AppText.strings),
-        // ⚠️`fxGlyph` sizes its own text, so the box's iconSize reaches
-        // nothing here — it is passed for the ONE reader that does use it,
-        // the button's own `IconTheme`, and left honest rather than zero.
+        // ⚠️The word sizes itself, so the box's iconSize reaches nothing
+        // here — it is passed honest rather than zero.
         size: AppIconButtonBox(width: size, height: 26, iconSize: 16),
-        icon: fxGlyph(
-          context: context,
-          active: state != LayerFxState.off,
-          mixed: mixed,
+        glyph: RailTextGlyph(
+          'fx',
+          style: fxGlyphStyle(
+            context: context,
+            active: state != LayerFxState.off,
+            mixed: mixed,
+          ),
         ),
         onPressed: onToggle,
       ),
@@ -918,8 +1005,8 @@ class LayerTimesheetToggleButton extends StatelessWidget {
     return SizedBox(
       width: layerTimesheetSlotWidth,
       height: layerTimesheetSlotWidth,
-      child: AppIconButton(
-        keyValue: '$keyPrefix-layer-timesheet-$layerId',
+      child: RailGlyphButton(
+        name: '$keyPrefix-layer-timesheet-$layerId',
         tooltip: onTimesheet
             ? AppText.strings.railRemoveFromTimesheet
             : AppText.strings.railAddToTimesheet,
@@ -928,13 +1015,13 @@ class LayerTimesheetToggleButton extends StatelessWidget {
           height: layerTimesheetSlotWidth,
           iconSize: 16,
         ),
-        icon: Icon(
+        glyph: RailIconGlyph(
           onTimesheet ? Icons.table_chart : Icons.table_chart_outlined,
           color: onTimesheet
               ? AppColors.accent
               : colorScheme.onSurface.withValues(alpha: 0.35),
         ),
-        onPressed: () => onToggle(layerId),
+        onPressed: () => onToggle(layerIdNow(context, layerId)),
       ),
     );
   }
@@ -976,9 +1063,9 @@ class LayerAttachArrowCell extends StatelessWidget {
           child: ExcludeSemantics(
             child: Transform.flip(
               flipY: above,
-              child: layerAttachmentArrowIcon(
-                context,
-                key: ValueKey<String>('$keyPrefix-layer-attach-arrow-$idValue'),
+              child: Named(
+                '$keyPrefix-layer-attach-arrow-$idValue',
+                child: layerAttachmentArrowIcon(context),
               ),
             ),
           ),
@@ -1004,9 +1091,8 @@ class LayerAttachArrowCell extends StatelessWidget {
 
 /// THE arrow that says "this row hangs off the one above it" — one size, one
 /// colour, whether the thing above is a folder or an attach base.
-Widget layerAttachmentArrowIcon(BuildContext context, {Key? key}) => Icon(
+Widget layerAttachmentArrowIcon(BuildContext context) => Icon(
   Icons.subdirectory_arrow_right,
-  key: key,
   size: 16,
   color: Theme.of(context).colorScheme.onSurfaceVariant,
 );
@@ -1136,20 +1222,18 @@ class LayerMarkChip extends StatelessWidget {
   /// a take is an ORDER, not a kind, and nine colours would fight the
   /// stage's.
   Widget _takeTrigger(BuildContext context) {
-    return PanelFlyoutTrigger(
-      key: ValueKey<String>('$keyPrefix-layer-take-$layerId'),
+    return RailFlyoutTrigger(
+      name: '$keyPrefix-layer-take-$layerId',
       tooltip: AppText.strings.tlLayerTake,
-      padding: EdgeInsets.zero,
+      semanticLabel: AppText.strings.tlLayerTake,
       entriesBuilder: () => layerTakeFlyoutEntries(
         selectedTake: mark.take,
-        onSelected: (take) =>
-            onMarkSelected(layerId, (current) => current.withTake(take!)),
+        onSelected: (take) => onMarkSelected(
+          layerIdNow(context, layerId),
+          (current) => current.withTake(take!),
+        ),
       ),
-      child: Semantics(
-        label: AppText.strings.tlLayerTake,
-        button: true,
-        child: LayerTakeText(mark: mark, axis: axis),
-      ),
+      child: LayerTakeText(mark: mark, axis: axis),
     );
   }
 
@@ -1158,13 +1242,13 @@ class LayerMarkChip extends StatelessWidget {
     // because its rows name COLOURS, and the shared list had no way to show
     // one — see [PanelFlyoutItem.swatch]. Its own row height was 36, a sixth
     // number in a menu system that was supposed to have one.
-    return PanelFlyoutTrigger(
-      key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
+    return RailFlyoutTrigger(
+      name: '$keyPrefix-layer-mark-$layerId',
       tooltip: AppText.strings.tlLayerMark,
-      // ZERO, not the trigger's usual 8: the mark sits in a fixed
-      // `layerMarkSlotWidth` rail column, so padding here would not grow a
-      // hit area — it would push every slot after it out of the rail.
-      padding: EdgeInsets.zero,
+      semanticLabel: AppText.strings.tlLayerMark,
+      // No padding: the mark sits in a fixed `layerMarkSlotWidth` rail
+      // column, so padding would not grow a hit area — it would push every
+      // slot after it out of the rail.
       // 🚨★★★TWO AXES, TWO LEVELS. 유저 설계(I-4): 「위에서부터 콘티,레이아웃,
       // 러프원화,원화,동화,시아게 가 있고, 거기 **호버하면 추가로 앵커팝오버로
       // 수정라벨이 뜨도록**. 즉 축으로서 2가지가 존재하도록」.
@@ -1179,13 +1263,12 @@ class LayerMarkChip extends StatelessWidget {
       // answers from the ONE [LayerRevise] set, so renaming a revise renames
       // it everywhere and 원화 can drop 동화검사 without the others noticing.
       entriesBuilder: () => layerMarkFlyoutEntries(
-        onSelected: (option) => onMarkSelected(layerId, (_) => option),
+        onSelected: (option) => onMarkSelected(
+          layerIdNow(context, layerId),
+          (_) => option,
+        ),
       ),
-      child: Semantics(
-        label: AppText.strings.tlLayerMark,
-        button: true,
-        child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
-      ),
+      child: LayerMarkPlate(mark: mark, isVisible: isVisible, axis: axis),
     );
   }
 }
@@ -1599,28 +1682,19 @@ class _LabelPlate extends StatelessWidget {
 /// site, rather than inside the buttons: the x-sheet's column header uses
 /// the same timesheet widget and has no swipe to claim for.
 class RailSwipeColumnPointer extends StatelessWidget {
-  const RailSwipeColumnPointer({
-    super.key,
-    this.onPressed,
-    required this.child,
-  });
-
-  /// What this column's control does. It fires on the DOWN, because
-  /// [PressFireScope] below puts everything here on [PressFire.down].
-  ///
-  /// ⚠️A column whose control is a bare [InkWell] rather than an
-  /// [AppIconButton] has no press-fire of its own, and every one of those is
-  /// already wrapped in THIS — so the firing rides here too rather than ten
-  /// widgets being rewritten.
-  final VoidCallback? onPressed;
+  const RailSwipeColumnPointer({super.key, required this.child});
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
-    // the one widget every button in the app wears; what a swipe column
-    // adds is the STRONG claim, and that is all it should have to say.
+    // the one widget every button in the app wears — the control inside
+    // wears its own; what a swipe column adds is the STRONG claim, and that
+    // is all it should have to say. ↩️A claim of the column's own stood here
+    // for the bare `InkWell`s that had none and fired through it; the last
+    // two (the storyboard rows' lane twirls) are the rail's twirl since
+    // I-57 ①, and a claim with nothing under it to speak for is weight.
     //
     // 🚨★★★AND THIS IS WHERE 「타임라인같은 특정버튼」 IS DEFINED (유저
     // 확정 2026-08-30). Not a flag on each button — the predicate is 「a drag
@@ -1629,10 +1703,7 @@ class RailSwipeColumnPointer extends StatelessWidget {
     // including an [AppIconButton] that carries a claim of its own.
     return PressFireScope(
       fireOn: PressFire.down,
-      child: ControlPressClaim(
-        onPressed: onPressed,
-        child: DragVerbClaim(child: child),
-      ),
+      child: DragVerbClaim(child: child),
     );
   }
 }
@@ -1708,16 +1779,7 @@ String layerReviseAbbrev(LayerRevise revise) =>
 );
 
 /// The unabbreviated reading — tooltips and the flyout.
-String layerMarkLabel(LayerMark mark) {
-  final stage = mark.process;
-  if (stage == null) {
-    return '';
-  }
-  final correction = mark.revise;
-  return correction == null
-      ? layerProcessLabel(stage)
-      : '${layerProcessLabel(stage)} ${layerReviseLabel(correction)}';
-}
+String layerMarkLabel(LayerMark mark) => mark.labelFor(AppText.language);
 
 /// A REFERENCE row's button: the file glyph that opens the row's reference
 /// popover (유저 2026-09-11, 미디어 배치 라운드 3~5 — 「아이콘만(이름은
@@ -1731,13 +1793,14 @@ String layerMarkLabel(LayerMark mark) {
 class LayerReferenceButton extends StatefulWidget {
   const LayerReferenceButton({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.onOpen,
     this.isSourceShort = false,
   });
 
-  /// The full widget key string ('timeline-layer-reference-a').
-  final String keyValue;
+  /// What a finder calls the button ('timeline-layer-reference-a') — its
+  /// [RailGlyphButton.name].
+  final String name;
 
   /// Opens the popover under THIS button's context. The button stays lit
   /// until the future completes — until the popover has closed.
@@ -1776,19 +1839,79 @@ class _LayerReferenceButtonState extends State<LayerReferenceButton> {
 
   @override
   Widget build(BuildContext context) {
-    return AppIconButton(
-      keyValue: widget.keyValue,
+    return RailGlyphButton(
+      name: widget.name,
       tooltip: AppText.strings.tlLayerReference,
       size: const AppIconButtonBox(
         width: LayerReferenceButton.side,
         height: LayerReferenceButton.side,
         iconSize: 12,
       ),
-      icon: const Icon(Icons.insert_drive_file_outlined),
+      glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
       isSelected: _isOpen,
       danger: widget.isSourceShort,
       outlined: true,
       onPressed: _openPopover,
     );
   }
+}
+
+/// THE CAMERA ROW'S PATH BUTTON (I-89 ④, 유저 2026-10-12: 「카메라
+/// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
+/// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
+/// it opens how the canvas shows the camera's path under itself — one value
+/// for every open project, as the row's eye and its dim are.
+///
+/// It stands among the name's buttons, as a reference row's does, and
+/// wears that button's dress — outlined, lit while its list is open: the
+/// camera's row is never a reference row. ⚠️Lit-while-open is
+/// [LayerReferenceButton]'s state a second time; a third button that keeps
+/// it folds the three into one.
+class CameraPathButton extends StatefulWidget {
+  const CameraPathButton({
+    super.key,
+    required this.name,
+    required this.onOpen,
+  });
+
+  /// What a finder calls the button ('timeline-layer-camera-path-camera') —
+  /// its [RailGlyphButton.name].
+  final String name;
+
+  /// Opens the list under THIS button's context. The button stays lit until
+  /// the future completes — until the list has closed.
+  final Future<void> Function(BuildContext anchorContext) onOpen;
+
+  @override
+  State<CameraPathButton> createState() => _CameraPathButtonState();
+}
+
+class _CameraPathButtonState extends State<CameraPathButton> {
+  bool _isOpen = false;
+
+  void _openList() {
+    setState(() => _isOpen = true);
+    unawaited(
+      widget.onOpen(context).whenComplete(() {
+        if (mounted) {
+          setState(() => _isOpen = false);
+        }
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => RailGlyphButton(
+    name: widget.name,
+    tooltip: AppText.strings.cameraPath,
+    size: const AppIconButtonBox(
+      width: LayerReferenceButton.side,
+      height: LayerReferenceButton.side,
+      iconSize: 12,
+    ),
+    glyph: const RailIconGlyph(Icons.route),
+    isSelected: _isOpen,
+    outlined: true,
+    onPressed: _openList,
+  );
 }

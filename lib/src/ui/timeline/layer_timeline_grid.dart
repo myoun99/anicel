@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
-import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -12,6 +11,7 @@ import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
@@ -42,18 +42,19 @@ import 'timeline_horizontal_scrollbar_rail.dart';
 import 'property_lane_model.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_layer_controls_header.dart';
+import 'timeline_legend_menus.dart';
 import 'timeline_layer_frame_body_layout.dart';
 import '../widgets/empty_state_text.dart';
-import '../input/pen_friendly_scroll_controller.dart';
-import '../input/scroller_press_hold.dart';
+import '../widgets/named.dart';
+import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
-import 'memo_token.dart';
 import 'timeline_layer_controls_row.dart';
 import 'rail_eyes.dart';
-import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
+import 'timeline_row_edges.dart';
+import 'row_berths.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
@@ -77,10 +78,12 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.layers,
     this.railExtent,
     this.frameAxisOffset,
+    this.layerAxisOffset,
     this.displayedOnionSkinOn = false,
     this.metrics = TimelineGridMetrics.defaults,
     this.onToggleSection,
     this.legend,
+    this.onLegendMenus,
     this.visibilitySoloEnabled = false,
     this.masterOpacityValue = 1.0,
   });
@@ -108,6 +111,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// nothing to read and the grid that came back started at zero.
   final ValueNotifier<double>? frameAxisOffset;
 
+  /// Where the LAYER axis stands, in pixels down the rows — the project's,
+  /// saved with it (F-267): the rows are born there, and every scroll of
+  /// them writes it. Null = nobody keeps it; the rows start at the top.
+  final ValueNotifier<double>? layerAxisOffset;
+
   final bool displayedOnionSkinOn;
 
   /// Grid geometry; the frame-axis cell width carries the panel zoom.
@@ -119,6 +127,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The rail legend's bulk commands; null renders a display-only legend.
   final LayerLegendCallbacks? legend;
 
+  /// Told the menus the legend header opens each time it is built, and null
+  /// when the grid goes — what a key presses one of (I-40, `RailLegends`).
+  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
+
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
 
@@ -128,30 +140,6 @@ class LayerTimelineGrid extends StatefulWidget {
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
-
-/// The legend header's memo token (UI-R7 #1): every legend-visible fact.
-/// A new legend-reading cell must join this record — miss one and the
-/// header shows stale state.
-typedef _LegendMemoInputs = ({
-  double layerRowHeight,
-  double layerControlsWidth,
-  bool hasLegend,
-  BySet<TimelineSection> hiddenSections,
-  TimelineRowFilter rowFilter,
-  BySet<LayerMark> marksInUse,
-  BySet<LayerKind> kindsInUse,
-  bool visibilitySoloEnabled,
-  bool anyLanesExpanded,
-  bool allSeMuted,
-  BySet<LayerId> displayedIds,
-  double masterOpacityValue,
-  bool hasLaneToggles,
-  bool displayedOnionSkinOn,
-  // R27 #6: the blend column's header prints language-dependent names in
-  // its flyout and gates on the bulk callback's presence.
-  AppLanguage language,
-  bool hasBlendBulk,
-});
 
 class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
@@ -168,15 +156,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// skips their whole subtree rebuild. What the row shows gates content
   /// ([LayerControlsRowFacts]); callbacks follow the R13-2 rule (host
   /// callbacks close over the stable session only).
-  final Map<LayerId, KeptLayerControlsRow> _railRowMemo = {};
+  late final KeptLayerControlsRows _railRowMemo = KeptLayerControlsRows(
+    _rowDrags.draggable,
+  );
 
-  /// The legend header's memo — same idea, token-gated (R13-2): the
-  /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible
-  /// fact changes, never on zoom steps.
-  ({_LegendMemoInputs inputs, Widget header})? _legendHeaderMemo;
-
-  late final ScrollController _horizontalScrollController;
-  late final ScrollController _verticalScrollController;
+  // The rows and the frames are the grid: one sheet, dragged both ways at
+  // once (F-351).
+  late final TwoAxisScrollController _horizontalScrollController;
+  late final TwoAxisScrollController _verticalScrollController;
 
   /// The frame-axis scroll offset as a NOTIFIER (UI-R9 #12a): a scroll
   /// pixel updates this value only — the ruler's translate and the window
@@ -220,6 +207,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   double _verticalScrollOffset = 0;
 
+  /// How far the rows' viewport reached in the pass that drew them — what
+  /// the scroll's crossing cuts the window against ([_drawnEdges]).
+  double _rowViewportExtent = 0;
+
+  /// The host's record of the layer axis ([LayerTimelineGrid.layerAxisOffset])
+  /// — read ONCE, as the frame axis's is.
+  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
+
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
+  late final VoidCallback _letGoOfKeptRows;
+
   /// The frame axis following its controller (UI-R9 #11/#12a): the
   /// activity watch for the lazy endless SHRINK (never rescale the extent
   /// mid-gesture), the trailing room and the notifiers — one object, the
@@ -230,9 +228,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
     baseFrameCount: () => _visibleFrameCount,
+    viewportFillFrames: () => _viewportFillFrameCells,
     rebuild: _rebuild,
     isMounted: () => mounted,
   );
+
+  /// Where the playing run's next turn stands the frame axis — what the
+  /// rows bake that page's tiles for while it plays this one.
+  TimelineNextPage? _nextPage() =>
+      _frameAxis.nextPage(runFrames: widget.hooks.runFrames);
 
   /// UI-R9 #9: each axis pulled to the offset the layout resolved, one
   /// frame later — one object per axis, the same one the sheet holds.
@@ -251,6 +255,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
       timelineSwipeColumns(
         hooks: widget.hooks,
+        axis: Axis.horizontal,
         crossExtent:
             _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
         leadingOrigin: timelineLayerRowLeadingBorder,
@@ -272,13 +277,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // after-layout re-read (F-95) found the newborn 0 and recorded it as a
     // scroll, over the position the host had kept. Born at the kept offset,
     // the re-read reads back what was kept and records nothing.
-    _horizontalScrollController = PenFriendlyScrollController(
+    _horizontalScrollController = TwoAxisScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
-    _verticalScrollController = PenFriendlyScrollController();
-    // The rows and the frames are the grid: one surface scrolled two ways
-    // (F-202).
-    scrollTogether(_verticalScrollController, _horizontalScrollController);
+    // The rows too, where the project left them (F-267) — and the row
+    // window is cut there from the first build, which runs before the
+    // scrollable it windows has a position to read.
+    final keptRows = _keptLayerAxis?.value ?? 0;
+    _verticalScrollController = TwoAxisScrollController(
+      initialScrollOffset: keptRows,
+    );
+    _scroll.standAt(keptRows);
+    _letGoOfKeptRows = followKeptAxis(
+      _verticalScrollController,
+      _keptLayerAxis,
+      isMounted: () => mounted,
+    );
     _horizontalScrollController.addListener(_frameAxis.handleScroll);
     _verticalScrollController.addListener(_scroll.handleVerticalScroll);
     widget.hooks.revealSelectionTick?.addListener(_handleRevealSelection);
@@ -346,12 +360,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   @override
   void dispose() {
+    widget.onLegendMenus?.call(null);
     widget.hooks.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.hooks.frameCursor.removeListener(_handlePlaybackPage);
     _frameAxis.dispose();
     _horizontalScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
+    _letGoOfKeptRows();
     _verticalScrollController
       ..removeListener(_scroll.handleVerticalScroll)
       ..dispose();
@@ -391,6 +407,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         hooks: () => widget.hooks,
         metrics: () => _metrics,
         dragRows: () => _dragRows,
+        dragEdges: () => _dragEdges,
         rangeMove: _rangeMoveResolver,
         // D42: EVERY range drag (select or move) takes the A5 grip, and the
         // held row is PINNED in the row window while it does.
@@ -404,15 +421,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// offsets. Zero until the first layout.
   int _viewportFillFrameCells = 0;
 
-  /// Render extent (UI-R12 #16 contract): the cells the user has scrolled
-  /// into existence PLUS whatever the viewport needs to read as one
-  /// continuous sheet — never a runway beyond that. The scrollbar and
-  /// scroll physics clamp here; only the ruler edge-drag overshoots (and
-  /// the growth listener then materializes what the view needs).
-  int get _renderedFrameCount => math.max(
-    _visibleFrameCount + _frameAxis.trailingFrames,
-    _viewportFillFrameCells,
-  );
+  /// Render extent (UI-R12 #16 contract) — the follower's
+  /// ([TimelineFrameAxisFollower.renderedFrameCount]).
+  int get _renderedFrameCount => _frameAxis.renderedFrameCount;
 
   // ── the ruler scrub: the SHARED object ──────────────────────────────
   //
@@ -446,11 +457,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     ),
     rows: (
       controller: _verticalScrollController,
-      extent: _metrics.layerRowHeight,
-      at: indexOfDisplayRow(
-        _dragRows,
-        current: widget.hooks.currentRowHooks?.currentRow.value,
-        activeLayerId: widget.hooks.activeLayerId,
+      item: revealedRowOf(
+        _dragEdges,
+        indexOfDisplayRow(
+          _dragRows,
+          current: widget.hooks.currentRowHooks?.currentRow.value,
+          activeLayerId: widget.hooks.activeLayerId,
+        ),
+        _metrics.layerRowHeight,
       ),
     ),
   );
@@ -501,6 +515,54 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The display rows of the pass in flight — see [_effectHeaderRows].
   List<TimelineDisplayRow> _dragRows = const [];
 
+  /// Where [_dragRows] sit — read by what turns a pointer into a row
+  /// between builds (a drag, a placement, a reveal).
+  TimelineRowEdges _dragEdges = TimelineRowEdges.uniform(0, 0);
+
+  /// Where the rows the pass DREW sit — [_dragRows], and the silhouette a
+  /// file held over the layer area stands in its gap. What the window was
+  /// cut from, so the scroll's crossing reads it too.
+  TimelineRowEdges _drawnEdges = TimelineRowEdges.uniform(0, 0);
+
+  /// What [_dragEdges] and [_drawnEdges] were laid from ([_layRows]). The
+  /// drawn rows stand for the pass: they are its rows, or a list made from
+  /// them in it ([rowsWithSilhouette]) — a new pass is a new list either
+  /// way.
+  ({
+    List<TimelineDisplayRow> drawn,
+    double view,
+    TimelineGridMetrics metrics,
+  })?
+  _laid;
+
+  /// Lays [rows] into [_dragEdges] and [drawn] — the rows the pass DRAWS —
+  /// into [_drawnEdges], both along a view [view] long; the drawn edges
+  /// back.
+  ///
+  /// Laid where the view is measured, since an enlarged graph stands as far
+  /// as the view lets one (I-89 ③D) — and once per pass and view: a row
+  /// crossing rebuilds the builder that asks, never the rows.
+  TimelineRowEdges _layRows(
+    List<TimelineDisplayRow> rows,
+    List<TimelineDisplayRow> drawn,
+    double view,
+  ) {
+    if (_laid case (
+      drawn: final laidDrawn,
+      view: final laidView,
+      metrics: final laidMetrics,
+    ) when identical(laidDrawn, drawn) &&
+        laidView == view &&
+        laidMetrics == _metrics) {
+      return _drawnEdges;
+    }
+    _laid = (drawn: drawn, view: view, metrics: _metrics);
+    TimelineRowEdges lay(List<TimelineDisplayRow> laid) =>
+        timelineRowEdgesOf(laid, _metrics, view: view);
+    _dragEdges = lay(rows);
+    return _drawnEdges = identical(drawn, rows) ? _dragEdges : lay(drawn);
+  }
+
   /// The row, made draggable. The wrapper is built fresh every pass and the
   /// memoized row travels through it untouched — the drag state lives in a
   /// notifier the wrapper subscribes to, so a caret moving does not
@@ -533,7 +595,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// same run functions on full lists now. Runs tile contiguously from row
   /// zero ([timelineSectionRuns] assigns every row a section), so the
   /// Column needs no leading spacer.
-  Widget _sectionBandOverlay(List<TimelineDisplayRow> rows) {
+  Widget _sectionBandOverlay(
+    List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
+  ) {
     final runs = timelineSectionRuns(rows);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -543,7 +608,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             key: ValueKey<String>('section-bracket-${run.section.name}'),
             child: SectionBandZone(
               label: timelineSectionLabel(run.section),
-              extent: timelineSectionRunExtent(run, rows, _metrics),
+              extent: timelineSectionRunExtent(run, edges),
             ),
           ),
       ],
@@ -557,25 +622,23 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The rows this pass builds. See [_RowWindow].
   _RowWindow _rowWindowFor(
     List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
     double bodyViewportHeight,
     double effectiveVerticalScrollOffset,
   ) {
     final rowWindow = bodyViewportHeight <= 0
         ? TimelineVisibleRange(startIndex: 0, endIndexExclusive: rows.length)
-        : calculateVisibleIndexRange(
+        : edges.window(
             scrollOffset: effectiveVerticalScrollOffset,
             viewportExtent: bodyViewportHeight,
-            itemExtent: _metrics.layerRowHeight,
-            itemCount: rows.length,
           );
     final windowRows = rows.sublist(
       rowWindow.startIndex,
       rowWindow.endIndexExclusive,
     );
-    final leadingRowSpacerHeight =
-        rowWindow.startIndex * _metrics.layerRowHeight;
+    final leadingRowSpacerHeight = edges.startOf(rowWindow.startIndex);
     final trailingRowSpacerHeight =
-        (rows.length - rowWindow.endIndexExclusive) * _metrics.layerRowHeight;
+        edges.total - edges.startOf(rowWindow.endIndexExclusive);
     // A5: the row a drag is holding stays
     // built when the window slides past it —
     // otherwise its State (and the pan
@@ -598,13 +661,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return _RowWindow(
       range: rowWindow,
       rows: windowRows,
+      edges: edges,
       leadingSpacerHeight: leadingRowSpacerHeight,
       trailingSpacerHeight: trailingRowSpacerHeight,
       pinnedIndex: pinnedIndex,
       pinnedBefore: pinnedBefore,
       pinnedAfter: pinnedAfter,
+      berths: _rowBerths.berthsFor(
+        rows,
+        world: widget.hooks.substrateGeneration,
+      ),
     );
   }
+
+  /// Which elements each row is built in — the rail's and the cells' alike.
+  final RowBerths _rowBerths = RowBerths();
 
   /// The cells themselves: one row of frame cells per row the window
   /// builds, scrolled with the rail beside it.
@@ -622,13 +693,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ) {
     final rowWindow = window.range;
     final windowRows = window.rows;
+    final edges = window.edges;
     final leadingRowSpacerHeight = window.leadingSpacerHeight;
     final trailingRowSpacerHeight = window.trailingSpacerHeight;
     final pinnedIndex = window.pinnedIndex;
-    final pinnedBefore = window.pinnedBefore;
-    final pinnedAfter = window.pinnedAfter;
+    // A graph's lanes hold no cells, so nothing of theirs on this side has
+    // a gesture to keep alive — their graph is drawn whole by the window.
+    final pinsCells = pinnedIndex >= 0 && rows[pinnedIndex].graph == null;
+    final pinnedBefore = window.pinnedBefore && pinsCells;
+    final pinnedAfter = window.pinnedAfter && pinsCells;
     return TimelineFrameRowsScrollBody(
       rows: windowRows,
+      edges: edges,
+      berths: window.berths,
+      firstRowIndex: rowWindow.startIndex,
       leadingLayerSpacerHeight: leadingRowSpacerHeight,
       trailingLayerSpacerHeight: trailingRowSpacerHeight,
       // A5/D42: the held row rides
@@ -637,13 +715,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       // vertical auto-pan sliding
       // the window past it.
       pinnedLeadingRow: pinnedBefore ? rows[pinnedIndex] : null,
-      pinnedLeadingOffset: pinnedBefore
-          ? pinnedIndex * _metrics.layerRowHeight
-          : 0,
+      pinnedLeadingOffset: pinnedBefore ? edges.startOf(pinnedIndex) : 0,
       pinnedTrailingRow: pinnedAfter ? rows[pinnedIndex] : null,
       pinnedTrailingOffset: pinnedAfter
-          ? (pinnedIndex - rowWindow.endIndexExclusive) *
-                _metrics.layerRowHeight
+          ? edges.startOf(pinnedIndex) -
+                edges.startOf(rowWindow.endIndexExclusive)
           : 0,
       hooks: widget.hooks,
       frameStartIndex: 0,
@@ -653,6 +729,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       totalFrameContentWidth: totalFrameContentWidth,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
+      frameAxisController: _horizontalScrollController,
+      nextPage: _nextPage,
       metrics: _metrics,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
@@ -662,11 +740,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// The grid sheet under the cells (I-44): every row's ground, every
   /// frame line and every row seam, once. [rows] is the list the rows body
   /// draws from, so the two agree on which row is where.
-  Widget _buildGridSheet(List<TimelineDisplayRow> rows) {
+  Widget _buildGridSheet(
+    List<TimelineDisplayRow> rows,
+    TimelineRowEdges edges,
+  ) {
     return TimelineRowsGridSheet(
       key: const ValueKey<String>('timeline-grid-sheet'),
       rows: rows,
-      rowExtent: _metrics.layerRowHeight,
+      edges: edges,
       frameCellExtent: _metrics.frameCellWidth,
       activeLayerId: widget.hooks.activeLayerId,
       standing: widget.hooks.currentRowHooks?.currentRow,
@@ -677,24 +758,25 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// selection band, drawn once above every row.
   ///
   /// The third of `TimelineFrameGridStack`'s slots. It reads the rows for
-  /// their count and the hooks for the band; the two extents are what the
-  /// stack already sized the layer to.
+  /// where they sit and the hooks for the bands; the two extents are what
+  /// the stack already sized the layer to.
   Widget _buildPlayhead(
     List<TimelineDisplayRow> rows,
-    TimelineFrameRangeHooks? rangeHooks,
+    TimelineRowEdges edges,
     double verticalContentHeight,
     double viewportWidth,
   ) {
     return TimelineCursorLayer(
       currentRow: widget.hooks.currentRowHooks?.currentRow,
       frameCursor: widget.hooks.frameCursor,
-      frameRangeSelection: rangeHooks?.selection,
+      frameRangeSelection: widget.hooks.rangeHooks?.selection,
       // R27 #14: the lane
       // span draws the SAME
       // band here.
       laneRangeSelection: widget.hooks.laneRange?.selection,
       dragPreview: widget.hooks.dragPreview,
       rows: rows,
+      edges: edges,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
@@ -711,13 +793,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ///
   /// The fourth slot of `TimelineLayerFrameBodyLayout`. It is composition:
   /// it sizes the area, then hands the rows body, the grid sheet and the
-  /// playhead to `TimelineFrameGridStack`. ⚠️Six parameters, and every
+  /// playhead to `TimelineFrameGridStack`. ⚠️Five parameters, and every
   /// one is passed straight through to a slot below — this method owns
   /// no logic of its own, which is why it may carry that many.
   Widget _buildFrameGridArea(
     List<TimelineDisplayRow> rows,
     _RowWindow window,
-    TimelineFrameRangeHooks? rangeHooks,
     TimelineRangeGestureCallbacks? rangeGesture,
     TimelineLaneRangeCallbacks? laneRange,
     double verticalContentHeight,
@@ -766,19 +847,21 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 contentWidth: totalFrameContentWidth,
                 contentHeight: verticalContentHeight,
                 child: TimelineFrameGridStack(
-                  rowsBody: _buildFrameRowsBody(
-                    rows,
-                    window,
-                    rangeGesture,
-                    laneRange,
-                    totalFrameContentWidth,
-                    viewportWidth,
+                  rowsBody: _rowBerths.counting(
+                    _buildFrameRowsBody(
+                      rows,
+                      window,
+                      rangeGesture,
+                      laneRange,
+                      totalFrameContentWidth,
+                      viewportWidth,
+                    ),
                   ),
                   // UI-R13 #7 → I-44:
                   // one sheet under EVERY
                   // row — grounds, lines
                   // and seams.
-                  gridSheet: _buildGridSheet(rows),
+                  gridSheet: _buildGridSheet(rows, window.edges),
                   // UI-R18 #14: the end
                   // line grows a trim
                   // grip and follows the
@@ -801,7 +884,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   playheadExtent: totalFrameContentWidth,
                   playhead: _buildPlayhead(
                     rows,
-                    rangeHooks,
+                    window.edges,
                     verticalContentHeight,
                     viewportWidth,
                   ),
@@ -826,11 +909,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // how many rows sit between two fx headers (their members may be
     // twirled open). Held for the wrappers built below in the same pass.
     _dragRows = rows;
-    // ⚠️AFTER the line above, never before: a file held over the layer area
-    // is DRAWN as a row in its gap, and the gap it stands in is counted on
-    // the list that does not have it ([rowsWithSilhouette] says why).
+    // ⚠️The drag's edges are laid from [rows], never from these: a file
+    // held over the layer area is DRAWN as a row in its gap, and the gap it
+    // stands in is counted on the list that does not have it
+    // ([rowsWithSilhouette] says why).
     final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
-    final rangeHooks = widget.hooks.rangeHooks;
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
     final laneRange = _rangeGestures.laneRangeFor(rows);
     // ⛔The gestures above take the REAL rows: nothing can be selected,
@@ -914,8 +997,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                           .clamp(0.0, double.infinity)
                                           .toDouble()
                                     : viewportHeight;
-                                // Rows are no longer uniformly tall: collapsed sections
-                                // fold to a slim strip.
+                                _rowViewportExtent = bodyViewportHeight;
+                                final drawnEdges = _layRows(
+                                  rows,
+                                  drawnRows,
+                                  bodyViewportHeight,
+                                );
+                                // The rows reach where their edges end — an
+                                // open graph's room included (I-89 ③).
                                 //
                                 // ⛔D43-2 (유저 확정, 2026-08-21): the viewport is NOT
                                 // a floor on this, and a version of this file that made
@@ -939,10 +1028,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                   // a gap makes the content one row taller,
                                   // and a scroll extent that forgot it would
                                   // clip the row it pushed down.
-                                  timelineDisplayRowsExtent(
-                                    drawnRows,
-                                    _metrics,
-                                  ),
+                                  drawnEdges.total,
                                   _metrics.layerRowHeight,
                                 );
                                 // Layer-axis window: only the rows in view (plus
@@ -977,6 +1063,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 // among them) point into it.
                                 final window = _rowWindowFor(
                                   drawnRows,
+                                  drawnEdges,
                                   bodyViewportHeight,
                                   effectiveVerticalScrollOffset,
                                 );
@@ -1023,11 +1110,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 _railRows.naturalRailWidth,
                                             availableExtent:
                                                 availableRailExtent,
-                                            // Memo-gated (UI-R7 #1): zoom steps
-                                            // reuse the identical header instance.
-                                            child: _railRows.legendHeaderMemoized(
-                                              rows,
-                                            ),
+                                            // Kept (UI-R7 #1): zoom steps hand
+                                            // the header back whole. 🚨On a
+                                            // layer of its own (I-57, 10-14):
+                                            // the grid laid out again painted
+                                            // it whole — 🔬255 of a notify's
+                                            // 567 render objects.
+                                            child: _railRows.legendHeader(),
                                           ),
                                           const SizedBox(
                                             width:
@@ -1309,47 +1398,55 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                 ).copyWith(
                                                   scrollbars: false,
                                                 ),
-                                            child: TimelineScrollViewport(
-                                              viewportKey: const ValueKey<String>(
-                                                'timeline-vertical-scroll-viewport',
-                                              ),
-                                              controller:
-                                                  _verticalScrollController,
-                                              axis: Axis.vertical,
-                                              child: KeyedSubtree(
-                                                key: const ValueKey<String>(
-                                                  'timeline-scrollable-body',
+                                            child: TwoAxisDrag(
+                                              axes: [
+                                                _verticalScrollController,
+                                                _horizontalScrollController,
+                                              ],
+                                              child: TimelineScrollViewport(
+                                                viewportKey: const ValueKey<String>(
+                                                  'timeline-vertical-scroll-viewport',
                                                 ),
-                                                child: TimelineLayerFrameBodyLayout(
-                                                  layerAxisScrollbarSlot:
-                                                      SizedBox(
-                                                        width: _metrics
-                                                            .verticalScrollbarWidth,
-                                                        height:
-                                                            verticalContentHeight,
-                                                      ),
-                                                  layerControlsRail:
-                                                      _railRows.buildLayerControlsRail(
-                                                        drawnRows,
-                                                        availableRailExtent,
-                                                        window,
-                                                        swipeColumns,
-                                                      ),
-                                                  railSplitterSlot:
-                                                      const SizedBox(
-                                                        width:
-                                                            LayerRailSplitter
-                                                                .thickness,
-                                                      ),
-                                                  frameGridArea:
-                                                      _buildFrameGridArea(
-                                                        drawnRows,
-                                                        window,
-                                                        rangeHooks,
-                                                        rangeGesture,
-                                                        laneRange,
-                                                        verticalContentHeight,
-                                                      ),
+                                                controller:
+                                                    _verticalScrollController,
+                                                axis: Axis.vertical,
+                                                child: KeyedSubtree(
+                                                  key: const ValueKey<String>(
+                                                    'timeline-scrollable-body',
+                                                  ),
+                                                  child: TimelineLayerFrameBodyLayout(
+                                                    layerAxisScrollbarSlot:
+                                                        SizedBox(
+                                                          width: _metrics
+                                                              .verticalScrollbarWidth,
+                                                          height:
+                                                              verticalContentHeight,
+                                                        ),
+                                                    layerControlsRail:
+                                                        _rowBerths.counting(
+                                                          _railRows
+                                                              .buildLayerControlsRail(
+                                                                drawnRows,
+                                                                availableRailExtent,
+                                                                window,
+                                                                swipeColumns,
+                                                              ),
+                                                        ),
+                                                    railSplitterSlot:
+                                                        const SizedBox(
+                                                          width:
+                                                              LayerRailSplitter
+                                                                  .thickness,
+                                                        ),
+                                                    frameGridArea:
+                                                        _buildFrameGridArea(
+                                                          drawnRows,
+                                                          window,
+                                                          rangeGesture,
+                                                          laneRange,
+                                                          verticalContentHeight,
+                                                        ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -1486,17 +1583,23 @@ class _RowWindow {
   const _RowWindow({
     required this.range,
     required this.rows,
+    required this.edges,
     required this.leadingSpacerHeight,
     required this.trailingSpacerHeight,
     required this.pinnedIndex,
     required this.pinnedBefore,
     required this.pinnedAfter,
+    required this.berths,
   });
 
   final TimelineVisibleRange range;
 
   /// The slice of the grid's rows [range] selects.
   final List<TimelineDisplayRow> rows;
+
+  /// Where ALL the grid's rows sit — [range] indexes it, as it indexes the
+  /// list [rows] was cut from.
+  final TimelineRowEdges edges;
 
   final double leadingSpacerHeight;
   final double trailingSpacerHeight;
@@ -1509,4 +1612,8 @@ class _RowWindow {
 
   final bool pinnedBefore;
   final bool pinnedAfter;
+
+  /// Where each of the grid's rows is built ([RowBerths]) — the window's
+  /// and the held row's alike.
+  final RowBerthMap berths;
 }

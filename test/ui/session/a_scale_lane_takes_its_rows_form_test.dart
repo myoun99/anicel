@@ -9,7 +9,6 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/lane_verbs.dart';
-import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/session_lane_callbacks.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -87,9 +86,9 @@ void main() {
 
       expect(
         scaleLaneOf(session, session.activeLayer!).valueLabel!(0),
-        '100, 100%',
+        '100.00, 100.00%',
       );
-      expect(scaleLaneOf(session, cameraOf(session)).valueLabel!(0), '100%');
+      expect(scaleLaneOf(session, cameraOf(session)).valueLabel!(0), '100.00%');
     });
 
     test('what a layer was keyed to, each number its own', () {
@@ -98,7 +97,7 @@ void main() {
 
       set(session, row, '150, -80%', linked: false);
 
-      expect(scaleLaneOf(session, row).valueLabel!(0), '150, -80%');
+      expect(scaleLaneOf(session, row).valueLabel!(0), '150.00, -80.00%');
     });
 
     test('and scrubs each in the form it prints', () {
@@ -110,11 +109,11 @@ void main() {
           '100, 100%',
           drag,
         ),
-        '110, 100%',
+        '110.00, 100.00%',
       );
       expect(
         scaleLaneOf(session, cameraOf(session)).scrubValue!('100%', drag),
-        '110%',
+        '110.00%',
       );
     });
   });
@@ -271,7 +270,6 @@ void main() {
       link.changes.addListener(() => changes += 1);
 
       expect(link.isOn(), isTrue);
-      expect(link.tooltip, AppText.strings.trScaleLink);
 
       link.toggle();
       expect(link.isOn(), isFalse);

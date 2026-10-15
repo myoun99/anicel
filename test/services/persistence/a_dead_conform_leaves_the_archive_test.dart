@@ -11,7 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart'
-    show MediaAsset, MediaCarry;
+    show MediaAsset, MediaCarry, mediaCarryNamed;
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -23,9 +23,10 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/whole_carry.dart';
 
 /// The first carry of [path] — the save is handed carries, not paths.
-MediaCarry carryOf(String path) => (poolPath: path, token: 'c1');
+MediaCarry carryOf(String path) => wholeCarry(path, 'c1');
 
 /// 🚨★★★**THE SETTINGS-CHANGE SWEEP, AND THE THING IT MUST NOT SWEEP.**
 ///
@@ -372,7 +373,13 @@ void main() {
 
       final found = projectConformSources(
         project: createDefaultProject().copyWith(
-          mediaAssets: [MediaAsset(path: audio, name: '대사', carriedAs: 'c1')],
+          mediaAssets: [
+            MediaAsset(
+              path: audio,
+              name: '대사',
+              carriedAs: mediaCarryNamed(audio, 'c1'),
+            ),
+          ],
         ),
         conformBasePathFor: (_) => null,
         projectFilePath: path,

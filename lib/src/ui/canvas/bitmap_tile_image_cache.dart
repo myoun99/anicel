@@ -159,8 +159,9 @@ class BitmapTileImageCache {
   /// engine interprets raw rgba8888 uploads as premultiplied. Premultiplies
   /// using Skia's own mul-div-255 rounding so the result matches what Skia
   /// produces when rasterizing straight-alpha colors — which is what makes
-  /// the door's two roads one picture. Shared with the tiled surface
-  /// compose path so every tile upload in the app rounds identically.
+  /// the door's two roads one picture. A compose's picture of a block of
+  /// tiles (`SurfaceRegionBytes`) runs the same kernel a row at a time, so
+  /// every tile upload in the app rounds identically.
   ///
   /// Returns a buffer the caller must [PremultipliedTileUpload.free] once
   /// the upload has consumed it — the reason nothing here lifts the bytes

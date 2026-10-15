@@ -9,10 +9,11 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 
-/// **A scrub along the ruler rebuilds nothing of the V row's head.**
+/// **A scrub's moves along the ruler rebuild nothing of the V row's head.**
 ///
 /// The panel's playhead lives on a CURSOR LAYER (W4): the notifier moves per
 /// scrub move and only the ruler and the playhead overlay subscribe, because
@@ -34,10 +35,12 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 /// follows the playhead now. What stays of the two is the cost: the row
 /// stands through a scrub.
 ///
-/// ⛔And what F-19 ruled out stands for whatever follows the playhead next:
-/// not by making the ruler switch the active cut, which the report wondered
-/// aloud about. The scrub PARKS on purpose, and the preview machinery around
-/// it exists because the active cut does NOT follow a drag.
+/// ↩️F-19 ruled out making the ruler switch the active cut, which the report
+/// had wondered aloud about: the scrub parked on purpose. I-57 ② (유저 10-08,
+/// Q1: 「넘어간다 — 스크럽도 재생처럼, 경계에서 활성 컷이 바뀐다」) made the
+/// crossing a cut switch, which rebuilds what reads the open cut — the V
+/// row with it. What stays is the shape of the cost: a crossing's, never a
+/// move's.
 void main() {
   const frames = 24;
 
@@ -67,8 +70,8 @@ void main() {
 
   final vRow = find.byType(StoryboardTrackLabelRow).first;
 
-  testWidgets('a move inside the cut rebuilds nothing of the V row, and '
-      'neither does a move into the next one', (tester) async {
+  testWidgets('a move inside the cut rebuilds nothing of the V row — before '
+      'the crossing into the next one, and after it', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -102,7 +105,7 @@ void main() {
     expect(panel().playheadFrame?.value, 12, reason: 'LIVENESS: it scrubbed');
     expect(identical(row(), atTwo), isTrue, reason: 'inside the cut');
 
-    // Frame 12 → 32: cut-1.
+    // Frame 12 → 32: cut-1 — the crossing, a cut switch (I-57 ②).
     await gesture.moveBy(Offset(20 * perFrame, 0));
     await tester.pump(const Duration(milliseconds: 16));
     expect(
@@ -111,9 +114,22 @@ void main() {
       reason: 'LIVENESS: the playhead crossed into the next cut',
     );
     expect(
-      identical(row(), atTwo),
+      tester.widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session
+          .activeCutId,
+      const CutId('cut-1'),
+      reason: 'LIVENESS: the crossing switched the cut',
+    );
+    final inCutOne = row();
+
+    // Frame 32 → 40: still cut-1.
+    await gesture.moveBy(Offset(8 * perFrame, 0));
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(panel().playheadFrame?.value, 40, reason: 'LIVENESS: it scrubbed');
+    expect(
+      identical(row(), inCutOne),
       isTrue,
-      reason: '🚨the whole V row was rebuilt for a crossing — its buttons, '
+      reason: '🚨the whole V row was rebuilt for a move — its buttons, '
           'tooltips and all — and it shows nothing of the playhead',
     );
 

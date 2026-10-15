@@ -18,6 +18,11 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 /// Consumers treat the returned window as CONTENT-SPACE frame indices
 /// (the UI-R15 full-bounds contract: frame 0 at offset 0) and clamp to
 /// their own bounds.
+///
+/// 🚨Every painter that follows the bucket stands on a layer of its own:
+/// a crossing repaints it, and whatever shares its layer is recorded again
+/// with it. The row edit chrome did not, and every page turn re-recorded
+/// every row whole (2026-10-11).
 
 /// Cells per bucket span (the repaint cadence in cells).
 const int timelineFrameWindowSpanCells = 4;
@@ -93,19 +98,45 @@ int timelineFrameWindowBucketOf({
       endIndexExclusive: frameEndIndexExclusive,
     );
   }
+  return frameWindowAtBucket(
+    bucket.value,
+    viewportMainExtent: viewportMainExtent,
+    cellExtent: cellExtent,
+    frames: (
+      startIndex: frameStartIndex,
+      endIndexExclusive: frameEndIndexExclusive,
+    ),
+  );
+}
+
+/// The window a painter draws while the offset stands in [bucket]
+/// ([timelineFrameWindowFor]), clipped to its [frames] — the one a scroll
+/// there gives it ([visibleFrameWindowFor]).
+({int startIndex, int endIndexExclusive}) frameWindowAtBucket(
+  int bucket, {
+  required double viewportMainExtent,
+  required double cellExtent,
+  required ({int startIndex, int endIndexExclusive}) frames,
+}) {
   final window = timelineFrameWindowFor(
-    bucket: bucket.value,
+    bucket: bucket,
     cellExtent: cellExtent,
     viewportExtent: viewportMainExtent,
   );
   return (
-    startIndex: math.max(frameStartIndex, window.startIndex),
+    startIndex: math.max(frames.startIndex, window.startIndex),
     endIndexExclusive: math.min(
-      frameEndIndexExclusive,
+      frames.endIndexExclusive,
       window.endIndexExclusive,
     ),
   );
 }
+
+/// Where a run's next page turn stands a frame axis: the bucket its windows
+/// are cut by there ([frameWindowAtBucket]), and the frames the axis is
+/// built for there — where a row's spans end
+/// ([TimelineFrameAxisFollower.nextPage]).
+typedef TimelineNextPage = ({int bucket, int builtFrames});
 
 /// Whether [frame] lies in [window] — what every playhead-driven layer asks
 /// before it marks a frame: the body's cursor, the ruler's tint and the

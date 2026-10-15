@@ -64,6 +64,8 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/project_scratch_folder.dart';
 
@@ -246,6 +248,75 @@ void main() {
     expect(alphaAt(patched, 3, 3), 0, reason: 'the old place is cleared');
     expect(alphaAt(patched, 11, 9), 0xFF, reason: 'the new place is inked');
     expect(patched, await coldBytes(tester, painter), reason: 'byte for byte the cold composite');
+  });
+
+  testWidgets('🚨F-344: a LANDING PREVIEW that moves patches the buffer the '
+      'same way — where it was and where it is — and is drawn past the '
+      'active extent, the cold composite\'s pixels', (tester) async {
+    // What the text tool floats over a text's hole, as it carries the text:
+    // a 4×4 square of ink at the far corner of a tile of its own, moved by
+    // whole pixels (`CelTextFloat` — a lifted selection's pure move).
+    final ink = Uint8List(16 * 16 * 4);
+    for (var y = 12; y < 16; y += 1) {
+      for (var x = 12; x < 16; x += 1) {
+        ink[(y * 16 + x) * 4] = 0xFF;
+        ink[(y * 16 + x) * 4 + 3] = 0xFF;
+      }
+    }
+    final carried = BitmapSurfacePainter(
+      surface: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 16,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 16, pixels: ink)},
+      ),
+      showTransparentBackground: false,
+      lineage: 'f344-float-under-test',
+    );
+    SelectionFloatPaint at(double x, double y) => SelectionFloatPaint(
+      surface: carried,
+      surfaceOffset: CanvasPoint(x: x, y: y),
+    );
+    final cache = DisplayBufferCache();
+    addTearDown(cache.dispose);
+    final preview = ValueNotifier<LandingPreview?>(at(2, 2));
+    addTearDown(preview.dispose);
+    final painter = BitmapSurfacePainter(
+      surface: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 16,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile.blank(size: 16)},
+      ),
+      showTransparentBackground: false,
+      landingPreview: preview,
+    );
+    await pumpView(tester, painter, cache);
+    await settle(tester, cache);
+    final before = await bytesNow(tester);
+    expect(alphaAt(before, 15, 15), 0xFF, reason: 'fixture: drawn where it is');
+    final was = preview.value!.drawnWorldRect;
+    final fullBefore = cache.fullCount;
+    final patchedBefore = cache.patchedCount;
+
+    // THE CARRY: the float moves, nothing else does — out past the active
+    // extent's one tile.
+    preview.value = at(10, 8);
+    await tester.pump();
+
+    expect(cache.fullCount, fullBefore, reason: 'no whole recomposite');
+    expect(cache.patchedCount, patchedBefore + 1, reason: 'it is a patch');
+    expect(
+      cache.lastDirtyRect,
+      was.expandToInclude(preview.value!.drawnWorldRect).inflate(1),
+      reason: 'where it was and where it is, one pixel of hairline',
+    );
+    final patched = await bytesNow(tester);
+    expect(alphaAt(patched, 15, 15), 0, reason: 'the old place is cleared');
+    expect(
+      alphaAt(patched, 23, 21),
+      0xFF,
+      reason: 'the new place is inked, past the active tile (F-85)',
+    );
+    expect(patched, await coldBytes(tester, painter));
   });
 
   testWidgets('a ghost that crosses the edge of the active extent and comes '

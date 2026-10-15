@@ -7,6 +7,7 @@ import '../../services/editing/default_cut_helpers.dart'
 import '../widgets/app_window.dart';
 import 'size_fields_row.dart';
 import '../text/app_strings.dart';
+import '../text/full_width_numerals.dart' show halfWidthInt;
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import 'app_confirm_dialog.dart';
@@ -64,7 +65,7 @@ class CanvasSizeDialog extends StatefulWidget {
   /// same two constants, so one parser is the only way the two can answer
   /// "how big may a document dimension be typed" with one voice.
   static int? parseDimension(String text) {
-    final value = int.tryParse(text.trim());
+    final value = halfWidthInt(text);
     if (value == null || value < minDimension || value > maxDimension) {
       return null;
     }

@@ -185,7 +185,7 @@ class CellInstances {
     // one block, and the write lays that block as the row's picture — the
     // press with no band makes the same one
     // (`FrameVerbs.canCreateDrawingAtCurrentFrame`).
-    if (layer.kind.coversWithoutGaps && !pictureRowStandsEmpty(layer)) {
+    if (layerCoversWithoutGaps(layer) && !pictureRowStandsEmpty(layer)) {
       return const [];
     }
     final layerFills =
@@ -225,8 +225,8 @@ class CellInstances {
   /// lit the button on folder/adjustment/transition rows whose dispatch
   /// is a documented no-op — the #18 lie, one pill over.
   bool get canCreateInstance {
-    if (canCreateInstanceForSelection) {
-      return true;
+    if (_selectionRungAnswer case final claimed?) {
+      return claimed;
     }
     final layer = _selection.activeLayer;
     if (layer == null || !_cells.hasActiveNonNegativeCell) {
@@ -297,16 +297,24 @@ class CellInstances {
   /// half (B8). [createInstancesForSelection] is their dispatch, rung for
   /// rung; the storyboard's toolbar context reads THIS and then asks its
   /// own standing row, where the timeline falls to the active layer.
-  bool get canCreateInstanceForSelection {
+  bool get canCreateInstanceForSelection => _selectionRungAnswer ?? false;
+
+  /// What the selection rung that claims the press answers, or null while
+  /// none does. The LANE rung claims it whether or not it has a frame to
+  /// key, as [createInstancesForSelection] does — so a camera's lane past
+  /// its cut's end answers no (I-73-camera-row-Q2) rather than handing the
+  /// press down to the row's kind.
+  bool? get _selectionRungAnswer {
     final trackRange = _selection.trackFrameRangeSelection.value;
     if (trackRange != null &&
         _trackSe.trackSeCreationGaps(trackRange).isNotEmpty) {
       return true;
     }
-    if (_laneVerbs.laneVerbRange != null) {
-      return true;
+    final lane = _laneVerbs.laneVerbRange;
+    if (lane != null) {
+      return _laneVerbs.canCreateLaneKeysFor(lane);
     }
-    return _selection.frameRangeSelection.value != null;
+    return _selection.frameRangeSelection.value != null ? true : null;
   }
 
   /// 🚨T25 — whether the CELL under the playhead has an instance editor.

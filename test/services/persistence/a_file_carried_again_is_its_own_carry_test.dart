@@ -23,6 +23,7 @@ import '../../helpers/opened_session.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/whole_carry.dart';
 
 /// 🚨★★★**ONE PATH CAN BE CARRIED TWICE, AND EACH CARRY IS ITS OWN BYTES.**
 ///
@@ -346,8 +347,8 @@ void main() {
 
   test('a file holds a carry by the carry\'s own name — not because it holds '
       'another carry of the path', () {
-    final one = (poolPath: path, token: 'c1');
-    final two = (poolPath: path, token: 'c2');
+    final one = wholeCarry(path, 'c1');
+    final two = wholeCarry(path, 'c2');
     expect(
       mediaEntryHeld({anicelMediaEntryName(one, framed: true)}, one),
       isTrue,

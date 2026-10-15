@@ -5,22 +5,26 @@ import 'package:flutter/services.dart';
 import '../../models/brush_group.dart';
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
+import '../input/control_press_claim.dart'
+    show ControlPressClaim, silentPress;
+import '../timeline/layer_label_controls.dart' show layerLaneToggleSlotWidth;
 import '../timeline/layer_rail_columns.dart' show LayerFoldTwirl;
 import '../widgets/panel_flyout.dart';
-import '../widgets/pill_strip.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_presets.dart';
+import 'shortcut_shelf.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
-/// grouped by category, click-to-record capture, conflict highlighting
-/// and per-action / global resets — the PS/CSP settings-page convention.
+/// shelved by where each key's button stands ([ShortcutShelf]),
+/// click-to-record capture, conflict highlighting and per-action / global
+/// resets — the PS/CSP settings-page convention.
 class ShortcutSettingsDialog extends StatefulWidget {
   const ShortcutSettingsDialog({super.key, required this.bindings});
 
@@ -117,22 +121,24 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   String _labelOf(EditorActionDefinition definition) =>
       actionLabelOf(definition);
 
-  String _categoryOf(EditorActionDefinition definition) =>
-      AppText.strings.shortcutCategory(
-        definition.category,
-        definition.category,
-      );
+  String _shelfName(ShortcutShelf shelf) =>
+      AppText.strings.shortcutShelfName(shelf.name, shelf.label);
 
   String get _query => _search.text.trim().toLowerCase();
 
+  /// Whether [definition] answers [query] — by its own name, or by the name
+  /// of any shelf it stands on: a search for 「알약」 finds every pill's rows.
   bool _matches(EditorActionDefinition definition, String query) =>
       query.isEmpty ||
       _labelOf(definition).toLowerCase().contains(query) ||
-      _categoryOf(definition).toLowerCase().contains(query);
+      definition.shelf.path.any(
+        (shelf) => _shelfName(shelf).toLowerCase().contains(query),
+      );
 
-  /// The brush BUNDLES standing open — a group's, named by its title row's
-  /// action; the root section's, by [_rootBundleOf]. A paint tool has its
-  /// own (F-319): the brush tool's Inks and the eraser's Inks are two.
+  /// The BUNDLES standing open — a shelf's, named by [_shelfBundleOf]; a
+  /// brush group's, by its title row's action; a root section's, by
+  /// [_rootBundleOf]. A paint tool has its own brush bundles (F-319): the
+  /// brush tool's Inks and the eraser's Inks are two.
   ///
   /// 🗣️I-56-Q1 (유저 2026-10-01), the answer picked: 「브러시 그룹마다 접히는
   /// 묶음」 = 「다른 카테고리는 지금 그대로, 브러시는 그룹마다 한 묶음으로 기본
@@ -140,7 +146,17 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// 펼쳐진다」. So none is open when the window opens, and a search opens
   /// the ones it finds something in ([_openFoundBundles]) — by putting them
   /// in this one set, so the twirl folds them again like any other.
+  /// ↩️「다른 카테고리는 지금 그대로」 until 유저 2026-10-08
+  /// (menu-rows-and-panels-are-shortcut-rows): 「단축키 많으니까 항목은
+  /// 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법 통일하면서」 — every
+  /// category is a bundle now, under the same law. ↩️The categories became
+  /// shelves (shortcut-presets-anicel-and-clip-studio-Q1, 유저 2026-10-09:
+  /// 「버튼이 있는 자리로」) — every shelf, a place's too, folds the same way.
   final Set<String> _openBundles = {};
+
+  /// The bundle of [shelf]'s rows and shelves — the fold its heading
+  /// carries.
+  static String _shelfBundleOf(ShortcutShelf shelf) => 'shelf-${shelf.name}';
 
   /// The root section's bundle in [tool]'s library: the brushes of no
   /// group. ⚠️Its title is a word and not a row — the root is not a group
@@ -168,10 +184,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         _ => false,
       };
 
-  /// The bundles [query] finds something in — a title or a brush.
+  /// The bundles [query] finds something in — every shelf above a row it
+  /// finds, a brush title or a brush.
   Set<String> _bundlesFound(String query) => {
     for (final definition in widget.bindings.definitions)
-      if (_matches(definition, query)) ?_bundleOf(definition),
+      if (_matches(definition, query)) ...{
+        for (final shelf in definition.shelf.path) _shelfBundleOf(shelf),
+        ?_bundleOf(definition),
+      },
   };
 
   void _openFoundBundles() {
@@ -187,8 +207,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     }
   });
 
-  /// The list's rows: every action the search matches under its category,
-  /// and of the brush library a title per bundle with — while it stands open
+  /// The list's rows: a heading per shelf the search finds something in —
+  /// a place's, and under it, while it stands open, its shelves' — with,
+  /// while a shelf stands open, every action of it the search matches, and
+  /// of the brush library a title per bundle with — while that stands open
   /// — its brushes.
   List<Widget> _rows(ThemeData theme) {
     final bindings = widget.bindings;
@@ -215,76 +237,127 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               (_matches(definition, query) || titlesFound.contains(bundle)));
     }
 
+    // ONE heading a shelf, its rows together under it, the shelves in the
+    // order [ShortcutShelf] lists them and each under the one it stands on.
+    // ↩️A heading was written each time the category changed down the
+    // list, and the registry held six of them in two places — File, Tools,
+    // Edit, Selection, View and Timeline each stood twice.
+    final byShelf = <ShortcutShelf, List<EditorActionDefinition>>{};
+    for (final definition in bindings.definitions) {
+      (byShelf[definition.shelf] ??= []).add(definition);
+    }
     final rows = <Widget>[];
-    String? category;
     // The root sections whose word already stands — one a paint tool.
     final rootsTitled = <String>{};
-    for (final definition in bindings.definitions) {
-      final bundle = _bundleOf(definition);
-      final shown = shows(definition, bundle);
-      final rootTitleDue =
-          bundle != null &&
-          _isLoose(definition) &&
-          !rootsTitled.contains(bundle) &&
-          found.contains(bundle);
-      if (!shown && !rootTitleDue) {
-        continue;
+    void shelve(ShortcutShelf shelf) {
+      final fold = _shelfBundleOf(shelf);
+      if (!found.contains(fold)) {
+        return;
       }
-      if (definition.category != category) {
-        category = definition.category;
-        rows.add(_categoryHeading(theme, definition));
+      rows.add(_shelfHeading(theme, shelf));
+      if (!_openBundles.contains(fold)) {
+        return;
       }
-      if (rootTitleDue) {
-        rootsTitled.add(bundle);
-        rows.add(_rootTitleRow(theme, bundle));
+      for (final each in shelf.shelves) {
+        shelve(each);
       }
-      if (shown) {
-        rows.add(
-          _actionRow(
-            definition,
-            conflicted.contains(definition.id),
-            touchConflicted.contains(definition.id),
-            bundle: bundle,
-          ),
-        );
+      final depth = shelf.path.length;
+      for (final definition
+          in byShelf[shelf] ?? const <EditorActionDefinition>[]) {
+        final bundle = _bundleOf(definition);
+        final shown = shows(definition, bundle);
+        final rootTitleDue =
+            bundle != null &&
+            _isLoose(definition) &&
+            !rootsTitled.contains(bundle) &&
+            found.contains(bundle);
+        if (rootTitleDue) {
+          rootsTitled.add(bundle);
+          rows.add(_rootTitleRow(theme, bundle, depth));
+        }
+        if (shown) {
+          rows.add(
+            _ActionRow(
+              key: ValueKey<String>('shortcut-row-${definition.id}'),
+              bindings: bindings,
+              definition: definition,
+              conflicted: conflicted.contains(definition.id),
+              touchConflicted: touchConflicted.contains(definition.id),
+              recording: _recordingActionId == definition.id,
+              depth: depth,
+              bundle: bundle,
+              bundleOpen: bundle != null && _openBundles.contains(bundle),
+              onToggleBundle: bundle == null
+                  ? null
+                  : () => _toggleBundle(bundle),
+              onRecord: () => _startRecording(definition.id),
+              onUnassign: () => _unassign(definition.id),
+            ),
+          );
+        }
       }
+    }
+
+    for (final place in ShortcutShelf.places) {
+      shelve(place);
     }
     return rows;
   }
 
-  Widget _categoryHeading(
-    ThemeData theme,
-    EditorActionDefinition definition,
-  ) => Padding(
-    padding: const EdgeInsets.only(top: 12, bottom: 4),
-    child: Text(
-      _categoryOf(definition),
-      style: theme.textTheme.labelLarge?.copyWith(
-        color: theme.colorScheme.primary,
+  /// A shelf's heading, a step in from the shelf it stands on and carrying
+  /// its fold as a brush bundle's title does — a place's in the accent.
+  Widget _shelfHeading(ThemeData theme, ShortcutShelf shelf) {
+    final bundle = _shelfBundleOf(shelf);
+    final place = shelf.parent == null;
+    return Padding(
+      key: ValueKey<String>('shortcut-shelf-${shelf.name}'),
+      padding: EdgeInsets.only(
+        left: (shelf.path.length - 1) * _step,
+        top: place ? 12 : 2,
+        bottom: place ? 4 : 2,
+      ),
+      child: _foldRow(
+        () => _toggleBundle(bundle),
+        Row(
+          children: [
+            _twirl(bundle, open: _openBundles.contains(bundle)),
+            Expanded(
+              child: Text(
+                _shelfName(shelf),
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: place ? theme.colorScheme.primary : null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _rootTitleRow(ThemeData theme, String bundle, int depth) => Padding(
+    key: ValueKey<String>('shortcut-row-$bundle'),
+    padding: EdgeInsets.only(left: depth * _step, top: 2, bottom: 2),
+    child: _foldRow(
+      () => _toggleBundle(bundle),
+      Row(
+        children: [
+          _twirl(bundle, open: _openBundles.contains(bundle)),
+          Expanded(
+            child: Text(
+              brushRootSectionLabel,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
       ),
     ),
   );
 
-  /// The fold of [bundle], where the layer rail's fold is (F-29): at the far
-  /// edge of the name it folds under — the app's one twirl.
-  Widget _twirl(String bundle) => LayerFoldTwirl(
-    keyValue: 'shortcut-bundle-$bundle',
-    expanded: _openBundles.contains(bundle),
-    onToggle: () => _toggleBundle(bundle),
-  );
-
-  Widget _rootTitleRow(ThemeData theme, String bundle) => Padding(
-    key: ValueKey<String>('shortcut-row-$bundle'),
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(brushRootSectionLabel, style: theme.textTheme.bodyMedium),
-        ),
-        _twirl(bundle),
-      ],
-    ),
-  );
+  /// A preset's name in the program language — the app's own name in every
+  /// one.
+  static String _presetName(ShortcutPreset preset) =>
+      AppText.strings.shortcutPresetName(preset.name, preset.label);
 
   @override
   Widget build(BuildContext context) {
@@ -311,22 +384,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 🗣️I-63: the preset the keys below start from. Picking one
-              // shows ITS keys and what was recorded under it.
+              // shows ITS keys and what was recorded under it — from a
+              // list, as every preset is picked (유저 2026-10-12, I-93:
+              // 「이런 프리셋 변경은 특히 앱 통틀어서 리스트 팝오버로」).
+              // ↩️It was a pill strip until then.
               Align(
                 alignment: Alignment.centerLeft,
-                child: PillStrip(
-                  items: [
-                    for (final preset in ShortcutPreset.values)
-                      PillItem(
-                        keyValue: 'shortcut-preset-${preset.name}',
-                        label: AppText.strings.shortcutPresetName(
-                          preset.name,
-                          preset.label,
-                        ),
-                        selected: bindings.preset == preset,
-                        onTap: () => bindings.setPreset(preset),
-                      ),
-                  ],
+                child: PanelFlyoutButton(
+                  key: const ValueKey<String>('shortcut-preset'),
+                  label: _presetName(bindings.preset),
+                  entriesBuilder: () => ShortcutPreset.values.asFlyoutChoices(
+                    current: bindings.preset,
+                    keyPrefix: 'shortcut-preset-',
+                    labelOf: _presetName,
+                    onPicked: bindings.setPreset,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -390,20 +462,82 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ],
     );
   }
+}
+
+/// One step of the list's depth: the twirl's own width, so a row's words
+/// start where the words of the row it folds under do.
+const double _step = layerLaneToggleSlotWidth;
+
+/// A row that folds, pressed anywhere on itself — [toggle] — its twirl
+/// first, left of its words, and only showing.
+///
+/// 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「항목 접게
+/// 만든거 좋은데 펼치는거랑 스크롤바랑 겹치는건지 안열림. 그냥 그 줄 누르면
+/// 열리도록. 그러고 접기펼치기버튼은 항목 글자 왼쪽에 두도록. 다만 물론
+/// 누르는건 그 항목 전체니까 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+/// ↩️The twirl was the press, at the row's far edge where the layer rail
+/// keeps its own (F-29) — and that edge is where the list's scrollbar
+/// runs. A control ON the row (a brush group's record · unassign · reset
+/// · touch) keeps its own press: the deepest claim wins.
+Widget _foldRow(VoidCallback toggle, Widget row) => ControlPressClaim(
+  onPressed: toggle,
+  child: InkWell(onTap: silentPress(toggle), child: row),
+);
+
+/// The fold of [bundle] — the app's one twirl, showing it ([_foldRow] is
+/// the press).
+Widget _twirl(String bundle, {required bool open}) => LayerFoldTwirl(
+  name: 'shortcut-bundle-$bundle',
+  expanded: open,
+  onToggle: null,
+);
+
+/// One action's row: its name, its keys and touch gesture, and its record ·
+/// unassign · reset buttons — a brush group's title folding its bundle.
+///
+/// ↩️A method of the window's State until 2026-10-10, when the shelves
+/// (Q1) took the State past six hundred lines.
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    super.key,
+    required this.bindings,
+    required this.definition,
+    required this.conflicted,
+    required this.touchConflicted,
+    required this.recording,
+    required this.depth,
+    required this.onRecord,
+    required this.onUnassign,
+    this.bundle,
+    this.bundleOpen = false,
+    this.onToggleBundle,
+  });
+
+  final EditorShortcutBindings bindings;
+  final EditorActionDefinition definition;
+  final bool conflicted;
+  final bool touchConflicted;
+
+  /// Whether this row is recording its next key.
+  final bool recording;
+
+  /// How many steps its shelf stands in ([ShortcutShelf.path]).
+  final int depth;
+  final VoidCallback onRecord;
+  final VoidCallback onUnassign;
+
+  /// The brush bundle it stands in, or null; a group's title folds it.
+  final String? bundle;
+  final bool bundleOpen;
+  final VoidCallback? onToggleBundle;
 
   /// How much of a row its keys and its touch gesture may take before they
   /// wrap — the name and the row's buttons keep the rest.
   static const double _keysShare = 0.6;
 
-  Widget _actionRow(
-    EditorActionDefinition definition,
-    bool conflicted,
-    bool touchConflicted, {
-    String? bundle,
-  }) {
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bindings = widget.bindings;
-    final recording = _recordingActionId == definition.id;
     final activators = bindings.activatorsFor(definition.id);
     final touchGesture = bindings.touchGestureFor(definition.id);
     final titlesBundle = definition.brushPress is BrushGroupPress;
@@ -463,7 +597,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                         '${gesture?.name ?? 'none'}',
                     label: gesture?.label ?? AppText.strings.commonNone,
                   ),
-                  onPicked: (gesture) => widget.bindings.setTouchGesture(
+                  onPicked: (gesture) => bindings.setTouchGesture(
                     definition.id,
                     gesture,
                   ),
@@ -491,68 +625,69 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ),
     ];
 
+    // A row stands a step in from its shelf's heading ([depth] steps), and
+    // a brush a step in from its bundle's title — each row's words where
+    // the words of the row it folds under start.
+    final steps = bundle != null && !titlesBundle ? depth + 1 : depth;
+    final folds = bundle != null && titlesBundle ? bundle : null;
     return Padding(
-      key: ValueKey<String>('shortcut-row-${definition.id}'),
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: EdgeInsets.only(left: steps * _step, top: 2, bottom: 2),
       // 🗣️F-318: the row gained a button, and a row with several keys
       // and a touch gesture was already within a few pixels of its
       // width. The keys and the gesture take what they need up to
       // [_keysShare] of the row and WRAP past it — the name keeps the
       // rest, and no row overflows whatever is recorded on it.
       child: LayoutBuilder(
-        builder: (context, constraints) => Row(
-          children: [
-            Expanded(
-              // A brush stands under its bundle's title, a step in.
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: bundle == null || titlesBundle ? 0 : 16,
-                ),
+        builder: (context, constraints) {
+          final row = Row(
+            children: [
+              if (folds != null) _twirl(folds, open: bundleOpen),
+              Expanded(
                 child: Text(
-                  _labelOf(definition),
+                  actionLabelOf(definition),
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
-            ),
-            if (bundle != null && titlesBundle) _twirl(bundle),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: constraints.maxWidth * _keysShare,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * _keysShare,
+                ),
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: 2,
+                  children: keys,
+                ),
               ),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                runSpacing: 2,
-                children: keys,
+              AppIconButton(
+                keyValue: 'shortcut-record-${definition.id}',
+                tooltip: AppText.strings.shortcutRecordNew,
+                icon: const Icon(Icons.keyboard),
+                onPressed: onRecord,
               ),
-            ),
-            AppIconButton(
-              keyValue: 'shortcut-record-${definition.id}',
-              tooltip: AppText.strings.shortcutRecordNew,
-              icon: const Icon(Icons.keyboard),
-              onPressed: () => _startRecording(definition.id),
-            ),
-            // Dead on a row with no key: there is nothing to take off.
-            AppIconButton(
-              keyValue: 'shortcut-unassign-${definition.id}',
-              tooltip: AppText.strings.shortcutUnassign,
-              icon: const Icon(Icons.backspace_outlined),
-              onPressed: activators.isEmpty
-                  ? null
-                  : () => _unassign(definition.id),
-            ),
-            AppIconButton(
-              keyValue: 'shortcut-reset-${definition.id}',
-              tooltip: AppText.strings.shortcutResetToDefault,
-              icon: const Icon(Icons.restart_alt),
-              onPressed:
-                  bindings.isOverridden(definition.id) ||
-                      bindings.isTouchOverridden(definition.id)
-                  ? () => bindings.resetAction(definition.id)
-                  : null,
-            ),
-          ],
-        ),
+              // Dead on a row with no key: there is nothing to take off.
+              AppIconButton(
+                keyValue: 'shortcut-unassign-${definition.id}',
+                tooltip: AppText.strings.shortcutUnassign,
+                icon: const Icon(Icons.backspace_outlined),
+                onPressed: activators.isEmpty
+                    ? null
+                    : onUnassign,
+              ),
+              AppIconButton(
+                keyValue: 'shortcut-reset-${definition.id}',
+                tooltip: AppText.strings.shortcutResetToDefault,
+                icon: const Icon(Icons.restart_alt),
+                onPressed:
+                    bindings.isOverridden(definition.id) ||
+                        bindings.isTouchOverridden(definition.id)
+                    ? () => bindings.resetAction(definition.id)
+                    : null,
+              ),
+            ],
+          );
+          return folds == null ? row : _foldRow(onToggleBundle!, row);
+        },
       ),
     );
   }

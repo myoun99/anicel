@@ -19,6 +19,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/audio_clips.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
+
 /// ⑨b SE audio UX: the row's mute speaker + the audio lane's AE-style
 /// offset value field.
 
@@ -159,23 +162,28 @@ void main() {
 
   testWidgets('the SE speaker opens the MIXER in both orientations, and '
       'mute lives inside it (view state, not undoable)', (tester) async {
-    // R10 R6: the x-sheet's stood-up header sheds controls when the panel
-    // is too short to stack them, and the speaker is on that ladder. This
-    // test is about the DOOR being the same in both orientations, so give
-    // the dock the height a user working in the sheet would.
-    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    // The x-sheet's header is the rail stood up, laid out whole and seen
+    // through the window its panel can spare (`layer_rail_window.dart`): a
+    // short dock cuts its tail, and the speaker is in that tail. This test
+    // is about the DOOR being the same in both orientations, so give the
+    // dock the height a user working in the sheet would.
+    // -300 → -322 (I-89 ③, 2026-10-11): the header grew 22 — a header
+    // graph's slot, kept for its lanes since (I-89-Q17 A) — and the speaker
+    // stands after it. The hand stops the dock at half the window (결정 8),
+    // so the window pays twice that: 1000 → 1044.
+    await tester.binding.setSurfaceSize(const Size(1200, 1044));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -300),
+      const Offset(0, -322),
     );
     await tester.pumpAndSettle();
 
     await _ensureVisibleAndTap(
       tester,
-      find.byKey(const ValueKey<String>('timeline-layer-mute-sea-voice')),
+      find.named('timeline-layer-mute-sea-voice'),
     );
     expect(
       find.byKey(const ValueKey<String>('se-layer-mixer')),
@@ -189,7 +197,7 @@ void main() {
 
     // The cel row carries no speaker — SE rows only.
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-mute-sea-cel')),
+      find.named('timeline-layer-mute-sea-cel'),
       findsNothing,
     );
 
@@ -206,7 +214,7 @@ void main() {
     await tester.pumpAndSettle();
     await _ensureVisibleAndTap(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-mute-sea-voice')),
+      find.named('xsheet-layer-mute-sea-voice'),
     );
     await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
     await tester.pumpAndSettle();
@@ -221,19 +229,15 @@ void main() {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
-    final speaker = find.byKey(
-      const ValueKey<String>('timeline-layer-mute-sea-voice'),
-    );
-    Icon speakerIcon() => tester.widget<Icon>(
-      find.descendant(of: speaker, matching: find.byType(Icon)),
-    );
-    expect(speakerIcon().color, isNull, reason: 'not soloed yet');
+    final speaker = find.named('timeline-layer-mute-sea-voice');
+    IconButtonReading speakerIcon() => tester.appIconButton(speaker);
+    expect(speakerIcon().iconColor, isNull, reason: 'not soloed yet');
 
     await _ensureVisibleAndTap(tester, speaker);
     await tester.tap(find.byKey(const ValueKey<String>('se-mixer-solo')));
     await tester.pumpAndSettle();
     expect(
-      speakerIcon().color,
+      speakerIcon().iconColor,
       isNotNull,
       reason: 'solo is SESSION state — the rail row memo must compare it or '
           'the tint never arrives',
@@ -265,7 +269,7 @@ void main() {
 
     await _ensureVisibleAndTap(
       tester,
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-sea-voice')),
+      find.named('timeline-lane-toggle-sea-voice'),
     );
 
     expect(

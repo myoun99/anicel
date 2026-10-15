@@ -1,4 +1,5 @@
 import 'camera_instruction.dart';
+import 'camera_moves.dart';
 import 'cut.dart';
 import 'frame.dart'
     show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
@@ -144,7 +145,8 @@ class TimesheetCell {
 
   /// Cel number for [TimesheetCellKind.drawing] cells — empty when the
   /// drawing has none and wears its [mark] instead; the writing for
-  /// [TimesheetCellKind.instructionStart] cells.
+  /// [TimesheetCellKind.instructionStart] cells; the camera's move on the
+  /// rows of a stretch it makes in the camera column.
   final String? label;
 
   /// The in-between mark the cell wears: a [TimesheetCellKind.mark] row's
@@ -159,8 +161,8 @@ class TimesheetCell {
   final int? spanLength;
 
   /// This row's distance from its instruction span's start row (instruction
-  /// cells only) — with [spanLength] it places the row inside the span's
-  /// mark geometry.
+  /// cells, and a camera move's rows) — with [spanLength] it places the row
+  /// inside the span's mark geometry.
   final int? spanOffset;
 
   /// The span's mark shape from its def (instruction cells only); null
@@ -734,10 +736,16 @@ class TimesheetDocument {
   }
 
   /// The first camera column: keyframe rows with motion lines between
-  /// successive keyframes.
+  /// successive keyframes, and over each stretch the camera moves along
+  /// its move's name ([cameraMoves], I-73 ⑤) — on the stretch's rows with
+  /// their place in it, as an instruction column carries a span's name, to
+  /// be written once on its middle row (「타임시트 CAM 첫 칸에도 같은
+  /// 이름」). The key that ends a stretch begins the next, so it carries the
+  /// next one.
   static List<TimesheetCell> _cameraCells({
     required Cut cut,
     required int rowCount,
+    CameraInstructionDef? Function(String instructionId)? defById,
   }) {
     final cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank);
     final keyframeRows = [
@@ -746,15 +754,26 @@ class TimesheetDocument {
     ];
     for (var index = 0; index < keyframeRows.length; index += 1) {
       final row = keyframeRows[index];
-      cells[row] = TimesheetCell(
-        TimesheetCellKind.cameraKey,
-        label: '${index + 1}',
-      );
+      cells[row] = const TimesheetCell(TimesheetCellKind.cameraKey);
       if (index + 1 < keyframeRows.length) {
         final nextRow = keyframeRows[index + 1];
         for (var span = row + 1; span < nextRow; span += 1) {
           cells[span] = const TimesheetCell(TimesheetCellKind.cameraSpan);
         }
+      }
+    }
+    for (final move in cameraMoves(cut.camera.track)) {
+      if (move.to >= rowCount) {
+        continue; // Its line is not on the sheet either.
+      }
+      final word = instructionTermName(move.term, defById?.call(move.term));
+      for (var row = move.from; row < move.to; row += 1) {
+        cells[row] = TimesheetCell(
+          cells[row].kind,
+          label: word,
+          spanLength: move.to - move.from + 1,
+          spanOffset: row - move.from,
+        );
       }
     }
     return cells;
@@ -1196,7 +1215,11 @@ class _CameraColumns {
       layerId: instructionLayer?.id,
       cells: slot == 0
           ? (cameraOnSheet
-                ? TimesheetDocument._cameraCells(cut: cut, rowCount: rowCount)
+                ? TimesheetDocument._cameraCells(
+                    cut: cut,
+                    rowCount: rowCount,
+                    defById: instructionDefById,
+                  )
                 : TimesheetDocument._blankCells(rowCount))
           : instructionLayer != null
           ? TimesheetDocument._instructionCells(

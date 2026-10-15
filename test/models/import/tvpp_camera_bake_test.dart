@@ -242,5 +242,35 @@ void main() {
       expect(poses[5].angleDegrees, closeTo(-5, 1e-6));
       expect(poses[10].scale, closeTo(2, 1e-6));
     });
+
+    test("the path bends with BOTH points' handles — leaving along the "
+        "first's, arriving along the second's", () {
+      TvppCameraPoint bent(double x, int instant, {required double handleY}) =>
+          TvppCameraPoint(
+            x: x,
+            y: 0,
+            rotationDegrees: 0,
+            zoomFactor: 1,
+            sizeX: 320,
+            sizeY: 180,
+            instant: instant,
+            flags: 15,
+            bezierBeforeX: 0,
+            bezierBeforeY: handleY,
+            bezierAfterX: 0,
+            bezierAfterY: handleY,
+          );
+      // L = 5, so frame 3 stands at path time 3·5/6 — half the way. Both
+      // handles reaching 40 down make the curve even about x = 50, so half
+      // its length is its middle: (50, 30) by the Bernstein cubic, worked
+      // by hand — 3·½·¼·100 + ⅛·100, and 3·¼·½·40 twice.
+      final poses = bakeTvppCamera(
+        [bent(0, 0, handleY: 40), bent(100, 5, handleY: 40)],
+        TvppCameraChannels.none,
+        frameCount: 7,
+      );
+      expect(poses[3].x, closeTo(50, 1e-3));
+      expect(poses[3].y, closeTo(30, 1e-3));
+    });
   });
 }

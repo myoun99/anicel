@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-32 (유저): 「트랜지션·카메라 레이어만 **스크롤에 따라** 위치가
 /// 어긋난다」.
 ///
@@ -91,11 +93,11 @@ void main() {
       .position;
 
   double railTop(WidgetTester tester, String id) => tester
-      .getRect(find.byKey(ValueKey<String>('timeline-rail-row-$id-row')))
+      .getRect(find.named('timeline-rail-row-$id-row'))
       .top;
 
   double cellsTop(WidgetTester tester, String id) => tester
-      .getRect(find.byKey(ValueKey<String>('timeline-row-cells-$id')))
+      .getRect(find.named('timeline-row-cells-$id'))
       .top;
 
   testWidgets('every row kind keeps its rail and its cells on ONE line, at '
@@ -133,8 +135,8 @@ void main() {
       await tester.pumpAndSettle();
       for (final row in layers) {
         final id = row.id.value;
-        final rail = find.byKey(ValueKey<String>('timeline-rail-row-$id-row'));
-        final cells = find.byKey(ValueKey<String>('timeline-row-cells-$id'));
+        final rail = find.named('timeline-rail-row-$id-row');
+        final cells = find.named('timeline-row-cells-$id');
         if (rail.evaluate().isEmpty || cells.evaluate().isEmpty) {
           // Scrolled out of the window — nothing to compare, and windowing
           // is not what this test is about.
@@ -205,9 +207,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final ruler = find.byKey(const ValueKey<String>('timeline-frame-ruler'));
-      final cells = find.byKey(
-        const ValueKey<String>('timeline-row-cells-draw-0'),
-      );
+      final cells = find.named('timeline-row-cells-draw-0');
       if (ruler.evaluate().isEmpty || cells.evaluate().isEmpty) {
         continue;
       }

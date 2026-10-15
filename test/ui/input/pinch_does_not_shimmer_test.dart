@@ -48,9 +48,12 @@ void main() {
     await tester.sendEventToBinding(a.down(const Offset(300, 300)));
     await tester.sendEventToBinding(b.down(const Offset(500, 300)));
     await tester.pump();
-    // Past the slop, so the group locks.
-    await tester.sendEventToBinding(a.move(const Offset(295, 300)));
-    await tester.sendEventToBinding(b.move(const Offset(505, 300)));
+    // Both past the 18px slop in ONE batch, so the group locks at 240px
+    // apart — where the pinch is recognised, and what it measures from
+    // (F-260).
+    tester.binding.handlePointerEvent(a.move(const Offset(280, 300)));
+    tester.binding.handlePointerEvent(b.move(const Offset(520, 300)));
+    await tester.idle();
     await tester.pump();
     return (a, b);
   }
@@ -64,14 +67,14 @@ void main() {
 
     final zooms = <double>[];
     for (var step = 1; step <= 4; step += 1) {
-      final dx = 295 + step * 10.0;
+      final dx = 280 + step * 10.0;
       // ⚠️ONE BATCH: both fingers' events dispatch back to back, the way
       // the pointer queue delivers them. `sendEventToBinding` is guarded
       // and cannot be called twice without an await between — which would
       // be a batch of one, and a batch of one is exactly the case that
       // never had the bug.
       tester.binding.handlePointerEvent(a.move(Offset(dx, 300)));
-      tester.binding.handlePointerEvent(b.move(Offset(dx + 210, 300)));
+      tester.binding.handlePointerEvent(b.move(Offset(dx + 240, 300)));
       await tester.idle();
       zooms.addAll(emitted.map((viewport) => viewport.zoom));
       emitted.clear();
@@ -87,7 +90,7 @@ void main() {
       zooms.toSet(),
       hasLength(1),
       reason:
-          '🚨THE REPORT: the fingers stayed 210px apart the whole way, so '
+          '🚨THE REPORT: the fingers stayed 240px apart the whole way, so '
           'every emitted zoom must be the same number. Two values means it '
           'stepped out and came back — $zooms',
     );
@@ -98,8 +101,8 @@ void main() {
     final (a, b) = await pinchDown(tester);
     emitted.clear();
 
-    tester.binding.handlePointerEvent(a.move(const Offset(280, 300)));
-    tester.binding.handlePointerEvent(b.move(const Offset(520, 300)));
+    tester.binding.handlePointerEvent(a.move(const Offset(270, 300)));
+    tester.binding.handlePointerEvent(b.move(const Offset(530, 300)));
     await tester.idle();
 
     expect(
@@ -118,10 +121,9 @@ void main() {
     final (a, b) = await pinchDown(tester);
     emitted.clear();
 
-    // Apart to 400px, from the 200px the fingers went DOWN at (the anchor
-    // is the touchdown, so the whole travel counts).
-    tester.binding.handlePointerEvent(a.move(const Offset(200, 300)));
-    tester.binding.handlePointerEvent(b.move(const Offset(600, 300)));
+    // Apart to 480px, from the 240px the pinch was recognised at.
+    tester.binding.handlePointerEvent(a.move(const Offset(160, 300)));
+    tester.binding.handlePointerEvent(b.move(const Offset(640, 300)));
     await tester.idle();
     await tester.pump();
 

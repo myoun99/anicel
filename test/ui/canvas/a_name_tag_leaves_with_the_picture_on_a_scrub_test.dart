@@ -13,9 +13,11 @@ import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
 /// 네임태그가 캔버스에 존재했던게 다음 컷이나 갭부분까지 남아있음. 안남아있도록
 /// 비디오트랙이나 se트랙이나 법 하나로 통일」.
 ///
-/// A scrub past the cut parks the canvas on the track stack, which draws the
-/// parked frame's picture AND its name tags. The editing canvas's own tags
-/// have to leave with its picture.
+/// A scrub into a gap parks the canvas on the track stack, which draws the
+/// parked frame's picture AND its name tags; the editing canvas's own tags
+/// have to leave with its picture. A scrub onto the next cut crosses into
+/// it (I-57 ②), and the canvas is that cut's — the line stays with the cut
+/// it was drawn on.
 void main() {
   const stackKey = ValueKey<String>('canvas-track-stack-view');
 
@@ -81,10 +83,11 @@ void main() {
       .isNotEmpty;
 
   testWidgets('a scrub past the cut takes the line off the editing canvas with '
-      'the picture — over the next cut and over a gap — and back on the cut '
+      'the picture — over a gap and over the next cut — and back on the cut '
       'the line comes back', (tester) async {
     final (s, cutEnd) = gappedSessionWithALine();
     addTearDown(s.dispose);
+    final first = s.activeCutId;
     await pumpArea(tester, s);
     expect(
       editingCanvasShowsTags(tester),
@@ -92,12 +95,15 @@ void main() {
       reason: 'the line is on the cut under the playhead',
     );
 
-    // Grab the playhead on its own cut, then drag into the next cut's frames.
+    // Grab the playhead on its own cut, then drag into the gap after it:
+    // the cut with the line is still the one being edited, and the picture
+    // parked.
     scrub(s).scrubGlobalFrame(0);
     await tester.pump();
-    scrub(s).scrubGlobalFrame(cutEnd + 5);
+    scrub(s).scrubGlobalFrame(cutEnd + 1);
     await tester.pump();
-    expect(find.byKey(stackKey), findsOneWidget, reason: 'the picture parked');
+    expect(s.activeCutId, first);
+    expect(find.byKey(stackKey), findsOneWidget, reason: 'parked in the gap');
     expect(
       editingCanvasShowsTags(tester),
       isFalse,
@@ -105,14 +111,21 @@ void main() {
           'with the picture it was on',
     );
 
-    scrub(s).scrubGlobalFrame(cutEnd + 1);
+    // On into the next cut's frames: the drag crosses into it.
+    scrub(s).scrubGlobalFrame(cutEnd + 5);
     await tester.pump();
-    expect(find.byKey(stackKey), findsOneWidget, reason: 'parked in the gap');
-    expect(editingCanvasShowsTags(tester), isFalse, reason: 'and in a gap');
+    expect(s.activeCutId, isNot(first));
+    expect(find.byKey(stackKey), findsNothing, reason: 'its own canvas');
+    expect(
+      editingCanvasShowsTags(tester),
+      isFalse,
+      reason: 'the line stays on the cut it was drawn on',
+    );
 
     scrub(s).scrubGlobalFrame(2);
     await tester.pump();
     await tester.pump();
+    expect(s.activeCutId, first);
     expect(find.byKey(stackKey), findsNothing, reason: 'back on the cut');
     expect(
       editingCanvasShowsTags(tester),

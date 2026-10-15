@@ -1,10 +1,11 @@
 import 'dart:ui' show Offset;
 
+import '../../models/key_mark.dart';
 import '../../models/layer_effect.dart';
-import '../../models/property_track.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
+import '../theme/lane_curve_palette.dart';
 import 'property_lane_model.dart';
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
@@ -59,13 +60,14 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 /// lanes while [isExpanded] says the header is twirled open (AE group
 /// collapse, exactly like the Transform group).
 ///
-/// [valueAt] resolves a parameter's value for the blue value column; the
-/// caller owns it because the sample must come from the same resolver the
-/// composite uses.
+/// [valueAt] resolves a parameter's value at a time — the blue value
+/// column's at its frame, a header graph's curve between frames too (I-89
+/// ③); the caller owns it because the sample must come from the same
+/// resolver the composite uses.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   required bool Function(EffectId effectId) isExpanded,
-  double Function(EffectId effectId, String parameterId, int frameIndex)?
+  double Function(EffectId effectId, String parameterId, double time)?
   valueAt,
 }) {
   if (effects.isEmpty) {
@@ -87,40 +89,46 @@ List<PropertyLaneRow> effectPropertyLanes(
         // parameter.
         groupEnabled: effect.enabled,
         // The header carries its members' key union (UI-R20 #13), so one
-        // glance finds the effect's keys while it stays collapsed.
-        keyedFrames: {
+        // glance finds the effect's keys while it stays collapsed — and
+        // with the marks they wear, the same union the Transform header
+        // draws ([unionKeyMarks]).
+        keyMarks: unionKeyMarks([
           for (final parameter in effect.parameters.values)
-            ...parameter.track.keys.keys,
-        },
+            keyMarksOf(parameter.track),
+        ]),
         showsKeyNavigator: false,
         isGroupHeader: true,
         groupExpanded: expanded,
+        headsAGraph: true,
       ),
     );
     if (!expanded) {
       continue;
     }
-    for (final spec in effectParametersOf(effect.kind)) {
+    for (final (index, spec) in effectParametersOf(effect.kind).indexed) {
       final parameter = effect.parameterOf(spec.id);
       rows.add(
         PropertyLaneRow(
           laneId: effectLaneId(effect.id, spec.id),
           label: spec.labelFor(AppText.language),
-          keyedFrames: parameter.track.keys.keys.toSet(),
-          holdOutFrames: {
-            for (final entry in parameter.track.keys.entries)
-              if (entry.value.interpolation == PropertyKeyInterpolation.hold)
-                entry.key,
-          },
+          keyMarks: keyMarksOf(parameter.track),
           keyNames: parameter.track.namedKeysByFrame,
           valueLabel: valueAt == null
               ? null
               : (frameIndex) => formatEffectLaneValue(
                   spec,
-                  valueAt(effect.id, spec.id, frameIndex),
+                  valueAt(effect.id, spec.id, frameIndex.toDouble()),
                 ),
           scrubValue: (label, delta) =>
               scrubEffectLaneValue(spec, label, delta),
+          curve: valueAt == null
+              ? null
+              : (
+                  parts: [LaneCurvePalette.effectParameter(index)],
+                  at: (time) => [valueAt(effect.id, spec.id, time)],
+                  sides: parameter.track.sidesByFrame,
+                  way: null,
+                ),
         ),
       );
     }
@@ -163,9 +171,9 @@ bool effectGroupHeaderCovered(String headerLaneId, List<String> spanLaneIds) {
 /// AE-style value formatting for an effect parameter.
 String formatEffectLaneValue(EffectParameterSpec spec, double value) {
   return switch (spec.unit) {
-    EffectParameterUnit.number => formatTrimmedDecimal(value),
-    EffectParameterUnit.degrees => '${formatTrimmedDecimal(value)}°',
-    EffectParameterUnit.pixels => '${formatTrimmedDecimal(value)} px',
+    EffectParameterUnit.number => columnValueText(value),
+    EffectParameterUnit.degrees => '${columnValueText(value)}°',
+    EffectParameterUnit.pixels => '${columnValueText(value)} px',
   };
 }
 

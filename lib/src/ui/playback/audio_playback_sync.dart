@@ -163,7 +163,7 @@ class AudioPlaybackSync {
       _schedule = (deviceCarriesPlayback?.call() ?? false)
           ? const []
           : buildAudioPlaybackSchedule(
-              playlist: controller.playlist,
+              window: controller.window,
               project: resolveProject?.call(),
               rate: resolveFrameRate(),
               durationSecondsFor: durationSecondsFor,

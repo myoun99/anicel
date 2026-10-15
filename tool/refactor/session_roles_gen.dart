@@ -85,7 +85,7 @@ const roleOf = <String, String>{
   'activeTrack': 'SelectionAccess',
   'selectFrameIndex': 'SelectionAccess',
   'selectGlobalFrame': 'SelectionAccess',
-  'clearAllSelections': 'SelectionAccess',
+  'clearTimelineSelections': 'SelectionAccess',
   'clearFrameRangeSelection': 'SelectionAccess',
   'clearRowSelection': 'SelectionAccess',
   'clearStoryboardCutSelection': 'SelectionAccess',

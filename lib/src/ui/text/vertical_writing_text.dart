@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+import 'laid_out_glyph.dart';
 import 'vertical_writing.dart';
 import 'word_bake.dart' show RepaintOnWordBakes;
 import 'word_condensation.dart';
@@ -130,16 +131,11 @@ double paintVerticalText(
     final cellSpan = cell.spanCells * fit.cellExtent;
     final cellCenterY = start + slot * fit.cellExtent + cellSpan / 2;
     slot += cell.spanCells;
-    final painter = TextPainter(
-      text: TextSpan(text: cell.text, style: glyphStyle),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
 
     paintVerticalTextCell(
       canvas,
       cell,
-      painter: painter,
+      painter: laidOutGlyph(cell.text, glyphStyle),
       center: Offset(centerX, cellCenterY),
       fontSize: fontSize,
       maxCrossExtent: widthLimit,
@@ -471,7 +467,7 @@ class _VerticalWritingPainter extends CustomPainter
   final VerticalTextOverflow overflow;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final fontSize = style.fontSize ?? 12;
     paintVerticalText(
       canvas,

@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
 import '../../helpers/temp_dir.dart';
 
@@ -38,9 +39,10 @@ void main() {
     deleteTempQuietly(folder);
   });
 
-  /// What the last file pick was told to accept — the argument
-  /// `pickProjectFile`'s two callers differ by.
+  /// What the last file pick was told to accept, and whether several at
+  /// once — the arguments a pick's callers differ by.
   List<XTypeGroup>? lastAcceptedTypeGroups;
+  bool? lastAllowMultiple;
 
   void installFilePicker(List<FolderGrant> answer) {
     FolderPicker.debugFilePicker =
@@ -49,17 +51,18 @@ void main() {
           required bool allowMultiple,
         }) async {
           lastAcceptedTypeGroups = acceptedTypeGroups;
+          lastAllowMultiple = allowMultiple;
           return answer;
         };
   }
 
   /// Runs [action] from inside a real Navigator + ScaffoldMessenger, which
   /// the flows need for their notices.
-  Future<ProjectPick?> runFlow(
+  Future<T?> runFlow<T>(
     WidgetTester tester,
-    Future<ProjectPick?> Function(BuildContext context) action,
+    Future<T?> Function(BuildContext context) action,
   ) async {
-    ProjectPick? result;
+    T? result;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -80,6 +83,13 @@ void main() {
     return result;
   }
 
+  /// 「파일 열기…」's pick (F-282), and the project the door opens from it.
+  Future<ProjectPick?> openedProject(WidgetTester tester) async {
+    final picked = await runFlow(tester, pickFilesToOpen);
+    final projects = sortOpened(picked ?? const []).projects;
+    return projects.isEmpty ? null : projects.single;
+  }
+
   group('opening', () {
     testWidgets('the picked file IS the project, chooser and all gone', (
       tester,
@@ -91,7 +101,7 @@ void main() {
           kind: GrantKind.file,
         ),
       ]);
-      final pick = await runFlow(tester, pickProjectToOpen);
+      final pick = await openedProject(tester);
       expect(pick?.path, '/work/C-045/scene.anicel');
       // The bookmark is what makes a recent-projects entry outlive a
       // relaunch. Dropping it here would be invisible until the next launch.
@@ -110,7 +120,7 @@ void main() {
 
     testWidgets('cancelling opens nothing', (tester) async {
       installFilePicker(const [FolderGrant.cancelled()]);
-      expect(await runFlow(tester, pickProjectToOpen), isNull);
+      expect(await runFlow(tester, pickFilesToOpen), isEmpty);
     });
 
     testWidgets('🚨the open ACCEPTS .tvpp too — 유저 2026-08-29: one entry, '
@@ -123,7 +133,7 @@ void main() {
         ),
       ]);
 
-      final pick = await runFlow(tester, pickProjectToOpen);
+      final pick = await openedProject(tester);
 
       expect(pick?.path, '/work/C-045/scene.tvpp');
       // What the open ACCEPTS, not what the dialog SHOWS: the picker is
@@ -164,12 +174,42 @@ void main() {
       // Android's Drive / SD / USB case. Collapsing it into a silent cancel
       // would leave the user tapping Open and nothing happening.
       installFilePicker(const [FolderGrant.noFilesystemPath()]);
-      final pick = await runFlow(tester, pickProjectToOpen);
+      final pick = await openedProject(tester);
       expect(pick, isNull);
       expect(
         find.byKey(const ValueKey<String>('folder-no-path-dialog')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('「파일 열기…」 takes several of every kind at once, each '
+        'where it goes — the project with its token', (tester) async {
+      installFilePicker(const [
+        FolderGrant.granted(
+          path: '/work/C-045/scene.anicel',
+          bookmark: 'BOOK==',
+          kind: GrantKind.file,
+        ),
+        FolderGrant.granted(path: '/work/C-045/A1.png', kind: GrantKind.file),
+        FolderGrant.granted(path: '/work/brushes.abr', kind: GrantKind.file),
+        FolderGrant.granted(path: '/work/Face.otf', kind: GrantKind.file),
+      ]);
+
+      final picked = await runFlow(tester, pickFilesToOpen);
+      final sorted = sortOpened(picked!);
+
+      expect(lastAllowMultiple, isTrue);
+      expect(sorted.projects.single.folderBookmark, 'BOOK==');
+      expect([for (final grant in sorted.media) grant.path], [
+        '/work/C-045/A1.png',
+      ]);
+      expect([for (final grant in sorted.brushes) grant.path], [
+        '/work/brushes.abr',
+      ]);
+      expect([for (final grant in sorted.fonts) grant.path], [
+        '/work/Face.otf',
+      ]);
+      expect(sorted.refused, isEmpty);
     });
   });
 

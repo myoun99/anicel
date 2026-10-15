@@ -164,7 +164,7 @@ class _BottomBarBuild {
             ? _CanvasViewportBottomBar._ownIconWidth
             : 0.0) +
         (_bar.onRotateByDrag != null
-            ? _rotationReadoutWidth
+            ? DragValueLabel.rowWidthOf(_rotationReadoutWidth)
             : 0.0) +
         (_bar.onRotateCw != null
             ? _CanvasViewportBottomBar._ownIconWidth
@@ -211,6 +211,7 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-reset',
           label: AppText.strings.viewResetView,
+          shortcuts: _bar._viewKeys(const [EditorActionIds.canvasResetView]),
           icon: Icons.crop_free,
           onSelected: _bar.onReset,
           enabled: _bar.viewEnabled,
@@ -223,7 +224,7 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-out',
           label: editorActionLabel(EditorActionIds.canvasZoomOut),
-          shortcuts: const [EditorActionIds.canvasZoomOut],
+          shortcuts: _bar._viewKeys(const [EditorActionIds.canvasZoomOut]),
           icon: Icons.zoom_out,
           onSelected: _bar.onZoomOut,
           enabled: _bar.viewEnabled,
@@ -231,7 +232,7 @@ class _BottomBarBuild {
         PanelFlyoutItem(
           keyValue: 'canvas-viewport-zoom-in',
           label: editorActionLabel(EditorActionIds.canvasZoomIn),
-          shortcuts: const [EditorActionIds.canvasZoomIn],
+          shortcuts: _bar._viewKeys(const [EditorActionIds.canvasZoomIn]),
           icon: Icons.zoom_in,
           onSelected: _bar.onZoomIn,
           enabled: _bar.viewEnabled,
@@ -287,6 +288,7 @@ class _BottomBarBuild {
       room: room,
       owed: owed,
       onFloor: _bar.onFloor,
+      oneToOneOnPill: _bar.oneToOneOnPill,
       hasLeading: _bar.leading.isNotEmpty,
       colorsWidth: _colorsWidth,
       hasViewControls: _hasViewControls,
@@ -294,7 +296,7 @@ class _BottomBarBuild {
       hostVerbsCanUnfold: _hostVerbsCanUnfold,
       hostVerbCount: _hostVerbs.length,
       hostSettingsListed: _bar.hostSettings.isNotEmpty,
-      zoomReadoutWidth: _zoomReadoutWidth,
+      zoomReadoutWidth: DragValueLabel.rowWidthOf(_zoomReadoutWidth),
     );
     // Last of all the host's controls go too — but Fit never does.
     // With the docked bar gone this is its only home, and a panel
@@ -321,7 +323,7 @@ class _BottomBarBuild {
     // gains a menu-open tap and nothing else.
     final settingsEntries = _settingsEntries(fold);
 
-    return Row(
+    final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(width: CanvasCapsule.barPillEnd),
@@ -386,6 +388,18 @@ class _BottomBarBuild {
         const SizedBox(width: CanvasCapsule.barPillEnd),
       ],
     );
+    // 🗣️THE PAGE STRIP'S LAW (`_PageStripSeat`): a panel too narrow for
+    // what the fold kept shows all of it, smaller — never a row that runs
+    // off the capsule, never a control cut away. At the narrowest the pill
+    // holds Fit and the gear, which never go, and below a 438px window the
+    // timesheet's rail is narrower than those two
+    // (`canvas-bottom-bar-overflows-at-437`, measured 2026-10-14).
+    // ⚠️The height is the bar's own, so a row that fits is its own size
+    // and nothing is scaled.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: SizedBox(height: constraints.maxHeight, child: row),
+    );
   }
 
   /// The view's angle as the pill reads it: wrapped into [-180, 180), on the
@@ -412,7 +426,7 @@ class _BottomBarBuild {
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
           // Every digit the angle has — the zoom readout's law (F-122).
-          text: sliderValueText(
+          text: readoutText(
             rotationDegrees,
             decimals: CanvasViewport.readoutDecimals,
             unit: '°',
@@ -433,6 +447,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-rotate-reset',
           tooltip: AppText.strings.viewStraighten,
+          shortcuts: const [EditorActionIds.canvasStraighten],
           icon: const Icon(Icons.refresh),
           onPressed: _bar.onRotateReset,
         ),
@@ -441,6 +456,7 @@ class _BottomBarBuild {
         _bar._barIconButton(
           keyValue: 'canvas-viewport-flip-vertical',
           tooltip: AppText.strings.viewFlipVertical,
+          shortcuts: const [EditorActionIds.canvasFlipVertical],
           icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
           onPressed: _bar.onFlipVertical,
           isSelected: viewport.flipVertical,
@@ -480,6 +496,7 @@ class _BottomBarBuild {
   Widget _fitButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-fit',
     tooltip: AppText.strings.viewFitToView,
+    shortcuts: const [EditorActionIds.canvasFit],
     icon: const Icon(Icons.fit_screen),
     onPressed: _bar.viewEnabled ? _bar.onFit : null,
   );
@@ -487,6 +504,7 @@ class _BottomBarBuild {
   Widget _resetButton() => _bar._barIconButton(
     keyValue: 'canvas-viewport-reset',
     tooltip: AppText.strings.viewResetView,
+    shortcuts: const [EditorActionIds.canvasResetView],
     // A GLYPH in the icon slot, beside Fit and the zoom icons — and icons do
     // not follow the OS text size. Scaled as text it outgrew the button it
     // names (at 2× `1:1` wrapped in its 18px slot); the readouts beside it
@@ -526,8 +544,8 @@ class _BottomBarBuild {
       // read `55%` for every zoom from 54.5 to 55.5. Every zoom verb LANDS
       // on this grid ([CanvasZoomScale.landed]), so the digits written here
       // are all the digits there are — and the count never changes under
-      // the finger, which is the slider's law too ([sliderValueText], F-34).
-      text: sliderValueText(
+      // the finger, which is the slider's law too ([readoutText], F-34).
+      text: readoutText(
         displayPercent,
         decimals: CanvasViewport.readoutDecimals,
         unit: '%',
@@ -555,6 +573,9 @@ class _BottomBarBuild {
       AppIconButton(
         keyValue: verb.keyValue,
         tooltip: verb.label,
+        // The row's own actions, so the button and the row it unfolds from
+        // say the same key.
+        shortcuts: verb.shortcuts,
         icon: Icon(verb.icon),
         size: AppIconButtonSize.strip,
         onPressed: verb.enabled ? verb.onSelected : null,

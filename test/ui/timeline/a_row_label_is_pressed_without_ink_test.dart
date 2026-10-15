@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/input/arena_tap_hold.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+
+import '../../helpers/named_finders.dart';
 
 /// F-132 — a rail row's label is pressed without ink, on every rail.
 ///
@@ -27,39 +30,30 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// bare `MaterialApp`, whose theme is Flutter's own — so it could never have
 /// noticed a label that stopped turning the ink off for itself either.
 /// ★It asks what the PRESS resolves to now, under the app's real theme.
+///
+/// ↩️**AND THEN THE INK WENT** (I-57 ①, 2026-10-10): the label bodies were
+/// `InkWell`s held only for their place in the arena — ~20 elements a row,
+/// mounted anew on every cut switch — and hold that tap with no ink at all
+/// now ([ArenaTapHold]). So it reads that each body IS that: no theme can
+/// lend a splash to what has no ink.
 void main() {
-  List<InkWell> labelInkWells(
-    WidgetTester tester,
-    bool Function(String key) isLabel,
-  ) => tester
-      .widgetList<InkWell>(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is InkWell &&
-              widget.key is ValueKey<String> &&
-              isLabel((widget.key! as ValueKey<String>).value),
-        ),
-      )
-      .toList();
-
-  void expectInkless(WidgetTester tester, List<InkWell> labels) {
-    expect(labels, isNotEmpty, reason: 'fixture: the rail draws labels');
-    final theme = Theme.of(tester.element(find.byType(Scaffold)));
-    expect(
-      theme.splashFactory,
-      NoSplash.splashFactory,
-      reason: 'fixture: the harness must be wearing the APP theme',
-    );
-    for (final label in labels) {
-      expect(
-        label.splashFactory ?? theme.splashFactory,
-        NoSplash.splashFactory,
-        reason: '${label.key}: no fill spreads from the press',
+  Finder labelBodies(bool Function(String key) isLabel) =>
+      find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            isLabel((widget.key! as ValueKey<String>).value),
       );
+
+  void expectInkless(Finder labels) {
+    final found = labels.evaluate().toList();
+    expect(found, isNotEmpty, reason: 'fixture: the rail draws labels');
+    for (final label in found) {
       expect(
-        label.highlightColor ?? theme.highlightColor,
-        Colors.transparent,
-        reason: '${label.key}: no highlight while held',
+        label.widget,
+        isA<ArenaTapHold>(),
+        reason:
+            '${nameOf(label) ?? label.widget.key}: the body holds its tap '
+            'with no ink to spread',
       );
     }
   }
@@ -90,8 +84,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
-      tester,
-      labelInkWells(tester, (key) => key.startsWith('timeline-layer-row-')),
+      find.namedWhere((name) => name.startsWith('timeline-layer-row-')),
     );
 
     // Drain the prerender scheduler's debounced warming.
@@ -129,9 +122,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
-      tester,
-      labelInkWells(
-        tester,
+      labelBodies(
         (key) =>
             key.startsWith('storyboard-track-select-') ||
             key.startsWith('storyboard-se-label-'),

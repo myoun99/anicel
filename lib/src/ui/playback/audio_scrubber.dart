@@ -8,12 +8,13 @@
 /// the same transport playback uses — one arm per crossed frame, samples
 /// exact, no media pipeline opened per tick.
 ///
-/// The schedule uploads ONCE per gesture (the first frame the scrub
-/// actually crosses), from the same scheduler playback uses, over the
-/// active-cut playlist — so scrubbed sound and played sound can never
-/// disagree. Standing down is silent and per-gesture: no device, no
-/// resident PCM, or a cut with no sound leaves the scrub visual-only,
-/// exactly as it was before this class existed.
+/// The schedule uploads ONCE per window a gesture stands in — the cut, or
+/// the track where it stands in no cut (F-341) — at the first frame the
+/// scrub crosses there, from the same scheduler playback uses, over the
+/// same window a run there plays — so scrubbed sound and played sound can
+/// never disagree. Standing down is silent and per window: no device, no
+/// resident PCM, or a stretch with no sound leaves the scrub visual-only
+/// there, exactly as it was before this class existed.
 library;
 
 import '../../models/layer_id.dart';
@@ -58,6 +59,15 @@ class AudioScrubber {
 
   bool _armed = false;
   bool _stoodDown = false;
+
+  /// What the decision was made for — the cut the scrub stands in, or the
+  /// track where it stands in no cut: the mix is that window's, so a scrub
+  /// that crosses into another cut (I-57 ②), or out of every cut onto the
+  /// track (F-341), decides again for what it reached. ↩️One decision a
+  /// gesture was enough while a scrub left the active cut alone, and after
+  /// a crossing it played the cut it left at the frame numbers of the cut
+  /// it reached.
+  ({PlaybackScope scope, Object? on})? _decidedFor;
   QaAudioDevice? _device;
   ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
@@ -75,18 +85,35 @@ class AudioScrubber {
   ///
   /// [localFrame] is the active cut's local frame — the same coordinate
   /// the editing scrub rides.
-  void onScrubFrame(int localFrame) {
+  void onScrubFrame(int localFrame) => _scrub(
+    (scope: PlaybackScope.activeCut, on: controller.resolveActiveCutId()),
+    localFrame,
+  );
+
+  /// A scrub move that CHANGED the frame where no cut is — a gap, the
+  /// movie's trailing frames, a track with no cut (F-341): plays
+  /// [trackFrame]'s slice of the track's own sound.
+  void onScrubTrackFrame(int trackFrame) => _scrub(
+    (scope: PlaybackScope.allCuts, on: controller.resolveActiveTrackId()),
+    trackFrame,
+  );
+
+  void _scrub(({PlaybackScope scope, Object? on}) where, int frame) {
     if (controller.isActive) {
       // Playback (even paused) owns the device and its schedule.
       return;
     }
+    if (where != _decidedFor) {
+      _letGo();
+      _decidedFor = where;
+    }
     if (!_armed && !_stoodDown) {
-      _prepare(localFrame);
+      _prepare(where.scope, frame);
     }
     if (!_armed) {
       return;
     }
-    final startSample = _rate.frameToSample(localFrame, _deviceRate);
+    final startSample = _rate.frameToSample(frame, _deviceRate);
     // A drag that left the streaming window re-centers it — a small
     // synchronous read, same budget as the gesture's first upload.
     if (_window.hasStreaming &&
@@ -96,12 +123,18 @@ class AudioScrubber {
     }
     _device!.play(
       startSample: startSample,
-      stopSample: _rate.frameToSample(localFrame + 1, _deviceRate),
+      stopSample: _rate.frameToSample(frame + 1, _deviceRate),
     );
   }
 
   /// The gesture's release: silence, and a fresh decision next gesture.
   void onScrubEnd() {
+    _letGo();
+    _decidedFor = null;
+  }
+
+  /// Silence, and the decision undone.
+  void _letGo() {
     if (_armed) {
       _device?.stop();
     }
@@ -109,16 +142,16 @@ class AudioScrubber {
     _stoodDown = false;
   }
 
-  /// One decision per gesture, mirroring the transport's activation: the
+  /// One decision per window, mirroring the transport's activation: the
   /// schedule from the shared scheduler, PCM from the conform store, all
   /// resident — or streamable from its conform — or nothing. A stand-down
   /// kicks the missing pieces so the NEXT gesture (or the next play) has
   /// them.
-  void _prepare(int localFrame) {
+  void _prepare(PlaybackScope scope, int frame) {
     _stoodDown = true;
     _rate = resolveFrameRate();
     final schedule = buildAudioPlaybackSchedule(
-      playlist: controller.playlistForScope(PlaybackScope.activeCut),
+      window: controller.windowForScope(scope),
       project: resolveProject(),
       rate: _rate,
       durationSecondsFor: conformStore.durationSecondsFor,
@@ -126,7 +159,7 @@ class AudioScrubber {
       mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
     );
     if (schedule.isEmpty) {
-      // A silent cut: do not even open a device for it.
+      // A silent stretch: do not even open a device for it.
       return;
     }
     final device = _resolveDevice();
@@ -139,7 +172,7 @@ class AudioScrubber {
       window: _window,
       schedule: schedule,
       rate: _rate,
-      centerFrame: localFrame,
+      centerFrame: frame,
       preferredDeviceName: resolveOutputDeviceName?.call(),
     );
     if (armed == null) {
@@ -162,10 +195,5 @@ class AudioScrubber {
     centerSample: centerSample,
   );
 
-  void dispose() {
-    if (_armed) {
-      _device?.stop();
-      _armed = false;
-    }
-  }
+  void dispose() => _letGo();
 }

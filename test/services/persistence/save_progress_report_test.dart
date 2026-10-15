@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/native_call_watch.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🔑 The percentage has to be REAL.
@@ -43,6 +44,18 @@ void main() {
     return s;
   }
 
+  /// A watch over [test]'s steps. Under the load of four runs at once, this
+  /// file's APPEND test stood still until its run ended and every test after
+  /// it 「did not complete」, its own timeout never ringing — a call that
+  /// never returned on this isolate (board
+  /// `the-trimmed-movie-test-can-hang-on-windows-ci`, the sixth sighting):
+  /// the watch names the step it stood in and ends the file instead.
+  Future<NativeCallWatch> watched(String test) async {
+    final watch = await NativeCallWatch.start(test);
+    addTearDown(watch.stop);
+    return watch;
+  }
+
   /// Bytes that do not compress. A carried file is held FRAMED when it
   /// compresses, and what a save then streams is that blob, not the file —
   /// these measure a file's own bytes streaming, so they carry ones that
@@ -56,6 +69,8 @@ void main() {
   }
 
   test('a FULL save reports its way to 1.0', () async {
+    final watch = await watched('a FULL save reports its way to 1.0');
+    watch.step('drawing three cuts');
     final s = session();
     for (var i = 0; i < 3; i += 1) {
       s.cutVerbs.createCut();
@@ -63,6 +78,7 @@ void main() {
     }
 
     final reports = <double>[];
+    watch.step('the save');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(reports, isNotEmpty, reason: 'nothing crossed the port at all');
@@ -81,9 +97,12 @@ void main() {
     // The two save paths are different code with different denominators.
     // Instrumenting one and trusting the other is how the fast path ends
     // up showing a window that never moves.
+    final watch = await watched('an INCREMENTAL save reports its way to 1.0');
+    watch.step('drawing a cut');
     final s = session();
     s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
+    watch.step('the first save');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
     // The proof that an APPEND ran, rather than a full rewrite that happened
     // to end up bigger. An append writes after the committed directory, so
@@ -97,9 +116,11 @@ void main() {
       parseAnicelZipLayoutFile(projectPath).centralDirectoryOffset,
     );
 
+    watch.step('drawing another cut');
     s.cutVerbs.createCut();
     drawOnCurrentFrame(s);
     final reports = <double>[];
+    watch.step('the append');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(
@@ -128,18 +149,25 @@ void main() {
       // Nothing caught it because no test took this path: the incremental
       // test saved no media, and every media test started from a fresh
       // session, which is a full rewrite.
+      final watch = await watched('an APPEND with new media');
+      watch.step('drawing');
       final s = session();
       drawOnCurrentFrame(s);
+      watch.step('the first save');
       await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
+      watch.step('writing the sound');
       File('${directory.path}/대사.wav')
         ..createSync()
         ..writeAsBytesSync(incompressible(1200 * 1024));
+      watch.step('importing the sound');
       await s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+      watch.step('drawing a new cut');
       s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
 
       final reports = <double>[];
+      watch.step('the append');
       await s.projectDoor.saveProjectToFile(
         asked: SaveAsked.byAPerson,
         projectPath,
@@ -167,15 +195,20 @@ void main() {
     // own that assertion would pass with every step() and within() in the
     // append path deleted, which is a window that shows a spinner and one
     // number. The path has to be seen moving.
+    final watch = await watched('an APPEND reports as it goes');
+    watch.step('drawing');
     final s = session();
     drawOnCurrentFrame(s);
+    watch.step('the first save');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson);
 
+    watch.step('drawing five cuts');
     for (var i = 0; i < 5; i += 1) {
       s.cutVerbs.createCut();
       drawOnCurrentFrame(s);
     }
     final reports = <double>[];
+    watch.step('the append');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(
@@ -196,15 +229,20 @@ void main() {
       // rises even with the within-entry reporting deleted. Holding the entry
       // count FIXED and varying only the asset's size leaves the sub-entry
       // fraction as the only thing that can move the number.
+      final watch = await watched('a BIGGER asset is reported on more often');
       Future<List<double>> saveAssetOf(String tag, int bytes) async {
+        watch.step('drawing ($tag)');
         final s = session();
         drawOnCurrentFrame(s);
+        watch.step('writing the sound ($tag)');
         final path = '${directory.path}/$tag.wav';
         File(path)
           ..createSync()
           ..writeAsBytesSync(incompressible(bytes));
+        watch.step('importing the sound ($tag)');
         await s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         final reports = <double>[];
+        watch.step('the save ($tag)');
         await s.projectDoor.saveProjectToFile(
           asked: SaveAsked.byAPerson,
           '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
@@ -240,17 +278,22 @@ void main() {
       // test is comparative: adding an asset to a project has to add reports
       // about it. A count is the only thing that can tell "streamed quietly"
       // apart from "streamed".
+      final watch = await watched('every asset is reported on');
       Future<List<double>> saveWithAssets(String tag, int assets) async {
+        watch.step('drawing ($tag)');
         final s = session();
         drawOnCurrentFrame(s);
         for (var i = 0; i < assets; i += 1) {
+          watch.step('writing sound $i ($tag)');
           final path = '${directory.path}/$tag-$i.wav';
           File(path)
             ..createSync()
             ..writeAsBytesSync(incompressible(900 * 1024));
+          watch.step('importing sound $i ($tag)');
           await s.mediaPool.importMediaFiles([path], copyIntoProject: true);
         }
         final reports = <double>[];
+        watch.step('the save ($tag)');
         await s.projectDoor.saveProjectToFile(
           asked: SaveAsked.byAPerson,
           '${directory.path.replaceAll('\\', '/')}/$tag.anicel',
@@ -290,12 +333,16 @@ void main() {
     // finished the way every other entry does — it is counted in the
     // denominator and never lands in the numerator. Real enough to guard: a
     // recording that captured nothing, or an import cut off part way.
+    final watch = await watched('an EMPTY asset');
+    watch.step('drawing');
     final s = session();
     drawOnCurrentFrame(s);
+    watch.step('importing the empty sound');
     File('${directory.path}/빈소리.wav').createSync();
     await s.mediaPool.importMediaFiles(['${directory.path}/빈소리.wav'], copyIntoProject: true);
 
     final reports = <double>[];
+    watch.step('the save');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: reports.add);
 
     expect(reports.last, 1.0);
@@ -308,14 +355,20 @@ void main() {
     // about one, so it is checked against the source rather than against
     // another save (two sessions do not produce identical archives, and a
     // length comparison between them measures that instead of this).
+    final watch = await watched('a WATCHED save writes the asset whole');
+    watch.step('writing the sound');
     final source = File('${directory.path}/대사.wav')
       ..createSync()
       ..writeAsBytesSync(incompressible(900 * 1024));
+    watch.step('drawing');
     final s = session();
     drawOnCurrentFrame(s);
+    watch.step('importing the sound');
     await s.mediaPool.importMediaFiles(['${directory.path}/대사.wav'], copyIntoProject: true);
+    watch.step('the save');
     await s.projectDoor.saveProjectToFile(projectPath, asked: SaveAsked.byAPerson, onProgress: (_) {});
 
+    watch.step('reading the archive back');
     final archive = ZipDecoder().decodeBytes(
       File(projectPath).readAsBytesSync(),
     );

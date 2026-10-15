@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' show Offset;
 
 import '../core/argb_channels.dart';
+import '../core/floor_math.dart';
 import '../core/point_bounds.dart';
 import '../models/dirty_region.dart';
 import '../models/bitmap_surface.dart';
@@ -21,7 +22,6 @@ import '../core/dev_profile.dart';
 import '../core/rgb_tolerance.dart';
 import 'canvas_color_sampler.dart';
 import 'canvas_read_source.dart';
-import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
@@ -735,10 +735,20 @@ FloodFillRegion? floodFillRegion({
         gapClosePx: options.gapClosePx,
       );
       if (result != null) {
-        final cropLeft = math.max(0, result.minX - options.expandPx);
-        final cropTop = math.max(0, result.minY - options.expandPx);
-        final cropRight = math.min(width - 1, result.maxX + options.expandPx);
-        final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+        final (
+          left: cropLeft,
+          top: cropTop,
+          right: cropRight,
+          bottom: cropBottom,
+        ) = _floodFinishBox(
+          minX: result.minX,
+          maxX: result.maxX,
+          minY: result.minY,
+          maxY: result.maxY,
+          width: width,
+          height: height,
+          options: options,
+        );
         return FloodFillRegion(
           left: cropLeft,
           top: cropTop,
@@ -792,12 +802,22 @@ FloodFillRegion? floodFillRegion({
     if (result != null) {
       // The finish (crop + expand + anti-alias) runs natively too
       // (A-2d): the verification lab showed these full-region passes
-      // were most of what remained in the fill.flood probe. Same crop
-      // math as the Dart tail below.
-      final cropLeft = math.max(0, result.minX - options.expandPx);
-      final cropTop = math.max(0, result.minY - options.expandPx);
-      final cropRight = math.min(width - 1, result.maxX + options.expandPx);
-      final cropBottom = math.min(height - 1, result.maxY + options.expandPx);
+      // were most of what remained in the fill.flood probe. The crop is
+      // the Dart tail's own ([_floodFinishBox]).
+      final (
+        left: cropLeft,
+        top: cropTop,
+        right: cropRight,
+        bottom: cropBottom,
+      ) = _floodFinishBox(
+        minX: result.minX,
+        maxX: result.maxX,
+        minY: result.minY,
+        maxY: result.maxY,
+        width: width,
+        height: height,
+        options: options,
+      );
       return FloodFillRegion(
         left: cropLeft,
         top: cropTop,
@@ -927,6 +947,42 @@ FloodFillRegion? floodFillRegion({
   );
 }
 
+/// How far past its coverage a fill's finish reaches: [FloodFillOptions.
+/// expandPx] generations of growth — and, with the anti-alias, one pixel
+/// more: the fill's ramp spreads ONE PIXEL OUTWARD past its own edge
+/// ([softenMaskBoundary], unclamped), so a box a fill is finished in holds
+/// that pixel on every side.
+///
+/// 🗣️유저 답 the-fill-ramp-is-cut-at-its-box-Q1 (10-09): 「상자를 한 칸 넓혀
+/// 어디서나 번지게」. ↩️The box was the coverage grown by the expand alone,
+/// and a ramp that met its edge was cut there — the shape tool's 4px
+/// horizontal line read `86 · 100 · 100 · 86 · 14%`, the spread on one side
+/// only, and the bucket's lost it at the last cells of what it filled.
+int fillFinishReach(FloodFillOptions options) =>
+    options.expandPx + (options.antiAlias ? 1 : 0);
+
+/// The box a flood's coverage `[minX, maxX] × [minY, maxY]` is finished
+/// in: its bounds grown by what the finish reaches ([fillFinishReach]), cut
+/// at the canvas — the one box the Dart tail and both native finishes are
+/// handed.
+({int left, int top, int right, int bottom}) _floodFinishBox({
+  required int minX,
+  required int maxX,
+  required int minY,
+  required int maxY,
+  required int width,
+  required int height,
+  required FloodFillOptions options,
+}) {
+  final reach = fillFinishReach(options);
+  return (
+    left: math.max(0, minX - reach),
+    top: math.max(0, minY - reach),
+    right: math.min(width - 1, maxX + reach),
+    bottom: math.min(height - 1, maxY + reach),
+  );
+}
+
 /// The shared post-flood tail: crop to the flooded bounds, then the
 /// expand and anti-alias passes region-locally (both the Dart and the
 /// native flood produce the same `filled` set, so this tail is common).
@@ -940,13 +996,23 @@ FloodFillRegion _cropAndFinishFloodRegion({
   required int maxY,
   required FloodFillOptions options,
 }) {
-  // Crop FIRST (with room for the expand growth), then run the expand and
-  // anti-alias passes region-locally: the old grow pass copied and scanned
-  // a full-canvas array per pass.
-  final cropLeft = math.max(0, minX - options.expandPx);
-  final cropTop = math.max(0, minY - options.expandPx);
-  final cropRight = math.min(width - 1, maxX + options.expandPx);
-  final cropBottom = math.min(height - 1, maxY + options.expandPx);
+  // Crop FIRST (with room for what the finish reaches), then run the
+  // expand and anti-alias passes region-locally: the old grow pass copied
+  // and scanned a full-canvas array per pass.
+  final (
+    left: cropLeft,
+    top: cropTop,
+    right: cropRight,
+    bottom: cropBottom,
+  ) = _floodFinishBox(
+    minX: minX,
+    maxX: maxX,
+    minY: minY,
+    maxY: maxY,
+    width: width,
+    height: height,
+    options: options,
+  );
   final regionWidth = cropRight - cropLeft + 1;
   final regionHeight = cropBottom - cropTop + 1;
   final mask = Uint8List(regionWidth * regionHeight);
@@ -1137,116 +1203,231 @@ FloodFillRegion? _gapCloseFloodRegion({
   );
 }
 
-/// The SHAPE fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다):
-/// the outline the user just drew, filled with [color] whatever is under
-/// it — [buildRegionFillDab] for one outline.
-BrushDab? buildShapeFillDab({
-  required CanvasSelectionShape shape,
-  required int color,
-  double opacity = 1.0,
-  FloodFillOptions options = const FloodFillOptions(),
-}) => buildRegionFillDab(
-  region: CanvasSelectionRegion.shape(shape),
-  color: color,
-  opacity: opacity,
-  options: options,
-);
-
-/// An AREA laid as ONE dab: every pixel [region] covers, painted [color]
-/// whatever is under it and whoever asked — the fill tool's shape fill
-/// ([buildShapeFillDab]), and what the shape tool lays without the brush:
-/// its fill and its plain line (I-69).
+/// An AREA laid as stamp pieces ([_stampPieces]): every pixel [region]
+/// covers, painted [color] whatever is under it and whoever asked — the
+/// fill tool's shape fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든
+/// 채운다), and what the shape tool lays without the brush: its fill and
+/// its plain line (I-69). Under a symmetry guide [region] is every copy
+/// together. Empty when the region covers no pixel at all.
 ///
 /// It shares the flood's tail rather than resembling it. Once there is a
 /// coverage mask the two are the same problem, so the expand and
-/// anti-alias passes are literally [_cropAndFinishFloodRegion] — which is
-/// why "AA follows the fill" (유저 확정) needed no new rasterizer: the
-/// bucket's AA has always been a post-pass over a binary mask, and a
+/// anti-alias passes are the bucket's own — [dilateMask4] and
+/// [softenMaskBoundary], run as [_cropAndFinishFloodRegion] runs them —
+/// which is why "AA follows the fill" (유저 확정) needed no new rasterizer:
+/// the bucket's AA has always been a post-pass over a binary mask, and a
 /// region's mask is binary too.
 ///
 /// What it does NOT share is the front: no lazy compose, no seed, no
 /// tolerance. An area never looks at the picture, so it never pays to
 /// composite one — this is markedly cheaper than a flood, not a variant of
-/// it. Null when the region covers no pixels at all.
-BrushDab? buildRegionFillDab({
+/// it.
+///
+/// 🚨★★★IT IS FINISHED ONLY WHERE IT REACHES (board
+/// `an-area-dab-costs-its-box`, 2026-10-09). It was finished as ONE SHEET
+/// over its whole box — the coverage box grown by the expand — so its cost
+/// followed the box and not the paint: a 4px diagonal across a 2010×1510
+/// box built 17–34 ms and an 11.5 MB stamp, and its landing staged every
+/// tile of the box, the same as filling the box solid (the VM on the
+/// desktop). Now the rows come as RUNS first
+/// ([CanvasSelectionRegion.pixelRunsFor] — no byte per pixel), the runs
+/// say which tiles the finished area can reach ([_tilesReached]), and only
+/// those are finished, each in a window of its own ([_finishedWindow]).
+///
+/// ⛔WHAT LANDS IS THE SHEET'S BYTES, and that is what the window is for,
+/// not a hope. A finished byte reads the hard mask no farther than the
+/// passes reach — `expandPx` 4-neighbour generations, then one soften —
+/// and the sheet's edges were its box's. A window is its tile grown by
+/// that reach and cut at that same box, so every pixel of the tile reads
+/// exactly what the sheet read. The box itself holds all the finish reaches
+/// ([fillFinishReach]), the ramp past the expand included, so nothing of
+/// the area is cut at it.
+List<BrushDab> buildRegionFillDabs({
   required CanvasSelectionRegion region,
   required int color,
   double opacity = 1.0,
   FloodFillOptions options = const FloodFillOptions(),
-}) {
+}) => regionFillPieces(
+  region: region,
+  color: color,
+  opacity: opacity,
+  options: options,
+).toList();
+
+/// [buildRegionFillDabs]'s pieces one at a time, each made as it is asked
+/// for — what lets a shape being dragged be laid a few pieces a frame and
+/// shown when it is whole (I-69-Q4ⓒ). Every pass over it makes its pieces
+/// afresh.
+Iterable<BrushDab> regionFillPieces({
+  required CanvasSelectionRegion region,
+  required int color,
+  double opacity = 1.0,
+  FloodFillOptions options = const FloodFillOptions(),
+}) sync* {
   final bounds = region.coverageBounds;
   final left = bounds.left.floor();
   final top = bounds.top.floor();
   final width = bounds.right.ceil() - left;
   final height = bounds.bottom.ceil() - top;
   if (width <= 0 || height <= 0) {
-    return null;
+    return;
   }
-  final mask = region.maskFor(
+  final rows = region.pixelRunsFor(
     left: left,
     top: top,
     width: width,
     height: height,
   );
-  var covers = false;
-  for (final coverage in mask) {
-    if (coverage != 0) {
-      covers = true;
-      break;
-    }
-  }
-  if (!covers) {
-    return null;
-  }
-  // The mask arrives cropped already, so the tail is handed the box it
-  // will keep — the grow pass still needs room to grow into, which is what
-  // the expand margin below is for.
-  final margin = options.expandPx;
-  final padded = Uint8List((width + margin * 2) * (height + margin * 2));
-  for (var y = 0; y < height; y += 1) {
-    padded.setRange(
-      (y + margin) * (width + margin * 2) + margin,
-      (y + margin) * (width + margin * 2) + margin + width,
-      mask,
-      y * width,
-    );
-  }
-  final region2 = _cropAndFinishFloodRegion(
-    filled: padded,
-    width: width + margin * 2,
-    height: height + margin * 2,
-    minX: margin,
-    maxX: margin + width - 1,
-    minY: margin,
-    maxY: margin + height - 1,
-    options: options,
+  final hard = (rows: rows, left: left, top: top);
+  final reach = fillFinishReach(options);
+  // The sheet the area is finished as: the coverage box, with room for all
+  // the finish reaches — the expand AND the ramp past it.
+  final sheet = DirtyRegion(
+    left: left - reach,
+    top: top - reach,
+    rightExclusive: left + width + reach,
+    bottomExclusive: top + height + reach,
   );
-  return _colorStampDab(
-    region: region2,
+  final reached = _tilesReached(hard, sheet: sheet, reach: reach);
+  yield* _stampPieces(
+    sheet,
     color: color,
-    originX: left - margin,
-    originY: top - margin,
     opacity: opacity,
+    finishedAround: (piece) => reached(piece)
+        ? _finishedWindow(
+            hard,
+            piece: piece,
+            sheet: sheet,
+            reach: reach,
+            options: options,
+          )
+        : null,
   );
 }
 
-/// The whole P6 tap: compose → fill from [point] → the region as ONE
-/// mask-tipped dab ("fill = one dab"), committed through the exact stroke
-/// funnel — three-route parity, undo and .anicel serialization come free.
-/// Null when nothing fills (seed off the fill raster), or when an
-/// EXTENDED fill's flood reaches the apron wall — the region is not
-/// closed; [onOpenRegion] fires so the UI can say so instead of silently
-/// flooding the surround.
+/// A region's hard coverage as rows of runs: row `r` is the canvas row
+/// `top + r`, its `[start, end, …]` columns counted from `left`
+/// ([CanvasSelectionRegion.pixelRunsFor]).
+typedef _HardRuns = ({List<List<int>> rows, int left, int top});
+
+/// A finished coverage mask and where it sits on the canvas, at least as
+/// large as the piece it was finished for.
+typedef _FinishedMask = ({Uint8List mask, int left, int top, int width});
+
+/// The grid an area is cut on: the cel's own tiles. It decides only how
+/// the area is cut, never a byte of what lands — a piece lands 1:1 wherever
+/// it is — and on the cel's grid each piece stages exactly the tiles it
+/// covers when it lands, a run of them along one tile row. A surface on
+/// another grid lands the same bytes.
+const int _pieceSize = defaultCelTileSize;
+
+/// Which of [sheet]'s tiles the finished area can reach: a tile within
+/// [reach] of a covered pixel. The rest would finish to nothing, and are
+/// never finished.
+bool Function(TileSpan piece) _tilesReached(
+  _HardRuns hard, {
+  required DirtyRegion sheet,
+  required int reach,
+}) {
+  final range = sheet.tileRange(tileSize: _pieceSize);
+  final columns = range.lastX - range.firstX + 1;
+  final grid = Uint8List(columns * (range.lastY - range.firstY + 1));
+  for (var row = 0; row < hard.rows.length; row += 1) {
+    final runs = hard.rows[row];
+    if (runs.isEmpty) {
+      continue;
+    }
+    final y = hard.top + row;
+    final firstY =
+        floorDiv(math.max(y - reach, sheet.top), _pieceSize) - range.firstY;
+    final lastY =
+        floorDiv(math.min(y + reach, sheet.bottomExclusive - 1), _pieceSize) -
+        range.firstY;
+    for (var r = 0; r + 1 < runs.length; r += 2) {
+      final x0 = math.max(hard.left + runs[r] - reach, sheet.left);
+      final x1 = math.min(
+        hard.left + runs[r + 1] - 1 + reach,
+        sheet.rightExclusive - 1,
+      );
+      final firstX = floorDiv(x0, _pieceSize) - range.firstX;
+      final lastX = floorDiv(x1, _pieceSize) - range.firstX;
+      for (var tileRow = firstY; tileRow <= lastY; tileRow += 1) {
+        grid.fillRange(
+          tileRow * columns + firstX,
+          tileRow * columns + lastX + 1,
+          1,
+        );
+      }
+    }
+  }
+  return (piece) =>
+      grid[(piece.coord.y - range.firstY) * columns +
+          (piece.coord.x - range.firstX)] !=
+      0;
+}
+
+/// The area finished over [piece] as the one sheet over [sheet] would have
+/// finished it: its hard mask over a window — the piece grown by [reach],
+/// cut at [sheet] — then the expand and the anti-alias pass, as
+/// [_cropAndFinishFloodRegion] runs them. Exact over the piece, which is
+/// all a reader takes from it ([buildRegionFillDabs] says why).
+_FinishedMask _finishedWindow(
+  _HardRuns hard, {
+  required TileSpan piece,
+  required DirtyRegion sheet,
+  required int reach,
+  required FloodFillOptions options,
+}) {
+  final left = math.max(piece.left - reach, sheet.left);
+  final top = math.max(piece.top - reach, sheet.top);
+  final width = math.min(piece.rightExclusive + reach, sheet.rightExclusive) -
+      left;
+  final height =
+      math.min(piece.bottomExclusive + reach, sheet.bottomExclusive) - top;
+  final mask = Uint8List(width * height);
+  final firstRow = math.max(top, hard.top);
+  final endRow = math.min(top + height, hard.top + hard.rows.length);
+  for (var y = firstRow; y < endRow; y += 1) {
+    final runs = hard.rows[y - hard.top];
+    final offset = (y - top) * width;
+    for (var r = 0; r + 1 < runs.length; r += 2) {
+      final start = math.max(hard.left + runs[r], left);
+      final end = math.min(hard.left + runs[r + 1], left + width);
+      if (start < end) {
+        mask.fillRange(offset + start - left, offset + end - left, 255);
+      }
+    }
+  }
+  dilateMask4(mask, width: width, height: height, passes: options.expandPx);
+  if (options.antiAlias) {
+    // ⛔UNCLAMPED — the fill's ramp, as in [_cropAndFinishFloodRegion].
+    softenMaskBoundary(
+      mask,
+      width: width,
+      height: height,
+      insideOutlineOnly: false,
+    );
+  }
+  return (mask: mask, left: left, top: top, width: width);
+}
+
+/// The whole P6 tap: compose → fill from [point] → the region as stamp
+/// pieces ([_stampPieces]), committed through the exact stroke funnel —
+/// three-route parity, undo and .anicel serialization come free. Empty
+/// when nothing fills (seed off the fill raster), or when an EXTENDED
+/// fill's flood reaches the apron wall — the region is not closed;
+/// [onOpenRegion] fires so the UI can say so instead of silently flooding
+/// the surround.
 ///
 /// [symmetry] makes the tap fill every copy of the seed, unioned into the
-/// same single dab — see the loop below for why the stroke path's dab
+/// same one region — see the loop below for why the stroke path's dab
 /// replication is the wrong tool here.
 ///
 /// [activeLayerId] is the 「현재」 of [FloodFillOptions.source] — the layer
 /// the dab lands on. [space] is where [point] and the dab are: that layer's
 /// ARTWORK when it is posed (the draw-through wrap hands the seed over in
 /// it), null for the canvas.
-BrushDab? buildFillDab({
+List<BrushDab> buildFillDabs({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
@@ -1347,21 +1528,32 @@ BrushDab? buildFillDab({
   }
   if (region == null) {
     // The notice is the OPEN-region one only when a flood actually hit the
-    // wall; a seed that simply landed outside the raster answers null in
+    // wall; a seed that simply landed outside the raster answers nothing in
     // silence, exactly as it did before symmetry existed.
     if (reachedWall) {
       onOpenRegion?.call();
     }
-    return null;
+    return const [];
   }
-
-  return _colorStampDab(
-    region: region,
-    color: color,
-    originX: raster.originX,
-    originY: raster.originY,
-    opacity: opacity,
+  // The flood finished its region as one sheet already (the raster is
+  // whole either way), so every piece is cut from that one mask.
+  final finished = (
+    mask: region.mask,
+    left: region.left + raster.originX,
+    top: region.top + raster.originY,
+    width: region.width,
   );
+  return _stampPieces(
+    DirtyRegion(
+      left: finished.left,
+      top: finished.top,
+      rightExclusive: finished.left + region.width,
+      bottomExclusive: finished.top + region.height,
+    ),
+    color: color,
+    opacity: opacity,
+    finishedAround: (_) => finished,
+  ).toList();
 }
 
 /// The regions a fill flooded, merged into the single region the stamp path
@@ -1416,8 +1608,133 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
   );
 }
 
-/// A coverage mask painted [color] and handed over as ONE stamp dab, its
-/// region coordinates offset by ([originX], [originY]) into world space.
+/// A finished coverage mask painted [color] and handed over as STAMP
+/// PIECES: one dab for each run of cel tiles of [box] that the mask covers
+/// at all, along a tile row, in row-major order. [finishedAround] hands
+/// the finished mask over a tile, or null for a tile it knows is empty.
+/// Empty when no tile has a covered pixel.
+///
+/// 🚨★★★EVERY MASK A FILL LAYS IS CUT HERE — the bucket's flood and an
+/// area alike (board `an-area-dab-costs-its-box`, 2026-10-09). A piece lands
+/// 1:1 on its own pixels and the pieces share none, so every pixel that
+/// shows is what one stamp over the whole box landed, through every route
+/// a stamp takes (the blend, the erase, the selection's fold, 뒤에 그리기).
+/// What they do not carry is the box's empty tiles: one stamp was the box's
+/// width × height × 4 bytes however little of it was paint, its landing
+/// staged every tile of the box, and the history held it all.
+/// ⚠️Only bytes nobody sees can part: under alpha 0 a soft edge keeps the
+/// colour it was painted with, and a composite of the whole stroke (a
+/// blend, 뒤에 그리기) clears that wherever it passes — the one stamp passed
+/// over its whole box, a piece passes over itself.
+///
+/// ⚠️A RUN, NOT A TILE, and it was measured: a stamp lands in one native
+/// call that fans its tiles out across the worker pool, and the call has a
+/// price of its own. A piece a tile filled the 2010×1510 ellipse in 173
+/// calls and landed it in 28 ms where the one stamp had taken 12 (the VM on
+/// the desktop); a run of the row's covered tiles takes one call per run,
+/// and a thin line still carries only the tiles it crosses.
+Iterable<BrushDab> _stampPieces(
+  DirtyRegion box, {
+  required int color,
+  required double opacity,
+  required _FinishedMask? Function(TileSpan tile) finishedAround,
+}) sync* {
+  // ⚠️ONE id per fill, and a piece's first tile in it. Pieces are made
+  // inside one microsecond, and a stamp is equal to another by id, size and
+  // bytes — two solid pieces sharing an id would be one stamp to any set of
+  // them (the 확정 slot counts its stamps' bytes as a set).
+  final id = 'fill-${DateTime.now().microsecondsSinceEpoch}';
+  var sequence = 0;
+  final run = <({TileSpan tile, Uint8List coverage})>[];
+  BrushDab laid() {
+    final first = run.first.tile;
+    final dab = _colorStampDab(
+      left: first.left,
+      top: first.top,
+      width: run.last.tile.rightExclusive - first.left,
+      height: first.bottomExclusive - first.top,
+      mask: _joined(run),
+      color: color,
+      opacity: opacity,
+      id: '$id-${first.coord.x}.${first.coord.y}',
+      sequence: sequence,
+    );
+    sequence += 1;
+    run.clear();
+    return dab;
+  }
+
+  for (final tile in tileSpansOf(box, tileSize: _pieceSize)) {
+    if (run.isNotEmpty && run.last.tile.coord.y != tile.coord.y) {
+      yield laid();
+    }
+    final finished = finishedAround(tile);
+    final coverage = finished == null ? null : _coverageOf(tile, finished);
+    if (coverage == null) {
+      if (run.isNotEmpty) {
+        yield laid();
+      }
+      continue;
+    }
+    run.add((tile: tile, coverage: coverage));
+  }
+  if (run.isNotEmpty) {
+    yield laid();
+  }
+}
+
+/// [finished]'s bytes over [tile], or null when not one of them is
+/// covered.
+Uint8List? _coverageOf(TileSpan tile, _FinishedMask finished) {
+  final width = tile.rightExclusive - tile.left;
+  final height = tile.bottomExclusive - tile.top;
+  final coverage = Uint8List(width * height);
+  var covers = false;
+  for (var y = 0; y < height; y += 1) {
+    final from =
+        (tile.top + y - finished.top) * finished.width +
+        (tile.left - finished.left);
+    coverage.setRange(y * width, y * width + width, finished.mask, from);
+    if (!covers) {
+      for (var x = y * width; x < y * width + width; x += 1) {
+        if (coverage[x] != 0) {
+          covers = true;
+          break;
+        }
+      }
+    }
+  }
+  return covers ? coverage : null;
+}
+
+/// The coverages of a run of neighbouring tiles along one tile row, side by
+/// side as one mask.
+Uint8List _joined(List<({TileSpan tile, Uint8List coverage})> run) {
+  if (run.length == 1) {
+    return run.single.coverage;
+  }
+  final first = run.first.tile;
+  final width = run.last.tile.rightExclusive - first.left;
+  final height = first.bottomExclusive - first.top;
+  final joined = Uint8List(width * height);
+  for (final (:tile, :coverage) in run) {
+    final tileWidth = tile.rightExclusive - tile.left;
+    final x = tile.left - first.left;
+    for (var y = 0; y < height; y += 1) {
+      joined.setRange(
+        y * width + x,
+        y * width + x + tileWidth,
+        coverage,
+        y * tileWidth,
+      );
+    }
+  }
+  return joined;
+}
+
+/// One piece of a fill's coverage painted [color] and handed over as a
+/// stamp dab landing on the pixels `[left, left+width) × [top,
+/// top+height)`.
 ///
 /// The fill lands as a COLOR STAMP (R15-⑥): rgba = fill color × mask
 /// coverage, drawn 1:1 by the stamp blend path. The old square-padded
@@ -1425,18 +1742,21 @@ FloodFillRegion? _unionRegions(List<FloodFillRegion> parts) {
 /// materialization — a multi-second slice on large fills — and the stamp
 /// is byte-exact by construction.
 BrushDab _colorStampDab({
-  required FloodFillRegion region,
+  required int left,
+  required int top,
+  required int width,
+  required int height,
+  required Uint8List mask,
   required int color,
-  required int originX,
-  required int originY,
   required double opacity,
+  required String id,
+  required int sequence,
 }) {
   final r = argbRed(color);
   final g = argbGreen(color);
   final b = argbBlue(color);
   final rgba = labProbe('fill.stamp-build', () {
-    final mask = region.mask;
-    final bytes = Uint8List(region.width * region.height * 4);
+    final bytes = Uint8List(width * height * 4);
     if (Endian.host == Endian.little) {
       // One word store per pixel (R19-8K): the four byte stores below
       // were a 197ms term on an 8000² fill. Little-endian word layout
@@ -1466,24 +1786,17 @@ BrushDab _colorStampDab({
     return bytes;
   });
   return BrushDab(
-    // Region coords are raster-space; the dab lands in WORLD space.
-    center: CanvasPoint(
-      x: region.left + originX + region.width / 2,
-      y: region.top + originY + region.height / 2,
-    ),
+    // Centred on the piece: a stamp lands at its centre less half its size
+    // ([BrushStampImage.landingRect]), which is the piece's own corner.
+    center: CanvasPoint(x: left + width / 2, y: top + height / 2),
     color: color,
-    size: math.max(region.width, region.height).toDouble(),
+    size: math.max(width, height).toDouble(),
     opacity: opacity,
     flow: 1,
     hardness: 1,
     tipShape: BrushTipShape.square,
     pressure: 1,
-    sequence: 0,
-    stamp: BrushStampImage(
-      id: 'fill-${DateTime.now().microsecondsSinceEpoch}',
-      width: region.width,
-      height: region.height,
-      rgba: rgba,
-    ),
+    sequence: sequence,
+    stamp: BrushStampImage(id: id, width: width, height: height, rgba: rgba),
   );
 }

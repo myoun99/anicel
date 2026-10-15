@@ -1,14 +1,16 @@
 import 'dart:math' as math;
 
 import '../../../controllers/timeline_controller.dart';
+import '../../../models/attached_layer_resolve.dart'
+    show isSyncedAttachedLayer;
 import '../../../models/cut.dart';
 import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
-import '../../../models/layer_kind.dart';
 import '../../../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import '../folders_and_attachments.dart';
@@ -105,12 +107,12 @@ CutSyncCapture? _captureCutSync({
   Layer? syncRow;
   if (bulk != null) {
     for (final candidate in bulk.values) {
-      if (ridesCutLength(candidate.before.kind)) {
+      if (ridesCutLength(candidate.before)) {
         syncRow = candidate.before;
         break;
       }
     }
-  } else if (anchor != null && ridesCutLength(anchor.kind)) {
+  } else if (anchor != null && ridesCutLength(anchor)) {
     syncRow = anchor;
   }
   final activeId = roles.project.activeCutId;
@@ -131,8 +133,12 @@ CutSyncCapture? _captureCutSync({
 /// anchor either — the STORYBOARD row is the sole rider (otherwise a bulk
 /// drag spanning an image row would silently switch which row drives the cut
 /// resize).
-bool ridesCutLength(LayerKind kind) =>
-    kind.coversWithoutGaps && !kind.holdsSingleCel;
+///
+/// ↩️Asked of the row's KIND until I-73 (2026-10-08), which answered for an
+/// attach row riding the conte too — it takes the conte's kind — and its
+/// comma resized the cut ([layerCoversWithoutGaps]).
+bool ridesCutLength(Layer layer) =>
+    layerCoversWithoutGaps(layer) && !layer.kind.holdsSingleCel;
 
 CutSyncCapture cutSyncSnapshotFor({
   required ProjectAccess project,
@@ -355,12 +361,8 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// SAME comma verb, so the panel's comma resizes, the later panels ripple
   /// along glued, and the cut's length rides the row end (feedback #9) —
   /// where the retired division verb moved a boundary and pinned the length.
-  /// Null when the cut has no storyboard row, or no such drawing block.
-  ///
-  /// Any cut's panels drag, not only the active cut's: the row comes in
-  /// through the cut, which is why this is NOT [begin] — that path resolves
-  /// the layer and the cut sync through the ACTIVE cut and would sync the
-  /// wrong one.
+  /// Null when the cut has no storyboard row, or no such drawing block
+  /// ([beginOnRowOf], whose conte case this is).
   static ExposureEdgeDrag? beginStoryboardComma({
     required EdgeDragRoles roles,
     required TrackSeDisplay trackSe,
@@ -368,29 +370,66 @@ class ExposureEdgeDrag implements EditorDragSession {
     required int blockStartIndex,
   }) {
     final row = storyboardLayerForCut(cut);
-    final entry = row?.timeline[blockStartIndex];
-    // A negative key is junk data the coverage rule merely tolerates (folded
-    // onto frame 0 for display) — resizing it would throw in the comma
-    // shift's before-zero guard mid-drag, so refuse at begin.
+    return row == null
+        ? null
+        : beginOnRowOf(
+            roles: roles,
+            trackSe: trackSe,
+            cut: cut,
+            grip: (
+              layerId: row.id,
+              blockStartIndex: blockStartIndex,
+              edge: TimelineBlockEdge.end,
+              startIsGlobal: false,
+            ),
+          );
+  }
+
+  /// Grabs the [grip]'s edge on a row of [cut], the block keyed in the
+  /// row's own frames: the storyboard strip's grips, on the conte's panels
+  /// and on the blocks of the rows riding it (I-73).
+  ///
+  /// Any cut's rows drag there, not only the active cut's: the row comes in
+  /// through the cut, which is why this is NOT [begin] — that path resolves
+  /// the layer and the cut sync through the ACTIVE cut and would sync the
+  /// wrong one.
+  ///
+  /// A row that tiles its cut takes the cut's length along
+  /// ([ridesCutLength] — the conte, feedback #9); any other is re-timed
+  /// alone, as its grip on the timeline re-times it. Null when the cut
+  /// holds no such row, the row owns no timing (a SYNCED attach row: its
+  /// base's grips move both, W5) or holds no such drawing block of its own.
+  static ExposureEdgeDrag? beginOnRowOf({
+    required EdgeDragRoles roles,
+    required TrackSeDisplay trackSe,
+    required Cut cut,
+    required ExposureGrip grip,
+  }) {
+    final row = cut.layers
+        .where((layer) => layer.id == grip.layerId)
+        .firstOrNull;
+    final entry = row?.timeline[grip.blockStartIndex];
+    // ↩️A key before frame 0 was refused here by name (2026-07-29: junk the
+    // coverage rule tolerated). A layer holds none since its timeline is
+    // copied through `nonNegativeIndexedCopy` (2026-09-06), so there is no
+    // such entry to find.
     if (row == null ||
+        isSyncedAttachedLayer(row) ||
         entry == null ||
         !entry.isDrawing ||
-        entry.ghost ||
-        blockStartIndex < 0) {
+        entry.ghost) {
       return null;
     }
     return ExposureEdgeDrag._(
       roles: roles,
       trackSe: trackSe,
       before: row,
-      edge: TimelineBlockEdge.end,
-      blockStart: blockStartIndex,
+      edge: grip.edge,
+      blockStart: grip.blockStartIndex,
       bulk: null,
-      cutSync: cutSyncSnapshotFor(
-        project: roles.project,
-        cut: cut,
-        row: row,
-      ),
+      cutSync: ridesCutLength(row)
+          ? cutSyncSnapshotFor(project: roles.project, cut: cut, row: row)
+          : null,
     );
   }
 
@@ -701,6 +740,21 @@ void commitWithCutSync({
   description: description,
 );
 
+/// The fewest frames [cut] may keep for its camera's keys
+/// (I-73-camera-row-Q4, [minimumCutDurationForCamera]): a conte edit's end
+/// stops short of them, as a trim's does. Its keys are not the drag's, so
+/// the committed camera is the right one to read; a row that would end
+/// sooner is tiled out to the cut's end again by the write (and by the
+/// preview, which settles as the write does).
+int _cameraFloorOf(ProjectAccess project, Cut? cut) => cut == null
+    ? 1
+    : minimumCutDurationForCamera(
+        cut,
+        drawnFrameCount:
+            cutDrawnFrameCount(project.repository.requireProject(), cut.id) ??
+            cut.duration,
+      );
+
 /// The synced durations/gaps for the row's end having moved to
 /// [afterRow]'s end, or null when it has not moved.
 ///
@@ -753,7 +807,10 @@ CutResize? cutSyncResizeFor({
       : minimumCutDurationForStoryboardRow(
           divisionRow.id == afterRow.id ? afterRow : divisionRow,
         );
-  final duration = math.max(floor, afterRowEnd);
+  final duration = math.max(
+    math.max(floor, _cameraFloorOf(project, syncedCut)),
+    afterRowEnd,
+  );
   return (
     durations: {sync.cutId: duration},
     gaps: {

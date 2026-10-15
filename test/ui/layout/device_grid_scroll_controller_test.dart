@@ -138,6 +138,57 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('🚨a press lands on the row painted under it — through the '
+      'nudge', (tester) async {
+    // At 10.7 the nudge is a third of a logical px (0.445 device at 1.35),
+    // so the boundary between rows 1 and 2 is painted at 29.63 and would
+    // be hit-tested at 29.3: a press between the two is the one that tells.
+    const ratio = 1.35;
+    useRatio(tester, ratio);
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    final pressed = <int>[];
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(devicePixelRatio: ratio),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: EffectiveDevicePixelRatioScope(
+            child: SingleChildScrollView(
+              controller: controller,
+              child: DeviceGridScrollBody(
+                controller: controller,
+                axisDirection: AxisDirection.down,
+                child: Column(
+                  children: [
+                    for (var row = 0; row < 40; row += 1)
+                      Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (_) => pressed.add(row),
+                        child: const SizedBox(width: 400, height: 20),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.jumpTo(10.7);
+    await tester.pump();
+
+    await tester.tapAt(const Offset(200, 29.45));
+    await tester.pump();
+
+    expect(
+      pressed,
+      [1],
+      reason: 'row 1 is painted down to 29.63 — a press hit-tested where the '
+          'rows were laid out, not where they were painted, takes row 2',
+    );
+  });
+
   testWidgets('a degenerate grid leaves the content alone', (tester) async {
     useRatio(tester, 1.25);
     final controller = ScrollController();

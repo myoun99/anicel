@@ -13,8 +13,13 @@ import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
+import '../dialogs/dialog_verb.dart';
+import '../dialogs/envelope_format_window.dart';
 import '../editor_session_manager.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
 import '../text/app_face.dart';
+import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_strata.dart';
@@ -113,6 +118,15 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
 
   @override
   Widget build(BuildContext context) {
+    // A key presses the format window — the envelope is one panel,
+    // whatever is in hand (I-40).
+    return PanelKeysBinding(
+      buttons: {EditorActionIds.envelopeFormat: _formatEditor},
+      child: _sheet(),
+    );
+  }
+
+  Widget _sheet() {
     final session = widget.session;
     // F-90: the cut under the playhead, like the sheet beside it.
     final cut = session.cutUnderPlayhead.resolve()?.cut;
@@ -268,28 +282,33 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     );
   }
 
-  /// The envelope's own commands, at the head of the panel's pill (R2 #13
-  /// — the status strip they lived in is gone with the rest of the frame).
-  List<Widget> _panelActions() {
+  /// The envelope's own command, at the head of the panel's pill (R2 #13
+  /// — the status strip it lived in is gone with the rest of the frame), as
+  /// the timesheet's format button stands. Off with nothing to write the
+  /// form back to.
+  List<Widget> _panelActions() => [
+    AppIconButton(
+      keyValue: 'envelope-format-button',
+      tooltip: AppText.strings.envelopeFormatTitle,
+      shortcuts: const [EditorActionIds.envelopeFormat],
+      icon: const Icon(Icons.edit_note),
+      size: AppIconButtonSize.strip,
+      onPressed: _formatEditor,
+    ),
+  ];
+
+  /// The envelope's format window — which form it is printed on, the work's
+  /// choice (`TimesheetInfo.envelopeFormId`) — or null where there is
+  /// nowhere to write it back.
+  VoidCallback? get _formatEditor {
     final onFormChanged = widget.onFormIdChanged;
-    return [
-      // Which 봉투 this is. Two bundled forms today, so the toggle is the
-      // whole picker; a longer list becomes a menu when the form editor
-      // lands.
-      if (onFormChanged != null)
-        for (final form in CutEnvelopePresets.all)
-          AppIconButton(
-            keyValue: 'envelope-form-${form.id}',
-            tooltip: form.name,
-            icon: Icon(
-              form.id == CutEnvelopePresets.analogId
-                  ? Icons.drafts_outlined
-                  : Icons.fact_check_outlined,
-            ),
-            isSelected: widget.formId == form.id,
-            size: AppIconButtonSize.strip,
-            onPressed: () => onFormChanged(form.id),
-          ),
-    ];
+    if (onFormChanged == null) {
+      return null;
+    }
+    return () => askThenCommit<String>(
+      context,
+      dialog: (_) => EnvelopeFormatWindow(initialFormId: widget.formId),
+      commit: onFormChanged,
+    );
   }
 }

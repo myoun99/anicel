@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import '../../helpers/library_source.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨F-16 — **레이어 영역의 선택범위는 어느 행에서도 시작할 수 있다.**
 ///
@@ -102,7 +103,7 @@ Future<void> _dragNameArea(
 ) async {
   final start = tester.getCenter(find.text(fromName).first);
   final to = tester.getRect(
-    find.byKey(ValueKey<String>('timeline-layer-row-$toLayerId')),
+    find.named('timeline-layer-row-$toLayerId'),
   );
   final gesture = await tester.startGesture(start);
   await tester.pump(const Duration(milliseconds: 16));
@@ -236,7 +237,7 @@ void _unmovableRowNeverMoves() {
 
     final start = tester.getCenter(find.text('Camera').first);
     final to = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-$_drawId')),
+      find.named('timeline-layer-row-$_drawId'),
     );
     final gesture = await tester.startGesture(start);
     await tester.pump(const Duration(milliseconds: 16));

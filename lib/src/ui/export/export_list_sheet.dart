@@ -1,12 +1,15 @@
 import '../../models/cut_id.dart';
+import '../../models/export_overrides.dart';
 
 /// Why a file the Cels list shows is not written as things stand — what its
 /// block says when it is pressed (F-289, 유저 2026-10-06: 「나갈 수 없는
 /// 그림은 작동하려하면 이유 띄우자」).
+///
+/// ↩️Two more stood here — its row is off, and it rides its base's cels —
+/// while the list showed every layer. It shows FILE rows now, and a row
+/// none of whose drawings can be a file is not in it (export-four-tabs ②,
+/// 유저 2026-10-09: 「결국 나가는건 파일 하나니까 파일기준 행」).
 enum ExportCelRefusal {
-  /// Its row is off, and so is everything riding it.
-  rowOff,
-
   /// The rows of its cel that are on hold no picture for it (「그림이
   /// 존재하는 영역만 출력」).
   noPicture,
@@ -18,10 +21,6 @@ enum ExportCelRefusal {
   /// A row of the same name files its unnamed picture first (「순서상 첫
   /// 블록만」).
   sameName,
-
-  /// It rides its base's cels: a free attach row that is not the bundle's
-  /// only picture.
-  ridesBase,
 }
 
 /// ONE FILE the Cels tab could write, as its list shows it — a BLOCK: a
@@ -50,18 +49,30 @@ abstract class ExportListSheet {
   /// The file it is written as — empty while it is [refused].
   String get fileName;
 
-  /// The user turned it off. Kept while it is [refused] too: a row turned
-  /// back on lights the ones that were left on, and no others.
+  /// The user turned it off — its block, or its row's switch, which turns
+  /// every file of the row (export-four-tabs ③). Kept while it is
+  /// [refused] too.
+  ///
+  /// ↩️A row turned back on lit the ones that were left on, and no others,
+  /// while the row's switch was an answer of its own.
   bool get skipped;
 
   /// Why it is no file as things stand, or null for a PLANNED one.
   ExportCelRefusal? get refused;
 
   /// Whether a direction is laid over it.
-  bool get laid;
+  bool get directionLaid;
+
+  /// Whether the camera's work is laid over it (CAM, I-89-Q18).
+  bool get cameraLaid;
 
   bool get planned => refused == null;
 
   /// Whether a file is written for it.
   bool get written => planned && !skipped;
+
+  /// [delta] with this file turned off — or back on: what its block and
+  /// its row's switch write, each file into the delta of its own cut
+  /// ([deltaCut]).
+  ExportCelsCutDelta offIn(ExportCelsCutDelta delta, {required bool off});
 }

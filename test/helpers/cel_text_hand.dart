@@ -37,7 +37,7 @@ TextHand textHand({
 }) {
   final options = ValueNotifier(next);
   addTearDown(options.dispose);
-  final host = TextHandHost(() => options.value);
+  final host = TextHandHost(options);
   final tool = CelTextTool(host: host, bake: bake);
   final CelTextCel cel = (
     key: celTextTestKey,
@@ -75,18 +75,26 @@ Future<Map<TileCoord, BitmapTile>> bakesAtOnce(
 }) async => layout.content.isEmpty ? const {} : plateOf(layout.content);
 
 /// The canvas panel, as the hand sees it: where the next text's values are
-/// read, and every step it was asked to run.
+/// read and written, the brush's colour, and every step it was asked to
+/// run.
 class TextHandHost implements CelTextToolHost {
   TextHandHost(this._next);
 
-  final TextToolOptions Function() _next;
+  final ValueNotifier<TextToolOptions> _next;
   final HistoryManager history = HistoryManager();
 
   /// Every step the hand ran, in order.
   final List<Command> ran = [];
 
   @override
-  TextToolOptions get options => _next();
+  TextToolOptions get options => _next.value;
+
+  @override
+  set options(TextToolOptions options) => _next.value = options;
+
+  /// No brush unless a test holds one.
+  @override
+  int? brushColour;
 
   /// The cel under the tool.
   @override

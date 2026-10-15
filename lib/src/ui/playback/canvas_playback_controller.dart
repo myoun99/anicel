@@ -6,11 +6,13 @@ import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart'
-    show cutDrawnFrameCount, cutMediaStartFrame, cutTransitionHandlesIn;
+    show cutDrawnFrameCount, cutMediaStartFrame;
 import '../../services/playback/playback_frame_mapping.dart';
+import '../../services/playback/playhead_way.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
 import 'looking_ticker.dart';
+import '../present_pacing.dart';
 
 /// What plays: the active cut (timeline context) or every cut of the active
 /// track in sequence (storyboard context).
@@ -89,7 +91,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// follows the sound"); null falls back to the wall-clock derivation.
   /// The ticker keeps running either way — it is the polling cadence, the
   /// clock is whose TIME gets shown.
-  ClockReading? Function()? resolveAudioClock;
+  ///
+  /// [frameTime] is the moment the frame the tick runs in is SHOWN
+  /// ([frameShownAt]): the clock is read at THAT time, not at the moment
+  /// the tick happens to run (`FrameTimeOnDevice`) — what is heard as the
+  /// picture is seen. Null reads it now.
+  ClockReading? Function({Duration? frameTime})? resolveAudioClock;
 
   /// Asked of every frame the run would stand on: whether its clock must
   /// WAIT there — the frame's picture is not made yet, or (rendering first)
@@ -158,7 +165,11 @@ class CanvasPlaybackController extends ChangeNotifier
   /// true through it; what stands is the clock, and with it the sound.
   bool get isWaiting => _waiting;
 
-  List<StoryboardTimelineLayoutEntry>? _playlist;
+  /// The run, while one plays: the cuts it shows, and the stretch of its
+  /// track it plays ([PlaybackWindow]) — one field, so a run never has the
+  /// one without the other.
+  ({List<StoryboardTimelineLayoutEntry> playlist, PlaybackWindow window})?
+  _run;
   PlaybackScope _scope = PlaybackScope.activeCut;
   PlaybackLoopMode _loopMode = PlaybackLoopMode.loop;
   int _baseGlobalFrame = 0;
@@ -189,27 +200,17 @@ class CanvasPlaybackController extends ChangeNotifier
   /// `isActive && !isPlaying` describes a state that can no longer occur —
   /// treat such a gate as a bug rather than bringing pause back to satisfy
   /// it.
-  bool get isActive => _playlist != null;
+  bool get isActive => _run != null;
 
   @override
-  bool get isPlaying => _playlist != null;
+  bool get isPlaying => _run != null;
   PlaybackScope get scope => _scope;
 
-  /// The track frame [playlistFrame] of this run shows. The all-cuts
-  /// playlist IS the track axis; a cut played alone starts where its
-  /// material does — ahead of its conte start in a cut an O.L arrives into
-  /// ([cutMediaStartFrame], F-227 ④) — so a take or a cue stated on the
-  /// track lands where the picture and the sound are.
-  int trackFrameOf(int playlistFrame) {
-    if (_scope == PlaybackScope.allCuts) {
-      return playlistFrame;
-    }
-    final cutId = resolveActiveCutId();
-    final start = cutId == null
-        ? null
-        : cutMediaStartFrame(resolveProject(), cutId);
-    return (start ?? 0) + playlistFrame;
-  }
+  /// The track frame [playlistFrame] of this run shows ([window]): a take
+  /// or a cue stated on the track lands where the picture and the sound
+  /// are.
+  int trackFrameOf(int playlistFrame) =>
+      (_run?.window.trackStart ?? 0) + playlistFrame;
 
   PlaybackLoopMode get loopMode => _loopMode;
   set loopMode(PlaybackLoopMode mode) {
@@ -221,15 +222,18 @@ class CanvasPlaybackController extends ChangeNotifier
   }
 
   List<StoryboardTimelineLayoutEntry> get playlist =>
-      List.unmodifiable(_playlist ?? const []);
+      List.unmodifiable(_run?.playlist ?? const []);
+
+  /// The stretch of its track the run plays; null while nothing plays.
+  PlaybackWindow? get window => _run?.window;
 
   PlaybackPosition? get position {
-    final playlist = _playlist;
-    if (playlist == null) {
+    final run = _run;
+    if (run == null) {
       return null;
     }
     return resolvePlaybackPosition(
-      playlist: playlist,
+      playlist: run.playlist,
       globalFrameIndex: _currentGlobalFrame,
     );
   }
@@ -238,15 +242,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// has stopped.
   int get playlistFrame => _currentGlobalFrame;
 
-  /// The run's frames, the all-cuts scope's trailing gap included; 0 while
-  /// nothing plays.
-  int get totalFrames {
-    final playlist = _playlist;
-    return playlist == null ? 0 : _playbackTotalFrames(playlist);
-  }
+  /// The run's frames ([PlaybackWindow.frames]); 0 while nothing plays.
+  int get totalFrames => _run?.window.frames ?? 0;
 
-  /// The playback view provides vsync; transport controls can call [play]
-  /// before or after attachment (ticking starts once both are ready).
+  /// The run's layer provides vsync ([PlaybackRunLayer]); transport
+  /// controls can call [play] before or after attachment (ticking starts
+  /// once both are ready).
   void attachTicker(TickerProvider vsync) {
     _vsync = vsync;
     if (isPlaying && !_waiting && !_clock.isRunning) {
@@ -254,35 +255,28 @@ class CanvasPlaybackController extends ChangeNotifier
     }
   }
 
-  void detachTicker() {
+  /// Lets the clock's ticker go — unless [vsync] names a provider that no
+  /// longer holds it. A mount on its way out is let go of AFTER the one
+  /// taking its place has attached (the tree mounts before it unmounts), and
+  /// must not take the clock away from it.
+  void detachTicker([TickerProvider? vsync]) {
+    if (vsync != null && !identical(vsync, _vsync)) {
+      return;
+    }
     _stopTicker();
     _vsync = null;
   }
 
-  /// The run's TOTAL frames: the playlist's content plus — for the
-  /// all-cuts scope — the movie's TRAILING GAP (UI-R20 #3: the final
-  /// length is authored past the last cut; those frames play as the
-  /// gap void, exactly like mid-track gaps).
-  int _playbackTotalFrames(List<StoryboardTimelineLayoutEntry> playlist) {
-    final base = playlistTotalFrames(playlist);
-    if (base == 0 || _scope != PlaybackScope.allCuts) {
-      return base;
-    }
-    return base + resolveProject().trailingFrames;
-  }
-
   void play({required PlaybackScope scope, int? startGlobalFrame}) {
     final playlist = _buildPlaylist(scope);
-    if (playlistTotalFrames(playlist) == 0) {
+    final window = _windowOf(scope, playlist);
+    if (window == null || window.frames == 0) {
       return;
     }
     _scope = scope;
-    _playlist = playlist;
+    _run = (playlist: playlist, window: window);
     _droppedFrames = 0;
-    _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(
-      0,
-      _playbackTotalFrames(playlist) - 1,
-    );
+    _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(0, window.frames - 1);
     onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
 
     _standHere();
@@ -309,7 +303,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// longer — a whole frame's time from here, as if the clock had been
   /// stopped and started.
   void lookAgain() {
-    if (!_waiting || _playlist == null) {
+    if (!_waiting || _run == null) {
       return;
     }
     if (waitsOn?.call(_currentGlobalFrame, placed: false) ?? false) {
@@ -323,12 +317,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// Jumps playback to a frame of the currently playing cut (ruler scrubs
   /// during playback); keeps playing/paused state.
   void seekToLocalFrame(int localFrameIndex) {
-    final playlist = _playlist;
+    final run = _run;
     final current = position;
-    if (playlist == null || current == null) {
+    if (run == null || current == null) {
       return;
     }
-    for (final entry in playlist) {
+    for (final entry in run.playlist) {
       if (current.globalFrameIndex >= entry.startFrame &&
           current.globalFrameIndex < entry.endFrame) {
         final clamped = localFrameIndex.clamp(0, entry.duration - 1);
@@ -341,15 +335,11 @@ class CanvasPlaybackController extends ChangeNotifier
   /// Jumps playback to a playlist-global frame (storyboard ruler seeks can
   /// cross cut boundaries); keeps playing/paused state.
   void seekToGlobalFrame(int globalFrameIndex) {
-    final playlist = _playlist;
-    if (playlist == null) {
+    final run = _run;
+    if (run == null) {
       return;
     }
-    final total = _playbackTotalFrames(playlist);
-    if (total == 0) {
-      return;
-    }
-    _currentGlobalFrame = globalFrameIndex.clamp(0, total - 1);
+    _currentGlobalFrame = globalFrameIndex.clamp(0, run.window.frames - 1);
     _droppedFrames = 0;
     if (isPlaying) {
       _standHere();
@@ -370,9 +360,9 @@ class CanvasPlaybackController extends ChangeNotifier
       return;
     }
     final lastPosition = position;
-    final lastGlobal = _playlist == null ? null : _currentGlobalFrame;
+    final lastGlobal = _run == null ? null : _currentGlobalFrame;
     _stopTicker();
-    _playlist = null;
+    _run = null;
     _waiting = false;
     _syncFrameNotifiers();
     _isActiveNotifier.value = false;
@@ -395,16 +385,49 @@ class CanvasPlaybackController extends ChangeNotifier
 
   void _syncFrameNotifiers() {
     _localFrameIndex.value = position?.localFrameIndex;
-    _globalFrameIndexNotifier.value = _playlist == null
+    _globalFrameIndexNotifier.value = _run == null
         ? null
         : _currentGlobalFrame;
   }
 
-  /// The playlist [play] would run for [scope] — the audio scrubber builds
-  /// its schedule from the same shape, so scrubbed sound and played sound
-  /// can never disagree about what sits where.
-  List<StoryboardTimelineLayoutEntry> playlistForScope(PlaybackScope scope) =>
-      _buildPlaylist(scope);
+  /// The stretch of its track [play] would run for [scope] — the audio
+  /// scrubber lays its sound over the same window, so scrubbed sound and
+  /// played sound can never disagree about what sits where.
+  PlaybackWindow? windowForScope(PlaybackScope scope) =>
+      _windowOf(scope, _buildPlaylist(scope));
+
+  /// Where [scope]'s run sits on its track. Null = nothing to play alone:
+  /// the session stands in a gap.
+  PlaybackWindow? _windowOf(
+    PlaybackScope scope,
+    List<StoryboardTimelineLayoutEntry> playlist,
+  ) {
+    final project = resolveProject();
+    switch (scope) {
+      case PlaybackScope.activeCut:
+        if (playlist.isEmpty) {
+          return null;
+        }
+        final alone = playlist.single;
+        return PlaybackWindow(
+          trackId: alone.trackId,
+          // Its frame 0 is where its material starts — ahead of the conte
+          // start in a cut an O.L arrives into (F-227 ④) — so the sound
+          // plays from there too.
+          trackStart: cutMediaStartFrame(project, alone.cutId)!,
+          frames: alone.duration,
+        );
+      case PlaybackScope.allCuts:
+        // The movie, to the end line the storyboard draws: past the last
+        // cut its trailing frames play as the gap void (UI-R20 #3) — and
+        // with no cut at all, those frames alone (F-341).
+        return PlaybackWindow(
+          trackId: resolveActiveTrackId(),
+          trackStart: 0,
+          frames: movieEndFrames(project),
+        );
+    }
+  }
 
   List<StoryboardTimelineLayoutEntry> _buildPlaylist(PlaybackScope scope) {
     switch (scope) {
@@ -427,10 +450,6 @@ class CanvasPlaybackController extends ChangeNotifier
                 endFrame: duration,
                 duration: duration,
                 cut: entry.cut,
-                // Its frame 0 is where its material starts — ahead of the
-                // conte start in a cut an O.L arrives into — so the sound
-                // plays from there too.
-                mediaLead: cutTransitionHandlesIn(project, entry.cutId).head,
               ),
             ];
           }
@@ -458,11 +477,11 @@ class CanvasPlaybackController extends ChangeNotifier
   void _stopTicker() => _clock.stop();
 
   void _onTick(Duration elapsed) {
-    final playlist = _playlist;
-    if (playlist == null) {
+    final run = _run;
+    if (run == null) {
       return;
     }
-    final total = _playbackTotalFrames(playlist);
+    final total = run.window.frames;
     // 🚨ONE LAW FOR BOTH CLOCKS: each is read on EVERY vsync, so its frame
     // changes on the first vsync it is due on, and what it says is followed
     // the one way. (What looking that often costs the screen is not paid:
@@ -476,14 +495,20 @@ class CanvasPlaybackController extends ChangeNotifier
     // the sound is not made to wait for them. It waits only where the
     // picture itself is not made ([waitsOn]), and then the device is
     // stopped with the clock ([isWaiting]).
-    final says = resolveAudioClock?.call() ?? _wallClock(elapsed, total);
+    final says =
+        resolveAudioClock?.call(frameTime: frameShownAt()) ??
+        _wallClock(elapsed, total);
+    final shown = _currentGlobalFrame;
     if (says.ended && _loopMode == PlaybackLoopMode.once) {
       _endAt(total);
-      return;
+    } else {
+      // A reading past either end is the end it is past; a step back is the
+      // lap wrapping, and [_goTo] goes round the end to it.
+      _goTo(says.globalFrame.clamp(0, total - 1), total);
     }
-    // A reading past either end is the end it is past; a step back is the
-    // lap wrapping, and [_goTo] goes round the end to it.
-    _goTo(says.globalFrame.clamp(0, total - 1), total);
+    if (_currentGlobalFrame != shown) {
+      lookChangedWhatItShows();
+    }
   }
 
   /// What the wall clock says [elapsed] after the run's ticker started on
@@ -504,9 +529,8 @@ class CanvasPlaybackController extends ChangeNotifier
   }
 
   /// The clock says [frame]. The run goes there — unless a frame on the way
-  /// has no picture yet, and then it stands on THAT frame ([waitsOn]): a
-  /// tick that came late does not carry the playhead over a picture that
-  /// was never shown.
+  /// has no picture yet, and then it stands on THAT frame ([waitsOn],
+  /// [playheadWay]).
   ///
   /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT: the
   /// frames it passed without standing on them. A move that wraps starts
@@ -518,24 +542,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// from a wait had to remember to forget.
   void _goTo(int frame, int total) {
     final from = _currentGlobalFrame;
-    // The frames on the way, in the order the run plays them, the clock's
-    // own last. Either clock only ever moves on — a step back is the lap
-    // wrapping — so the way from here to there is forwards, round the end.
-    //
-    // 🚨COUNTED, not walked 「until it gets there」: a frame outside the run
-    // is never got to, and that walk never ended — found by a mutant that
-    // took the clamp off the device's reading and hung its test, which in
-    // the app is a frozen window. However far the frame is, it is fewer
-    // steps ahead than the run has frames.
-    final ahead = (frame - from) % total;
-    var landing = from;
-    var passed = -1;
-    var waits = false;
-    for (var step = 0; step < ahead && !waits; step += 1) {
-      landing = (landing + 1) % total;
-      passed += 1;
-      waits = waitsOn?.call(landing, placed: false) ?? false;
-    }
+    final (:landing, :passed, :waits) = playheadWay(
+      from: from,
+      to: frame,
+      total: total,
+      waitsOn: (next) => waitsOn?.call(next, placed: false) ?? false,
+    );
     if (landing < from) {
       _droppedFrames = 0;
     } else if (passed > 0) {

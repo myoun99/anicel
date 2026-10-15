@@ -176,22 +176,29 @@ final class _LabelPress {
 }
 
 /// The RECORD half for a row label — the same gate the cells arm.
+///
+/// [layerId] is asked at the press: a kept row stands for the layer its
+/// berth holds now (`BerthRow`), not the one it was built for.
 void Function(Offset localPosition) timelineLabelDoubleTapRecord(
-  LayerId layerId,
+  LayerId Function() layerId,
   TimelineLabelDoubleClick doubleClick,
-) => (_) => TimelineDoubleTapGate.recordTapDown(
-  _LabelPress(layerId, doubleClick(layerId)),
-);
+) => (_) {
+  final pressed = layerId();
+  TimelineDoubleTapGate.recordTapDown(
+    _LabelPress(pressed, doubleClick(pressed)),
+  );
+};
 
 /// The ACTIVATION half for a row label: runs what the FIRST press armed,
-/// when both taps landed on [layerId]'s label.
-GestureTapDownCallback timelineLabelDoubleTapActivation(LayerId layerId) =>
-    (_) {
-      final first = TimelineDoubleTapGate.takeFirstPress();
-      if (first is _LabelPress && first.row == layerId) {
-        first.doubleClick();
-      }
-    };
+/// when both taps landed on the label of [layerId] — asked at the press.
+GestureTapDownCallback timelineLabelDoubleTapActivation(
+  LayerId Function() layerId,
+) => (_) {
+  final first = TimelineDoubleTapGate.takeFirstPress();
+  if (first is _LabelPress && first.row == layerId()) {
+    first.doubleClick();
+  }
+};
 
 /// A row label's double click, mounted around the label — the one widget
 /// every surface that shows a layer's label mounts (the timeline rail, the
@@ -206,7 +213,7 @@ GestureTapDownCallback timelineLabelDoubleTapActivation(LayerId layerId) =>
 /// own pick, which listens outside it, so the host reads the selection as
 /// the press found it.
 Widget timelineLabelDoubleTapDetector({
-  required LayerId layerId,
+  required LayerId Function() layerId,
   required TimelineLabelDoubleClick doubleClick,
   required Widget child,
 }) => RawGestureDetector(

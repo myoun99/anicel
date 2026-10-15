@@ -14,8 +14,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/app_shortcuts.dart';
 
 /// 유저 2026-08-27, 실기: 「지금 아직도 캔버스에 반영안되고 블록도 반영안되는데」
 /// + 「버튼 자체도 블록에 따라 활성화 비활성화 제대로 갱신 안되고있어」.
@@ -212,11 +212,10 @@ void main() {
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
 
-      // Clear Pixels ships Backspace; the other three are bound here the way
-      // the shortcut list binds them.
-      final bindings = tester
-          .widget<EditorShortcutScope>(find.byType(EditorShortcutScope))
-          .notifier!;
+      // Clear Pixels ships Backspace on the registry's keys; the other three
+      // are bound here the way the shortcut list binds them.
+      await useAnicelKeys(tester);
+      final bindings = appShortcuts(tester);
       for (final (id, key) in const [
         (EditorActionIds.editReplaceColour, LogicalKeyboardKey.digit7),
         (EditorActionIds.editDeleteColour, LogicalKeyboardKey.digit8),

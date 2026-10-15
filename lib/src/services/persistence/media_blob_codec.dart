@@ -277,15 +277,7 @@ class MediaBlobHeader {
   // ⛔Written to a neighbour and renamed, and here that is not only about
   // torn files: framedness is not known until the last block, so the bytes
   // have to be somewhere nameless while it is still being decided.
-  //
-  // 🚨The neighbour is THIS write's alone. Two open projects conforming one
-  // source (I-7, 유저 2026-09-26) build the same conform at the same time,
-  // from isolates whose statics do not see each other — a shared `.part`
-  // let each truncate the other's half-written bytes.
-  final part = File(
-    '$basePath.${DateTime.now().microsecondsSinceEpoch}-'
-    '${_partNames.nextInt(1 << 32)}.part',
-  );
+  final part = File(mediaPartPathFor(basePath));
   part.parent.createSync(recursive: true);
   final out = part.openSync(mode: FileMode.write);
   bool framed;
@@ -318,6 +310,17 @@ class MediaBlobHeader {
   }
   return (path: path, framed: framed);
 }
+
+/// A nameless neighbour of [basePath] for bytes still being written — a
+/// `.part`, which nothing that lists a room counts.
+///
+/// 🚨The neighbour is ONE write's alone. Two open projects conforming one
+/// source (I-7, 유저 2026-09-26) build the same conform at the same time,
+/// from isolates whose statics do not see each other — a shared `.part` let
+/// each truncate the other's half-written bytes.
+String mediaPartPathFor(String basePath) =>
+    '$basePath.${DateTime.now().microsecondsSinceEpoch}-'
+    '${_partNames.nextInt(1 << 32)}.part';
 
 final Random _partNames = Random();
 

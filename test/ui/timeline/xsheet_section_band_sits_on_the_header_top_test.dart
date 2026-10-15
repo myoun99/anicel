@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-32 — 유저가 어디가 밀리는지 말해줬다(2026-08-27, `Q-f32-repro`):
 ///
 /// > 「해당 **레이어 영역 자체가 밀림.** 프레임셀쪽도 가능성은 있음.
@@ -91,9 +93,7 @@ void main() {
       final band = find.byKey(
         const ValueKey<String>('xsheet-section-band-row'),
       );
-      final headers = find.byKey(
-        const ValueKey<String>('xsheet-layer-row-draw-0'),
-      );
+      final headers = find.named('xsheet-layer-row-draw-0');
       expect(band, findsOneWidget, reason: 'at width $width');
       expect(headers, findsOneWidget, reason: 'at width $width');
 
@@ -165,12 +165,8 @@ void main() {
     for (final width in const <double>[900, 560]) {
       await pumpSheet(tester, width: width);
 
-      final header = find.byKey(
-        const ValueKey<String>('xsheet-layer-row-draw-0'),
-      );
-      final cells = find.byKey(
-        const ValueKey<String>('xsheet-column-draw-0-cells'),
-      );
+      final header = find.named('xsheet-layer-row-draw-0');
+      final cells = find.named('xsheet-column-draw-0-cells');
       final rail = find.byKey(
         const ValueKey<String>('xsheet-frame-number-rail'),
       );

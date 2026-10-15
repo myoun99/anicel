@@ -236,8 +236,112 @@ import '../../tool/refactor/clone_scan.dart';
 /// two filters, and the difference is what the bake is for. 🧪Measured the
 /// same day, one raster through each: what a baked word loses through
 /// Blend is in the comment over `boxFilterA8`.
+///
+/// 90 → 89 (2026-10-09, the .clip reader's chains): the pairs
+/// `_DocumentReader._picturesById` · `_track` and `_timelines` · `_track`
+/// left. Every chain the file keeps — the timelines, a timeline's tracks, a
+/// track's labels, a layer's children and its objects, a mipmap's scales —
+/// is walked by ONE `_chain` now; the sound objects' walk had been the
+/// third copy. The pair that came, `_layer` · `_timelines` (44 tokens), is
+/// two calls of it, the walk's arguments and nothing else.
+/// 🔬Measured on the lane against its base (`2e56d2a0c`, at 90): those two
+/// gone, that one added.
+///
+/// 89 → 88 (2026-10-10, F-322 — the conte panel's rail selects): the pair
+/// `_StoryboardRailRows._railRowAtCrossOffset` · `resolveTrackSeDrop` (44
+/// tokens) left. The rail's select drag reads the row under the pointer by
+/// the walk the strips' sweep made, so the walk is ONE `_addressedRowAt`
+/// both ask now, and the sweep's body no longer holds the index arithmetic
+/// the pair had in common.
+///
+/// 87 → 88 (2026-10-13, I-57 — a kept cells row reads its row at the
+/// press), under the ceiling a pair had left. The new pair is the two
+/// range layers' `_startDrag` (43 tokens): each begins a select the same
+/// way — its mode, its anchor, the grip taken, the first select told — on
+/// callbacks of their own. The cells' layer reads its row once at the
+/// press now, and the `widget.row` the tail spelled became one name like
+/// the lane's `_rowAddress`. ⛔Not merged: two of them, and the third is
+/// what earns a merge. The same lane put the cell under a press in ONE
+/// place (`frameAtVisibleX`): the cells, the range drag over them and a
+/// lane's had read it three ways, and the pair its first spelling made
+/// with the lane's `_frameAt` is gone with them.
+/// 🔬Measured on the lane against master (`16812efd7`, at 87): that one
+/// added, none gone.
+/// 🔬Measured on the lane against its base (`71ec1f1f0`, at 89): that one
+/// gone, none added.
+///
+/// 88 → 89 (2026-10-14, F-317 — a text's box takes a height by its top
+/// and its bottom), over a ceiling one above the count. Two pairs came,
+/// and they are one law twice, on the box's other axis:
+///
+///     82 tokens
+///       lib/src/services/cel_text_box_edits.dart  celTextBoxWidened
+///       lib/src/services/cel_text_box_edits.dart  celTextBoxDeepened
+///     48 tokens
+///       lib/src/ui/canvas/text/cel_text_press.dart  _WidthPress._move
+///       lib/src/ui/canvas/text/cel_text_press.dart  _DepthPress._move
+///
+/// The reading CONFIRMS both: an edge sizes the box — the far edge changes
+/// the size alone, the edge the anchor is on carries the anchor by what the
+/// size lost — along the letters' way for the width and the way the lines
+/// stack for the height, and the press reads the hand's travel along that
+/// way. ⛔Not merged: the SECOND, and the rule of three holds. A shared
+/// body would take the axis as hooks — the way, the field it writes
+/// (`wrapWidth` · `minHeight`) and the floor (the least room · the
+/// letters' depth) — invented for a shape seen twice. 🔜The third edge
+/// that sizes a box by carrying its anchor merges all three and lowers
+/// this back.
+/// 🔬Measured on the lane against master (`a33780650`, at 87): these two
+/// added, none gone.
+///
+/// 89 → 88 (2026-10-14, F-351 — a sheet's two axes dragged as one). Its
+/// first send came back at 90: born on the same two-way controllers, the
+/// timeline grid's `initState` made a THIRD of the follow a kept layer
+/// axis gets — 「if the host keeps one, follow it」 — beside the x-sheet's
+/// and the conte panel's (42 and 41 tokens). Three copies of one guard is
+/// the rule of three met: `followKeptAxis` asks it, once, for a null axis
+/// too. The pair the conte panel and the x-sheet had made before the lane
+/// went with it.
+/// 🔬Measured on the lane against master (`279933153`, at 89): that one
+/// gone, none added.
+///
+/// 88 → 86 (2026-10-14, F-360 — a row's folds and twirls are the row's):
+/// the pairs `RailView.followLinks` · `followHeads` (52 tokens) and
+/// `LayerController.setLayerBlendMode` · `setLayerOpacity` (40) left. The
+/// rail no longer walks a link group or a head to make the twirls agree —
+/// a command writes them on every row of the head, as it wrote a folder's
+/// fold — so the two walks that did are gone. And a row's verb addressed
+/// in its own cut is ONE `_executeInItsCut`: the lane twirl and a lane
+/// group's twirl came as the third and fourth copies of the blend's and
+/// the opacity's guard-and-execute (the scan named them before they were
+/// merged), and the group fold had the same body.
+/// 🔬Measured on the lane against F-351's lane (`afcd0ea95`, at 88): those two
+/// gone, none added.
+///
+/// 86 → 87 (2026-10-15, F-343 — a track's conte is one structure every
+/// cut's conte wears). The new pair is named:
+///
+///     41 tokens
+///       lib/src/models/track_conte_laying.dart  cutWithoutConteFills
+///       lib/src/ui/brush/brush_preset_library.dart
+///         BrushPresetLibrary._importBrushFile
+///
+/// The reading DISMISSES the run: it is the filter both spell — the
+/// entries a set names, as a map, and nothing to do when there are none —
+/// over a cut's rows (the fills a write gave, each with the folder it is
+/// filed in) and over a brush file's hand settings (those whose brush
+/// landed). One indexes a list and the other narrows a map; a shared
+/// helper would only name the comprehension.
+/// What the fills' half does past the run IS a law met before, 폴더 해산's
+/// (`DissolveFolderCommand`): a row filed in a folder that goes is filed
+/// where that folder was. ⛔Not merged: the SECOND, and the rule of three
+/// holds — the command walks one folder through the repository for its
+/// undo, the fills a set of them in one pure pass. 🔜A third place that
+/// takes folders out and keeps what they held merges the walk.
+/// 🔬Measured on the lane against F-360's lane (`9760c59bc`, at 86): this
+/// one added, none gone.
 void main() {
-  const ceiling = 90;
+  const ceiling = 87;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

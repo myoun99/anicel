@@ -511,12 +511,8 @@ class _WorkspaceDocks {
           ? AppText.strings.panelExpandRegion
           : AppText.strings.panelCollapseRegion,
       size: AppIconButtonSize.dense,
-      onPressed: () {
-        _state._rebuild(
-          () => _state._bottomDockCollapsed = !_state._bottomDockCollapsed,
-        );
-        _state._layoutPersistence.scheduleLayoutSave();
-      },
+      shortcuts: const [EditorActionIds.regionFold],
+      onPressed: _state._toggleRegionFolded,
       // The chevron points where the region would GO — toward the artwork
       // to open, toward the frame to collapse — so it flips with the edge
       // rather than always meaning "down".

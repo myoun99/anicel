@@ -10,20 +10,24 @@ import 'brush_live_stroke_rasterizer.dart';
 import 'canvas_selection_paint_clip.dart';
 import 'canvas_selection_region.dart';
 
-/// The stroke revision a promoted fill's tiles carry: a fill is one dab,
-/// blended once, so there is exactly one revision to hand over at commit
-/// ([ActiveStrokeOverlayModel.takeTileImageAt] compares it).
+/// The stroke revision a promoted fill's tiles carry: a fill's pieces are
+/// blended in one pass, so there is exactly one revision to hand over at
+/// commit ([ActiveStrokeOverlayModel.takeTileImageAt] compares it).
 const int fillPromotionRevision = 1;
 
-/// 🚨★★★A FILL IS A STROKE OF ONE DAB (유저 절대규칙 2026-09-17: 「보이는
-/// 중이랑 결과랑 절대로 다르면 안 되」). The result tiles a fill tap will
-/// land, made NOW by the commit's own function — the same stamp clip the
-/// panel's commit funnel runs ([clipStampDabToSelection]), then
+/// 🚨★★★A FILL IS A STROKE OF ITS STAMP PIECES (유저 절대규칙 2026-09-17:
+/// 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The result tiles a fill tap
+/// will land, made NOW by the commit's own function — the same stamp clip
+/// the panel's commit funnel runs ([clipStampDabToSelection]), then
 /// [brushCommitResultForBrushDabSequenceOnBitmapSurface] exactly as the
 /// commit would call it — so what the screen shows before the commit IS
 /// the commit, byte for byte and at every level (the tiles reach the
 /// overlay as its pre-blended result tiles, and the commit installs these
 /// very objects through `promotedTiles`, recomputing nothing).
+///
+/// ↩️It was one dab until 2026-10-09: a fill is cut into pieces on the
+/// cel's tile grid — one per run of covered tiles along a tile row
+/// (`buildFillDabs`) — which land the same bytes.
 ///
 /// 🪦R23 (2026-08) previewed a fill as ONE stamp image at its landing
 /// rect, because blending it into live-raster tiles and re-decoding
@@ -37,23 +41,27 @@ const int fillPromotionRevision = 1;
 ///
 /// Empty when the fill lands nothing: wholly outside the selection, or a
 /// no-op on these pixels.
-List<PromotedStrokeTile> promoteFillDab({
+List<PromotedStrokeTile> promoteFillDabs({
   required BitmapSurface surface,
-  required BrushDab dab,
+  required List<BrushDab> dabs,
   required BrushBlendMode blendMode,
   required CanvasSelectionRegion? selection,
   required LayerId layerId,
   required FrameId frameId,
 }) {
-  final landing = selection == null
-      ? dab
-      : clipStampDabToSelection(dab, region: selection);
-  if (landing == null) {
+  final landings = [
+    for (final dab in dabs)
+      if (selection == null)
+        dab
+      else
+        ?clipStampDabToSelection(dab, region: selection),
+  ];
+  if (landings.isEmpty) {
     return const [];
   }
   final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
     surface: surface,
-    sequence: BrushDabSequence([landing]),
+    sequence: BrushDabSequence(landings),
     layerId: layerId,
     frameId: frameId,
     blendMode: blendMode,

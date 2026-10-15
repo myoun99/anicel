@@ -12,18 +12,14 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart' as model;
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
@@ -35,7 +31,6 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/placement_reading.dart';
@@ -780,89 +775,6 @@ void main() {
         whole.dispose();
         ink.dispose();
       }
-    });
-  });
-
-  // The composite rasters at the canvas's own size, so every image is laid
-  // down texel for texel and the ink is drawn as it is — the same bytes as
-  // the whole. ↩️At a playback quality tier's size that was not always so:
-  // on 150×101 a quarter was 38/150 of the canvas, every draw resampled and
-  // the ink was laid back whole. The tiers went on 2026-10-08.
-  testWidgets('the playback composite composes the same bytes from the ink', (
-    tester,
-  ) async {
-    BrushFrameKey frameKeyOf(Cut cut, LayerId layerId, FrameId frameId) =>
-        BrushFrameKey(
-          projectId: const ProjectId('p'),
-          trackId: const TrackId('t'),
-          cutId: cut.id,
-          layerId: layerId,
-          frameId: frameId,
-        );
-    model.Layer layer(
-      String id, {
-      double opacity = 1,
-      LayerBlendMode blendMode = LayerBlendMode.normal,
-    }) => model.Layer(
-      id: LayerId(id),
-      name: id,
-      frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
-      timeline: {0: TimelineExposure.drawing(FrameId('$id-f'), length: 1)},
-      opacity: opacity,
-      blendMode: blendMode,
-    );
-    final cut = Cut(
-      id: const CutId('c'),
-      name: 'cut',
-      duration: 1,
-      canvasSize: canvasSize,
-      layers: [
-        layer('pasteboard'),
-        layer('interior', blendMode: LayerBlendMode.multiply),
-        layer('leftTop', opacity: 0.8),
-        layer('rightBottom', opacity: 0.7, blendMode: LayerBlendMode.screen),
-        layer('sparse', opacity: 0.5, blendMode: LayerBlendMode.add),
-        layer('inner'),
-      ],
-    );
-    final store = storeWithCels(canvasSize);
-    await tester.runAsync(() async {
-      Future<Uint8List> composed({required bool whole}) async {
-        final images = LayerFrameImageCache(frameStore: store)
-          ..debugStoresWholeContent = whole;
-        final cache = CutFrameCompositeCache(
-          layerImages: images,
-          frameStore: store,
-          frameKeyOf: frameKeyOf,
-        );
-        final image = await cache.prepareComposite(cut: cut, frameIndex: 0);
-        final data = await image.toByteData(
-          format: ui.ImageByteFormat.rawRgba,
-        );
-        cache.dispose();
-        images.dispose();
-        return data!.buffer.asUint8List();
-      }
-
-      final old = await composed(whole: true);
-      debugCropsLaidDown = 0;
-      debugWholesLaidBack = 0;
-      final ink = await composed(whole: false);
-      expect(
-        debugCropsLaidDown,
-        greaterThan(0),
-        reason: 'fixture: the ink was drawn as it is',
-      );
-      // The multiply and the screen rows asked for their whole images, so
-      // nothing was stored as ink that had to be laid back.
-      expect(debugWholesLaidBack, 0);
-      var differing = 0;
-      for (var i = 0; i < old.length; i += 1) {
-        if (old[i] != ink[i]) {
-          differing += 1;
-        }
-      }
-      expect(differing, 0);
     });
   });
 }

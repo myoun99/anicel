@@ -5,9 +5,11 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/track_frame_axis.dart';
 import '../../models/timeline_run_behavior.dart' show TimelineRunEdgeMode;
+import '../../models/track_camera_row.dart' show trackIdOfCameraRow;
 import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
-import '../storyboard_layer_policy.dart' show trackConteRowShown;
+import '../storyboard_layer_policy.dart'
+    show trackCameraRowShown, trackConteRowShown;
 import '../timeline/instruction_span_editing.dart' show instructionSpanCovering;
 import 'active_cut_controllers.dart';
 import 'project_settings.dart';
@@ -125,14 +127,25 @@ class TrackAxisWalk {
   /// again ([flipCuts]). ↩️A cut with no conte layer was one block of that
   /// walk; it holds no block of this row, so it is walked a frame at a time
   /// like any stretch a row leaves empty.
+  ///
+  /// The track's CAMERA row is one too (I-73 ④) — and the timeline's camera
+  /// row keeps keys, not blocks, so its flip walks a frame at a time; this
+  /// one walks the same way, across the cuts ([trackCameraRowShown]).
   void flipTrackRow(LayerId layerId, {required bool forward}) {
     final track = _trackSe.trackOwnedRailOwner(layerId);
     if (track == null) {
       return;
     }
     final axis = _projectSettings.axisForTrack(track.id);
-    final layer = trackIdOfConteRow(layerId) != null
-        ? trackConteRowShown(track.id, axis.entries)
+    final conteRow = trackConteRowOf(layerId);
+    final layer = conteRow != null
+        ? trackConteRowShown(track.id, axis.entries, seat: conteRow.seat)
+        : trackIdOfCameraRow(layerId) != null
+        ? trackCameraRowShown(
+            track.id,
+            track.cuts,
+            standingIn: _project.activeCutId,
+          )
         : track.transitionLayer.id == layerId
         ? track.transitionLayer
         : track.seLayers.where((row) => row.id == layerId).firstOrNull;

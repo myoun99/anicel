@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
+import '../helpers/named_finders.dart';
+
 /// UI-R5 ③b: the storyboard says where you STAND, as the timeline does —
 /// its standing cell, which paints nothing since F-212 (the playhead's wash
 /// says it) but still tells semantics and the probes which row you are on.
@@ -192,17 +194,13 @@ void main() {
   /// the fx chain is the whole twirl-down.
   Future<void> twirlOpenVLanes(WidgetTester tester) async {
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-sb-track'),
-      ),
+      find.named('storyboard-track-lane-toggle-sb-track'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:sb-track-'
-          '${effectGroupLaneId(_trackEffect)}',
-        ),
+      find.named(
+        'storyboard-lane-group-toggle-v-track:sb-track-'
+        '${effectGroupLaneId(_trackEffect)}',
       ),
     );
     await tester.pumpAndSettle();

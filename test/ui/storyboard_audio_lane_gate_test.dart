@@ -17,6 +17,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/se_audio_lane.dart' show seAudioLanesFor;
 
+import '../helpers/named_finders.dart';
+
 /// 🚨C5 (2026-08-17): the storyboard's S-row twirl shows a WAVEFORM (Audio)
 /// lane exactly when the TIMELINE's own lane law emits one —
 /// [seAudioLanesFor], which answers nothing for an SE row with no sounds
@@ -100,8 +102,8 @@ Future<void> _openStoryboard(WidgetTester tester) async {
 }
 
 Future<void> _twirl(WidgetTester tester, int slot) async {
-  final toggle = find.byKey(
-    ValueKey<String>('storyboard-se-lane-toggle-${_trackId.value}-${slot + 1}'),
+  final toggle = find.named(
+    'storyboard-se-lane-toggle-${_trackId.value}-${slot + 1}',
   );
   await tester.ensureVisible(toggle);
   await tester.pumpAndSettle();

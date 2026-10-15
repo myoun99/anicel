@@ -19,10 +19,13 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/rail_eyes.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+
+import '../../helpers/named_finders.dart';
 
 /// 🚨I-48 (유저 2026-09-26): 「레이어 라벨 더블클릭시 해당 레이어 이름변경
 /// 로직 발동. 버튼이랑 마찬가지로 여러레이어 선택한채로 해당 레이어
@@ -42,12 +45,12 @@ void main() {
       final fired = <LayerId>[];
       VoidCallback arm(LayerId pressed) => () => fired.add(pressed);
 
-      timelineLabelDoubleTapRecord(a, arm)(Offset.zero);
-      timelineLabelDoubleTapActivation(b)(TapDownDetails());
+      timelineLabelDoubleTapRecord(() => a, arm)(Offset.zero);
+      timelineLabelDoubleTapActivation(() => b)(TapDownDetails());
       expect(fired, isEmpty, reason: 'two rows are two labels');
 
-      timelineLabelDoubleTapRecord(a, arm)(Offset.zero);
-      timelineLabelDoubleTapActivation(a)(TapDownDetails());
+      timelineLabelDoubleTapRecord(() => a, arm)(Offset.zero);
+      timelineLabelDoubleTapActivation(() => a)(TapDownDetails());
       expect(fired, [a]);
     });
 
@@ -60,16 +63,19 @@ void main() {
         return () => fired.add(seen);
       }
 
-      timelineLabelDoubleTapRecord(a, arm)(Offset.zero);
+      timelineLabelDoubleTapRecord(() => a, arm)(Offset.zero);
       selection = 'nothing';
-      timelineLabelDoubleTapActivation(a)(TapDownDetails());
+      timelineLabelDoubleTapActivation(() => a)(TapDownDetails());
 
       expect(fired, ['A and B']);
     });
 
     test('a cell pressed between is another target', () {
       var fired = 0;
-      timelineLabelDoubleTapRecord(a, (_) => () => fired += 1)(Offset.zero);
+      timelineLabelDoubleTapRecord(
+        () => a,
+        (_) => () => fired += 1,
+      )(Offset.zero);
       timelineCellDoubleTapRecord(
         row: const LayerRowAddress(a),
         cells: (
@@ -78,7 +84,7 @@ void main() {
           cellExtent: () => 10.0,
         ),
       )(Offset.zero);
-      timelineLabelDoubleTapActivation(a)(TapDownDetails());
+      timelineLabelDoubleTapActivation(() => a)(TapDownDetails());
 
       expect(fired, 0);
     });
@@ -127,10 +133,10 @@ void main() {
       }
 
       Offset label(WidgetTester tester, LayerId id) => tester.getCenter(
-        find.byKey(ValueKey<String>('$prefix-layer-name-${id.value}')),
+        find.named('$prefix-layer-name-${id.value}'),
       );
       Offset eye(WidgetTester tester, LayerId id) => tester.getCenter(
-        find.byKey(ValueKey<String>('$prefix-layer-visibility-${id.value}')),
+        find.named('$prefix-layer-visibility-${id.value}'),
       );
 
       Future<void> twoPresses(
@@ -160,16 +166,34 @@ void main() {
         // The name is written from the area's start — along a row, or
         // stood up down a column.
         final name = tester.getRect(
-          find.byKey(ValueKey<String>('$prefix-layer-name-${a.value}')),
+          find.named('$prefix-layer-name-${a.value}'),
         );
         final letters = orientation == TimelineOrientation.vertical
             ? Offset(name.center.dx, name.top + 3)
             : Offset(name.left + 3, name.center.dy);
-        final ground = label(tester, a);
+        // The ground half the double click's reach past them — its slop is
+        // the frame block's (kDoubleTapSlop), and a label is wider than
+        // that since the lane values took their hands.
+        const pastTheLetters = kDoubleTapSlop / 2;
+        final ground = orientation == TimelineOrientation.vertical
+            ? Offset(name.center.dx, name.top + pastTheLetters)
+            : Offset(name.left + pastTheLetters, name.center.dy);
         expect(
-          (ground - letters).distance,
-          greaterThan(4),
-          reason: 'CONTROL: two different points',
+          name.contains(ground),
+          isTrue,
+          reason: 'CONTROL: the ground is the label\'s',
+        );
+        expect(
+          tester
+              .getRect(
+                find.descendant(
+                  of: find.named('$prefix-layer-name-${a.value}'),
+                  matching: find.byType(RailEyeBuilder),
+                ),
+              )
+              .contains(ground),
+          isFalse,
+          reason: 'CONTROL: past the letters',
         );
 
         await twoPresses(tester, letters, ground);
@@ -214,7 +238,7 @@ void main() {
         // The name's ground nearest the eye.
         final name = tester
             .getRect(
-              find.byKey(ValueKey<String>('$prefix-layer-name-${a.value}')),
+              find.named('$prefix-layer-name-${a.value}'),
             )
             .deflate(3);
         final eyeAt = eye(tester, a);
@@ -279,7 +303,7 @@ void main() {
 
     Future<void> doubleClick(WidgetTester tester, LayerId id) async {
       final at = tester.getCenter(
-        find.byKey(ValueKey<String>('timeline-layer-name-${id.value}')),
+        find.named('timeline-layer-name-${id.value}'),
       );
       await tester.tapAt(at, kind: PointerDeviceKind.stylus);
       await tester.pump(const Duration(milliseconds: 60));

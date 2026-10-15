@@ -1,7 +1,9 @@
-﻿import 'dart:typed_data';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -13,6 +15,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
@@ -20,6 +23,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
+import 'package:anicel/src/ui/canvas/level_image.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -213,6 +217,144 @@ void main() {
     });
   });
 
+  /// ↩️The cache asked for the cel's drawing state beside its content, and
+  /// a cel donated without one — a layer's cels forked by an unlink, an
+  /// independent clip's copies — had its pixels and no picture (found
+  /// 2026-10-10, when the whole film came to be drawn from this cache).
+  testWidgets('🚨a cel donated without a drawing state is drawn — the '
+      'content alone says whether a cel has a picture, on either road', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final store = BrushFrameStore();
+      for (final cel in ['donated-async', 'donated-sync']) {
+        store.storeBakedSurface(
+          key(cel),
+          BitmapSurface(
+            canvasSize: canvasSize,
+            tileSize: 4,
+            tiles: {
+              TileCoord(x: 0, y: 0): BitmapTile(
+                size: 4,
+                pixels: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 0xFF),
+              ),
+            },
+          ),
+        );
+        expect(
+          store.frameOrNull(key(cel)),
+          isNull,
+          reason: '⛔premise: the donation alone, no drawing state',
+        );
+      }
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+
+      expect(
+        await cache.prepare(
+          key: key('donated-async'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        ),
+        isNotNull,
+      );
+      expect(
+        cache.prepareSyncOrNull(
+          key: key('donated-sync'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+          makePictures: true,
+        ),
+        isNotNull,
+      );
+    });
+  });
+
+  /// The canvas and the warm both make rows, and a frame asks for its rows
+  /// at once: the same cel was made twice side by side.
+  testWidgets('🚨a picture asked for while it is being made is made once — '
+      'the second ask waits for the first making', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      var snapshots = 0;
+      debugOnWaitedSnapshot = (_, _) => snapshots += 1;
+      addTearDown(() => debugOnWaitedSnapshot = null);
+      Future<LayerFrameImage?> ask() => cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      );
+
+      final made = await Future.wait([ask(), ask()]);
+      expect(made, everyElement(isNotNull));
+      expect(snapshots, 1, reason: 'one making answered both asks');
+    });
+  });
+
+  /// A making answers the content it was started for: joined after the cel
+  /// moved on, an ask would get the picture from before the edit.
+  testWidgets('an ask for content that moved on while it was being made, or '
+      'kept another way, makes its own', (tester) async {
+    await tester.runAsync(() async {
+      final (store, coordinator) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      var snapshots = 0;
+      debugOnWaitedSnapshot = (_, _) => snapshots += 1;
+      addTearDown(() => debugOnWaitedSnapshot = null);
+      Future<LayerFrameImage?> ask({bool inkSuffices = false}) => cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+        inkSuffices: inkSuffices,
+      );
+
+      final before = ask();
+      coordinator.commitSourceStroke(sourceDabs: [dab(x: 6, y: 6)]);
+      final after = ask();
+      await Future.wait([before, after]);
+      expect(snapshots, 2, reason: 'the second ask is for the edited cel');
+
+      snapshots = 0;
+      cache.invalidateFrame(key('frame-a'));
+      final whole = ask();
+      final ink = ask(inkSuffices: true);
+      expect(await Future.wait([whole, ink]), everyElement(isNotNull));
+      expect(snapshots, 2, reason: 'its ink alone is another picture');
+    });
+  });
+
+  testWidgets('a making stands down only for the ask that started it — an '
+      'ask that did not want to stand down is made again', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      final standingDown = cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+        shouldAbort: () => true,
+      );
+      final staying = cache.prepare(
+        key: key('frame-a'),
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      );
+
+      expect(await standingDown, isNull, reason: '⛔premise: it stood down');
+      expect(await staying, isNotNull);
+    });
+  });
+
   testWidgets('invalidateFrame drops all qualities', (tester) async {
     await tester.runAsync(() async {
       final (store, _) = storeWithStroke();
@@ -235,6 +377,131 @@ void main() {
 
       expect(cache.estimatedBytes, 0);
       cache.dispose();
+    });
+  });
+
+  // F-313: a move that carries a cel onto another row re-keys its pixels,
+  // and the pictures made of them go with them — the frame it lands on
+  // draws it, rather than waiting for the same picture to be made again.
+  group('a rekey carries a cel\'s pictures with its pixels', () {
+    /// 'frame-a' — the cel [storeWithStroke] drew — on another row.
+    const carried = BrushFrameKey(
+      projectId: ProjectId('project'),
+      trackId: TrackId('track'),
+      cutId: CutId('cut'),
+      layerId: LayerId('other-row'),
+      frameId: FrameId('frame-a'),
+    );
+
+    LayerFrameImage? validAt(
+      LayerFrameImageCache cache,
+      BrushFrameKey at,
+      PlaybackQuality quality,
+    ) => cache.validImageOrNull(
+      at,
+      quality,
+      canvasSize: canvasSize,
+      sourceEffects: const [],
+    );
+
+    testWidgets('every quality\'s picture is the very image under the key '
+        'the pixels moved to, and none is left under the old', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final (store, _) = storeWithStroke();
+        final cache = LayerFrameImageCache(frameStore: store);
+        final made = {
+          for (final quality in [PlaybackQuality.full, PlaybackQuality.half])
+            quality: (await cache.prepare(
+              key: key('frame-a'),
+              canvasSize: canvasSize,
+              quality: quality,
+              sourceEffects: const [],
+            ))!,
+        };
+
+        store.rekeyFrames([(key('frame-a'), carried)]);
+
+        for (final MapEntry(key: quality, value: image) in made.entries) {
+          expect(identical(validAt(cache, carried, quality), image), isTrue);
+          expect(validAt(cache, key('frame-a'), quality), isNull);
+        }
+        cache.dispose();
+      });
+    });
+
+    testWidgets('a picture the new key held is let go, not lost', (
+      tester,
+    ) async {
+      final (cache, held) = (await tester.runAsync(() async {
+        final (store, _) = storeWithStroke();
+        BrushFrameEditingCoordinator(
+          initialFrameKey: carried,
+          frameStore: store,
+          sessionStore: BrushFrameEditSessionStore(
+            canvasSize: canvasSize,
+            tileSize: 4,
+          ),
+          historyPolicy: const BrushHistoryPolicy(),
+        ).commitSourceStroke(sourceDabs: [dab(x: 5, y: 5)]);
+        final cache = LayerFrameImageCache(frameStore: store);
+        await cache.prepare(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        );
+        final there = await cache.prepare(
+          key: carried,
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.full,
+          sourceEffects: const [],
+        );
+        store.rekeyFrames([(key('frame-a'), carried)]);
+        return (cache, there!.image);
+      }))!;
+      // The disposal waits out the frames that may still sample it.
+      for (var i = 0; i < 4; i += 1) {
+        await tester.pump();
+      }
+      expect(held.debugDisposed, isTrue);
+      cache.dispose();
+    });
+
+    testWidgets('a picture made in the frame settles where the rekey carried '
+        'it', (tester) async {
+      await tester.runAsync(() async {
+        final (store, _) = storeWithStroke();
+        final cache = LayerFrameImageCache(frameStore: store);
+        final now = cache.prepareSyncOrNull(
+          key: key('frame-a'),
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+          makePictures: true,
+        )!;
+
+        store.rekeyFrames([(key('frame-a'), carried)]);
+
+        final kept = (await cache.prepare(
+          key: carried,
+          canvasSize: canvasSize,
+          quality: PlaybackQuality.half,
+          sourceEffects: const [],
+        ))!;
+        expect(
+          identical(kept.image, now.image),
+          isFalse,
+          reason: 'the plain snapshot took the deferred image\'s place',
+        );
+        expect(
+          identical(kept.content, now.content),
+          isTrue,
+          reason: 'of the same picture — not made a second time',
+        );
+        cache.dispose();
+      });
     });
   });
 
@@ -467,7 +734,7 @@ void main() {
       );
 
       // 8×8 RGBA = 256 bytes per image; keep room for exactly one.
-      cache.evictLeastRecentlyUsed(targetBytes: 256);
+      cache.enforceBudget(maxBytes: 256);
 
       expect(
         cache.validImageOrNull(
@@ -635,11 +902,12 @@ void main() {
 
     // 🔬Every raster of a picture is a multisampled render with a whole mip
     // chain — ~6ms for a working-size cel on the Windows app — so the full
-    // level composes the ink from its tiles rather than a whole image to cut.
-    testWidgets('the full level composes the ink straight from its tiles; '
-        'the levels below cut it out of their halved whole — both roads', (
-      tester,
-    ) async {
+    // level and the first compose the ink from its tiles rather than a whole
+    // image to cut. Deeper, the ink is cut out of the halved whole: a smaller
+    // image halves differently on Impeller Vulkan.
+    testWidgets('the full level and the first compose the ink straight from '
+        'its tiles; the levels below cut it out of their halved whole — both '
+        'roads', (tester) async {
       await tester.runAsync(() async {
         final async = LayerFrameImageCache(frameStore: storeWithInk());
         final sync = LayerFrameImageCache(frameStore: storeWithInk());
@@ -676,9 +944,15 @@ void main() {
           expect((await prepared(PlaybackQuality.half))!.isInk, isTrue);
           expect(
             debugInksCutOut,
+            0,
+            reason: '$road: the first level draws the ink halved straight '
+                'from its tiles',
+          );
+          expect((await prepared(PlaybackQuality.quarter))!.isInk, isTrue);
+          expect(
+            debugInksCutOut,
             1,
-            reason: '$road: below the full level the ink is cut out of the '
-                'halved whole',
+            reason: '$road: deeper the ink is cut out of the halved whole',
           );
         }
       });
@@ -772,5 +1046,192 @@ void main() {
         expect(await bytesOf(inkNow.image), expected, reason: 'sync road');
       });
     });
+  });
+
+  // 🚨A LEVEL IS MADE FROM THE TILES AND IS THE WHOLE IMAGE HALVED
+  // (2026-10-10): the first halving draws each tile halved at its place
+  // instead of halving the whole content at full size — and must leave the
+  // bytes it always held, at every level, whole or ink, on both roads
+  // (유저 2026-09-23: 「1/4해상도같은 결과바뀌는건 절대로 허용안하고」). The
+  // reference is made the way every level was made before: the whole content
+  // at full size, halved one exact box at a time, the ink cut out of that.
+  //
+  // ⚠️RED ON IMPELLER VULKAN (`--enable-impeller`) by 1/255 at a few
+  // channels, and that is the engine's halving, not the tiles: there neither
+  // halving is the exact mean — a 512×384 cel's first level was off it at 186
+  // channels drawn whole and 247 drawn from its tiles, by 1, the two apart at
+  // 61 (2026-10-10, board `halving-rounds-differently-per-engine`). The ink
+  // still lays back to the whole there: `a_cropped_cel_draws_the_same_bytes`
+  // runs green on Vulkan but for the blurred folder it names.
+  group('a level made from the tiles', () {
+    Future<Uint8List> bytesOf(ui.Image image) async => (await image
+            .toByteData(format: ui.ImageByteFormat.rawRgba))!
+        .buffer
+        .asUint8List();
+
+    Future<ui.Image> halvedOnce(ui.Image source) async {
+      final size = halvedSize(source.width, source.height);
+      final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
+      try {
+        return await picture.toImage(size.width, size.height);
+      } finally {
+        picture.dispose();
+      }
+    }
+
+    /// The bytes of a [width]-wide image's [bytes] over [texels].
+    Uint8List cut(Uint8List bytes, int width, ui.Rect texels) {
+      final there = BytesBuilder();
+      for (var y = texels.top.round(); y < texels.bottom.round(); y += 1) {
+        final row = y * width;
+        there.add(
+          bytes.sublist(
+            (row + texels.left.round()) * 4,
+            (row + texels.right.round()) * 4,
+          ),
+        );
+      }
+      return there.toBytes();
+    }
+
+    BrushFrameStore storeWith(
+      CanvasSize canvas,
+      List<(double, double)> inkAt,
+    ) {
+      final store = BrushFrameStore();
+      BrushFrameEditingCoordinator(
+        initialFrameKey: key('scene'),
+        frameStore: store,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: canvas,
+          tileSize: 16,
+        ),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(
+        sourceDabs: [
+          for (final (i, (x, y)) in inkAt.indexed)
+            BrushDab(
+              center: CanvasPoint(x: x, y: y),
+              color: 0xFF2060C0,
+              size: 9,
+              opacity: 0.8,
+              flow: 1,
+              hardness: 0.3,
+              tipShape: BrushTipShape.round,
+              pressure: 1,
+              sequence: i,
+            ),
+        ],
+      );
+      return store;
+    }
+
+    for (final (scene, canvas, inkAt) in const [
+      (
+        'ink inside a canvas on the grid',
+        CanvasSize(width: 64, height: 48),
+        [(22.0, 21.0), (41.0, 19.0)],
+      ),
+      (
+        'ink by the right and bottom edges of a canvas off the grid',
+        CanvasSize(width: 75, height: 51),
+        [(70.0, 47.0), (3.0, 49.0)],
+      ),
+      (
+        'ink on the pasteboard',
+        CanvasSize(width: 64, height: 48),
+        [(-6.0, 10.0), (60.0, 40.0)],
+      ),
+      (
+        'ink away from the edges of a canvas off the grid',
+        CanvasSize(width: 75, height: 51),
+        [(20.0, 12.0)],
+      ),
+    ]) {
+      testWidgets('$scene: every level is the whole image halved — whole '
+          'or ink, both roads', (tester) async {
+        await tester.runAsync(() async {
+          final store = storeWith(canvas, inkAt);
+          final whole = LayerFrameImageCache(frameStore: store)
+            ..debugStoresWholeContent = true;
+          final ink = LayerFrameImageCache(frameStore: store);
+          final inkNow = LayerFrameImageCache(frameStore: store);
+          addTearDown(whole.dispose);
+          addTearDown(ink.dispose);
+          addTearDown(inkNow.dispose);
+          Future<LayerFrameImage> prepared(
+            LayerFrameImageCache cache,
+            PlaybackQuality quality, {
+            bool inkSuffices = false,
+          }) async => (await cache.prepare(
+            key: key('scene'),
+            canvasSize: canvas,
+            quality: quality,
+            sourceEffects: const [],
+            inkSuffices: inkSuffices,
+          ))!;
+
+          final full = await prepared(whole, PlaybackQuality.full);
+          expect(
+            (await bytesOf(full.image)).any((byte) => byte != 0),
+            isTrue,
+            reason: 'fixture: there is ink',
+          );
+          var reference = full.image;
+          for (var level = 1; level <= PlaybackQuality.deepestLevel; level++) {
+            final quality = PlaybackQuality.forLevel(level);
+            final previous = reference;
+            reference = await halvedOnce(previous);
+            if (!identical(previous, full.image)) {
+              previous.dispose();
+            }
+            final want = await bytesOf(reference);
+
+            final asWhole = await prepared(whole, quality);
+            expect(asWhole.isInk, isFalse, reason: 'anchor: the whole image');
+            expect(
+              (asWhole.image.width, asWhole.image.height),
+              (reference.width, reference.height),
+              reason: '$scene, level $level',
+            );
+            expect(
+              await bytesOf(asWhole.image),
+              want,
+              reason: '$scene, level $level: the whole',
+            );
+
+            final step = (1 << level).toDouble();
+            for (final (road, made) in [
+              ('async', await prepared(ink, quality, inkSuffices: true)),
+              (
+                'sync',
+                inkNow.prepareSyncOrNull(
+                  key: key('scene'),
+                  canvasSize: canvas,
+                  quality: quality,
+                  sourceEffects: const [],
+                  makePictures: true,
+                  inkSuffices: true,
+                )!,
+              ),
+            ]) {
+              final at = made.worldRect.shift(-asWhole.worldRect.topLeft);
+              final texels = ui.Rect.fromLTRB(
+                at.left / step,
+                at.top / step,
+                at.right / step,
+                at.bottom / step,
+              );
+              expect(
+                await bytesOf(made.image),
+                cut(want, reference.width, texels),
+                reason: '$scene, level $level, $road road: the ink',
+              );
+            }
+          }
+          reference.dispose();
+        });
+      });
+    }
   });
 }

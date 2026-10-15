@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_range_gestures.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 
 /// The rail and the sheet hold the SAME range-gesture collaborator; the
 /// only thing the rail adds is a pin for its row window. This pins what the
@@ -71,11 +72,15 @@ void main() {
     ),
   ];
 
+  TimelineRowEdges edges() =>
+      TimelineRowEdges.uniform(1, TimelineGridMetrics.defaults.layerRowHeight);
+
   test('the frame-range policy reads the host\'s playback and metrics', () {
     final gestures = TimelineGridRangeGestures(
       hooks: () => hooks(playbackFrameCount: 10),
       metrics: () => const TimelineGridMetrics(minimumVisibleFrameCells: 30),
       dragRows: rows,
+      dragEdges: edges,
       rangeMove: TimelineRangeMoveRowResolver(),
     );
     expect(gestures.frameRangePolicy.visibleFrameCount, 30);
@@ -83,6 +88,7 @@ void main() {
       hooks: () => hooks(playbackFrameCount: 100),
       metrics: () => const TimelineGridMetrics(minimumVisibleFrameCells: 30),
       dragRows: rows,
+      dragEdges: edges,
       rangeMove: TimelineRangeMoveRowResolver(),
     );
     expect(
@@ -99,6 +105,7 @@ void main() {
       hooks: hooks,
       metrics: () => TimelineGridMetrics.defaults,
       dragRows: rows,
+      dragEdges: edges,
       rangeMove: resolver,
     );
     final passRows = rows();
@@ -116,6 +123,7 @@ void main() {
       hooks: () => hooks(rangeHooks: range, laneRange: laneHooks()),
       metrics: () => TimelineGridMetrics.defaults,
       dragRows: rows,
+      dragEdges: edges,
       rangeMove: resolver,
     );
     final callbacks = gestures.rangeGestureFor(rows());
@@ -134,6 +142,7 @@ void main() {
       hooks: () => hooks(rangeHooks: rangeHooks(), laneRange: laneHooks()),
       metrics: () => TimelineGridMetrics.defaults,
       dragRows: rows,
+      dragEdges: edges,
       rangeMove: TimelineRangeMoveRowResolver(),
       pin: pin,
     );
@@ -154,6 +163,7 @@ void main() {
       hooks: () => hooks(rangeHooks: rangeHooks(), laneRange: laneHooks()),
       metrics: () => TimelineGridMetrics.defaults,
       dragRows: rows,
+      dragEdges: edges,
       rangeMove: TimelineRangeMoveRowResolver(),
     );
     expect(unpinned.rangeGestureFor(rows())!.onGripTaken, isNull);

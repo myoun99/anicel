@@ -309,13 +309,15 @@ void main() {
     });
     test('identifiers are de-duplicated across groups', () {
       // ⚠️The PROPERTY, not a literal list. This used to spell the answer
-      // out, so adding a kind to `viewableMedia` (movies, 2026-08-29) broke
-      // a test about de-duplication for a reason that had nothing to do
-      // with de-duplication.
-      final utis = FileTypeGroups.utisFor([
-        FileTypeGroups.images,
-        FileTypeGroups.viewableMedia,
-      ]);
+      // out, so adding a kind to the viewer's list (movies, 2026-08-29)
+      // broke a test about de-duplication for a reason that had nothing to
+      // do with de-duplication.
+      const stills = XTypeGroup(
+        label: 'Stills',
+        extensions: ['png'],
+        uniformTypeIdentifiers: ['public.image'],
+      );
+      final utis = FileTypeGroups.utisFor([stills, FileTypeGroups.poolMedia]);
       expect(utis.toSet(), hasLength(utis.length), reason: 'no repeats');
       expect(
         utis,
@@ -324,7 +326,7 @@ void main() {
       );
       expect(
         utis,
-        containsAll(FileTypeGroups.viewableMedia.uniformTypeIdentifiers!),
+        containsAll(FileTypeGroups.poolMedia.uniformTypeIdentifiers!),
       );
     });
   });

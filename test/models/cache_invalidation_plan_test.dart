@@ -1,13 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
 import 'package:anicel/src/models/cache_invalidation_plan.dart';
-import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
-import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/dirty_tile_set.dart';
 
@@ -22,18 +18,6 @@ void main() {
       layerId: LayerId(layer),
       frameId: FrameId(frame),
       tileCoord: TileCoord(x: x, y: y),
-    );
-    FrameCompositeCacheKey frameKey(int frameIndex, {String cut = 'cut-a'}) =>
-        FrameCompositeCacheKey(cutId: CutId(cut), frameIndex: frameIndex);
-    PlaybackPreviewCacheKey previewKey(
-      int frameIndex,
-      int width,
-      int height, {
-      String cut = 'cut-a',
-    }) => PlaybackPreviewCacheKey(
-      cutId: CutId(cut),
-      frameIndex: frameIndex,
-      previewSize: CanvasSize(width: width, height: height),
     );
 
     test('empty plan is empty', () {
@@ -50,22 +34,6 @@ void main() {
       );
     });
 
-    test('constructor stores frame composite keys', () {
-      final key = frameKey(0);
-      expect(
-        CacheInvalidationPlan(frameComposites: [key]).frameComposites,
-        contains(key),
-      );
-    });
-
-    test('constructor stores playback preview keys', () {
-      final key = previewKey(0, 320, 180);
-      expect(
-        CacheInvalidationPlan(playbackPreviews: [key]).playbackPreviews,
-        contains(key),
-      );
-    });
-
     test('constructor defensively copies input iterables', () {
       final keys = [layerKey(0, 0)];
       final plan = CacheInvalidationPlan(layerTiles: keys);
@@ -73,40 +41,22 @@ void main() {
       expect(plan.layerTiles.length, 1);
     });
 
-    test('exposed key sets are unmodifiable', () {
+    test('exposed key set is unmodifiable', () {
       expect(
         () => CacheInvalidationPlan.empty().layerTiles.add(layerKey(0, 0)),
         throwsUnsupportedError,
       );
-      expect(
-        () => CacheInvalidationPlan.empty().frameComposites.add(frameKey(0)),
-        throwsUnsupportedError,
-      );
-      expect(
-        () => CacheInvalidationPlan.empty().playbackPreviews.add(
-          previewKey(0, 1, 1),
-        ),
-        throwsUnsupportedError,
-      );
     });
 
-    test('isEmpty is true only when all key sets are empty', () {
+    test('isEmpty is true only when no layer tile is named', () {
       expect(CacheInvalidationPlan.empty().isEmpty, isTrue);
       expect(
         CacheInvalidationPlan(layerTiles: [layerKey(0, 0)]).isEmpty,
         isFalse,
       );
-      expect(
-        CacheInvalidationPlan(frameComposites: [frameKey(0)]).isEmpty,
-        isFalse,
-      );
-      expect(
-        CacheInvalidationPlan(playbackPreviews: [previewKey(0, 1, 1)]).isEmpty,
-        isFalse,
-      );
     });
 
-    test('isNotEmpty is true when any key set is non-empty', () {
+    test('isNotEmpty is true when a layer tile is named', () {
       expect(CacheInvalidationPlan.empty().isNotEmpty, isFalse);
       expect(
         CacheInvalidationPlan(layerTiles: [layerKey(0, 0)]).isNotEmpty,
@@ -114,14 +64,12 @@ void main() {
       );
     });
 
-    test('totalKeyCount sums all key sets', () {
+    test('totalKeyCount counts the layer tiles', () {
       expect(
         CacheInvalidationPlan(
-          layerTiles: [layerKey(0, 0)],
-          frameComposites: [frameKey(0)],
-          playbackPreviews: [previewKey(0, 1, 1)],
+          layerTiles: [layerKey(0, 0), layerKey(1, 0)],
         ).totalKeyCount,
-        3,
+        2,
       );
     });
 
@@ -132,23 +80,9 @@ void main() {
       expect(original.layerTiles, isEmpty);
     });
 
-    test('addFrameComposite returns new plan', () {
-      final next = CacheInvalidationPlan.empty().addFrameComposite(frameKey(0));
-      expect(next.frameComposites.length, 1);
-    });
-
-    test('addPlaybackPreview returns new plan', () {
-      final next = CacheInvalidationPlan.empty().addPlaybackPreview(
-        previewKey(0, 1, 1),
-      );
-      expect(next.playbackPreviews.length, 1);
-    });
-
-    test('add helpers do not mutate original', () {
+    test('addLayerTiles does not mutate the original', () {
       final original = CacheInvalidationPlan.empty();
       original.addLayerTiles([layerKey(0, 0)]);
-      original.addFrameComposites([frameKey(0)]);
-      original.addPlaybackPreviews([previewKey(0, 1, 1)]);
       expect(original.isEmpty, isTrue);
     });
 
@@ -163,41 +97,16 @@ void main() {
       );
     });
 
-    test('addFrameComposites collapses duplicates', () {
-      final key = frameKey(0);
-      expect(
-        CacheInvalidationPlan.empty()
-            .addFrameComposites([key, key])
-            .frameComposites
-            .length,
-        1,
-      );
-    });
-
-    test('addPlaybackPreviews collapses duplicates', () {
-      final key = previewKey(0, 1, 1);
-      expect(
-        CacheInvalidationPlan.empty()
-            .addPlaybackPreviews([key, key])
-            .playbackPreviews
-            .length,
-        1,
-      );
-    });
-
-    test('merge combines all key sets', () {
-      final merged = CacheInvalidationPlan(layerTiles: [layerKey(0, 0)]).merge(
-        CacheInvalidationPlan(
-          frameComposites: [frameKey(0)],
-          playbackPreviews: [previewKey(0, 1, 1)],
-        ),
-      );
-      expect(merged.totalKeyCount, 3);
+    test('merge combines the layer tiles', () {
+      final merged = CacheInvalidationPlan(
+        layerTiles: [layerKey(0, 0)],
+      ).merge(CacheInvalidationPlan(layerTiles: [layerKey(1, 0)]));
+      expect(merged.totalKeyCount, 2);
     });
 
     test('merge does not mutate originals', () {
       final a = CacheInvalidationPlan(layerTiles: [layerKey(0, 0)]);
-      final b = CacheInvalidationPlan(frameComposites: [frameKey(0)]);
+      final b = CacheInvalidationPlan(layerTiles: [layerKey(1, 0)]);
       a.merge(b);
       expect(a.totalKeyCount, 1);
       expect(b.totalKeyCount, 1);
@@ -219,24 +128,6 @@ void main() {
       },
     );
 
-    test('fromDirtyTiles does not create FrameCompositeCacheKey entries', () {
-      final plan = CacheInvalidationPlan.fromDirtyTiles(
-        layerId: const LayerId('layer-a'),
-        frameId: const FrameId('frame-a'),
-        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
-      );
-      expect(plan.frameComposites, isEmpty);
-    });
-
-    test('fromDirtyTiles does not create PlaybackPreviewCacheKey entries', () {
-      final plan = CacheInvalidationPlan.fromDirtyTiles(
-        layerId: const LayerId('layer-a'),
-        frameId: const FrameId('frame-a'),
-        dirtyTiles: DirtyTileSet([TileCoord(x: 0, y: 0)]),
-      );
-      expect(plan.playbackPreviews, isEmpty);
-    });
-
     test('equality ignores insertion order', () {
       final a = layerKey(0, 0);
       final b = layerKey(1, 0);
@@ -256,11 +147,7 @@ void main() {
     });
 
     test('toJson/fromJson round-trips', () {
-      final plan = CacheInvalidationPlan(
-        layerTiles: [layerKey(0, 0)],
-        frameComposites: [frameKey(0)],
-        playbackPreviews: [previewKey(0, 1, 1)],
-      );
+      final plan = CacheInvalidationPlan(layerTiles: [layerKey(0, 0)]);
       expectJsonRoundTrip(plan, CacheInvalidationPlan.fromJson);
     });
 
@@ -272,16 +159,6 @@ void main() {
           layerKey(1, 0, layer: 'layer-b'),
           layerKey(1, 0),
         ],
-        frameComposites: [
-          frameKey(2),
-          frameKey(1, cut: 'cut-b'),
-          frameKey(1),
-        ],
-        playbackPreviews: [
-          previewKey(1, 200, 100),
-          previewKey(1, 100, 200),
-          previewKey(0, 320, 180),
-        ],
       );
       final json = plan.toJson();
       expect(
@@ -289,16 +166,6 @@ void main() {
           (e) => ((e as Map)['tileCoord'] as Map)['x'],
         ),
         [1, 2, 0, 1],
-      );
-      expect(
-        (json['frameComposites'] as List).map((e) => (e as Map)['frameIndex']),
-        [1, 2, 1],
-      );
-      expect(
-        (json['playbackPreviews'] as List).map(
-          (e) => ((e as Map)['previewSize'] as Map)['width'],
-        ),
-        [320, 100, 200],
       );
     });
   });

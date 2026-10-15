@@ -10,13 +10,12 @@ import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
-import '../../models/camera_pose.dart';
 import '../../models/cut.dart';
-import '../../models/cut_camera.dart';
 import '../../models/import/import_warning.dart';
+import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/project_id.dart';
@@ -28,6 +27,7 @@ import '../../services/import/clip_cel_raster.dart';
 import '../../services/import/clip_container.dart';
 import '../../services/import/clip_document.dart';
 import '../../services/import/clip_import_planner.dart';
+import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart' show bakeCelTiles;
 import '../../services/persistence/folder_grant.dart'
@@ -35,8 +35,9 @@ import '../../services/persistence/folder_grant.dart'
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
-import '../text/app_strings.dart';
+import 'media_pool.dart';
 import 'project_file.dart';
+import 'project_file_door.dart' show ProjectFileDoor;
 import 'render_caches.dart';
 import 'session_roles.dart';
 
@@ -50,8 +51,10 @@ final class ClipProjectRead {
     required this.project,
     required ClipImportPlan plan,
     required ({String path, bool staged}) source,
+    required List<String> sounds,
   }) : _plan = plan,
-       _source = source;
+       _source = source,
+       _sounds = sounds;
 
   /// The project the file becomes — every timeline a 겸용 cut, its layers
   /// and cels as the planner shaped them.
@@ -61,6 +64,10 @@ final class ClipProjectRead {
   /// The bytes the pictures are baked from — a staged copy the bake
   /// deletes when it is done with it.
   final ({String path, bool staged}) _source;
+
+  /// The sounds taken out of the file, where the project's SE rows play
+  /// them from until the bake carries them into the project.
+  final List<String> _sounds;
 }
 
 /// Reads the CLIP STUDIO file at [clipPath] and plans the project it opens
@@ -94,18 +101,92 @@ Future<ClipProjectRead?> readClipProject({
   final name = ProviderDocuments.nameOf(
     clipPath,
   ).replaceAll(RegExp(r'\.clip$', caseSensitive: false), '');
+  final sounds = await _takeSoundsOut(
+    source.path,
+    [
+      for (final layer in document.root.everyLayer)
+        for (final sound in layer.sounds)
+          (
+            objectUuid: sound.objectUuid,
+            binaryId: sound.binaryId,
+            fileName: _soundFileName(sound, layer.name),
+          ),
+    ],
+    '${scratch.path}/clip-sound-${DateTime.now().microsecondsSinceEpoch}',
+  );
   final plan = planClipImport(
     document: document,
     name: name,
-    hiddenFolderName: AppText.strings.clipHiddenLayers,
     trackId: _track,
     mint: ImportIdMint.forANewProject(),
+    soundPaths: sounds,
   );
   return ClipProjectRead._(
     project: _projectOf(name, document, plan),
     plan: plan,
     source: source,
+    sounds: [...sounds.values],
   );
+}
+
+/// What a sound taken out of the file is called: the name CLIP STUDIO took
+/// it in by — its layer's when it kept none — with the extension it was
+/// kept under, in characters every file system takes.
+String _soundFileName(ClipSound sound, String layerName) {
+  final own = sound.name.isNotEmpty
+      ? sound.name
+      : (layerName.isNotEmpty ? layerName : 'sound');
+  final dotted = '.${sound.extension}'.toLowerCase();
+  final named = sound.extension.isEmpty || own.toLowerCase().endsWith(dotted)
+      ? own
+      : '$own.${sound.extension}';
+  return named.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+}
+
+/// Each of [sounds] written out of the file at [path] into [folder], under
+/// its own name — a second one of a name taken gets ` (2)` — by its
+/// [ClipSound.objectUuid]. A sound whose bytes the file does not hold is
+/// not there.
+///
+/// ⛔ITS OWN FUNCTION on a worker, for [_readStructure]'s reason: the
+/// index walk and the bytes are the file's size and kind of work.
+Future<Map<String, String>> _takeSoundsOut(
+  String path,
+  List<({String objectUuid, String binaryId, String fileName})> sounds,
+  String folder,
+) {
+  if (sounds.isEmpty) {
+    return Future.value(const {});
+  }
+  return Isolate.run(() {
+    final file = File(path).openSync();
+    try {
+      final container = ClipContainer.indexOf(file);
+      final out = <String, String>{};
+      final taken = <String>{};
+      Directory(folder).createSync(recursive: true);
+      for (final sound in sounds) {
+        final place = container.externals[sound.binaryId];
+        if (place == null) {
+          continue;
+        }
+        var name = sound.fileName;
+        for (var n = 2; !taken.add(name.toLowerCase()); n += 1) {
+          final dot = sound.fileName.lastIndexOf('.');
+          name = dot <= 0
+              ? '${sound.fileName} ($n)'
+              : '${sound.fileName.substring(0, dot)} ($n)'
+                    '${sound.fileName.substring(dot)}';
+        }
+        final target = File('$folder/$name')
+          ..writeAsBytesSync(readClipPlace(file, place), flush: true);
+        out[sound.objectUuid] = normalizedMediaPath(target.path);
+      }
+      return out;
+    } finally {
+      file.closeSync();
+    }
+  });
 }
 
 /// The structure of the file at [path], read on a worker of its own — or
@@ -124,24 +205,12 @@ Future<ClipDocument?> _readStructure(String path, String scratch) =>
     });
 
 /// The project [plan] makes of [document]: its timelines' cuts on one
-/// track, its rate, and its shooting frame as the camera — the frame's
-/// size the project's, its centre where every cut's camera stands. A file
-/// with no frame is shot whole.
+/// track — each with the camera the plan gave it — its rate, and its
+/// shooting frame's size as the project's camera. A file with no frame is
+/// shot whole.
 Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
   final frame = document.frame;
-  final camera = frame == null
-      ? null
-      : CutCamera(
-          keyframes: {
-            0: CameraPose(
-              center: CanvasPoint(x: frame.centerX, y: frame.centerY),
-            ),
-          },
-        );
-  final lifted = liftCutSeLayersToTrack(_track, [
-    for (final cut in plan.cuts)
-      if (camera == null) cut else cut.copyWith(camera: camera),
-  ]);
+  final lifted = liftCutSeLayersToTrack(_track, plan.cuts);
   final fps = plan.fps;
   return Project(
     id: ProjectId('clip-${DateTime.now().toUtc().millisecondsSinceEpoch}'),
@@ -165,12 +234,13 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
   );
 }
 
-/// One picture to bake, the cut it lands in, and where its bytes are.
+/// One picture to bake, the cut it lands in, and where its bytes are — a
+/// stored picture's blocks, or a vector layer's strokes ([picture] null).
 typedef _ClipWork = ({
   ClipCelBake bake,
   Cut cut,
-  ClipPicture picture,
-  ClipPlace blocks,
+  ClipPicture? picture,
+  List<ClipPlace> places,
 });
 
 /// The CLIP STUDIO door.
@@ -180,15 +250,21 @@ final class ClipImportDoor {
     required ChangeSink changes,
     required RenderCaches renderCaches,
     required ProjectFile file,
+    required ProjectFileDoor projectDoor,
+    required MediaPool mediaPool,
   }) : _project = project,
        _changes = changes,
        _renderCaches = renderCaches,
-       _file = file;
+       _file = file,
+       _projectDoor = projectDoor,
+       _mediaPool = mediaPool;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final RenderCaches _renderCaches;
   final ProjectFile _file;
+  final ProjectFileDoor _projectDoor;
+  final MediaPool _mediaPool;
 
   /// Bakes every picture of [read] into THIS session — the one born for it
   /// (`OpenProjects.prepare(read.project)`) — and answers what the import
@@ -206,11 +282,33 @@ final class ClipImportDoor {
     MemoryBlackBox.begin('clip-import');
     final warnings = [...read._plan.warnings];
     await _bakeEveryCel(read, warnings: warnings, onProgress: onProgress);
+    await _carrySounds(read._sounds);
     _file.markDirty();
     _changes.warmActiveCut();
     _changes.notifyChanged();
     MemoryBlackBox.end('clip-import');
     return warnings;
+  }
+
+  /// The sounds taken out of the file become the project's own — CARRIED,
+  /// as a recording is: their bytes held in the project, so the copies
+  /// taken out go once held (the pool does not call a carried asset whose
+  /// original left 「missing」). Registered as the file's, not as an edit
+  /// to undo — the .tvpp door's way with its sounds.
+  Future<void> _carrySounds(List<String> paths) async {
+    if (paths.isEmpty) {
+      return;
+    }
+    await _mediaPool.addMediaAssets(paths, carried: true);
+    _project.historyManager.clear();
+    _projectDoor.warmAudioConforms();
+    for (final path in paths) {
+      try {
+        File(path).deleteSync();
+      } on FileSystemException {
+        // The run's room goes at its end; a copy still held open waits.
+      }
+    }
   }
 
   /// Every picture [read] planned, decoded out of its file and baked into
@@ -227,24 +325,21 @@ final class ClipImportDoor {
     final reader = await File(source.path).open();
     try {
       final work = _workOf(read._plan, ClipContainer.indexOf(reader), warnings);
-      final pool = math.max(1, math.min(Platform.numberOfProcessors - 1, 8));
+      final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
       for (var at = 0; at < work.length; at += pool) {
         final wave = work.sublist(at, math.min(at + pool, work.length));
-        final windows = <Uint8List>[];
+        final windows = <List<Uint8List>>[];
         for (final item in wave) {
-          await reader.setPosition(item.blocks.offset);
-          windows.add(await reader.read(item.blocks.length));
+          final bytes = <Uint8List>[];
+          for (final place in item.places) {
+            await reader.setPosition(place.offset);
+            bytes.add(await reader.read(place.length));
+          }
+          windows.add(bytes);
         }
         final decoded = await Future.wait([
           for (var w = 0; w < wave.length; w += 1)
-            _decodeOnWorker(windows[w], wave[w].picture.source.attribute, (
-              left: wave[w].picture.left,
-              top: wave[w].picture.top,
-              canvasWidth: wave[w].cut.canvasSize.width,
-              canvasHeight: wave[w].cut.canvasSize.height,
-              alpha: wave[w].bake.alpha,
-              tileSize: defaultCelTileSize,
-            )),
+            _decodeOne(wave[w], windows[w]),
         ]);
         for (var w = 0; w < wave.length; w += 1) {
           _bakeDecoded(decoded[w], wave[w], warnings);
@@ -272,8 +367,29 @@ final class ClipImportDoor {
     final turned = <int>{};
     for (final bake in plan.bakes) {
       final cut = _project.cutById(bake.cutId);
+      if (cut == null) {
+        continue;
+      }
+      // A vector layer is drawn from its strokes, however few: the render
+      // it keeps beside them has no blocks in the file.
+      if (bake.source.kind == ClipLayerKind.vector) {
+        final places = [
+          for (final id in bake.source.vectorData) container.externals[id],
+        ];
+        if (places.contains(null)) {
+          warnings.add(_unreadable(bake, 'its strokes are not in the file'));
+          continue;
+        }
+        work.add((
+          bake: bake,
+          cut: cut,
+          picture: null,
+          places: [...places.nonNulls],
+        ));
+        continue;
+      }
       final picture = clipPictureOf(bake.source);
-      if (cut == null || picture == null) {
+      if (picture == null) {
         continue;
       }
       final blocks = container.externals[picture.source.blocksId];
@@ -290,9 +406,28 @@ final class ClipImportDoor {
           ),
         );
       }
-      work.add((bake: bake, cut: cut, picture: picture, blocks: blocks));
+      work.add((bake: bake, cut: cut, picture: picture, places: [blocks]));
     }
     return work;
+  }
+
+  /// [item] decoded on a worker of its own out of [bytes] — its blocks, or
+  /// its strokes.
+  Future<Object?> _decodeOne(_ClipWork item, List<Uint8List> bytes) {
+    final picture = item.picture;
+    final target = (
+      left: picture?.left ?? 0,
+      top: picture?.top ?? 0,
+      canvasWidth: item.cut.canvasSize.width,
+      canvasHeight: item.cut.canvasSize.height,
+      alpha: item.bake.alpha,
+      tileSize: defaultCelTileSize,
+    );
+    if (picture == null) {
+      final layer = item.bake.source;
+      return _drawOnWorker(bytes, (x: layer.offsetX, y: layer.offsetY), target);
+    }
+    return _decodeOnWorker(bytes.single, picture.source.attribute, target);
   }
 
   /// Lands one decoded picture, or says why it could not be landed. No
@@ -302,6 +437,23 @@ final class ClipImportDoor {
     _ClipWork item,
     List<ImportWarning> warnings,
   ) {
+    if (decoded case (
+      tiles: final List<ClipCelTile> tiles,
+      unread: final int unread,
+    )) {
+      if (unread > 0) {
+        warnings.add(
+          ImportWarning(
+            'clipVectorUnread',
+            '{name}: {count} vector strokes of a kind this import does not '
+                'read — not drawn.',
+            {'name': item.bake.label, 'count': '$unread'},
+          ),
+        );
+      }
+      _bakeTiles(tiles, item);
+      return;
+    }
     if (decoded == null) {
       warnings.add(
         ImportWarning(
@@ -316,7 +468,11 @@ final class ClipImportDoor {
       warnings.add(_unreadable(item.bake, '$decoded'));
       return;
     }
-    if (decoded.isEmpty) {
+    _bakeTiles(decoded, item);
+  }
+
+  void _bakeTiles(List<ClipCelTile> tiles, _ClipWork item) {
+    if (tiles.isEmpty) {
       return;
     }
     bakeCelTiles(
@@ -327,7 +483,7 @@ final class ClipImportDoor {
         item.bake.frameId,
       ),
       item.cut.canvasSize,
-      decoded,
+      tiles,
     );
   }
 
@@ -355,6 +511,23 @@ Future<Object?> _decodeOnWorker(
     } on ClipFormatException catch (error) {
       return error;
     } on FormatException catch (error) {
+      return error;
+    }
+  });
+}
+
+/// One vector layer drawn on a worker of its own ([clipVectorTiles]) — its
+/// tiles and its unread strokes, or the reason its strokes would not read.
+/// Its own function for the same reason as [_decodeOnWorker].
+Future<Object?> _drawOnWorker(
+  List<Uint8List> bodies,
+  ({int x, int y}) offset,
+  ClipCelTarget target,
+) {
+  return Isolate.run<Object?>(() {
+    try {
+      return clipVectorTiles(bodies, offset, target);
+    } on ClipFormatException catch (error) {
       return error;
     }
   });

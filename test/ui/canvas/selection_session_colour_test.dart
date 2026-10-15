@@ -50,7 +50,7 @@ void main() {
       committedRegion: null,
       screenOffset: Offset.zero,
       marqueeShapes: const [],
-      openTrail: const [],
+      openTrails: const [],
       transformChrome: (
         box: chrome.box,
         handles: chrome.handles,

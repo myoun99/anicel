@@ -15,12 +15,11 @@ class _XSheetGridColumns {
   /// answer to the rail's "which rows did the sweep pass over" (F-66; why
   /// a stretch rather than a point is in [RailColumnSwipe.rowsIn]).
   ///
-  /// 🚨THE UNIFORM STRIP, which is the rail's own walk ([uniformRailRowsIn])
-  /// — every column header is one [TimelineGridMetrics.layerRowHeight] wide,
-  /// lane columns included, and this sheet IS the rail turned on its side.
-  /// ⛔So the division is not written here a second time; what is this
-  /// grid's own is only what a column at an index is. [origin] is 0 because
-  /// the strip starts at its own edge, unlike the rail's spacer.
+  /// 🚨THE RAIL'S OWN WALK ([railRowsAlong]) — this sheet IS the rail
+  /// turned on its side, [edges] its columns where the rail's are its rows.
+  /// ⛔So the walk is not written here a second time; what is this grid's
+  /// own is only what a column at an index is. Every column is built, so
+  /// the whole strip is the window.
   ///
   /// A LANE column is still IN the list — it carries none of these toggles,
   /// so the column itself reads null and the sweep steps over it, exactly
@@ -29,17 +28,16 @@ class _XSheetGridColumns {
     double fromX,
     double toX,
     List<TimelineDisplayRow> entries,
-  ) => uniformRailRowsIn<TimelineDisplayRow>(
+    TimelineRowEdges edges,
+  ) => railRowsAlong<TimelineDisplayRow>(
     from: fromX,
     to: toX,
-    origin: 0,
-    pitch: _state._metrics.layerRowHeight,
-    count: entries.length,
-    rowAt: (index) => (
-      row: entries[index],
-      depth: entries[index].depth,
-      id: entries[index].address,
+    edges: edges,
+    built: TimelineVisibleRange(
+      startIndex: 0,
+      endIndexExclusive: entries.length,
     ),
+    rowAt: (index) => (row: entries[index], id: entries[index].address),
   );
 
   /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
@@ -49,16 +47,17 @@ class _XSheetGridColumns {
   List<RailToggleColumn<TimelineDisplayRow>> swipeColumns() =>
       timelineSwipeColumns(
         hooks: _state.widget.hooks,
+        axis: Axis.vertical,
         crossExtent: _state._headers.naturalHeaderExtent,
         leadingOrigin: 0,
         columns: _state.widget.metrics.railColumns,
       );
 
   /// One column: a layer of its own size, and in it the row's gate — an
-  /// edge-drag step re-runs the builder with the preview layer substituted
-  /// for the drag target's column only. A layer's CELLS column is kept
-  /// while nothing it is built from changed ([keptTimelineCellsRow] — the
-  /// timeline's rows' memo, F-244); a lane's is built every pass.
+  /// edge-drag step shows the preview layer in the drag target's column
+  /// only. A layer's CELLS column is kept while its shape is what it was
+  /// ([keptTimelineCellsRow] — the timeline's rows' memo, F-244); a lane's
+  /// is built every pass.
   Widget _gatedColumn(
     TimelineDisplayRow entry,
     TimelineVirtualizationPlan plan,
@@ -67,25 +66,27 @@ class _XSheetGridColumns {
     // 🚨F-244: a layer of the column's own size, as the horizontal rows have
     // — a drag step rebuilds the dragged column in ITS scope, not the grid's.
     // The box is laid FRESH on every pass, outside the kept column: a zoom
-    // step moves its extent and keeps the column.
-    return SizedBox(
-      key: ValueKey<String>(
-        'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
+    // step moves its extent and keeps the column. Built in its BERTH and
+    // named for its layer, as the timeline's rows are (I-57).
+    return Named(
+      'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
+      key: _state._berths.keyOf(entry),
+      child: SizedBox(
+        width: timelineDisplayRowExtent(entry, _state._metrics),
+        height: plan.totalFrameContentWidth,
+        child: entry.isLane
+            ? timelineGatedRow(
+                entry,
+                grid.hooks.dragPreview,
+                (context, layer) =>
+                    timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
+              )
+            : keptTimelineCellsRow(_kept, _state._berths, entry, grid),
       ),
-      width: timelineDisplayRowExtent(entry, _state._metrics),
-      height: plan.totalFrameContentWidth,
-      child: entry.isLane
-          ? timelineGatedRow(
-              entry,
-              grid.hooks.dragPreview,
-              (context, layer) =>
-                  timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
-            )
-          : keptTimelineCellsRow(_kept, entry, grid),
     );
   }
 
-  final Map<LayerId, KeptTimelineCellsRow> _kept = {};
+  final KeptTimelineCellsRows _kept = KeptTimelineCellsRows();
 
   /// The frames the sheet lays its lane columns over — its plan's window
   /// and room — and their selection domain ([timelineLaneRowFrom]).
@@ -111,6 +112,8 @@ class _XSheetGridColumns {
     geometry: _state._frameScroll.publishFrameGeometry(),
     windowBucket: _state._frameWindowBucket,
     viewportMainExtent: viewportExtent,
+    frameAxisController: _state._frameScrollController,
+    nextPage: _state._nextPage,
     rangeGesture: _state._rangeGesture,
     axis: Axis.vertical,
     keyPrefix: 'xsheet',
@@ -121,8 +124,12 @@ class _XSheetGridColumns {
   /// inside makes an edge-drag step rebuild exactly the dragged layer's
   /// column, and a commit — or a bucket crossing — rebuilds none it did
   /// not change.
+  ///
+  /// An open graph's lanes are ONE graph, the timeline's way
+  /// ([timelineFrameSide]).
   Widget buildColumns(
     List<TimelineDisplayRow> entries,
+    TimelineRowEdges edges,
     TimelineVirtualizationPlan plan,
     double bodyViewportHeight,
   ) {
@@ -133,9 +140,11 @@ class _XSheetGridColumns {
     final grid = _cellsRowGrid(bodyViewportHeight);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final entry in entries) _gatedColumn(entry, plan, grid),
-      ],
+      children: timelineFrameSide(
+        (rows: entries, first: 0, edges: edges),
+        grid,
+        cells: (entry) => _gatedColumn(entry, plan, grid),
+      ),
     );
   }
 }

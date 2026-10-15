@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../input/arena_tap_hold.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/fill_reference_button.dart';
@@ -12,11 +13,17 @@ import '../../models/layer_id.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../widgets/field_slider.dart';
 import '../widgets/instant_tap_region.dart';
+import '../widgets/named.dart';
+import 'lane_graph.dart' show LaneGraphVerbs;
+import 'lane_graph_seats.dart' show laneGraphHeadedBy;
+import 'lane_graph_toggle.dart';
 import 'layer_label_controls.dart';
 import 'layer_opacity_field.dart';
 import 'axis_turn.dart';
+import 'berth_row.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
+import '../widgets/rail_glyph_button.dart';
 import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
@@ -54,6 +61,14 @@ const double timelineLayerRowLeadingBorder = 1;
 /// instance can only be stale in what this function compares.
 /// `timeline_rail_row_memo_test.dart` drives one mutation per field.
 ///
+/// 🚨I-57 ㉣ (10-13): and NOT the id. A cut switch puts the next cut's
+/// layer in each berth ([RowBerths]), and a row of the same face is the same
+/// row on screen — measured on the user's project, rebuilding the rail's
+/// rows was 544 of a crossing's widget rebuilds. The row asks WHICH layer it
+/// stands for at the moment it acts ([BerthRow]). Of the attach it renders
+/// only that there is one (the arrow and the sheet toggle's gate), so the
+/// layer it is attached to — another id — is not compared either.
+///
 /// Deliberately absent (the row renders none of them): `frames`, `timeline`,
 /// `instructions`, `audioClips`, `baseFrameLinks`,
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
@@ -80,8 +95,7 @@ final class ControlsRowFace {
     final a = layer;
     final b = other.layer;
     return identical(a, b) ||
-        (a.id == b.id &&
-            a.name == b.name &&
+        (a.name == b.name &&
             a.kind == b.kind &&
             a.opacity == b.opacity &&
             a.muted == b.muted &&
@@ -90,7 +104,7 @@ final class ControlsRowFace {
             a.blendMode == b.blendMode &&
             a.collapsed == b.collapsed &&
             a.isFillReference == b.isFillReference &&
-            a.attachedToLayerId == b.attachedToLayerId &&
+            isAttachedLayer(a) == isAttachedLayer(b) &&
             a.attachedPlacement == b.attachedPlacement &&
             _isReference(a) == _isReference(b));
   }
@@ -104,7 +118,6 @@ final class ControlsRowFace {
 
   @override
   int get hashCode => Object.hash(
-    layer.id,
     layer.name,
     layer.kind,
     layer.opacity,
@@ -114,7 +127,7 @@ final class ControlsRowFace {
     layer.blendMode,
     layer.collapsed,
     layer.isFillReference,
-    layer.attachedToLayerId,
+    isAttachedLayer(layer),
     layer.attachedPlacement,
     _isReference(layer),
   );
@@ -149,12 +162,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
-    required this.onToggleLayerTimesheet,
+    this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
+    this.onOpenCameraPath,
     this.isReferenceSourceShort = false,
     this.isLayerSoloed = false,
     this.hasLanes = false,
@@ -175,6 +189,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerBlendModeSelected,
     this.opacityOverride,
     this.chromeless = false,
+    this.laneGraphVerbs,
+    this.headsGraph = false,
+    this.graphOpen = false,
   });
 
   /// The strip's MAIN axis: along a rail row (horizontal) or down an x-sheet
@@ -225,7 +242,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the real write. Null keeps the legacy per-move-write behavior.
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
 
-  final ValueChanged<LayerId> onToggleLayerTimesheet;
+  /// The sheet toggle's verb. Null mounts none and keeps its slot — the
+  /// storyboard's conte rows, whose head is ONE for every cut while the
+  /// sheet flag is each cut's own (I-73); an attach row's arrow stands in
+  /// that slot either way.
+  final ValueChanged<LayerId>? onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);
@@ -255,6 +276,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// button that unlinks it. Null leaves the badge a picture.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
+
+  /// The camera row's path button ([CameraPathButton], I-89 ④): how the
+  /// canvas shows the camera's path, opened under the button. Null mounts
+  /// none.
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
 
   /// Whether this row asks its file for more film than the file has — the
   /// button turns red, and its popover says by how much.
@@ -343,6 +369,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// instead of rebuilding the whole timeline host per move.
   final ValueListenable<double>? opacityOverride;
 
+  /// The header graphs' verbs (I-89 ③) — the HOST's, the same on every
+  /// row: null mounts no graph button.
+  final LaneGraphVerbs? laneGraphVerbs;
+
+  /// Whether this row heads a header graph — the camera row, the row being
+  /// its own Transform group (㉙) — and whether it stands open. A row that
+  /// heads none leaves the button's room to the name.
+  final bool headsGraph;
+  final bool graphOpen;
+
   bool get _horizontal => axis == Axis.horizontal;
 
   double get _mainExtent =>
@@ -374,7 +410,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       // The PICK. Whether it also CLEARS is the session's call — see
       // `standOnRow`, which holds the selection when the press landed inside
       // it, because that press is most likely the start of a move.
-      onTap: (_) => onSelectLayer(layer.id),
+      onTap: (_) => onSelectLayer(layerIdNow(context, layer.id)),
       // And when the press turned out to be a tap, the selection goes —
       // 유저: 「클릭하고 떼면 뭐든 비우게」.
       onSettledTap: onSettledPress == null ? null : (_) => onSettledPress!(),
@@ -384,7 +420,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       child: doubleClick == null
           ? surface
           : timelineLabelDoubleTapDetector(
-              layerId: layer.id,
+              layerId: () => layerIdNow(context, layer.id),
               doubleClick: doubleClick,
               child: surface,
             ),
@@ -430,39 +466,46 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// The strip itself — its plate and its twelve slots.
   ///
-  /// ⛔The InkWell keeps a NO-OP `onTap`, which is not decoration: it holds
-  /// a tap recognizer in the arena so scroll slop over a row behaves the
-  /// way it always has. The painted cells do the identical thing for the
-  /// identical reason.
-  Widget _surface(BuildContext context, ColorScheme colorScheme) => InkWell(
-    key: ValueKey<String>(_rowKey),
-    onTap: () {},
-    // No hover glow on the ROW surface (UI-R24 #6): selection speaks
-    // through the background alone; only the buttons may brighten.
-    hoverColor: Colors.transparent,
-    child: Container(
-      width: _width,
-      height: _height,
-      padding: _padding,
-      decoration: _plate(colorScheme),
-      child: Semantics(
-        key: active ? ValueKey<String>('$keyPrefix-selected-layer') : null,
-        label: active ? 'selected layer' : 'layer',
-        container: true,
-        explicitChildNodes: true,
-        // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
-        // shared skeleton in the shared order at the shared extents,
-        // running downward: the same list the rail's rows and the
-        // legend above read.
-        child: Flex(
-          direction: axis,
-          crossAxisAlignment: _crossAxisAlignment,
-          children: [
-            ..._leadingCells(),
-            ?_depthGuides(colorScheme),
-            _nameArea(context, colorScheme),
-            ..._trailingCells(colorScheme),
-          ],
+  /// ⛔Its tap is held in the arena and answers nothing, which is not
+  /// decoration: scroll slop over a row behaves the way it always has
+  /// ([ArenaTapHold]). The painted cells do the identical thing for the
+  /// identical reason. No hover glow on the ROW surface (UI-R24 #6):
+  /// selection speaks through the background alone; only the buttons may
+  /// brighten.
+  ///
+  /// 🚨NAMES, NOT KEYS (I-57, 10-13): the row's handles are [Named]s. A
+  /// key spelled from the layer made a cut switch remount the row, and the
+  /// selected row's key — there while the row was active, gone when it was
+  /// not — remade the row's whole content whenever the selection moved.
+  Widget _surface(BuildContext context, ColorScheme colorScheme) => Named(
+    _rowName,
+    child: ArenaTapHold(
+      child: Container(
+        width: _width,
+        height: _height,
+        padding: _padding,
+        decoration: _plate(colorScheme),
+        child: Named(
+          active ? '$keyPrefix-selected-layer' : null,
+          child: Semantics(
+            label: active ? 'selected layer' : 'layer',
+            container: true,
+            explicitChildNodes: true,
+            // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
+            // shared skeleton in the shared order at the shared extents,
+            // running downward: the same list the rail's rows and the
+            // legend above read.
+            child: Flex(
+              direction: axis,
+              crossAxisAlignment: _crossAxisAlignment,
+              children: [
+                ..._leadingCells(context),
+                ?_depthGuides(colorScheme),
+                _nameArea(context, colorScheme),
+                ..._trailingCells(context, colorScheme),
+              ],
+            ),
+          ),
         ),
       ),
     ),
@@ -470,7 +513,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// `timeline-folder-row-…` / `xsheet-layer-row-…`: the kind's word and the
   /// surface's word, one grammar.
-  String get _rowKey =>
+  String get _rowName =>
       '$keyPrefix-${layer.kind.groupsLayers ? 'folder' : 'layer'}'
       '-row-${layer.id}';
 
@@ -549,23 +592,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     );
   }
 
-  // ── boxes turned by the axis ──────────────────────────────────────────
-
-  /// A box tight to its slot: [slot] along the strip, [across] the other
-  /// way. The rail's law, read off the onion column rather than invented per
-  /// cell — `layerLaneToggleSlotWidth` is 16 and an IconButton left alone
-  /// asks for 48. The slot is the PARENT's number, so it travels as an
-  /// [AppIconButtonBox] rather than a token.
-  AppIconButtonBox _box({
-    required double slot,
-    required double across,
-    required double iconSize,
-  }) => AppIconButtonBox(
-    width: _horizontal ? slot : across,
-    height: _horizontal ? across : slot,
-    iconSize: iconSize,
-  );
-
   // ── the leading run ───────────────────────────────────────────────────
 
   /// The rail's shared column skeleton (R9 #22): slot order and widths come
@@ -574,10 +600,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// belongs here: nesting moved into the NAME column so the buttons keep
   /// one x at every depth. The sheet keeps no section slot — its band is
   /// the strip above, not a cell in here.
-  List<Widget> _leadingCells() => layerRailLeadingCells(
+  List<Widget> _leadingCells(BuildContext context) => layerRailLeadingCells(
     axis: axis,
     includeSectionSlot: _horizontal,
-    laneToggle: _laneToggle(),
+    laneToggle: _laneToggle(context),
     timesheet: layerRailTimesheetCell(
       keyPrefix: keyPrefix,
       layer: layer,
@@ -585,27 +611,22 @@ class TimelineLayerControlsRow extends StatelessWidget {
       attachArrowPlacement: attachArrowPlacement,
     ),
     mark: _markChip(),
-    typeButton: _typeButton(),
+    typeButton: _typeButton(context),
   );
 
   /// I-1: a leading toggle COLUMN owns drags that start on it, exactly as
   /// the trailing three do — the strong claim, kept in step with the grid's
   /// swipe column list (see [RailSwipeColumnPointer]).
-  ///
-  /// R26 #28 (icon buttons hover ROUND) survives the swap for free — an
-  /// IconButton's ink is already a circle, which is the whole reason the
-  /// hand-rolled `customBorder: CircleBorder()` could go with it.
-  Widget? _laneToggle() {
-    if (!hasLanes || onToggleLanes == null) return null;
+  Widget? _laneToggle(BuildContext context) {
+    final onToggle = onToggleLanes;
+    if (!hasLanes || onToggle == null) return null;
     return RailSwipeColumnPointer(
-      child: AppIconButton(
-        keyValue: '$keyPrefix-lane-toggle-${layer.id}',
-        tooltip: lanesExpanded
-            ? AppText.strings.railCollapseLanes
-            : AppText.strings.railExpandLanes,
-        size: _box(slot: layerLaneToggleSlotWidth, across: 24, iconSize: 16),
-        icon: Icon(layerRailTwirlIcon(expanded: lanesExpanded)),
-        onPressed: () => onToggleLanes!(layer.id),
+      child: LayerFoldTwirl(
+        name: '$keyPrefix-lane-toggle-${layer.id}',
+        axis: axis,
+        expanded: lanesExpanded,
+        tooltip: layerLaneTwirlTooltip(expanded: lanesExpanded),
+        onToggle: () => onToggle(layerIdNow(context, layer.id)),
       ),
     );
   }
@@ -633,12 +654,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// tap selects for now). One slot for every row kind, ALWAYS the kind
   /// (R10 R3): the arrow that used to take this slot on attach rows now
   /// rides the sheet column.
-  Widget _typeButton() => LayerTypeButton(
+  Widget _typeButton(BuildContext context) => LayerTypeButton(
     keyPrefix: keyPrefix,
     idValue: '${layer.id}',
     kind: layer.kind,
     folderCollapsed: layer.collapsed,
-    onTap: () => onSelectLayer(layer.id),
+    onTap: () => onSelectLayer(layerIdNow(context, layer.id)),
   );
 
   // ── nesting and the name ──────────────────────────────────────────────
@@ -683,23 +704,38 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// the rows that do fold all sit on one line (one axis over: a column that
   /// folds nothing used to drop it, which pulled every cell below up by
   /// 20px).
+  ///
+  /// I-89 Q1 (유저 2026-10-12): a row's own buttons take their room out of
+  /// the name, right-aligned before the fold slot — 「추가로 공간
+  /// 만드는게아니라 이름공간을 줄여서 오른쪽정렬로」 — the link among them,
+  /// beside the reference when a row has both (「참조/링크가 동시에
+  /// 될수있는거 말되니까 그런식으로 중복되는 상황은 중복되도록」). The order
+  /// was left to me (「버튼별 순서는 알아서 맡김」): the graph last, so it
+  /// ends the name as a header's does. ↩️The link trailed the name's
+  /// letters, wherever a name happened to end.
   Widget _nameArea(BuildContext context, ColorScheme colorScheme) => Expanded(
-    child: KeyedSubtree(
-      key: ValueKey<String>('$keyPrefix-layer-name-${layer.id}'),
+    child: Named(
+      '$keyPrefix-layer-name-${layer.id}',
       child: Flex(
         direction: axis,
         children: [
+          // The letters as long as they are: the ground past them is the
+          // name's too, a double click there the label's.
           Expanded(
             child: Flex(
               direction: axis,
-              children: [
-                Flexible(child: _nameText(context)),
-                ?_linkBadge(colorScheme),
-              ],
+              children: [Flexible(child: _nameText(context))],
             ),
           ),
+          ?_linkBadge(colorScheme),
           ?_referenceButton(),
-          alongBox(axis, layerLaneToggleSlotWidth, child: _foldTwirl()),
+          ?_cameraPathButton(),
+          ?_graphToggle(context),
+          alongBox(
+            axis,
+            layerLaneToggleSlotWidth,
+            child: _foldTwirl(context),
+          ),
         ],
       ),
     ),
@@ -733,14 +769,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Builder(
-        builder: (context) => AppIconButton(
-          keyValue: '$keyPrefix-layer-link-badge-${layer.id}',
+        builder: (context) => RailGlyphButton(
+          name: '$keyPrefix-layer-link-badge-${layer.id}',
           tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
           size: const AppIconButtonBox(width: 18, height: 18, iconSize: 14),
           // The link reads in the accent whatever the button's own rest
           // colour: it says the row is linked before anything is pressed.
-          icon: Icon(Icons.link, color: colorScheme.primary),
-          onPressed: onOpen == null ? null : () => onOpen(context, layer.id),
+          glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
+          onPressed: onOpen == null
+              ? null
+              : () => onOpen(context, layerIdNow(context, layer.id)),
         ),
       ),
     );
@@ -756,9 +794,44 @@ class TimelineLayerControlsRow extends StatelessWidget {
       return null;
     }
     return LayerReferenceButton(
-      keyValue: '$keyPrefix-layer-reference-${layer.id}',
+      name: '$keyPrefix-layer-reference-${layer.id}',
       isSourceShort: isReferenceSourceShort,
-      onOpen: (anchorContext) => onOpen(anchorContext, layer.id),
+      onOpen: (anchorContext) =>
+          onOpen(anchorContext, layerIdNow(anchorContext, layer.id)),
+    );
+  }
+
+  /// The camera row's path button (I-89 ④), among the name's buttons — the
+  /// camera's row is never a reference row, so the two never stand
+  /// together.
+  Widget? _cameraPathButton() {
+    final onOpen = onOpenCameraPath;
+    if (!layer.kind.carriesCameraPath || onOpen == null) {
+      return null;
+    }
+    return CameraPathButton(
+      name: '$keyPrefix-layer-camera-path-${layer.id}',
+      onOpen: onOpen,
+    );
+  }
+
+  /// The camera row's graph button (I-89 ③) — the row being its own
+  /// Transform group (㉙), the button its header's. It turns the graph of
+  /// the layer the row stands for at the press ([BerthRow]).
+  Widget? _graphToggle(BuildContext context) {
+    final verbs = laneGraphVerbs;
+    if (verbs == null || !headsGraph) return null;
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.graph,
+      name: '$keyPrefix-layer-graph-${layer.id}',
+      axis: axis,
+      on: graphOpen,
+      onToggle: () {
+        if (laneGraphHeadedBy(BerthRow.at(context) ?? layer, null)
+            case final key?) {
+          verbs.toggle(key);
+        }
+      },
     );
   }
 
@@ -767,48 +840,58 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// arm used to spell the pair out by hand while the x-sheet read the
   /// helper). Same key grammar on both surfaces so a folder and an attach
   /// base read alike anywhere.
-  Widget? _foldTwirl() {
-    if (!hasGroupFold || onToggleGroupFold == null) return null;
+  Widget? _foldTwirl(BuildContext context) {
+    final onToggle = onToggleGroupFold;
+    if (!hasGroupFold || onToggle == null) return null;
     final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
     return LayerFoldTwirl(
-      keyValue: '$keyPrefix-$kind-twirl-${layer.id}',
+      name: '$keyPrefix-$kind-twirl-${layer.id}',
       axis: axis,
       expanded: groupFoldExpanded,
-      onToggle: () => onToggleGroupFold!(layer.id),
+      onToggle: () => onToggle(layerIdNow(context, layer.id)),
     );
   }
 
   // ── the trailing run ──────────────────────────────────────────────────
 
-  List<Widget> _trailingCells(ColorScheme colorScheme) =>
-      layerRailTrailingCells(
-        axis: axis,
-        columns: metrics.railColumns,
-        fillReference: _fillReferenceToggle(),
-        fx: _fxSwitch(),
-        hasOnionColumn: onToggleLayerOnionSkin != null,
-        onion: _onionToggle(colorScheme),
-        visibility: _visibilityToggle(),
-        mute: _muteButton(),
-        opacity: _opacitySlot(),
-        hasBlendColumn: onLayerBlendModeSelected != null,
-        blend: _blendChip(),
-      );
+  List<Widget> _trailingCells(
+    BuildContext context,
+    ColorScheme colorScheme,
+  ) => layerRailTrailingCells(
+    axis: axis,
+    columns: metrics.railColumns,
+    optionalColumns: (
+      onion: onToggleLayerOnionSkin != null,
+      blend: onLayerBlendModeSelected != null,
+    ),
+    fillReference: _fillReferenceToggle(context),
+    fx: _fxSwitch(context),
+    onion: _onionToggle(context, colorScheme),
+    visibility: _visibilityToggle(),
+    mute: _muteButton(),
+    opacity: _opacitySlot(),
+    blend: _blendChip(context),
+  );
 
   /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
   /// reserves the slot so the legend header's column icons line up over one
   /// Excel-style grid (R-toolbar round).
-  Widget? _fillReferenceToggle() {
+  Widget? _fillReferenceToggle(BuildContext context) {
     final onToggle = onToggleLayerFillReference;
     if (onToggle == null || !layer.kind.carriesFillReference) return null;
     return acrossBox(
       axis,
       26,
       child: FillReferenceButton(
-        keyValue: '$keyPrefix-layer-fill-reference-${layer.id}',
+        name: '$keyPrefix-layer-fill-reference-${layer.id}',
         isOn: layer.isFillReference,
-        size: _box(slot: layerFillReferenceSlotWidth, across: 26, iconSize: 16),
-        onPressed: () => onToggle(layer.id),
+        size: railSlotBox(
+          axis,
+          slot: layerFillReferenceSlotWidth,
+          across: 26,
+          iconSize: 16,
+        ),
+        onPressed: () => onToggle(layerIdNow(context, layer.id)),
       ),
     );
   }
@@ -821,7 +904,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// press-and-drag paints the column down the rows instead of moving the
   /// row. Kept in step with the grid's swipe column list — see
   /// [RailSwipeColumnPointer].
-  Widget? _fxSwitch() {
+  Widget? _fxSwitch(BuildContext context) {
     final onToggle = onToggleLayerFx;
     if (onToggle == null ||
         !layerKindShowsFxToggle(layer.kind) ||
@@ -830,9 +913,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
     }
     return RailSwipeColumnPointer(
       child: FxToggleButton(
-        keyValue: '$keyPrefix-layer-fx-${layer.id}',
+        name: '$keyPrefix-layer-fx-${layer.id}',
         state: fxState,
-        onToggle: () => onToggle(layer.id),
+        onToggle: () => onToggle(layerIdNow(context, layer.id)),
       ),
     );
   }
@@ -841,7 +924,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// rows get the button; rows keep the slot so the control columns stay
   /// aligned; hosts without the callback (no header cell either) skip the
   /// column whole. The sheet went without it until R10 R6's "싹다 넣어".
-  Widget? _onionToggle(ColorScheme colorScheme) {
+  Widget? _onionToggle(BuildContext context, ColorScheme colorScheme) {
     final onToggle = onToggleLayerOnionSkin;
     if (onToggle == null || !layer.kind.takesOnionSkin) {
       return null;
@@ -850,19 +933,24 @@ class TimelineLayerControlsRow extends StatelessWidget {
       axis,
       26,
       child: RailSwipeColumnPointer(
-        child: AppIconButton(
-          keyValue: '$keyPrefix-layer-onion-${layer.id}',
+        child: RailGlyphButton(
+          name: '$keyPrefix-layer-onion-${layer.id}',
           tooltip: onionSkinEnabled
               ? AppText.strings.railOnionSkinOn
               : AppText.strings.railOnionSkin,
-          size: _box(slot: layerOnionSlotWidth, across: 26, iconSize: 15),
-          icon: Icon(
+          size: railSlotBox(
+            axis,
+            slot: layerOnionSlotWidth,
+            across: 26,
+            iconSize: 15,
+          ),
+          glyph: RailIconGlyph(
             Icons.filter_none,
             color: onionSkinEnabled
                 ? colorScheme.primary
                 : colorScheme.outline.withValues(alpha: 0.45),
           ),
-          onPressed: () => onToggle(layer.id),
+          onPressed: () => onToggle(layerIdNow(context, layer.id)),
         ),
       ),
     );
@@ -875,10 +963,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
     child: RailEyeBuilder(
       layer: layer,
       builder: (context, eye) => LayerVisibilityToggleButton(
-        keyValue: '$keyPrefix-layer-visibility-${layer.id}',
+        name: '$keyPrefix-layer-visibility-${layer.id}',
         isVisible: eye.on,
         hiddenAbove: eye.hiddenAbove,
-        onToggle: () => onToggleLayerVisibility(layer.id),
+        onToggle: () => onToggleLayerVisibility(layerIdNow(context, layer.id)),
       ),
     ),
   );
@@ -894,12 +982,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
       axis,
       26,
       child: LayerMuteToggleButton(
-        keyValue: '$keyPrefix-layer-mute-${layer.id}',
+        name: '$keyPrefix-layer-mute-${layer.id}',
         muted: layer.muted,
         soloed: isLayerSoloed,
         width: _horizontal ? layerMuteSlotWidth : 26,
         height: _horizontal ? 26 : layerMuteSlotWidth,
-        onOpenMixer: (anchorContext) => onOpenMixer(anchorContext, layer.id),
+        onOpenMixer: (anchorContext) =>
+            onOpenMixer(anchorContext, layerIdNow(anchorContext, layer.id)),
       ),
     );
   }
@@ -918,7 +1007,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// host that HAS the column, non-compositing kinds keep the slot so rows
   /// and the legend header stay aligned; hosts without it (the storyboard's
   /// track rail) skip the column outright, exactly like the onion cell.
-  Widget? _blendChip() {
+  Widget? _blendChip(BuildContext context) {
     final onSelected = onLayerBlendModeSelected;
     if (onSelected == null || !layerKindShowsBlendControl(layer.kind)) {
       return null;
@@ -926,12 +1015,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final isGroup = layer.kind.groupsLayers;
     return LayerBlendModeChip(
       axis: axis,
-      keyValue: '$keyPrefix-layer-blend-${layer.id}',
+      name: '$keyPrefix-layer-blend-${layer.id}',
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,
       slotExtent: metrics.railColumns.blend,
-      onBlendModeSelected: (mode) => onSelected(layer.id, mode),
+      onBlendModeSelected: (mode) =>
+          onSelected(layerIdNow(context, layer.id), mode),
     );
   }
 

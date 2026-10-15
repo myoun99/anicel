@@ -22,7 +22,10 @@ import '../ui/timeline/timeline_row_chrome_probe.dart';
 import '../ui/flyout_test_helpers.dart'
     show flyoutOwnerByItemKey, readCommandEnabled;
 import 'app_icon_button_probe.dart';
+import 'named_finders.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   final owner = flyoutOwnerByItemKey[key.value];
@@ -48,11 +51,7 @@ Future<void> addLayer(WidgetTester tester) async {
 }
 
 Finder timelineLayerRows() {
-  return find.byWidgetPredicate((widget) {
-    final key = widget.key;
-    return key is ValueKey<String> &&
-        key.value.startsWith('timeline-layer-row-');
-  });
+  return find.namedWhere((name) => name.startsWith('timeline-layer-row-'));
 }
 
 Future<void> tapHomeTimelineCell(
@@ -245,10 +244,7 @@ Future<void> dragCutOnto(
 // probe — finder evaluation needs no tester, so these keep their
 // tester-less signatures.
 TimelineRowCellsPainter rowPainter(String layerId) {
-  final element = find
-      .byKey(ValueKey<String>('timeline-row-cells-$layerId'))
-      .evaluate()
-      .single;
+  final element = find.named('timeline-row-cells-$layerId').evaluate().single;
   return (element.widget as CustomPaint).painter! as TimelineRowCellsPainter;
 }
 
@@ -384,15 +380,10 @@ Future<void> createSecondAuthoredFrame(WidgetTester tester) async {
   await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 }
 
-String statusText(WidgetTester tester, ValueKey<String> key) {
-  final status = tester.widget<Text>(find.byKey(key));
-  return status.data ?? '';
-}
-
 void expectActiveLayerName(String name) {
   expect(
     find.descendant(
-      of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      of: find.named('timeline-selected-layer'),
       matching: find.text(name),
     ),
     findsOneWidget,
@@ -404,7 +395,11 @@ void expectCurrentFrame(WidgetTester tester, int frameNumber) {
   // cut-local below. This is the timeline, where the top line is blank, so
   // the number under assertion is the LOCAL one.
   expect(
-    statusText(tester, const ValueKey<String>('timeline-local-frame-counter')),
+    tester
+        .renderObject<RenderTickText>(
+          find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
+        )
+        .data,
     '$frameNumber',
   );
 }
@@ -417,12 +412,8 @@ String? selectedCellStateLabel(WidgetTester tester) {
   final ringTopLeft = tester.getTopLeft(
     find.byKey(const ValueKey<String>('timeline-selected-cell')),
   );
-  final paintedRows = find.byWidgetPredicate(
-    (widget) =>
-        widget.key is ValueKey<String> &&
-        (widget.key! as ValueKey<String>).value.startsWith(
-          'timeline-row-cells-',
-        ),
+  final paintedRows = find.namedWhere(
+    (name) => name.startsWith('timeline-row-cells-'),
   );
   for (final element in paintedRows.evaluate()) {
     final painter =
@@ -488,6 +479,7 @@ Future<bool> isActionButtonEnabled(
   return switch (widget) {
     TextButton(:final onPressed) => onPressed != null,
     AppIconButtonFace(:final onPressed) => onPressed != null,
+    RailGlyphFace(:final enabled) => enabled,
     _ => isDescendantIconButtonEnabled(tester, button),
   };
 }
@@ -512,9 +504,7 @@ Future<void> dragBlockEndGrip(
   // away from the exact boundary. Sizing the second move alone is what
   // this helper used to do, and it silently grew every fixture by one
   // extra frame the moment the slop stopped being discarded.
-  await tester.ensureVisible(
-    find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
-  );
+  await tester.ensureVisible(find.named('timeline-layer-row-$layerId'));
   await tester.pumpAndSettle();
   final gesture = await tester.startGesture(
     timelineRowChromeCenter(
@@ -531,19 +521,12 @@ Future<void> dragBlockEndGrip(
   await tester.pumpAndSettle();
 }
 
-bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) {
-  final iconButton = tester.appIconButton(
-    find.descendant(of: button, matching: find.byType(AppIconButtonFace)),
-  );
-  return iconButton.onPressed != null;
-}
+bool isDescendantIconButtonEnabled(WidgetTester tester, Finder button) =>
+    tester.iconButtonIn(button).onPressed != null;
 
-IconData layerKindIcon(WidgetTester tester, String layerId) {
-  final finder = find.byKey(
-    ValueKey<String>('timeline-layer-kind-icon-$layerId'),
-  );
-  return tester.widget<Icon>(finder).icon!;
-}
+IconData layerKindIcon(WidgetTester tester, String layerId) => tester
+    .appIconButton(find.named('timeline-layer-type-button-$layerId'))
+    .icon!;
 
 Future<void> expectCutOrder(WidgetTester tester, List<String> cutIds) async {
   await _withStoryboardPanel(tester, (panel) async {
@@ -606,7 +589,8 @@ Future<void> tapRedoButton(WidgetTester tester) async {
 void expectTimelineActionTooltips() {
   // Direct icons only (R-toolbar round) — the rest moved into the Layer ▾ /
   // Frame ▾ flyouts, and the exposure ± buttons are GONE (edge grips).
-  expect(find.byTooltip('Add'), findsOneWidget);
+  // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
+  expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
   expect(find.byTooltip('Blank / X'), findsOneWidget);
   expect(find.byTooltip('Mark ●'), findsOneWidget);
   expect(find.byTooltip('Decrease Exposure'), findsNothing);

@@ -10,6 +10,38 @@ import 'qa_engine_abi.dart';
 import 'native_scratch.dart';
 import 'native_upload_cache.dart';
 
+/// A block `qa_tile_alloc` answered, or the error it failed with — the one
+/// check both ways of reaching the allocator make ([QaNativeEngine.tileAlloc]
+/// and [QaTileBlocksAt.alloc]).
+Pointer<Uint8> qaTileBlockOrThrow(Pointer<Void> block, int byteLength) {
+  if (block == nullptr) {
+    throw StateError('qa_tile_alloc failed for $byteLength bytes');
+  }
+  return block.cast();
+}
+
+/// The engine's tile allocator bound from the addresses another isolate
+/// read off ITS engine ([QaNativeEngine.tileAllocAddress]) — so the blocks a
+/// worker fills here are the ones that isolate's tiles free.
+final class QaTileBlocksAt {
+  QaTileBlocksAt({required int alloc, required int free})
+    : _alloc =
+          Pointer<NativeFunction<Pointer<Void> Function(Int64)>>.fromAddress(
+            alloc,
+          ).asFunction<Pointer<Void> Function(int)>(),
+      _free = Pointer<NativeFunction<Void Function(Pointer<Void>)>>.fromAddress(
+        free,
+      ).asFunction<void Function(Pointer<Void>)>();
+
+  final Pointer<Void> Function(int size) _alloc;
+  final void Function(Pointer<Void> pixels) _free;
+
+  Pointer<Uint8> alloc(int byteLength) =>
+      qaTileBlockOrThrow(_alloc(byteLength), byteLength);
+
+  void free(Pointer<Uint8> block) => _free(block.cast());
+}
+
 /// The native engine core's FFI bindings (R18 A-track).
 ///
 /// LOAD-FALLBACK DISCIPLINE: every native function has a Dart REFERENCE
@@ -37,10 +69,12 @@ class QaNativeEngine {
     this._alphaBoundsTiles,
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
+    this._premultiplyRgbaRows,
     this._copyBytes,
     this._zeroBytes,
     this._widenBytes,
     this._tileAlloc,
+    this._tileAllocPointer,
     this._tileFree,
     this._tileFreePointer,
     this._tilePoolCachedBytes,
@@ -151,6 +185,48 @@ class QaNativeEngine {
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int pixelCount)
   _premultiplyRgbaCopy;
 
+  final void Function(
+    Pointer<Uint8> dst,
+    int dstStride,
+    Pointer<Uint8> src,
+    int srcStride,
+    int width,
+    int rows,
+  )
+  _premultiplyRgbaRows;
+
+  /// [rows] rows of [width] straight pixels read [from] one place,
+  /// premultiplied [into] another, in ONE call (`qa_premultiply_rgba_rows`,
+  /// ABI 46) — the kernel of [premultipliedTileScratch] between two strides,
+  /// so a tile can be laid into a picture of several where a call a row
+  /// would cost more than the row.
+  void premultiplyRgbaRows({
+    required NativeRows from,
+    required NativeRows into,
+    required int width,
+    required int rows,
+  }) => _premultiplyRgbaRows(
+    into.start,
+    into.stride,
+    from.start,
+    from.stride,
+    width,
+    rows,
+  );
+
+  final _tilesPictureScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+
+  /// The engine's buffer for the bytes of ONE picture of several tiles —
+  /// at least [byteLength] of them, holding whatever the last picture left
+  /// there. Valid until the next ask: the upload that reads it consumes
+  /// the bytes inside its own call, so one buffer serves every picture,
+  /// and nothing holds it across an await.
+  ///
+  /// ⛔Not a buffer a picture: a block is a megabyte, and a fresh one each
+  /// time is fresh pages for the system to fault in and clear.
+  Pointer<Uint8> tilesPictureScratch(int byteLength) =>
+      _tilesPictureScratch.ensure(byteLength);
+
   final void Function(Pointer<Uint8> dst, Pointer<Uint8> src, int length)
   _copyBytes;
 
@@ -178,6 +254,8 @@ class QaNativeEngine {
   }
 
   final Pointer<Void> Function(int size) _tileAlloc;
+  final Pointer<NativeFunction<Pointer<Void> Function(Int64)>>
+  _tileAllocPointer;
   final void Function(Pointer<Void> pixels) _tileFree;
   final Pointer<NativeFinalizerFunction> _tileFreePointer;
   final int Function() _tilePoolCachedBytes;
@@ -189,13 +267,8 @@ class QaNativeEngine {
   /// commit's "fresh" buffers are recycled blocks, not mallocs — adoption
   /// (R19-Z) had drained the old Dart pool, costing ~1024 fresh mallocs
   /// per full-canvas 8K fill. Free via [tileFree] or [tileFinalizer].
-  Pointer<Uint8> tileAlloc(int byteLength) {
-    final pointer = _tileAlloc(byteLength);
-    if (pointer == nullptr) {
-      throw StateError('qa_tile_alloc failed for $byteLength bytes');
-    }
-    return pointer.cast();
-  }
+  Pointer<Uint8> tileAlloc(int byteLength) =>
+      qaTileBlockOrThrow(_tileAlloc(byteLength), byteLength);
 
   /// Returns a [tileAlloc] block to the C free list.
   void tileFree(Pointer<Uint8> pixels) {
@@ -205,6 +278,13 @@ class QaNativeEngine {
   /// Finalizer that frees [tileAlloc] blocks — BitmapTile attaches this
   /// when the engine is loaded (GC threads call qa_tile_free directly).
   late final NativeFinalizer tileFinalizer = NativeFinalizer(_tileFreePointer);
+
+  /// [tileAlloc] and [tileFree] by address, for a worker that fills blocks
+  /// THIS isolate's tiles adopt ([QaTileBlocksAt]): the worker's own probe
+  /// can load another binary, or none — a test's path override and its
+  /// forced fallback are statics, and statics do not cross isolates.
+  int get tileAllocAddress => _tileAllocPointer.address;
+  int get tileFreeAddress => _tileFreePointer.address;
 
   /// Bytes of tile blocks parked in the C free lists for reuse — resident,
   /// and nobody's picture. The memory census reads it.
@@ -978,6 +1058,18 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int32),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_premultiply_rgba_copy');
+      final premultiplyRgbaRows = library
+          .lookupFunction<
+            Void Function(
+              Pointer<Uint8>,
+              Int64,
+              Pointer<Uint8>,
+              Int64,
+              Int32,
+              Int32,
+            ),
+            void Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int, int)
+          >('qa_premultiply_rgba_rows');
       final copyBytes = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
@@ -998,6 +1090,10 @@ class QaNativeEngine {
             Pointer<Void> Function(Int64),
             Pointer<Void> Function(int)
           >('qa_tile_alloc');
+      final tileAllocPointer = library
+          .lookup<NativeFunction<Pointer<Void> Function(Int64)>>(
+            'qa_tile_alloc',
+          );
       final tileFree = library
           .lookupFunction<
             Void Function(Pointer<Void>),
@@ -1240,10 +1336,12 @@ class QaNativeEngine {
         alphaBoundsTiles,
         preBlendTiles,
         premultiplyRgbaCopy,
+        premultiplyRgbaRows,
         copyBytes,
         zeroBytes,
         widenBytes,
         tileAlloc,
+        tileAllocPointer,
         tileFree,
         tileFreePointer,
         tilePoolCachedBytes,
@@ -2282,6 +2380,11 @@ class QaNativeEngine {
         : _batchEvenings.putIfAbsent(evening, () => _arenaFloat64(evening));
   }
 }
+
+/// Rows of pixels in native memory: where the first row starts and how many
+/// bytes on the next one does. A stride belongs to its rows — handed apart,
+/// one plane's stride could walk the other's rows.
+typedef NativeRows = ({Pointer<Uint8> start, int stride});
 
 /// A pooled native tile buffer: the raw pointer for the kernel and a
 /// typed-data view over the SAME memory for Dart-side reads/writes.

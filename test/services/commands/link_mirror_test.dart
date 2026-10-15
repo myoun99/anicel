@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_key.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -144,5 +146,60 @@ void main() {
       linkMirrorTargets(project, cutId: _cut1, layerId: const LayerId('solo')),
       [(cutId: _cut1, layerId: const LayerId('solo'))],
     );
+  });
+
+  /// F-343: a conte row is found by WHO IT RIDES, wherever its cut's stack
+  /// has it — as the laying reads a conte group (`trackWithItsConteLaid`).
+  /// Inside a step the structure waits for the step's last write
+  /// (`asOneConteWrite`), so a verb can ask of a cut whose rows no laying
+  /// has gathered yet.
+  test('a conte row riding APART from the rest of its group walks its seat '
+      'in every cut', () {
+    Layer conte(String cut) => Layer(
+      id: LayerId('$cut-conte'),
+      name: 'Conte',
+      kind: LayerKind.storyboard,
+      frames: const [],
+    );
+    Layer x(String cut) => Layer(
+      id: LayerId('$cut-x'),
+      name: 'X',
+      kind: LayerKind.storyboard,
+      attachedToLayerId: LayerId('$cut-conte'),
+      conteKey: const ConteKey('x'),
+      frames: const [],
+    );
+    Cut cutOf(String id, List<Layer> layers) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: layers,
+    );
+    final project = Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      createdAt: DateTime(2020),
+      tracks: [
+        Track(
+          id: _track,
+          name: 'V1',
+          cuts: [
+            // An ink a write stood between a's conte and the row riding it.
+            cutOf('a', [
+              conte('a'),
+              Layer(id: const LayerId('a-ink'), name: 'Ink', frames: const []),
+              x('a'),
+            ]),
+            cutOf('b', [conte('b'), x('b')]),
+          ],
+        ),
+      ],
+    );
+
+    expect(conteHeadTargets(project, const LayerId('a-x')), [
+      (cutId: const CutId('a'), layerId: const LayerId('a-x')),
+      (cutId: const CutId('b'), layerId: const LayerId('b-x')),
+    ]);
   });
 }

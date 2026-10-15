@@ -52,6 +52,50 @@ Rect boxHandleFootprint(Offset at) =>
 Rect boxCrossFootprint(Offset at) =>
     Rect.fromCenter(center: at, width: _crossArm * 2, height: _crossArm * 2);
 
+/// A path's handle at a key on screen (I-89 ④, the mock's 5판): the end
+/// the hand takes [ahead] of the key — its tangent — and the end [behind]
+/// it, which follows.
+typedef BoxTangentChrome = ({Offset ahead, Offset behind});
+
+/// The tangent's knob — a disc, its outline stroked on its own edge — and
+/// the passive end's, and the line through the key between them.
+const double _tangentRadius = 6.5;
+const double _tangentStroke = 2;
+const double _tangentEndRadius = 4;
+const Color _tangentLineColor = Color(0xFF7C8184);
+
+/// Whether a press at [press] lands on the tangent knob at [at] — what the
+/// knob covers as it is drawn ([boxHandleFootprint]'s law, F-262), a disc
+/// and not the box round it.
+bool boxTangentCovers(Offset at, Offset press) =>
+    (press - at).distance <= _tangentRadius + _tangentStroke / 2;
+
+/// Paints [tangents] — each its line through the key, its passive end and
+/// its knob in [color] — in order, the last over the first.
+void paintBoxTangents(
+  Canvas canvas,
+  List<BoxTangentChrome> tangents, {
+  required Color color,
+}) {
+  final line = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1
+    ..color = _tangentLineColor;
+  final fill = Paint()..color = Colors.white;
+  final knob = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = _tangentStroke
+    ..color = color;
+  for (final (:ahead, :behind) in tangents) {
+    canvas
+      ..drawLine(behind, ahead, line)
+      ..drawCircle(behind, _tangentEndRadius, fill)
+      ..drawCircle(behind, _tangentEndRadius, line)
+      ..drawCircle(ahead, _tangentRadius, fill)
+      ..drawCircle(ahead, _tangentRadius, knob);
+  }
+}
+
 /// Paints [chrome] in [color] — the ONE look every transform box on the
 /// canvas wears.
 ///

@@ -1,8 +1,14 @@
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart'
+    show FileSaveLocation, FileSelectorPlatform, SaveDialogOptions, XTypeGroup;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/model_vocabulary.dart';
 
 import '../../helpers/dart_sources.dart';
 
@@ -177,6 +183,38 @@ void main() {
       expect(grant?.path, '/Users/me/Renders/still');
     });
 
+    testWidgets('🎯the type it offers is named in the app\'s language — the '
+        'window is handed the table\'s word, not the group\'s English, and '
+        'the filter as it was (F-273)', (tester) async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      FolderPicker.debugOperatingSystem = 'windows';
+      final real = FileSelectorPlatform.instance;
+      final window = _RecordingWindow();
+      FileSelectorPlatform.instance = window;
+      addTearDown(() => FileSelectorPlatform.instance = real);
+
+      await pickSaveFileForUser(
+        await mounted(tester),
+        suggestedName: 'line.wav',
+        acceptedTypeGroups: const [FileTypeGroups.wav],
+      );
+
+      final offered = window.offered.single;
+      expect(
+        offered.label,
+        FileTypeGroups.wav.labelledFor(AppLanguage.ko).label,
+      );
+      expect(offered.label, isNot(FileTypeGroups.wav.label));
+      expect(offered.extensions, FileTypeGroups.wav.extensions);
+      expect(
+        offered.uniformTypeIdentifiers,
+        FileTypeGroups.wav.uniformTypeIdentifiers,
+      );
+    });
+
     testWidgets('what is written with no extension is asked for none', (
       tester,
     ) async {
@@ -219,4 +257,18 @@ void main() {
       expect(callers, ['lib/src/ui/menu/editor_top_strip.dart']);
     });
   });
+}
+
+/// The save window, writing down the types it was offered.
+class _RecordingWindow extends FileSelectorPlatform {
+  final List<XTypeGroup> offered = [];
+
+  @override
+  Future<FileSaveLocation?> getSaveLocation({
+    List<XTypeGroup>? acceptedTypeGroups,
+    SaveDialogOptions options = const SaveDialogOptions(),
+  }) async {
+    offered.addAll(acceptedTypeGroups ?? const []);
+    return const FileSaveLocation('Q:/nowhere/line.wav');
+  }
 }

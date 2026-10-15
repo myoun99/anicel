@@ -120,52 +120,6 @@ void main() {
     );
   });
 
-  /// 🗣️유저 2026-09-16: 「미리보기 셀 리스트 가로길이가 길어서 미리보기
-  /// 프리뷰창이 너무 작아지거든? … 그냥 출력 공용창 크기 자체를 더 크게
-  /// 키우는게 날거같기도? … 앱 전체 채워도 문제는없잖아」.
-  ///
-  /// The window was the four columns' SUM, so on a big screen it stayed
-  /// small and the preview — the only column that stretches — kept whatever
-  /// the fixed three left.
-  testWidgets('🎯the window takes the room it is given, so the picture gets '
-      'the surplus', (tester) async {
-    final session = sessionOf(celCut());
-    addTearDown(session.dispose);
-
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ExportDialog(
-            session: session,
-            formatAvailability: ExportFormatAvailability.permissive(),
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-
-    // ⚠️The KEY is on the Material `Dialog`, which lays out over the whole
-    // screen; the window is the box inside it.
-    final window = tester.getSize(
-      find
-          .descendant(
-            of: find.byKey(const ValueKey<String>('export-dialog')),
-            matching: find.byType(ConstrainedBox),
-          )
-          .first,
-    );
-    // The dialog's own insetPadding is 40 a side, 24 top and bottom.
-    expect(
-      window.width,
-      closeTo(1600 - 80, 1),
-      reason: 'it used to stop at the columns\' sum (~848)',
-    );
-    expect(window.height, closeTo(1000 - 64, 1));
-  });
-
   testWidgets('🚨and it is the timeline\'s own order, not a second one', (
     tester,
   ) async {

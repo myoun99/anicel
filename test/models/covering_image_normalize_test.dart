@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/covering_image_normalize.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -15,6 +16,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 /// The image-row invariant (D22, 유저 08-17: 「블록은 1칸 + 성질 hold
@@ -204,16 +206,33 @@ void main() {
 
   test('MediaReference round-trips on the Layer JSON, and clearing it is '
       'expressible through copyWith (the rasterize edit)', () {
+    // I-68: where the picture stands rides along whole — a turned, unevenly
+    // scaled pose, so no member can fall back to a default unnoticed.
     final referenced = imageLayer().copyWith(
       mediaReference: MediaReference(
         assetPath: 'C:/media/bg.png',
         frameOffset: 7,
+        pose: TransformPose(
+          center: CanvasPoint(x: 120.5, y: -40),
+          scaleX: 0.5,
+          scaleY: -2,
+          rotationDegrees: 30,
+        ),
+        pictureSize: const CanvasSize(width: 2340, height: 1654),
       ),
     );
     final restored = Layer.fromJson(referenced.toJson());
     expect(restored, referenced);
     expect(restored.mediaReference!.assetPath, 'C:/media/bg.png');
     expect(restored.mediaReference!.frameOffset, 7);
+    expect(
+      restored.mediaReference!.pose,
+      referenced.mediaReference!.pose,
+    );
+    expect(
+      restored.mediaReference!.pictureSize,
+      const CanvasSize(width: 2340, height: 1654),
+    );
 
     final rasterized = restored.copyWith(mediaReference: null);
     expect(rasterized.mediaReference, isNull);

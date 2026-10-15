@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -27,14 +28,14 @@ void main() {
   const member = PropertyLaneRow(
     laneId: 'position',
     label: 'Position',
-    keyedFrames: {2},
+    keyMarks: {2: KeyMark.linear},
     keyNames: {2: 'Wall'},
   );
 
   const union = PropertyLaneRow(
     laneId: 'transform-group',
     label: 'Transform',
-    keyedFrames: {2},
+    keyMarks: {2: KeyMark.linear},
     keyNames: {2: 'Wall'},
     isGroupHeader: true,
   );
@@ -100,7 +101,7 @@ void main() {
     // The painted shape inside the hit box — the hit box is deliberately
     // bigger than the mark and identical on both rows.
     return tester.getSize(
-      find.descendant(of: marker, matching: find.byType(Container)).first,
+      find.descendant(of: marker, matching: find.byType(CustomPaint)),
     );
   }
 

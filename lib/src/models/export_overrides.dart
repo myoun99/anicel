@@ -23,24 +23,32 @@ class ExportCelsCutDelta {
     Map<LayerId, bool> layerOverrides = const {},
     Set<ExportCelRef> skippedCels = const {},
     Set<ExportDirectionOver> directionOver = const {},
-    Set<ExportCelKind> documentsOff = const {},
+    Set<ExportCelRef> cameraOver = const {},
     Set<ExportDocumentPage> skippedPages = const {},
   }) : layerOverrides = Map.unmodifiable(layerOverrides),
        skippedCels = Set.unmodifiable(skippedCels),
        directionOver = Set.unmodifiable(directionOver),
-       documentsOff = Set.unmodifiable(documentsOff),
+       cameraOver = Set.unmodifiable(cameraOver),
        skippedPages = Set.unmodifiable(skippedPages);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
   /// NAMES are not unique, ids are. A non-empty map is what makes the
   /// label button read 「커스텀」.
+  ///
+  /// What the files hold: the attach column's checks write it, a line of
+  /// the stood row's stack each (export-four-tabs ④, 유저 2026-10-09).
+  /// ↩️The list row's switch wrote it while a row of the list was a layer.
   final Map<LayerId, bool> layerOverrides;
 
   /// The drawings the user turned off in the list, each by the row its
   /// block stands on (F-289, 유저 2026-10-06: 「셀의 프레임버튼 누르면
   /// 내보내기 적용/미적용」). Separate from [layerOverrides] on purpose: a
-  /// drawing turned off says "do not write this file" and leaves the row
-  /// selection alone, so the two questions never share a flag.
+  /// drawing turned off says "do not write this file" and leaves what the
+  /// files hold alone, so the two questions never share a flag.
+  ///
+  /// A row's switch writes these too — every file of its row (export-four-
+  /// tabs ③, 유저 2026-10-09: a row whose files are all off IS a row
+  /// switched off, 「법 통일」).
   ///
   /// ↩️It was a set of BUNDLES (`skippedBases`, one tick for every cel of a
   /// row) while the window listed bundles; the list shows drawings now.
@@ -53,56 +61,52 @@ class ExportCelsCutDelta {
   /// this cut.
   final Set<ExportDirectionOver> directionOver;
 
-  /// The cut's DOCUMENTS whose row the user switched off — its timesheet,
-  /// its cut envelope ([ExportCelKind.isDocument]). A document's row is on
-  /// by rule while its kind is written, so off is the only exception there
-  /// is; it is to a document what [layerOverrides] is to a row.
-  final Set<ExportCelKind> documentsOff;
+  /// The drawings the camera's work is laid over when they are written —
+  /// the band's CAM (F-289, 유저 2026-10-06: 「카메라레이어에 카메라 궤도나
+  /// A-B PAN같은 지시를 카메라레이어에 그려지도록 할거거든? 그거를 출력에
+  /// 실을용도」; its door made then, the work laid since I-89-Q18). The work
+  /// is this cut's camera's, as the canvas writes it.
+  final Set<ExportCelRef> cameraOver;
 
   /// The files of the cut's documents the user turned off in the list — to
-  /// a document what [skippedCels] is to a row.
+  /// a document what [skippedCels] is to a row; its row's switch writes
+  /// every page.
+  ///
+  /// ↩️A document's row had an off of its own (`documentsOff`) beside its
+  /// files' — two answers to whether its files are written. The row's
+  /// switch turns its files off now (export-four-tabs ③, 유저 2026-10-09).
   final Set<ExportDocumentPage> skippedPages;
 
   bool get isEmpty =>
       layerOverrides.isEmpty &&
       skippedCels.isEmpty &&
       directionOver.isEmpty &&
-      documentsOff.isEmpty &&
+      cameraOver.isEmpty &&
       skippedPages.isEmpty;
 
-  /// Whether a ROW of this cut answers by hand rather than by the rules —
-  /// what makes the label button read 「커스텀」.
-  bool get hasRowExceptions =>
-      layerOverrides.isNotEmpty || documentsOff.isNotEmpty;
+  /// Whether a LAYER of this cut answers by hand rather than by the rules —
+  /// what makes the label button read 「커스텀」. A file turned off is no
+  /// answer to the rules' question (export-four-tabs ③).
+  bool get hasRowExceptions => layerOverrides.isNotEmpty;
 
   /// Whether this cut has left its rules: a row answered by hand, or a file
   /// turned off — what [backOnTheRules] undoes.
   bool get leavesTheRules =>
       hasRowExceptions || skippedCels.isNotEmpty || skippedPages.isNotEmpty;
 
-  /// This delta with what the hand did to the cut's ROWS changed.
+  /// This delta with what the hand did changed.
   ExportCelsCutDelta _with({
     Map<LayerId, bool>? layerOverrides,
     Set<ExportCelRef>? skippedCels,
     Set<ExportDirectionOver>? directionOver,
+    Set<ExportCelRef>? cameraOver,
+    Set<ExportDocumentPage>? skippedPages,
   }) => ExportCelsCutDelta(
     layerOverrides: layerOverrides ?? this.layerOverrides,
     skippedCels: skippedCels ?? this.skippedCels,
     directionOver: directionOver ?? this.directionOver,
-    documentsOff: documentsOff,
-    skippedPages: skippedPages,
-  );
-
-  /// This delta with what the hand did to the cut's DOCUMENTS changed.
-  ExportCelsCutDelta _withDocuments({
-    Set<ExportCelKind>? off,
-    Set<ExportDocumentPage>? skipped,
-  }) => ExportCelsCutDelta(
-    layerOverrides: layerOverrides,
-    skippedCels: skippedCels,
-    directionOver: directionOver,
-    documentsOff: off ?? documentsOff,
-    skippedPages: skipped ?? skippedPages,
+    cameraOver: cameraOver ?? this.cameraOver,
+    skippedPages: skippedPages ?? this.skippedPages,
   );
 
   ExportCelsCutDelta withLayerOverride(LayerId id, bool? include) {
@@ -119,13 +123,9 @@ class ExportCelsCutDelta {
   ExportCelsCutDelta withCelSkipped(ExportCelRef cel, bool skipped) =>
       _with(skippedCels: _held(skippedCels, cel, skipped));
 
-  /// This delta with the row of [document] switched off, or back on.
-  ExportCelsCutDelta withDocumentOff(ExportCelKind document, bool off) =>
-      _withDocuments(off: _held(documentsOff, document, off));
-
   /// This delta with [page] turned off, or back on.
   ExportCelsCutDelta withPageSkipped(ExportDocumentPage page, bool skipped) =>
-      _withDocuments(skipped: _held(skippedPages, page, skipped));
+      _with(skippedPages: _held(skippedPages, page, skipped));
 
   /// The directions laid over [cel].
   Set<ExportCelRef> directionsOver(ExportCelRef cel) => {
@@ -142,6 +142,10 @@ class ExportCelsCutDelta {
     directionOver: _held(directionOver, (cel: cel, direction: direction), laid),
   );
 
+  /// This delta with the camera's work laid over [cel], or taken off it.
+  ExportCelsCutDelta withCameraOver(ExportCelRef cel, bool laid) =>
+      _with(cameraOver: _held(cameraOver, cel, laid));
+
   /// [set] holding [member], or not.
   static Set<T> _held<T>(Set<T> set, T member, bool held) {
     final next = Set<T>.from(set);
@@ -155,13 +159,12 @@ class ExportCelsCutDelta {
 
   /// The row exceptions dropped, the rest kept — a filter press re-applies
   /// the rule without touching which files are written.
-  ExportCelsCutDelta withoutRowExceptions() =>
-      _with(layerOverrides: const {})._withDocuments(off: const {});
+  ExportCelsCutDelta withoutRowExceptions() => _with(layerOverrides: const {});
 
   /// Reset: every row back on the rule and every drawing on. What is laid
   /// over a drawing is no answer to a rule, and stays.
   ExportCelsCutDelta backOnTheRules() =>
-      ExportCelsCutDelta(directionOver: directionOver);
+      ExportCelsCutDelta(directionOver: directionOver, cameraOver: cameraOver);
 
   static Map<String, dynamic> _refJson(ExportCelRef ref) => {
     'row': ref.row.value,
@@ -178,25 +181,26 @@ class ExportCelsCutDelta {
   static String _order(ExportCelRef ref) =>
       '${ref.row.value}\u0000${ref.cel.value}';
 
+  /// [refs] as a file says them, in [_order].
+  static List<Map<String, dynamic>> _refsJson(Set<ExportCelRef> refs) => [
+    for (final ref
+        in refs.toList()..sort((a, b) => _order(a).compareTo(_order(b))))
+      _refJson(ref),
+  ];
+
+  /// [_refsJson] read back; a file that says none has none.
+  static Set<ExportCelRef> _refsFromJson(Object? json) => {
+    for (final ref in json as List<dynamic>? ?? const [])
+      _refFromJson(ref as Map<String, dynamic>),
+  };
+
   Map<String, dynamic> toJson() => {
     'layerOverrides': {
       for (final entry in layerOverrides.entries)
         entry.key.value: entry.value,
     },
-    if (skippedCels.isNotEmpty)
-      'skippedCels': [
-        for (final cel
-            in skippedCels.toList()
-              ..sort((a, b) => _order(a).compareTo(_order(b))))
-          _refJson(cel),
-      ],
-    if (documentsOff.isNotEmpty)
-      'documentsOff': [
-        for (final document
-            in documentsOff.toList()
-              ..sort((a, b) => a.index.compareTo(b.index)))
-          document.jsonValue,
-      ],
+    if (skippedCels.isNotEmpty) 'skippedCels': _refsJson(skippedCels),
+    if (cameraOver.isNotEmpty) 'cameraOver': _refsJson(cameraOver),
     if (skippedPages.isNotEmpty)
       'skippedPages': [
         for (final page
@@ -220,14 +224,9 @@ class ExportCelsCutDelta {
 
   static ExportCelsCutDelta fromJson(Map<String, dynamic> json) {
     final raw = json['layerOverrides'] as Map<String, dynamic>? ?? const {};
-    final skipped = json['skippedCels'] as List<dynamic>? ?? const [];
     final over = json['directionOver'] as List<dynamic>? ?? const [];
-    final off = json['documentsOff'] as List<dynamic>? ?? const [];
     final pages = json['skippedPages'] as List<dynamic>? ?? const [];
     return ExportCelsCutDelta(
-      documentsOff: {
-        for (final document in off) ?ExportCelKind.fromJson(document),
-      },
       skippedPages: {
         for (final page in pages.cast<Map<String, dynamic>>())
           if (ExportCelKind.fromJson(page['document']) case final document?)
@@ -237,9 +236,8 @@ class ExportCelsCutDelta {
         for (final entry in raw.entries)
           LayerId(entry.key): entry.value as bool,
       },
-      skippedCels: {
-        for (final cel in skipped) _refFromJson(cel as Map<String, dynamic>),
-      },
+      skippedCels: _refsFromJson(json['skippedCels']),
+      cameraOver: _refsFromJson(json['cameraOver']),
       directionOver: {
         for (final laid in over.cast<Map<String, dynamic>>())
           (
@@ -257,7 +255,7 @@ class ExportCelsCutDelta {
           mapEquals(other.layerOverrides, layerOverrides) &&
           setEquals(other.skippedCels, skippedCels) &&
           setEquals(other.directionOver, directionOver) &&
-          setEquals(other.documentsOff, documentsOff) &&
+          setEquals(other.cameraOver, cameraOver) &&
           setEquals(other.skippedPages, skippedPages);
 
   @override
@@ -268,7 +266,7 @@ class ExportCelsCutDelta {
     ]),
     Object.hashAllUnordered(skippedCels),
     Object.hashAllUnordered(directionOver),
-    Object.hashAllUnordered(documentsOff),
+    Object.hashAllUnordered(cameraOver),
     Object.hashAllUnordered(skippedPages),
   );
 }

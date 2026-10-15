@@ -4,11 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/ui/canvas/paper_background.dart'
-    show AlphaCheckerboardPainter;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 
+import '../../helpers/import_preview_probe.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/the_file_itself.dart';
@@ -67,19 +66,21 @@ void main() {
         ),
       ),
     );
-    final checker = find.byKey(const ValueKey<String>('import-preview-checker'));
-    for (var tries = 0; tries < 50 && checker.evaluate().isEmpty; tries += 1) {
+    for (var tries = 0;
+        tries < 50 && tester.importPreviewImage == null;
+        tries += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
       await tester.pump();
     }
 
-    expect(checker, findsOneWidget);
+    expect(tester.importPreviewImage, isNotNull, reason: 'CONTROL: it landed');
     expect(
-      tester.widget<CustomPaint>(checker).painter,
-      isA<AlphaCheckerboardPainter>(),
-      reason: 'the one checker the canvas and the export preview paint',
+      tester.importPreviewCheckered,
+      isTrue,
+      reason: 'the one checker the canvas and the export preview paint '
+          '(paintAlphaCheckerboard, as the page\'s ground)',
     );
   });
 }

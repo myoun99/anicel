@@ -285,31 +285,57 @@ void main() {
 
     // I-76: a run's layer stands for many files, and a layer's reference
     // names one — so the run is baked, as the cut folder it comes from is.
-    test('a picture whose run comes in together is baked; alone, its row '
-        'answers', () {
-      final together = resolvedImportSettings(
-        defaults,
-        kind: MediaAssetKind.image,
-        isPsd: false,
-        placing: true,
-        hasActiveCut: true,
-        lasting: true,
-        inRun: true,
-      );
-      expect(together.run, NumberedRun.together, reason: 'the default');
-      expect(together.bake, isTrue);
+    // F-282 (시안 ④): what comes in is the span its IN/OUT keep, one picture
+    // when they stand on the same one.
+    test('a run whose span keeps two pictures or more is baked; one picture '
+        'answers for itself', () {
+      ImportFileSettings ofRun(ImportFileSettings settings) =>
+          resolvedImportSettings(
+            settings,
+            kind: MediaAssetKind.image,
+            isPsd: false,
+            placing: true,
+            hasActiveCut: true,
+            lasting: true,
+            runLength: 3,
+          );
 
-      final alone = resolvedImportSettings(
-        defaults.copyWith(run: NumberedRun.alone),
-        kind: MediaAssetKind.image,
-        isPsd: false,
-        placing: true,
-        hasActiveCut: true,
-        lasting: true,
-        inRun: true,
+      expect(
+        ofRun(defaults).bake,
+        isTrue,
+        reason: 'the whole run, the default',
       );
-      expect(alone.bake, isFalse);
+      expect(ofRun(defaults.copyWith(runIn: 1, runOut: 2)).bake, isTrue);
+      expect(
+        ofRun(defaults.copyWith(runIn: 1, runOut: 1)).bake,
+        isFalse,
+        reason: 'IN and OUT on one picture: it comes in alone',
+      );
       expect(resolve(defaults).bake, isFalse, reason: 'no run, no lock');
+    });
+
+    test('a run\'s span is no trim of the file: the file is still asked how '
+        'it is kept', () {
+      final spanned = defaults.copyWith(
+        mode: ImportFileMode.reference,
+        runIn: 1,
+        runOut: 1,
+      );
+
+      expect(spanned.isTrimmed, isFalse);
+      expect(
+        resolvedImportSettings(
+          spanned,
+          kind: MediaAssetKind.image,
+          isPsd: false,
+          placing: true,
+          hasActiveCut: true,
+          lasting: true,
+          runLength: 3,
+        ).mode,
+        ImportFileMode.reference,
+        reason: 'a trimmed file would have been made Keep',
+      );
     });
 
     test('merging leaves bake open', () {

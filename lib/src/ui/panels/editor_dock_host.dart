@@ -10,7 +10,7 @@ import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';
 import '../widgets/still_raster.dart';
 
-export '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
+export '../widgets/dock_edge_splitter.dart' show DockCornerGrip, DockEdgeSplitter;
 
 /// What one panel group costs before its panels start losing rows: its tab
 /// strip plus the tallest floor among the tabs it hosts.

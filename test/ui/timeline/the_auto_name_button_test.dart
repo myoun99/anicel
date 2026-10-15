@@ -42,9 +42,11 @@ void main() {
     ];
   }
 
-  /// Types [start] into the open window and applies it.
+  /// Types [start] into the open window, from its pencil, and applies it.
   Future<void> numberFrom(WidgetTester tester, int start) async {
-    await tester.tap(find.byKey(const ValueKey<String>('auto-name-start')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('auto-name-start-edit')),
+    );
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey<String>('auto-name-start-input')),

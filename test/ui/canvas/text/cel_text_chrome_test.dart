@@ -154,6 +154,34 @@ void main() {
     expect(asked, 3);
   });
 
+  test('🚨F-344: a text CARRIED is drawn again — the painter hears the text '
+      'in hand on its own line, as it hears the cross', () {
+    final held = textHand(
+      bake: bakesAtOnce,
+      text: CelTextContent(
+        spans: const [
+          CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
+        ],
+        anchor: CanvasPoint(x: 8, y: 8),
+      ),
+    );
+    final painter = CelTextChromePainter(
+      tool: held.tool,
+      stage: stageAt(1),
+      restingBoxes: const [],
+      tracedBox: null,
+      caretLit: caretLit,
+      color: const Color(0xFF4488FF),
+    );
+    var asked = 0;
+    painter.addListener(() => asked += 1);
+    final session = held.tool.session!;
+
+    session.showMoved(session.moveOrigin, dx: 3, dy: 0);
+
+    expect(asked, 1);
+  });
+
   // What it draws is measured on the real app; what it draws over a text
   // being typed into, in COLUMNS, is asked here — the two lines the layout
   // answers a different way round.

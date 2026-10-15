@@ -12,6 +12,7 @@ import '../../models/layer_effect.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
+import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
@@ -22,6 +23,7 @@ import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
 import '../canvas/raster_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../quiet_turns.dart' show QuietTurn, QuietTurns;
 import '../../core/pin_counts.dart';
 
 /// One cached layer-frame render: the image, the CANVAS-SPACE rect its
@@ -116,6 +118,79 @@ class _LayerFrameImageEntry {
   ui.Image get image => positioned.image;
 }
 
+/// What a picture is made of, as an ask says it: the content's revision,
+/// the canvas, the chain baked in, and whether its ink alone is kept.
+typedef _MadeOf = ({
+  int revision,
+  CanvasSize canvasSize,
+  List<double> sourceEffectSignature,
+  bool inkSuffices,
+});
+
+/// A picture being made for a slot, and what it is being made of: the ask
+/// that started it.
+final class _Making {
+  _Making(this.madeOf, this.done);
+
+  final _MadeOf madeOf;
+  final Future<LayerFrameImage?> done;
+
+  /// Whether this making answers [ask] — the same picture of the same
+  /// content, kept the same way. An ask the making does not answer makes its
+  /// own.
+  bool answers(_MadeOf ask) =>
+      ask.revision == madeOf.revision &&
+      ask.canvasSize == madeOf.canvasSize &&
+      sameCelSourceEffectSignature(
+        ask.sourceEffectSignature,
+        madeOf.sourceEffectSignature,
+      ) &&
+      ask.inkSuffices == madeOf.inkSuffices;
+}
+
+/// 🚨A PICTURE IS MADE ONCE: the pictures being made, by slot
+/// ([LayerFrameImageCache.prepare]). Asked for while the same picture is
+/// being made, a slot waits for that making instead of making it again
+/// beside it — the canvas and the warm both make rows, and a frame asks for
+/// its rows at once, so two makings of one cel side by side were the
+/// ordinary case (a-picture-is-made-once, 2026-10-10).
+final class _Makings {
+  final Map<(BrushFrameKey, PlaybackQuality), _Making> _bySlot = {};
+
+  /// [make]'s picture for [slot] — or, while a making there answers
+  /// [madeOf], that one's. A making stands down only for the ask that
+  /// started it: an ask that did not want to stand down ([shouldAbort]) and
+  /// got nothing from it is made again.
+  Future<LayerFrameImage?> once(
+    (BrushFrameKey, PlaybackQuality) slot,
+    _MadeOf madeOf, {
+    required bool Function()? shouldAbort,
+    required Future<LayerFrameImage?> Function() make,
+  }) async {
+    final making = _bySlot[slot];
+    if (making != null && making.answers(madeOf)) {
+      final made = await making.done;
+      if (made != null || (shouldAbort?.call() ?? false)) {
+        return made;
+      }
+    }
+    final now = _Making(madeOf, make());
+    _bySlot[slot] = now;
+    try {
+      return await now.done;
+    } finally {
+      if (identical(_bySlot[slot], now)) {
+        _bySlot.remove(slot);
+      }
+    }
+  }
+}
+
+/// How many steps on a cached slot's image is next shown — null where no
+/// frame ahead shows it ([LayerFrameImageCache.enforceBudget]).
+typedef LayerImageWantedAt =
+    int? Function((BrushFrameKey, PlaybackQuality) slot);
+
 /// Level-1 playback cache: one GPU [ui.Image] per (layer frame, quality),
 /// built from the brush store's display-cache surface (the first production
 /// consumer of [BrushFrameDisplayCacheService]).
@@ -126,7 +201,9 @@ class _LayerFrameImageEntry {
 /// plumbing. [invalidateFrame] additionally drops entries eagerly on sink
 /// events to free memory sooner.
 class LayerFrameImageCache {
-  LayerFrameImageCache({required this.frameStore});
+  LayerFrameImageCache({required this.frameStore}) {
+    frameStore.addRekeyListener(_travelWithTheirCels);
+  }
 
   final BrushFrameStore frameStore;
   final Map<(BrushFrameKey, PlaybackQuality), _LayerFrameImageEntry> _entries =
@@ -157,6 +234,38 @@ class LayerFrameImageCache {
     required CanvasSize canvasSize,
     required List<ResolvedLayerEffect> sourceEffects,
   }) {
+    final entry = _validEntry(key, quality, canvasSize, sourceEffects);
+    if (entry == null) {
+      return null;
+    }
+    entry.lastUsed = ++_useCounter;
+    return entry.positioned;
+  }
+
+  /// The image [prepareSyncOrNull] would hand a route drawing [key]'s row
+  /// at [quality] from what is held ALREADY — without counting as a use.
+  ///
+  /// ⛔A LOOK, NOT A USE: what asks it is counting pictures — the warmer
+  /// walking a window, the ruler's bar, a run asking whether it may go on —
+  /// and a count that touched every row it read would make each one the
+  /// most recently used, which is the order the budget lets go by.
+  LayerFrameImage? peek(
+    BrushFrameKey key,
+    PlaybackQuality quality, {
+    required CanvasSize canvasSize,
+    required List<ResolvedLayerEffect> sourceEffects,
+    required bool inkSuffices,
+  }) => _drawable(
+    _validEntry(key, quality, canvasSize, sourceEffects)?.positioned,
+    inkSuffices: inkSuffices,
+  );
+
+  _LayerFrameImageEntry? _validEntry(
+    BrushFrameKey key,
+    PlaybackQuality quality,
+    CanvasSize canvasSize,
+    List<ResolvedLayerEffect> sourceEffects,
+  ) {
     final entry = _entries[(key, quality)];
     if (entry == null ||
         entry.canvasSize != canvasSize ||
@@ -167,8 +276,7 @@ class LayerFrameImageCache {
         entry.sourceRevision != _currentRevision(key)) {
       return null;
     }
-    entry.lastUsed = ++_useCounter;
-    return entry.positioned;
+    return entry;
   }
 
   /// Returns a valid image, rebuilding it when missing or stale. `null` when
@@ -183,6 +291,13 @@ class LayerFrameImageCache {
   /// not the lazy one — the whole image draws right on every route, and all
   /// the default costs a caller that forgets is the memory the ink would
   /// have saved.
+  ///
+  /// [turn] is what the making waits for before it puts its work on the GPU
+  /// — its turn in the quiet between a run's held frames ([QuietTurns]);
+  /// none where null (the editing canvas's own). No turn stands the making
+  /// down, as [shouldAbort] does.
+  ///
+  /// 🚨A PICTURE IS MADE ONCE ([_Makings]).
   Future<LayerFrameImage?> prepare({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
@@ -190,6 +305,37 @@ class LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
+  }) => _makings.once(
+    (key, quality),
+    (
+      revision: _currentRevision(key),
+      canvasSize: canvasSize,
+      sourceEffectSignature: celSourceEffectSignature(sourceEffects),
+      inkSuffices: inkSuffices,
+    ),
+    shouldAbort: shouldAbort,
+    make: () => _prepareNow(
+      key: key,
+      canvasSize: canvasSize,
+      quality: quality,
+      sourceEffects: sourceEffects,
+      shouldAbort: shouldAbort,
+      inkSuffices: inkSuffices,
+      turn: turn,
+    ),
+  );
+
+  final _Makings _makings = _Makings();
+
+  Future<LayerFrameImage?> _prepareNow({
+    required BrushFrameKey key,
+    required CanvasSize canvasSize,
+    required PlaybackQuality quality,
+    required List<ResolvedLayerEffect> sourceEffects,
+    bool Function()? shouldAbort,
+    bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) async {
     final cached = _drawable(
       validImageOrNull(
@@ -224,20 +370,38 @@ class LayerFrameImageCache {
       // The cel moved on while the snapshot was out: build it like any miss.
     }
 
+    // 🚨A CEL STILL COLD, OR STILL IN THE FILE, IS THAWED AHEAD — OFF THE UI
+    // THREAD ([BrushFrameStore.thawAhead], card cel-thaw-holds-the-ui-thread):
+    // inflated and laid into its tiles on a worker, and read below once it
+    // is hot. 🔬Read here instead, a cel held the UI thread 16–19 ms (line
+    // art at 1920×1080), and a cut's first play 60–70 ms at a time (I-57,
+    // 2026-10-15). Waited for before the content and the revision are
+    // read, so an edit made while it thaws is what they see; never STARTED
+    // when the editor just went hot.
+    if (shouldAbort?.call() ?? false) {
+      return null;
+    }
+    await frameStore.thawAhead(key, canvasSize: canvasSize);
+
     // Content oracle, not a command check (R19 P3a): an OPENED cel's
     // picture is its baked raster and carries no commands at all — the
     // old command-emptiness guard blanked every loaded cel in playback.
-    final drawing = frameStore.frameOrNull(key);
-    if (drawing == null || !frameStore.celHasRenderableContent(key)) {
+    // ↩️It asked for the cel's drawing state too, the commands' old holder:
+    // a cel donated without one — a layer's cels forked by an unlink, an
+    // independent clip's copies — had its pixels and no picture (found
+    // 2026-10-10, when the whole film came to be drawn here). A cel no
+    // edit has touched is at revision 0.
+    if (!frameStore.celHasRenderableContent(key)) {
       _dropEntry((key, quality));
       return null;
     }
-    final revision = drawing.sourceRevision;
+    final revision = _currentRevision(key);
 
-    // The cel's thaw is the one slice on this path nothing can stand down:
-    // a cel still cold, or still in the file, is read and inflated inside
-    // this call (🔬1.4–17 ms a cel on the Windows app, 2026-10-07 — board
-    // F-296) — never START it when the editor just went hot.
+    // What the worker did not thaw — a thaw that failed, a cel cooled again
+    // since — is read and inflated inside this call, the one slice on this
+    // path nothing can stand down (🔬1.4–17 ms a cel on the Windows app,
+    // 2026-10-07 — board F-296): never START it when the editor just went
+    // hot.
     // 🪦It said 「the display-cache replay … grows with the cel's stroke
     // count」 until then; no stroke has been replayed since the baked raster
     // became the cel (R19 P3b, `BrushFrameDisplayCacheService`).
@@ -281,81 +445,31 @@ class LayerFrameImageCache {
       quality,
       storesInk: inkSuffices && !debugStoresWholeContent,
     );
-    final (:whole, :texels) = plan;
-    final inkAtFull = _inkAtFull(plan, quality.level);
-    // Per-tile GPU compose over the CONTENT extent (canvas rect grown by
-    // any pasteboard tiles) — or the ink alone at the full level
-    // ([_inkAtFull]): the editing canvas keeps the on-screen frame's tiles
-    // decoded in the shared cache, so the post-stroke rebuild draws existing
-    // tile images instead of assembling + uploading the whole canvas — cost
-    // follows the CHANGED tiles, not the canvas.
-    //
-    // 🚨★★★ONE WAIT AN IMAGE, AT ANY LEVEL. Below the full level the compose
-    // is the first step of a chain — whole, halved, halved again, cut — and
-    // only the chain's LAST step is the snapshot that is kept: every step
-    // before it is rastered deferred and drawn straight into the next, the
-    // way the synchronous road has always chained them ([_composedNow]).
-    // ↩️Each step was a snapshot waited for until 2026-10-07 — up to three
-    // waits for a half image and four for a quarter, the first of them the
-    // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
-    // 무거워지는거같은데 맞나?」).
-    // 🔬The Windows app (Impeller, debug build), 2026-10-07, a cut of 35
-    // pictures of the user's: the SAME BYTES over 184 layer images and 70
-    // bakes, each made both ways; a whole warm at a half 1.68 → 1.52 s and
-    // 2.67 → 2.51 s, at a quarter 1.86 → 1.36 s and 2.74 → 2.60 s (two
-    // runs, the machine busy with other work both times). What it sheds is
-    // the waiting — the pixels drawn are the same, so a level below the
-    // full one still costs more to prepare than the full one does.
-    final positioned = await composePositionedSurfaceImage(
-      preview,
-      reuse: BitmapTileImageCache.instance,
-      shouldAbort: shouldAbort,
-      over: inkAtFull,
-      deferred: quality.level > 0,
-    );
-    if (positioned == null) {
-      return null;
+    // 🚨WHAT IS PUT ON THE GPU WAITS ITS TURN ([turn]): everything above is
+    // the CPU's and the workers', so the turn is taken here, and given back
+    // once the image is banked.
+    final QuietTurn? taken;
+    if (turn == null) {
+      taken = null;
+    } else {
+      taken = await turn();
+      if (taken == null) {
+        return null;
+      }
     }
-    if (inkAtFull != null) {
-      return _bank((key, quality), (
-        image: positioned.image,
-        worldRect: inkAtFull,
-        extent: whole,
-      ), source);
+    LayerFrameImage? made;
+    try {
+      final stored = await _composed(
+        preview,
+        plan,
+        quality,
+        shouldAbort: shouldAbort,
+      );
+      made = stored == null ? null : _bank((key, quality), stored, source);
+    } finally {
+      await (made == null ? taken?.gaveUp() : taken?.landed());
     }
-    // A level of the display's pyramid: halved [PlaybackQuality.level]
-    // times, each an exact 2×2 box ([halvingPicture]) — never one reduction
-    // straight to the size, which aliases past 2× and, as `medium`, mipmaps
-    // on one engine and not the other.
-    var image = positioned.image;
-    for (var i = 0; i < quality.level; i += 1) {
-      // The last step when nothing is cut out after it.
-      final kept = texels == null && i == quality.level - 1;
-      final halved = kept
-          ? await _halved(image)
-          : _halvedNow(image, snapshot: false).deferred;
-      // The halving keeps what it drew; only the handle is ours to drop.
-      image.dispose();
-      image = halved;
-    }
-    assert(_isLevelOf(image, whole, quality.level));
-    if (texels == null) {
-      return _bank((key, quality), (
-        image: image,
-        worldRect: whole,
-        extent: whole,
-      ), source);
-    }
-    // Cut out of the level of the WHOLE image, never halved on its own: the
-    // halving is the engine's, and a smaller image is halved differently on
-    // Impeller Vulkan (`halving-rounds-differently-per-engine`).
-    final ink = await _cutOut(image, texels);
-    image.dispose();
-    return _bank((key, quality), (
-      image: ink,
-      worldRect: _worldRectOfTexels(whole, texels, quality.level),
-      extent: whole,
-    ), source);
+    return made;
   }
 
   /// Banks a freshly composed image as the entry for [at], replacing
@@ -447,14 +561,14 @@ class LayerFrameImageCache {
       return null;
     }
 
-    final drawing = frameStore.frameOrNull(key);
-    if (drawing == null || !frameStore.celHasRenderableContent(key)) {
+    // The content oracle alone — see the async twin.
+    if (!frameStore.celHasRenderableContent(key)) {
       return null;
     }
-    final revision = drawing.sourceRevision;
+    final revision = _currentRevision(key);
 
     final previewCache = labProbe(
-      'prepareFramePreview(${key.frameId.value} rev${drawing.sourceRevision})',
+      'prepareFramePreview(${key.frameId.value} rev$revision)',
       () => BrushFrameDisplayCacheService(
         frameStore: frameStore,
         canvasSize: canvasSize,
@@ -492,78 +606,6 @@ class LayerFrameImageCache {
     return banked;
   }
 
-  /// [preview] composed inside the call at [quality] — the cel over its
-  /// content extent, halved [PlaybackQuality.level] times, and, when
-  /// [storesInk], its ink cut out of that, or at the full level composed
-  /// alone ([_inkAtFull]) — beside the plain snapshot of the picture that is
-  /// KEPT: the last of those steps. Null only on the free road
-  /// ([makePictures] false and a tile without its picture).
-  ({
-    ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
-    Future<ui.Image> kept,
-  })?
-  _composedNow(
-    BitmapSurface preview,
-    PlaybackQuality quality, {
-    required bool makePictures,
-    required bool storesInk,
-  }) {
-    final plan = _levelPlan(preview, quality, storesInk: storesInk);
-    final (:whole, :texels) = plan;
-    final inkAtFull = _inkAtFull(plan, quality.level);
-    final composed = composePositionedSurfaceImageSync(
-      preview,
-      reuse: BitmapTileImageCache.instance,
-      makePictures: makePictures,
-      // At the full level the compose is the last step.
-      snapshot: quality.level == 0,
-      over: inkAtFull,
-    );
-    if (composed == null) {
-      return null;
-    }
-    if (inkAtFull != null) {
-      return (
-        now: (
-          image: composed.deferred.image,
-          worldRect: inkAtFull,
-          extent: whole,
-        ),
-        kept: composed.real!,
-      );
-    }
-    var image = composed.deferred.image;
-    var kept = composed.real;
-    for (var i = 0; i < quality.level; i += 1) {
-      final halved = _halvedNow(
-        image,
-        snapshot: texels == null && i == quality.level - 1,
-      );
-      // The halving keeps what it drew; only the handle is ours to drop.
-      image.dispose();
-      image = halved.deferred;
-      kept = halved.real;
-    }
-    assert(_isLevelOf(image, whole, quality.level));
-    if (texels == null) {
-      return (
-        now: (image: image, worldRect: whole, extent: whole),
-        kept: kept!,
-      );
-    }
-    final ink = _cutOutNow(image, texels);
-    // The cut keeps what it drew; only the handle is ours to drop.
-    image.dispose();
-    return (
-      now: (
-        image: ink.deferred,
-        worldRect: _worldRectOfTexels(whole, texels, quality.level),
-        extent: whole,
-      ),
-      kept: ink.real!,
-    );
-  }
-
   /// The entry at [at] holds a deferred image; [real] is the plain snapshot
   /// of the same picture. When it lands it takes the entry's place — same
   /// pixels, same validity — and the deferred image is retired, letting go
@@ -575,12 +617,13 @@ class LayerFrameImageCache {
     final entry = _entries[at]!;
     entry.settling = real.then<void>(
       (snapshot) {
-        if (!identical(_entries[at], entry)) {
+        final slot = _slotHolding(entry, at);
+        if (slot == null) {
           // Replaced, dropped, or the cache is gone: nobody wants it.
           snapshot.dispose();
           return;
         }
-        _entries[at] = _LayerFrameImageEntry(
+        _entries[slot] = _LayerFrameImageEntry(
           positioned: LayerFrameImage(
             image: snapshot,
             worldRect: entry.positioned.worldRect,
@@ -609,6 +652,43 @@ class LayerFrameImageCache {
     }
   }
 
+  /// Carries every quality's picture of a cel to the key a rekey moved its
+  /// pixels to ([BrushFrameStore.addRekeyListener]): the same pixels, so
+  /// the same picture, valid there as it was here.
+  ///
+  /// ⛔The pins stay where they are: each is a holder's, released at the
+  /// slot it was taken on.
+  void _travelWithTheirCels(
+    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
+  ) {
+    for (final (from, to) in pairs) {
+      for (final quality in PlaybackQuality.values) {
+        final entry = _entries.remove((from, quality));
+        if (entry != null) {
+          _dropEntry((to, quality));
+          _entries[(to, quality)] = entry;
+        }
+      }
+    }
+  }
+
+  /// The slot [entry] is held at now — where it was banked, or wherever a
+  /// rekey carried it since ([_travelWithTheirCels]); null once it is gone.
+  (BrushFrameKey, PlaybackQuality)? _slotHolding(
+    _LayerFrameImageEntry entry,
+    (BrushFrameKey, PlaybackQuality) banked,
+  ) {
+    if (identical(_entries[banked], entry)) {
+      return banked;
+    }
+    for (final MapEntry(:key, :value) in _entries.entries) {
+      if (identical(value, entry)) {
+        return key;
+      }
+    }
+    return null;
+  }
+
   int get estimatedBytes {
     var total = 0;
     for (final entry in _entries.values) {
@@ -617,30 +697,38 @@ class LayerFrameImageCache {
     return total;
   }
 
-  /// Evicts least-recently-used entries until at or under [targetBytes].
-  void evictLeastRecentlyUsed({required int targetBytes}) {
-    final ordered = _entries.entries.toList()
-      ..sort((a, b) => a.value.lastUsed.compareTo(b.value.lastUsed));
-    var bytes = estimatedBytes;
-    for (final entry in ordered) {
-      if (bytes <= targetBytes) {
-        break;
-      }
-      // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
-      // anyway (the holder's clone shares the pixels) and puts the very
-      // image the canvas is drawing back on the cold path — the "worked
-      // harder, got emptier" loop PR #1065 documented. Recency cannot
-      // express "someone is holding this"; only the pin can.
-      if (_pins.isPinned(entry.key)) {
-        continue;
-      }
-      bytes -= estimatedImageBytes(
-        entry.value.image.width,
-        entry.value.image.height,
-      );
-      _dropEntry(entry.key);
-    }
-  }
+  /// Lets go of images until at or under [maxBytes] — the ones wanted
+  /// LATEST first ([wantedAt]: how many frames on a slot's image is next
+  /// shown, null where nothing ahead shows it), the least recently used
+  /// among equals — and answers whether that was enough. With [laterThan],
+  /// never one wanted that soon or sooner: a picture is made only by
+  /// letting go of pictures wanted after it.
+  ///
+  /// Without [wantedAt] every image is wanted equally, and recency alone
+  /// orders them. The order is the budget's one ([letGoWantedLatest]).
+  bool enforceBudget({
+    required int maxBytes,
+    LayerImageWantedAt? wantedAt,
+    int? laterThan,
+  }) => letGoWantedLatest(
+    entries: [
+      for (final entry in _entries.entries)
+        // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
+        // anyway (the holder's clone shares the pixels) and puts the very
+        // image the canvas is drawing back on the cold path — the "worked
+        // harder, got emptier" loop PR #1065 documented. Recency cannot
+        // express "someone is holding this"; only the pin can.
+        if (!_pins.isPinned(entry.key)) entry,
+    ],
+    heldBytes: estimatedBytes,
+    maxBytes: maxBytes,
+    wantedAt: (entry) => wantedAt?.call(entry.key),
+    lastUsed: (entry) => entry.value.lastUsed,
+    bytesOf: (entry) =>
+        estimatedImageBytes(entry.value.image.width, entry.value.image.height),
+    letGo: (entry) => _dropEntry(entry.key),
+    laterThan: laterThan,
+  );
 
   // --- Display pins (A6) ----------------------------------------------
   //
@@ -682,6 +770,7 @@ class LayerFrameImageCache {
   }
 
   void dispose() {
+    frameStore.removeRekeyListener(_travelWithTheirCels);
     for (final key in _entries.keys.toList()) {
       _dropEntry(key);
     }
@@ -702,8 +791,223 @@ class LayerFrameImageCache {
 
 // --- The steps a stored image is made of ------------------------------
 //
-// Plain functions of their inputs: halving a level, finding and cutting out
-// the ink. Each has a synchronous twin for the sync road.
+// Plain functions of their inputs: each road's whole chain, halving a
+// level, finding and cutting out the ink. Each step has a synchronous twin
+// for the sync road.
+
+/// [preview] put on the GPU at [quality] under [plan] — the cel's first
+/// step ([_firstStep]), halved down to the level, and its ink cut out of
+/// that when [plan] keeps the ink — each step waited for as it lands, where
+/// [_composedNow] answers inside the call. Null when [shouldAbort] stood it
+/// down between its tile pictures.
+Future<({ui.Image image, ui.Rect worldRect, ui.Rect extent})?> _composed(
+  BitmapSurface preview,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  PlaybackQuality quality, {
+  bool Function()? shouldAbort,
+}) async {
+  final (:whole, :texels) = plan;
+  // Per-tile GPU compose ([_firstStep] says over what): the editing canvas
+  // keeps the on-screen frame's tiles decoded in the shared cache, so the
+  // post-stroke rebuild draws existing tile images instead of assembling +
+  // uploading the whole canvas — cost follows the CHANGED tiles, not the
+  // canvas.
+  //
+  // 🚨★★★ONE WAIT AN IMAGE, AT ANY LEVEL. Below the first level the compose
+  // is the first step of a chain — halved, halved again, cut — and only
+  // the chain's LAST step is the snapshot that is kept: every step before
+  // it is rastered deferred and drawn straight into the next, the way the
+  // synchronous road has always chained them ([_composedNow]).
+  // ↩️Each step was a snapshot waited for until 2026-10-07 — up to three
+  // waits for a half image and four for a quarter, the first of them the
+  // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
+  // 무거워지는거같은데 맞나?」).
+  final first = _firstStep(preview, plan, quality.level);
+  final firstIsKept = quality.level <= 1;
+  final ui.Image? firstImage;
+  if (first.halved) {
+    firstImage = await composeHalvedSurfaceImage(
+      preview,
+      shouldAbort: shouldAbort,
+      over: first.over,
+      deferred: !firstIsKept,
+    );
+  } else {
+    firstImage = (await composePositionedSurfaceImage(
+      preview,
+      reuse: BitmapTileImageCache.instance,
+      shouldAbort: shouldAbort,
+      over: first.over,
+    ))?.image;
+  }
+  if (firstImage == null) {
+    return null;
+  }
+  if (firstIsKept) {
+    return (image: firstImage, worldRect: first.over, extent: whole);
+  }
+  // Down to the level, one exact 2×2 box at a time ([halvingPicture]) —
+  // never one reduction straight to the size, which aliases past 2× and,
+  // as `medium`, mipmaps on one engine and not the other.
+  var image = firstImage;
+  for (var i = 1; i < quality.level; i += 1) {
+    // The last step when nothing is cut out after it.
+    final kept = texels == null && i == quality.level - 1;
+    final halved = kept
+        ? await _halved(image)
+        : _halvedNow(image, snapshot: false).deferred;
+    // The halving keeps what it drew; only the handle is ours to drop.
+    image.dispose();
+    image = halved;
+  }
+  assert(_isLevelOf(image, whole, quality.level));
+  if (texels == null) {
+    return (image: image, worldRect: whole, extent: whole);
+  }
+  // Cut out of the level of the WHOLE image, never halved on its own: the
+  // halving is the engine's, and a smaller image is halved differently on
+  // Impeller Vulkan (`halving-rounds-differently-per-engine`).
+  final ink = await _cutOut(image, texels);
+  image.dispose();
+  return (
+    image: ink,
+    worldRect: _worldRectOfTexels(whole, texels, quality.level),
+    extent: whole,
+  );
+}
+
+/// [preview] composed inside the call at [quality] — the cel's first step
+/// ([_firstStep]), halved down to the level, and, when [storesInk] below the
+/// first level, its ink cut out of that — beside the plain snapshot of the
+/// picture that is KEPT: the last of those steps. Null only on the free
+/// road ([makePictures] false and a tile without its picture).
+({
+  ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
+  Future<ui.Image> kept,
+})?
+_composedNow(
+  BitmapSurface preview,
+  PlaybackQuality quality, {
+  required bool makePictures,
+  required bool storesInk,
+}) {
+  final plan = _levelPlan(preview, quality, storesInk: storesInk);
+  final (:whole, :texels) = plan;
+  final first = _firstStep(preview, plan, quality.level);
+  final firstIsKept = quality.level <= 1;
+  final ({ui.Image deferred, Future<ui.Image>? real})? composed;
+  if (first.halved) {
+    composed = composeHalvedSurfaceImageSync(
+      preview,
+      makePictures: makePictures,
+      snapshot: firstIsKept,
+      over: first.over,
+    );
+  } else {
+    final positioned = composePositionedSurfaceImageSync(
+      preview,
+      reuse: BitmapTileImageCache.instance,
+      makePictures: makePictures,
+      snapshot: firstIsKept,
+      over: first.over,
+    );
+    composed = positioned == null
+        ? null
+        : (deferred: positioned.deferred.image, real: positioned.real);
+  }
+  if (composed == null) {
+    return null;
+  }
+  if (firstIsKept) {
+    return (
+      now: (image: composed.deferred, worldRect: first.over, extent: whole),
+      kept: composed.real!,
+    );
+  }
+  var image = composed.deferred;
+  Future<ui.Image>? kept;
+  for (var i = 1; i < quality.level; i += 1) {
+    final halved = _halvedNow(
+      image,
+      snapshot: texels == null && i == quality.level - 1,
+    );
+    // The halving keeps what it drew; only the handle is ours to drop.
+    image.dispose();
+    image = halved.deferred;
+    kept = halved.real;
+  }
+  assert(_isLevelOf(image, whole, quality.level));
+  if (texels == null) {
+    return (
+      now: (image: image, worldRect: whole, extent: whole),
+      kept: kept!,
+    );
+  }
+  final ink = _cutOutNow(image, texels);
+  // The cut keeps what it drew; only the handle is ours to drop.
+  image.dispose();
+  return (
+    now: (
+      image: ink.deferred,
+      worldRect: _worldRectOfTexels(whole, texels, quality.level),
+      extent: whole,
+    ),
+    kept: ink.real!,
+  );
+}
+
+/// The first step of a level-[level] image of [preview] under [plan]: the
+/// canvas-space rect its tiles are drawn over, and whether they are halved
+/// as they are drawn — below the full level always, so no level begins as
+/// the whole image at full size.
+///
+/// 🚨★★★THE FIRST HALVING IS MADE FROM THE TILES (2026-10-10). Below the
+/// full level the chain began with the whole content at full size — every
+/// raster of a picture is a multisampled render with a whole mip chain
+/// ([_inkAtFull]) — and halved after; a tile halved at its place is the same
+/// mean of the same four texels ([composeHalvedSurfaceImage]), drawn into a
+/// quarter of the pixels. 🔬The Windows app (Impeller GLES, profile build),
+/// a copy of the user's project, every distinct cel of a cut made one after
+/// another with nothing playing: cut 302 (43 cels) at a half 1.09–1.30 →
+/// 0.52–0.62 s and at a quarter 1.11–1.16 → 0.61–0.68 s; cut 301 (46 cels)
+/// at a half 0.66 → 0.17–0.28 s — a level was dearer to make than the full
+/// image (0.57 s and 0.22 s) and is not any more (유저 2026-10-05).
+///
+/// At the FIRST level the ink is drawn straight into its own rect: its
+/// tiles, and so its texels, are the whole image's there. DEEPER, the first
+/// level of the WHOLE is what the halvings go on from, and the ink is cut
+/// out of the level they reach, as it always was — a smaller image halves
+/// differently on Impeller Vulkan, and the ink kept must be the whole's
+/// bytes on every engine (98442b79a; 유저 2026-09-23 「결과바뀌는건 절대로
+/// 허용안하고」).
+///
+/// ⚠️THE WHOLE'S FIRST LEVEL IS THE CONTENT GROWN TO EVEN — the very image
+/// the whole was halved to first — so every halving after it is the one the
+/// whole took, an odd edge clamped where it was ([halvedSize]). Over the
+/// level's own whole the bytes come out the same too, but only because a
+/// content edge off the tile grid holds no ink (the mutant survives,
+/// 2026-10-10).
+({ui.Rect over, bool halved}) _firstStep(
+  BitmapSurface preview,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  int level,
+) {
+  final (:whole, :texels) = plan;
+  if (level == 0) {
+    return (over: _inkAtFull(plan) ?? whole, halved: false);
+  }
+  if (level == 1) {
+    return (
+      over: texels == null ? whole : _worldRectOfTexels(whole, texels, 1),
+      halved: true,
+    );
+  }
+  return (
+    over: _levelPlan(preview, PlaybackQuality.forLevel(1), storesInk: false)
+        .whole,
+    halved: true,
+  );
+}
 
 /// The tile object at every coordinate [surface] holds — what an image
 /// composed from it was made from ([LayerFrameImage.madeFrom]).
@@ -759,11 +1063,11 @@ bool _isLevelOf(ui.Image image, ui.Rect whole, int level) =>
     image.width << level == whole.width.round() &&
     image.height << level == whole.height.round();
 
-/// The rect the ink alone is composed over, straight from its tiles — at the
-/// full level, where each tile lands texel for texel and those are the whole
-/// image's pixels there. Below it the ink is cut out of the halved whole:
-/// the halving is the engine's, and a smaller image is halved differently
-/// on Impeller Vulkan.
+/// The rect the ink alone is composed over at the full level, straight from
+/// its tiles — each tile lands texel for texel, and those are the whole
+/// image's pixels there. At the first level the ink is drawn halved straight
+/// into its own rect the same way; deeper it is cut out of the halved whole
+/// ([_firstStep]).
 ///
 /// 🔬WHY NOT COMPOSE THE WHOLE AND CUT (2026-09-24, 유저 「성능적인 면은 아주
 /// 중요하니까 철저하게 하자」): every raster of a picture is a multisampled
@@ -771,9 +1075,9 @@ bool _isLevelOf(ui.Image image, ui.Rect whole, int level) =>
 /// `generate_mips`), ~6ms for a 2540×1654 image on the Windows app. The
 /// whole-then-cut road paid that for the whole image and again for the cut;
 /// this pays it once, for the ink.
-ui.Rect? _inkAtFull(({ui.Rect whole, ui.Rect? texels}) plan, int level) =>
+ui.Rect? _inkAtFull(({ui.Rect whole, ui.Rect? texels}) plan) =>
     switch (plan) {
-      (whole: final whole, texels: final texels?) when level == 0 =>
+      (whole: final whole, texels: final texels?) =>
         _worldRectOfTexels(whole, texels, 0),
       _ => null,
     };

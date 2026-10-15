@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../helpers/named_finders.dart';
 import 'timeline/timeline_cell_probe.dart';
 
 void main() {
@@ -55,9 +56,9 @@ void main() {
     ) async {
       await tester.pumpWidget(_panel(currentFrameIndex: 2));
 
-      _expectKeyOnce('timeline-layer-row-layer-1');
-      _expectKeyOnce('timeline-frame-row-area-layer-1');
-      _expectKeyOnce('timeline-row-cells-layer-1');
+      _expectNamedOnce('timeline-layer-row-layer-1');
+      _expectNamedOnce('timeline-frame-row-area-layer-1');
+      _expectNamedOnce('timeline-row-cells-layer-1');
       expect(timelineCellInWindow(tester, 'layer-1', 0), isTrue);
     });
 
@@ -102,7 +103,7 @@ void main() {
       await tester.pumpWidget(
         _panel(onSelectLayer: (layerId) => selectedLayerId = layerId),
       );
-      await tester.tap(_key('timeline-layer-name-layer-1'));
+      await tester.tap(find.named('timeline-layer-name-layer-1'));
 
       expect(selectedLayerId, const LayerId('layer-1'));
     });
@@ -134,6 +135,10 @@ Finder _key(String key) => find.byKey(ValueKey<String>(key));
 
 void _expectKeyOnce(String key) {
   expect(_key(key), findsOneWidget, reason: key);
+}
+
+void _expectNamedOnce(String name) {
+  expect(find.named(name), findsOneWidget, reason: name);
 }
 
 Widget _panel({

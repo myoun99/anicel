@@ -4,10 +4,11 @@ import 'dart:ui' show Offset, Rect, Size;
 import 'package:flutter/foundation.dart' show listEquals;
 
 import '../../models/canvas_size.dart';
+import '../../models/camera_work_marks.dart'
+    show CameraKeyRole, cameraKeyLabel;
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
-import '../../models/key_range_move.dart'
-    show transformKeyNameUnion, unionMixedKeyName;
+import '../../models/key_range_move.dart' show transformKeyAgreedNames;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -19,7 +20,8 @@ import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track.dart';
 import '../../services/camera_frame_corners.dart'
-    show cameraCornerTrails, cameraFramesBounds, cameraFramesShown;
+    show cameraFramesBounds, cameraFramesShown;
+import '../../services/camera_path.dart' show CameraPath;
 import '../storyboard_layer_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 
@@ -128,20 +130,23 @@ ConteCellSource _cellSource({
 
 /// What the camera does while [cell] is on screen: its frame at the cell's
 /// first and last frames and at each key between, as playback shows them
-/// (`cameraFramesShown`, H54), the trail each corner draws through them and
-/// the canvas they sweep — null while it holds still (every one of those
-/// frames framing one place) or its work is bypassed (the camera row's
-/// switch shows the canvas centred).
+/// (`cameraFramesShown`, H54), the trail each corner draws between them as
+/// the canvas draws it ([CameraPath.cornerTrailsBetween]) and the canvas
+/// they sweep, trails and all — a turn's corners and a bent path run out
+/// past the frames they leave and reach. Null while it holds still (every
+/// one of those frames framing one place) or its work is bypassed (the
+/// camera row's switch shows the canvas centred).
 ///
 /// A window shows the widest of those frames whole ([_widestFrame]): a
 /// frame is what the camera shows, so each frame of a pan takes a window
 /// whatever the zoom, and a push-in's closer frame lies inside the wider.
 ///
 /// A key's label is its NAME — the name the camera row's header shows for
-/// it (`transformKeyNameUnion`): its lanes agree on it — else IN for the
-/// first and OUT for the last, the Storyboard Pro rule; a key whose lanes
-/// disagree («...») is unnamed (유저 2026-09-30: 「레인끼리 달라서 헤더가
-/// ...으로 표시되는 경우 … 이름 안정해진거랑 같은 규칙으로 IN OUT」).
+/// it (`transformKeyAgreedNames`): its lanes agree on it — else the frame
+/// it stands on, as every surface labels a key ([cameraKeyLabel], 유저
+/// 2026-10-12); a key whose lanes disagree («...») is unnamed (유저
+/// 2026-09-30: 「레인끼리 달라서 헤더가 ...으로 표시되는 경우 … 이름
+/// 안정해진거랑 같은 규칙으로」).
 ConteCameraWork? _cameraWorkIn(
   Cut cut,
   StoryboardCoverageCell cell,
@@ -161,26 +166,26 @@ ConteCameraWork? _cameraWorkIn(
   if (corners.every((frame) => listEquals(frame, corners.first))) {
     return null;
   }
-  final names = transformKeyNameUnion(cut.camera.track);
+  final trails =
+      CameraPath.of(cut, cameraFrameSize)?.cornerTrailsBetween(
+        frames.first.frameIndex,
+        frames.last.frameIndex,
+      ) ??
+      const <List<Offset>>[];
+  final names = transformKeyAgreedNames(cut.camera.track);
   return ConteCameraWork(
     screen: _widestFrame(corners),
-    field: _wholePixelsAround(cameraFramesBounds(corners)),
+    field: _wholePixelsAround(cameraFramesBounds([...corners, ...trails])),
     keys: [
       for (final (index, frame) in frames.indexed)
         _cameraKey(
           frame.corners,
-          index == 0
-              ? ConteCameraKeyRole.first
-              : index == frames.length - 1
-              ? ConteCameraKeyRole.last
-              : ConteCameraKeyRole.between,
-          switch (names[frame.frameIndex]) {
-            null || unionMixedKeyName => null,
-            final name => name,
-          },
+          CameraKeyRole.at(index, frames.length),
+          names[frame.frameIndex],
+          frame.frameIndex,
         ),
     ],
-    trails: cameraCornerTrails(corners),
+    trails: trails,
   );
 }
 
@@ -214,21 +219,16 @@ Rect _wholePixelsAround(Rect region) {
   );
 }
 
-/// A key [named] or not, as the sheet labels it for its [role].
+/// A key [named] or not, on [frameIndex], as every surface labels it.
 ConteCameraKey _cameraKey(
   List<Offset> corners,
-  ConteCameraKeyRole role,
+  CameraKeyRole role,
   String? named,
+  int frameIndex,
 ) => ConteCameraKey(
   corners: corners,
   role: role,
-  label:
-      named ??
-      switch (role) {
-        ConteCameraKeyRole.first => 'IN',
-        ConteCameraKeyRole.last => 'OUT',
-        ConteCameraKeyRole.between => null,
-      },
+  label: cameraKeyLabel(named, frameIndex),
 );
 
 /// The cut's lines, read off the track's SE rows and clipped to the cut.

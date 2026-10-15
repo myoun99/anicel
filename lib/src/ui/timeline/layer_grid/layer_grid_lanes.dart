@@ -16,17 +16,20 @@ class _LayerGridLanes {
 
   /// Legend LAYER-cell sweeps: the grid owns the lane knowledge (which
   /// layers HAVE lanes, which are expanded), so the all-lane fold rides its
-  /// existing per-layer toggle.
+  /// existing per-layer toggle — as ONE undo step, a twirl being the row's
+  /// and written through history (F-360) ([RailSweepHistory.asOneStep]).
   void _expandAllLanes() {
     final onToggle = _state.widget.hooks.onToggleLayerLanes;
     if (onToggle == null) {
       return;
     }
-    for (final layer in _state.widget.layers) {
-      if (lanesFor(layer).isNotEmpty && !_laneOpen(layer.id)) {
-        onToggle(layer.id);
+    RailSweepHistory.asOneStep(_state.context, 'Expand all lanes', () {
+      for (final layer in _state.widget.layers) {
+        if (lanesFor(layer).isNotEmpty && !_laneOpen(layer.id)) {
+          onToggle(layer.id);
+        }
       }
-    }
+    });
   }
 
   void _collapseAllLanes() {
@@ -34,11 +37,14 @@ class _LayerGridLanes {
     if (onToggle == null) {
       return;
     }
-    for (final layerId in _state.widget.hooks.expandedLaneLayerIds.toList()) {
-      if (_laneOpen(layerId)) {
-        onToggle(layerId);
+    final open = _state.widget.hooks.expandedLaneLayerIds.toList();
+    RailSweepHistory.asOneStep(_state.context, 'Collapse all lanes', () {
+      for (final layerId in open) {
+        if (_laneOpen(layerId)) {
+          onToggle(layerId);
+        }
       }
-    }
+    });
   }
 
   /// Read LIVE before every turn: a twirl pressed inside the row selection

@@ -1,5 +1,6 @@
 import '../widgets/app_tooltip.dart';
 import '../shortcuts/brush_actions.dart';
+import '../shortcuts/editor_action_registry.dart' show BrushLibraryActionIds;
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async';
@@ -26,6 +27,7 @@ import '../widgets/content_scrollbar.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
+import '../shortcuts/panel_keys.dart';
 import 'brush_library_look.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_preset_reorder_grid.dart';
@@ -42,19 +44,24 @@ import '../sliced_value_listenable_builder.dart';
 /// all-hidden is allowed — the options menu disables the last visible one),
 /// plus the library-wide actions.
 enum _BrushPresetMenuAction {
-  toggleIcon,
-  toggleStroke,
-  toggleName,
-  toggleRailIcon,
-  toggleRailName,
-  newGroup,
-  renameGroup,
-  deleteGroup,
-  rename,
-  delete,
-  reset,
-  exportPreset,
-  exportGroup,
+  toggleIcon(BrushLibraryActionIds.tipIcon),
+  toggleStroke(BrushLibraryActionIds.strokePreview),
+  toggleName(BrushLibraryActionIds.name),
+  toggleRailIcon(BrushLibraryActionIds.folderIcon),
+  toggleRailName(BrushLibraryActionIds.folderName),
+  newGroup(BrushLibraryActionIds.newGroup),
+  renameGroup(BrushLibraryActionIds.renameGroup),
+  deleteGroup(BrushLibraryActionIds.deleteGroup),
+  rename(BrushLibraryActionIds.renameBrush),
+  delete(BrushLibraryActionIds.deleteBrush),
+  reset(BrushLibraryActionIds.reset),
+  exportPreset(BrushLibraryActionIds.exportBrush),
+  exportGroup(BrushLibraryActionIds.exportGroup);
+
+  const _BrushPresetMenuAction(this.actionId);
+
+  /// The shortcut list's action that presses this row (I-40).
+  final String actionId;
 }
 
 // ⛔The per-tab ⋯ menu is gone (유저, R4 #10: 그 시스템 삭제. 그냥 심플하게
@@ -797,6 +804,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     }) => PanelFlyoutItem(
       keyValue: keyValue,
       label: label,
+      shortcuts: [action.actionId],
       enabled: enabled,
       checked: checked,
       onSelected: () => _onMenuSelected(action),
@@ -885,7 +893,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       ),
       item(
         'brush-preset-view-name-toggle',
-        'Name',
+        // ↩️It wrote 'Name' itself — English in every language, the word
+        // beside its two neighbours' in the table unread by it.
+        AppText.strings.brName,
         _BrushPresetMenuAction.toggleName,
         checked: _showName,
         enabled: _canToggleOff(_showName),
@@ -1143,13 +1153,24 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final colorScheme = Theme.of(context).colorScheme;
     final visible = _visiblePresets;
     final reorderable = widget.onPresetsReordered != null;
-    return Listener(
-      // Watches the pointer only to spring the tabs open: a reorder drag
-      // reports to the row it picked up, never to what is under it now.
-      behavior: HitTestBehavior.translucent,
-      onPointerMove: (event) => _updateSpringTarget(event.position),
-      onPointerUp: (_) => _cancelSpring(),
-      child: _buildFrame(context, colorScheme, visible, reorderable),
+    // A key presses this library's ⋯ and the two buttons beside it, as
+    // [BrushPresetPanel.tool]'s library — what the rows and the buttons
+    // hold (I-40).
+    return PanelKeysBinding(
+      tool: widget.tool,
+      buttons: {
+        BrushLibraryActionIds.importBrushes: widget.onPresetImportRequested,
+        BrushLibraryActionIds.saveHeldBrush: widget.onPresetSaveRequested,
+      },
+      menu: _menuItems,
+      child: Listener(
+        // Watches the pointer only to spring the tabs open: a reorder drag
+        // reports to the row it picked up, never to what is under it now.
+        behavior: HitTestBehavior.translucent,
+        onPointerMove: (event) => _updateSpringTarget(event.position),
+        onPointerUp: (_) => _cancelSpring(),
+        child: _buildFrame(context, colorScheme, visible, reorderable),
+      ),
     );
   }
 
@@ -1169,6 +1190,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             AppIconButton(
               keyValue: 'brush-preset-import-button',
               tooltip: AppText.strings.brImportBrushes,
+              shortcuts: const [BrushLibraryActionIds.importBrushes],
               size: AppIconButtonSize.dense,
               icon: const Icon(Icons.file_open_outlined),
               onPressed: widget.onPresetImportRequested,
@@ -1177,6 +1199,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             AppIconButton(
               keyValue: 'brush-preset-save-button',
               tooltip: AppText.strings.brSaveAsPreset,
+              shortcuts: const [BrushLibraryActionIds.saveHeldBrush],
               size: AppIconButtonSize.dense,
               // 「＋가 있는 모든 곳, 공통적으로」 — the glyph, not the button.
               icon: Icon(

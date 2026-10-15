@@ -48,6 +48,7 @@ void main() {
   const size = CanvasSize(width: 8, height: 8);
   const transport = ValueKey<String>('canvas-transport');
   const strip = ValueKey<String>('canvas-page-strip');
+  final loading = find.byKey(const ValueKey<String>('export-preview-loading'));
 
   Frame frame(String id, String name) =>
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
@@ -178,7 +179,13 @@ void main() {
     expect(tester.exportPreviewPageSize, const Size(32, 18));
 
     await openTab(tester, 'image');
-    await press(tester, 'export-size-canvas');
+    // The size is picked from the list its button opens — pumped through
+    // the list's own motion, not settled: the panel may be saying it is
+    // loading, and that never settles.
+    await press(tester, 'export-size');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(keyed('export-size-canvas'));
+    await tester.pump(const Duration(milliseconds: 400));
     expect(tester.exportPreviewPageSize, const Size(8, 8));
 
     await openTab(tester, 'cels');
@@ -218,8 +225,8 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a setting of the tab stood on keeps the picture up until the '
-      'new one lands', (tester) async {
+  testWidgets('a setting of the tab stood on asks the picture again, in its '
+      'new look', (tester) async {
     final session = film();
     addTearDown(session.dispose);
     draw(session);
@@ -236,22 +243,21 @@ void main() {
     await tester.tap(options);
     await tester.pump();
     await press(tester, 'export-apply-fx-toggle');
-    // The same thing looked at, in another look — which is what keeps the
-    // picture up while the new one is on its way (the panel's own pin: a
-    // landing is the raster's to time, not this test's).
+    // The same thing looked at, in another look. What stands up while the
+    // new one is on its way is the panel's to pin, where a landing is the
+    // test's to time (F-315: the loading widget, never the look before).
     final asked = tester.exportPreviewDocument!;
     expect(asked.subject, shown.subject);
     expect(asked.look, isNot(shown.look));
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
     expect(identical(tester.exportPreviewImage, before), isFalse);
+    expect(loading, findsNothing);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a cel\'s plate is its file — and a drawing the run does not '
-      'write is named by its own name, in the ink of what is off', (
-    tester,
-  ) async {
+  testWidgets('a cel\'s plate is its file — and a file the run does not '
+      'write keeps its name, in the ink of what is off', (tester) async {
     AppExport.settings.value = exportSettingsWritingCelsAlone();
     final session = film();
     addTearDown(session.dispose);
@@ -263,11 +269,14 @@ void main() {
     await press(tester, 'export-cels-next');
     expect(tester.exportPreviewLine, 'A2.png · 2 / 2');
 
-    // The row switched off: its drawings are still what the panel turns
-    // through, and none of them is a file.
+    // The row switched off: every file of it is off, and they are still
+    // what the panel turns through.
     await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
-    expect(tester.exportPreviewName, '2');
+    expect(tester.exportPreviewLine, 'A2.png · 2 / 2');
     expect(tester.exportPreviewNameAbsent, isTrue);
+
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
+    expect(tester.exportPreviewNameAbsent, isFalse);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

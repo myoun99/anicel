@@ -181,8 +181,7 @@ class _FolderAndAttachmentCommands {
       }
     }
 
-    final sideChange = attach.sideChange;
-    if (sideChange != null) {
+    for (final sideChange in attach.sideChanges) {
       // Same base, other side. Everything derived from the timing stays as
       // it is — this is a direction, not a re-mount.
       for (final use in _coordinator._links.linkedRowUses(

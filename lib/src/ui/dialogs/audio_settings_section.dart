@@ -9,6 +9,7 @@ import '../../models/audio_sync_settings.dart';
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
 import '../text/app_strings.dart';
+import '../text/full_width_numerals.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 
@@ -509,7 +510,7 @@ class _OffsetFieldState extends State<_OffsetField> {
   }
 
   void _commit() {
-    final parsed = int.tryParse(_controller.text.trim());
+    final parsed = halfWidthInt(_controller.text);
     if (parsed == null) {
       _controller.text = '${widget.offset}';
       return;
@@ -528,6 +529,7 @@ class _OffsetFieldState extends State<_OffsetField> {
       controller: _controller,
       focusNode: _focus,
       keyboardType: const TextInputType.numberWithOptions(signed: true),
+      inputFormatters: halfWidthNumerals,
       textAlign: TextAlign.end,
       style: const TextStyle(fontSize: 12),
       decoration: const InputDecoration(isDense: true),

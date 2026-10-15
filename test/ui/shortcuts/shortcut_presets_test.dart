@@ -16,19 +16,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart'
-    show CanvasTool, canvasToolShapes;
+    show CanvasTool, canvasToolRailGroup, canvasToolShapes;
 import 'package:anicel/src/ui/brush/tool_press.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../guide_shots/guide_shortcut_table.dart';
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 EditorActionDefinition definitionOf(String id) =>
@@ -70,6 +75,8 @@ void main() {
       expect(keysOf(anicel, lassoCutId), ['C']);
       expect(keysOf(anicel, EditorActionIds.editDelete), ['Delete']);
       expect(keysOf(anicel, EditorActionIds.editClearPixels), ['Backspace']);
+      expect(keysOf(anicel, EditorActionIds.canvasPanHold), ['Space']);
+      expect(keysOf(anicel, EditorActionIds.toolEyedropper), ['I']);
     });
 
     test('an action the program names takes the program\'s keys and no '
@@ -118,6 +125,28 @@ void main() {
       expect(keysOf(clipStudio, blendModeActionId(BrushBlendMode.erase)), [
         'C',
       ]);
+      // ➕Read again on 10-10: the rows the app has gained an action for.
+      expect(keysOf(clipStudio, EditorActionIds.fileNew), ['Ctrl+N']);
+      expect(keysOf(clipStudio, EditorActionIds.fileOpen), ['Ctrl+O']);
+      expect(keysOf(clipStudio, EditorActionIds.preferences), ['Ctrl+K']);
+      expect(keysOf(clipStudio, EditorActionIds.keyboardShortcuts), [
+        'Ctrl+Alt+Shift+K',
+      ]);
+      expect(keysOf(clipStudio, EditorActionIds.canvasFit), ['Ctrl+0']);
+      expect(keysOf(clipStudio, EditorActionIds.canvasResetView), [
+        'Ctrl+Alt+0',
+      ]);
+      expect(keysOf(clipStudio, EditorActionIds.canvasStraighten), ['Ctrl+@']);
+      expect(keysOf(clipStudio, EditorActionIds.layerAdd), ['Ctrl+Shift+N']);
+      expect(keysOf(clipStudio, addLayerKindActionId(LayerKind.folder)), [
+        'Ctrl+G',
+      ]);
+      // ➕10-11: the Select tool's 선택 반전, an action since I-40's round
+      // of the tool settings.
+      expect(keysOf(clipStudio, EditorActionIds.selectionInvert), [
+        'Ctrl+Shift+I',
+        'Shift+F7',
+      ]);
     });
 
     test('an action the program does not name keeps the registry\'s keys — '
@@ -162,7 +191,7 @@ void main() {
       const twoKeys = EditorActionDefinition(
         id: 'a-row-no-preset-names',
         label: '',
-        category: '',
+        shelf: ShortcutShelf.tools,
         defaultActivators: [
           SingleActivator(LogicalKeyboardKey.keyG),
           SingleActivator(LogicalKeyboardKey.keyK),
@@ -189,6 +218,8 @@ void main() {
       expect(keysOf(clipStudio, EditorActionIds.editClearPixels), [
         'Delete',
         'Backspace',
+        'Ctrl+Delete',
+        'Ctrl+Backspace',
       ]);
       expect(keysOf(clipStudio, EditorActionIds.editDelete), isEmpty);
       // Ctrl+T — Scale/Rotate is the normal transform.
@@ -214,6 +245,102 @@ void main() {
       }
     });
 
+    test('TVPaint\'s preset is the program\'s own keymap (I-63-Q2)', () {
+      const tvpaint = ShortcutPreset.tvpaint;
+      expect(keysOf(tvpaint, EditorActionIds.framePrevious), ['←']);
+      expect(keysOf(tvpaint, EditorActionIds.frameNext), ['→']);
+      expect(keysOf(tvpaint, EditorActionIds.drawingPrevious), ['Ctrl+←']);
+      expect(keysOf(tvpaint, EditorActionIds.drawingNext), ['Ctrl+→']);
+      expect(keysOf(tvpaint, EditorActionIds.layerUp), ['↑']);
+      expect(keysOf(tvpaint, EditorActionIds.layerDown), ['↓']);
+      expect(keysOf(tvpaint, EditorActionIds.playbackToggle), ['Space']);
+      expect(keysOf(tvpaint, EditorActionIds.undo), ['Ctrl+Z', 'U']);
+      expect(keysOf(tvpaint, EditorActionIds.redo), ['Ctrl+Y', 'Shift+U']);
+      expect(keysOf(tvpaint, EditorActionIds.canvasZoomIn), ['>']);
+      expect(keysOf(tvpaint, EditorActionIds.canvasZoomOut), ['<']);
+      expect(keysOf(tvpaint, EditorActionIds.canvasFit), [
+        'Shift+V',
+        'Shift+F11',
+      ]);
+      expect(keysOf(tvpaint, EditorActionIds.preferences), ['Shift+D']);
+      expect(keysOf(tvpaint, EditorActionIds.toolEyedropper), [';']);
+      expect(
+        keysOf(
+          tvpaint,
+          shapeTileActionId(CanvasTool.shape, CanvasShapeKind.rect),
+        ),
+        ['R'],
+      );
+      expect(
+        keysOf(
+          tvpaint,
+          shapeTileActionId(CanvasTool.fillShape, CanvasShapeKind.rect),
+        ),
+        ['Shift+R'],
+      );
+      expect(
+        keysOf(
+          tvpaint,
+          shapeTileActionId(CanvasTool.shape, CanvasShapeKind.line),
+        ),
+        ['L'],
+      );
+      expect(keysOf(tvpaint, blendModeActionId(BrushBlendMode.color)), ['F2']);
+      expect(keysOf(tvpaint, blendModeActionId(BrushBlendMode.lighten)), [
+        'F8',
+      ]);
+    });
+
+    test('a TVPaint key goes to the nearest command the app has, and leaves '
+        'the row that held it', () {
+      const tvpaint = ShortcutPreset.tvpaint;
+      // Del is the program's second Cut — the timeline's, as Ctrl+X is.
+      expect(keysOf(tvpaint, EditorActionIds.editCut), ['Ctrl+X', 'Delete']);
+      expect(keysOf(tvpaint, EditorActionIds.editDelete), ['Shift+F5']);
+      expect(keysOf(tvpaint, EditorActionIds.editClearPixels), [
+        'Backspace',
+        'Shift+K',
+      ]);
+      // F is the bucket itself.
+      expect(keysOf(tvpaint, EditorActionIds.toolFillBucket), ['F']);
+      expect(keysOf(tvpaint, EditorActionIds.toolFill), isEmpty);
+      // Space plays.
+      expect(keysOf(tvpaint, EditorActionIds.canvasPanHold), isEmpty);
+    });
+
+    test('a TVPaint key that names a command the app lacks leaves the key '
+        'where it was', () {
+      const tvpaint = ShortcutPreset.tvpaint;
+      // E steps a tool option there; G and V are selection modes.
+      expect(keysOf(tvpaint, EditorActionIds.toolEraser), ['E']);
+      expect(keysOf(tvpaint, EditorActionIds.toolGuide), ['G']);
+      expect(keysOf(tvpaint, EditorActionIds.toolCutStamp), ['V']);
+    });
+
+    test('Add Frame and Add Layer ship with TVPaint\'s keys, and each '
+        'program\'s preset with its own (I-63-Q4)', () {
+      (String, String) keysOn(ShortcutPreset preset) => (
+        keysOf(preset, EditorActionIds.frameNewDrawing).join(' '),
+        keysOf(preset, EditorActionIds.layerAdd).join(' '),
+      );
+      // I is the eyedropper here: Shift+I, TVPaint's key for the next frame.
+      expect(keysOn(ShortcutPreset.anicel), ('Shift+I', 'Ctrl+N'));
+      expect(keysOn(ShortcutPreset.tvpaint), ('I', 'Ctrl+N'));
+      // The program has no animation keys, so Add Frame keeps anicel's.
+      expect(keysOn(ShortcutPreset.clipStudio), ('Shift+I', 'Ctrl+Shift+N'));
+    });
+
+    test('the view\'s turn is held on Shift+Space under every preset — Clip '
+        'Studio\'s own key, which anicel took (I-88-Q1 「Anicel 배치도 '
+        'Shift+Space」), and anicel\'s under TVPaint, whose turn is Ctrl+Alt '
+        'held, no key (I-88)', () {
+      String turn(ShortcutPreset preset) =>
+          keysOf(preset, EditorActionIds.canvasRotateHold).join(' ');
+      expect(turn(ShortcutPreset.anicel), 'Shift+Space');
+      expect(turn(ShortcutPreset.clipStudio), 'Shift+Space');
+      expect(turn(ShortcutPreset.tvpaint), 'Shift+Space');
+    });
+
     for (final preset in ShortcutPreset.values) {
       test('${preset.name} ships with no two actions on one key', () {
         final bindings = EditorShortcutBindings()..setPreset(preset);
@@ -234,6 +361,7 @@ void main() {
 
     test('⛔fixture premise: the program\'s preset does name actions', () {
       expect(presetNamedActionIds(ShortcutPreset.clipStudio), isNotEmpty);
+      expect(presetNamedActionIds(ShortcutPreset.tvpaint), isNotEmpty);
       expect(presetNamedActionIds(ShortcutPreset.anicel), isEmpty);
     });
 
@@ -263,19 +391,11 @@ void main() {
     const g = SingleActivator(LogicalKeyboardKey.keyG);
     const f = SingleActivator(LogicalKeyboardKey.keyF);
 
-    test('open on anicel, and read their keys through the preset in use', () {
+    test('open on Clip Studio (I-63-Q5), and read their keys through the '
+        'preset in use', () {
       final bindings = EditorShortcutBindings();
       addTearDown(bindings.dispose);
-      expect(bindings.preset, ShortcutPreset.anicel);
-      expect(actionOn(bindings, f), EditorActionIds.toolFill);
-      expect(actionOn(bindings, g), EditorActionIds.toolGuide);
-
-      var told = 0;
-      bindings.addListener(() => told += 1);
-      bindings.setPreset(ShortcutPreset.clipStudio);
-
       expect(bindings.preset, ShortcutPreset.clipStudio);
-      expect(told, 1);
       expect(actionOn(bindings, g), EditorActionIds.toolFill);
       expect(actionOn(bindings, f), isNull, reason: 'F presses nothing there');
       expect(
@@ -287,7 +407,16 @@ void main() {
         ['G'],
       );
 
-      bindings.setPreset(ShortcutPreset.clipStudio);
+      var told = 0;
+      bindings.addListener(() => told += 1);
+      bindings.setPreset(ShortcutPreset.anicel);
+
+      expect(bindings.preset, ShortcutPreset.anicel);
+      expect(told, 1);
+      expect(actionOn(bindings, f), EditorActionIds.toolFill);
+      expect(actionOn(bindings, g), EditorActionIds.toolGuide);
+
+      bindings.setPreset(ShortcutPreset.anicel);
       expect(told, 1, reason: 'the preset already in use changes nothing');
     });
 
@@ -322,7 +451,8 @@ void main() {
     });
 
     test('what is recorded under a preset stays with that preset', () {
-      final bindings = EditorShortcutBindings();
+      final bindings = EditorShortcutBindings()
+        ..setPreset(ShortcutPreset.anicel);
       addTearDown(bindings.dispose);
       const recordedOnAnicel = SingleActivator(
         LogicalKeyboardKey.keyU,
@@ -371,7 +501,8 @@ void main() {
 
     test('reset all puts back the preset in use and leaves the other\'s '
         'recordings', () {
-      final bindings = EditorShortcutBindings();
+      final bindings = EditorShortcutBindings()
+        ..setPreset(ShortcutPreset.anicel);
       addTearDown(bindings.dispose);
       bindings.setActivators(EditorActionIds.undo, const [
         SingleActivator(LogicalKeyboardKey.keyU, control: true),
@@ -410,6 +541,7 @@ void main() {
           store: ShortcutSettingsStore(filePath: path),
         );
         addTearDown(bindings.dispose);
+        bindings.setPreset(ShortcutPreset.anicel);
         bindings.setActivators(EditorActionIds.undo, const [
           SingleActivator(LogicalKeyboardKey.keyU, control: true),
         ]);
@@ -421,7 +553,11 @@ void main() {
             jsonDecode(File(path).readAsStringSync()) as Map<String, dynamic>;
         expect(saved['version'], 2);
         expect(saved['preset'], 'clipStudio');
-        expect((saved['overrides'] as Map).keys, ['anicel', 'clipStudio']);
+        expect((saved['overrides'] as Map).keys, [
+          'anicel',
+          'clipStudio',
+          'tvpaint',
+        ]);
         expect((saved['overrides'] as Map)['anicel'], {
           EditorActionIds.undo: [
             {'key': LogicalKeyboardKey.keyU.keyId, 'ctrl': true},
@@ -443,8 +579,13 @@ void main() {
           store: ShortcutSettingsStore(filePath: path),
         );
         addTearDown(bindings.dispose);
-        bindings.setPreset(ShortcutPreset.clipStudio);
+        bindings.setPreset(ShortcutPreset.tvpaint);
         await bindings.pendingPersist;
+        expect((await restored()).preset, ShortcutPreset.tvpaint);
+      });
+
+      test('an install with no file opens on Clip Studio (I-63-Q5)', () async {
+        expect(File(path).existsSync(), isFalse, reason: '⛔fixture premise');
         expect((await restored()).preset, ShortcutPreset.clipStudio);
       });
 
@@ -502,6 +643,7 @@ void main() {
         addTearDown(bindings.dispose);
         // Recorded in memory only: `File(path)` is rewritten below before
         // the restore reads it.
+        bindings.setPreset(ShortcutPreset.anicel);
         bindings.setActivators(EditorActionIds.undo, const [f]);
         bindings.setPreset(ShortcutPreset.clipStudio);
         bindings.setActivators(EditorActionIds.toolFill, const [f]);
@@ -534,11 +676,34 @@ void main() {
       return bindings;
     }
 
-    Finder pillOf(ShortcutPreset preset) =>
-        find.byKey(ValueKey<String>('shortcut-preset-${preset.name}'));
+    final presetButton = find.byKey(const ValueKey<String>('shortcut-preset'));
+
+    /// The preset list's rows as its button builds them.
+    Map<ShortcutPreset, PanelFlyoutItem> rows(WidgetTester tester) {
+      final items = tester
+          .widget<PanelFlyoutButton>(presetButton)
+          .entriesBuilder()
+          .whereType<PanelFlyoutItem>();
+      return {
+        for (final preset in ShortcutPreset.values)
+          preset: items.singleWhere(
+            (item) => item.keyValue == 'shortcut-preset-${preset.name}',
+          ),
+      };
+    }
 
     bool chosen(WidgetTester tester, ShortcutPreset preset) =>
-        tester.widget<Pill>(pillOf(preset)).selected;
+        rows(tester)[preset]!.selected;
+
+    /// Picks [preset] the way a hand does: the list's button, then its row.
+    Future<void> pick(WidgetTester tester, ShortcutPreset preset) async {
+      await tester.tap(presetButton);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey<String>('shortcut-preset-${preset.name}')),
+      );
+      await tester.pumpAndSettle();
+    }
 
     /// The key chips on [actionId]'s row, as written.
     List<String> chipsOf(WidgetTester tester, String actionId) {
@@ -554,25 +719,34 @@ void main() {
       ];
     }
 
-    testWidgets('offers every preset as one pill strip, the one in use '
-        'chosen', (tester) async {
+    // 🗣️유저 2026-10-12 (I-93): 「이런 프리셋 변경은 특히 앱 통틀어서 리스트
+    // 팝오버로 구현하도록」. ↩️The presets were a pill strip until then.
+    testWidgets('offers every preset in one list, the one in use marked and '
+        'named on its button', (tester) async {
       await pump(tester);
-      expect(find.byType(PillStrip), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('shortcut-preset-anicel')),
+        findsNothing,
+        reason: 'the presets are a list, not pills on the window',
+      );
       for (final preset in ShortcutPreset.values) {
-        expect(pillOf(preset), findsOneWidget, reason: preset.name);
         expect(
           chosen(tester, preset),
-          preset == ShortcutPreset.anicel,
+          preset == ShortcutPreset.clipStudio,
           reason: preset.name,
         );
       }
       expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.clipStudio)).label,
+        tester.widget<PanelFlyoutButton>(presetButton).label,
         ShortcutPreset.clipStudio.label,
+      );
+      expect(
+        rows(tester)[ShortcutPreset.tvpaint]!.label,
+        ShortcutPreset.tvpaint.label,
       );
     });
 
-    testWidgets('a pill reads in the program language — the app\'s own name '
+    testWidgets('a row reads in the program language — the app\'s own name '
         'in every one', (tester) async {
       final before = AppText.settings.value;
       AppText.settings.value = const AppLanguageSettings(
@@ -582,16 +756,21 @@ void main() {
       addTearDown(() => AppText.settings.value = before);
       await pump(tester);
       expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.clipStudio)).label,
-        '클립 스튜디오 기반',
+        rows(tester).map((preset, row) => MapEntry(preset, row.label)),
+        {
+          ShortcutPreset.anicel: 'Anicel',
+          ShortcutPreset.clipStudio: '클립 스튜디오 기반',
+          ShortcutPreset.tvpaint: 'TVPaint 기반',
+        },
       );
       expect(
-        tester.widget<Pill>(pillOf(ShortcutPreset.anicel)).label,
-        'Anicel',
+        tester.widget<PanelFlyoutButton>(presetButton).label,
+        '클립 스튜디오 기반',
+        reason: 'the button names the preset in use as its row does',
       );
     });
 
-    testWidgets('a pill puts its preset in use, and the rows show its keys', (
+    testWidgets('a row puts its preset in use, and the rows show its keys', (
       tester,
     ) async {
       final bindings = await pump(tester);
@@ -600,20 +779,47 @@ void main() {
         definitionOf(EditorActionIds.toolFill).label,
       );
       await tester.pump();
-      expect(chipsOf(tester, EditorActionIds.toolFill), ['F']);
-
-      await tester.tap(pillOf(ShortcutPreset.clipStudio));
-      await tester.pump();
-
-      expect(bindings.preset, ShortcutPreset.clipStudio);
-      expect(chosen(tester, ShortcutPreset.clipStudio), isTrue);
-      expect(chosen(tester, ShortcutPreset.anicel), isFalse);
       expect(chipsOf(tester, EditorActionIds.toolFill), ['G']);
 
-      await tester.tap(pillOf(ShortcutPreset.anicel));
-      await tester.pump();
+      await pick(tester, ShortcutPreset.anicel);
+
       expect(bindings.preset, ShortcutPreset.anicel);
+      expect(chosen(tester, ShortcutPreset.anicel), isTrue);
+      expect(chosen(tester, ShortcutPreset.clipStudio), isFalse);
       expect(chipsOf(tester, EditorActionIds.toolFill), ['F']);
+
+      await pick(tester, ShortcutPreset.tvpaint);
+      expect(bindings.preset, ShortcutPreset.tvpaint);
+      expect(
+        chipsOf(tester, EditorActionIds.toolFill),
+        isEmpty,
+        reason: 'F is the bucket\'s there',
+      );
+
+      await pick(tester, ShortcutPreset.clipStudio);
+      expect(bindings.preset, ShortcutPreset.clipStudio);
+      expect(chipsOf(tester, EditorActionIds.toolFill), ['G']);
+    });
+  });
+
+  group('the app', () {
+    testWidgets('opens on Clip Studio\'s keys (I-63-Q5): G takes up the fill '
+        'tool', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      await tester.pumpAndSettle();
+      CanvasTool railTool() => canvasToolRailGroup(
+        tester
+            .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+            .brushTool!
+            .value
+            .tool,
+      );
+      expect(appShortcuts(tester).preset, ShortcutPreset.clipStudio);
+      expect(railTool(), isNot(CanvasTool.fill), reason: '⛔fixture premise');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyG);
+      await tester.pump();
+      expect(railTool(), CanvasTool.fill);
     });
   });
 
@@ -650,13 +856,15 @@ void main() {
 
     test('writes every preset\'s keys under its name', () {
       final sections = sectionsOf(shortcutTableMarkdown(AppLanguage.ko));
-      expect(sections.keys, ['Anicel', '클립 스튜디오 기반']);
+      expect(sections.keys, ['Anicel', '클립 스튜디오 기반', 'TVPaint 기반']);
       final anicel = sections['Anicel']!;
       final clipStudio = sections['클립 스튜디오 기반']!;
+      final tvpaint = sections['TVPaint 기반']!;
 
       const fill = '채우기 도구';
       expect(rowOf(anicel, fill), '| $fill | <kbd>F</kbd> |');
       expect(rowOf(clipStudio, fill), '| $fill | <kbd>G</kbd> |');
+      expect(tvpaint, isNot(contains('| $fill |')));
       // A row with no key under a preset is not written there.
       const onion = '어니언 스킨 켜기/끄기';
       expect(rowOf(anicel, onion), contains('<kbd>T</kbd>'));
@@ -670,8 +878,12 @@ void main() {
 
     test('⛔fixture premise: the page names its groups under each preset', () {
       final page = shortcutTableMarkdown(AppLanguage.en);
-      expect(sectionsOf(page).keys, ['Anicel', 'Clip Studio based']);
-      expect('\n### Tools\n'.allMatches(page), hasLength(2));
+      expect(sectionsOf(page).keys, [
+        'Anicel',
+        'Clip Studio based',
+        'TVPaint based',
+      ]);
+      expect('\n### Canvas › Tools\n'.allMatches(page), hasLength(3));
     });
   });
 }

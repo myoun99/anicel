@@ -97,6 +97,8 @@ class EdgeDragVerbs {
       layerId: layerId,
       preview: _roles.dragPreview,
       formsOf: _transitions.previewFormsOf,
+      keepsCameraKeys: _transitions.keepsCameraKeys,
+      camerasCarriedBy: _transitions.camerasCarriedBy,
       commitInstructions: _transitions.updateTransitionInstructions,
     );
     if (drag == null) {
@@ -245,22 +247,54 @@ class EdgeDragVerbs {
     required int blockStartIndex,
   }) {
     final cut = _roles.project.cutById(cutId);
-    if (cut == null) {
+    return cut != null &&
+        _takeStripComma(
+          ExposureEdgeDrag.beginStoryboardComma(
+            roles: _roles,
+            trackSe: _beginRoles.trackSe,
+            cut: cut,
+            blockStartIndex: blockStartIndex,
+          ),
+        );
+  }
+
+  /// Starts a comma drag on [edge] of the block keyed [blockStartIndex] —
+  /// in the row's own frames — of [layerId], a row of [cutId]: a block of a
+  /// row riding the cut's conte, gripped on the strip, where every cut's
+  /// rows stand at once (I-73 — the drawn proposal: 「엣지 — 블록의 양
+  /// 끝」; [ExposureEdgeDrag.beginOnRowOf]). False when the cut holds no
+  /// such row, or the row no such block of its own.
+  bool beginStripRowEdgeDrag({
+    required CutId cutId,
+    required LayerId layerId,
+    required int blockStartIndex,
+    required TimelineBlockEdge edge,
+  }) {
+    final cut = _roles.project.cutById(cutId);
+    return cut != null &&
+        _takeStripComma(
+          ExposureEdgeDrag.beginOnRowOf(
+            roles: _roles,
+            trackSe: _beginRoles.trackSe,
+            cut: cut,
+            grip: (
+              layerId: layerId,
+              blockStartIndex: blockStartIndex,
+              edge: edge,
+              startIsGlobal: false,
+            ),
+          ),
+        );
+  }
+
+  /// Takes a strip grip's comma drag and joins it to the cut-edge
+  /// continuations ([updateCutEdgeDrag] and friends): the strip's grips
+  /// share one set of hooks, and which verb a drag belongs to is the
+  /// session's to remember, not the host's.
+  bool _takeStripComma(ExposureEdgeDrag? drag) {
+    if (!_takeExposure(drag)) {
       return false;
     }
-    if (!_takeExposure(
-      ExposureEdgeDrag.beginStoryboardComma(
-        roles: _roles,
-        trackSe: _beginRoles.trackSe,
-        cut: cut,
-        blockStartIndex: blockStartIndex,
-      ),
-    )) {
-      return false;
-    }
-    // Joins the cut-edge continuations ([updateCutEdgeDrag] and friends):
-    // the strip's grips share one set of hooks, and which verb a drag
-    // belongs to is the session's to remember, not the host's.
     _cutEdgeDragVerb = _CutEdgeDragVerb.comma;
     return true;
   }
@@ -305,17 +339,17 @@ class EdgeDragVerbs {
     // APPLIED (2026-09-08): every cut-edge fixture in the suite trims a cut
     // with NO conte row, so `row` is null and the arm is not reached at all.
     // A test that draws a panel first is what would kill it.
-    if (cut != null && row != null && edge == TimelineBlockEdge.end) {
-      if (_takeExposure(
-        ExposureEdgeDrag.beginStoryboardLastComma(
-          roles: _roles,
-          trackSe: _beginRoles.trackSe,
-          cut: cut,
-        ),
-      )) {
-        _cutEdgeDragVerb = _CutEdgeDragVerb.comma;
-        return true;
-      }
+    if (cut != null &&
+        row != null &&
+        edge == TimelineBlockEdge.end &&
+        _takeStripComma(
+          ExposureEdgeDrag.beginStoryboardLastComma(
+            roles: _roles,
+            trackSe: _beginRoles.trackSe,
+            cut: cut,
+          ),
+        )) {
+      return true;
     }
     final trim = CutTrimDrag.begin(
       roles: _roles,

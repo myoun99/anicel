@@ -17,7 +17,7 @@ void main() {
   const lane = PropertyLaneRow(
     laneId: 'position',
     label: 'Position',
-    keyedFrames: {},
+    keyMarks: {},
   );
   // Top to bottom: upper, upper/position, lower, lower/position.
   final rows = [

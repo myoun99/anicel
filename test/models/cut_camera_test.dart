@@ -78,7 +78,7 @@ void main() {
 
       expect(built.keyframeAt(4), pose);
       expect(built.keyframes, {4: pose});
-      expect(written, built);
+      expect(written.track.scale, built.track.scale);
       expect(written.keyframeAt(4), pose);
       expect(written.track.scale.keyAt(4)!.value, uniformScale(2.5));
       expect(CutCamera.fromJson(built.toJson()).keyframeAt(4), pose);

@@ -11,6 +11,7 @@ import '../models/media_asset.dart';
 import '../models/project.dart';
 import '../models/timeline_exposure.dart';
 import '../models/track.dart';
+import '../models/track_row_twirls.dart';
 
 /// Read-only lookups into the `Project` -> `Track` -> `Cut` -> `Layer`
 /// hierarchy, shared by the edit commands and coordinator that previously each
@@ -287,6 +288,22 @@ Layer requireLayerAnywhere(Project project, LayerId layerId) {
     throw StateError('Layer not found: $layerId');
   }
   return layer;
+}
+
+/// [rowId]'s twirls wherever its row is — a track's own row's
+/// ([trackRowTwirlsOf]: the V row's, by its lane carrier, are its
+/// track's), else a layer row's own (F-360); null where no row is.
+RowTwirls? rowTwirlsOf(Project project, LayerId rowId) {
+  if (trackRowTwirlsOf(project, rowId) case final own?) {
+    return own;
+  }
+  final row = layerAnywhereOrNull(project, rowId);
+  return row == null
+      ? null
+      : (
+          lanesExpanded: row.lanesExpanded,
+          expandedLaneGroups: row.expandedLaneGroups,
+        );
 }
 
 /// Whether a file of this [kind] can hold sound at all.

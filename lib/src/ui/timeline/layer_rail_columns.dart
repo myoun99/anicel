@@ -6,10 +6,13 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
+import '../widgets/app_icon_button.dart';
+import '../widgets/named.dart';
+import '../widgets/rail_glyph_button.dart';
 import 'layer_label_controls.dart';
 import 'row_control_surface.dart';
-import '../input/control_press_claim.dart';
 
 /// The rail row's COLUMN SKELETON — the one declaration of slot ORDER and
 /// slot WIDTH, shared by every surface that draws a horizontal rail row.
@@ -81,15 +84,22 @@ Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
   return alongBox(axis, extent, child: content);
 }
 
-/// The cells BEFORE a rail row's name, in order. Null cells reserve their
-/// slot.
-///
-/// [indent] is the folder-nesting inset; it widens the section gap so the
-/// row's whole leading cluster shifts as one.
-///
-/// [axis] is the rail's own direction: horizontal for the timeline's rows
-/// and the storyboard's, vertical for the x-sheet's column headers, where
-/// the identical list runs top-to-bottom instead of left-to-right.
+/// A rail button's box, tight to its slot: [slot] along the rail, [across]
+/// the other way. The rail's law, read off the onion column rather than
+/// invented per cell — `layerLaneToggleSlotWidth` is 16 and an IconButton
+/// left alone asks for 48. The slot is the PARENT's number, so it travels as
+/// an [AppIconButtonBox] rather than a token.
+AppIconButtonBox railSlotBox(
+  Axis axis, {
+  required double slot,
+  required double across,
+  required double iconSize,
+}) => AppIconButtonBox(
+  width: axis == Axis.horizontal ? slot : across,
+  height: axis == Axis.horizontal ? across : slot,
+  iconSize: iconSize,
+);
+
 /// The TWIRL glyph, for every rail surface in either orientation.
 ///
 /// R10 R6 shipped two of them disagreeing: the layer's lane toggle drew
@@ -101,58 +111,100 @@ Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
 IconData layerRailTwirlIcon({required bool expanded}) =>
     expanded ? Icons.arrow_drop_down : Icons.arrow_right;
 
-/// THE FOLD TWIRL of a row that holds rows under it — a folder's members,
-/// an attach base's attach rows (UI-R20 #9) — at the far edge of the row's
-/// name (F-29, 유저 2026-08-24: 「위치는 항상 고정으로 두고싶기때문에 레이어
-/// 이름영역의 오른쪽정렬로 고정」).
+/// THE TWIRL — the app's one: what a row holds under it hangs open or folds
+/// by this. A folder's members and an attach base's attach rows (UI-R20 #9)
+/// at the far edge of the row's name (F-29, 유저 2026-08-24: 「위치는 항상
+/// 고정으로 두고싶기때문에 레이어 이름영역의 오른쪽정렬로 고정」); a row's
+/// property lanes in its leading lane slot; a lane group's members on the
+/// group's header.
 ///
 /// One button for every surface that lists the stack: the timeline's rail
 /// and the export window's list (F-289, 유저 2026-10-06: 「타임라인처럼
-/// 어태치레이어 펼치는 버튼 똑같이 통일해서 넣어서」).
+/// 어태치레이어 펼치는 버튼 똑같이 통일해서 넣어서」). ↩️The lane twirls were
+/// each their own until I-57 ①: the timeline row's an icon button, the
+/// storyboard rows' an `InkWell` in a colour of their own with no tooltip
+/// (「the timeline rows' lane chevron, storyboard-prefixed」), the lane
+/// group header's an `InkWell` with a circle of its own.
 class LayerFoldTwirl extends StatelessWidget {
   const LayerFoldTwirl({
     super.key,
-    required this.keyValue,
+    required this.name,
     required this.expanded,
     required this.onToggle,
     this.axis = Axis.horizontal,
+    this.tooltip = '',
+    this.across = 24,
   });
 
-  final String keyValue;
+  /// What a finder calls the twirl — its [RailGlyphButton.name], or the
+  /// glyph's own where the twirl only shows ([Named]).
+  final String name;
   final bool expanded;
-  final VoidCallback onToggle;
+
+  /// What a press on the twirl does — or null where the twirl only SHOWS
+  /// the fold and the row around it is what is pressed (the shortcut
+  /// window, 유저 2026-10-09: 「누르는건 그 항목 전체니까 접기펼치기 위젯은
+  /// 그냥 보이기만할뿐인것임」).
+  final VoidCallback? onToggle;
   final Axis axis;
 
+  /// What the twirl does, where it says ([layerLaneTwirlTooltip]).
+  final String tooltip;
+
+  /// The box across the rail, where it is not the 24 a rail row's controls
+  /// stand in: a storyboard row's own height, a lane group header's glyph.
+  final double across;
+
+  /// The rail's button (I-57 ①), so it hovers in the shape every rail
+  /// button hovers in — R26 #28's 「like every other」, which a hand-rolled
+  /// `InkWell` with a circle of its own kept it from.
+  ///
+  /// ⛔A twirl that only SHOWS is the glyph alone — no claim, no dead
+  /// button: a claim, even one that fires nothing, is the deepest on its
+  /// spot and would take the press from the row that IS the button.
   @override
-  Widget build(BuildContext context) => ControlPressClaim(
-    onPressed: onToggle,
-    child: InkWell(
-      key: ValueKey<String>(keyValue),
-      onTap: silentPress(onToggle),
-      // R26 #28
-      customBorder: const CircleBorder(),
-      child: alongBox(
-        axis,
-        layerLaneToggleSlotWidth,
-        child: acrossBox(
+  Widget build(BuildContext context) {
+    final toggle = onToggle;
+    if (toggle == null) {
+      return Named(
+        name,
+        child: alongBox(
           axis,
-          24,
-          child: Icon(layerRailTwirlIcon(expanded: expanded), size: 16),
+          layerLaneToggleSlotWidth,
+          child: acrossBox(
+            axis,
+            across,
+            child: Icon(layerRailTwirlIcon(expanded: expanded), size: 16),
+          ),
         ),
+      );
+    }
+    return RailGlyphButton(
+      name: name,
+      tooltip: tooltip,
+      glyph: RailIconGlyph(layerRailTwirlIcon(expanded: expanded)),
+      onPressed: toggle,
+      size: railSlotBox(
+        axis,
+        slot: layerLaneToggleSlotWidth,
+        across: across,
+        iconSize: 16,
       ),
-    ),
-  );
+    );
+  }
 }
 
-/// [depth] is the folder nesting level: it spends [depth] blank cells and
-/// then ONE more holding the ↳, so the row's whole leading cluster shifts
-/// by whole columns.
+/// What a row's LANE twirl says it will do.
+String layerLaneTwirlTooltip({required bool expanded}) => expanded
+    ? AppText.strings.railCollapseLanes
+    : AppText.strings.railExpandLanes;
+
+/// The cells BEFORE a rail row's name, in order. Null cells reserve their
+/// slot.
 ///
-/// [nestingArrow] false keeps that last cell RESERVED but empty — the rows
-/// that already carry an attach arrow in the sheet slot, where a second
-/// arrow one column over would say two different things at once (R5 #18,
-/// user-approved). Dropping the cell instead would start their name a
-/// column early, which is the drift this file exists to prevent.
+/// [axis] is the rail's own direction: horizontal for the timeline's rows
+/// and the storyboard's, vertical for the x-sheet's column headers, where
+/// the identical list runs top-to-bottom instead of left-to-right.
 List<Widget> layerRailLeadingCells({
   Axis axis = Axis.horizontal,
   bool includeSectionSlot = true,
@@ -226,11 +278,12 @@ List<Widget> layerRailLeadingCells({
 ///
 /// [attachArrowPlacement] non-null is the attach row's arrow; otherwise
 /// the toggle when [layerCarriesTimesheetToggle], else null (the slot
-/// stays reserved and empty).
+/// stays reserved and empty). A host that hands in no [onToggle] mounts no
+/// toggle on the row.
 Widget? layerRailTimesheetCell({
   required String keyPrefix,
   required Layer layer,
-  required ValueChanged<LayerId> onToggle,
+  required ValueChanged<LayerId>? onToggle,
   AttachedPlacement? attachArrowPlacement,
 }) {
   if (attachArrowPlacement != null) {
@@ -240,7 +293,7 @@ Widget? layerRailTimesheetCell({
       placement: attachArrowPlacement,
     );
   }
-  if (!layerCarriesTimesheetToggle(layer)) {
+  if (onToggle == null || !layerCarriesTimesheetToggle(layer)) {
     return null;
   }
   return RailSwipeColumnPointer(
@@ -357,20 +410,19 @@ double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
 };
 
 /// The cells AFTER a rail row's name, in order. Null cells reserve
-/// their slot; [hasOnionColumn]/[hasBlendColumn] false drops the column
-/// outright, which is the HOST's answer (the storyboard rail has neither),
-/// as distinct from a row that merely has nothing to put there.
+/// their slot; a column [optionalColumns] does not carry is dropped outright,
+/// which is the HOST's answer, as distinct from a row that merely has
+/// nothing to put there.
 List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
   required LayerRailColumnWidths columns,
+  required LayerRailOptionalColumns optionalColumns,
   Widget? fillReference,
   Widget? fx,
-  bool hasOnionColumn = false,
   Widget? onion,
   Widget? visibility,
   Widget? mute,
   Widget? opacity,
-  bool hasBlendColumn = false,
   Widget? blend,
   Widget? trailingRegion,
 }) {
@@ -388,17 +440,17 @@ List<Widget> layerRailTrailingCells({
         layerRailTrailingWidth(
           columns: columns,
           from: LayerRailTrailingSlot.onion,
-          hasOnionColumn: hasOnionColumn,
-          hasBlendColumn: hasBlendColumn,
+          optionalColumns: optionalColumns,
         ),
         trailingRegion,
       )
     else ...[
-      if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
+      if (optionalColumns.onion)
+        layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
       layerRailSlot(axis, layerMuteSlotWidth, mute),
       layerRailSlot(axis, columns.opacity, opacity),
-      if (hasBlendColumn) layerRailSlot(axis, columns.blend, blend),
+      if (optionalColumns.blend) layerRailSlot(axis, columns.blend, blend),
     ],
   ];
 }
@@ -414,6 +466,42 @@ enum LayerRailTrailingSlot {
   mute,
   opacity,
   blend,
+}
+
+/// Which of the rail's OPTIONAL columns a HOST carries — its answer, as
+/// distinct from a row that merely has nothing to put in one: a null cell
+/// reserves its slot, a column the host does not carry is not there at all
+/// (the storyboard rail carries no onion).
+///
+/// ONE answer to every question asked of the run — the cells a row lays
+/// out, what the run costs, where a swipe finds a column, how tall the
+/// sheet's header block stands — so a column cannot be there for one of
+/// them and not for another. The timeline and the sheet read theirs off
+/// what they were handed ([TimelineGridHooks.optionalRailColumns]); each
+/// of their surfaces used to write that reading out again.
+///
+/// ↩️It carried the header graph's (I-89 ③) as a column of its own, the
+/// legend's graph over it, from 2026-10-11 to 10-12: a graph's button is
+/// a row's own, at the end of its name (유저 2026-10-12: 「추가로 공간
+/// 만드는게아니라 이름공간을 줄여서 오른쪽정렬로 두는방식으로. 그러니까
+/// 레전드에 있는 그래프버튼 삭제」).
+typedef LayerRailOptionalColumns = ({bool onion, bool blend});
+
+/// A host that carries none of them.
+const LayerRailOptionalColumns noOptionalRailColumns = (
+  onion: false,
+  blend: false,
+);
+
+/// [LayerRailOptionalColumns] asked about one slot of the run.
+extension LayerRailCarries on LayerRailOptionalColumns {
+  /// Whether [slot] is in the host's run — every slot that is not optional
+  /// is.
+  bool carries(LayerRailTrailingSlot slot) => switch (slot) {
+    LayerRailTrailingSlot.onion => onion,
+    LayerRailTrailingSlot.blend => blend,
+    _ => true,
+  };
 }
 
 double _trailingSlotWidth(
@@ -437,21 +525,12 @@ double _trailingSlotWidth(
 /// therefore without going stale the next time a column is added.
 double layerRailTrailingWidth({
   required LayerRailColumnWidths columns,
+  required LayerRailOptionalColumns optionalColumns,
   LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
-  bool hasOnionColumn = false,
-  bool hasBlendColumn = false,
 }) {
   var total = 0.0;
   for (final slot in LayerRailTrailingSlot.values) {
-    if (slot.index < from.index) {
-      continue;
-    }
-    final carried = switch (slot) {
-      LayerRailTrailingSlot.onion => hasOnionColumn,
-      LayerRailTrailingSlot.blend => hasBlendColumn,
-      _ => true,
-    };
-    if (!carried) {
+    if (slot.index < from.index || !optionalColumns.carries(slot)) {
       continue;
     }
     total += _trailingSlotWidth(slot, columns);
@@ -484,7 +563,7 @@ class LayerTypeButton extends StatelessWidget {
   /// Addresses the surface: 'timeline' | 'xsheet' | 'storyboard'.
   final String keyPrefix;
 
-  /// The subject's stable id for the keys — a [LayerId]'s string, or a
+  /// The subject's stable id for the names — a [LayerId]'s string, or a
   /// track's on the storyboard's V row.
   final String idValue;
 
@@ -509,50 +588,60 @@ class LayerTypeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final Widget glyph;
-    final String label;
     // R10 R3: the type cell is ALWAYS the kind. The attach arrow used to
     // take this slot on attach rows, which cost them the one column that
     // says what kind of row they are — and the sheet slot beside it was
     // reserved and empty on exactly those rows. The arrow lives there now
     // ([LayerAttachArrowCell]).
-    if (kind != null && kind!.groupsLayers) {
-      label = semanticLabel ?? layerTypeSemanticLabel(kind!);
-      glyph = Icon(
-        folderCollapsed ? Icons.folder : Icons.folder_open,
-        key: ValueKey<String>('$keyPrefix-folder-icon-$idValue'),
-        size: 16,
-        color: colorScheme.onSurfaceVariant,
-      );
-    } else {
-      label =
-          semanticLabel ??
-          (kind == null ? 'Row' : layerTypeSemanticLabel(kind!));
-      glyph = Icon(
-        icon ?? layerKindIcon(kind!),
-        key: ValueKey<String>('$keyPrefix-layer-kind-icon-$idValue'),
-        size: 18,
-      );
-    }
-
-    return ControlPressClaim(
-      onPressed: onTap,
-      child: InkWell(
-        key: ValueKey<String>('$keyPrefix-layer-type-button-$idValue'),
-        onTap: silentPress(onTap),
-        customBorder: const CircleBorder(), // R26 #28
-        child: SizedBox(
-          width: layerTypeSlotWidth,
-          height: height,
-          child: Center(
-            child: Semantics(
-              label: label,
-              container: true,
-              child: ExcludeSemantics(child: glyph),
+    final folder = kind?.groupsLayers ?? false;
+    final label =
+        semanticLabel ??
+        (kind == null ? 'Row' : layerTypeSemanticLabel(kind!));
+    final glyph = folder
+        ? (folderCollapsed ? Icons.folder : Icons.folder_open)
+        : icon ?? layerKindIcon(kind!);
+    final color = folder
+        ? Theme.of(context).colorScheme.onSurfaceVariant
+        : null;
+    final iconSize = folder ? 16.0 : 18.0;
+    final name = '$keyPrefix-layer-type-button-$idValue';
+    final onTap = this.onTap;
+    if (onTap == null) {
+      // Nothing answers a press here (the export window's list), so it is
+      // the kind's glyph alone, not a dead button worn dim — the claim
+      // still stands, so the press is not a scroll.
+      return ControlPressClaim(
+        onPressed: null,
+        child: Named(
+          name,
+          child: SizedBox(
+            width: layerTypeSlotWidth,
+            height: height,
+            child: Center(
+              child: Semantics(
+                label: label,
+                container: true,
+                child: ExcludeSemantics(
+                  child: Icon(glyph, size: iconSize, color: color),
+                ),
+              ),
             ),
           ),
         ),
+      );
+    }
+    // The rail's button (I-57 ①): it hovers in the shape every rail button
+    // hovers in, R26 #28's 「like every other」.
+    return RailGlyphButton(
+      name: name,
+      tooltip: '',
+      semanticLabel: label,
+      glyph: RailIconGlyph(glyph, color: color),
+      onPressed: onTap,
+      size: AppIconButtonBox(
+        width: layerTypeSlotWidth,
+        height: height,
+        iconSize: iconSize,
       ),
     );
   }

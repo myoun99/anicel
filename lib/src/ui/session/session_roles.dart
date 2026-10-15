@@ -41,6 +41,7 @@ abstract interface class ProjectAccess {
   ProjectRepository get repository;
   Track? trackById(TrackId trackId);
   int get activeCutGlobalStartFrame;
+  int get activeCutMediaStartFrame;
 
   /// How a frame's place on its row is WRITTEN wherever a list names one:
   /// the number the ruler writes over it ([timelineFramePlaceLabel]), which
@@ -82,7 +83,6 @@ abstract interface class SelectionAccess {
     bool Function(Layer layer) accepts,
     bool Function(Layer layer) atPlayhead,
   );
-  void clearAllSelections();
   void clearFrameRangeSelection();
   void clearRowSelection();
   void clearStoryboardCutSelection();

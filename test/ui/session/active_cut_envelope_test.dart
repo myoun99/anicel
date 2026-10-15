@@ -21,6 +21,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// hand-written copy drops (`CutVerbs._moveActiveCut`'s ⛔ comment records
 /// losing exactly the second one in one direction only).
 void main() {
+  /// The verbs of [verbsOn] that name a ROW and are written in the cut that
+  /// holds it, whichever cut — or none — is active.
+  const rowAddressed = {'setLayerMark', 'updateLayerEffects'};
+
   /// One entry per verb that wears the envelope, named so a failure says
   /// which one lost its guard or its notification.
   Map<String, void Function(EditorSessionManager)> verbsOn(
@@ -83,6 +87,13 @@ void main() {
     expect(session.activeCutId, isNull, reason: 'the fixture parks in a gap');
 
     for (final entry in verbs.entries) {
+      // ↩️These two stood down here as well, on a row of the cut captured
+      // above. They are written in the cut that HOLDS the row now (I-73,
+      // 2026-10-08): the storyboard's conte head stands over a gap too, and
+      // its label and its fx are pressed there — the case below.
+      if (rowAddressed.contains(entry.key)) {
+        continue;
+      }
       var notified = false;
       void listener() => notified = true;
       session.addListener(listener);
@@ -100,6 +111,46 @@ void main() {
       );
       expect(session.activeCutId, isNull, reason: '${entry.key} left the gap');
     }
+  });
+
+  test('a row\'s label and its chain are written where the row IS — from '
+      'the gap as well, where no cut is active', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    session.cutVerbs.createCut();
+    final track = session.repository.requireProject().tracks.first;
+    final first = track.cuts[0];
+    session.repository.updateCutLeadingGap(
+      cutId: track.cuts[1].id,
+      leadingGapFrames: 4,
+    );
+    session.selectCut(first.id);
+    final verbs = verbsOn(session);
+    final layerId = session.layers.first.id;
+    session.selectGlobalFrame(first.duration + 1);
+    expect(session.activeCutId, isNull, reason: 'the fixture parks in a gap');
+
+    expect(verbs.keys, containsAll(rowAddressed), reason: 'fixture');
+    for (final name in rowAddressed) {
+      var notified = false;
+      void listener() => notified = true;
+      session.addListener(listener);
+      verbs[name]!(session);
+      session.removeListener(listener);
+      expect(notified, isTrue, reason: '$name did not notify');
+      expect(session.activeCutId, isNull, reason: '$name left the gap');
+    }
+    final row = session.repository
+        .requireProject()
+        .tracks
+        .first
+        .cuts
+        .first
+        .layers
+        .firstWhere((layer) => layer.id == layerId);
+    expect(row.mark, const LayerMark(process: LayerProcess.key));
   });
 
   test('the STRUCTURE envelope refreshes after the command and the QUIET '

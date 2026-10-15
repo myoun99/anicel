@@ -52,7 +52,7 @@ void main() {
           CanvasPoint(x: 10, y: 30),
         ]),
       ],
-      openTrail: const [],
+      openTrails: const [],
     );
 
     test('🚨are five of line and four of none, over the whole outline in '

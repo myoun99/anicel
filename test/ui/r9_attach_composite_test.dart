@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
+import '../helpers/named_finders.dart';
+
 /// R9 — the attach family authors no composite of its own.
 ///
 /// An attach ROW already wore its base's fx. The 공정 ORGANIZER folder did
@@ -114,18 +116,18 @@ void main() {
 
       await tester.pumpWidget(row(layer: organizer, wears: false));
       expect(
-        find.byKey(const ValueKey<String>('timeline-layer-fx-proc')),
+        find.named('timeline-layer-fx-proc'),
         findsOneWidget,
         reason: 'the premise: an ordinary folder still has one',
       );
 
       await tester.pumpWidget(row(layer: organizer, wears: true));
       expect(
-        find.byKey(const ValueKey<String>('timeline-layer-fx-proc')),
+        find.named('timeline-layer-fx-proc'),
         findsNothing,
       );
       expect(
-        find.byKey(const ValueKey<String>('timeline-layer-blend-proc')),
+        find.named('timeline-layer-blend-proc'),
         findsOneWidget,
         reason: 'blend is display control, and the organizer keeps it',
       );

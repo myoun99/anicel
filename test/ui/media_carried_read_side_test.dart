@@ -57,7 +57,11 @@ void main() {
     final session = EditorSessionManager(
       initialProject: createDefaultProject().copyWith(
         mediaAssets: [
-          MediaAsset(path: audioPath, name: '대사.wav', carriedAs: 'c1'),
+          MediaAsset(
+            path: audioPath,
+            name: '대사.wav',
+            carriedAs: mediaCarryNamed(audioPath, 'c1'),
+          ),
         ],
       ),
     );

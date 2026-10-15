@@ -85,13 +85,13 @@ extension ExportPreviewProbe on WidgetTester {
   }
 
   /// Types a one-based frame into the transport's IN or OUT readout, as a
-  /// hand does: a press opens it, Enter commits.
+  /// hand does: its pencil opens it, Enter commits.
   Future<void> typeExportRange({String? inFrame, String? outFrame}) async {
     for (final (end, typed) in [('in', inFrame), ('out', outFrame)]) {
       if (typed == null) {
         continue;
       }
-      await tap(find.byKey(ValueKey<String>('export-transport-$end')));
+      await tap(find.byKey(ValueKey<String>('export-transport-$end-edit')));
       await pump();
       await enterText(
         find.byKey(ValueKey<String>('export-transport-$end-input')),

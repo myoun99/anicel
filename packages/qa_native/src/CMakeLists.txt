@@ -31,6 +31,7 @@ add_library(qa_engine SHARED
   "${CMAKE_CURRENT_LIST_DIR}/qa_image_encode.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_compress.c"
   "${CMAKE_CURRENT_LIST_DIR}/qa_media_span.c"
+  "${CMAKE_CURRENT_LIST_DIR}/qa_display.c"
   "${CMAKE_CURRENT_LIST_DIR}/third_party/zstd/zstd.c"
 )
 if(APPLE)
@@ -55,6 +56,11 @@ endif()
 if(WIN32)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_win_range_stream.c")
+  # The compositor kept composing while a clock runs: DirectComposition's
+  # interfaces are C++ only, so this one translation unit is C++.
+  enable_language(CXX)
+  target_sources(qa_engine PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/qa_display_compose.cpp")
 endif()
 # ⛔ANDROID only, for the same reason: the NDK media table is libmediandk's
 # answer and nobody else's (see qa_ndk_media.h for why there is one of it).
@@ -313,10 +319,19 @@ endif()
 if(MSVC)
   # The engine must run OPTIMIZED even inside the app's Debug build (the
   # project's performance bar is debug mode). MSVC's Debug defaults
-  # (/RTC1 /Od) conflict with /O2 - strip them for this directory only.
-  string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
-  string(REPLACE "/Od" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
-  string(REPLACE "/Ob0" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+  # (/RTC1 /Od /Ob0) conflict with /O2 - strip them for this directory
+  # only, from EVERY language the engine is compiled in.
+  # ↩️Only C's were stripped until 2026-10-13: the compose unit made the
+  # engine C++ as well (bd01a2a91), its file kept /RTC1 beside /O2, and the
+  # app's Windows Debug build stopped building (cl D8016) — profile and
+  # release, which have no /RTC1, said nothing.
+  get_property(qa_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+  foreach(qa_language IN LISTS qa_languages)
+    foreach(qa_flag IN ITEMS /RTC1 /Od /Ob0)
+      string(REPLACE "${qa_flag}" "" CMAKE_${qa_language}_FLAGS_DEBUG
+        "${CMAKE_${qa_language}_FLAGS_DEBUG}")
+    endforeach()
+  endforeach()
   # /utf-8: the sources ARE UTF-8 (em-dash and Korean comments). Without
   # it MSVC reads them in the SYSTEM code page and floods C4819 on
   # Japanese/Korean Windows (CP932/949) - harmless here (non-ASCII lives

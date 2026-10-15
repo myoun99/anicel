@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
@@ -53,7 +53,7 @@ import '../helpers/placement_reading.dart';
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
   });
 
   for (final ground in _Ground.values) {
@@ -927,24 +927,27 @@ void main() {
       expect(shell.picked, isEmpty);
     });
 
-    testWidgets('🚨while the 「이동」 key is held every tool stands down for '
-        'the pan — a mapped button with them (I-15)', (tester) async {
-      final shell = await _Shell.pump(tester, tool: CanvasTool.select);
-      CanvasPanHold.held.value = true;
-      await tester.pump();
+    // I-15's 「이동」, and I-88's 「회전」 through the same gate.
+    for (final hold in ViewHold.values) {
+      testWidgets('🚨while the view\'s ${hold.name} key is held every tool '
+          'stands down for it — a mapped button with them', (tester) async {
+        final shell = await _Shell.pump(tester, tool: CanvasTool.select);
+        CanvasViewHold.held.value = hold;
+        await tester.pump();
 
-      final right = await tester.startGesture(
-        shell.at(const Offset(10, 10)),
-        kind: PointerDeviceKind.mouse,
-        buttons: kSecondaryMouseButton,
-      );
-      await tester.pump();
-      await right.up();
-      await tester.pump();
+        final right = await tester.startGesture(
+          shell.at(const Offset(10, 10)),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pump();
+        await right.up();
+        await tester.pump();
 
-      expect(shell.holds, isEmpty);
-      expect(shell.picked, isEmpty);
-    });
+        expect(shell.holds, isEmpty);
+        expect(shell.picked, isEmpty);
+      });
+    }
 
     testWidgets('a FINGER has no buttons: a touch holds nothing', (
       tester,
@@ -986,7 +989,8 @@ void main() {
       final shell = await _Shell.pump(tester, tool: CanvasTool.brush);
 
       // ⚠️While the raw pen service runs, ITS report is the buttons to
-      // believe (`canvasPressButtons`) — the hover event's own are not read.
+      // believe once it says one is down (`canvasPressButtons`) — the hover
+      // event's own are read only while it says none is.
       // HID Invert with nothing touching: the pen is turned over in the air.
       raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
       await shell.hover(tester, const Offset(20, 20), buttons: 0);

@@ -80,11 +80,12 @@ void main() {
               selectionCommands: commands,
               activeStrokeOverlayModel: overlay,
               viewportUnderlayBuilder:
-                  (context, viewport, activeSurfacePainter, floatOverlay) =>
+                  (context, viewport, activeSurfacePainter, floats) =>
                       CanvasLayerStackView(
                         nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                         activeSurfacePainter: activeSurfacePainter,
-                        floatOverlay: floatOverlay,
+                        floatOverlay: floats.liveRow,
+                        liftedRows: floats.liftedRows,
                         imageCache: imageCache,
                         canvasSize: BrushCanvasFixture.canvasSize,
                         viewport: viewport,

@@ -1,0 +1,258 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+
+/// 🚨I-57 ㉢-2 (10-13, measured on the user's project): the rail's legend
+/// header was kept by every fact it shows — and by the set of layers on
+/// display, which it shows nowhere: its bulk verbs ACT on that set (the
+/// master opacity bar, the blend flyout). Every cut switch changed the set,
+/// so the whole header was built again at every crossing a scrub or a play
+/// made: 223 widgets of a crossing's 855. The set is read at the press.
+///
+/// 🚨And by the marks and kinds on the rows (10-14), which only its mark
+/// and kind flyouts list: a cut of other marks or kinds — most of them —
+/// built it again whole, 221 widgets of a crossing's 821. They are read
+/// when a flyout opens.
+void main() {
+  testWidgets('a cut switch builds nothing of the legend header again', (
+    tester,
+  ) async {
+    await _show(tester, _panel('one', []));
+    expect(
+      find.byType(TimelineLayerControlsHeader),
+      findsOneWidget,
+      reason: 'LIVENESS: the legend stands',
+    );
+
+    final built = await _legendBuildsWhile(
+      () => _show(tester, _panel('two', [])),
+    );
+
+    expect(built.grids, greaterThan(0), reason: 'LIVENESS: the grid was built');
+    expect(built.inLegend, isEmpty);
+  });
+
+  testWidgets('nor a switch to a cut of other marks and kinds, whose flyouts '
+      'list the rows on display when they open', (tester) async {
+    await _show(tester, _panel('one', []));
+
+    final built = await _legendBuildsWhile(
+      () => _show(tester, _panel('two', [], marked: true)),
+    );
+
+    expect(built.grids, greaterThan(0), reason: 'LIVENESS: the grid was built');
+    expect(built.inLegend, isEmpty);
+    for (final (column, row) in [
+      ('legend-mark', 'legend-filter-mark-${_layout.keySlug}'),
+      ('legend-kind', 'legend-filter-kind-${LayerKind.instruction.name}'),
+    ]) {
+      await tester.tap(find.byKey(ValueKey<String>(column)));
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey<String>(row)), findsOneWidget);
+      await tester.tapAt(Offset.zero);
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('and a switch from a cut with no rows opens its kind column on '
+      'the rows that came', (tester) async {
+    await _show(tester, _panel('none', [], rows: 0));
+    await _show(tester, _panel('two', []));
+
+    await tester.tap(find.byKey(const ValueKey<String>('legend-kind')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(
+        ValueKey<String>('legend-filter-kind-${LayerKind.animation.name}'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('a kept header follows the words\' scale: its cells stand '
+      'where a header built at that scale stands them', (tester) async {
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _show(tester, _panel('one', []));
+    final atOne = _legendCells(tester);
+
+    tester.platformDispatcher.textScaleFactorTestValue = 1.6;
+    await tester.pumpAndSettle();
+    final followed = _legendCells(tester);
+    await tester.pumpWidget(const SizedBox());
+    await _show(tester, _panel('one', []));
+
+    expect(followed, isNot(atOne), reason: 'premise: the scale moves them');
+    expect(followed, _legendCells(tester));
+  });
+
+  testWidgets('the storyboard\'s legend is kept through a switch as well', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.cutVerbs.createCut();
+    await tester.pumpAndSettle();
+    final cuts = session.repository.requireProject().tracks.first.cuts;
+
+    final built = await _legendBuildsWhile(() async {
+      session.selectCut(cuts.first.id);
+      await tester.pumpAndSettle();
+    }, around: StoryboardPanel);
+
+    expect(built.grids, greaterThan(0), reason: 'LIVENESS: the board built');
+    expect(built.inLegend, isEmpty);
+  });
+
+  testWidgets('the master opacity bar acts on the layers on display NOW', (
+    tester,
+  ) async {
+    final committed = <Set<LayerId>>[];
+    await _show(tester, _panel('one', committed));
+    await _show(tester, _panel('two', committed));
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('legend-opacity')),
+      const Offset(-40, 0),
+    );
+    await tester.pumpAndSettle();
+
+    expect(committed, isNotEmpty, reason: 'LIVENESS: the bar committed');
+    expect(committed.last, {
+      const LayerId('two-1'),
+      const LayerId('two-2'),
+      const LayerId('two-3'),
+    });
+  });
+}
+
+const _layout = LayerMark(process: LayerProcess.layout);
+
+/// The widgets built under the legend header while [act] runs — the
+/// header's own build, which only compares what it shows, aside — and how
+/// many times the panel [around] it was.
+Future<({List<Type> inLegend, int grids})> _legendBuildsWhile(
+  Future<void> Function() act, {
+  Type around = LayerTimelineGrid,
+}) async {
+  final inLegend = <Type>[];
+  var grids = 0;
+  debugOnRebuildDirtyWidget = (element, _) {
+    if (element.widget.runtimeType == around) {
+      grids += 1;
+    }
+    element.visitAncestorElements((ancestor) {
+      if (ancestor.widget is! TimelineLayerControlsHeader) {
+        return true;
+      }
+      inLegend.add(element.widget.runtimeType);
+      return false;
+    });
+  };
+  try {
+    await act();
+  } finally {
+    debugOnRebuildDirtyWidget = null;
+  }
+  return (inLegend: inLegend, grids: grids);
+}
+
+/// Where the legend's cells stand.
+List<Rect> _legendCells(WidgetTester tester) => [
+  for (final cell in const ['legend-eye', 'legend-mark', 'legend-kind'])
+    tester.getRect(find.byKey(ValueKey<String>(cell))),
+];
+
+Future<void> _show(WidgetTester tester, Widget panel) async {
+  await tester.binding.setSurfaceSize(const Size(1400, 700));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(panel);
+  await tester.pumpAndSettle();
+}
+
+/// A cut of [rows] drawings — the same faces in every cut, other layers;
+/// [marked], the first one an instruction labelled for layout.
+List<Layer> _layersOf(String cut, {required bool marked, int rows = 3}) => [
+  for (final (index, name) in const ['One', 'Two', 'Three'].take(rows).indexed)
+    Layer(
+      id: LayerId('$cut-${index + 1}'),
+      name: name,
+      frames: const [],
+      kind: marked && index == 0 ? LayerKind.instruction : LayerKind.animation,
+      mark: marked && index == 0 ? _layout : LayerMark.none,
+    ),
+];
+
+final _cursor = ValueNotifier<int>(0);
+
+Widget _panel(
+  String cut,
+  List<Set<LayerId>> committed, {
+  bool marked = false,
+  int rows = 3,
+}) => MaterialApp(
+  home: Scaffold(
+    body: TimelinePanel(
+      layers: _layersOf(cut, marked: marked, rows: rows),
+      activeLayerId: rows == 0 ? null : LayerId('$cut-1'),
+      substrateGeneration: cut,
+      frameCursor: _cursor,
+      playbackFrameCount: 12,
+      exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+      onSelectLayer: (_) {},
+      onSelectFrame: (_) {},
+      onAddLayer: () {},
+      onToggleLayerVisibility: (_) {},
+      onLayerOpacityChanged: (_, _) {},
+      onToggleLayerTimesheet: (_) {},
+      onLayerMarkSelected: (_, _) {},
+      orientation: TimelineOrientation.horizontal,
+      onOrientationChanged: (_) {},
+      legend: LayerLegendCallbacks(
+        onShowAllLayers: () {},
+        onHideAllLayers: () {},
+        onToggleVisibilitySolo: () {},
+        onSheetAllOn: () {},
+        onSheetAllOff: () {},
+        onClearMarkFilter: () {},
+        onClearAllFillReferences: () {},
+        onMuteAllSe: () {},
+        onUnmuteAllSe: () {},
+        onBypassAllFx: () {},
+        onEnableAllFx: () {},
+        onToggleMarkFilter: (_) {},
+        onToggleKindFilter: (_) {},
+        onToggleSheetOnlyFilter: () {},
+        onToggleFxOnlyFilter: () {},
+        onToggleFillReferenceOnlyFilter: () {},
+        onPreviewLayersOpacity: (_, _) {},
+        onCommitLayersOpacity: (ids, _) => committed.add(ids),
+      ),
+    ),
+  ),
+);

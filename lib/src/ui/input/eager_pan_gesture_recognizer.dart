@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 
+import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart' show InputInspector;
 import 'value_control_pointers.dart';
 
@@ -73,7 +74,10 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   ) =>
       (firstStepAt?.call(_down, _now) ?? false) ||
       globalDistanceMoved.abs() >
-          computeHitSlop(pointerDeviceKind, gestureSettings);
+          computeHitSlop(
+            PenSidecars.kindOf(pointerDeviceKind),
+            gestureSettings,
+          );
 
   /// T11: a press that landed on a VALUE CONTROL is that control's, and no
   /// eager pan starts from it.
@@ -135,11 +139,16 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   // 'ep rej' BELOW the hit slop means a competitor accepted before this
   // recognizer even reached its threshold — the on-device measurement
   // the desktop tests can't take.
-  String _probeSuffix(PointerDeviceKind kind) {
-    final threshold = computeHitSlop(kind, gestureSettings);
+  String _probeSuffix(PointerDeviceKind tracked) {
+    // The threshold in play — asked of the pen law's kind, as
+    // [hasSufficientGlobalDistanceToAccept] asks it.
+    final threshold = computeHitSlop(
+      PenSidecars.kindOf(tracked),
+      gestureSettings,
+    );
     return 'd=${globalDistanceMoved.abs().toStringAsFixed(1)}'
         ' thr=${threshold.toStringAsFixed(1)}'
-        ' kind=${kind.name}'
+        ' kind=${PenSidecars.kindOf(tracked).name}'
         ' ts=${gestureSettings?.touchSlop?.toStringAsFixed(1)}';
   }
 

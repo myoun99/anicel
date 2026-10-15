@@ -9,8 +9,10 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_conform_runner.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/whole_carry.dart';
 
 ConformResult _usableResult() => ConformResult(
   outcome: ConformOutcome.built,
@@ -156,6 +158,44 @@ void main() {
     store.dispose();
   });
 
+  test('🚨the PCM the device plays lands where the device plays it: the '
+      'conform and each rate it is converted to are placed once, as they '
+      'land', () async {
+    final placed = <Float32List>[];
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => _usableResult(),
+      resampleRunner: (request) async => Float32List.fromList([0.9]),
+      placeForPlayback: (floats) {
+        final samples = Float32List(floats);
+        placed.add(samples);
+        return samples;
+      },
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+
+    expect(placed, hasLength(1));
+    expect(store.samplesFor('a.wav'), same(placed[0]));
+    expect(store.samplesAtRate('a.wav', 48000), same(placed[0]));
+    expect(placed[0], _usableResult().samples);
+    final landed = store.resultFor('a.wav')!;
+    expect(landed.isUsable, isTrue);
+    expect(store.peaksFor('a.wav')?.peaks, hasLength(1));
+    expect((landed.channels, landed.sampleRate, landed.frames), (2, 48000, 2));
+
+    expect(store.samplesAtRate('a.wav', 44100), isNull);
+    await pumpEventQueue();
+    expect(placed, hasLength(2));
+    expect(store.samplesAtRate('a.wav', 44100), same(placed[1]));
+    expect(placed[1], Float32List.fromList([0.9]));
+
+    store.samplesAtRate('a.wav', 48000);
+    store.samplesAtRate('a.wav', 44100);
+    expect(placed, hasLength(2), reason: 'what landed is placed once');
+    store.dispose();
+  });
   test('a project-rate change makes cached entries stale on their own — '
       'undo and redo self-heal without hooks', () async {
     var projectRate = 48000;
@@ -194,7 +234,7 @@ void main() {
 
   test('🚨a path the pool names ANOTHER carry at is stale on its own — the '
       'sound of the first carry does not answer for the second', () async {
-    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('a.wav', 'c1');
     final conformedAs = <String?>[];
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
@@ -216,14 +256,14 @@ void main() {
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 1);
 
-    carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
+    carry = wholeCarry('a.wav', 'c2'); // removed, carried again
     expect(store.resultFor('a.wav'), isNull, reason: 're-kicked');
     // (Whether it STREAMS is asked of a streaming entry — below, with the
     // streaming policy; this one never streamed, so it could not say.)
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 2);
 
-    carry = (poolPath: 'a.wav', token: 'c1'); // and undone back
+    carry = wholeCarry('a.wav', 'c1'); // and undone back
     expect(store.samplesFor('a.wav'), isNull);
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 3);
@@ -231,7 +271,12 @@ void main() {
     carry = null; // left for a link to the file itself
     expect(store.durationSecondsFor('a.wav'), isNull);
     await pumpEventQueue();
-    expect(conformedAs, ['c1', 'c2', 'c1', null]);
+    expect(conformedAs, [
+      wholeCarry('a.wav', 'c1').token,
+      wholeCarry('a.wav', 'c2').token,
+      wholeCarry('a.wav', 'c1').token,
+      null,
+    ]);
     store.dispose();
   });
 
@@ -256,7 +301,7 @@ void main() {
 
   test('a rate conversion lands only on the entry it was made from',
       () async {
-    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('a.wav', 'c1');
     final resampled = Completer<Float32List>();
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
@@ -269,7 +314,7 @@ void main() {
     await pumpEventQueue();
     expect(store.samplesAtRate('a.wav', 44100), isNull, reason: 'kicked');
 
-    carry = (poolPath: 'a.wav', token: 'c2');
+    carry = wholeCarry('a.wav', 'c2');
     store.resultFor('a.wav');
     await pumpEventQueue();
     resampled.complete(Float32List.fromList([9, 9, 9, 9]));
@@ -285,7 +330,7 @@ void main() {
 
   test('a conform that lands after the pool moved to another carry is the '
       'FIRST carry\'s — it answers for nothing', () async {
-    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('a.wav', 'c1');
     final gate = Completer<void>();
     var runs = 0;
     final store = AudioConformStore(
@@ -302,7 +347,7 @@ void main() {
     );
     store.resultFor('a.wav'); // kicked for c1, and still running
     await pumpEventQueue();
-    carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
+    carry = wholeCarry('a.wav', 'c2'); // removed, carried again
     gate.complete();
     await pumpEventQueue();
 
@@ -320,7 +365,7 @@ void main() {
 
   test('a carry changed under a FAILURE lets it go — the first carry\'s '
       'missing file does not stand for the second', () async {
-    MediaCarry? carry = (poolPath: 'gone.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('gone.wav', 'c1');
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
       resolveCarry: (_) => carry,
@@ -334,7 +379,7 @@ void main() {
     await pumpEventQueue();
     expect(store.failureFor('gone.wav'), isNotNull, reason: 'the premise');
 
-    carry = (poolPath: 'gone.wav', token: 'c2');
+    carry = wholeCarry('gone.wav', 'c2');
 
     expect(store.failureFor('gone.wav'), isNull);
     store.dispose();
@@ -366,14 +411,15 @@ void main() {
 
     tearDown(() => deleteTempQuietly(directory));
 
-    /// A conform WAV on disk plus the runner result describing it, LONGER
-    /// than the streaming threshold (a tiny sample rate keeps the fixture
-    /// small — the threshold is in seconds, and the policy reads the
-    /// result's own rate).
-    (String, ConformResult) longConform() {
+    /// A conform on disk plus the runner result describing it, LONGER than
+    /// the streaming threshold (a tiny sample rate keeps the fixture small
+    /// — the threshold is in seconds, and the policy reads the result's own
+    /// rate) — with NO PCM, as the pipeline hands a long conform it wrote
+    /// ([conformStaysOnDisk]); the samples it holds come back beside it.
+    (String, ConformResult, Float32List) longConform() {
       const sampleRate = 100;
       const frames =
-          sampleRate * AudioConformStore.streamingThresholdSeconds + 50;
+          sampleRate * conformStreamingThresholdSeconds + 50;
       final samples = Float32List(frames);
       for (var index = 0; index < frames; index += 1) {
         samples[index] = (index % 100) / 100.0;
@@ -391,17 +437,22 @@ void main() {
             bucketsPerSecond: 80,
             peaks: Float32List.fromList([1.0]),
           ),
-          samples: samples,
           channels: 1,
           sampleRate: sampleRate,
           frames: frames,
         ),
+        samples,
       );
     }
 
-    test('past the threshold the PCM is dropped: length and peaks answer, '
-        'samples stream from disk', () async {
-      final (conformPath, result) = longConform();
+    test('a conform past the threshold STREAMS: no resident PCM, its length '
+        'and peaks answer, its samples read from disk', () async {
+      final (conformPath, result, samples) = longConform();
+      expect(
+        conformStaysOnDisk(frames: result.frames, sampleRate: 100, onDisk: true),
+        isTrue,
+        reason: 'the premise: the pipeline hands this one over with no PCM',
+      );
       final store = AudioConformStore(
         resolveConformPath: (_) => conformPath,
         // The fixture's tiny rate IS the project rate — otherwise the
@@ -433,7 +484,7 @@ void main() {
       for (var index = 0; index < 100; index += 1) {
         expect(
           window.samples[index],
-          closeTo(result.samples![500 + index], 1e-4),
+          closeTo(samples[500 + index], 1e-4),
           reason: 'streamed sample ${500 + index} diverged from the decode',
         );
       }
@@ -451,10 +502,10 @@ void main() {
     test('🚨a carry changed under a STREAMING entry lets it go at whatever is '
         'asked first — the stream and its reader are the first carry\'s',
         () async {
-      final (conformPath, result) = longConform();
+      final (conformPath, result, _) = longConform();
       MediaCarry? carry;
       Future<AudioConformStore> streaming() async {
-        carry = (poolPath: 'long.wav', token: 'c1');
+        carry = wholeCarry('long.wav', 'c1');
         final store = AudioConformStore(
           resolveConformPath: (_) => conformPath,
           projectSampleRate: 100,
@@ -471,11 +522,11 @@ void main() {
       }
 
       final asked = await streaming();
-      carry = (poolPath: 'long.wav', token: 'c2'); // removed, carried again
+      carry = wholeCarry('long.wav', 'c2'); // removed, carried again
       expect(asked.isStreaming('long.wav'), isFalse);
 
       final read = await streaming();
-      carry = (poolPath: 'long.wav', token: 'c2');
+      carry = wholeCarry('long.wav', 'c2');
       expect(
         read.streamReaderFor('long.wav'),
         isNull,
@@ -492,11 +543,11 @@ void main() {
         runner: (request) async => ConformResult(
           outcome: ConformOutcome.built,
           samples: Float32List(
-            48000 * (AudioConformStore.streamingThresholdSeconds + 5),
+            48000 * (conformStreamingThresholdSeconds + 5),
           ),
           channels: 1,
           sampleRate: 48000,
-          frames: 48000 * (AudioConformStore.streamingThresholdSeconds + 5),
+          frames: 48000 * (conformStreamingThresholdSeconds + 5),
         ),
         log: (_) {},
       );

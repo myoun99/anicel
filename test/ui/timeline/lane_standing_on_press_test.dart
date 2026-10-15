@@ -24,6 +24,11 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart' show FieldSlider;
+import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
+
+import '../../helpers/named_finders.dart';
+import '../../helpers/the_classic_rail.dart';
 
 /// 🚨C6 (2026-08-17): STANDING on an fx header/member row is the CELLS'
 /// press law — 「일반 행은 해당 인덱스에 서고 → 범위」, and the fx rows do
@@ -75,6 +80,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: project())),
     );
     await tester.pumpAndSettle();
+    await standTheClassicRail(tester);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
       const Offset(0, -520),
@@ -88,7 +94,7 @@ void main() {
       'timeline-lane-toggle-${drawId.value}',
       'timeline-lane-group-toggle-${drawId.value}-transform-group',
     ]) {
-      final toggle = find.byKey(ValueKey<String>(key));
+      final toggle = find.named(key);
       await tester.ensureVisible(toggle);
       await tester.pumpAndSettle();
       await tester.tap(toggle);
@@ -229,6 +235,14 @@ void main() {
 
     await doubleTapBand(tester, 'position', 8.5);
     expect(find.text('Rename key'), findsOneWidget, reason: 'a key: its window');
+    for (final side in ['in', 'out']) {
+      final pill = find.byKey(ValueKey<String>('rename-key-$side-linear'));
+      expect(
+        tester.widget<Pill>(pill).selected,
+        isTrue,
+        reason: 'the window opens on the kind its key is, each side',
+      );
+    }
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
@@ -253,7 +267,7 @@ void main() {
     await doubleTapBand(tester, 'transform-group', 8.5);
     expect(find.text('Rename key'), findsOneWidget);
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+      find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -262,8 +276,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      positionOf(s).keyAt(8)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      positionOf(s).keyAt(8)!.outgoing,
+      KeyExit.hold,
     );
   });
 
@@ -282,7 +296,7 @@ void main() {
       'A',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+      find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -310,8 +324,8 @@ void main() {
     final key = positionOf(s).keyAt(8)!;
     expect(key.name, isNull, reason: 'the name stood down');
     expect(
-      key.interpolation,
-      PropertyKeyInterpolation.hold,
+      key.outgoing,
+      KeyExit.hold,
       reason: 'the type did not',
     );
   });
@@ -324,8 +338,8 @@ void main() {
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
     s.laneVerbs.setLaneKeyNamesForSelection('A');
     s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 8);
-    s.laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    s.laneVerbs.setLaneKeyTypeForSelection(
+      const KeyTypePick(sides: KeySidesEdit.hold),
     );
     await tester.pumpAndSettle();
 
@@ -342,15 +356,204 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      positionOf(s).keyAt(8)!.interpolation,
-      PropertyKeyInterpolation.linear,
+      positionOf(s).keyAt(8)!.outgoing,
+      KeySide.linear,
       reason: "the joining key ADOPTS the name's type",
     );
     expect(
-      positionOf(s).keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.linear,
+      positionOf(s).keyAt(0)!.outgoing,
+      KeySide.linear,
       reason: 'and the holder keeps its own',
     );
+  });
+
+  /// I-89 ④: the path row is the window's as the type rows are — what was
+  /// picked in it is confirmed with the name, whatever the name does.
+  Future<void> nameItAWithACurve(WidgetTester tester) async {
+    await doubleTapBand(tester, 'position', 8.5);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A',
+    );
+    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    await tester.ensureVisible(curved);
+    await tester.tap(curved);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('a taken name the user does NOT join still takes the PATH '
+      'picked with it', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await tester.pumpAndSettle();
+
+    await nameItAWithACurve(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final key = positionOf(s).keyAt(8)!;
+    expect(key.name, isNull, reason: 'the name stood down');
+    expect(key.path, KeyPath.auto, reason: 'the path did not');
+    expect(positionOf(s).keyAt(0)!.path, KeyPath.straight);
+  });
+
+  /// ↩️A pick made as a key joined a name landed on the joining keys alone
+  /// — the type's since 2026-09-12 and the path's with it — and split the
+  /// name (card `key-window-join-with-a-pick-splits-the-name`).
+  testWidgets('a path picked as a key joins a name lands on the name — the '
+      'key that held it too', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await tester.pumpAndSettle();
+
+    await nameItAWithACurve(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(positionOf(s).keyAt(8)!.name, 'A', reason: '⛔전제: joined');
+    expect(positionOf(s).keyAt(8)!.path, KeyPath.auto);
+    expect(
+      positionOf(s).keyAt(0)!.path,
+      KeyPath.auto,
+      reason: 'one name, one key',
+    );
+  });
+
+  /// I-89 ④-Q5 (A′ while it is asked): the roving row is the window's as
+  /// the path row is. A key at 2 half way along the straight line from 0
+  /// (0, 0) to 8 (9, 9) — passed at 4 once its time roves.
+  Future<void> keyBetween(EditorSessionManager s, WidgetTester tester) async {
+    final track = s.layers
+        .firstWhere((layer) => layer.id == drawId)
+        .transformTrack;
+    s.laneVerbs.updateLayerTransformTrack(
+      drawId,
+      track.copyWith(
+        position: track.position.withKey(2, CanvasPoint(x: 4.5, y: 4.5)),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> pickRoving(WidgetTester tester) async {
+    final on = find.byKey(const ValueKey<String>('rename-key-rove-on'));
+    await tester.ensureVisible(on);
+    await tester.tap(on);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  bool roveLit(WidgetTester tester, String choice) => tester
+      .widget<Pill>(find.byKey(ValueKey<String>('rename-key-rove-$choice')))
+      .selected;
+
+  testWidgets('the roving row frees the key between, which stands where its '
+      'run passes it — and opens on what its key says', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    await keyBetween(s, tester);
+
+    await doubleTapBand(tester, 'position', 2.5);
+    expect(roveLit(tester, 'off'), isTrue);
+    await pickRoving(tester);
+    expect(positionOf(s).keys.keys, [0, 4, 8]);
+    expect(positionOf(s).keyAt(4)!.roving, isTrue);
+
+    await doubleTapBand(tester, 'position', 4.5);
+    expect((off: roveLit(tester, 'off'), on: roveLit(tester, 'on')), (
+      off: false,
+      on: true,
+    ));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  /// Whether the key window's arrival (`in`) and departure (`out`) rows
+  /// take a pick — a kind, and the 세기 of an ease.
+  ({bool kinds, bool influence}) sideTakes(WidgetTester tester, String side) {
+    final linear = find.byKey(ValueKey<String>('rename-key-$side-linear'));
+    final influence = find.byKey(
+      ValueKey<String>('rename-key-$side-influence'),
+    );
+    return (
+      kinds: tester.widget<Pill>(linear).onTap != null,
+      influence: tester.widget<FieldSlider>(influence).onChanged != null,
+    );
+  }
+
+  /// 유저 2026-10-12: 「의미가 없다면 비활성화 시키는게 맞겟고」 — the sides of
+  /// a key whose time roves set nothing: its run's timed ends pace it.
+  testWidgets("a key whose time roves wears no sides: the window's two rows "
+      'stand refused as the roving row is picked on, and back as it is '
+      'picked off', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    await keyBetween(s, tester);
+
+    await doubleTapBand(tester, 'position', 2.5);
+    final ease = find.byKey(const ValueKey<String>('rename-key-in-ease'));
+    await tester.ensureVisible(ease);
+    await tester.tap(ease);
+    await tester.pumpAndSettle();
+    expect(sideTakes(tester, 'in'), (kinds: true, influence: true));
+    expect(sideTakes(tester, 'out'), (kinds: true, influence: false));
+
+    final on = find.byKey(const ValueKey<String>('rename-key-rove-on'));
+    await tester.ensureVisible(on);
+    await tester.tap(on);
+    await tester.pumpAndSettle();
+    expect(sideTakes(tester, 'in'), (kinds: false, influence: false));
+    expect(sideTakes(tester, 'out'), (kinds: false, influence: false));
+
+    await tester.tap(find.byKey(const ValueKey<String>('rename-key-rove-off')));
+    await tester.pumpAndSettle();
+    expect(sideTakes(tester, 'in'), (kinds: true, influence: true));
+    expect(sideTakes(tester, 'out'), (kinds: true, influence: false));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a taken name the user does NOT join still frees the time '
+      'picked with it', (tester) async {
+    final s = await pumpHost(tester);
+    await openTransformLanes(tester);
+    s.standOnRow(const LaneRowAddress(drawId, 'position'), frameIndex: 0);
+    s.laneVerbs.setLaneKeyNamesForSelection('A');
+    await keyBetween(s, tester);
+
+    await doubleTapBand(tester, 'position', 2.5);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'A',
+    );
+    await pickRoving(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final key = positionOf(s).keyAt(4)!;
+    expect(key.name, isNull, reason: 'the name stood down');
+    expect(key.roving, isTrue, reason: 'the time did not');
   });
 
   testWidgets('a TAP inside the lane selection clears it on the release — '

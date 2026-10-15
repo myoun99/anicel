@@ -20,8 +20,7 @@ import 'render_shifted_child.dart';
 /// Zero extra bakes (`RenderStaticRaster.captureCount` delta is 0 either
 /// way — the viewport is its own repaint boundary and a baked child is
 /// composited at a new layer offset rather than repainted), and no layer:
-/// `RenderTransform.paint` takes the pure-translation branch, so
-/// `debugLayer` stays null.
+/// the child is painted at the corrected offset, on the viewport's own.
 ///
 /// ## ⛔ Why the POSITION is not snapped
 ///
@@ -40,8 +39,18 @@ import 'render_shifted_child.dart';
 ///
 /// So the position stays EXACT — physics, ballistics and the scrollbar keep
 /// the number they had — and only the paint is corrected, read from the
-/// offset the widget already holds in the same build. Nothing is a frame
-/// late and nothing is measured from the render tree.
+/// position AS IT PAINTS: after every layout of the frame, so a position
+/// the viewport pulled back in its own layout (F-95) is the one the content
+/// lands by, and the one what follows it lands by ([ScrollFollower]).
+/// ↩️It was read as the body BUILT, and a pull in layout tells no listener:
+/// the cells kept the old nudge while the ruler beside them took the new
+/// one, 1/6 px apart at 1.5 (10-11), and off the grid until something built
+/// them again.
+///
+/// ⚠️It needs no listener because it stands INSIDE the viewport it
+/// corrects: the viewport repaints at every change of its position — a
+/// scroll, and its own layout's pull — and paints this with it. Outside a
+/// viewport nothing would; that is [ScrollFollower].
 ///
 /// ## ⚠️ It stabilises the phase; it does not always LAND the content
 ///
@@ -85,58 +94,43 @@ class DeviceGridScrollBody extends StatelessWidget {
 
   final Widget child;
 
-  @override
-  Widget build(BuildContext context) {
-    final grid = DeviceGrid.of(context);
-    return AnimatedBuilder(
-      animation: controller,
-      // ⚠️`child` is passed through rather than rebuilt: the correction
-      // changes on every scroll frame and the subtree must not.
-      child: child,
-      builder: (context, body) {
-        return Transform.translate(
-          offset: _correction(grid),
-          // ⛔Must stay true. With it false a tap within half a device
-          // pixel of a row boundary selects the neighbour — invisibly, and
-          // only at some scroll positions. Measured with it on: 360
-          // boundary taps at a worst correction of 0.4995 device px, zero
-          // mismatches.
-          transformHitTests: true,
-          child: body,
-        );
-      },
-    );
-  }
-
-  /// ⛔ALWAYS returns a Transform, even at zero. Mounting it conditionally
-  /// changes the widget type at that slot, so element reconciliation
-  /// deactivates the entire scrolled subtree — every `State`,
+  /// ⛔ALWAYS mounts the correction, even at zero. Mounting it
+  /// conditionally changes the widget type at that slot, so element
+  /// reconciliation deactivates the entire scrolled subtree — every `State`,
   /// `AnimationController`, text selection, focus node and nested
   /// `ScrollPosition` below it. Measured: 7 `State` inits across 7 scroll
   /// jumps with the early-out, 1 without. And the resting offset is 0,
   /// which IS on the grid, so the first sub-pixel scroll of every panel in
   /// the app would have destroyed it.
-  Offset _correction(DeviceGrid grid) {
-    if (!grid.isActive) {
-      return Offset.zero;
-    }
-    final offset = singleScrollPixelsOf(controller);
-    if (offset == null) {
-      return Offset.zero;
-    }
-    // 🚨THE SIGN. A forward viewport paints the content at MINUS the
-    // position, so the number that has to land on the grid is `-d`, and the
-    // nudge is `round(-d) - (-d)`, i.e. `d - round(d)`. The first draft had
-    // this negated, which does not cancel the fraction — it DOUBLES it:
-    // the painted position becomes `round(d) - 2d`, so the residue is
-    // `dist(2·offset·ratio, ℤ)`. That closed form was confirmed to within
-    // 1.4e-14 over 240 steps at five ratios.
-    final device = offset * grid.ratio;
-    final correction = (device - device.roundToDouble()) / grid.ratio;
-    return axisDirection == AxisDirection.down
-        ? Offset(0, correction)
-        : Offset(correction, 0);
+  @override
+  Widget build(BuildContext context) => _LandedOnTheGrid(
+    controller: controller,
+    axis: axisDirectionToAxis(axisDirection),
+    grid: DeviceGrid.of(context),
+    landing: _Landing.scrolled,
+    child: child,
+  );
+}
+
+/// The nudge that lands content scrolled [pixels] along a forward axis on
+/// [grid] — the content inside the scrollable ([DeviceGridScrollBody]) and
+/// what follows it from outside ([ScrollFollower]) take the same one, so
+/// the two halves land on the same device pixel. Zero on a grid that does
+/// not quantize.
+///
+/// 🚨THE SIGN. A forward viewport paints the content at MINUS the position,
+/// so the number that has to land on the grid is `-d`, and the nudge is
+/// `round(-d) - (-d)`, i.e. `d - round(d)`. The first draft had this
+/// negated, which does not cancel the fraction — it DOUBLES it: the painted
+/// position becomes `round(d) - 2d`, so the residue is
+/// `dist(2·offset·ratio, ℤ)`. That closed form was confirmed to within
+/// 1.4e-14 over 240 steps at five ratios.
+double deviceGridScrollCorrection(double pixels, DeviceGrid grid) {
+  if (!grid.isActive) {
+    return 0;
   }
+  final device = pixels * grid.ratio;
+  return (device - device.roundToDouble()) / grid.ratio;
 }
 
 /// The pixels of the ONE scroll position [controller] drives — null when it
@@ -159,9 +153,9 @@ double? singleScrollPixelsOf(ScrollController controller) {
 }
 
 /// Content that stands OUTSIDE a scrollable and moves with it — a ruler
-/// pinned over the frame cells, a rail beside them. It is translated by the
-/// scroll position and landed by [DeviceGridScrollBody], the correction the
-/// scrolled content itself wears (F-32).
+/// pinned over the frame cells, a rail beside them. It is moved by the
+/// scroll position and landed as the scrolled content itself is
+/// ([deviceGridScrollCorrection], F-32).
 ///
 /// 🚨F-95 (유저 2026-09-12): 「패널의 스플리터로 좌우 길이 바꾸면 타임라인
 /// 룰러랑 내부 프레임 영역이랑 위치가 좌우 방향으로 어긋남.
@@ -172,8 +166,8 @@ double? singleScrollPixelsOf(ScrollController controller) {
 /// to 2635 and widened from 700 to 1300, the cells went to 2035 and the
 /// ruler stayed at 2635 — 600px apart, and still apart once settled.
 ///
-/// So the translate reads the POSITION when it paints, which is when the
-/// viewport beside it reads the same number to place its cells: a
+/// So the move reads the POSITION as each frame is composited, after every
+/// layout that frame did and the paint that placed the cells beside it: a
 /// correction made in this frame's layout reaches both halves, and neither
 /// can hold an older one.
 class ScrollFollower extends StatelessWidget {
@@ -182,7 +176,11 @@ class ScrollFollower extends StatelessWidget {
     required this.controller,
     required this.axisDirection,
     required this.child,
-  });
+  }) : assert(
+         axisDirection == AxisDirection.down ||
+             axisDirection == AxisDirection.right,
+         'A reverse scroll lands the other way ([DeviceGridScrollBody]).',
+       );
 
   /// The controller of the scrollable this content follows.
   final ScrollController controller;
@@ -193,91 +191,147 @@ class ScrollFollower extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => DeviceGridScrollBody(
+  Widget build(BuildContext context) => _LandedOnTheGrid(
     controller: controller,
-    axisDirection: axisDirection,
-    child: _ScrollPositionTranslate(
-      controller: controller,
-      axis: axisDirectionToAxis(axisDirection),
-      child: child,
-    ),
+    axis: axisDirectionToAxis(axisDirection),
+    grid: DeviceGrid.of(context),
+    landing: _Landing.follows,
+    child: child,
   );
 }
 
-class _ScrollPositionTranslate extends SingleChildRenderObjectWidget {
-  const _ScrollPositionTranslate({
+/// Content INSIDE a scrolled body that stands still in its view while the
+/// rest scrolls under it — a header graph's tools and guest tags in the
+/// view's corners (I-89 ③). [ScrollFollower] the other way round: moved back by the
+/// scroll position, read as the frame is composited, less the nudge the
+/// content lands by — so it neither trails a position a viewport corrects
+/// in its own layout (F-95) nor walks a fraction of a device pixel against
+/// the view with every step (F-32).
+///
+/// 🧪The tags were first laid out from the offset NOTIFIER: laid out again
+/// every pixel, and 0.06px off the sheet's view scrolled to 5305.06.
+class ScrollStill extends StatelessWidget {
+  const ScrollStill({
+    super.key,
+    required this.controller,
+    required this.axisDirection,
+    required this.child,
+  }) : assert(
+         axisDirection == AxisDirection.down ||
+             axisDirection == AxisDirection.right,
+         'A reverse scroll lands the other way ([DeviceGridScrollBody]).',
+       );
+
+  /// The controller of the scrollable whose body this stands in.
+  final ScrollController controller;
+
+  /// See [DeviceGridScrollBody.axisDirection].
+  final AxisDirection axisDirection;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => _LandedOnTheGrid(
+    controller: controller,
+    axis: axisDirectionToAxis(axisDirection),
+    grid: DeviceGrid.of(context),
+    landing: _Landing.standsStill,
+    child: child,
+  );
+}
+
+/// Where what a [_LandedOnTheGrid] holds stands against its scroll.
+enum _Landing {
+  /// Inside the scrollable, carried by it ([DeviceGridScrollBody]).
+  scrolled,
+
+  /// Outside it, following it ([ScrollFollower]) — then nothing carries it
+  /// along, and nothing paints it as the position changes.
+  follows,
+
+  /// Inside it, standing still in its view ([ScrollStill]) — carried, and
+  /// moved back as far.
+  standsStill,
+}
+
+/// The halves of a scroll — what is scrolled ([DeviceGridScrollBody]), what
+/// follows it from outside ([ScrollFollower]) and what stands still inside
+/// it ([ScrollStill]) — landed by the one object, so they read the one
+/// position at the one moment.
+class _LandedOnTheGrid extends SingleChildRenderObjectWidget {
+  const _LandedOnTheGrid({
     required this.controller,
     required this.axis,
+    required this.grid,
+    required this.landing,
     required Widget super.child,
   });
 
   final ScrollController controller;
   final Axis axis;
+  final DeviceGrid grid;
+  final _Landing landing;
 
   @override
-  RenderObject createRenderObject(BuildContext context) =>
-      _RenderScrollPositionTranslate(controller: controller, axis: axis);
+  RenderObject createRenderObject(BuildContext context) => switch (landing) {
+    _Landing.scrolled => _RenderLandedOnTheGrid(
+      controller: controller,
+      axis: axis,
+      grid: grid,
+    ),
+    _Landing.follows => _RenderFollowingTheScroll(
+      controller: controller,
+      axis: axis,
+      grid: grid,
+    ),
+    _Landing.standsStill => _RenderStandingStill(
+      controller: controller,
+      axis: axis,
+      grid: grid,
+    ),
+  };
 
   @override
   void updateRenderObject(
     BuildContext context,
-    _RenderScrollPositionTranslate renderObject,
+    _RenderLandedOnTheGrid renderObject,
   ) {
     renderObject
       ..controller = controller
-      ..axis = axis;
+      ..axis = axis
+      ..grid = grid;
   }
 }
 
-/// Paints and hit-tests its child at minus the position's pixels, read AT
-/// THAT MOMENT and never kept — a kept value is the copy F-95 was.
-class _RenderScrollPositionTranslate extends RenderProxyBox
+/// Paints its child landed on the device grid at the position of
+/// [controller] — read as it paints and never kept, since a kept value is
+/// the copy F-95 was — and hit-tests it there.
+class _RenderLandedOnTheGrid extends RenderProxyBox
     with RenderShiftedChildHitTest {
-  _RenderScrollPositionTranslate({
-    required ScrollController controller,
-    required Axis axis,
-  }) : _controller = controller,
-       _axis = axis;
+  _RenderLandedOnTheGrid({
+    required this.controller,
+    required this.axis,
+    required this.grid,
+  });
 
-  ScrollController get controller => _controller;
-  ScrollController _controller;
-  set controller(ScrollController value) {
-    if (identical(value, _controller)) {
-      return;
-    }
-    if (attached) {
-      _controller.removeListener(markNeedsPaint);
-      value.addListener(markNeedsPaint);
-    }
-    _controller = value;
-    markNeedsPaint();
-  }
+  /// What it lands by, along which axis, on which grid — a change needs no
+  /// marking. A new position comes with the viewport's repaint, and so does
+  /// a new grid: it is a new ratio, and at a new ratio the scrollable makes
+  /// itself a new position (`ScrollableState.didChangeDependencies`), which
+  /// lays the viewport out again. What follows from outside reads them as
+  /// the frame is composited. ↩️The follower listened, and a new grid
+  /// repainted this; the mutants that took each away lived.
+  ScrollController controller;
+  Axis axis;
+  DeviceGrid grid;
 
-  Axis get axis => _axis;
-  Axis _axis;
-  set axis(Axis value) {
-    if (value == _axis) {
-      return;
-    }
-    _axis = value;
-    markNeedsPaint();
-  }
+  /// How far along [axis] the child is moved, with the position at
+  /// [pixels].
+  double movedAt(double pixels) => deviceGridScrollCorrection(pixels, grid);
 
   Offset get _translation {
-    final pixels = singleScrollPixelsOf(_controller) ?? 0.0;
-    return _axis == Axis.horizontal ? Offset(-pixels, 0) : Offset(0, -pixels);
-  }
-
-  @override
-  void attach(PipelineOwner owner) {
-    super.attach(owner);
-    _controller.addListener(markNeedsPaint);
-  }
-
-  @override
-  void detach() {
-    _controller.removeListener(markNeedsPaint);
-    super.detach();
+    final moved = movedAt(singleScrollPixelsOf(controller) ?? 0.0);
+    return axis == Axis.horizontal ? Offset(moved, 0) : Offset(0, moved);
   }
 
   @override
@@ -288,6 +342,10 @@ class _RenderScrollPositionTranslate extends RenderProxyBox
     }
   }
 
+  /// ⛔Hit-tested where it is painted. Left out, a tap within half a device
+  /// pixel of a row boundary selects the neighbour — invisibly, and only at
+  /// some scroll positions. Measured with it in: 360 boundary taps at a
+  /// worst correction of 0.4995 device px, zero mismatches.
   @override
   Offset get childPaintOffset => _translation;
 
@@ -296,4 +354,82 @@ class _RenderScrollPositionTranslate extends RenderProxyBox
     final translation = _translation;
     transform.translateByDouble(translation.dx, translation.dy, 0, 1);
   }
+}
+
+/// What follows a scroll from outside it: moved by minus the position's
+/// pixels as well, since nothing carries it.
+///
+/// 🚨A SCROLL MOVES A LAYER; IT REPAINTS NOTHING
+/// (playback-page-turn-repaints-the-whole-timeline, 10-11). The move is this
+/// object's own layer's ([_FollowingLayer]), and the child is painted once
+/// under it. ↩️It repainted on every pixel of scroll, and being no repaint
+/// boundary that repaint climbed to the panel's: 🔬379 of the timeline's
+/// render objects for a one-pixel scroll of its frame axis — the same 379 at
+/// every page a running playhead turned.
+class _RenderFollowingTheScroll extends _RenderLandedOnTheGrid {
+  _RenderFollowingTheScroll({
+    required super.controller,
+    required super.axis,
+    required super.grid,
+  });
+
+  @override
+  double movedAt(double pixels) => super.movedAt(pixels) - pixels;
+
+  @override
+  bool get isRepaintBoundary => true;
+
+  @override
+  OffsetLayer updateCompositedLayer({
+    required covariant _FollowingLayer? oldLayer,
+  }) => oldLayer ?? _FollowingLayer(() => _translation);
+
+  /// Painted where it was laid out — its layer moves it.
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child != null) {
+      context.paintChild(child, offset);
+    }
+  }
+}
+
+/// What stands still inside a scroll: carried by the position like all the
+/// content, and moved back as far — the follower's move, the other way
+/// round. Its layer moves it as the follower's does, so a scroll repaints
+/// nothing of it.
+class _RenderStandingStill extends _RenderFollowingTheScroll {
+  _RenderStandingStill({
+    required super.controller,
+    required super.axis,
+    required super.grid,
+  });
+
+  @override
+  double movedAt(double pixels) => -super.movedAt(pixels);
+}
+
+/// The layer of a [_RenderFollowingTheScroll]: where the framework put it,
+/// moved by where the scroll stands as the frame is composited — so it is
+/// added to every frame's scene afresh, never retained, and what it holds
+/// is retained under it.
+class _FollowingLayer extends OffsetLayer {
+  _FollowingLayer(this._moveBy);
+
+  final Offset Function() _moveBy;
+
+  /// Where the framework put it.
+  Offset _placed = Offset.zero;
+
+  @override
+  Offset get offset => _placed + _moveBy();
+
+  /// ⚠️Kept here rather than passed up: the inherited setter marks the layer
+  /// for the scene when the place changes, and a layer that is always added
+  /// must never be marked (an assertion says so).
+  @override
+  set offset(Offset value) => _placed = value;
+
+  @override
+  bool get alwaysNeedsAddToScene => true;
 }

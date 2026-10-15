@@ -144,6 +144,28 @@ void main() {
         greaterThan(at(sync, 'merge --ff-only FETCH_HEAD')),
       );
     });
+
+    test('🚨the offers are asked BEFORE the trunk is fetched — a land that '
+        'falls between the two is then a lane the fetched trunk holds, not '
+        'one nobody took (card '
+        'a-lane-landed-during-a-sync-is-kept-as-turned-down, 2026-10-08)', () {
+      // 🧪Run by hand in scratch repositories that day, with a `git` that
+      // finished the trunk's land inside the away sync: asked after the
+      // fetch, a land landing between them left the lane 「turned down」
+      // for good; asked before it, the lane was let go in that sync or the
+      // next, whichever side of the asking the land fell.
+      final sync = lane.codeOf('cmd_sync');
+      final asked = at(sync, r'offers="$(offers_here)" && asked=1');
+      final fetched = at(sync, r'fetch --quiet "$MIRROR" "$TRUNK"');
+      expect([asked, fetched], everyElement(isNot(-1)));
+      expect(asked, lessThan(fetched));
+      expect(at(sync, 'away || die'), lessThan(asked));
+      expect(
+        sync.join('\n'),
+        contains(r'[ -z "$asked" ] || landed_lanes_leave "$offers"'),
+        reason: 'what it lets go of is judged by what was asked THEN',
+      );
+    });
   });
 
   group('a lane that landed leaves the machine that sent it', () {
@@ -151,15 +173,26 @@ void main() {
 
     test('🚨only on the mirror\'s own word: a mirror that cannot be asked '
         'drops nothing', () {
-      final asked = at(leave, 'ls-remote');
-      expect(asked, isNot(-1));
-      expect(at(leave, '|| return 0'), inInclusiveRange(asked, asked + 2));
-      expect(at(leave, 'cmd_drop'), greaterThan(at(leave, '|| return 0')));
+      final offers = lane.codeOf('offers_here').join('\n');
+      expect(offers, contains('ls-remote'));
       expect(
-        leave.join('\n'),
+        offers,
         contains(r'"refs/heads/sent/$MACHINE/*"'),
         reason: 'it asks after the OFFERS, and only this machine\'s',
       );
+      expect(offers, contains('GIT_TERMINAL_PROMPT=0'));
+      final sync = lane.codeOf('cmd_sync');
+      expect(
+        sync.join('\n'),
+        contains(r'[ -z "$asked" ] || landed_lanes_leave "$offers"'),
+        reason: 'unasked, nothing is looked at — let alone dropped',
+      );
+      expect(
+        leave.join('\n'),
+        isNot(contains('ls-remote')),
+        reason: 'ONE asking, the one `sync` made before it took the trunk',
+      );
+      expect(leave.join('\n'), contains(r'local offers="$1"'));
     });
 
     test('🚨「the offer is gone」 is not 「it landed」: the trunk is asked '
@@ -172,11 +205,38 @@ void main() {
       expect([asked, held, drop], everyElement(isNot(-1)));
       expect(asked, lessThan(held));
       expect(drop, greaterThan(held), reason: 'no drop where it is not held');
+    });
+
+    test('🚨…and 「the trunk does not hold it」 is not 「it was turned down」: '
+        'such a lane stays ASKED ABOUT, and is told of once for the commit '
+        'that was sent (card a-lane-landed-during-a-sync-is-kept-as-turned-'
+        'down, 2026-10-08)', () {
+      // ↩️Until that day this branch unset `sent` — 「the kept lane stops
+      // being asked about」 — and a lane that had landed while the mirror's
+      // trunk lagged was kept for ever, under a warning that sent its
+      // author looking. 🧪Run by hand that day: the warning came once, the
+      // next sync said nothing, and the sync after the trunk reached the
+      // mirror let the lane go.
+      final asked = at(leave, r'if ! trunk_holds "$sent"; then');
+      final held = at(leave, 'elif');
+      final unheld = leave.sublist(asked, held);
       expect(
-        leave.sublist(asked, held).join('\n'),
-        contains('config --unset'),
-        reason: 'the kept lane stops being asked about, and says why',
+        unheld.join('\n'),
+        isNot(contains('config --unset')),
+        reason: 'it is asked about again at the next sync',
       );
+      final told = unheld.indexWhere(
+        (l) => l.contains(r'config --get "branch.$ref.unheld"'),
+      );
+      expect(told, isNot(-1));
+      expect(unheld[told], contains(r'= "$sent" ]'));
+      expect(unheld[told + 1].trim(), '&& continue');
+      final noted = unheld.indexWhere(
+        (l) => l.contains(r'config "branch.$ref.unheld" "$sent"'),
+      );
+      final said = unheld.indexWhere((l) => l.contains('echo'));
+      expect(noted, greaterThan(told + 1));
+      expect(said, greaterThan(noted), reason: 'said after it is noted');
     });
 
     test('🚨whether the trunk holds a lane is asked by PATCH — `land` '
@@ -398,6 +458,14 @@ void main() {
       expect([merged, names, deleted], everyElement(isNot(-1)));
       expect(names, greaterThan(merged));
       expect(deleted, greaterThan(names));
+      expect(
+        at(land, 'GCM_INTERACTIVE=Never mirror_trunk'),
+        inExclusiveRange(merged, names),
+        reason: '🚨the trunk reaches the mirror BEFORE the offer leaves it: '
+            'the machine that sent the lane reads a gone offer as 「look in '
+            'the trunk」, and the trunk it looks in is the mirror\'s (card '
+            'a-lane-landed-during-a-sync-is-kept-as-turned-down)',
+      );
       final push = land.sublist(names, deleted + 1).join('\n');
       expect(push, contains('GIT_TERMINAL_PROMPT=0'));
       expect(push, contains('GCM_INTERACTIVE=Never'));

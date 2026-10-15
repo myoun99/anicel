@@ -87,6 +87,8 @@ Layer duplicateLayerAsIndependentCopy({
     ),
     isVisible: source.isVisible,
     collapsed: source.collapsed,
+    lanesExpanded: source.lanesExpanded,
+    expandedLaneGroups: source.expandedLaneGroups,
     muted: source.muted,
     audioGain: source.audioGain,
     audioPan: source.audioPan,

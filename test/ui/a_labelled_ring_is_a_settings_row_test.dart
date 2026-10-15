@@ -12,7 +12,6 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
-import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 import '../helpers/boolean_dot_probe.dart';
 import '../helpers/solid_png_fixture.dart';
@@ -32,8 +31,10 @@ import '../helpers/temp_dir.dart';
 /// `one_boolean_control_test` holds that; this holds what a hand meets:
 /// ① a press on the LABEL turns the toggle,
 /// ② the ring sits to the RIGHT of the label.
-/// And where a reference row can stand in the same tree (the brush panel),
-/// ③ the label reads at the settings row's size.
+/// And where its neighbours stand in the same tree (the brush panel),
+/// ③ the label reads at their size — the tool settings' one name size
+/// (tool-settings-panel-tidy, 유저 2026-10-10: 「켜고 끄는 줄도 같은
+/// 높이와 같은 글자」).
 void main() {
   /// ② — the ring's box starts where the label's box has ended.
   void expectRingRightOf(WidgetTester tester, Finder tile, Finder label) {
@@ -48,10 +49,9 @@ void main() {
   }
 
   testWidgets('the brush settings panel\'s switch: the label presses it, the '
-      'ring is on the right, the label reads at the settings size', (
+      'ring is on the right, the label reads as the names beside it', (
     tester,
   ) async {
-    const reference = 'A settings row as the rest of the app has it';
     var state = BrushToolState.defaults;
     await tester.pumpWidget(
       MaterialApp(
@@ -59,11 +59,6 @@ void main() {
           body: SingleChildScrollView(
             child: Column(
               children: [
-                SettingsSwitchRow(
-                  label: reference,
-                  value: false,
-                  onChanged: (_) {},
-                ),
                 StatefulBuilder(
                   builder: (context, setState) => BrushSettingsPanel(
                     state: state,
@@ -93,9 +88,10 @@ void main() {
       reason: 'only the ring pressed here before',
     );
     expectRingRightOf(tester, find.byKey(tile), label);
+    // A bar's name, in the column beside it.
     expect(
       tester.getSize(label).height,
-      tester.getSize(find.text(reference)).height,
+      tester.getSize(find.text(AppText.strings.brFlow)).height,
     );
   });
 

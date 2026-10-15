@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/pinch_recognised_at.dart';
 import 'brush_canvas_test_helpers.dart';
 
 /// Everything a floor pill shows that a rail pill folds away — in the order
@@ -65,21 +66,26 @@ Widget floorPillHarness({
   CanvasViewport? viewport,
   Rect? unframedFit,
   bool hasContentToView = true,
+  bool oneToOneOnPill = false,
   ValueChanged<CanvasViewport>? onViewportChanged,
   List<Widget> pageStrip = const [],
+  EdgeInsets floorCover = EdgeInsets.zero,
+  CanvasFloorBand? floorLeftRailBand,
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
     coordinator: BrushCanvasFixture.createCoordinator(frameKeys: frameKeys),
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-    floorCover: EdgeInsets.zero,
+    floorCover: floorCover,
+    floorLeftRailBand: floorLeftRailBand,
     pageStrip: pageStrip,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
     unframedFit: unframedFit,
     onViewportChanged: onViewportChanged,
     hasContentToView: hasContentToView,
+    oneToOneOnPill: oneToOneOnPill,
     paperColor: 0xFFFFFFFF,
     onPaperColorChanged: (_) {},
     pasteboardColor: 0xFF202020,
@@ -115,7 +121,11 @@ Widget floorPillHarness({
           width: width,
           height: 420,
           child: onFloor
-              ? CanvasFloorInsets(insets: EdgeInsets.zero, child: panel)
+              ? CanvasFloorInsets(
+                  insets: floorCover,
+                  leftRailBand: floorLeftRailBand,
+                  child: panel,
+                )
               : panel,
         ),
       ),
@@ -311,9 +321,10 @@ void main() {
   });
 
   testWidgets('🗣️F-209: a docked panel\'s lanes take their room, and every '
-      'panel\'s pill its band — Fit centres the artwork in what they leave, '
-      'the pill and the page strip float over it; ringed on the artwork '
-      'side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」)', (
+      'panel\'s pill and page strip their bands — Fit centres the artwork in '
+      'what they leave, the pill and the strip floating on them; ringed on '
+      'the artwork side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」 · '
+      'F-346: the strip as the pill)', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1000, 600));
@@ -338,13 +349,23 @@ void main() {
         // The harness panel is `width` × 420; the artwork is 300 × 300.
         final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
         final band = pillBandOf(tester);
+        final stripBand = pageStripBandOf(tester);
         final where = '${onFloor ? 'floor' : 'docked'} at ${width}px';
         expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
+        expect(
+          stripBand,
+          greaterThan(30),
+          reason: 'premise: the strip\'s band',
+        );
         final centre = renderOf(
           tester,
           fitted!,
         ).canvasToViewport(CanvasPoint(x: 150, y: 150));
-        expect(centre.x, closeTo((width - lane) / 2, 0.5), reason: where);
+        expect(
+          centre.x,
+          closeTo(stripBand + (width - stripBand - lane) / 2, 0.5),
+          reason: 'beside the strip\'s band ($where)',
+        );
         expect(
           centre.y,
           closeTo(band + (420 - band - lane) / 2, 0.5),
@@ -392,6 +413,203 @@ void main() {
     const ring = BorderSide(color: AppColors.backdrop);
     expect(ringOf('canvas-panbar-vertical').left, ring);
     expect(ringOf('canvas-panbar-horizontal').top, ring);
+  });
+
+  group('the page strip and a rail lying on the floor\'s left edge', () {
+    final shell = find.byKey(
+      const ValueKey<String>('canvas-editor-panel-shell'),
+    );
+    final stripCapsule = find.byKey(
+      const ValueKey<String>('canvas-page-strip'),
+    );
+    double stripLeft(WidgetTester tester) =>
+        tester.getRect(stripCapsule).left - tester.getRect(shell).left;
+
+    /// The floor at 900 × 420, a rail [rail] wide lying on its left edge
+    /// over [band] — under a region [top] tall docked on top — Fit pressed:
+    /// where the strip stands in from the box's edge, and where Fit put the
+    /// artwork's middle.
+    Future<({double left, double centre})> fitBeside(
+      WidgetTester tester, {
+      required double rail,
+      required CanvasFloorBand band,
+      double top = 0,
+    }) async {
+      CanvasViewport? fitted;
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          floorCover: EdgeInsets.only(left: rail, top: top),
+          floorLeftRailBand: band,
+          onViewportChanged: (view) => fitted = view,
+          pageStrip: const [SizedBox(width: 26, height: 40)],
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      );
+      await tester.pumpAndSettle();
+      return (
+        left: stripLeft(tester),
+        centre: renderOf(
+          tester,
+          fitted!,
+        ).canvasToViewport(CanvasPoint(x: 150, y: 150)).x,
+      );
+    }
+
+    // A short rail panel: its band ends far above the strip, which stands
+    // in the middle of the 420px edge.
+    const above = (top: 0.0, bottom: 120.0);
+
+    testWidgets('F-346: a rail that is not beside the strip leaves it on the '
+        'box\'s own left edge, so Fit pays the rail or the strip, whichever '
+        'reaches further — never the two end to end', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final narrow = await fitBeside(tester, rail: 20, band: above);
+      final strip = pageStripBandOf(tester);
+      expect(narrow.left, closeTo(6, 0.01), reason: 'on the box\'s own edge');
+      expect(strip, greaterThan(20), reason: '⛔premise: it reaches past');
+      expect(narrow.centre, closeTo(strip + (900 - strip) / 2, 0.5));
+
+      final wide = await fitBeside(tester, rail: 200, band: above);
+      expect(wide.left, closeTo(6, 0.01));
+      expect(
+        strip,
+        lessThan(200),
+        reason: '⛔premise: the rail\'s edge reaches past the strip',
+      );
+      expect(wide.centre, closeTo(200 + (900 - 200) / 2, 0.5));
+    });
+
+    testWidgets('🗣️R4 · R3 #5: a rail beside the strip takes it past the '
+        'rail, as the vertical bar steps past the right one — under a rail '
+        'no page could be turned — and then Fit pays the two end to end', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // Read where nothing is beside it: its band, and the span it holds.
+      await fitBeside(tester, rail: 200, band: above);
+      final strip = pageStripBandOf(tester);
+      final span = tester
+          .getRect(stripCapsule)
+          .shift(-tester.getRect(shell).topLeft);
+      final sum = 200 + strip + (900 - 200 - strip) / 2;
+      const larger = 200 + (900 - 200) / 2;
+
+      final along = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 0, bottom: 420),
+      );
+      expect(along.left, closeTo(206, 0.01), reason: 'the rail, the margin');
+      expect(along.centre, closeTo(sum, 0.5));
+
+      // ★At the strip's own ends: Fit asks with the height the strip was
+      // laid out at, not about the middle of the edge.
+      final reaching = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 0, bottom: span.top + 1),
+      );
+      expect(reaching.left, closeTo(206, 0.01), reason: 'one pixel into it');
+      expect(reaching.centre, closeTo(sum, 0.5));
+      final touching = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 0, bottom: span.top),
+      );
+      expect(touching.left, closeTo(6, 0.01), reason: 'ends where it starts');
+      expect(touching.centre, closeTo(larger, 0.5));
+      final below = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: span.bottom, bottom: 420),
+      );
+      expect(below.left, closeTo(6, 0.01), reason: 'starts where it ends');
+      expect(below.centre, closeTo(larger, 0.5));
+
+      // ★Under a region docked on top the strip holds the middle of what is
+      // left, and the rail's band is read on the floor's own axis.
+      await fitBeside(tester, rail: 200, band: above, top: 200);
+      final lower = tester
+          .getRect(stripCapsule)
+          .shift(-tester.getRect(shell).topLeft);
+      expect(lower.top, greaterThan(span.top), reason: '⛔premise: lower');
+      final underRegion = await fitBeside(
+        tester,
+        rail: 200,
+        band: (top: 200, bottom: lower.top + 1),
+        top: 200,
+      );
+      expect(underRegion.left, closeTo(206, 0.01));
+      expect(underRegion.centre, closeTo(sum, 0.5));
+    });
+
+    testWidgets('a panel shorter than the strip gets the whole strip, '
+        'smaller, its margin kept above and below', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          pageStrip: const [SizedBox(width: 26, height: 600)],
+        ),
+      );
+      await tester.pumpAndSettle();
+      final box = tester.getRect(shell);
+      final capsule = tester.getRect(stripCapsule);
+      expect(capsule.top - box.top, closeTo(6, 0.01));
+      expect(box.bottom - capsule.bottom, closeTo(6, 0.01));
+    });
+
+    testWidgets('a strip that grows into a rail\'s band steps past it, and '
+        'the fit the panel paints follows the next frame: framing learns the '
+        'height the strip was laid out at', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // The band ends between the short strip's top and the tall one's.
+      Widget withStrip(double height) => floorPillHarness(
+        width: 900,
+        onFloor: true,
+        floorCover: const EdgeInsets.only(left: 200),
+        floorLeftRailBand: (top: 0, bottom: 150),
+        unframedFit: const Rect.fromLTWH(0, 0, 300, 300),
+        pageStrip: [SizedBox(width: 26, height: height)],
+      );
+      // What the panel paints: the fit resolves at the read, never stored.
+      double paintedCentre() => tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport
+          .canvasToViewport(CanvasPoint(x: 150, y: 150))
+          .x;
+
+      await tester.pumpWidget(withStrip(40));
+      await tester.pumpAndSettle();
+      final strip = pageStripBandOf(tester);
+      expect(
+        tester.getRect(stripCapsule).top - tester.getRect(shell).top,
+        greaterThan(150),
+        reason: '⛔premise: the short strip is clear of the band',
+      );
+      expect(paintedCentre(), closeTo(200 + (900 - 200) / 2, 0.5));
+
+      await tester.pumpWidget(withStrip(240));
+      await tester.pumpAndSettle();
+      expect(stripLeft(tester), closeTo(206, 0.01));
+      expect(
+        paintedCentre(),
+        closeTo(200 + strip + (900 - 200 - strip) / 2, 0.5),
+      );
+    });
   });
 
   testWidgets('🗣️playback\'s fit — the frame an owner hands a view nobody '
@@ -873,8 +1091,11 @@ void main() {
       // 1px through the band where clusters actually shed — a coarser step
       // walked straight past a width that overflowed by 2px — and coarse
       // above it, where nothing sheds and only the arithmetic is on trial.
+      // 🚨From under the pill's LAST shape, Fit and the gear (a panel under
+      // 103px — the timesheet's rail below a 438px window): there all it
+      // can do is get smaller. ↩️From 120 it never looked.
       for (
-        var width = 120.0;
+        var width = 60.0;
         width <= 620.0;
         width += scale > 1 ? 4 : (width < 340 ? 1 : 8)
       ) {
@@ -1120,6 +1341,38 @@ void main() {
       findsOneWidget,
       reason: '1:1 is in every gear — it is the zoom steps that are not',
     );
+  });
+
+  // F-315 (유저 2026-10-08): 「뷰어패널에 1:1 보기버튼 넣고 … 임포트/익스포트
+  // 창에서도 … 법 통일해서 적용되도록」.
+  testWidgets('🗣️a panel that keeps its 1:1 out shows it on the pill off the '
+      'floor — and folds it into the gear only for room', (tester) async {
+    final reset = find.byKey(const ValueKey<String>('canvas-viewport-reset'));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 600));
+
+    await tester.pumpWidget(floorPillHarness(width: 600, onFloor: false));
+    await tester.pumpAndSettle();
+    expect(reset, findsNothing, reason: 'premise: a rail pill folds it');
+
+    await tester.pumpWidget(
+      floorPillHarness(width: 600, onFloor: false, oneToOneOnPill: true),
+    );
+    await tester.pumpAndSettle();
+    expect(reset, findsOneWidget, reason: 'on the pill, the gear shut');
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')),
+      findsNothing,
+      reason: 'the zoom steps stay the floor\'s',
+    );
+
+    await tester.pumpWidget(
+      floorPillHarness(width: 150, onFloor: false, oneToOneOnPill: true),
+    );
+    await tester.pumpAndSettle();
+    expect(reset, findsNothing, reason: 'no room for it on the pill');
+    await openViewSettings(tester);
+    expect(reset, findsOneWidget, reason: 'so the gear is where it went');
   });
 
   // F-77 (유저: 「뷰어패널 열린거 없으면 확대나 스크롤바같은 조작 버튼
@@ -1434,18 +1687,19 @@ void main() {
         )
         .viewport;
 
-    /// R10: ONE tap opens the entry. It was a double tap, which held every
-    /// tap on the readout for the double-tap window — ~300ms of nothing,
-    /// which the user asked to be gone everywhere. Nothing was lost: the
-    /// label had no single-tap action to collide with.
+    /// The readout's PENCIL opens the entry (tool-settings-panel-tidy, 유저
+    /// 2026-10-10: 「편집창 여는건 그 옆에 편집아이콘 둬서」). ↩️A tap on the
+    /// readout itself did (R10 — before that a double tap, which held every
+    /// tap for the double-tap window), and had to wait for the release to
+    /// know a tap from a drag.
     Future<void> tapZoomLabel(WidgetTester tester) async {
       await tester.tap(
-        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
     }
 
-    testWidgets('tap, type, and submit set the zoom', (tester) async {
+    testWidgets('its pencil, type, and submit set the zoom', (tester) async {
       await pumpZoomPanel(tester);
 
       await tapZoomLabel(tester);
@@ -1949,7 +2203,7 @@ void main() {
         'frame — and the wheel click, unmapped by default, drags nothing', (
       tester,
     ) async {
-      addTearDown(() => CanvasPanHold.held.value = false);
+      addTearDown(() => CanvasViewHold.held.value = null);
       final viewports = <CanvasViewport>[];
       await tester.pumpWidget(
         blankPanel(
@@ -1972,7 +2226,7 @@ void main() {
       await dragWith(kMiddleMouseButton);
       expect(viewports, isEmpty, reason: '「잔재 삭제」: the wheel pans nothing');
 
-      CanvasPanHold.held.value = true;
+      CanvasViewHold.held.value = ViewHold.pan;
       await dragWith(kPrimaryButton);
       expect(viewports, isNotEmpty);
       expect(viewports.last.panX, 12);
@@ -2047,14 +2301,11 @@ void main() {
       );
       await tester.pump();
 
-      final firstFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
+      final (firstFinger, secondFinger) = await pinchRecognisedAt(
+        tester,
+        viewportPoint(tester, const Offset(40, 50)),
+        viewportPoint(tester, const Offset(80, 50)),
       );
-      final secondFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
-      await firstFinger.down(viewportPoint(tester, const Offset(40, 50)));
-      await secondFinger.down(viewportPoint(tester, const Offset(80, 50)));
 
       // Pinch out: distance 40 → 80 doubles the zoom around the start
       // focal (60,50); the new focal (80,50) drags the view 20px along x.
@@ -2107,17 +2358,11 @@ void main() {
 
       // Finger 1 starts what looks like a stroke; finger 2 turns the
       // interaction into navigation (the view cancels the stroke).
-      final firstFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
+      final (firstFinger, secondFinger) = await pinchRecognisedAt(
+        tester,
+        viewportPoint(tester, const Offset(40, 40)),
+        viewportPoint(tester, const Offset(80, 40)),
       );
-      await firstFinger.down(viewportPoint(tester, const Offset(40, 40)));
-      final secondFinger = await tester.createGesture(
-        kind: PointerDeviceKind.touch,
-      );
-      await secondFinger.down(viewportPoint(tester, const Offset(80, 40)));
-      // The view cancels the touch stroke synchronously; the panel's
-      // strokeActive flag clears on the next frame — pump before moving.
-      await tester.pump();
 
       await secondFinger.moveTo(viewportPoint(tester, const Offset(100, 40)));
       await firstFinger.up();
@@ -2453,42 +2698,46 @@ void main() {
       );
     });
 
-    testWidgets('🗣️I-15: the pan hold takes the aim — the outline goes the '
-        'moment it is held, a move under it does not bring it back, and '
-        'letting go gives it to the next move', (tester) async {
-      addTearDown(() => CanvasPanHold.held.value = false);
-      await pumpWithTool(tester, CanvasTool.brush);
-      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: Offset.zero);
-      addTearDown(mouse.removePointer);
-      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
-      await tester.pump();
-      final outline = find.byKey(
-        const ValueKey<String>('brush-cursor-overlay'),
-      );
-      expect(toolCursorShownAt(tester, outline), isNotNull);
+    for (final hold in ViewHold.values) {
+      testWidgets('🗣️I-15 · I-88: the ${hold.name} hold takes the aim — the '
+          'outline goes the moment it is held, a move under it does not '
+          'bring it back, and letting go gives it to the next move', (
+        tester,
+      ) async {
+        addTearDown(() => CanvasViewHold.held.value = null);
+        await pumpWithTool(tester, CanvasTool.brush);
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+        await tester.pump();
+        final outline = find.byKey(
+          const ValueKey<String>('brush-cursor-overlay'),
+        );
+        expect(toolCursorShownAt(tester, outline), isNotNull);
 
-      CanvasPanHold.held.value = true;
-      await tester.pump();
-      expect(
-        toolCursorShownAt(tester, outline),
-        isNull,
-        reason: 'held, a press paints nothing',
-      );
-      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(12, 8)));
-      await tester.pump();
-      expect(
-        toolCursorShownAt(tester, outline),
-        isNull,
-        reason: 'a move under the hold aims none',
-      );
+        CanvasViewHold.held.value = hold;
+        await tester.pump();
+        expect(
+          toolCursorShownAt(tester, outline),
+          isNull,
+          reason: 'held, a press paints nothing',
+        );
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(12, 8)));
+        await tester.pump();
+        expect(
+          toolCursorShownAt(tester, outline),
+          isNull,
+          reason: 'a move under the hold aims none',
+        );
 
-      CanvasPanHold.held.value = false;
-      await tester.pump();
-      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 10)));
-      await tester.pump();
-      expect(toolCursorShownAt(tester, outline), isNotNull);
-    });
+        CanvasViewHold.held.value = null;
+        await tester.pump();
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(16, 10)));
+        await tester.pump();
+        expect(toolCursorShownAt(tester, outline), isNotNull);
+      });
+    }
 
     testWidgets('a tiny brush falls back to the crosshair', (tester) async {
       final frameKeys = BrushCanvasFixture.createFrameKeys();

@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
@@ -28,6 +29,7 @@ TvppLayer _layer(
   Map<int, String> names = const {},
   int opacity = 255,
   bool visible = true,
+  bool collapsed = false,
   TvpEdgeBehavior pre = TvpEdgeBehavior.none,
   TvpEdgeBehavior post = TvpEdgeBehavior.none,
 }) =>
@@ -40,6 +42,7 @@ TvppLayer _layer(
       end: start + (slots.isEmpty ? 0 : slots.length - 1),
       opacity: opacity,
       visible: visible,
+      collapsed: collapsed,
       preBehavior: pre,
       postBehavior: post,
       slots: slots,
@@ -125,6 +128,37 @@ void main() {
       expect(a.blocks[2].breakdownOffsets, isEmpty);
     });
 
+    test('🎯a layer of a kind the parser does not know is left out and named '
+        'in every decoder\'s one word (유저 10-09) — and the image marks '
+        'behind it still land on their own layer', () {
+      final clip = _clip(
+        layers: [
+          _layer('cam', kind: TvppLayerKind.camera),
+          _layer('puppet', kind: TvppLayerKind.unknown, slots: [_image()]),
+          _layer('A', start: 3, slots: [_image(), _hold(), _hold()]),
+        ],
+        marks: [
+          // layerIndex counts INTO clip.layers: 2 = A, past the puppet.
+          const TvppImageMark(layerIndex: 2, frame: 4, colorIndex: 1),
+        ],
+      );
+      final conversion = convertTvppClip(clip, clipIndex: 0);
+
+      expect([for (final layer in conversion.result.layers) layer.name], [
+        'A',
+      ]);
+      expect(
+        conversion.result.layers.single.blocks.single.breakdownOffsets,
+        const [1],
+      );
+      expect(conversion.result.warnings, [unsupportedLayerKind('puppet')]);
+      expect(
+        conversion.slotsByFile.keys,
+        everyElement(startsWith('tvpp:2:')),
+        reason: 'nothing of the puppet is decoded',
+      );
+    });
+
     test('hidden stays hidden and opacity lands on the artist\'s percent',
         () {
       // TVPaint stores 0..255 but its UI deals in whole percent: the
@@ -169,6 +203,51 @@ void main() {
       expect(layers[0].parentIndex, -1); // C → root
     });
 
+    test('a folder keeps its fold — a folder inside a folder as well, and '
+        'only a folder: a CTG\'s folder of sources stays open', () {
+      final clip = _clip(
+        layers: [
+          _layer(
+            'OUT',
+            kind: TvppLayerKind.folder,
+            layerId: 9,
+            collapsed: true,
+          ),
+          _layer(
+            'IN',
+            kind: TvppLayerKind.folder,
+            layerId: 8,
+            parentId: 9,
+            collapsed: true,
+          ),
+          _layer('A', parentId: 8, slots: [_image()]),
+          _layer('OPEN', kind: TvppLayerKind.folder, layerId: 7),
+          _layer('B', parentId: 7, slots: [_image()]),
+          _layer(
+            'C(CTGlayer)',
+            kind: TvppLayerKind.ctg,
+            layerId: 6,
+            collapsed: true,
+            slots: [_image()],
+            second: [_image()],
+          ),
+        ],
+      );
+      final layers = convertTvppClip(clip, clipIndex: 0).result.layers;
+      bool folded(String name) => layers
+          .singleWhere((layer) => layer.isFolder && layer.name == name)
+          .collapsed;
+
+      expect(folded('OUT'), isTrue);
+      expect(folded('IN'), isTrue, reason: 'given its parent, still folded');
+      expect(folded('OPEN'), isFalse);
+      expect(
+        folded('C(CTGlayer)'),
+        isFalse,
+        reason: 'TVPaint has no folder there — its fold is a thumbnail strip',
+      );
+    });
+
     test('a CTG layer becomes a folder holding its two source streams',
         () {
       final clip = _clip(
@@ -207,7 +286,19 @@ void main() {
       expect(still.camera.positions, hasLength(12));
       expect(still.camera.positions.first.x, 160);
       expect(still.camera.positions.last.x, 160);
-      expect(still.camera.keyframes, hasLength(1));
+      expect(
+        [
+          still.camera.keyedOn.position,
+          still.camera.keyedOn.zoom,
+          still.camera.keyedOn.rotation,
+        ],
+        [
+          [0],
+          [0],
+          [0],
+        ],
+        reason: 'one key, on every lane',
+      );
 
       // A linear two-key pan (no easing profile): halfway in time is
       // halfway in space. The key is REACHED one frame past its instant

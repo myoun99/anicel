@@ -92,6 +92,8 @@ void main() {
     EditorSessionManager? on,
     String open = path,
     CanvasViewport? view,
+    // False = the viewer stands with nothing asked of it.
+    bool opens = true,
   }) async {
     slot.framedFor.value = open;
     slot.viewport.value =
@@ -115,7 +117,9 @@ void main() {
         ),
       ),
     );
-    slot.open(MediaViewerRequest(path: open, kind: MediaAssetKind.pdf));
+    if (opens) {
+      slot.open(MediaViewerRequest(path: open, kind: MediaAssetKind.pdf));
+    }
     await tester.pumpAndSettle();
   }
 
@@ -277,6 +281,68 @@ void main() {
     await tester.pump();
 
     expect(held.isEmpty, isTrue);
+    expect(
+      cursorNotices.message,
+      isNull,
+      reason: 'what was cut is gone — that is not a cut that found nothing',
+    );
+  });
+
+  // 🗣️F-254 (유저 2026-10-08): 「잘라내기도구로 빈 곳에 그렸을때도 동일하게
+  // 법 통일해서 적용」.
+  testWidgets('an outline beside the page cuts nothing — and says so, as '
+      'every cut that finds nothing does', (tester) async {
+    await pumpViewer(tester);
+
+    await drag(
+      tester,
+      onScreen(tester, 1300, 200),
+      onScreen(tester, 1500, 500),
+      kind: PointerDeviceKind.mouse,
+    );
+
+    expect(held.isEmpty, isTrue);
+    expect(document.regionReads, isEmpty);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
+  });
+
+  testWidgets('an outline over a stretch of the page with nothing on it '
+      'cuts nothing — and says so too', (tester) async {
+    document = FakePdfDocument(pageSizes: const [pageSize], clear: true);
+    await pumpViewer(tester);
+
+    await cutDrag(tester);
+
+    expect(
+      document.regionReads,
+      hasLength(1),
+      reason: '⛔premise: the page under the outline was read',
+    );
+    expect(held.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
+  });
+
+  testWidgets('an outline on a viewer with nothing open cuts nothing — and '
+      'says so too', (tester) async {
+    await pumpViewer(tester, opens: false);
+    expect(
+      find.byType(BrushCanvasPanel),
+      findsOneWidget,
+      reason: '⛔premise: the empty viewer still takes the outline',
+    );
+
+    await drag(
+      tester,
+      onScreen(tester, 100, 100),
+      onScreen(tester, 600, 500),
+      kind: PointerDeviceKind.mouse,
+    );
+
+    expect(held.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   testWidgets('a read out when a save moves the copy it reads from holds '

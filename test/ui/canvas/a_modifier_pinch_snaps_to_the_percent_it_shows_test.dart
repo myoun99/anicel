@@ -6,6 +6,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
 
+import '../../helpers/pinch_recognised_at.dart';
+
 /// 🚨THE MODIFIER-PINCH SNAPS TO THE PERCENT THE READOUT SHOWS (audit
 /// 2026-09-15).
 ///
@@ -54,15 +56,11 @@ void main() {
     );
 
     // Two fingers pinch OUT to render 2× — display 300% at this ratio.
-    final first = await tester.startGesture(
+    final (first, second) = await pinchRecognisedAt(
+      tester,
       const Offset(200, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 41,
-    );
-    final second = await tester.startGesture(
       const Offset(300, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 42,
+      pointer: 41,
     );
     await first.moveBy(const Offset(-50, 0));
     await second.moveBy(const Offset(50, 0));

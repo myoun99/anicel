@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 /// UI-R9 #6, restated 2026-08-10: the counter reads the track-global frame
 /// ABOVE the cut-local one — two lines, one number each, no `G`/`L` labels
@@ -45,8 +46,9 @@ void main() {
     return manager;
   }
 
-  String lineText(WidgetTester tester, String keyValue) =>
-      tester.widget<Text>(find.byKey(ValueKey<String>(keyValue))).data!;
+  String lineText(WidgetTester tester, String keyValue) => tester
+      .renderObject<RenderTickText>(find.byKey(ValueKey<String>(keyValue)))
+      .data;
 
   String globalLine(WidgetTester tester) =>
       lineText(tester, 'timeline-global-frame-counter');

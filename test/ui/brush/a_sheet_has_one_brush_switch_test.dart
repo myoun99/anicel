@@ -60,7 +60,7 @@ void main() {
         seen.add((
           selected: button.isSelected,
           tooltip: button.tooltip,
-          icon: (button.icon as Icon).icon,
+          icon: button.icon,
         ));
       }
       expect(seen.map((s) => s.selected), [false, true]);

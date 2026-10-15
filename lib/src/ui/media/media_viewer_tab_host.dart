@@ -11,15 +11,14 @@ import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_piece.dart' show CutPiece;
+import '../../models/project_frame_rate.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
-import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/canvas_selection_region.dart';
-import '../../services/canvas_selection_shape.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/persistence/file_type_groups.dart';
@@ -33,6 +32,7 @@ import '../brush/canvas_book.dart';
 import '../brush/canvas_floor_insets.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
+import '../brush/cut_into_the_hand.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_transport.dart';
 import '../dialogs/open_file_flow.dart';
@@ -43,9 +43,11 @@ import 'media_asset_drop_target.dart';
 import 'media_run.dart';
 import 'open_viewer_document.dart';
 import 'page_rasters.dart';
-import 'viewer_raster_budget.dart';
+import 'viewer_page_loading.dart';
+import 'viewer_pages_and_run.dart';
 import 'viewer_render_tier.dart';
 import 'viewer_sound.dart';
+import 'waveform_marks_painter.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
 import '../widgets/panel_flyout.dart';
@@ -54,7 +56,6 @@ import '../widgets/static_raster.dart';
 import '../widgets/cursor_notice.dart' show cursorNotices;
 import '../listenable_rebind.dart';
 import '../sliced_value_listenable_builder.dart';
-import '../repaint_props.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -177,6 +178,7 @@ class MediaViewerTabHost extends StatefulWidget {
     required this.request,
     required this.position,
     this.onRequestPicked,
+    this.onRequestClosed,
     this.onSwapViewers,
     this.onRegisterAsset,
     this.isPathRegistered,
@@ -233,19 +235,24 @@ class MediaViewerTabHost extends StatefulWidget {
   /// button: a viewer with nowhere to put the reply should not ask.
   final ValueChanged<MediaViewerRequest>? onRequestPicked;
 
+  /// Empties the viewer — its close button, beside the open one. Null
+  /// hides that button, as [onRequestPicked] hides its own.
+  final VoidCallback? onRequestClosed;
+
   /// Trades documents with the OTHER viewer (유저 확정 ⑪): same button on
   /// both sides, because swapping is symmetric.
   final VoidCallback? onSwapViewers;
 
   /// Adds the file being viewed to the media pool (유저 확정 ⑱), through
-  /// whatever the app's one import does. Offered only for a file that is
-  /// not in the pool yet — [isPathRegistered] answers that.
+  /// whatever the app's one import does — done once that is. Offered only
+  /// for a file that is not in the pool yet — [isPathRegistered] answers
+  /// that.
   ///
   /// The point of the button: a loose path is remembered as an absolute
   /// path and breaks on another machine, while a pooled one travels with
   /// the project. This is how a person promotes the first into the
   /// second without going back to the browser to find the file again.
-  final ValueChanged<String>? onRegisterAsset;
+  final FutureOr<void> Function(String path)? onRegisterAsset;
   final bool Function(String path)? isPathRegistered;
 
   /// A media-browser row dropped on this panel (유저 확정 ⑬).
@@ -269,8 +276,8 @@ class MediaViewerTabHost extends StatefulWidget {
   /// as long as it is mounted.
   final ValueNotifier<ViewerLoudness>? loudness;
 
-  /// Injectable loose-file picker (tests).
-  final Future<String?> Function()? filePicker;
+  /// Injectable loose-file picker (tests): answers in place of the dialog.
+  final LooseFilePicker? filePicker;
 
   /// Injectable sound (tests) — the same seam as [filePicker].
   ///
@@ -344,6 +351,7 @@ final class _LetGoOf implements ViewerDocument {
 }
 
 class _MediaViewerTabHostState extends State<MediaViewerTabHost>
+    with TickerProviderStateMixin
     implements PlaybackTransport, MediaRunSurface {
   /// Commit sink required by the panel API; the viewer never invalidates
   /// playback caches.
@@ -357,20 +365,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// had to ask which was live. See [ViewerDocument].
   ViewerDocument? _document;
 
-  /// The document's pages as rasters, under this device's budget — see
-  /// [PageRasters].
-  ///
-  /// ⚠️Built with the State, so a test that wants a tight budget sets
-  /// [ViewerRasterBudget.debugPageBytesOverride] BEFORE the panel mounts;
-  /// pumping the same widget again reuses this State and this budget.
-  late final PageRasters _rasters = PageRasters(
-    budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    ),
-    document: () => _document,
-    distance: (page) => _run.distanceTo(page),
-    rebuild: setState,
-    mounted: () => mounted,
+  /// The document's pages and the run that turns them — see
+  /// [ViewerPagesAndRun].
+  late final ViewerPagesAndRun _pagesAndRun = ViewerPagesAndRun(
+    surface: this,
+    sound: _sound,
     // The census cannot reach into this State, so the total goes to it —
     // see [RenderCaches.viewerRasterBytesByViewer].
     report: (bytes) =>
@@ -378,14 +377,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                 .viewerId] =
             bytes,
   );
-
-  /// The run: the timer turning pages, the sound beside them, and the law
-  /// that the whole transport waits — see [MediaRun].
-  late final MediaRun _run = MediaRun(
-    surface: this,
-    rasters: _rasters,
-    sound: _sound,
-  );
+  PageRasters get _rasters => _pagesAndRun.rasters;
+  MediaRun get _run => _pagesAndRun.run;
 
   // A book's pages one under another, memoized with the document.
   final _stack = IdentityMemo<PageStack>();
@@ -537,7 +530,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     widget.request.removeListener(_onRequestChanged);
     widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
     widget.position.removeListener(_onPosition);
-    // ⚠️Before [_disposeContent]: it stops the timer, and a transport that
+    // ⚠️Before [_disposeContent]: it stops the clock, and a transport that
     // is still registered would report the flip to a gate that is about to
     // lose the object anyway. Leaving it registered is the real hazard —
     // a closed tab would answer 「재생 중」 forever.
@@ -556,7 +549,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   void _onRequestChanged() => _load(widget.request.value);
 
   void _disposeContent() {
-    // A timer outliving its document would page a viewer that has none.
+    // A clock outliving its document would page a viewer that has none.
     _run.letGo();
     _rasters.clear();
     final document = _document;
@@ -830,6 +823,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   // --- The run's surface ([MediaRunSurface]) -------------------------------
 
   @override
+  TickerProvider get vsync => this;
+
+  @override
+  ProjectFrameRate get frameRate =>
+      widget.session.projectSettings.projectFrameRate;
+
+  @override
   ViewerDocument? get document => _document;
 
   @override
@@ -859,7 +859,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 🚨★★★[PlaybackTransport] — this viewer is one of the things the app
   /// can be playing, so the actuation gate stops it with the same law it
   /// stops the canvas with (유저 09-07 `exclusive`, both directions).
-  /// ⛔It answers from the run's timer and stops through [MediaRun.stop]; a
+  /// ⛔It answers from the run's clock and stops through [MediaRun.stop]; a
   /// separate "am I playing" for the gate would be the per-surface check
   /// the gate exists to avoid.
   @override
@@ -879,19 +879,25 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   Future<void> _pickLooseFile() async {
     // 🚨EVERY PICKER SHOWS EVERY FILE (유저 2026-08-29) — the refusal is a
     // notice after the pick, not a greyed-out file in the dialog. The
-    // widget's own [filePicker] seam still wins, so tests drive a path
-    // straight in.
-    final injected = widget.filePicker;
-    final path = injected != null
-        ? await injected()
-        : await openSupportedFile(
-            context,
-            supportedExtensions: FileTypeGroups.viewableMedia.extensions ?? [],
-          );
+    // widget's own [filePicker] seam answers in place of the dialog, and
+    // what it answers is refused the same way.
+    //
+    // 🗣️F-282-Q2 (유저 2026-10-09, 가): the viewer's Open stays a look, and
+    // takes the kinds the one door sends to the import window — sound
+    // included. ↩️Its list left sound out, 「the one deliberate absence」,
+    // after the viewer had learned to open one as its waveform (09-08).
+    final path = await openSupportedFile(
+      context,
+      supportedExtensions: FileTypeGroups.poolMedia.extensions ?? [],
+      picker: widget.filePicker,
+    );
     if (path == null || !mounted) {
       return;
     }
-    final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
+    final kind = mediaAssetKindForPath(path);
+    if (kind == null) {
+      return;
+    }
     widget.onRequestPicked?.call(MediaViewerRequest(path: path, kind: kind));
   }
 
@@ -904,17 +910,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         !(widget.isPathRegistered?.call(path) ?? true);
   }
 
-  void _registerCurrent() {
+  Future<void> _registerCurrent() async {
     final path = _currentRequest?.path;
     if (path == null) {
       return;
     }
-    widget.onRegisterAsset?.call(path);
-    // The import lands synchronously and this panel does not listen to
-    // the session (a viewer that rebuilt on every session notify would
-    // be the expensive kind of panel). Ask again ourselves, so the
-    // button goes quiet the moment its work is done.
-    setState(() {});
+    await widget.onRegisterAsset?.call(path);
+    // This panel does not listen to the session (a viewer that rebuilt on
+    // every session notify would be the expensive kind of panel). Ask again
+    // ourselves once the import is done, so the button goes quiet the
+    // moment its work is.
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// Every widget key in this panel, built from [MediaViewerTabHost.viewerId]
@@ -1019,27 +1027,32 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   ///
   /// In a book (F-201) the page is the one the outline lies on most — the
   /// pages lie one under another — and the outline moves into that page's
-  /// own space. An outline on the desk between pages cuts nothing.
-  void _cutFromPage(CanvasSelectionShape shape) {
+  /// own space. An outline on the desk between pages cuts nothing, and says
+  /// so as every cut that finds nothing does ([cutIntoTheHand]).
+  void _cutFromPage(CanvasSelectionRegion outline) {
     final book = _book;
     if (book == null) {
       final page = _page;
-      _cuts = _cuts.then((_) => _cut(shape, page));
+      _cuts = _cuts.then((_) => _cut(outline, page));
       return;
     }
-    final page = _pageUnder(book, shape);
+    final page = _pageUnder(book, outline);
     if (page == null) {
+      final slot = widget.cutPieceSlot;
+      if (slot != null) {
+        cutIntoTheHand(null, slot.hold);
+      }
       return;
     }
     final at = book.pageRect(page).topLeft;
-    final onPage = shape.translated(dx: -at.dx, dy: -at.dy);
+    final onPage = outline.translated(dx: -at.dx, dy: -at.dy);
     _cuts = _cuts.then((_) => _cut(onPage, page));
   }
 
-  /// The page of [book] the outline [shape] covers most — null when it
-  /// covers none.
-  int? _pageUnder(PageStack book, CanvasSelectionShape shape) {
-    final b = CanvasSelectionRegion.shape(shape).selectedBounds;
+  /// The page of [book] the [outline] covers most — null when it covers
+  /// none.
+  int? _pageUnder(PageStack book, CanvasSelectionRegion outline) {
+    final b = outline.selectedBounds;
     final bounds = Rect.fromLTRB(b.left, b.top, b.right, b.bottom);
     int? most;
     var mostArea = 0.0;
@@ -1054,11 +1067,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     return most;
   }
 
-  Future<void> _cut(CanvasSelectionShape shape, int page) async {
+  Future<void> _cut(CanvasSelectionRegion outline, int page) async {
     final slot = widget.cutPieceSlot;
     final document = _document;
     final pageCount = _pageCount;
-    if (!mounted || slot == null || document == null || pageCount == 0) {
+    if (!mounted || slot == null) {
+      return;
+    }
+    if (document == null || pageCount == 0) {
+      cutIntoTheHand(null, slot.hold);
       return;
     }
     final pageIndex = page.clamp(0, pageCount - 1);
@@ -1087,7 +1104,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final CutPiece? piece;
     try {
       piece = await buildCutPieceFromPicture(
-        region: CanvasSelectionRegion.shape(shape),
+        region: outline,
         picture: pixels,
         readRgba: (box) => document.readRegionRgba(pageIndex, box),
       );
@@ -1103,10 +1120,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     // The document it was cut from is gone, or the panel is: what is on
     // screen now is not what was cut.
-    if (!mounted || generation != _generation || piece == null) {
+    if (!mounted || generation != _generation) {
       return;
     }
-    slot.hold(piece);
+    cutIntoTheHand(piece, slot.hold);
   }
 
   /// The read is back, or never went out: stop billing it.
@@ -1265,7 +1282,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
       floorCover: floor?.insets ?? EdgeInsets.zero,
-      floorRailBand: floor?.rightRailBand,
+      floorLeftRailBand: floor?.leftRailBand,
+      floorRightRailBand: floor?.rightRailBand,
       floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
       coordinator: null,
       availableFrameKeys: const [],
@@ -1297,12 +1315,16 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
       // F-201 names it one.
       canvasBase: true,
+      // F-315: a file is looked at a pixel to a pixel.
+      oneToOneOnPill: true,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
       // on the pill. Register and swap are a session's worth of taps
       // between them, and every control that stays costs the pill 44px of
       // budget it then takes from the page navigation on a narrow rail.
+      // 🗣️I-83-Q1 (유저 2026-10-09): 「알약의 「파일 열기」 옆」 — closing
+      // stands beside opening, at that cost; off while nothing is open.
       bottomBarLeading: [
         if (widget.onRequestPicked != null)
           AppIconButton(
@@ -1311,6 +1333,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             icon: const Icon(Icons.file_open_outlined),
             size: AppIconButtonSize.strip,
             onPressed: _pickLooseFile,
+          ),
+        if (widget.onRequestClosed case final close?)
+          AppIconButton(
+            keyValue: _key('close-file-button'),
+            tooltip: strings.mediaViewerCloseFile,
+            icon: const Icon(Icons.close),
+            size: AppIconButtonSize.strip,
+            onPressed: request == null ? null : close,
           ),
       ],
       pageStrip: _pageStrip(pageIndex, pageCount),
@@ -1326,7 +1356,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             label: strings.mediaViewerRegisterAsset,
             icon: Icons.playlist_add_outlined,
             enabled: _canRegister,
-            onSelected: _registerCurrent,
+            onSelected: () => unawaited(_registerCurrent()),
           ),
         if (widget.onSwapViewers != null)
           PanelFlyoutItem(
@@ -1339,8 +1369,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // The register command's enabled state rides this token too — it
       // changes with the file, which is exactly when the answer to "is
       // this one in the pool" can change. ⚠️It has to: the list captures
-      // the entries when the BAR is built, not when the list opens.
-      bottomBarHostToken: (pageIndex, pageCount, _canRegister),
+      // the entries when the BAR is built, not when the list opens. So
+      // does whether a file is open: the close button is off without one.
+      bottomBarHostToken: (pageIndex, pageCount, _canRegister, request != null),
       // A book's Fit frames the page read — the panel's to know.
       fitFocusRect: book == null ? paper : null,
       viewLimit: paper,
@@ -1362,34 +1393,52 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             )
           else
             Positioned.fill(
-              // Same shape and same reason as the conte and envelope
-              // pages: a light table that changes when you page or pan
-              // and not otherwise, which was being re-rastered on every
-              // frame the app produced for any reason at all.
               child: LayoutBuilder(
-                builder: (context, box) => StaticRaster(
-                  debugLabel: _key('page'),
-                  child: CustomPaint(
-                    key: ValueKey<String>(_key('page')),
-                    painter: ViewportPagesPainter(
-                      pages: _pagesShown(
-                        context,
-                        viewport,
-                        box.biggest,
-                        asking: !framingPending,
+                builder: (context, box) {
+                  final pages = _pagesShown(
+                    context,
+                    viewport,
+                    box.biggest,
+                    asking: !framingPending,
+                  );
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Same shape and same reason as the conte and
+                      // envelope pages: a light table that changes when
+                      // you page or pan and not otherwise, which was being
+                      // re-rastered on every frame the app produced for
+                      // any reason at all.
+                      StaticRaster(
+                        debugLabel: _key('page'),
+                        child: CustomPaint(
+                          key: ValueKey<String>(_key('page')),
+                          painter: ViewportPagesPainter(
+                            pages: pages,
+                            // PDF paper is opaque white; a transparent
+                            // image shows the checker-free paper too — the
+                            // viewer is a light table, not a compositor.
+                            ground: document != null
+                                ? ViewportPageGround.paper
+                                : ViewportPageGround.none,
+                            viewport: viewport,
+                            effectiveRatio: EffectiveDevicePixelRatio.of(
+                              context,
+                            ),
+                          ),
+                          child: const SizedBox.expand(),
+                        ),
                       ),
-                      // PDF paper is opaque white; a transparent image
-                      // shows the checker-free paper too — the viewer is
-                      // a light table, not a compositor.
-                      ground: document != null
-                          ? ViewportPageGround.paper
-                          : ViewportPageGround.none,
-                      viewport: viewport,
-                      effectiveRatio: EffectiveDevicePixelRatio.of(context),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
+                      // The file still opening, or a page on screen not
+                      // drawn yet (F-315).
+                      if (document == null ||
+                          pages.any((page) => page.image == null))
+                        ViewerPageLoading(
+                          key: ValueKey<String>(_key('loading')),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           // The playhead over a waveform — its own layer, never inside the
@@ -1409,7 +1458,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
               child: IgnorePointer(
                 child: CustomPaint(
                   key: ValueKey<String>(_key('playhead')),
-                  painter: _PlayheadPainter(
+                  painter: WaveformMarksPainter(
                     atSeconds: _run.soundSeconds,
                     ofSeconds: waveformSeconds,
                     docSize: docSize,
@@ -1464,53 +1513,4 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ],
     );
   }
-}
-
-/// The line that says where in the sound you are.
-///
-/// ⚠️Its own painter and its own layer above the page: the page is a
-/// [StaticRaster] that re-bakes only when you page or pan, and a playhead
-/// inside it would re-bake it on every tick of a run.
-class _PlayheadPainter extends CustomPainter with RepaintOnProps {
-  const _PlayheadPainter({
-    required this.atSeconds,
-    required this.ofSeconds,
-    required this.docSize,
-    required this.viewport,
-    required this.effectiveRatio,
-    required this.color,
-  });
-
-  final double atSeconds;
-  final double ofSeconds;
-  final ui.Size docSize;
-  final CanvasViewport viewport;
-  final double effectiveRatio;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (ofSeconds <= 0) {
-      return;
-    }
-    canvas.save();
-    // The SAME transform the page uses — the line has to land on the
-    // waveform under every zoom and pan, so it cannot compute its own.
-    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
-    final x = docSize.width * (atSeconds / ofSeconds).clamp(0.0, 1.0);
-    canvas.drawLine(
-      Offset(x, 0),
-      Offset(x, docSize.height),
-      Paint()
-        // In DOCUMENT units, so the line thins as you zoom in rather than
-        // growing into a bar over the sample it is pointing at.
-        ..strokeWidth = docSize.width / 600
-        ..color = color,
-    );
-    canvas.restore();
-  }
-
-  @override
-  Object get props =>
-      (atSeconds, ofSeconds, docSize, viewport, effectiveRatio, color);
 }

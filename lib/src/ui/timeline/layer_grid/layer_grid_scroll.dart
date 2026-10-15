@@ -37,14 +37,28 @@ class _LayerGridScroll {
   /// [_state._rowWindowBucket] for what the `setState` was costing — and note that
   /// the saving is not the widgets, it is the row MODEL above them.
   void handleVerticalScroll() {
-    final offset = _state._verticalScrollController.hasClients
-        ? _state._verticalScrollController.offset
-        : 0.0;
+    final controller = _state._verticalScrollController;
+    final offset = controller.hasClients ? controller.offset : 0.0;
     if (offset == _state._verticalScrollOffset) {
       return;
     }
-    final rowExtent = _state._metrics.layerRowHeight;
-    final newBucket = (offset / rowExtent).floor();
+    standAt(offset);
+  }
+
+  /// The rows' window cut for the rows standing at [offset].
+  ///
+  /// The token is the WINDOW the rows would be cut to, read off the rows the
+  /// pass drew. ↩️It was the row index at the top, which was the window's
+  /// one moving part while every row was one height: a graph's room can
+  /// hold the top still while the bottom crosses rows (I-89 ③).
+  void standAt(double offset) {
+    final edges = _state._drawnEdges;
+    final window = edges.window(
+      scrollOffset: offset,
+      viewportExtent: _state._rowViewportExtent,
+    );
+    final newBucket =
+        window.startIndex * (edges.count + 1) + window.endIndexExclusive;
     _state._verticalScrollOffset = offset;
     // ⚠️Compared against the NOTIFIER, not against a bucket recomputed from
     // the old offset. They agree while nothing else moves, but a row-height

@@ -6,17 +6,18 @@ import '../../models/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../debug/input_inspector.dart' show InputInspector;
 import '../widgets/instant_tap_region.dart' show InstantTapRegion;
+import '../widgets/named.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import 'berth_row.dart' show rowAddressNow;
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import '../input/finger_mode_devices.dart';
-import 'timeline_frame_coordinate_policy.dart'
-    show timelineFrameAt, timelineFrameEdge;
+import 'timeline_frame_coordinate_policy.dart' show frameAtVisibleX;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -295,7 +296,8 @@ class TimelineFrameRangeGestureLayer extends StatefulWidget {
     this.axis = Axis.horizontal,
   });
 
-  /// The row this layer covers — a layer's cells or a track's cuts.
+  /// The row this layer covers — a layer's cells or a track's cuts — as it
+  /// was built; a press addresses the row as it stands ([rowAddressNow]).
   final TimelineRowAddress row;
 
   /// The LIVE frame-axis geometry (R28 #4): read at gesture time, so a zoom
@@ -337,22 +339,24 @@ class _TimelineFrameRangeGestureLayerState
   /// the release below does not say the same thing a second time.
   bool _clearedOnDown = false;
 
+  /// The row as it stands at the event — what a press addresses. 🚨I-57
+  /// (10-13): a kept cells row stands for the next cut's layer in the same
+  /// elements, so the address is asked when the hand comes down.
+  TimelineRowAddress get _rowNow => rowAddressNow(context, widget.row);
+
+  /// The row the drag in flight began on: what its steps and its release
+  /// address, whatever the row stands for by then — the grip is handed back
+  /// where it was taken.
+  late TimelineRowAddress _dragRow = widget.row;
+
   @override
-  int _frameAt(Offset localPosition) {
-    final main = widget.axis == Axis.horizontal
-        ? localPosition.dx
-        : localPosition.dy;
-    final cell =
-        ((main - widget.geometry.value.leadingFrameSpacerWidth) /
-                widget.geometry.value.frameCellExtent)
-            .floor();
-    final frame = widget.geometry.value.frameStartIndex + cell;
-    return frame < 0 ? 0 : frame;
-  }
+  int _frameAt(Offset localPosition) => widget.geometry.value.cellAt(
+    widget.axis == Axis.horizontal ? localPosition.dx : localPosition.dy,
+  );
 
   @override
   bool _pressedInSelection(int frame) =>
-      widget.callbacks.isInSelection(widget.row, frame);
+      widget.callbacks.isInSelection(_rowNow, frame);
 
   @override
   Axis get _dragAxis => widget.axis;
@@ -366,9 +370,10 @@ class _TimelineFrameRangeGestureLayerState
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
     _scrolledCross = 0;
+    final row = _rowNow;
     final frame = _frameAt(localPosition);
-    final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
-    final rowHolds = widget.callbacks.rowHolds?.call(widget.row) ?? false;
+    final insideSelection = widget.callbacks.isInSelection(row, frame);
+    final rowHolds = widget.callbacks.rowHolds?.call(row) ?? false;
     if (insideSelection && rowHolds) {
       // Nobody's: no mode, and nothing to pin a row for. But the hand
       // DRAGGED — on a row that moves, this step would have carried the
@@ -377,7 +382,8 @@ class _TimelineFrameRangeGestureLayerState
       _dragStepped = true;
       return;
     }
-    if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
+    _dragRow = row;
+    if (insideSelection && widget.callbacks.onMoveBegin(row, frame)) {
       setState(() {
         _mode = _RangeDragMode.move;
         _mainDelta = 0;
@@ -385,7 +391,7 @@ class _TimelineFrameRangeGestureLayerState
         _lastFrames = 0;
         _lastRows = 0;
       });
-      widget.callbacks.onGripTaken?.call(widget.row);
+      widget.callbacks.onGripTaken?.call(row);
       return;
     }
     _mode = _RangeDragMode.select;
@@ -393,8 +399,8 @@ class _TimelineFrameRangeGestureLayerState
     // A SELECT holds its row too: the cross-axis auto-pan can slide the
     // window past the anchor, and an unpinned anchor's recognizer would
     // dispose and freeze the drag mid-sweep.
-    widget.callbacks.onGripTaken?.call(widget.row);
-    widget.callbacks.onSelectUpdate(widget.row, frame, frame, 0);
+    widget.callbacks.onGripTaken?.call(row);
+    widget.callbacks.onSelectUpdate(row, frame, frame, 0);
   }
 
   /// The pointer's cross-axis offset from THIS row's top (Excel cross-row
@@ -439,7 +445,7 @@ class _TimelineFrameRangeGestureLayerState
                 : Offset(_scrolledCross, _scrolledMain));
         _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
-          widget.row,
+          _dragRow,
           _anchorIndex,
           _frameAt(local),
           _crossOffsetAt(local),
@@ -487,7 +493,7 @@ class _TimelineFrameRangeGestureLayerState
         setState(() {});
         onMoveFinished();
       },
-      releaseGrip: () => widget.callbacks.onGripReleased?.call(widget.row),
+      releaseGrip: () => widget.callbacks.onGripReleased?.call(_dragRow),
     );
   }
 
@@ -497,7 +503,7 @@ class _TimelineFrameRangeGestureLayerState
   void dispose() {
     // Retired by the shared law — see [retireRangeDragOnUnmount].
     final callbacks = widget.callbacks;
-    final row = widget.row;
+    final row = _dragRow;
     retireRangeDragOnUnmount(
       dragging: _mode != _RangeDragMode.none,
       moving: _mode == _RangeDragMode.move,
@@ -507,10 +513,16 @@ class _TimelineFrameRangeGestureLayerState
     super.dispose();
   }
 
+  /// Named for its row, not keyed (I-57, 10-13): the row shows one layer
+  /// and then another in the same elements.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Named(
+    'timeline-range-gesture-${widget.row.keySuffix}',
+    child: _layer(context),
+  );
+
+  Positioned _layer(BuildContext context) {
     return Positioned.fill(
-      key: ValueKey<String>('timeline-range-gesture-${widget.row.keySuffix}'),
       // Two detectors: the TAP (any device — a finger tap clears the
       // selection too) and the PAN. Touch joined the pan set (UI-R17
       // #6/#8): stylus pens report as TOUCH on some Windows/tablet
@@ -547,14 +559,15 @@ class _TimelineFrameRangeGestureLayerState
           // by starting to scroll over it; its TAP still clears, on the
           // release, exactly as before (UI-R23 feedback #2's rule, which
           // an ungated down would have walked straight back through).
+          final row = _rowNow;
           _clearedOnDown =
               AppInput.timelineEditPanDevices.contains(event.kind) &&
               !widget.callbacks.isInSelection(
-                widget.row,
+                row,
                 _frameAt(event.localPosition),
               );
           if (_clearedOnDown) {
-            widget.callbacks.onTapClear(widget.row);
+            widget.callbacks.onTapClear(row);
           }
         },
         // The release still clears for everything the down could not
@@ -584,7 +597,7 @@ class _TimelineFrameRangeGestureLayerState
           onTap: (_) {},
           onSettledTap: (_) {
             if (!_clearedOnDown && _mode == _RangeDragMode.none) {
-              widget.callbacks.onTapClear(widget.row);
+              widget.callbacks.onTapClear(_rowNow);
             }
           },
           child: _eagerPanDetector(
@@ -796,18 +809,14 @@ class _TimelineLaneRangeGestureLayerState
   // this layer keeps the plain scalars — the live-geometry treatment buys
   // nothing where the widget rebuilds anyway.
   @override
-  int _frameAt(Offset localPosition) {
-    final main = widget.axis == Axis.horizontal
+  int _frameAt(Offset localPosition) => frameAtVisibleX(
+    visibleX: widget.axis == Axis.horizontal
         ? localPosition.dx
-        : localPosition.dy;
-    final frame = timelineFrameAt(
-      main -
-          widget.leadingFrameSpacerWidth +
-          timelineFrameEdge(widget.frameStartIndex, widget.frameCellExtent),
-      widget.frameCellExtent,
-    );
-    return frame < 0 ? 0 : frame;
-  }
+        : localPosition.dy,
+    frameStartIndex: widget.frameStartIndex,
+    frameCellWidth: widget.frameCellExtent,
+    leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
+  );
 
   /// The cells the double tap aims at ([timelineDoubleTapAim]).
   TimelineDoubleTapCells get _cells => (

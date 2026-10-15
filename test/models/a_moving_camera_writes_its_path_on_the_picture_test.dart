@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/models/camera_work_marks.dart' show CameraKeyRole;
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
@@ -21,6 +22,15 @@ void main() {
   const metrics = ConteSheetMetrics();
   const green = 0xFF3B6D11;
   const red = 0xFFA32D2D;
+
+  /// An arm of a key's cross on the conte's paper: two points, 5 apart —
+  /// every key wears one at its centre (유저 2026-10-12), a trail does not.
+  bool crossArm(SheetStroke stroke) =>
+      !stroke.closed &&
+      stroke.points.length == 2 &&
+      ((stroke.points[1] - stroke.points[0]).distance - 5).abs() < 1e-9;
+
+  bool trail(SheetStroke stroke) => !stroke.closed && !crossArm(stroke);
 
   /// The page of [cells], a cut each, and every mark it prints.
   ({ContePageLayout page, List<SheetMark> marks}) printed(
@@ -93,15 +103,16 @@ void main() {
       moving(conteCameraPan(across: 0.3, down: 0.5)),
     ]).marks.whereType<SheetStroke>();
     expect(
-      strokes.where((stroke) => !stroke.closed),
+      strokes.where(trail),
       hasLength(4),
       reason: 'fixture: four trails',
     );
+    expect(strokes.where(crossArm), hasLength(4), reason: 'two keys\' arms');
     for (final stroke in strokes) {
       expect(
         stroke.argb >>> 24,
-        stroke.closed ? 0xFF : 0x80,
-        reason: stroke.closed ? 'a frame' : 'a trail',
+        trail(stroke) ? 0x80 : 0xFF,
+        reason: trail(stroke) ? 'a trail' : 'a frame or a cross',
       );
     }
   });
@@ -207,20 +218,20 @@ void main() {
     );
   });
 
-  test('each corner of the frame draws its own trail, key to key — four '
-      'lines, never one through the middle (「궤도는 중앙이아니라 각 꼭짓점 4개 '
-      '전부야」) — under the frames', () {
+  test('each corner of the frame draws its own trail — four lines, never '
+      'one through the middle (「궤도는 중앙이아니라 각 꼭짓점 4개 전부야」) — '
+      'under the frames', () {
     final work = conteCameraPan(across: 0.3, down: 0.5);
     final marks = printed([moving(work)]).marks;
     final picture = marks.whereType<SheetPicture>().single;
     final strokes = marks.whereType<SheetStroke>().toList();
     final trails = [
       for (final stroke in strokes)
-        if (!stroke.closed) stroke,
+        if (trail(stroke)) stroke,
     ];
     expect(trails, hasLength(4));
     for (final (corner, trail) in trails.indexed) {
-      expect(trail.points, hasLength(2));
+      expect(trail.points, hasLength(2), reason: 'the fixture\'s, key to key');
       expectPoint(
         trail.points.first,
         onPaper(picture, work, work.keys.first.corners[corner]),
@@ -234,7 +245,7 @@ void main() {
     }
     expect(
       strokes.indexWhere((stroke) => stroke.closed),
-      greaterThan(strokes.lastIndexWhere((stroke) => !stroke.closed)),
+      greaterThan(strokes.lastIndexWhere(trail)),
       reason: 'the frames print over the trails',
     );
   });
@@ -255,17 +266,17 @@ void main() {
       keys: [
         ConteCameraKey(
           corners: corners[0],
-          role: ConteCameraKeyRole.first,
+          role: CameraKeyRole.first,
           label: 'IN',
         ),
         ConteCameraKey(
           corners: corners[1],
-          role: ConteCameraKeyRole.between,
+          role: CameraKeyRole.between,
           label: 'B',
         ),
         ConteCameraKey(
           corners: corners[2],
-          role: ConteCameraKeyRole.last,
+          role: CameraKeyRole.last,
           label: 'OUT',
         ),
       ],
@@ -293,10 +304,12 @@ void main() {
     expect(between.argb >>> 24, 0xFF, reason: 'a name in full ink (H47)');
   });
 
-  test('🗣️H55: a named key between has its corner crossed — small, turned '
-      'with its frame — and the cross and the name are the sheet\'s black '
-      '(유저 2026-10-01: 「s의 꼭짓점에 표시하고싶어서. 해당 위치 꼭짓점에 '
-      '십자가 … 작고 검정색으로? 그리고 그 색으로 키 색도 바꾸고」); the '
+  test('every key is crossed at its frame\'s centre, as the canvas and the '
+      'export cross it (유저 2026-10-12: 「카메라 출력궤도랑 완전통일 … '
+      '중간키들도 표시하고」 · 「아까처럼 중앙에 두자 … 즉 법 통일」 — ↩️a '
+      'named key between alone, at its corner, H55) — small, turned with '
+      'its frame; a key between\'s cross and name are the sheet\'s black '
+      '(H55: 「작고 검정색으로? 그리고 그 색으로 키 색도 바꾸고」); the '
       'trails keep H47\'s light grey', () {
     const turn = math.pi / 6;
     List<Offset> turned(Offset centre) => [
@@ -322,18 +335,22 @@ void main() {
       keys: [
         ConteCameraKey(
           corners: frames[0],
-          role: ConteCameraKeyRole.first,
+          role: CameraKeyRole.first,
           label: 'A',
         ),
         ConteCameraKey(
           corners: frames[1],
-          role: ConteCameraKeyRole.between,
+          role: CameraKeyRole.between,
           label: 'S',
         ),
-        ConteCameraKey(corners: frames[2], role: ConteCameraKeyRole.between),
+        ConteCameraKey(
+          corners: frames[2],
+          role: CameraKeyRole.between,
+          label: '24f',
+        ),
         ConteCameraKey(
           corners: frames[3],
-          role: ConteCameraKeyRole.last,
+          role: CameraKeyRole.last,
           label: 'OUT',
         ),
       ],
@@ -354,32 +371,54 @@ void main() {
     ];
     expect(
       cross,
-      hasLength(2),
-      reason: 'two arms, S\'s — the unnamed key between has none',
+      hasLength(4),
+      reason: 'two arms each, S\'s and the unnamed key between\'s',
     );
-    final corner = onPaper(picture, work, frames[1].first);
     final sides = [
       Offset(math.cos(turn), math.sin(turn)),
       Offset(-math.sin(turn), math.cos(turn)),
     ];
-    for (final (index, arm) in cross.indexed) {
-      expect(arm.points, hasLength(2));
-      expectPoint(
-        (arm.points.first + arm.points.last) / 2,
-        corner,
-        'centred on the corner S\'s name stands at',
-      );
-      final reach = arm.points.last - arm.points.first;
-      expect(reach.distance, closeTo(5, 1e-9), reason: 'small');
-      expectPoint(reach / reach.distance, sides[index], 'square to its frame');
+    for (final (key, frame) in [frames[1], frames[2]].indexed) {
+      final centre = onPaper(picture, work, (frame[0] + frame[2]) / 2);
+      final arms = cross.sublist(2 * key, 2 * key + 2);
+      for (final (index, arm) in arms.indexed) {
+        expect(arm.points, hasLength(2));
+        expectPoint(
+          (arm.points.first + arm.points.last) / 2,
+          centre,
+          'centred on the camera — its frame\'s centre',
+        );
+        final reach = arm.points.last - arm.points.first;
+        expect(reach.distance, closeTo(5, 1e-9), reason: 'small');
+        expectPoint(
+          reach / reach.distance,
+          sides[index],
+          'square to its frame',
+        );
+      }
     }
-    expect(
-      marks.whereType<SheetWords>().singleWhere((words) => words.text == 'S'),
-      isA<SheetWords>().having((words) => words.argb, 'argb', conteInkArgb),
-    );
+    for (final ink in [green, red]) {
+      expect(
+        open.where((stroke) => stroke.argb == ink),
+        hasLength(2),
+        reason: 'the first and the last are crossed too, in their own ink',
+      );
+    }
+    for (final name in ['S', '24f']) {
+      final words = marks.whereType<SheetWords>().singleWhere(
+        (words) => words.text == name,
+      );
+      expect(words.argb, conteInkArgb, reason: name);
+      expect(
+        words.size,
+        6,
+        reason: 'nearer the canvas\'s against its frame (유저 2026-10-12: '
+            '「IN OUT 이런 글자 크니까 … 좀 더 작게」 — ↩️8)',
+      );
+    }
     final trails = [
       for (final stroke in open)
-        if (stroke.argb != conteInkArgb) stroke,
+        if (!{conteInkArgb, green, red}.contains(stroke.argb)) stroke,
     ];
     expect(trails, hasLength(4), reason: 'fixture: the four trails');
     for (final trail in trails) {
@@ -412,12 +451,12 @@ void main() {
       keys: [
         ConteCameraKey(
           corners: first,
-          role: ConteCameraKeyRole.first,
+          role: CameraKeyRole.first,
           label: 'A',
         ),
         ConteCameraKey(
           corners: last,
-          role: ConteCameraKeyRole.last,
+          role: CameraKeyRole.last,
           label: 'OUT',
         ),
       ],

@@ -46,7 +46,7 @@ void main() {
           keys: {
             0: const PropertyKey<double>(
               4,
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
             ),
             10: const PropertyKey<double>(20),
           },
@@ -207,7 +207,7 @@ void main() {
                 keys: {
                   2: const PropertyKey<double>(
                     -10,
-                    interpolation: PropertyKeyInterpolation.hold,
+                    outgoing: KeyExit.hold,
                   ),
                 },
               ),
@@ -228,8 +228,8 @@ void main() {
       expect(restored, layer);
       expect(restored.effects.first.enabled, isFalse);
       expect(
-        restored.effects.first.parameterOf('hue').track.keyAt(2)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        restored.effects.first.parameterOf('hue').track.keyAt(2)!.outgoing,
+        KeyExit.hold,
       );
     });
 

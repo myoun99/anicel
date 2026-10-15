@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer_mark.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import 'dialog_verb.dart';
 import 'staff_process_folds.dart';
 
 /// 컷 설정 — who does each stage's work on the cuts it is about: a name per
@@ -61,19 +62,7 @@ class _CutSettingsWindowState extends State<CutSettingsWindow> {
           onSubmitted: _submit,
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('cut-settings-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        AppWindowAction(
-          label: strings.commonSave,
-          actionKey: const ValueKey<String>('cut-settings-save-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: _submit,
-        ),
-      ],
+      actions: saveActions(context, prefix: 'cut-settings', onSave: _submit),
     );
   }
 }

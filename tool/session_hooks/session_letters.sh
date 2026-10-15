@@ -65,7 +65,7 @@ if [ -z "$name" ]; then
   mkdir -p "$NAMES" 2>/dev/null && : > "$NAMES/.asked.$sid"
   . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
   say_context UserPromptSubmit "📨 이 세션은 보드에 담당 이름을 등록하지 않았습니다 — 다른 세션이 이 세션 앞으로 남긴 전달을 받으려면 한 번 등록하세요:
-  dart run tool/board_me.dart <담당 이름>   (예: 보드/통합 · 타임라인/콘티 · 캔버스 베이스 패널)
+  dart run tool/board_me.dart <담당 이름>   (예: 보드/인프라 · 공통 · 타임라인/콘티 · 캔버스 베이스 패널)
 등록하면 남기는 법도 그 명령이 알려 줍니다. 담당이 없는 세션이면 그대로 두면 됩니다. 이 안내는 다시 나오지 않습니다."
   exit 0
 fi

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -80,6 +81,34 @@ void main() {
       expect(rows.single.showsKeyNavigator, isFalse);
     });
 
+    test('a parameter lane marks the keys that hold out of them', () {
+      final held = LayerEffect(
+        id: const EffectId('e1'),
+        kind: EffectKind.blur,
+        parameters: {
+          'blurX': EffectParameter(
+            track: PropertyTrack<double>(
+              keys: {
+                3: const PropertyKey<double>(4, outgoing: KeyExit.hold),
+                7: const PropertyKey<double>(2),
+              },
+            ),
+          ),
+        },
+      );
+      final rows = effectPropertyLanes([held], isExpanded: (_) => true);
+      final lane = rows.singleWhere(
+        (row) => row.laneId == effectLaneId(const EffectId('e1'), 'blurX'),
+      );
+      expect(lane.keyMarks, {
+        3: const SidesKeyMark(
+          incoming: KeySideKind.linear,
+          outgoing: KeySideKind.hold,
+        ),
+        7: KeyMark.linear,
+      });
+    });
+
     test('an expanded effect adds one lane per parameter, in spec order', () {
       final rows = effectPropertyLanes([hue()], isExpanded: (_) => true);
       expect(rows.map((row) => row.label), [
@@ -124,9 +153,9 @@ void main() {
             parameterId == 'blurX' ? 8 : 0,
       );
       final lane = rows.firstWhere((row) => row.label == 'Blur Width');
-      expect(lane.valueLabel!(0), '8 px');
+      expect(lane.valueLabel!(0), '8.00 px');
       final spec = effectParametersOf(EffectKind.blur).first;
-      expect(parseEffectLaneValue(spec, '8 px'), 8);
+      expect(parseEffectLaneValue(spec, '8.00 px'), 8);
       expect(parseEffectLaneValue(spec, '12'), 12);
       expect(parseEffectLaneValue(spec, 'wide'), isNull);
       expect(
@@ -138,10 +167,16 @@ void main() {
 
     test('scrubbing moves the value in the form the editor parses', () {
       final spec = effectParametersOf(EffectKind.hueSaturation).first;
-      expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20°');
-      expect(scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)), '-40°');
+      expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
+      expect(
+        scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)),
+        '-40.00°',
+      );
       // Clamped at the spec edge, never past it.
-      expect(scrubEffectLaneValue(spec, '170°', const Offset(200, 0)), '180°');
+      expect(
+        scrubEffectLaneValue(spec, '170°', const Offset(200, 0)),
+        '180.00°',
+      );
     });
   });
 
@@ -285,7 +320,7 @@ void main() {
       expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
     });
 
-    test('remove and hold behave like the transform lanes', () {
+    test('toggle and remove behave like the transform lanes', () {
       // The single-key MOVE left with the key marker's private drag
       // (2026-08-08). Re-timing is `effectsWithLaneSpanKeysShifted` now —
       // select the span, move the span.
@@ -339,6 +374,34 @@ void main() {
         isNull,
         reason: 'a parameter from another kind is not this effect\'s',
       );
+    });
+
+    test("the key window's write gives an effect's keys a pick's sides "
+        "alone: a path and a roving time are a position's", () {
+      final laneId = effectLaneId(const EffectId('e1'), 'blurX');
+      var effects = [blur(x: 6)];
+      for (final frame in [0, 4, 8]) {
+        effects = effectsWithLaneKeyToggled(
+          effects,
+          laneId: laneId,
+          frameIndex: frame,
+        )!;
+      }
+      final written = effectsWithLaneKeysWritten(
+        effects,
+        laneId: laneId,
+        frames: {0, 4, 8},
+        pick: const KeyTypePick(
+          sides: KeySidesEdit.hold,
+          curved: true,
+          roving: true,
+        ),
+      )!;
+      for (final key in written.single.parameterOf('blurX').track.keys.values) {
+        expect(key.outgoing, KeyExit.hold);
+        expect(key.path, KeyPath.straight);
+        expect(key.roving, isFalse);
+      }
     });
 
     test('an edit leaves the OTHER effects identical', () {

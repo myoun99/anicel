@@ -10,7 +10,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
@@ -20,6 +19,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/media/media_moves.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨EVERY MOVE OF A FILE TAKES ONE WALK (`projectWithMediaMoved`).
 ///
@@ -77,7 +77,7 @@ void main() {
                   name: 'Still',
                   frames: const [],
                   kind: LayerKind.image,
-                  mediaReference: MediaReference(assetPath: path),
+                  mediaReference: referenceTo(path),
                 ),
               ],
             ),

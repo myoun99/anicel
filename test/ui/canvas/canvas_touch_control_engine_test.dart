@@ -2,9 +2,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+
+import '../../helpers/pinch_recognised_at.dart';
 
 /// PEN-7b: the CONTROL-mode touch engine — finger-count slots, the
 /// lock-then-modifier rule, snap constraints. Everything runs under the
@@ -240,7 +242,7 @@ void main() {
       'is the very pan a mapped wheel click starts — and never otherwise', (
     tester,
   ) async {
-    addTearDown(() => CanvasPanHold.held.value = false);
+    addTearDown(() => CanvasViewHold.held.value = null);
     final probes = await pumpEngine(tester);
 
     // What one drag DID to the view — null when it did nothing. The layer
@@ -279,7 +281,7 @@ void main() {
     final wheel = await drag(kMiddleMouseButton);
     expect(wheel, isNotNull, reason: 'mapped to the pan, it pans');
 
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     expect(await drag(kPrimaryButton), wheel, reason: 'the very same pan');
     expect(
       await drag(kSecondaryMouseButton),
@@ -400,15 +402,11 @@ void main() {
     // Two fingers pinch OUT to 2×. The harness never rebuilds the layer
     // with the emitted viewport (widget.viewport stays 1.0) — exactly
     // the mid-gesture staleness a real parent shows between frames.
-    final first = await tester.startGesture(
+    final (first, second) = await pinchRecognisedAt(
+      tester,
       const Offset(200, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 31,
-    );
-    final second = await tester.startGesture(
       const Offset(300, 200),
-      kind: PointerDeviceKind.touch,
-      pointer: 32,
+      pointer: 31,
     );
     await first.moveBy(const Offset(-50, 0));
     await second.moveBy(const Offset(50, 0));

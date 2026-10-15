@@ -8,11 +8,15 @@ import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
+import '../../models/timeline_row_address.dart';
 import '../text/app_strings.dart' show AppText;
+import 'berth_row.dart';
+import 'lane_graph_seats.dart' show laneGraphHeadedBy;
 import 'layer_label_controls.dart' show LayerRailColumnWidths;
 import 'layer_row_drag.dart' show LayerRowDragInputs;
 import 'memo_token.dart';
 import 'property_lane_model.dart' show TimelineDisplayRow;
+import 'row_berths.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_layer_controls_row.dart';
@@ -27,7 +31,7 @@ import 'timeline_layer_controls_row.dart';
 /// built every header again at every commit (8,276 elements on 24 layers,
 /// fifteen times the timeline's).
 ///
-/// 🚨Also the key of the memo both grids keep ([keptLayerControlsRow]): a
+/// 🚨Also the key of the memo both grids keep ([KeptLayerControlsRows]): a
 /// row is kept while these hold. ⛔A fact the row takes and this leaves out
 /// is a row kept across a change of it — the rail's own key had left out
 /// four the row was given (a reference row's shortfall, an attach row's
@@ -76,6 +80,13 @@ typedef LayerControlsRowFacts = ({
   AttachedPlacement? attachArrow,
   bool isReferenceSourceShort,
   bool wearsBaseComposite,
+  // I-89 ③: whether the row heads a header graph — the camera row, the
+  // row being its own Transform group (㉙) — and whether it stands open:
+  // view state, which the Layer cannot see. Not WHICH graph: its key is
+  // spelled with the layer's id, so the row reads it at the press, of the
+  // layer it stands for then (I-57 ㉣).
+  bool headsGraph,
+  bool graphOpen,
   // The camera row's dim — the workspace's own notifier, one object for
   // the row's whole life, so its identity is the fact.
   ByIdentity<ValueListenable<double>?> opacityOverride,
@@ -127,6 +138,7 @@ LayerControlsRowFacts layerControlsRowFacts(
 }) {
   final hooks = grid.hooks;
   final id = row.layer.id;
+  final graphKey = laneGraphHeadedBy(row.layer, null);
   return (
     layer: ControlsRowFace(row.layer),
     active: id == hooks.activeLayerId,
@@ -144,6 +156,9 @@ LayerControlsRowFacts layerControlsRowFacts(
     attachArrow: hooks.attachArrowPlacementOf?.call(id),
     isReferenceSourceShort: hooks.layerSourceIsShortOf?.call(id) ?? false,
     wearsBaseComposite: attachRowWearsBaseComposite(row.layer, grid.layers),
+    headsGraph: graphKey != null,
+    graphOpen:
+        graphKey != null && hooks.laneGraphs.open.containsKey(graphKey),
     opacityOverride: ByIdentity(hooks.layerOpacityOverrideOf?.call(id)),
     opacityDragPreview: ByIdentity(hooks.opacityDragPreview),
     layerRowHeight: grid.metrics.layerRowHeight,
@@ -191,6 +206,7 @@ Widget layerControlsRowFrom(
     onOpenLayerMixer: hooks.onOpenLayerMixer,
     onOpenLayerReference: hooks.onOpenLayerReference,
     onOpenLayerLinks: hooks.onOpenLayerLinks,
+    onOpenCameraPath: hooks.onOpenCameraPath,
     isReferenceSourceShort: facts.isReferenceSourceShort,
     isLayerSoloed: facts.soloed,
     attachArrowPlacement: facts.attachArrow,
@@ -207,6 +223,9 @@ Widget layerControlsRowFrom(
     linkPartners: facts.linkPartners.value,
     onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
     opacityOverride: facts.opacityOverride.value,
+    laneGraphVerbs: hooks.laneGraphVerbs,
+    headsGraph: facts.headsGraph,
+    graphOpen: facts.graphOpen,
   );
 }
 
@@ -222,20 +241,55 @@ typedef LayerControlsRowInputs = ({
   LayerRowDragInputs drag,
 });
 
-/// What a grid keeps of a layer's controls row: the row as built — made
-/// draggable — and what it was built from.
-typedef KeptLayerControlsRow = Kept<LayerControlsRowInputs>;
-
-/// [row]'s controls row as [kept] holds it (F-244): the one it holds while
-/// [inputs] are what they were, so a commit rebuilds no row it did not
-/// change — else [build]'s, kept.
+/// What a grid keeps of its layers' controls rows, berth by berth
+/// ([KeptByBerth]): each row as built, and the drag wrapper around it.
+///
+/// 🚨I-57 ㉣ (10-13): TWO keeps, because the two are built from different
+/// things. The row is built from what it SHOWS — its facts name no layer
+/// ([ControlsRowFace]) — so a cut switch that puts a row of the same face
+/// in a berth hands the row back whole, and the row acts on the layer it
+/// stands for through [BerthRow]. The wrapper is built from the row's
+/// ADDRESS — a drag carries the layer it moves — so it is built again
+/// whenever its berth holds another row, around the same row.
 ///
 /// ONE memo for the rail's rows and the x-sheet's headers — a grid says
-/// only how its row drags: the wrapper's inputs, and the wrapper [build]
-/// puts on.
-Widget keptLayerControlsRow(
-  Map<LayerId, KeptLayerControlsRow> kept,
-  TimelineDisplayRow row,
-  LayerControlsRowInputs inputs,
-  Widget Function() build,
-) => keptWhileSame(kept, row.layer.id, inputs, build);
+/// how its rows drag once, when it makes its keep ([drags]: the wrapper
+/// it puts on a row), and of each row only the wrapper's inputs.
+final class KeptLayerControlsRows {
+  KeptLayerControlsRows(this.drags);
+
+  final Widget Function(TimelineDisplayRow row, Widget built) drags;
+  final KeptByBerth<LayerControlsRowFacts> _rows = KeptByBerth();
+  final KeptByBerth<_LayerControlsRowWrap> _wrapped = KeptByBerth();
+
+  /// [row]'s controls row in its berth of [berths] (F-244): the row
+  /// [build] makes, kept while its facts hold, in the drag wrapper put on
+  /// it, kept while the row and its address do — so a commit rebuilds no
+  /// row it did not change, and a cut switch none whose face it left
+  /// alone.
+  Widget keep(
+    RowBerthMap berths,
+    TimelineDisplayRow row,
+    LayerControlsRowInputs inputs,
+    Widget Function() build,
+  ) {
+    final built = _rows.keep(berths, row, inputs.facts, build);
+    return BerthRow(
+      layer: row.layer,
+      child: _wrapped.keep(
+        berths,
+        row,
+        (drag: inputs.drag, address: row.address, row: ByIdentity(built)),
+        () => drags(row, built),
+      ),
+    );
+  }
+}
+
+/// What a kept row's drag wrapper is built from: the wrapper's inputs, the
+/// row it moves, and the row it is put on.
+typedef _LayerControlsRowWrap = ({
+  LayerRowDragInputs drag,
+  TimelineRowAddress address,
+  ByIdentity<Widget> row,
+});

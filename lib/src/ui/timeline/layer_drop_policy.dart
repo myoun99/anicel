@@ -27,6 +27,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_placement.dart';
+import '../../models/conte_group.dart' show ridesTheConte;
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
@@ -36,6 +37,7 @@ import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_drag_preview.dart'
     show MediaPlacementPreview, TimelineDragPreview;
+import 'timeline_row_edges.dart';
 import 'timeline_section_policy.dart';
 
 /// A legal landing: the cut's new stack order, and the rows whose folder
@@ -660,25 +662,42 @@ LayerAttachDrop? _attachPlan(
           : (baseId: forceMountBaseId, placement: forceMountPlacement));
   final mounts = target == null ? const <_Mount>[] : _mountsOn(lift, target);
   if (mounts == null) return null;
+  final detachIds = _detachIds(lift, mounts);
+  // A row riding the conte is never let go (I-73-one-head-Q1,
+  // [ridesTheConte]): a landing that would take one off it — out on its
+  // own, or onto another base — is no landing.
+  final leaving = {...detachIds, for (final mount in mounts) mount.layerId};
+  if (lift.carried.any(
+    (layer) => leaving.contains(layer.id) && ridesTheConte(layer, lift.stack),
+  )) {
+    return null;
+  }
   return LayerAttachDrop(
     mounts: mounts,
-    sideChange: keepsOwnGroup ? _sideChange(lift, ownBase) : null,
-    detachIds: _detachIds(lift, mounts),
+    sideChanges: keepsOwnGroup ? _sideChanges(lift, ownBase) : const [],
+    detachIds: detachIds,
   );
 }
 
 /// Staying in the group still has a DIRECTION: crossing the base's picture
 /// turns an above row into a below one (the same rule an organizer folder
 /// reads off the stack). Nothing else about the attachment moves.
-({LayerId layerId, AttachedPlacement placement})? _sideChange(
+///
+/// Every carried row that rides the base turns — the selection carried
+/// with the held row included ([LayerAttachDrop.sideChanges], F-322).
+List<({LayerId layerId, AttachedPlacement placement})> _sideChanges(
   _Lift lift,
   LayerId ownBase,
 ) {
-  final moving = lift.moving;
-  if (moving.attachedToLayerId != ownBase) return null;
+  if (lift.moving.attachedToLayerId != ownBase) return const [];
   final side = _slotSideOfBase(lift.rest, lift.restInsertAt, ownBase);
-  if (side == null || side == moving.attachedPlacement) return null;
-  return (layerId: moving.id, placement: side);
+  if (side == null) return const [];
+  return [
+    for (final layer in lift.carried)
+      if (layer.attachedToLayerId == ownBase &&
+          layer.attachedPlacement != side)
+        (layerId: layer.id, placement: side),
+  ];
 }
 
 /// ⑦ (user, 2026-08-12): 「폴더도 드래그 드롭으로 어태치 장착 가능(동일
@@ -817,14 +836,16 @@ Layer _settled(
   var next = folderIds.containsKey(layer.id)
       ? layer.copyWith(folderId: folderIds[layer.id])
       : layer;
-  final sideChange = attach.sideChange;
+  final turned = attach.sideChanges
+      .where((change) => change.layerId == layer.id)
+      .firstOrNull;
   if (mount != null) {
     next = next.copyWith(
       attachedToLayerId: mount.baseId,
       attachedPlacement: mount.placement,
     );
-  } else if (sideChange != null && layer.id == sideChange.layerId) {
-    next = next.copyWith(attachedPlacement: sideChange.placement);
+  } else if (turned != null) {
+    next = next.copyWith(attachedPlacement: turned.placement);
   } else if (attach.detachIds.contains(layer.id)) {
     next = next.copyWith(attachedToLayerId: null);
   }
@@ -1145,7 +1166,7 @@ List<TimelineDisplayRow> rowsWithSilhouette(
 int nearestLayerGap(
   List<TimelineDisplayRow> rows,
   double along,
-  double pitch,
+  TimelineRowEdges edges,
 ) {
   // ⚠️[displayIndexForGap] walks the rows again per slot, so this is n² in
   // the rows ON SCREEN — a windowed rail, tens of them. Paid on purpose:
@@ -1155,7 +1176,7 @@ int nearestLayerGap(
   var nearest = 0;
   var nearestDistance = double.infinity;
   for (var slot = 0; slot <= slots; slot += 1) {
-    final edge = displayIndexForGap(rows, slot) * pitch;
+    final edge = edges.startOf(displayIndexForGap(rows, slot));
     final distance = (along - edge).abs();
     if (distance < nearestDistance) {
       nearest = slot;

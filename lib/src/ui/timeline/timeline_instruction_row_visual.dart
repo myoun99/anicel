@@ -7,7 +7,6 @@ import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
-import '../text/vertical_writing_text.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
@@ -18,6 +17,7 @@ import 'timeline_block_word.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart';
 import 'timeline_se_row_visual.dart' show timelineBlockWarningBar;
+import 'timeline_span_name.dart';
 import '../repaint_props.dart';
 
 /// Instruction rows render like the paper sheet's CAM column on white
@@ -31,11 +31,6 @@ import '../repaint_props.dart';
 /// the span along the frame axis but stepped OFF the mark across it.
 /// Shared by both orientations (Axis policy); the printed sheet mirrors
 /// this verbatim.
-
-/// How far the instruction NAME sits from the wall it aligns to — the top
-/// of the row on the timeline, the right of the column on the sheet and in
-/// print. Shared so the three surfaces cannot drift apart by a pixel.
-const double instructionLabelInset = 1;
 
 /// Paper-cell adapter: instruction events have no timeline entries, so
 /// this maps a frame index onto the shared cell exposure states (span
@@ -271,47 +266,9 @@ class _InstructionSpan extends StatelessWidget {
   final InstructionEvent event;
   final CameraInstructionDef? def;
 
-  /// A word of this span as a BLOCK word ([TimelineBlockText],
-  /// [TimelineBlockColumn]): its block is the span, split into
-  /// `event.length` cells, and the word stays inside it.
-  ///
-  /// ↩️The writing used to run past the span onto the neighbours' cells
-  /// (「paper writing spills over neighbours freely」 — mine, 2026-07-09, the
-  /// paper-block slice) out of a slot that was a FRACTION of the span, so
-  /// that this widget needed nothing from the zoom. It still needs nothing:
-  /// the block word reads its own box. What changed is the law — 「이름은
-  /// 블록안에서만」 and 「컷블록의 텍스트든 se텍스트든 뭐든」 (유저
-  /// 2026-09-24): the writing keeps its type and narrows into the span.
-  ///
-  /// Instruction writing follows the surface: across the row on the
-  /// timeline, DOWN the column on the sheet.
-  ///
-  /// The sheet used to get horizontal text too, and that is what made
-  /// `FOLLOW PAN` 112px wide in a 28px column — three clip opt-outs above
-  /// then let it paint straight over the neighbouring layer's cells. A
-  /// name written down its own column cannot reach the neighbour at all,
-  /// which is the fix at the root rather than a clip on top.
-  ///
-  /// Down the column its LETTERS stand up (user, 2026-08-08): writing
-  /// beside a duration bar is read at a glance, and the printed sheet is
-  /// set the same way for the same reason.
-  Widget _word(String text, TextStyle style, TimelineBlockWordCells place) =>
-      ExcludeSemantics(
-        child: axis == Axis.horizontal
-            ? TimelineBlockText(text: text, style: style, place: place)
-            : TimelineBlockColumn(
-                text: text,
-                style: style,
-                latinForm: VerticalLatinForm.upright,
-                place: place,
-              ),
-      );
-
   @override
   Widget build(BuildContext context) {
-    final markColor = def?.colorValue == null
-        ? timelineDrawingInkColor
-        : Color(def!.colorValue!);
+    final markColor = timelineInstructionInk(def);
     // The mark and the writing are independent: free per-event text wins,
     // the vocabulary name is the fallback.
     final name = event.displayLabel(def);
@@ -322,12 +279,6 @@ class _InstructionSpan extends StatelessWidget {
       base,
       ink: timelineDrawingInkColor,
       fontSize: base.fontSize ?? 12,
-      bold: true,
-    );
-    final nameStyle = timelineBlockWordStyle(
-      base,
-      ink: markColor,
-      fontSize: 11,
       bold: true,
     );
     final valueA = event.valueA;
@@ -361,7 +312,7 @@ class _InstructionSpan extends StatelessWidget {
           // block's name and its length do (F-96).
           if (valueA != null && valueA.isNotEmpty)
             Positioned.fill(
-              child: _word(valueA, valueStyle, (
+              child: timelineSpanWord(axis, valueA, valueStyle, (
                 axis: axis,
                 cells: cells,
                 cellIndex: 0,
@@ -371,7 +322,7 @@ class _InstructionSpan extends StatelessWidget {
             ),
           if (valueB != null && valueB.isNotEmpty)
             Positioned.fill(
-              child: _word(valueB, valueStyle, (
+              child: timelineSpanWord(axis, valueB, valueStyle, (
                 axis: axis,
                 cells: cells,
                 cellIndex: cells - 1,
@@ -379,32 +330,9 @@ class _InstructionSpan extends StatelessWidget {
                 acrossAlignment: 0,
               )),
             ),
-          // The name sits on the SPAN's centre along the FRAME axis and
-          // steps OFF the mark across it (user, 2026-08-08): up on the
-          // timeline, right on the sheet.
-          //
-          // Both used to be dead centre — which is exactly where the mark
-          // is, since [_InstructionMarkPainter] draws every bar, wedge and
-          // bowtie about `crossCenter`. So a duration line and the word
-          // naming it were drawn through each other. The MARK keeps the
-          // centre and the writing is what moves, because only one of the
-          // two can say where the middle of the span is.
           if (name.isNotEmpty)
             Positioned.fill(
-              // A hair off the wall, so the glyphs never sit on the cell
-              // border they have just moved next to.
-              child: Padding(
-                padding: axis == Axis.horizontal
-                    ? const EdgeInsets.only(top: instructionLabelInset)
-                    : const EdgeInsets.only(right: instructionLabelInset),
-                child: _word(name, nameStyle, (
-                  axis: axis,
-                  cells: 1,
-                  cellIndex: 0,
-                  growth: TimelineBlockWordGrowth.towardBlockEnd,
-                  acrossAlignment: axis == Axis.horizontal ? -1 : 1,
-                )),
-              ),
+              child: TimelineSpanName(axis: axis, text: name, ink: markColor),
             ),
         ],
       ),

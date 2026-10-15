@@ -7,16 +7,20 @@
 // (app_strings_keys_test), so a word no part of the PROGRAM reads looks
 // exactly like one that is in use.
 //
-// ⇒ A WORD OF THE TABLE IS READ BY THE PROGRAM — or it stands in the ledger
-// below: the words that were unread the day this was written (2026-10-08,
-// 36 of 942). Each is one of two things, and telling them apart is reading
-// its place, one at a time — a place that still writes its own words, or a
-// row left behind by something that was removed. The ledger is what is
-// owed, and it only shrinks.
+// ⇒ A WORD OF THE TABLE IS READ BY THE PROGRAM. ↩️Until 2026-10-09 a ledger
+// stood here: the 36 words unread the day this was written. Read one at a
+// time (card the-string-table-holds-words-nobody-reads), they were three
+// things — 31 rows a removed screen left behind (the seven-menu bar, the old
+// file browser, the windows that became sections of the preferences …),
+// gone with their lines in every language; four the table reads ITSELF,
+// through a word it composes (`sheetKindName` answers with
+// `sheetThreeSeconds`), which the scan now counts; and one getter that
+// `_count` outlived (its lines stay — `_count` reads them by name).
 //
 // HOW IT READS: a getter is read when some file under lib other than the
-// table has `.name` in it. ⚠️A member of another class with the same name
-// reads as a reading — the scan errs towards quiet, never a false alarm.
+// table has `.name` in it, or when the table itself names it outside its own
+// getter and outside its text. ⚠️A member of another class with the same
+// name reads as a reading — the scan errs towards quiet.
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -32,52 +36,28 @@ Set<String> wordsOf(String table) => {
     match.group(1)!,
 };
 
-/// The [words] that [program] — the program's source, the table left out —
-/// nowhere reads as a member.
-Set<String> unreadAmong(Set<String> words, String program) => words.difference({
-  for (final match in RegExp(r'\.(\w+)\b').allMatches(program)) match.group(1)!,
-});
+/// The names [table] uses in its own code — a composed word's body naming
+/// another — with the texts, the comments and each getter's own name left
+/// out.
+Set<String> readInTable(String table) {
+  final code = table
+      .replaceAll(RegExp(r"'(?:[^'\\\n]|\\.)*'"), "''")
+      .replaceAll(RegExp(r'"(?:[^"\\\n]|\\.)*"'), '""')
+      .replaceAll(RegExp(r'//[^\n]*'), '')
+      .replaceAll(RegExp(r'String get \w+ =>'), '');
+  return {for (final match in RegExp(r'\b(\w+)\b').allMatches(code)) match[1]!};
+}
 
-/// The words nobody read when this was written. ⛔Nothing is added: a new
-/// word is read by the place it was written for.
-const _owed = <String>{
-  'accentTitle',
-  'brGroupOptions',
-  'brTransformPreserveColors',
-  'brTransformPreserveColorsHint',
-  'commonFill',
-  'cutDelete',
-  'exCelCountOne',
-  'fileNameEmpty',
-  'fileNameLabel',
-  'fileSaveTitle',
-  'inputTitle',
-  'languageSettingsTitle',
-  'menuBarCut',
-  'menuBarEdit',
-  'menuBarFile',
-  'menuBarHelp',
-  'menuBarLayer',
-  'menuBarPlayback',
-  'menuBarWindow',
-  'onionAfter',
-  'onionBefore',
-  'penPressureAxis',
-  'sheetSixSeconds',
-  'sheetThreeSeconds',
-  'sortByModified',
-  'sortByName',
-  'sortBySize',
-  'sortDescending',
-  'tlCustom',
-  'tlDeleteLayer',
-  'tlRenameLayer',
-  'tlSameAsSelected',
-  'tlSeNameTemplate',
-  'tlSharedDeselect',
-  'workCover',
-  'workLogo',
-};
+/// The [words] that nothing reads — [program], the program's source with the
+/// table left out, nowhere as a member, and [table] nowhere in its own code.
+Set<String> unreadAmong(
+  Set<String> words,
+  String program, {
+  String table = '',
+}) => words.difference({
+  for (final match in RegExp(r'\.(\w+)\b').allMatches(program)) match.group(1)!,
+  ...readInTable(table),
+});
 
 void main() {
   test('the scan tells a word that is read from one that is not', () {
@@ -99,8 +79,31 @@ void main() {
     );
   });
 
-  test('🚨every word of the table is read by the program, or is owed', () {
-    final words = wordsOf(File(_table).readAsStringSync());
+  test('a word the table composes another from is read — named in its '
+      'text or its comments, it is not', () {
+    const table = '''
+  String get threeSeconds => _s('threeSeconds');
+  String get sixSeconds => _s('sixSeconds');
+  /// [sixSeconds]'s neighbour.
+  String get mentioned => _s('mentioned');
+  String kindName(int kind) => switch (kind) {
+    3 => threeSeconds,
+    _ => 'sixSeconds',
+  };
+  // mentioned
+  static const Map<String, String> _en = {
+    'mentioned': 'sixSeconds',
+  };
+''';
+    expect(unreadAmong(wordsOf(table), '', table: table), {
+      'sixSeconds',
+      'mentioned',
+    });
+  });
+
+  test('🚨every word of the table is read by the program', () {
+    final table = File(_table).readAsStringSync();
+    final words = wordsOf(table);
     expect(words.length, greaterThan(900), reason: '⛔premise: the table');
     final program = StringBuffer();
     var files = 0;
@@ -111,21 +114,14 @@ void main() {
       }
     }
     expect(files, greaterThan(100), reason: '⛔premise: the program');
-    final unread = unreadAmong(words, program.toString());
 
     expect(
-      unread.difference(_owed),
+      unreadAmong(words, program.toString(), table: table),
       isEmpty,
       reason:
-          'a word of the table that no part of the program reads: either '
-          'its place writes its own words — in one language (F-318) — or '
-          'nothing shows it any more and its rows go, in every language',
+          'a word of the table that nothing reads: either its place writes '
+          'its own words — in one language (F-318) — or nothing shows it any '
+          'more and its rows go, in every language',
     );
-    expect(
-      _owed.difference(unread),
-      isEmpty,
-      reason: 'read now, or gone from the table: take it out of the ledger',
-    );
-    expect(_owed, hasLength(36), reason: 'the ledger only shrinks');
   });
 }

@@ -1,4 +1,5 @@
 import 'brush_anti_alias.dart';
+import 'brush_blend_mode.dart';
 import 'brush_stamp_image.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_shape.dart';
@@ -183,9 +184,9 @@ class BrushDab {
 
   /// RGBA stamp (R14-④ bitmap lift): when set, the dab draws the stamp's
   /// pixels 1:1 source-over centered on [center] (no resampling; [opacity]
-  /// still modulates) and every tip/texture/erase field is ignored. [size]
-  /// should be max(stamp.width, stamp.height) so dirty-region math covers
-  /// the rect.
+  /// still modulates, [erase] still clears) and every tip and texture field
+  /// is ignored. [size] is max(stamp.width, stamp.height) by convention;
+  /// the dab's reach is the stamp's landing rect (`dirtyRegionForBrushDab`).
   final BrushStampImage? stamp;
 
   /// How long a stretch of the stroke this dab stands for, in canvas
@@ -199,6 +200,19 @@ class BrushDab {
   /// than a small one and piled up darker and harder-edged for it. The
   /// kernels even that out on the laid alpha (`stampShareOf`).
   final double? pathStep;
+
+  /// This dab as a tool set to [blend] lays it.
+  ///
+  /// 🚨ERASE rides a flag on the DAB, not the blend mode — the materializer
+  /// reads [erase] per dab and the erase blend takes the plain path, so a
+  /// dab handed over with the mode alone paints where it should clear. A
+  /// stamp is built with no opinion about erasing (a fill's pieces, a cut
+  /// piece), so every road that lands one asks here: the bucket's tap, an
+  /// area ([BrushBlendMode.erase] is what makes 사각형/올가미 지우개 out of
+  /// the fill tool) and the stamp tool's door. The trap was hit three
+  /// times, a caller each, while each wrote this line for itself.
+  BrushDab underBlend(BrushBlendMode blend) =>
+      blend == BrushBlendMode.erase ? copyWith(erase: true) : this;
 
   BrushDab copyWith({
     CanvasPoint? center,

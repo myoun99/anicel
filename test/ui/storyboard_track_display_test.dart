@@ -12,6 +12,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../helpers/named_finders.dart';
+
 /// R9 #21 — the V row's own column. The rail row's fx switch describes the
 /// row's SUBJECT, and this row's subject is the TRACK: its fx master,
 /// persisted like every fx switch since R8.
@@ -203,9 +205,7 @@ void main() {
     final head = find.byKey(
       ValueKey<String>('storyboard-track-label-row-${trackId.value}'),
     );
-    final fxSwitch = find.byKey(
-      ValueKey<String>('storyboard-track-fx-${trackId.value}'),
-    );
+    final fxSwitch = find.named('storyboard-track-fx-${trackId.value}');
     expect(fxSwitch, findsOneWidget);
     expect(
       find.descendant(of: head, matching: find.byType(FieldSlider)),
@@ -225,10 +225,8 @@ void main() {
 
     // The columns are still there: the switch stands where an S row's does,
     // not slid over into the room the two left.
-    final seFx = find.byKey(
-      ValueKey<String>(
-        'storyboard-layer-fx-${seLayerIdForTrack(trackId, 1)}',
-      ),
+    final seFx = find.named(
+      'storyboard-layer-fx-${seLayerIdForTrack(trackId, 1)}',
     );
     expect(seFx, findsOneWidget, reason: 'LIVENESS: an S row wears the column');
     expect(

@@ -13,6 +13,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
 /// F-111 — the level meter keeps its seat.
 ///
@@ -137,6 +138,100 @@ void main() {
     controller.detachTicker();
   });
 
+  testWidgets('🚨a playing meter lays out and paints its bars alone — the '
+      'strip it stands in is not painted again', (tester) async {
+    // As a panel's tab strip carries the transport: both rows, and the
+    // tabs beside them, on the strip's own tick layer.
+    final controller = newController();
+    var heard = 0;
+    final beside = _Counting();
+    Widget row(PlaybackScope scope) => PlaybackTransportControls(
+      key: ValueKey<String>('row-${scope.name}'),
+      controller: controller,
+      scope: scope,
+      resolveMeterPeaks: () {
+        heard += 1;
+        return (left: (heard % 10) / 10, right: 0.5);
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 900,
+              height: 120,
+              child: TickLayer(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    row(PlaybackScope.activeCut),
+                    row(PlaybackScope.allCuts),
+                    CustomPaint(painter: beside, size: const Size(100, 10)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.attachTicker(tester);
+    controller.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    final painted = beside.paints;
+    final heardBefore = heard;
+
+    for (var frame = 0; frame < 5; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(
+      heard - heardBefore,
+      greaterThanOrEqualTo(4),
+      reason: 'fixture: the playing meter read its peaks frame by frame',
+    );
+    expect(
+      beside.paints,
+      painted,
+      reason: '↩️the meter was built again in the strip\'s layout scope, and '
+          'every frame laid out and repainted the strip — tabs and all',
+    );
+    controller.stop();
+    controller.detachTicker();
+  });
+
+  testWidgets('a meter that is not metering hears no frame — it is not built '
+      'again while another scope plays', (tester) async {
+    final controller = newController();
+    await pumpRows(tester, controller);
+    controller.attachTicker(tester);
+    controller.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    CustomPainter? silent() => tester
+        .widget<CustomPaint>(
+          find.descendant(
+            of: meterIn(PlaybackScope.allCuts),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .painter;
+    final before = silent();
+
+    for (var frame = 0; frame < 3; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(
+      identical(silent(), before),
+      isTrue,
+      reason: '↩️it was built again on every frame played, to say silence',
+    );
+    controller.stop();
+    controller.detachTicker();
+  });
+
   testWidgets('a row whose scope is not playing keeps the seat and stays '
       'silent', (tester) async {
     final controller = newController();
@@ -177,4 +272,15 @@ void main() {
       reason: 'another scope\'s playback must not light this row\'s bars',
     );
   });
+}
+
+/// A painter that counts its paints and never asks to repaint.
+class _Counting extends CustomPainter {
+  int paints = 0;
+
+  @override
+  void paint(Canvas canvas, Size size) => paints += 1;
+
+  @override
+  bool shouldRepaint(_Counting oldDelegate) => false;
 }

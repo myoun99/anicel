@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// The film verbs joined the registry so they can be bound to a key, and
@@ -19,20 +20,26 @@ void main() {
   EditorActionDefinition definitionFor(String id) =>
       editorActionDefinitions.firstWhere((definition) => definition.id == id);
 
-  test('every film verb is registered under Timeline', () {
+  test('every film verb is registered on the frame pill', () {
     for (final id in filmVerbs) {
       final definition = definitionFor(id);
-      expect(definition.category, 'Timeline', reason: id);
+      expect(definition.shelf, ShortcutShelf.framePill, reason: id);
       expect(definition.label, isNotEmpty, reason: id);
     }
   });
 
-  test('the film verbs ship deliberately unbound', () {
+  test('the film verbs ship deliberately unbound — but Add Frame, whose key '
+      'the user named', () {
     // Which key belongs on these is a working habit, not something to
     // guess — and the digits are already the comma set's. Registering
     // them unbound is what puts a row in the shortcut dialog to fill in.
+    // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame takes TVPaint's key.
     for (final id in filmVerbs) {
-      expect(definitionFor(id).defaultActivators, isEmpty, reason: id);
+      expect(
+        definitionFor(id).defaultActivators,
+        id == EditorActionIds.frameNewDrawing ? isNotEmpty : isEmpty,
+        reason: id,
+      );
     }
   });
 

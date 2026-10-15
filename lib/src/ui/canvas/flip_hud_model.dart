@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer_kind.dart';
 
 /// What the flip HUD DRAWS — a read-only snapshot of the rows the timeline
@@ -22,8 +23,7 @@ class FlipHudRun {
     required this.startIndex,
     required this.length,
     this.label = '',
-    this.isKey = false,
-    this.holdKey = false,
+    this.keyMark,
   }) : assert(length >= 1, 'A run covers at least one frame.');
 
   final int startIndex;
@@ -32,10 +32,14 @@ class FlipHudRun {
   /// The cel name printed in the block. Empty wears the in-between mark.
   final String label;
 
-  /// A property key rather than a picture: drawn as the lane diamond
-  /// (square when [holdKey]) instead of a paper body.
-  final bool isKey;
-  final bool holdKey;
+  /// A property key rather than a picture: the mark its lane draws it with
+  /// (I-89 ②), instead of a paper body. Null on a picture's run.
+  ///
+  /// ↩️An `isKey` flag beside a `holdKey` one, which could only say diamond
+  /// or square — and could say "a hold that is no key".
+  final KeyMark? keyMark;
+
+  bool get isKey => keyMark != null;
 
   int get endIndexExclusive => startIndex + length;
 

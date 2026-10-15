@@ -11,6 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -29,6 +30,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show
@@ -37,6 +39,10 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
         LayerRowSubject,
         TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
+
+import '../helpers/app_icon_button_probe.dart';
+import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// One second at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
@@ -55,7 +61,11 @@ Layer _seLayer() => Layer(
   ],
 );
 
-Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
+Project _project({
+  Cut Function(Cut cut)? mapCut,
+  List<Layer>? seLayers,
+  List<LayerEffect> trackEffects = const [],
+}) {
   var cut = Cut(
     id: const CutId('lane-cut'),
     name: 'Lane Cut',
@@ -77,13 +87,14 @@ Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
         cuts: [cut],
         // SE rows are TRACK-owned (global frame axis).
         seLayers: seLayers ?? [_seLayer()],
+        effects: trackEffects,
       ),
     ],
   );
 }
 
-/// Pumps the panel with host-style toggle wiring (view-state sets live in
-/// the harness, like StoryboardTabHost).
+/// Pumps the panel over a session holding [project], its twirls wired as
+/// the workspace wires them ([withStoryboardTwirls]).
 Future<void> _pumpPanel(
   WidgetTester tester, {
   required Project project,
@@ -104,39 +115,25 @@ Future<void> _pumpPanel(
   TimelineCurrentRowHooks? currentRowHooks,
   TimelineRowDragHooks? rowDragHooks,
 }) async {
-  final expandedAudio = <String>{};
-  final expandedTransform = <String>{};
-  final expandedGroups = <String>{};
+  final session = EditorSessionManager(initialProject: project);
+  addTearDown(session.dispose);
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
-        body: StatefulBuilder(
-          builder: (context, setState) => StoryboardPanel(
-            project: project,
+        body: withStoryboardTwirls(
+          session,
+          (twirls) => StoryboardPanel(
+            project: session.repository.requireProject(),
             activeCutId: activeCutId,
             onRowFramePress: onRowFramePress,
             pixelsPerFrame: 12,
             projectFrameRate: ProjectFrameRate.fps24,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
-            expandedSeAudioRows: expandedAudio,
-            onToggleSeRowLane: (track, slot) => setState(() {
-              final key = StoryboardPanel.seRowKey(track, slot);
-              if (!expandedAudio.add(key)) {
-                expandedAudio.remove(key);
-              }
-            }),
-            expandedTransformTracks: expandedTransform,
-            onToggleTrackLane: (track) => setState(() {
-              if (!expandedTransform.add(track.id.value)) {
-                expandedTransform.remove(track.id.value);
-              }
-            }),
-            expandedTransformGroups: expandedGroups,
-            onToggleTransformGroup: (groupKey) => setState(() {
-              if (!expandedGroups.add(groupKey)) {
-                expandedGroups.remove(groupKey);
-              }
-            }),
+            expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+            onToggleLayerLanes: twirls.onToggleLayerLanes,
+            expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+            onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
+            layerLanesOpenOf: twirls.layerLanesOpenOf,
             trackLaneEditFor: trackLaneEditFor,
             layerLaneEdit: layerLaneEdit,
             playheadFrame: playheadFrame,
@@ -173,24 +170,30 @@ void main() {
   // a host hands it both verbs — and this host handed it neither.
   testWidgets('the legend twirls every row open and shut, like the '
       'timeline\'s', (tester) async {
-    await _pumpPanel(tester, project: _project());
+    // A track effect gives the V row lanes: the sweep turns the rows that
+    // have some, as the timeline's turns its layers' (F-360 — a twirl is the
+    // row's, and one with nothing under it is nothing to write).
+    await _pumpPanel(
+      tester,
+      project: _project(
+        trackEffects: [
+          LayerEffect.defaults(
+            id: const EffectId('lane-blur'),
+            kind: EffectKind.blur,
+          ),
+        ],
+      ),
+    );
 
     const laneToggle = ValueKey<String>('legend-lanes-toggle');
     const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-se-audio');
 
     // The V row's own state is read off its chevron: its lanes are its fx
-    // chain, and a track with no effects opens onto nothing to find.
+    // chain.
     bool vRowOpen() =>
         tester
-            .widget<Icon>(
-              find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>(
-                    'storyboard-track-lane-toggle-lane-track',
-                  ),
-                ),
-                matching: find.byType(Icon),
-              ),
+            .appIconButton(
+              find.named('storyboard-track-lane-toggle-lane-track'),
             )
             .icon ==
         Icons.arrow_drop_down;
@@ -216,6 +219,28 @@ void main() {
     expect(vRowOpen(), isFalse);
   });
 
+  testWidgets('an S row\'s twirl is the timeline\'s, and stands as tall as '
+      'the row\'s cells, as its InkWell did', (tester) async {
+    await _pumpPanel(tester, project: _project());
+    final twirl = find.named('storyboard-se-lane-toggle-lane-track-1');
+    final typeCell = find.named('storyboard-layer-type-button-lane-track-s1');
+    expect(
+      tester.getSize(twirl).height,
+      tester.getSize(typeCell).height,
+      reason: 'both are handed the row\'s height',
+    );
+    expect(
+      tester.getSize(twirl).height,
+      greaterThan(24),
+      reason: '⛔CONTROL: the row is taller than a rail row\'s 24',
+    );
+    expect(
+      tester.appIconButton(twirl).tooltip,
+      isNotEmpty,
+      reason: 'the one twirl says what it does, here as on the timeline',
+    );
+  });
+
   testWidgets('one open row makes the legend button the CLOSING verb, and '
       'it shuts the rest with it', (tester) async {
     // The mixed state: with a single S row twirled open by hand, the button
@@ -224,9 +249,7 @@ void main() {
     await _pumpPanel(tester, project: _project());
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -243,15 +266,8 @@ void main() {
     );
     expect(
       tester
-          .widget<Icon>(
-            find.descendant(
-              of: find.byKey(
-                const ValueKey<String>(
-                  'storyboard-track-lane-toggle-lane-track',
-                ),
-              ),
-              matching: find.byType(Icon),
-            ),
+          .appIconButton(
+            find.named('storyboard-track-lane-toggle-lane-track'),
           )
           .icon,
       Icons.arrow_right,
@@ -263,17 +279,13 @@ void main() {
       '— a track row does not own one', (tester) async {
     await _pumpPanel(tester, project: _project());
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
+      find.named('storyboard-track-lane-toggle-lane-track'),
     );
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
-        ),
+      find.named(
+        'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
       ),
       findsNothing,
     );
@@ -363,7 +375,7 @@ void main() {
     );
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-visibility-lane-se')),
+      find.named('storyboard-layer-visibility-lane-se'),
       findsOneWidget,
       reason: 'the SE eye survives the no-cut state',
     );
@@ -379,9 +391,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -429,11 +439,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-lane-se-transform-group',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
     );
     await tester.pumpAndSettle();
     for (final laneId in [
@@ -467,17 +473,11 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-lane-se-transform-group',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
     );
     await tester.pumpAndSettle();
 
@@ -509,17 +509,11 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-      ),
+      find.named('storyboard-se-lane-toggle-lane-track-1'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-lane-se-transform-group',
-        ),
-      ),
+      find.named('storyboard-lane-group-toggle-lane-se-transform-group'),
     );
     await tester.pumpAndSettle();
 
@@ -628,15 +622,13 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('storyboard-layer-visibility-lane-se'),
-        ),
+        find.named('storyboard-layer-visibility-lane-se'),
       );
       await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-layer-mute-lane-se')),
+        find.named('storyboard-layer-mute-lane-se'),
       );
       await tester.drag(
-        find.byKey(const ValueKey<String>('storyboard-layer-opacity-lane-se')),
+        find.named('storyboard-layer-opacity-lane-se'),
         const Offset(-20, 0),
       );
       await tester.pumpAndSettle();
@@ -730,9 +722,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('storyboard-se-lane-toggle-lane-track-1'),
-        ),
+        find.named('storyboard-se-lane-toggle-lane-track-1'),
       );
       await tester.pumpAndSettle();
 
@@ -776,9 +766,7 @@ void main() {
         onToggleTrackFx: fxToggles.add,
       );
 
-      final fxFinder = find.byKey(
-        const ValueKey<String>('storyboard-track-fx-lane-track'),
-      );
+      final fxFinder = find.named('storyboard-track-fx-lane-track');
       expect(fxFinder, findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
@@ -805,7 +793,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        find.named('storyboard-track-fx-lane-track'),
       );
       await tester.pumpAndSettle();
       expect(fxToggles.single.id.value, 'lane-track');
@@ -821,7 +809,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        find.named('storyboard-track-fx-lane-track'),
         buttons: kSecondaryButton,
       );
       await tester.pumpAndSettle();
@@ -834,7 +822,7 @@ void main() {
     ) async {
       await _pumpPanel(tester, project: _project());
       expect(
-        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        find.named('storyboard-track-fx-lane-track'),
         findsNothing,
       );
     });
@@ -921,8 +909,11 @@ void main() {
     // covered in timeline_section_test, but only a pumped panel proves the
     // band measures ITS OWN box — a fit computed against the wrong height
     // would pass every pure test and still ship `C⋮`.
-    testWidgets('the one-row transition band shortens CAM to C, while the '
-        'SE band beside it keeps SE', (tester) async {
+    // ↩️The one-row band here was the CAM band, the transition row alone,
+    // until the camera row joined it on top (I-73 ④): CAM is two rows now
+    // and keeps its word, and the one-row band is the conte row's.
+    testWidgets('the one-row conte band shortens ACTION to A, while the '
+        'two-row CAM and SE bands beside it keep theirs', (tester) async {
       await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
       String bandText(String keyValue) => tester
@@ -934,23 +925,23 @@ void main() {
           )
           .text;
 
-      expect(bandText('storyboard-section-zone-lane-track-transition'), 'C');
+      expect(bandText('storyboard-section-zone-lane-track-conte'), 'A');
+      expect(bandText('storyboard-section-zone-lane-track-camera'), 'CAM');
       expect(bandText('storyboard-section-zone-lane-track-se'), 'SE');
 
       // The REGION still announces the whole word: shortening is a drawing
-      // decision, and a reader that said 'C' would be reading geometry.
+      // decision, and a reader that said 'A' would be reading geometry.
       expect(
         find.descendant(
           of: find.byKey(
-            const ValueKey<String>(
-              'storyboard-section-zone-lane-track-transition',
-            ),
+            const ValueKey<String>('storyboard-section-zone-lane-track-conte'),
           ),
           // The widget, not the semantics tree: `bySemanticsLabel` needs the
           // binding turned on, and what is being asserted here is what the
           // band DECLARES, which is exactly this property.
           matching: find.byWidgetPredicate(
-            (widget) => widget is Semantics && widget.properties.label == 'CAM',
+            (widget) =>
+                widget is Semantics && widget.properties.label == 'ACTION',
           ),
         ),
         findsOneWidget,

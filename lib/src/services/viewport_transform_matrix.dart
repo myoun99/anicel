@@ -95,3 +95,22 @@ CanvasViewport? viewportOfSimilarity(Matrix4 matrix) {
     rotationDegrees: math.atan2(b, a) * 180 / math.pi,
   );
 }
+
+/// The view a canvas is seen through when [map] — a pan · zoom · rotation
+/// (a camera's projection, a sheet picture's slot) — lays it where [view]
+/// shows: [view] after [map].
+///
+/// [view]'s flips stay its own. A viewport is pan · zoom · rotation · FLIP,
+/// so the flip is taken back off the right before the rest is read
+/// ([viewportOfSimilarity] reads no mirror) and put back on the viewport:
+/// [map] seen through a mirror is still a turn, the other way.
+CanvasViewport viewportAfter(CanvasViewport view, Matrix4 map) {
+  final matrix = viewportTransformMatrix(view)..multiply(map);
+  if (_flipped(view)) {
+    matrix.multiply(_flip(view));
+  }
+  return viewportOfSimilarity(matrix)!.copyWith(
+    flipHorizontal: view.flipHorizontal,
+    flipVertical: view.flipVertical,
+  );
+}

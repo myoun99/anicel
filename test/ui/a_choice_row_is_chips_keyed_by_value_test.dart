@@ -104,7 +104,7 @@ void main() {
         );
       }
       expect(chipAt(tester, 'import-media-copy').label, 'Keep');
-      expect(chipAt(tester, 'import-fit-contain').label, 'Keep aspect');
+      expect(chipAt(tester, 'import-fit-contain').label, 'Fit, keep ratio');
       expect(chipAt(tester, 'import-revision-originalOnly').label, 'Originals');
     });
 

@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 
 import 'flyout_test_helpers.dart';
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/named_finders.dart';
 
 // ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT, then left its own
 // button too. 유저: 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」.
@@ -135,7 +136,7 @@ void main() {
     expect(_layerNames(repository), ['A', 'C']);
     expect(_selectedLayerName(tester), 'C');
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-b')),
+      find.named('timeline-layer-row-layer-b'),
       findsNothing,
     );
     expect(_selectedLayerName(tester), 'C');
@@ -169,15 +170,13 @@ void main() {
       expect(
         tester
             .getTopLeft(
-              find.byKey(const ValueKey<String>('timeline-layer-row-layer-c')),
+              find.named('timeline-layer-row-layer-c'),
             )
             .dy,
         lessThan(
           tester
               .getTopLeft(
-                find.byKey(
-                  const ValueKey<String>('timeline-layer-row-layer-a'),
-                ),
+                find.named('timeline-layer-row-layer-a'),
               )
               .dy,
         ),
@@ -189,15 +188,13 @@ void main() {
       expect(
         tester
             .getTopLeft(
-              find.byKey(const ValueKey<String>('xsheet-layer-row-layer-a')),
+              find.named('xsheet-layer-row-layer-a'),
             )
             .dx,
         lessThan(
           tester
               .getTopLeft(
-                find.byKey(
-                  const ValueKey<String>('xsheet-layer-row-layer-c'),
-                ),
+                find.named('xsheet-layer-row-layer-c'),
               )
               .dx,
         ),
@@ -215,11 +212,11 @@ void main() {
     await _deleteActiveLayer(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
+      find.named('timeline-layer-type-button-layer-a'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-c')),
+      find.named('timeline-layer-type-button-layer-c'),
       findsOneWidget,
     );
 
@@ -254,7 +251,10 @@ Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
     tapCommandButton(tester, key);
 
 Future<void> _selectLayer(WidgetTester tester, LayerId layerId) async {
-  await _tapKey(tester, ValueKey<String>('timeline-layer-name-$layerId'));
+  final label = find.named('timeline-layer-name-$layerId');
+  await tester.ensureVisible(label);
+  await tester.pumpAndSettle();
+  await tester.tap(label, warnIfMissed: false);
   await tester.pumpAndSettle();
 }
 
@@ -307,9 +307,7 @@ Layer _layer(ProjectRepository repository, LayerId layerId) {
 }
 
 String _selectedLayerName(WidgetTester tester) {
-  final selected = find.byKey(
-    const ValueKey<String>('timeline-selected-layer'),
-  );
+  final selected = find.named('timeline-selected-layer');
   final texts = find.descendant(of: selected, matching: find.byType(Text));
   // Skip the section gutter label (ACTION/SE/CAM) that leads a
   // section's first row; the layer name is the next text.
@@ -333,7 +331,7 @@ List<String> _visibleXSheetLayerNames(WidgetTester tester) {
 
 String _layerText(WidgetTester tester, LayerId layerId) {
   final textFinder = find.descendant(
-    of: find.byKey(ValueKey<String>('timeline-layer-name-$layerId')),
+    of: find.named('timeline-layer-name-$layerId'),
     matching: find.byType(Text),
   );
   return tester.widget<Text>(textFinder.first).data!;
@@ -343,7 +341,7 @@ String _layerText(WidgetTester tester, LayerId layerId) {
 /// writing rather than a `Text` — one painter draws the whole stack.
 String _xsheetLayerText(WidgetTester tester, LayerId layerId) {
   final textFinder = find.descendant(
-    of: find.byKey(ValueKey<String>('xsheet-layer-name-$layerId')),
+    of: find.named('xsheet-layer-name-$layerId'),
     matching: find.byType(VerticalWritingText),
   );
   return tester.widget<VerticalWritingText>(textFinder.first).text;

@@ -1,38 +1,44 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
+import '../../models/canvas_viewport.dart';
 import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../models/project_frame_rate.dart';
-import '../../native/qa_native_engine.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
-import '../audio/waveform_painter.dart';
+import '../brush/brush_canvas_panel.dart' show CanvasTransportBand;
+import '../canvas/viewport_pages_painter.dart' show ViewportPageGround;
 import '../editor_session_manager.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../media/audio_viewer_document.dart';
+import '../media/document_preview_panel.dart';
 import '../media/media_run.dart';
 import '../media/open_viewer_document.dart';
 import '../media/page_rasters.dart';
-import '../media/viewer_raster_budget.dart';
-import '../media/viewer_render_tier.dart';
+import '../media/picture_run_document.dart';
+import '../media/viewer_page_loading.dart';
+import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_sound.dart';
+import '../media/waveform_marks_painter.dart';
 import '../theme/app_theme.dart';
-import '../widgets/checkered_picture.dart';
 import '../widgets/transport_bar.dart';
 
 /// The import window's right-hand zone: the selected file, and the bar that
 /// walks through it — and PLAYS it, sound and all.
 ///
-/// The picture is FITTED into a 16:9 box and nothing else is drawn — no
-/// canvas outline, no placement rectangle. What the window is showing here
-/// is the source, not the composition; the composition is what Fit answers
-/// in the row.
+/// The file stands in the export window's preview panel
+/// ([DocumentPreviewPanel] — 유저 2026-10-09: 「임포트창 미리보기도 출력창
+/// 미리보기 개편한것처럼 공용화된거 쓰는거 잊지말고」), and nothing else is
+/// drawn — no canvas outline, no placement rectangle. What the window is
+/// showing here is the source, not the composition; the composition is
+/// what Fit answers in the row. ↩️It was fitted into a 16:9 well, with no
+/// zoom.
 ///
 /// 🚨★★★**THE MEDIA VIEWER'S DOCUMENT, PAGES AND RUN — the same code, not a
 /// second player.** 유저 2026-09-27: 「임포트창에서 재생해도 소리안나고
@@ -50,9 +56,10 @@ import '../widgets/transport_bar.dart';
 /// lands), a sound in the project's frames over its length, a PDF and a GIF
 /// in their pages. The bar never learns what is behind them.
 ///
-/// A sound is its waveform, run over the frames it lasts, with the span
-/// IN/OUT keep washed on it (the mockup's window for a sound — 유저
-/// 2026-09-11: 「거기서 가져올 구간을 줄이면 블록도 그만큼 줄어든다」).
+/// A sound is the viewer's waveform page under the viewer's playhead, with
+/// the span IN/OUT keep washed on it (the mockup's window for a sound —
+/// 유저 2026-09-11: 「거기서 가져올 구간을 줄이면 블록도 그만큼
+/// 줄어든다」).
 class ImportPreview extends StatefulWidget {
   const ImportPreview({
     super.key,
@@ -68,6 +75,7 @@ class ImportPreview extends StatefulWidget {
     this.audioSpeed = (numerator: 1, denominator: 1),
     this.sound,
     this.opensAsSound = false,
+    this.run,
   });
 
   /// The session the window imports into: the census its pages are counted
@@ -116,21 +124,35 @@ class ImportPreview extends StatefulWidget {
   /// the frames its trim is counted in, not the picture that does not.
   final bool opensAsSound;
 
+  /// The pictures of the numbered run [path] is part of, in order — null
+  /// for a file in none. A run is paged through as one document
+  /// ([PictureRunDocument]), and its IN/OUT pick the pictures that come in
+  /// (F-282, 유저 2026-10-09: 「연번은 들어갈 범위만(A2–A3) — 미리보기의
+  /// IN/OUT, 동영상과 같은 법」).
+  final List<String>? run;
+
   /// The narrowest this zone lays out: the transport's own minimum. The
   /// window gives the file table the rest.
-  static const double minimumWidth = TransportBar.minimumWidth;
+  static double minimumWidthIn(BuildContext context) =>
+      TransportBar.minimumWidthIn(context);
 
   @override
   State<ImportPreview> createState() => _ImportPreviewState();
 }
 
 class _ImportPreviewState extends State<ImportPreview>
+    with TickerProviderStateMixin
     implements MediaRunSurface {
   /// The file shown, as the viewer would open it — or null while nothing
   /// is, or nothing here reads it.
   ViewerDocument? _document;
   String? _loadedPath;
   bool _loadedAsSound = false;
+  List<String>? _loadedRun;
+
+  /// Whether the file is still being opened: the zone says it is loading
+  /// until it lands, or turns out to be nothing this window reads.
+  bool _opening = false;
 
   /// The page under the playhead: a movie's project frame, a PDF's page, a
   /// GIF's frame. A sound's playhead is its run's seconds instead
@@ -141,24 +163,15 @@ class _ImportPreviewState extends State<ImportPreview>
   /// ([RenderCaches.viewerRasterBytesByViewer]).
   static const String _censusKey = 'import-preview';
 
-  late final PageRasters _rasters = PageRasters(
-    budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    ),
-    document: () => _document,
-    distance: (page) => _run.distanceTo(page),
-    rebuild: setState,
-    mounted: () => mounted,
+  late final ViewerPagesAndRun _pagesAndRun = ViewerPagesAndRun(
+    surface: this,
+    sound: widget.sound ?? ViewerSound.ofSession(widget.session),
     report: (bytes) =>
         widget.session.renderCaches.viewerRasterBytesByViewer[_censusKey] =
             bytes,
   );
-
-  late final MediaRun _run = MediaRun(
-    surface: this,
-    rasters: _rasters,
-    sound: widget.sound ?? ViewerSound.ofSession(widget.session),
-  );
+  PageRasters get _rasters => _pagesAndRun.rasters;
+  MediaRun get _run => _pagesAndRun.run;
 
   @override
   void initState() {
@@ -170,7 +183,9 @@ class _ImportPreviewState extends State<ImportPreview>
   @override
   void didUpdateWidget(ImportPreview old) {
     super.didUpdateWidget(old);
-    if (old.path != widget.path || old.opensAsSound != widget.opensAsSound) {
+    if (old.path != widget.path ||
+        old.opensAsSound != widget.opensAsSound ||
+        !listEquals(old.run, widget.run)) {
       unawaited(_load());
     }
   }
@@ -201,12 +216,19 @@ class _ImportPreviewState extends State<ImportPreview>
   Future<void> _load() async {
     final path = widget.path;
     final asSound = widget.opensAsSound;
-    if (path == _loadedPath && asSound == _loadedAsSound) {
+    final run = widget.run;
+    bool stillAsked() =>
+        _loadedPath == path &&
+        _loadedAsSound == asSound &&
+        listEquals(_loadedRun, run);
+    if (stillAsked()) {
       return;
     }
     _loadedPath = path;
     _loadedAsSound = asSound;
+    _loadedRun = run;
     _close();
+    _opening = path != null;
     if (path == null) {
       setState(() {});
       return;
@@ -218,7 +240,9 @@ class _ImportPreviewState extends State<ImportPreview>
     final kind = asSound ? MediaAssetKind.audio : mediaAssetKindForPath(key);
     ViewerDocument? document;
     try {
-      document = kind == null
+      document = run != null
+          ? await PictureRunDocument.open(run, hold: widget.holdBytes)
+          : kind == null
           ? null
           : await openViewerDocument(
               kind,
@@ -233,14 +257,23 @@ class _ImportPreviewState extends State<ImportPreview>
       // for. What cannot be imported is already named in the footer.
       document = null;
     }
-    if (!mounted || _loadedPath != path || _loadedAsSound != asSound) {
+    if (!mounted || !stillAsked()) {
       unawaited(document?.dispose());
       return;
     }
-    setState(() => _document = document);
+    setState(() {
+      _document = document;
+      _opening = false;
+    });
   }
 
   // --- The run's surface ([MediaRunSurface]) -------------------------------
+
+  @override
+  TickerProvider get vsync => this;
+
+  @override
+  ProjectFrameRate get frameRate => widget.frameRate;
 
   @override
   ViewerDocument? get document => _document;
@@ -285,118 +318,73 @@ class _ImportPreviewState extends State<ImportPreview>
     // sound in the project's frames over its length, anything else its
     // pages.
     final frameCount = _run.frameCount(widget.frameRate);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: _stage(frameCount)),
-        const Divider(height: 1),
-        _transport(frameCount),
-      ],
-    );
-  }
-
-  /// The picture in its 16:9 well, over the app's ONE transparency checker —
-  /// the export preview's own shape, shared (유저 2026-09-11: 「임포트의
-  /// 미리보기에서 배경이 투명한파일은 출력창의 미리보기에서 쓰는 …
-  /// 격자무늬 그대로 공용화해서 재사용하도록」). It used to draw the file
-  /// straight onto the dark well, where open alpha and a dark picture look
-  /// the same. A sound has no open alpha to show: its waveform stands on
-  /// the well itself.
-  Widget _stage(int frameCount) => ColoredBox(
-    color: AppColors.backdrop,
-    child: Padding(
-      padding: const EdgeInsets.all(8),
-      child: Center(
-        child: AspectRatio(aspectRatio: 16 / 9, child: _shown(frameCount)),
-      ),
-    ),
-  );
-
-  Widget _shown(int frameCount) {
-    final sound = _sound;
-    if (sound != null) {
-      return _waveform(sound, frameCount);
-    }
     final document = _document;
-    if (document == null || document.pageCount == 0) {
-      return const SizedBox.shrink();
-    }
-    return LayoutBuilder(
-      builder: (context, box) {
-        final picture = _pictureOf(context, document, box.biggest);
-        return picture == null
-            ? const SizedBox.shrink()
-            : CheckeredPicture(
-                image: picture,
-                checkerKey: const ValueKey<String>('import-preview-checker'),
-              );
-      },
+    final shown = document == null || document.pageCount == 0
+        ? null
+        : document;
+    final run = _loadedRun;
+    // A run's plate names the picture stood on (the mockup: 「A2.png ·
+    // 2 / 3」); anything else's, its file.
+    final path = run != null && shown != null
+        ? run[_page.clamp(0, run.length - 1)]
+        : _loadedPath;
+    final sound = _sound != null;
+    return DocumentPreviewPanel(
+      keyPrefix: 'import-preview',
+      pagesAndRun: _pagesAndRun,
+      document: shown,
+      page: shown == null ? 0 : _page.clamp(0, shown.pageCount - 1),
+      nothing: _opening ? _loading : const SizedBox.shrink(),
+      // The app's ONE transparency checker under a picture — the export
+      // preview's own, shared (유저 2026-09-11: 「임포트의 미리보기에서
+      // 배경이 투명한파일은 출력창의 미리보기에서 쓰는 … 격자무늬 그대로
+      // 공용화해서 재사용하도록」): on the bare backdrop, open alpha and a
+      // dark picture look the same. A sound has no open alpha to show; its
+      // band stands on the backdrop itself.
+      ground: sound ? ViewportPageGround.none : ViewportPageGround.checker,
+      // The window trims, so its transport is always there.
+      transport: CanvasTransportBand(
+        height: TransportBar.heightIn(context, range: true),
+        child: _transport(frameCount),
+      ),
+      documentName: path == null ? null : mediaFileName(path),
+      marks: sound
+          ? (viewport, page) => _soundMarks(viewport, page, frameCount)
+          : null,
     );
   }
 
-  /// Asks for the page under the playhead at the pixels it will be drawn
-  /// at — the viewer's ladder ([viewerRenderScaleFor]) over the box it is
-  /// fitted into — and answers whatever the cache holds for it (a blurrier
-  /// render of the SAME page is not a lie about which frame this is).
-  ui.Image? _pictureOf(BuildContext context, ViewerDocument document, Size box) {
-    final page = _page.clamp(0, document.pageCount - 1);
-    final size = document.pageSize(page);
-    if (size.width > 0 && size.height > 0) {
-      final fitted = math.min(box.width / size.width, box.height / size.height);
-      final scale = viewerRenderScaleFor(
-        fitted * EffectiveDevicePixelRatio.of(context),
-        size,
-      );
-      _rasters
-        ..scale = scale
-        ..shown = {page}
-        ..ensureRendered(page, scale);
-      _run.fillBuffer();
-    }
-    return _rasters.imageOf(page);
-  }
-
-  /// A sound's picture — the viewer's painter in the viewer's ink
-  /// ([AudioViewerDocument.ink]) — over the frames the transport counts,
-  /// with the span IN/OUT keep washed as the transport's range is.
-  Widget _waveform(AudioPeaks sound, int frameCount) => LayoutBuilder(
-    builder: (context, constraints) {
-      final perFrame = constraints.maxWidth / frameCount;
-      final kept = _kept(frameCount);
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          CustomPaint(
-            key: const ValueKey<String>('import-preview-waveform'),
-            painter: WaveformPainter(
-              peaks: sound,
-              frameRate: widget.frameRate,
-              pixelsPerFrame: perFrame,
-              color: AudioViewerDocument.ink,
-            ),
-          ),
-          // Always there, clear while IN/OUT do not bite — nothing pops in.
-          Positioned(
-            left: kept.first * perFrame,
-            width: kept.count * perFrame,
-            top: 0,
-            bottom: 0,
-            child: DecoratedBox(
-              key: const ValueKey<String>('import-preview-kept-span'),
-              decoration: _rangeShown(frameCount)
-                  ? BoxDecoration(
-                      color: TransportBar.rangeWash,
-                      border: Border.symmetric(
-                        vertical: BorderSide(color: AppColors.accent, width: 2),
-                      ),
-                    )
-                  : const BoxDecoration(),
-            ),
-          ),
-        ],
-      );
-    },
+  /// The file still opening (F-315). ↩️The well stood empty.
+  static const Widget _loading = ViewerPageLoading(
+    key: ValueKey<String>('import-preview-loading'),
   );
+
+  /// A sound's marks over its band — the viewer's ([WaveformMarksPainter]):
+  /// where the playhead stands, and the span IN/OUT keep, washed as the
+  /// transport's range is. The layer is always there and clear while IN/OUT
+  /// do not bite, so nothing pops in when they start to.
+  Widget _soundMarks(CanvasViewport viewport, ui.Size page, int frameCount) {
+    final kept = _kept(frameCount);
+    final rate = widget.frameRate;
+    return CustomPaint(
+      key: const ValueKey<String>('import-preview-marks'),
+      painter: WaveformMarksPainter(
+        atSeconds: _run.soundSeconds,
+        ofSeconds: _run.soundLengthSeconds ?? 0,
+        docSize: page,
+        viewport: viewport,
+        effectiveRatio: EffectiveDevicePixelRatio.of(context),
+        color: AppColors.accent,
+        kept: _rangeShown(frameCount)
+            ? (
+                from: rate.frameStartSeconds(kept.first),
+                to: rate.frameStartSeconds(kept.last + 1),
+              )
+            : null,
+      ),
+      child: const SizedBox.expand(),
+    );
+  }
 
   /// What IN/OUT keep of [frameCount] frames — the transport's ends and the
   /// waveform's wash read this one answer.

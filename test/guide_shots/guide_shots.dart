@@ -54,8 +54,6 @@ import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_preset_file_service.dart';
-import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -66,6 +64,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindow;
 
 import '../helpers/app_faces.dart';
 import '../helpers/home_page_probes.dart' show tapToolbarButton;
+import '../helpers/named_finders.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import 'guide_shortcut_table.dart';
@@ -77,18 +76,6 @@ late String outDir;
 /// This run's own folder — the brush library and the media files placed
 /// from it — gone when the run ends.
 late Directory scratch;
-
-/// The icon font from the Flutter SDK running this test: the tester sits
-/// in `artifacts/engine/<platform>/`, the font in `artifacts/material_fonts/`.
-Future<void> loadIcons() async {
-  final artifacts = File(Platform.resolvedExecutable).parent.parent.parent;
-  final bytes = File(
-    '${artifacts.path}/material_fonts/materialicons-regular.otf',
-  ).readAsBytesSync();
-  final loader = FontLoader('MaterialIcons')
-    ..addFont(Future.value(ByteData.view(bytes.buffer)));
-  await loader.load();
-}
 
 /// 'monospace' (the frame counter, the export window's file lines) is left
 /// to the system on purpose ([AppTypography]). A test has no system faces
@@ -184,24 +171,13 @@ Future<void> pumpApp(
   );
   scratch = Directory.systemTemp.createTempSync('anicel_guide_');
   deleteAfterSessionEnds(scratch);
-  // A brush library of its own, born in [language]: left to itself the
-  // workspace opens the developer's (`%APPDATA%`), and the pages showed
-  // someone's own brushes under their own language's names.
   await tester.pumpWidget(
     RepaintBoundary(
       key: shotKey,
       child: MaterialApp(
         theme: buildAppTheme(),
         debugShowCheckedModeBanner: false,
-        home: HomePage(
-          initialProject: project,
-          presetFileService: BrushPresetFileService(
-            filePath: '${scratch.path}/brush_presets.json',
-          ),
-          tipLibraryService: BrushTipLibraryService(
-            directoryPath: '${scratch.path}/tips',
-          ),
-        ),
+        home: HomePage(initialProject: project),
       ),
     ),
   );
@@ -761,13 +737,7 @@ Rect timelineRows(WidgetTester tester) {
   final dock = bottomDock(tester);
   var bottom = dock.top + 120;
   for (final e in find
-      .byWidgetPredicate(
-        (w) =>
-            w.key is ValueKey<String> &&
-            (w.key! as ValueKey<String>).value.startsWith(
-              'timeline-layer-row-',
-            ),
-      )
+      .namedWhere((name) => name.startsWith('timeline-layer-row-'))
       .evaluate()) {
     final box = e.renderObject as RenderBox?;
     if (box == null || !box.hasSize) continue;
@@ -777,13 +747,16 @@ Rect timelineRows(WidgetTester tester) {
   return Rect.fromLTRB(dock.left, dock.top, dock.right, bottom + 16);
 }
 
-/// Everything on screen whose string key starts with one of [prefixes],
-/// as one rect.
+/// Everything on screen whose string key, or name, starts with one of
+/// [prefixes], as one rect.
 Rect keyed(WidgetTester tester, List<String> prefixes) {
   Rect? all;
-  final found = find.byWidgetPredicate((w) {
-    final key = w.key;
-    return key is ValueKey<String> && prefixes.any(key.value.startsWith);
+  bool chosen(String? handle) =>
+      handle != null && prefixes.any(handle.startsWith);
+  final found = find.byElementPredicate((e) {
+    final key = e.widget.key;
+    return chosen(key is ValueKey<String> ? key.value : null) ||
+        chosen(nameOf(e));
   });
   for (final e in found.evaluate()) {
     final box = e.renderObject as RenderBox?;
@@ -899,10 +872,10 @@ void guideShots(AppLanguage language) {
       await settleReal(tester, 4);
 
       // The sound: S2's lanes open, the bounce's waveform under it.
-      await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
+      await tester.tap(find.named('timeline-lane-toggle-${bounceRow.value}'));
       await settleReal(tester, 10);
       await shot(tester, 'sound', rect: timelineRows(tester), ratio: 2);
-      await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
+      await tester.tap(find.named('timeline-lane-toggle-${bounceRow.value}'));
       await settleReal(tester, 4);
 
       // The Edit button on a line of dialogue: S1's block, its window.
@@ -927,7 +900,7 @@ void guideShots(AppLanguage language) {
 
       // The labels: the A row's label menu, open over the rows.
       final markButton = 'timeline-layer-mark-${ballLayer.value}';
-      await tester.tap(byKey(markButton));
+      await tester.tap(find.named(markButton));
       await settleReal(tester, 4);
       await shot(
         tester,

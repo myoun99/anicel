@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨EVERY ENTRANCE ANSWERS FOR THE FILE STANDING OVER IT, and the chip wears
 /// the answer (유저 2026-09-11, 미디어 배치 라운드: 「불가능 = 칩의 금지
@@ -229,9 +230,7 @@ void main() {
     tester,
   ) async {
     final s = project();
-    final row = find.byKey(
-      ValueKey<String>('timeline-layer-asset-drop-$drawingId'),
-    );
+    final row = find.named('timeline-layer-asset-drop-$drawingId');
     var verdict = await pumpTimeline(tester, s, r'C:\snd\door.wav');
     var gesture = await hover(
       tester,
@@ -254,9 +253,7 @@ void main() {
   testWidgets('an SE row\'s empty cell says no to a picture', (tester) async {
     final s = project();
     final verdict = await pumpTimeline(tester, s, r'C:\art\bg.png');
-    final gap = find.byKey(
-      ValueKey<String>('timeline-se-cell-drop-$seId-6'),
-    );
+    final gap = find.named('timeline-se-cell-drop-$seId-6');
 
     final gesture = await hover(
       tester,
@@ -271,10 +268,8 @@ void main() {
       'where it may not — above the SE rows', (tester) async {
     final s = project();
     final verdict = await pumpTimeline(tester, s, r'C:\art\bg.png');
-    final drawingRail = find.byKey(
-      ValueKey<String>('timeline-rail-row-$drawingId-row'),
-    );
-    final seRail = find.byKey(ValueKey<String>('timeline-rail-row-$seId-row'));
+    final drawingRail = find.named('timeline-rail-row-$drawingId-row');
+    final seRail = find.named('timeline-rail-row-$seId-row');
 
     var gesture = await hover(
       tester,
@@ -302,9 +297,7 @@ void main() {
       r'C:\snd\door.wav',
       orientation: TimelineOrientation.vertical,
     );
-    final column = find.byKey(
-      ValueKey<String>('xsheet-layer-asset-drop-$drawingId'),
-    );
+    final column = find.named('xsheet-layer-asset-drop-$drawingId');
     var gesture = await hover(
       tester,
       tester.getTopLeft(column) + const Offset(8, 24 + 48),
@@ -499,6 +492,8 @@ void main() {
 
     Offset into(String key, Offset by) =>
         tester.getTopLeft(find.byKey(ValueKey<String>(key))) + by;
+    Offset intoNamed(String name, Offset by) =>
+        tester.getTopLeft(find.named(name)) + by;
     // Each entrance the hover draws on, the file it draws for, and a point
     // inside it: a row's frames and the layer area take a picture, an SE
     // row's gap (the one before the block at 2..5 — the sheet runs the
@@ -508,31 +503,40 @@ void main() {
         'the timeline\'s row frames',
         TimelineOrientation.horizontal,
         picture,
-        () => into('timeline-layer-asset-drop-$drawingId', const Offset(72, 8)),
+        () => intoNamed(
+          'timeline-layer-asset-drop-$drawingId',
+          const Offset(72, 8),
+        ),
       ),
       (
         'the sheet\'s row frames',
         TimelineOrientation.vertical,
         picture,
-        () => into('xsheet-layer-asset-drop-$drawingId', const Offset(8, 72)),
+        () => intoNamed(
+          'xsheet-layer-asset-drop-$drawingId',
+          const Offset(8, 72),
+        ),
       ),
       (
         'the timeline\'s SE gap',
         TimelineOrientation.horizontal,
         sound,
-        () => into('timeline-se-cell-drop-$seId-0', const Offset(24, 8)),
+        () => intoNamed('timeline-se-cell-drop-$seId-0', const Offset(24, 8)),
       ),
       (
         'the sheet\'s SE gap',
         TimelineOrientation.vertical,
         sound,
-        () => into('xsheet-se-cell-drop-$seId-0', const Offset(8, 24)),
+        () => intoNamed('xsheet-se-cell-drop-$seId-0', const Offset(8, 24)),
       ),
       (
         'the timeline\'s layer area',
         TimelineOrientation.horizontal,
         picture,
-        () => into('timeline-rail-row-$drawingId-row', const Offset(24, 3)),
+        () => intoNamed(
+          'timeline-rail-row-$drawingId-row',
+          const Offset(24, 3),
+        ),
       ),
       (
         'the sheet\'s layer area',

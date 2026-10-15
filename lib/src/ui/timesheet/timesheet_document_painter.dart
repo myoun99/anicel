@@ -31,11 +31,12 @@ import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart' show paintScaledText;
 import '../theme/app_theme.dart';
 import '../timeline/inbetween_mark_painter.dart';
-import '../timeline/timeline_instruction_row_visual.dart'
-    show instructionLabelInset;
+import '../timeline/timeline_span_name.dart' show instructionLabelInset;
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
+import '../timeline/timeline_frame_ruler_painter.dart'
+    show timelineRulerSecondsLabel;
 import '../repaint_props.dart';
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
@@ -923,6 +924,7 @@ class TimesheetDocumentPainter extends CustomPainter
     bool bold = false,
     bool centeredAtX = false,
     bool rightAlignedAtX = false,
+    bool centeredAtY = false,
     double? maxWidth,
   }) {
     final painter = TextPainter(
@@ -934,12 +936,15 @@ class TimesheetDocumentPainter extends CustomPainter
       maxLines: 1,
       ellipsis: '…',
     )..layout(maxWidth: maxWidth ?? double.infinity);
-    final offset = centeredAtX
+    final across = centeredAtX
         ? anchor - Offset(painter.width / 2, 0)
         : rightAlignedAtX
         ? anchor - Offset(painter.width, 0)
         : anchor;
-    painter.paint(canvas, offset);
+    painter.paint(
+      canvas,
+      centeredAtY ? across - Offset(0, painter.height / 2) : across,
+    );
   }
 
   @override

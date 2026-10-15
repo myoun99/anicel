@@ -131,16 +131,32 @@ void main() {
     expect(cancelled, [1]);
   });
 
-  test('⛔another hand says nothing: a mouse in the air or pressing keeps a '
-      'pen down, and a pen keeps a mouse', () {
+  test('⛔a mouse says nothing of a pen: in the air or pressing, it keeps a '
+      'pen down', () {
     down(1, PointerDeviceKind.stylus);
     hover(2, PointerDeviceKind.mouse);
     down(3, PointerDeviceKind.mouse);
     expect(cancelled, isEmpty);
+  });
 
-    hover(4, PointerDeviceKind.stylus);
-    expect(cancelled, [1], reason: 'the pen\'s own hover lifts the pen alone');
-    expect(census.anyDown, isTrue, reason: 'the mouse is still pressed');
+  test('🚨a pen in the air lets go of a mouse press too — the pen reports '
+      'itself as a mouse now and then, and that lift can be lost '
+      '(F-232)', () {
+    down(1, PointerDeviceKind.mouse);
+    down(2, PointerDeviceKind.stylus);
+    expect(cancelled, isEmpty, reason: '⛔a pen PRESSING says nothing of it');
+
+    hover(3, PointerDeviceKind.stylus);
+    expect(cancelled, [1, 2]);
+    expect(census.anyDown, isFalse);
+  });
+
+  test('the eraser end in the air says the same of the mouse', () {
+    down(1, PointerDeviceKind.mouse);
+
+    hover(2, PointerDeviceKind.invertedStylus);
+
+    expect(cancelled, [1]);
   });
 
   test('⛔fingers are many: a finger landing keeps another down, and no hand '

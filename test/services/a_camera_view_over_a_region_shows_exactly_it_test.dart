@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/services/camera_frame_corners.dart';
 
 /// The camera geometry the conte and the camera row share (유저 2026-09-30:
@@ -35,42 +38,38 @@ void main() {
     rect.bottomLeft,
   ];
 
-  test('the keys inside a span, in frame order, each as the frame the camera '
-      'shows there', () {
-    final frames = cameraKeyFrames(
-      {12: at(240, 45), 0: at(80, 45), 30: at(400, 45), 6: at(160, 45)},
-      size,
-      from: 0,
-      toExclusive: 24,
+  test('the camera\'s frame at a frame is the one playback shows there — on '
+      'a key, and between two', () {
+    final cut = Cut(
+      id: const CutId('c'),
+      name: '1',
+      layers: const [],
+      duration: 24,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      camera: CutCamera(keyframes: {0: at(80, 45), 12: at(240, 45)}),
     );
-    expect(frames.map((frame) => frame.frameIndex), [0, 6, 12]);
     expectPoints(
-      frames.first.corners,
+      cameraFrameShownAt(cut, size, 0),
       cornersOf(const Rect.fromLTRB(0, 0, 160, 90)),
     );
     expectPoints(
-      cameraKeyFrames({0: at(80, 45, zoom: 2)}, size).single.corners,
+      cameraFrameShownAt(cut, size, 6),
+      cornersOf(const Rect.fromLTRB(80, 0, 240, 90)),
+    );
+    expectPoints(
+      cameraFrameCornersInCanvas(
+        pose: at(80, 45, zoom: 2),
+        cameraFrameSize: size,
+      ),
       cornersOf(const Rect.fromLTRB(40, 22.5, 120, 67.5)),
     );
   });
 
-  test('each corner draws its own trail through every key — four, top-left '
-      'first — and the canvas they sweep holds every corner', () {
+  test('the canvas frames sweep holds every corner of every one', () {
     final frames = [
-      for (final frame in cameraKeyFrames({
-        0: at(80, 45),
-        6: at(160, 90, turn: 90),
-        12: at(240, 45),
-      }, size))
-        frame.corners,
+      for (final pose in [at(80, 45), at(160, 90, turn: 90), at(240, 45)])
+        cameraFrameCornersInCanvas(pose: pose, cameraFrameSize: size),
     ];
-    final trails = cameraCornerTrails(frames);
-    expect(trails, hasLength(4));
-    for (var corner = 0; corner < 4; corner += 1) {
-      expectPoints(trails[corner], [
-        for (final frame in frames) frame[corner],
-      ]);
-    }
     final bounds = cameraFramesBounds(frames);
     for (final frame in frames) {
       for (final corner in frame) {

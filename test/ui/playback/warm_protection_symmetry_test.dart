@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -16,6 +18,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+
+import '../../helpers/draw_on_current_frame.dart';
 
 /// B1 — THE WARM, THE BUDGET AND THE BAR REASON OVER ONE ORDER.
 ///
@@ -58,16 +62,44 @@ void main() {
     ],
   );
 
-  EditorSessionManager session() => EditorSessionManager(
-    initialProject: Project(
-      id: const ProjectId('project'),
-      name: 'P',
-      createdAt: DateTime.utc(2026),
-      tracks: [
-        Track(id: const TrackId('track'), name: 'T', cuts: [cut()]),
-      ],
-    ),
-  );
+  /// The pictures are the CANVAS's (playback-plays-the-screen-material): a
+  /// cut stood on is shown from its own rows' images — through the camera
+  /// or not — so its two cels are inked, each in both corners, which makes
+  /// each image the whole 8×8 canvas: one [picture]. A cel with nothing in
+  /// it asks for no picture at all, so the hole between is there by
+  /// definition. ↩️This file pinned the composite view's route, which the
+  /// camera view played on, and then the film's composites — every screen
+  /// shows a frame from the same images now (2026-10-10).
+  EditorSessionManager session() {
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'P',
+        createdAt: DateTime.utc(2026),
+        tracks: [
+          Track(id: const TrackId('track'), name: 'T', cuts: [cut()]),
+        ],
+      ),
+    );
+    for (final cel in [const FrameId('frame-a'), const FrameId('frame-b')]) {
+      for (final corner in [CanvasPoint(x: 1, y: 1), CanvasPoint(x: 6, y: 6)]) {
+        inkCelIn(
+          s.renderCaches.brushFrameStore,
+          s.brushFrameKeyForCut(
+            s.requireActiveCut,
+            const LayerId('layer'),
+            cel,
+          ),
+          canvasSize: canvasSize,
+          at: corner,
+          size: 2,
+          tipShape: BrushTipShape.square,
+          tileSize: 4,
+        );
+      }
+    }
+    return s;
+  }
 
   /// The budget under test, held BY ITS OWN TYPE (2026-09-08).
   ///
@@ -86,40 +118,34 @@ void main() {
   Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
       .timeout(const Duration(seconds: 10), onTimeout: () {});
 
-  bool held(EditorSessionManager s, int frameIndex) =>
-      s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-        cut: s.activeCutOrNull!,
-        frameIndex: frameIndex,
-      ) !=
-      null;
+  /// Whether frame [frameIndex]'s picture is there, as the screen counts it.
+  bool held(EditorSessionManager s, int frameIndex) => s
+      .playbackRig
+      .canvasPictures
+      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex));
+
+  int heldBytes(EditorSessionManager s) =>
+      s.renderCaches.layerFrameImageCache.estimatedBytes;
 
   testWidgets('🚨the warm makes no picture the budget then lets go: under an '
-      'allowance of two it rests on the two nearest the playhead, and the '
-      'enforcer that follows takes neither', (tester) async {
+      'allowance of one it rests on the one nearest the playhead, and the '
+      'enforcer that follows takes nothing', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
       final budget = budgetOf(s);
-      budget.debugSetPlaybackCacheBudgetBytes(2 * picture);
+      budget.debugSetPlaybackCacheBudgetBytes(picture);
       final scheduler = s.playbackRig.prerenderScheduler;
 
-      final said = <PrerenderProgress>[];
-      scheduler.progress.addListener(() => said.add(scheduler.progress.value));
-
-      // The playhead on frame 0. The cut's three pictures, nearest first:
-      // the body cel (0..1), the nothing between (2..4), the runway cel.
+      // The playhead on frame 0. The cut's two pictures, nearest first: the
+      // body cel (0..1) and the runway cel (5..6) — the nothing between asks
+      // for none.
       s.warmActiveCut();
       await rested(scheduler);
       expect(
-        said,
-        contains(const PrerenderProgress(cached: 2, total: 4)),
-        reason: 'two frames in, one picture held of the two that fit: the '
-            'walk expects four frames — the session told it its room',
-      );
-      expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [true, true, false],
-        reason: 'two fit; the runway cel is the farthest, and is not made',
+        reason: 'one fits; the runway cel is the farthest, and is not made',
       );
       expect(
         scheduler.progress.value,
@@ -129,8 +155,8 @@ void main() {
 
       budget.enforcePlaybackCacheBudget();
       expect(
-        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
-        2 * picture,
+        heldBytes(s),
+        picture,
         reason: 'the treadmill B1 ended: nothing made is let go',
       );
 
@@ -142,10 +168,7 @@ void main() {
         [false, true, true],
         reason: 'the body cel is the farthest from here, and gave its room',
       );
-      expect(
-        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
-        2 * picture,
-      );
+      expect(heldBytes(s), picture);
     });
   });
 
@@ -155,20 +178,18 @@ void main() {
       final s = session();
       addTearDown(s.dispose);
       final budget = budgetOf(s);
-      budget.debugSetPlaybackCacheBudgetBytes(2 * picture);
+      budget.debugSetPlaybackCacheBudgetBytes(picture);
       final scheduler = s.playbackRig.prerenderScheduler;
-      final composites = s.renderCaches.cutFrameCompositeCache;
       s.warmActiveCut();
       await rested(scheduler);
 
-      // A third picture — the runway cel, made by another hand — and the
-      // nothing between is now the one used longest ago.
-      await composites.prepareComposite(
-        cut: s.activeCutOrNull!,
-        frameIndex: 5,
+      // A second picture — the runway cel, made by another hand — and the
+      // body cel is now the one used longest ago.
+      await s.playbackRig.canvasPictures.make(
+        (cut: s.activeCutOrNull!, frameIndex: 5),
+        shouldAbort: () => false,
       );
-      expect(held(s, 0), isTrue, reason: 'asked: the body cel is used now');
-      expect(held(s, 5), isTrue);
+      expect([held(s, 0), held(s, 5)], [true, true], reason: '⛔premise');
 
       budget.enforcePlaybackCacheBudget();
 
@@ -176,7 +197,7 @@ void main() {
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [true, true, false],
         reason: 'the runway cel is wanted last from frame 0 — recency '
-            'would have taken the nothing between',
+            'would have taken the body cel',
       );
     });
   });
@@ -251,16 +272,16 @@ void main() {
             'composes to nothing is one stretch each',
       );
 
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: activeCut,
-        frameIndex: 5,
+      await s.playbackRig.canvasPictures.make(
+        (cut: activeCut, frameIndex: 5),
+        shouldAbort: () => false,
       );
       expect(ready(5), isTrue);
       expect(
         budget.playbackReadyRunsForCut(activeCut, 0, 12),
         [(startIndex: 2, endIndexExclusive: 12)],
-        reason: 'one bake answers the whole held span — frame 6 shows the '
-            'same picture, so it is the same composite',
+        reason: 'one image answers the whole held span — frame 6 shows the '
+            'same cel, so it is the same picture',
       );
     });
   });

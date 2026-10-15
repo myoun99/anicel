@@ -13,13 +13,26 @@
 ///   cut's own — the state `CreateLinkedCutCommand` leaves.
 /// * **Folders outside the cels are folder rows, structure as it is** (Q6):
 ///   nesting, name, eye, opacity, blend, and the fold (Q3: 「접힌 폴더는
-///   접힌상태로 들여오도록. 이건 tvp든 뭐든 임포트할때의 기본」).
+///   접힌상태로 들여오도록. 이건 tvp든 뭐든 임포트할때의 기본」). A 2D camera
+///   folder is one too, its transform moving what it holds as the camera
+///   shows it, and every cut is shot through the still shooting frame
+///   (유저 10-13: 「카메라폴더는 그냥 폴더에 트랜스폼 움직이는걸로」 —
+///   [_CameraFolder]).
+/// * **A layer a clip moves moves by its row's transform** — a folder, an
+///   animation folder or a picture, keyed as CLIP STUDIO keys it (유저
+///   10-14, test4: 「카메라 없이 레이어의 트랜스폼 키 움직임」 — [_OwnMove]).
 /// * **An animation folder is always a folder row** (Q7) holding a BASE row
-///   — the top visible layer of every cel (Q2), one cel per CLIP STUDIO cel,
-///   named as there — and BELOW it the attach rows the cels' other layers
-///   make, by their place from the top, synced to the base. Hidden layers
-///   come too (Q3: 「모든 레이어를 가져오는게 목표」), as attach rows in a
-///   folder whose eye is off.
+///   — the top layer of every cel (Q2: 「맨 위 레이어가 기준」), one cel per
+///   CLIP STUDIO cel, named as there — and BELOW it the attach rows the
+///   cels' other layers make, synced to the base, named `A-1`, `A-2` … as
+///   the app names them: a layer whose name another cel wears stands in that
+///   name's row, any other by its place from the top ([_Planner._lined]).
+///   Hidden layers come too (Q3: 「모든 레이어를 가져오는게 목표」), lined up
+///   the same way with their eyes off, in the animation folder with the
+///   rest. ↩️They stood in a folder of their own, named in the program
+///   language — a folder the file never had (유저 10-09: 「이 숨김이라는
+///   폴더는 뭐지? … 레이어 구조든 폴더구조든 뭐든 최대한 구조적으론 원본
+///   그대로를 원해」).
 /// * **The look is kept by baking** (Q5, answered twice — the second: 「그림에
 ///   구워 넣는다(행은 100%)」, 「그냥 불투명도 낮은건 그냥 낮은채로
 ///   구워버려서 더이상 진해지지 못하는거 받아들기게 … 최대한 보기 같은걸
@@ -29,7 +42,8 @@
 ///   opacity and baked the others by the difference: the same first look,
 ///   but a row that was not at 100%, and a 10% rough that a row could raise.
 ///   A blend cannot be baked, so a line of cels that blends two ways is two
-///   rows — the same law for hidden layers (「법 통일」).
+///   rows — and one shown in some cels and hidden in others, as a row has
+///   one eye (「법 통일」).
 /// * A layer outside the cels is an image row (「단일그림은 … 그에 대응하는
 ///   이미지레이어로」) — unless some timeline shows it on PART of a cut
 ///   only: then it is an animation row holding its one picture where it
@@ -37,20 +51,24 @@
 ///   애니메이션 레이어로」). The 겸용 cuts share the row, so a layer shown in
 ///   part on one timeline is that row on all of them. A cel placed on no
 ///   timeline is not imported (「임포트 안해도 상관없고」), and what there is
-///   no place for is said, never dropped quietly.
+///   no place for is said, never dropped quietly — a kind of layer this app
+///   does not carry in every decoder's one word ([unsupportedLayerKind]).
 library;
 
 import 'dart:collection';
 import 'dart:math' as math;
 
-import 'package:collection/collection.dart' show mergeSort;
-
-import '../../models/attached_layer_resolve.dart' show attachedMirrorCelId;
+import '../../models/attached_layer_resolve.dart'
+    show attachedLayerNameAmong, attachedMirrorCelId;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
+import '../../models/audio_clip.dart';
+import '../../models/camera_pose.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/covering_image_normalize.dart';
 import '../../models/cut.dart';
+import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -64,8 +82,12 @@ import '../../models/layer_link_registry.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
+import '../../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../editing/default_cut_helpers.dart';
+import '../layer_pose_matrix.dart' show LayerPoseSample;
+import 'camera_track.dart';
 import 'clip_document.dart';
+import 'clip_placement.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 
 /// What a CLIP STUDIO composite number blends as here — the program's own
@@ -152,15 +174,16 @@ final class ClipImportPlan {
 
 /// Plans the project [document] opens as.
 ///
-/// [name] names the one cut of a file with no timeline. [hiddenFolderName]
-/// is the program language's word for the folder hidden layers stand in.
-/// Link members carry [trackId], the track the cuts land on.
+/// [name] names the one cut of a file with no timeline. Link members carry
+/// [trackId], the track the cuts land on. [soundPaths] is where each sound
+/// the file holds was taken out to, by its [ClipSound.objectUuid] — the
+/// file its SE rows play; a sound with none is said, not played.
 ClipImportPlan planClipImport({
   required ClipDocument document,
   required String name,
-  required String hiddenFolderName,
   required TrackId trackId,
   required ImportIdMint mint,
+  Map<String, String> soundPaths = const {},
 }) {
   final warnings = <ImportWarning>[
     for (final detail in document.warnings)
@@ -180,25 +203,23 @@ ClipImportPlan planClipImport({
   final planner = _Planner(
     views: views,
     mint: mint,
-    hiddenFolderName: hiddenFolderName,
     warnings: warnings,
-  )..walk(document.root, null, const []);
-  final canvas = CanvasSize(width: document.width, height: document.height);
+    soundPaths: soundPaths,
+    frameOrigin: switch (document.frame) {
+      final frame? => CanvasPoint(
+        x: frame.centerX - frame.width / 2,
+        y: frame.centerY - frame.height / 2,
+      ),
+      null => CanvasPoint(x: 0, y: 0),
+    },
+    canvas: CanvasSize(width: document.width, height: document.height),
+  )
+    ..walk(document.root, null, const [])
+    ..nameAttachRows();
+  final camera = _shootingCamera(document);
   final cuts = [
     for (var i = 0; i < views.length; i += 1)
-      cutWithCoveringImageRows(
-        importedCut(
-          defaultCut: createDefaultCut(
-            cutId: cutIds[i],
-            name: views[i].name,
-            layerId: mint.nextLayerId(),
-            canvasSize: canvas,
-          ),
-          layers: [for (final row in planner.rows) row.layerIn(i, views[i])],
-          duration: views[i].duration,
-        ),
-        drawnFrameCount: views[i].duration,
-      ),
+      planner.cutIn(i, cutId: cutIds[i], camera: camera),
   ];
   return ClipImportPlan(
     cuts: cuts,
@@ -331,6 +352,9 @@ sealed class _Row {
   final _FolderRow? parent;
   final List<LayerId> ids;
 
+  /// What the row is called in every cut.
+  String get name;
+
   Layer layerIn(int cut, _CutView view);
 }
 
@@ -343,13 +367,19 @@ final class _FolderRow extends _Row {
     required this.opacity,
     required this.blend,
     required this.collapsed,
+    required this.move,
   });
 
+  @override
   final String name;
   final bool visible;
   final double opacity;
   final LayerBlendMode blend;
   final bool collapsed;
+
+  /// How its clips move it: as the 2D camera it is, moving what it holds,
+  /// or as itself — null for a folder no clip moves.
+  final _Moved? move;
 
   @override
   Layer layerIn(int cut, _CutView view) =>
@@ -362,6 +392,7 @@ final class _FolderRow extends _Row {
         opacity: opacity,
         blendMode: blend,
         collapsed: collapsed,
+        transformTrack: move?.trackIn(view),
       );
 }
 
@@ -376,6 +407,7 @@ final class _PictureRow extends _Row {
     required this.frame,
     required this.blend,
     required this.shownInPart,
+    required this.move,
   });
 
   final ClipLayer source;
@@ -390,12 +422,18 @@ final class _PictureRow extends _Row {
   /// cuts share the row, so one such timeline makes it that on all of them.
   final bool shownInPart;
 
+  /// How its clips move it — null for a layer no clip moves.
+  final _Moved? move;
+
+  @override
+  String get name => source.name;
+
   @override
   Layer layerIn(int cut, _CutView view) {
     final shown = view.within([...folders, source]);
     return Layer(
       id: ids[cut],
-      name: source.name,
+      name: name,
       kind: shownInPart ? LayerKind.animation : LayerKind.image,
       frames: [frame],
       timeline: shownInPart
@@ -415,6 +453,7 @@ final class _PictureRow extends _Row {
       opacity: source.opacity / _fullOpacity,
       blendMode: blend,
       folderId: parent?.ids[cut],
+      transformTrack: move?.trackIn(view),
     );
   }
 }
@@ -429,6 +468,7 @@ final class _BaseRow extends _Row {
     required this.folders,
     required this.bank,
     required this.blend,
+    required this.visible,
   });
 
   final ClipLayer folder;
@@ -440,14 +480,22 @@ final class _BaseRow extends _Row {
   final List<Frame> bank;
   final LayerBlendMode blend;
 
+  /// The eye of the top layers it holds — off where most cels' top layer
+  /// is hidden.
+  final bool visible;
+
+  @override
+  String get name => folder.name;
+
   @override
   Layer layerIn(int cut, _CutView view) => rederiveRunBehaviors(
     Layer(
       id: ids[cut],
-      name: folder.name,
+      name: name,
       frames: bank,
       timeline: _exposures(view),
       blendMode: blend,
+      isVisible: visible,
       kind: LayerKind.animation,
       folderId: parent?.ids[cut],
     ),
@@ -506,13 +554,19 @@ final class _AttachRow extends _Row {
     super.parent,
     super.ids, {
     required this.base,
-    required this.name,
     required this.blend,
+    required this.visible,
   });
 
   final _BaseRow base;
-  final String name;
+
+  /// Given once every row is planned ([_Planner.nameAttachRows]).
+  @override
+  late final String name;
   final LayerBlendMode blend;
+
+  /// Off for a line of the cels' hidden layers.
+  final bool visible;
 
   /// [frameId]'s mirror cel — under the canonical member's id, so every 겸용
   /// cut names the same one (F-278).
@@ -528,6 +582,7 @@ final class _AttachRow extends _Row {
     ],
     timeline: const {},
     blendMode: blend,
+    isVisible: visible,
     kind: LayerKind.animation,
     // An attach row is born off the sheet (`addAttachedLayer`).
     onTimesheet: false,
@@ -568,16 +623,33 @@ final class _Leaf {
   final bool spread;
 }
 
-/// The cels of one line — a place from the top, and a blend — on their way
-/// to one row.
-final class _Line {
-  _Line(this.rank, this.blend);
+/// What lines a cel's layer up with other cels' layers: a [name] another
+/// cel's layer wears too — the [index]th layer of that name in its cel —
+/// or, with no [name], its [index]th place from the top.
+typedef _LineKey = ({String? name, int index});
 
-  final int rank;
+/// The base's key: every cel's top shown layer (Q2).
+const _LineKey _top = (name: null, index: 0);
+
+/// The cels of one line — a key, and a blend — on their way to one row.
+final class _Line {
+  _Line(this.key, this.blend, this.visible);
+
+  final _LineKey key;
   final LayerBlendMode blend;
 
-  /// Each with the cel it is in, by the cel's place in the bank.
-  final leaves = <(int, _Leaf)>[];
+  /// Its layers' eye. A row has one eye as it has one blend, so a key whose
+  /// layers are shown in some cels and hidden in others is two lines — the
+  /// blend's law, not a rule of the hidden layers' own.
+  final bool visible;
+
+  /// Each with the cel it is in, by the cel's place in the bank, and its
+  /// place from the top in that cel.
+  final leaves = <(int, _Leaf, int)>[];
+
+  /// How high its layers stand, on average.
+  double get height =>
+      leaves.fold(0, (sum, leaf) => sum + leaf.$3) / leaves.length;
 }
 
 /// What the planner bakes, before the cuts are made.
@@ -593,23 +665,92 @@ final class _Planner {
   _Planner({
     required this.views,
     required this.mint,
-    required this.hiddenFolderName,
     required this.warnings,
-  });
+    required Map<String, String> soundPaths,
+    required this.frameOrigin,
+    required this.canvas,
+  }) : sounds = _SoundRows(
+         views: views,
+         mint: mint,
+         warnings: warnings,
+         paths: soundPaths,
+       );
 
   final List<_CutView> views;
   final ImportIdMint mint;
-  final String hiddenFolderName;
   final List<ImportWarning> warnings;
+
+  /// Where the shooting frame's top-left stands on the canvas — the
+  /// canvas's own, for a file with no frame.
+  final CanvasPoint frameOrigin;
+
+  /// The file's canvas, every cut's.
+  final CanvasSize canvas;
 
   /// Bottom first, the order a cut stores.
   final rows = <_Row>[];
   final bakes = <_Bake>[];
 
+  /// The sound layers the walk meets, which play on each cut's SE rows.
+  final _SoundRows sounds;
+
+  /// The attach rows as they were made: each animation folder's from the
+  /// top.
+  final _attaches = <_AttachRow>[];
+
   /// Layers whose blend was already said to have no equivalent.
   final _blendsSaid = <int>{};
 
   List<LayerId> _ids() => [for (final _ in views) mint.nextLayerId()];
+
+  /// Cut [i] as the file shows it, on its [canvas]: every row's layer in
+  /// it, its own sound rows, and its [camera] — the cut's own where that is
+  /// null.
+  Cut cutIn(int i, {required CutId cutId, required CutCamera? camera}) {
+    final view = views[i];
+    final cut = cutWithCoveringImageRows(
+      importedCut(
+        defaultCut: createDefaultCut(
+          cutId: cutId,
+          name: view.name,
+          layerId: mint.nextLayerId(),
+          canvasSize: canvas,
+        ),
+        layers: [
+          for (final row in rows) row.layerIn(i, view),
+          // Each cut's sound as SE rows of its own, the way the file keeps
+          // it — the door lifts them onto the track.
+          ...sounds.rowsIn(view),
+        ],
+        duration: view.duration,
+      ),
+      drawnFrameCount: view.duration,
+    );
+    return camera == null ? cut : cut.copyWith(camera: camera);
+  }
+
+  /// Names every attach row as the app names one it adds below its base —
+  /// `A-1`, `A-2` …, the first no row wears ([attachedLayerNameAmong]) —
+  /// once every row is planned, so a name the file itself uses is passed
+  /// over. 유저 10-09: 「레이어이름은 들쭉날쭉하니까 무시해도되. 그래서 그냥
+  /// 우리방식대로 A라는 기준레이어랑 A-1 이런식으로 해줘」 — the cels' layers'
+  /// own names differ cel to cel (measured on the samples). ↩️They were
+  /// `A-2`, `A-3` from the top, MoArt's form — a second naming rule beside
+  /// the app's own.
+  void nameAttachRows() {
+    final used = {
+      for (final row in rows)
+        if (row is! _AttachRow) row.name,
+    };
+    for (final row in _attaches) {
+      row.name = attachedLayerNameAmong(
+        row.base.name,
+        used,
+        AttachedPlacement.below,
+      );
+      used.add(row.name);
+    }
+  }
 
   /// Plans [folder]'s children, bottom to top, into [parent]; [folders] are
   /// the file's folders above them.
@@ -636,16 +777,51 @@ final class _Planner {
     opacity: folder.opacity / _fullOpacity,
     blend: _blendOf(folder, folder.name),
     collapsed: folder.isCollapsed,
+    move: _moveOf(folder),
   );
+
+  /// [layer]'s move: its camera's for a 2D camera folder, resting where its
+  /// placement says ([ClipLayer.camera]); its own for any other layer a
+  /// clip keys the placement of — and said where a clip of its keys a way
+  /// this import does not read. Null for a layer no clip moves, which
+  /// keeps no transform.
+  _Moved? _moveOf(ClipLayer layer) {
+    final moves = [
+      for (final view in views) ...?view.trackOf(layer)?.moves,
+    ];
+    final moved = switch (layer.camera) {
+      final rest? => _CameraFolder(layer, rest, frameOrigin),
+      null when moves.isNotEmpty => _OwnMove(layer, _OwnMove.restOn(canvas)),
+      null => null,
+    };
+    final unread = moves.any(
+      (move) => _Moved.curvesOf(move).any((curve) => curve.unread),
+    );
+    if (unread) {
+      warnings.add(
+        ImportWarning(
+          'clipCurve',
+          '{name}: some keys follow a curve this import does not read — it '
+              'moves straight between them.',
+          {'name': layer.name},
+        ),
+      );
+    }
+    return moved;
+  }
 
   void _outsideLayer(
     ClipLayer layer,
     _FolderRow? parent,
     List<ClipLayer> folders,
   ) {
-    _sayWhatIsNotDrawn(layer, layer.name);
-    // A sound belongs on the SE rows — said above, no picture row.
+    // A sound plays on each cut's SE rows ([_SoundRows]), not in a row of
+    // pictures.
     if (layer.kind == ClipLayerKind.sound) {
+      sounds.add(layer, folders);
+      return;
+    }
+    if (!_comesIn(layer, layer.name)) {
       return;
     }
     final ids = _ids();
@@ -654,8 +830,12 @@ final class _Planner {
       duration: 1,
       strokes: const [],
       // Named, as a 겸용 cut's image row links by its picture's name
-      // (F-98 · F-278: 「이름이 같아야만 링크」).
-      name: layer.name.isEmpty ? null : layer.name,
+      // (F-98 · F-278: 「이름이 같아야만 링크」) — so an edit in one cut is
+      // the picture every timeline shows, as it is in CLIP STUDIO. Named
+      // `1`, not after its layer: 유저 10-09 — 「같은이름 공유시켜서
+      // 수정하면 다른겸용컷 반영하려고 … 그런거라면 프레임이름 넣어도되」 ·
+      // 「이름을 레이어이름이아니라 1이란던가 좀 심플하게」.
+      name: '1',
     );
     final row = _PictureRow(
       parent,
@@ -671,6 +851,7 @@ final class _Planner {
         );
         return shown > 0 && shown < view.duration;
       }),
+      move: _moveOf(layer),
     );
     rows.add(row);
     if (layer.hasPicture) {
@@ -692,12 +873,11 @@ final class _Planner {
     final folderRow = _folderRowOf(folder, parent);
     final cels = _placedCels(folder);
     final leaves = [for (final cel in cels) _leavesOf(cel, folder)];
-    final (:visible, :hidden) = _linesOf(leaves);
-    // The base is the line most top layers stand in. A folder with no
-    // visible layer still has its base, empty.
-    final baseLine = visible.firstOrNull?.rank == 0
-        ? visible.removeAt(0)
-        : null;
+    final (:lines, :crossed) = _lined(leaves);
+    // The base is the line most top layers stand in — the first of the top
+    // lines, which nothing stands above. A folder whose cels hold no layer
+    // still has its base, empty.
+    final baseLine = lines.firstOrNull?.key == _top ? lines.removeAt(0) : null;
     final baseIds = _ids();
     final base = _BaseRow(
       folderRow,
@@ -714,103 +894,166 @@ final class _Planner {
           ),
       ],
       blend: baseLine?.blend ?? LayerBlendMode.normal,
+      visible: baseLine?.visible ?? true,
     );
     if (baseLine != null) {
       _bake(base, baseLine, (cel) => base.bank[cel].id);
     }
-    final organizer = hidden.isEmpty
-        ? null
-        : _FolderRow(
-            folderRow,
-            _ids(),
-            name: hiddenFolderName,
-            visible: false,
-            opacity: 1,
-            blend: LayerBlendMode.passThrough,
-            collapsed: true,
-          );
-    final attaches = _attachRowsOf(base, [
-      for (final line in visible) (line, folderRow),
-      for (final line in hidden) (line, organizer!),
-    ]);
-    // Bottom first: the hidden rows and their folder, the attach rows from
-    // the lowest line up, the base, and the folder row over them all.
-    rows.addAll([
-      ...attaches.skip(visible.length).toList().reversed,
-      ?organizer,
-      ...attaches.take(visible.length).toList().reversed,
-      base,
-      folderRow,
-    ]);
+    final attaches = [
+      for (final line in lines) _attachRowOf(base, line, folderRow),
+    ];
+    _attaches.addAll(attaches);
+    // Bottom first: the attach rows from the lowest line up, the base, and
+    // the folder row over them all.
+    rows.addAll([...attaches.reversed, base, folderRow]);
     _sayAboutCels(folder, cels, leaves);
+    _sayCount(
+      'clipLineOrder',
+      '{name}: in {count} cels two layers stand in the other order than in '
+      'CLIP STUDIO — where they overlap they can look different.',
+      folder.name,
+      crossed,
+    );
   }
 
-  /// [lines]' rows, each in its folder, named from the top after [base] —
-  /// `A-2`, `A-3` … (MoArt's form) — and its pictures baked in.
-  List<_AttachRow> _attachRowsOf(
-    _BaseRow base,
-    List<(_Line, _FolderRow)> lines,
-  ) => [
-    for (final (i, (line, parent)) in lines.indexed)
-      _attachRowOf(base, line, parent, '${base.folder.name}-${i + 2}'),
-  ];
-
-  _AttachRow _attachRowOf(
-    _BaseRow base,
-    _Line line,
-    _FolderRow parent,
-    String name,
-  ) {
+  /// [line]'s row in [parent] below [base] — its pictures baked in, its
+  /// name given once every row is planned ([nameAttachRows]).
+  _AttachRow _attachRowOf(_BaseRow base, _Line line, _FolderRow parent) {
     final row = _AttachRow(
       parent,
       _ids(),
       base: base,
-      name: name,
       blend: line.blend,
+      visible: line.visible,
     );
     _bake(row, line, (cel) => row.mirrorOf(base.bank[cel].id));
     return row;
   }
 
-  /// The cels' layers in lines: the visible ones counted from the top, the
-  /// hidden ones apart, and a line for every blend a place holds. Each list
-  /// runs from the top: by place, then the line more cels stand in — and
-  /// lines that ask nothing more keep the order they came in, which is the
-  /// order of their first cels (a STABLE sort is what says so).
-  ({List<_Line> visible, List<_Line> hidden}) _linesOf(
-    List<List<_Leaf>> leaves,
-  ) {
-    final visible = <(int, LayerBlendMode), _Line>{};
-    final hidden = <(int, LayerBlendMode), _Line>{};
-    for (var cel = 0; cel < leaves.length; cel += 1) {
-      var shown = 0;
-      var unseen = 0;
-      for (final leaf in leaves[cel]) {
-        final rank = leaf.visible ? shown++ : unseen++;
-        (leaf.visible ? visible : hidden)
-            .putIfAbsent((rank, leaf.blend), () => _Line(rank, leaf.blend))
-            .leaves
-            .add((cel, leaf));
+  /// [cels]' layers — each cel's from the top — in lines, the lines from
+  /// the top, and how many cels' shown layers those lines [crossed].
+  ///
+  /// Each cel's top layer stands in the base's line whatever its name (Q2:
+  /// 「맨 위 레이어가 기준, 나머지는 기준 아래 어태치」). Below it — 유저 10-09:
+  /// 「클튜에서 같은이름 레이어면 최대한 같은 레이어에 묶는것 … 같은이름 있으면
+  /// 같은행 없으면 전처럼 위치관계기준」 — a layer whose name a layer of another
+  /// cel wears too stands in that name's line, and one whose name no other
+  /// cel wears by its place from the top. A key whose layers blend two ways,
+  /// or are shown in some cels and hidden in others, is two lines: a row
+  /// has one blend and one eye. ↩️Every layer stood by its place alone, so
+  /// one cel with an extra layer pushed its same-named layers into other
+  /// cels' rows (a 46-cel sample did) — and the hidden ones were counted
+  /// apart, a rule of their own (유저 10-09: 「숨긴레이어 이상한 규칙
+  /// 만들지말고 그냥 눈만 끄게하면되는거야」).
+  ({List<_Line> lines, int crossed}) _lined(List<List<_Leaf>> cels) {
+    // The cels each name — its nth layer of that name — stands in.
+    final wearers = <(String, int), Set<int>>{};
+    final named = [for (final cel in cels) _namedIn(cel)];
+    for (var cel = 0; cel < cels.length; cel += 1) {
+      for (final name in named[cel].nonNulls) {
+        (wearers[name] ??= {}).add(cel);
       }
     }
-    List<_Line> ordered(Iterable<_Line> lines) {
-      final list = lines.toList();
-      mergeSort(
-        list,
-        compare: (a, b) => a.rank != b.rank
-            ? a.rank.compareTo(b.rank)
-            : b.leaves.length.compareTo(a.leaves.length),
-      );
-      return list;
+    final lines = <(_LineKey, LayerBlendMode, bool), _Line>{};
+    final stacks = <List<_Line>>[];
+    for (var cel = 0; cel < cels.length; cel += 1) {
+      final stack = <_Line>[];
+      for (var place = 0; place < cels[cel].length; place += 1) {
+        final leaf = cels[cel][place];
+        final name = named[cel][place];
+        final key = name != null && wearers[name]!.length > 1
+            ? (name: name.$1, index: name.$2)
+            : (name: null, index: place);
+        final line = lines.putIfAbsent(
+          (key, leaf.blend, leaf.visible),
+          () => _Line(key, leaf.blend, leaf.visible),
+        );
+        line.leaves.add((cel, leaf, place));
+        stack.add(line);
+      }
+      stacks.add(stack);
+    }
+    final ordered = _ordered(lines.values.toList(), stacks);
+    final at = {for (final (i, line) in ordered.indexed) line: i};
+    bool crosses(List<_Line> stack) {
+      final shown = [
+        for (final line in stack)
+          if (line.visible) at[line]!,
+      ];
+      return [
+        for (var i = 1; i < shown.length; i += 1) shown[i - 1] > shown[i],
+      ].any((crossed) => crossed);
     }
 
-    return (visible: ordered(visible.values), hidden: ordered(hidden.values));
+    return (lines: ordered, crossed: stacks.where(crosses).length);
+  }
+
+  /// Each of [cel]'s layers below its top as its name and how many before
+  /// it in the cel wear that name — the top's null: only its place counts.
+  static List<(String, int)?> _namedIn(List<_Leaf> cel) {
+    final seen = <String, int>{};
+    return [
+      for (var place = 0; place < cel.length; place += 1)
+        if (place == 0)
+          null
+        else
+          (
+            cel[place].layer.name,
+            seen.update(
+              cel[place].layer.name,
+              (count) => count + 1,
+              ifAbsent: () => 0,
+            ),
+          ),
+    ];
+  }
+
+  /// [lines] from the top. A line comes once every line some cel stacks
+  /// right above it has come ([stacks]: each cel's lines, top to bottom), so
+  /// no cel's own order is crossed where the cels agree; of the lines free
+  /// to come — or of all left, where the cels disagree — the one whose
+  /// layers stand highest on average comes first, then the one more cels
+  /// stand in, then the one made first.
+  static List<_Line> _ordered(List<_Line> lines, List<List<_Line>> stacks) {
+    final above = {for (final line in lines) line: <_Line>{}};
+    for (final stack in stacks) {
+      for (var i = 1; i < stack.length; i += 1) {
+        above[stack[i]]!.add(stack[i - 1]);
+      }
+    }
+    final made = {for (final (i, line) in lines.indexed) line: i};
+    bool before(_Line a, _Line b) {
+      if (a.height != b.height) {
+        return a.height < b.height;
+      }
+      if (a.leaves.length != b.leaves.length) {
+        return a.leaves.length > b.leaves.length;
+      }
+      return made[a]! < made[b]!;
+    }
+
+    final left = [...lines];
+    final out = <_Line>[];
+    final done = <_Line>{};
+    while (left.isNotEmpty) {
+      final free = [
+        for (final line in left)
+          if (above[line]!.every(done.contains)) line,
+      ];
+      final next = (free.isEmpty ? left : free).reduce(
+        (a, b) => before(b, a) ? b : a,
+      );
+      out.add(next);
+      done.add(next);
+      left.remove(next);
+    }
+    return out;
   }
 
   /// Bakes [line]'s pictures into [row] — each at its own opacity, the row
   /// at 100% (Q5).
   void _bake(_Row row, _Line line, FrameId Function(int cel) frameOf) {
-    for (final (cel, leaf) in line.leaves) {
+    for (final (cel, leaf, _) in line.leaves) {
       if (leaf.layer.hasPicture) {
         bakes.add((
           row: row,
@@ -871,6 +1114,11 @@ final class _Planner {
         }
         return;
       }
+      // Left out before it takes a place, so the layers under it line up
+      // as if it were not there.
+      if (!_comesIn(layer, where)) {
+        return;
+      }
       final own = _blendOf(layer, where);
       var blend = own;
       // An isolating folder decides how what it holds meets what lies
@@ -911,17 +1159,13 @@ final class _Planner {
     List<ClipLayer> cels,
     List<List<_Leaf>> leaves,
   ) {
-    for (var c = 0; c < cels.length; c += 1) {
-      for (final leaf in leaves[c]) {
-        _sayWhatIsNotDrawn(leaf.layer, '${folder.name} / ${cels[c].name}');
-      }
-    }
     if (cels.any((cel) => cel.isFolder)) {
       warnings.add(
         ImportWarning(
           'clipCelLayers',
-          '{name}: the layers inside its cels became rows by their place '
-          'from the top — their own names and folders are not kept.',
+          '{name}: the layers inside its cels became rows — by their names '
+          'where cels share them, else by their place from the top; their '
+          'own names and folders are not kept.',
           {'name': folder.name},
         ),
       );
@@ -946,35 +1190,39 @@ final class _Planner {
     }
   }
 
-  /// Says what a layer of a kind with no picture here leaves out.
-  void _sayWhatIsNotDrawn(ClipLayer layer, String name) {
-    final (key, template) = switch (layer.kind) {
+  /// Whether [layer] comes in — said by [name] when it comes in short, or
+  /// not at all. A kind this app does not carry is left out in every
+  /// decoder's one word (유저 10-09); a sound belongs on the SE rows.
+  bool _comesIn(ClipLayer layer, String name) {
+    final (said, comes) = switch (layer.kind) {
       ClipLayerKind.vector => (
-        'clipVector',
-        '{name}: vector layer — not drawn.',
+        ImportWarning(
+          'clipVector',
+          '{name}: vector layer — drawn with a round pen; its brush\'s '
+              'shape and texture are not kept.',
+          {'name': name},
+        ),
+        true,
       ),
-      ClipLayerKind.lettering => (
-        'clipText',
-        '{name}: text layer — not drawn.',
+      ClipLayerKind.sound => (
+        ImportWarning('clipSound', '{name}: sound layer not imported.', {
+          'name': name,
+        }),
+        false,
       ),
-      ClipLayerKind.paper => (
-        'clipPaper',
-        '{name}: paper layer — its colour not applied.',
-      ),
-      ClipLayerKind.fill => ('clipFill', '{name}: fill layer — not drawn.'),
-      ClipLayerKind.sound => ('clipSound', '{name}: sound layer not imported.'),
-      ClipLayerKind.other => (
-        'clipUnknownLayer',
-        '{name}: a kind of layer this import does not read.',
-      ),
+      ClipLayerKind.lettering ||
+      ClipLayerKind.paper ||
+      ClipLayerKind.fill ||
+      ClipLayerKind.other => (unsupportedLayerKind(name), false),
       ClipLayerKind.root ||
       ClipLayerKind.folder ||
       ClipLayerKind.raster ||
-      ClipLayerKind.picture => (null, null),
+      ClipLayerKind.picture => (null, true),
     };
-    if (key != null && template != null) {
-      warnings.add(ImportWarning(key, template, {'name': name}));
+    if (said != null) {
+      warnings.add(said);
     }
+    return comes;
   }
 
   /// [layer]'s blend here, said once when there is none. Pass-through is a
@@ -997,4 +1245,358 @@ final class _Planner {
         ? LayerBlendMode.normal
         : mode;
   }
+}
+
+/// The file's sound layers outside the cels, as each cut's SE rows — what a
+/// sound layer becomes, apart from the rows of pictures the walk plans (유저
+/// 10-09: 「소리도 가져오게 못하나? 단일파일안에있을거아냐」).
+final class _SoundRows {
+  _SoundRows({
+    required this.views,
+    required this.mint,
+    required this.warnings,
+    required this.paths,
+  });
+
+  final List<_CutView> views;
+  final ImportIdMint mint;
+  final List<ImportWarning> warnings;
+
+  /// Where each sound was taken out to, by its [ClipSound.objectUuid].
+  final Map<String, String> paths;
+
+  /// The sound layers as the walk met them, each with the folders above it.
+  final _layers = <(ClipLayer, List<ClipLayer>)>[];
+
+  /// Takes [layer], under [folders], in — and says what of it cannot come.
+  void add(ClipLayer layer, List<ClipLayer> folders) {
+    _layers.add((layer, folders));
+    _sayAbout(layer);
+  }
+
+  /// [view]'s cut's SE rows: one per sound layer its timeline plays, a block
+  /// for each clip of the layer's track — from where the clip's cue starts
+  /// the sound, or the cut's head, to the clip's end, cut down where the
+  /// folders above do not show — playing the sound from the second the cue
+  /// says, at its volume. A hidden layer is a MUTED row: a CLIP STUDIO sound
+  /// layer's eye is whether it is heard, and an SE row's mute is the audio
+  /// counterpart of an eye ([Layer.muted]).
+  List<Layer> rowsIn(_CutView view) {
+    final fps = view.timeline?.fps ?? 0;
+    final out = <Layer>[];
+    for (final (layer, folders) in _layers) {
+      final placed = <(ClipSoundCue, ClipSpan, String)>[];
+      for (final cue in view.trackOf(layer)?.sounds ?? const <ClipSoundCue>[]) {
+        final path = paths[cue.player];
+        final held = view.inCut((start: cue.frame, end: cue.span.end));
+        if (path == null || held == null) {
+          continue;
+        }
+        for (final block in _overlap([held], view.within(folders))) {
+          placed.add((cue, block, path));
+        }
+      }
+      if (placed.isEmpty) {
+        continue;
+      }
+      final id = mint.nextLayerId();
+      final frames = <Frame>[];
+      final clips = <AudioClip>[];
+      final timeline = SplayTreeMap<int, TimelineExposure>();
+      for (final (cue, block, path) in placed) {
+        final frameId = mint.nextFrameId(id);
+        frames.add(Frame(id: frameId, duration: 1, strokes: const []));
+        clips.add(
+          AudioClip(
+            filePath: path,
+            frameId: frameId,
+            // The cue's second, and the frames the block starts past it.
+            offsetFrames: math.max(
+              0,
+              (cue.startSeconds * fps).round() +
+                  block.start +
+                  view.start -
+                  cue.frame,
+            ),
+            gain: math.max(0, cue.volume),
+          ),
+        );
+        timeline[block.start] = TimelineExposure.drawing(
+          frameId,
+          length: block.end - block.start,
+        );
+      }
+      out.add(
+        Layer(
+          id: id,
+          name: layer.name,
+          kind: LayerKind.se,
+          frames: frames,
+          timeline: timeline,
+          audioClips: clips,
+          muted: !(layer.isShown && folders.every((folder) => folder.isShown)),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Says what of [layer]'s sound does not come over: a clip whose sound
+  /// the file does not hold, one CLIP STUDIO plays at another speed —
+  /// played at its own — and one whose volume moves within it — held
+  /// where it starts.
+  void _sayAbout(ClipLayer layer) {
+    final cues = [
+      for (final view in views) ...?view.trackOf(layer)?.sounds,
+    ];
+    void say(bool Function(ClipSoundCue cue) when, String key, String text) {
+      if (cues.any(when)) {
+        warnings.add(ImportWarning(key, text, {'name': layer.name}));
+      }
+    }
+
+    say(
+      (cue) => paths[cue.player] == null,
+      'clipSoundMissing',
+      '{name}: its sound is not in the file — not played.',
+    );
+    say(
+      (cue) => (cue.speed - 1).abs() > 0.001,
+      'clipSoundSpeed',
+      '{name}: CLIP STUDIO plays it at another speed — it plays at its own '
+          'here.',
+    );
+    say(
+      (cue) => cue.volumeVaries,
+      'clipSoundVolume',
+      '{name}: its volume moves within its clip — held where the clip '
+          'starts.',
+    );
+  }
+}
+
+/// Every cut's camera: the shooting frame, still — CLIP STUDIO's own camera
+/// does not move (유저 10-13: 「진짜 존재하는 카메라는 고정되있음」); its 2D
+/// camera folders move what they hold ([_CameraFolder]). Null for a file
+/// with no frame, whose cuts keep their own.
+CutCamera? _shootingCamera(ClipDocument document) => switch (document.frame) {
+  final frame? => CutCamera(
+    keyframes: {
+      0: CameraPose(center: CanvasPoint(x: frame.centerX, y: frame.centerY)),
+    },
+  ),
+  null => null,
+};
+
+/// How a layer's track moves it, the app's way: its row's transform, posed
+/// on every frame the cut shows the layer as the clip there places it, and
+/// keyed the way every imported move is ([transformTrackOfFramePoses]). One
+/// reading of the clips' curves ([ClipMove]) and two meanings of the
+/// placement they key: a 2D camera folder's is its camera's
+/// ([_CameraFolder]), any other layer's its own ([_OwnMove]).
+sealed class _Moved {
+  _Moved(this.layer, this.rest);
+
+  final ClipLayer layer;
+
+  /// Where it stands where no clip of its track moves it.
+  final ClipPlacement rest;
+
+  /// [move]'s curves.
+  static List<ClipCurve> curvesOf(ClipMove move) => [
+    move.x,
+    move.y,
+    move.scaleX,
+    move.scaleY,
+    move.degrees,
+    move.pivotX,
+    move.pivotY,
+  ];
+
+  /// Its transform in [view]: the pose on every frame the cut shows the
+  /// layer on — inside its track's clips as each moves it, at its [rest]
+  /// where the timeline has no track for it — made keys the way every
+  /// imported move is ([transformTrackOfFramePoses]). Between its clips
+  /// CLIP STUDIO shows nothing of the layer, so no frame there asks for
+  /// anything; a cut that never shows it holds it at its rest. Null for a
+  /// cut it has no transform in.
+  TransformTrack? trackIn(_CutView view) {
+    final track = view.trackOf(layer);
+    final poses = SplayTreeMap<int, LayerPoseSample>();
+    for (var frame = 0; frame < view.duration; frame += 1) {
+      if (_placementAt(view.start + frame, track) case final placement?) {
+        poses[frame] = poseOf(placement);
+      }
+    }
+    if (poses.isEmpty) {
+      poses[0] = poseOf(rest);
+    }
+    return transformTrackOfFramePoses(poses, keyedOn: _keyedOn(view, track));
+  }
+
+  /// The transform that shows what [placement] places.
+  LayerPoseSample poseOf(ClipPlacement placement);
+
+  /// The curves of [move] that key the transform's anchor and its position.
+  ({List<ClipCurve> anchor, List<ClipCurve> position}) lanesOf(ClipMove move);
+
+  /// The cut frames the clips of [track] key each lane on (I-89 ⑦): the
+  /// anchor and the position where their curves are keyed ([lanesOf]), the
+  /// scale and the turn where theirs are.
+  TransformKeyFrames _keyedOn(_CutView view, ClipTrack? track) {
+    final moves = track?.moves ?? const <ClipMove>[];
+    List<int> on(Iterable<ClipCurve> curves) => [
+      for (final curve in curves)
+        for (final frame in curve.keyedFrames) frame - view.start,
+    ];
+    return (
+      anchorPoint: on([for (final move in moves) ...lanesOf(move).anchor]),
+      position: on([for (final move in moves) ...lanesOf(move).position]),
+      scale: on([
+        for (final move in moves) ...[move.scaleX, move.scaleY],
+      ]),
+      rotation: on([for (final move in moves) move.degrees]),
+    );
+  }
+
+  /// Where the layer stands on the timeline's [frame]: the move of the
+  /// clip there, its values the clip keys nothing for at its [rest] — null
+  /// where no clip of [track] shows the layer.
+  ClipPlacement? _placementAt(int frame, ClipTrack? track) {
+    if (track == null) {
+      return rest;
+    }
+    bool holds(ClipSpan span) => span.start <= frame && frame < span.end;
+    if (!track.pieces.any((piece) => holds(piece.span))) {
+      return null;
+    }
+    final moves = track.moves.where((move) => holds(move.span));
+    if (moves.isEmpty) {
+      return rest;
+    }
+    final move = moves.first;
+    double at(ClipCurve curve, double resting) =>
+        curve.at(frame.toDouble()) ?? resting;
+    return (
+      scaleX: at(move.scaleX, rest.scaleX),
+      scaleY: at(move.scaleY, rest.scaleY),
+      degrees: at(move.degrees, rest.degrees),
+      x: at(move.x, rest.x),
+      y: at(move.y, rest.y),
+      pivotX: at(move.pivotX, rest.pivotX),
+      pivotY: at(move.pivotY, rest.pivotY),
+    );
+  }
+}
+
+/// A 2D camera folder, the app's way: the folder row it is anyway, named as
+/// it is, its transform moving what it holds as CLIP STUDIO shows that
+/// through the camera (유저 10-13, 보드
+/// `clip-camera-folder-is-a-folder-transform`: 「클립은 tvp의 카메라같은
+/// 개념이 아님. 카메라인척하는 ae의 트랜스폼임 … 카메라폴더는 그냥 폴더에
+/// 트랜스폼 움직이는걸로 구현하는게 확실할듯. 이름은 카메라폴더 이름 그대로」).
+/// A file may hold several, each moving its own; what stands outside them
+/// is seen through the still frame ([_shootingCamera]). ↩️The first camera
+/// folder was the cut's camera, moving everything, and a second was only
+/// said (10-09, 「카메라는 우리방식이 제일 좋다고 생각하니 모아트는
+/// 참고만하고 우리방식대로」 — the way stays ours).
+///
+/// The camera's picture is the shooting frame, placed on the canvas the
+/// way a picture is ([clipPlaced]): its pivot `c` on the point `p`, scaled
+/// by `s` and turned by `θ` about it — `P(u) = p + R(θ)·s·(u − c)`. What
+/// it sees on its own `u` shows on the frame's, `f0 + u` (`f0` the frame's
+/// top-left), so the folder's picture at `q` shows at
+/// `f0 + P⁻¹(q) = f0 + c + R(−θ)·(q − p) / s`: After Effects' transform
+/// (`layerPoseMatrix`) with the anchor on `p`, the position on `f0 + c`,
+/// the scale `1 / s` and the turn `−θ`. Measured on the user's camera
+/// samples (2026-10-13): what two camera folders and a folder outside them
+/// hold stands on CLIP STUDIO's first frame exactly where this puts it,
+/// every pan moves it as its curves do, within half a pixel, and a zoom
+/// and a turn are undone as said, about the pivot (memory
+/// `csp-clip-format-notes` §3).
+final class _CameraFolder extends _Moved {
+  _CameraFolder(super.layer, super.rest, this.frameOrigin);
+
+  /// The shooting frame's top-left, `f0`.
+  final CanvasPoint frameOrigin;
+
+  @override
+  LayerPoseSample poseOf(ClipPlacement placement) {
+    final scale = placement.scaleX;
+    return (
+      pose: TransformPose.uniform(
+        center: CanvasPoint(
+          x: frameOrigin.x + placement.pivotX,
+          y: frameOrigin.y + placement.pivotY,
+        ),
+        zoom: scale > 0 && scale.isFinite ? 1 / scale : 1,
+        rotationDegrees: placement.degrees.isFinite ? -placement.degrees : 0,
+      ),
+      anchorPoint: CanvasPoint(x: placement.x, y: placement.y),
+    );
+  }
+
+  /// The anchor where the camera's point is keyed, the position where its
+  /// pivot is.
+  @override
+  ({List<ClipCurve> anchor, List<ClipCurve> position}) lanesOf(
+    ClipMove move,
+  ) => (anchor: [move.x, move.y], position: [move.pivotX, move.pivotY]);
+}
+
+/// A layer a clip moves that is no camera — a folder, a cel folder, a
+/// picture: its row's transform, as CLIP STUDIO places the layer (유저
+/// 10-14, test4 「B (카메라 없이 레이어의 트랜스폼 키 움직임)」). It places
+/// it as it places any picture — its pivot `c` on the point `p`, scaled by
+/// axis and turned by `θ` about it, `P(u) = p + R(θ)·S·(u − c)` — which is
+/// After Effects' transform as it stands: the anchor on `c`, the position
+/// on `p`, the scale `S`, the turn `θ`; the camera's undone it
+/// ([_CameraFolder]). Measured on test4: the cel folder's picture moved by
+/// its position keys exactly (frame 9's (−51, 60) and frame 19's (−9, 67)
+/// from frame 0's), on the ways its camera folder's moved on. ⚠️No sample's
+/// layer scales or turns.
+final class _OwnMove extends _Moved {
+  _OwnMove(super.layer, super.rest);
+
+  /// Unmoved — the pivot on the point, at [canvas]'s centre, where test4's
+  /// layer kept its pivot.
+  static ClipPlacement restOn(CanvasSize canvas) => (
+    scaleX: 1,
+    scaleY: 1,
+    degrees: 0,
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    pivotX: canvas.width / 2,
+    pivotY: canvas.height / 2,
+  );
+
+  /// Null for a cut whose timeline keys no move of the layer — it stands
+  /// there as it is drawn.
+  @override
+  TransformTrack? trackIn(_CutView view) =>
+      (view.trackOf(layer)?.moves.isNotEmpty ?? false)
+      ? super.trackIn(view)
+      : null;
+
+  @override
+  LayerPoseSample poseOf(ClipPlacement placement) {
+    double finite(double value, double otherwise) =>
+        value.isFinite ? value : otherwise;
+    return (
+      pose: TransformPose(
+        center: CanvasPoint(x: placement.x, y: placement.y),
+        scaleX: finite(placement.scaleX, 1),
+        scaleY: finite(placement.scaleY, 1),
+        rotationDegrees: finite(placement.degrees, 0),
+      ),
+      anchorPoint: CanvasPoint(x: placement.pivotX, y: placement.pivotY),
+    );
+  }
+
+  /// The anchor where the layer's pivot is keyed, the position where its
+  /// point is.
+  @override
+  ({List<ClipCurve> anchor, List<ClipCurve> position}) lanesOf(
+    ClipMove move,
+  ) => (anchor: [move.pivotX, move.pivotY], position: [move.x, move.y]);
 }

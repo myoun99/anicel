@@ -10,13 +10,15 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
-import '../../models/timeline_row_address.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
 import 'render_caches.dart';
+import 'row_selection.dart';
 import 'session_roles.dart';
 import '../text/place_lines.dart' show linkPartnerLines;
 
@@ -36,14 +38,20 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required RenderCaches renderCaches,
+    required RowSelection rowSelection,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _renderCaches = renderCaches;
+       _renderCaches = renderCaches,
+       _rowSelection = rowSelection;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
+
+  /// The rows a verb on the selection acts on
+  /// ([RowSelection.selectedLayerIds]).
+  final RowSelection _rowSelection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
 
@@ -120,10 +128,20 @@ class LayerVerbs {
   List<LayerId> renameableSelectedLayerIds() =>
       selectedLayerIdsWhere(_nameIsEditable);
 
-  /// Of [ids] — the rows a press acted on — the ones whose NAME may be
-  /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
-  List<LayerId> renameableOf(Iterable<LayerId> ids) =>
-      _layerIdsWhere(ids, _nameIsEditable);
+  /// Of [ids] — the layers a press acted on
+  /// ([RowSelection.layersActedOnBy]) — the ones whose NAME may be edited,
+  /// by [renameableSelectedLayerIds]'s rule (I-48's double click), wherever
+  /// [renameRows] can write it ([_cutWriting]): a storyboard projection
+  /// row's lands in any cut (F-322: 「더블클릭으로 레이어 이름바꾸는거 …
+  /// 통일」). ↩️Only the active cut's rows were looked at.
+  List<LayerId> renameableOf(Iterable<LayerId> ids) => _layerIdsWhere(
+    [
+      for (final id in ids)
+        if (_cutWriting(id) != null) id,
+    ],
+    _nameIsEditable,
+    among: projectLayersAnywhere(_project.repository.requireProject()),
+  );
 
   static bool _nameIsEditable(Layer layer) => !layer.kind.isTrackFixture;
 
@@ -135,17 +153,18 @@ class LayerVerbs {
   /// rung (I-18, `BlockNaming`), which names its own predicate rather than
   /// walking the selection a second time.
   List<LayerId> selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
-      _layerIdsWhere([
-        for (final row in _selection.rowSelection.value)
-          if (row is LayerRowAddress) row.layerId,
-      ], keep);
+      _layerIdsWhere(_rowSelection.selectedLayerIds, keep);
 
-  /// Of [ids], the layers of the cut that pass [keep], in order, once each.
+  /// Of [ids], the layers of the cut — or [among] — that pass [keep], in
+  /// order, once each.
   List<LayerId> _layerIdsWhere(
     Iterable<LayerId> ids,
-    bool Function(Layer layer) keep,
-  ) {
-    final byId = {for (final layer in _project.layers) layer.id: layer};
+    bool Function(Layer layer) keep, {
+    Iterable<Layer>? among,
+  }) {
+    final byId = {
+      for (final layer in among ?? _project.layers) layer.id: layer,
+    };
     final kept = <LayerId>[];
     for (final id in ids) {
       final layer = byId[id];
@@ -222,19 +241,29 @@ class LayerVerbs {
     String description,
     LayerId? Function(CutId cutId, LayerId layerId) command,
   ) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null || ids.isEmpty) {
+    final rows = [
+      for (final layerId in ids)
+        if (_cutWriting(layerId) case final cutId?)
+          (cutId: cutId, layerId: layerId),
+    ];
+    if (rows.isEmpty) {
       return;
     }
     LayerId? stand;
     _project.historyManager.runAsOneStep(description, () {
-      for (final layerId in ids) {
-        stand = command(cut.id, layerId) ?? stand;
+      for (final row in rows) {
+        stand = command(row.cutId, row.layerId) ?? stand;
       }
     });
     _changes.refreshAfterCutCommand(preferredActiveLayerId: stand ?? ids.first);
     _changes.notifyChanged();
   }
+
+  /// The cut a row verb writes [layerId] in: the one HOLDING it, the active
+  /// one for a track's own row ([ActiveCutEdits.onCutOfRowQuietly]).
+  CutId? _cutWriting(LayerId layerId) =>
+      cutIdOfLayer(_project.repository.requireProject(), layerId) ??
+      _project.activeCutOrNull?.id;
 
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin —
   /// standing on the last copy.
@@ -550,7 +579,9 @@ class LayerVerbs {
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {
     _project.cutCommandCoordinator.renameLayer(
-      cutId: _project.requireActiveCut.id,
+      cutId:
+          cutIdOfLayer(_project.repository.requireProject(), layerId) ??
+          _project.requireActiveCut.id,
       layerId: layerId,
       name: name,
     );

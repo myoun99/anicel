@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
         timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart';
 
+import '../../helpers/named_finders.dart';
 import 'timeline_cell_probe.dart';
 
 /// F-3, second half — **the frame grid is the sheet's ruling, and every row
@@ -168,10 +169,7 @@ void main() {
           continue;
         }
         final id = 'grid-${kind.name}';
-        if (find
-            .byKey(ValueKey<String>('timeline-row-cells-$id'))
-            .evaluate()
-            .isEmpty) {
+        if (find.named('timeline-row-cells-$id').evaluate().isEmpty) {
           continue;
         }
         final painter = timelineRowCellsPainterFor(tester, id);

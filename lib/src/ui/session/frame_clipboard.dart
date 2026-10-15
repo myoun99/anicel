@@ -197,7 +197,7 @@ class FrameClipboard implements BringsMedia {
   bool canPasteLinkedAt(ClipboardPlace? place) {
     // Same law as its independent twin: this lands on the row the press
     // stands on and serves only a band that covers it ([_pasteRun]'s
-    // `replacing`).
+    // `replaced`).
     if (place == null || place._bandMissesTheRow) {
       return false;
     }
@@ -678,7 +678,7 @@ class FrameClipboard implements BringsMedia {
 
   bool canPasteIndependentAt(ClipboardPlace? place) {
     // The paste lands on the row the press stands on, and its band rung
-    // serves only a band that covers that row (`replacing` in [_pasteRun] —
+    // serves only a band that covers that row (`replaced` in [_pasteRun] —
     // 「복붙은 선택하고 붙여넣기가 기본」). A band naming other rows makes it
     // a plain insert on a row the user never swept, and the highlight then
     // stays put, because the clear runs on the replacing path alone.
@@ -902,13 +902,19 @@ class FrameClipboard implements BringsMedia {
     final run = _runAt(place);
     // ⛔A selection REPLACES what it covers; with none, nothing comes out.
     // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
+    //
+    // 🚨THE BAND ITSELF, NOT A BOOL THAT SAYS THERE IS ONE (I-57,
+    // 2026-10-14): a value promoted through a bool and read inside a loop
+    // is read past the bool by the AOT compiler, so a null one is read
+    // through in a release build
+    // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
     final band = place._band;
-    final replacing = band != null && band.covers(layer.id);
+    final replaced = band != null && band.covers(layer.id) ? band : null;
     // F-115: with nothing selected the clip goes in at the cursor ON THE
     // ROW'S OWN AXIS ([ClipboardPlace]) — a track-owned SE row keys the
     // track's frames, and the cut-local index landed it on an earlier cut's.
-    final index = replacing ? run.index : place._index;
-    final liftCount = replacing ? run.count : 0;
+    final index = replaced != null ? run.index : place._index;
+    final liftCount = replaced != null ? run.count : 0;
 
     // 🚨결정 14 ③ⓐ (유저 확정 2026-08-22) — **THE CLIP LANDS ON EVERY SWEPT
     // ROW.**
@@ -969,7 +975,7 @@ class FrameClipboard implements BringsMedia {
         // Each row places the band's start on ITS OWN axis ([_band]): two
         // rows swept together need not key the same frames — a track-owned
         // SE row keys the track's.
-        index: replacing ? band.startOn(target.id) : index,
+        index: replaced?.startOn(target.id) ?? index,
         liftCount: liftCount,
         clip: placed.clip,
         bornFrames: placed.born,
@@ -1010,9 +1016,7 @@ class FrameClipboard implements BringsMedia {
         handwritingOf: (inkId) => handwriting[inkId],
       );
     }
-    if (replacing) {
-      band.clear();
-    }
+    replaced?.clear();
     _changes.notifyChanged();
   }
 

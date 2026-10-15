@@ -86,7 +86,10 @@ void main() {
     WidgetTester tester,
     EditorSessionManager session,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 720));
+    // A screen whose half (F-337) is room for the render queue beside the
+    // least the preview takes (the Cels list with its attach column), so
+    // the drawer stays open.
+    await tester.binding.setSurfaceSize(const Size(1880, 930));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -263,7 +266,18 @@ void main() {
       addTearDown(session.dispose);
       await pumpWindow(tester, session);
 
-      final window = tester.getRect(keyed('export-dialog'));
+      // ⚠️The key is on the Material `Dialog`, which lays out over the whole
+      // screen; the window is the box inside it. Read off the key, this was
+      // the screen — the same rect only while the window took all of it
+      // (F-337: a share of it now).
+      final window = tester.getRect(
+        find
+            .descendant(
+              of: keyed('export-dialog'),
+              matching: find.byType(ConstrainedBox),
+            )
+            .first,
+      );
       final queue = tester.getRect(keyed('export-queue-add-button'));
       final export = tester.getRect(keyed('export-run-button'));
       final order = tester.getRect(keyed('export-order-line'));

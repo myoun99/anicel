@@ -142,10 +142,13 @@ void main() {
       WidgetTester tester, {
       Rect? limit = paper,
       Size box = const Size(400, 300),
+      List<Widget> pageStrip = const [],
     }) async {
       final controller = ValueNotifier<CanvasViewport?>(null);
       addTearDown(controller.dispose);
-      await tester.pumpWidget(sheetIn(controller, box, limit: limit));
+      await tester.pumpWidget(
+        sheetIn(controller, box, limit: limit, pageStrip: pageStrip),
+      );
       await tester.pumpAndSettle();
       // 🚨The store is in DEVICE units and the painting in logical ones,
       // and the factor carries the UI scale as well as the screen's — so
@@ -238,6 +241,25 @@ void main() {
       final on = paperOnScreen(tester);
       expect(on.right, closeTo(shown.right, 1e-6));
       expect(on.bottom, closeTo(shown.bottom, 1e-6));
+      expectStoreShows(tester, controller);
+    });
+
+    testWidgets('🗣️F-346: zoomed in on a panel that turns pages, a drag '
+        'past the left end stops with the paper\'s edge beside the page '
+        'strip, as past the top it stops under the pill', (tester) async {
+      final controller = await pumpSheet(
+        tester,
+        pageStrip: const [SizedBox(width: 26, height: 40)],
+      );
+      controller.value = device(tester, CanvasViewport(panX: -100));
+      await tester.pump();
+      final strip = pageStripBandOf(tester);
+      expect(strip, greaterThan(30), reason: '⛔전제: the strip stands');
+
+      await drag(tester, const Offset(900, 900));
+      final on = paperOnScreen(tester);
+      expect(on.left, closeTo(strip, 1e-6), reason: 'beside the strip');
+      expect(on.top, closeTo(pillBandOf(tester), 1e-6));
       expectStoreShows(tester, controller);
     });
 
@@ -508,6 +530,7 @@ Widget sheetIn(
   ValueNotifier<CanvasViewport?> controller,
   Size box, {
   Rect? limit = const Rect.fromLTWH(24, 24, 600, 800),
+  List<Widget> pageStrip = const [],
 }) => MaterialApp(
   home: Align(
     alignment: Alignment.topLeft,
@@ -520,6 +543,7 @@ Widget sheetIn(
         viewportController: controller,
         viewLimit: limit,
         drawingOn: false,
+        pageStrip: pageStrip,
         content: (context, viewport) => const SizedBox.expand(),
       ),
     ),

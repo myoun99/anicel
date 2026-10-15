@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart';
@@ -218,7 +219,7 @@ void main() {
 
   group('the painter', () {
     TimelineGlyphPlacement at(String text, Offset offset) => (
-      painter: timelineGlyphPainter(text, const TextStyle(fontSize: 10)),
+      painter: laidOutGlyph(text, const TextStyle(fontSize: 10)),
       offset: offset,
       fit: wordFitsAsItIs,
     );
@@ -462,18 +463,24 @@ void main() {
     await tester.pump();
     expect(painter().writtenFrame(), 7);
     // Its own layer: the first boundary above the writing is its tick
-    // layer's, under the strip's.
+    // layer's — the first one down from the tick layer, whichever render
+    // object it is — under the strip's.
     var boundary = tester.renderObject(writing).parent;
     while (boundary != null && !boundary.isRepaintBoundary) {
       boundary = boundary.parent;
     }
+    RenderObject? tickBoundary = tester.renderObject(
+      find.ancestor(of: writing, matching: find.byType(TickLayer)),
+    );
+    while (tickBoundary != null && !tickBoundary.isRepaintBoundary) {
+      RenderObject? first;
+      tickBoundary.visitChildren((child) => first ??= child);
+      tickBoundary = first;
+    }
+    expect(boundary, isNotNull, reason: '⛔premise: a boundary above it');
     expect(
       boundary,
-      same(
-        tester.renderObject(
-          find.ancestor(of: writing, matching: find.byType(TickLayer)),
-        ),
-      ),
+      same(tickBoundary),
       reason: 'its repaints never re-record the strip',
     );
 

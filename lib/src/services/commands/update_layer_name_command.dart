@@ -18,6 +18,8 @@ class UpdateLayerNameCommand extends LinkMirroredLayerFieldCommand<String> {
          fieldName: 'name',
          read: (layer) => layer.name,
          write: _writeName,
+         // A track's cameras go by one name (I-73-camera-row-Q1).
+         ofTheCameraHead: true,
        );
 
   static void _writeName(

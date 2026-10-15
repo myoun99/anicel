@@ -14,7 +14,9 @@ import 'dart:ui' as ui show Image, ImageByteFormat;
 import '../../models/bitmap_surface.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -26,8 +28,11 @@ import '../../models/project_frame_rate.dart';
 import '../../models/reference_swap.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
+import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/commands/swap_layer_reference_command.dart';
+import '../../services/guide_geometry.dart' show GuideTransform;
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
@@ -36,6 +41,7 @@ import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/viewer_document.dart' show ViewerDocument;
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/pdf/pdf_render_service.dart';
@@ -63,6 +69,69 @@ typedef _MoviePlacement = ({
   Layer layer,
   List<PlannedCelBake> bakes,
 });
+
+/// One picture a bake lays: its image, whether the bake lets go of it, and
+/// the size the picture IS — what a pose stands on (I-68). A PDF page is
+/// rendered at the size it will stand at, so its image is not its size.
+typedef _BakePicture = ({ui.Image image, bool owned, CanvasSize size});
+
+/// What making a reference row's pictures from its file again came to
+/// ([ProjectImportDoors]): the pictures, or why there are none.
+sealed class _Remade {
+  const _Remade();
+}
+
+/// A reference row's pictures made from its file again, by cel, and the
+/// reference that says the size of what it shows.
+final class _Drawn extends _Remade {
+  const _Drawn(this.pictures, this.reference);
+
+  final Map<FrameId, BitmapSurface> pictures;
+  final MediaReference reference;
+}
+
+/// No pictures, and [why]: the file did not read, or lacks one a cel shows.
+final class _NotDrawn extends _Remade {
+  const _NotDrawn(this.why);
+
+  final ReferenceRedraw why;
+}
+
+/// A file's pictures, open: how many it holds, each made from its place in
+/// the file, and the letting go of what was opened for them.
+typedef _OpenPictures = ({
+  int count,
+  Future<_BakePicture> Function(int index) at,
+  Future<void> Function() close,
+});
+
+/// The pictures of a file a row asked for, by their place in the file, laid
+/// and measured.
+typedef _MadePictures = ({
+  Map<int, BitmapSurface> surfaces,
+  Map<int, CanvasSize> sizes,
+});
+
+/// [image] as the picture it is: its size is its own.
+_BakePicture _pictureOf(ui.Image image, {required bool owned}) => (
+  image: image,
+  owned: owned,
+  size: CanvasSize(width: image.width, height: image.height),
+);
+
+/// Where a placement stands each of its pictures — one rule for the whole
+/// placement, given a picture's own size and the canvas it lands on.
+typedef _Standing =
+    TransformPose Function(CanvasSize picture, CanvasSize canvas);
+
+/// Each picture at its own [fit] — a placement that bakes.
+_Standing _atTheFit(MediaFitMode fit) =>
+    (picture, canvas) => fitPose(picture: picture, canvas: canvas, fit: fit);
+
+/// Every picture at [reference]'s pose when the row SHOWS a file (I-68),
+/// over each picture's own pixels; each at its own [fit] when it bakes.
+_Standing _standingFor(MediaReference? reference, MediaFitMode fit) =>
+    reference == null ? _atTheFit(fit) : (_, _) => reference.pose;
 
 /// The image / PSD / PDF / sound import doors.
 class ProjectImportDoors {
@@ -116,8 +185,8 @@ class ProjectImportDoors {
 
   /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
   /// import window's core verb. Reference mode (default) stamps
-  /// [Layer.mediaReference]; rasterize bakes and stamps nothing. Both
-  /// REGISTER the asset (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut is
+  /// [Layer.mediaReference] and REGISTERS the asset; rasterize bakes,
+  /// stamps nothing and registers nothing ([placementRegisters]). A NEW cut is
   /// made at the file's own size. One undo step; the baked cels display
   /// through the ordinary store paths. Returns false when nothing imported
   /// — including when the row a drop aimed at ([spot]) takes no frames.
@@ -188,6 +257,16 @@ class ProjectImportDoors {
 
     final cutId = arrival.cutId;
     final stillDuration = arrival.stillDuration(lengthFrames: lengthFrames);
+    // Frames on a row are that row's own pixels (「셀에 떨어뜨리면 항상
+    // 굽기」) — baked, whatever was asked.
+    final reference = rasterize || spot is RowFramesSpot
+        ? null
+        : placedReference(
+            source,
+            CanvasSize(width: first.width, height: first.height),
+            arrival.canvasSize,
+            fit,
+          );
 
     final Layer layer;
     final List<PlannedCelBake> bakes;
@@ -201,11 +280,12 @@ class ProjectImportDoors {
         cutId: cutId,
         duration: stillDuration,
         fit: fit,
-        rasterize: rasterize,
+        reference: reference,
         mint: arrival.mint,
         identity: identity,
         carried: copyIntoProject,
         sourcePath: sourcePath,
+        picture: kept.first,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -226,12 +306,12 @@ class ProjectImportDoors {
         displayName: arrival.displayName,
         cutId: cutId,
         fit: fit,
-        rasterize: rasterize,
         mint: arrival.mint,
-        referencePath: source,
+        reference: reference,
         identity: identity,
         carried: copyIntoProject,
         sourcePath: sourcePath,
+        firstPicture: kept.first,
       );
       layer = plan.layer;
       bakes = plan.bakes;
@@ -252,10 +332,9 @@ class ProjectImportDoors {
       return false;
     }
     // 🔑 AFTER the registration. The bytes were read to decode them, so the
-    // hash costs no I/O. A RASTERIZING import used to skip it because it
-    // registered nothing; it registers now (유저 2026-09-11: 「구워도 풀에
-    // 남음」), and a registered file is one that can go missing and have to
-    // be found again — `A1.png` repeats in every cut folder on a real drive.
+    // hash costs no I/O. A registered file is one that can go missing and
+    // have to be found again — `A1.png` repeats in every cut folder on a
+    // real drive — and a baked one is not registered (F-282-Q6).
     if (assets.isNotEmpty) {
       _fingerprints.rememberMediaFingerprint(source, bytes);
     }
@@ -269,8 +348,9 @@ class ProjectImportDoors {
         layer,
         bakes,
         rowId: _rowOf(spot),
+        standing: _standingFor(reference, fit),
         pictureOf: (bake, _) async =>
-            (image: decoded[bake.sourceFrameIndex].image, owned: false),
+            _pictureOf(decoded[bake.sourceFrameIndex].image, owned: false),
       );
     } finally {
       for (final frame in decoded) {
@@ -291,9 +371,9 @@ class ProjectImportDoors {
   /// 프레임으로 인식하는 느낌」.
   ///
   /// Always baked: a layer's reference names ONE file, and these are many
-  /// — the cut folder's law, which always bakes. Each file registers on its
-  /// own (유저 2026-09-11: 「구워도 풀에 남음」): a pooled `A1.png` is one
-  /// picture, not a sequence of three.
+  /// — the cut folder's law, which always bakes. So nothing registers
+  /// ([placementRegisters], F-282-Q6). ↩️Each file registered on its own
+  /// (유저 2026-09-11: 「구워도 풀에 남음」).
   ///
   /// One file is decoded at a time — to fold, then again to bake — so a run
   /// of full-page scans never sits in memory whole.
@@ -330,18 +410,14 @@ class ProjectImportDoors {
       frameFingerprints: fold.fingerprints,
       displayName: name,
       cutId: arrival.cutId,
-      fit: settings.fit,
-      rasterize: true,
       mint: arrival.mint,
       frameNames: [for (final file in files) file.label],
     );
-    final assets = _eachRegistered(sources, settings);
-    await _pool.holdCarriedBytes(assets);
     if (!_landing.land(
       [plan.layer],
       arrival: arrival,
       duration: _sequenceLength(plan.layer),
-      assets: assets,
+      assets: const [],
     )) {
       return false;
     }
@@ -350,6 +426,7 @@ class ProjectImportDoors {
       plan.layer,
       plan.bakes,
       rowId: _rowOf(spot),
+      standing: _atTheFit(settings.fit),
       pictureOf: (bake, _) => _ownedStillOf(bake.sourceFile),
       onProgress: onRenderProgress,
       onFailed: onCelFailed == null
@@ -359,25 +436,13 @@ class ProjectImportDoors {
     return true;
   }
 
-  /// Each of [sources] as the pool's own picture, kept as [settings] say.
-  List<MediaAsset> _eachRegistered(
-    List<String> sources,
-    ImportFileSettings settings,
-  ) => [
-    for (final source in sources)
-      importedMediaAsset(
-        path: source,
-        kind: MediaAssetKind.image,
-        fit: settings.fit,
-        identity: readMediaIdentity(source),
-        carried: settings.mode == ImportFileMode.keepInside,
-      ),
-  ];
-
   /// What the fold reads of each of [sources]' pictures ([_foldBytes]), and
   /// the first one's size — one file decoded at a time; null when one does
-  /// not read. Each one's bytes are fingerprinted on the way: they were read
-  /// anyway, and the ledger takes a path not registered yet.
+  /// not read.
+  ///
+  /// ↩️Each one's bytes were fingerprinted on the way, for the pool entry
+  /// each file was — the run registers nothing now (F-282-Q6), and a
+  /// fingerprint is how a REGISTERED file is found again.
   Future<({List<Object?> fingerprints, CanvasSize firstSize})?> _foldRun(
     List<String> sources,
   ) async {
@@ -388,7 +453,6 @@ class ProjectImportDoors {
       if (still == null) {
         return null;
       }
-      _fingerprints.rememberMediaFingerprint(source, still.bytes);
       try {
         firstSize ??= CanvasSize(
           width: still.image.width,
@@ -406,12 +470,12 @@ class ProjectImportDoors {
   }
 
   /// A cel's picture to bake, read again: the fold let go of it.
-  Future<({ui.Image image, bool owned})> _ownedStillOf(String path) async {
+  Future<_BakePicture> _ownedStillOf(String path) async {
     final still = await _stillOf(path);
     if (still == null) {
       throw StateError('$path no longer reads');
     }
-    return (image: still.image, owned: true);
+    return _pictureOf(still.image, owned: true);
   }
 
   /// [path]'s picture — the first frame of what it decodes to, a run's cel
@@ -441,10 +505,10 @@ class ProjectImportDoors {
   /// the user set: a half-linked stack would take original updates on some
   /// rows and not others, and a reorder in Photoshop would break the match
   /// for the rest. So nothing keeps a reference — the merged reading
-  /// ([importImageFile]) is the one that stays live. The FILE still
-  /// registers, carried or linked as the window said: a baked file is the
-  /// pool's to offer again (유저 2026-09-11: 「구워도 풀에 남음」). A NEW cut
-  /// is made at the document's size.
+  /// ([importImageFile]) is the one that stays live. Baked, so the FILE
+  /// registers nothing ([placementRegisters], F-282-Q6). ↩️It registered,
+  /// carried or linked as the window said (유저 2026-09-11: 「구워도 풀에
+  /// 남음」). A NEW cut is made at the document's size.
   ///
   /// Returns the warnings (colour conversions, blends we have no
   /// equivalent for, adjustment layers left behind), or null when the
@@ -453,7 +517,6 @@ class ProjectImportDoors {
   Future<List<ImportWarning>?> importPsdExpanded({
     required String path,
     required ImportDestination destination,
-    required bool copyIntoProject,
     MediaFitMode fit = MediaFitMode.contain,
     int? lengthFrames,
     ImportLayerSpot? spot,
@@ -495,23 +558,12 @@ class ProjectImportDoors {
         ? gate.withCanvasSize(expansion.canvas)
         : gate;
 
-    final assets = [
-      importedMediaAsset(
-        path: arrival.source,
-        kind: MediaAssetKind.image,
-        fit: fit,
-        identity: readMediaIdentity(arrival.source),
-        carried: copyIntoProject,
-      ),
-    ];
-    await _pool.holdCarriedBytes(assets);
     _landing.land(
       expansion.layers,
       arrival: arrival,
       duration: duration,
-      assets: assets,
+      assets: const [],
     );
-    _fingerprints.rememberMediaFingerprint(arrival.source, bytes);
 
     // Pixels after the structure, like every other import: the cel keys
     // resolve their owner through the cut that now exists.
@@ -593,18 +645,22 @@ class ProjectImportDoors {
       final spanCount = kept.count;
       // A NEW cut is made at the span's first page, at the size the
       // renderer calls 1:1 — the size the window's locked 1:1 fit draws.
-      final firstSize = document.pageSize(firstPage);
       final arrival = gate.targetCut == null
-          ? gate.withCanvasSize(
-              CanvasSize(
-                width: _pagePixels(firstSize.width),
-                height: _pagePixels(firstSize.height),
-              ),
-            )
+          ? gate.withCanvasSize(_pageSizeOf(document, firstPage))
           : gate;
       final source = arrival.source;
       final identity = readMediaIdentity(source);
       final cutId = arrival.cutId;
+      // Frames on a row are that row's own pixels (「셀에 떨어뜨리면 항상
+      // 굽기」) — baked, whatever was asked.
+      final reference = rasterize || spot is RowFramesSpot
+          ? null
+          : placedReference(
+              source,
+              _pageSizeOf(document, firstPage),
+              arrival.canvasSize,
+              fit,
+            );
 
       final Layer layer;
       final List<PlannedCelBake> bakes;
@@ -619,13 +675,14 @@ class ProjectImportDoors {
           cutId: cutId,
           duration: arrival.stillDuration(),
           fit: fit,
-          rasterize: rasterize,
+          reference: reference,
           mint: arrival.mint,
           identity: identity,
           carried: copyIntoProject,
           sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
+          picture: firstPage,
         );
         layer = plan.layer;
         bakes = plan.bakes;
@@ -641,14 +698,14 @@ class ProjectImportDoors {
           displayName: arrival.displayName,
           cutId: cutId,
           fit: fit,
-          rasterize: rasterize,
           mint: arrival.mint,
-          referencePath: source,
+          reference: reference,
           identity: identity,
           carried: copyIntoProject,
           sourcePath: sourcePath,
           assetKind: MediaAssetKind.pdf,
           pageCount: pageCount,
+          firstPicture: firstPage,
         );
         layer = plan.layer;
         bakes = plan.bakes;
@@ -672,38 +729,33 @@ class ProjectImportDoors {
       // name and length like it was before.
 
       // Bake AFTER the structure exists, one page at a time: render the
-      // page at exactly its placement size (the vector source rasters
-      // once, at the size it will live at — no second resample), then
-      // donate through the ordinary cel path. Each page guards itself
-      // (the importCutFolder contract): the command is already committed,
-      // so one damaged page must leave its cel empty and be REPORTED —
-      // never abort into a half-baked import the dialog would retry as a
-      // duplicate.
+      // page at exactly the size it will stand at (the vector source
+      // rasters once — no second resample), then donate through the
+      // ordinary cel path. Each page guards itself (the importCutFolder
+      // contract): the command is already committed, so one damaged page
+      // must leave its cel empty and be REPORTED — never abort into a
+      // half-baked import the dialog would retry as a duplicate.
+      final standing = _standingFor(reference, fit);
       await _bakeLandedCels(
         cutId,
         layer,
         bakes,
         rowId: _rowOf(spot),
+        standing: standing,
         onProgress: onRenderProgress,
         // The bake counts within the SPAN; the document counts from its
         // first page.
         onFailed: (bake) =>
             onPageRenderFailed?.call(firstPage + bake.sourceFrameIndex),
-        pictureOf: (bake, canvas) async {
+        pictureOf: (bake, canvas) {
           final pageIndex = firstPage + bake.sourceFrameIndex;
-          final pageSize = document.pageSize(pageIndex);
-          final placement = placementRectFor(
-            sourceWidth: _pagePixels(pageSize.width),
-            sourceHeight: _pagePixels(pageSize.height),
-            canvas: canvas,
-            fit: bake.fit,
-          );
-          final image = await document.renderPage(
+          final page = _pageSizeOf(document, pageIndex);
+          return _renderedPage(
+            document,
             pageIndex,
-            width: _pagePixels(placement.width),
-            height: _pagePixels(placement.height),
+            page,
+            standing(page, canvas),
           );
-          return (image: image, owned: true);
         },
       );
       return true;
@@ -755,23 +807,24 @@ class ProjectImportDoors {
     }
     try {
       final info = opened.info;
-      final planned = _planMovieLayer(
-        gate,
-        info,
-        settings,
-        rasterize: settings.bake || spot is RowFramesSpot,
-      );
+      final baked = settings.bake || spot is RowFramesSpot;
+      final planned = _planMovieLayer(gate, info, settings, rasterize: baked);
       final arrival = planned.arrival;
       final source = arrival.source;
-      final asset = _movieAsset(source, info, settings, sourcePath);
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
           settings.movieParts == MovieParts.pictureAndSound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
-      await _pool.holdCarriedBytes([asset]);
-      if (!_landMovieWithSound(planned, asset, withSound: withMovieSound)) {
+      // A baked picture leaves the file nothing to be for — unless its
+      // sound lands beside it, which reads the file ([placementRegisters]).
+      final assets = [
+        if (placementRegisters(baked: baked, soundReadsIt: withMovieSound))
+          _movieAsset(source, info, settings, sourcePath),
+      ];
+      await _pool.holdCarriedBytes(assets);
+      if (!_landMovieWithSound(planned, assets, withSound: withMovieSound)) {
         return false;
       }
       await _bakeLandedCels(
@@ -779,6 +832,7 @@ class ProjectImportDoors {
         planned.layer,
         planned.bakes,
         rowId: _rowOf(spot),
+        standing: _atTheFit(settings.fit),
         onProgress: onRenderProgress,
         // One frame the reader refuses leaves its cel empty and is
         // reported — never an abort into a half-baked import.
@@ -840,9 +894,14 @@ class ProjectImportDoors {
         arrival: arrival,
         kept: kept,
         layer: planMovieReferenceLayer(
-          referencePath: source,
+          reference: placedReference(
+            source,
+            CanvasSize(width: info.width, height: info.height),
+            arrival.canvasSize,
+            settings.fit,
+          ).copyWith(frameOffset: kept.first),
           displayName: arrival.displayName,
-          span: (first: kept.first, count: kept.count),
+          length: kept.count,
           mint: arrival.mint,
         ),
         bakes: const [],
@@ -859,8 +918,6 @@ class ProjectImportDoors {
       sourceFrameIndices: movieFrames,
       displayName: arrival.displayName,
       cutId: arrival.cutId,
-      fit: settings.fit,
-      rasterize: true,
       mint: arrival.mint,
     );
     return (
@@ -871,9 +928,10 @@ class ProjectImportDoors {
     );
   }
 
-  /// The pool entry a placed movie registers — baked or not (유저
-  /// 2026-09-11: 「구워도 풀에 남음」) — ONE entry, which the sound points
-  /// at too.
+  /// The pool entry a placed movie registers when it does
+  /// ([placementRegisters]: unbaked, or with its sound beside it) — ONE
+  /// entry, which the sound points at too. ↩️Baked or not (유저 2026-09-11:
+  /// 「구워도 풀에 남음」), until F-282-Q6.
   MediaAsset _movieAsset(
     String source,
     QaVideoInfo info,
@@ -896,7 +954,7 @@ class ProjectImportDoors {
   /// only when [withSound] says the movie brought one.
   bool _landMovieWithSound(
     _MoviePlacement planned,
-    MediaAsset asset, {
+    List<MediaAsset> assets, {
     required bool withSound,
   }) {
     final arrival = planned.arrival;
@@ -907,7 +965,7 @@ class ProjectImportDoors {
         [planned.layer],
         arrival: arrival,
         duration: kept.count,
-        assets: [asset],
+        assets: assets,
       );
       if (!landed || !withSound) {
         return;
@@ -936,7 +994,9 @@ class ProjectImportDoors {
   /// one per movie frame the sound's clock shows there, consecutive
   /// duplicates folded into held exposure (「중복 접기」, the fold the
   /// placement window's bake uses) — the reference is let go of, and the
-  /// pool entry stays (「구워도 풀에 남음」).
+  /// pool entry stays: it was made when the reference was placed, and a
+  /// later bake does not empty the pool (「구워도 풀에 남음」 — what a
+  /// PLACEMENT registers is [placementRegisters]'s, F-282-Q6).
   ///
   /// ⚠️HERE rather than beside [RasterizeLayerReferenceCommand], because
   /// this is where a movie's pixels come in: the reader, the sound's clock,
@@ -996,53 +1056,117 @@ class ProjectImportDoors {
   /// I-47: [layerId] — a reference row of the active cut — shows [path]
   /// instead of the file it points at, as ONE undo step
   /// ([SwapLayerReferenceCommand]); how it takes the file is
-  /// [referenceSwapFor]'s answer. A still's new picture is baked at the fit
-  /// the row was PLACED with — the pool's fit for the file it showed
-  /// (`Project.mediaFitModeFor`), the answer [rasterizeMovieReference] reads
-  /// for the same reason — so it stands where the old one stood.
+  /// [referenceSwapFor]'s answer. The new file stands at the row's reference
+  /// fx — the same pose over its OWN pixels (I-68: 「같은값만큼 다른용지도 …
+  /// 해상도가 달라도 같은크기로 겹치지않게」), so a paper of another
+  /// resolution stands at another size where the old one stood.
+  /// ↩️A still's new picture was fitted to the canvas as it is NOW, with the
+  /// fit the row was placed with — on a canvas grown since, in its middle.
   ///
-  /// False when nothing changed: a row that does not take [path], a file
-  /// that would not read, or a row that changed while it was being read.
-  Future<bool> swapReference({
+  /// Each cel takes the same picture of the new file as it showed of the old
+  /// ([Frame.filePicture]) — the law moving the fx lays it again by (I-68
+  /// 「가」: one law, one cel or many) — so a file that has no such picture
+  /// is not taken, and the answer names the one it lacks
+  /// ([ReferenceLacksPicture] — 유저 2026-10-10 「추천대로가자」).
+  ///
+  /// [ReferenceLeftAlone] for a row that does not take [path], or that
+  /// changed while the file was read.
+  Future<ReferenceRedraw> swapReference({
     required LayerId layerId,
     required String path,
   }) async {
-    final cut = _project.activeCutOrNull;
     final layer = _project.layerById(layerId);
     final reference = layer?.mediaReference;
-    if (cut == null || layer == null || reference == null) {
-      return false;
+    if (layer == null ||
+        reference == null ||
+        referenceSwapFor(layer, path) == null) {
+      return const ReferenceLeftAlone();
     }
-    final swap = referenceSwapFor(layer, path);
-    if (swap == null) {
-      return false;
+    return _drawAgain(
+      layer,
+      reference.copyWith(assetPath: path),
+      description: 'Swap layer reference',
+    );
+  }
+
+  /// I-68: [layerId]'s reference fx — where its file's picture stands —
+  /// becomes [pose], as ONE undo step: a still's picture is baked anew from
+  /// its file at the pose, and a movie's frames are decoded at it as they
+  /// are shown — or why not. [ReferenceLeftAlone] for a row whose pictures
+  /// are not drawn from its file again ([referenceRedrawFor]), the pose it
+  /// already stands at, or a row that changed while it was being read.
+  Future<ReferenceRedraw> reposeReference({
+    required LayerId layerId,
+    required TransformPose pose,
+  }) async {
+    final layer = _project.layerById(layerId);
+    final reference = layer?.mediaReference;
+    if (layer == null || reference == null || reference.pose == pose) {
+      return const ReferenceLeftAlone();
     }
-    final picture = swap == ReferenceSwap.still
-        ? await _stillPicture(
-            path,
-            cut.canvasSize,
-            _project.repository.requireProject().mediaFitModeFor(
-              reference.assetPath,
-            ),
-          )
-        : null;
-    if ((swap == ReferenceSwap.still && picture == null) ||
-        _project.layerById(layerId) != layer) {
-      return false;
+    return _drawAgain(
+      layer,
+      reference.copyWith(pose: pose),
+      description: 'Move ${layer.name} reference',
+    );
+  }
+
+  /// [layer] — a reference row of the active cut — pointed at [next] and its
+  /// pictures made from that file again ([referenceRedrawFor]), as ONE undo
+  /// step. The picture's own size is the file's as it reads now.
+  Future<ReferenceRedraw> _drawAgain(
+    Layer layer,
+    MediaReference next, {
+    required String description,
+  }) async {
+    final cut = _project.activeCutOrNull;
+    final redraw = referenceRedrawFor(layer);
+    if (cut == null || redraw == null) {
+      return const ReferenceLeftAlone();
+    }
+    final remade = switch (redraw) {
+      ReferenceSwap.pictures => await _filePictures(
+        layer,
+        next,
+        cut.canvasSize,
+      ),
+      // The movie it shows already said its size; another one is asked.
+      ReferenceSwap.movie
+          when next.assetPath == layer.mediaReference?.assetPath =>
+        _Drawn(const <FrameId, BitmapSurface>{}, next),
+      ReferenceSwap.movie => await _movieSized(next),
+    };
+    return switch (remade) {
+      _NotDrawn(:final why) => why,
+      final _Drawn drawn => _land(cut, layer, drawn, description: description),
+    };
+  }
+
+  /// [drawn] on [layer] as ONE undo step — or nothing, when the row changed
+  /// while its file was read.
+  ReferenceRedraw _land(
+    Cut cut,
+    Layer layer,
+    _Drawn drawn, {
+    required String description,
+  }) {
+    if (_project.layerById(layer.id) != layer) {
+      return const ReferenceLeftAlone();
     }
     _project.historyManager.execute(
       SwapLayerReferenceCommand(
         repository: _project.repository,
         cutId: cut.id,
-        layerId: layerId,
-        reference: reference.copyWith(assetPath: path),
+        layerId: layer.id,
+        reference: drawn.reference,
         store: _renderCaches.brushFrameStore,
         pictures: {
-          if (picture != null)
-            for (final frame in layer.frames)
-              _project.brushFrameKeyForCut(cut, layerId, frame.id): picture,
+          for (final MapEntry(key: frameId, value: picture)
+              in drawn.pictures.entries)
+            _project.brushFrameKeyForCut(cut, layer.id, frameId): picture,
         },
         cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+        description: description,
       ),
     );
     // The tidy-up every edit that moves the document owes, as its undo gets
@@ -1050,33 +1174,148 @@ class ProjectImportDoors {
     // drop stands on the row it landed on before it swaps.
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
-    return true;
+    return const ReferenceLaid();
   }
 
-  /// [path]'s picture on a [canvas]-sized cel at [fit] — read through the
-  /// project's copy first ([readHeldMediaBytes]), as every door here reads.
-  Future<BitmapSurface?> _stillPicture(
-    String path,
+  /// [reference]'s file as the pictures [layer]'s cels show — each cel the
+  /// picture of the file it says it is ([Frame.filePicture]: a still's one,
+  /// a GIF's frame, a PDF's page), laid at the reference's pose on a
+  /// [canvas]-sized cel — and the reference saying the size of its first
+  /// cel's picture as the file reads now. Or why not: the file does not
+  /// read, or lacks a picture a cel shows — the first, in the cels' order.
+  ///
+  /// 🗣️I-68 (유저 2026-10-10 「가」): every row that shows a file is laid
+  /// again by one law — the cel's own picture, at the row's reference fx.
+  /// ↩️Only a still's one cel could be: a GIF's or a PDF's cels said nowhere
+  /// which picture of the file each was.
+  Future<_Remade> _filePictures(
+    Layer layer,
+    MediaReference reference,
     CanvasSize canvas,
-    MediaFitMode fit,
   ) async {
-    final ui.Image? image;
+    final file = await _openPictures(reference);
+    if (file == null) {
+      return const _NotDrawn(ReferenceUnreadable());
+    }
+    final wanted = {for (final frame in layer.frames) frame.filePicture!};
+    final _MadePictures made;
     try {
-      image = await firstPictureOf(await readHeldMediaBytes(_holdBytes, path));
+      final lacking = wanted.where((index) => index >= file.count).firstOrNull;
+      if (lacking != null) {
+        return _NotDrawn(ReferenceLacksPicture(lacking));
+      }
+      made = await _picturesMade(
+        wanted,
+        file.at,
+        pose: reference.pose,
+        canvas: canvas,
+      );
+    } on Object {
+      // A picture the file holds and would not give — a page the renderer
+      // gave up on — is one it does not read.
+      return const _NotDrawn(ReferenceUnreadable());
+    } finally {
+      await file.close();
+    }
+    return _Drawn(
+      {
+        for (final frame in layer.frames)
+          frame.id: made.surfaces[frame.filePicture]!,
+      },
+      reference.copyWith(
+        pictureSize: made.sizes[layer.frames.first.filePicture],
+      ),
+    );
+  }
+
+  /// [reference]'s file open for its pictures: a PDF's pages, each rendered
+  /// once at the size its pose stands it at ([_renderedPage]) — or an
+  /// image's, a still's one and a GIF's frames, read through the project's
+  /// copy first ([readHeldMediaBytes]) as every door here reads. Null when
+  /// it does not open.
+  ///
+  /// ⛔ONE way in for both: each opened, counted and let go of its own.
+  Future<_OpenPictures?> _openPictures(MediaReference reference) async {
+    if (mediaAssetKindForPath(reference.assetPath) == MediaAssetKind.pdf) {
+      final document = await openHeldViewerDocument(
+        _holdBytes,
+        reference.assetPath,
+        PdfRenderService.open,
+      );
+      return document == null
+          ? null
+          : (
+              count: document.pageCount,
+              at: (index) => _renderedPage(
+                document,
+                index,
+                _pageSizeOf(document, index),
+                reference.pose,
+              ),
+              close: document.dispose,
+            );
+    }
+    final List<DecodedImageFrame> frames;
+    try {
+      frames = await decodeImageFrames(
+        await readHeldMediaBytes(_holdBytes, reference.assetPath),
+      );
     } on Object {
       return null;
     }
-    if (image == null) {
-      return null;
+    return (
+      count: frames.length,
+      at: (index) async => _pictureOf(frames[index].image, owned: false),
+      close: () async {
+        for (final frame in frames) {
+          frame.image.dispose();
+        }
+      },
+    );
+  }
+
+  /// The [wanted] pictures of a file, each made by [pictureAt] from its
+  /// place in the file and laid on a [canvas]-sized cel where [pose] stands
+  /// it ([_celLaid]), with its own size.
+  ///
+  /// ⛔ONE LOOP for a GIF's frames and a PDF's pages: each wrote it out.
+  static Future<_MadePictures> _picturesMade(
+    Set<int> wanted,
+    Future<_BakePicture> Function(int index) pictureAt, {
+    required TransformPose pose,
+    required CanvasSize canvas,
+  }) async {
+    final made = (surfaces: <int, BitmapSurface>{}, sizes: <int, CanvasSize>{});
+    for (final index in wanted) {
+      final picture = await pictureAt(index);
+      made.sizes[index] = picture.size;
+      made.surfaces[index] = await _celLaid(picture, pose, canvas);
+    }
+    return made;
+  }
+
+  /// [reference] with its movie's frame size as the decoder reads the file
+  /// now — a movie's cel holds no pictures, so there is nothing to make —
+  /// or, when the movie does not open, why not.
+  Future<_Remade> _movieSized(MediaReference reference) async {
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      _holdBytes,
+      reference.assetPath,
+    );
+    if (opened == null) {
+      return const _NotDrawn(ReferenceUnreadable());
     }
     try {
-      return await rasterizeImageToSurface(
-        image: image,
-        canvas: canvas,
-        fit: fit,
+      final info = opened.info;
+      return _Drawn(
+        const <FrameId, BitmapSurface>{},
+        reference.copyWith(
+          pictureSize: CanvasSize(width: info.width, height: info.height),
+        ),
       );
     } finally {
-      image.dispose();
+      await opened.close();
     }
   }
 
@@ -1119,12 +1358,6 @@ class ProjectImportDoors {
       sourceFrameIndices: movieFrames,
       displayName: layer.name,
       cutId: cutId,
-      // The fit the file was PLACED with, so the cels land exactly where
-      // the reference's pictures stood (`Project.mediaFitModeFor`).
-      fit: _project.repository.requireProject().mediaFitModeFor(
-        reference.assetPath,
-      ),
-      rasterize: true,
       mint: _landing.idMint(),
       assetKind: MediaAssetKind.video,
       sourceFps: info.fps,
@@ -1156,6 +1389,10 @@ class ProjectImportDoors {
       // The planned layer was only a shape to fold by: the cels are THIS
       // row's, under its own id.
       rowId: layer.id,
+      // Where the reference's pictures stood, so the cels land exactly
+      // there (I-68). ↩️It read the pool's fit for the file — the fit the
+      // row was placed with — and fitted each frame to the canvas again.
+      standing: (_, _) => reference.pose,
       onProgress: onRenderProgress,
       // One frame the reader refuses leaves its cel empty and is reported
       // — never an abort into a half-rasterized row.
@@ -1166,7 +1403,7 @@ class ProjectImportDoors {
 
   /// One movie frame as a picture — the same read for the door that PLACES
   /// a movie baked and the verb that RASTERIZES one placed as a reference.
-  Future<({ui.Image image, bool owned})> _moviePicture(
+  Future<_BakePicture> _moviePicture(
     int token,
     QaVideoInfo info,
     PlannedCelBake bake,
@@ -1180,7 +1417,7 @@ class ProjectImportDoors {
       width: info.width,
       height: info.height,
     );
-    return (image: image, owned: true);
+    return _pictureOf(image, owned: true);
   }
 
   /// The row a [spot] names, when it names one — frames let go of on a
@@ -1194,9 +1431,12 @@ class ProjectImportDoors {
   /// sheet ([rowId] — frames dropped on it, or a movie rasterized where it
   /// stands) are keyed under that row rather than under the [layer] that
   /// was only planned. A picture for each bake comes from
-  /// [pictureOf], given the cut's canvas; it is rasterized there with the
-  /// bake's fit and donated through the ordinary cel path. [onProgress]
-  /// counts every bake, made or not.
+  /// [pictureOf], given the cut's canvas; it is rasterized there and
+  /// donated through the ordinary cel path. [onProgress] counts every bake,
+  /// made or not.
+  ///
+  /// Where each picture stands is [standing]'s — the placement's one rule,
+  /// asked with the picture's own size ([_standingFor]).
   ///
   /// With [onFailed], a bake that throws leaves its cel empty and is
   /// reported, and the rest go on: the structure is already committed, and
@@ -1211,7 +1451,8 @@ class ProjectImportDoors {
     Layer layer,
     List<PlannedCelBake> bakes, {
     required LayerId? rowId,
-    required Future<({ui.Image image, bool owned})> Function(
+    required _Standing standing,
+    required Future<_BakePicture> Function(
       PlannedCelBake bake,
       CanvasSize canvas,
     )
@@ -1227,26 +1468,20 @@ class ProjectImportDoors {
       for (final bake in bakes) {
         try {
           final picture = await pictureOf(bake, cut.canvasSize);
-          try {
-            final surface = await rasterizeImageToSurface(
-              image: picture.image,
-              canvas: cut.canvasSize,
-              fit: bake.fit,
-            );
-            bakeCelSurface(
-              _renderCaches.brushFrameStore,
-              _project.brushFrameKeyForCut(
-                cut,
-                rowId ?? bake.layerId,
-                bake.frameId,
-              ),
-              surface,
-            );
-          } finally {
-            if (picture.owned) {
-              picture.image.dispose();
-            }
-          }
+          final surface = await _celLaid(
+            picture,
+            standing(picture.size, cut.canvasSize),
+            cut.canvasSize,
+          );
+          bakeCelSurface(
+            _renderCaches.brushFrameStore,
+            _project.brushFrameKeyForCut(
+              cut,
+              rowId ?? bake.layerId,
+              bake.frameId,
+            ),
+            surface,
+          );
         } on Object {
           if (onFailed == null) {
             rethrow;
@@ -1259,6 +1494,50 @@ class ProjectImportDoors {
     }
     _changes.refreshAfterCutCommand(preferredActiveLayerId: rowId ?? layer.id);
     _changes.notifyChanged();
+  }
+
+  /// [picture] laid on a [canvas]-sized cel where it stands at [pose]
+  /// ([_laid]) — and let go of once laid when it was made for the laying
+  /// ([_BakePicture.owned]). How an import bakes each picture, and how a
+  /// reference row's pictures are laid again ([_picturesMade]).
+  static Future<BitmapSurface> _celLaid(
+    _BakePicture picture,
+    TransformPose pose,
+    CanvasSize canvas,
+  ) async {
+    try {
+      return await rasterizeImageToSurface(
+        image: picture.image,
+        canvas: canvas,
+        placement: _laid(picture, pose),
+      );
+    } finally {
+      if (picture.owned) {
+        picture.image.dispose();
+      }
+    }
+  }
+
+  /// Where [picture]'s image lays when the picture stands at [pose]: the
+  /// pose stands on the picture's own size, and the image may be drawn at
+  /// another — a PDF page is rendered at the size it will stand at.
+  static LayerPlacement _laid(_BakePicture picture, TransformPose pose) {
+    final image = picture.image;
+    final size = picture.size;
+    final onTheCanvas = picturePlacement(pose, size);
+    if (image.width == size.width && image.height == size.height) {
+      return onTheCanvas;
+    }
+    return onTheCanvas.compose(
+      GuideTransform(
+        size.width / image.width,
+        0,
+        0,
+        size.height / image.height,
+        0,
+        0,
+      ),
+    );
   }
 
   /// A SOUND onto the track's SE rows ([ImportLanding.landSound]). The
@@ -1317,7 +1596,36 @@ class ProjectImportDoors {
   }
 
   /// A page extent as whole pixels the renderer accepts.
-  int _pagePixels(double extent) => extent.round().clamp(1, 1 << 13).toInt();
+  static int _pagePixels(double extent) =>
+      extent.round().clamp(1, 1 << 13).toInt();
+
+  /// [pageIndex]'s size at what the renderer calls 1:1 — the picture's own
+  /// size, the one a pose stands on.
+  static CanvasSize _pageSizeOf(ViewerDocument document, int pageIndex) {
+    final size = document.pageSize(pageIndex);
+    return CanvasSize(
+      width: _pagePixels(size.width),
+      height: _pagePixels(size.height),
+    );
+  }
+
+  /// [pageIndex] — a [page]-sized picture — rendered at the size [pose]
+  /// stands it at: the vector source rasters ONCE, at the size it will live
+  /// at, and no second resample makes it soft.
+  static Future<_BakePicture> _renderedPage(
+    ViewerDocument document,
+    int pageIndex,
+    CanvasSize page,
+    TransformPose pose,
+  ) async => (
+    image: await document.renderPage(
+      pageIndex,
+      width: _pagePixels(page.width * pose.scaleX.abs()),
+      height: _pagePixels(page.height * pose.scaleY.abs()),
+    ),
+    owned: true,
+    size: page,
+  );
 
   int _sequenceLength(Layer layer) {
     var end = 1;

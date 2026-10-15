@@ -15,10 +15,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 
+import '../../models/cut.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
-import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
+import '../../native/qa_audio_device.dart'
+    show QaAudioDevice, audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
 import '../playback/audio_device_transport.dart';
 import '../playback/audio_playback_sync.dart';
@@ -27,6 +29,8 @@ import '../playback/audioplayers_clip_player.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/playback/playback_picture_wait.dart';
+import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
+import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
@@ -61,7 +65,10 @@ class PlaybackRig implements PlaybackRun {
       int startGlobalFrame,
     )
     onPlaylistWarmRequested,
-  }) : _project = project,
+    required List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
+    canvasRowsOf,
+  }) : _canvasRowsOf = canvasRowsOf,
+       _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
@@ -99,6 +106,39 @@ class PlaybackRig implements PlaybackRun {
   )
   _onPlaylistWarmRequested;
 
+  /// The rows a cut's frame draws as images on the canvas while a run plays
+  /// it — the session's editing canvas answers ([CanvasPictures.rowsOf]).
+  final List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
+  _canvasRowsOf;
+
+  // ── what the screen shows a frame from ──────────────────────────────
+
+  /// A cut's frame as the screen draws it — its rows' images at the level
+  /// that frame is drawn at — the canvas a cut, the track stack the film.
+  /// ↩️The film was shown from a composite per frame, made beside the
+  /// images the canvas holds (playback-plays-the-screen-material).
+  late final CanvasPictures canvasPictures = CanvasPictures(
+    layerImages: _renderCaches.layerFrameImageCache,
+    rowsOf: _canvasRowsOf,
+    qualityAt: (cut, frameIndex) =>
+        _renderCaches.canvasLook.value.qualityAt(cut, frameIndex),
+  );
+
+  @override
+  CanvasPictures get pictures => canvasPictures;
+
+  /// Whether the canvas shows the run — a cut played alone, through the
+  /// camera or not — and not the track stack, which shows the whole film.
+  bool get playsOnTheCanvas =>
+      !(playback.isActive && playback.scope == PlaybackScope.allCuts);
+
+  /// What was walked over, and what a waiting run waited for, were counted
+  /// at a level the screen no longer draws at.
+  void _theLookChanged() {
+    prerenderScheduler.wake(fromTheStart: true);
+    playback.lookAgain();
+  }
+
   // ── the playback cache budget: its own object ───────────────────────
   //
   // A collaborator (session/playback_cache_budget.dart). It reads the
@@ -112,7 +152,7 @@ class PlaybackRig implements PlaybackRun {
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
-        composites: _renderCaches.cutFrameCompositeCache,
+        pictures: canvasPictures,
         resolveCut: _project.cutById,
         room: playbackCache,
         // Widget tests: zero idle delay, like before R13-3 — the
@@ -215,6 +255,26 @@ class PlaybackRig implements PlaybackRun {
   late final PlaybackTransports transports = PlaybackTransports()
     ..add(playback);
 
+  /// The user's own A/V correction in samples at [sampleRate] — the residual
+  /// no device report accounts for (screen pipeline, Bluetooth, an AV
+  /// receiver), added by every clock that reads what the device has played:
+  /// the canvas's transport, and the media viewer's sound.
+  int userOffsetSamples(int sampleRate) =>
+      _appSettings.audioSyncSettings.value.offsetSamples(
+        sampleRate: sampleRate,
+        frameRateNumerator: _settings.projectFrameRate.numerator,
+        frameRateDenominator: _settings.projectFrameRate.denominator,
+      );
+
+  /// The output [audioDeviceTransport] plays on: [audioOutputUnlessTesting],
+  /// or what a test hands in — a device IT opened on the null backend, so
+  /// the bench can hear a run the session plays (the transport's own tests
+  /// hand theirs in the same way). ⛔Never the hardware: the transport plays
+  /// on an open device as it stands and opens only a closed one — or
+  /// reopens on a changed output setting, which a test that hands one in
+  /// leaves alone.
+  QaAudioDevice? Function() debugTransportOutput = audioOutputUnlessTesting;
+
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
   /// samples handed to the device, and cumulative drift is structurally
@@ -226,13 +286,8 @@ class PlaybackRig implements PlaybackRun {
     resolveProject: () => _project.repository.currentProject,
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
-    resolveDevice: audioOutputUnlessTesting,
-    resolveUserOffsetSamples: (sampleRate) =>
-        _appSettings.audioSyncSettings.value.offsetSamples(
-          sampleRate: sampleRate,
-          frameRateNumerator: _settings.projectFrameRate.numerator,
-          frameRateDenominator: _settings.projectFrameRate.denominator,
-        ),
+    resolveDevice: () => debugTransportOutput(),
+    resolveUserOffsetSamples: userOffsetSamples,
     resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
@@ -294,6 +349,10 @@ class PlaybackRig implements PlaybackRun {
     // may have changed: a picture landed, one was given up on, or it has
     // come to rest — which is what a run that renders first waits for.
     prerenderScheduler.changes.addListener(playback.lookAgain);
+    // The canvas shows its frames another way — another zoom, another
+    // screen, the camera a run is seen through: what was made for the old
+    // look is not what it will ask for.
+    _renderCaches.canvasLook.addListener(_theLookChanged);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -312,6 +371,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    _renderCaches.canvasLook.removeListener(_theLookChanged);
     prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(

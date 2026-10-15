@@ -123,14 +123,10 @@ void main() {
   ) async {
     const at = Offset(40, 40);
 
-    /// The box of every pixel [chrome] paints, on an 80×80 sheet.
-    Future<Rect> painted(SelectionTransformChrome chrome) async {
+    /// The box of every pixel [paint] puts down, on an 80×80 sheet.
+    Future<Rect> painted(void Function(Canvas canvas) paint) async {
       final recorder = PictureRecorder();
-      paintBoxChrome(
-        Canvas(recorder),
-        chrome,
-        color: const Color(0xFFFF0000),
-      );
+      paint(Canvas(recorder));
       final picture = recorder.endRecording();
       late Rect box;
       await tester.runAsync(() async {
@@ -176,16 +172,108 @@ void main() {
       }
     }
 
+    void chrome(Canvas canvas, SelectionTransformChrome chrome) =>
+        paintBoxChrome(canvas, chrome, color: const Color(0xFFFF0000));
+
     sameBox(
-      await painted((box: const [], handles: const [at], anchor: null)),
+      await painted(
+        (canvas) =>
+            chrome(canvas, (box: const [], handles: const [at], anchor: null)),
+      ),
       boxHandleFootprint(at),
       'a handle',
     );
     sameBox(
-      await painted((box: const [], handles: const [], anchor: at)),
+      await painted(
+        (canvas) =>
+            chrome(canvas, (box: const [], handles: const [], anchor: at)),
+      ),
       boxCrossFootprint(at),
       'the cross',
     );
+    // A tangent whose passive end stands under its knob: the knob alone.
+    // Its disc's own box is where the disc reaches — the press is taken on
+    // the disc itself (the next test).
+    const reach = 7.5;
+    sameBox(
+      await painted(
+        (canvas) => paintBoxTangents(canvas, const [
+          (ahead: at, behind: at),
+        ], color: const Color(0xFFFF0000)),
+      ),
+      Rect.fromCircle(center: at, radius: reach),
+      'a tangent',
+    );
+    for (final edge in const [Offset(reach, 0), Offset(0, -reach)]) {
+      expect(boxTangentCovers(at, at + edge * 0.98), isTrue, reason: '$edge');
+      expect(boxTangentCovers(at, at + edge * 1.04), isFalse, reason: '$edge');
+    }
+  });
+
+  group('a path\'s tangent (I-89 ④)', () {
+    const tangent = Offset(150, 130);
+
+    BoxPressHit? pressOn(Offset press, List<Offset> tangents) => boxPressAt(
+      press,
+      anchor: box.center,
+      handles: handles,
+      tangents: tangents,
+      inside: box.contains,
+      onStage: (_) => true,
+    );
+
+    test('is taken on the disc drawn for it — beside it the press is the '
+        'box\'s own', () {
+      for (final on in const [Offset.zero, Offset(7, 0), Offset(-5, 5)]) {
+        expect(
+          pressOn(tangent + on, const [tangent]),
+          (press: BoxPress.tangent, handle: 0),
+          reason: '$on',
+        );
+      }
+      for (final beside in const [Offset(6, 6), Offset(0, 8)]) {
+        expect(
+          pressOn(tangent + beside, const [tangent]),
+          (press: BoxPress.inside, handle: -1),
+          reason: '$beside — a disc, not the box round it',
+        );
+      }
+    });
+
+    test('comes after the cross and a handle, drawn under them', () {
+      expect(
+        pressOn(box.topLeft, [box.topLeft]),
+        (press: BoxPress.handle, handle: 0),
+      );
+      expect(
+        pressOn(box.center, [box.center]),
+        (press: BoxPress.anchor, handle: -1),
+      );
+      expect(
+        pressOn(box.topLeft - const Offset(4, 4), [box.topLeft]),
+        (press: BoxPress.handle, handle: 0),
+        reason: 'on the handle\'s square, under which the disc lies too',
+      );
+    });
+
+    test('of two that overlap, the one drawn last is taken', () {
+      expect(
+        pressOn(const Offset(152, 130), const [tangent, Offset(155, 130)]),
+        (press: BoxPress.tangent, handle: 1),
+      );
+    });
+
+    test('outside the box on stage, the disc is still the tangent', () {
+      const out = Offset(240, 60);
+      expect(
+        pressOn(out, const [out]),
+        (press: BoxPress.tangent, handle: 0),
+      );
+      expect(
+        pressOn(out + const Offset(9, 0), const [out]),
+        (press: BoxPress.turn, handle: -1),
+      );
+    });
   });
 
   test('a box that does not turn takes nothing outside it', () {

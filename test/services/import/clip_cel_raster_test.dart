@@ -190,6 +190,26 @@ void main() {
       );
     });
 
+    test('🎯a dropped picture declares a render the file never stores — its '
+        'ORIGINAL is the picture (「A / 1: 그림을 읽지 못했습니다」, 10-09: '
+        'all 22 of the samples\' picture layers)', () {
+      final declared = ClipPictureSource(
+        attribute: Uint8List(1),
+        blocksId: 'never stored',
+      );
+      final picture = clipPictureOf(
+        layer(
+          render: declared,
+          original: source,
+          transform: transform(placed: (110, 60), axis: (100, 50)),
+        ),
+      )!;
+      expect(
+        (picture.source, picture.left, picture.top),
+        (source, 3 + 10, 4 + 10),
+      );
+    });
+
     test('a scale or a turn is said not drawn — the move still is', () {
       for (final turned in [
         transform(scaleX: 2, placed: (0, 0), axis: (0, 0)),

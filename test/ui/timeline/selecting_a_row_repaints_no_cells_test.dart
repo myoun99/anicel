@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 import '../../helpers/exposure_of.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨THE SELECTION'S HALF OF THE PLAYBACK-PERFORMANCE INVARIANT.
 ///
@@ -83,12 +84,9 @@ layers: layers,
       );
 
   List<CustomPaint> rowPaints(WidgetTester tester) => tester
-      .widgetList<CustomPaint>(find.byWidgetPredicate((w) =>
-          w is CustomPaint &&
-          w.key is ValueKey<String> &&
-          (w.key! as ValueKey<String>)
-              .value
-              .startsWith('timeline-row-cells-')))
+      .widgetList<CustomPaint>(
+        find.namedWhere((name) => name.startsWith('timeline-row-cells-')),
+      )
       .toList();
 
   testWidgets('⛔premise: the axis MOVES when every row\'s cells change',
@@ -159,7 +157,7 @@ layers: layers,
     final layers = twelveLayers();
     await tester.pumpWidget(grid(layers, const {}, cursor));
     final row3 = tester.widget<CustomPaint>(
-      find.byKey(const ValueKey<String>('timeline-row-cells-layer-3')),
+      find.named('timeline-row-cells-layer-3'),
     );
 
     await tester.pumpWidget(grid(
@@ -172,8 +170,7 @@ layers: layers,
       identical(
         tester
             .widget<CustomPaint>(
-              find.byKey(
-                  const ValueKey<String>('timeline-row-cells-layer-3')),
+              find.named('timeline-row-cells-layer-3'),
             )
             .painter,
         row3.painter,

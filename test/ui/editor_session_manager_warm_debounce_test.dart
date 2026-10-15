@@ -42,6 +42,9 @@ RenderCaches renderCachesOf(EditorSessionManager session) =>
     session.renderCaches;
 
 void main() {
+  // The warm it restarts makes playback's rows, and a row asks the binding
+  // for the quiet it takes its turn in ([QuietTurns]).
+  TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   test('a burst of invalidations restarts warming once — and still drops '
@@ -109,17 +112,12 @@ void main() {
       ],
     );
 
-    await session.renderCaches.cutFrameCompositeCache.prepareComposite(
+    final pictures = session.playbackRig.canvasPictures;
+    await pictures.make((
       cut: activeCut,
       frameIndex: 0,
-    );
-    expect(
-      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-        cut: activeCut,
-        frameIndex: 0,
-      ),
-      isNotNull,
-    );
+    ), shouldAbort: () => false);
+    expect(pictures.has((cut: activeCut, frameIndex: 0)), isTrue);
 
     // Let any open-time warm restart land before counting.
     await Future<void>.delayed(Duration.zero);
@@ -146,12 +144,9 @@ void main() {
     }
 
     expect(
-      session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-        cut: activeCut,
-        frameIndex: 0,
-      ),
-      isNull,
-      reason: 'only the RESTART is deferred — a stale composite must be '
+      pictures.has((cut: activeCut, frameIndex: 0)),
+      isFalse,
+      reason: 'only the RESTART is deferred — a stale picture must be '
           'unservable before the event loop turns',
     );
     expect(

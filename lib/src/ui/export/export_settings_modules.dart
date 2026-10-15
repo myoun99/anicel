@@ -13,6 +13,7 @@ import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
@@ -445,27 +446,38 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
+  /// The codec, picked from the app's one value list.
+  ///
+  /// 🗣️video-export-speed-Q1 (유저 2026-10-09): 「코덱을 팝오버로 보여서
+  /// 그중에 고르게하도록」. ↩️It was a pill strip, and MOV's six shared the
+  /// settings column's row at some 30px each — every name cut to an
+  /// ellipsis (실측 10-05).
   Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
     label: AppText.strings.exCodec,
     child: Align(
       alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          for (final codec in codecs)
-            PillItem(
-              keyValue: 'export-format-codec-${codec.jsonValue}',
+      child: PanelFlyoutButton(
+        key: const ValueKey<String>('export-format-codec'),
+        label: selection.videoCodec.label,
+        enabled: enabled,
+        entriesBuilder: () => codecs.asFlyoutValueChoices(
+          current: selection.videoCodec,
+          choiceOf: (codec) {
+            final writable = capabilities.isVideoEnabled(
+              selection.container,
+              codec,
+            );
+            return PanelFlyoutChoice(
+              key: 'export-format-codec-${codec.jsonValue}',
               label: codec.label,
-              selected: selection.videoCodec == codec,
-              onTap:
-                  enabled &&
-                      capabilities.isVideoEnabled(selection.container, codec)
-                  ? () => _change(selection.copyWith(videoCodec: codec))
-                  : null,
-              tooltip: capabilities.isVideoEnabled(selection.container, codec)
+              enabled: writable,
+              warning: writable
                   ? null
                   : capabilities.reasonFor(selection.container, codec),
-            ),
-        ],
+            );
+          },
+          onPicked: (codec) => _change(selection.copyWith(videoCodec: codec)),
+        ),
       ),
     ),
   );
@@ -722,8 +734,14 @@ class ExportScopeModule extends StatelessWidget {
 }
 
 /// The Size module with the v10 coupling: a project scope forces the
-/// camera frame (per-cut canvases cannot make one movie), so the Canvas
-/// pill only exists under the cut scope.
+/// camera frame (per-cut canvases cannot make one movie), so the canvas is
+/// only offered under the cut scope.
+///
+/// Picked from the app's one value list, as the codec is
+/// (video-export-speed-Q1, 유저 2026-10-09: 「이 방식은 다른곳에서도
+/// 쓸수있으면 쓰게하고싶음」). ↩️It was a pill strip, and its two answers —
+/// a word and a size each — were cut to an ellipsis in every language (실측
+/// 10-09, the app's own faces).
 class ExportSizeModule extends StatelessWidget {
   const ExportSizeModule({
     super.key,
@@ -747,39 +765,44 @@ class ExportSizeModule extends StatelessWidget {
       ? AppText.strings.exSizeCamera
       : AppText.strings.exSizeCanvas;
 
-  @override
-  Widget build(BuildContext context) {
+  /// What [mode] is called here: the frame it writes, and its size.
+  String _labelOf(ExportSizeMode mode) {
     final strings = AppText.strings;
-    final canvasLabel = canvasSizes.length == 1
-        ? strings.exCanvasTemplate
-              .replaceAll('{w}', '${canvasSizes.first.width}')
-              .replaceAll('{h}', '${canvasSizes.first.height}')
-        : strings.exCanvasPerCut;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        PillStrip(
-          items: [
-            PillItem(
-              keyValue: 'export-size-camera',
-              label: strings.exCameraTemplate
-                  .replaceAll('{w}', '${cameraSize.width}')
-                  .replaceAll('{h}', '${cameraSize.height}'),
-              selected: sizeMode == ExportSizeMode.camera,
-              onTap: enabled ? () => onChanged(ExportSizeMode.camera) : null,
-            ),
-            if (!projectScope)
-              PillItem(
-                keyValue: 'export-size-canvas',
-                label: canvasLabel,
-                selected: sizeMode == ExportSizeMode.canvas,
-                onTap: enabled ? () => onChanged(ExportSizeMode.canvas) : null,
-              ),
-          ],
-        ),
-      ],
-    );
+    return switch (mode) {
+      ExportSizeMode.camera =>
+        strings.exCameraTemplate
+            .replaceAll('{w}', '${cameraSize.width}')
+            .replaceAll('{h}', '${cameraSize.height}'),
+      ExportSizeMode.canvas =>
+        canvasSizes.length == 1
+            ? strings.exCanvasTemplate
+                  .replaceAll('{w}', '${canvasSizes.first.width}')
+                  .replaceAll('{h}', '${canvasSizes.first.height}')
+            : strings.exCanvasPerCut,
+    };
   }
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: PanelFlyoutButton(
+      key: const ValueKey<String>('export-size'),
+      label: _labelOf(sizeMode),
+      enabled: enabled,
+      entriesBuilder: () =>
+          [
+            ExportSizeMode.camera,
+            if (!projectScope) ExportSizeMode.canvas,
+          ].asFlyoutValueChoices(
+            current: sizeMode,
+            choiceOf: (mode) => PanelFlyoutChoice(
+              key: 'export-size-${mode.jsonValue}',
+              label: _labelOf(mode),
+            ),
+            onPicked: onChanged,
+          ),
+    ),
+  );
 }
 
 /// A lone file's name: typed alone, with the extension its format gives it
@@ -927,7 +950,7 @@ class _DigitsFieldState extends State<_DigitsField> {
         keyboardType: TextInputType.number,
         inputFormatters: halfWidthDigitsOnly,
         onChanged: (value) {
-          final parsed = int.tryParse(value.trim());
+          final parsed = halfWidthInt(value);
           if (parsed != null) {
             widget.onChanged(parsed);
           }

@@ -73,6 +73,7 @@ void main() {
       stackCut: cut,
       frameIndex: 0,
       activeLayerId: s.activeLayerId,
+      movieLaidAt: s.movieCels.laidAt,
     );
     return (
       map,
@@ -193,6 +194,7 @@ void main() {
         stackCut: shown,
         frameIndex: frameIndex,
         activeLayerId: s.activeLayerId,
+        movieLaidAt: s.movieCels.laidAt,
       );
       return (
         map,

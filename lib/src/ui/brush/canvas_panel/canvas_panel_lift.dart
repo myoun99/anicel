@@ -36,10 +36,10 @@ class _CanvasPanelLift {
   /// The open session, or null when no move is pending.
   _MoveSession? _session;
 
-  /// What the interactive painter draws for [key] while a move is pending —
-  /// null when nothing is pending, or when the panel has moved to another
-  /// cel since (the hole belongs to the cel it was cut from, and only that
-  /// one: F-86 keeps the REGION across a frame move, not the pixels).
+  /// What [key]'s cel is drawn as while a move is pending — null when
+  /// nothing is pending, or when the session holds no such cel (the hole
+  /// belongs to the cel it was cut from, and only that one: F-86 keeps the
+  /// REGION across a frame move, not the pixels).
   ///
   /// 🚨★★★**IT REBUILDS WHAT A MEMORY WARNING TOOK.** The holed picture is
   /// a derivation, and the store's discipline gives derivations back by
@@ -48,34 +48,45 @@ class _CanvasPanelLift {
   /// draw, which is the blank frame 유저 forbade outright. So a null here
   /// after a warning means one recompute, not a lost edit.
   BitmapSurface? holedSurfaceFor(BrushFrameKey key) {
-    final session = _session;
-    if (session == null || session.key != key) {
+    final cel = _session?.celOf(key);
+    if (cel == null) {
       return null;
     }
-    return session.holed ??= _state.widget._editableCoordinator
-        ?.deriveSurfaceWith([session.eraseDab]);
+    return cel.holed ??= _state.widget.coordinator?.deriveSurfaceWith([
+      cel.eraseDab,
+    ], key: cel.key);
+  }
+
+  /// The cels a lift holds for the composite — a folder's rows (I-37), a
+  /// frame range's across rows (F-329): each one this canvas does not draw
+  /// itself, as its holed surface with its float over it ([LiftedCel]).
+  /// Empty for a cel's own lift — the canvas draws that one, as the live
+  /// row.
+  Map<BrushFrameKey, LiftedCel> get liftedRows {
+    final session = _session;
+    if (session == null) {
+      return const {};
+    }
+    return {
+      for (final cel in session.cels)
+        if (cel.ownSlot case final slot?)
+          if (holedSurfaceFor(cel.key) case final holed?)
+            cel.key: (surface: holed, float: slot),
+    };
   }
 
   void openSession({
-    required CanvasSelectionRegion region,
-    required CanvasSelectionRegion? userSelection,
     required int token,
-    required BitmapSurface holed,
-    required BrushDab eraseDab,
-    required BrushFrameKey key,
-    required LayerPlacement? placement,
+    required CanvasSelectionRegion? userSelection,
+    required List<_LiftedCel> cels,
   }) {
     final session = _MoveSession(
-      region: region,
-      userSelection: userSelection,
       token: token,
-      key: key,
-      eraseDab: eraseDab,
-      holed: holed,
-      placement: placement,
+      userSelection: userSelection,
+      cels: cels,
     );
     _session = session;
-    final coordinator = _state.widget._editableCoordinator;
+    final coordinator = _state.widget.coordinator;
     // The bytes are declared the moment they exist — the half of 유저's
     // 09-08 answer that the 09-17 reversal did NOT overturn: an open
     // session is held to the same discipline as a confirmed one. And it
@@ -88,25 +99,36 @@ class _CanvasPanelLift {
     // made where `_state` is in scope keeps `_state`.
     coordinator?.frameStore.holdReclaimableView(
       token,
-      bytes: () =>
-          session.holed?.bytesNotSharedWith(
-            coordinator.currentSurfaceOf(session.key),
-          ) ??
-          0,
-      reclaim: () => session.holed = null,
+      bytes: () => session.cels.fold(
+        0,
+        (bytes, cel) =>
+            bytes +
+            (cel.holed?.bytesNotSharedWith(
+                  coordinator.currentSurfaceOf(cel.key),
+                ) ??
+                0),
+      ),
+      reclaim: () {
+        for (final cel in session.cels) {
+          cel.holed = null;
+        }
+      },
     );
   }
 
   /// Takes the session back, or null when [liftToken] is not the open one.
+  ///
+  /// ⚠️A cel's own slot ([_LiftedCel.ownSlot]) is NOT disposed here: the
+  /// layer takes its float back from it at its own next build, which may
+  /// come after this. It goes with the session, and the composite stops
+  /// listening to it the build its row leaves [liftedRows].
   _MoveSession? _closeSession(int liftToken) {
     final session = _session;
     if (session == null || session.token != liftToken) {
       return null;
     }
     _session = null;
-    _state.widget._editableCoordinator?.frameStore.releaseReclaimableView(
-      liftToken,
-    );
+    _state.widget.coordinator?.frameStore.releaseReclaimableView(liftToken);
     return session;
   }
 
@@ -123,11 +145,12 @@ class _CanvasPanelLift {
     stampDab,
   ];
 
-  /// The float [session] ends with, back in the artwork of the row it was
-  /// lifted from — the one crossing a landing makes, through the same
-  /// placement the lift crossed out through (a-marquee-on-a-posed-row).
-  BrushDab _stampBackInArtwork(_MoveSession session, BrushDab stampDab) =>
-      stampInArtwork(stampDab, session.placement);
+  /// The landing of [cel]: its erase, then the float it ends with back in
+  /// the artwork of the row it was lifted from — the one crossing a landing
+  /// makes, through the same placement the lift crossed out through
+  /// (a-marquee-on-a-posed-row).
+  List<BrushDab> _landingOf(_LiftedCel cel, BrushDab stampDab) =>
+      _landingDabs(cel.eraseDab, stampInArtwork(stampDab, cel.placement));
 
   /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
   /// whole block (F-116-b / F-164).
@@ -151,13 +174,13 @@ class _CanvasPanelLift {
   /// its own ink ([CanvasSelectionShape.wholePicture], the one the standing
   /// cel's box is), and only a selection the user made is shared.
   ///
-  /// 🚨★★★**ONE LANDING PER CEL, AND THE MAP IS WHAT SAYS SO.** [landOn] —
-  /// the standing cel's, carrying the float the preview already resampled —
-  /// SEEDS the result under its own key, so the loop cannot add a second
-  /// landing for that cel however the ladder is spelled. ⛔It is not a
-  /// `key == session.key` skip: the ladder may also name one cel twice
-  /// (two frame keys can fold onto one physical cel), and a skip that
-  /// names only the session would let that through.
+  /// 🚨★★★**ONE LANDING PER CEL, AND THE MAP IS WHAT SAYS SO.** [landed] —
+  /// the session's own cels', each carrying the float its preview already
+  /// resampled — SEEDS the result under their own keys, so the loop cannot
+  /// add a second landing for one of them however the ladder is spelled.
+  /// ⛔It is not a `key == session.key` skip: the ladder may also name one
+  /// cel twice (two frame keys can fold onto one physical cel), and a skip
+  /// that names only the session would let that through.
   ///
   /// 🧪A duplicate is invisible in the picture — the second erase wipes the
   /// second stamp's ground and the stamp puts back the same pixels, both
@@ -171,22 +194,22 @@ class _CanvasPanelLift {
   /// contributes no landing.
   Map<BrushFrameKey, Command> _landingsPerCel(
     _MoveSession session,
-    BrushDab stampDab,
-    Command landOn,
+    Map<BrushFrameKey, Command> landed,
     StampCarry? carry,
   ) {
     final ladder = _state.widget.transformTargetKeys?.call();
-    final coordinator = _state.widget._editableCoordinator;
+    final coordinator = _state.widget.coordinator;
     if (ladder == null || coordinator == null) {
-      return {session.key: landOn};
+      return landed;
     }
     // 🚨★★★**KEYED BY THE PHYSICAL CEL.** `pixelVerbCellKeys` deliberately
     // does NOT dedupe — 「the one that owns the surfaces owns this」 — and
     // linked rows are windows onto one bank, so the ladder can name one
     // cel under two row keys. `CelPixelOverwriteCommand` answers that with
-    // `canonicalKeyOf`; this is the same answer, not a second one.
+    // `canonicalKeyOf`; this is the same answer, not a second one — and
+    // [landed] is keyed by it already.
     final store = coordinator.frameStore;
-    final landings = {store.canonicalKeyOf(session.key): landOn};
+    final landings = {...landed};
     // 🚨★★★**WHAT THE TRANSFORM DID — ALL OF IT.**
     //
     // 🗣️유저 2026-09-22, 실기: 「1과 2 동일한 그림 만들고 **이동+확대**하고
@@ -220,8 +243,9 @@ class _CanvasPanelLift {
     // ([BrushCanvasPanel.cellPlacementOf]), since a range can name several
     // rows placed differently. A cel's own whole picture is already its
     // artwork.
+    // A host that names no placements has one row: the one it stands on.
     final placementOf =
-        _state.widget.cellPlacementOf ?? (_) => session.placement;
+        _state.widget.cellPlacementOf ?? (_) => session.cels.first.placement;
     final canvasSize = _state.widget.canvasSize;
     final userSelection = session.userSelection;
     for (final key in ladder) {
@@ -288,14 +312,17 @@ class _CanvasPanelLift {
   }
 
   /// R16-① confirm: lands the move as ONE undo entry whose undo target is
-  /// the picture the session opened on — which is simply the cel as it
-  /// stands, because the session never wrote to it.
+  /// the picture the session opened on — which is simply each cel as it
+  /// stands, because the session never wrote to any of them.
+  ///
+  /// [stampDabs] is one per float the lift gave the layer, in the order of
+  /// [_MoveSession.cels].
   void handleLiftConfirmed(
     int liftToken,
-    BrushDab stampDab,
+    List<BrushDab> stampDabs,
     StampCarry? carry,
   ) {
-    final coordinator = _state.widget._editableCoordinator;
+    final coordinator = _state.widget.coordinator;
     final session = _closeSession(liftToken);
     if (coordinator == null || session == null) {
       return;
@@ -306,47 +333,49 @@ class _CanvasPanelLift {
     // confirms post-frame, possibly after this panel went with it.
     void run() {
       final historyManager = _state.widget.historyManager;
-      final dabs = _landingDabs(
-        session.eraseDab,
-        _stampBackInArtwork(session, stampDab),
-      );
-      if (historyManager == null) {
-        // Headless hosts (focused tests): land raw.
-        coordinator.commitSourceStroke(
-          sourceDabs: dabs,
-          cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+      final doors = _selectionDoors();
+      final landed = <BrushFrameKey, Command>{};
+      for (final (i, cel) in session.cels.indexed) {
+        landed.putIfAbsent(
+          coordinator.frameStore.canonicalKeyOf(cel.key),
+          () => BrushLiftMoveHistoryCommand(
+            coordinator: coordinator,
+            frameKey: cel.key,
+            // ⛔THE LIVE SURFACE IS THE PRE-LIFT PICTURE NOW. It used to be a
+            // snapshot taken before the erase and held for the whole
+            // session, outside every budget; there is nothing to take a
+            // snapshot of ahead of time when the session writes nothing.
+            preLiftSurface: coordinator.currentSurfaceOf(cel.key),
+            landingDabs: _landingOf(cel, stampDabs[i]),
+            cacheInvalidationSink: _state.widget.cacheInvalidationSink,
+            // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27:
+            // 「언두 하면 그림만 돌리는게아니라 선택도 이전 선택으로
+            // 되돌리기」 — a transform moves the outline as much as the
+            // drawing, and one confirm has to come back as one undo. It
+            // rides the FIRST cel's landing, once: one outline, one step.
+            //
+            // 🚨★★★**THE SELECTION THE SESSION OPENED WITH, NOT THE ONE
+            // STANDING NOW** (F-231 ②, 유저 2026-09-29: 「언두하면 선택도구
+            // 개미행렬 라인이 과거로 안돌아가고 그것만 남아있는데」). This
+            // read the channel here, at the confirm — after the box had
+            // already moved the region onto the landed pixels — so the undo
+            // "restored" the moved outline and only the pixels went back.
+            regionBefore: i == 0 ? session.userSelection : null,
+            readRegion: i == 0 ? doors.read : null,
+            restoreRegion: i == 0 ? doors.restore : null,
+          ),
         );
+      }
+      if (historyManager == null) {
+        // Headless hosts (focused tests): every cel lands, none recorded.
+        for (final landing in landed.values) {
+          landing.execute();
+        }
         return;
       }
-      final doors = _selectionDoors();
-      final landOn = BrushLiftMoveHistoryCommand(
-        coordinator: coordinator,
-        frameKey: session.key,
-        // ⛔THE LIVE SURFACE IS THE PRE-LIFT PICTURE NOW. It used to be a
-        // snapshot taken before the erase and held for the whole session,
-        // outside every budget; there is nothing to take a snapshot of
-        // ahead of time when the session writes nothing.
-        preLiftSurface: coordinator.currentSurfaceOf(session.key),
-        landingDabs: dabs,
-        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-        // 🚨THE SELECTION TRAVELS WITH THE PIXELS. 유저 2026-08-27: 「언두
-        // 하면 그림만 돌리는게아니라 선택도 이전 선택으로 되돌리기」 — a
-        // transform moves the outline as much as the drawing, and one
-        // confirm has to come back as one undo.
-        //
-        // 🚨★★★**THE SELECTION THE SESSION OPENED WITH, NOT THE ONE STANDING
-        // NOW** (F-231 ②, 유저 2026-09-29: 「언두하면 선택도구 개미행렬
-        // 라인이 과거로 안돌아가고 그것만 남아있는데」). This read the
-        // channel here, at the confirm — after the box had already moved
-        // the region onto the landed pixels — so the undo "restored" the
-        // moved outline and only the pixels went back.
-        regionBefore: session.userSelection,
-        readRegion: doors.read,
-        restoreRegion: doors.restore,
-      );
       historyManager.executeAsOneStep(
-        landOn.description,
-        _landingsPerCel(session, stampDab, landOn, carry).values.toList(),
+        landed.values.first.description,
+        _landingsPerCel(session, landed, carry).values.toList(),
       );
     }
 
@@ -398,68 +427,46 @@ class _CanvasPanelLift {
     }
   }
 
-  /// Raw landing of the floating stamp (no history entry) — the abandon
-  /// fallback so a reset never loses the float's pixels.
-  void handleLiftLanded(int liftToken, BrushDab stampDab) {
-    final coordinator = _state.widget._editableCoordinator;
-    final session = _closeSession(liftToken);
-    if (coordinator == null || session == null) {
-      return;
-    }
-    void run() {
-      coordinator.commitSourceStroke(
-        sourceDabs: _landingDabs(
-          session.eraseDab,
-          _stampBackInArtwork(session, stampDab),
-        ),
-        cacheInvalidationSink: _state.widget.cacheInvalidationSink,
-      );
-    }
-
-    if (_state.mounted) {
-      _state._rebuild(run);
-    } else {
-      run();
-    }
-  }
 }
 
-/// An open move session: which cel it belongs to, the erase that makes its
-/// hole, and the holed picture itself — which is a DERIVATION and may be
-/// given back under memory pressure.
-///
-/// ⛔A class rather than a record because [holed] is reclaimable: the store
-/// hands the bytes back by nulling it, and the next paint rebuilds them.
-/// Everything else about the session survives that.
+/// An open move session: the cels it holds lifted, and the selection it was
+/// cut through.
 class _MoveSession {
   _MoveSession({
     required this.token,
-    required this.key,
-    required this.region,
     required this.userSelection,
-    required this.eraseDab,
-    required this.holed,
-    required this.placement,
+    required this.cels,
   });
 
   final int token;
-  final BrushFrameKey key;
 
-  /// The region THIS cel was cut from — the user's selection, or the move
-  /// tool's box around this cel's own ink.
-  final CanvasSelectionRegion region;
+  /// Every cel the lift took pixels up from, in the order the layer floats
+  /// them: the one this canvas edits — or, stood on a FOLDER, the cel of
+  /// each drawing row inside it (I-37). Never empty.
+  final List<_LiftedCel> cels;
+
+  /// The cel [key] names, if this session holds it.
+  _LiftedCel? celOf(BrushFrameKey key) {
+    for (final cel in cels) {
+      if (cel.key == key) {
+        return cel;
+      }
+    }
+    return null;
+  }
 
   /// The selection the USER made when this session was cut, or null when
-  /// [region] is the move tool's own whole-picture box.
+  /// the session was cut by the move tool's own whole-picture box.
   ///
   /// 🚨★★★**IT IS WHAT THE OTHER CELS ARE CUT FROM TOO** (F-116-b / F-164)
   /// — and ONLY it (H41, 유저 2026-09-24: 「선택도구 사용했으면 어떤프레임이든
   /// 선택도구 안쪽만, 아니면 각자 그림 전체적용」). A confirm over a frame
   /// range moves every cel in it, and each lifts its OWN pixels: through
   /// this outline when there is one, through its own whole picture when
-  /// there is not. ↩️Until 09-24 the other cels were cut through [region]
-  /// either way, so with nothing selected they were cut by the STANDING
-  /// cel's ink box and their drawing past it stayed behind.
+  /// there is not. ↩️Until 09-24 the other cels were cut through the
+  /// region the session was cut through either way, so with nothing
+  /// selected they were cut by the STANDING cel's ink box and their drawing
+  /// past it stayed behind.
   ///
   /// ⛔**THE SESSION'S OWN RECORD, NOT THE LIVE CHANNEL.** What the other
   /// cels must be cut through, and what an undo puts the outline back to
@@ -472,14 +479,40 @@ class _MoveSession {
   /// in for this one in `regionBefore`, and undo stopped bringing the ants
   /// back — F-231 ②.
   final CanvasSelectionRegion? userSelection;
+}
+
+/// One cel an open move session holds lifted: which cel, the erase that
+/// makes its hole, where its row stands, where its float shows, and the
+/// holed picture itself — which is a DERIVATION and may be given back
+/// under memory pressure.
+///
+/// ⛔A class rather than a record because [holed] is reclaimable: the store
+/// hands the bytes back by nulling it, and the next paint rebuilds them.
+/// Everything else about the cel survives that.
+class _LiftedCel {
+  _LiftedCel({
+    required this.key,
+    required this.eraseDab,
+    required this.placement,
+    required this.ownSlot,
+    required this.holed,
+  });
+
+  final BrushFrameKey key;
   final BrushDab eraseDab;
 
-  /// Where the row the session was cut from stood on the canvas when it
-  /// was cut — its placement, or null for an unplaced row. The stamp
-  /// floats on the canvas and lands back through THIS
-  /// ([stampInArtwork]), the one it was lifted through, so the two
-  /// crossings cannot disagree (a-marquee-on-a-posed-row).
+  /// Where the cel's row stood on the canvas when it was cut — its
+  /// placement, or null for an unplaced row. The stamp floats on the canvas
+  /// and lands back through THIS ([stampInArtwork]), the one it was lifted
+  /// through, so the two crossings cannot disagree (a-marquee-on-a-posed-
+  /// row).
   final LayerPlacement? placement;
+
+  /// The composite slot its float shows in when this canvas does not draw
+  /// the cel itself — a folder's rows, a range's (I-37 · F-329,
+  /// [_CanvasPanelLift.liftedRows]). Null for the cel the canvas edits: its
+  /// float shows in the live row's.
+  final SelectionFloatOverlay? ownSlot;
 
   /// Null after a memory warning took it — never a lost edit, only a lost
   /// computation.

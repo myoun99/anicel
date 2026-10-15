@@ -26,7 +26,9 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
+import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
@@ -326,6 +328,27 @@ void main() {
     expect(held.isNotEmpty, isTrue, reason: 'the cut went');
     final (page, left, topPx, _, _) = fake.regionReads.single;
     expect((page, left, topPx), (4, 100, 100));
+  });
+
+  // 🗣️F-254 (유저 2026-10-08): 「잘라내기도구로 빈 곳에 그렸을때도 동일하게
+  // 법 통일해서 적용」.
+  testWidgets('an outline on the desk between pages cuts nothing — and says '
+      'so, as every cut that finds nothing does', (tester) async {
+    addTearDown(cursorNotices.clear);
+    final fake = await open(tester, pages: 3, view: CanvasViewport(zoom: 1));
+    final desk = pageRect(0).bottom;
+    slot.viewport.value = seedFromRender(
+      tester,
+      CanvasViewport(zoom: 1, panY: -(desk - 200)),
+    );
+    await tester.pumpAndSettle();
+
+    await cutOut(tester, Rect.fromLTRB(100, desk + 6, 400, desk + 26));
+
+    expect(held.isEmpty, isTrue);
+    expect(fake.regionReads, isEmpty);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   // Across the seam of pages 2 and 3: 50 rows of one, 100 or 150 of the

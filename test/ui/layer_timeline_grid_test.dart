@@ -20,7 +20,9 @@ import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart'
     show TimelineRowsGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/exposure_of.dart';
+import '../helpers/the_classic_rail.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -31,11 +33,17 @@ import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 
+import '../helpers/named_finders.dart';
+
 /// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
-/// default is pinned in timeline_grid_metrics_test).
+/// default is pinned in timeline_grid_metrics_test) — and the rail they
+/// were drawn beside ([classicRailWidth]): the frame windows below are what
+/// is left of a surface after it. The rail's own width is pinned there too
+/// (519 since tool-settings-panel-tidy, 2026-10-10 — the lane values' hands).
 const _testMetrics = TimelineGridMetrics(
   frameCellWidth: 48,
   layerRowHeight: 52,
+  layerControlsWidth: classicRailWidth,
 );
 
 /// A vertical scroll gesture anchored inside the FRAME GRID.
@@ -334,7 +342,7 @@ void main() {
     // Untouched, the rail window is the rail's NATURAL width — nothing is
     // cut until the user drags the splitter.
     expect(railRect.left, moreOrLessEquals(gridLeft + 16));
-    expect(railRect.width, moreOrLessEquals(443));
+    expect(railRect.width, moreOrLessEquals(classicRailWidth));
     expect(splitterRect.left, moreOrLessEquals(railRect.right));
     expect(splitterRect.width, moreOrLessEquals(5));
     expect(frameGridAreaRect.left, moreOrLessEquals(splitterRect.right));
@@ -359,11 +367,11 @@ void main() {
 
     expect(timelineHeaderInWindow(tester, 0), isTrue);
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-1')),
+      find.named('timeline-layer-visibility-layer-1'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      find.named('timeline-layer-opacity-layer-1'),
       findsOneWidget,
     );
   });
@@ -390,11 +398,11 @@ void main() {
         .left;
     final wideFrameArea = tester.getRect(frameGridArea).width;
 
-    rail.resizeBy(-243, naturalExtent: 443);
+    rail.resizeBy(-243, naturalExtent: classicRailWidth);
     await tester.pump();
 
     // The window is 200 wide; the rail INSIDE it never moved or shrank.
-    expect(tester.getSize(railBody).width, moreOrLessEquals(443));
+    expect(tester.getSize(railBody).width, moreOrLessEquals(classicRailWidth));
     final windowRight = gridLeft + 16 + 200;
     expect(
       tester.getRect(find.byType(LayerRailWindow).first).right,
@@ -423,6 +431,16 @@ void main() {
           .left,
       moreOrLessEquals(windowRight),
     );
+    // And the rail's own bar is as long as the window it drives — kept as
+    // it was built, it reached on under the frames (I-57, 10-14).
+    expect(
+      tester
+          .getSize(
+            find.byKey(const ValueKey<String>('timeline-rail-scrollbar')),
+          )
+          .width,
+      moreOrLessEquals(200),
+    );
   });
 
   testWidgets('keeps header and add-layer cell sticky during vertical scroll', (
@@ -436,12 +454,8 @@ void main() {
     await tester.pumpWidget(_grid(layers: manyLayers, playbackFrameCount: 48));
 
     final addLayer = find.byKey(const ValueKey<String>('legend-layer'));
-    final firstLayerRow = find.byKey(
-      const ValueKey<String>('timeline-layer-row-layer-1'),
-    );
-    final firstFrameRow = find.byKey(
-      const ValueKey<String>('timeline-frame-row-area-layer-1'),
-    );
+    final firstLayerRow = find.named('timeline-layer-row-layer-1');
+    final firstFrameRow = find.named('timeline-frame-row-area-layer-1');
 
     final initialAddLayerTop = tester.getTopLeft(addLayer).dy;
     final initialFrameHeaderTop = timelineHeaderGlobalRect(tester, 0).top;
@@ -502,9 +516,7 @@ void main() {
       reason: '⛔fixture premise: the frames scroll too, so they are a '
           'scroller running across the rows',
     );
-    final firstFrameRow = find.byKey(
-      const ValueKey<String>('timeline-frame-row-area-layer-1'),
-    );
+    final firstFrameRow = find.named('timeline-frame-row-area-layer-1');
     final before = tester.getTopLeft(firstFrameRow).dy;
 
     await _dragFrameGridVertically(tester, -100);
@@ -532,7 +544,7 @@ void main() {
       // Painted rows (UI-R9 #12b → UI-R15): row identity = the row's
       // CustomPaint widget instance (cells are paint, not widgets).
       Widget rowPaint() => tester.widget(
-        find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
+        find.named('timeline-row-cells-layer-1'),
       );
 
       framePosition().jumpTo(2);
@@ -640,9 +652,7 @@ void main() {
         _grid(layers: manyLayers, playbackFrameCount: 48),
       );
 
-      final firstLayerRow = find.byKey(
-        const ValueKey<String>('timeline-layer-row-layer-1'),
-      );
+      final firstLayerRow = find.named('timeline-layer-row-layer-1');
       final initialTop = tester.getTopLeft(firstLayerRow).dy;
 
       // Scroll deep into the tall content...
@@ -679,9 +689,7 @@ void main() {
           (element.widget as CustomPaint).painter is TimelineGridSheetPainter,
     );
     final rowsIndex = order.indexWhere(
-      (element) =>
-          element.widget.key ==
-          const ValueKey<String>('timeline-row-cells-layer-1'),
+      (element) => nameOf(element) == 'timeline-row-cells-layer-1',
     );
     expect(sheetIndex, greaterThanOrEqualTo(0));
     expect(rowsIndex, greaterThanOrEqualTo(0));
@@ -750,9 +758,7 @@ void main() {
         ),
       );
 
-      final row = find.byKey(
-        const ValueKey<String>('timeline-layer-row-layer-1'),
-      );
+      final row = find.named('timeline-layer-row-layer-1');
       final gesture = await tester.startGesture(
         tester.getCenter(row),
         kind: PointerDeviceKind.mouse,
@@ -768,7 +774,7 @@ void main() {
       await tester.pump();
 
       expect(
-        find.byKey(const ValueKey<String>('timeline-rail-row-layer-1-row')),
+        find.named('timeline-rail-row-layer-1-row'),
         findsOneWidget,
         reason: 'A5: the held row is pinned into the built slice',
       );
@@ -810,9 +816,7 @@ void main() {
         ),
       );
 
-      final row = find.byKey(
-        const ValueKey<String>('timeline-layer-row-layer-1'),
-      );
+      final row = find.named('timeline-layer-row-layer-1');
       final gesture = await tester.startGesture(
         tester.getCenter(row),
         kind: PointerDeviceKind.mouse,
@@ -856,7 +860,7 @@ void main() {
 
       final gesture = await tester.startGesture(
         tester.getCenter(
-          find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+          find.named('timeline-layer-row-layer-1'),
         ),
         kind: PointerDeviceKind.mouse,
       );
@@ -894,7 +898,7 @@ void main() {
 
       final gesture = await tester.startGesture(
         tester.getCenter(
-          find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+          find.named('timeline-layer-row-layer-1'),
         ),
         kind: PointerDeviceKind.mouse,
       );
@@ -922,12 +926,8 @@ void main() {
         _grid(layers: manyLayers, playbackFrameCount: 48),
       );
 
-      final layerRow = find.byKey(
-        const ValueKey<String>('timeline-layer-row-layer-24'),
-      );
-      final frameRow = find.byKey(
-        const ValueKey<String>('timeline-frame-row-area-layer-24'),
-      );
+      final layerRow = find.named('timeline-layer-row-layer-24');
+      final frameRow = find.named('timeline-frame-row-area-layer-24');
 
       // The layer axis is virtualized: scroll until layer-24's rows enter
       // the window (rail and grid share the same slice). Driven through
@@ -989,7 +989,7 @@ void main() {
     );
     expect(find.byKey(const ValueKey<String>('legend-layer')), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+      find.named('timeline-layer-row-layer-1'),
       findsOneWidget,
     );
   });
@@ -1003,7 +1003,7 @@ void main() {
     // are ONE CustomPaint whose window carries the virtualization facts
     // the old spacer/cell keys pinned.
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
+      find.named('timeline-row-cells-layer-1'),
       findsOneWidget,
     );
     expect(timelineHeaderInWindow(tester, 0), isTrue);
@@ -1093,35 +1093,21 @@ void main() {
       ),
     );
 
-    final animationIcon = tester.widget<Icon>(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-1')),
-    );
-    final storyboardIcon = tester.widget<Icon>(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-2')),
-    );
-    expect(animationIcon.icon, Icons.filter_outlined);
-    expect(storyboardIcon.icon, Icons.auto_stories_outlined);
+    // The kind icon is its OWN type button now (UI-R24 #7) — a control
+    // separate from the name area.
+    IconData? kindIcon(String id) => tester
+        .appIconButton(
+          find.named('timeline-layer-type-button-$id'),
+        )
+        .icon;
+    expect(kindIcon('layer-1'), Icons.filter_outlined);
+    expect(kindIcon('layer-2'), Icons.auto_stories_outlined);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
-    // The kind icon lives in its OWN type button now (UI-R24 #7) — a
-    // control separate from the name area.
     expect(
       find.descendant(
-        of: find.byKey(
-          const ValueKey<String>('timeline-layer-type-button-layer-1'),
-        ),
-        matching: find.byKey(
-          const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-name-layer-1')),
-        matching: find.byKey(
-          const ValueKey<String>('timeline-layer-kind-icon-layer-1'),
-        ),
+        of: find.named('timeline-layer-name-layer-1'),
+        matching: find.named('timeline-layer-type-button-layer-1'),
       ),
       findsNothing,
       reason: 'the name area no longer carries the icon',
@@ -1152,7 +1138,7 @@ void main() {
       _grid(onToggleLayerVisibility: (layerId) => toggledLayerId = layerId),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-2')),
+      find.named('timeline-layer-visibility-layer-2'),
     );
 
     expect(toggledLayerId, const LayerId('layer-2'));
@@ -1171,7 +1157,7 @@ void main() {
       ),
     );
     await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      find.named('timeline-layer-opacity-layer-1'),
       const Offset(-30, 0),
     );
 
@@ -1610,7 +1596,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
+      find.named('timeline-layer-name-layer-2'),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
@@ -1624,7 +1610,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
+      find.named('timeline-layer-name-layer-2'),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
@@ -1954,7 +1940,7 @@ void main() {
       timelineCellGlobalRect(tester, 'layer-1', 2).topLeft,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      find.named('timeline-selected-layer'),
       findsOneWidget,
     );
     expect(timelineCellInWindow(tester, 'layer-1', 2), isTrue);
@@ -2077,12 +2063,12 @@ void main() {
   testWidgets('body frame content width stays aligned with ruler width', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 320));
+    await tester.binding.setSurfaceSize(const Size(2000, 320));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
       _grid(
-        width: 1600,
+        width: 2000,
         playbackFrameCount: 12,
         currentFrameIndex: 2,
         layers: _layersWith(layer1: {2: _block('layer-1', 3)}),
@@ -2095,14 +2081,20 @@ void main() {
       minimumVisibleFrameCells: _testMetrics.minimumVisibleFrameCells,
     );
 
-    // UI-R12 #16: the viewport papers itself — with the 1600px surface
+    // UI-R12 #16: the viewport papers itself — with the 2000px surface
     // wider than the base cells, the rendered extent is the FILL count.
     final fillFrames = endlessViewportFillFrames(
       viewportExtent:
-          1600 -
+          2000 -
           _testMetrics.layerControlsWidth -
+          LayerRailSplitter.thickness -
           _testMetrics.verticalScrollbarWidth,
       frameCellExtent: _testMetrics.frameCellWidth,
+    );
+    expect(
+      fillFrames,
+      greaterThan(expectedFrameRange.visibleFrameCount),
+      reason: '⛔premise: what is left beside the rail outreaches the cells',
     );
     final expectedContentWidth =
         math.max(expectedFrameRange.visibleFrameCount, fillFrames) *
@@ -2215,9 +2207,7 @@ void main() {
         tester
             .widgetList<ColoredBox>(
               find.descendant(
-                of: find.byKey(
-                  ValueKey<String>('timeline-frame-row-area-$layerId'),
-                ),
+                of: find.named('timeline-frame-row-area-$layerId'),
                 matching: find.byType(ColoredBox),
               ),
             )

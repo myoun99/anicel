@@ -6,11 +6,9 @@ import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
-import '../../models/frame_composite_cache_key.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_tile_cache_key.dart';
-import '../../models/playback_preview_cache_key.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
 import '../../services/brush_frame_edit_session_store.dart';
@@ -265,15 +263,9 @@ class _BrushCanvasSmokeScreenState extends State<BrushCanvasSmokeScreen> {
 
 class _RecordingCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
-  final frameComposites = <FrameCompositeCacheKey>[];
-  final playbackPreviews = <PlaybackPreviewCacheKey>[];
   int brushFrames = 0;
 
-  int get totalCalls =>
-      brushFrames +
-      layerTiles.length +
-      frameComposites.length +
-      playbackPreviews.length;
+  int get totalCalls => brushFrames + layerTiles.length;
 
   @override
   void invalidateLayerTile(LayerTileCacheKey key) {
@@ -287,13 +279,4 @@ class _RecordingCacheInvalidationSink implements CacheInvalidationSink {
     brushFrames += 1;
   }
 
-  @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) {
-    frameComposites.add(key);
-  }
-
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {
-    playbackPreviews.add(key);
-  }
 }

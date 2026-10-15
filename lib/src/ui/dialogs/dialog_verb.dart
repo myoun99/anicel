@@ -16,6 +16,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
+
 /// Awaits [dialog]'s answer, and answers null when the caller was torn
 /// down while it was open — the single question every site collapsed with
 /// `||`. Use this directly when the flow continues past the answer; use
@@ -103,3 +106,32 @@ Future<void> confirmThenCommit(
   dialog: dialog,
   commit: (accepted) => accepted ? commit() : null,
 );
+
+/// The two ways out of a window that EDITS something — the window half of
+/// [askThenCommit]: cancel pops nothing, which commits nothing, and save
+/// runs [onSave], the window's own submit, which pops the edit.
+///
+/// ⛔ONE footer for every edit window, as `confirmActions` is for every
+/// yes/no. Five windows typed the pair out — the same two words, the bare
+/// pop, the accent on save — with their keys made from one name:
+/// `<prefix>-cancel-button` and `<prefix>-save-button`.
+List<AppWindowAction> saveActions(
+  BuildContext context, {
+  required String prefix,
+  required VoidCallback onSave,
+}) {
+  final strings = AppText.strings;
+  return [
+    AppWindowAction(
+      label: strings.commonCancel,
+      actionKey: ValueKey<String>('$prefix-cancel-button'),
+      onPressed: () => Navigator.of(context).pop(),
+    ),
+    AppWindowAction(
+      label: strings.commonSave,
+      actionKey: ValueKey<String>('$prefix-save-button'),
+      emphasis: AppWindowActionEmphasis.primary,
+      onPressed: onSave,
+    ),
+  ];
+}

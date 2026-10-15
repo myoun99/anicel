@@ -1,10 +1,15 @@
+import 'package:flutter/painting.dart' show Axis;
+
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import 'lane_graph.dart' show LaneGraphsView;
+import 'lane_graph_seats.dart' show laneGraphHeadedBy, lanePinOf;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'property_lane_model.dart';
 import 'rail_column_swipe.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_lane_rows.dart' show laneMemberPinInset;
 
 /// The toggle columns a rail's bulk-drag can sweep, for BOTH grids.
 ///
@@ -29,9 +34,12 @@ import 'timeline_grid_hooks.dart';
 /// [crossExtent] is the strip's extent across the sweep — the rail's row
 /// width, or the sheet's header height, which is that width turned on its
 /// side: the slot skeleton lays the sheet's cells with `axis: Axis.vertical`,
-/// so a slot's WIDTH is its height there.
+/// so a slot's WIDTH is its height there. [axis] is the grid's: a member
+/// lane's pin is laid by its cell, not by the skeleton, and the cell lays
+/// its value a different length on each.
 List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   required TimelineGridHooks hooks,
+  required Axis axis,
   required double crossExtent,
   required double leadingOrigin,
   required LayerRailColumnWidths columns,
@@ -39,14 +47,70 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   crossExtent: crossExtent,
   leadingOrigin: leadingOrigin,
   columns: columns,
-  hasOnionColumn: hooks.onToggleLayerOnionSkin != null,
-  hasBlendColumn: hooks.onLayerBlendModeSelected != null,
+  optionalColumns: hooks.optionalRailColumns,
+  graph: switch (_graph(hooks)) {
+    final toggle? => (toggle: toggle, after: _pastTheGraph),
+    null => null,
+  },
   visibility: _visibility(hooks),
   onion: _onion(hooks),
   fx: _fx(hooks),
   timesheet: _timesheet(hooks),
   laneToggle: _laneToggle(hooks),
+  lanePin: switch (_lanePin(hooks)) {
+    final toggle? => (
+      toggle: toggle,
+      inset: laneMemberPinInset(axis, columns),
+    ),
+    null => null,
+  },
 );
+
+/// I-89 ③: a header graph's button, on each row that heads one — a
+/// Transform or effect header, the camera row ([laneGraphHeadedBy]) —
+/// swept as it is pressed, and read LIVE where the host gives the read.
+RailToggle<TimelineDisplayRow>? _graph(TimelineGridHooks hooks) {
+  final verbs = hooks.laneGraphVerbs;
+  if (verbs == null) return null;
+  return (
+    valueOf: (row) => switch (laneGraphHeadedBy(row.layer, row.lane)) {
+      final key? => _laneGraphsOf(hooks).open.containsKey(key),
+      null => null,
+    },
+    toggle: (row) {
+      if (laneGraphHeadedBy(row.layer, row.lane) case final key?) {
+        verbs.toggle(key);
+      }
+    },
+  );
+}
+
+/// What a row lays past its graph button at the end of its name (I-89 Q1):
+/// a layer row its fold slot, which always ends its name (F-29); a header
+/// nothing.
+double _pastTheGraph(TimelineDisplayRow row) =>
+    row.isLane ? 0 : layerLaneToggleSlotWidth;
+
+/// I-89 ③: a member lane's pin, on each lane that wears one ([lanePinOf]),
+/// swept as it is pressed and read live, as the graph's button is.
+RailToggle<TimelineDisplayRow>? _lanePin(TimelineGridHooks hooks) {
+  final verbs = hooks.laneGraphVerbs;
+  if (verbs == null) return null;
+  return (
+    valueOf: (row) => switch (lanePinOf(row.layer, row.lane)) {
+      final key? => _laneGraphsOf(hooks).pinned.contains(key),
+      null => null,
+    },
+    toggle: (row) {
+      if (lanePinOf(row.layer, row.lane) case final key?) {
+        verbs.togglePin(key);
+      }
+    },
+  );
+}
+
+LaneGraphsView _laneGraphsOf(TimelineGridHooks hooks) =>
+    hooks.laneGraphsNow?.call() ?? hooks.laneGraphs;
 
 RailToggle<TimelineDisplayRow> _visibility(TimelineGridHooks hooks) => (
   valueOf: (row) =>
@@ -129,9 +193,7 @@ RailToggle<TimelineDisplayRow> _timesheet(TimelineGridHooks hooks) => (
   toggle: (row) => hooks.onToggleLayerTimesheet(row.layer.id),
 );
 
-/// A row with no lanes draws no twirl — and its cell is what the nesting
-/// indent pushes, so this is also the column most likely to be crossed at
-/// two different depths in one drag.
+/// A row with no lanes draws no twirl.
 ///
 /// 🚨The twirl's state is the LIVE read when the host gives one
 /// ([TimelineGridHooks.laneOpenOf]): the set is a widget property, a frame

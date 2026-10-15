@@ -244,7 +244,165 @@ void main() {
   /// `_placeRun` stayed under (four: the row's answers are read inside).
   /// 🔬The lane's scan against master (`1018781b8`, at 384) named those
   /// two added and nothing gone.
-  const wideSignatures = 386;
+  ///
+  /// ⚠️386 → 387 on 2026-10-09, one named as the rule above asks (I-73 ④,
+  /// the storyboard's camera row): master (`6e7d619a7`) scanned at 386 —
+  /// at this ceiling — and `timelineUnionKeySpan` (eight)
+  /// is the ONE key mark the timeline's union row and the storyboard's
+  /// camera row lay out — `timelineUnionKeyMarkerSpans` drew it inline. Its
+  /// eight are whose key it is (the layer, the lane, the frame, the prefix
+  /// its keys are named under), where it stands (`at`, the cell on the
+  /// row's own axis — a cut's own frame stands elsewhere on the track's —
+  /// and `crossInset`/`crossExtent`, the band across that holds one of the
+  /// camera row's two lines over an O.L) and whether its name is printed
+  /// (`named`: two lines leave no room for a word). The line beside it
+  /// stayed under: `timelineKeysLineCourse` takes the line it draws.
+  /// 🔬The lane's scan against master named that one added and nothing
+  /// gone. ↩️It is `timelineLaneKeySpan` since 2026-10-09 (I-73 ④ⓔ), and
+  /// nine: the storyboard's camera LANES lay their keys out with it too, and
+  /// a member's mark rings while its lane selection holds it (`selected`)
+  /// — still the one name under this ceiling.
+  ///
+  /// ⚠️387 → 388 on 2026-10-09, one named as the rule above asks (F-282,
+  /// the one door): `pickFileGrantsForUser` (five) took `initialDirectory`.
+  /// 「파일 열기…」 is that pick now — every kind, several at once — and it
+  /// keeps the starting folder the project Open had on a desktop, which
+  /// `pickProjectGrantForUser` already takes for the same reason. The Open
+  /// pick that passed it, `pickProjectToOpen`, is gone.
+  ///
+  /// ⚠️388 → 389 the same day, one named as the rule above asks
+  /// (playback-plays-the-screen-material — a cut played alone plays on the
+  /// canvas): `LayerFrameImageCache.peek` (five) is the look the warmer, the
+  /// ruler's bar and a waiting run share — what `prepareSyncOrNull` would
+  /// hand from what is held, WITHOUT counting as a use, which is what keeps
+  /// their counting from reordering the order the budget lets go by. Its
+  /// five are the slot (the cel, the level) and the three facts that decide
+  /// whether a held image is valid and drawable on the asking route — what
+  /// its two prepare siblings take.
+  ///
+  /// ⚠️389 → 390, the other one the same round added: `letGoWantedLatest`
+  /// (eight) is the ONE order a playback budget lets go by — the composites
+  /// and the canvas's layer images both trim through it, where each had
+  /// written it out. Generic over the entry, it is handed the entries, what
+  /// is held and the line, the three things it asks of an entry (when it is
+  /// next wanted, when it was last used, its bytes), the letting go, and the
+  /// floor no picture wanted that soon goes under.
+  ///
+  /// ⚠️390 → 387 on 2026-10-10, following them down (I-68 — the fit is a
+  /// pose): `rasterizeImageToSurface`, `planCutFolderImport` and
+  /// `planTvpImport` lost the fit a planned bake no longer carries — one
+  /// placement says where the picture goes. One came, named as the rule
+  /// asks: `poseWithLaneValueEdited` (five) is a value typed into a lone
+  /// pose's lane, a reference fx's — the pose, which lane, the input and the
+  /// two the Scale lane's form reads it with, the transform lanes' own. 389
+  /// had been measured under 390 before this round.
+  ///
+  /// ⚠️387 → 388 on 2026-10-10 (a-picture-is-made-once), named as the rule
+  /// asks: `LayerFrameImageCache._prepareNow` (six) is the body `prepare`
+  /// had, under the join that makes a picture once now (`_Makings`) — its
+  /// parameters are `prepare`'s own, handed on whole. 🔬`clean_code_diff`
+  /// between the lane's base and the lane names it and no other: the walk's
+  /// ask ahead, which first took its context as nine parameters, lives on an
+  /// object of its own (`_AskedAhead`).
+  ///
+  /// ⚠️388 → 389 on 2026-10-10, one named as the rule above asks (I-89 ②,
+  /// a key's mark): `paintKeyMark` (seven) is the ONE drawing every key on
+  /// the frame axis wears — the lanes, the unions, the storyboard's camera
+  /// rows and the flip window — and the key window's choices cut it in
+  /// half. Its seven are the canvas, the mark, the box it stands in (its
+  /// middle and its size), whether it stands on the sheet, its colour label
+  /// and the selection's ring. 🔬The lane's scan against its base
+  /// (`3fa5a239b`, at 388) named that one added and nothing gone.
+  ///
+  /// ⚠️389 → 388 on 2026-10-11, following them down (I-89 ③ — rows sit
+  /// where one table of edges says): the grid's virtualization adapter
+  /// (`calculateLayerTimelineGridVirtualizationPlan`, eleven) went, nothing
+  /// calling it, and `uniformRailRowsIn` (six) is `railRowsAlong` (five),
+  /// the rail's walk over the edges — the one name the scan sees added.
+  /// The frame side takes its rows as laid (`TimelineLaidRows`) and the grid
+  /// its cells read, and the playhead reads its range hooks where it reads
+  /// every other hook. 🔬The lane's scan against its base (`fceb34c9e`, at
+  /// 389) named those three.
+  ///
+  /// ⚠️388 → 389 on 2026-10-11, one named as the rule above asks (I-89 ③,
+  /// a lane's pin): `timelineSwipeColumns` (five) took the grid's AXIS —
+  /// a member lane's pin is laid by its cell, which lays its value a
+  /// different length on each axis, so the band the sweep finds it by is
+  /// measured along the axis it stands on. 🔬The scan against the lane's
+  /// last commit (`bcceefcd2`, at 388) named that one added and nothing
+  /// gone.
+  ///
+  /// ⚠️389 → 392 on 2026-10-12, four named as the rule above asks (I-89 ④,
+  /// the camera's path on the canvas). A camera's work is ONE drawing every
+  /// surface writes (`camera_work_marks.dart`, 유저 2026-09-30 「공용화 잘
+  /// 해주고」), so the sizes and the stratum the conte held as constants are
+  /// each surface's to say: `cameraCrossMarks` (six — the frame it stands
+  /// square to, where, its colour, its arm and its line, the stratum) and
+  /// `_label` (five — the words, the frame, the colour, the sizes, the
+  /// stratum). The canvas writes the path through `cameraPathMarks` (six —
+  /// the path, where a canvas point lies on the surface, the sizes, the
+  /// stratum and the frames it keeps to) and its crosses in time through
+  /// `cameraPathTicks` (nine — those but the sizes, how many frames apart,
+  /// the playhead they are coloured against, and their arm and line).
+  /// 🔬`clean_code_diff` against the lane's base (`7f40aad8e`, at 388)
+  /// named those four added and nothing gone.
+  ///
+  /// ⚠️392 → 393 on 2026-10-12, named as the rule above asks (I-89 ④, a
+  /// position key bends its path). `cubicAt` (five — the parameter and the
+  /// four control values) is the ONE Bernstein cubic a key's ease, a
+  /// TVPaint camera's profile and path, and a position's path in space
+  /// evaluate; TVPaint's own (`bez`, the same five) went into it.
+  /// `PropertyTrack.withKey` (five) takes the key's path beside its two
+  /// sides — the key's own fields, which `PropertyKey`'s constructor
+  /// (excluded here) takes as well — so a name collapsing a range lands one
+  /// path with its value. 🔬`clean_code_diff` against the lane's last
+  /// commit before it (`91c98de18`, at 392) named those two added and `bez`
+  /// gone.
+  ///
+  /// ⚠️393 → 394 on 2026-10-12, at the landing of I-89 ④ onto master
+  /// `09cb64a24`: the trunk had come to 389 under its own ceiling — while it
+  /// stood one above the count, `PresentClaims.claim` (five — now, the real
+  /// vblank, the refresh period, the budget and the hand-off; `c1ffcd789`,
+  /// the display's real vblank) landed unnamed — so the lane's five come on
+  /// top of it. 🔬`clean_code_diff` between the lane's base (`7f40aad8e`, at
+  /// 388) and that master named it added and nothing gone.
+  ///
+  /// ⚠️394 → 395 on 2026-10-12, named as the rule above asks (I-89 ④, a
+  /// cross in time wears its frame — 유저 2026-10-12: 「그 상황에서
+  /// 십자가쪽에도 프레임번호 아까말한대로 보여주도록」). `cameraCrossLabel`
+  /// (eight — the words, the frame it stands square to, the cross it stands
+  /// by, the crosses it keeps clear of, its colour, its size, its gap off
+  /// the cross, the stratum): each surface says its sizes and its stratum,
+  /// as for `cameraCrossMarks` and `_label` above. `cameraPathTicks` took
+  /// its labels' size and gap, already counted. 🔬`clean_code_diff` against
+  /// the lane's base (`07101e54a`, at 394) named that one added and nothing
+  /// gone.
+  ///
+  /// ⚠️395 → 394 on 2026-10-12, following one down (F-341, a track's sound
+  /// plays where no cut is): the schedule reads a run's sound through ONE
+  /// window onto its track, and asks a file's length as one question — the
+  /// rate and the lookup bound once (`_fileFramesAt`) — which took
+  /// `_clampToFileLength` (six) under the line.
+  ///
+  /// ⚠️394 → 395 on 2026-10-12, named as the rule above asks (I-89-Q18, the
+  /// camera's work laid over a drawing — the export's CAM):
+  /// `ExportCelsCutDelta._with` (five) takes the drawings the camera's work
+  /// is laid over beside the four sets it took — the delta's own fields,
+  /// which its constructor (excluded here) takes as well, as for
+  /// `PropertyTrack.withKey` above. 🔬`clean_code_diff` against master
+  /// (`d0baee08e`, at 394) named that one added and nothing gone.
+  ///
+  /// ⚠️395 → 396 on 2026-10-12, named as the rule above asks (F-313, a cel
+  /// carried onto another row shows its own picture before the release —
+  /// 유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로 만드는 로직
+  /// 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」).
+  /// `EditingCanvas.stackAt` (five) takes the drag its shown cut shows beside
+  /// that cut: the cut says which cel stands where, and only the drag says
+  /// whose row a carried cel's pixels are still under — the list the
+  /// release re-keys them by. Read back off the two cuts it would be a
+  /// second answer to that question. 🔬`clean_code_diff` against master
+  /// (`3ef2f8da7`, at 395) named that one added and nothing gone.
+  const wideSignatures = 396;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -402,7 +560,40 @@ void main() {
   /// of the settings column and the place is asked when Export is pressed.
   /// 🔬The lane's scan against its own preview commit (`8743ae700`, at 413)
   /// named that one gone and nothing added.
-  const longBodies = 410;
+  ///
+  /// ⚠️410 → 409 on 2026-10-09, lowered as the rule asks (F-282, a numbered
+  /// run's span picked on the preview's IN/OUT): the import window's
+  /// `_twoZones` gave its preview to `_preview` — the run made the picture
+  /// zone a question of its own. 🔬The lane's scan against master
+  /// (`34f161c64`, at 410) named that one gone and nothing added.
+  ///
+  /// ⚠️409 → 408 on 2026-10-10, lowered as the rule asks (board
+  /// long-sound-conform-memory, a conform made as it is decoded):
+  /// `resampleAudioReference` left — its filter design and its loop are the
+  /// `_ResamplerDesign` the piece-at-a-time stream runs too. 🔬The lane's
+  /// scan against its base (`e5074ed43`, at 410) named that one gone and
+  /// nothing added.
+  ///
+  /// ⚠️408 → 407 on 2026-10-10, lowered as the rule asks
+  /// (playback-plays-the-screen-material ②, a run seen through the camera
+  /// plays on the canvas): the composite playback view's `build` went with
+  /// the view. 🔬The lane's scan against master (`a81501886`, at 410 before
+  /// the two lowerings above landed) named that one gone and `_cutFadeWash`
+  /// held at sixty — the camera's frame for its unit — not added.
+  ///
+  /// ⚠️407 → 408 on 2026-10-15, named as the rule above asks
+  /// (playback-frame-raster-is-the-whole-window — background GPU work takes
+  /// its turn in the quiet between a run's held frames): the asynchronous
+  /// road's chain left `LayerFrameImageCache._prepareNow` (still over: its
+  /// thaw, its content checks and its keys are the CPU's half) as
+  /// `_composed` (70), so the turn is taken before it and given back once
+  /// it lands. It is the twin of `_composedNow` (65, already counted) in
+  /// shape — a plain function of the surface, the plan and the quality,
+  /// banked by the caller. 🔬`clean_code_diff` against master (`01986af08`)
+  /// named that one added and nothing gone. ⛔Not split to fit: the chain's
+  /// law (one wait an image, at any level) is one statement over the whole
+  /// chain, and its sync twin keeps the same shape.
+  const longBodies = 408;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -522,7 +713,59 @@ void main() {
   /// layer — went to a row of its own (`_StoryboardConteRow`), and the cut
   /// row kept what is the cut's. 🔬`clean_code_diff` between master and the
   /// lane names that one gone and none added.
-  const longClasses = 60;
+  ///
+  /// ⚠️60 → 61 on 2026-10-09, ONE name: `Transitions` crossed (591 → 607)
+  /// in I-73-ol-index-space — the cut view's marks are laid on the cut's
+  /// OWN frames, which begin its head のりしろ before its place on the
+  /// track, so the projection walk takes that lead beside the place, and
+  /// the sheet's projection says its own (none) out loud.
+  /// 🔬`clean_code_diff` between master and the lane names this one and no
+  /// other class. ⛔Not split to fit: it is one more number through the
+  /// walk the class already owns, and a seam cut for it would put the
+  /// projection's origin in a different file from the walk that reads it.
+  ///
+  /// ⚠️61 → 60 on 2026-10-10: `CutFrameCompositeCache` left the count — the
+  /// whole film plays on the canvas's own pictures, and the composite cache
+  /// went (playback-plays-the-screen-material). 🔬`clean_code_diff` between
+  /// the lane's base and the lane names that one gone and none added.
+  ///
+  /// ⚠️60 → 61 on 2026-10-12, ONE name: `LayerFrameImageCache` crossed
+  /// (576 → 617) in F-313 — a cel's pictures travel with its pixels when a
+  /// move re-keys them, so the frame a carried cel lands on draws it
+  /// (🔬0 of 32 columns there before). The move is the cache's own map, and
+  /// the settle that finds an entry where a rekey carried it is the cache's
+  /// own settle. 🔬`clean_code_diff` between the lane's base (`3ef2f8da7`)
+  /// and the lane names this one and no other class. ⛔Not split to fit: a
+  /// seam cut for it would put the re-homing of the entries in a different
+  /// file from the map that holds them.
+  ///
+  /// ⚠️61 → 62 on 2026-10-14, ONE name: `TimelineLayerControlsHeader`
+  /// crossed (582 → 626) in I-57 — the legend keeps itself (`KeptPiece`),
+  /// so a notify that changed nothing builds none of its ~15 tooltip and
+  /// flyout cells again on any grid, and what it grew by is its `facts`:
+  /// every field it shows, and the mutants three of them outlive.
+  /// 🔬`clean_code_diff` between the lane's base (`501bf027c`) and the lane
+  /// names this one and no other class. ⛔Not split to fit: the facts stand
+  /// in the class that declares the fields they name — the scan holding
+  /// every kept piece to naming its fields reads them there
+  /// (`a_kept_piece_names_every_field_in_its_facts_test`).
+  ///
+  /// ⚠️62 → 63 on 2026-10-14, ONE name: `_BrushEditStroke` crossed
+  /// (600 → 604) in I-61's finger half — the stroke asks whether Shift is
+  /// held in ONE place, where it advances, and a finger resting on the
+  /// glass is the second answer there beside the keyboard (I-61-Q3), with
+  /// the comment saying whose answer it is. The keyboard half had left the
+  /// class at exactly 600 (`e916f1cef`). 🔬`clean_code_diff` between master
+  /// (`279933153`) and the lane names this one and no other class. ⛔Not
+  /// split to fit: both answers belong where the one question is asked, and
+  /// the comment that keeps it in one place stands beside them.
+  ///
+  /// ⚠️63 → 62 on 2026-10-15, following one down: `LayerFrameImageCache`
+  /// left the count — the asynchronous road's chain went out of the class
+  /// beside its synchronous twin as a plain function (`_composed`, counted
+  /// among the long bodies above). 🔬`clean_code_diff` against master
+  /// (`01986af08`) named that one gone and none added.
+  const longClasses = 62;
 
   late CleanCodeScan scan;
   setUpAll(() {

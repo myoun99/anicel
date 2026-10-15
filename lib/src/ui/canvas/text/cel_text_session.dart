@@ -21,11 +21,48 @@ import '../../text/cel_text_layout.dart';
 /// A text as it is SHOWN: what it says, that set, and that as pixels — one
 /// of each, made together, so the box, the caret and the letters on screen
 /// are always of the same text.
-typedef CelTextShown = ({
-  CelTextContent content,
-  CelTextLayout layout,
-  Map<TileCoord, BitmapTile> plate,
-});
+final class CelTextShown {
+  /// A text as a bake made it, [plate] its pixels where they were set.
+  CelTextShown({
+    required this.content,
+    required this.layout,
+    required Map<TileCoord, BitmapTile> plate,
+  }) : pixels = (plate: plate, dx: 0, dy: 0),
+       _grid = null;
+
+  /// [content] carried ([CelTextSession.showMoved]): its pixels a plate
+  /// moved on [grid] — its cel's — and cut there only once that is asked.
+  CelTextShown._carried({
+    required this.content,
+    required this.layout,
+    required this.pixels,
+    required ({CanvasSize canvasSize, int tileSize}) grid,
+  }) : _grid = grid;
+
+  final CelTextContent content;
+  final CelTextLayout layout;
+
+  /// The pixels as the canvas draws them (`CelTextFloat`).
+  final CelTextPixels pixels;
+
+  final ({CanvasSize canvasSize, int tileSize})? _grid;
+
+  /// The pixels on the cel's own grid — what lands, and what a cel laid
+  /// with this text shows.
+  ///
+  /// 🚨F-344: A TEXT A HAND CARRIES IS CUT ONTO THE GRID ONCE, WHEN THIS IS
+  /// FIRST ASKED — at its landing — and not at every move of the hand. The
+  /// canvas draws [pixels] meanwhile, which are these pixels exactly
+  /// ([celTextPlateMoved] moves them as they are).
+  late final Map<TileCoord, BitmapTile> plate =
+      _grid == null || (pixels.dx == 0 && pixels.dy == 0)
+      ? pixels.plate
+      : celTextPlateMoved(
+          pixels,
+          canvasSize: _grid.canvasSize,
+          tileSize: _grid.tileSize,
+        );
+}
 
 /// A text as it stood when a hand took hold of it to MOVE it — what it
 /// said, its pixels and the room they were in — kept for the length of the
@@ -40,11 +77,13 @@ typedef CelTextMoveOrigin = ({
 /// it, what the person has made of it since, and what of that is on screen.
 ///
 /// 🚨★★★IT WRITES NOTHING TO THE CEL. A text being typed, dragged or set
-/// differently is shown by the canvas alone — the cel with this text laid
-/// in ([shownOver]), the way an open move shows its hole — and the cel
-/// hears of it once, as one step of history ([landing]). Every other view
-/// of the drawing keeps showing it as it stands, which is what an edit
-/// nobody has confirmed should look like from outside the tool.
+/// differently is shown by the canvas alone — floated over the hole it
+/// left in its cel, the way an open move shows its lift (F-344,
+/// `CelTextFloat`); once it is let go of and still owes its landing, laid
+/// in ([shownOver]) — and the cel hears of it once, as one step of
+/// history ([landing]). Every other view of the drawing keeps showing it
+/// as it stands, which is what an edit nobody has confirmed should look
+/// like from outside the tool.
 ///
 /// 🚨★★★WHAT IS ON SCREEN IS A WHOLE TEXT, NEVER A TEXT AND A HALF. Only
 /// the engine can turn letters into pixels and it answers a frame or more
@@ -67,7 +106,7 @@ class CelTextSession extends ChangeNotifier {
        _wanted = content,
        _nextLetterStyle = nextLetterStyle,
        _bake = bake ?? bakeCelTextPlate,
-       _shown = _shownOf(standing, content, nextLetterStyle),
+       _showing = ValueNotifier(_shownOf(standing, content, nextLetterStyle)),
        // ⚠️A text that is not on the cel yet starts with NO letters — there
        // is then nothing of it to draw, and so nothing to wait for.
        assert(standing != null || content.isEmpty) {
@@ -87,12 +126,12 @@ class CelTextSession extends ChangeNotifier {
     CelTextContent content,
     TextLetterStyle nextLetterStyle,
   ) => standing == null
-      ? (
+      ? CelTextShown(
           content: content,
           layout: layoutCelText(content, nextLetterStyle: nextLetterStyle),
           plate: const {},
         )
-      : (
+      : CelTextShown(
           content: standing.content,
           layout: layoutCelText(
             standing.content,
@@ -120,7 +159,12 @@ class CelTextSession extends ChangeNotifier {
 
   /// What is on screen.
   CelTextShown get shown => _shown;
-  CelTextShown _shown;
+  CelTextShown get _shown => _showing.value;
+
+  /// What is on screen, told whenever it is another: a bake made, or a
+  /// hand carried it ([showMoved]) — the one change told here alone.
+  ValueListenable<CelTextShown> get showing => _showing;
+  final ValueNotifier<CelTextShown> _showing;
 
   /// What the first letter typed into a text with none will wear.
   TextLetterStyle get nextLetterStyle => _nextLetterStyle;
@@ -182,11 +226,13 @@ class CelTextSession extends ChangeNotifier {
   /// that was cut, or would be, is set again instead ([set]), so nothing
   /// that was cut away stays missing when the text comes back in.
   ///
-  /// [over] is the cel's picture as it stands: the grid the plate is cut
-  /// on.
+  /// 🚨F-344: TOLD ON [showing] ALONE. The plate is cut onto the cel's grid
+  /// once it is asked for ([CelTextShown.plate]) — at the landing — and a
+  /// carry is no other text, so nobody building hears of it but whoever
+  /// shows where the text stands: the settings' X and Y, the digits alone
+  /// (`CelTextCommands.shownInHand`, F-164).
   void showMoved(
-    CelTextMoveOrigin origin,
-    BitmapSurface over, {
+    CelTextMoveOrigin origin, {
     required int dx,
     required int dy,
   }) {
@@ -201,15 +247,13 @@ class CelTextSession extends ChangeNotifier {
     final before = _shown;
     _wanted = moved;
     _stale = false;
-    _shown = (
+    _showing.value = CelTextShown._carried(
       content: moved,
       layout: layoutCelText(moved, nextLetterStyle: _nextLetterStyle),
-      plate: dx == 0 && dy == 0
-          ? origin.plate
-          : celTextPlateMoved(origin.plate, over, dx: dx, dy: dy),
+      pixels: (plate: origin.plate, dx: dx, dy: dy),
+      grid: (canvasSize: canvasSize, tileSize: tileSize),
     );
     before.layout.dispose();
-    notifyListeners();
   }
 
   /// The text as it is shown now, for a move that starts here.
@@ -274,7 +318,7 @@ class CelTextSession extends ChangeNotifier {
           layout.dispose();
           return;
         }
-        _show((content: content, layout: layout, plate: plate));
+        _show(CelTextShown(content: content, layout: layout, plate: plate));
       }
     } finally {
       _baking = false;
@@ -288,8 +332,8 @@ class CelTextSession extends ChangeNotifier {
   void _show(CelTextShown made) {
     _failure = null;
     final before = _shown;
-    _shown = made;
     _stale = false;
+    _showing.value = made;
     before.layout.dispose();
     notifyListeners();
   }
@@ -336,26 +380,36 @@ class CelTextSession extends ChangeNotifier {
 
   ({BitmapSurface cel, CelTextShown shown, BitmapSurface surface})? _shownOver;
 
+  /// Whether what is shown is what the cel carries: this text as it
+  /// stands, or — for one not on the cel yet — nothing, a text with no
+  /// letters not being there ([landing]). [shownOver] is then the cel
+  /// itself, and the canvas lifts nothing off it
+  /// (`CelTextOnCanvas.floatingOn`).
+  bool get shownAsCarried {
+    final standing = _standing;
+    return standing == null
+        ? _shown.content.isEmpty
+        : _isAsStanding(_shown, standing);
+  }
+
   BitmapSurface _laidInto(BitmapSurface cel) {
+    if (shownAsCarried) {
+      return cel;
+    }
     final standing = _standing;
     final shown = _shown;
     // A text with no letters is NOT THERE — shown and landed alike
     // ([landing]): the box behind it is its letters' box.
     final draws = !shown.content.isEmpty;
     if (standing == null) {
-      return draws
-          ? cel.withTexts([
-              ...cel.texts,
-              CelText(
-                id: nextCelTextId(cel.texts),
-                content: shown.content,
-                plate: shown.plate,
-              ),
-            ])
-          : cel;
-    }
-    if (_isAsStanding(shown, standing)) {
-      return cel;
+      return cel.withTexts([
+        ...cel.texts,
+        CelText(
+          id: nextCelTextId(cel.texts),
+          content: shown.content,
+          plate: shown.plate,
+        ),
+      ]);
     }
     return cel.withTexts([
       for (final text in cel.texts)
@@ -430,6 +484,7 @@ class CelTextSession extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _shown.layout.dispose();
+    _showing.dispose();
     for (final waiter in _waiting) {
       waiter.complete();
     }

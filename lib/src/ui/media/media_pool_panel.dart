@@ -33,6 +33,8 @@ import 'media_asset_kind_icon.dart';
 import 'media_asset_pool_state.dart';
 import 'media_drop_verdict.dart';
 import '../input/control_press_claim.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
 
 /// The dockable MEDIA POOL: every file the project knows, importable
 /// ahead of use, draggable onto SE blocks to link (footsteps reuse),
@@ -67,7 +69,7 @@ class MediaPoolPanel extends StatelessWidget {
     this.onOpenAsset,
     this.onOpenAssetInSubViewer,
     this.onPlaceAsset,
-    this.audioFilePicker,
+    this.mediaFilePicker,
     this.missingPaths = const <String>{},
     this.modifiedTimes = const <String, DateTime>{},
     this.storedBytes = const <String, int>{},
@@ -128,8 +130,9 @@ class MediaPoolPanel extends StatelessWidget {
   /// mode, so the answers are the same ones a fresh import gives.
   final void Function(MediaAsset asset)? onPlaceAsset;
 
-  /// Injectable file dialog; defaults to the platform audio picker.
-  final Future<String?> Function()? audioFilePicker;
+  /// Injectable file dialog for a relink; defaults to the platform picker
+  /// over every kind the pool registers.
+  final Future<String?> Function()? mediaFilePicker;
 
   /// Starts the batch relink: pick a folder, match, preview, apply. Null
   /// hides the banner's button (the banner itself still counts).
@@ -171,7 +174,7 @@ class MediaPoolPanel extends StatelessWidget {
     // and it used to throw the picker's bookmark away, which made the
     // relink work for one session and be refused at the next launch. The
     // injected picker (tests) still answers in paths and mints nothing.
-    final injected = audioFilePicker;
+    final injected = mediaFilePicker;
     if (injected != null) {
       final next = await injected();
       if (next != null) {
@@ -394,10 +397,15 @@ class MediaPoolPanel extends StatelessWidget {
   // viewport is a repaint boundary — so the dock's bake around this panel
   // yields to this one, the placement `EditorPanelBody` explains.
   @override
-  Widget build(BuildContext context) => OverflowScrollers(
-    minWidth: _minBodyWidth + _extensionRoom(context),
-    minHeight: _minBodyHeight,
-    child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
+  Widget build(BuildContext context) => PanelKeysBinding(
+    // A key presses the ＋ — the pool is one panel, whatever is in hand
+    // (I-40).
+    buttons: {EditorActionIds.mediaPoolImport: onImportRequested},
+    child: OverflowScrollers(
+      minWidth: _minBodyWidth + _extensionRoom(context),
+      minHeight: _minBodyHeight,
+      child: StaticRaster(debugLabel: 'body:media', child: _body(context)),
+    ),
   );
 
   /// RELINK-2: the loss banner — one line, above the list, INSIDE this
@@ -474,7 +482,11 @@ class MediaPoolPanel extends StatelessWidget {
               const SizedBox(width: 4),
               AppIconButton(
                 keyValue: 'media-import-button',
-                tooltip: AppText.strings.mediaImportAudio,
+                // The window it opens, by that window's own title: the pool
+                // once held sound only, and 「오디오 불러오기」 outlived it
+                // (유저 10-09).
+                tooltip: AppText.strings.imImport,
+                shortcuts: const [EditorActionIds.mediaPoolImport],
                 // 「＋가 있는 모든 곳, 공통적으로」.
                 icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
                 onPressed: onImportRequested,

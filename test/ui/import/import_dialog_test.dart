@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/import_preview_probe.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
@@ -88,9 +89,10 @@ void main() {
   }) async {
     final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
     // The table scrolls sideways when its columns outgrow the window (the
-    // test font's glyphs are wide), so the cell is brought into view first.
+    // test font's glyphs are wide), so the cell is brought into view first
+    // — and the preview's page lands, or its spinner never lets it settle.
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(
@@ -239,7 +241,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey<String>('import-place-timeline')),
+      find.byKey(const ValueKey<String>('import-column-into')),
       findsOneWidget,
     );
     expect(
@@ -325,39 +327,56 @@ void main() {
       s.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('the browser pins the pool — the other door is shown, not '
-        'offered', (tester) async {
+    testWidgets('the browser pins the pool — every row\'s 넣을 곳 says it, and '
+        'opens nothing', (tester) async {
       final path = await tester.runAsync(writeMovie);
       await pumpWindow(tester, path!, poolOnly: true);
+      final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-place-timeline')),
+      expect(
+        find.descendant(of: into, matching: find.text(AppText.strings.panelMedia)),
+        findsOneWidget,
       );
+      await tester.tap(into, warnIfMissed: false);
       await tester.pump();
+      expect(
+        find.byKey(const ValueKey<String>('import-option-into-newLayer')),
+        findsNothing,
+        reason: 'the door answered: no placement is offered',
+      );
       expect(
         find.byKey(const ValueKey<String>('import-column-bake')),
         findsNothing,
-        reason:
-            'the chip is disabled: pressing it changes nothing — a placement '
-            'would have asked the movie whether it bakes',
+        reason: 'and a placement would have asked the movie whether it bakes',
       );
     });
 
-    testWidgets('every other entrance still starts on a placement', (
-      tester,
-    ) async {
+    testWidgets('every other entrance still starts on a placement — and '
+        'offers the pool on the row', (tester) async {
       final path = await tester.runAsync(() => writePng('drop.png'));
       await pumpWindow(tester, path!, poolOnly: false);
+      await settleLoadedPages(tester);
+      final into = find.byKey(ValueKey<String>('import-cell-into-$path'));
 
       expect(
-        find.byKey(const ValueKey<String>('import-place-timeline')),
+        find.descendant(
+          of: into,
+          matching: find.text(AppText.strings.imIntoNewLayer),
+        ),
         findsOneWidget,
       );
+      // The table scrolls sideways in a window too narrow for it.
+      await tester.ensureVisible(into);
+      await tester.pumpAndSettle();
+      await tester.tap(into);
+      await tester.pumpAndSettle();
       expect(
-        find.byKey(const ValueKey<String>('import-place-pool')),
+        find.byKey(const ValueKey<String>('import-option-into-pool')),
         findsOneWidget,
         reason: 'the pool is on offer from here too — one window',
       );
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey<String>('import-column-file')),
         findsOneWidget,
@@ -753,7 +772,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await settleLoadedPages(tester);
       return s;
     }
 
@@ -778,9 +797,10 @@ void main() {
       await pump(tester, [a!, b!]);
 
       expect(cellText(tester, 'file', a), 'Keep');
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-column-file')),
-      );
+      final header = find.byKey(const ValueKey<String>('import-column-file'));
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('import-option-file-reference')),
@@ -907,9 +927,10 @@ void main() {
       });
       await pump(tester, [png!, wav!]);
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('import-column-bake')),
-      );
+      final header = find.byKey(const ValueKey<String>('import-column-bake'));
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('import-option-bake-true')),
@@ -930,8 +951,9 @@ void main() {
     });
 
     testWidgets('an expanded PSD locks its BAKE on — one of them baked means '
-        'all of them are — and leaves how the file is kept alone; merged, '
-        'the bake is its own question again', (tester) async {
+        'all of them are — so its file stays out of the pool and is not '
+        'asked how it is kept; merged, the bake is its own question again, '
+        'and so is the file', (tester) async {
       final psd = await tester.runAsync(() => writePsd('BG.psd'));
       await pump(tester, [psd!]);
       // The preview reads a Photoshop file whole, through an awaited read
@@ -939,38 +961,41 @@ void main() {
       // middle of held it open for the rest of the run, so its folder could
       // not be removed (2026-10-08). Shown, it has been read and let go.
       expect(
-        await settleAsync(
-          tester,
-          () => find
-              .byKey(const ValueKey<String>('import-preview-checker'))
-              .evaluate()
-              .isNotEmpty,
-        ),
+        await settleAsync(tester, () => tester.importPreviewImage != null),
         isTrue,
         reason: 'the preview shows the file it read',
       );
 
       expect(
-        cellText(tester, 'psd', psd),
-        'Expand',
+        cellText(tester, 'option', psd),
+        'Keep layers',
         reason: 'a PSD comes in as its layers (F-306-Q1)',
       );
       expect(cellText(tester, 'bake', psd), AppText.strings.commonOn);
-      expect(cellText(tester, 'file', psd), 'Keep');
+      expect(
+        cellText(tester, 'file', psd),
+        '—',
+        reason: 'baked, it keeps no entry (F-282-Q6, 유저 2026-10-09: 「구우면 '
+            '풀에 안 남긴다」)',
+      );
 
-      await pickCell(tester, column: 'psd', path: psd, option: 'merge');
+      await pickCell(tester, column: 'option', path: psd, option: 'merge');
 
       expect(cellText(tester, 'bake', psd), AppText.strings.commonOff);
       expect(cellText(tester, 'file', psd), 'Keep');
     });
 
+    // ↩️The 넣을 곳 column went with them (09-11); it stands now, 「미디어」
+    // locked — the window mock the user started this from (2026-10-09: 「미디어
+    // 패널의 경우엔 굽기 맞춤 옵션안넣어도되 … 그거만 해서 시작해도되」), and
+    // pinned beside the browser's door above.
     testWidgets('🚨the pool asks nothing about placement — the questions a '
         'placement asks are not there at all (유저 2026-09-11: 「플레이스가 '
         '풀이면 넣을곳 맞춤 PSD 열 삭제」)', (tester) async {
       final png = await tester.runAsync(() => writePng('a.png'));
       await pump(tester, [png!], poolOnly: true);
 
-      for (final id in ['bake', 'into', 'fit', 'psd']) {
+      for (final id in ['bake', 'fit', 'option']) {
         expect(
           find.byKey(ValueKey<String>('import-column-$id')),
           findsNothing,
@@ -1143,7 +1168,7 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
     // Pages three and four of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-in-input')),
@@ -1151,7 +1176,7 @@ void main() {
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-out-input')),
@@ -1227,6 +1252,91 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🎯BAKED, a PDF placed with a range is drawn from the file '
+      'itself — no piece is cut for an entry it will not keep (F-282-Q6)', (
+    tester,
+  ) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    final fake = FakePdfDocument(
+      pageSizes: List.filled(5, const ui.Size(595, 842)),
+    );
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return normalizedMediaPath(file.path);
+    });
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    final cutFrom = <(String, int, int)>[];
+    PdfRenderService.debugPageSpanOverride = (path, first, count) async {
+      cutFrom.add((path, first, count));
+      return Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]);
+    };
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-in-input')),
+      '3',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
+    await tester.pump();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('transport-out-input')),
+      '4',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    final bake = find.byKey(ValueKey<String>('import-cell-bake-$pdfPath'));
+    await tester.ensureVisible(bake);
+    await tester.pumpAndSettle();
+    await tester.tap(bake);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
+    int cutCount() => s.repository.requireProject().tracks.first.cuts.length;
+    for (var tries = 0; tries < 200 && cutCount() == cutsBefore; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    // Named for the file: no piece was cut to lend it a span's name.
+    final cut = s.repository.requireProject().tracks.first.cuts.last;
+    final layer = cut.layers.firstWhere((layer) => layer.name == 'conte');
+    expect(layer.mediaReference, isNull, reason: 'CONTROL: baked');
+    expect(layer.frames, hasLength(2), reason: 'two pages, not five');
+    expect(
+      cutFrom,
+      isEmpty,
+      reason: 'a piece is a pool entry\'s to be, and a baked placement keeps '
+          'none — its span is drawn from the file through the door\'s IN/OUT',
+    );
+    expect(
+      s.repository.requireProject().mediaAssets,
+      isEmpty,
+      reason: 'baked, it keeps no entry (유저 2026-10-09: 「구우면 풀에 안 '
+          '남긴다」)',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('🎯a PDF REGISTERED with a range comes in as a piece of those '
       'pages — the same step a placement takes', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -1262,7 +1372,7 @@ void main() {
     await tester.pump();
 
     // Pages two and three of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-in-input')),
@@ -1270,7 +1380,7 @@ void main() {
     );
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out')));
+    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
     await tester.pump();
     await tester.enterText(
       find.byKey(const ValueKey<String>('transport-out-input')),
@@ -1341,9 +1451,10 @@ void main() {
 
     expect(find.text('Place — bg.png'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('import-browse-files-button')),
+      find.byKey(const ValueKey<String>('import-source-line')),
       findsNothing,
-      reason: 'the source is what the row already decided',
+      reason: 'the source is what the row already decided — the title says '
+          'it',
     );
     expect(
       find.byKey(const ValueKey<String>('import-file-table')),
@@ -1351,7 +1462,7 @@ void main() {
       reason: 'and every other answer is still the row\'s to give',
     );
     expect(
-      find.byKey(const ValueKey<String>('import-place-timeline')),
+      find.byKey(const ValueKey<String>('import-column-into')),
       findsOneWidget,
     );
   });

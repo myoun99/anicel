@@ -99,6 +99,61 @@ void main() {
     expect(committed, ['C']);
   });
 
+  // A panel is built only while it shows (유저 2026-10-14): the sheet put
+  // away takes the layer with it, field open or not.
+  testWidgets('🚨a field open when its layer goes lands what was typed, as a '
+      'tap away does — and only a change', (tester) async {
+    final committed = <String>[];
+    final shown = ValueNotifier<bool>(true);
+    addTearDown(shown.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: shown,
+            builder: (context, isShown, _) => Stack(
+              children: [
+                if (isShown)
+                  Positioned.fill(
+                    child: SheetTextEditLayer(
+                      viewport: viewport,
+                      fieldKey: 'field',
+                      barrierKey: 'barrier',
+                      targets: [
+                        SheetTextTarget(
+                          keyValue: 'target',
+                          box: const Rect.fromLTWH(0, 0, 100, 40),
+                          textRect: const Rect.fromLTWH(4, 4, 92, 32),
+                          text: 'A',
+                          style: style,
+                          onCommitted: committed.add,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final field = find.byKey(const ValueKey<String>('field'));
+    Future<void> typeThenGo(String text) async {
+      shown.value = true;
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey<String>('target')));
+      await tester.pumpAndSettle();
+      await tester.enterText(field, text);
+      shown.value = false;
+      await tester.pumpAndSettle();
+    }
+
+    await typeThenGo('A');
+    expect(committed, isEmpty, reason: 'the words it already says');
+    await typeThenGo('D');
+    expect(committed, ['D'], reason: '🚨the words typed went with the panel');
+  });
+
   // F-188: the field hides the printed words it sets again, and only them —
   // the memo band is open handwriting space round its typed note.
   testWidgets('it hides the printed words only where they were printed: a '

@@ -13,6 +13,8 @@ import 'ui/storyboard_cut_block_probe.dart';
 import 'ui/timeline/timeline_row_chrome_probe.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/the_classic_rail.dart';
+import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('switches between existing sample cuts', (
@@ -42,7 +44,7 @@ void main() {
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-$secondCutRowId')),
+      find.named('timeline-row-cells-$secondCutRowId'),
       findsOneWidget,
     );
     expectCellText(secondCutRowId, 0, 'X');
@@ -92,7 +94,7 @@ void main() {
     await showTimelinePanel(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-$secondCutRowId')),
+      find.named('timeline-row-cells-$secondCutRowId'),
       findsOneWidget,
     );
     expect(
@@ -238,15 +240,16 @@ void main() {
     'comma edge grips ripple blocks TVPaint-style with one undo per drag',
     (WidgetTester tester) async {
       await tester.pumpWidget(const AnicelApp());
+      // The frames these drags are counted in, clear of the frame
+      // window's edge.
+      await standTheClassicRail(tester);
 
       // The drawing row sits at the bottom below the camera/CAM/SE fixture
       // rows; scroll it into view via its RAIL row (cell-level ensureVisible
       // would over-scroll the custom frame viewport and push frame 0 out of
       // the virtualized window).
       await tester.ensureVisible(
-        find.byKey(
-          const ValueKey<String>('timeline-layer-row-default-layer-1'),
-        ),
+        find.named('timeline-layer-row-default-layer-1'),
       );
       await tester.pumpAndSettle();
 

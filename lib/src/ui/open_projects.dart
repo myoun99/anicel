@@ -3,6 +3,13 @@ import 'package:flutter/foundation.dart';
 import '../models/project.dart';
 import '../services/persistence/same_file.dart';
 import 'editor_session_manager.dart';
+import 'text/app_strings.dart';
+
+/// What the [n]th untitled project of this run is called — 「제목 없음 2」, in
+/// the program's language: its tab, and the project itself until a file
+/// names it.
+String untitledProjectName(int n) =>
+    AppText.strings.untitledProjectTab.replaceAll('{n}', '$n');
 
 /// The projects open in this window — a SESSION per project, one of them on
 /// screen.
@@ -30,7 +37,8 @@ class OpenProjects extends ChangeNotifier {
     required void Function(EditorSessionManager session) letGo,
   }) : _openSession = openSession,
        _letGo = letGo {
-    _admit(_openSession(first));
+    final session = _openSession(first);
+    _admit(session, untitled: session.projectFile.path == null);
     _shareTheAllowance();
   }
 
@@ -45,10 +53,12 @@ class OpenProjects extends ChangeNotifier {
   /// The project on screen.
   EditorSessionManager get active => _sessions[_active];
 
-  /// Opens [project] in a tab of its own after the others, and shows it.
+  /// Opens [project] — a NEW one, with no file — in a tab of its own after
+  /// the others, and shows it.
   EditorSessionManager open(Project project) {
     final session = prepare(project);
-    adopt(session);
+    _admit(session, untitled: true);
+    _show(_sessions.length - 1);
     return session;
   }
 
@@ -60,9 +70,12 @@ class OpenProjects extends ChangeNotifier {
   EditorSessionManager prepare(Project project) => _openSession(project);
 
   /// Puts a [prepare]d session in a tab of its own after the others, and
-  /// shows it.
+  /// shows it — a project READ out of a file: the .anicel it is bound to,
+  /// or the .tvpp or .clip it was converted from and is named after. Never
+  /// an untitled one (유저 10-09: 「클튜 임포트하니까 프로젝트이름 제목없음
+  /// 이런식인데 파일이름대로」).
   void adopt(EditorSessionManager session) {
-    _admit(session);
+    _admit(session, untitled: false);
     _show(_sessions.length - 1);
   }
 
@@ -120,19 +133,32 @@ class OpenProjects extends ChangeNotifier {
   /// project that came from a file.
   ///
   /// Minted when the tab is added, one after the last this run, and kept:
-  /// a tab's name does not change because another closed. Only a project
-  /// with no file takes one, so the untitled ones count 1, 2, 3 however
-  /// many files are open between them.
+  /// a tab's name does not change because another closed. Only a NEW
+  /// project takes one, so the untitled ones count 1, 2, 3 however many
+  /// files are open between them. ↩️「No file」 was the test, and a .tvpp or
+  /// .clip — read out of a file, not saved yet — took a number too: its tab
+  /// read 「제목 없음 2」 over the name it came with.
   int? untitledNumberOf(EditorSessionManager session) =>
       _untitledNumbers[session];
 
   final Map<EditorSessionManager, int> _untitledNumbers = {};
   int _untitledMinted = 0;
 
-  void _admit(EditorSessionManager session) {
+  /// An untitled tab's project is called what its tab is, until a file
+  /// names it (유저 10-09, project-name-is-its-file-name-Q1: 「안의 이름도
+  /// 탭과 같게 — 「제목 없음 2」」) — so what is exported before the first
+  /// save wears the tab's name. Not an edit, as the file's naming is not
+  /// (`ProjectFile._nameAfter`): nothing to undo, nothing unsaved.
+  void _admit(EditorSessionManager session, {required bool untitled}) {
     _sessions.add(session);
-    if (session.projectFile.path == null) {
-      _untitledNumbers[session] = _untitledMinted += 1;
+    if (untitled) {
+      final number = _untitledMinted += 1;
+      _untitledNumbers[session] = number;
+      final name = untitledProjectName(number);
+      session.repository.updateProject(
+        (project) =>
+            project.name == name ? project : project.copyWith(name: name),
+      );
     }
   }
 

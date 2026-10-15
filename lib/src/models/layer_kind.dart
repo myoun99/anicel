@@ -30,6 +30,8 @@
 // (see [carriesInstructions] and [bandIsInstructionsOnly]).
 // ---------------------------------------------------------------------------
 
+import 'canvas_size.dart';
+
 enum LayerKind {
   animation(
     'animation',
@@ -54,6 +56,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: true,
     numbersItsDrawings: true,
+    posesInTheShot: false,
   ),
 
   storyboard(
@@ -82,6 +85,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: true,
     numbersItsDrawings: true,
+    posesInTheShot: false,
   ),
 
   /// A PICTURE layer (BG/BOOK, imported stills): ONE cel a cut by
@@ -124,6 +128,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: true,
     numbersItsDrawings: true,
+    posesInTheShot: false,
   ),
 
   /// A GROUP: a layer that holds structure instead of a picture — "그림만
@@ -159,6 +164,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: true,
     numbersItsDrawings: false,
+    posesInTheShot: false,
   ),
 
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
@@ -193,6 +199,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: false,
     numbersItsDrawings: false,
+    posesInTheShot: true,
   ),
 
   /// Camera-work instruction row (FI/FO/PAN … chips): carries instruction
@@ -230,6 +237,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: true,
     numbersItsDrawings: false,
+    posesInTheShot: false,
   ),
 
   /// The TRANSITION row: the same instruction events one level up —
@@ -284,6 +292,7 @@ enum LayerKind {
     reordersInCut: false,
     celNameIsIdentity: true,
     numbersItsDrawings: false,
+    posesInTheShot: false,
   ),
 
   /// The cut's camera track: selecting it puts the canvas into camera
@@ -319,6 +328,7 @@ enum LayerKind {
     reordersInCut: false,
     celNameIsIdentity: true,
     numbersItsDrawings: false,
+    posesInTheShot: false,
   ),
 
   /// An ADJUSTMENT layer (R6b, §6-z): a row with no picture of its own
@@ -371,6 +381,7 @@ enum LayerKind {
     reordersInCut: true,
     celNameIsIdentity: true,
     numbersItsDrawings: false,
+    posesInTheShot: false,
   );
 
   const LayerKind(
@@ -396,6 +407,7 @@ enum LayerKind {
     required this.reordersInCut,
     required this.celNameIsIdentity,
     required this.numbersItsDrawings,
+    required this.posesInTheShot,
   });
 
   final String jsonValue;
@@ -663,6 +675,24 @@ enum LayerKind {
   /// kind added later answers it here, by being asked.
   final bool numbersItsDrawings;
 
+  /// Whether a row of this kind is posed in the SHOT — the frame the camera
+  /// shows — rather than on the canvas: its transform's numbers are the
+  /// shot's, and an unkeyed pose sits in the shot's middle.
+  ///
+  /// 🗣️I-67-Q1 (유저 2026-10-10: 「이름표를 카메라 화면 기준으로 읽는다」): an
+  /// SE row's name tag stands in the frame, so the camera's moves leave it
+  /// where it stands. ONE column, read by everything that resolves or edits
+  /// a row's pose — the tag's plan, the lanes' values, the group reset, the
+  /// canvas handle — so none of them reads an S row's numbers on the canvas
+  /// again. ↩️The storyboard's rail read them in the camera frame and the
+  /// timeline's in the open cut's canvas.
+  final bool posesInTheShot;
+
+  /// The space this kind's rows are posed in: [shot] for a kind posed there
+  /// ([posesInTheShot]), else [canvas] — null where there is none, a gap.
+  CanvasSize? poseSpace({required CanvasSize shot, CanvasSize? canvas}) =>
+      posesInTheShot ? shot : canvas;
+
   /// Whether this kind contributes PIXELS of its own to the composite (a cel
   /// surface). SE and instruction rows composite (they carry FX and can host
   /// the canvas dialogue) but resolve no artwork today; they still answer
@@ -780,6 +810,12 @@ enum LayerKind {
   /// bucket sits on drawing rows only). The rail's bucket and the fill
   /// settings' bucket for the active layer (I-36) both ask this.
   bool get carriesFillReference => this == LayerKind.animation;
+
+  /// Whether a row of this kind carries the button that opens how the canvas
+  /// shows the camera's path (I-89 ④, 유저 2026-10-12: 「카메라 경로표시
+  /// 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서」) — the camera's
+  /// alone.
+  bool get carriesCameraPath => this == LayerKind.camera;
 
   /// Whether this kind is a FIXED kind — one the user can neither convert a
   /// layer into nor convert away from (the camera fixture, folders and

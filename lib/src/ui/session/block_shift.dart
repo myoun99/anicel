@@ -5,8 +5,8 @@ import '../../models/layer_id.dart';
 import '../../models/row_block_shift.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_row_address.dart';
-import '../../models/track_conte_row.dart' show isTrackConteRow;
-import '../storyboard_layer_policy.dart' show conteLayerInHand;
+import '../../models/track_projection_row.dart' show projectionRowUnder;
+import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
 import 'session_roles.dart';
@@ -129,12 +129,14 @@ class BlockShift {
         aimedBySelection: false,
       );
     }
-    // The storyboard's conte row shoves its own panels — the conte layer it
-    // has in hand, which is the active row below — or nothing: over a cut
-    // with no conte layer the active row is some other row of the cut, and
-    // that one is not this rail's to shove (I-73).
-    if (isTrackConteRow(currentRow) &&
-        conteLayerInHand(
+    // The storyboard's projection rows shove their own — the conte row its
+    // panels, the camera row its keys: the layer it has in hand, which is
+    // the active row below — or nothing: over a cut with no conte layer the
+    // active row is some other row of the cut, and that one is not this
+    // rail's to shove (I-73). A lane of one asks its row (I-73 ④ⓔ).
+    if (projectionRowUnder(currentRow) != null &&
+        projectedLayerInHand(
+              row: projectionRowUnder(currentRow),
               cut: _project.activeCutOrNull,
               activeLayerId: _selection.activeLayerId,
             ) ==

@@ -1,6 +1,7 @@
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/track_camera_head.dart' show cutJoiningWithCameraHead;
 import '../../models/track_id.dart';
 import '../editing/cut_insertion_room.dart';
 import '../project_repository.dart';
@@ -38,6 +39,9 @@ import 'transitions_ride_the_cuts.dart';
     leadingGap: cut.leadingGapFrames,
     duration: cut.duration,
   );
+  // The cut joins the track's one camera row wearing its head — the name
+  // and the fx switch every camera of the track goes by (I-73-camera-row-Q1).
+  final joining = cutJoiningWithCameraHead(cut, cuts);
   return (
     project: project.copyWith(
       tracks: [
@@ -52,7 +56,7 @@ import 'transitions_ride_the_cuts.dart';
                     follower.copyWith(leadingGapFrames: gaps[follower.id])
                   else
                     follower,
-              ]..insert(at, cut),
+              ]..insert(at, joining),
             ),
       ],
     ),

@@ -1,5 +1,11 @@
+import 'dart:math' as math;
+
+import '../../models/timeline_row_address.dart';
+import 'lane_graph.dart' show laneGraphFoldedExtent, laneGraphMostExtent;
+import 'lane_graph_seats.dart' show timelineGraphBlocks;
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_row_edges.dart';
 import 'timeline_section_policy.dart';
 
 /// A consecutive run of display rows belonging to one timesheet section —
@@ -66,39 +72,103 @@ List<TimelineSectionRun> timelineSectionRuns(List<TimelineDisplayRow> rows) {
   return List.unmodifiable(runs);
 }
 
-/// Layer-axis extent of one display row.
+/// Layer-axis extent of one display row: a row's height — but a row the
+/// enlarged graph folds ([TimelineDisplayRow.folded]) stands as its thin
+/// strip, and an open graph folded stands as ONE strip, its first lane's:
+/// the mock's 5판 thins a shut group lane by lane and an open graph whole.
 double timelineDisplayRowExtent(
   TimelineDisplayRow row,
   TimelineGridMetrics metrics,
 ) {
-  return metrics.layerRowHeight;
-}
-
-/// Total layer-axis extent of [rows].
-double timelineDisplayRowsExtent(
-  List<TimelineDisplayRow> rows,
-  TimelineGridMetrics metrics,
-) {
-  var extent = 0.0;
-  for (final row in rows) {
-    extent += timelineDisplayRowExtent(row, metrics);
+  if (!row.folded) {
+    return metrics.layerRowHeight;
   }
-  return extent;
+  return switch (row.graph) {
+    final seat? when seat.lanes.first != row.lane?.laneId => 0,
+    _ => laneGraphFoldedExtent,
+  };
 }
 
-/// Layer-axis extent of one section run.
+/// Where [rows] sit along the layer axis — each at its own extent
+/// ([timelineDisplayRowExtent]), an open graph's lanes joined into one unit
+/// with its ROOM after the last of them: what the graph stands past its
+/// lanes (I-89 ③).
+///
+/// Laid along a [view] that long, a graph stands no further than the view
+/// lets one ([laneGraphMostExtent]) — the ENLARGED one exactly that far
+/// (I-89 ③D), and one whose grip said more, kept, at the most: as the
+/// storyboard draws a height kept above today's ceiling. A view of none is
+/// no view, as it is to the row window: every graph as its grip says.
+///
+/// ⛔Built once per pass and handed round. Every grid surface that turns a
+/// row into a place or a place into a row reads THIS, so the rail, the
+/// cells, the sheet and the cursor cannot disagree about where a row is.
+TimelineRowEdges timelineRowEdgesOf(
+  List<TimelineDisplayRow> rows,
+  TimelineGridMetrics metrics, {
+  double view = 0,
+}) {
+  final rowExtent = metrics.layerRowHeight;
+  final most = view > 0
+      ? laneGraphMostExtent(view, rowExtent)
+      : double.infinity;
+  final slots = <TimelineRowSlot>[
+    for (final row in rows)
+      (
+        extent: timelineDisplayRowExtent(row, metrics),
+        room: 0,
+        joinsNext: false,
+      ),
+  ];
+  for (final block in timelineGraphBlocks(rows)) {
+    final last = block.start + block.count - 1;
+    var lanes = 0.0;
+    for (var index = block.start; index <= last; index += 1) {
+      lanes += slots[index].extent;
+      slots[index] = (
+        extent: slots[index].extent,
+        room: 0,
+        joinsNext: index < last,
+      );
+    }
+    final seat = block.seat;
+    final stands = switch (rows[block.start].folded) {
+      true => 0.0,
+      false when seat.graph.enlarged && most.isFinite => most,
+      false => math.min(seat.graph.extentAt(rowExtent), most),
+    };
+    slots[last] = (
+      extent: slots[last].extent,
+      room: math.max(0.0, stands - lanes),
+      joinsNext: false,
+    );
+  }
+  return TimelineRowEdges(slots, graphMost: most);
+}
+
+/// How many rows from [anchor] a pointer [crossOffset] from its start
+/// stands over, where [edges] put [rows] ([TimelineRowEdges.rowFrom]) — 0
+/// while [anchor] is not drawn. What every drag that spans rows reads: a
+/// rail row's select, a cells span, a key span.
+///
+/// R9 #25: the gestures hand raw pixels and the grid resolves them where
+/// it paints its rows. ↩️In one row height until a graph (I-89 ③) stood
+/// taller than its lanes.
+int timelineRowDeltaAt(
+  List<TimelineDisplayRow> rows,
+  TimelineRowEdges edges,
+  TimelineRowAddress anchor,
+  double crossOffset,
+) {
+  final at = rows.indexWhere((row) => row.address == anchor);
+  return at < 0 ? 0 : edges.rowFrom(at, crossOffset) - at;
+}
+
+/// Layer-axis extent of one section run — its rows', and the room among
+/// them ([edges] of the rows [run] was cut from).
 double timelineSectionRunExtent(
   TimelineSectionRun run,
-  List<TimelineDisplayRow> rows,
-  TimelineGridMetrics metrics,
-) {
-  var extent = 0.0;
-  for (
-    var index = run.startRowIndex;
-    index < run.startRowIndex + run.rowCount;
-    index += 1
-  ) {
-    extent += timelineDisplayRowExtent(rows[index], metrics);
-  }
-  return extent;
-}
+  TimelineRowEdges edges,
+) =>
+    edges.startOf(run.startRowIndex + run.rowCount) -
+    edges.startOf(run.startRowIndex);

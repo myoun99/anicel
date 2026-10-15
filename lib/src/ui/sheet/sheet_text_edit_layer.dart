@@ -81,8 +81,37 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
 
   @override
   void dispose() {
+    _landOnTheWayOut();
     _disposeEditor();
     super.dispose();
+  }
+
+  /// What the open field holds lands when the layer goes, as a tap away
+  /// lands it ([_commit]) — its panel put away is the common way to go: a
+  /// panel is built only while it shows (유저 2026-10-14), and ↩️unmounting
+  /// dropped the words typed so far. After the frame: dispose runs while the
+  /// tree is locked, and a landing is a session edit others rebuild for.
+  void _landOnTheWayOut() {
+    final target = _target;
+    final typed = _typedChange();
+    if (target == null || typed == null) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => target.onCommitted(typed),
+    );
+  }
+
+  /// The open field's words, trimmed, when they are a change to land — not
+  /// cancelled, and not what the target already says; else null.
+  String? _typedChange() {
+    final target = _target;
+    final controller = _controller;
+    if (target == null || controller == null || _cancelled) {
+      return null;
+    }
+    final text = controller.text.trim();
+    return text == target.text.trim() ? null : text;
   }
 
   void _disposeEditor() {
@@ -117,15 +146,13 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
 
   void _commit() {
     final target = _target;
-    final controller = _controller;
-    if (!mounted || target == null || controller == null) {
+    if (!mounted || target == null || _controller == null) {
       return;
     }
-    final text = controller.text.trim();
-    final changed = !_cancelled && text != target.text.trim();
+    final typed = _typedChange();
     setState(() => _target = null);
-    if (changed) {
-      target.onCommitted(text);
+    if (typed != null) {
+      target.onCommitted(typed);
     }
   }
 

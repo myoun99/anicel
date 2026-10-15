@@ -12,6 +12,8 @@
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
@@ -36,7 +38,7 @@ import '../../services/media/project_media_sources.dart'
         projectMediaSources;
 import '../../services/persistence/anicel_file_service.dart';
 import '../../services/persistence/anicel_project_archive.dart'
-    show AnicelSessionFields;
+    show AnicelSessionFields, projectDisplayName;
 import '../../services/persistence/coordinated_project_swap.dart';
 import '../../services/persistence/failed_save_copies.dart';
 import '../../services/persistence/folder_grant.dart'
@@ -48,7 +50,9 @@ import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
 import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
-    show cutPositionOf, projectAudioSourcePaths;
+    show cutPositionOf, projectAudioSourcePaths, projectLayerIdValues;
+import '../timeline/lane_graph.dart' show LaneGraphsView;
+import '../timeline/property_lane_model.dart' show parseLaneGroupKey;
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
@@ -131,10 +135,12 @@ class ProjectFileDoor {
     required PlaybackRig playback,
     required TimelineZoomMemory timelineZoom,
     required PanelViewMemory panelViews,
+    required ValueNotifier<LaneGraphsView> laneGraphs,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
        _panelViews = panelViews,
+       _laneGraphs = laneGraphs,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -165,6 +171,10 @@ class ProjectFileDoor {
   /// Whose conte zoom and panel scrolls a save keeps and an open puts back
   /// ([ProjectResume.storyboardZoom], [ProjectResume.frameAxisOffsets]).
   final PanelViewMemory _panelViews;
+
+  /// Whose header graphs and pinned lanes a save keeps and an open puts
+  /// back ([ProjectResume.laneGraphs]) — the rail's (`RailView.laneGraphs`).
+  final ValueNotifier<LaneGraphsView> _laneGraphs;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -486,7 +496,10 @@ class ProjectFileDoor {
     void Function(double)? onProgress,
   }) async {
     final asOf = _file.editCount;
-    await _saveArchive(copy, _carryFor(onProgress: onProgress));
+    await _saveArchive(
+      copy,
+      _carryFor(projectPath, onProgress: onProgress),
+    );
     _file.keptInFailedCopy(copy, asOf: asOf);
     _failedCopies.record(copy, projectPath);
   }
@@ -549,7 +562,7 @@ class ProjectFileDoor {
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
     final carry = await _keepWhatItLeavesBehind(
-      _carryFor(onProgress: onProgress),
+      _carryFor(path, onProgress: onProgress),
     );
     celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
@@ -701,10 +714,23 @@ class ProjectFileDoor {
   ///
   /// ⚠️Call it AFTER `_settleWorkInFlight`: what is still in flight is not
   /// in the project yet.
-  _SaveCarry _carryFor({void Function(double)? onProgress}) {
-    final project = _solo.projectAsSavedWithoutSolo(
+  ///
+  /// The project goes in named as [namedAfter] — the file it is the
+  /// project of (유저 10-09: 「애초에 프로젝트이름=파일이름아닌가? 애니셀이든
+  /// 뭐든」): the name it holds is its file's from the write on, and the
+  /// session takes the same once bound ([ProjectFile.bindToSavedFile]).
+  /// ↩️Named only by the binding, after the write, the file held the name
+  /// it was saved FROM — and a Save As back onto the first file rewrote it
+  /// with another name, moving every entry behind it.
+  _SaveCarry _carryFor(
+    String namedAfter, {
+    void Function(double)? onProgress,
+  }) {
+    final saved = _solo.projectAsSavedWithoutSolo(
       _project.repository.requireProject(),
     );
+    final name = projectDisplayName(namedAfter);
+    final project = saved.name == name ? saved : saved.copyWith(name: name);
     return (
       project: project,
       // What the readers hold is stored too, whatever the pool names now
@@ -872,11 +898,13 @@ class ProjectFileDoor {
       PanelViewMemory.defaultStoryboardPixelsPerFrame => null,
       final zoom => zoom,
     },
-    frameAxisOffsets: {
-      for (final MapEntry(key: rail, value: offset)
-          in _panelViews.frameAxisOffsets.entries)
-        if (offset.value > 0) rail: offset.value,
-    },
+    frameAxisOffsets: PanelViewMemory.awayFromTheStart(
+      _panelViews.frameAxisOffsets,
+    ),
+    layerAxisOffsets: PanelViewMemory.awayFromTheStart(
+      _panelViews.layerAxisOffsets,
+    ),
+    laneGraphs: _laneGraphs.value,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -902,7 +930,7 @@ class ProjectFileDoor {
     // capture stayed, for the reason further down.
     final previousPath = _file.path;
     final carry = await _keepWhatItLeavesBehind(
-      _carryFor(onProgress: onProgress),
+      _carryFor(filePath, onProgress: onProgress),
     );
     final mediaToStore = carry.mediaToStore;
     // 🚨A Save As is「writing somewhere else」and nothing more subtle: the
@@ -1139,15 +1167,39 @@ class ProjectFileDoor {
       }
     }
     // The conte at the zoom it was left at, and each panel scrolled where it
-    // was — set before any panel is built, so each is born there (F-267).
+    // was along both axes — set before any panel is built, so each is born
+    // there (F-267).
     if (resume.storyboardZoom case final zoom?) {
       _panelViews.storyboardPixelsPerFrame.value = zoom;
     }
-    for (final MapEntry(key: rail, value: offset)
-        in resume.frameAxisOffsets.entries) {
-      _panelViews.frameAxisOffsets[rail]?.value = offset;
-    }
+    PanelViewMemory.standAt(
+      _panelViews.frameAxisOffsets,
+      resume.frameAxisOffsets,
+    );
+    PanelViewMemory.standAt(
+      _panelViews.layerAxisOffsets,
+      resume.layerAxisOffsets,
+    );
+    // The header graphs and their pins as they stood (F-360-Q1) — each on a
+    // row the project still has: a new row's id is minted afresh every
+    // session, skipping only the ids in use, so a graph kept for a row
+    // deleted since would open on the next row minted with its id.
+    _laneGraphs.value = _graphsOnRowsOf(project, resume.laneGraphs);
   }
+}
+
+/// [graphs] less every graph and pin of a row [project] does not hold.
+LaneGraphsView _graphsOnRowsOf(Project project, LaneGraphsView graphs) {
+  final rows = projectLayerIdValues(project);
+  bool onARow(String key) =>
+      rows.contains(parseLaneGroupKey(key)?.layerId.value);
+  return LaneGraphsView(
+    open: {
+      for (final MapEntry(:key, :value) in graphs.open.entries)
+        if (onARow(key)) key: value,
+    },
+    pinned: graphs.pinned.where(onARow).toSet(),
+  );
 }
 
 /// A .anicel as READ — everything an open needs from the file, before any

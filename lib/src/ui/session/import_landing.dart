@@ -21,7 +21,6 @@ import '../../models/se_take_placement.dart';
 import '../../models/timeline_coverage.dart' show drawingBlocks;
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
-import '../../models/track_se_window.dart';
 import '../../services/commands/import_media_command.dart';
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
@@ -425,9 +424,10 @@ class ImportLanding {
     return true;
   }
 
-  /// A SOUND onto the track's SE rows: from the active cut's start, the
-  /// first row with room for it ([firstSeRowFreeFor]) or a new row after the
-  /// last — or, let go on an SE row's empty cell ([SeCellSpot]), that row
+  /// A SOUND onto the track's SE rows: from the active cut's first frame —
+  /// its OWN, where its first column plays — the first row with room for it
+  /// ([firstSeRowFreeFor]) or a new row after the last — or, let go on an SE
+  /// row's empty cell ([SeCellSpot]), that row
   /// from that cell. Its block is tagged 「SE」 and carries the file's name
   /// as its dialogue (유저 2026-09-11: 「블록의 이름을 SE(SE 고정 …), 대사를
   /// 파일 이름(확장자포함)으로」).
@@ -475,19 +475,15 @@ class ImportLanding {
       if (cut == null) {
         return false;
       }
-      // The ONE converter between the cut's frames and the track's.
-      final window = TrackSeWindow(
-        cutStartFrame: _project.activeCutGlobalStartFrame,
-        cutDurationFrames: cut.duration,
-      );
       // A movie's sound starts where its picture starts (「같은 시작 · 같은
       // 구간」): the cell a picture row's frames were dropped on, the cut's
-      // first frame wherever a new row came in.
+      // first frame wherever a new row came in — a frame of the cut's own,
+      // through the session's one lens onto the track.
       final pictureStart = switch (arrival.spot) {
         RowFramesSpot(:final frameIndex) => frameIndex,
         _ => 0,
       };
-      start = window.toGlobalFrame(pictureStart);
+      start = _project.activeCutMediaStartFrame + pictureStart;
       free = firstSeRowFreeFor(
         track.seLayers,
         startFrame: start,

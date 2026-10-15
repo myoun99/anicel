@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../services/command.dart';
+import '../canvas/text/cel_text_session.dart' show CelTextShown;
 import '../canvas/text/cel_text_tool.dart';
 
 /// THE TEXT TOOL'S CHANNEL (R9-rest): how the rest of the app reaches the
@@ -38,8 +39,12 @@ class CelTextCommands extends ChangeNotifier {
     if (identical(_tool, tool)) {
       return;
     }
-    _tool?.removeListener(notifyListeners);
-    _tool = tool..addListener(notifyListeners);
+    _tool
+      ?..removeListener(notifyListeners)
+      ..shownInHand.removeListener(_relayShown);
+    _tool = tool
+      ..addListener(notifyListeners)
+      ..shownInHand.addListener(_relayShown);
     _tellOfTheHand();
   }
 
@@ -49,10 +54,28 @@ class CelTextCommands extends ChangeNotifier {
     if (!identical(_tool, tool)) {
       return;
     }
-    tool.removeListener(notifyListeners);
+    tool
+      ..removeListener(notifyListeners)
+      ..shownInHand.removeListener(_relayShown);
     _tool = null;
     _tellOfTheHand();
   }
+
+  /// What the text in hand shows — the bound hand's
+  /// ([CelTextTool.shownInHand]), and nothing with none bound.
+  ///
+  /// 🚨A CARRY IS TOLD HERE AND NOT ON THIS CHANNEL. The hand tells of no
+  /// sample of a carry (F-344: a carry is no other text) — only that what
+  /// it shows is another. So whoever shows WHERE the text stands hears it
+  /// here: the settings' X and Y, which follow a text carried as the
+  /// transform tool's follow its box (`CanvasSelectionCommands
+  /// .liveTransformValues`; 유저 2026-09-18, F-164: 「변형중에 툴도구의 X,Y값
+  /// 같은거 실시간으로 바뀌게해주고. 무겁지 않을 구조로 패널리빌드하지말고
+  /// 글자만 바꾸게」).
+  ValueListenable<CelTextShown?> get shownInHand => _shownInHand;
+  final ValueNotifier<CelTextShown?> _shownInHand = ValueNotifier(null);
+
+  void _relayShown() => _shownInHand.value = _tool?.shownInHand.value;
 
   bool _tellingOfTheHand = false;
   bool _disposed = false;
@@ -79,6 +102,7 @@ class CelTextCommands extends ChangeNotifier {
     scheduleMicrotask(() {
       _tellingOfTheHand = false;
       if (!_disposed) {
+        _relayShown();
         notifyListeners();
       }
     });
@@ -120,8 +144,11 @@ class CelTextCommands extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _tool?.removeListener(notifyListeners);
+    _tool
+      ?..removeListener(notifyListeners)
+      ..shownInHand.removeListener(_relayShown);
     _tool = null;
+    _shownInHand.dispose();
     super.dispose();
   }
 }

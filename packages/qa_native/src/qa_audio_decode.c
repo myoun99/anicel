@@ -121,37 +121,6 @@
 // last format that used to lean on ffmpeg).
 #define QA_AUDIO_FORMAT_VORBIS 5
 
-// A growing PCM accumulator for the OS decoders: they hand back audio in
-// codec-sized chunks, and none of them says the total up front.
-typedef struct {
-  uint8_t* bytes;
-  size_t size;
-  size_t capacity;
-} qa_pcm_accumulator;
-
-static int qa_pcm_append(qa_pcm_accumulator* accumulator,
-                         const void* data,
-                         size_t size) {
-  if (size == 0) {
-    return 1;
-  }
-  if (accumulator->size + size > accumulator->capacity) {
-    size_t next = accumulator->capacity == 0 ? 65536 : accumulator->capacity;
-    while (next < accumulator->size + size) {
-      next *= 2;
-    }
-    uint8_t* grown = (uint8_t*)realloc(accumulator->bytes, next);
-    if (grown == NULL) {
-      return 0;
-    }
-    accumulator->bytes = grown;
-    accumulator->capacity = next;
-  }
-  memcpy(accumulator->bytes + accumulator->size, data, size);
-  accumulator->size += size;
-  return 1;
-}
-
 // ---------------------------------------------------------------------------
 // 🚨★★★**WHERE THE BYTES ARE — ONE CURSOR, ONE READER, NO SECOND DISPATCH.**
 //
@@ -281,16 +250,370 @@ static void qa_cursor_rewind(qa_audio_cursor* cursor) {
   cursor->position = 0;
 }
 
+/// Whether [head]'s second word is one of the boxes a QuickTime movie can
+/// open with — `ftyp` is the ISO file's first box, and the older movies
+/// start with whatever the editor wrote first.
+///
+/// ⚠️Not the question `qa_apple_container_type` (qa_video_apple.m) answers:
+/// that one is handed a movie and names its kind. Two heads read, two
+/// questions — a third reader is the time to make them one.
+static int qa_audio_head_is_a_movie_box(const uint8_t* head) {
+  static const char boxes[][4] = {
+      {'f', 't', 'y', 'p'}, {'m', 'o', 'o', 'v'}, {'m', 'd', 'a', 't'},
+      {'w', 'i', 'd', 'e'}, {'f', 'r', 'e', 'e'}, {'s', 'k', 'i', 'p'},
+      {'p', 'n', 'o', 't'}};
+  for (size_t index = 0; index < sizeof(boxes) / sizeof(boxes[0]);
+       index += 1) {
+    if (memcmp(head + 4, boxes[index], 4) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/// Whether dr_mp3 may be handed [cursor]'s container, by its first bytes.
+///
+/// dr_mp3 is the one decoder in the chain that says yes to anything, so a
+/// head that names another container keeps it away: dr_wav's own first words
+/// (`RIFF` · `RIFX` · `RF64` · W64's `riff` · AIFF's `FORM`), FLAC's `fLaC`,
+/// ogg's `OggS`, a QuickTime box (MP4 · MOV · M4A · 3GP). Nothing else is
+/// gated: the other three recognize their own containers and refuse the
+/// rest, so the chain already sends each of those heads to its decoder — and
+/// a head nobody knows, an MP3's among them, runs the whole chain as before.
+///
+/// ⛔Not a mask of every bundled decoder per head, the user's table written
+/// out row by row (「ID3 · MPEG sync → MP3」 and the rest). The rows for the
+/// strict three would change nothing but one thing, and break it: dr_flac
+/// skips an ID3 tag itself, so 「ID3 → dr_mp3 only」 takes a tagged FLAC away
+/// from the one decoder that reads it. Every row of the table holds as it is.
+static int qa_audio_mp3_may_try(qa_audio_cursor* cursor) {
+  static const char other_containers[][4] = {
+      {'R', 'I', 'F', 'F'}, {'R', 'I', 'F', 'X'}, {'R', 'F', '6', '4'},
+      {'r', 'i', 'f', 'f'}, {'F', 'O', 'R', 'M'}, {'f', 'L', 'a', 'C'},
+      {'O', 'g', 'g', 'S'}};
+  // A head too short to read, or that would not read, stays zeros: no
+  // container's, so the chain runs as it always did.
+  uint8_t head[8] = {0};
+  qa_media_span_read(cursor->span, 0, head, sizeof(head));
+  for (size_t index = 0;
+       index < sizeof(other_containers) / sizeof(other_containers[0]);
+       index += 1) {
+    if (memcmp(head, other_containers[index], 4) == 0) {
+      return 0;
+    }
+  }
+  return !qa_audio_head_is_a_movie_box(head);
+}
+
 // ---------------------------------------------------------------------------
-// The OS decoder (AAC/m4a and friends). One entry point per platform, all
-// with the same contract as the dr_libs path: interleaved float32 at the
-// file's own rate, malloc-owned (qa_audio_decode_free releases it — every
-// path in this file frees through plain free()).
+// 🚨★★★**WHERE A SOUND STARTS — SAID ONCE, COUNTED IN ONE PLACE** (user
+// 2026-10-09, board sound-lands-on-its-exact-sample-Q3 · Q4).
 //
-// Reached only AFTER dr_libs declined the container, so WAV/FLAC/MP3 keep
-// their byte-pinned single decoder on every platform and only the formats
-// dr_libs cannot read ride the platform's stack.
+// An encoder puts frames of its own before the sound (priming), and a decoder
+// hands them back unless something takes them off: half a frame of animation
+// late at 48 kHz, more for Apple's encoder. What is taken off is decided
+// here, from the file — a movie's edit list, an MP3's LAME tag — and where
+// the format has no place to say it, from the format's standard delay (an
+// MP3 without the tag: 1,105, LAME's own; AAC's: 1,024, one frame). A
+// decoder that already took some off says how much, and only the rest is
+// taken: dr_mp3 by the LAME tag. AudioToolbox, which trims by a packet
+// table of its own, is told to trim nothing where this part reads the
+// start, and says what it took of anything else.
+//
+// A MOVIE THAT SAYS NOTHING — its sound track has no edit list — takes the
+// standard of its sound's format off too (user 2026-10-09, Q6: 「Q3 그대로 —
+// 말하지 않는 MP4 · MOV 도 1,024 를 걷는다」), unless Media Foundation wrote
+// it (Q7: 「윈도 기록기의 표지가 있으면 걷지 않는다」): its sink writer puts
+// no edit list in and its sound is already in place — this app's own
+// exports, 48 kHz and 44.1 kHz, and the test movie, measured 2026-10-09 —
+// and it marks every movie it writes ([qa_media_foundation_mark]). The mark
+// is the writer's own name for itself, not a guess from the sound.
+
+/// Where a decoded sound starts and how long it runs, in frames of what the
+/// decoder handed back.
+typedef struct {
+  /// Frames before the sound: what the file says, or its format's standard.
+  int64_t lead;
+  /// Of [lead], the frames the decoder already took off itself.
+  int64_t taken;
+  /// Frames of sound after the lead, or -1: everything that came.
+  int64_t keep;
+} qa_audio_start;
+
+/// The standard delays, for a file that does not say its own. An MP3's is
+/// LAME's: 576 encoder frames and the decoder's 529 — the sum dr_mp3 reads
+/// out of a LAME tag (`+ 528 + 1`). AAC's is one frame — a bare ADTS
+/// stream's, and a movie's that says nothing.
+#define QA_MP3_STANDARD_LEAD 1105
+#define QA_AAC_STANDARD_LEAD 1024
+
+static uint64_t qa_big_endian(const uint8_t* bytes, int count) {
+  uint64_t value = 0;
+  for (int index = 0; index < count; index += 1) {
+    value = (value << 8) | bytes[index];
+  }
+  return value;
+}
+
+/// A box of an ISO or QuickTime file: its type, where its body starts and
+/// one past its end.
+typedef struct {
+  char type[4];
+  int64_t body;
+  int64_t end;
+} qa_box;
+
+/// The box at [at], when a whole one fits before [end].
+///
+/// ⛔A size of 0 — 「to the end of the file」, which the format allows the
+/// last box — is no box here: Media Foundation refuses a movie whose movie
+/// box says it (measured 2026-10-09), so a reading of it would be a branch
+/// nothing here can ask, and such a movie keeps what the decoder gave.
+static int qa_box_at(qa_media_span* span, int64_t at, int64_t end,
+                     qa_box* box) {
+  uint8_t head[16];
+  if (end - at < 8 || qa_media_span_read(span, at, head, 8) != 8) {
+    return 0;
+  }
+  uint64_t size = qa_big_endian(head, 4);
+  int64_t header = 8;
+  if (size == 1) {
+    // A 64-bit size follows the type.
+    if (end - at < 16 || qa_media_span_read(span, at + 8, head + 8, 8) != 8) {
+      return 0;
+    }
+    size = qa_big_endian(head + 8, 8);
+    header = 16;
+  }
+  if (size < (uint64_t)header || size > (uint64_t)(end - at)) {
+    return 0;
+  }
+  memcpy(box->type, head + 4, 4);
+  box->body = at + header;
+  box->end = at + (int64_t)size;
+  return 1;
+}
+
+/// The first box of [type] directly inside [start, end).
+static int qa_box_find(qa_media_span* span, int64_t start, int64_t end,
+                       const char* type, qa_box* found) {
+  qa_box box;
+  for (int64_t at = start; qa_box_at(span, at, end, &box); at = box.end) {
+    if (memcmp(box.type, type, 4) == 0) {
+      *found = box;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/// A movie header's (`mvhd`) or a media header's (`mdhd`) time scale — at
+/// the same place in both: after the dates, which version 1 makes 64-bit.
+static uint32_t qa_box_time_scale(qa_media_span* span, const qa_box* header) {
+  uint8_t bytes[24];
+  if (header->end - header->body < 24 ||
+      qa_media_span_read(span, header->body, bytes, 24) != 24) {
+    return 0;
+  }
+  const int at = bytes[0] == 1 ? 20 : 12;
+  return (uint32_t)qa_big_endian(bytes + at, 4);
+}
+
+/// [value] ticks at [scale] as frames at [rate], to the nearest frame.
+static int64_t qa_ticks_to_frames(int64_t value, uint32_t scale,
+                                  int32_t rate) {
+  return (int64_t)(((double)value * rate) / scale + 0.5);
+}
+
+/// A movie's first sound track — the one that answers, whatever it says:
+/// its `trak` and `mdia` boxes, and the movie header's time scale.
+typedef struct {
+  qa_box trak;
+  qa_box mdia;
+  uint32_t movie_scale;
+} qa_movie_sound;
+
+/// [size] bytes of movie's first sound track, into [sound] — 0 when it has
+/// none.
+static int qa_movie_first_sound(qa_media_span* span, int64_t size,
+                                qa_movie_sound* sound) {
+  qa_box moov;
+  qa_box mvhd;
+  if (!qa_box_find(span, 0, size, "moov", &moov) ||
+      !qa_box_find(span, moov.body, moov.end, "mvhd", &mvhd)) {
+    return 0;
+  }
+  qa_box trak;
+  for (int64_t at = moov.body; qa_box_at(span, at, moov.end, &trak);
+       at = trak.end) {
+    qa_box mdia;
+    qa_box hdlr;
+    uint8_t handler[12];
+    if (memcmp(trak.type, "trak", 4) == 0 &&
+        qa_box_find(span, trak.body, trak.end, "mdia", &mdia) &&
+        qa_box_find(span, mdia.body, mdia.end, "hdlr", &hdlr) &&
+        qa_media_span_read(span, hdlr.body, handler, 12) == 12 &&
+        memcmp(handler + 8, "soun", 4) == 0) {
+      sound->trak = trak;
+      sound->mdia = mdia;
+      sound->movie_scale = qa_box_time_scale(span, &mvhd);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/// What [sound]'s edit list says, at [rate] — [start]'s lead and keep — or
+/// 0 when it has none.
+///
+/// The edit that says it is the first that plays media: a leading empty edit
+/// (media time -1) holds the track back on the movie's timeline, which is
+/// where the sound is PLACED, not where it starts — ⚠️not read here.
+static int qa_movie_sound_edit(qa_media_span* span,
+                               const qa_movie_sound* sound, int32_t rate,
+                               qa_audio_start* start) {
+  qa_box mdhd;
+  qa_box edts;
+  qa_box elst;
+  if (!qa_box_find(span, sound->mdia.body, sound->mdia.end, "mdhd", &mdhd) ||
+      !qa_box_find(span, sound->trak.body, sound->trak.end, "edts", &edts) ||
+      !qa_box_find(span, edts.body, edts.end, "elst", &elst)) {
+    return 0;
+  }
+  const uint32_t media_scale = qa_box_time_scale(span, &mdhd);
+  uint8_t list[8];
+  if (sound->movie_scale == 0 || media_scale == 0 ||
+      qa_media_span_read(span, elst.body, list, 8) != 8) {
+    return 0;
+  }
+  const int wide = list[0] == 1;
+  const int64_t entry_bytes = wide ? 20 : 12;
+  const uint32_t entries = (uint32_t)qa_big_endian(list + 4, 4);
+  for (uint32_t index = 0; index < entries; index += 1) {
+    const int64_t at_entry = elst.body + 8 + (int64_t)index * entry_bytes;
+    uint8_t entry[20];
+    if (at_entry + entry_bytes > elst.end ||
+        qa_media_span_read(span, at_entry, entry, entry_bytes) !=
+            entry_bytes) {
+      return 0;
+    }
+    const int64_t duration = (int64_t)qa_big_endian(entry, wide ? 8 : 4);
+    const int64_t media_time =
+        wide ? (int64_t)qa_big_endian(entry + 8, 8)
+             : (int64_t)(int32_t)qa_big_endian(entry + 4, 4);
+    if (media_time < 0) {
+      continue;
+    }
+    start->lead = qa_ticks_to_frames(media_time, media_scale, rate);
+    start->keep = duration > 0
+                      ? qa_ticks_to_frames(duration, sound->movie_scale, rate)
+                      : -1;
+    return 1;
+  }
+  return 0;
+}
+
+/// Whether [sound] is MPEG-4 audio — its first sample description `mp4a`:
+/// AAC, in every movie an animator hands this app (an MP3 carried that way
+/// says so only deeper, in its decoder config, and is not looked for).
+static int qa_movie_sound_is_aac(qa_media_span* span,
+                                 const qa_movie_sound* sound) {
+  qa_box minf;
+  qa_box stbl;
+  qa_box stsd;
+  uint8_t head[16];
+  // After the sample description box's version, flags and count: the first
+  // entry's size and its format.
+  return qa_box_find(span, sound->mdia.body, sound->mdia.end, "minf",
+                     &minf) &&
+         qa_box_find(span, minf.body, minf.end, "stbl", &stbl) &&
+         qa_box_find(span, stbl.body, stbl.end, "stsd", &stsd) &&
+         stsd.end - stsd.body >= 16 &&
+         qa_media_span_read(span, stsd.body, head, 16) == 16 &&
+         memcmp(head + 12, "mp4a", 4) == 0;
+}
+
+/// The mark Media Foundation's sink writer leaves on every movie it writes:
+/// a `uuid` box of the file's top level — straight after its `ftyp` on every
+/// one measured — always this user type, the Windows version after it
+/// (`10.0.26200.0` on the measured ones). Measured 2026-10-09 on this app's
+/// exports and on the test movie; ffmpeg's movies carry none.
+static const uint8_t qa_media_foundation_mark[16] = {
+    0x5C, 0xA7, 0x08, 0xFB, 0x32, 0x8E, 0x42, 0x05,
+    0xA8, 0x61, 0x65, 0x0E, 0xCA, 0x0A, 0x95, 0x96};
+
+/// Whether Media Foundation wrote the [size] bytes of movie — by its mark.
+static int qa_movie_written_by_media_foundation(qa_media_span* span,
+                                                int64_t size) {
+  qa_box box;
+  for (int64_t at = 0; qa_box_at(span, at, size, &box); at = box.end) {
+    uint8_t type[16];
+    if (memcmp(box.type, "uuid", 4) == 0 && box.end - box.body >= 16 &&
+        qa_media_span_read(span, box.body, type, 16) == 16 &&
+        memcmp(type, qa_media_foundation_mark, 16) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/// Whether [cursor]'s container is a bare ADTS stream — AAC with no box to
+/// say anything in — by its first frame header, behind an ID3 tag or not.
+static int qa_audio_is_adts(const qa_audio_cursor* cursor) {
+  uint8_t head[10] = {0};
+  qa_media_span_read(cursor->span, 0, head, sizeof(head));
+  int64_t at = 0;
+  if (memcmp(head, "ID3", 3) == 0) {
+    // The tag's size is four 7-bit bytes, a footer ten more.
+    at = 10 + (int64_t)(((head[6] & 0x7F) << 21) | ((head[7] & 0x7F) << 14) |
+                        ((head[8] & 0x7F) << 7) | (head[9] & 0x7F)) +
+         ((head[5] & 0x10) ? 10 : 0);
+    memset(head, 0, sizeof(head));
+    qa_media_span_read(cursor->span, at, head, 2);
+  }
+  // Twelve sync bits, then layer 00: an MPEG audio frame's layer is never 00.
+  return head[0] == 0xFF && (head[1] & 0xF6) == 0xF0;
+}
+
+/// What the file says about a sound the OS stack decoded — the decoders that
+/// know their own file (dr_mp3) said it as they read.
+static void qa_audio_os_start(const qa_audio_cursor* cursor, int32_t rate,
+                              qa_audio_start* start) {
+  uint8_t head[8] = {0};
+  qa_media_span_read(cursor->span, 0, head, sizeof(head));
+  qa_movie_sound sound;
+  if (qa_audio_head_is_a_movie_box(head)) {
+    // A movie that says nothing takes its format's standard, unless Media
+    // Foundation wrote it (the law at the head of this part).
+    if (qa_movie_first_sound(cursor->span, cursor->size, &sound) &&
+        !qa_movie_sound_edit(cursor->span, &sound, rate, start) &&
+        !qa_movie_written_by_media_foundation(cursor->span, cursor->size) &&
+        qa_movie_sound_is_aac(cursor->span, &sound)) {
+      start->lead = QA_AAC_STANDARD_LEAD;
+    }
+  } else if (qa_audio_is_adts(cursor)) {
+    start->lead = QA_AAC_STANDARD_LEAD;
+  }
+}
+
 // ---------------------------------------------------------------------------
+// 🚨★★★**A SOUND IS READ AS A STREAM — EVERY DECODER THROUGH ONE DOOR** (user
+// 2026-10-10, board long-sound-conform-memory-Q1: 「지금 한다 — 전 플랫폼」).
+//
+// A decoder is opened once and read on: each hands back a block at a time,
+// and the stream counts the lead off the front and stops at the sound's end
+// ([qa_audio_stream_pass]) — the one place either is counted, whatever
+// decoded the container. A conform is made from it a piece at a time, so a
+// long sound is never held whole on its way in: 25 minutes of 44.1 kHz
+// stereo used to be about 1.1 GB in the worker at once, an hour about 2.6 GB.
+//
+// A WINDOW is the same stream, passed over up to the window and read through
+// it (user 2026-10-09, board sound-lands-on-its-exact-sample-Q5: a piece cut
+// from a long reel holds the piece, not the reel — 24 minutes of 48 kHz
+// stereo is 553 MB of floats, two hours 2.76 GB). It still decodes from the
+// start, so a piece's samples are exactly the ones a whole decode has there,
+// with no seek to land differently on each platform; only the window's frames
+// are held, and the decoder stops once past it.
 
 #if defined(_WIN32)
 
@@ -299,6 +622,381 @@ static void qa_cursor_rewind(qa_audio_cursor* cursor) {
 // thing this must not become: it is 200 lines of hand-written COM, and two
 // of those drift.
 #include "qa_win_range_stream.h"
+
+typedef struct {
+  int co_balanced;
+  int mf_started;
+  IMFByteStream* byte_stream;
+  IMFSourceReader* reader;
+  /// The reader said the stream ended, with the block handed back last.
+  int ended;
+} qa_os_decoder;
+
+#elif defined(__APPLE__)
+
+typedef struct {
+  AudioFileID file;
+  ExtAudioFileRef ext;
+} qa_os_decoder;
+
+#elif defined(__ANDROID__)
+
+// The NDK media API is the library's ONE table (qa_ndk_media.h). This file
+// resolved its own until 2026-09-24, and its custom-source read callback took
+// the offset as `off_t` where the NDK passes `off64_t` — on a 32-bit ARM
+// device the offset was read out of the wrong registers.
+#include "qa_ndk_media.h"
+
+typedef struct {
+  const qa_ndk_media_api* ndk;
+  AMediaExtractor* extractor;
+  qa_ndk_served_span* served;
+  AMediaCodec* codec;
+  AMediaFormat* track_format;
+  int descriptor;
+  int started;
+  /// What the codec last said it hands back.
+  int32_t channels;
+  int32_t sample_rate;
+  int32_t pcm_encoding;
+  int input_done;
+  int output_done;
+} qa_os_decoder;
+
+#else
+
+typedef struct {
+  int unused;
+} qa_os_decoder;
+
+#endif
+
+typedef struct {
+  stb_vorbis* vorbis;
+  FILE* section;
+  uint8_t* assembled;
+} qa_vorbis_decoder;
+
+typedef struct qa_audio_stream qa_audio_stream;
+
+/// One decoder behind a stream.
+typedef struct {
+  /// The next block of what the decoder hands back, into the stream's block
+  /// ([qa_audio_stream_block]): how many frames — 0 at the end, -1 where the
+  /// decoder failed.
+  int64_t (*next)(qa_audio_stream* stream);
+  /// Lets the decoder go.
+  void (*close)(qa_audio_stream* stream);
+} qa_audio_backend;
+
+struct qa_audio_stream {
+  qa_media_span* span;
+  /// The container, for the decoders that read through it. ⚠️They are handed
+  /// its address, so a stream never moves.
+  qa_audio_cursor cursor;
+  /// The stream's own copy of the path the cursor names.
+  char* path;
+  int32_t format;
+  int32_t channels;
+  int32_t sample_rate;
+  const qa_audio_backend* backend;
+  union {
+    drwav wav;
+    drflac* flac;
+    drmp3 mp3;
+    qa_vorbis_decoder vorbis;
+    qa_os_decoder os;
+  } decoder;
+  /// The block the decoder handed back last, and how far into it the stream
+  /// has read.
+  float* block;
+  size_t block_capacity;
+  int64_t block_frames;
+  int64_t block_at;
+  /// Frames still to pass before the sound: what the file says came first.
+  int64_t lead;
+  /// Frames of the sound still to come, or -1: all the decoder hands back.
+  int64_t left;
+};
+
+/// Room for [frames] frames in [stream]'s block, or NULL when the memory ran
+/// out.
+static float* qa_audio_stream_block(qa_audio_stream* stream, int64_t frames) {
+  const size_t wanted = (size_t)frames * (size_t)stream->channels;
+  if (wanted > stream->block_capacity) {
+    float* grown = (float*)realloc(stream->block, wanted * sizeof(float));
+    if (grown == NULL) {
+      return NULL;
+    }
+    stream->block = grown;
+    stream->block_capacity = wanted;
+  }
+  return stream->block;
+}
+
+/// Moves [stream] on through up to [frames] frames of its sound — into [out],
+/// or over them when [out] is NULL — and answers how many: short only at the
+/// sound's end, -1 where the decoder failed.
+static int64_t qa_audio_stream_pass(qa_audio_stream* stream, float* out,
+                                    int64_t frames) {
+  const size_t channels = (size_t)stream->channels;
+  int64_t passed = 0;
+  while (passed < frames && stream->left != 0) {
+    if (stream->block_at == stream->block_frames) {
+      const int64_t got = stream->backend->next(stream);
+      if (got < 0) {
+        return -1;
+      }
+      if (got == 0) {
+        stream->left = 0;
+        break;
+      }
+      stream->block_frames = got;
+      stream->block_at = 0;
+    }
+    int64_t take = stream->block_frames - stream->block_at;
+    if (stream->lead > 0) {
+      const int64_t drop = take < stream->lead ? take : stream->lead;
+      stream->block_at += drop;
+      stream->lead -= drop;
+      continue;
+    }
+    if (take > frames - passed) {
+      take = frames - passed;
+    }
+    if (stream->left > 0 && take > stream->left) {
+      take = stream->left;
+    }
+    if (out != NULL) {
+      memcpy(out + (size_t)passed * channels,
+             stream->block + (size_t)stream->block_at * channels,
+             (size_t)take * channels * sizeof(float));
+    }
+    stream->block_at += take;
+    passed += take;
+    if (stream->left > 0) {
+      stream->left -= take;
+    }
+  }
+  return passed;
+}
+
+/// Opens [stream]'s container with one decoder: 1 when it opened — the stream
+/// then holds it, with its format, channels and rate — and fills what it knows
+/// of where the sound starts into [start].
+typedef int (*qa_audio_opener)(qa_audio_stream* stream, qa_audio_start* start);
+
+// ---------------------------------------------------------------------------
+// The bundled decoders — dr_libs and stb_vorbis — on every platform.
+
+/// Frames the bundled decoders are asked for at a time.
+#define QA_BUNDLED_BLOCK_FRAMES 4096
+
+static int64_t qa_wav_next(qa_audio_stream* stream) {
+  float* block = qa_audio_stream_block(stream, QA_BUNDLED_BLOCK_FRAMES);
+  return block == NULL ? -1
+                       : (int64_t)drwav_read_pcm_frames_f32(
+                             &stream->decoder.wav, QA_BUNDLED_BLOCK_FRAMES,
+                             block);
+}
+
+static void qa_wav_close(qa_audio_stream* stream) {
+  drwav_uninit(&stream->decoder.wav);
+}
+
+static const qa_audio_backend qa_wav_backend = {qa_wav_next, qa_wav_close};
+
+static int qa_wav_open(qa_audio_stream* stream, qa_audio_start* start) {
+  (void)start;
+  drwav* wav = &stream->decoder.wav;
+  if (!drwav_init(wav, qa_dr_read, qa_wav_seek, qa_wav_tell, &stream->cursor,
+                  NULL)) {
+    return 0;
+  }
+  if (wav->channels == 0) {
+    drwav_uninit(wav);
+    return 0;
+  }
+  stream->backend = &qa_wav_backend;
+  stream->format = QA_AUDIO_FORMAT_WAV;
+  stream->channels = (int32_t)wav->channels;
+  stream->sample_rate = (int32_t)wav->sampleRate;
+  return 1;
+}
+
+static int64_t qa_flac_next(qa_audio_stream* stream) {
+  float* block = qa_audio_stream_block(stream, QA_BUNDLED_BLOCK_FRAMES);
+  return block == NULL ? -1
+                       : (int64_t)drflac_read_pcm_frames_f32(
+                             stream->decoder.flac, QA_BUNDLED_BLOCK_FRAMES,
+                             block);
+}
+
+static void qa_flac_close(qa_audio_stream* stream) {
+  drflac_close(stream->decoder.flac);
+}
+
+static const qa_audio_backend qa_flac_backend = {qa_flac_next, qa_flac_close};
+
+static int qa_flac_open(qa_audio_stream* stream, qa_audio_start* start) {
+  (void)start;
+  drflac* flac =
+      drflac_open(qa_dr_read, qa_flac_seek, qa_flac_tell, &stream->cursor,
+                  NULL);
+  if (flac == NULL) {
+    return 0;
+  }
+  if (flac->channels == 0) {
+    drflac_close(flac);
+    return 0;
+  }
+  stream->decoder.flac = flac;
+  stream->backend = &qa_flac_backend;
+  stream->format = QA_AUDIO_FORMAT_FLAC;
+  stream->channels = (int32_t)flac->channels;
+  stream->sample_rate = (int32_t)flac->sampleRate;
+  return 1;
+}
+
+static int64_t qa_vorbis_next(qa_audio_stream* stream) {
+  float* block = qa_audio_stream_block(stream, QA_BUNDLED_BLOCK_FRAMES);
+  if (block == NULL) {
+    return -1;
+  }
+  const int got = stb_vorbis_get_samples_float_interleaved(
+      stream->decoder.vorbis.vorbis, stream->channels, block,
+      QA_BUNDLED_BLOCK_FRAMES * stream->channels);
+  return got > 0 ? (int64_t)got : 0;
+}
+
+static void qa_vorbis_close(qa_audio_stream* stream) {
+  qa_vorbis_decoder* decoder = &stream->decoder.vorbis;
+  if (decoder->vorbis != NULL) {
+    stb_vorbis_close(decoder->vorbis);
+  }
+  if (decoder->section != NULL) {
+    fclose(decoder->section);
+  }
+  free(decoder->assembled);
+  memset(decoder, 0, sizeof(*decoder));
+}
+
+static const qa_audio_backend qa_vorbis_backend = {qa_vorbis_next,
+                                                   qa_vorbis_close};
+
+/// stb_vorbis over [stream]'s container.
+///
+/// ⚠️The one decoder with no callback form — memory or a `FILE*` — so the
+/// span is handed over two ways. A PLAIN span is a FILE section: a position
+/// plus a length, a range exactly. A FRAMED span has no FILE that holds the
+/// container, so an ogg in one is assembled in memory — but only once its
+/// first four bytes say it IS one (`OggS`, which stb_vorbis requires anyway):
+/// asking every framed container in full would read a whole movie to learn
+/// it is not an ogg. A carried ogg is nearly never framed at all — it is
+/// already compressed, and a save frames only what shrinks.
+static int qa_vorbis_open(qa_audio_stream* stream, qa_audio_start* start) {
+  (void)start;
+  const qa_audio_cursor* cursor = &stream->cursor;
+  qa_vorbis_decoder* decoder = &stream->decoder.vorbis;
+  memset(decoder, 0, sizeof(*decoder));
+  if (cursor->size > 0x7FFFFFFF) {
+    return 0;
+  }
+  int vorbis_error = 0;
+  if (!cursor->framed) {
+    // ⚠️The 2GB guard is stb's, not ours: it remembers where a section
+    // started with `ftell`, whose `long` is 32 bits on Windows. Past that it
+    // would read from the wrong place rather than fail, so the attempt is
+    // skipped instead — an ogg carried past the 2GB mark of a project file
+    // decodes as「not an ogg」, and no other format is affected.
+    if (cursor->base <= 0x7FFFFFFF) {
+      decoder->section = qa_open_path_read(cursor->path);
+      if (decoder->section != NULL &&
+          qa_seek_absolute(decoder->section, cursor->base)) {
+        decoder->vorbis = stb_vorbis_open_file_section(
+            decoder->section, 0, &vorbis_error, NULL, (unsigned)cursor->size);
+      }
+    }
+  } else {
+    uint8_t magic[4];
+    if (qa_media_span_read(cursor->span, 0, magic, 4) == 4 &&
+        memcmp(magic, "OggS", 4) == 0) {
+      decoder->assembled = (uint8_t*)malloc((size_t)cursor->size);
+      if (decoder->assembled != NULL &&
+          qa_media_span_read(cursor->span, 0, decoder->assembled,
+                             cursor->size) == cursor->size) {
+        decoder->vorbis = stb_vorbis_open_memory(
+            decoder->assembled, (int)cursor->size, &vorbis_error, NULL);
+      }
+    }
+  }
+  if (decoder->vorbis != NULL) {
+    const stb_vorbis_info info = stb_vorbis_get_info(decoder->vorbis);
+    if (info.channels > 0 && info.sample_rate > 0) {
+      stream->backend = &qa_vorbis_backend;
+      stream->format = QA_AUDIO_FORMAT_VORBIS;
+      stream->channels = info.channels;
+      stream->sample_rate = (int32_t)info.sample_rate;
+      return 1;
+    }
+  }
+  qa_vorbis_close(stream);
+  return 0;
+}
+
+static int64_t qa_mp3_next(qa_audio_stream* stream) {
+  float* block = qa_audio_stream_block(stream, QA_BUNDLED_BLOCK_FRAMES);
+  return block == NULL ? -1
+                       : (int64_t)drmp3_read_pcm_frames_f32(
+                             &stream->decoder.mp3, QA_BUNDLED_BLOCK_FRAMES,
+                             block);
+}
+
+static void qa_mp3_close(qa_audio_stream* stream) {
+  drmp3_uninit(&stream->decoder.mp3);
+}
+
+static const qa_audio_backend qa_mp3_backend = {qa_mp3_next, qa_mp3_close};
+
+static int qa_mp3_open(qa_audio_stream* stream, qa_audio_start* start) {
+  if (!qa_audio_mp3_may_try(&stream->cursor)) {
+    return 0;
+  }
+  drmp3* mp3 = &stream->decoder.mp3;
+  if (!drmp3_init(mp3, qa_dr_read, qa_mp3_seek, qa_mp3_tell, NULL,
+                  &stream->cursor, NULL)) {
+    return 0;
+  }
+  if (mp3->channels == 0) {
+    drmp3_uninit(mp3);
+    return 0;
+  }
+  // dr_mp3 takes the delay a LAME tag says off itself, and that is heard
+  // here as it opens: only a file whose tag said nothing gets the standard
+  // one.
+  const int64_t said = (int64_t)mp3->delayInPCMFrames;
+  start->lead = said > 0 ? said : QA_MP3_STANDARD_LEAD;
+  start->taken = said;
+  stream->backend = &qa_mp3_backend;
+  stream->format = QA_AUDIO_FORMAT_MP3;
+  stream->channels = (int32_t)mp3->channels;
+  stream->sample_rate = (int32_t)mp3->sampleRate;
+  return 1;
+}
+
+// ---------------------------------------------------------------------------
+// The OS decoder (AAC/m4a and friends). One per platform, all with the same
+// contract as the bundled ones: interleaved float32 at the file's own rate,
+// a block at a time.
+//
+// Reached only AFTER the bundled decoders declined the container, so
+// WAV/FLAC/MP3 keep their byte-pinned single decoder on every platform and
+// only the formats dr_libs cannot read ride the platform's stack — the ones
+// dr_mp3 is kept away from by their head among them (a QuickTime movie: see
+// `qa_audio_mp3_may_try`).
+// ---------------------------------------------------------------------------
+
+#if defined(_WIN32)
 
 // Media Foundation source reader over the container's bytes (headers at the
 // top of the file). MF inserts the AAC (or WMA, ...) decoder and its
@@ -309,45 +1007,119 @@ static void qa_cursor_rewind(qa_audio_cursor* cursor) {
 // 🚨MF opens a URL or a byte stream and nothing else, so the container
 // arrives as the stream the video decoder already had — over the same span,
 // plain or framed.
-static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
-                                  float** out_samples,
-                                  int64_t* out_frame_count,
-                                  int32_t* out_channels,
-                                  int32_t* out_sample_rate) {
-  // Per-thread COM, balanced on exit; RPC_E_CHANGED_MODE means the thread
+//
+// It takes nothing off the front: an edit list's 1,024 came back as 1,024
+// frames before the sound (measured 2026-10-09).
+
+/// [sample]'s frames into [stream]'s block: how many — 0 when it holds none
+/// that can be handed over, -1 when the memory ran out.
+static int64_t qa_os_take_sample(qa_audio_stream* stream,
+                                 IMFSample* sample) {
+  IMFMediaBuffer* buffer = NULL;
+  int64_t frames = 0;
+  if (SUCCEEDED(IMFSample_ConvertToContiguousBuffer(sample, &buffer))) {
+    BYTE* bytes = NULL;
+    DWORD length = 0;
+    if (SUCCEEDED(IMFMediaBuffer_Lock(buffer, &bytes, NULL, &length))) {
+      const size_t frame_bytes = sizeof(float) * (size_t)stream->channels;
+      frames = (int64_t)(length / frame_bytes);
+      if (frames > 0) {
+        float* block = qa_audio_stream_block(stream, frames);
+        if (block == NULL) {
+          frames = -1;
+        } else {
+          memcpy(block, bytes, (size_t)frames * frame_bytes);
+        }
+      }
+      IMFMediaBuffer_Unlock(buffer);
+    }
+    IMFMediaBuffer_Release(buffer);
+  }
+  return frames;
+}
+
+static int64_t qa_os_next(qa_audio_stream* stream) {
+  qa_os_decoder* os = &stream->decoder.os;
+  while (!os->ended) {
+    DWORD flags = 0;
+    IMFSample* sample = NULL;
+    if (FAILED(IMFSourceReader_ReadSample(
+            os->reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, NULL,
+            &flags, NULL, &sample))) {
+      return -1;
+    }
+    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+      os->ended = 1;
+    }
+    int64_t frames = 0;
+    if (sample != NULL) {
+      frames = qa_os_take_sample(stream, sample);
+      IMFSample_Release(sample);
+    }
+    if (frames != 0) {
+      return frames;
+    }
+  }
+  return 0;
+}
+
+static void qa_os_close(qa_audio_stream* stream) {
+  qa_os_decoder* os = &stream->decoder.os;
+  if (os->reader != NULL) {
+    IMFSourceReader_Release(os->reader);
+  }
+  if (os->byte_stream != NULL) {
+    IMFByteStream_Release(os->byte_stream);
+  }
+  // MFStartup is process-wide and refcounted; pairing it with MFShutdown per
+  // stream keeps this self-contained (decodes are rare import-time events,
+  // not a hot path).
+  if (os->mf_started) {
+    MFShutdown();
+  }
+  if (os->co_balanced) {
+    CoUninitialize();
+  }
+  memset(os, 0, sizeof(*os));
+}
+
+static const qa_audio_backend qa_os_backend = {qa_os_next, qa_os_close};
+
+/// ⚠️A stream is read and closed on the thread that opened it: COM's
+/// apartment is the thread's, and the balance is struck on close. The conform
+/// opens, reads and closes one inside a single synchronous build.
+static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
+  (void)start;
+  const qa_audio_cursor* src = &stream->cursor;
+  qa_os_decoder* os = &stream->decoder.os;
+  memset(os, 0, sizeof(*os));
+  // Per-thread COM, balanced on close; RPC_E_CHANGED_MODE means the thread
   // already runs an incompatible apartment — proceed without the balance.
-  const HRESULT co = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-  const int co_balanced = SUCCEEDED(co);
-  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
-  int mf_started = 0;
-  IMFByteStream* byte_stream = NULL;
-  IMFSourceReader* reader = NULL;
+  os->co_balanced = SUCCEEDED(CoInitializeEx(NULL, COINIT_MULTITHREADED));
   IMFMediaType* requested = NULL;
   IMFMediaType* actual = NULL;
-  qa_pcm_accumulator pcm = {NULL, 0, 0};
   UINT32 channels = 0;
   UINT32 sample_rate = 0;
+  int opened = 0;
 
-  // MFStartup is process-wide and refcounted; pairing it with MFShutdown
-  // per decode keeps this self-contained (decodes are rare import-time
-  // events, not a hot path).
   if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
     goto done;
   }
-  mf_started = 1;
+  os->mf_started = 1;
 
-  byte_stream = qa_win_range_stream_create(src->path, src->base,
-                                           src->stored_length, src->framed);
-  if (byte_stream == NULL) {
+  os->byte_stream = qa_win_range_stream_create(src->path, src->base,
+                                               src->stored_length, src->framed);
+  if (os->byte_stream == NULL) {
     goto done;
   }
-  if (FAILED(MFCreateSourceReaderFromByteStream(byte_stream, NULL, &reader))) {
+  if (FAILED(MFCreateSourceReaderFromByteStream(os->byte_stream, NULL,
+                                                &os->reader))) {
     goto done;
   }
   if (FAILED(IMFSourceReader_SetStreamSelection(
-          reader, (DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE)) ||
+          os->reader, (DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE)) ||
       FAILED(IMFSourceReader_SetStreamSelection(
-          reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE))) {
+          os->reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, TRUE))) {
     goto done;
   }
   if (FAILED(MFCreateMediaType(&requested)) ||
@@ -358,12 +1130,12 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
     goto done;
   }
   if (FAILED(IMFSourceReader_SetCurrentMediaType(
-          reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL,
+          os->reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, NULL,
           requested))) {
     goto done;
   }
   if (FAILED(IMFSourceReader_GetCurrentMediaType(
-          reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &actual))) {
+          os->reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, &actual))) {
     goto done;
   }
   if (FAILED(IMFMediaType_GetUINT32(actual, &MF_MT_AUDIO_NUM_CHANNELS,
@@ -373,74 +1145,28 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
       channels == 0 || sample_rate == 0) {
     goto done;
   }
-
-  for (;;) {
-    DWORD flags = 0;
-    IMFSample* sample = NULL;
-    if (FAILED(IMFSourceReader_ReadSample(
-            reader, (DWORD)MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, NULL,
-            &flags, NULL, &sample))) {
-      goto done;
-    }
-    if (sample != NULL) {
-      IMFMediaBuffer* buffer = NULL;
-      if (SUCCEEDED(IMFSample_ConvertToContiguousBuffer(sample, &buffer))) {
-        BYTE* bytes = NULL;
-        DWORD length = 0;
-        if (SUCCEEDED(IMFMediaBuffer_Lock(buffer, &bytes, NULL, &length))) {
-          const int appended = qa_pcm_append(&pcm, bytes, length);
-          IMFMediaBuffer_Unlock(buffer);
-          if (!appended) {
-            IMFMediaBuffer_Release(buffer);
-            IMFSample_Release(sample);
-            goto done;
-          }
-        }
-        IMFMediaBuffer_Release(buffer);
-      }
-      IMFSample_Release(sample);
-    }
-    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
-      break;
-    }
-  }
-
-  if (pcm.size >= sizeof(float) * channels) {
-    const int64_t frames = (int64_t)(pcm.size / (sizeof(float) * channels));
-    *out_samples = (float*)pcm.bytes;  // malloc-owned; freed by the caller
-    *out_frame_count = frames;
-    *out_channels = (int32_t)channels;
-    *out_sample_rate = (int32_t)sample_rate;
-    pcm.bytes = NULL;
-    result = QA_AUDIO_FORMAT_OS;
-  }
+  stream->backend = &qa_os_backend;
+  stream->format = QA_AUDIO_FORMAT_OS;
+  stream->channels = (int32_t)channels;
+  stream->sample_rate = (int32_t)sample_rate;
+  opened = 1;
 
 done:
-  free(pcm.bytes);
   if (actual != NULL) {
     IMFMediaType_Release(actual);
   }
   if (requested != NULL) {
     IMFMediaType_Release(requested);
   }
-  if (reader != NULL) {
-    IMFSourceReader_Release(reader);
+  if (!opened) {
+    qa_os_close(stream);
   }
-  if (byte_stream != NULL) {
-    IMFByteStream_Release(byte_stream);
-  }
-  if (mf_started) {
-    MFShutdown();
-  }
-  if (co_balanced) {
-    CoUninitialize();
-  }
-  return result;
+  return opened;
 }
 
 #elif defined(__APPLE__)
 
-// AudioToolbox over memory callbacks (header at the top of the file).
+// AudioToolbox over the cursor's callbacks (header at the top of the file).
 // ExtAudioFile fronts the OS codec (AAC, ALAC, ...) and converts to the
 // client format we ask for: float32 interleaved at the file's own rate
 // and channel count.
@@ -464,35 +1190,87 @@ static SInt64 qa_blob_size(void* user) {
   return (SInt64)((const qa_audio_cursor*)user)->size;
 }
 
-static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
-                                  float** out_samples,
-                                  int64_t* out_frame_count,
-                                  int32_t* out_channels,
-                                  int32_t* out_sample_rate) {
-  // ⚠️A COPY, because the callbacks move the cursor and this function was
-  // handed a read-only view of the caller's.
-  qa_audio_cursor blob = *src;
-  AudioFileID file = NULL;
-  ExtAudioFileRef ext = NULL;
-  qa_pcm_accumulator pcm = {NULL, 0, 0};
-  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
+/// Frames AudioToolbox is asked for at a time.
+#define QA_APPLE_BLOCK_FRAMES 16384
 
-  if (AudioFileOpenWithCallbacks(&blob, qa_blob_read, NULL, qa_blob_size,
-                                 NULL, 0, &file) != noErr) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
+static int64_t qa_os_next(qa_audio_stream* stream) {
+  float* block = qa_audio_stream_block(stream, QA_APPLE_BLOCK_FRAMES);
+  if (block == NULL) {
+    return -1;
   }
-  if (ExtAudioFileWrapAudioFileID(file, false, &ext) != noErr) {
-    AudioFileClose(file);
-    return QA_AUDIO_FORMAT_UNKNOWN;
+  const UInt32 frame_bytes = (UInt32)(sizeof(float) * stream->channels);
+  AudioBufferList list;
+  list.mNumberBuffers = 1;
+  list.mBuffers[0].mNumberChannels = (UInt32)stream->channels;
+  list.mBuffers[0].mDataByteSize = QA_APPLE_BLOCK_FRAMES * frame_bytes;
+  list.mBuffers[0].mData = block;
+  UInt32 frames = QA_APPLE_BLOCK_FRAMES;
+  if (ExtAudioFileRead(stream->decoder.os.ext, &frames, &list) != noErr) {
+    return -1;
+  }
+  return (int64_t)frames;
+}
+
+static void qa_os_close(qa_audio_stream* stream) {
+  qa_os_decoder* os = &stream->decoder.os;
+  if (os->ext != NULL) {
+    ExtAudioFileDispose(os->ext);
+  }
+  if (os->file != NULL) {
+    AudioFileClose(os->file);
+  }
+  memset(os, 0, sizeof(*os));
+}
+
+static const qa_audio_backend qa_os_backend = {qa_os_next, qa_os_close};
+
+/// Whether [qa_audio_os_start] reads where [cursor]'s sound starts — a
+/// movie's, or a bare ADTS stream's. Any other container's start is its
+/// decoder's to say.
+static int qa_audio_start_is_read_here(const qa_audio_cursor* cursor) {
+  uint8_t head[8] = {0};
+  qa_media_span_read(cursor->span, 0, head, sizeof(head));
+  return qa_audio_head_is_a_movie_box(head) || qa_audio_is_adts(cursor);
+}
+
+static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
+  qa_os_decoder* os = &stream->decoder.os;
+  memset(os, 0, sizeof(*os));
+  if (AudioFileOpenWithCallbacks(&stream->cursor, qa_blob_read, NULL,
+                                 qa_blob_size, NULL, 0, &os->file) != noErr) {
+    return 0;
+  }
+  if (ExtAudioFileWrapAudioFileID(os->file, false, &os->ext) != noErr) {
+    qa_os_close(stream);
+    return 0;
+  }
+
+  // 🚨AudioToolbox trims a file's priming off ITSELF, by a packet table it
+  // keeps — for a movie that says nothing, Apple's own assumption, 2,112
+  // (the macOS CI runner, 2026-10-15: the m4a without its edit list began
+  // on its sine's 1,088th frame, and the movie Media Foundation wrote, 22
+  // packets, came back 22 × 1,024 − 2,112 with its mark or without). This
+  // app's law there is its format's standard, or nothing (Q6 · Q7), so where
+  // this file reads the start the trimming is turned off at both ends — 0
+  // overrides what the file stores (ExtendedAudioFile.h) — before the client
+  // format, so the decoder is made with it (user 2026-10-09, Q4: 「OS 가
+  // 스스로 걷는 플랫폼에서는 그 걷기를 끄거나, 끌 수 없으면 걷은 만큼을 알아내
+  // 맞춘다」).
+  if (qa_audio_start_is_read_here(&stream->cursor)) {
+    AudioFilePacketTableInfo none;
+    memset(&none, 0, sizeof(none));
+    ExtAudioFileSetProperty(os->ext, kExtAudioFileProperty_PacketTable,
+                            sizeof(none), &none);
   }
 
   AudioStreamBasicDescription source;
   memset(&source, 0, sizeof(source));
   UInt32 property_size = sizeof(source);
-  if (ExtAudioFileGetProperty(ext, kExtAudioFileProperty_FileDataFormat,
+  if (ExtAudioFileGetProperty(os->ext, kExtAudioFileProperty_FileDataFormat,
                               &property_size, &source) != noErr ||
       source.mChannelsPerFrame == 0 || source.mSampleRate <= 0) {
-    goto done;
+    qa_os_close(stream);
+    return 0;
   }
 
   AudioStreamBasicDescription client;
@@ -505,56 +1283,30 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
   client.mFramesPerPacket = 1;
   client.mBytesPerFrame = 4 * client.mChannelsPerFrame;
   client.mBytesPerPacket = client.mBytesPerFrame;
-  if (ExtAudioFileSetProperty(ext, kExtAudioFileProperty_ClientDataFormat,
+  if (ExtAudioFileSetProperty(os->ext, kExtAudioFileProperty_ClientDataFormat,
                               sizeof(client), &client) != noErr) {
-    goto done;
+    qa_os_close(stream);
+    return 0;
   }
 
-  enum { kChunkFrames = 16384 };
-  float* chunk = (float*)malloc((size_t)kChunkFrames * client.mBytesPerFrame);
-  if (chunk == NULL) {
-    goto done;
-  }
-  for (;;) {
-    AudioBufferList list;
-    list.mNumberBuffers = 1;
-    list.mBuffers[0].mNumberChannels = client.mChannelsPerFrame;
-    list.mBuffers[0].mDataByteSize = kChunkFrames * client.mBytesPerFrame;
-    list.mBuffers[0].mData = chunk;
-    UInt32 frames = kChunkFrames;
-    if (ExtAudioFileRead(ext, &frames, &list) != noErr) {
-      free(chunk);
-      goto done;
-    }
-    if (frames == 0) {
-      break;
-    }
-    if (!qa_pcm_append(&pcm, chunk, (size_t)frames * client.mBytesPerFrame)) {
-      free(chunk);
-      goto done;
+  // What it still trims — a container whose start is its decoder's to say
+  // (a CAF's own packet table), or an override it would not take — it says,
+  // the value it reads with, and only the rest is counted.
+  {
+    AudioFilePacketTableInfo table;
+    UInt32 table_size = sizeof(table);
+    memset(&table, 0, sizeof(table));
+    if (ExtAudioFileGetProperty(os->ext, kExtAudioFileProperty_PacketTable,
+                                &table_size, &table) == noErr &&
+        table.mPrimingFrames > 0) {
+      start->taken = table.mPrimingFrames;
     }
   }
-  free(chunk);
-
-  if (pcm.size >= sizeof(float) * client.mChannelsPerFrame) {
-    *out_samples = (float*)pcm.bytes;
-    *out_frame_count =
-        (int64_t)(pcm.size / (sizeof(float) * client.mChannelsPerFrame));
-    *out_channels = (int32_t)client.mChannelsPerFrame;
-    *out_sample_rate = (int32_t)source.mSampleRate;
-    pcm.bytes = NULL;
-    result = QA_AUDIO_FORMAT_OS;
-  }
-
-done:
-  free(pcm.bytes);
-  if (ext != NULL) {
-    ExtAudioFileDispose(ext);
-  }
-  if (file != NULL) {
-    AudioFileClose(file);
-  }
-  return result;
+  stream->backend = &qa_os_backend;
+  stream->format = QA_AUDIO_FORMAT_OS;
+  stream->channels = (int32_t)client.mChannelsPerFrame;
+  stream->sample_rate = (int32_t)source.mSampleRate;
+  return 1;
 }
 
 #elif defined(__ANDROID__)
@@ -580,151 +1332,118 @@ done:
 // now the required one, and the data-source form is OPTIONAL — kept only
 // because a framed archive entry arrives assembled in memory and has no
 // range to point at. ⛔It must never go back to being required.
-// The NDK media API is the library's ONE table (qa_ndk_media.h). This file
-// resolved its own until 2026-09-24, and its custom-source read callback took
-// the offset as `off_t` where the NDK passes `off64_t` — on a 32-bit ARM
-// device the offset was read out of the wrong registers.
-#include "qa_ndk_media.h"
+//
+// MediaCodec hands back every frame it decoded — it takes nothing off the
+// front: the extractor's `encoder-delay` is a note for the player, not a
+// cut. ⚠️Not measured on a device — and neither is the stream: the first
+// device to conform a long sound is the first to run this loop a block at a
+// time (user 2026-10-10 chose it all the same, Q1 A).
 
-static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
-                                  float** out_samples,
-                                  int64_t* out_frame_count,
-                                  int32_t* out_channels,
-                                  int32_t* out_sample_rate) {
-  const qa_ndk_media_api* ndk = qa_ndk_media();
-  if (!qa_ndk_media_decodes(ndk)) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-
-  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
-  AMediaExtractor* extractor = NULL;
-  qa_ndk_served_span* served = NULL;
-  AMediaCodec* codec = NULL;
-  AMediaFormat* track_format = NULL;
-  qa_pcm_accumulator pcm = {NULL, 0, 0};
-  int descriptor = -1;
-  int32_t channels = 0;
-  int32_t sample_rate = 0;
-  int32_t pcm_encoding = 2;  // ENCODING_PCM_16BIT — MediaCodec's default
-
-  extractor = ndk->extractor_new();
-  if (extractor == NULL) {
-    goto done;
-  }
-  if (!src->framed) {
-    // The API-21 form, and the one every supported device has.
-    descriptor = open(src->path, O_RDONLY);
-    if (descriptor < 0) {
-      goto done;
+/// The output buffer at [index] into [stream]'s block: how many frames — 0
+/// when it holds none that can be handed over yet, -1 when the memory ran
+/// out. ENCODING_PCM_FLOAT (4) passes through; the default 16-bit converts
+/// by the same /32768 convention every other decode path uses.
+///
+/// ⚠️The channels and the rate are the codec's last word when the first block
+/// comes, and that block fixes them: what came before them is not counted,
+/// as before the stream (the window began at the first output).
+static int64_t qa_os_take_output(qa_audio_stream* stream, ssize_t index,
+                                 const qa_ndk_buffer_info* info) {
+  qa_os_decoder* os = &stream->decoder.os;
+  if (stream->channels <= 0 || stream->sample_rate <= 0) {
+    if (os->channels <= 0 || os->sample_rate <= 0) {
+      return 0;
     }
-    if (ndk->extractor_set_source_fd(extractor, descriptor,
-                                     (off64_t)src->base,
-                                     (off64_t)src->stored_length) != 0) {
-      goto done;
-    }
+    stream->channels = os->channels;
+    stream->sample_rate = os->sample_rate;
+  }
+  size_t capacity = 0;
+  uint8_t* bytes = os->ndk->codec_output_buffer(os->codec, (size_t)index,
+                                                &capacity);
+  if (bytes == NULL) {
+    return -1;
+  }
+  bytes += info->offset;
+  const int is_float = os->pcm_encoding == 4;
+  const size_t frame_bytes = (size_t)stream->channels *
+                             (is_float ? sizeof(float) : sizeof(int16_t));
+  const int64_t frames = (int64_t)((size_t)info->size / frame_bytes);
+  if (frames <= 0) {
+    return 0;
+  }
+  float* block = qa_audio_stream_block(stream, frames);
+  if (block == NULL) {
+    return -1;
+  }
+  const int64_t samples = frames * stream->channels;
+  if (is_float) {
+    memcpy(block, bytes, (size_t)samples * sizeof(float));
   } else {
-    // A FRAMED span: its stored bytes are not the container, so it is served
-    // through a source of our own. ⛔Absent below API 28, and that is an
-    // ANSWER: undecodable, the same one the caller already handles, not a
-    // crash and not a required symbol.
-    served = qa_ndk_served_span_open(ndk, src->path, src->base,
-                                     src->stored_length, 1);
-    if (served == NULL ||
-        ndk->extractor_set_source_custom(
-            extractor, qa_ndk_served_span_source(served)) != 0) {
-      goto done;
+    const int16_t* raw = (const int16_t*)bytes;
+    for (int64_t at = 0; at < samples; at += 1) {
+      block[at] = (float)raw[at] / 32768.0f;
     }
   }
+  return frames;
+}
 
-  const size_t tracks = ndk->extractor_track_count(extractor);
-  const char* mime = NULL;
-  size_t audio_track = (size_t)-1;
-  for (size_t index = 0; index < tracks; index += 1) {
-    AMediaFormat* format = ndk->extractor_track_format(extractor, index);
-    if (format == NULL) {
-      continue;
-    }
-    const char* candidate = NULL;
-    if (ndk->format_get_string(format, "mime", &candidate) && candidate != NULL &&
-        strncmp(candidate, "audio/", 6) == 0) {
-      audio_track = index;
-      mime = candidate;
-      track_format = format;  // keep alive: `mime` points into it
-      break;
-    }
-    ndk->format_delete(format);
+/// Feeds the codec one sample from the extractor, when it has room: whether
+/// that moved anything.
+static int qa_os_feed(qa_os_decoder* os) {
+  const qa_ndk_media_api* ndk = os->ndk;
+  const ssize_t in_index = ndk->codec_dequeue_input(os->codec, 10000);
+  if (in_index < 0) {
+    return 0;
   }
-  if (audio_track == (size_t)-1 || track_format == NULL) {
-    goto done;
+  size_t capacity = 0;
+  uint8_t* in_buffer =
+      ndk->codec_input_buffer(os->codec, (size_t)in_index, &capacity);
+  const ssize_t sample_size =
+      in_buffer == NULL
+          ? -1
+          : ndk->extractor_read_sample(os->extractor, in_buffer, capacity);
+  if (sample_size < 0) {
+    ndk->codec_queue_input(os->codec, (size_t)in_index, 0, 0, 0,
+                           QA_NDK_FLAG_END_OF_STREAM);
+    os->input_done = 1;
+  } else {
+    ndk->codec_queue_input(os->codec, (size_t)in_index, 0,
+                           (size_t)sample_size,
+                           (uint64_t)ndk->extractor_sample_time(os->extractor),
+                           0);
+    ndk->extractor_advance(os->extractor);
   }
-  ndk->format_get_int32(track_format, "sample-rate", &sample_rate);
-  ndk->format_get_int32(track_format, "channel-count", &channels);
-  if (ndk->extractor_select_track(extractor, audio_track) != 0) {
-    goto done;
-  }
+  return 1;
+}
 
-  codec = ndk->codec_create_decoder(mime);
-  if (codec == NULL ||
-      ndk->codec_configure(codec, track_format, NULL, NULL, 0) != 0 ||
-      ndk->codec_start(codec) != 0) {
-    goto done;
-  }
-
-  int input_done = 0;
-  int output_done = 0;
+static int64_t qa_os_next(qa_audio_stream* stream) {
+  qa_os_decoder* os = &stream->decoder.os;
+  const qa_ndk_media_api* ndk = os->ndk;
   int idle_spins = 0;
-  while (!output_done && idle_spins < 10000) {
-    int progressed = 0;
-    if (!input_done) {
-      const ssize_t in_index = ndk->codec_dequeue_input(codec, 10000);
-      if (in_index >= 0) {
-        size_t capacity = 0;
-        uint8_t* in_buffer = ndk->codec_input_buffer(codec, (size_t)in_index,
-                                                 &capacity);
-        const ssize_t sample_size =
-            in_buffer == NULL
-                ? -1
-                : ndk->extractor_read_sample(extractor, in_buffer, capacity);
-        if (sample_size < 0) {
-          ndk->codec_queue_input(codec, (size_t)in_index, 0, 0, 0,
-                                QA_NDK_FLAG_END_OF_STREAM);
-          input_done = 1;
-        } else {
-          ndk->codec_queue_input(codec, (size_t)in_index, 0,
-                                (size_t)sample_size,
-                                (uint64_t)ndk->extractor_sample_time(extractor),
-                                0);
-          ndk->extractor_advance(extractor);
-        }
-        progressed = 1;
-      }
-    }
+  while (!os->output_done && idle_spins < 10000) {
+    int progressed = !os->input_done && qa_os_feed(os);
     qa_ndk_buffer_info info;
     memset(&info, 0, sizeof(info));
-    const ssize_t out_index = ndk->codec_dequeue_output(codec, &info, 10000);
+    const ssize_t out_index =
+        ndk->codec_dequeue_output(os->codec, &info, 10000);
     if (out_index >= 0) {
-      if (info.size > 0) {
-        size_t capacity = 0;
-        uint8_t* out_buffer = ndk->codec_output_buffer(codec, (size_t)out_index,
-                                                   &capacity);
-        if (out_buffer == NULL ||
-            !qa_pcm_append(&pcm, out_buffer + info.offset,
-                           (size_t)info.size)) {
-          ndk->codec_release_output(codec, (size_t)out_index, 0);
-          goto done;
-        }
-      }
-      ndk->codec_release_output(codec, (size_t)out_index, 0);
+      const int64_t frames =
+          info.size > 0 ? qa_os_take_output(stream, out_index, &info) : 0;
+      ndk->codec_release_output(os->codec, (size_t)out_index, 0);
       if (info.flags & QA_NDK_FLAG_END_OF_STREAM) {
-        output_done = 1;
+        os->output_done = 1;
+      }
+      if (frames != 0) {
+        return frames;
       }
       progressed = 1;
     } else if (out_index == QA_NDK_INFO_OUTPUT_FORMAT_CHANGED) {
-      AMediaFormat* output_format = ndk->codec_output_format(codec);
+      AMediaFormat* output_format = ndk->codec_output_format(os->codec);
       if (output_format != NULL) {
-        ndk->format_get_int32(output_format, "sample-rate", &sample_rate);
-        ndk->format_get_int32(output_format, "channel-count", &channels);
-        ndk->format_get_int32(output_format, "pcm-encoding", &pcm_encoding);
+        ndk->format_get_int32(output_format, "sample-rate", &os->sample_rate);
+        ndk->format_get_int32(output_format, "channel-count", &os->channels);
+        ndk->format_get_int32(output_format, "pcm-encoding",
+                              &os->pcm_encoding);
         ndk->format_delete(output_format);
       }
       progressed = 1;
@@ -733,56 +1452,124 @@ static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
     }
     idle_spins = progressed ? 0 : idle_spins + 1;
   }
-  ndk->codec_stop(codec);
+  // Done is the end of the stream; a codec that stopped answering before it
+  // is a decode that failed.
+  return os->output_done ? 0 : -1;
+}
 
-  if (!output_done || channels <= 0 || sample_rate <= 0 || pcm.size == 0) {
-    goto done;
-  }
-
-  // ENCODING_PCM_FLOAT (4) passes through; the default 16-bit converts by
-  // the same /32768 convention every other decode path uses.
-  if (pcm_encoding == 4) {
-    const int64_t total = (int64_t)(pcm.size / sizeof(float));
-    *out_samples = (float*)pcm.bytes;
-    *out_frame_count = total / channels;
-    pcm.bytes = NULL;
-  } else {
-    const int64_t total = (int64_t)(pcm.size / sizeof(int16_t));
-    float* converted = (float*)malloc((size_t)total * sizeof(float));
-    if (converted == NULL) {
-      goto done;
+static void qa_os_close(qa_audio_stream* stream) {
+  qa_os_decoder* os = &stream->decoder.os;
+  const qa_ndk_media_api* ndk = os->ndk;
+  if (os->codec != NULL) {
+    if (os->started) {
+      ndk->codec_stop(os->codec);
     }
-    const int16_t* raw = (const int16_t*)pcm.bytes;
-    for (int64_t index = 0; index < total; index += 1) {
-      converted[index] = (float)raw[index] / 32768.0f;
-    }
-    *out_samples = converted;
-    *out_frame_count = total / channels;
+    ndk->codec_delete(os->codec);
   }
-  *out_channels = channels;
-  *out_sample_rate = sample_rate;
-  result = QA_AUDIO_FORMAT_OS;
-
-done:
-  free(pcm.bytes);
-  if (codec != NULL) {
-    ndk->codec_delete(codec);
+  if (os->track_format != NULL) {
+    ndk->format_delete(os->track_format);
   }
-  if (track_format != NULL) {
-    ndk->format_delete(track_format);
-  }
-  if (extractor != NULL) {
-    ndk->extractor_delete(extractor);
+  if (os->extractor != NULL) {
+    ndk->extractor_delete(os->extractor);
   }
   // After the extractor, which reads through it for as long as it lives.
-  qa_ndk_served_span_free(ndk, served);
+  qa_ndk_served_span_free(ndk, os->served);
   // ⚠️After the extractor, not before: it reads through this descriptor for
   // as long as it lives, and closing first turns a decode into a read error
   // somewhere with no name on it.
-  if (descriptor >= 0) {
-    close(descriptor);
+  if (os->descriptor >= 0) {
+    close(os->descriptor);
   }
-  return result;
+  memset(os, 0, sizeof(*os));
+  os->descriptor = -1;
+}
+
+static const qa_audio_backend qa_os_backend = {qa_os_next, qa_os_close};
+
+static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
+  (void)start;
+  const qa_audio_cursor* src = &stream->cursor;
+  qa_os_decoder* os = &stream->decoder.os;
+  memset(os, 0, sizeof(*os));
+  os->descriptor = -1;
+  os->pcm_encoding = 2;  // ENCODING_PCM_16BIT — MediaCodec's default
+  os->ndk = qa_ndk_media();
+  const qa_ndk_media_api* ndk = os->ndk;
+  if (!qa_ndk_media_decodes(ndk)) {
+    return 0;
+  }
+
+  os->extractor = ndk->extractor_new();
+  if (os->extractor == NULL) {
+    goto fail;
+  }
+  if (!src->framed) {
+    // The API-21 form, and the one every supported device has.
+    os->descriptor = open(src->path, O_RDONLY);
+    if (os->descriptor < 0 ||
+        ndk->extractor_set_source_fd(os->extractor, os->descriptor,
+                                     (off64_t)src->base,
+                                     (off64_t)src->stored_length) != 0) {
+      goto fail;
+    }
+  } else {
+    // A FRAMED span: its stored bytes are not the container, so it is served
+    // through a source of our own. ⛔Absent below API 28, and that is an
+    // ANSWER: undecodable, the same one the caller already handles, not a
+    // crash and not a required symbol.
+    os->served = qa_ndk_served_span_open(ndk, src->path, src->base,
+                                         src->stored_length, 1);
+    if (os->served == NULL ||
+        ndk->extractor_set_source_custom(
+            os->extractor, qa_ndk_served_span_source(os->served)) != 0) {
+      goto fail;
+    }
+  }
+
+  const size_t tracks = ndk->extractor_track_count(os->extractor);
+  const char* mime = NULL;
+  size_t audio_track = (size_t)-1;
+  for (size_t index = 0; index < tracks; index += 1) {
+    AMediaFormat* format = ndk->extractor_track_format(os->extractor, index);
+    if (format == NULL) {
+      continue;
+    }
+    const char* candidate = NULL;
+    if (ndk->format_get_string(format, "mime", &candidate) &&
+        candidate != NULL && strncmp(candidate, "audio/", 6) == 0) {
+      audio_track = index;
+      mime = candidate;
+      os->track_format = format;  // keep alive: `mime` points into it
+      break;
+    }
+    ndk->format_delete(format);
+  }
+  if (audio_track == (size_t)-1 || os->track_format == NULL) {
+    goto fail;
+  }
+  ndk->format_get_int32(os->track_format, "sample-rate", &os->sample_rate);
+  ndk->format_get_int32(os->track_format, "channel-count", &os->channels);
+  if (ndk->extractor_select_track(os->extractor, audio_track) != 0) {
+    goto fail;
+  }
+
+  os->codec = ndk->codec_create_decoder(mime);
+  if (os->codec == NULL ||
+      ndk->codec_configure(os->codec, os->track_format, NULL, NULL, 0) != 0 ||
+      ndk->codec_start(os->codec) != 0) {
+    goto fail;
+  }
+  os->started = 1;
+  stream->backend = &qa_os_backend;
+  stream->format = QA_AUDIO_FORMAT_OS;
+  // The block fixes them ([qa_os_take_output]).
+  stream->channels = 0;
+  stream->sample_rate = 0;
+  return 1;
+
+fail:
+  qa_os_close(stream);
+  return 0;
 }
 
 #else
@@ -790,224 +1577,267 @@ done:
 // No OS codec stack to lean on (CI's Linux runner — not a shipping
 // platform). dr_libs formats keep working; everything else reports
 // undecodable and rides the caller's fallback.
-static int32_t qa_audio_decode_os(const qa_audio_cursor* src,
-                                  float** out_samples,
-                                  int64_t* out_frame_count,
-                                  int32_t* out_channels,
-                                  int32_t* out_sample_rate) {
-  (void)src;
-  (void)out_samples;
-  (void)out_frame_count;
-  (void)out_channels;
-  (void)out_sample_rate;
-  return QA_AUDIO_FORMAT_UNKNOWN;
+static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
+  (void)stream;
+  (void)start;
+  return 0;
 }
 
 #endif
 
-// Decodes a whole container — wherever its bytes are — to interleaved
-// float32 at its OWN sample rate. Resampling to the project rate is a
-// separate step: it is a quality decision, and burying it here would make it
-// invisible.
-//
-// Format is detected by TRYING each decoder rather than sniffing magic
-// bytes — a WAV with a junk chunk before `fmt `, or an MP3 with a fat ID3
-// tag, defeats a naive sniff, and each library already knows how to
-// recognize its own container.
-//
-// Returns the QA_AUDIO_FORMAT_* that succeeded, or 0 when nothing could
-// read it. On success the caller owns *out_samples and must release it
-// with qa_audio_decode_free.
-/// stb_vorbis over [cursor]'s container, or UNKNOWN.
+// ---------------------------------------------------------------------------
+// Opening a container — whichever decoder reads it.
+
+/// Opens [stream]'s container with the first decoder that reads it: 1 when
+/// one did.
 ///
-/// ⚠️The one decoder with no callback form — memory or a `FILE*` — so the
-/// span is handed over two ways. A PLAIN span is a FILE section: a position
-/// plus a length, a range exactly. A FRAMED span has no FILE that holds the
-/// container, so an ogg in one is assembled in memory — but only once its
-/// first four bytes say it IS one (`OggS`, which stb_vorbis requires anyway):
-/// asking every framed container in full would read a whole movie to learn
-/// it is not an ogg. A carried ogg is nearly never framed at all — it is
-/// already compressed, and a save frames only what shrinks.
-static int32_t qa_audio_decode_vorbis(qa_audio_cursor* cursor,
-                                      float** out_samples,
-                                      int64_t* out_frame_count,
-                                      int32_t* out_channels,
-                                      int32_t* out_sample_rate) {
-  if (cursor->size > 0x7FFFFFFF) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  int vorbis_error = 0;
-  stb_vorbis* vorbis = NULL;
-  FILE* section = NULL;
-  uint8_t* assembled = NULL;
-  if (!cursor->framed) {
-    // ⚠️The 2GB guard is stb's, not ours: it remembers where a section
-    // started with `ftell`, whose `long` is 32 bits on Windows. Past that it
-    // would read from the wrong place rather than fail, so the attempt is
-    // skipped instead — an ogg carried past the 2GB mark of a project file
-    // decodes as「not an ogg」, and no other format is affected.
-    if (cursor->base <= 0x7FFFFFFF) {
-      section = qa_open_path_read(cursor->path);
-      if (section != NULL && qa_seek_absolute(section, cursor->base)) {
-        vorbis = stb_vorbis_open_file_section(section, 0, &vorbis_error, NULL,
-                                              (unsigned)cursor->size);
-      }
+/// Format is detected by TRYING each decoder rather than sniffing magic
+/// bytes — a WAV with a junk chunk before `fmt `, or an MP3 with a fat ID3
+/// tag, defeats a naive sniff, and each library already knows how to
+/// recognize its own container.
+///
+/// 🚨★★★**THE TRYING STAYS — THE CONTAINER'S FIRST BYTES SAY WHETHER dr_mp3
+/// MAY TRY** (user 2026-10-09, board sound-lands-on-its-exact-sample-Q2:
+/// 「파일 머리를 먼저 본다」). dr_mp3's frame-sync scan finds frames in the
+/// quiet stretches of uncompressed sound, whose small negative samples are
+/// `FF Fx` bytes: a 30-minute H.264 + PCM reel came back as a tenth of a
+/// second of noise (2026-10-06), and the OS stack, which reads that file
+/// exactly, was never asked — it can only come after dr_mp3, and dr_mp3 said
+/// yes. Trying dr_mp3 last of the bundled decoders was the old guard, and it
+/// was not enough. Neither objection above reaches the sniff: it reads only a
+/// container's own magic at its first byte, never a chunk inside it, and an
+/// MP3's head — an ID3 tag or a frame — is one it leaves alone.
+///
+/// Vorbis sits BEFORE mp3 on purpose: the OggS magic makes stb_vorbis a
+/// strict recognizer, while dr_mp3's frame-sync scan is the most permissive
+/// of the bunch — it must always try LAST of the bundled decoders or it will
+/// happily "decode" someone else's container. Then, for whatever the bundled
+/// decoders do not read — dr_mp3 perhaps never asked — the OS codec stack
+/// (AAC/m4a per the decided format table, a movie's uncompressed sound).
+///
+/// A decoder READ the container when it opened and handed something back —
+/// the one rule, whatever is asked of the stream after. One that opens and
+/// hands back nothing falls through to the next.
+static int qa_audio_stream_begin(qa_audio_stream* stream) {
+  static const qa_audio_opener openers[] = {
+      qa_wav_open, qa_flac_open, qa_vorbis_open, qa_mp3_open, qa_os_open};
+  for (size_t index = 0; index < sizeof(openers) / sizeof(openers[0]);
+       index += 1) {
+    // No file a bundled decoder reads puts frames of its own before its
+    // sound but an MP3, whose opener counts its lead.
+    qa_audio_start start = {0, 0, -1};
+    // 🚨Every attempt in the dispatch chain starts from zero (see
+    // qa_cursor_rewind).
+    qa_cursor_rewind(&stream->cursor);
+    if (!openers[index](stream, &start)) {
+      continue;
     }
-  } else {
-    uint8_t magic[4];
-    if (qa_media_span_read(cursor->span, 0, magic, 4) == 4 &&
-        memcmp(magic, "OggS", 4) == 0) {
-      assembled = (uint8_t*)malloc((size_t)cursor->size);
-      if (assembled != NULL &&
-          qa_media_span_read(cursor->span, 0, assembled, cursor->size) ==
-              cursor->size) {
-        vorbis = stb_vorbis_open_memory(assembled, (int)cursor->size,
-                                        &vorbis_error, NULL);
-      }
+    const int64_t got = stream->backend->next(stream);
+    if (got <= 0) {
+      stream->backend->close(stream);
+      stream->backend = NULL;
+      continue;
     }
-  }
-  int32_t result = QA_AUDIO_FORMAT_UNKNOWN;
-  if (vorbis != NULL) {
-    const stb_vorbis_info info = stb_vorbis_get_info(vorbis);
-    if (info.channels > 0 && info.sample_rate > 0) {
-      qa_pcm_accumulator pcm = {NULL, 0, 0};
-      enum { kVorbisChunkFrames = 4096 };
-      float* chunk = (float*)malloc(
-          (size_t)kVorbisChunkFrames * info.channels * sizeof(float));
-      int healthy = chunk != NULL;
-      while (healthy) {
-        const int frames = stb_vorbis_get_samples_float_interleaved(
-            vorbis, info.channels, chunk, kVorbisChunkFrames * info.channels);
-        if (frames <= 0) {
-          break;
-        }
-        if (!qa_pcm_append(&pcm, chunk,
-                           (size_t)frames * info.channels * sizeof(float))) {
-          healthy = 0;
-        }
-      }
-      free(chunk);
-      if (healthy && pcm.size >= sizeof(float) * (size_t)info.channels) {
-        *out_samples = (float*)pcm.bytes;
-        *out_frame_count =
-            (int64_t)(pcm.size / (sizeof(float) * (size_t)info.channels));
-        *out_channels = info.channels;
-        *out_sample_rate = (int32_t)info.sample_rate;
-        result = QA_AUDIO_FORMAT_VORBIS;
-      } else {
-        free(pcm.bytes);
-      }
+    stream->block_frames = got;
+    stream->block_at = 0;
+    // The OS stack's sound starts where the file says, and only the file
+    // knows: its rate is the decoder's last word by the first block.
+    if (stream->format == QA_AUDIO_FORMAT_OS) {
+      qa_audio_os_start(&stream->cursor, stream->sample_rate, &start);
     }
-    stb_vorbis_close(vorbis);
+    const int64_t lead = start.lead - start.taken;
+    stream->lead = lead > 0 ? lead : 0;
+    stream->left = start.keep;
+    return 1;
   }
-  if (section != NULL) {
-    fclose(section);
-  }
-  free(assembled);
-  return result;
+  return 0;
 }
 
-static int32_t qa_audio_decode_cursor(
-    qa_audio_cursor* cursor,
-    float** out_samples,
-    int64_t* out_frame_count,
-    int32_t* out_channels,
-    int32_t* out_sample_rate) {
-  unsigned int channels = 0;
-  unsigned int sample_rate = 0;
-
-  {
-    drwav_uint64 frames = 0;
-    qa_cursor_rewind(cursor);
-    float* samples = drwav_open_and_read_pcm_frames_f32(
-        qa_dr_read, qa_wav_seek, qa_wav_tell, cursor, &channels, &sample_rate,
-        &frames, NULL);
-    if (samples != NULL) {
-      *out_samples = samples;
-      *out_frame_count = (int64_t)frames;
-      *out_channels = (int32_t)channels;
-      *out_sample_rate = (int32_t)sample_rate;
-      return QA_AUDIO_FORMAT_WAV;
-    }
+QA_EXPORT void qa_audio_stream_close(qa_audio_stream* stream) {
+  if (stream == NULL) {
+    return;
   }
-  {
-    drflac_uint64 frames = 0;
-    qa_cursor_rewind(cursor);
-    float* samples = drflac_open_and_read_pcm_frames_f32(
-        qa_dr_read, qa_flac_seek, qa_flac_tell, cursor, &channels, &sample_rate,
-        &frames, NULL);
-    if (samples != NULL) {
-      *out_samples = samples;
-      *out_frame_count = (int64_t)frames;
-      *out_channels = (int32_t)channels;
-      *out_sample_rate = (int32_t)sample_rate;
-      return QA_AUDIO_FORMAT_FLAC;
-    }
+  if (stream->backend != NULL) {
+    stream->backend->close(stream);
   }
-  // Vorbis sits BEFORE mp3 on purpose: the OggS magic makes stb_vorbis a
-  // strict recognizer, while dr_mp3's frame-sync scan is the most
-  // permissive of the bunch — it must always try LAST of the bundled
-  // decoders or it will happily "decode" someone else's container.
-  {
-    const int32_t vorbis = qa_audio_decode_vorbis(
-        cursor, out_samples, out_frame_count, out_channels, out_sample_rate);
-    if (vorbis != QA_AUDIO_FORMAT_UNKNOWN) {
-      return vorbis;
-    }
+  free(stream->block);
+  if (stream->span != NULL) {
+    qa_media_span_close(stream->span);
   }
-  {
-    drmp3_config config;
-    memset(&config, 0, sizeof(config));
-    drmp3_uint64 frames = 0;
-    qa_cursor_rewind(cursor);
-    float* samples = drmp3_open_and_read_pcm_frames_f32(
-        qa_dr_read, qa_mp3_seek, qa_mp3_tell, cursor, &config, &frames, NULL);
-    if (samples != NULL) {
-      *out_samples = samples;
-      *out_frame_count = (int64_t)frames;
-      *out_channels = (int32_t)config.channels;
-      *out_sample_rate = (int32_t)config.sampleRate;
-      return QA_AUDIO_FORMAT_MP3;
-    }
-  }
-  // Nothing dr_libs reads: hand the container to the OS codec stack
-  // (AAC/m4a per the decided format table). The OS path allocates with
-  // malloc, so the one qa_audio_decode_free below releases either origin.
-  qa_cursor_rewind(cursor);
-  return qa_audio_decode_os(cursor, out_samples, out_frame_count, out_channels,
-                            out_sample_rate);
+  free(stream->path);
+  free(stream);
 }
 
-/// The output slots, emptied before a decode fills them — or 0 when one is
-/// missing.
-static int32_t qa_audio_decode_begin(float** out_samples,
-                                     int64_t* out_frame_count,
-                                     int32_t* out_channels,
-                                     int32_t* out_sample_rate) {
-  if (out_samples == NULL || out_frame_count == NULL || out_channels == NULL ||
-      out_sample_rate == NULL) {
-    return 0;
-  }
-  *out_samples = NULL;
-  *out_frame_count = 0;
-  *out_channels = 0;
-  *out_sample_rate = 0;
-  return 1;
-}
-
-/// A container stored in `[offset, offset + length)` of [path] — as it is,
-/// or FRAMED (compressed in blocks) when [framed]: the shape a sound inside
-/// the project file has, the shape a staged copy has, and the shape a movie
-/// whose soundtrack we want has whether it is carried or referenced.
+/// The sound of a container stored in `[offset, offset + length)` of [path] —
+/// as it is, or FRAMED (compressed in blocks) when [framed] — opened to be
+/// read on: interleaved float32 at its OWN rate, frame 0 its first (what the
+/// file says came before it is not counted). Resampling to the project rate
+/// is a separate step: it is a quality decision, and burying it here would
+/// make it invisible.
+///
+/// NULL when nothing could read it; [qa_audio_stream_close] lets it go.
+/// [out_format] says which QA_AUDIO_FORMAT_* read it.
+///
+/// [offset] `0` with [length] the file's own size is a whole file, and that
+/// is the ordinary case — a span is not an archive-only idea.
 ///
 /// 🚨★★★**THE POINT IS WHAT IS NOT HERE: a `Uint8List`.** The conform used to
 /// read the whole container into memory before a decoder was handed anything,
 /// which is why a three-gigabyte reference movie could not be asked for its
 /// sound at all — and a FRAMED one still arrived that way until 2026-09-24.
-/// Nothing on this path holds more than a decode buffer and one block.
+/// Nothing on this path holds more than a decode block and one span block.
+QA_EXPORT qa_audio_stream* qa_audio_stream_open(const char* path,
+                                                int64_t offset,
+                                                int64_t length,
+                                                int32_t framed,
+                                                int32_t* out_format,
+                                                int32_t* out_channels,
+                                                int32_t* out_sample_rate) {
+  if (out_format == NULL || out_channels == NULL || out_sample_rate == NULL) {
+    return NULL;
+  }
+  *out_format = QA_AUDIO_FORMAT_UNKNOWN;
+  *out_channels = 0;
+  *out_sample_rate = 0;
+  if (path == NULL || offset < 0 || length <= 0) {
+    return NULL;
+  }
+  qa_audio_stream* stream =
+      (qa_audio_stream*)calloc(1, sizeof(qa_audio_stream));
+  if (stream == NULL) {
+    return NULL;
+  }
+  // ⛔A span that runs past the end is refused rather than clamped — the
+  // span reader's own rule: a short container decodes as a corrupt file,
+  // which is a much worse answer than 「that span is not in there」.
+  stream->span = qa_media_span_open(path, offset, length, framed);
+  const size_t path_bytes = strlen(path) + 1;
+  stream->path = (char*)malloc(path_bytes);
+  if (stream->span == NULL || stream->path == NULL) {
+    qa_audio_stream_close(stream);
+    return NULL;
+  }
+  memcpy(stream->path, path, path_bytes);
+  stream->cursor.span = stream->span;
+  stream->cursor.path = stream->path;
+  stream->cursor.base = offset;
+  stream->cursor.stored_length = length;
+  stream->cursor.framed = framed ? 1 : 0;
+  stream->cursor.size = qa_media_span_size(stream->span);
+  if (!qa_audio_stream_begin(stream)) {
+    qa_audio_stream_close(stream);
+    return NULL;
+  }
+  *out_format = stream->format;
+  *out_channels = stream->channels;
+  *out_sample_rate = stream->sample_rate;
+  return stream;
+}
+
+/// Up to [frames] more frames of [stream]'s sound into [out]: how many —
+/// short only at the sound's end, 0 past it, -1 where the decoder failed.
+QA_EXPORT int64_t qa_audio_stream_read(qa_audio_stream* stream, float* out,
+                                       int64_t frames) {
+  if (stream == NULL || out == NULL || frames < 0) {
+    return -1;
+  }
+  return qa_audio_stream_pass(stream, out, frames);
+}
+
+/// The container's [window_count] frames of sound from frame [window_start]
+/// — the sound's own frames at the container's own rate, frame 0 its first —
+/// and only those held (user 2026-10-09, sound-lands-on-its-exact-sample-Q5:
+/// a piece cut from a long reel holds the piece, not the reel). -1: to the
+/// end. 0: none — the rate and the channels, which a caller needs before it
+/// can name its frames: ask for nothing, then for what that says to ask. A
+/// window past the end is no frames, not a failure.
 ///
-/// [offset] `0` with [length] the file's own size is a whole file, and that
-/// is the ordinary case — a span is not an archive-only idea.
+/// Returns the QA_AUDIO_FORMAT_* that read it, or 0 when nothing could. On
+/// success the caller owns *out_samples (NULL when no frames came) and
+/// releases it with qa_audio_decode_free.
+QA_EXPORT int32_t qa_audio_decode_span_window(
+    const char* path,
+    int64_t offset,
+    int64_t length,
+    int32_t framed,
+    int64_t window_start,
+    int64_t window_count,
+    float** out_samples,
+    int64_t* out_frame_count,
+    int32_t* out_channels,
+    int32_t* out_sample_rate) {
+  if (out_samples == NULL || out_frame_count == NULL || out_channels == NULL ||
+      out_sample_rate == NULL) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  *out_samples = NULL;
+  *out_frame_count = 0;
+  *out_channels = 0;
+  *out_sample_rate = 0;
+  if (window_start < 0) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  int32_t format = QA_AUDIO_FORMAT_UNKNOWN;
+  int32_t channels = 0;
+  int32_t rate = 0;
+  qa_audio_stream* stream = qa_audio_stream_open(path, offset, length, framed,
+                                                 &format, &channels, &rate);
+  if (stream == NULL) {
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  float* kept = NULL;
+  int64_t kept_frames = 0;
+  int64_t capacity = 0;
+  int healthy = window_count == 0 ||
+                qa_audio_stream_pass(stream, NULL, window_start) >= 0;
+  while (healthy && window_count != 0 &&
+         (window_count < 0 || kept_frames < window_count)) {
+    int64_t want = QA_BUNDLED_BLOCK_FRAMES * 16;
+    if (window_count >= 0 && want > window_count - kept_frames) {
+      want = window_count - kept_frames;
+    }
+    if (kept_frames + want > capacity) {
+      int64_t next = capacity == 0 ? want : capacity;
+      while (next < kept_frames + want) {
+        next *= 2;
+      }
+      float* grown = (float*)realloc(
+          kept, (size_t)next * (size_t)channels * sizeof(float));
+      if (grown == NULL) {
+        healthy = 0;
+        break;
+      }
+      kept = grown;
+      capacity = next;
+    }
+    const int64_t got = qa_audio_stream_pass(
+        stream, kept + (size_t)kept_frames * (size_t)channels, want);
+    if (got < 0) {
+      healthy = 0;
+    } else if (got == 0) {
+      break;
+    }
+    kept_frames += got > 0 ? got : 0;
+  }
+  qa_audio_stream_close(stream);
+  if (!healthy) {
+    free(kept);
+    return QA_AUDIO_FORMAT_UNKNOWN;
+  }
+  // A window past the sound's end kept nothing, and that is an answer.
+  if (kept_frames == 0) {
+    free(kept);
+    kept = NULL;
+  }
+  *out_samples = kept;
+  *out_frame_count = kept_frames;
+  *out_channels = channels;
+  *out_sample_rate = rate;
+  return format;
+}
+
+/// The whole sound of the container — [qa_audio_decode_span_window] from
+/// frame 0 to the end.
 QA_EXPORT int32_t qa_audio_decode_span(
     const char* path,
     int64_t offset,
@@ -1017,32 +1847,9 @@ QA_EXPORT int32_t qa_audio_decode_span(
     int64_t* out_frame_count,
     int32_t* out_channels,
     int32_t* out_sample_rate) {
-  if (!qa_audio_decode_begin(out_samples, out_frame_count, out_channels,
-                             out_sample_rate)) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  if (path == NULL || offset < 0 || length <= 0) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  // ⛔A span that runs past the end is refused rather than clamped — the
-  // span reader's own rule: a short container decodes as a corrupt file,
-  // which is a much worse answer than 「that span is not in there」.
-  qa_media_span* span = qa_media_span_open(path, offset, length, framed);
-  if (span == NULL) {
-    return QA_AUDIO_FORMAT_UNKNOWN;
-  }
-  qa_audio_cursor cursor;
-  memset(&cursor, 0, sizeof(cursor));
-  cursor.span = span;
-  cursor.path = path;
-  cursor.base = offset;
-  cursor.stored_length = length;
-  cursor.framed = framed ? 1 : 0;
-  cursor.size = qa_media_span_size(span);
-  const int32_t result = qa_audio_decode_cursor(
-      &cursor, out_samples, out_frame_count, out_channels, out_sample_rate);
-  qa_media_span_close(span);
-  return result;
+  return qa_audio_decode_span_window(path, offset, length, framed, 0, -1,
+                                     out_samples, out_frame_count,
+                                     out_channels, out_sample_rate);
 }
 
 // Releases a buffer from qa_audio_decode_span. All three libraries route

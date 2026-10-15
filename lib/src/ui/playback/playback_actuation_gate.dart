@@ -56,9 +56,9 @@ import 'playback_transport.dart';
 /// view renders inside on purpose, "so the panel chrome keeps working
 /// during playback"). Drawing cannot leak through the hole: playback swaps
 /// the panel's content, so the drawing surface is not mounted at all. A
-/// plain TAP on the canvas picture stops playback — that is
-/// `CanvasPlaybackView`'s own tap handler, awake again now that pointers
-/// reach it (the pre-T28-c stop it always carried). KEYBOARD actuations
+/// plain TAP on the canvas picture stops playback — that is the run's own
+/// press ([PlaybackRunLayer]), awake again now that pointers reach it (the
+/// pre-T28-c stop the playback view always carried). KEYBOARD actuations
 /// keep the stop law everywhere but one: a bound view ZOOM (R6q3, below).
 ///
 /// ↩️The drawing surface was not all a press could reach (board

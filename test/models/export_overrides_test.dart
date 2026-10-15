@@ -98,24 +98,50 @@ void main() {
       expect(less, isNot(laid));
     });
 
+    test('the camera\'s work is laid over ONE drawing, and taken off it — '
+        'CAM (I-89-Q18)', () {
+      final laid = ExportCelsCutDelta()
+          .withCameraOver(ref('bg', 'b1'), true)
+          .withCameraOver(ref('a', 'f1'), true);
+      expect(laid.cameraOver, {ref('bg', 'b1'), ref('a', 'f1')});
+      expect(laid.isEmpty, isFalse);
+      expect(
+        laid.leavesTheRules,
+        isFalse,
+        reason: 'what is laid over a drawing is no answer to a rule',
+      );
+      expect(laid.directionsOver(ref('bg', 'b1')), isEmpty);
+      final less = laid.withCameraOver(ref('bg', 'b1'), false);
+      expect(less.cameraOver, {ref('a', 'f1')});
+      expect(less, isNot(laid));
+      expect(
+        less.withCameraOver(ref('a', 'f1'), false),
+        ExportCelsCutDelta(),
+        reason: 'nothing laid is the empty delta again',
+      );
+    });
+
     test('a filter press drops the row answers alone; Reset drops the '
         'drawings turned off too — and what is laid over a drawing stays '
         'through both', () {
       final delta = ExportCelsCutDelta()
           .withLayerOverride(const LayerId('l1'), true)
           .withCelSkipped(ref('a', 'f1'), true)
-          .withDirectionOver(ref('a', 'f2'), ref('dir', 'd1'), true);
+          .withDirectionOver(ref('a', 'f2'), ref('dir', 'd1'), true)
+          .withCameraOver(ref('a', 'f3'), true);
 
       final refiltered = delta.withoutRowExceptions();
       expect(refiltered.layerOverrides, isEmpty);
       expect(refiltered.skippedCels, {ref('a', 'f1')});
       expect(refiltered.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
+      expect(refiltered.cameraOver, {ref('a', 'f3')});
 
       final reset = delta.backOnTheRules();
       expect(reset.layerOverrides, isEmpty);
       expect(reset.skippedCels, isEmpty);
       expect(reset.leavesTheRules, isFalse);
       expect(reset.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
+      expect(reset.cameraOver, {ref('a', 'f3')});
       expect(reset.isEmpty, isFalse);
     });
 
@@ -130,7 +156,8 @@ void main() {
           delta = delta
               .withCelSkipped(ref('a', cel), true)
               .withDirectionOver(ref('bg', cel), ref('dir', 'd1'), true)
-              .withDirectionOver(ref('bg', cel), ref('dir', 'd0'), true);
+              .withDirectionOver(ref('bg', cel), ref('dir', 'd0'), true)
+              .withCameraOver(ref('bg', cel), true);
         }
         return delta;
       }
@@ -143,6 +170,11 @@ void main() {
       final restored = ExportCelsCutDelta.fromJson(forward.toJson());
       expect(restored, forward);
       expect(restored.skippedCels, hasLength(3));
+      expect(restored.cameraOver, {
+        ref('bg', 'f1'),
+        ref('bg', 'f2'),
+        ref('bg', 'f3'),
+      });
       expect(restored.directionsOver(ref('bg', 'f2')), {
         ref('dir', 'd0'),
         ref('dir', 'd1'),
@@ -159,25 +191,6 @@ void main() {
       const page2 = (document: ExportCelKind.timesheet, page: 2);
       const envelope = (document: ExportCelKind.envelope, page: 0);
 
-      test('a document\'s row is switched off and back on, one document at '
-          'a time — a row exception, as a layer\'s is', () {
-        final off = ExportCelsCutDelta().withDocumentOff(
-          ExportCelKind.timesheet,
-          true,
-        );
-        expect(off.documentsOff, {ExportCelKind.timesheet});
-        expect(off.isEmpty, isFalse);
-        expect(off.hasRowExceptions, isTrue);
-        expect(off.leavesTheRules, isTrue);
-        expect(
-          off.withDocumentOff(ExportCelKind.envelope, true).documentsOff,
-          {ExportCelKind.timesheet, ExportCelKind.envelope},
-        );
-        final back = off.withDocumentOff(ExportCelKind.timesheet, false);
-        expect(back.documentsOff, isEmpty);
-        expect(back.isEmpty, isTrue);
-      });
-
       test('a file of a document is turned off and back on, one at a time — '
           'no row exception: the label does not read 「커스텀」 for it', () {
         final skipped = ExportCelsCutDelta()
@@ -193,21 +206,18 @@ void main() {
         );
       });
 
-      test('a filter press drops the document rows\' answers with the '
-          'layers\', and leaves the files turned off; Reset drops both', () {
+      test('a filter press drops the layers\' answers and leaves the files '
+          'turned off; Reset drops both', () {
         final delta = ExportCelsCutDelta()
             .withLayerOverride(const LayerId('l1'), true)
-            .withDocumentOff(ExportCelKind.envelope, true)
             .withPageSkipped(page2, true);
 
         final refiltered = delta.withoutRowExceptions();
         expect(refiltered.layerOverrides, isEmpty);
-        expect(refiltered.documentsOff, isEmpty);
         expect(refiltered.skippedPages, {page2});
         expect(refiltered.hasRowExceptions, isFalse);
 
         final reset = delta.backOnTheRules();
-        expect(reset.documentsOff, isEmpty);
         expect(reset.skippedPages, isEmpty);
         expect(reset.isEmpty, isTrue);
       });
@@ -215,21 +225,16 @@ void main() {
       test('they round-trip, written in one order whatever order the hand '
           'worked in — and a kind the file names wrongly is left out', () {
         final a = ExportCelsCutDelta()
-            .withDocumentOff(ExportCelKind.envelope, true)
-            .withDocumentOff(ExportCelKind.timesheet, true)
             .withPageSkipped(envelope, true)
             .withPageSkipped(page2, true)
             .withPageSkipped(page0, true);
         final b = ExportCelsCutDelta()
             .withPageSkipped(page0, true)
             .withPageSkipped(page2, true)
-            .withPageSkipped(envelope, true)
-            .withDocumentOff(ExportCelKind.timesheet, true)
-            .withDocumentOff(ExportCelKind.envelope, true);
+            .withPageSkipped(envelope, true);
         expect(a, b);
         expect(a.hashCode, b.hashCode);
         expect(a.toJson().toString(), b.toJson().toString());
-        expect(a.toJson()['documentsOff'], ['timesheet', 'envelope']);
         expect(a.toJson()['skippedPages'], [
           {'document': 'timesheet', 'page': 0},
           {'document': 'timesheet', 'page': 2},
@@ -237,17 +242,14 @@ void main() {
         ]);
         expect(ExportCelsCutDelta.fromJson(a.toJson()), a);
         expect(a, isNot(a.withPageSkipped(page2, false)));
-        expect(a, isNot(a.withDocumentOff(ExportCelKind.envelope, false)));
         expect(ExportCelsCutDelta().toJson().keys, ['layerOverrides']);
 
         final strange = ExportCelsCutDelta.fromJson(const {
-          'documentsOff': ['timesheet', 'ledger'],
           'skippedPages': [
             {'document': 'ledger', 'page': 1},
             {'document': 'envelope', 'page': 0},
           ],
         });
-        expect(strange.documentsOff, {ExportCelKind.timesheet});
         expect(strange.skippedPages, {envelope});
       });
     });

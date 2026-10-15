@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 import '../../helpers/exposure_of.dart';
 import 'timeline_frame_geometry_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🚨I-22 ③: THE RUN LABELS PAINT WHAT THEIR WINDOW SHOWS.
 ///
@@ -117,7 +118,7 @@ void main() {
     final painter =
         tester
                 .widget<CustomPaint>(
-                  find.byKey(const ValueKey<String>('timeline-row-cells-long')),
+                  find.named('timeline-row-cells-long'),
                 )
                 .foregroundPainter!
             as TimelineRowRunLabelsPainter;

@@ -6,7 +6,7 @@
 // trunk's ([authorGiven]).
 //
 //   dart run tool/session_hooks/install.dart --board <folder> --memory <folder>
-//       [--home <http://host:4321>] [--old-memory <folder>] [--dry]
+//       [--home <http://host:4321>] [--dry]
 //
 //   --board       this machine's BOARD FOLDER: a local folder for the flags
 //                 and the two exes — and, on the machine that holds the
@@ -15,10 +15,12 @@
 //                 folder every machine sees (a sync client keeps it).
 //   --home        (a machine that does NOT hold the board) the address of
 //                 the machine that does.
-//   --old-memory  (only where the memory was moved out of a folder) that
-//                 folder, kept the same as the new one until every session
-//                 that started before the move has been started again.
 //   --dry         print the settings instead of writing them.
+//
+// ↩️`--old-memory` (2026-10-07) kept the folder the memory moved out of the
+// same as the new one, for the sessions that had started before the move.
+// The last of them was gone on 2026-10-09 and it went, with the hook it
+// installed (card the-old-memory-folder-is-retired).
 //
 // 유저 2026-10-07: 「작업을 노트북이 해줫으면 한단거지」 — a second machine
 // runs sessions, so everything a session is given has to be givable twice.
@@ -48,9 +50,6 @@ typedef MachineSetup = ({
 
   /// The server of the machine that holds the board — null ON that machine.
   String? home,
-
-  /// The folder the memory moved out of — null where there was none.
-  String? oldMemory,
 });
 
 /// The settings file this writes — this machine's alone, so the repository
@@ -90,9 +89,6 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
     for (final value in handed) '"$value"',
   ].join(' ');
   final index = '${setup.memory}/MEMORY.md';
-  final oldIndex = setup.oldMemory == null
-      ? null
-      : '${setup.oldMemory}/MEMORY.md';
   // ⚠️The gate reads the records FILE on the machine that holds it — it
   // runs at the end of every turn, and must answer while the server is
   // being rebuilt — and asks the server anywhere else.
@@ -115,14 +111,13 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
       {
         'matcher': 'Edit|Write',
         'hooks': [
-          for (final watched in [index, ?oldIndex])
-            for (final tool in const ['Edit', 'Write'])
-              {
-                'type': 'command',
-                'command': run('guard_memory_size.sh', [watched]),
-                'if': '$tool($watched)',
-                'timeout': 10,
-              },
+          for (final tool in const ['Edit', 'Write'])
+            {
+              'type': 'command',
+              'command': run('guard_memory_size.sh', [index]),
+              'if': '$tool($index)',
+              'timeout': 10,
+            },
         ],
       },
     ],
@@ -194,13 +189,6 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'timeout': 10,
             'statusMessage': '다른 세션의 전달 확인',
           },
-          if (setup.oldMemory case final old?)
-            {
-              'type': 'command',
-              'command': run('knowledge_fold.sh', [old, setup.memory]),
-              'timeout': 20,
-              'statusMessage': '메모리 두 자리 맞추기',
-            },
         ],
       },
     ],
@@ -265,7 +253,6 @@ Map<String, dynamic> settingsWith(
       board: board,
       memory: memory,
       home: home,
-      oldMemory: flag('--old-memory'),
     ),
     refusal: null,
   );

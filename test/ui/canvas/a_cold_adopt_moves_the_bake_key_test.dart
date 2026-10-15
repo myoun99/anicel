@@ -21,6 +21,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/models/composite_tree.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -231,6 +232,7 @@ class _ColdThenWarm extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) => (warm || key.layerId.value == 'settled')
       ? super.prepare(
           key: key,
@@ -239,6 +241,7 @@ class _ColdThenWarm extends LayerFrameImageCache {
           sourceEffects: sourceEffects,
           shouldAbort: shouldAbort,
           inkSuffices: inkSuffices,
+          turn: turn,
         )
       : Future<LayerFrameImage?>.value(null);
 }

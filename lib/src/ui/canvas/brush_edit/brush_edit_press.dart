@@ -27,6 +27,18 @@ class _BrushEditPress {
   final Set<int> _activeTouchPointers = <int>{};
   bool _multiTouchNavigation = false;
 
+  /// Fingers resting on the glass, each the stroke's Shift for as long as
+  /// it rests (I-61-Q3, [aFingerHoldsShift]) — counted only while
+  /// [AppInputSettings.strokeFingerModifier] is on, so that with it off
+  /// nothing of this runs at all (유저: 「off하면 확실하게 제거」).
+  final Set<int> _shiftFingers = <int>{};
+
+  /// Whether a finger holds the stroke's Shift now: one resting on the
+  /// glass that is not the one drawing.
+  bool get aFingerHoldsShift =>
+      AppInput.settings.value.strokeFingerModifier &&
+      _shiftFingers.any((finger) => finger != _state._activeDrawingPointer);
+
   /// R26 #5: a second finger landed SOMEWHERE on the ink surfaces — maybe
   /// on a sibling view, whose pointer this view will never see. A live
   /// sub-slop touch stroke here is really the first half of a pinch, so
@@ -120,6 +132,10 @@ class _BrushEditPress {
 
   void pointerDown(PointerDownEvent event) {
     _state._toolHolds.heardByTheView.add(event.pointer);
+    if (event.kind == PointerDeviceKind.touch &&
+        AppInput.settings.value.strokeFingerModifier) {
+      _shiftFingers.add(event.pointer);
+    }
     // (No deferred stroke commit to land first: pen-up commits inside its
     // own event now — R25-④'s one-frame deferral existed to hide a
     // synchronous re-materialize that the promotion round deleted.)
@@ -150,14 +166,15 @@ class _BrushEditPress {
     // [canvasPressDraws], which the empty cel's press already made
     // ([_BrushEditCelPress.pressAsksForACel]) and this one did not: one
     // algorithm written twice, and the copies had parted.
-    // The 「이동」 key (I-15) stands this view down through `PanHoldGate`,
+    // The 「이동」 key (I-15) stands this view down through `ViewHoldGate`,
     // and a gate takes effect a REBUILD after the key. A press in the same
     // frame as the key still arrives here; it asked about mapped buttons
     // and the primary contact and nothing about the key, so over a cel a
     // stroke began — and the gesture layer above, seeing a stroke, did not
     // pan (the-pan-key-then-an-instant-press-draws, 2026-10-08: found by
     // the 타임라인/콘티 session when the app came to open ON a cel).
-    if (canvasPressPans(canvasPressButtons(event))) {
+    // ↩️I-88: and the 「회전」 key's press, for the same reason.
+    if (canvasPressMovesTheView(canvasPressButtons(event))) {
       return;
     }
     final mapping = canvasMappingFor(
@@ -237,15 +254,15 @@ class _BrushEditPress {
   /// block, or said 「프레임이 존재하지 않습니다」). ⛔The fill's alone: a
   /// stroke that starts beyond the wall can still come inside it.
   bool fillSpendsNothingAt(CanvasPoint canvasPosition) =>
-      _state.widget.fillDabAt != null &&
+      _state.widget.fillDabsAt != null &&
       !_state._isInsidePasteboard(canvasPosition);
 
   /// With the fill tool armed the press IS the fill: off the pasteboard
   /// it does nothing, on touch it waits for the release (a two-finger
   /// navigation may follow), else it runs at once. True when consumed.
   bool _pressAsFillTap(PointerDownEvent event, CanvasPoint canvasPosition) {
-    final fillDabAt = _state.widget.fillDabAt;
-    if (fillDabAt != null) {
+    final fillDabsAt = _state.widget.fillDabsAt;
+    if (fillDabsAt != null) {
       // Off-canvas fill taps flow through: the default (stage-bounded)
       // raster answers null for them, the extended raster fills — the
       // fill's own boundary options decide, not the pointer.
@@ -384,12 +401,12 @@ class _BrushEditPress {
     // (H43).
     _state._opening.stopWaiting();
     // A stroke can lift before it travelled far enough to name a ray; the
-    // snap settles on the best guess it has rather than swallowing a short
+    // lock settles on the best guess it has rather than swallowing a short
     // flick.
-    final session = _state._snapSession;
-    if (session != null) {
-      for (final snapped in session.finish()) {
-        _state._stroke.advanceStrokeTo(snapped);
+    final lock = _state._strokeLock;
+    if (lock != null) {
+      for (final locked in lock.finish()) {
+        _state._stroke.advanceStrokeTo(locked);
       }
     }
 
@@ -468,6 +485,7 @@ class _BrushEditPress {
   }
 
   void _forgetTouchPointer(int pointer) {
+    _shiftFingers.remove(pointer);
     _activeTouchPointers.remove(pointer);
     CanvasTouchContacts.remove(pointer);
     if (_activeTouchPointers.isEmpty) {

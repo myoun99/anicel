@@ -58,6 +58,16 @@ void main() {
       expect(scaled.spans[0].style.outlineWidth, 6);
       expect(scaled.spans[1].style.fontSize, 60);
       expect(scaled.wrapWidth, 180);
+      expect(
+        celTextScaledAbout(
+          said(wrapWidth: 120).copyWith(minHeight: 80),
+          1.5,
+          CanvasPoint(x: 100, y: 50),
+        ).minHeight,
+        120,
+        reason: 'how tall it is at least (F-317)',
+      );
+      expect(scaled.minHeight, isNull, reason: 'it had none');
     });
 
     test('what is not a length stays: the letters, the colours, the '
@@ -106,6 +116,15 @@ void main() {
       expect(scaled.spans[0].style.fontSize, celTextMinFontSize);
       expect(scaled.spans[1].style.fontSize, 2);
       expect(scaled.wrapWidth, 6);
+      expect(
+        celTextScaledAbout(
+          said(wrapWidth: 120).copyWith(minHeight: 10),
+          0.001,
+          CanvasPoint(x: 100, y: 50),
+        ).minHeight,
+        celTextMinWrapWidth,
+        reason: 'a twentieth of 10 is under a pixel',
+      );
     });
   });
 
@@ -235,6 +254,135 @@ void main() {
     });
   });
 
+  // F-317 (유저 2026-10-08): 「위아래 사각형도 존재하는게 좋을듯」 — and
+  // F-317-Q2: 「끈 높이는 최소치, 넘치면 상자가 늘어난다」. Its lines here
+  // are 60 deep, whatever they are set in: the layout's to say.
+  group('a top or bottom edge — how tall a box is at least', () {
+    test('the BOTTOM edge sets it and the box stays hung where it was', () {
+      final deepened = celTextBoxDeepened(
+        said(wrapWidth: 120),
+        90,
+        lettersDepth: 60,
+        byLeadingEdge: false,
+      );
+
+      expect(deepened.minHeight, 90);
+      expect(deepened.wrapWidth, 120);
+      expect(deepened.anchor, near(100, 50));
+    });
+
+    test('🚨the TOP edge carries the anchor the way the lines stack, so the '
+        'bottom stays where it was — from its lines, or from how tall it '
+        'was at least', () {
+      expect(
+        celTextBoxDeepened(
+          said(wrapWidth: 120),
+          90,
+          lettersDepth: 60,
+          byLeadingEdge: true,
+        ).anchor,
+        near(100, 20),
+      );
+      final tall = said(wrapWidth: 120).copyWith(minHeight: 90);
+      final shortened = celTextBoxDeepened(
+        tall,
+        70,
+        lettersDepth: 60,
+        byLeadingEdge: true,
+      );
+      expect(shortened.minHeight, 70);
+      expect(shortened.anchor, near(100, 70));
+      // At least 30, and its lines 60 deep: its bottom is theirs.
+      expect(
+        celTextBoxDeepened(
+          said(wrapWidth: 120).copyWith(minHeight: 30),
+          90,
+          lettersDepth: 60,
+          byLeadingEdge: true,
+        ).anchor,
+        near(100, 20),
+      );
+    });
+
+    test('🚨a box is never less than its lines: an edge taken into them '
+        'stops at them, and the top carries the anchor no further', () {
+      final tall = said(wrapWidth: 120).copyWith(minHeight: 90);
+
+      expect(
+        celTextBoxDeepened(
+          tall,
+          10,
+          lettersDepth: 60,
+          byLeadingEdge: false,
+        ).minHeight,
+        60,
+      );
+      final stopped = celTextBoxDeepened(
+        tall,
+        10,
+        lettersDepth: 60,
+        byLeadingEdge: true,
+      );
+      expect(stopped.minHeight, 60);
+      expect(stopped.anchor, near(100, 80));
+      expect(
+        celTextBoxDeepened(
+          said(wrapWidth: 120),
+          -5,
+          lettersDepth: 0,
+          byLeadingEdge: false,
+        ).minHeight,
+        celTextMinWrapWidth,
+        reason: 'nor less than a pixel',
+      );
+    });
+
+    test('across the text\'s OWN lines when it is turned, and in COLUMNS '
+        'leftwards: the edge the anchor is on is then the right one', () {
+      // A quarter turn: the lines stack LEFTWARDS on the canvas, so the top
+      // edge is on its right.
+      expect(
+        celTextBoxDeepened(
+          said(wrapWidth: 120, turn: 90),
+          90,
+          lettersDepth: 60,
+          byLeadingEdge: true,
+        ).anchor,
+        near(130, 50),
+      );
+      expect(
+        celTextBoxDeepened(
+          said(wrapWidth: 120, vertical: true),
+          90,
+          lettersDepth: 60,
+          byLeadingEdge: true,
+        ).anchor,
+        near(130, 50),
+      );
+      expect(
+        celTextBoxDeepened(
+          said(wrapWidth: 120, vertical: true),
+          90,
+          lettersDepth: 60,
+          byLeadingEdge: false,
+        ).anchor,
+        near(100, 50),
+      );
+    });
+
+    test('a text that grows has no box to deepen', () {
+      expect(
+        () => celTextBoxDeepened(
+          said(),
+          100,
+          lettersDepth: 60,
+          byLeadingEdge: false,
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
+
   // 세로쓰기 (유저 2026-10-06): a box's room is along its letters' way, and
   // in columns that is DOWN.
   group('the way the letters run', () {
@@ -247,6 +395,18 @@ void main() {
       expect(celTextLettersWay(said(turn: 90)), way(0, 1));
       expect(celTextLettersWay(said(vertical: true)), way(0, 1));
       expect(celTextLettersWay(said(vertical: true, turn: 90)), way(-1, 0));
+    });
+
+    test('and the lines STACK a quarter turn clockwise from it: down them; '
+        'in columns, leftwards — turned as the text is', () {
+      expect(celTextStackingWay(said()), way(0, 1));
+      expect(celTextStackingWay(said(turn: 90)), way(-1, 0));
+      expect(celTextStackingWay(said(vertical: true)), way(-1, 0));
+      expect(celTextStackingWay(said(vertical: true, turn: 90)), way(0, -1));
+      expect(
+        celTextStackingWay(said(turn: 30)),
+        way(-math.sin(30 * math.pi / 180), math.cos(30 * math.pi / 180)),
+      );
     });
 
     test('🚨in COLUMNS the edge the anchor is on is the TOP one: it carries '

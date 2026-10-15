@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -11,7 +9,8 @@ import 'canvas_capsule.dart';
 /// How far a target pill stands off its target's edge.
 const double targetPillGap = 8;
 
-/// Where a pill [pill] big stands for [target]: under it, centred on it.
+/// Where a pill [pill] big stands for [target]: under it, centred on it —
+/// wherever that is.
 ///
 /// 🗣️I-79-Q1 (유저 2026-10-08): 「위치는 대상 사각형의 위쪽 가운데. 즉
 /// 변형도구는 지금 위치가 사각형 오른쪽밑인데 사각형 위 가운데로 바뀔뿐.
@@ -24,27 +23,18 @@ const double targetPillGap = 8;
 /// 2026-09-22: 「위치는 위가아니라 클튜처럼 아래」) until the pill became
 /// one for every verb.
 ///
-/// With no room under the target it steps INSIDE, over the same edge — the
-/// answer on `transform-confirm-bar-placement`: 「위가 막히면 상자 안쪽으로
-/// 들어간다」. ⛔And it never leaves [room]: on a tablet the pill is the only
-/// way out of the verb, so it stays where a finger can reach it — but it
-/// never stops belonging to its target either, which is why it steps inside
-/// rather than parking at an edge of its own.
-Offset targetPillOffset({
-  required Rect target,
-  required Size pill,
-  required Rect room,
-}) {
-  final under = target.bottom + targetPillGap;
-  final top = under + pill.height <= room.bottom
-      ? under
-      : target.bottom - targetPillGap - pill.height;
-  final left = target.center.dx - pill.width / 2;
-  return Offset(
-    left.clamp(room.left, math.max(room.left, room.right - pill.width)),
-    top.clamp(room.top, math.max(room.top, room.bottom - pill.height)),
-  );
-}
+/// 🚨IT DOES NOT MOVE FOR THE ROOM (F-332, 유저 2026-10-10: 「화면 상태에
+/// 따라 공간없으면 위치 바뀌는데, 그게아니라 위치 고정적으로
+/// 움직이지않도록. 확인버튼 안보여져도되니까. 그걸원하는것임. 쓸데없이
+/// 움직이는게 더 번거로움」). Past the edge of the view it is past the
+/// edge — moving the view brings it back, and the verb keeps its other
+/// doors (Enter and Escape, the transform settings' 적용).
+/// ↩️With no room under the target it stepped INSIDE, over the same edge
+/// (`transform-confirm-bar-placement`: 「위가 막히면 상자 안쪽으로
+/// 들어간다」), and it never left the room the panel gave it — out from
+/// under a panel on the floor and the panel's own capsules.
+Offset targetPillOffset({required Rect target, required Size pill}) =>
+    Offset(target.center.dx - pill.width / 2, target.bottom + targetPillGap);
 
 /// The pill a canvas verb wears over its [target]: [children] side by side
 /// in a [CanvasCapsule], placed by [targetPillOffset].
@@ -73,7 +63,7 @@ class CanvasTargetPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomSingleChildLayout(
-    delegate: _UnderTheTarget(target, CanvasPillRoom.coverOf(context)),
+    delegate: _UnderTheTarget(target),
     // 🚨A PRESS ON THE PILL IS THE PILL'S, its rim included (CLAUDE.md: 「컨트롤
     // 위에서 시작한 제스처는 그 컨트롤의 것이다」). The verb's own layer is
     // an ancestor and hears the press too, and to the transform tool a
@@ -141,52 +131,20 @@ List<Widget> targetPillVerbs(
   ),
 ];
 
-/// What the canvas's pills keep out from under: the edges of the panel's
-/// tool layers that something else stands on — a panel lying on the floor,
-/// the panel's own capsules.
-///
-/// Given ONCE, around every tool the panel raises a pill from (the
-/// transform box's 확정/취소, the canvas adjusted on the canvas), the way
-/// the floor's cover is given to whatever lies on the floor
-/// (`CanvasFloorInsets`): where a pill may stand is a question about where
-/// it is. ↩️The selection layer was handed it as a parameter of its own.
-class CanvasPillRoom extends InheritedWidget {
-  const CanvasPillRoom({
-    super.key,
-    required this.cover,
-    required super.child,
-  });
-
-  final EdgeInsets cover;
-
-  /// The cover over [context]'s tools — none where no panel gives one.
-  static EdgeInsets coverOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<CanvasPillRoom>()?.cover ??
-      EdgeInsets.zero;
-
-  @override
-  bool updateShouldNotify(CanvasPillRoom oldWidget) =>
-      oldWidget.cover != cover;
-}
-
 class _UnderTheTarget extends SingleChildLayoutDelegate {
-  const _UnderTheTarget(this.target, this.cover);
+  const _UnderTheTarget(this.target);
 
   final Rect target;
-  final EdgeInsets cover;
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       constraints.loosen();
 
   @override
-  Offset getPositionForChild(Size size, Size childSize) => targetPillOffset(
-    target: target,
-    pill: childSize,
-    room: cover.deflateRect(Offset.zero & size),
-  );
+  Offset getPositionForChild(Size size, Size childSize) =>
+      targetPillOffset(target: target, pill: childSize);
 
   @override
   bool shouldRelayout(_UnderTheTarget oldDelegate) =>
-      oldDelegate.target != target || oldDelegate.cover != cover;
+      oldDelegate.target != target;
 }

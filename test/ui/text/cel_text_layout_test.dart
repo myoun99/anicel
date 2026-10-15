@@ -51,6 +51,7 @@ void main() {
     double x = 0,
     double y = 0,
     double? wrapWidth,
+    double? minHeight,
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
     double lineHeight = 1,
@@ -62,6 +63,7 @@ void main() {
         spans: spans,
         anchor: CanvasPoint(x: x, y: y),
         wrapWidth: wrapWidth,
+        minHeight: minHeight,
         rotationDegrees: turn,
         align: align,
         lineHeight: lineHeight,
@@ -283,6 +285,29 @@ void main() {
       expect(first(TextCelAlign.left).left, 0);
       expect(first(TextCelAlign.center).left, 30);
       expect(first(TextCelAlign.right).left, 60);
+    });
+
+    // F-317-Q1 · Q2 (유저 2026-10-14): 「상자가 글자를 따라 늘어난다 — 끈
+    // 높이는 최소치」.
+    test('🚨a box at least TALLER than its lines is that tall: they stand at '
+        'its top, and it reaches down past them', () {
+      // 「ab」 is one line 20 tall, in a box at least 50.
+      final tall = set([run('ab')], wrapWidth: 100, minHeight: 50);
+
+      expect(tall.block, const ui.Rect.fromLTWH(0, 0, 100, 50));
+      expect(tall.box, const ui.Rect.fromLTWH(-5, -5, 110, 60));
+      expect(tall.lettersDepth, 20);
+      expect(tall.caretRect(const TextPosition(offset: 0)).top, 0);
+      expect(tall.boxContains(const ui.Offset(50, 45)), isTrue);
+    });
+
+    test('🚨a box with MORE lines than it is tall at least grows down to '
+        'hold them all', () {
+      // Three lines of two: 60 tall.
+      final grown = set([run('abcdef')], wrapWidth: 50, minHeight: 30);
+
+      expect(grown.block, const ui.Rect.fromLTWH(0, 0, 50, 60));
+      expect(grown.lettersDepth, 60);
     });
   });
 
@@ -568,11 +593,13 @@ void main() {
       final text = set([run('ab')], x: 50, y: 30, turn: 90);
 
       expect(text.block, const ui.Rect.fromLTWH(0, 0, 40, 20));
+      // Its box is 5 further out on every side: (-5, -5)–(45, 25), and a
+      // quarter turn about the anchor takes (x, y) to (-y, x).
       final corners = text.boxCorners;
-      expect(corners[0], near(const ui.Offset(50, 30)));
-      expect(corners[1], near(const ui.Offset(50, 70)));
-      expect(corners[2], near(const ui.Offset(30, 70)));
-      expect(corners[3], near(const ui.Offset(30, 30)));
+      expect(corners[0], near(const ui.Offset(55, 25)));
+      expect(corners[1], near(const ui.Offset(55, 75)));
+      expect(corners[2], near(const ui.Offset(25, 75)));
+      expect(corners[3], near(const ui.Offset(25, 25)));
     });
 
     test('a point goes to the canvas and back', () {
@@ -629,14 +656,30 @@ void main() {
     });
   });
 
-  group('the box behind the letters', () {
-    test('a text with none has a box that is its lines\' block', () {
-      final text = set([run('ab')]);
+  group('the box', () {
+    test('🎯a text with no letters yet is a box, its caret in the middle — '
+        'not a line', () {
+      final text = set(
+        const [],
+        nextLetterStyle: const TextLetterStyle(fontSize: 40),
+      );
+      final caret = text.caretRect(const TextPosition(offset: 0));
 
-      expect(text.pad, 0);
-      expect(text.box, text.block);
+      expect(text.block.width, 0, reason: 'LIVENESS: its letters are none');
+      expect(text.box, const ui.Rect.fromLTRB(-10, -10, 10, 50));
+      expect(caret.center, text.box.center);
     });
 
+    test('a text with no box behind its letters has the same room around '
+        'them', () {
+      final text = set([run('ab')]);
+
+      expect(text.pad, 5);
+      expect(text.box, text.block.inflate(5));
+    });
+  });
+
+  group('the box behind the letters', () {
     test('reaches a quarter of the LARGEST letter\'s size past the block', () {
       final text = set(
         [run('a'), run('b', size: 40)],
@@ -663,8 +706,8 @@ void main() {
       expect(text.boxContains(const ui.Offset(44, 28)), isFalse);
       expect(
         set([run('ab')], x: 50, y: 30).boxContains(const ui.Offset(47, 28)),
-        isFalse,
-        reason: 'a text with no box behind it ends at its block',
+        isTrue,
+        reason: 'a text with no box behind it reaches as far',
       );
     });
 
@@ -728,7 +771,7 @@ void main() {
     test('follows the turn', () {
       final text = set([run('ab')], x: 50, y: 30, turn: 90);
 
-      // The box is (30, 30)–(50, 70) on the canvas; the room is 20.
+      // The block is (30, 30)–(50, 70) on the canvas; the room is 20.
       expect(text.inkBounds, const ui.Rect.fromLTRB(10, 10, 70, 90));
     });
   });

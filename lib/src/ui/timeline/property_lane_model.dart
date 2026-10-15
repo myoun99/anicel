@@ -1,13 +1,16 @@
-import 'dart:ui' show Offset, VoidCallback;
+import 'dart:ui' show Color, Offset, VoidCallback;
 
 import 'package:flutter/foundation.dart' show Listenable;
 
+import '../../models/key_mark.dart';
+import '../../models/key_side.dart' show KeyExit, KeySide, KeySidesEdit;
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_row_address.dart';
 import '../../models/timeline_run_behavior.dart';
+import 'lane_graph.dart' show TimelineGraphSeat;
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -41,94 +44,6 @@ enum PropertyLaneValueKind {
   color,
 }
 
-/// ONE editable piece of a lane's value: the number a person types, and the
-/// FIXED text that trails it.
-typedef PropertyLaneValuePart = ({String number, String unit});
-
-/// A value label split into what is EDITED and what is chrome (F-22 ②③).
-///
-/// 유저 2026-08-24: 「**단위 같은 고정요소를 편집창에서 제거**」,
-/// 「**포지션 등 2요소는 각각 편집**(온점 없이)」.
-///
-/// The value editor used to be one text box over the whole readout, so
-/// editing Scale meant typing `85%` with the percent sign, and editing
-/// Position meant typing `120, 45` — comma, space and all — to move one of
-/// the two numbers. Neither the unit nor the separator is a value; they are
-/// the shape the value is printed in.
-///
-/// ⚠️Derived from the label rather than declared per lane. The label already
-/// says what shape it is (`85%`, `30°`, `12 px`, `120, 45`), and a second
-/// declaration would be a second answer to drift from — the exact mistake
-/// the rail's column skeleton was built to end. [joinPropertyLaneValueParts]
-/// puts it back in the form every lane's parser already accepts, which is
-/// what keeps the commit path untouched.
-///
-/// ⛔A label only SPLITS when every comma-separated piece reads as a number:
-/// a text value that happens to contain a comma is one value, not two.
-List<PropertyLaneValuePart> propertyLaneValueParts(String label) {
-  final pieces = label.split(',');
-  final parts = <PropertyLaneValuePart>[];
-  for (final piece in pieces) {
-    final part = _numberAndUnit(piece.trim());
-    if (part == null) {
-      return [(number: label, unit: '')];
-    }
-    parts.add(part);
-  }
-  return parts.isEmpty ? [(number: label, unit: '')] : parts;
-}
-
-/// [propertyLaneValueParts] put back together — the text form the lane's own
-/// parser reads, byte for byte what the label was.
-String joinPropertyLaneValueParts(List<PropertyLaneValuePart> parts) =>
-    parts.map((part) => '${part.number}${part.unit}').join(', ');
-
-/// `85%` → (85, '%'), `12 px` → (12, ' px'), `-3.5` → (-3.5, ''). Null when
-/// the text does not lead with a number at all, which is every value that is
-/// not one — a colour, a font name, a flag.
-PropertyLaneValuePart? _numberAndUnit(String text) {
-  var end = 0;
-  if (end < text.length && (text[end] == '-' || text[end] == '+')) {
-    end += 1;
-  }
-  final digitsStart = end;
-  while (end < text.length && _isDigit(text[end])) {
-    end += 1;
-  }
-  if (end < text.length && text[end] == '.') {
-    end += 1;
-    while (end < text.length && _isDigit(text[end])) {
-      end += 1;
-    }
-  }
-  if (end == digitsStart) {
-    return null;
-  }
-  return (number: text.substring(0, end), unit: text.substring(end));
-}
-
-bool _isDigit(String character) {
-  final code = character.codeUnitAt(0);
-  return code >= 0x30 && code <= 0x39;
-}
-
-/// What a key mark on a lane LOOKS like — the AE vocabulary, plus the third
-/// answer a UNION needs (F-17).
-///
-/// An enum rather than the pair of booleans the drawing used to take: with
-/// two flags "hold and mixed at once" is a state something can be handed,
-/// and a mark cannot be both.
-enum PropertyLaneKeyShape {
-  /// AE's diamond — this key interpolates (and on a union, they all do).
-  smooth,
-
-  /// AE's square — this key holds (and on a union, they all do).
-  hold,
-
-  /// A UNION whose members disagree. Never reachable on a member lane.
-  mixed,
-}
-
 /// A lane colour written the way its own parser reads it back —
 /// `#RRGGBB`, or `none` where the lane allows absence.
 ///
@@ -145,9 +60,7 @@ class PropertyLaneRow {
   const PropertyLaneRow({
     required this.laneId,
     required this.label,
-    required this.keyedFrames,
-    this.holdOutFrames = const {},
-    this.mixedFrames = const {},
+    required this.keyMarks,
     this.keyNames = const {},
     this.valueLabel,
     this.valueKind = PropertyLaneValueKind.number,
@@ -158,8 +71,29 @@ class PropertyLaneRow {
     this.isGroupHeader = false,
     this.groupExpanded = false,
     this.groupEnabled,
+    this.headsAGraph = false,
     this.previewText,
+    this.stretchWords = const [],
+    this.curve,
   });
+
+  /// THE LINE a header graph draws this lane by (I-89 ③) — read off the
+  /// same reading of its track as [valueLabel], widened to a time between
+  /// frames, so the curve and the number printed beside it are one value.
+  /// Null on a lane no graph draws: a header, a flag, a colour, a lane
+  /// with no value to read.
+  final LaneCurve? curve;
+
+  /// Group headers only: whether the group's lanes can stand as one HEADER
+  /// GRAPH in their place (I-89 ③) — the header wears the graph's button.
+  /// The Transform group's and every effect's.
+  final bool headsAGraph;
+
+  /// The words written over the line between this lane's keys — each over
+  /// the stretch from a key to the next, as an instruction span's name is
+  /// written over its span ([LaneStretchWord]). The camera row's moves
+  /// (I-73 ⑤); empty on every other lane.
+  final List<LaneStretchWord> stretchWords;
 
   /// See [PropertyLaneValueKind].
   final PropertyLaneValueKind valueKind;
@@ -193,36 +127,21 @@ class PropertyLaneRow {
   /// Display name (AE naming for transform lanes).
   final String label;
 
+  /// The lane's keys by frame, each with the mark it wears (I-89 ②): a
+  /// member lane's own ([keyMarksOf]), a group header's the union of its
+  /// members' ([unionKeyMarks]).
+  ///
+  /// ↩️It was the keyed frames beside a set of the holding ones (and, on a
+  /// union, a set of the disagreeing ones), and a lane built without the
+  /// second set drew every key it held as a diamond — the name tag's flag
+  /// lanes did. One map cannot carry a key without its mark.
+  final Map<int, KeyMark> keyMarks;
+
   /// Frames carrying a key on this property.
-  final Set<int> keyedFrames;
+  Set<int> get keyedFrames => keyMarks.keys.toSet();
 
-  /// Keys whose OUT interpolation is HOLD (drawn as squares, AE-style).
-  final Set<int> holdOutFrames;
-
-  /// 🚨F-17: UNION headers only — frames whose keyed members DISAGREE about
-  /// their interpolation, drawn as a circle (「멤버 타입이 서로 다르면 헤더에
-  /// 동그라미」).
-  ///
-  /// ⛔Always empty on a member lane, and it has to be: a single key holds
-  /// or it does not, and there is nothing for it to disagree with. Only a
-  /// summary can be mixed.
-  ///
-  /// ⚠️Never overlaps [holdOutFrames] — [transformKeyMixedUnion] and
-  /// [transformKeyHoldUnion] come out of one walk for exactly that reason.
-  /// The shape a mark takes is resolved ONCE, by
-  /// [PropertyLaneRow.keyShapeAt], so no drawing site can reach a state
-  /// where a key is both.
-  final Set<int> mixedFrames;
-
-  /// Which mark [frame] draws on this lane.
-  ///
-  /// ★The one place the three sets become a shape. A widget that took two
-  /// booleans could be handed "hold AND mixed"; this cannot be.
-  PropertyLaneKeyShape keyShapeAt(int frame) => mixedFrames.contains(frame)
-      ? PropertyLaneKeyShape.mixed
-      : holdOutFrames.contains(frame)
-      ? PropertyLaneKeyShape.hold
-      : PropertyLaneKeyShape.smooth;
+  /// The mark [frame]'s key wears — asked only of a frame this lane keys.
+  KeyMark keyMarkAt(int frame) => keyMarks[frame]!;
 
   /// Names on this lane's keys, by frame — "same name, same value" made
   /// visible where the link lives. Frames absent here are unnamed, which
@@ -268,6 +187,24 @@ class PropertyLaneRow {
   final bool? groupEnabled;
 }
 
+/// A word over the stretch of a lane from its key on [from] to the next, on
+/// [to] — written in its row's key colour (`timelineStretchWordSpan`).
+typedef LaneStretchWord = ({int from, int to, String word});
+
+/// A lane as a header graph draws it ([PropertyLaneRow.curve]): the numbers
+/// it holds [at] a time — a frame, or a time between two — each drawn in
+/// its colour of [parts], in order; the [sides] of each of its keys by
+/// frame, which its handles stand for (I-89 ③); and, where its values walk
+/// a path (a position's, I-89 ④), the [way] from a key on — the next key
+/// that keeps its time, and how far — which a speed graph paces its
+/// handles by (I-89-Q5 B). Null where they lerp, from each key to the next.
+typedef LaneCurve = ({
+  List<Color> parts,
+  List<double> Function(double time) at,
+  Map<int, ({KeySide incoming, KeyExit outgoing})> sides,
+  ({int to, double length})? Function(int from)? way,
+});
+
 /// The view-state key of ONE collapsible lane group. A layer twirl-down can
 /// hold several group headers now (Transform, plus one per effect), so the
 /// expansion set is keyed by (row, group) instead of by row alone — a Blur
@@ -300,12 +237,16 @@ class TimelineDisplayRow {
     this.layer, {
     required this.layerIndex,
     this.depth = 0,
-  }) : lane = null;
+  }) : lane = null,
+       graph = null,
+       folded = false;
 
   const TimelineDisplayRow.lane(
     this.layer,
     PropertyLaneRow this.lane, {
     required this.layerIndex,
+    this.graph,
+    this.folded = false,
   }) : depth = 0;
 
   /// The owning layer. A FOLDER row is just a layer row whose layer is a
@@ -319,6 +260,30 @@ class TimelineDisplayRow {
   final int layerIndex;
 
   final PropertyLaneRow? lane;
+
+  /// The open HEADER GRAPH this lane is drawn in (I-89 ③), or null — a
+  /// lane of a group whose graph is shut, every header, every layer row.
+  final TimelineGraphSeat? graph;
+
+  /// Whether this lane is FOLDED to a thin strip under a graph enlarged
+  /// over it (I-89 ③D) — what it, or the other graph it is drawn in,
+  /// stands while that graph has the panel. Every header and every layer
+  /// row stand whole (the mock's 5판).
+  final bool folded;
+
+  /// This lane as a header graph draws it — the same row, drawn in its
+  /// group's graph where [seat] is one, and [folded] where one enlarged
+  /// over it says so.
+  TimelineDisplayRow seatedIn(
+    TimelineGraphSeat? seat, {
+    bool folded = false,
+  }) => TimelineDisplayRow.lane(
+    layer,
+    lane!,
+    layerIndex: layerIndex,
+    graph: seat,
+    folded: folded,
+  );
 
   // R10: a folder row carried its union runs and its members here, for a
   // private band painter that no longer exists. The union is the band
@@ -379,13 +344,13 @@ int indexOfDisplayRow(
 }
 
 /// THE CHAIN a [PropertyLaneRow.linkable] lane wears: whether it is on,
-/// what says so changed — the switch is flipped from elsewhere too — the
-/// press that flips it, and the name it answers to.
+/// what says so changed — the switch is flipped from elsewhere too — and
+/// the press that flips it. Its name is the chain's own
+/// (`ScaleChainButton`): one switch, one name.
 typedef PropertyLaneValueLink = ({
   Listenable changes,
   bool Function() isOn,
   VoidCallback toggle,
-  String tooltip,
 });
 
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
@@ -397,6 +362,8 @@ class PropertyLaneEditCallbacks {
     this.onSetValue,
     this.onPreviewValue,
     this.onEndPreview,
+    this.onSetKeySides,
+    this.onPreviewKeySides,
     this.valueLink,
   });
 
@@ -442,12 +409,66 @@ class PropertyLaneEditCallbacks {
   onPreviewValue;
 
   /// A scrub that went away without a release: what [onPreviewValue]
-  /// showed is dropped.
+  /// showed is dropped — and what [onPreviewKeySides] showed.
   final VoidCallback? onEndPreview;
+
+  /// A header graph's handle let go (I-89 ③): the key of [lane] at
+  /// [frameIndex] — and every key the lane range covers, when it holds that
+  /// one — eased as [sides] say.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int frameIndex,
+    KeySidesEdit sides,
+  )?
+  onSetKeySides;
+
+  /// A handle mid-drag: what [onSetKeySides] would write, to be SHOWN while
+  /// the drag lasts, as [onPreviewValue] shows a scrub.
+  final void Function(
+    Layer layer,
+    PropertyLaneRow lane,
+    int frameIndex,
+    KeySidesEdit sides,
+  )?
+  onPreviewKeySides;
 
   /// The chain of the lanes whose value is a linked pair — null leaves it
   /// off their rows.
   final PropertyLaneValueLink? valueLink;
+
+  /// These edits, landing on [layer] whichever row hands them over — a row
+  /// that wears a layer under an address of its own (the storyboard's
+  /// camera row, whose lanes are those of the camera of the cut it stands
+  /// in, I-73 ④ⓔ) edits that layer.
+  PropertyLaneEditCallbacks landingOn(Layer layer) {
+    final setValue = onSetValue;
+    final previewValue = onPreviewValue;
+    final setKeySides = onSetKeySides;
+    final previewKeySides = onPreviewKeySides;
+    return PropertyLaneEditCallbacks(
+      onToggleKeyAt: (_, lane, frameIndex) =>
+          onToggleKeyAt(layer, lane, frameIndex),
+      onSetValue: setValue == null
+          ? null
+          : (_, lane, frameIndex, input) =>
+                setValue(layer, lane, frameIndex, input),
+      onPreviewValue: previewValue == null
+          ? null
+          : (_, lane, frameIndex, input) =>
+                previewValue(layer, lane, frameIndex, input),
+      onEndPreview: onEndPreview,
+      onSetKeySides: setKeySides == null
+          ? null
+          : (_, lane, frameIndex, sides) =>
+                setKeySides(layer, lane, frameIndex, sides),
+      onPreviewKeySides: previewKeySides == null
+          ? null
+          : (_, lane, frameIndex, sides) =>
+                previewKeySides(layer, lane, frameIndex, sides),
+      valueLink: valueLink,
+    );
+  }
 }
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
@@ -691,17 +712,6 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   /// membership is resolved against it so nesting reads the same in every
   /// orientation. Defaults to [layers].
   List<Layer>? stack,
-
-  /// R9 #23/#24 — ONE rule for where a twirled-down lane sits: **further
-  /// from the layer means applied later**.
-  ///
-  /// On the horizontal axis "further" is DOWN, so the lanes follow their
-  /// layer in pipeline order (effects, then Transform last) and this stays
-  /// false. On the x-sheet the rows are COLUMNS and the user's direction is
-  /// LEFTWARD, so the same list is emitted BEFORE the layer and reversed —
-  /// the last-applied lane ends up furthest left. Deciding the two
-  /// separately is how they came to disagree in the first place.
-  bool lanesPrecedeLayer = false,
 }) {
   final rows = <TimelineDisplayRow>[];
   // 🚨F-249 (유저 2026-10-01): 「과거 결정 번복. 역시 변형 펼칠땐 어태치레이어의
@@ -783,19 +793,31 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
       rows.add(TimelineDisplayRow.lane(layer, lane, layerIndex: index));
     }
   }
-  if (!lanesPrecedeLayer) {
-    return List.unmodifiable(rows);
-  }
-  return List.unmodifiable(_laneRunsMovedAhead(rows));
+  return List.unmodifiable(rows);
 }
 
-/// Flips each lane RUN to the near side of its owner's row and reverses it
-/// — the x-sheet's leftward reading of "further means later" (R9 #23).
+/// [rows] — the timeline's, built by [buildTimelineDisplayRows] — with each
+/// lane RUN flipped to the near side of its owner's row and reversed: the
+/// x-sheet's.
+///
+/// R9 #23/#24 — ONE rule for where a twirled-down lane sits: **further
+/// from the layer means applied later**. On the horizontal axis "further"
+/// is DOWN, so the lanes follow their layer in pipeline order (effects,
+/// then Transform last). On the x-sheet the rows are COLUMNS and the
+/// user's direction is LEFTWARD, so the same list stands BEFORE the layer
+/// and reversed — the last-applied lane ends up furthest left. Deciding
+/// the two separately is how they came to disagree in the first place.
+///
+/// ⚠️Flipped AFTER the rows' graphs are seated (I-89 ③D): a seat lists
+/// its lanes as the rail draws them, so the sheet's graph — the strip a
+/// folded one thins to, the order its lines are drawn in — is the
+/// timeline's turned on its side. Seated after, a folded graph's strip
+/// was its first lane's on the timeline and its last's on the sheet.
 ///
 /// ↩️It moved the run past the owner's WHOLE attach group, mirroring R26
 /// #36 on the horizontal axis. F-249 (유저 2026-10-01) put a base's lanes
 /// right under its own row there, so here they sit right beside it.
-List<TimelineDisplayRow> _laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
+List<TimelineDisplayRow> laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
   final out = <TimelineDisplayRow>[];
   var index = 0;
   while (index < rows.length) {
@@ -818,7 +840,7 @@ List<TimelineDisplayRow> _laneRunsMovedAhead(List<TimelineDisplayRow> rows) {
     );
     out.insertAll(owner < 0 ? out.length : owner, run.reversed);
   }
-  return out;
+  return List.unmodifiable(out);
 }
 
 /// 🚨T13 — where a lane SELECTION SPAN ends, given the rows the rail draws.

@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/se_entries.dart';
 
@@ -173,20 +175,35 @@ void main() {
     );
 
     final cut = s.requireActiveCut;
-    final shot = shotRectIn(
-      canvas: cut.canvasSize,
-      cameraFrame: s.camera.cameraFrameSize,
-    );
+    final frame = s.camera.cameraFrameSize;
     // The fixture must actually exercise the mismatch, or it proves
     // nothing (the first version of this suite used canvas == camera).
     expect(
-      shot.width,
+      frame.width,
       lessThan(cut.canvasSize.width),
       reason: 'the default project frames a smaller camera than its paper',
     );
-    final position = s.seEntries.seNameTagsForCutFrame(cut, 0).single.content.position!;
-    expect(position.dx, inInclusiveRange(shot.left, shot.left + shot.width));
-    expect(position.dy, inInclusiveRange(shot.top, shot.top + shot.height));
+    // I-67-Q1: the position is the shot's own — inside the frame by what
+    // it is, and laid on the canvas inside the camera's frame.
+    final tag = s.seEntries.seNameTagsForCutFrame(cut, 0).single;
+    final position = tag.content.position!;
+    expect(position.dx, inInclusiveRange(0, frame.width));
+    expect(position.dy, inInclusiveRange(0, frame.height));
+    final onTheCanvas = tag.shot.apply(
+      CanvasPoint(x: position.dx, y: position.dy),
+    );
+    final corners = cameraFrameCornersInCanvas(
+      pose: s.camera.cameraPoseShowingCut(cut, 0),
+      cameraFrameSize: frame,
+    );
+    expect(
+      onTheCanvas.x,
+      inInclusiveRange(corners[0].dx, corners[2].dx),
+    );
+    expect(
+      onTheCanvas.y,
+      inInclusiveRange(corners[0].dy, corners[2].dy),
+    );
   });
 
   test('a STYLE-ONLY tag keeps the position null, so the default keeps '

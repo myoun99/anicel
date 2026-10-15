@@ -112,6 +112,7 @@ const List<String> appSettingsEntries = <String>[
   'brush_hand_settings.json',
   'brush_presets.json',
   'brush_tips',
+  'camera_path_settings.json',
   'color_palette.json',
   'export_settings.json',
   'fonts',

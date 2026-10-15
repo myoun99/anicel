@@ -1,7 +1,7 @@
 // A REFERENCE MOVIE SHOWS ITS PICTURE (미디어 배치 라운드 6): the one held cel
 // resolves to a movie cel per position, the hydrator decodes the frame the
 // sound's clock picks into the store — where the canvas stands, and ahead of
-// the playback warmer — fitted the way the file was placed; positions that
+// the playback warmer — standing where the file was placed; positions that
 // show one movie frame share one decode, a movie that will not open leaves
 // its span empty, and closing the session puts every movie back.
 import 'dart:io';
@@ -12,7 +12,6 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/native/qa_video_decoder.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
@@ -170,8 +169,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the picture sits the way the file was placed — the pool '
-      'entry\'s fit, not a stretch over the canvas', (tester) async {
+  testWidgets('the picture sits the way the file was placed — the pose its '
+      'fit started it at (I-68), not a stretch over the canvas', (
+    tester,
+  ) async {
     final (s, layer) = await placed(
       tester,
       FakeVideoBackend(frameCount: 24),
@@ -247,7 +248,9 @@ void main() {
     final (s, layer) = await placed(tester, FakeVideoBackend(frameCount: 24));
     debugVideoDecodeBackend = _Refusing();
     final gone = layer.copyWith(
-      mediaReference: MediaReference(assetPath: '${moviePath}_gone.mov'),
+      mediaReference: layer.mediaReference!.copyWith(
+        assetPath: '${moviePath}_gone.mov',
+      ),
     );
     s.repository.replaceLayer(layer: gone);
 

@@ -61,9 +61,14 @@ void main() {
       expect(rect.left, edge(frame), reason: 'frame $frame');
       expect(rect.right, edge(frame + 1), reason: 'frame $frame');
       expect(
-        painter.frameIndexAt(Offset(rect.left, 1)),
+        painter.geometry.value.cellAt(rect.left),
         frame,
         reason: 'a press on the cell\'s first pixel is that cell',
+      );
+      expect(
+        painter.geometry.value.cellAt(rect.right - 0.2),
+        frame,
+        reason: 'and on its last — the law\'s boundary, not the quotient\'s',
       );
     }
   });

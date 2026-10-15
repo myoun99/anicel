@@ -57,7 +57,7 @@ void main() {
   }
 
   void stand(LayerId id, int localFrame) {
-    session.clearAllSelections();
+    session.clearTimelineSelections();
     session.selectLayer(id);
     session.selectFrameIndex(localFrame);
   }

@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨T11 (유저 2026-08-13): 「불투명도 조절시, 제스쳐가 가끔 행 선택이
 /// 작동해버림. 불편한데 **원리적인 해결 가능한가**?」 · 「**마우스**, 드래그는
 /// 슬라이더위에서 작동시키다가 **제스쳐끊기고 레이어선택 작동**해버렷던거같음」.
@@ -58,9 +60,7 @@ void main() {
       'starts no row selection', (tester) async {
     final session = await pump(tester);
     final layerId = session.activeLayer!.id;
-    final slider = find.byKey(
-      ValueKey<String>('timeline-layer-opacity-$layerId'),
-    );
+    final slider = find.named('timeline-layer-opacity-$layerId');
     expect(slider, findsOneWidget);
     expect(session.rowSelection.value, isEmpty);
     final opacityBefore = session.activeLayer!.opacity;
@@ -96,7 +96,7 @@ void main() {
       'about WHOSE pointer it is, not about direction', (tester) async {
     final session = await pump(tester);
     final layerId = session.activeLayer!.id;
-    final row = find.byKey(ValueKey<String>('timeline-layer-name-$layerId'));
+    final row = find.named('timeline-layer-name-$layerId');
     expect(row, findsOneWidget);
 
     // The sideways nudge: the rail counts only its own axis as travel, so

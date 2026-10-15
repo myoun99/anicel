@@ -27,6 +27,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/kept_tail_row.dart';
 import '../text/app_strings.dart';
 import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
@@ -47,16 +48,18 @@ import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../widgets/static_raster.dart';
+import '../widgets/value_hands.dart' show ValuePencil;
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
-import '../import/import_dialog.dart';
+import '../workspace/workspace_door_commands.dart';
 import '../export/export_format_availability.dart' show stillFormatWritable;
 import '../export/export_plan.dart'
     show ExportSizeMode, sanitizeExportFileComponent;
 import '../export/frame_image_file.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ImageExportSpec;
+import '../panels/tool_size_preset_panel.dart';
 import '../panels/workspace_panels_menu.dart';
 import 'project_open_door.dart';
 import 'project_settings_menu.dart';
@@ -87,6 +90,7 @@ class EditorTopStrip extends StatelessWidget {
     required this.projects,
     required this.onCloseProject,
     required this.panelsMenu,
+    this.door,
     this.brushTool,
     this.colorBackground,
     this.colorPalette,
@@ -104,6 +108,11 @@ class EditorTopStrip extends StatelessWidget {
   EditorSessionManager get session => projects.active;
 
   final WorkspacePanelsMenuController panelsMenu;
+
+  /// The one door the 「파일 열기…」 and 「폴더 열기…」 rows knock on
+  /// (F-282) — the workspace's, which holds what it hands files to. Null
+  /// leaves the two rows dim (focused tests).
+  final WorkspaceDoorCommands? door;
 
   /// The active tool's settings. The size and opacity bars ride the strip's
   /// right end (프로크리·카리페그 배치) because they are values you set
@@ -182,14 +191,6 @@ class EditorTopStrip extends StatelessWidget {
   ]).toList();
 
   // --- File -----------------------------------------------------------------
-
-  Future<void> _openProject(BuildContext context) async {
-    final pick = await pickProjectToOpen(context);
-    if (pick == null || !context.mounted) {
-      return;
-    }
-    await ProjectOpenDoor(projects).open(context, pick);
-  }
 
   /// PICK-4: the recent projects — ONE row that opens them, or nothing at
   /// all.
@@ -372,12 +373,23 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.note_add_outlined,
       onPressed: () => projects.open(newUntitledProject()),
     ),
+    // 🗣️F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로」 — one
+    // door for every file, and Q1 (가): 「파일 열기…」 and 「폴더 열기…」
+    // as two rows. ↩️「열기…」 took projects alone, and 「가져오기/배치…」
+    // below opened the import window on nothing.
     _item(
       id: 'file-open',
       label: editorActionLabel(EditorActionIds.fileOpen),
       shortcuts: const [EditorActionIds.fileOpen],
+      icon: Icons.file_open_outlined,
+      onPressed: door?.openFiles,
+    ),
+    _item(
+      id: 'file-open-folder',
+      label: editorActionLabel(EditorActionIds.fileOpenFolder),
+      shortcuts: const [EditorActionIds.fileOpenFolder],
       icon: Icons.folder_open_outlined,
-      onPressed: () => unawaited(_openProject(context)),
+      onPressed: door?.openFolder,
     ),
     // The registry's names: Ctrl+S and Ctrl+Shift+S press these (I-19), and
     // the shortcut list says the same two words.
@@ -430,20 +442,6 @@ class EditorTopStrip extends StatelessWidget {
     ),
     ..._recentEntries(context),
     const PanelFlyoutDivider(),
-    _item(
-      id: 'file-import',
-      label: editorActionLabel(EditorActionIds.fileImport),
-      shortcuts: const [EditorActionIds.fileImport],
-      icon: Icons.file_download_outlined,
-      onPressed: () {
-        unawaited(
-          showDialog<void>(
-            context: context,
-            builder: (context) => ImportDialog(session: session),
-          ),
-        );
-      },
-    ),
     _item(
       id: 'file-export',
       label: editorActionLabel(EditorActionIds.fileExport),
@@ -794,11 +792,20 @@ class EditorTopStrip extends StatelessWidget {
 /// own writing allows ([FieldSlider.narrowestIn]); and past that the group
 /// is one button.
 ///
+/// And past THAT — a window too narrow for the button beside the list's
+/// place, 320 (an iPad's third) — the group is all of it, smaller
+/// ([KeptTailRow]): the list button's place is the one kept to the end, in
+/// the answer's own words. ↩️The tabs were left less than that place, and
+/// their row ran 15px over (measured 2026-10-15).
+///
 /// 🔬Measured 2026-10-07 in the app's faces at 1×, one project open: the
 /// bars stand at 140 down to a 770 window and narrow from there; the group
 /// is the button under 740 in English and in Japanese, under 727 in Korean,
 /// under 750 in French. An iPad mini held upright (744) leaves the two bars
-/// 254 between them, so it keeps its bars in the first three.
+/// 254 between them, so it keeps its bars in the first three. ⚠️Measured
+/// before each bar took its pencil (tool-settings-panel-tidy, 유저
+/// 2026-10-10: 막대에도 연필을 「달도록」): each stands 21 wider since, so
+/// these windows lie that much further out — not measured again.
 ///
 /// Each bar goes to its OWN narrowest for that reason, not only because the
 /// answer's words are each bar's: held to one width — the wider writing's,
@@ -828,14 +835,12 @@ class _TabsAndBrushGroup extends StatelessWidget {
               _BrushGroup.fixedWidth,
           narrowest,
         );
-        return Row(
-          children: [
-            Expanded(child: tabs),
-            if (bars != null)
-              _BrushGroup(brushTool: tool, bars: bars)
-            else
-              _BrushGroupButton(brushTool: tool),
-          ],
+        return KeptTailRow(
+          headKeeps: _ProjectTabRow._minTabWidth,
+          head: tabs,
+          tail: bars != null
+              ? _BrushGroup(brushTool: tool, bars: bars)
+              : _BrushGroupButton(brushTool: tool),
         );
       },
     );
@@ -980,7 +985,11 @@ class _BrushValueBars extends StatelessWidget {
   /// Side by side in the strip; one over the other in the group's popover.
   final Axis axis;
 
-  static const double fullBar = 140;
+  /// A bar at its full width — its track as it was at 140 and its pencil
+  /// after it ([ValuePencil.reach]), so a bar that took its pencil writes
+  /// in the room it always had (at twice the OS text its widest number
+  /// ran past its track without it).
+  static const double fullBar = 140 + ValuePencil.reach;
   static const _BarWidths full = (size: fullBar, opacity: fullBar);
   static const double _barHeight = 42;
   static const double _gap = 4;
@@ -1008,6 +1017,9 @@ class _BrushValueBars extends StatelessWidget {
     // Equal travel multiplies the value, so the left half covers the small
     // sizes where a pixel matters.
     scale: FieldSliderScale.exponential,
+    // F-325 (유저 2026-10-09): the +/− and the wheel step through the tool
+    // size panel's rack, as it is.
+    stops: ToolSizePresetPanel.presets,
     unit: ' px',
     height: _barHeight,
     onChanged: onChanged,
@@ -1328,8 +1340,10 @@ class _BlendModeControl extends StatelessWidget {
 }
 
 /// What a project tab says: the saved file's name without its extension,
-/// or 「Untitled n」 for a project never saved — the one label the tab row
-/// and its overflow list both show.
+/// the name a project not saved yet came with from the file it was read
+/// out of (a .tvpp, a .clip — 유저 10-09: 「애초에 프로젝트이름=파일이름
+/// 아닌가? 애니셀이든 뭐든」), or 「Untitled n」 for a new one — the one
+/// label the tab row and its overflow list both show.
 ///
 /// ↩️The strip's middle used to be BLANK before the first save: 「a
 /// standing "Untitled" would be a label that never becomes anything; the
@@ -1345,10 +1359,11 @@ String projectTabLabel(OpenProjects projects, EditorSessionManager session) {
   if (path != null) {
     return projectDisplayName(path);
   }
-  return AppText.strings.untitledProjectTab.replaceAll(
-    '{n}',
-    '${projects.untitledNumberOf(session) ?? 1}',
-  );
+  final untitled = projects.untitledNumberOf(session);
+  if (untitled == null) {
+    return session.repository.requireProject().name;
+  }
+  return untitledProjectName(untitled);
 }
 
 /// The open projects, one tab each — the strip's middle (I-7).
@@ -1636,44 +1651,17 @@ class _StripPopoverButton extends StatelessWidget {
 // unblocks Google Drive: it declines folder mode outright but serves file
 // mode fine.
 
-/// Open: the project FILE itself, on every platform.
-///
-/// PICK-6: the folder grant and the chooser it fed are both gone. A project
-/// is one file now — no sibling `.assets/`, no autosave sidecar — so the
-/// permission can land on the file, and asking for a folder would be asking
-/// for more than the job needs.
-///
-/// It also unblocks Google Drive, which declines folder mode outright
-/// (measured on iOS 26.5.2) but serves file mode fine.
-@visibleForTesting
-Future<ProjectPick?> pickProjectToOpen(BuildContext context) => pickProjectFile(
-  context,
-  // One list, which a dropped file is asked by too (F-247) — the decisions
-  // behind it went with it.
-  supportedExtensions: projectOpenExtensions,
-  // A DESKTOP hint only, and the SYNC twin on purpose: async `dart:io`
-  // never completes under the widget-test clock, and this is the first
-  // line of the open flow.
-  //
-  // Withheld wherever grants are scoped — on macOS the sandbox makes
-  // `$HOME` the container, so this would point at
-  // `~/Library/Containers/…/Documents/Anicel` and the panel would open
-  // inside the sandbox on every Open. With no hint the Apple pickers
-  // restore wherever the user last was, which is what Files trains them
-  // to expect.
-  initialDirectory: FolderPicker.grantsAreScoped
-      ? null
-      : ensuredAppDocumentsDirectorySync(),
-);
-
 /// Points the FILE picker at a project and answers what it grants: the
 /// first file, its bookmark, and `placed: false` — nothing was written, so
 /// whoever asked still has to write it.
 ///
-/// 🚨THE ONE PICK BEHIND EVERY PROJECT DOOR. Open and Reconnect are the
-/// same act with two bound constants — which extensions the door accepts,
-/// and whether a desktop starting folder is offered — so they are one
-/// function with two arguments rather than two functions that drift.
+/// The pick behind Reconnect — a recents row pointed at its project again.
+/// What it answers for the file it is granted is what every project pick
+/// answers ([projectPickOf]).
+///
+/// ↩️Open was its other caller until F-282 (2026-10-09): 「파일 열기…」
+/// takes every kind now, several at once, through the one door's pick
+/// (`pickFilesToOpen`).
 Future<ProjectPick?> pickProjectFile(
   BuildContext context, {
   required List<String> supportedExtensions,
@@ -1686,14 +1674,7 @@ Future<ProjectPick?> pickProjectFile(
     supportedExtensions: supportedExtensions,
     initialDirectory: initialDirectory,
   );
-  if (grant?.document case final document?) {
-    return (path: document.uri, folderBookmark: null, placed: false);
-  }
-  final path = grant?.path;
-  if (path == null) {
-    return null;
-  }
-  return (path: path, folderBookmark: grant!.bookmark, placed: false);
+  return grant == null ? null : projectPickOf(grant);
 }
 
 /// Save As.
@@ -2315,7 +2296,7 @@ Future<void> promptSaveProjectAs(
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
       '$anicelProjectSuffix';
   final beside = folderOfPath(session.projectFile.path ?? '');
-  // 🚨THE SYNC TWIN, like [pickProjectToOpen] twenty lines up — one file
+  // 🚨THE SYNC TWIN, like the open door's pick (`pickFilesToOpen`) — one file
   // asking one question one way. The async spelling stood here and it is
   // documented as unusable from a widget test: 「sync dart:io works under
   // the widget-test clock; async never completes there」. So the FIRST LINE
@@ -2451,7 +2432,11 @@ Future<void> _saySavedOncePlaced(BuildContext context) =>
 /// canvas ([writeFrameImage]): the layers as they show, none of the editing
 /// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
 /// settings are that tab's defaults, not the ones last used there: this is
-/// Save As, not the export window.
+/// Save As, not the export window — all but its ground: RGB on white, PNG
+/// as JPG, where the tab's PNG keeps its alpha.
+///
+/// 🗣️F-335 (유저 10-10): 「다른이름저장의 png, 형식 기본값 RGB의
+/// 배경흰색으로」.
 Future<void> saveFrameAsImage(
   BuildContext context,
   EditorSessionManager session,
@@ -2465,6 +2450,11 @@ Future<void> saveFrameAsImage(
     format: ExportFormatSelection(
       kind: ExportMediaKind.still,
       stillFormat: format,
+      channels: ExportChannels.rgb,
+      // ⚠️White because F-335 says white — not the window's default ground
+      // ([defaultExportBackgroundArgb]), which answers what the export
+      // window starts on and may change on its own.
+      backgroundArgb: 0xFFFFFFFF,
     ),
     sizeMode: ExportSizeMode.canvas,
   );

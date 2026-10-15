@@ -1,4 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/conte_group.dart';
 import '../../models/conte/conte_ink_keys.dart'
     show conteHandwritingOfACopy, conteInkRowLayerId;
 import '../../models/cut.dart';
@@ -10,6 +11,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../clipboard/layer_copy_payload.dart';
+import '../command.dart';
 import '../editing/cut_duplicate_helpers.dart' show remapTimelineExposure;
 import '../editing/run_id_mint.dart' show mintCutId, mintFrameId;
 import '../project_lookup.dart' show requireCut;
@@ -113,9 +115,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     _copyOf(frameId, on: newLayerId, into: frameIdMap);
   }
 
-  final hasStoryboardLayer = targetCut.layers.any(
-    (layer) => layer.kind == LayerKind.storyboard,
-  );
+  final hasStoryboardLayer = storyboardLayerForCut(targetCut) != null;
   // Kinds survive the paste except storyboard (unique per cut — extra copies
   // land as animation) and camera (refused upstream).
   final pastedKind = switch (payload.kind) {
@@ -491,15 +491,7 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
   if (siblings.isEmpty) {
     return AddLayerCommandInputPlan.none;
   }
-
   final ids = _ProjectIdSnapshot.fromProject(project);
-  LayerId next() {
-    final id = LayerId(
-      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
-    );
-    ids.layerIds.add(id.value);
-    return id;
-  }
 
   LayerId? counterpart(LayerId anchor, CutId sibling) => linkCounterpartIn(
     project,
@@ -510,11 +502,15 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
 
   final mirrors = <AddLayerMirror>[];
   for (final sibling in siblings) {
+    // The ONE row of its kind, that is — a row riding another is not it
+    // ([holdsSingletonOfKind]), so the conte row's attach rows mirror like
+    // any drawing row's.
     if (layer.kind.isSingletonPerCut &&
-        requireCut(
-          project,
-          sibling,
-        ).layers.any((row) => row.kind == layer.kind)) {
+        !isAttachedLayer(layer) &&
+        holdsSingletonOfKind(
+          requireCut(project, sibling).layers,
+          layer.kind,
+        )) {
       continue;
     }
     final folder = layer.folderId;
@@ -525,7 +521,7 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
         (base != null && mirroredBase == null)) {
       continue;
     }
-    final mirrorId = next();
+    final mirrorId = ids.nextLayerId();
     mirrors.add(
       AddLayerMirror(
         cutId: sibling,
@@ -544,10 +540,7 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
 
   return AddLayerCommandInputPlan(
     mirrors: mirrors,
-    linkGroupId: _firstAvailableId(
-      prefix: 'link',
-      usedIds: {for (final group in project.linkRegistry.groups) group.id},
-    ),
+    linkGroupId: ids.nextLinkGroupId(),
   );
 }
 
@@ -557,7 +550,12 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
 /// ONE recipe for every way a row is added to a cut: the layer panel's Add
 /// Layer, on the cut the canvas stands on, and the conte row a picture's
 /// first stroke makes, on the picture's cut.
-AddLayerCommand plannedAddLayerCommand({
+///
+/// ↩️A row added to a track's conte was planted in every other cut's here,
+/// wearing the head of its seat, and a conte born into the track was born
+/// carrying the track's attach rows (I-73). The track's conte structure
+/// lays both now (F-343, `trackWithItsConteLaid`): this adds the one row.
+Command plannedAddLayerCommand({
   required ProjectRepository repository,
   required CutId cutId,
   required Layer layer,
@@ -612,10 +610,13 @@ String _firstAvailableId({
 /// stores key a row's pictures by its cels' ids, so a row's own id may
 /// still be the first free.
 class _ProjectIdSnapshot {
-  _ProjectIdSnapshot({required this.layerIds});
+  _ProjectIdSnapshot({required this.layerIds, required this.linkGroupIds});
 
   factory _ProjectIdSnapshot.fromProject(Project project) {
-    final snapshot = _ProjectIdSnapshot(layerIds: <String>{});
+    final snapshot = _ProjectIdSnapshot(
+      layerIds: <String>{},
+      linkGroupIds: {for (final group in project.linkRegistry.groups) group.id},
+    );
     for (final track in project.tracks) {
       for (final cut in track.cuts) {
         snapshot.includeCut(cut);
@@ -625,6 +626,25 @@ class _ProjectIdSnapshot {
   }
 
   final Set<String> layerIds;
+
+  /// The link groups' ids — the registry's, and the ones a step has planned
+  /// since ([nextLinkGroupId]).
+  final Set<String> linkGroupIds;
+
+  /// A fresh layer id, kept so the next one asked for is another.
+  LayerId nextLayerId() {
+    final id = LayerId(_firstAvailableId(prefix: 'layer', usedIds: layerIds));
+    layerIds.add(id.value);
+    return id;
+  }
+
+  /// A fresh link-group id, kept likewise: a step that plants several rows
+  /// plans a group for each.
+  String nextLinkGroupId() {
+    final id = _firstAvailableId(prefix: 'link', usedIds: linkGroupIds);
+    linkGroupIds.add(id);
+    return id;
+  }
 
   void includeCut(Cut cut) {
     for (final layer in cut.layers) {

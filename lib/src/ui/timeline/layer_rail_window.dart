@@ -27,6 +27,7 @@ import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
 import 'axis_turn.dart';
 import 'layer_rail_columns.dart';
+import 'memo_token.dart' show KeptPiece;
 import 'timeline_grid_metrics.dart';
 import '../input/control_press_claim.dart';
 
@@ -507,7 +508,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
 /// tooltip and a double-click reset, and the user retired both — a grip
 /// that says what a grip is for is noise, and a reset nobody was told
 /// about is a control nobody uses.
-class LayerRailSplitter extends StatelessWidget {
+class LayerRailSplitter extends KeptPiece {
   const LayerRailSplitter({
     super.key,
     required this.axis,
@@ -525,7 +526,10 @@ class LayerRailSplitter extends StatelessWidget {
   static const double thickness = DockEdgeSplitter.thickness;
 
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (axis, extent, naturalExtent, availableExtent);
+
+  @override
+  Widget buildKept(BuildContext context) {
     return DockEdgeSplitter(
       axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
       onDragDelta: (delta) => extent.resizeBy(
@@ -543,7 +547,7 @@ class LayerRailSplitter extends StatelessWidget {
 /// zoom slider. It moved here whole (the user's word was "완전 이동")
 /// because the corner is where the two axes meet, and what the button
 /// changes is how the frame axis LABELS itself.
-class TimelineSecondsToggleCorner extends StatelessWidget {
+class TimelineSecondsToggleCorner extends KeptPiece {
   const TimelineSecondsToggleCorner({
     super.key = const ValueKey<String>('timeline-time-display-toggle-button'),
     required this.showSeconds,
@@ -558,7 +562,10 @@ class TimelineSecondsToggleCorner extends StatelessWidget {
   final double height;
 
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (showSeconds, onChanged != null, width, height);
+
+  @override
+  Widget buildKept(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final onChanged = this.onChanged;
     if (onChanged == null) {
@@ -598,7 +605,7 @@ class TimelineSecondsToggleCorner extends StatelessWidget {
 /// [Scrollable], it is a clipped box, so the position is a plain notifier
 /// that this bar and [LayerRailWindow] share. Always visible, like every
 /// scrollbar in the app.
-class LayerRailScrollbar extends StatelessWidget {
+class LayerRailScrollbar extends KeptPiece {
   const LayerRailScrollbar({
     super.key,
     required this.axis,
@@ -618,9 +625,20 @@ class LayerRailScrollbar extends StatelessWidget {
   /// Addresses the surface: 'timeline' | 'xsheet' | 'storyboard'.
   final String keyPrefix;
 
+  /// The window it drives is the rail's own size as much as these.
+  @override
+  Object? get facts => (
+    axis,
+    rail,
+    rail.value,
+    naturalExtent,
+    availableExtent,
+    laneExtent,
+    keyPrefix,
+  );
 
   @override
-  Widget build(BuildContext context) {
+  Widget buildKept(BuildContext context) {
     final horizontal = axis == Axis.horizontal;
     final windowExtent = rail.windowExtent(
       naturalExtent,

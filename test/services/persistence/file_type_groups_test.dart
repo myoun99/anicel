@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/media_asset.dart'
+    show audioFileExtensions, imageFileExtensions, videoFileExtensions;
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
@@ -36,9 +38,6 @@ void main() {
     'anicelProject': FileTypeGroups.anicelProject,
     'anicelBrush': FileTypeGroups.anicelBrush,
     'brushes': FileTypeGroups.brushesFor('ios'),
-    'images': FileTypeGroups.images,
-    'viewableMedia': FileTypeGroups.viewableMedia,
-    'importableMedia': FileTypeGroups.importableMedia,
     'poolMedia': FileTypeGroups.poolMedia,
   };
 
@@ -108,13 +107,6 @@ void main() {
         'pdf',
       ]) {
         expect(pool, contains(extension));
-      }
-    });
-
-    test('the import group offers no video, because placement refuses it', () {
-      final importable = FileTypeGroups.importableMedia.extensions!;
-      for (final extension in videoFileExtensions) {
-        expect(importable, isNot(contains(extension)));
       }
     });
   });
@@ -268,33 +260,6 @@ void main() {
         }
       });
     }
-  });
-
-  test('the VIEWER picker offers exactly what the viewer can open — the '
-      'list is a claim about the viewer, not a taste', () {
-    // 🚨A picker narrower than the viewer makes 「the viewer plays movies」
-    // untrue from the user's side, and nothing in the viewer fails when it
-    // happens: the file simply never arrives. So the two are pinned to each
-    // other here rather than trusted to be edited together (2026-08-29 —
-    // adding video playback found this list still saying images + PDF).
-    //
-    // Audio is the one viewable-media absence with a reason: sound has no
-    // picture, and the viewer says so instead of opening an empty frame.
-    expect(
-      FileTypeGroups.viewableMedia.extensions,
-      containsAll(videoFileExtensions),
-      reason: 'the viewer plays movies, so its picker must offer them',
-    );
-    expect(
-      FileTypeGroups.viewableMedia.extensions,
-      containsAll(imageFileExtensions),
-    );
-    expect(FileTypeGroups.viewableMedia.extensions, contains('pdf'));
-    expect(
-      FileTypeGroups.viewableMedia.extensions,
-      isNot(anyElement(isIn(audioFileExtensions))),
-      reason: 'sound has no picture — the one deliberate absence',
-    );
   });
 
   test('🚨 every identifier a picker is handed has a MIME, or Android '

@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/library_source.dart';
+import '../../helpers/named_finders.dart';
 
 /// I-4 — 색 라벨이 `LayerMark` 를 **승계**했다는 것을 재는 계약.
 ///
@@ -248,10 +249,10 @@ void _axisAgreement() {
       );
 
       final mark = tester.getRect(
-        find.byKey(const ValueKey<String>('probe-layer-mark-a')),
+        find.named('probe-layer-mark-a'),
       );
       final take = tester.getRect(
-        find.byKey(const ValueKey<String>('probe-layer-take-a')),
+        find.named('probe-layer-take-a'),
       );
       if (axis == Axis.horizontal) {
         expect(
@@ -516,7 +517,7 @@ void _labelGlyphsKeepTheirAntiAliasing() {
     await tester.pumpAndSettle();
 
     final chip = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-mark-a')),
+      find.named('timeline-layer-mark-a'),
     );
 
     late ByteData pixels;
@@ -706,7 +707,7 @@ void _everyLabelSitsAtOneHeight() {
         await tester.pumpAndSettle();
         final plate = tester
             .getRect(
-              find.byKey(ValueKey<String>('${surface.prefix}-layer-mark-a')),
+              find.named('${surface.prefix}-layer-mark-a'),
             )
             .size;
 

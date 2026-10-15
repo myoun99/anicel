@@ -6,7 +6,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -20,7 +20,7 @@ import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
   });
 
   void map({CanvasPointerAction? right, CanvasPointerAction? wheel}) {
@@ -45,26 +45,28 @@ void main() {
 
   const tipAndBarrel = kPrimaryButton | kSecondaryButton;
 
-  group("whose a press is — the tool in hand's, or not", () {
-    /// The raw pen service saying which end of the pen is down — each
-    /// call a new report.
-    var reports = 0;
-    void penIs({required bool turnedOver}) {
-      final raw = RawPenInputService.instance;
-      if (reports == 0) {
-        addTearDown(() {
-          raw.debugReset();
-          reports = 0;
-        });
-        RawPenInputService.debugClockOverride = () => DateTime(2024);
-        raw.debugPollOverride = () => null;
-        raw.start();
-      }
-      reports += 1;
-      raw.debugInjectState(
-        QaPenRawState(flags: turnedOver ? 0x08 : 0, sequence: reports),
-      );
+  /// The raw pen service handing over a report whose HID flags are
+  /// [flags] — each call a new report.
+  var reports = 0;
+  void driverSays(int flags) {
+    final raw = RawPenInputService.instance;
+    if (reports == 0) {
+      addTearDown(() {
+        raw.debugReset();
+        reports = 0;
+      });
+      RawPenInputService.debugClockOverride = () => DateTime(2024);
+      raw.debugPollOverride = () => null;
+      raw.start();
     }
+    reports += 1;
+    raw.debugInjectState(QaPenRawState(flags: flags, sequence: reports));
+  }
+
+  group("whose a press is — the tool in hand's, or not", () {
+    /// The raw pen service saying which end of the pen is down.
+    void penIs({required bool turnedOver}) =>
+        driverSays(turnedOver ? 0x08 : 0);
 
     void tailIs(CanvasPointerAction action) =>
         AppInput.settings.value = AppInput.settings.value.copyWith(
@@ -153,7 +155,7 @@ void main() {
 
   test('the primary button pans only while the 「이동」 key is held', () {
     expect(canvasPressPans(kPrimaryButton), isFalse);
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     expect(canvasPressPans(kPrimaryButton), isTrue);
     expect(
       canvasPressPans(tipAndBarrel),
@@ -177,7 +179,7 @@ void main() {
   test('a primary press draws — and not while the held pan takes it', () {
     expect(draws(kPrimaryButton), isTrue);
     expect(draws(kPrimaryButton, kind: PointerDeviceKind.stylus), isTrue);
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     expect(
       draws(kPrimaryButton),
       isFalse,
@@ -239,6 +241,50 @@ void main() {
 
   test('a press with no button down draws nothing', () {
     expect(draws(0), isFalse);
+  });
+
+  group('what the driver says of a press', () {
+    PointerDownEvent press(int buttons, {PointerDeviceKind? kind}) =>
+        PointerDownEvent(
+          kind: kind ?? PointerDeviceKind.mouse,
+          buttons: buttons,
+        );
+
+    // 「윈도우 잉크를 끄면 애니셀 설정이 윈탭이든 표준이든 펜으로 선이
+    // 안그려짐. 마우스는 그려지는데」 (유저 2026-10-10).
+    test('🚨a report that says the pen is HOVERING vetoes no press the OS '
+        'says is down — under it no press of the pen drew (F-331)', () {
+      driverSays(0);
+      expect(
+        draws(kPrimaryButton),
+        isTrue,
+        reason: 'a pen the OS hands over as a mouse',
+      );
+      expect(draws(kPrimaryButton, kind: PointerDeviceKind.stylus), isTrue);
+      expect(
+        canvasPressButtons(press(kSecondaryMouseButton)),
+        kSecondaryMouseButton,
+        reason: 'nor a button it says nothing of',
+      );
+    });
+
+    test('a report that says a button IS down is believed over the OS — the '
+        'phantom tap Ink makes of a barrel press is the barrel', () {
+      driverSays(0x02);
+      expect(
+        canvasPressButtons(
+          press(kPrimaryButton, kind: PointerDeviceKind.stylus),
+        ),
+        kPrimaryStylusButton,
+      );
+      expect(draws(kPrimaryButton, kind: PointerDeviceKind.stylus), isFalse);
+      driverSays(0x01);
+      expect(
+        canvasPressButtons(press(0, kind: PointerDeviceKind.stylus)),
+        kPrimaryButton,
+        reason: 'and the tip it says is down is down',
+      );
+    });
   });
 
   // 「이동은 확인했는데」 — and it may not be slower than the wheel was: on the

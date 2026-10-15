@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../text/app_face.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/dialogue_fit_paint.dart';
+import '../text/laid_out_glyph.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../text/word_condensation.dart';
 import 'axis_turn.dart';
@@ -80,7 +81,7 @@ class _DialogueFitPainter extends CustomPainter
   final TextStyle style;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     if (axis == Axis.vertical) {
       paintDialogueFitColumn(
         canvas,
@@ -104,13 +105,9 @@ class _DialogueFitPainter extends CustomPainter
       mainExtent: mainExtent,
     );
     for (var i = 0; i < glyphs.length; i += 1) {
-      final painter = TextPainter(
-        text: TextSpan(text: glyphs[i], style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
       paintWordCentredIn(
         canvas,
-        painter,
+        laidOutGlyph(glyphs[i], style),
         Rect.fromLTWH(centers[i] - cellExtent / 2, 0, cellExtent, size.height),
       );
     }

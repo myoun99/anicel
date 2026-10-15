@@ -13,7 +13,7 @@ import 'timeline_cell_style.dart'
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_span_layout.dart';
-import 'timeline_glyph_cache.dart';
+import '../text/laid_out_glyph.dart';
 
 /// Session-level hooks for the run-edge affordances (UI-R9 #10, TVP
 /// style): [+] adds NEW one-frame drawings by dragging (one-undo drag
@@ -433,7 +433,7 @@ void paintTimelineRunGlyph(
   required Rect slot,
   required TextStyle type,
 }) {
-  final glyph = timelineGlyphPainter(
+  final glyph = laidOutGlyph(
     text,
     type.copyWith(height: 1, fontWeight: FontWeight.w700),
   );

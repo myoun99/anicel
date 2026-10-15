@@ -3,8 +3,8 @@ import '../../models/cut.dart';
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
-import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
+import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
 import 'render_caches.dart';
@@ -21,6 +21,10 @@ abstract interface class PlaybackRun {
   /// The order pictures are wanted in now — what the warmer follows — or
   /// null while it follows nothing.
   FrameDemand? get demand;
+
+  /// The pictures every screen shows a frame from — the budget keeps them by
+  /// [demand].
+  CanvasPictures get pictures;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -48,20 +52,9 @@ class PlaybackCacheBudget implements PictureRoom {
 
   PlaybackCacheBudgetEnforcer? _enforcer;
 
-  /// [playbackReadyRunsForCut]'s memo: per cut instance, each structure's
-  /// full signature at one pixel revision.
-  final Expando<
-    ({
-      int pixelRevision,
-      Map<CutFrameCompositeSignature, CutFrameCompositeSignature> byStructure,
-    })
-  >
-  _signedStructures = Expando('signedCompositeStructures');
-
   PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
       _enforcer ??= PlaybackCacheBudgetEnforcer(
         layerImages: _renderCaches.layerFrameImageCache,
-        composites: _renderCaches.cutFrameCompositeCache,
         maxBytes:
             _debugMaxBytes ?? _allowedMaxBytes ?? playbackCacheBudgetBytes,
       );
@@ -82,21 +75,8 @@ class PlaybackCacheBudget implements PictureRoom {
   @visibleForTesting
   void debugSetPlaybackCacheBudgetBytes(int bytes) => _debugMaxBytes = bytes;
 
-  /// The composite-cache budget trim, runnable by every producer: the
-  /// warmer after each cached frame, and the parked track stack after each
-  /// on-demand build (its composites would otherwise grow the cache with
-  /// nothing trimming until the next warm run). LRU: what is on screen was
-  /// just touched, so it survives its own trim; held clones cover the rest.
-  /// A6: the reserve is MEASURED now — the bytes the editing canvas has
-  /// actually pinned — replacing an estimate that saturated at its clamp
-  /// around twenty layers and then reported the same number for a
-  /// hundred. The holders declare their clones to the cache (pins), so
-  /// "what the screen needs" stopped being a guess about a widget tree
-  /// and became a number the cache itself carries. While playing the
-  /// editing stack holds no pins, so the old "zero while playing" rule
-  /// falls out for free instead of being an `if`.
-  /// The playback caches' combined cap in force (diagnostics/tests) — it
-  /// is [playbackCacheBudgetBytes] until the OS warns.
+  /// The playback cache's cap in force (diagnostics/tests) — it is
+  /// [playbackCacheBudgetBytes] until the OS warns.
   int get playbackCacheByteBudget => _playbackCacheBudgetEnforcer.maxBytes;
 
   /// ⚠️A test's [debugSetPlaybackCacheBudgetBytes] still wins.
@@ -105,6 +85,7 @@ class PlaybackCacheBudget implements PictureRoom {
     _enforcer?.maxBytes = _debugMaxBytes ?? bytes;
   }
 
+  /// The playback cache's trim, run by the warmer after each picture lands.
   ///
   /// 🚨WHAT IS LET GO IS WHAT IS WANTED LATEST ([FrameDemand] — the one
   /// order the warmer makes pictures in). ↩️B1 had to DERIVE a kept range
@@ -113,16 +94,12 @@ class PlaybackCacheBudget implements PictureRoom {
   /// range stopped AT the line, so every runway composite was evictable the
   /// moment it landed. They are one object now, and nothing is kept whole.
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
-    demand: _run.demand,
-    reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
+    wantedAt: _run.pictures.wantedAt(_run.demand),
     lentBytes: _lentBytes,
   );
 
   @override
-  int get bytes => _playbackCacheBudgetEnforcer.roomForComposites(
-    reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
-    lentBytes: _lentBytes,
-  );
+  int get bytes => _playbackCacheBudgetEnforcer.room(lentBytes: _lentBytes);
 
   @override
   bool makeRoomFor({required int bytes, required int step}) =>
@@ -130,7 +107,7 @@ class PlaybackCacheBudget implements PictureRoom {
         bytes: bytes,
         step: step,
         within: this.bytes,
-        demand: _run.demand,
+        wantedAt: _run.pictures.wantedAt(_run.demand),
       );
 
   /// What an export run holds on this line while it goes — the row
@@ -190,36 +167,21 @@ class PlaybackCacheBudget implements PictureRoom {
   ///
   /// ★Asked once per span of one picture, never per frame (I-22): zoomed
   /// out to ten minutes the per-frame read was 94% of a playback tick. The
-  /// spans come from [compositeStructureSpansIn]; each structure's full
-  /// signature is taken once per pixel revision, and the cache is asked
-  /// with [CutFrameCompositeCache.heldSignature] — a pure read, where the
-  /// per-frame bar filed an index key and touched the entry as used for
-  /// every frame on screen. The key the cache hands back is kept, so the
-  /// next ask of a held picture is `identical` rather than a walk over
-  /// every layer node (measured: that walk was most of what was left).
+  /// spans come from [compositeStructureSpansIn].
+  ///
+  /// 🚨A BAR COUNTS WHAT ITS RUN SHOWS (playback-plays-the-screen-material):
+  /// a span is ready when the pictures every screen shows a frame from are —
+  /// the question a run asks before it goes on ([CanvasPictures.has]) asked
+  /// of the span's first frame. ↩️The film's bar — the storyboard's — counted
+  /// composites while the film played on them.
   List<({int startIndex, int endIndexExclusive})> playbackReadyRunsForCut(
     Cut cut,
     int start,
     int end,
   ) {
-    final composites = _renderCaches.cutFrameCompositeCache;
-    final signed = _signedStructuresOf(cut);
-    bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
-      if (structure.nodes.isEmpty) {
-        return true;
-      }
-      final held = composites.heldSignature(
-        signed[structure] ??= composites.signatureOf(
-          cut: cut,
-          frameIndex: frameIndex,
-        ),
-      );
-      if (held == null) {
-        return false;
-      }
-      signed[structure] = held;
-      return true;
-    }
+    bool isReady(CutFrameCompositeSignature structure, int frameIndex) =>
+        structure.nodes.isEmpty ||
+        _run.pictures.has((cut: cut, frameIndex: frameIndex));
 
     final runs = <({int startIndex, int endIndexExclusive})>[];
     for (final span in compositeStructureSpansIn(
@@ -246,23 +208,4 @@ class PlaybackCacheBudget implements PictureRoom {
     return runs;
   }
 
-  /// Each structure's full signature for [cut], good until a pixel
-  /// moves: [BrushFrameStore.celPixelRevision] is the store's one
-  /// signal that a source revision may have changed (a whole-store swap
-  /// opens a new project, so its cuts are new instances and miss here).
-  Map<CutFrameCompositeSignature, CutFrameCompositeSignature>
-  _signedStructuresOf(Cut cut) {
-    final revision =
-        _renderCaches.cutFrameCompositeCache.frameStore.celPixelRevision.value;
-    final held = _signedStructures[cut];
-    if (held != null && held.pixelRevision == revision) {
-      return held.byStructure;
-    }
-    final fresh = (
-      pixelRevision: revision,
-      byStructure: <CutFrameCompositeSignature, CutFrameCompositeSignature>{},
-    );
-    _signedStructures[cut] = fresh;
-    return fresh.byStructure;
-  }
 }

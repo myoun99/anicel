@@ -234,6 +234,9 @@ class BoxOnScreen {
       BoxPress.handle => handles[hit!.handle],
       BoxPress.inside => TransformHandle.inside,
       BoxPress.turn => TransformHandle.rotate,
+      // A row's position path is bent on its row's box (I-89 ④); the tool's
+      // box is handed no tangents.
+      BoxPress.tangent => throw StateError('The tool box bends no path.'),
     };
   }
 

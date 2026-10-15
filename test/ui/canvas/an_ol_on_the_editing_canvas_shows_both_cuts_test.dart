@@ -179,30 +179,34 @@ void main() {
     await drainWarming(tester);
   });
 
-  testWidgets('a ruler scrub PARKED past the cut, in the O.L\'s second half, '
-      'shows the parked mix with no wash of the cut it left over it', (
-    tester,
-  ) async {
+  testWidgets('a ruler scrub across the boundary, into the O.L\'s second '
+      'half, stands in the next cut — and the cut it left is the O.L\'s '
+      'partner there: its paper, no wash', (tester) async {
     final s = standingInAnOl(partnered: true);
     addTearDown(s.dispose);
     await pumpArea(tester, s);
-    // Down on the cut's own frame, then across the boundary: the second
-    // move parks on the other cut's frame 26 and the stack takes the canvas.
+    // Down on the cut's own frame, then across the boundary: the move
+    // crosses into the other cut (I-57 ②). ↩️It parked there, and the
+    // track stack took the canvas.
     s.frameScrub.scrubGlobalFrame(21);
     s.frameScrub.scrubGlobalFrame(26);
     await tester.pump();
     await tester.pump();
+    expect(s.activeCutId, const CutId('b'));
+    expect(
+      s.currentFrameIndex,
+      8,
+      reason: 'its own frame: the のりしろ the O.L asks puts its frame 0 at 18',
+    );
     expect(
       find.byKey(const ValueKey<String>('canvas-ol-partner')),
-      findsNothing,
-      reason: 'the parked stack already holds both cuts — the cut it left '
-          'lays neither its wash nor its partner over them',
+      findsOneWidget,
+      reason: 'the cut it left is the dissolve\'s other half',
     );
     expect(
       await paperPixels(tester),
       greaterThan(5000),
-      reason: 'the parked stack mixes two papers — the leaving cut\'s own '
-          'fade is not laid over it',
+      reason: 'two papers mixed are paper — no red dip on this side either',
     );
     s.frameScrub.commitFrameScrub();
     await drainWarming(tester);

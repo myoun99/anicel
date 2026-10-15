@@ -5,6 +5,7 @@ import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_window.dart';
+import 'dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 
@@ -133,20 +134,12 @@ class _InstructionSetEditorDialogState
           ],
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('instruction-set-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        AppWindowAction(
-          label: strings.commonSave,
-          actionKey: const ValueKey<String>('instruction-set-save-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () =>
-              Navigator.of(context).pop(CameraInstructionSet(defs: _defs)),
-        ),
-      ],
+      actions: saveActions(
+        context,
+        prefix: 'instruction-set',
+        onSave: () =>
+            Navigator.of(context).pop(CameraInstructionSet(defs: _defs)),
+      ),
     );
   }
 }
@@ -396,26 +389,18 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
           ],
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('instruction-def-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        AppWindowAction(
-          label: strings.commonSave,
-          actionKey: const ValueKey<String>('instruction-def-save-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: () => Navigator.of(context).pop(
-            widget.def.copyWith(
-              name: _nameController.text.trim(),
-              iconKey: _iconKey,
-              colorValue: () => _colorValue,
-              markType: _markType,
-            ),
+      actions: saveActions(
+        context,
+        prefix: 'instruction-def',
+        onSave: () => Navigator.of(context).pop(
+          widget.def.copyWith(
+            name: _nameController.text.trim(),
+            iconKey: _iconKey,
+            colorValue: () => _colorValue,
+            markType: _markType,
           ),
         ),
-      ],
+      ),
     );
   }
 }

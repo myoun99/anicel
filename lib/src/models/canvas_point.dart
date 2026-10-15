@@ -30,6 +30,17 @@ class CanvasPoint {
   static CanvasPoint lerp(CanvasPoint a, CanvasPoint b, double t) =>
       CanvasPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t);
 
+  /// [lerp] undone: where [value] falls along the line from [a] (0) to [b]
+  /// (1) — its projection onto that line, 0 when the two are one point.
+  static double inverseLerp(CanvasPoint a, CanvasPoint b, CanvasPoint value) {
+    final dx = b.x - a.x;
+    final dy = b.y - a.y;
+    final length = dx * dx + dy * dy;
+    return length == 0
+        ? 0
+        : ((value.x - a.x) * dx + (value.y - a.y) * dy) / length;
+  }
+
   Map<String, dynamic> toJson() => {'x': x, 'y': y};
 
   factory CanvasPoint.fromJson(Map<String, dynamic> json) {

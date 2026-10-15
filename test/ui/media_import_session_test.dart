@@ -129,9 +129,10 @@ void main() {
   });
 
   testWidgets('importImageFile into the ACTIVE cut with rasterize: layer '
-      'added with NO reference, and the file still REGISTERS (유저 '
-      '2026-09-11: 「구워도 풀에 남음」 — §3 「absorbed pixels register '
-      'nothing」 is reversed)', (tester) async {
+      'added with NO reference, and the file registers NOTHING (F-282-Q6, '
+      '유저 2026-10-09: 구우면 풀에 안 남긴다 — ↩️「구워도 풀에 남음」)', (
+    tester,
+  ) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final layersBefore = s.requireActiveCut.layers.length;
@@ -159,7 +160,11 @@ void main() {
       cut.duration,
       reason: 'the covering normalization holds it to the cut length',
     );
-    expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.image);
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'the pixels are the layer\'s own — nothing draws from the file',
+    );
     expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();
   });
@@ -398,7 +403,7 @@ void main() {
   });
 
   testWidgets('importPdfFile: a ONE-page PDF lands as an image-kind still, '
-      'and rasterize mode bakes it and still registers the file', (
+      'and rasterize mode bakes it and registers nothing', (
     tester,
   ) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -425,9 +430,10 @@ void main() {
     );
     expect(layer.mediaReference, isNull, reason: 'rasterize = no reference');
     expect(
-      s.mediaPool.mediaAssets.single.kind,
-      MediaAssetKind.pdf,
-      reason: 'baked files register too (유저 2026-09-11: 「구워도 풀에 남음」)',
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'baked, its file stays out of the pool (F-282-Q6, 유저 '
+          '2026-10-09: 「구우면 풀에 안 남긴다」 — ↩️09-11 「구워도 풀에 남음」)',
     );
     expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
     await tester.pumpAndSettle();

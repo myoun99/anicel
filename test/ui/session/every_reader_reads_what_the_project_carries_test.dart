@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 
 import '../../helpers/carried_media_fixture.dart';
+import '../../helpers/import_preview_probe.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -105,7 +106,6 @@ void main() {
               await s.importDoors.importPsdExpanded(
                 path: path,
                 destination: ImportDestination.activeCutLayer,
-                copyIntoProject: true,
               ) !=
               null,
         ),
@@ -182,10 +182,6 @@ void main() {
           write,
           OriginalFate.deleted,
         );
-        final picture = find.byKey(
-          const ValueKey<String>('import-preview-checker'),
-        );
-
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
@@ -207,13 +203,13 @@ void main() {
             ),
           ),
         );
-        for (var i = 0; i < 60 && picture.evaluate().isEmpty; i += 1) {
+        for (var i = 0; i < 60 && tester.importPreviewImage == null; i += 1) {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 20)),
           );
           await tester.pump();
         }
-        expect(picture, findsOneWidget);
+        expect(tester.importPreviewImage, isNotNull);
 
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(

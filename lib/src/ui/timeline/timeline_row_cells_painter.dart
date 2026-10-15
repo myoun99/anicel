@@ -14,7 +14,9 @@ import '../../models/timeline_repeat.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
+import '../widgets/named.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong;
+import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_double_tap.dart';
 import 'timeline_cel_content_source.dart';
@@ -31,10 +33,9 @@ import 'timeline_beat_lines.dart'
         timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
-import 'timeline_frame_coordinate_policy.dart'
-    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_tile_store.dart';
@@ -52,7 +53,7 @@ TextPainter _glyphPainter(
   String text,
   TextStyle style, {
   double tightening = 0,
-}) => timelineGlyphPainter(text, style, tightening: tightening);
+}) => laidOutGlyph(text, style, tightening: tightening);
 
 /// Where a cell of [layer]'s row can paint differently from the cell before
 /// it, ascending — the edges of its STRETCHES: between two edges every cell
@@ -107,6 +108,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.axis = Axis.horizontal,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.nextPage,
     this.tileStore,
     this.substrateGeneration = '',
     this.devicePixelRatio = 1.0,
@@ -227,6 +229,10 @@ class TimelineRowCellsPainter extends CustomPainter
   /// The scroll viewport's main-axis extent for the self-windowing path.
   final double viewportMainExtent;
 
+  /// ⛔Not a paint input: it never repaints the row.
+  @override
+  final TimelineNextPage? Function()? nextPage;
+
   /// The substrate TILE store (UI-R18 O7 T2): with it set, span-sized
   /// pre-rastered images replace the substrate's canvas work —
   /// its revision joins the repaint listenable so landed tiles paint on
@@ -323,19 +329,6 @@ class TimelineRowCellsPainter extends CustomPainter
     return axis == Axis.horizontal
         ? Rect.fromLTWH(main, 0, extent, crossAxisExtent)
         : Rect.fromLTWH(0, main, crossAxisExtent, extent);
-  }
-
-  /// The frame index under a row-local position (the row Listener's
-  /// pointer-down select); clamped non-negative.
-  int frameIndexAt(Offset localPosition) {
-    final main = axis == Axis.horizontal ? localPosition.dx : localPosition.dy;
-    final frame = timelineFrameAt(
-      main -
-          leadingFrameSpacerWidth +
-          timelineFrameEdge(frameStartIndex, frameCellExtent),
-      frameCellExtent,
-    );
-    return frame < 0 ? 0 : frame;
   }
 
   /// Camera rows are a SUMMARY column, not a sheet: their "coverage" is the
@@ -682,7 +675,7 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   @override
-  void paint(Canvas canvas, Size size) =>
+  void paintWords(Canvas canvas, Size size) =>
       readInOnePass(() => _paint(canvas, size));
 
   void _paint(Canvas canvas, Size size) {
@@ -719,7 +712,7 @@ class TimelineRowCellsPainter extends CustomPainter
     TimelineGridTileStore store,
   ) {
     final tiledSpans = <(int, int)>[];
-    final grid = _tileGridIn(window);
+    final grid = _tileGridIn(window, frameEndIndexExclusive);
     final tilePaint = Paint()..filterQuality = FilterQuality.low;
     for (final (spanStart, spanEnd) in grid.shown) {
       final image = store.tileFor(
@@ -760,10 +753,11 @@ class TimelineRowCellsPainter extends CustomPainter
       );
     }
     // PREFETCH one span beyond both window edges (scroll warm-up):
-    // requesting is enough — the raster lands before the crossing
-    // reveals it, so steady scrolling never hits the fallback.
+    // warming is enough — the raster lands before the crossing reveals
+    // it, so steady scrolling never hits the fallback, and its landing
+    // repaints nothing this row shows.
     for (final (spanStart, spanEnd) in grid.ahead) {
-      store.tileFor(
+      store.warmAhead(
         painter: this,
         spanStartIndex: spanStart,
         spanEndIndexExclusive: spanEnd,
@@ -774,15 +768,17 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// The tile grid's spans under [window], in order (`shown`), and the one
-  /// past each edge a paint keeps warm (`ahead`) — the grid rides the SHARED
-  /// window policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
+  /// past each edge a paint keeps warm (`ahead`), the last cut at the
+  /// [builtFrames] the axis ends at — the grid rides the SHARED window
+  /// policy ([timelineFrameWindowSpanFor], UI-R18 O7 T2).
   ({List<(int, int)> shown, List<(int, int)> ahead}) _tileGridIn(
     ({int startIndex, int endIndexExclusive}) window,
+    int builtFrames,
   ) {
     final span = timelineFrameWindowSpanFor(frameCellExtent);
     (int, int)? spanAt(int tile) {
       final start = tile * span;
-      final end = math.min(start + span, frameEndIndexExclusive);
+      final end = math.min(start + span, builtFrames);
       return start < 0 || end <= start ? null : (start, end);
     }
 
@@ -798,8 +794,39 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   @override
-  List<(int, int)> get tileSpans {
-    final grid = _tileGridIn(visibleFrameWindow());
+  ({List<(int, int)> shown, List<(int, int)> ahead}) get tileSpans =>
+      _tileGridIn(visibleFrameWindow(), frameEndIndexExclusive);
+
+  /// A row that windows itself off no bucket paints every span already,
+  /// and has no page to turn to.
+  ///
+  /// ↩️It was a viewport's frames from where the window ends: a window
+  /// reaches past the viewport by its bucket and its overscan, so the
+  /// turn's window ended a span later than what was warmed, and the span
+  /// past that edge was never warmed at all — 🔬two spans a row landed cold
+  /// after every turn and repainted their rows (10-12, cut 302 at 144Hz).
+  /// ↩️Then each row guessed the turn from its own bucket, and took a window
+  /// that reached the built end for a run about to wrap
+  /// ([TimelineFrameAxisFollower.nextPage] has what that cost).
+  @override
+  List<(int, int)> tileSpansOfThePage(TimelineNextPage page) {
+    if (windowBucket == null ||
+        frameCellExtent <= 0 ||
+        viewportMainExtent <= 0) {
+      return const [];
+    }
+    final grid = _tileGridIn(
+      frameWindowAtBucket(
+        page.bucket,
+        viewportMainExtent: viewportMainExtent,
+        cellExtent: frameCellExtent,
+        frames: (
+          startIndex: frameStartIndex,
+          endIndexExclusive: page.builtFrames,
+        ),
+      ),
+      page.builtFrames,
+    );
     return [...grid.shown, ...grid.ahead];
   }
 
@@ -1268,17 +1295,42 @@ class TimelineRowCellsPainter extends CustomPainter
     devicePixelRatio,
   );
 
-  // One semantics node per NON-EMPTY cell (labels only where content
-  // exists), windowed with the paint pass — the per-cell widget tree
-  // used to emit these; the painted rows keep the a11y surface without
-  // the widget cost.
+  // The row's window said in ONE node — what each non-empty cell says, in
+  // frame order ([frameWindowSentence], I-57-Q3 c), windowed with the paint
+  // pass.
+  //
+  // 🚨ONLY WHAT THE SENTENCE READS (I-57, 10-14). It asked each cell for
+  // its whole model outside any pass — the block off both neighbours, the
+  // writing — five exposure searches a cell for a sentence that reads
+  // one: 🔬on the AMMI OP, half the SEMANTICS of a cut crossing's frame,
+  // and SEMANTICS was half the frame (CPU samples). Read so, a cell is
+  // asked once and no pass has anything to keep.
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
-      (size) => frameWindowSemantics(
+      (size) => frameWindowSentence(
         window: visibleFrameWindow(),
         rectFor: cellRectFor,
-        labelFor: (frameIndex) => cellModelAt(frameIndex).semanticsLabel,
+        cellAt: _semanticsCellAt,
       );
+
+  /// What the cell at [frameIndex] says to a screen reader — its model's
+  /// [TimelineRowCellModel.semanticsLabel], read off the two things the
+  /// sentence is made of — and whether it carries on the run before it: a
+  /// cell inside a block does, the block's first cell begins its own.
+  ({String label, bool runsOn})? _semanticsCellAt(int frameIndex) {
+    final state = _stateAt(frameIndex);
+    final label = timelineCellSemanticsLabel(
+      layerKind: layer.kind,
+      exposureState: state,
+      frameName: frameNameForLayer?.call(layer, frameIndex),
+    );
+    return label == null
+        ? null
+        : (
+            label: label,
+            runsOn: state != TimelineCellExposureState.drawingStart,
+          );
+  }
 }
 
 /// The painted cell strip + its row-level interaction, shared by the
@@ -1288,6 +1340,11 @@ class TimelineRowCellsPainter extends CustomPainter
 /// - a no-op onTap keeps a tap recognizer in the arena so scroll slop
 ///   over cells behaves exactly as the widget cells did;
 /// - double-tap opens the cell editor.
+///
+/// 🚨I-57 (10-13): the presses are built from the row's SHAPE and act on
+/// the layer the row stands for at the event ([layerIdNow]); the picture
+/// draws what the row shows ([_RowCellsPicture]). [layer] is the one the
+/// row was built for — what both answer where no berth stands above.
 Widget timelineRowCellsPaintArea({
   required BuildContext context,
   required String keyPrefix,
@@ -1295,7 +1352,10 @@ Widget timelineRowCellsPaintArea({
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required Axis axis,
-  CustomPainter? foregroundPainter,
+
+  /// What the strip draws over its cells, for the layer the row shows.
+  CustomPainter? Function(BuildContext context, Layer shown)?
+  foregroundPainterFor,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -1313,43 +1373,18 @@ Widget timelineRowCellsPaintArea({
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
+  TimelineNextPage? Function()? nextPage,
   Object? coverageIdentity,
   String substrateGeneration = '',
 }) {
-  final law = TimelineGridLaw.maybeOf(context);
-  final painter = TimelineRowCellsPainter(
-    layer: layer,
-    geometry: geometry,
-    crossAxisExtent: crossAxisExtent,
-    exposureStateForLayer: exposureStateForLayer,
-    frameNameForLayer: frameNameForLayer,
-    celContent: celContent,
-    coverageIdentity: coverageIdentity,
-    colorScheme: Theme.of(context).colorScheme,
-    baseTextStyle: DefaultTextStyle.of(context).style,
-    axis: axis,
-    windowBucket: windowBucket,
-    viewportMainExtent: viewportMainExtent,
-    // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
-    // by itself when the native engine is unavailable (tests, web).
-    //
-    // ↩️T16 kept the folded row off the tiles: its mode dropped the empties,
-    // the ground and the seams, and one row over the artwork was not worth
-    // teaching the bake key that dimension. I-44 took all three off EVERY
-    // row, and what the paper stands on is [paperGround], which the key
-    // carries for every row — so the folded row bakes like the rest.
-    tileStore: TimelineGridTileStore.instance,
-    substrateGeneration: substrateGeneration,
-    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-    // I-44: the HOST's ground, stated once by its law — what an unworked
-    // block's paper is pre-blended onto (null over the artwork).
-    paperGround: law?.ground,
-    // And whether its lines cross the paper, in its own cadence.
-    blockFrameLines: law?.blockFrameLines ?? false,
-    framesPerSecond: law?.framesPerSecond ?? 0,
-  );
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);
+  int frameAt(Offset localPosition) => geometry.value.cellAt(
+    axis == Axis.horizontal ? localPosition.dx : localPosition.dy,
+  );
+  // The row the press is on — asked at the press, the row being kept
+  // through a cut switch.
+  LayerId pressedLayer() => layerIdNow(context, layer.id);
   // 🚨T10 — THE ORDER IS LOAD-BEARING. The frame moves first.
   //
   // Standing is what decides whether the selection is cleared, and it makes
@@ -1361,22 +1396,22 @@ Widget timelineRowCellsPaintArea({
   // these two the other way round, an SE row move stopped committing.
   void select(int frameIndex) {
     onSelectFrame(frameIndex);
-    onSelectLayer(layer.id);
+    onSelectLayer(pressedLayer());
   }
 
   // The frame-block activation law's cell resolver: a position is a cell
   // only inside the visible window. Both halves of the shared double-tap
   // law read THIS one function (R26 #37).
   int? cellAt(Offset localPosition) {
-    final frameIndex = painter.frameIndexAt(localPosition);
+    final frameIndex = frameAt(localPosition);
     return inWindow(frameIndex) ? frameIndex : null;
   }
 
   // …and the cells the double tap aims at ([timelineDoubleTapAim]).
   final cells = (
     frameAt: cellAt,
-    axis: painter.axis,
-    cellExtent: () => painter.frameCellExtent,
+    axis: axis,
+    cellExtent: () => geometry.value.frameCellExtent,
   );
 
   // The pick rides the raw pointer, never the arena — see the shared
@@ -1389,12 +1424,12 @@ Widget timelineRowCellsPaintArea({
     pressSeeksFor: AppInput.timelineCellPressSeeks,
     // R26 #37: remember WHICH cell this press hit, whatever the device —
     // the double-tap recognizer only reports the second tap's position.
-    onPressDown: timelineCellDoubleTapRecord(
-      row: LayerRowAddress(layer.id),
+    onPressDown: (localPosition) => timelineCellDoubleTapRecord(
+      row: LayerRowAddress(pressedLayer()),
       cells: cells,
-    ),
+    )(localPosition),
     onTap: (localPosition) {
-      final frameIndex = painter.frameIndexAt(localPosition);
+      final frameIndex = frameAt(localPosition);
       if (!inWindow(frameIndex)) {
         return;
       }
@@ -1418,14 +1453,14 @@ Widget timelineRowCellsPaintArea({
       // storyboard's strips and this row cannot answer differently again.
       onDoubleTapDown: onActivateCell == null
           ? null
-          : timelineCellDoubleTapActivation(
-              row: LayerRowAddress(layer.id),
+          : (details) => timelineCellDoubleTapActivation(
+              row: LayerRowAddress(pressedLayer()),
               cells: cells,
               onActivate: (frameIndex) {
                 select(frameIndex);
-                onActivateCell(layer.id, frameIndex);
+                onActivateCell(pressedLayer(), frameIndex);
               },
-            ),
+            )(details),
       onDoubleTap: onActivateCell == null ? null : () {},
       child: RepaintBoundary(
         // The main-axis size arrives from the row's frame-axis box, which
@@ -1442,19 +1477,122 @@ Widget timelineRowCellsPaintArea({
         // row then owed the grid a redraw (D43-2). The grid sheet paints the
         // rows' grounds now, under all of them, and the row is its paper.
         child: SizedBox.expand(
-          child: CustomPaint(
-            key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
-            painter: painter,
-            // The block duration labels ride HERE rather than as their
-            // own Positioned.fill CustomPaint: same geometry, same
-            // repaint trigger, two fewer render objects per row to lay
-            // out on a zoom step. A foreground painter that does not
-            // implement `hitTest` never absorbs a pointer, which is what
-            // the IgnorePointer around it used to guarantee.
-            foregroundPainter: foregroundPainter,
+          child: _RowCellsPicture(
+            keyPrefix: keyPrefix,
+            builtFor: layer,
+            geometry: geometry,
+            crossAxisExtent: crossAxisExtent,
+            axis: axis,
+            foregroundPainterFor: foregroundPainterFor,
+            exposureStateForLayer: exposureStateForLayer,
+            frameNameForLayer: frameNameForLayer,
+            celContent: celContent,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportMainExtent,
+            nextPage: nextPage,
+            coverageIdentity: coverageIdentity,
+            substrateGeneration: substrateGeneration,
           ),
         ),
       ),
     ),
   );
+}
+
+/// The strip's picture: what the row SHOWS ([BerthRow.shows]) in the world
+/// it stands in ([BerthWorld]) — built again, alone, whenever either
+/// changes, while the presses around it are kept. Where no berth stands
+/// above, the layer and the world the row was built for.
+class _RowCellsPicture extends StatelessWidget {
+  const _RowCellsPicture({
+    required this.keyPrefix,
+    required this.builtFor,
+    required this.geometry,
+    required this.crossAxisExtent,
+    required this.axis,
+    required this.foregroundPainterFor,
+    required this.exposureStateForLayer,
+    required this.frameNameForLayer,
+    required this.celContent,
+    required this.windowBucket,
+    required this.viewportMainExtent,
+    required this.nextPage,
+    required this.coverageIdentity,
+    required this.substrateGeneration,
+  });
+
+  final String keyPrefix;
+  final Layer builtFor;
+  final TimelineFrameGeometryHandle geometry;
+  final double crossAxisExtent;
+  final Axis axis;
+  final CustomPainter? Function(BuildContext context, Layer shown)?
+  foregroundPainterFor;
+  final TimelineCellExposureState Function(Layer layer, int frameIndex)
+  exposureStateForLayer;
+  final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
+  final TimelineCelContentSource? celContent;
+  final ValueListenable<int>? windowBucket;
+  final double viewportMainExtent;
+  final TimelineNextPage? Function()? nextPage;
+  final Object? coverageIdentity;
+  final String substrateGeneration;
+
+  @override
+  Widget build(BuildContext context) {
+    final berth = BerthRow.shows(context);
+    final layer = berth?.shown ?? builtFor;
+    final world = berth?.world;
+    final law = TimelineGridLaw.maybeOf(context);
+    final painter = TimelineRowCellsPainter(
+      layer: layer,
+      geometry: geometry,
+      crossAxisExtent: crossAxisExtent,
+      exposureStateForLayer: exposureStateForLayer,
+      frameNameForLayer: frameNameForLayer,
+      celContent: celContent,
+      coverageIdentity: world == null
+          ? coverageIdentity
+          : world.coverageIdentity.value,
+      colorScheme: Theme.of(context).colorScheme,
+      baseTextStyle: DefaultTextStyle.of(context).style,
+      axis: axis,
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      nextPage: nextPage,
+      // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
+      // by itself when the native engine is unavailable (tests, web).
+      //
+      // ↩️T16 kept the folded row off the tiles: its mode dropped the
+      // empties, the ground and the seams, and one row over the artwork was
+      // not worth teaching the bake key that dimension. I-44 took all three
+      // off EVERY row, and what the paper stands on is [paperGround], which
+      // the key carries for every row — so the folded row bakes like the
+      // rest.
+      tileStore: TimelineGridTileStore.instance,
+      substrateGeneration: world?.substrateGeneration ?? substrateGeneration,
+      devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+      // I-44: the HOST's ground, stated once by its law — what an unworked
+      // block's paper is pre-blended onto (null over the artwork).
+      paperGround: law?.ground,
+      // And whether its lines cross the paper, in its own cadence.
+      blockFrameLines: law?.blockFrameLines ?? false,
+      framesPerSecond: law?.framesPerSecond ?? 0,
+    );
+    // Named, not keyed (I-57, 10-13): the row shows one layer and then
+    // another in the same elements.
+    return Named(
+      '$keyPrefix-row-cells-${layer.id}',
+      child: CustomPaint(
+        painter: painter,
+        // The block duration labels ride HERE rather than as their own
+        // Positioned.fill CustomPaint: same geometry, same repaint trigger,
+        // two fewer render objects per row to lay out on a zoom step. A
+        // foreground painter that does not implement `hitTest` never absorbs
+        // a pointer, which is what the IgnorePointer around it used to
+        // guarantee.
+        foregroundPainter: foregroundPainterFor?.call(context, layer),
+      ),
+    );
+  }
 }

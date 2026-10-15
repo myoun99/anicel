@@ -14,6 +14,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
@@ -325,7 +326,7 @@ void main() {
       expect(timelineLayerRows(), findsNWidgets(7));
       expect(
         find.descendant(
-          of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+          of: find.named('timeline-selected-layer'),
           matching: find.text('A'),
         ),
         findsOneWidget,
@@ -338,7 +339,7 @@ void main() {
       expect(timelineLayerRows(), findsNWidgets(7));
       expect(
         find.descendant(
-          of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+          of: find.named('timeline-selected-layer'),
           matching: find.text('A'),
         ),
         findsOneWidget,
@@ -421,7 +422,7 @@ void main() {
       expect(timelineLayerRows(), findsNWidgets(7));
       expect(
         find.descendant(
-          of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
+          of: find.named('timeline-selected-layer'),
           matching: find.text('A'),
         ),
         findsOneWidget,

@@ -10,10 +10,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show actionLabelOf;
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+
+import '../../helpers/named_finders.dart';
 
 void main() {
   Future<EditorShortcutBindings> pump(WidgetTester tester) async {
@@ -35,25 +42,295 @@ void main() {
         widget.key is ValueKey<String> &&
         (widget.key! as ValueKey<String>).value.startsWith('shortcut-record-'),
   );
+  /// The keys of the rows the list holds, in order — built or not: the list
+  /// is lazy, so they are read off the children it was handed.
+  List<String> listed(WidgetTester tester) => [
+    for (final child
+        in (tester
+                    .widget<ListView>(
+                      find.byKey(const ValueKey<String>('shortcut-action-list')),
+                    )
+                    .childrenDelegate
+                as SliverChildListDelegate)
+            .children)
+      if (child.key case ValueKey<String>(:final value)) value,
+  ];
+
+  /// The shelf headings the list holds, in order — a place's and every
+  /// shelf's under it that stands open.
+  List<String> headings(WidgetTester tester) => [
+    for (final key in listed(tester))
+      if (key.startsWith('shortcut-shelf-')) key,
+  ];
+
+  String headingKeyOf(ShortcutShelf shelf) => 'shortcut-shelf-${shelf.name}';
+
+  /// The places' headings the list holds, in order.
+  List<String> places(WidgetTester tester) => [
+    for (final place in ShortcutShelf.places)
+      if (headings(tester).contains(headingKeyOf(place))) headingKeyOf(place),
+  ];
+  final search = find.byKey(const ValueKey<String>('shortcut-search-field'));
+  Finder twirlOf(ShortcutShelf shelf) =>
+      find.named('shortcut-bundle-shelf-${shelf.name}');
+  ShortcutShelf shelfOf(EditorShortcutBindings bindings, String id) =>
+      bindings.definitions.singleWhere((row) => row.id == id).shelf;
+
+  /// Opens every shelf [id] stands under, its place first — every shelf
+  /// starts shut (menu-rows-and-panels-are-shortcut-rows), as the brush
+  /// bundles do.
+  Future<void> openShelvesOf(
+    WidgetTester tester,
+    EditorShortcutBindings bindings,
+    String id,
+  ) async {
+    for (final shelf in shelfOf(bindings, id).path) {
+      await tester.tap(twirlOf(shelf));
+      await tester.pump();
+    }
+  }
 
   testWidgets('the search narrows the list to matching actions', (
     tester,
   ) async {
-    await pump(tester);
-    final all = recordButtons().evaluate().length;
-    expect(all, greaterThan(1));
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('shortcut-search-field')),
-      'zzzz-no-such-action',
-    );
+    final bindings = await pump(tester);
+    final all = places(tester);
+    expect(all.length, greaterThan(1));
+    await tester.enterText(search, 'zzzz-no-such-action');
     await tester.pump();
+    expect(headings(tester), isEmpty);
     expect(recordButtons(), findsNothing);
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('shortcut-search-field')),
-      '',
-    );
+
+    final first = bindings.definitions.first;
+    await tester.enterText(search, first.label);
     await tester.pump();
-    expect(recordButtons().evaluate().length, all);
+    expect(
+      find.byKey(ValueKey<String>('shortcut-record-${first.id}')),
+      findsOneWidget,
+    );
+    expect(
+      places(tester).length,
+      lessThan(all.length),
+      reason: 'only the places it finds something in',
+    );
+
+    await tester.enterText(search, '');
+    await tester.pump();
+    expect(places(tester), all);
+  });
+
+  // 🗣️유저 2026-10-08 (menu-rows-and-panels-are-shortcut-rows): 「단축키
+  // 많으니까 항목은 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법
+  // 통일하면서」 — the brush bundles' law (I-56-Q1: 기본 접힘 · 검색하면 맞는
+  // 묶음이 펼쳐진다), for every shelf. 🗣️The shelves themselves:
+  // shortcut-presets-anicel-and-clip-studio-Q1 (유저 2026-10-09) 「버튼이
+  // 있는 자리로」 — a place, the bars and pills in it, then the keys.
+  group('a shelf folds as a brush bundle does', () {
+    bool isOpen(WidgetTester tester, ShortcutShelf shelf) => tester
+        .widget<LayerFoldTwirl>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is LayerFoldTwirl &&
+                widget.name == 'shortcut-bundle-shelf-${shelf.name}',
+          ),
+        )
+        .expanded;
+
+    testWidgets('a shelf has ONE heading, and its rows stand together under '
+        'it — though the registry holds them in two places', (tester) async {
+      final bindings = await pump(tester);
+      final shelves = [for (final row in bindings.definitions) row.shelf];
+      // ⛔premise: a shelf of no shelves whose rows the registry holds apart.
+      final apart = shelves.toSet().firstWhere(
+        (shelf) =>
+            shelf.shelves.isEmpty &&
+            shelves.lastIndexOf(shelf) - shelves.indexOf(shelf) >=
+                shelves.where((each) => each == shelf).length,
+      );
+      final members = [
+        for (final row in bindings.definitions)
+          if (row.shelf == apart) 'shortcut-row-${row.id}',
+      ];
+
+      for (final shelf in apart.path) {
+        await tester.tap(twirlOf(shelf));
+        await tester.pump();
+      }
+
+      final keys = listed(tester);
+      expect(
+        keys.where((key) => key == headingKeyOf(apart)),
+        hasLength(1),
+      );
+      final heading = keys.indexOf(headingKeyOf(apart));
+      expect(
+        keys.sublist(heading + 1, heading + 1 + members.length),
+        members,
+        reason: '${apart.name}\'s rows, all of them, right under its heading',
+      );
+    });
+
+    testWidgets('every shelf stands shut when the window opens: the places\' '
+        'headings and nothing under them', (tester) async {
+      await pump(tester);
+      expect(headings(tester), [
+        for (final place in ShortcutShelf.places) headingKeyOf(place),
+      ]);
+      expect(recordButtons(), findsNothing);
+      for (final place in ShortcutShelf.places) {
+        expect(isOpen(tester, place), isFalse, reason: place.name);
+      }
+    });
+
+    testWidgets('a place\'s twirl opens its shelves, each shut; a shelf\'s, '
+        'its rows — and no other shelf\'s', (tester) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      final place = first.shelf.path.first;
+      final other = bindings.definitions.firstWhere(
+        (row) => row.shelf != first.shelf,
+      );
+
+      await tester.tap(twirlOf(place));
+      await tester.pump();
+      expect(isOpen(tester, place), isTrue);
+      expect(headings(tester), containsAll([
+        for (final shelf in place.shelves) headingKeyOf(shelf),
+      ]));
+      expect(recordButtons(), findsNothing, reason: 'its shelves stand shut');
+
+      for (final shelf in first.shelf.path.skip(1)) {
+        await tester.tap(twirlOf(shelf));
+        await tester.pump();
+      }
+      expect(
+        find.byKey(ValueKey<String>('shortcut-record-${first.id}')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('shortcut-record-${other.id}')),
+        findsNothing,
+        reason: '${other.shelf.name} stays shut',
+      );
+
+      await tester.tap(twirlOf(place));
+      await tester.pump();
+      expect(isOpen(tester, place), isFalse);
+      expect(recordButtons(), findsNothing);
+      expect(
+        headings(tester),
+        isNot(contains(headingKeyOf(first.shelf))),
+        reason: 'a shut place shows none of its shelves',
+      );
+    });
+
+    testWidgets('a search opens every shelf above what it finds; they stay '
+        'open after, and the twirl folds them like any other', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      await tester.enterText(search, first.label);
+      await tester.pump();
+      for (final shelf in first.shelf.path) {
+        expect(isOpen(tester, shelf), isTrue, reason: shelf.name);
+      }
+
+      await tester.enterText(search, '');
+      await tester.pump();
+      expect(isOpen(tester, first.shelf), isTrue);
+      expect(
+        find.byKey(ValueKey<String>('shortcut-record-${first.id}')),
+        findsOneWidget,
+      );
+
+      await tester.tap(twirlOf(first.shelf));
+      await tester.pump();
+      expect(isOpen(tester, first.shelf), isFalse);
+    });
+
+    testWidgets('a search for a shelf\'s name finds every row it holds, on '
+        'the shelves under it too', (tester) async {
+      final bindings = await pump(tester);
+      await tester.enterText(search, ShortcutShelf.pills.label);
+      await tester.pump();
+      const shelf = ShortcutShelf.cutPill;
+      for (final row in bindings.definitions.where((r) => r.shelf == shelf)) {
+        expect(
+          listed(tester),
+          contains('shortcut-row-${row.id}'),
+          reason: row.id,
+        );
+      }
+    });
+  });
+
+  // 🗣️유저 2026-10-09 (shortcut-presets-anicel-and-clip-studio): 「항목 접게
+  // 만든거 좋은데 펼치는거랑 스크롤바랑 겹치는건지 안열림. 그냥 그 줄 누르면
+  // 열리도록. 그러고 접기펼치기버튼은 항목 글자 왼쪽에 두도록. 다만 물론
+  // 누르는건 그 항목 전체니까 접기펼치기 위젯은 그냥 보이기만할뿐인것임」.
+  group('a fold is its whole row, its twirl left of its words', () {
+    Finder headingOf(ShortcutShelf shelf) =>
+        find.byKey(ValueKey<String>(headingKeyOf(shelf)));
+    Finder wordsOf(Finder row) =>
+        find.descendant(of: row, matching: find.byType(Text));
+
+    testWidgets('pressing a heading\'s WORDS opens it, and pressing its far '
+        'end shuts it — the end the list\'s scrollbar runs by', (
+      tester,
+    ) async {
+      await pump(tester);
+      final place = ShortcutShelf.places.first;
+      final under = headingOf(place.shelves.first);
+
+      await tester.tap(wordsOf(headingOf(place)));
+      await tester.pump();
+      expect(under, findsOneWidget);
+
+      final row = tester.getRect(headingOf(place));
+      await tester.tapAt(Offset(row.right - 40, row.center.dy));
+      await tester.pump();
+      expect(under, findsNothing);
+    });
+
+    testWidgets('the twirl stands left of the words, and only shows', (
+      tester,
+    ) async {
+      await pump(tester);
+      final place = ShortcutShelf.places.first;
+      expect(
+        tester.getRect(twirlOf(place)).right,
+        lessThanOrEqualTo(tester.getRect(wordsOf(headingOf(place))).left),
+      );
+      expect(
+        tester
+            .widget<LayerFoldTwirl>(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is LayerFoldTwirl &&
+                    widget.name == 'shortcut-bundle-shelf-${place.name}',
+              ),
+            )
+            .onToggle,
+        isNull,
+      );
+    });
+
+    testWidgets('a shelf\'s words start where its place\'s words do, and a '
+        'row\'s where its shelf\'s do', (tester) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      await openShelvesOf(tester, bindings, first.id);
+      final place = first.shelf.path.first;
+      expect(
+        tester.getRect(twirlOf(first.shelf)).left,
+        tester.getRect(wordsOf(headingOf(place))).left,
+      );
+      expect(
+        tester.getRect(find.text(actionLabelOf(first))).left,
+        tester.getRect(wordsOf(headingOf(first.shelf))).left,
+      );
+    });
   });
 
   testWidgets('recording waits past a modifier pressed alone, then takes the '
@@ -62,6 +339,7 @@ void main() {
     // that modifies another is not one to bind by itself.
     final bindings = await pump(tester);
     final id = bindings.definitions.first.id;
+    await openShelvesOf(tester, bindings, id);
 
     await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
     await tester.pump();
@@ -87,6 +365,7 @@ void main() {
     final bindings = await pump(tester);
     final id = bindings.definitions.first.id;
     final defaults = bindings.activatorsFor(id);
+    await openShelvesOf(tester, bindings, id);
 
     await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
     await tester.pump();
@@ -113,6 +392,7 @@ void main() {
     final bindings = await pump(tester);
     final id = bindings.definitions.first.id;
     final trigger = find.byKey(ValueKey<String>('shortcut-touch-$id'));
+    await openShelvesOf(tester, bindings, id);
 
     Future<void> pick(String row) async {
       await tester.tap(trigger);
@@ -227,6 +507,7 @@ void main() {
       final defaults = [
         for (final activator in bindings.activatorsFor(id)) activator.trigger,
       ];
+      await openShelvesOf(tester, bindings, id);
       final row = find.byKey(ValueKey<String>('shortcut-row-$id'));
       expect(
         find.descendant(of: row, matching: find.byType(Chip)),
@@ -269,6 +550,7 @@ void main() {
       final hint = find.byKey(
         const ValueKey<String>('shortcut-recording-hint'),
       );
+      await openShelvesOf(tester, bindings, id);
       await tap(tester, 'record', id);
       expect(hint, findsOneWidget, reason: '⛔premise');
 
@@ -288,6 +570,7 @@ void main() {
       await tester.pump();
       expect(warns(tester), isTrue, reason: '⛔premise');
 
+      await openShelvesOf(tester, bindings, given);
       await tap(tester, 'unassign', given);
 
       expect(warns(tester), isFalse);
@@ -300,6 +583,7 @@ void main() {
     ) async {
       speak(AppLanguage.ko);
       final bindings = await pump(tester);
+      await openShelvesOf(tester, bindings, aKeyedRow(bindings));
       expect(
         button(tester, 'unassign', aKeyedRow(bindings)).tooltip,
         AppStrings.of(AppLanguage.ko).shortcutUnassign,

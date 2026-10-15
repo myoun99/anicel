@@ -20,8 +20,8 @@ import '../../services/command.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
-import '../../services/canvas_selection.dart'
-    show CanvasSelectionShape, SelectionMaskOptions;
+import '../../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../../services/canvas_selection_region.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../../services/cache_invalidation_executor.dart';
@@ -96,8 +96,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onBrushSizeDragEnd,
     this.flipHud,
     this.onEyedropperPick,
-    this.fillDabAt,
-    this.shapeFillDabFor,
+    this.fillDabsAt,
+    this.shapeFillDabsFor,
     this.selectionMaskOptions,
     this.transformOptions,
     this.viewCommands,
@@ -117,6 +117,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
+    this.transformCelsUnderfoot,
     this.pieceGround,
   });
 
@@ -275,17 +276,17 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// The flip HUD's state, threaded down to the panel that mounts it.
   final FlipHudController? flipHud;
   final ValueChanged<int>? onEyedropperPick;
-  final BrushDab? Function(
+  final List<BrushDab> Function(
     CanvasPoint point,
     int color,
     SymmetryShape? symmetry,
   )?
-  fillDabAt;
+  fillDabsAt;
 
-  /// Forwarded to [BrushCanvasPanel]: builds the dab for a drawn shape
-  /// fill.
-  final BrushDab? Function(CanvasSelectionShape shape, int color)?
-  shapeFillDabFor;
+  /// Forwarded to [BrushCanvasPanel]: builds the stamp pieces of a drawn
+  /// shape fill's area.
+  final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
+  shapeFillDabsFor;
 
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
   /// mask knobs.
@@ -304,7 +305,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel] (R9-rest): the text tool's channel and
   /// the next text's values.
   final CelTextCommands? textCommands;
-  final ValueListenable<TextToolOptions>? textToolOptions;
+  final ValueNotifier<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;
@@ -387,6 +388,12 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Where each of those cels' rows stands on the canvas — passed straight
   /// through to the panel ([BrushCanvasPanel.cellPlacementOf]).
   final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
+
+  /// What a transform takes up where you stand (I-37 · F-329) — passed
+  /// straight through to the panel
+  /// ([BrushCanvasPanel.transformCelsUnderfoot]).
+  final List<({BrushFrameKey key, bool live})>? Function()?
+  transformCelsUnderfoot;
 
   /// Where the cut tool's stamp lands (F-293) — passed straight through to
   /// the panel ([BrushCanvasPanel.pieceGround]).
@@ -568,7 +575,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // opened in a rail column or the bottom panel is simply not under the
       // provider, and nothing lies on it.
       floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
-      floorRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
+      floorLeftRailBand: CanvasFloorInsets.maybeOf(context)?.leftRailBand,
+      floorRightRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
       // ⑩: what a control on the bottom edge has to clear.
       floorBottomOverlaySpan:
           CanvasFloorInsets.maybeOf(context)?.bottomOverlaySpan ?? 0,
@@ -580,6 +588,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       availableFrameKeys: _frameKeys,
       transformTargetKeys: widget.transformTargetKeys,
       cellPlacementOf: widget.cellPlacementOf,
+      transformCelsUnderfoot: widget.transformCelsUnderfoot,
       pieceGround: widget.pieceGround,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
@@ -626,8 +635,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
       flipHud: widget.flipHud,
       onEyedropperPick: widget.onEyedropperPick,
-      fillDabAt: widget.fillDabAt,
-      shapeFillDabFor: widget.shapeFillDabFor,
+      fillDabsAt: widget.fillDabsAt,
+      shapeFillDabsFor: widget.shapeFillDabsFor,
       selectionMaskOptions: widget.selectionMaskOptions,
       transformOptions: widget.transformOptions,
       viewCommands: widget.viewCommands,
@@ -656,7 +665,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     return CustomPaint(
       key: const ValueKey<String>('main-canvas-brush-host-blank-canvas'),
       painter: PlaybackFramePainter(
-        image: null,
         canvasSize: widget.canvasSize,
         viewport: viewport,
         // The pan-phase snap's device grid — the blank-canvas paper must

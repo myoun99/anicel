@@ -1,3 +1,4 @@
+import '../../models/kept_span.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart' show ImportDestination;
@@ -69,15 +70,6 @@ enum MovieParts {
   sound,
 }
 
-/// What of a picture's NUMBERED RUN comes in — the 「연번」 column: `A1`
-/// with its `A2` · `A3` … as one layer's frames, or this file alone.
-///
-/// 🗣️I-76-Q1 (유저 2026-10-08): 「창의 그 파일 줄에서 고른다(기본: 함께)」.
-enum NumberedRun {
-  together,
-  alone,
-}
-
 /// One row's answers.
 class ImportFileSettings {
   const ImportFileSettings({
@@ -92,16 +84,30 @@ class ImportFileSettings {
     this.inFrame = 0,
     this.outFrame,
     this.movieParts = MovieParts.pictureAndSound,
-    this.run = NumberedRun.together,
+    this.runIn = 0,
+    this.runOut,
+    this.intoPool = false,
   });
 
   final ImportFileMode mode;
 
+  /// Whether the file only REGISTERS — the 넣을 곳 column's 「미디어」: it
+  /// goes into the media pool and is placed nowhere. [into] answers where
+  /// a placed file goes, a separate question.
+  ///
+  /// 🗣️F-282 (유저 2026-10-09): 「그냥 풀/타임라인 이걸 하나로 합치는게
+  /// 통일일거같아서. 넣을곳을 그래서 새 레이어/컷/미디어 이런식?」 — ↩️it was
+  /// the window's ONE batch-wide answer, a 「배치 — 풀 / 타임라인」 strip
+  /// above the table, so one window could not place one file and register
+  /// another.
+  final bool intoPool;
+
   /// Whether the placed layer is BAKED into cels instead of drawing from the
   /// file — the layer's question, asked only where something is placed.
   ///
-  /// Baking still registers the file: the material of every placement is a
-  /// pool entry (user 2026-09-11: 「구워도 풀에 남음」).
+  /// A baked placement registers nothing, so its file column says 「—」
+  /// (`placementRegisters`, F-282-Q6). ↩️Baking still registered the file
+  /// (user 2026-09-11: 「구워도 풀에 남음」).
   final bool bake;
 
   /// Where a PLACED file lands. Ignored when the window is registering
@@ -121,9 +127,21 @@ class ImportFileSettings {
   /// that has a sound ([importSoundAllowed]).
   final MovieParts movieParts;
 
-  /// What of a picture's numbered run comes in (the 「연번」 column) — asked
-  /// only of a picture that is part of one.
-  final NumberedRun run;
+  /// Which pictures of a NUMBERED RUN come in — the run's IN/OUT, picked on
+  /// the preview's transport as a movie's span is, the run's pictures its
+  /// pages; [runOut] null means to the run's last picture. Read only of a
+  /// picture that is part of a run (`celRunOf`). Two or more come in as one
+  /// layer's frames; one comes in alone.
+  ///
+  /// 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
+  /// 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
+  /// ↩️「함께 / 이 파일만」 (I-76-Q1, 10-08).
+  ///
+  /// ⛔Not [inFrame]/[outFrame]: those trim the FILE — a trimmed file is
+  /// kept inside and comes in as its piece — and a run's span trims no
+  /// file. One pair answering both would be two questions in one field.
+  final int runIn;
+  final int? runOut;
 
   bool get isTrimmed => inFrame > 0 || outFrame != null;
 
@@ -137,7 +155,10 @@ class ImportFileSettings {
     int? outFrame,
     bool clearOut = false,
     MovieParts? movieParts,
-    NumberedRun? run,
+    int? runIn,
+    int? runOut,
+    bool clearRunOut = false,
+    bool? intoPool,
   }) => ImportFileSettings(
     mode: mode ?? this.mode,
     bake: bake ?? this.bake,
@@ -147,7 +168,9 @@ class ImportFileSettings {
     inFrame: inFrame ?? this.inFrame,
     outFrame: clearOut ? null : (outFrame ?? this.outFrame),
     movieParts: movieParts ?? this.movieParts,
-    run: run ?? this.run,
+    runIn: runIn ?? this.runIn,
+    runOut: clearRunOut ? null : (runOut ?? this.runOut),
+    intoPool: intoPool ?? this.intoPool,
   );
 
   @override
@@ -161,7 +184,9 @@ class ImportFileSettings {
       other.inFrame == inFrame &&
       other.outFrame == outFrame &&
       other.movieParts == movieParts &&
-      other.run == run;
+      other.runIn == runIn &&
+      other.runOut == runOut &&
+      other.intoPool == intoPool;
 
   @override
   int get hashCode => Object.hash(
@@ -173,7 +198,9 @@ class ImportFileSettings {
     inFrame,
     outFrame,
     movieParts,
-    run,
+    runIn,
+    runOut,
+    intoPool,
   );
 }
 
@@ -295,9 +322,9 @@ ImportFileSettings seedImportSettings({ImportLayerSpot? spot}) =>
 /// Whether the bake question has one answer: frames dropped on a row are
 /// that row's own pixels (08-14 「셀에 떨어뜨리면 항상 굽기」), and an
 /// expanded PSD IS its pixels — 「one of them baked means all of them are」
-/// (the user's rule). So is a numbered run that comes in [together]: a
-/// layer's reference names one file, and a run is many — the cut folder
-/// those files come from always bakes.
+/// (the user's rule). So is a numbered run whose span keeps two pictures
+/// or more ([together]): a layer's reference names one file, and a run is
+/// many — the cut folder those files come from always bakes.
 bool importBakeLocked({
   required bool isPsd,
   required bool placing,
@@ -337,8 +364,9 @@ ImportFileSettings resolvedImportSettings(
   required bool lasting,
   ImportLayerSpot? spot,
 
-  /// Whether [settings]' file is part of a numbered run (`celRunOf`).
-  bool inRun = false,
+  /// How many pictures the numbered run [settings]' file is part of holds
+  /// (`celRunOf`) — null for a file in none.
+  int? runLength,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;
   final movieParts = importMovieParts(settings.movieParts, spot);
@@ -356,7 +384,9 @@ ImportFileSettings resolvedImportSettings(
             placing: placing,
             psd: psd,
             spot: spot,
-            together: inRun && settings.run == NumberedRun.together,
+            together:
+                runLength != null &&
+                importRunSpan(settings, runLength).count > 1,
           ));
   final mode = importModeAllowed(
     mode: settings.mode,
@@ -397,10 +427,14 @@ String importModeLabel(ImportFileMode mode) => switch (mode) {
 /// ⛔ONE spelling of the fit, for the file table and the cut-folder column
 /// alike. The column used to write its own ('Keep aspect') while the table
 /// wrote 'Keep' — the very word the file column used for carrying.
+///
+/// 🗣️유저 2026-10-09 (F-282): 「맞춤은 1:1을 원본크기로 이름 바꾼다던가
+/// 비율유지를 비율유지 늘림 이라던가 이름 정확하게 알기쉽게」 — 원본 크기 ·
+/// 비율 유지 늘림 · 비율 무시 늘림. ↩️1:1 · 비율 유지 · 늘이기.
 String importFitLabel(MediaFitMode fit) => switch (fit) {
   MediaFitMode.stretch => AppText.strings.imFitStretch,
   MediaFitMode.contain => AppText.strings.imFitContain,
-  MediaFitMode.none => '1:1',
+  MediaFitMode.none => AppText.strings.imFitOriginal,
 };
 
 /// 「새 레이어」 · 「새 컷」 — the pair the user named (2026-09-11: 「넣을곳 뉴
@@ -418,16 +452,22 @@ String importPsdLabel(PsdPlaceMode mode) => switch (mode) {
 String importOnOffLabel(bool on) =>
     on ? AppText.strings.commonOn : AppText.strings.commonOff;
 
-/// The 「연번」 column's two answers.
-String importRunLabel(NumberedRun run) => switch (run) {
-  NumberedRun.together => AppText.strings.imRunTogether,
-  NumberedRun.alone => AppText.strings.imRunAlone,
-};
+/// The pictures of a run [runLength] long that [settings]' span keeps
+/// ([ImportFileSettings.runIn] · [ImportFileSettings.runOut]) — the one
+/// clamp every IN/OUT reads ([KeptSpan]).
+KeptSpan importRunSpan(ImportFileSettings settings, int runLength) => KeptSpan(
+  length: runLength,
+  inFrame: settings.runIn,
+  outFrame: settings.runOut,
+);
 
 /// The 「소리」 column's three answers: its 끔 and 켬 as they always read,
 /// and the sound alone.
+/// 🗣️유저 2026-10-09 (F-282, 시안 ③): 그림 + 소리 / 그림만 / 소리만 — the
+/// answers said as what comes in. ↩️켬 / 끔 / 소리만, under a 「소리」 column
+/// of its own.
 String importMoviePartsLabel(MovieParts parts) => switch (parts) {
-  MovieParts.picture => importOnOffLabel(false),
-  MovieParts.pictureAndSound => importOnOffLabel(true),
+  MovieParts.picture => AppText.strings.imPictureOnly,
+  MovieParts.pictureAndSound => AppText.strings.imPictureAndSound,
   MovieParts.sound => AppText.strings.imSoundOnly,
 };

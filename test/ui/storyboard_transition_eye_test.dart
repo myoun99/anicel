@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/named_finders.dart';
+
 /// 🚨C4 (2026-08-17): the transition row's EYE is TRANSITION APPLY/BYPASS —
 /// eye ON, the spans fade the composite; eye OFF, playback and export see
 /// no spans at all ([EditorSessionManager.transitionSpansOfTrack] is the
@@ -83,9 +85,7 @@ void main() {
 
     // The TIMELINE host (the default tab) carries the eye on the clone row
     // — the cut timeline is a device-visible host too.
-    final timelineEye = find.byKey(
-      ValueKey<String>('timeline-layer-visibility-$transitionId'),
-    );
+    final timelineEye = find.named('timeline-layer-visibility-$transitionId');
     expect(
       timelineEye,
       findsOneWidget,
@@ -97,8 +97,8 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
-    final storyboardEye = find.byKey(
-      ValueKey<String>('storyboard-layer-visibility-$transitionId'),
+    final storyboardEye = find.named(
+      'storyboard-layer-visibility-$transitionId',
     );
     expect(storyboardEye, findsOneWidget);
     await tester.tap(storyboardEye);
@@ -126,7 +126,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-layer-visibility-$transitionId')),
+      find.named('timeline-layer-visibility-$transitionId'),
     );
     await tester.pumpAndSettle();
 

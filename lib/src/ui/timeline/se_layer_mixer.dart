@@ -7,6 +7,7 @@ import '../editor_session_manager.dart';
 import '../session/session_row_button_presses.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
+import '../text/readout_text.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
 import '../input/control_press_claim.dart';
@@ -204,8 +205,8 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
       return 'C';
     }
     return pan < 0
-        ? 'L${sliderValueText(-pan * 100, decimals: 0)}'
-        : 'R${sliderValueText(pan * 100, decimals: 0)}';
+        ? 'L${readoutText(-pan * 100, decimals: 0)}'
+        : 'R${readoutText(pan * 100, decimals: 0)}';
   }
 }
 

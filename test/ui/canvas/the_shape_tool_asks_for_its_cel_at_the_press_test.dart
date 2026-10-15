@@ -53,8 +53,9 @@ void main() {
                 canvasSize: const CanvasSize(width: 400, height: 300),
                 frameToken: frameToken,
                 onShapeCommitted: (before, after) => log.add('selected'),
-                onDrawShape: (path) {
-                  drawn.add(path);
+                // No guide: the drag is its only copy.
+                onDrawShape: (copies) {
+                  drawn.add(copies.single);
                   log.add('drawn');
                 },
                 onPressNeedsCel: celAnswer == null

@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
-import '../timeline/axis_turn.dart';
+import '../../services/input/pen_sidecars.dart';
+import 'scroller_drive.dart';
 
 /// 🚨★★★**A PRESS THAT LANDS IN A SCROLLER IS THAT SCROLLER'S** — the
 /// scroller's turn of the law a bar and a canvas already keep.
@@ -78,13 +79,16 @@ void holdThePressForItsScroller(
 /// Declares [a] and [b] ONE surface scrolled two ways: a press in whichever
 /// sits inside the other is not held against it.
 ///
-/// 🚨The grids and the dock's floor are built this way — a vertical
-/// viewport inside a horizontal one, or the other way round — and what the
-/// hand pulls there is ONE thing: a panel under its floor (F-103), the
-/// timeline's rows and frames, the x-sheet, the storyboard. Held apart, the
-/// inner of the two would answer every pull across it with its hold, and
-/// none of them could be dragged that way again (🧪pinned for the panel in
-/// `an_inner_drag_never_leaks_out_test`).
+/// 🚨The dock's floor is built this way — a vertical viewport inside a
+/// horizontal one — and what the hand pulls there is ONE thing: a panel
+/// under its floor (F-103). Held apart, the inner of the two would answer
+/// every pull across it with its hold, and the panel could not be dragged
+/// that way again (🧪pinned in `an_inner_drag_never_leaks_out_test`).
+///
+/// ↩️The timeline's rows and frames, the x-sheet and the conte panel were
+/// declared here too. Their axes take no drag of their own now — one
+/// [TwoAxisDrag] moves both at once (F-351) — so no press of theirs is left
+/// to hold.
 ///
 /// ⚠️Declared on the CONTROLLERS, so it names those two scrollers and no
 /// other: a list inside the panel is inside the pair, not one of it, and is
@@ -143,7 +147,7 @@ class _PressHold {
     this.scroller,
     ScrollableState across,
     GestureVelocityTrackerBuilder velocityTracker,
-  ) : _axis = scroller.widget.axis {
+  ) {
     final physics = scroller.position.physics;
     recognizer = _HeldAcross(across.widget.axis, _done)
       ..gestureSettings = across.context
@@ -162,52 +166,28 @@ class _PressHold {
   }
 
   final ScrollableState scroller;
-  final Axis _axis;
   late final _HeldAcross recognizer;
-  Drag? _drag;
 
-  double _along(Offset offset) =>
-      _axis == Axis.horizontal ? offset.dx : offset.dy;
+  /// The scroller, once the drag across it has won.
+  ScrollerDrive? _drive;
 
-  Offset _onTheAxis(double value) =>
-      offsetAlong(_axis, along: value, across: 0);
-
-  // What `Scrollable` does with its own recogniser's callbacks, fed the part
-  // of each movement that runs this scroller's way.
   void _start(DragStartDetails details) {
     if (scroller.mounted) {
-      _drag = scroller.position.drag(details, _dropDrag);
+      _drive = ScrollerDrive(scroller.position)..start(details);
     }
   }
 
   void _update(DragUpdateDetails details) {
-    final along = _along(details.delta);
-    _drag?.update(
-      DragUpdateDetails(
-        sourceTimeStamp: details.sourceTimeStamp,
-        delta: _onTheAxis(along),
-        primaryDelta: along,
-        globalPosition: details.globalPosition,
-        localPosition: details.localPosition,
-      ),
-    );
+    _drive?.update(details);
   }
 
   void _end(DragEndDetails details) {
-    final along = _along(details.velocity.pixelsPerSecond);
-    _drag?.end(
-      DragEndDetails(
-        velocity: Velocity(pixelsPerSecond: _onTheAxis(along)),
-        primaryVelocity: along,
-        globalPosition: details.globalPosition,
-        localPosition: details.localPosition,
-      ),
-    );
+    _drive?.end(details);
   }
 
-  void _cancel() => _drag?.cancel();
-
-  void _dropDrag() => _drag = null;
+  void _cancel() {
+    _drive?.cancel();
+  }
 
   // Not from inside the recogniser's own event handling.
   void _done() => scheduleMicrotask(recognizer.dispose);
@@ -234,7 +214,12 @@ class _HeldAcross extends PanGestureRecognizer {
   bool hasSufficientGlobalDistanceToAccept(
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
-  ) => _moved.abs() > computeHitSlop(pointerDeviceKind, gestureSettings);
+  ) =>
+      _moved.abs() >
+      computeHitSlop(
+        PenSidecars.kindOf(pointerDeviceKind),
+        gestureSettings,
+      );
 
   @override
   void didStopTrackingLastPointer(int pointer) {

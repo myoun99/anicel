@@ -1,4 +1,3 @@
-import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -12,6 +11,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -23,6 +23,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -34,10 +35,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/held_pictures.dart';
+import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/export_cels_board_probe.dart';
@@ -148,7 +150,10 @@ void main() {
     Key? dialogKey,
     TextStyle face = const TextStyle(),
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 660));
+    // A screen whose half (F-337) is room for the render queue beside the
+    // least the preview takes (the Cels list with its attach column), so
+    // the drawer stays open.
+    await tester.binding.setSurfaceSize(const Size(1880, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // Unmount at teardown: the dialog's dispose cancels the preview
     // debounce timer — otherwise every test ends with a pending Timer.
@@ -353,6 +358,74 @@ void main() {
       expect(statusText(tester), 'Exported 2 frames.');
     });
 
+    testWidgets('🎯a frame that is the picture before it is written as the '
+        'bytes before it — encoded once', (tester) async {
+      const cutId = CutId('cut');
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('held'),
+          name: 'Held',
+          cameraSize: const CanvasSize(width: 8, height: 8),
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
+                Cut(
+                  id: cutId,
+                  name: 'Cut',
+                  duration: 2,
+                  canvasSize: const CanvasSize(width: 8, height: 8),
+                  layers: [
+                    Layer(
+                      id: const LayerId('layer'),
+                      name: 'A',
+                      frames: [frame('f1')],
+                      timeline: const {
+                        0: TimelineExposure.drawing(FrameId('f1'), length: 2),
+                      },
+                    ),
+                    createCameraLayer(cutId: cutId),
+                  ],
+                ),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+      addTearDown(session.dispose);
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await pickStillPng(tester);
+      // RGB: a PNG this app encodes itself (F-335), not the engine's.
+      final rgb = find.byKey(
+        const ValueKey<String>('export-format-channels-rgb'),
+      );
+      await tester.ensureVisible(rgb);
+      await tester.tap(rgb);
+      await tester.pump();
+      final before = PngSequenceExportService.debugEncodes;
+      final heldBefore = HeldPictures.debugHeld;
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final [first, second] = [
+        for (final name in ['frame_0001.png', 'frame_0002.png'])
+          File('${temp.path}${Platform.pathSeparator}$name').readAsBytesSync(),
+      ];
+      expect(second, first, reason: 'LIVENESS: one drawing held for both');
+      expect(PngSequenceExportService.debugEncodes - before, 1);
+      expect(
+        HeldPictures.debugHeld,
+        heldBefore,
+        reason: 'the run let go of what it held',
+      );
+    });
+
     testWidgets('naming module renames the base', (tester) async {
       final state = await pumpDialog(
         tester,
@@ -419,10 +492,21 @@ void main() {
       );
       await pickStillPng(tester);
       await tester.pickExportProjectScope();
+      final size = find.byKey(const ValueKey<String>('export-size'));
+      await tester.ensureVisible(size);
+      await tester.tap(size);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('export-size-camera')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey<String>('export-size-canvas')),
         findsNothing,
+        reason: 'a project scope forces the camera frame',
       );
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -514,17 +598,26 @@ void main() {
         'project scope) and the pick writes the spec', (tester) async {
       final state = await pumpDialog(tester, exportSession());
       await switchTab(tester, 'image');
-      final canvasChip = find.byKey(
+      final size = find.byKey(const ValueKey<String>('export-size'));
+      await tester.ensureVisible(size);
+      expect(tester.widget<PanelFlyoutButton>(size).label, 'Camera 32×18');
+      await tester.tap(size);
+      await tester.pumpAndSettle();
+      final canvasRow = find.byKey(
         const ValueKey<String>('export-size-canvas'),
       );
-      await tester.ensureVisible(canvasChip);
-      expect(canvasChip, findsOneWidget);
+      expect(canvasRow, findsOneWidget);
       // The one canvas size on the table is the active cut's own.
       expect(find.textContaining('Canvas 8×8'), findsOneWidget);
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.camera);
-      await tester.tap(canvasChip);
-      await tester.pump();
+      await tester.tap(canvasRow);
+      await tester.pumpAndSettle();
       expect(state.debugSpecs.image.sizeMode, ExportSizeMode.canvas);
+      expect(
+        tester.widget<PanelFlyoutButton>(size).label,
+        'Canvas 8×8',
+        reason: 'the button says the answer in force, whole',
+      );
     });
   });
 
@@ -563,7 +656,7 @@ void main() {
       expect(statusText(tester), '2프레임 내보냈습니다.');
     });
 
-    testWidgets('image tab: the file label, the size pills and the file '
+    testWidgets('image tab: the file label, the size list and the file '
         'sentence', (tester) async {
       final state = await pumpDialog(
         tester,
@@ -572,11 +665,14 @@ void main() {
       );
       await switchTab(tester, 'image');
       expect(find.text('파일'), findsOneWidget);
-      await tester.ensureVisible(
-        find.byKey(const ValueKey<String>('export-size-canvas')),
-      );
+      final size = find.byKey(const ValueKey<String>('export-size'));
+      await tester.ensureVisible(size);
+      expect(tester.widget<PanelFlyoutButton>(size).label, '카메라 32×18');
+      await tester.tap(size);
+      await tester.pumpAndSettle();
       expect(find.textContaining('캔버스 8×8'), findsOneWidget);
-      expect(find.textContaining('카메라 32×18'), findsOneWidget);
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
 
       await tester.runAsync(state.export);
       await tester.pump();
@@ -990,6 +1086,21 @@ void main() {
   });
 
   group('codec lineup (EX4)', () {
+    const codecButton = ValueKey<String>('export-format-codec');
+    Finder codecRow(String codec) =>
+        find.byKey(ValueKey<String>('export-format-codec-$codec'));
+
+    /// Opens the codec list and picks [codec] from it.
+    Future<void> pickCodec(WidgetTester tester, String codec) async {
+      await tester.tap(find.byKey(codecButton));
+      await tester.pumpAndSettle();
+      await tester.tap(codecRow(codec));
+      await tester.pumpAndSettle();
+    }
+
+    String codecShown(WidgetTester tester) =>
+        tester.widget<PanelFlyoutButton>(find.byKey(codecButton)).label;
+
     testWidgets('H.265 rides the ffmpeg fallback with libx265',
         (tester) async {
       final fake = FakeFfmpegProcess();
@@ -1005,10 +1116,7 @@ void main() {
           },
         ),
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-format-codec-h265')),
-      );
-      await tester.pump();
+      await pickCodec(tester, 'h265');
       await tester.runAsync(state.export);
       await tester.pump();
       expect(capturedArgs, contains('libx265'));
@@ -1037,12 +1145,7 @@ void main() {
         find.byKey(const ValueKey<String>('export-format-container-mov')),
       );
       await tester.pump();
-      await tester.tap(
-        find.byKey(
-          const ValueKey<String>('export-format-codec-prores4444'),
-        ),
-      );
-      await tester.pump();
+      await pickCodec(tester, 'prores4444');
       // 4444 exposes the channel choice; RGBA is the default already.
       expect(
         find.byKey(const ValueKey<String>('export-format-channels-rgba')),
@@ -1063,6 +1166,40 @@ void main() {
       );
     });
 
+    // 🗣️video-export-speed-Q1 (유저 2026-10-09): 「코덱을 팝오버로 보여서
+    // 그중에 고르게하도록」 — ↩️MOV's six were pills cut to an ellipsis.
+    testWidgets('🗣️the codec is picked from a list: the button says the one '
+        'in force, whole, and the list holds the container\'s every codec', (
+      tester,
+    ) async {
+      await pumpDialog(tester, exportSession());
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-format-container-mov')),
+      );
+      await tester.pump();
+      expect(codecShown(tester), ExportVideoCodec.h264.label);
+
+      await tester.tap(find.byKey(codecButton));
+      await tester.pumpAndSettle();
+      for (final codec in ExportVideoCodec.codecsFor(
+        ExportVideoContainer.mov,
+      )) {
+        expect(
+          find.descendant(
+            of: codecRow(codec.jsonValue),
+            matching: find.text(codec.label),
+          ),
+          findsOneWidget,
+          reason: codec.jsonValue,
+        );
+      }
+      expect(codecRow('h265'), findsNothing, reason: 'MP4 alone holds it');
+
+      await tester.tap(codecRow('prores4444'));
+      await tester.pumpAndSettle();
+      expect(codecShown(tester), 'ProRes 4444');
+    });
+
     testWidgets('a restrictive availability grays the pair with a reason',
         (tester) async {
       final restrictive = ExportFormatAvailability(
@@ -1077,22 +1214,27 @@ void main() {
         formatAvailability: restrictive,
       );
       await tester.pump();
-      final h265 = find.byKey(
-        const ValueKey<String>('export-format-codec-h265'),
-      );
-      expect(h265, findsOneWidget);
+      await tester.tap(find.byKey(codecButton));
+      await tester.pumpAndSettle();
       expect(
-        find.ancestor(of: h265, matching: find.byType(AppTooltip)),
-        findsOneWidget,
-        reason: 'a grayed chip explains itself',
+        tester.widget<PopupMenuItem<PanelFlyoutItem>>(codecRow('h265')).enabled,
+        isFalse,
+        reason: 'a codec this machine cannot write stays in the list, off',
       );
-      // The tap is a no-op on a grayed chip — H.264 stays selected.
-      await tester.tap(h265);
-      await tester.pump();
-      final h264Chip = tester.widget<Pill>(
-        find.byKey(const ValueKey<String>('export-format-codec-h264')),
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              (widget.data == AppText.strings.exNeedsFfmpeg ||
+                  widget.data == AppText.strings.exCheckingEncoders),
+        ),
+        findsWidgets,
+        reason: 'and says why under its name',
       );
-      expect(h264Chip.selected, isTrue);
+      // A press on a row that is off picks nothing — H.264 stays.
+      await tester.tap(codecRow('h265'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(codecShown(tester), ExportVideoCodec.h264.label);
     });
 
     testWidgets('JPG sequence writes .jpg files through the native encoder',

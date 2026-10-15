@@ -8,35 +8,46 @@ import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../services/import/cut_folder_listing.dart';
 import '../../models/media_asset.dart';
+import '../../models/movie_clock.dart' show movieClockFor;
+import '../../models/project_frame_rate.dart';
+import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
+import '../../services/media/movie_bytes.dart' show openHeldMovie;
+import '../../services/media/video_decode_worker.dart'
+    show videoDecodeBackend;
 import '../../services/pdf/pdf_render_service.dart';
-import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart'
     show FolderGrant, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/cloud_wait.dart';
-import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
 import 'import_file_settings.dart';
 import 'import_file_table.dart';
 import 'import_preview.dart';
+import 'movie_rate_dialog.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
 import '../widgets/settings_rows.dart';
 import '../text/model_vocabulary.dart';
-import '../widgets/pill_strip.dart';
 
-/// The 가져오기/배치 window (§6-z21): ONE window for every import — file
-/// picks, folder drops, OS drag-and-drop all land here, defaults filled
-/// so the simple case is a single Enter. The interpretation table shows
-/// what each source becomes (folders list every file, dropped ones
-/// included — nothing exits silently).
+/// The import window (§6-z21): ONE window for every import, defaults
+/// filled so the simple case is a single Enter. It picks nothing itself:
+/// what the one door hands it comes in ([picked] — the menu's 「파일
+/// 열기…」 and 「폴더 열기…」, a drop on the window, the media panel's ＋,
+/// the viewer's 「미디어에 등록」), and so do files the app already holds
+/// ([initialPaths]). The interpretation table shows what each source
+/// becomes (folders list every file, dropped ones included — nothing exits
+/// silently).
 ///
-/// v1 zones: source bar → interpretation table (preview) | settings
+/// ↩️It had a 「파일…」 and a 「컷 폴더…」 of its own, and the menu's
+/// 「가져오기/배치…」 opened it on nothing to press them (F-282, 유저
+/// 2026-10-09: 「열기랑 임포트랑 되도록 하나로」).
+///
+/// v1 zones: source line → interpretation table (preview) | settings
 /// modules → action bar. The preset rail and queue drawers of the export
 /// skeleton join when parser presets get their store.
 class ImportDialog extends StatefulWidget {
@@ -44,22 +55,29 @@ class ImportDialog extends StatefulWidget {
     super.key,
     required this.session,
     this.initialPaths = const [],
+    this.picked = const [],
     this.poolOnly = false,
     this.placeOnly = false,
     this.spot,
-    this.filePicker,
-    this.directoryPicker,
   });
 
   final EditorSessionManager session;
 
-  /// Sources handed in by drag-and-drop (files or one folder).
+  /// Files the app already holds, handed in by path (files or one folder) —
+  /// a media row placed, a drag from the pool.
   final List<String> initialPaths;
 
-  /// Opened from the media pool, whose job is to REGISTER a file for
-  /// later rather than place it now — so the destination starts on the
-  /// pool. Only the starting point differs: the other destinations are
-  /// still there, which is what makes this one window instead of two.
+  /// What the one door handed in (F-282): a pick's grants — the token that
+  /// reopens a referenced file next launch, a document with no filesystem
+  /// path (PICK-7) — a drop's and the viewer's paths, or a folder. Taken in
+  /// as [initialPaths] are, the documents through copies of this window's.
+  final List<FolderGrant> picked;
+
+  /// Opened through a pool's door — the media panel's ＋, the viewer's
+  /// 「미디어에 등록」 — whose job is to REGISTER a file for later rather
+  /// than place it now: the window stands on the pool, and the timeline is
+  /// shown but shut (08-14, 유저가 시안을 보고 확정: 「＋도 같은 창을 열고
+  /// Place=Pool 고정, Timeline 비활성」).
   final bool poolOnly;
 
   /// Opened from a pool ROW: the source is decided, so the source bar is
@@ -74,10 +92,6 @@ class ImportDialog extends StatefulWidget {
   /// 고정해두고 비활성화된상태로」). Null for every entrance that is not a
   /// drop.
   final ImportLayerSpot? spot;
-
-  /// Injectable pickers (tests).
-  final Future<List<String>> Function()? filePicker;
-  final Future<String?> Function()? directoryPicker;
 
   @override
   State<ImportDialog> createState() => _ImportDialogState();
@@ -113,28 +127,85 @@ class _FileReport {
   void rendered(int done, int total) => _within(_share(done, total));
 }
 
+/// Which question the 「옵션」 column asks a row.
+enum _OptionAsked {
+  /// A numbered run's: all of it, or this file alone.
+  run,
+
+  /// A Photoshop document's: its layers kept, or merged.
+  psd,
+
+  /// A movie's with a sound: picture and sound, picture, or sound.
+  sound,
+}
+
 /// The Into answer a SOUND gives: the track's SE rows, by their own rule.
 final class _SoundOnSeRows {
   const _SoundOnSeRows();
+
+  /// What its popup row is keyed by.
+  @override
+  String toString() => 'se-rows';
+}
+
+/// The 「옵션」 answer of a picture in a numbered run: the span IN/OUT keep
+/// of it, picked on the preview and only shown here — one answer, so the
+/// cell stands locked and says the span ([_runSpanWord]).
+final class _RunSpan {
+  const _RunSpan();
+
+  /// What its popup row would be keyed by.
+  @override
+  String toString() => 'run';
+}
+
+/// The layer a row brings of its numbered run, as the run's door is handed
+/// it (`ProjectImportDoors.importPictureRun`): the run, the span of it the
+/// row's IN/OUT keep, and the two answers the door reads — where the layer
+/// goes and how it fits. Rows that hand it the same bring one layer.
+typedef _RunLayer = ({
+  ParsedCelLayer run,
+  int first,
+  int last,
+  ImportDestination into,
+  MediaFitMode fit,
+});
+
+/// The Into answer of a file that only registers: the media pool, placed
+/// nowhere ([ImportFileSettings.intoPool]).
+final class _IntoThePool {
+  const _IntoThePool();
+
+  /// What its popup row is keyed by.
+  @override
+  String toString() => 'pool';
 }
 
 class _ImportDialogState extends State<ImportDialog> {
   final List<String> _files = [];
   String? _folder;
 
-  /// Where the import lands, or null for the MEDIA POOL — registered and
-  /// nothing else.
+  /// Whether [path]'s row only REGISTERS — its 넣을 곳 is 「미디어」 — as
+  /// its row answers ([ImportFileSettings.intoPool]), unless the context
+  /// answered: a pool's door registers every row ([ImportDialog.poolOnly],
+  /// 08-14), and a file the pool already holds has nothing left to
+  /// register, so it is placed (유저 2026-09-11: 「미디어풀에 있던걸 타임라인
+  /// 등 드래그앤드롭할때는 플레이스의 풀을 비활성화」).
   ///
-  /// Null rather than a third [ImportDestination]: the planner's enum
-  /// answers "where does this placement go", and registering without
-  /// placing is not a place. A value there would be one every switch over
-  /// the enum had to learn to ignore.
-  ImportDestination? _destination = ImportDestination.activeCutLayer;
+  /// Read from the row's own answer, not from [_settingsFor]: what a row
+  /// resolves to depends on this ([_runOf] among it).
+  ///
+  /// ⚠️The planner's [ImportDestination] still answers only WHERE a
+  /// placement goes — registering without placing is not a place, and a
+  /// third value there would be one every switch over the enum had to
+  /// learn to ignore (08-12). So the row holds the two questions apart.
+  bool _registersOnly(String path) =>
+      widget.poolOnly ||
+      ((_settings[path] ?? _seed).intoPool && _poolEntryFor(path) == null);
 
-  /// Whether a placement is being planned at all — the window's ONE
-  /// remaining batch-wide answer, and the reason it sits alone at the top:
-  /// every other question changes meaning depending on it.
-  bool get _placing => _destination != null;
+  /// Whether [path]'s row is placed somewhere — every question but the
+  /// pool's changes meaning with it, per row.
+  bool _placing(String path) => !_registersOnly(path);
 
   /// One answer set per FILE. The window used to hold one for the whole
   /// batch and be wrong about at least one file most of the time.
@@ -174,12 +245,12 @@ class _ImportDialogState extends State<ImportDialog> {
       _settings[path] ?? _seed,
       kind: kind,
       isPsd: importPathIsPsd(path),
-      placing: _placing,
+      placing: _placing(path),
       hasActiveCut: widget.session.activeCutOrNull != null,
       lasting: _lasting(path),
       spot: widget.spot,
-      inRun: _runOf(path) != null,
-    );
+      runLength: _runOf(path)?.cells.length,
+    ).copyWith(intoPool: _registersOnly(path));
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
     // for the pool's (유저 2026-09-11, 미디어 배치 라운드: 「풀에서
@@ -222,15 +293,16 @@ class _ImportDialogState extends State<ImportDialog> {
   final Map<String, CutFolderParseResult?> _runFolders = {};
   CutFolderParseConfig? _runConfig;
 
-  /// The numbered run [path] is part of (`celRunOf`), when the window is
-  /// placing it — null for a file in none.
+  /// The numbered run [path] is part of (`celRunOf`), when its row is
+  /// placed — null for a file in none.
   ///
   /// 🗣️I-76 (유저 2026-10-06): 「A1 임포트하면 A2,A3같은 파일들 인식해서」 —
   /// the folder is read with the cut folder's own grammar and knobs
   /// ([_parseConfig]), so a run is what the folder import would call that
   /// picture's layer.
   ParsedCelLayer? _runOf(String path) {
-    if (!_placing || mediaAssetKindForPath(path) != MediaAssetKind.image) {
+    if (!_placing(path) ||
+        mediaAssetKindForPath(path) != MediaAssetKind.image) {
       return null;
     }
     if (_runConfig != _parseConfig) {
@@ -252,13 +324,49 @@ class _ImportDialogState extends State<ImportDialog> {
     return parsed == null ? null : celRunOf(mediaFileName(path), parsed);
   }
 
-  /// [path]'s run when its row brings the run in — the 「연번」 column's
-  /// 「함께」.
-  ParsedCelLayer? _togetherRunOf(String path) {
+  /// The pictures of [path]'s run its span keeps — the run's IN/OUT,
+  /// picked on the preview ([ImportFileSettings.runIn]) — or null for a
+  /// file in none.
+  List<ParsedCel>? _runKeptOf(String path) {
     final run = _runOf(path);
-    return run != null && _settingsFor(path).run == NumberedRun.together
-        ? run
-        : null;
+    if (run == null) {
+      return null;
+    }
+    final span = importRunSpan(_settingsFor(path), run.cells.length);
+    return run.cells.sublist(span.first, span.last + 1);
+  }
+
+  /// [path]'s run when its span keeps two pictures or more: they come in as
+  /// one layer's frames. One comes in alone ([_placeRun]).
+  ParsedCelLayer? _togetherRunOf(String path) =>
+      (_runKeptOf(path)?.length ?? 0) > 1 ? _runOf(path) : null;
+
+  /// The layer [path]'s row brings of its run ([_RunLayer]) — null for a
+  /// row that brings no run of two pictures or more ([_togetherRunOf]).
+  _RunLayer? _runLayerOf(String path) {
+    final run = _togetherRunOf(path);
+    if (run == null) {
+      return null;
+    }
+    final settings = _settingsFor(path);
+    final span = importRunSpan(settings, run.cells.length);
+    return (
+      run: run,
+      first: span.first,
+      last: span.last,
+      into: settings.into,
+      fit: settings.fit,
+    );
+  }
+
+  /// Every picture of [path]'s run, in order — what the preview pages
+  /// through — or null for a file in none.
+  List<String>? _runFilesOf(String path) {
+    final run = _runOf(path);
+    final folder = File(path).parent.path;
+    return run == null
+        ? null
+        : [for (final cel in run.cells) '$folder/${cel.file}'];
   }
 
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
@@ -335,10 +443,24 @@ class _ImportDialogState extends State<ImportDialog> {
     super.initState();
     _wait.status.addListener(_waitChanged);
     _wait.waiting.addListener(_waitChanged);
-    if (widget.poolOnly) {
-      _destination = null;
+    // A grant's path is taken now, as a path handed in is — the first frame
+    // shows the files, not an empty window that fills a frame later. Its
+    // token is kept for the run ([_pickedGrants]); a document's bytes come
+    // after, under the wait a pick's always came under.
+    final grantedPaths = [for (final grant in widget.picked) ?grant.path];
+    _pickedGrants.addAll([
+      for (final grant in widget.picked)
+        if (grant.path != null) grant,
+    ]);
+    final documents = [
+      for (final grant in widget.picked)
+        if (grant.document != null) grant,
+    ];
+    if (documents.isNotEmpty) {
+      // Once this build is done: the wait the copies go under redraws.
+      unawaited(Future<void>.microtask(() => _takeDocuments(documents)));
     }
-    for (final path in widget.initialPaths) {
+    for (final path in [...widget.initialPaths, ...grantedPaths]) {
       if (Directory(path).existsSync()) {
         if (_folder == null) {
           _folder = path;
@@ -371,8 +493,8 @@ class _ImportDialogState extends State<ImportDialog> {
     super.dispose();
   }
 
-  /// What the picker granted for the files in [_files], kept until Import
-  /// runs so the session can record it.
+  /// What the door handed in with the files in [_files] — a pick's grants
+  /// — kept until Import runs so the session can record them.
   ///
   /// 🚨 The whole point of PICK-5 arrives here. On Apple a referenced path
   /// is refused after a relaunch unless the app kept the security-scoped
@@ -380,54 +502,21 @@ class _ImportDialogState extends State<ImportDialog> {
   /// — nothing else in the app ever sees the picker's answer.
   final List<FolderGrant> _pickedGrants = [];
 
-  Future<void> _pickFiles() async {
-    // The injected picker (tests, and the drop path) answers in paths; the
-    // real one answers in grants. Both end up in `_files`, and only the
-    // real one has tokens to record.
-    // 🚨 Nothing is replaced until the pick is known to have produced
-    // something. A second pick that the user CANCELS returns empty and
-    // leaves `_files` alone — so clearing the tokens first would strand
-    // the first batch's files with no grants, and the reference they were
-    // imported as would be refused at the next launch.
-    final List<String> paths;
-    final List<FolderGrant> grants;
-    final injected = widget.filePicker;
-    if (injected != null) {
-      paths = await injected();
-      grants = const [];
-    } else {
-      final picked = await pickFileGrantsForUser(
-        context,
-        // The POOL group, not the placeable one: this window is the
-        // media pool's entrance now, and the browser registers
-        // movies it cannot yet place. A movie picked while a placing
-        // destination is selected is refused BY NAME in the table
-        // below — which is the honest version of a picker that simply
-        // did not list it.
-        supportedExtensions: FileTypeGroups.poolMedia.extensions ?? const [],
-        allowMultiple: true,
-        acceptsDocuments: true,
-      );
-      // A document's copy is carried, and carrying records no token.
-      grants = [for (final grant in picked) if (grant.path != null) grant];
-      paths = await _readablePathsOf(picked);
-    }
+  /// The documents the door handed in, listed once their copies have come
+  /// ([_readablePathsOf]) — beside a folder they are left out, as a file
+  /// handed in with one is.
+  Future<void> _takeDocuments(List<FolderGrant> documents) async {
+    final paths = await _readablePathsOf(documents);
     if (paths.isEmpty || !mounted) {
       return;
     }
     setState(() {
-      _folder = null;
-      _parsed = null;
-      _files
-        ..clear()
-        ..addAll(paths);
-      _pickedGrants
-        ..clear()
-        ..addAll(grants);
+      if (_folder != null) {
+        _ignoredSources.addAll(paths);
+      } else {
+        _files.addAll(paths);
+      }
     });
-    _letGoOfUnlistedCopies();
-    // A picked movie is asked about its sound as a dropped one is — the
-    // 「소리」 column used to open only for movies handed in at the start.
     paths.forEach(_probeMovieSound);
   }
 
@@ -465,39 +554,6 @@ class _ImportDialogState extends State<ImportDialog> {
       );
     }
     return paths;
-  }
-
-  /// Lets go of every copy [_files] no longer lists — a pick replaced it.
-  /// What is still listed goes when the window does ([dispose]): imported
-  /// by then (its bytes are staged) or never imported at all.
-  void _letGoOfUnlistedCopies() {
-    final unlisted = [
-      for (final copy in _intakeCopies)
-        if (!_files.contains(copy)) copy,
-    ];
-    for (final copy in unlisted) {
-      _intakeCopies.remove(copy);
-      ProviderDocuments.letGo(copy);
-    }
-  }
-
-  Future<void> _pickFolder() async {
-    // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
-    // returns a SAF tree URI on Android — and the very next thing this does
-    // is `Directory(folder).listSync(recursive: true)`, which answers "that
-    // folder is gone" for a URI. A wrong answer that looks like a right one.
-    final path = widget.directoryPicker != null
-        ? await widget.directoryPicker!()
-        : await pickFolderForUser(context);
-    if (path == null || !mounted) {
-      return;
-    }
-    setState(() {
-      _files.clear();
-      _folder = path;
-      _reparseFolder();
-    });
-    _letGoOfUnlistedCopies();
   }
 
   /// The folder's entries, scanned ONCE per folder pick — re-parsing on
@@ -617,7 +673,7 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   Future<void> _runImport() async {
-    if (!_canImport) {
+    if (!_canImport || !await _answerMovieRates() || !mounted) {
       return;
     }
     setState(() {
@@ -667,6 +723,151 @@ class _ImportDialogState extends State<ImportDialog> {
     });
   }
 
+  /// 🗣️import-movie-fps-mismatch-notice (유저 10-06: 「알리는게 좋겠어」 ·
+  /// 「셋다 맞고」, 10-10 「1번」 — asked when Import is pressed): a movie
+  /// about to be PLACED whose rate is the project's pulldown partner
+  /// ([pulldownPartnerOf]) is named before it lands, and the project may
+  /// take its rate, the sound keeping its real time (「오디오 타이밍 유지」,
+  /// the plain rate change). A row that only registers places nothing — it
+  /// is asked when it is placed, through this window. False when the
+  /// person backed out of the import.
+  Future<bool> _answerMovieRates() async {
+    final project = widget.session.projectSettings.projectFrameRate;
+    final movie = await _pulldownPartnerAmongPlaced(project);
+    if (movie == null) {
+      return true;
+    }
+    if (!mounted) {
+      return false;
+    }
+    final answer = await showMovieRateDialog(
+      context,
+      project: project,
+      movie: movie,
+    );
+    if (answer == MovieRateAnswer.take && mounted) {
+      await _respanFor(from: project, to: movie);
+      widget.session.projectSettings.setProjectFrameRate(movie);
+    }
+    return answer != null && mounted;
+  }
+
+  /// The rate of the first placed movie that runs at [project]'s pulldown
+  /// partner, or null when none does.
+  Future<ProjectFrameRate?> _pulldownPartnerAmongPlaced(
+    ProjectFrameRate project,
+  ) async {
+    for (final path in _files.where(_placing)) {
+      if (mediaAssetKindForPath(path) != MediaAssetKind.video) {
+        continue;
+      }
+      final movie = await _movieInfoOf(path);
+      final partner = movie == null
+          ? null
+          : pulldownPartnerOf(project, (
+              numerator: movie.fpsNumerator,
+              denominator: movie.fpsDenominator,
+            ));
+      if (partner != null) {
+        return partner;
+      }
+    }
+    return null;
+  }
+
+  /// What [path]'s movie says of itself, read as its door will read it
+  /// ([openHeldMovie]) — null when it does not open.
+  Future<QaVideoInfo?> _movieInfoOf(String path) async {
+    final opened = await openHeldMovie(
+      videoDecodeBackend,
+      widget.session.projectFile.holdMediaBytes,
+      path,
+    );
+    if (opened == null) {
+      return null;
+    }
+    try {
+      return opened.info;
+    } finally {
+      await opened.close();
+    }
+  }
+
+  /// Every span counted in PROJECT frames — a movie's and a sound's, whose
+  /// IN/OUT run on the sound's clock (`ProjectImportDoors.importVideoFile`)
+  /// — moved from [from]'s frames to [to]'s, so what the person stood IN
+  /// and OUT on before the rate changed is what comes in.
+  Future<void> _respanFor({
+    required ProjectFrameRate from,
+    required ProjectFrameRate to,
+  }) async {
+    for (final path in [..._files]) {
+      final settings = _settings[path];
+      if (settings == null || !settings.isTrimmed) {
+        continue;
+      }
+      final moved = switch (mediaAssetKindForPath(path)) {
+        MediaAssetKind.video => await _movieSpanAt(path, settings, from, to),
+        MediaAssetKind.audio => _spanAt(
+          settings,
+          (frame) => frameAtSameTime(frame, from: from, to: to),
+          (frame) => frameAtSameTime(frame, from: from, to: to),
+        ),
+        _ => null,
+      };
+      if (moved != null && mounted) {
+        _setSettings([path], (_) => moved);
+      }
+    }
+  }
+
+  /// [settings]' span with its IN through [first] and its OUT through
+  /// [last] — an OUT left at the end stays there.
+  ImportFileSettings _spanAt(
+    ImportFileSettings settings,
+    int Function(int frame) first,
+    int Function(int frame) last,
+  ) => settings.copyWith(
+    inFrame: first(settings.inFrame),
+    outFrame: switch (settings.outFrame) {
+      final out? => last(out),
+      null => null,
+    },
+  );
+
+  /// A movie's span kept on the same PICTURES: the movie frame each end
+  /// showed on [from]'s clock, found again on [to]'s ([movieClockFor]) —
+  /// IN at the first frame that shows its picture, OUT at the last. Null
+  /// when the movie does not open.
+  Future<ImportFileSettings?> _movieSpanAt(
+    String path,
+    ImportFileSettings settings,
+    ProjectFrameRate from,
+    ProjectFrameRate to,
+  ) async {
+    final movie = await _movieInfoOf(path);
+    if (movie == null) {
+      return null;
+    }
+    final speed = _projectAudioSpeed;
+    final before = movieClockFor(
+      projectRate: from,
+      audioSpeed: speed,
+      movie: movie,
+    );
+    final after = movieClockFor(
+      projectRate: to,
+      audioSpeed: speed,
+      movie: movie,
+    );
+    return _spanAt(
+      settings,
+      (frame) => after.projectFramesCovering(before.movieFrameAt(frame)),
+      (frame) =>
+          after.projectFramesCovering(before.movieFrameAt(frame) + 1) - 1,
+    );
+  }
+
   /// Runs the picked import, whichever door it goes through, telling
   /// [report] how far it is (0–1). Answers FALSE when the dialog went away
   /// part-way.
@@ -683,17 +884,33 @@ class _ImportDialogState extends State<ImportDialog> {
       final folder = _folder;
       if (folder != null) {
         await _importCutFolder(folder, tally, report);
-      } else if (_destination == null) {
+        return true;
+      }
+      // Each row as its 넣을 곳 says: the ones that only register, then the
+      // ones that are placed — one count over both, a file each.
+      final registering = _files.where(_registersOnly).toList();
+      final placing = _files.where(_placing).toList();
+      final share = _share(registering.length, _files.length);
+      if (registering.isNotEmpty) {
         // The pool: every kind registers, movies included. Two batches
-        // rather than one, because carrying is now a per-file answer and
-        // the registration verb takes one flag for the batch it is given.
-        await _registerFiles(tally, report);
-      } else {
+        // rather than one, because carrying is a per-file answer and the
+        // registration verb takes one flag for the batch it is given.
+        await _registerFiles(
+          registering,
+          tally,
+          (fraction) => report(fraction * share),
+        );
+      }
+      if (placing.isNotEmpty) {
         // ⛔The `await` is NOT redundant: `return _placeFiles(tally)`
         // hands the future to the caller and this try never sees it
         // fail, so a throw part-way through the batch would escape as an
         // unhandled async error and leave the spinner running forever.
-        return await _placeFiles(tally, report);
+        return await _placeFiles(
+          placing,
+          tally,
+          (fraction) => report(share + fraction * (1 - share)),
+        );
       }
     } on Object catch (error) {
       tally.warnings.add('$error');
@@ -728,18 +945,21 @@ class _ImportDialogState extends State<ImportDialog> {
   /// placed and that one as far as it says. Answers FALSE when the dialog
   /// went away part-way — the caller must not touch its state after that.
   Future<bool> _placeFiles(
+    List<String> paths,
     _ImportTally tally,
     void Function(double) report,
   ) async {
-    final count = _files.length;
-    // A run two of its own pictures were picked from comes in once — the
-    // second row is already in it.
-    final runsPlaced = <ParsedCelLayer>{};
-    for (final (index, path) in _files.indexed) {
+    final count = paths.length;
+    // A run two of its own pictures were picked from comes in once when
+    // their rows would bring the same layer of it ([_RunLayer]) — the
+    // second row is already in. A row that keeps another span, or puts it
+    // elsewhere, brings what its own cells say.
+    final runsPlaced = <_RunLayer>{};
+    for (final (index, path) in paths.indexed) {
       void within(double fraction) =>
           report((index + fraction.clamp(0, 1)) / count);
       within(0);
-      final run = _togetherRunOf(path);
+      final run = _runLayerOf(path);
       if (run != null && runsPlaced.contains(run)) {
         tally
           ..imported += 1
@@ -827,10 +1047,29 @@ class _ImportDialogState extends State<ImportDialog> {
   /// and a file the pool carries is inside already, every byte of it — a
   /// piece of it would be a second copy (유저 08-27: 「사본 남으면 진짜
   /// 용서안할게」). Placing a stretch of it takes the pooled file as it is.
+  ///
+  /// A piece is a pool entry's to be: a row that leaves none (baked,
+  /// F-282-Q6) bakes its span from the file through its door's IN/OUT.
   bool _comesInAsAPiece(String path, ImportFileSettings settings) =>
       settings.isTrimmed &&
       settings.mode == ImportFileMode.keepInside &&
-      _poolEntryFor(path) == null;
+      _poolEntryFor(path) == null &&
+      _keepsAPoolEntry(path);
+
+  /// Whether [path]'s row leaves its file in the media pool: a row that
+  /// only registers, and a placement that does by [placementRegisters] —
+  /// one the layer draws from, or a movie whose sound lands beside its
+  /// baked picture.
+  bool _keepsAPoolEntry(String path) {
+    final settings = _settingsFor(path);
+    return settings.intoPool ||
+        placementRegisters(
+          baked: settings.bake,
+          soundReadsIt:
+              _asksSound(path) &&
+              settings.movieParts == MovieParts.pictureAndSound,
+        );
+  }
 
   /// [path] through its door — or, when it comes in as its PIECE
   /// ([_comesInAsAPiece]), the span cut into a file of its own and placed
@@ -906,8 +1145,8 @@ class _ImportDialogState extends State<ImportDialog> {
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
     }
-    if (_togetherRunOf(path) case final run?) {
-      return _placeRun(path, run, tally, fileReport);
+    if (_runKeptOf(path) case final kept?) {
+      return _placeRun(path, kept, tally, fileReport);
     }
     if (kind == MediaAssetKind.pdf) {
       return widget.session.importDoors.importPdfFile(
@@ -926,40 +1165,43 @@ class _ImportDialogState extends State<ImportDialog> {
         sourcePath: sourcePath,
       );
     }
-    return widget.session.importDoors.importImageFile(
-      path: path,
-      destination: settings.into,
-      rasterize: bake,
-      fit: settings.fit,
-      copyIntoProject: carry,
-      inFrame: settings.inFrame,
-      outFrame: settings.outFrame,
-      spot: widget.spot,
-      sourcePath: sourcePath,
-    );
+    return _placePicture(path, settings, sourcePath: sourcePath);
   }
 
-  /// A MOVIE's door (미디어 배치 라운드 6). What lands is the 「소리」
-  /// answer — the picture, the picture with its sound on the SE rows, or
-  /// the sound alone, which is also what an SE row's empty cell takes
-  /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
-  /// [importMovieParts] — the cell used to be answered HERE, straight to a
-  /// sound's door). A picture that bakes is hundreds of cels (「이런 무거움이
-  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
-  /// counts for it — under the run's one wait window ([_runImport]).
-  /// ↩️It stood behind a wait window of its own, one for every movie.
-  /// [path]'s numbered [run] through the run's door
-  /// (`ProjectImportDoors.importPictureRun`), every picture of it waited for
-  /// as the picked one is — one that never arrives is named and left out.
+  /// A picture through a picture's door, as its row answers — the ordinary
+  /// image path, and a run's span that keeps one picture ([_placeRun]).
+  Future<bool> _placePicture(
+    String picture,
+    ImportFileSettings settings, {
+    String? sourcePath,
+  }) => widget.session.importDoors.importImageFile(
+    path: picture,
+    destination: settings.into,
+    rasterize: settings.bake,
+    fit: settings.fit,
+    copyIntoProject: settings.mode == ImportFileMode.keepInside,
+    inFrame: settings.inFrame,
+    outFrame: settings.outFrame,
+    spot: widget.spot,
+    sourcePath: sourcePath,
+  );
+
+  /// [path]'s numbered run as its span keeps it ([_runKeptOf]): two
+  /// pictures or more through the run's door
+  /// (`ProjectImportDoors.importPictureRun`) as one layer's frames, one
+  /// through a picture's ([_placePicture]) — alone, as a picture always
+  /// came in, whichever picture IN and OUT stood on. Every picture is
+  /// waited for as the picked one is: one that never arrives is named and
+  /// left out.
   Future<bool> _placeRun(
     String path,
-    ParsedCelLayer run,
+    List<ParsedCel> kept,
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
     final folder = File(path).parent.path;
     final files = <({String path, String label})>[];
-    for (final cel in run.cells) {
+    for (final cel in kept) {
       final file = '$folder/${cel.file}';
       // Every picture of the run reads before it is placed, the law the
       // picked one already went through ([_placeFiles]).
@@ -974,16 +1216,29 @@ class _ImportDialogState extends State<ImportDialog> {
       }
       files.add((path: file, label: cel.label));
     }
+    final settings = _settingsFor(path);
+    if (files.length == 1) {
+      return _placePicture(files.single.path, settings);
+    }
     return widget.session.importDoors.importPictureRun(
       files: files,
-      name: run.symbol,
-      settings: _settingsFor(path),
+      name: _runOf(path)!.symbol,
+      settings: settings,
       spot: widget.spot,
       onRenderProgress: fileReport.rendered,
       onCelFailed: fileReport.failed.add,
     );
   }
 
+  /// A MOVIE's door (미디어 배치 라운드 6). What lands is the 「소리」
+  /// answer — the picture, the picture with its sound on the SE rows, or
+  /// the sound alone, which is also what an SE row's empty cell takes
+  /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
+  /// [importMovieParts] — the cell used to be answered HERE, straight to a
+  /// sound's door). A picture that bakes is hundreds of cels (「이런 무거움이
+  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
+  /// counts for it — under the run's one wait window ([_runImport]).
+  /// ↩️It stood behind a wait window of its own, one for every movie.
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
@@ -1024,6 +1279,7 @@ class _ImportDialogState extends State<ImportDialog> {
   ///
   /// [report] counts the files the batches have landed.
   Future<void> _registerFiles(
+    List<String> paths,
     _ImportTally tally,
     void Function(double) report,
   ) async {
@@ -1034,7 +1290,7 @@ class _ImportDialogState extends State<ImportDialog> {
     // from — and the picked file each one stands for.
     final carried = <String, String>{};
     final referenced = <String>[];
-    for (final path in _files) {
+    for (final path in paths) {
       final settings = _settingsFor(path);
       final kind = mediaAssetKindForPath(path);
       if (kind != null && _comesInAsAPiece(path, settings)) {
@@ -1075,7 +1331,7 @@ class _ImportDialogState extends State<ImportDialog> {
     tally
       ..imported += carried.length
       ..done.addAll(carried.values);
-    report(_share(carried.length, _files.length));
+    report(_share(carried.length, paths.length));
     await pool.importMediaFiles(referenced, copyIntoProject: false);
     tally
       ..imported += referenced.length
@@ -1095,7 +1351,6 @@ class _ImportDialogState extends State<ImportDialog> {
     final expanded = await session.importDoors.importPsdExpanded(
       path: path,
       destination: settings.into,
-      copyIntoProject: settings.mode == ImportFileMode.keepInside,
       fit: settings.fit,
       spot: widget.spot,
     );
@@ -1109,8 +1364,20 @@ class _ImportDialogState extends State<ImportDialog> {
     return true;
   }
 
+  /// Sized as the export window is: its share of the app screen by area
+  /// ([AppWindow.screenShare] — F-337, 유저 2026-10-10: 「익스포트/임포트 창이
+  /// 너무 큼. 앱 화면의 절반정도로」, then 2/3). ↩️All the room the screen leaves
+  /// (F-282-Q7, 유저 2026-10-09: 「출력창과 같은 법 — 화면이 남긴 자리
+  /// 전체」), and before that 760 × 520, whatever the screen. The
+  /// LayoutBuilder stands OUTSIDE the window: the window owns its dialog, so
+  /// the screen it halves is the app's, not the dialog's.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, screen) =>
+        _window(context, AppWindow.screenShare(screen)),
+  );
+
+  Widget _window(BuildContext context, Size room) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
       // The file's name goes in the TITLE in place mode: the window is
@@ -1120,8 +1387,8 @@ class _ImportDialogState extends State<ImportDialog> {
           ? AppText.strings.imPlaceTitle(mediaFileName(_files.first))
           : AppText.strings.imImport,
       titleIcon: Icons.download_outlined,
-      width: 760,
-      height: 520,
+      width: room.width,
+      height: room.height,
       scrollBody: false,
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
@@ -1161,8 +1428,6 @@ class _ImportDialogState extends State<ImportDialog> {
             _sourceBar(context),
             const Divider(height: 1),
           ],
-          _placeStrip(context),
-          const Divider(height: 1),
           // Loose files answer per row; a cut folder and a TVPaint export
           // land a whole CUT and have nothing per-file to answer, so they
           // keep the interpretation list and the knobs that read it.
@@ -1185,65 +1450,6 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
-  /// The one batch-wide answer, and the only one that changes what the
-  /// other questions mean — so it sits above them rather than among them.
-  ///
-  /// A pill the window's source cannot use stays on screen, disabled, so
-  /// the other door is seen rather than hidden. Opened from the media
-  /// pool's ＋ it is pinned to the pool — registering for later is what that
-  /// panel is for. Opened on files the pool already holds (a pool row's
-  /// 「배치…」, a drag from the pool) it is pinned to the timeline (유저
-  /// 2026-09-11: 「미디어풀에 있던걸 타임라인 등 드래그앤드롭할때는
-  /// 플레이스의 풀을 비활성화」).
-  Widget _placeStrip(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 46,
-            child: Text(
-              AppText.strings.imPlaceLabel,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Flexible(
-            child: PillStrip(
-              items: [
-                PillItem(
-                  keyValue: 'import-place-pool',
-                  label: AppText.strings.imPool,
-                  selected: !_placing,
-                  onTap: _running || widget.placeOnly
-                      ? null
-                      : () => setState(() => _destination = null),
-                  tooltip: widget.placeOnly
-                      ? AppText.strings.imAlreadyPooledTooltip
-                      : null,
-                ),
-                PillItem(
-                  keyValue: 'import-place-timeline',
-                  label: AppText.strings.panelTimeline,
-                  selected: _placing,
-                  onTap: _running || widget.poolOnly
-                      ? null
-                      : () => setState(
-                          () => _destination = ImportDestination.activeCutLayer,
-                        ),
-                  tooltip: widget.poolOnly
-                      ? AppText.strings.imPoolOnlyTooltip
-                      : null,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// The list and the picture, with a grip between them.
   ///
   /// The split is draggable because the two halves are wanted in different
@@ -1253,14 +1459,9 @@ class _ImportDialogState extends State<ImportDialog> {
   /// readable name need; where the window cannot give it that, the list
   /// scrolls sideways at that width instead of squeezing the name.
   Widget _twoZones(BuildContext context) {
-    final previewPath = _selected.isNotEmpty
-        ? _selected.last
-        : (_files.isEmpty ? null : _files.first);
-    final settings = previewPath == null
-        ? const ImportFileSettings()
-        : _settingsFor(previewPath);
     final rows = [for (final path in _files) _tableRow(path)];
     final columns = _tableColumns();
+    final preview = _preview();
     return LayoutBuilder(
       builder: (context, constraints) {
         final minTable = ImportFileTable.minimumWidth(
@@ -1276,7 +1477,7 @@ class _ImportDialogState extends State<ImportDialog> {
           0.0,
           constraints.maxWidth -
               DockEdgeSplitter.thickness -
-              ImportPreview.minimumWidth,
+              ImportPreview.minimumWidthIn(context),
         );
         final maxTable = math.min(
           math.max(minTable, constraints.maxWidth - 200),
@@ -1303,48 +1504,70 @@ class _ImportDialogState extends State<ImportDialog> {
                 return delta;
               },
             ),
-            Expanded(
-              child: ImportPreview(
-                key: const ValueKey<String>('import-preview'),
-                session: widget.session,
-                path: previewPath,
-                opensAsSound:
-                    previewPath != null && _landsAsSound(previewPath),
-                inFrame: settings.inFrame,
-                outFrame: settings.outFrame,
-                // The ends appear wherever they act: on what gets placed,
-                // and on what gets registered, which comes in as its piece
-                // ([_registerFiles]). 🪦Registrations went without them
-                // until a trimmer existed (2026-09-24). ⛔Not on a file the
-                // pool already holds when only registering: that adds
-                // nothing, so a span there would act on nothing.
-                rangeEditable:
-                    _placing ||
-                    (previewPath != null && _poolEntryFor(previewPath) == null),
-                soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
-                holdBytes: widget.session.projectFile.holdMediaBytes,
-                frameRate: widget.session.projectSettings.projectFrameRate,
-                audioSpeed: _projectAudioSpeed,
-                onRangeChanged: (start, end) {
-                  if (previewPath == null) {
-                    return;
-                  }
-                  _setSettings(
-                    [previewPath],
-                    (current) => current.copyWith(
-                      inFrame: start,
-                      outFrame: end,
-                      clearOut: end == null,
-                    ),
-                  );
-                },
-              ),
-            ),
+            Expanded(child: preview),
           ],
         );
       },
     );
   }
+
+  /// The picture zone: the file picked last — the first, before any is —
+  /// with the ends of its span wherever they act. A picture in a numbered
+  /// run is previewed as its run, and the transport's IN/OUT are the run's
+  /// (F-282, 시안 ④).
+  Widget _preview() {
+    final path = _selected.isNotEmpty
+        ? _selected.last
+        : (_files.isEmpty ? null : _files.first);
+    final settings = path == null
+        ? const ImportFileSettings()
+        : _settingsFor(path);
+    final run = path == null ? null : _runFilesOf(path);
+    return ImportPreview(
+      key: const ValueKey<String>('import-preview'),
+      session: widget.session,
+      path: path,
+      run: run,
+      opensAsSound: path != null && _landsAsSound(path),
+      inFrame: run != null ? settings.runIn : settings.inFrame,
+      outFrame: run != null ? settings.runOut : settings.outFrame,
+      // The ends appear wherever they act: on what gets placed, and on what
+      // gets registered, which comes in as its piece ([_registerFiles]).
+      // 🪦Registrations went without them until a trimmer existed
+      // (2026-09-24). ⛔Not on a file the pool already holds when only
+      // registering: that adds nothing, so a span there would act on
+      // nothing.
+      rangeEditable:
+          path != null && (_placing(path) || _poolEntryFor(path) == null),
+      soundPeaks: widget.session.audioConformStore.ensurePeaksFor,
+      holdBytes: widget.session.projectFile.holdMediaBytes,
+      frameRate: widget.session.projectSettings.projectFrameRate,
+      audioSpeed: _projectAudioSpeed,
+      onRangeChanged: (start, end) {
+        if (path != null) {
+          _keepSpan(path, start, end);
+        }
+      },
+    );
+  }
+
+  /// [path]'s span as the preview's IN/OUT leave it: the pictures of its
+  /// numbered run that come in ([ImportFileSettings.runIn]), or the trim
+  /// of the file itself.
+  void _keepSpan(String path, int start, int? end) => _setSettings(
+    [path],
+    (current) => _runOf(path) != null
+        ? current.copyWith(
+            runIn: start,
+            runOut: end,
+            clearRunOut: end == null,
+          )
+        : current.copyWith(
+            inFrame: start,
+            outFrame: end,
+            clearOut: end == null,
+          ),
+  );
 
   /// A row names its file WITHOUT the extension, which it shows on its own:
   /// the name is what gets cut short when room runs out, the extension never
@@ -1377,50 +1600,43 @@ class _ImportDialogState extends State<ImportDialog> {
     columns: columns,
   );
 
-  /// The columns this window asks.
+  /// The columns this window asks, in the order one answers the next: where
+  /// the file goes decides whether it is baked, the bake whether the pool
+  /// is asked how to keep it, and only a placed picture is fitted.
   ///
-  /// 🚨ONE LAW: a column stands only when some row of THIS window has to
-  /// answer it (유저 2026-09-11, 미디어 배치 라운드 5: 「즉 필요없는것들
-  /// 안보이게 삭제해도됨」). Place, where the window was opened from and the
-  /// kinds in it decide that. A column coming and going with Place is the
-  /// user's own exception to the no-disappearing-UI rule, and it holds in
-  /// this window only (「이런건 예외야. 필요한 것만 보이게하려고」).
+  /// 🚨THE PLACEMENT'S QUESTIONS STAND, every row or none (유저 2026-10-09:
+  /// 「굽기/맞춤/옵션 다 보이는채로 ok. 보이게하고 지금처럼 - 이렇게
+  /// 표시하면되」): a row they do not ask shows 「—」. ↩️They came and went
+  /// with the window's place (09-11: 「즉 필요없는것들 안보이게 삭제해도됨」
+  /// · 「이런건 예외야. 필요한 것만 보이게하려고」) — the user's own exception
+  /// to the no-disappearing-UI rule, and the reason was the PSD column,
+  /// meaningless beside other files (유저 10-09).
+  ///
+  /// ⛔Not in a window a pool's door opened ([ImportDialog.poolOnly]): every
+  /// row there registers, so the questions of a placement cannot be asked
+  /// at all (유저 2026-10-09: 「미디어패널의 경우엔 굽기 맞춤 옵션
+  /// 안넣어도되 … 임포트는 진짜 존재할일이 없는 구조잖아. 그런건 예외로」).
   ///
   /// ⚠️A value the CONTEXT answered — a new cut's 1:1, an expanded PSD's
-  /// bake, a pooled file's carry in a mixed batch — is not a reason to drop
-  /// its column: the column stays and the value shows locked (「1:1로
-  /// 고정시켜서 노출시키도록. 비활성화된상태로」). Only a question this
-  /// placement does not ask goes.
+  /// bake, a pooled file's carry in a mixed batch — shows locked
+  /// (「1:1로 고정시켜서 노출시키도록. 비활성화된상태로」).
   List<ImportColumn<Object?>> _tableColumns() {
-    final placing = _placing;
     bool any(bool Function(String path) test) => _files.any(test);
+    final placementAsked = !widget.poolOnly;
     return [
+      if (_files.isNotEmpty) _intoColumn(),
+      // The layer's question, wherever something is placed (「플레이스가
+      // 타임라인이면 굽기열 만들기」).
+      if (placementAsked) _bakeColumn(),
       // The pool's question, asked only of a file the pool has not answered
       // (「플레이스가 타임라인일땐 그냥 품기/참조인 그 열 자체를 삭제」 for
       // pooled files, 「프로젝트의 임포트 버튼 … 품기/참조열 존재하도록」
       // for new ones).
       if (any((path) => _poolEntryFor(path) == null)) _fileColumn(),
-      // The layer's question, wherever something is placed (「플레이스가
-      // 타임라인이면 굽기열 만들기」).
-      if (any(
-        (path) => importBakeAllowed(
-          kind: mediaAssetKindForPath(path),
-          placing: placing,
-        ),
-      ))
-        _bakeColumn(placing),
-      // A movie's sound, asked only of a movie that has one (라운드 6 확인:
-      // 「소리열: 추천대로」).
-      if (any(_asksSound)) _soundColumn(),
-      if (placing && _files.isNotEmpty) _intoColumn(),
-      // By the file's KIND, not the row's answers: a movie turned to its
-      // sound alone leaves the column standing, its cell blank — a column
-      // that went with the answer would be UI popping out of existence.
-      if (placing && any(_mayPlacePicture)) _fitColumn(placing),
-      // 「PSD가 아닌파일은 PSD열 삭제」.
-      if (placing && any(importPathIsPsd)) _psdColumn(placing),
-      // I-76-Q1: 「파일 표에 칸이 하나 는다(형제가 없는 줄은 「—」)」.
-      if (any((path) => _runOf(path) != null)) _runColumn(),
+      if (placementAsked) _fitColumn(),
+      // A run's, a Photoshop document's, a movie-with-sound's own question —
+      // one column, each row its own (F-282).
+      if (placementAsked) _optionColumn(),
     ];
   }
 
@@ -1430,16 +1646,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// the sound alone.
   bool _placesPicture(String path) => !_landsAsSound(path);
 
-  /// Whether [path] is a kind that CAN place a picture, whatever its row
-  /// answers — what a column's presence is read from.
-  bool _mayPlacePicture(String path) =>
-      mediaAssetKindForPath(path) != MediaAssetKind.audio;
-
   /// Whether the 「소리」 question is this row's: a movie being placed that
   /// the conform found a sound in ([_probeMovieSound]).
   bool _asksSound(String path) => importSoundAllowed(
     kind: mediaAssetKindForPath(path),
-    placing: _placing,
+    placing: _placing(path),
     hasSound: _movieSound[normalizedMediaPath(path)] ?? false,
   );
 
@@ -1456,7 +1667,9 @@ class _ImportDialogState extends State<ImportDialog> {
     values: ImportFileMode.values,
     labelOf: (value) => importModeLabel(value! as ImportFileMode),
     valueOf: (path) => _settingsFor(path).mode,
-    appliesTo: (path) => true,
+    // Asked only of a row that leaves an entry — a baked one leaves none
+    // (F-282-Q6: 「굽는 줄의 「파일」은 「—」」).
+    appliesTo: _keepsAPoolEntry,
     enabledFor: (path, value) {
       // A pooled file in a mixed batch shows the pool's answer, locked.
       if (_poolEntryFor(path) != null) {
@@ -1474,7 +1687,7 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
-  ImportColumn<Object?> _bakeColumn(bool placing) => ImportColumn<Object?>(
+  ImportColumn<Object?> _bakeColumn() => ImportColumn<Object?>(
     id: 'bake',
     label: AppText.strings.imBake,
     style: ImportColumnStyle.toggle,
@@ -1483,12 +1696,15 @@ class _ImportDialogState extends State<ImportDialog> {
     valueOf: (path) => _settingsFor(path).bake,
     appliesTo: (path) =>
         _placesPicture(path) &&
-        importBakeAllowed(kind: mediaAssetKindForPath(path), placing: placing),
+        importBakeAllowed(
+          kind: mediaAssetKindForPath(path),
+          placing: _placing(path),
+        ),
     enabledFor: (path, value) =>
         value == true ||
         !importBakeLocked(
           isPsd: importPathIsPsd(path),
-          placing: placing,
+          placing: _placing(path),
           psd: _settingsFor(path).psd,
           spot: widget.spot,
           together: _togetherRunOf(path) != null,
@@ -1499,61 +1715,203 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
-  /// What of a movie comes in — 끔 (the picture), 켬 (the picture and its
-  /// sound) and, since 유저 2026-09-27 (「소리만 임포트 영상만 임포트도
-  /// 고를수있게」), the sound alone ([MovieParts]).
-  ImportColumn<Object?> _soundColumn() => ImportColumn<Object?>(
-    id: 'sound',
-    label: AppText.strings.imSound,
-    values: MovieParts.values,
-    labelOf: (value) => importMoviePartsLabel(value! as MovieParts),
-    valueOf: (path) => _settingsFor(path).movieParts,
-    appliesTo: _asksSound,
-    // What the drop's place keeps in is not an answer to take out
-    // ([importMovieParts]).
-    enabledFor: (path, value) =>
-        importMovieParts(value! as MovieParts, widget.spot) == value,
+  /// THE 「옵션」 COLUMN — what only some kinds of file are asked, each on
+  /// its own row: a numbered run's (the span the preview's IN/OUT keep of
+  /// it, said and not asked), a Photoshop document's (its layers kept, or
+  /// merged), a movie's with a sound (its picture and sound, the picture
+  /// alone, the sound alone).
+  ///
+  /// 🗣️유저 2026-10-09 (F-282): 「psd같은 다 해당안되는것같은건 그냥 psd라는
+  /// 항목이 없어지게 하고싶은데 … BG의 해당위치에 레이어 보존 레이어
+  /// 합치기 이렇게 두개 두고」 · 「옵션으로. 연번/소리도 같은칸」. ↩️Three
+  /// columns — 「PSD」, 「소리」, 「연번」 — each a dash on every row but its
+  /// own kind's.
+  ///
+  /// A run's question is its own when a run's pictures are Photoshop
+  /// documents too: the run comes in as its pictures, merged.
+  ImportColumn<Object?> _optionColumn() => ImportColumn<Object?>(
+    id: 'option',
+    label: AppText.strings.imOptions,
+    values: [
+      PsdPlaceMode.expand,
+      PsdPlaceMode.merge,
+      MovieParts.pictureAndSound,
+      MovieParts.picture,
+      MovieParts.sound,
+    ],
+    valuesFor: _optionAnswers,
+    labelOf: (value) => switch (value) {
+      final PsdPlaceMode psd => importPsdLabel(psd),
+      final MovieParts parts => importMoviePartsLabel(parts),
+      _ => '',
+    },
+    wordOf: (path, value) => switch (value) {
+      _RunSpan() => _runSpanWord(path),
+      _ => null,
+    },
+    valueOf: _optionAnswerOf,
+    appliesTo: (path) => _optionAsked(path) != null,
+    enabledFor: (path, value) => switch (value) {
+      // A row's frames take the merged picture (expanding makes layers,
+      // and a row takes frames).
+      final PsdPlaceMode psd =>
+        psd == PsdPlaceMode.merge || !importPsdLocked(widget.spot),
+      // What the drop's place keeps in is not an answer to take out
+      // ([importMovieParts]).
+      final MovieParts parts => importMovieParts(parts, widget.spot) == parts,
+      _ => true,
+    },
+    // A header press speaks for every row: each takes the answer of its
+    // own kind, and the rest let it pass.
     onPick: (paths, value) => _setSettings(
       paths,
-      (settings) => settings.copyWith(movieParts: value! as MovieParts),
+      (settings) => switch (value) {
+        final PsdPlaceMode psd => settings.copyWith(psd: psd),
+        final MovieParts parts => settings.copyWith(movieParts: parts),
+        _ => settings,
+      },
     ),
   );
 
+  /// What [path]'s row may answer in the 「옵션」 column: its own kind's.
+  List<Object?> _optionAnswers(String path) => switch (_optionAsked(path)) {
+    _OptionAsked.run => const [_RunSpan()],
+    _OptionAsked.psd => const [PsdPlaceMode.expand, PsdPlaceMode.merge],
+    _OptionAsked.sound => const [
+      MovieParts.pictureAndSound,
+      MovieParts.picture,
+      MovieParts.sound,
+    ],
+    null => const [],
+  };
+
+  /// [path]'s answer in the 「옵션」 column, its own kind's.
+  Object? _optionAnswerOf(String path) {
+    final settings = _settingsFor(path);
+    return switch (_optionAsked(path)) {
+      _OptionAsked.run => const _RunSpan(),
+      _OptionAsked.psd => settings.psd,
+      _OptionAsked.sound => settings.movieParts,
+      null => null,
+    };
+  }
+
+  /// The span a run's row keeps, as its 「옵션」 cell says it: 「A2–A3 (2장)」
+  /// for two pictures or more, the picture's own name for one.
+  ///
+  /// 🗣️I-76-Q1: 「「A1–A3 (3장)」 처럼 이어지는 그림의 수가 보이고」 · F-282
+  /// 시안 ④: 「연번은 들어갈 범위만(A2–A3)」.
+  String? _runSpanWord(String path) {
+    final run = _runOf(path);
+    final kept = _runKeptOf(path);
+    if (run == null || kept == null) {
+      return null;
+    }
+    String name(ParsedCel cel) => '${run.symbol}${cel.label}';
+    return kept.length == 1
+        ? name(kept.single)
+        : AppText.strings.imRunSpan(
+            name(kept.first),
+            name(kept.last),
+            kept.length,
+          );
+  }
+
+  /// Which question the 「옵션」 column asks [path]'s row, if any — only of
+  /// a placed row: registering brings the file in as it is.
+  _OptionAsked? _optionAsked(String path) {
+    if (!_placing(path)) {
+      return null;
+    }
+    if (_runOf(path) != null) {
+      return _OptionAsked.run;
+    }
+    if (importPathIsPsd(path)) {
+      return _OptionAsked.psd;
+    }
+    return _asksSound(path) ? _OptionAsked.sound : null;
+  }
+
+  /// Where each file goes: a new layer, a new cut — the SE rows, for a
+  /// sound — or the media pool alone (「미디어」, F-282: the window's
+  /// 「풀 / 타임라인」 strip, one answer for the whole batch, came down to
+  /// the row).
   ImportColumn<Object?> _intoColumn() {
     final spot = widget.spot;
-    // A drop that answered the cut shows that answer locked; the canvas's
-    // spot is a default and leaves the cut to this column
-    // (pool-drop-picks-layer-or-cut, 유저 2026-09-12).
-    final answering = spot?.answeredDestination == null ? null : spot;
     return ImportColumn<Object?>(
       id: 'into',
       label: AppText.strings.imInto,
-      // A drop's answer is the ONE value, so the cell shows it and opens
-      // nothing — the shape every locked answer in this table has.
-      values: answering == null ? ImportDestination.values : [answering],
+      values: [
+        ...ImportDestination.values,
+        const _SoundOnSeRows(),
+        const _IntoThePool(),
+      ],
+      valuesFor: _intoAnswers,
       labelOf: (value) => switch (value) {
         final ImportDestination into => importIntoLabel(into),
         final ImportLayerSpot dropped => _spotLabel(dropped),
         _SoundOnSeRows() => AppText.strings.imIntoSeRow,
+        // The pool by its panel's name.
+        _IntoThePool() => AppText.strings.panelMedia,
         _ => '',
       },
       // A sound's place is the SE rows' own rule (유저 2026-09-11: 「SE1부터
-      // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — answered, so shown
-      // locked, like every answer the context gave.
-      valueOf: (path) => _landsAsSound(path)
+      // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — the one placement a
+      // sound has.
+      valueOf: (path) => _registersOnly(path)
+          ? const _IntoThePool()
+          : _landsAsSound(path)
           ? (spot is SeCellSpot ? spot : const _SoundOnSeRows())
-          : answering ?? _settingsFor(path).into,
+          : _answeredSpot ?? _settingsFor(path).into,
       appliesTo: (path) => true,
-      enabledFor: (path, value) =>
-          !_landsAsSound(path) &&
-          (value != ImportDestination.activeCutLayer ||
-              widget.session.activeCutOrNull != null),
-      onPick: (paths, value) {
-        if (value is ImportDestination) {
-          _setSettings(paths, (settings) => settings.copyWith(into: value));
-        }
+      enabledFor: (path, value) => switch (value) {
+        // A file the pool already holds has nothing left to register.
+        _IntoThePool() => widget.poolOnly || _poolEntryFor(path) == null,
+        ImportDestination.activeCutLayer =>
+          widget.session.activeCutOrNull != null,
+        _ => true,
       },
+      onPick: (paths, value) => _setSettings(
+        paths,
+        (settings) => switch (value) {
+          _IntoThePool() => settings.copyWith(intoPool: true),
+          final ImportDestination into => settings.copyWith(
+            into: into,
+            intoPool: false,
+          ),
+          _ => settings.copyWith(intoPool: false),
+        },
+      ),
     );
+  }
+
+  /// The drop's place when it answered the cut, shown locked; the canvas's
+  /// spot is a default and leaves the cut to the 「넣을 곳」 column
+  /// (pool-drop-picks-layer-or-cut, 유저 2026-09-12).
+  ImportLayerSpot? get _answeredSpot {
+    final spot = widget.spot;
+    return spot?.answeredDestination == null ? null : spot;
+  }
+
+  /// What [path]'s row may answer in the 「넣을 곳」 column. A drop's answer
+  /// is the ONE value, so the cell shows it and opens nothing — the shape
+  /// every locked answer in this table has. So is a pool's door's: every
+  /// row there registers.
+  List<Object?> _intoAnswers(String path) {
+    final spot = widget.spot;
+    final answering = _answeredSpot;
+    if (widget.poolOnly) {
+      return const [_IntoThePool()];
+    }
+    if (_landsAsSound(path)) {
+      return [
+        if (spot is SeCellSpot) spot else const _SoundOnSeRows(),
+        if (answering == null) const _IntoThePool(),
+      ];
+    }
+    return answering == null
+        ? const [...ImportDestination.values, _IntoThePool()]
+        : [answering];
   }
 
   /// A drop's answer in words: 「새 레이어」 for the canvas, 「새 컷」 for the
@@ -1582,63 +1940,21 @@ class _ImportDialogState extends State<ImportDialog> {
       widget.session.layerById(layerId)?.name ?? '',
   };
 
-  ImportColumn<Object?> _fitColumn(bool placing) => ImportColumn<Object?>(
+  ImportColumn<Object?> _fitColumn() => ImportColumn<Object?>(
     id: 'fit',
     label: AppText.strings.imFit,
     values: MediaFitMode.values,
     labelOf: (value) => importFitLabel(value! as MediaFitMode),
     valueOf: (path) => _settingsFor(path).fit,
-    appliesTo: _placesPicture,
+    appliesTo: (path) => _placing(path) && _placesPicture(path),
     enabledFor: (path, value) =>
         value == MediaFitMode.none ||
-        !importFitLocked(_settingsFor(path), placing: placing),
+        !importFitLocked(_settingsFor(path), placing: _placing(path)),
     onPick: (paths, value) => _setSettings(
       paths,
       (settings) => settings.copyWith(fit: value! as MediaFitMode),
     ),
   );
-
-  /// What of a picture's numbered run comes in: the run as one layer's
-  /// frames, or the file alone. The cell names the run it would bring
-  /// (🗣️I-76-Q1: 「「A1–A3 (3장)」처럼 이어지는 그림의 수가 보이고, 그 칸에서
-  /// 「함께 · 이 파일만」을 고른다」).
-  ImportColumn<Object?> _runColumn() => ImportColumn<Object?>(
-    id: 'run',
-    label: AppText.strings.imRun,
-    values: NumberedRun.values,
-    labelOf: (value) => importRunLabel(value! as NumberedRun),
-    wordOf: (path, value) => switch ((_runOf(path), value)) {
-      (final run?, NumberedRun.together) => AppText.strings.imRunSpan(
-        '${run.symbol}${run.cells.first.label}',
-        '${run.symbol}${run.cells.last.label}',
-        run.cells.length,
-      ),
-      _ => null,
-    },
-    valueOf: (path) => _settingsFor(path).run,
-    appliesTo: (path) => _runOf(path) != null,
-    enabledFor: (path, value) => true,
-    onPick: (paths, value) => _setSettings(
-      paths,
-      (settings) => settings.copyWith(run: value! as NumberedRun),
-    ),
-  );
-
-  ImportColumn<Object?> _psdColumn(bool placing) => ImportColumn<Object?>(
-    id: 'psd',
-    label: 'PSD',
-    values: PsdPlaceMode.values,
-    labelOf: (value) => importPsdLabel(value! as PsdPlaceMode),
-    valueOf: (path) => _settingsFor(path).psd,
-    appliesTo: (path) => placing && importPathIsPsd(path),
-    enabledFor: (path, value) =>
-        value == PsdPlaceMode.merge || !importPsdLocked(widget.spot),
-    onPick: (paths, value) => _setSettings(
-      paths,
-      (settings) => settings.copyWith(psd: value! as PsdPlaceMode),
-    ),
-  );
-
 
   /// `MM-DD`, which is what a row has space for and what a person scanning
   /// a folder of today's work is actually reading.
@@ -1667,28 +1983,11 @@ class _ImportDialogState extends State<ImportDialog> {
         : AppText.strings.imFileCount(_files.length);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton(
-            key: const ValueKey<String>('import-browse-files-button'),
-            onPressed: _busy ? null : _pickFiles,
-            child: Text(AppText.strings.imFilesButton),
-          ),
-          const SizedBox(width: 6),
-          OutlinedButton(
-            key: const ValueKey<String>('import-browse-folder-button'),
-            onPressed: _busy ? null : _pickFolder,
-            child: Text(AppText.strings.imCutFolderButton),
-          ),
-        ],
+      child: Text(
+        label,
+        key: const ValueKey<String>('import-source-line'),
+        style: theme.textTheme.bodySmall,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/recording_viewer_sound.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🗣️F-289 (유저 2026-10-06): 「이 캔버스 베이스패널은 형식에 따라
 /// 나누기로하자. 뷰어패널이라도 pdf면 타임시트나 콘티용지패널이랑 같은
@@ -109,7 +110,7 @@ void main() {
       kind: MediaAssetKind.video,
       name: 'clip',
     );
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
   }
 
   const soundSeconds = 4.0;
@@ -446,5 +447,49 @@ void main() {
     expect(capsule.left, greaterThanOrEqualTo(panel.left + cover.left));
     expect(capsule.right, lessThanOrEqualTo(panel.right - cover.right));
     expect(capsule.bottom, lessThanOrEqualTo(panel.bottom - cover.bottom));
+  });
+
+  testWidgets('the floor\'s viewer turns its pages beside a rail lying on '
+      'its left edge, not under it', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    const cover = EdgeInsets.only(left: 200);
+    await openPages(
+      tester,
+      pages: 3,
+      onFloor: (child) => CanvasFloorInsets(
+        insets: cover,
+        leftRailBand: (top: 0, bottom: 700),
+        child: child,
+      ),
+    );
+
+    final panel = tester.getRect(key('canvas-editor-panel-shell'));
+    expect(
+      tester.getRect(key(strip)).left,
+      greaterThanOrEqualTo(panel.left + cover.left),
+    );
+  });
+
+  testWidgets('the floor\'s viewer pans beside a rail lying on its right '
+      'edge, not under it', (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    const cover = EdgeInsets.only(right: 150);
+    await openPages(
+      tester,
+      pages: 3,
+      onFloor: (child) => CanvasFloorInsets(
+        insets: cover,
+        rightRailBand: (top: 0, bottom: 700),
+        child: child,
+      ),
+    );
+
+    final panel = tester.getRect(key('canvas-editor-panel-shell'));
+    expect(
+      tester.getRect(key('canvas-panbar-vertical')).right,
+      lessThanOrEqualTo(panel.right - cover.right),
+    );
   });
 }

@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/mapped_or_same.dart';
 import '../../models/attached_layer_resolve.dart';
+import '../../models/cel_rekey.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -17,6 +20,7 @@ import '../../services/project_repository.dart';
 import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
+import 'berth_row.dart';
 
 /// The scoped edit-drag preview channel.
 ///
@@ -38,6 +42,7 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
   const ExposureEdgeDragPreview({
     required this.previewLayer,
     this.globalPreviewLayer,
+    this.previewCameras = const {},
   });
 
   final Layer previewLayer;
@@ -49,13 +54,20 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
   /// for cut-owned layers (both forms are the same).
   final Layer? globalPreviewLayer;
 
+  /// The cameras the release leaves otherwise than they stand — an O.L's
+  /// edge draws its cuts for other frames, and the key on a cut's last
+  /// frame goes with it (`cameraFollowingItsEnd`, I-73-camera-row-Q7) —
+  /// under the hand, as a trim's ([CutTrimDragPreview.previewCameras]).
+  final Map<CutId, CutCamera> previewCameras;
+
   LayerId get layerId => previewLayer.id;
 
   @override
   bool operator ==(Object other) =>
       other is ExposureEdgeDragPreview &&
       other.previewLayer == previewLayer &&
-      other.globalPreviewLayer == globalPreviewLayer;
+      other.globalPreviewLayer == globalPreviewLayer &&
+      mapEquals(other.previewCameras, previewCameras);
 
   @override
   int get hashCode => Object.hash(previewLayer, globalPreviewLayer);
@@ -74,6 +86,7 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 class BlockMoveDragPreview extends TimelineDragPreview {
   const BlockMoveDragPreview({
     required this.previewLayers,
+    this.rekeys = const [],
     this.previewGlobalLayers = const {},
     this.previewTrackEffects,
     this.cameraCutId,
@@ -82,6 +95,12 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   });
 
   final Map<LayerId, Layer> previewLayers;
+
+  /// The cels [previewLayers] carry onto another row — the very list the
+  /// release re-keys their pixels by ([CelRekey]). Until then each one's
+  /// pixels are under the row it came from, where whatever shows it reads
+  /// them ([celPixelsRowOf]).
+  final List<CelRekey> rekeys;
 
   /// Track-owned moves only (C2 2026-08-17 — the SE rows, and the
   /// transition row since 2026-09-25): the GLOBAL-axis form of each moved
@@ -114,6 +133,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   bool operator ==(Object other) =>
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
+      listEquals(other.rekeys, rekeys) &&
       mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
       mapOfListsEquals(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
@@ -123,6 +143,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   @override
   int get hashCode => Object.hash(
     mapHash(previewLayers),
+    Object.hashAll(rekeys),
     mapHash(previewGlobalLayers),
     mapOfListsHash(previewTrackEffects),
     cameraCutId,
@@ -359,6 +380,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
     this.previewGaps = const {},
     this.previewOrder = const {},
     this.previewLayers = const {},
+    this.previewCameras = const {},
   });
 
   final Map<CutId, int> previewDurations;
@@ -369,6 +391,12 @@ class CutTrimDragPreview extends TimelineDragPreview {
   /// shortens the cut, and the row's later divisions come left with it, so
   /// one drag previews both or the picture tears in half mid-drag.
   final Map<LayerId, Layer> previewLayers;
+
+  /// The cameras the release leaves otherwise than they stand: a length
+  /// change carries the key on a cut's last frame with that frame
+  /// ([cameraFollowingItsEnd], I-73-camera-row-Q4) — under the hand, not on
+  /// release.
+  final Map<CutId, CutCamera> previewCameras;
 
   /// Per track, the cut sequence as the release would leave it. A reorder
   /// carries [previewGaps] too: the gaps stay with their positions, so the
@@ -382,6 +410,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
       mapEquals(other.previewDurations, previewDurations) &&
       mapEquals(other.previewGaps, previewGaps) &&
       mapEquals(other.previewLayers, previewLayers) &&
+      mapEquals(other.previewCameras, previewCameras) &&
       mapOfListsEquals(other.previewOrder, previewOrder);
 
   @override
@@ -395,7 +424,8 @@ class CutTrimDragPreview extends TimelineDragPreview {
 /// [drawn] as its release will leave the rows: the project it previews,
 /// settled the way the write settles it
 /// ([ProjectRepository.settledAsWritten]), every row that pass derived
-/// again joining the drag's own.
+/// again joining the drag's own — and every camera whose end key it
+/// carried (I-73-camera-row-Q4).
 ///
 /// 🗣️F-227: the のりしろ holds and the conte start an O.L asks of the cuts
 /// it joins belong to the write, which reads them off the new layout.
@@ -407,24 +437,46 @@ CutTrimDragPreview cutTrimPreviewAsReleased(
   CutTrimDragPreview drawn,
 ) {
   final draft = _projectWithCutTrimPreview(repository.requireProject(), drawn);
-  final derived = _rowsDerivedAgain(
-    draft,
-    repository.settledAsWritten(draft),
-  );
-  return derived.isEmpty
+  final derived = _derivedAgain(draft, repository.settledAsWritten(draft));
+  return derived.rows.isEmpty && derived.cameras.isEmpty
       ? drawn
       : CutTrimDragPreview(
           previewDurations: drawn.previewDurations,
           previewGaps: drawn.previewGaps,
           previewOrder: drawn.previewOrder,
-          previewLayers: {...drawn.previewLayers, ...derived},
+          previewLayers: {...drawn.previewLayers, ...derived.rows},
+          previewCameras: {...drawn.previewCameras, ...derived.cameras},
         );
 }
 
-/// The cut rows [settled] holds as other instances than [draft] does. The
-/// settle maps tracks and cuts in place, so the two walk side by side.
-Map<LayerId, Layer> _rowsDerivedAgain(Project draft, Project settled) {
-  final derived = <LayerId, Layer>{};
+/// The cameras [draft] would leave otherwise than they stand once a write
+/// settled it ([ProjectRepository.settledAsWritten]) — what a drag that
+/// is not a cut's length change, an O.L's edge, carries under the hand.
+Map<CutId, CutCamera> camerasAsReleased(
+  ProjectRepository repository,
+  Project draft,
+) => _derivedAgain(draft, repository.settledAsWritten(draft)).cameras;
+
+/// The camera a drag in flight carries for [cutId] where a length change
+/// moves its end key — a cut's trim or an O.L's edge — or null.
+CutCamera? timelineDragPreviewCarriedCamera(
+  TimelineDragPreview? preview,
+  CutId cutId,
+) => switch (preview) {
+  CutTrimDragPreview(:final previewCameras) ||
+  ExposureEdgeDragPreview(:final previewCameras) => previewCameras[cutId],
+  _ => null,
+};
+
+/// The cut rows and the cameras [settled] holds as other instances than
+/// [draft] does. The settle maps tracks and cuts in place, so the two walk
+/// side by side.
+({Map<LayerId, Layer> rows, Map<CutId, CutCamera> cameras}) _derivedAgain(
+  Project draft,
+  Project settled,
+) {
+  final rows = <LayerId, Layer>{};
+  final cameras = <CutId, CutCamera>{};
   for (var t = 0; t < settled.tracks.length; t += 1) {
     final drafted = draft.tracks[t].cuts;
     final cuts = settled.tracks[t].cuts;
@@ -435,12 +487,15 @@ Map<LayerId, Layer> _rowsDerivedAgain(Project draft, Project settled) {
       final before = {for (final layer in drafted[c].layers) layer.id: layer};
       for (final layer in cuts[c].layers) {
         if (!identical(layer, before[layer.id])) {
-          derived[layer.id] = layer;
+          rows[layer.id] = layer;
         }
+      }
+      if (!identical(cuts[c].camera, drafted[c].camera)) {
+        cameras[cuts[c].id] = cuts[c].camera;
       }
     }
   }
-  return derived;
+  return (rows: rows, cameras: cameras);
 }
 
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
@@ -500,6 +555,31 @@ Layer? timelineDragPreviewLayerFor(
   return null;
 }
 
+/// The row whose pixels [layerId]'s cel [frameId] shows while [preview] is
+/// in flight: [layerId] itself, but for a cel the drag carries onto it from
+/// another row — its pixels stay under that row until the release re-keys
+/// them ([BlockMoveDragPreview.rekeys]).
+///
+/// 🚨F-313 (유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로 만드는
+/// 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」): what showed such
+/// a cel — the canvas, its onion ghost, its block's 「no picture」 grey —
+/// asked the row the drag holds it on, where there were no pixels yet, so
+/// it went blank until the release.
+LayerId celPixelsRowOf(
+  TimelineDragPreview? preview,
+  LayerId layerId,
+  FrameId frameId,
+) {
+  if (preview is BlockMoveDragPreview) {
+    for (final rekey in preview.rekeys) {
+      if (rekey.to == layerId && rekey.frameId == frameId) {
+        return rekey.from;
+      }
+    }
+  }
+  return layerId;
+}
+
 /// The EFFECT chain [preview] shows for [trackId]'s V row, or null when it
 /// does not touch that track — a block move carrying the chain's keys, or a
 /// lane edit of one of its values.
@@ -513,6 +593,24 @@ List<LayerEffect>? timelineDragPreviewTrackEffectsFor(
       when edited == trackId =>
     trackEffects,
   _ => null,
+};
+
+/// The CAMERA track [preview] shows for [cutId], or null when it does not
+/// touch that cut's camera — a block move carrying its keys, a lane edit
+/// of one of its values, or a length change carrying its end key
+/// ([timelineDragPreviewCarriedCamera]): what the storyboard's camera lane
+/// labels read while one is in flight (I-73 ④ⓔ, F-195).
+TransformTrack? timelineDragPreviewCameraTrackFor(
+  TimelineDragPreview? preview,
+  CutId cutId,
+) => switch (preview) {
+  BlockMoveDragPreview(:final cameraCutId, :final cameraTrack)
+      when cameraCutId == cutId =>
+    cameraTrack,
+  LaneEditPreview(:final cameraCutId, :final cameraTrack)
+      when cameraCutId == cutId =>
+    cameraTrack,
+  _ => timelineDragPreviewCarriedCamera(preview, cutId)?.track,
 };
 
 /// The cells [preview] would AUTHOR on [layerId] — not there yet, and
@@ -604,11 +702,13 @@ Track _trackWithCutTrimPreview(Track track, CutTrimDragPreview trim) {
         .map(
           (cut) =>
               trim.previewDurations.containsKey(cut.id) ||
-                  trim.previewGaps.containsKey(cut.id)
+                  trim.previewGaps.containsKey(cut.id) ||
+                  trim.previewCameras.containsKey(cut.id)
               ? cut.copyWith(
                   duration: trim.previewDurations[cut.id] ?? cut.duration,
                   leadingGapFrames:
                       trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
+                  camera: trim.previewCameras[cut.id] ?? cut.camera,
                 )
               : cut,
         )
@@ -631,10 +731,13 @@ Project projectWithTimelineDragPreview(
       return project;
     case final CutTrimDragPreview trim:
       return _projectWithCutTrimPreview(project, trim);
-    case ExposureEdgeDragPreview(:final previewLayer):
-      return _projectWithLayersSubstituted(project, {
-        previewLayer.id: previewLayer,
-      });
+    case ExposureEdgeDragPreview(:final previewLayer, :final previewCameras):
+      return _projectWithCamerasCarried(
+        _projectWithLayersSubstituted(project, {
+          previewLayer.id: previewLayer,
+        }),
+        previewCameras,
+      );
     case BlockMoveDragPreview(
       :final previewLayers,
       :final cameraCutId,
@@ -689,6 +792,28 @@ Project projectWithTimelineDragPreview(
           ) ??
           withRow;
   }
+}
+
+/// [project] with each cut [cameras] names holding the camera it maps to —
+/// every other track and cut the very instance it was.
+Project _projectWithCamerasCarried(
+  Project project,
+  Map<CutId, CutCamera> cameras,
+) {
+  if (cameras.isEmpty) {
+    return project;
+  }
+  final tracks = mappedOrSame(project.tracks, (track) {
+    final cuts = mappedOrSame(
+      track.cuts,
+      (cut) => switch (cameras[cut.id]) {
+        final camera? => cut.copyWith(camera: camera),
+        null => cut,
+      },
+    );
+    return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
+  });
+  return project.copyWith(tracks: tracks);
 }
 
 Project _projectWithLayersSubstituted(
@@ -755,10 +880,29 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
     super.key,
     required this.dragPreview,
     required this.layer,
-    required this.rowBuilder,
+    required Widget Function(BuildContext context, Layer layer)
+    this.rowBuilder,
     this.useGlobalForm = false,
     this.slice,
-  });
+  }) : child = null,
+       world = null;
+
+  /// A row that reads what it shows where it draws it ([BerthRow.shows]):
+  /// [child] is built once, and the gate hands the preview down past it.
+  ///
+  /// 🚨I-57 (10-13): a KEPT cells row is kept by its shape, so the gate
+  /// stands OUTSIDE the keep — given the layer its berth stands for at
+  /// every pass — and a drag step, like a cut switch, rebuilds only the
+  /// pieces of the row that draw what changed.
+  const TimelineDragPreviewRowGate.shows({
+    super.key,
+    required this.dragPreview,
+    required this.layer,
+    required BerthWorld this.world,
+    required Widget this.child,
+  }) : rowBuilder = null,
+       useGlobalForm = false,
+       slice = null;
 
   /// What of the layer this row SHOWS: a preview rebuilds the row only when
   /// this answer changes (by identity) or the silhouette moves —
@@ -780,7 +924,16 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
   /// display clone (UI-R7 #7).
   final bool useGlobalForm;
 
-  final Widget Function(BuildContext context, Layer layer) rowBuilder;
+  /// The row, built from the layer it shows — null for a gate that hands
+  /// that layer down instead ([TimelineDragPreviewRowGate.shows]).
+  final Widget Function(BuildContext context, Layer layer)? rowBuilder;
+
+  /// The row that reads what it shows ([BerthRow.shows]) — null for a gate
+  /// that builds its row ([rowBuilder]).
+  final Widget? child;
+
+  /// What else [child] draws of the cut it stands in ([BerthRow.world]).
+  final BerthWorld? world;
 
   @override
   State<TimelineDragPreviewRowGate> createState() =>
@@ -865,6 +1018,17 @@ class _TimelineDragPreviewRowGateState
 
   @override
   Widget build(BuildContext context) {
-    return widget.rowBuilder(context, _previewLayer ?? widget.layer);
+    final shown = _previewLayer ?? widget.layer;
+    final child = widget.child;
+    if (child == null) {
+      return widget.rowBuilder!(context, shown);
+    }
+    return BerthRow(
+      layer: widget.layer,
+      shown: shown,
+      silhouette: _silhouette,
+      world: widget.world,
+      child: child,
+    );
   }
 }

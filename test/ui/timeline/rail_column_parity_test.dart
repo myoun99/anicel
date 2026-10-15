@@ -12,6 +12,9 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_twirls.dart';
+
 /// R9 #22 — the rail's column skeleton, measured on the REAL widget tree.
 ///
 /// Four surfaces used to hand-list the same columns and had drifted: the
@@ -43,10 +46,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -139,18 +146,22 @@ void main() {
     final layerId = session.activeLayerId!;
     final timelineInset = insetOf(
       tester,
-      find.byKey(ValueKey<String>('timeline-layer-name-$layerId')),
-      find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
+      find.named('timeline-layer-name-$layerId'),
+      find.named('timeline-layer-row-$layerId'),
     );
 
     // Now the same session in the storyboard, measured the same way.
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -207,23 +218,19 @@ void main() {
         .session;
     final layerId = session.activeLayerId!;
     // Twirl the lanes open so the Transform group header exists.
-    final laneToggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-$layerId'),
-    );
+    final laneToggle = find.named('timeline-lane-toggle-$layerId');
     await tester.ensureVisible(laneToggle);
     await tester.pumpAndSettle();
     await tester.tap(laneToggle);
     await tester.pumpAndSettle();
 
-    final layerRow = find.byKey(
-      ValueKey<String>('timeline-layer-row-$layerId'),
-    );
+    final layerRow = find.named('timeline-layer-row-$layerId');
     final headerRow = find.byKey(
       ValueKey<String>('timeline-lane-label-$layerId-transform-group'),
     );
-    final layerFx = find.byKey(ValueKey<String>('timeline-layer-fx-$layerId'));
-    final headerFx = find.byKey(
-      ValueKey<String>('timeline-lane-group-fx-$layerId-transform-group'),
+    final layerFx = find.named('timeline-layer-fx-$layerId');
+    final headerFx = find.named(
+      'timeline-lane-group-fx-$layerId-transform-group',
     );
     expect(layerFx, findsOneWidget);
     expect(headerFx, findsOneWidget);
@@ -273,7 +280,7 @@ void main() {
 
     final layerId = session.activeLayerId!;
     expect(
-      find.byKey(ValueKey<String>('xsheet-layer-kind-icon-$layerId')),
+      find.named('xsheet-layer-type-button-$layerId'),
       findsOneWidget,
       reason: 'the x-sheet had no kind icon anywhere before R9',
     );
@@ -285,20 +292,20 @@ void main() {
     expect(attachId, isNot(layerId));
 
     expect(
-      find.byKey(ValueKey<String>('xsheet-layer-attach-arrow-$attachId')),
+      find.named('xsheet-layer-attach-arrow-$attachId'),
       findsOneWidget,
       reason:
           'the attach relationship was invisible on the sheet the user reads '
           'most',
     );
     expect(
-      find.byKey(ValueKey<String>('xsheet-layer-kind-icon-$attachId')),
+      find.named('xsheet-layer-type-button-$attachId'),
       findsOneWidget,
       reason: 'R10 R3: the arrow rides the SHEET slot, so the type cell says '
           'the kind on every column',
     );
     expect(
-      find.byKey(ValueKey<String>('xsheet-layer-timesheet-$attachId')),
+      find.named('xsheet-layer-timesheet-$attachId'),
       findsNothing,
       reason: 'the x-sheet gate had no attach check — an attach column could '
           'be put ON the sheet in a state the rail can never undo',
@@ -316,10 +323,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -335,15 +346,11 @@ void main() {
     final trackId = session.selectedTrackId;
     expect(seLayerIdForTrack(trackId, 1), isNotNull);
     expect(
-      find.byKey(
-        ValueKey<String>('storyboard-layer-kind-icon-${trackId.value}-s1'),
-      ),
+      find.named('storyboard-layer-type-button-${trackId.value}-s1'),
       findsOneWidget,
     );
     expect(
-      find.byKey(
-        ValueKey<String>('storyboard-layer-kind-icon-v-${trackId.value}'),
-      ),
+      find.named('storyboard-layer-type-button-v-${trackId.value}'),
       findsOneWidget,
     );
   });

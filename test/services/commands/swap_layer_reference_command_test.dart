@@ -8,14 +8,12 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
 import 'package:anicel/src/models/media_reference.dart';
-import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -26,6 +24,7 @@ import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/reference_to.dart';
 
 /// I-47 (유저 2026-09-25 · Q1 2026-09-27 「창 없이 바로 바꾼다 (언두 하나)」):
 /// a reference row shows another file, and ONE undo step carries both what
@@ -74,7 +73,7 @@ void main() {
       kind: LayerKind.image,
       frames: [Frame(id: celId, duration: 1, strokes: const [])],
       timeline: {0: const TimelineExposure.drawing(celId, length: 4)},
-      mediaReference: MediaReference(assetPath: shows),
+      mediaReference: referenceTo(shows),
     );
     repository = ProjectRepository(
       initialProject: project.copyWith(
@@ -104,7 +103,7 @@ void main() {
     repository: repository,
     cutId: cutId,
     layerId: rowId,
-    reference: MediaReference(assetPath: path),
+    reference: referenceTo(path),
     store: store,
     pictures: pictures,
   );
@@ -211,7 +210,7 @@ void main() {
         repository: repository,
         cutId: cutId,
         layerId: rowId,
-        reference: MediaReference(assetPath: '/work/bg_v2.png'),
+        reference: referenceTo('/work/bg_v2.png'),
         store: store,
         pictures: {key: solid(0x22)},
         cacheInvalidationSink: sink,
@@ -253,10 +252,7 @@ void main() {
       repository.updateLayer(
         layerId: rowId,
         update: (layer) => layer.copyWith(
-          mediaReference: MediaReference(
-            assetPath: '/work/take1.mp4',
-            frameOffset: 12,
-          ),
+          mediaReference: referenceTo('/work/take1.mp4', frameOffset: 12),
         ),
       );
 
@@ -273,7 +269,7 @@ void main() {
 
       expect(
         pointsAt(),
-        MediaReference(assetPath: '/work/take1.mp4', frameOffset: 12),
+        referenceTo('/work/take1.mp4', frameOffset: 12),
       );
     });
   });
@@ -287,11 +283,5 @@ class _RecordingSink implements CacheInvalidationSink {
       brushFrames.add(invalidation);
 
   @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) {}
-
-  @override
   void invalidateLayerTile(LayerTileCacheKey key) {}
-
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {}
 }

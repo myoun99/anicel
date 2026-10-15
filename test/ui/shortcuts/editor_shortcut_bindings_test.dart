@@ -7,38 +7,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 void main() {
-  test('defaults feed the shortcuts map; every registry action resolves', () {
-    final bindings = EditorShortcutBindings();
-    // A move on the sheet is keyed by its TURNED form (F-241), which holds
-    // the default it turns.
-    final map = {
-      for (final MapEntry(:key, :value) in bindings.shortcuts.entries)
-        (key is SheetTurnedActivator ? key.timeline : key): value,
-    };
+  for (final preset in ShortcutPreset.values) {
+    test('${preset.name}\'s keys feed the shortcuts map; every registry '
+        'action resolves', () {
+      final bindings = EditorShortcutBindings()..setPreset(preset);
+      addTearDown(bindings.dispose);
+      // A move on the sheet is keyed by its TURNED form (F-241), which holds
+      // the default it turns.
+      final map = {
+        for (final MapEntry(:key, :value) in bindings.shortcuts.entries)
+          (key is SheetTurnedActivator ? key.timeline : key): value,
+      };
 
-    // One entry per default activator, each dispatching its action id — a
-    // HELD action excepted (I-15, pinned below).
-    for (final definition in editorActionDefinitions.where((d) => !d.hold)) {
-      for (final activator in definition.defaultActivators) {
-        final intent = map[activator];
-        expect(intent, isA<EditorActionIntent>());
-        expect((intent! as EditorActionIntent).actionId, definition.id);
+      // One entry per key the preset gives an action, each dispatching its
+      // action id — a HELD action excepted (I-15, pinned below).
+      for (final definition in editorActionDefinitions.where((d) => !d.hold)) {
+        for (final activator in presetActivators(preset, definition)) {
+          final intent = map[activator];
+          expect(intent, isA<EditorActionIntent>(), reason: definition.id);
+          expect((intent! as EditorActionIntent).actionId, definition.id);
+        }
       }
-    }
-    expect(bindings.conflictedActionIds, isEmpty);
-  });
+      expect(bindings.conflictedActionIds, isEmpty);
+    });
+  }
 
   test('🗣️I-15: 「이동」 is HELD on Space — never an intent in the map — '
       'and playback lets Space go (its four-finger tap stays)', () {
     final bindings = EditorShortcutBindings();
     expect(
       editorActionDefinitions.where((d) => d.hold).map((d) => d.id),
-      [EditorActionIds.canvasPanHold],
-      reason: 'the one held action',
+      [EditorActionIds.canvasPanHold, EditorActionIds.canvasRotateHold],
+      reason: 'the view\'s two held actions — the pan, and the turn (I-88)',
     );
     final pan = bindings.activatorsFor(EditorActionIds.canvasPanHold);
     expect(pan, hasLength(1));

@@ -5,6 +5,7 @@ import 'timeline_cell_style.dart'
         timelineRangeSelectionBandDecorationAt,
         timelineRowSelectionBandDecoration;
 import 'axis_turn.dart';
+import 'timeline_row_edges.dart';
 
 /// 🚨T1 — THE ROW SELECTION, as ONE band over the run it covers.
 ///
@@ -39,27 +40,32 @@ import 'axis_turn.dart';
 /// [crossExtent]. T1's own complaint about the missing left line is
 /// satisfied by the band's border sitting at the layer area's left edge,
 /// not by invading the sections' plate.
+///
+/// A band ends where its last row does: the room an open graph stands past
+/// its lanes is no row, so a band does not reach into it — but a selection
+/// that carries on past it is still one, so a band crosses it (I-89 ③).
 class TimelineRowSelectionBands extends StatelessWidget {
   const TimelineRowSelectionBands({
     super.key,
     required this.selectedFlags,
-    required this.rowExtent,
-    required this.leadingSpacer,
+    required this.edges,
+    this.firstRow = 0,
     required this.crossExtent,
     this.axis = Axis.horizontal,
   });
 
-  /// One flag per DRAWN row, in draw order — the rail already knows which of
-  /// its rows are in the selection, and asking it here keeps this widget from
-  /// needing to know what a row IS.
+  /// One flag per DRAWN row from [firstRow], in draw order — the rail
+  /// already knows which of its rows are in the selection, and asking it
+  /// here keeps this widget from needing to know what a row IS.
   final List<bool> selectedFlags;
 
-  /// A row's extent along the rail (height in the timeline, width in the
-  /// X-sheet).
-  final double rowExtent;
+  /// Where the rail's rows sit along it ([TimelineRowEdges]) — the grids'
+  /// rows and the storyboard's alike (F-322: its rows are not all one
+  /// height). ↩️It took one pitch, or a list of extents it summed itself.
+  final TimelineRowEdges edges;
 
-  /// What sits before the first drawn row — the virtualization spacer.
-  final double leadingSpacer;
+  /// The row [selectedFlags] begins at — a windowed rail's first built row.
+  final int firstRow;
 
   /// The band's extent ACROSS the rail. The HOST states where the band
   /// region begins and how wide it is — since A2 (2026-08-17) the timeline
@@ -84,15 +90,14 @@ class TimelineRowSelectionBands extends StatelessWidget {
       if (runStart < 0) {
         continue;
       }
-      final offset = leadingSpacer + runStart * rowExtent;
-      final extent = (index - runStart) * rowExtent;
+      final offset = edges.startOf(firstRow + runStart);
       bands.add(
         placedAlong(
           axis,
           along: 0,
           across: offset,
           alongExtent: crossExtent,
-          acrossExtent: extent,
+          acrossExtent: edges.endOf(firstRow + index - 1) - offset,
           child: _band(runStart),
         ),
       );
@@ -105,7 +110,9 @@ class TimelineRowSelectionBands extends StatelessWidget {
   }
 
   Widget _band(int runStart) => DecoratedBox(
-    key: ValueKey<String>('timeline-row-selection-band-$runStart'),
+    key: ValueKey<String>(
+      'timeline-row-selection-band-${firstRow + runStart}',
+    ),
     // F-26: a row's corners are square, so its band's are.
     decoration: timelineRowSelectionBandDecoration,
   );

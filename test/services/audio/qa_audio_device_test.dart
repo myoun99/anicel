@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
@@ -566,78 +565,84 @@ void main() {
     }, skip: skip);
   });
 
-  group('position to frame', () {
-    test('the picture is pulled forward by the reported latency', () {
-      // The position counts what has been HANDED to the device; what is
-      // being heard is that minus the buffer still in flight.
-      const rate = ProjectFrameRate.fps24;
-      final frame = audioClockFrame(
-        positionSamples: 48000, // one second queued
-        latencySamples: 2000,
-        extraOffsetSamples: 0,
-        sampleRate: 48000,
-        frameRateNumerator: rate.numerator,
-        frameRateDenominator: rate.denominator,
-      );
-      expect(frame, (48000 - 2000) * 24 ~/ 48000);
-    });
+  group('the device plays its own PCM where it lies '
+      '(play-press-first-frame-stall)', () {
+    // Ten seconds, so a source runs out long after every wait below.
+    const frames = 48000 * 10;
 
-    test('the user offset moves it either way', () {
-      int at(int offset) => audioClockFrame(
-        positionSamples: 48000,
-        latencySamples: 0,
-        extraOffsetSamples: offset,
-        sampleRate: 48000,
-        frameRateNumerator: 24,
-        frameRateDenominator: 1,
-      );
-      expect(at(0), 24);
-      expect(at(48000), 48);
-      expect(at(-24000), 12);
-    });
+    List<AudioMixClip> clipsOver(int sources) => [
+      for (var index = 0; index < sources; index += 1)
+        AudioMixClip(sourceIndex: index, startSample: 0, endSample: frames),
+    ];
 
-    test('23.976 converts through the exact fraction', () {
-      const rate = ProjectFrameRate.ntsc(24);
-      final frame = audioClockFrame(
-        positionSamples: 48000,
-        latencySamples: 0,
-        extraOffsetSamples: 0,
-        sampleRate: 48000,
-        frameRateNumerator: rate.numerator,
-        frameRateDenominator: rate.denominator,
-      );
-      // One second at 23.976 is frame 23, not 24 — the pulldown rate is
-      // genuinely slower and the clock must not round that away.
-      expect(frame, 23);
-    });
+    test('a list the device made is held by its maker and by each source '
+        'that plays it, and by nothing a schedule leaves behind', () {
+      final device = openNull();
+      final made = device.newSamples(frames * 2)!;
+      expect(device.debugHoldsOf(made), 1, reason: 'its maker');
 
-    test('a position before anything is heard clamps at zero', () {
+      final source = AudioMixSource(samples: made, channels: 2);
       expect(
-        audioClockFrame(
-          positionSamples: 100,
-          latencySamples: 2000,
-          extraOffsetSamples: 0,
-          sampleRate: 48000,
-          frameRateNumerator: 24,
-          frameRateDenominator: 1,
-        ),
-        0,
+        device.setSchedule(clips: clipsOver(2), sources: [source, source]),
+        isTrue,
       );
-    });
-
-    test('nonsense geometry returns zero rather than dividing by it', () {
       expect(
-        audioClockFrame(
-          positionSamples: 48000,
-          latencySamples: 0,
-          extraOffsetSamples: 0,
-          sampleRate: 0,
-          frameRateNumerator: 24,
-          frameRateDenominator: 1,
-        ),
-        0,
+        device.debugHoldsOf(made),
+        3,
+        reason: 'its maker and both sources of the slot playing it — the '
+            'call let go of its own',
       );
-    });
+
+      expect(device.setSchedule(clips: const [], sources: const []), isTrue);
+      expect(
+        device.debugHoldsOf(made),
+        1,
+        reason: 'the replaced slot let go of what it played',
+      );
+    }, skip: skip);
+
+    test('a list the device made plays where it lies: what is written into '
+        'it after the schedule is what is heard', () async {
+      final device = openNull();
+      final made = device.newSamples(frames * 2)!
+        ..fillRange(0, frames * 2, 0.25);
+      device.setSchedule(
+        clips: clipsOver(1),
+        sources: [AudioMixSource(samples: made, channels: 2)],
+      );
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+
+      made.fillRange(0, made.length, 0.6);
+      expect(
+        await waitFor(() => device.peakFor(0) > 0.55),
+        isTrue,
+        reason: 'the slot plays the buffer itself — nothing was copied',
+      );
+      device.stop();
+    }, skip: skip);
+
+    test('a list the device did not make plays as it was when scheduled — '
+        'the callback never reads the Dart heap', () async {
+      final device = openNull();
+      final plain = Float32List(frames * 2)..fillRange(0, frames * 2, 0.25);
+      device.setSchedule(
+        clips: clipsOver(1),
+        sources: [AudioMixSource(samples: plain, channels: 2)],
+      );
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.peakFor(0) > 0.2), isTrue);
+
+      plain.fillRange(0, plain.length, 0.6);
+      expect(
+        await waitFor(() => device.peakFor(0) > 0.3, millis: 300),
+        isFalse,
+        reason: 'the schedule plays a copy made when it was set',
+      );
+      expect(device.peakFor(0), closeTo(0.25, 0.01));
+      expect(device.debugHoldsOf(plain), -1);
+      device.stop();
+    }, skip: skip);
   });
 
   group('capture (AUDIO-PRO R5)', () {
@@ -678,6 +683,74 @@ void main() {
 
       device.captureStop();
       expect(device.captureIsOpen, isFalse);
+    }, skip: skip);
+
+    // take-head-trims-at-the-playback-start (10-15): the playback's own
+    // shape, so a take is placed by what the microphone had taken in when
+    // its anchor was heard — both lines on one clock.
+    test('🚨each capture callback says when: the frames the ring was given, '
+        'stamped on the playback\'s clock — and a stopped capture says '
+        'nothing', () async {
+      final device = QaAudioDevice.instance!;
+      expect(device.readCaptureClock().point, isNull,
+          reason: 'nothing is capturing');
+      expect(
+        device.captureStart(sampleRate: 48000, useNullBackend: true),
+        48000,
+      );
+      expect(
+        await waitFor(() => device.readCaptureClock().point != null),
+        isTrue,
+        reason: 'no capture callback spoke',
+      );
+
+      final clock = device.readCaptureClock();
+      final point = clock.point!;
+      expect(point.positionSamples, greaterThan(0));
+      expect(
+        clock.stairSamples,
+        greaterThanOrEqualTo(point.positionSamples),
+        reason: 'read after its point, the stair is at it or past it',
+      );
+      expect(clock.nowMicros, greaterThanOrEqualTo(point.atMicros));
+      expect(
+        clock.nowMicros - point.atMicros,
+        lessThan(Duration.microsecondsPerSecond),
+        reason: 'stamped on the clock that says now (the playback\'s), a '
+            'moment ago',
+      );
+      expect(
+        await waitFor(
+          () =>
+              device.readCaptureClock().point!.positionSamples >
+              point.positionSamples,
+        ),
+        isTrue,
+        reason: 'the points move on with the frames given',
+      );
+      expect(
+        await waitFor(() => device.readCaptureClock().stairSamples > 9600),
+        isTrue,
+        reason: 'fixture: a fifth of a second taken in',
+      );
+
+      device.captureStop();
+      expect(device.readCaptureClock().point, isNull);
+      expect(device.readCaptureClock().stairSamples, 0);
+
+      // Started again, a capture speaks of itself alone: until its own
+      // first callback there is no point — not the last capture's.
+      expect(
+        device.captureStart(sampleRate: 48000, useNullBackend: true),
+        48000,
+      );
+      final fresh = device.readCaptureClock().point;
+      expect(
+        fresh == null || fresh.positionSamples < 9600,
+        isTrue,
+        reason: 'the stopped capture\'s point, ${fresh?.positionSamples} '
+            'frames, read as this one\'s',
+      );
     }, skip: skip);
 
     test('a bad device index fails rather than opening something else', () {
@@ -731,6 +804,47 @@ void main() {
       expect(recording.droppedFrames, 0);
       expect(QaAudioDevice.instance!.captureIsOpen, isFalse,
           reason: 'stop() must release the microphone');
+    }, skip: skip);
+
+    // take-head-trims-at-the-playback-start (10-15).
+    test('🚨what the microphone had taken in at a moment: on the capture\'s '
+        'line, and what it holds of its own on top', () async {
+      final device = QaAudioDevice.instance!;
+      final recorder = AudioRecorder(device: device);
+      expect(recorder.capturedAt(device.clockNowMicros), isNull,
+          reason: 'nothing is recording');
+      expect(recorder.start(sampleRate: 48000, useNullBackend: true), 48000);
+      expect(recorder.latencySamples, device.captureLatencySamples);
+      bool spoke() => recorder.capturedAt(device.clockNowMicros) != null;
+      expect(await waitFor(spoke), isTrue, reason: 'no capture callback spoke');
+
+      final before = device.readCaptureClock();
+      final taken = recorder.capturedAt(before.nowMicros)!;
+      expect(
+        taken,
+        greaterThanOrEqualTo(before.stairSamples + recorder.latencySamples),
+        reason: 'never behind what the ring had been given — and what the '
+            'microphone holds is on top',
+      );
+      expect(
+        taken,
+        lessThan(before.stairSamples + 2 * recorder.latencySamples + 2400),
+      );
+
+      // The count runs with the time: a third of a second on, a third of a
+      // second more taken in.
+      final later = device.clockNowMicros + 333333;
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(
+        recorder.capturedAt(later)! - taken,
+        closeTo(
+          (later - before.nowMicros) * 48000 ~/ Duration.microsecondsPerSecond,
+          960,
+        ),
+      );
+      recorder.stop();
+      expect(recorder.capturedAt(device.clockNowMicros), isNull,
+          reason: 'stopped, it takes nothing in');
     }, skip: skip);
 
     test('stopping without starting reports null, not a crash', () {

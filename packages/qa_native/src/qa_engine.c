@@ -1225,62 +1225,117 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 // alpha to premultiplied with Skia's own SkMulDiv255Round so uploads
 // round identically to Skia's rasterization. Pure integer math, ported
 // verbatim from the Dart reference.
-QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
-  for (int32_t i = 0; i < pixel_count; i += 1) {
-    uint8_t* p = pixels + (ptrdiff_t)i * 4;
-    const int32_t alpha = p[3];
-    if (alpha == 255) {
-      continue;
-    }
-    if (alpha == 0) {
-      p[0] = 0;
-      p[1] = 0;
-      p[2] = 0;
-      continue;
-    }
-    // SkMulDiv255Round: round(value * alpha / 255) for bytes.
-    int32_t product = p[0] * alpha + 128;
-    p[0] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = p[1] * alpha + 128;
-    p[1] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = p[2] * alpha + 128;
-    p[2] = (uint8_t)((product + (product >> 8)) >> 8);
-  }
+//
+// FOUR PIXELS A STEP where the build has the SIMD (2026-10-12): a tile's
+// premultiply was ~14% of the UI thread while playback made the camera
+// view's pictures (board playback-plays-the-screen-material), one byte at a
+// time behind a branch per pixel. The formula needs no branch — alpha 255
+// gives the byte back and alpha 0 gives 0, whatever the colour — so the
+// fast paths were only that, and every lane takes the same steps: the
+// product and its 128 fit sixteen bits (65,153 at most), and so does the
+// rounding added to it (65,407), so the bytes are the scalar's.
+//
+// ⛔Not spread across the worker pool (lane tile-pictures-in-one-call,
+// 10-12, not landed): a run of tiles staged in one pooled call was never
+// faster where it was measured, the call waits for every worker it woke,
+// and the composes that give way between pictures took the one staging
+// block from each other — one make on a loaded machine staged its 72 runs
+// 945 times.
+static inline void qa_premultiply_pixel(uint8_t* d, const uint8_t* s) {
+  const int32_t alpha = s[3];
+  // SkMulDiv255Round: round(value * alpha / 255) for bytes.
+  int32_t product = s[0] * alpha + 128;
+  d[0] = (uint8_t)((product + (product >> 8)) >> 8);
+  product = s[1] * alpha + 128;
+  d[1] = (uint8_t)((product + (product >> 8)) >> 8);
+  product = s[2] * alpha + 128;
+  d[2] = (uint8_t)((product + (product >> 8)) >> 8);
+  d[3] = (uint8_t)alpha;
 }
+
+#if defined(QA_SSE2)
+static inline __m128i qa_premultiply4(__m128i px) {
+  const __m128i zero = _mm_setzero_si128();
+  const __m128i half = _mm_set1_epi16(128);
+  const __m128i alpha_bytes = _mm_set1_epi32((int32_t)0xFF000000u);
+  __m128i lo = _mm_unpacklo_epi8(px, zero);
+  __m128i hi = _mm_unpackhi_epi8(px, zero);
+  const __m128i alpha_lo = _mm_shufflehi_epi16(
+      _mm_shufflelo_epi16(lo, _MM_SHUFFLE(3, 3, 3, 3)),
+      _MM_SHUFFLE(3, 3, 3, 3));
+  const __m128i alpha_hi = _mm_shufflehi_epi16(
+      _mm_shufflelo_epi16(hi, _MM_SHUFFLE(3, 3, 3, 3)),
+      _MM_SHUFFLE(3, 3, 3, 3));
+  lo = _mm_add_epi16(_mm_mullo_epi16(lo, alpha_lo), half);
+  hi = _mm_add_epi16(_mm_mullo_epi16(hi, alpha_hi), half);
+  lo = _mm_srli_epi16(_mm_add_epi16(lo, _mm_srli_epi16(lo, 8)), 8);
+  hi = _mm_srli_epi16(_mm_add_epi16(hi, _mm_srli_epi16(hi, 8)), 8);
+  const __m128i colour = _mm_packus_epi16(lo, hi);
+  return _mm_or_si128(_mm_and_si128(px, alpha_bytes),
+                      _mm_andnot_si128(alpha_bytes, colour));
+}
+#elif defined(QA_NEON)
+static inline uint8x16_t qa_premultiply4(uint8x16_t px) {
+  static const uint8_t alpha_of[16] = {3,  3,  3,  3,  7,  7,  7,  7,
+                                       11, 11, 11, 11, 15, 15, 15, 15};
+  const uint8x16_t alpha = vqtbl1q_u8(px, vld1q_u8(alpha_of));
+  const uint16x8_t half = vdupq_n_u16(128);
+  uint16x8_t lo = vaddq_u16(vmull_u8(vget_low_u8(px), vget_low_u8(alpha)),
+                            half);
+  uint16x8_t hi = vaddq_u16(vmull_high_u8(px, alpha), half);
+  lo = vaddq_u16(lo, vshrq_n_u16(lo, 8));
+  hi = vaddq_u16(hi, vshrq_n_u16(hi, 8));
+  const uint8x16_t colour =
+      vcombine_u8(vshrn_n_u16(lo, 8), vshrn_n_u16(hi, 8));
+  return vbslq_u8(vreinterpretq_u8_u32(vdupq_n_u32(0xFF000000u)), px,
+                  colour);
+}
+#endif
 
 // Fused copy + premultiply (R19-Z): reads straight-alpha [src], writes
 // premultiplied bytes into [dst] in one pass - the decode-start path
-// used to pay a copy AND an in-place premultiply. Same SkMulDiv255Round
-// math as qa_premultiply_rgba (byte-identical output by construction).
+// used to pay a copy AND an in-place premultiply. [dst] may be [src]: a
+// step reads its pixels before it writes them.
 QA_EXPORT void qa_premultiply_rgba_copy(
     uint8_t* dst,
     const uint8_t* src,
     int32_t pixel_count) {
-  for (int32_t i = 0; i < pixel_count; i += 1) {
-    const uint8_t* s = src + (ptrdiff_t)i * 4;
-    uint8_t* d = dst + (ptrdiff_t)i * 4;
-    const int32_t alpha = s[3];
-    if (alpha == 255) {
-      d[0] = s[0];
-      d[1] = s[1];
-      d[2] = s[2];
-      d[3] = 255;
-      continue;
-    }
-    if (alpha == 0) {
-      d[0] = 0;
-      d[1] = 0;
-      d[2] = 0;
-      d[3] = 0;
-      continue;
-    }
-    int32_t product = s[0] * alpha + 128;
-    d[0] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = s[1] * alpha + 128;
-    d[1] = (uint8_t)((product + (product >> 8)) >> 8);
-    product = s[2] * alpha + 128;
-    d[2] = (uint8_t)((product + (product >> 8)) >> 8);
-    d[3] = (uint8_t)alpha;
+  int32_t i = 0;
+#if defined(QA_SSE2)
+  for (; i + 4 <= pixel_count; i += 4) {
+    const ptrdiff_t at = (ptrdiff_t)i * 4;
+    const __m128i px = _mm_loadu_si128((const __m128i*)(src + at));
+    _mm_storeu_si128((__m128i*)(dst + at), qa_premultiply4(px));
+  }
+#elif defined(QA_NEON)
+  for (; i + 4 <= pixel_count; i += 4) {
+    const ptrdiff_t at = (ptrdiff_t)i * 4;
+    vst1q_u8(dst + at, qa_premultiply4(vld1q_u8(src + at)));
+  }
+#endif
+  for (; i < pixel_count; i += 1) {
+    qa_premultiply_pixel(dst + (ptrdiff_t)i * 4, src + (ptrdiff_t)i * 4);
+  }
+}
+
+QA_EXPORT void qa_premultiply_rgba(uint8_t* pixels, int32_t pixel_count) {
+  qa_premultiply_rgba_copy(pixels, pixels, pixel_count);
+}
+
+// The same copy a row at a time between two strides (ABI 46): [rows] rows
+// of [width] straight pixels, [src_stride] bytes apart, premultiplied into
+// [dst] at rows [dst_stride] bytes apart - a tile laid into a picture of
+// several tiles in one call, where a call a row costs more than its pixels.
+QA_EXPORT void qa_premultiply_rgba_rows(
+    uint8_t* dst,
+    int64_t dst_stride,
+    const uint8_t* src,
+    int64_t src_stride,
+    int32_t width,
+    int32_t rows) {
+  for (int32_t y = 0; y < rows; y += 1) {
+    qa_premultiply_rgba_copy(dst + (ptrdiff_t)y * dst_stride,
+                             src + (ptrdiff_t)y * src_stride, width);
   }
 }
 
@@ -4617,23 +4672,34 @@ QA_EXPORT int32_t qa_audio_resample_taps(int32_t input_rate,
   return (int32_t)taps;
 }
 
-// Resamples interleaved [samples] from input_rate to output_rate into
-// [out], which the caller sizes with qa_audio_resample_frames.
-//
-// Returns the number of output frames written, or 0 on bad geometry. Equal
-// rates are NOT handled here - the caller skips the whole path and keeps
-// the input bit-exact, which is the common case.
-QA_EXPORT int64_t qa_audio_resample(
-    const float* samples,
-    int64_t input_frames,
-    int32_t channels,
-    int32_t input_rate,
-    int32_t output_rate,
-    double stopband_db,
-    double bandwidth,
-    float* out) {
-  if (samples == NULL || out == NULL || channels <= 0 || input_frames <= 0 ||
-      input_rate <= 0 || output_rate <= 0 || input_rate == output_rate) {
+// 🚨★★★**ONE LOOP, WHOLE OR A PIECE AT A TIME** (user 2026-10-10, board
+// long-sound-conform-memory-Q1: 「지금 한다 — 전 플랫폼」). A long sound is
+// conformed as the decoder hands it back, so the filter is fed a piece at a
+// time — and an output frame reads the inputs it reads either way: the same
+// taps in the same order, so a conversion fed in pieces writes the whole
+// conversion's samples, bit for bit. qa_audio_resample is that loop over
+// input that has all arrived; ⛔a second loop for the pieces would be the
+// copy that drifts.
+
+/// What a conversion between two rates runs: its polyphase geometry and
+/// the prototype's taps.
+typedef struct {
+  int64_t interpolation;
+  int64_t decimation;
+  int64_t taps;
+  int64_t half_length;
+  double* kernel;
+} qa_audio_resample_design;
+
+/// The design for input_rate -> output_rate into [design], or 0 on bad
+/// geometry. Equal rates are bad geometry here: the caller skips the whole
+/// path and keeps the input bit-exact, which is the common case.
+static int qa_audio_resample_design_make(int32_t input_rate,
+                                         int32_t output_rate,
+                                         double stopband_db,
+                                         double bandwidth,
+                                         qa_audio_resample_design* design) {
+  if (input_rate <= 0 || output_rate <= 0 || input_rate == output_rate) {
     return 0;
   }
   const int64_t divisor = qa_audio_gcd(input_rate, output_rate);
@@ -4650,7 +4716,6 @@ QA_EXPORT int64_t qa_audio_resample(
   if (taps <= 0) {
     return 0;
   }
-  const int64_t half_length = (taps - 1) / 2;
 
   double* kernel = (double*)malloc((size_t)taps * sizeof(double));
   if (kernel == NULL) {
@@ -4670,13 +4735,56 @@ QA_EXPORT int64_t qa_audio_resample(
                       window * (double)interpolation;
     }
   }
+  design->interpolation = interpolation;
+  design->decimation = decimation;
+  design->taps = taps;
+  design->half_length = (taps - 1) / 2;
+  design->kernel = kernel;
+  return 1;
+}
 
-  const int64_t output_frames = input_frames * interpolation / decimation;
-  for (int64_t frame = 0; frame < output_frames; frame += 1) {
+/// One past the last output frame [design] can write from [total] input
+/// frames: every one there is once the input has [ended], and before that
+/// only those whose every input has arrived.
+static int64_t qa_audio_resample_ready_end(
+    const qa_audio_resample_design* design, int64_t total, int ended) {
+  const int64_t limit = total * design->interpolation / design->decimation;
+  if (ended) {
+    return limit;
+  }
+  // An output reads back from its base frame, (frame * M + half) / L, so it
+  // is complete once that frame has arrived: frame * M + half < total * L.
+  const int64_t reach = total * design->interpolation - design->half_length;
+  const int64_t complete =
+      reach <= 0 ? 0 : (reach + design->decimation - 1) / design->decimation;
+  return complete < limit ? complete : limit;
+}
+
+/// Writes [count] output frames from frame [from] into [out], reading the
+/// input frames [first, total) — the sound's frames from [first] on, [total]
+/// of them so far — out of [held].
+///
+/// ⚠️What the caller promises: every input those outputs read from [first]
+/// on is held, and while more input may come, none reads past [total]
+/// (qa_audio_resample_ready_end). An input past the end is skipped, which is
+/// right only at the sound's end.
+static void qa_audio_resample_run(const qa_audio_resample_design* design,
+                                  int32_t channels,
+                                  const float* held,
+                                  int64_t first,
+                                  int64_t total,
+                                  int64_t from,
+                                  int64_t count,
+                                  float* out) {
+  const int64_t interpolation = design->interpolation;
+  const int64_t taps = design->taps;
+  const double* kernel = design->kernel;
+  for (int64_t at = 0; at < count; at += 1) {
     // + half_length centres the filter on the output instant: the delay
     // compensation, applied here so it never has to be a whole number of
     // output samples.
-    const int64_t position = frame * decimation + half_length;
+    const int64_t position =
+        (from + at) * design->decimation + design->half_length;
     const int64_t phase = position % interpolation;
     const int64_t base = position / interpolation;
 
@@ -4684,18 +4792,198 @@ QA_EXPORT int64_t qa_audio_resample(
       double sum = 0.0;
       int64_t tap = phase;
       int64_t source = base;
-      while (tap < taps && source >= 0) {
-        if (source < input_frames) {
-          sum += kernel[tap] * (double)samples[source * channels + channel];
+      while (tap < taps && source >= first) {
+        if (source < total) {
+          sum += kernel[tap] *
+                 (double)held[(source - first) * channels + channel];
         }
         tap += interpolation;
         source -= 1;
       }
-      out[frame * channels + channel] = (float)sum;
+      out[at * channels + channel] = (float)sum;
     }
   }
-  free(kernel);
+}
+
+// Resamples interleaved [samples] from input_rate to output_rate into
+// [out], which the caller sizes with qa_audio_resample_frames.
+//
+// Returns the number of output frames written, or 0 on bad geometry. Equal
+// rates are NOT handled here - the caller skips the whole path and keeps
+// the input bit-exact, which is the common case.
+QA_EXPORT int64_t qa_audio_resample(
+    const float* samples,
+    int64_t input_frames,
+    int32_t channels,
+    int32_t input_rate,
+    int32_t output_rate,
+    double stopband_db,
+    double bandwidth,
+    float* out) {
+  qa_audio_resample_design design;
+  if (samples == NULL || out == NULL || channels <= 0 || input_frames <= 0 ||
+      !qa_audio_resample_design_make(input_rate, output_rate, stopband_db,
+                                     bandwidth, &design)) {
+    return 0;
+  }
+  const int64_t output_frames =
+      qa_audio_resample_ready_end(&design, input_frames, 1);
+  qa_audio_resample_run(&design, channels, samples, 0, input_frames, 0,
+                        output_frames, out);
+  free(design.kernel);
   return output_frames;
+}
+
+/// A conversion fed a piece at a time: the design, and the input the
+/// outputs still to come read.
+typedef struct {
+  qa_audio_resample_design design;
+  int32_t channels;
+  /// Input frames [first, first + held_frames), interleaved.
+  float* held;
+  int64_t first;
+  int64_t held_frames;
+  int64_t held_capacity;
+  /// The next output frame.
+  int64_t next;
+  int ended;
+} qa_audio_resampler;
+
+/// A conversion of [channels] from input_rate to output_rate, fed a piece at
+/// a time — NULL on bad geometry, equal rates among it (see
+/// qa_audio_resample). qa_audio_resampler_close lets it go.
+QA_EXPORT qa_audio_resampler* qa_audio_resampler_open(int32_t channels,
+                                                      int32_t input_rate,
+                                                      int32_t output_rate,
+                                                      double stopband_db,
+                                                      double bandwidth) {
+  if (channels <= 0) {
+    return NULL;
+  }
+  qa_audio_resampler* resampler =
+      (qa_audio_resampler*)calloc(1, sizeof(qa_audio_resampler));
+  if (resampler == NULL) {
+    return NULL;
+  }
+  if (!qa_audio_resample_design_make(input_rate, output_rate, stopband_db,
+                                     bandwidth, &resampler->design)) {
+    free(resampler);
+    return NULL;
+  }
+  resampler->channels = channels;
+  return resampler;
+}
+
+/// Lets go of the held input no output still to come reads: output frame f
+/// reads back to input (f * M + half - taps) / L + 1.
+static void qa_audio_resampler_let_go(qa_audio_resampler* resampler) {
+  const qa_audio_resample_design* design = &resampler->design;
+  const int64_t reach = resampler->next * design->decimation +
+                        design->half_length - design->taps +
+                        design->interpolation;
+  const int64_t lowest = reach <= 0 ? 0 : reach / design->interpolation;
+  int64_t drop = lowest - resampler->first;
+  if (drop > resampler->held_frames) {
+    drop = resampler->held_frames;
+  }
+  if (drop <= 0) {
+    return;
+  }
+  const int64_t channels = resampler->channels;
+  memmove(resampler->held, resampler->held + drop * channels,
+          (size_t)((resampler->held_frames - drop) * channels) *
+              sizeof(float));
+  resampler->held_frames -= drop;
+  resampler->first += drop;
+}
+
+/// Hands [frames] more frames of input to [resampler]. 0 when the memory ran
+/// out, or after qa_audio_resampler_end.
+QA_EXPORT int32_t qa_audio_resampler_push(qa_audio_resampler* resampler,
+                                          const float* samples,
+                                          int64_t frames) {
+  if (resampler == NULL || resampler->ended || frames < 0 ||
+      (frames > 0 && samples == NULL)) {
+    return 0;
+  }
+  qa_audio_resampler_let_go(resampler);
+  const int64_t channels = resampler->channels;
+  const int64_t wanted = resampler->held_frames + frames;
+  if (wanted > resampler->held_capacity) {
+    int64_t capacity =
+        resampler->held_capacity == 0 ? 4096 : resampler->held_capacity;
+    while (capacity < wanted) {
+      capacity *= 2;
+    }
+    float* grown = (float*)realloc(
+        resampler->held, (size_t)(capacity * channels) * sizeof(float));
+    if (grown == NULL) {
+      return 0;
+    }
+    resampler->held = grown;
+    resampler->held_capacity = capacity;
+  }
+  if (frames > 0) {
+    memcpy(resampler->held + resampler->held_frames * channels, samples,
+           (size_t)(frames * channels) * sizeof(float));
+  }
+  resampler->held_frames = wanted;
+  return 1;
+}
+
+/// Says no more input comes: the outputs that read past the end are ready.
+QA_EXPORT void qa_audio_resampler_end(qa_audio_resampler* resampler) {
+  if (resampler != NULL) {
+    resampler->ended = 1;
+  }
+}
+
+/// Input frames [resampler] holds now — for the tests that tell a
+/// conversion that lets go of its input from one that keeps the whole sound.
+QA_EXPORT int64_t qa_audio_resampler_held(
+    const qa_audio_resampler* resampler) {
+  return resampler == NULL ? 0 : resampler->held_frames;
+}
+
+/// How many output frames qa_audio_resampler_pull can write now.
+QA_EXPORT int64_t qa_audio_resampler_ready(
+    const qa_audio_resampler* resampler) {
+  if (resampler == NULL) {
+    return 0;
+  }
+  const int64_t end = qa_audio_resample_ready_end(
+      &resampler->design, resampler->first + resampler->held_frames,
+      resampler->ended);
+  return end > resampler->next ? end - resampler->next : 0;
+}
+
+/// Writes up to [capacity] of the ready output frames into [out], and
+/// answers how many.
+QA_EXPORT int64_t qa_audio_resampler_pull(qa_audio_resampler* resampler,
+                                          float* out,
+                                          int64_t capacity) {
+  if (resampler == NULL || out == NULL || capacity <= 0) {
+    return 0;
+  }
+  int64_t count = qa_audio_resampler_ready(resampler);
+  if (count > capacity) {
+    count = capacity;
+  }
+  qa_audio_resample_run(&resampler->design, resampler->channels,
+                        resampler->held, resampler->first,
+                        resampler->first + resampler->held_frames,
+                        resampler->next, count, out);
+  resampler->next += count;
+  return count;
+}
+
+QA_EXPORT void qa_audio_resampler_close(qa_audio_resampler* resampler) {
+  if (resampler == NULL) {
+    return;
+  }
+  free(resampler->held);
+  free(resampler->design.kernel);
+  free(resampler);
 }
 
 // How many frames qa_audio_resample will write - the caller's allocation
@@ -5846,4 +6134,23 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v41: qa_dab_spec gains evening - the table a dab lays its share of one
 // stamp per tenth of its size through (qa_dab_even) - and the laid alpha
 // reads it in qa_dab_source_alpha and the pair path. Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 41; }
+// v42: qa_audio_decode_span_window - a window of a sound's frames, and only
+// those held.
+// v43: qa_audio_stream_open/_read/_close - a sound opened once and read on,
+// every decoder through one door - and qa_audio_resampler_* - the resampler
+// fed a piece at a time, through the loop qa_audio_resample runs.
+// v44: qa_display_vblank / qa_display_wait_until_us - the compositor's
+// vblank and a wait that ends on a microsecond, for a clock's frame to be
+// handed to the GPU where it lands on the vblank it claimed.
+// v45: qa_display_compose_every_vblank - the compositor kept composing on
+// every vblank while a clock runs, so a picture handed over between two
+// vblanks is taken at the second of them however idle the desktop is.
+// v46: qa_premultiply_rgba_rows - the premultiplied copy between two row
+// strides, so a block of tiles becomes one picture with one call a tile.
+// v47: qa_audio_capture_clock / qa_audio_capture_frames - the capture's own
+// clock line, so a take is placed by what the microphone had taken in when
+// its anchor was heard.
+// v48: qa_audio_buffer_new / _retain / _release / _holds, and a set_schedule
+// that names buffers - the device's PCM is made once in C memory, and a
+// schedule copies none of it.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 48; }

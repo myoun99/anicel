@@ -24,6 +24,20 @@ void main() {
       expect(fixture.controller.layers, hasLength(2));
     });
 
+    test('hands every reader one list of the rows until the project is '
+        'another, and no reader can change it', () {
+      final fixture = _createFixture();
+      final rows = fixture.controller.layers;
+
+      expect(identical(fixture.controller.layers, rows), isTrue);
+      expect(rows.removeLast, throwsUnsupportedError);
+
+      fixture.controller.addLayerWithDefaults(
+        layerId: const LayerId('layer-3'),
+      );
+      expect(fixture.controller.layers, hasLength(3));
+    });
+
     test('selects active layer', () {
       final fixture = _createFixture();
 

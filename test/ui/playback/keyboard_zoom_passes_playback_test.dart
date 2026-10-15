@@ -11,9 +11,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/fake_playback_transport.dart';
 import '../../helpers/panel_finders.dart';
 
@@ -40,6 +40,7 @@ void main() {
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     return tester
         .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
         .session;
@@ -108,15 +109,45 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // I-40: fit and 1:1 land a zoom (`zoomsView`), so their keys pass where
+  // the steps' do. A straighten is not a zoom, and stops the canvas as R
+  // does.
+  testWidgets('a FIT key passes while the canvas plays, and fits — a '
+      'straighten key stops it', (tester) async {
+    final session = await playingCanvas(tester);
+    appShortcuts(tester)
+      ..setActivators(EditorActionIds.canvasFit, const [
+        SingleActivator(LogicalKeyboardKey.keyK),
+      ])
+      ..setActivators(EditorActionIds.canvasStraighten, const [
+        SingleActivator(LogicalKeyboardKey.keyJ),
+      ]);
+    await tester.pump();
+    await shifted(tester, LogicalKeyboardKey.keyE);
+    final zoomed = textOf(tester, 'canvas-viewport-zoom-label');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pump();
+    expect(session.playbackRig.playback.isPlaying, isTrue);
+    expect(
+      textOf(tester, 'canvas-viewport-zoom-label'),
+      isNot(zoomed),
+      reason: 'and the view fitted',
+    );
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pump();
+    expect(session.playbackRig.playback.isPlaying, isFalse);
+    await tester.pumpAndSettle();
+  });
+
   // 🚨A KEY IS THE CHARACTER IT TYPES (a-key-is-the-character-it-types): the
   // gate's question and the funnel's map read ONE set of forms. On a JIS
   // keyboard `'` is Shift+7, arriving as `7` with Shift held, typing `'`.
   testWidgets('a zoom moved to `\'` zooms from a JIS Shift+7 while the canvas '
       'plays — the gate and the map read the same typed form', (tester) async {
     final session = await playingCanvas(tester);
-    EditorShortcutScope.peek(
-      tester.element(find.byType(EditorCanvasArea)),
-    )!.setActivators(EditorActionIds.canvasZoomIn, const [
+    appShortcuts(tester).setActivators(EditorActionIds.canvasZoomIn, const [
       SingleActivator(LogicalKeyboardKey.quoteSingle),
     ]);
     await tester.pump();

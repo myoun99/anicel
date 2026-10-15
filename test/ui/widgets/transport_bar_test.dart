@@ -141,6 +141,21 @@ void main() {
       expect(outValue.left, greaterThan(range.right));
     });
 
+    testWidgets('IN and OUT stand at their own size — each end holds its '
+        'word, its number and the number\'s hands without shrinking them', (
+      tester,
+    ) async {
+      await pump(tester, frameCount: 96, range: span(0, 95));
+      for (final end in const ['in', 'out']) {
+        final number = find.byKey(k(end));
+        expect(
+          tester.getRect(number).width,
+          moreOrLessEquals(tester.getSize(number).width),
+          reason: '$end: drawn as wide as it is laid out',
+        );
+      }
+    });
+
     testWidgets('the bar stands as tall as it says, with the range and '
         'without', (tester) async {
       await pump(tester, frameCount: 96);
@@ -583,7 +598,7 @@ void main() {
         frameCount: 100,
         range: span(0, 40, (start, _) => movedIn = start),
       );
-      await tester.tap(find.byKey(k('in')));
+      await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
       await tester.enterText(find.byKey(k('in-input')), '13');
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -598,7 +613,7 @@ void main() {
         frameCount: 100,
         range: span(0, 40, (start, _) => movedIn = start),
       );
-      await tester.tap(find.byKey(k('in')));
+      await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
       await tester.enterText(find.byKey(k('in-input')), '99');
       await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -615,12 +630,29 @@ void main() {
         frameCount: 100,
         range: span(30, 99, (_, end) => movedOut = end),
       );
-      await tester.tap(find.byKey(k('out')));
+      await tester.tap(find.byKey(k('out-edit')));
       await tester.pump();
       await tester.enterText(find.byKey(k('out-input')), '5');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
       expect(movedOut, 30);
+    });
+
+    /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「숫자 뒤에 ±와 연필」.
+    testWidgets('IN\'s and OUT\'s ± step them a frame, held to the span', (
+      tester,
+    ) async {
+      final moves = <(int, int)>[];
+      await pump(
+        tester,
+        frameCount: 100,
+        range: span(10, 40, (start, end) => moves.add((start, end))),
+      );
+      await tester.tap(find.byKey(k('in-step-up')));
+      await tester.pump();
+      await tester.tap(find.byKey(k('out-step-down')));
+      await tester.pump();
+      expect(moves, [(11, 40), (10, 39)]);
     });
 
     testWidgets('a span that can act on nothing keeps its row, off', (
@@ -655,12 +687,11 @@ void main() {
     testWidgets('at its minimum width the bar lays out without running over', (
       tester,
     ) async {
-      await pump(
-        tester,
-        frameCount: 96,
-        range: span(0, 95),
-        width: TransportBar.minimumWidth,
+      await pump(tester, frameCount: 96, range: span(0, 95));
+      final minimum = TransportBar.minimumWidthIn(
+        tester.element(find.byType(TransportBar)),
       );
+      await pump(tester, frameCount: 96, range: span(0, 95), width: minimum);
       expect(tester.takeException(), isNull);
       expect(find.byKey(k('play')), findsOneWidget);
       expect(find.byKey(k('in')), findsOneWidget);

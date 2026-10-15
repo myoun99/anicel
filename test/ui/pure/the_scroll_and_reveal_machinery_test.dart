@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/panels/panel_collapsed_scope.dart';
 import 'package:anicel/src/ui/panels/panel_flash.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_editor_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_axis_follower.dart';
@@ -141,6 +142,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 100,
+        viewportFillFrames: () => 0,
         rebuild: (fn) {
           rebuilds += 1;
           fn();
@@ -176,6 +178,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 100,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -211,6 +214,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 100,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -257,6 +261,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 200,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -301,6 +306,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 4,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -326,6 +332,7 @@ void main() {
         frameWindowBucket: bucket,
         cellExtent: () => 20,
         baseFrameCount: () => 4,
+        viewportFillFrames: () => 0,
         rebuild: (fn) => fn(),
         isMounted: () => true,
       );
@@ -364,6 +371,237 @@ void main() {
         lessThan(grown),
         reason: 'the settle is the one moment it may shrink',
       );
+    });
+
+    testWidgets('🚨a run\'s next page is where the turn stands the axis, '
+        'built as its own cut builds it there: grown under the last page '
+        'before the cut\'s end, and shrunk back by the wrap', (tester) async {
+      // A 400px viewport of 20px cells — twenty frames a page — over 30
+      // frames of content, with a run of 32: two frames of handle past it.
+      final controller = await pumpScrollable(tester);
+      final offset = ValueNotifier<double>(0);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(offset.dispose);
+      addTearDown(bucket.dispose);
+      final follower = TimelineFrameAxisFollower(
+        controller: controller,
+        frameAxisOffset: offset,
+        frameWindowBucket: bucket,
+        cellExtent: () => 20,
+        baseFrameCount: () => 30,
+        viewportFillFrames: () => 20,
+        rebuild: (fn) => fn(),
+        isMounted: () => true,
+      );
+      addTearDown(follower.dispose);
+      // The window spans five cells a bucket: 100px.
+      controller.jumpTo(200);
+      follower.handleScroll();
+      expect(follower.renderedFrameCount, 30, reason: '⛔premise: built to 30');
+
+      expect(
+        follower.nextPage(runFrames: 32),
+        (bucket: 6, builtFrames: 50),
+        reason: 'frame 30 leaves the window first, and the turn standing it '
+            'at 600px builds the axis to the view\'s end',
+      );
+      expect(
+        (follower.trailingFrames, bucket.value),
+        (0, 2),
+        reason: 'asking where the turn stands it moves nothing',
+      );
+
+      controller.jumpTo(600);
+      follower.handleScroll();
+      expect(follower.renderedFrameCount, 50, reason: '⛔premise: the turn');
+      expect(
+        follower.nextPage(runFrames: 32),
+        (bucket: 0, builtFrames: 30),
+        reason: 'the run wraps before it leaves this page, and the first page '
+            'lets the room it grew go',
+      );
+    });
+
+    testWidgets('the axis is built to what the view needs to read papered, '
+        'however few frames the content holds', (tester) async {
+      final controller = await pumpScrollable(tester);
+      final offset = ValueNotifier<double>(0);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(offset.dispose);
+      addTearDown(bucket.dispose);
+      final follower = TimelineFrameAxisFollower(
+        controller: controller,
+        frameAxisOffset: offset,
+        frameWindowBucket: bucket,
+        cellExtent: () => 20,
+        baseFrameCount: () => 4,
+        viewportFillFrames: () => 20,
+        rebuild: (fn) => fn(),
+        isMounted: () => true,
+      );
+      addTearDown(follower.dispose);
+      follower.handleScroll();
+
+      expect(follower.renderedFrameCount, 20);
+      expect(
+        follower.nextPage(runFrames: 4)?.builtFrames,
+        20,
+        reason: 'and so it is where a run\'s next turn stands it',
+      );
+    });
+
+    testWidgets('🚨born where the axis stands, it is built for the room '
+        'reaching the view there, and its first read keeps that room — none '
+        'grown where the fill papers the view already', (tester) async {
+      // A 400px view of 20px cells over 4 frames, papered by 20.
+      final controller = await pumpScrollable(tester);
+      TimelineFrameAxisFollower bornAt(double at) {
+        final offset = ValueNotifier<double>(at);
+        final bucket = ValueNotifier<int>(0);
+        addTearDown(offset.dispose);
+        addTearDown(bucket.dispose);
+        final follower = TimelineFrameAxisFollower(
+          controller: controller,
+          frameAxisOffset: offset,
+          frameWindowBucket: bucket,
+          cellExtent: () => 20,
+          baseFrameCount: () => 4,
+          viewportFillFrames: () => 20,
+          rebuild: (fn) => fn(),
+          isMounted: () => true,
+        );
+        addTearDown(follower.dispose);
+        return follower;
+      }
+
+      final atTheStart = bornAt(0);
+      atTheStart.handleScroll();
+      expect(
+        (atTheStart.trailingFrames, atTheStart.renderedFrameCount),
+        (0, 20),
+        reason: 'the fill papers the view standing at the start: a room '
+            'grown there is grown for nothing, and a host reads it',
+      );
+
+      final pastTheEnd = bornAt(1000);
+      expect(
+        pastTheEnd.renderedFrameCount,
+        70,
+        reason: 'built to the end of the view standing at 1000px',
+      );
+      controller.jumpTo(1000);
+      pastTheEnd.handleScroll();
+      expect(
+        pastTheEnd.renderedFrameCount,
+        70,
+        reason: '🚨its first read keeps the room it was built for',
+      );
+    });
+  });
+
+  group('keepWhereShown — the one write both axes keep theirs through', () {
+    Future<ScrollController> pumpIn(
+      WidgetTester tester, {
+      required bool folded,
+      ScrollController? controller,
+    }) async {
+      final scroll = controller ?? ScrollController();
+      if (controller == null) {
+        addTearDown(scroll.dispose);
+      }
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PanelCollapsedScope(
+            collapsed: folded,
+            child: SizedBox(
+              height: 400,
+              child: ListView(
+                controller: scroll,
+                children: const [SizedBox(height: 4000)],
+              ),
+            ),
+          ),
+        ),
+      );
+      return scroll;
+    }
+
+    testWidgets('a shown scrollable hands the axis where it stands', (
+      tester,
+    ) async {
+      final kept = ValueNotifier<double>(0);
+      addTearDown(kept.dispose);
+      final controller = await pumpIn(tester, folded: false);
+      controller.jumpTo(300);
+
+      keepWhereShown(controller.position, kept);
+
+      expect(kept.value, 300);
+    });
+
+    testWidgets('🚨one folded away hands it NOTHING — its place is not where '
+        'anybody turned the axis', (tester) async {
+      final kept = ValueNotifier<double>(120);
+      addTearDown(kept.dispose);
+      final controller = await pumpIn(tester, folded: true);
+      controller.jumpTo(300);
+
+      keepWhereShown(controller.position, kept);
+
+      expect(
+        kept.value,
+        120,
+        reason: 'the row on screen owns the frame axis while folded, and a '
+            'layer axis folded away is not being looked at',
+      );
+      await pumpIn(tester, folded: false, controller: controller);
+      keepWhereShown(controller.position, kept);
+      expect(kept.value, 300, reason: 'and unfolded, it is written again');
+    });
+  });
+
+  group('followKeptAxis — a layer axis the project keeps (F-267)', () {
+    testWidgets('every scroll is kept, and letting go stops it', (
+      tester,
+    ) async {
+      final kept = ValueNotifier<double>(0);
+      addTearDown(kept.dispose);
+      final controller = await pumpScrollable(tester);
+      final letGo = followKeptAxis(controller, kept, isMounted: () => true);
+      await tester.pump();
+
+      controller.jumpTo(300);
+      expect(kept.value, 300);
+      letGo();
+      controller.jumpTo(100);
+      expect(kept.value, 300, reason: 'let go of, it keeps nothing');
+    });
+
+    testWidgets('🚨a scrollable born past its end is held there SILENTLY — '
+        'and the first layout is kept, not the place nobody sees', (
+      tester,
+    ) async {
+      final kept = ValueNotifier<double>(1000);
+      addTearDown(kept.dispose);
+      final controller = ScrollController(initialScrollOffset: kept.value);
+      addTearDown(controller.dispose);
+      followKeptAxis(controller, kept, isMounted: () => true);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              height: 100,
+              child: SingleChildScrollView(
+                controller: controller,
+                child: const SizedBox(height: 300),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(controller.offset, 200, reason: '⛔전제: held to its end');
+      expect(kept.value, 200);
     });
   });
 
@@ -432,6 +670,41 @@ void main() {
       const none = (offset: 40.0, viewport: 0.0);
       expect(revealScrollOffset(none, justPast), 40);
       expect(pageScrollOffset(none, justPast), 40);
+    });
+  });
+
+  group('the page a run turns to next — the page law asked ahead', () {
+    // Ten-pixel steps under a hundred-pixel window.
+    double next(double offset, {required int runSteps, double view = 100}) =>
+        nextPageScrollOffset(
+          (offset: offset, viewport: view),
+          extent: 10,
+          runSteps: runSteps,
+        );
+
+    test('the step the playhead leaves by comes to the window\'s start', () {
+      expect(next(0, runSteps: 50), 100);
+      expect(
+        next(0, runSteps: 50, view: 95),
+        90,
+        reason: 'the step straddling the far edge is the one it leaves by',
+      );
+    });
+
+    test('🚨the last page before the run\'s end is turned to — the run '
+        'wraps only once it leaves that one', () {
+      expect(next(300, runSteps: 45), 400);
+      expect(next(400, runSteps: 45), 0);
+      expect(
+        next(350, runSteps: 45),
+        0,
+        reason: 'the run\'s last step is the window\'s last: it wraps from '
+            'there, and no step past it is turned to',
+      );
+    });
+
+    test('a run that wraps inside the window turns no page', () {
+      expect(next(0, runSteps: 8), 0);
     });
   });
 }

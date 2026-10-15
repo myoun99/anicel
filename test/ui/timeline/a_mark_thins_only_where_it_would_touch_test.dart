@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineFittedGlyphFontSize;
 import 'package:anicel/src/ui/timeline/timeline_frame_header_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
@@ -72,7 +73,7 @@ void main() {
     testWidgets('at 33% two digits keep every third frame — three cells hold '
         'one with room to spare', (tester) async {
       expect(
-        timelineGlyphPainter('00', const TextStyle(fontSize: 10)).width + 2,
+        laidOutGlyph('00', const TextStyle(fontSize: 10)).width + 2,
         lessThanOrEqualTo(3 * 8),
         reason: 'fixture: the every-Nth number fits three 8px cells',
       );
@@ -94,7 +95,7 @@ void main() {
         crossExtent: TimelineGridMetrics.defaults.layerRowHeight,
       );
       expect(
-        timelineGlyphPainter('1000', TextStyle(fontSize: type)).width + 2,
+        laidOutGlyph('1000', TextStyle(fontSize: type)).width + 2,
         greaterThan(24),
         reason: 'fixture: a four-digit number does not fit its own 24px cell '
             'as it is set',

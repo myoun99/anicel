@@ -29,8 +29,16 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/media_asset.dart'
+    show
+        audioFileExtensions,
+        imageFileExtensions,
+        mediaAssetKindForPath,
+        pdfFileExtensions,
+        videoFileExtensions;
 import '../brush_pack_file.dart';
 import 'anicel_project_archive.dart';
+import 'provider_documents.dart';
 
 /// The exported type for a project file — the identifier declared in both
 /// Apple Info.plists. Public because a test pins the two together.
@@ -60,37 +68,6 @@ const String _utiPdf = 'com.adobe.pdf';
 /// [FileTypeGroups.brushes].
 const String _utiData = 'public.data';
 
-/// Raster formats the tip/image decoders accept.
-///
-/// `psd`/`psb` are in here because the decoders read them THEMSELVES now
-/// (`services/photoshop`), not because a platform codec grew a new format.
-/// ⚠️`psd` reaches the Apple pickers through the `public.image` umbrella —
-/// Apple declares `com.adobe.photoshop-image` and it conforms — but `psb`
-/// has no system type, so it is imported in both Info.plists like `flac`.
-const List<String> imageFileExtensions = [
-  'png',
-  'jpg',
-  'jpeg',
-  'webp',
-  'bmp',
-  'gif',
-  'psd',
-  'psb',
-];
-
-/// Sound formats the audio conform can decode.
-const List<String> audioFileExtensions = [
-  'mp3',
-  'wav',
-  'm4a',
-  'aac',
-  'flac',
-  'ogg',
-];
-
-/// Movie containers the media pool will register.
-const List<String> videoFileExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
-
 /// Brush files Anicel can import — the two it borrows, and its own.
 ///
 /// ⚠️`anibrush` is in here because import and export are one door: a format
@@ -101,6 +78,91 @@ const List<String> brushFileExtensions = [
   'abr',
   'sut',
   'sutg',
+];
+
+/// Font files this device's letters can be set in — the text tool's
+/// library. A collection is read as its first face (`font_file_reader`).
+const List<String> fontFileExtensions = ['ttf', 'otf', 'ttc'];
+
+/// What 「열기」 opens — and what a file dropped on the window is asked by,
+/// so the two entrances read one list (F-247, 유저 2026-09-30: 「드래그앤드롭으로
+/// 외부파일 임포트시 확장자?에 맞도록. anicel이면 배치창이아니라 새 프로젝트로
+/// 열도록. tvpp도 똑같이」).
+///
+/// TVPaint projects open through the same door (the user's call: ONE
+/// entry, the Open button — the import pickers retire later). A .tvpp
+/// converts into cuts rather than loading as a project. So does a CLIP
+/// STUDIO file: every timeline a cut (card `csp-clip-import-analysis` — a
+/// cut container opens AS A PROJECT).
+///
+/// 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
+/// 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
+/// 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
+/// 선택할수 있게」.
+const List<String> projectOpenExtensions = [
+  anicelProjectExtension,
+  'tvpp',
+  'clip',
+];
+
+/// What a file OPENS AS — the one judgement every door a file comes in
+/// through asks: the menu's 「파일 열기…」, a drop on the window, the media
+/// panel's ＋ and the viewer's 「미디어에 등록」 (F-282, 유저 2026-10-09:
+/// 「열기랑 임포트랑 되도록 하나로 합치고싶고, 드래그앤드롭으로 파일
+/// 여는거라던가 풀에 등록할떄? 등 관련 임포트 전부 점검」 · 「최대한
+/// 통일하고싶음」).
+///
+/// ⚠️A FOLDER is no name's answer: the door that holds the path asks the
+/// disk, and a folder comes in through the import window as a cut folder.
+enum OpenedAs {
+  /// Opens in a tab of its own ([projectOpenExtensions]).
+  project,
+
+  /// Comes in through the import window — a picture, a movie, a sound, a
+  /// PDF ([mediaAssetKindForPath]).
+  media,
+
+  /// Goes into the brush library ([brushFileExtensions]).
+  brush,
+
+  /// Goes into this device's fonts ([fontFileExtensions]).
+  font,
+}
+
+/// What the file [pathOrUri] names opens as — null for a file nothing in the
+/// app opens, which every door says by name.
+///
+/// By NAME, the way every door tells a file: a provider document's URI says
+/// nothing of what it is (PICK-7), so its own name is read.
+OpenedAs? openedAs(String pathOrUri) {
+  final name = ProviderDocuments.nameOf(pathOrUri);
+  final dot = name.lastIndexOf('.');
+  if (dot < 0) {
+    return null;
+  }
+  final extension = name.substring(dot + 1).toLowerCase();
+  if (projectOpenExtensions.contains(extension)) {
+    return OpenedAs.project;
+  }
+  if (brushFileExtensions.contains(extension)) {
+    return OpenedAs.brush;
+  }
+  if (fontFileExtensions.contains(extension)) {
+    return OpenedAs.font;
+  }
+  return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
+}
+
+/// Every extension some door takes ([openedAs]) — what 「파일 열기…」
+/// accepts, and what the notice for a file it does not names.
+const List<String> openableExtensions = [
+  ...projectOpenExtensions,
+  ...imageFileExtensions,
+  ...videoFileExtensions,
+  ...audioFileExtensions,
+  ...pdfFileExtensions,
+  ...brushFileExtensions,
+  ...fontFileExtensions,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has
@@ -175,27 +237,13 @@ abstract final class FileTypeGroups {
   );
 
   /// A plain WAV, for the one dialog that WRITES one: the pool's conform
-  /// export. Apple publishes a UTI for this format, so unlike the TVPaint
-  /// case below there is nothing to split per platform.
+  /// export. Apple publishes a UTI for this format, so unlike [brushesFor]
+  /// below there is nothing to split per platform.
   static const XTypeGroup wav = XTypeGroup(
     label: 'WAV audio',
     extensions: ['wav'],
     uniformTypeIdentifiers: ['com.microsoft.waveform-audio'],
   );
-
-  /// TVPaint project files. Same Apple-platform split as [brushesFor]:
-  /// TVPaint publishes no UTI, so iOS gets `public.data` (a wrong filter
-  /// greys out the very file the user came for) and macOS gets the
-  /// extension alone (the umbrella would swallow it).
-  static XTypeGroup tvppProjectFor(String operatingSystem) => XTypeGroup(
-    label: 'TVPaint project',
-    extensions: const ['tvpp'],
-    uniformTypeIdentifiers: operatingSystem == 'macos'
-        ? const []
-        : const [_utiData],
-  );
-
-  static XTypeGroup get tvppProject => tvppProjectFor(Platform.operatingSystem);
 
   /// Anicel's OWN brush file, for the one place that WRITES one: the preset
   /// panel's export. We own the type, so it is declared rather than borrowed
@@ -239,46 +287,24 @@ abstract final class FileTypeGroups {
         : const [_utiData],
   );
 
-  /// Still images — the brush tip importer.
-  static const XTypeGroup images = XTypeGroup(
-    label: 'Images',
-    extensions: imageFileExtensions,
-    uniformTypeIdentifiers: [_utiImage],
-  );
-
-  /// What the media viewer can actually display today.
+  /// Everything the media pool will register, movies included — what the
+  /// one door sends to the import window, a relink's pick, and what the
+  /// media viewer's Open takes.
   ///
-  /// 🆕Movies joined on 2026-08-29 (유저: 「비디오 지금 불러오는거 못하니까
-  /// 불러와서 재생가능하게」). ⛔This list is a CLAIM about the viewer, so
-  /// it has to move when the viewer does — a picker that cannot offer a
-  /// movie makes「the viewer plays movies」untrue from the user's side, and
-  /// nothing in the viewer would have failed to say so.
-  static const XTypeGroup viewableMedia = XTypeGroup(
-    label: 'Viewable media',
-    extensions: [...imageFileExtensions, 'pdf', ...videoFileExtensions],
-    uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiMovie],
-  );
-
-  /// What the import window can place on the timeline: stills, documents and
-  /// sound. Video is absent because placement is not implemented — the import
-  /// window refuses a movie by kind, so offering one in its picker would only
-  /// produce a warning row.
-  static const XTypeGroup importableMedia = XTypeGroup(
-    label: 'Media',
-    extensions: [...imageFileExtensions, 'pdf', ...audioFileExtensions],
-    uniformTypeIdentifiers: [_utiImage, _utiPdf, _utiAudio],
-  );
-
-  /// Everything the media pool will register, movies included. Wider than
-  /// [importableMedia] because the browser registers assets rather than
-  /// placing them.
+  /// ⛔The viewer's half is a CLAIM about the viewer: it opens every kind
+  /// here — a movie (2026-08-29), a sound as its waveform (09-08) — and a
+  /// picker narrower than the viewer makes that untrue from the user's
+  /// side, with nothing in the viewer failing to say so. ↩️It had a list of
+  /// its own that still left sound out, 「the one deliberate absence」, a
+  /// month after the viewer learned to open one (F-282-Q2, 유저 2026-10-09:
+  /// 받는 종류는 열기와 같게, 소리 포함).
   static const XTypeGroup poolMedia = XTypeGroup(
     label: 'Media',
     extensions: [
       ...audioFileExtensions,
       ...imageFileExtensions,
       ...videoFileExtensions,
-      'pdf',
+      ...pdfFileExtensions,
     ],
     uniformTypeIdentifiers: [_utiAudio, _utiImage, _utiMovie, _utiPdf],
   );

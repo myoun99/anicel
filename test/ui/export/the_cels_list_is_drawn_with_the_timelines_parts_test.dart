@@ -23,7 +23,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
-import 'package:anicel/src/ui/export/export_cels_selection.dart';
 import 'package:anicel/src/ui/export/export_cels_standing.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -38,6 +37,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// The export window's Cels list ([ExportCelsBoard], F-289) — drawn with
 /// the timeline's own parts.
@@ -74,13 +74,23 @@ void main() {
   );
 
   /// Folder F holding B (three cels) · A (two) with a free attach row A_r ·
-  /// a LO row L the 원화 label leaves off · a direction row.
+  /// a LO row L the 원화 label leaves off · N, whose second drawing no
+  /// block places · a direction row.
   Cut film() => Cut(
     id: cutId,
     name: '301',
     duration: 8,
     canvasSize: const CanvasSize(width: 8, height: 8),
     layers: [
+      Layer(
+        id: const LayerId('n'),
+        name: 'N',
+        frames: [frame('n-1', '1'), frame('n-2', '2')],
+        mark: key,
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('n-1'), length: 2),
+        },
+      ),
       row('l', 'L', ['1'], mark: layout),
       row('a', 'A', ['1', '2']),
       row('ar', 'A_r', ['1'], attachedTo: 'a'),
@@ -113,7 +123,6 @@ void main() {
 
   ({List<ExportCelsBoardRow> rows, Cut cut}) listOf({
     ExportCelsCutDelta? delta,
-    Set<LayerId> shut = const {},
     CelsExportSpec spec = celsAlone,
   }) {
     final cut = film();
@@ -134,18 +143,7 @@ void main() {
       spec: spec,
       overrides: overrides,
     );
-    return (
-      cut: cut,
-      rows: ExportCelsListing(cut, spec).rows(
-        selection: resolveExportCelsSelection(
-          cut: cut,
-          spec: spec,
-          delta: delta,
-        ),
-        plan: plan,
-        shut: shut,
-      ),
-    );
+    return (cut: cut, rows: ExportCelsListing(cut, spec).rows(plan));
   }
 
   final pressed = <String>[];
@@ -153,15 +151,15 @@ void main() {
   Future<void> pumpBoard(
     WidgetTester tester, {
     ExportCelsCutDelta? delta,
-    Set<LayerId> shut = const {},
     ExportCelsStanding standing = const ExportCelsStanding(),
     bool enabled = true,
     double width = 900,
     List<ExportCelsDirection> directions = const [],
+    ExportCelsCamera camera = const (laid: false, onPressed: null),
     CelsExportSpec spec = celsAlone,
   }) async {
     pressed.clear();
-    final (:rows, :cut) = listOf(delta: delta, shut: shut, spec: spec);
+    final (:rows, cut: _) = listOf(delta: delta, spec: spec);
     final stood = standing.settledOn(rows);
     await tester.pumpWidget(
       MaterialApp(
@@ -173,6 +171,7 @@ void main() {
               width: width,
               child: ExportCelsBoard(
                 rules: const SizedBox(key: ValueKey<String>('rules')),
+                stack: const SizedBox(key: ValueKey<String>('stack')),
                 band: ExportCelsBand(
                   cutPicker: const SizedBox(key: ValueKey<String>('picker')),
                   count: '6 files',
@@ -180,15 +179,14 @@ void main() {
                   canStepBack: false,
                   canStepOn: true,
                   directions: directions,
+                  camera: camera,
                 ),
                 rows: rows,
-                layers: cut.layers,
                 standing: stood.rowIn(rows)?.idValue,
                 shown: stood.shown,
                 enabled: enabled,
                 onRowSwitched: (row, on) =>
                     pressed.add('switch ${row.idValue} $on'),
-                onFolded: (row) => pressed.add('fold ${row.idValue}'),
                 onStoodOn: (row) => pressed.add('stand ${row.idValue}'),
                 onSheetPressed: (sheet) =>
                     pressed.add('block ${sheet.idValue}'),
@@ -213,10 +211,12 @@ void main() {
               .decoration!
           as BoxDecoration;
 
-  testWidgets('the rows are the cut\'s, top to bottom as the timeline draws '
-      'them, each one rail row tall', (tester) async {
+  testWidgets('the rows are the cut\'s STACKS, top to bottom as the timeline '
+      'draws them — no folder, no attach row — each one rail row tall', (
+    tester,
+  ) async {
     await pumpBoard(tester);
-    expect(tester.celsBoardRowIds, ['f', 'b', 'ar', 'a', 'l']);
+    expect(tester.celsBoardRowIds, ['b', 'a', 'l', 'n']);
     final rowHeight = timelineLayerRowHeightIn(
       tester.element(find.byType(ExportCelsBoard)),
     );
@@ -231,16 +231,20 @@ void main() {
 
   testWidgets('🚨a row is the timeline rail\'s OWN leading cells: the '
       'switch in the section slot, the label plate, the attach arrow in the '
-      'sheet slot, the kind, the nesting guides, then the name', (
-    tester,
-  ) async {
-    await pumpBoard(tester);
+      'sheet slot, the kind, then the name — at one indent, a row a stack of '
+      'files', (tester) async {
+    await pumpBoard(
+      tester,
+      // A off: its stack's only picture is the free attach row, whose name
+      // and arrow the row wears.
+      delta: ExportCelsCutDelta().withLayerOverride(const LayerId('a'), false),
+    );
     double left(Finder finder) => tester.getTopLeft(finder).dx;
-    for (final (id, depth) in [('a', 0), ('ar', 0), ('b', 1), ('f', 0)]) {
+    for (final id in ['a', 'b', 'l']) {
       final rail = keyed('export-cels-row-$id');
       expect(
         left(keyed('export-cels-name-$id')) - left(rail),
-        layerRailLeadingWidth + layerRailNameIndent(depth),
+        layerRailLeadingWidth + layerRailNameIndent(0),
         reason: '$id: the name starts where every rail starts it',
       );
       expect(
@@ -261,101 +265,55 @@ void main() {
         findsOneWidget,
       );
     }
-    expect(keyed('export-cels-layer-attach-arrow-ar'), findsOneWidget);
-    expect(keyed('export-cels-layer-attach-arrow-a'), findsNothing);
-    expect(
-      tester
-          .widget<LayerTypeButton>(
-            find.descendant(
-              of: keyed('export-cels-row-f'),
-              matching: find.byType(LayerTypeButton),
-            ),
-          )
-          .kind,
-      LayerKind.folder,
-    );
+    expect(tester.widget<Text>(keyed('export-cels-name-a')).data, 'A_r');
+    expect(find.named('export-cels-layer-attach-arrow-a'), findsOneWidget);
+    expect(find.named('export-cels-layer-attach-arrow-b'), findsNothing);
   });
 
-  testWidgets('the fold twirl is the rail\'s, at the far edge of the name — '
-      'on a folder and on a base that carries attach rows, and its seat is '
-      'every row\'s', (tester) async {
-    await pumpBoard(tester);
-    LayerFoldTwirl twirlOf(String id) => tester.widget<LayerFoldTwirl>(
-      find.descendant(
-        of: keyed('export-cels-row-$id'),
-        matching: find.byType(LayerFoldTwirl),
-      ),
-    );
-    for (final id in ['f', 'a']) {
-      expect(twirlOf(id).expanded, isTrue, reason: id);
-    }
-    for (final id in ['b', 'ar', 'l']) {
-      expect(keyed('export-cels-twirl-$id'), findsNothing, reason: id);
-    }
-    // The seat is reserved on a row that folds nothing: every row keeps
-    // the twirl's slot at one x, inside the rail's hairline.
-    final seats = {
-      for (final id in ['f', 'a', 'b', 'l'])
-        tester.getRect(keyed('export-cels-twirl-seat-$id')),
-    };
-    expect(
-      {for (final seat in seats) (seat.left, seat.width)},
-      hasLength(1),
-      reason: '$seats',
-    );
-    expect(seats.first.width, layerLaneToggleSlotWidth);
-    expect(
-      tester.getTopRight(keyed('export-cels-row-a')).dx - seats.first.right,
-      1,
-      reason: 'the rail\'s hairline',
-    );
-
-    await tester.tap(keyed('export-cels-twirl-a'));
-    await tester.pump();
-    expect(pressed, ['fold a']);
-
-    await pumpBoard(tester, shut: {const LayerId('a'), const LayerId('f')});
-    expect(tester.celsBoardRowIds, ['f', 'a', 'l']);
-    for (final id in ['f', 'a']) {
-      expect(twirlOf(id).expanded, isFalse, reason: id);
-    }
-  });
-
-  testWidgets('🗣️a row\'s switch is the app\'s boolean; a folder\'s can say '
-      'its rows disagree — and a press asks for what its state turns to', (
+  // export-four-tabs (유저 2026-10-09): 「접기 펼치기 없이 한 행만 보이면되」.
+  testWidgets('nothing in the list folds: no twirl, no seat for one', (
     tester,
   ) async {
     await pumpBoard(tester);
     expect(
       find.descendant(
-        of: tester.celsBoardSwitch('a'),
-        matching: find.byType(BooleanDot),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: tester.celsBoardSwitch('a'),
-        matching: find.byType(BooleanMixDot),
+        of: find.byType(ExportCelsBoard),
+        matching: find.byType(LayerFoldTwirl),
       ),
       findsNothing,
     );
-    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
-    expect(tester.celsBoardSwitchState('l'), BooleanMix.off);
-    expect(
-      find.descendant(
-        of: tester.celsBoardSwitch('f'),
-        matching: find.byType(BooleanMixDot),
-      ),
-      findsOneWidget,
+  });
+
+  testWidgets('🗣️a row\'s switch is the app\'s boolean over its files — mixed '
+      'while some are off — and a press asks for what its state turns to', (
+    tester,
+  ) async {
+    await pumpBoard(
+      tester,
+      delta: ExportCelsCutDelta().withCelSkipped((
+        row: const LayerId('b'),
+        cel: const FrameId('b-2'),
+      ), true),
     );
-    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
+    for (final id in ['a', 'b', 'l']) {
+      expect(
+        find.descendant(
+          of: tester.celsBoardSwitch(id),
+          matching: find.byType(BooleanMixDot),
+        ),
+        findsOneWidget,
+        reason: id,
+      );
+    }
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(tester.celsBoardSwitchState('b'), BooleanMix.mixed);
+    expect(tester.celsBoardSwitchState('l'), BooleanMix.off);
 
     await tester.tap(tester.celsBoardSwitch('a'));
+    await tester.tap(tester.celsBoardSwitch('b'));
     await tester.tap(tester.celsBoardSwitch('l'));
-    await tester.tap(tester.celsBoardSwitch('f'));
     await tester.pump();
-    expect(pressed, ['switch a false', 'switch l true', 'switch f false']);
+    expect(pressed, ['switch a false', 'switch b true', 'switch l true']);
   });
 
   testWidgets('a row that is off dims its plate and its name by COLOUR — no '
@@ -444,8 +402,9 @@ void main() {
       ('2', false),
       ('3', true),
     ]);
-    expect(tester.celsBoardBlocksOf('l'), [('1', false)]);
-    for (final (rowId, frameId) in [('b', 'b-2'), ('l', 'l-1')]) {
+    expect(tester.celsBoardBlocksOf('n'), [('1', true), ('2', false)]);
+    expect(tester.celsBoardBlocksOf('l'), isEmpty, reason: 'it holds none');
+    for (final (rowId, frameId) in [('b', 'b-2'), ('n', 'n-2')]) {
       final paper = paperOf(tester, rowId, frameId);
       expect(paper.color, isNull, reason: '$rowId $frameId');
       expect(
@@ -493,18 +452,15 @@ void main() {
   });
 
   testWidgets('a press on a block is that drawing\'s; on a name, its row\'s '
-      '— and nothing takes a press while an export runs', (tester) async {
+      '— a row with no file too — and nothing takes a press while an export '
+      'runs', (tester) async {
     await pumpBoard(tester);
     await tester.tap(tester.celsBoardBlock('b', 'b-3'));
-    await tester.tap(tester.celsBoardBlock('l', 'l-1'));
+    await tester.tap(tester.celsBoardBlock('n', 'n-2'));
     await tester.tap(keyed('export-cels-stand-a'));
+    await tester.tap(keyed('export-cels-stand-l'));
     await tester.pump();
-    expect(pressed, ['block b-3', 'block l-1', 'stand a']);
-    expect(
-      keyed('export-cels-stand-f'),
-      findsNothing,
-      reason: 'a folder holds no drawing to stand on',
-    );
+    expect(pressed, ['block b-3', 'block n-2', 'stand a', 'stand l']);
 
     await pumpBoard(tester, enabled: false);
     await tester.tap(tester.celsBoardBlock('b', 'b-3'), warnIfMissed: false);
@@ -532,8 +488,11 @@ void main() {
     expect(across.height, AppScrollbarLane.wide);
     expect(
       down.left,
-      board.left + 1 + ExportCelsBoard.rulesWidth,
-      reason: 'left of the rail, right of the rules',
+      board.left +
+          1 +
+          ExportCelsBoard.rulesWidth +
+          ExportCelsBoard.stackWidth,
+      reason: 'left of the rail, right of the rules and the attach column',
     );
     expect(
       across.left,
@@ -569,8 +528,8 @@ void main() {
     });
 
     testWidgets('🗣️a pill a direction drawing — what its block says on it, '
-        'its whole name on its tooltip, lit while it is laid — and CAM, the '
-        'door alone', (tester) async {
+        'its whole name on its tooltip, lit while it is laid — and CAM, lit '
+        'while the camera\'s work is (I-89-Q18)', (tester) async {
       await pumpBoard(
         tester,
         directions: [
@@ -606,11 +565,21 @@ void main() {
       expect(pressed, ['lay tu']);
 
       expect(pill('export-cels-cam').label, 'CAM');
+      expect(pill('export-cels-cam').selected, isFalse);
       expect(
         pill('export-cels-cam').onTap,
         isNull,
-        reason: '유저: 「그 정한거를 가져오도록 입구만 만들어 주면되」',
+        reason: 'nothing to lay: the pill keeps its place',
       );
+
+      await pumpBoard(
+        tester,
+        camera: (laid: true, onPressed: () => pressed.add('lay camera')),
+      );
+      expect(pill('export-cels-cam').selected, isTrue);
+      await tester.tap(keyed('export-cels-cam'));
+      await tester.pump();
+      expect(pressed, ['lay camera']);
     });
 
     testWidgets('a laid direction is said in ONE colour: its pill, and the '
@@ -646,7 +615,57 @@ void main() {
       for (final other in ['b-b-2', 'b-b-3', 'a-a-1', 'l-l-1']) {
         expect(keyed('export-cels-block-d-$other'), findsNothing);
       }
-      expect(tester.widget<Pill>(keyed('export-cels-cam')).tone, isNull);
+      expect(
+        tester.widget<Pill>(keyed('export-cels-cam')).tone,
+        exportLaidCameraInk,
+      );
+      expect(keyed('export-cels-block-c-b-b-1'), findsNothing);
+    });
+
+    // 🗣️I-89-Q21 (유저 2026-10-12): 「「C」를 붙인다」.
+    testWidgets('the camera\'s work laid is said in ONE colour: the CAM pill, '
+        'and the 「C」 on the drawing it is laid over — left of the 「D」 where '
+        'a direction is laid too', (tester) async {
+      const b1 = (row: LayerId('b'), cel: FrameId('b-1'));
+      const b2 = (row: LayerId('b'), cel: FrameId('b-2'));
+      await pumpBoard(
+        tester,
+        delta: ExportCelsCutDelta()
+            .withCameraOver(b1, true)
+            .withCameraOver(b2, true)
+            .withDirectionOver(
+              b2,
+              (row: const LayerId('dir'), cel: const FrameId('d-1')),
+              true,
+            ),
+        camera: (laid: true, onPressed: () {}),
+      );
+
+      expect(
+        tester.widget<Pill>(keyed('export-cels-cam')).tone,
+        exportLaidCameraInk,
+      );
+      expect(
+        tester.widget<Text>(keyed('export-cels-block-c-b-b-1')).style!.color,
+        exportLaidCameraInk,
+      );
+      expect(
+        keyed('export-cels-block-d-b-b-1'),
+        findsNothing,
+        reason: 'the camera alone is laid over b-1',
+      );
+      expect(
+        tester.getTopRight(keyed('export-cels-block-c-b-b-2')).dx,
+        lessThanOrEqualTo(
+          tester.getTopLeft(keyed('export-cels-block-d-b-b-2')).dx,
+        ),
+        reason: 'both over b-2: 「C D」, the 「D」 where it stood alone',
+      );
+      // The mark is on the drawings the camera is laid over, and on no
+      // other.
+      for (final other in ['b-b-3', 'a-a-1', 'l-l-1']) {
+        expect(keyed('export-cels-block-c-$other'), findsNothing);
+      }
     });
 
     testWidgets('the caption over the pills: the whole of it where the band '
@@ -656,7 +675,11 @@ void main() {
       String caption() =>
           tester.widget<Text>(keyed('export-cels-lay-caption')).data!;
 
-      await pumpBoard(tester, width: 900);
+      // The band's room as the board had it before its attach column — on
+      // a surface wide enough to hold it.
+      await tester.binding.setSurfaceSize(const Size(1400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await pumpBoard(tester, width: 800 + ExportCelsBoard.stackWidth);
       expect(caption(), strings.exLayDirection);
       expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
 
@@ -682,17 +705,17 @@ void main() {
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', true)]);
     expect(find.byTooltip('_Direction_T.U_A-B.png'), findsOneWidget);
 
+    // Turned off, it keeps its file's name for when it is turned back on.
     await pumpBoard(
       tester,
       spec: withDirection,
-      delta: ExportCelsCutDelta().withLayerOverride(
-        const LayerId('dir'),
-        false,
-      ),
+      delta: ExportCelsCutDelta().withCelSkipped((
+        row: const LayerId('dir'),
+        cel: const FrameId('d-1'),
+      ), true),
     );
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', false)]);
-    expect(find.byTooltip('T.U_A-B'), findsOneWidget);
-    expect(find.byTooltip('_Direction_T.U_A-B.png'), findsNothing);
+    expect(find.byTooltip('_Direction_T.U_A-B.png'), findsOneWidget);
   });
 
   testWidgets('a block says its file on hover — and a drawing that is no '
@@ -701,7 +724,7 @@ void main() {
     final written = tester.celsBoardBlockOf('b', 'b-2').sheet;
     expect(written.fileName, isNotEmpty);
     expect(find.byTooltip(written.fileName), findsOneWidget);
-    final refused = tester.celsBoardBlockOf('l', 'l-1').sheet;
+    final refused = tester.celsBoardBlockOf('n', 'n-2').sheet;
     expect(refused.planned, isFalse);
     expect(find.byTooltip(refused.fullName), findsWidgets);
   });

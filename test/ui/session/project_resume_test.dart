@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/session/project_resume.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart';
 
 /// F-123: where the work stood travels as a JSON map beside the project,
 /// and every part of it answers for itself.
@@ -73,10 +74,12 @@ void main() {
       const resume = ProjectResume(
         storyboardZoom: 3.5,
         frameAxisOffsets: {'timeline': 480, 'storyboard': 96.5},
+        layerAxisOffsets: {'timeline': 120, 'xsheet': 64.5},
       );
       final back = ProjectResume.fromJson(resume.toJson());
       expect(back.storyboardZoom, 3.5);
       expect(back.frameAxisOffsets, {'timeline': 480.0, 'storyboard': 96.5});
+      expect(back.layerAxisOffsets, {'timeline': 120.0, 'xsheet': 64.5});
     });
 
     test('🚨a part that cannot be read is dropped ALONE', () {
@@ -88,13 +91,68 @@ void main() {
           '': 30,
           'storyboard': 12,
         },
+        'layerAxisOffsets': {
+          'timeline': 'down',
+          'xsheet': 0,
+          'storyboard': 40,
+        },
       });
       expect(back.storyboardZoom, isNull);
       expect(back.frameAxisOffsets, {'storyboard': 12.0});
+      expect(back.layerAxisOffsets, {'storyboard': 40.0});
       expect(
         ProjectResume.fromJson({'storyboardZoom': 0}).storyboardZoom,
         isNull,
         reason: 'a zoom of nothing is no zoom',
+      );
+    });
+  });
+
+  group('the header graphs and the lanes pinned to them (F-360-Q1)', () {
+    test('round-trip through the JSON — each graph\'s height, what it '
+        'plots and whether it is enlarged', () {
+      const graphs = LaneGraphsView(
+        open: {
+          'a|transform-group': LaneGraph(),
+          'b|fx-group:1': LaneGraph(
+            extent: 240,
+            mode: LaneGraphMode.speed,
+            enlarged: true,
+          ),
+        },
+        pinned: {'a|x', 'b|fx:1:size'},
+      );
+      expect(
+        ProjectResume.fromJson(
+          const ProjectResume(laneGraphs: graphs).toJson(),
+        ).laneGraphs,
+        graphs,
+      );
+    });
+
+    test('🚨a part that cannot be read is dropped ALONE', () {
+      final back = ProjectResume.fromJson({
+        'laneGraphs': {
+          'a|t': 'open',
+          '': <String, Object?>{},
+          'b|t': {'extent': -5, 'mode': 'sideways', 'enlarged': 'yes'},
+          'c|t': {'extent': 120.5},
+        },
+        'pinnedLanes': ['a|x', 7, '', 'b|y'],
+      });
+      expect(back.laneGraphs.open, {
+        'b|t': const LaneGraph(),
+        'c|t': const LaneGraph(extent: 120.5),
+      }, reason: 'not a graph, no key: no graph — a field read wrong: that '
+          'field as on a graph nobody touched');
+      expect(back.laneGraphs.pinned, {'a|x', 'b|y'});
+      expect(
+        ProjectResume.fromJson({
+          'laneGraphs': 'open',
+          'pinnedLanes': 'a|x',
+        }).laneGraphs,
+        LaneGraphsView.none,
+        reason: 'not a map, not a list: nothing was saved',
       );
     });
   });

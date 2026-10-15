@@ -1,32 +1,19 @@
+/// What one plan's execution invalidated — the layer tiles, the one kind a
+/// [CacheInvalidationPlan] carries ([CacheInvalidationPlan] says why).
 class CacheInvalidationExecutionResult {
-  CacheInvalidationExecutionResult({
-    required this.layerTileCount,
-    required this.frameCompositeCount,
-    required this.playbackPreviewCount,
-  }) {
+  CacheInvalidationExecutionResult({required this.layerTileCount}) {
     _validateCount(layerTileCount, 'layerTileCount');
-    _validateCount(frameCompositeCount, 'frameCompositeCount');
-    _validateCount(playbackPreviewCount, 'playbackPreviewCount');
   }
 
   final int layerTileCount;
-  final int frameCompositeCount;
-  final int playbackPreviewCount;
 
-  int get totalCount =>
-      layerTileCount + frameCompositeCount + playbackPreviewCount;
+  int get totalCount => layerTileCount;
 
   bool get didInvalidate => totalCount > 0;
 
-  CacheInvalidationExecutionResult copyWith({
-    int? layerTileCount,
-    int? frameCompositeCount,
-    int? playbackPreviewCount,
-  }) {
+  CacheInvalidationExecutionResult copyWith({int? layerTileCount}) {
     return CacheInvalidationExecutionResult(
       layerTileCount: layerTileCount ?? this.layerTileCount,
-      frameCompositeCount: frameCompositeCount ?? this.frameCompositeCount,
-      playbackPreviewCount: playbackPreviewCount ?? this.playbackPreviewCount,
     );
   }
 
@@ -34,19 +21,14 @@ class CacheInvalidationExecutionResult {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is CacheInvalidationExecutionResult &&
-          other.layerTileCount == layerTileCount &&
-          other.frameCompositeCount == frameCompositeCount &&
-          other.playbackPreviewCount == playbackPreviewCount;
+          other.layerTileCount == layerTileCount;
 
   @override
-  int get hashCode =>
-      Object.hash(layerTileCount, frameCompositeCount, playbackPreviewCount);
+  int get hashCode => layerTileCount.hashCode;
 
   @override
   String toString() =>
-      'CacheInvalidationExecutionResult(layerTileCount: $layerTileCount, '
-      'frameCompositeCount: $frameCompositeCount, '
-      'playbackPreviewCount: $playbackPreviewCount)';
+      'CacheInvalidationExecutionResult(layerTileCount: $layerTileCount)';
 }
 
 void _validateCount(int count, String name) {

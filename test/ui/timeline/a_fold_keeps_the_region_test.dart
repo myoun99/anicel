@@ -58,11 +58,11 @@ void main() {
   State stateOf(WidgetTester tester, Type type) =>
       tester.state(find.byType(type, skipOffstage: false));
 
-  testWidgets('🚨fold and unfold keep the grid, its host and the storyboard '
-      'beside them', (tester) async {
+  testWidgets('🚨fold and unfold keep the grid and its host', (tester) async {
     await pumpApp(tester);
-    // The storyboard once, so its kept-alive tab is built beside the
-    // timeline's.
+    // The storyboard once and back: ↩️it stayed built beside the timeline
+    // (kept alive) and this pinned that a fold kept it too; a panel behind
+    // another is not built now (유저 2026-10-14).
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
@@ -71,19 +71,20 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
     );
     await tester.pumpAndSettle();
+    expect(
+      find.byType(StoryboardPanel, skipOffstage: false),
+      findsNothing,
+      reason: '⛔전제: the storyboard behind the timeline is not built',
+    );
     final kept = [
-      for (final type in [LayerTimelineGrid, TimelineTabHost, StoryboardPanel])
+      for (final type in [LayerTimelineGrid, TimelineTabHost])
         stateOf(tester, type),
     ];
 
     await tester.tap(fold);
     await tester.pumpAndSettle();
     expect(find.byType(CollapsedRowOverlay), findsOneWidget, reason: '⛔전제');
-    for (final (i, type) in [
-      LayerTimelineGrid,
-      TimelineTabHost,
-      StoryboardPanel,
-    ].indexed) {
+    for (final (i, type) in [LayerTimelineGrid, TimelineTabHost].indexed) {
       expect(
         identical(stateOf(tester, type), kept[i]),
         isTrue,
@@ -93,11 +94,7 @@ void main() {
 
     await tester.tap(fold);
     await tester.pumpAndSettle();
-    for (final (i, type) in [
-      LayerTimelineGrid,
-      TimelineTabHost,
-      StoryboardPanel,
-    ].indexed) {
+    for (final (i, type) in [LayerTimelineGrid, TimelineTabHost].indexed) {
       expect(
         identical(stateOf(tester, type), kept[i]),
         isTrue,

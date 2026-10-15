@@ -32,7 +32,6 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
-import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/export_cels_board_probe.dart';
@@ -272,9 +271,12 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a document\'s row switched off writes none of its files — '
-      'its blocks hollow, the label 「커스텀」 — and a block of it says why '
-      'when pressed; 초기화 puts it back', (tester) async {
+  // export-four-tabs ③ (유저 2026-10-09): a row's switch is its files. ↩️A
+  // document's row had an off of its own — a row exception that refused
+  // every page and made the label read 「커스텀」.
+  testWidgets('a document\'s row switched off turns its files off — its '
+      'blocks hollow, no label left its rule — a block pressed turns its '
+      'file back, and 초기화 puts it all back', (tester) async {
     final session = film();
     addTearDown(session.dispose);
     await pumpCels(tester, session, spec: everything);
@@ -287,41 +289,37 @@ void main() {
     expect(tester.celsBoardSwitchState('document-timesheet'), BooleanMix.off);
     expect(tester.celsBoardBlocksOf('document-timesheet'), [('301', false)]);
     expect(count(tester), '3 files');
-    expect(textOf(tester, 'export-cels-label-text'), strings.exSelCustom);
+    expect(
+      textOf(tester, 'export-cels-label-text'),
+      isNot(strings.exSelCustom),
+    );
     expect(
       session.repository
           .requireProject()
           .exportOverrides
           .deltaFor(cutId)!
-          .documentsOff,
-      {ExportCelKind.timesheet},
+          .skippedPages,
+      {(document: ExportCelKind.timesheet, page: 0)},
     );
 
-    // The file is no file now: its block says why, and stays as it is.
     await tester.pressInCelsBoard(
       tester.celsBoardBlock('document-timesheet', 'timesheet-cut-0'),
     );
-    expect(
-      find.descendant(
-        of: find.byType(CursorNoticeOverlay),
-        matching: find.text(strings.noticeExportRowOff),
-      ),
-      findsOneWidget,
-    );
-    expect(tester.celsBoardBlocksOf('document-timesheet'), [('301', false)]);
+    expect(tester.celsBoardSwitchState('document-timesheet'), BooleanMix.on);
+    expect(count(tester), '4 files');
 
+    await tester.pressInCelsBoard(
+      tester.celsBoardSwitch('document-timesheet'),
+    );
     await press(tester, 'export-cels-reset');
     expect(tester.celsBoardSwitchState('document-timesheet'), BooleanMix.on);
     expect(count(tester), '4 files');
-    expect(
-      textOf(tester, 'export-cels-label-text'),
-      isNot(strings.exSelCustom),
-    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a document\'s block is its file\'s switch: off it is hollow '
-      'and out of the count — and that is no row exception', (tester) async {
+      'and out of the count — no row exception — and a document of ONE file '
+      'turned off IS its row switched off', (tester) async {
     final session = film();
     addTearDown(session.dispose);
     await pumpCels(tester, session, spec: everything);
@@ -330,7 +328,9 @@ void main() {
       tester.celsBoardBlock('document-envelope', 'envelope-cut-0'),
     );
     expect(tester.celsBoardBlocksOf('document-envelope'), [('301', false)]);
-    expect(tester.celsBoardSwitchState('document-envelope'), BooleanMix.on);
+    // export-four-tabs ③ (유저 2026-10-09): 「한 장만 있을때 그 블록
+    // 빈블록만들면 해당 행 체크해제랑 동일한 로직」.
+    expect(tester.celsBoardSwitchState('document-envelope'), BooleanMix.off);
     expect(count(tester), '3 files');
     expect(listed(tester), ['A1.png', 'A2.png', '_TS301.png']);
     expect(
@@ -558,7 +558,7 @@ void main() {
     expect(listed(tester), ['_TS301_1.png', '_TS301_2.png', '_TS301_3.png']);
     expect(count(tester), '3 files');
 
-    // The second page alone goes — its row stays on.
+    // The second page alone goes — its row says its files disagree.
     await tester.pressInCelsBoard(
       tester.celsBoardBlock('document-timesheet', 'timesheet-cut-1'),
     );
@@ -567,7 +567,10 @@ void main() {
       ('2', false),
       ('3', true),
     ]);
-    expect(tester.celsBoardSwitchState('document-timesheet'), BooleanMix.on);
+    expect(
+      tester.celsBoardSwitchState('document-timesheet'),
+      BooleanMix.mixed,
+    );
     expect(count(tester), '2 files');
 
     // Stood on, the row walks the pages it writes.

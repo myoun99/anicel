@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show LayerFolderIndex;
 import '../../models/layer_id.dart';
+import 'berth_row.dart';
 import 'layer_rail_columns.dart' show layerRailEyeIsOn;
 
 /// What a rail row's eye shows: its own switch ([on]), and whether a folder
@@ -93,13 +94,43 @@ Map<LayerId, RailEye> railEyesOf(
 
 /// Builds from [layer]'s eye as [RailEyes] shows it — the part of a row that
 /// a flip of the eye rebuilds, and the only part.
-class RailEyeBuilder extends StatelessWidget {
+class RailEyeBuilder extends StatefulWidget {
   const RailEyeBuilder({super.key, required this.layer, required this.builder});
 
   final Layer layer;
   final Widget Function(BuildContext context, RailEye eye) builder;
 
   @override
-  Widget build(BuildContext context) =>
-      builder(context, RailEyes.of(context, layer));
+  State<RailEyeBuilder> createState() => _RailEyeBuilderState();
+}
+
+class _RailEyeBuilderState extends State<RailEyeBuilder> {
+  RailEye? _eye;
+  Widget? _built;
+
+  @override
+  void didUpdateWidget(RailEyeBuilder oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _built = null;
+  }
+
+  /// The eye of the layer the row stands for NOW ([BerthRow]) — a kept
+  /// row's [layer] is the one it was built for.
+  ///
+  /// 🚨I-57 ㉣ (10-13, measured on the user's project): a cut switch hands a
+  /// kept row another layer, and every eye in it must ask that layer's eye
+  /// — but it is mostly the same eye, and building it again built what it
+  /// shows again: 108 of a crossing's rebuilds, six rows. What it shows is
+  /// handed back while the eye is the same. It is built in a [Builder] of
+  /// its own, so what else it reads (the theme, the words) rebuilds it
+  /// there, never through this.
+  @override
+  Widget build(BuildContext context) {
+    final eye = RailEyes.of(context, BerthRow.of(context) ?? widget.layer);
+    if (_built == null || eye != _eye) {
+      _eye = eye;
+      _built = Builder(builder: (context) => widget.builder(context, eye));
+    }
+    return _built!;
+  }
 }

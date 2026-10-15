@@ -1,5 +1,6 @@
 import 'dart:ffi';
 import 'dart:io' show Platform;
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
@@ -89,9 +90,6 @@ final class QaAudioDevice {
       Int32,
       Pointer<QaAudioSourceStruct>,
       Int32,
-      Pointer<Float>,
-      Int64,
-      Pointer<Int64>,
       Pointer<QaAudioEnvelopeKeyStruct>,
       Int32,
     ),
@@ -100,13 +98,37 @@ final class QaAudioDevice {
       int,
       Pointer<QaAudioSourceStruct>,
       int,
-      Pointer<Float>,
-      int,
-      Pointer<Int64>,
       Pointer<QaAudioEnvelopeKeyStruct>,
       int,
     )
   >('qa_audio_device_set_schedule');
+  late final _bufferNew = _library
+      .lookupFunction<
+        Pointer<Float> Function(Int64),
+        Pointer<Float> Function(int)
+      >('qa_audio_buffer_new');
+  late final _bufferReleaseNative = _library
+      .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
+        'qa_audio_buffer_release',
+      );
+  late final _bufferRelease = _bufferReleaseNative
+      .asFunction<void Function(Pointer<Void>)>();
+
+  late final _bufferRetain = _library
+      .lookupFunction<
+        Pointer<Float> Function(Pointer<Float>),
+        Pointer<Float> Function(Pointer<Float>)
+      >('qa_audio_buffer_retain', isLeaf: true);
+  late final _bufferHolds = _library
+      .lookupFunction<
+        Int32 Function(Pointer<Float>),
+        int Function(Pointer<Float>)
+      >('qa_audio_buffer_holds', isLeaf: true);
+
+  /// The buffers [newSamples] made, by the list that is their samples.
+  final Expando<Pointer<Float>> _made = Expando<Pointer<Float>>(
+    'device buffers',
+  );
   late final _play = _library
       .lookupFunction<Int32 Function(Int64, Int64, Int32), int Function(int, int, int)>(
         'qa_audio_device_play',
@@ -169,6 +191,17 @@ final class QaAudioDevice {
       .lookupFunction<Int64 Function(), int Function()>(
         'qa_audio_capture_latency_samples',
       );
+  late final _captureFrames = _library
+      .lookupFunction<Int64 Function(), int Function()>(
+        'qa_audio_capture_frames',
+      );
+  late final _captureClock = _library
+      .lookupFunction<Int32 Function(Pointer<Int64>), int Function(Pointer<Int64>)>(
+        'qa_audio_capture_clock',
+      );
+
+  /// Where [readCaptureClock] has the native side write its two numbers.
+  late final Pointer<Int64> _captureClockOut = calloc<Int64>(2);
 
   /// Opens the output device, returning its ACTUAL sample rate (0 = the
   /// device could not be opened).
@@ -243,63 +276,108 @@ final class QaAudioDevice {
   /// the user's A/V offset removes.
   int get latencySamples => _latency();
 
-  /// Uploads the schedule and its PCM — legal at ANY time (AUDIO-PRO R3):
-  /// the C builds the replacement in a standby slot and flips atomically,
-  /// so a swap during playback is heard within one mixed block, with the
-  /// old arrays freed only after the callback provably abandoned them.
+  /// [floats] samples in a buffer of the device's own, which a schedule
+  /// plays where it lies ([setSchedule]) — let go when the list goes. Null
+  /// when the memory is not there.
+  Float32List? newSamples(int floats) {
+    final pointer = _bufferNew(floats);
+    if (pointer == nullptr) {
+      return null;
+    }
+    final samples = pointer.asTypedList(
+      floats,
+      finalizer: _bufferReleaseNative,
+      token: pointer.cast(),
+    );
+    _made[samples] = pointer;
+    return samples;
+  }
+
+  /// How many hold the buffer [samples] lie in — the list that made them,
+  /// and each source of a schedule that plays them. -1 for a list
+  /// [newSamples] did not make.
+  int debugHoldsOf(Float32List samples) {
+    final made = _made[samples];
+    return made == null ? -1 : _bufferHolds(made);
+  }
+
+  /// Uploads the schedule — legal at ANY time (AUDIO-PRO R3): the C builds
+  /// the replacement in a standby slot and flips atomically, so a swap
+  /// during playback is heard within one mixed block, with the old arrays
+  /// freed only after the callback provably abandoned them.
   ///
-  /// The PCM is flattened into one block and COPIED on the C side: the
-  /// callback must never chase a pointer into Dart-managed memory.
+  /// 🚨THE SCHEDULE NAMES THE DEVICE'S OWN PCM; IT COPIES NONE OF IT
+  /// (play-press-first-frame-stall, 10-15). Samples [newSamples] made are
+  /// played where they lie, and the slot that plays them holds them past
+  /// their list. Any other list is copied into a buffer made for this
+  /// schedule alone — the callback must never chase a pointer into
+  /// Dart-managed memory, nor one whose life nobody holds. ↩️Every upload
+  /// flattened ALL the PCM into one block here, and the C copied the block
+  /// again (🔬33ms on the AMMI OP press). False uploads nothing: the old
+  /// schedule plays on.
   bool setSchedule({
     required List<AudioMixClip> clips,
     required List<AudioMixSource> sources,
   }) {
-    var totalFloats = 0;
-    final offsets = <int>[];
-    for (final source in sources) {
-      offsets.add(totalFloats);
-      totalFloats += source.samples.length;
-    }
-
     // The clips' envelopes flatten into one shared key array, exactly as
-    // the mixer FFI does (the C copies it beside the PCM) — one scope
-    // builds that whole layout for both paths.
+    // the mixer FFI does — one scope builds that whole layout for both
+    // paths.
     final arrays = QaAudioScheduleArrays(clips, sources);
-    final pcm = calloc<Float>(totalFloats <= 0 ? 1 : totalFloats);
-    final offsetArray = calloc<Int64>(offsets.isEmpty ? 1 : offsets.length);
+    final holds = <Pointer<Float>>[];
     try {
       for (var index = 0; index < sources.length; index += 1) {
         final source = sources[index];
-        // repointed at the C copy
-        arrays.writeSource(index, source, nullptr);
-        offsetArray[index] = offsets[index];
-        if (source.samples.isNotEmpty) {
-          pcm
-              .asTypedList(totalFloats)
-              .setRange(
-                offsets[index],
-                offsets[index] + source.samples.length,
-                source.samples,
-              );
+        final played = _playedFrom(source.samples, holds);
+        if (played == null) {
+          return false;
         }
+        arrays.writeSource(index, source, played);
       }
       return _setSchedule(
             arrays.clipArray,
             clips.length,
             arrays.sourceArray,
             sources.length,
-            pcm,
-            totalFloats,
-            offsetArray,
             arrays.envelopeArray,
             arrays.envelopeTotal,
           ) !=
           0;
     } finally {
-      calloc.free(offsetArray);
-      calloc.free(pcm);
+      // The slot holds what it plays; this call's holds were its own.
+      for (final hold in holds) {
+        _bufferRelease(hold.cast());
+      }
       arrays.free();
     }
+  }
+
+  /// Where the device plays [samples] from — the buffer [newSamples] made
+  /// them in, or a copy made for this call — held for the call in [holds].
+  /// Null when the memory for a copy is not there.
+  ///
+  /// ⚠️A made list that goes takes its maker's hold with it, so the call
+  /// takes a hold of its own, and the buffer lives until the slot holds
+  /// it. The list cannot go before that hold lands: [setSchedule] reads
+  /// it again after this, writing its source.
+  Pointer<Float>? _playedFrom(
+    Float32List samples,
+    List<Pointer<Float>> holds,
+  ) {
+    if (samples.isEmpty) {
+      return nullptr;
+    }
+    final made = _made[samples];
+    if (made != null && _bufferRetain(made) != nullptr) {
+      holds.add(made);
+      return made;
+    }
+    final copy = _bufferNew(samples.length);
+    if (copy == nullptr) {
+      return null;
+    }
+    holds.add(copy);
+    copy.asTypedList(samples.length).setAll(0, samples);
+    return copy;
   }
 
   /// Starts at [startSample]. [stopSample] is exclusive; pass a value at
@@ -391,6 +469,30 @@ final class QaAudioDevice {
 
   /// The capture path's own buffering in samples (typically 10-30 ms).
   int get captureLatencySamples => _captureLatency();
+
+  /// The capture's clock, read in [readClock]'s order — the latest
+  /// callback's word (the frames the ring had been given when it returned,
+  /// and when it was asked, on [clockNowMicros]'s clock; null before the
+  /// capture's first callback), then the frames given as they stand, then
+  /// the time. The playback's shape, so the two lines are read alike.
+  ({
+    ({int positionSamples, int atMicros})? point,
+    int stairSamples,
+    int nowMicros,
+  })
+  readCaptureClock() {
+    final point = _captureClock(_captureClockOut) == 0
+        ? null
+        : (
+            positionSamples: _captureClockOut[0],
+            atMicros: _captureClockOut[1],
+          );
+    return (
+      point: point,
+      stairSamples: _captureFrames(),
+      nowMicros: _clockNow(),
+    );
+  }
 }
 
 /// The enumeration index, on the [capture] side or the playback side, for
@@ -493,33 +595,4 @@ bool openAudioOutput(
     opened = device.open(sampleRate: sampleRate, channels: channels);
   }
   return opened > 0;
-}
-
-/// Reads the played position as a frame index, pulled forward by the
-/// device's own reported latency so the picture matches what is being
-/// HEARD rather than what has merely been queued.
-///
-/// [extraOffsetSamples] is the user's A/V offset: the residual no device
-/// report can account for (screen pipeline, Bluetooth, an AV receiver).
-/// Every professional tool exposes this for the same reason — the part
-/// that is measurable gets corrected automatically, and the rest is a
-/// slider.
-int audioClockFrame({
-  required int positionSamples,
-  required int latencySamples,
-  required int extraOffsetSamples,
-  required int sampleRate,
-  required int frameRateNumerator,
-  required int frameRateDenominator,
-}) {
-  if (sampleRate <= 0 || frameRateNumerator <= 0 || frameRateDenominator <= 0) {
-    return 0;
-  }
-  final heard = positionSamples - latencySamples + extraOffsetSamples;
-  if (heard <= 0) {
-    return 0;
-  }
-  // Integer throughout, like every other frame/sample conversion in this
-  // program: a double here would drift over a long timeline.
-  return heard * frameRateNumerator ~/ (sampleRate * frameRateDenominator);
 }

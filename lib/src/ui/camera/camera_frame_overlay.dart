@@ -133,7 +133,8 @@ class CameraFrameOverlay extends StatelessWidget {
 /// [zoom] lands the CAMERA's zoom. The frame's size is the output's over
 /// the zoom, so the box's own scale is the zoom's inverse — the corner
 /// dragged outward zooms out. ONE scale ([RowBoxOneScale]): the frame
-/// wears its corners alone.
+/// wears its corners alone. Where the camera's path is drawn, a curved
+/// position key's tangent bends it ([tangents], I-89 ④).
 class CameraFrameBox extends StatelessWidget {
   const CameraFrameBox({
     super.key,
@@ -146,6 +147,7 @@ class CameraFrameBox extends StatelessWidget {
     this.move,
     this.zoom,
     this.turn,
+    this.tangents = const [],
   });
 
   final CameraPose pose;
@@ -159,6 +161,10 @@ class CameraFrameBox extends StatelessWidget {
   final RowBoxLanding<CanvasPoint>? move;
   final RowBoxLanding<double>? zoom;
   final RowBoxLanding<double>? turn;
+
+  /// The handles of the camera's curved position keys, where its path is
+  /// drawn (I-89 ④).
+  final List<RowBoxTangent> tangents;
 
   static double _zoomOf(double frameScale) => (1 / frameScale).clamp(
     CameraFrameOverlay.minZoom,
@@ -195,6 +201,7 @@ class CameraFrameBox extends StatelessWidget {
               committed: (frameScale) => zoom.committed(_zoomOf(frameScale)),
             )),
       turn: turn,
+      tangents: tangents,
     );
   }
 }

@@ -1,3 +1,4 @@
+import '../../models/conte_group.dart' show conteRowAtSeat;
 import '../../models/conte/conte_ink_keys.dart'
     show conteInkRowLayerId;
 import '../../models/cut.dart';
@@ -187,12 +188,17 @@ class StoryboardCursor {
           return null;
         }
         return StoryboardCursorTransitionSpan(span.key, span.value.length);
-      case LayerRowAddress(:final layerId)
-          when trackIdOfConteRow(layerId) != null:
+      case final row when isTrackConteRow(row):
         // A cut with no conte row has no panel, and a gap has no cut.
         final cut = _cutUnderCursor();
-        return cut == null ? null : _panelUnderCursor(cut);
+        return cut == null
+            ? null
+            : _conteRowBlockUnderCursor(cut, conteRowSeatOf(row)!);
       case LayerRowAddress(:final layerId):
+        // The CAMERA row (I-73 ④) lands here too, and holds no block: its
+        // address names no layer, and the camera it stands on keeps keys,
+        // not blocks — the timeline's camera row has none under its cursor
+        // either ([timelineCursorBlockOrNull]).
         return _rowBlockUnderCursor(layerId);
       case LaneRowAddress():
         // A lane row holds keys, not blocks — the lane-verb family owns it.
@@ -201,6 +207,18 @@ class StoryboardCursor {
         final cut = _cutUnderCursor();
         return cut == null ? null : StoryboardCursorCutBlock(cut);
     }
+  }
+
+  /// The block under the cursor on the conte row at [seat] of [cut]: the
+  /// conte's PANEL on its own row (seat 0), and on an attach row riding it
+  /// the block of that row — a cut's own row like any other, with the
+  /// timing the timeline gives it (a synced one has none of its own).
+  StoryboardCursorBlock? _conteRowBlockUnderCursor(Cut cut, int seat) {
+    if (seat == 0) {
+      return _panelUnderCursor(cut);
+    }
+    final attach = conteRowAtSeat(cut, seat);
+    return attach == null ? null : _rowBlockUnderCursor(attach.id);
   }
 
   /// The cut the storyboard's cursor stands in, or null in a gap.
@@ -284,9 +302,12 @@ class StoryboardCursor {
   /// cell (junk the coverage rule merely tolerates), which is nothing
   /// rather than a verb lit over what the machinery will refuse (T25).
   ///
-  /// The storyboard's cursor stands in the CONTE's time; the row's keys
-  /// count the cut's frames, which begin earlier in a cut an O.L arrives
-  /// into (F-227).
+  /// The cursor's frame is the cut's OWN, as the row's keys are — whichever
+  /// panel put it there. ↩️The storyboard's seek left it in the CONTE's
+  /// time, short of the row's keys by the のりしろ of a cut an O.L arrives
+  /// into (F-227), and this read added that back; the timeline's seek left
+  /// it in the cut's own, and then this read named the panel that far
+  /// ahead (I-73-ol-index-space — one conversion, on the axis).
   StoryboardCursorStoryboardPanel? _panelUnderCursor(Cut cut) {
     final row = storyboardLayerForCut(cut);
     if (row == null) {
@@ -294,8 +315,7 @@ class StoryboardCursor {
     }
     final panel = coveringDrawingBlockAt(
       row.timeline,
-      storyboardConteStart(row.timeline) +
-          _controllers.timelineController.currentFrameIndex,
+      _controllers.timelineController.currentFrameIndex,
     );
     if (panel == null || panel.entry.ghost || panel.startIndex < 0) {
       return null;
@@ -431,16 +451,16 @@ class StoryboardCursor {
     // stood on is not a cast away from a crash.
     final layerId = _selection.storyboardStandingRow.owningLayerId!;
     // ⚠️The fills funnel re-applies the track-SE display lens on the way in
-    // (the active cut's global start) — pre-subtract the SAME expression,
-    // exactly as [_createTrackSeEntriesForRange] does, or the entry lands
-    // double-shifted.
+    // (the row's axis offset) — pre-subtract the SAME offset, exactly as
+    // [TrackSeDisplay.createTrackSeEntriesForRange] does, or the entry
+    // lands double-shifted. ↩️This wrote the cut's start out for itself.
     final commands = _controllers.timelineController
         .drawingFramesCommandsForLayers({
           layerId: [
             (
               startIndex:
                   _selection.editingGlobalFrame -
-                  _project.activeCutGlobalStartFrame,
+                  _project.rowAxisOffset(layerId),
               length: 1,
               frameId: _frameIds.mintFrameId(layerId),
               name: '',

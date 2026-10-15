@@ -116,6 +116,15 @@ void main() {
 
   String transportLine(WidgetTester tester) => tester.exportPreviewLine;
 
+  /// [row]'s own line in the attach column, switched — stood on first: the
+  /// column is the stack of the row stood on.
+  Future<void> switchStackLine(WidgetTester tester, String row) async {
+    await tester.pressInCelsBoard(
+      find.byKey(ValueKey<String>('export-cels-stand-$row')),
+    );
+    await tester.pressInCelsBoard(tester.celsStackSwitch(row));
+  }
+
   Future<void> pick(WidgetTester tester, CutId cut) async {
     await tester.tap(
       find.byKey(const ValueKey<String>('export-cels-cut-picker')),
@@ -159,18 +168,23 @@ void main() {
   });
 
   testWidgets('🚨what the hand does in the picked cut is written to THAT '
-      'cut — a drawing turned off, and a row', (tester) async {
+      'cut — a drawing turned off, a row\'s files, and a line of the attach '
+      'column', (tester) async {
     final session = twoCuts();
     addTearDown(session.dispose);
     await pumpCels(tester, session, scope: ExportScopeKind.project);
 
     await pick(tester, second);
     await tester.pressInCelsBoard(tester.celsBoardBlock('e', 'e-f1'));
+    expect(tester.celsBoardBlockOf('e', 'e-f1').sheet.written, isFalse);
     await tester.pressInCelsBoard(tester.celsBoardSwitch('d'));
+    expect(tester.celsBoardSwitchState('d'), BooleanMix.off);
+    await switchStackLine(tester, 'd');
 
     final overrides = session.repository.requireProject().exportOverrides;
     expect(overrides.deltaFor(second)?.skippedCels, {
       (row: const LayerId('e'), cel: const FrameId('e-f1')),
+      (row: const LayerId('d'), cel: const FrameId('d-f1')),
     });
     expect(overrides.deltaFor(second)?.layerOverrides, {
       const LayerId('d'): false,
@@ -180,8 +194,6 @@ void main() {
       isNull,
       reason: 'it went into the anchor cut\'s delta, which 002 never reads',
     );
-    expect(tester.celsBoardBlockOf('e', 'e-f1').sheet.written, isFalse);
-    expect(tester.celsBoardSwitchState('d'), BooleanMix.off);
   });
 
   testWidgets('🚨「커스텀」 and the filters answer for the PICKED cut: its '
@@ -207,12 +219,12 @@ void main() {
     final custom = AppText.strings.exSelCustom;
 
     // A row of the anchor cut answers by hand.
-    await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
+    await switchStackLine(tester, 'a');
     expect(label(), custom);
 
     await pick(tester, second);
     expect(label(), isNot(custom), reason: '002 is on its rules');
-    await tester.pressInCelsBoard(tester.celsBoardSwitch('d'));
+    await switchStackLine(tester, 'd');
     expect(label(), custom);
 
     await tester.pressInCelsBoard(

@@ -22,6 +22,7 @@ import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
 import 'timeline/timeline_frame_window.dart';
+import 'text/laid_out_glyph.dart';
 import 'timeline/timeline_glyph_cache.dart';
 import 'timeline/timeline_row_edit_chrome.dart'
     show TimelineChromeGround, TimelineChromeGrounds;
@@ -223,7 +224,8 @@ final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 /// 🗣️유저 2026-10-01: 「s행에서면 s행블록만 칠해지도록」 — one standing place,
 /// as the timeline's lane takes the wash off its layer's row. Heard through
 /// [changes], which carry both answers; it holds nothing of its own, so a
-/// host builds one per build.
+/// host whose row is built again with it may make one a build — and a host
+/// that keeps its row holds one, as the storyboard does a track (I-57).
 class StandingCut implements ValueListenable<CutId?> {
   const StandingCut({
     required this.changes,
@@ -455,24 +457,54 @@ class StoryboardCutBlocksPainter extends CustomPainter
     );
   }
 
-  /// One cut's block, or null when it lies outside the visible window:
-  /// its rect and bands, its panels, the selection and hover state, the
-  /// title, the total when the block is wide enough, and the thumbnails
-  /// when they are shown.
-  StoryboardCutBlockVisual? _visualFor(
+  /// Where [entry]'s block lies and what it prints — its rect, its title,
+  /// and its total when the block is wide enough — or null when it lies
+  /// outside the visible window: what a sentence about the block reads,
+  /// and what the rest of its picture stands on ([_visualFor]).
+  ({Rect rect, String title, String? total})? _placedFor(
     StoryboardTimelineLayoutEntry entry, {
     required ({int startIndex, int endIndexExclusive}) window,
-    required TrackFrameRangeSelection? selection,
-    required CutId? hovered,
   }) {
-    final left = _left(entry.startFrame);
     final width = _widthFor(entry);
     final endFrame = _reachedEndFrame(entry, width);
     if (endFrame <= window.startIndex ||
         entry.startFrame >= window.endIndexExclusive) {
       return null;
     }
-    final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
+    return (
+      rect: Rect.fromLTWH(_left(entry.startFrame), 0, width, crossAxisExtent),
+      title: entry.cut.name,
+      // ↩️F-89 (유저 2026-09-12): 「컷블록의 컷 길이 텍스트가 실제 컷길이랑
+      // 다름 … 프레임블록이랑 똑같은거니까 거기서 사용하는 로직 그대로
+      // 재사용」 — the cut's own length, by the frame blocks' run label. It
+      // printed the running END frame, the conte sheet's TIME column (D23),
+      // which the conte sheet itself keeps.
+      total: width >= totalLabelMinWidth
+          ? timelineRunLengthLabel(
+              entry.endFrame - entry.startFrame,
+              showSeconds: showSeconds,
+              countingBase: countingBase,
+            )
+          : null,
+    );
+  }
+
+  /// One cut's block, or null when it lies outside the visible window:
+  /// where it lies and what it prints ([_placedFor]), its bands, its
+  /// panels, the selection, hover and standing state, and the thumbnails
+  /// when they are shown.
+  StoryboardCutBlockVisual? _visualFor(
+    StoryboardTimelineLayoutEntry entry, {
+    required ({int startIndex, int endIndexExclusive}) window,
+    required TrackFrameRangeSelection? selection,
+    required CutId? hovered,
+    required CutId? standing,
+  }) {
+    final placed = _placedFor(entry, window: window);
+    if (placed == null) {
+      return null;
+    }
+    final (:rect, :title, :total) = placed;
     final bands = _bandsOf(rect);
     final cells = storyboardCellsByCut[entry.cutId] ?? const [];
     return StoryboardCutBlockVisual(
@@ -489,20 +521,9 @@ class StoryboardCutBlocksPainter extends CustomPainter
       isRangeSelected:
           selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
       isHovered: entry.cutId == hovered,
-      isStanding: entry.cutId == standingCutId?.value,
-      title: entry.cut.name,
-      // ↩️F-89 (유저 2026-09-12): 「컷블록의 컷 길이 텍스트가 실제 컷길이랑
-      // 다름 … 프레임블록이랑 똑같은거니까 거기서 사용하는 로직 그대로
-      // 재사용」 — the cut's own length, by the frame blocks' run label. It
-      // printed the running END frame, the conte sheet's TIME column (D23),
-      // which the conte sheet itself keeps.
-      total: width >= totalLabelMinWidth
-          ? timelineRunLengthLabel(
-              entry.endFrame - entry.startFrame,
-              showSeconds: showSeconds,
-              countingBase: countingBase,
-            )
-          : null,
+      isStanding: entry.cutId == standing,
+      title: title,
+      total: total,
       thumbnails: _thumbnailsFor(entry, cells, strip: bands.strip),
     );
   }
@@ -564,6 +585,11 @@ class StoryboardCutBlocksPainter extends CustomPainter
         ? selectionValue
         : null;
     final hovered = hoveredCutId.value;
+    // 🚨ONCE A PASS, as the hover is (I-57, 10-14): the cut you stand on is
+    // a walk of the track's rows to find the row you stand on
+    // ([StandingCut.value]) — 🔬asked of every block, a fifth of a cut
+    // crossing's paint on the AMMI OP, and a tenth of its semantics.
+    final standing = standingCutId?.value;
     final visuals = <StoryboardCutBlockVisual>[];
     for (final entry in entries) {
       final visual = _visualFor(
@@ -571,6 +597,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
         window: window,
         selection: selection,
         hovered: hovered,
+        standing: standing,
       );
       if (visual != null) {
         visuals.add(visual);
@@ -616,7 +643,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
   /// The layer badge's glyph ([Icons.link]) in the accent, centred in [rect].
   void _paintLinkIcon(Canvas canvas, Rect rect) {
     const icon = Icons.link;
-    final glyph = timelineGlyphPainter(
+    final glyph = laidOutGlyph(
       String.fromCharCode(icon.codePoint),
       TextStyle(
         fontSize: rect.height,
@@ -706,7 +733,7 @@ class StoryboardCutBlocksPainter extends CustomPainter
       );
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     for (final block in blocks()) {
       _paintBlock(canvas, block);
     }
@@ -1002,25 +1029,37 @@ class StoryboardCutBlocksPainter extends CustomPainter
     viewportMainExtent,
   );
 
+  // 🚨ONLY WHAT THE SENTENCE READS (I-57, 10-14) — where a block lies and
+  // what it prints ([_placedFor]). It asked each block for its whole
+  // picture — its panels' thumbnails, the cut you stand on — for a sentence
+  // that reads its name and its length, as the timeline's row asked its
+  // cells for theirs ([TimelineRowCellsPainter.semanticsBuilder]).
   @override
-  SemanticsBuilderCallback get semanticsBuilder =>
-      (size) => [
-        // One node per block: the `Text` widgets these replaced carried their
-        // own, and dropping them would take the row away from screen readers.
-        for (final block in blocks())
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+    final window = visibleFrameWindow();
+    return [
+      // One node per block: the `Text` widgets these replaced carried their
+      // own, and dropping them would take the row away from screen readers.
+      for (final entry in entries)
+        if (_placedFor(entry, window: window) case (
+          :final rect,
+          :final title,
+          :final total,
+        ))
           CustomPainterSemantics(
-            rect: block.rect,
+            rect: rect,
             properties: SemanticsProperties(
               // Joined from the parts that EXIST: a block too narrow for
               // its length prints none, and an unconditional joiner would
               // leave its space behind. ↩️The storyboard layer's name stood
               // between the two while the conte blocks were this block's
               // (I-73: they are the conte row's cells, which say their own).
-              label: [block.title, ?block.total].join(' '),
+              label: [title, ?total].join(' '),
               textDirection: TextDirection.ltr,
             ),
           ),
-      ];
+    ];
+  };
 }
 
 /// What the V row's edges stand on ([TimelineChromeGrounds]): the bands and

@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
@@ -22,6 +23,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 
@@ -263,10 +265,24 @@ void main() {
     });
   });
 
-  testWidgets('a movie row is asked the bake question, starting unbaked — '
-      'and pressing Bake leaves its File answer alone', (tester) async {
+  testWidgets('a movie row is asked the bake question, starting unbaked — and '
+      'baked it is still asked how its file is kept while its sound comes '
+      'with it; its picture alone, it keeps no entry (F-282-Q6)', (
+    tester,
+  ) async {
     final movie = await writeMovie(tester, 'take.mp4');
     await open(tester, [movie]);
+    await settle(
+      tester,
+      () =>
+          cellText(tester, 'option', movie) ==
+          AppText.strings.imPictureAndSound,
+    );
+    expect(
+      cellText(tester, 'option', movie),
+      AppText.strings.imPictureAndSound,
+      reason: 'CONTROL: its sound comes with it',
+    );
 
     expect(cellText(tester, 'bake', movie), AppText.strings.commonOff);
     expect(
@@ -282,7 +298,24 @@ void main() {
     expect(
       cellText(tester, 'file', movie),
       AppText.strings.imModeKeep,
-      reason: 'a press in one column answers that column only',
+      reason: 'its sound lands beside the baked picture and reads the file, '
+          'so the file keeps its entry',
+    );
+
+    final option = find.byKey(ValueKey<String>('import-cell-option-$movie'));
+    await tester.ensureVisible(option);
+    await settleLoadedPages(tester);
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('import-option-option-picture')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      cellText(tester, 'file', movie),
+      '—',
+      reason: 'baked and silent, nothing reads the file: no entry, so no '
+          'question (유저 2026-10-09: 「구우면 풀에 안 남긴다」)',
     );
   });
 
@@ -294,15 +327,15 @@ void main() {
     await settle(
       tester,
       () => tester.any(
-        find.byKey(ValueKey<String>('import-cell-sound-$movie')),
+        find.byKey(ValueKey<String>('import-cell-option-$movie')),
       ),
     );
 
-    expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
+    expect(cellText(tester, 'option', movie), AppText.strings.imPictureAndSound);
   });
 
-  testWidgets('「소리」 stands for a PICKED movie too — not only one handed in '
-      'at the start', (tester) async {
+  testWidgets('「소리」 stands for a PICKED movie too — one the door hands over '
+      'with its grant, not only a path', (tester) async {
     final movie = await writeMovie(tester, 'picked.mp4');
     debugVideoDecodeBackend = FakeVideoBackend();
     tester.view.physicalSize = const Size(1400, 1600);
@@ -316,23 +349,23 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportDialog(session: s, filePicker: () async => [movie]),
+          body: ImportDialog(
+            session: s,
+            picked: [FolderGrant.granted(path: movie, kind: GrantKind.file)],
+          ),
         ),
       ),
     );
     await tester.pump();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-browse-files-button')),
-    );
     await settle(
       tester,
       () => tester.any(
-        find.byKey(ValueKey<String>('import-cell-sound-$movie')),
+        find.byKey(ValueKey<String>('import-cell-option-$movie')),
       ),
     );
 
-    expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
+    expect(cellText(tester, 'option', movie), AppText.strings.imPictureAndSound);
   });
 
   testWidgets('🎯a movie that BAKES counts its frames into the run\'s % — under '
@@ -449,18 +482,18 @@ void main() {
     );
     await settle(
       tester,
-      () => tester.any(find.byKey(ValueKey<String>('import-cell-sound-$movie'))),
+      () => tester.any(find.byKey(ValueKey<String>('import-cell-option-$movie'))),
     );
-    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-sound-sound')),
+      find.byKey(const ValueKey<String>('import-option-option-sound')),
     );
     await tester.pumpAndSettle();
-    expect(cellText(tester, 'sound', movie), 'Sound only');
+    expect(cellText(tester, 'option', movie), 'Sound only');
     expect(
       cellText(tester, 'fit', movie),
       '—',
@@ -470,11 +503,11 @@ void main() {
     await settle(
       tester,
       () => tester.any(
-        find.byKey(const ValueKey<String>('import-preview-waveform')),
+        find.byKey(const ValueKey<String>('import-preview-marks')),
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
+      find.byKey(const ValueKey<String>('import-preview-marks')),
       findsOneWidget,
       reason: 'the preview shows what lands — the sound',
     );
@@ -524,10 +557,10 @@ void main() {
         return SeCellSpot(layerId: seRow, trackFrame: start, shownCell: 0);
       },
     );
-    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
     await settle(tester, () => tester.any(cell));
 
-    expect(cellText(tester, 'sound', movie), 'Sound only');
+    expect(cellText(tester, 'option', movie), 'Sound only');
     expect(
       tester.widget<InkWell>(cell).onTap,
       isNull,
@@ -569,17 +602,17 @@ void main() {
         frameIndex: 0,
       ),
     );
-    final cell = find.byKey(ValueKey<String>('import-cell-sound-$movie'));
+    final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
     await settle(tester, () => tester.any(cell));
-    expect(cellText(tester, 'sound', movie), 'Off', reason: 'its seed');
+    expect(cellText(tester, 'option', movie), 'Picture only', reason: 'its seed');
 
     await tester.ensureVisible(cell);
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     await tester.tap(cell);
     await tester.pumpAndSettle();
 
     InkWell option(String value) => tester.widget<InkWell>(
-      find.byKey(ValueKey<String>('import-option-sound-$value')),
+      find.byKey(ValueKey<String>('import-option-option-$value')),
     );
     expect(option('sound').onTap, isNull);
     expect(option('picture').onTap, isNotNull);

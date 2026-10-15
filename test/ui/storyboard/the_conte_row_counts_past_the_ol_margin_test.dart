@@ -15,12 +15,16 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/storyboard_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
 import '../storyboard_conte_row_probe.dart';
 
@@ -191,6 +195,39 @@ void main() {
     await sweep(tester, 38, 39);
     expect(band().left, moreOrLessEquals(row.left + 36 * ppf));
     expect(band().width, moreOrLessEquals(12 * ppf));
+  });
+
+  // ↩️The cell that opened was the one the のりしろ before it: the
+  // storyboard's seek left the session that far short of the row's own
+  // frame (🧪2026-10-08: the name landed on the first panel). The seek
+  // counts the cut's own frames now (I-73-ol-index-space).
+  testWidgets('🚨a double click on the arriving cut\'s second panel opens '
+      'THAT panel\'s name — the cell at the row\'s own frame', (tester) async {
+    TimelineDoubleTapGate.reset();
+    final session = await open(tester);
+
+    final at = contePoint(tester, 38);
+    await tester.tapAt(at);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(at);
+    await tester.pumpAndSettle();
+    expect(find.byType(RenameFrameDialog), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('rename-frame-text-field')),
+      'B2',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final row = conteOf(session, 'b');
+    expect(row.frameById(const FrameId('p2-b'))?.name, 'B2');
+    expect(row.frameById(const FrameId('p1-b'))?.name, isNot('B2'));
+    expect(
+      session.storyboardStandingRow,
+      LayerRowAddress(trackConteRowId(const TrackId(trackId))),
+    );
   });
 
   testWidgets('a press inside the selection is inside it: a drag from the '

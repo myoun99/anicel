@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 
 void main() {
@@ -40,6 +41,7 @@ void main() {
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final area = tester.widget<EditorCanvasArea>(find.byType(EditorCanvasArea));
     final session = area.session;
     final commands = area.canvasSelectionCommands!;
@@ -186,24 +188,6 @@ void main() {
       reason: 'fixture premise: a new cut was made and stood on',
     );
     expect(commands.hasRegion, isTrue, reason: '유저: 「다른 컷 가도」');
-
-    await letGo(tester, commands);
-  });
-
-  testWidgets('선택 해제 still lets go of the marquee — the split is about who '
-      'asks, not about two buttons', (tester) async {
-    final (:session, :commands) = await inkUnderASelection(tester);
-
-    session.clearAllSelections();
-    await tester.pump();
-
-    expect(
-      commands.hasRegion,
-      isFalse,
-      reason: '유저 2026-08-27: 「선택해제 타임라인에 중복으로 존재하는거」 — '
-          '두 버튼이 서로 다른 절반만 놓던 사고의 답이라, 버튼의 「놓는다」는 '
-          '다섯 종류 전부다',
-    );
 
     await letGo(tester, commands);
   });

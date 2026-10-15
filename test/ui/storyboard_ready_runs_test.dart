@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -15,6 +16,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
+import '../helpers/draw_on_current_frame.dart';
+
 /// I-22: the storyboard's green bar answers in stretches — each cut for
 /// its own frames, shifted to where the track lays it, the gaps ready by
 /// definition, and a frame two entries cover belonging to the FIRST, as
@@ -22,8 +25,9 @@ import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
-  /// Four frames: a drawn cel at 0..1 (not baked in these tests), then a
-  /// hole at 2..3 that composes to nothing.
+  /// Four frames: a drawn cel at 0..1 (inked by [session], and made by
+  /// none of these tests but the last), then a hole at 2..3 with nothing to
+  /// make.
   final drawn = Cut(
     id: const CutId('drawn'),
     name: '1',
@@ -52,16 +56,32 @@ void main() {
     layers: const [],
   );
 
-  EditorSessionManager session() => EditorSessionManager(
-    initialProject: Project(
-      id: const ProjectId('project'),
-      name: 'P',
-      createdAt: DateTime.utc(2026),
-      tracks: [
-        Track(id: const TrackId('track'), name: 'T', cuts: [drawn, empty]),
-      ],
-    ),
-  );
+  /// The session, its drawn cel inked: a cel with nothing on it has no
+  /// picture to wait for.
+  EditorSessionManager session() {
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('project'),
+        name: 'P',
+        createdAt: DateTime.utc(2026),
+        tracks: [
+          Track(id: const TrackId('track'), name: 'T', cuts: [drawn, empty]),
+        ],
+      ),
+    );
+    inkCel(
+      s,
+      s.brushFrameKeyForCut(
+        drawn,
+        const LayerId('layer'),
+        const FrameId('frame-a'),
+      ),
+      canvasSize: canvasSize,
+      at: CanvasPoint(x: 4, y: 4),
+      size: 4,
+    );
+    return s;
+  }
 
   StoryboardTimelineLayoutEntry at(Cut cut, int startFrame) =>
       StoryboardTimelineLayoutEntry(
@@ -128,5 +148,33 @@ void main() {
     expect(storyboardReadyRuns(s, 11, 13, layout: [at(drawn, 10)]), [
       (startIndex: 12, endIndexExclusive: 13),
     ]);
+  });
+
+  testWidgets('🚨the storyboard\'s bar counts the FILM\'s pictures — the '
+      'canvas\'s own, which a cut played alone shows too: what one made, '
+      'both bars count', (tester) async {
+    await tester.runAsync(() async {
+      final s = session();
+      addTearDown(s.dispose);
+      final cut = s.activeCutOrNull!;
+      await s.playbackRig.canvasPictures.make((
+        cut: cut,
+        frameIndex: 0,
+      ), shouldAbort: () => false);
+      expect(
+        s.playbackRig.playbackCache.playbackReadyRuns(0, 4),
+        [(startIndex: 0, endIndexExclusive: 4)],
+        reason: '⛔premise: the timeline\'s bar is green — its run plays on '
+            'the canvas, from those very pictures',
+      );
+
+      expect(
+        storyboardReadyRuns(s, 0, 4, layout: [at(cut, 0)]),
+        [(startIndex: 0, endIndexExclusive: 4)],
+        reason: 'the film shows a frame from those very images. ↩️It played '
+            'on composites, and its bar stayed grey over pictures it never '
+            'showed (until 2026-10-10)',
+      );
+    });
   });
 }

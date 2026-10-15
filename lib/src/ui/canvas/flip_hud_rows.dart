@@ -101,8 +101,7 @@ FlipHudRow flipHudLaneRow(
         FlipHudRun(
           startIndex: frame,
           length: 1,
-          isKey: true,
-          holdKey: lane.holdOutFrames.contains(frame),
+          keyMark: lane.keyMarkAt(frame),
         ),
     ],
   );

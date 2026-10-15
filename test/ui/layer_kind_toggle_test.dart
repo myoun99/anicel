@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/boolean_dot_probe.dart';
 import 'flyout_test_helpers.dart';
+import '../helpers/named_finders.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
 const _seToggleKey = ValueKey<String>('toggle-se-layer-button');
@@ -363,9 +364,7 @@ void main() {
 
     // Select the default track's S1 row (tap its NAME — the row center
     // lands on the opacity slider), then Add Layer.
-    final s1Row = find.byKey(
-      const ValueKey<String>('timeline-layer-row-default-track-se-1'),
-    );
+    final s1Row = find.named('timeline-layer-row-default-track-se-1');
     await tester.ensureVisible(s1Row);
     await tester.pumpAndSettle();
     await tester.tap(find.descendant(of: s1Row, matching: find.text('S1')));

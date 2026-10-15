@@ -26,9 +26,11 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/row_berths_in_order.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// R26 #44: ACTION-section blocks whose cel holds no picture yet paint a
@@ -462,6 +464,7 @@ void main() {
       );
       void onSelectLayer(LayerId id) {}
       void onSelectFrame(int index) {}
+      final rows = [TimelineDisplayRow.layer(layer, layerIndex: 0)];
 
       Widget body() => MaterialApp(
         home: Material(
@@ -469,7 +472,12 @@ void main() {
             width: 700,
             height: 200,
             child: TimelineFrameRowsScrollBody(
-              rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
+              rows: rows,
+              berths: berthsInOrder(rows),
+              edges: TimelineRowEdges.uniform(
+                1,
+                TimelineGridMetrics.defaults.layerRowHeight,
+              ),
               hooks: TimelineGridHooks(
                 activeLayerId: null,
                 frameCursor: ValueNotifier<int>(0),

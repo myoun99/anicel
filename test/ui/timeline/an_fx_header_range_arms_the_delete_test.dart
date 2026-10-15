@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// F-87 (유저 2026-09-12): 「fx 헤더 선택범위로 선택한채로 삭제누르면 해당 fx
 /// 삭제」 — and 09-16: 「추가한 fx를 삭제하려고 fx헤더 선택범위로 선택하니
@@ -63,9 +64,7 @@ void main() {
             .single;
         final headerLane = effectGroupLaneId(effect.id);
 
-        final laneToggle = find.byKey(
-          ValueKey<String>('timeline-lane-toggle-${layer.id.value}'),
-        );
+        final laneToggle = find.named('timeline-lane-toggle-${layer.id.value}');
         await tester.ensureVisible(laneToggle);
         await tester.pumpAndSettle();
         await tester.tap(laneToggle);
@@ -186,7 +185,7 @@ void main() {
     final effect = session.commitLayerById(layer.id)!.effects.single;
     final headerLane = effectGroupLaneId(effect.id);
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-lane-toggle-${layer.id.value}')),
+      find.named('timeline-lane-toggle-${layer.id.value}'),
     );
     await tester.pumpAndSettle();
     final band = find.byKey(
@@ -244,9 +243,7 @@ void main() {
       final effect = session.commitLayerById(layer.id)!.effects.single;
       final headerLane = effectGroupLaneId(effect.id);
 
-      final laneToggle = find.byKey(
-        ValueKey<String>('timeline-lane-toggle-${layer.id.value}'),
-      );
+      final laneToggle = find.named('timeline-lane-toggle-${layer.id.value}');
       await tester.ensureVisible(laneToggle);
       await tester.pumpAndSettle();
       await tester.tap(laneToggle);

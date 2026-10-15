@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/camera_work_marks.dart' show CameraKeyRole;
 import 'package:anicel/src/models/conte/conte_sheet_source.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -133,15 +135,17 @@ void main() {
     }
   }
 
-  test('two keys in the cell: the first is IN and the last OUT, each with '
-      'the camera\'s frame there, and the cell shows the canvas they sweep',
+  test('two keys in the cell, unnamed: each called by the frame it stands on '
+      '(유저 2026-10-12: 「이름없으면 프레임이름+f. 즉 1f 12f」 — ↩️IN and '
+      'OUT), each with the camera\'s frame there, and the cell shows the '
+      'canvas they sweep',
       () {
     final work = cellOf(pan).camera!;
     expect(work.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.last,
     ]);
-    expect(work.keys.map((key) => key.label), ['IN', 'OUT']);
+    expect(work.keys.map((key) => key.label), ['1f', '13f']);
     expectPoints(work.keys.first.corners, const [
       Offset.zero,
       Offset(160, 0),
@@ -152,42 +156,49 @@ void main() {
     expect(work.screen.width, 160);
     expect(work.screen.height, 90);
     expect(work.trails, hasLength(4));
+    final topLeft = work.trails.first;
+    expect(
+      topLeft,
+      hasLength(25),
+      reason: 'the canvas\'s trail: frames 0 to 12, every half — the camera '
+          'holds after its last key',
+    );
     expectPoints(
-      work.trails.first,
-      const [Offset.zero, Offset(160, 0)],
-      reason: 'the top-left corner\'s trail, key to key',
+      [topLeft.first, topLeft[12], topLeft.last],
+      const [Offset.zero, Offset(80, 0), Offset(160, 0)],
+      reason: 'the top-left corner\'s trail, as playback walks it',
     );
   });
 
-  test('a named key is called by its name, in the place IN or OUT would take '
-      '— 「카메라 마크 이름있으면 A,B 이런식으로 이름 따라가고 없으면 … IN '
-      'OUT」', () {
+  test('a named key is called by its name, in the place its frame would '
+      'take — 「카메라 마크 이름있으면 A,B 이런식으로 이름 따라가고」', () {
     final work = cellOf(calledEverywhere(pan, 0, 'A')).camera!;
-    expect(work.keys.map((key) => key.label), ['A', 'OUT']);
-    expect(work.keys.first.role, ConteCameraKeyRole.first);
+    expect(work.keys.map((key) => key.label), ['A', '13f']);
+    expect(work.keys.first.role, CameraKeyRole.first);
   });
 
-  test('a key between is written only when it has a name — its frame is '
-      'never drawn, its name stands where it would be', () {
+  test('a key between is written whether it has a name or not (유저 '
+      '2026-10-12: 「중간키들도 표시하고」 — ↩️only a named one was) — its '
+      'frame is never drawn, its label stands where it would be', () {
     final three = CutCamera(
       keyframes: {0: at(80, 45), 6: at(160, 90), 12: at(240, 45)},
     );
     final unnamed = cellOf(three).camera!;
     expect(unnamed.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.between,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.between,
+      CameraKeyRole.last,
     ]);
-    expect(unnamed.keys.map((key) => key.label), ['IN', null, 'OUT']);
+    expect(unnamed.keys.map((key) => key.label), ['1f', '7f', '13f']);
     final named = cellOf(calledEverywhere(three, 6, 'B')).camera!;
-    expect(named.keys.map((key) => key.label), ['IN', 'B', 'OUT']);
+    expect(named.keys.map((key) => key.label), ['1f', 'B', '13f']);
   });
 
   test('a key whose lanes disagree on its name — the header\'s 「...」 — is '
       'as good as unnamed (「레인끼리 달라서 헤더가 ...으로 표시되는 경우 … '
-      '이름 안정해진거랑 같은 규칙으로 IN OUT」)', () {
+      '이름 안정해진거랑 같은 규칙으로」)', () {
     final mixed = named(pan, 0, position: 'A', scale: 'B', rotation: 'A');
-    expect(cellOf(mixed).camera!.keys.map((key) => key.label), ['IN', 'OUT']);
+    expect(cellOf(mixed).camera!.keys.map((key) => key.label), ['1f', '13f']);
   });
 
   test('a camera that holds still while the cell is on screen — one key, or '
@@ -225,13 +236,13 @@ void main() {
 
     final first = cells[0].camera!;
     expect(first.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.between,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.between,
+      CameraKeyRole.last,
     ]);
     expect(
       first.keys.map((key) => key.label),
-      ['A', 'B', 'OUT'],
+      ['A', 'B', '14f'],
       reason: 'the block runs on past B: its last frame closes it, unnamed',
     );
     expectPoints(
@@ -246,15 +257,42 @@ void main() {
       isNotNull,
       reason: 'no key inside it, and the camera moves the whole block',
     );
-    expect(second!.keys.map((key) => key.label), ['IN', 'OUT']);
+    expect(second!.keys.map((key) => key.label), ['15f', '24f']);
     expectPoints(second.keys.first.corners, frameAround(320), reason: '14');
     expectPoints(second.keys.last.corners, frameAround(500), reason: '23');
     expect(second.field, const Rect.fromLTRB(240, 0, 580, 90));
+    final topLeft = second.trails.first;
+    expect(topLeft, hasLength(19), reason: 'frames 14 to 23, every half');
     expectPoints(
-      second.trails.first,
-      const [Offset(240, 0), Offset(420, 0)],
+      [topLeft.first, topLeft[1], topLeft.last],
+      const [Offset(240, 0), Offset(250, 0), Offset(420, 0)],
       reason: 'the top-left corner\'s trail, first frame to last',
     );
+  });
+
+  test('a turn bends the corners\' trails out past the frames it leaves and '
+      'reaches — the cell shows the canvas they sweep, trails and all', () {
+    final turning = CutCamera(
+      keyframes: {
+        0: at(320, 180),
+        12: CameraPose(
+          center: CanvasPoint(x: 320, y: 180),
+          rotationDegrees: 90,
+        ),
+      },
+    );
+    final work = cellOf(turning).camera!;
+    final corners = [for (final key in work.keys) ...key.corners];
+    final keysReach = corners.map((corner) => corner.dy).reduce(math.max);
+    final trailsReach = [
+      for (final trail in work.trails) ...trail,
+    ].map((point) => point.dy).reduce(math.max);
+    expect(
+      trailsReach,
+      greaterThan(keysReach + 1),
+      reason: '⛔전제: a corner swings wider than either frame stands',
+    );
+    expect(work.field.bottom, greaterThanOrEqualTo(trailsReach));
   });
 
   test('a key past the cell moves the camera while the cell is on screen: '
@@ -262,7 +300,7 @@ void main() {
     final work = cellOf(
       CutCamera(keyframes: {0: at(80, 45), 32: at(240, 45)}),
     ).camera!;
-    expect(work.keys.map((key) => key.label), ['IN', 'OUT']);
+    expect(work.keys.map((key) => key.label), ['1f', '24f']);
     expectPoints(
       work.keys.last.corners,
       frameAround(195),
@@ -280,12 +318,12 @@ void main() {
     );
     final work = cellOf(held).camera!;
     expect(work.keys.map((key) => key.role), [
-      ConteCameraKeyRole.first,
-      ConteCameraKeyRole.last,
+      CameraKeyRole.first,
+      CameraKeyRole.last,
     ]);
     expect(
       work.keys.map((key) => key.label),
-      ['IN', 'B'],
+      ['6f', 'B'],
       reason: 'the key the camera stops at closes the cell, by its name',
     );
     expectPoints(work.keys.first.corners, frameAround(80));
@@ -358,7 +396,7 @@ void main() {
 
     final work = cellOf(pushIn).camera!;
 
-    expect(work.keys.map((key) => key.label), ['IN', 'OUT']);
+    expect(work.keys.map((key) => key.label), ['1f', '13f']);
     // The 160×90 camera over the 640×360 canvas, centred at (320, 180).
     expectPoints(work.keys.first.corners, const [
       Offset(240, 135),

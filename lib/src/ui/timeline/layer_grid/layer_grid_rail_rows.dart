@@ -40,22 +40,19 @@ class _LayerGridRailRows {
   /// the code's own rule said only rows with NO control in a column are
   /// skipped. 유저 2026-08-29: 「버튼이면 다 가능하도록」.
   ///
-  /// ⚠️The uniform division holds for lane rows too — measured, both are
-  /// 28.0 tall and meet with no gap. That is what makes this rail the
-  /// UNIFORM strip, so the walk is [uniformRailRowsIn]'s and all that is
-  /// left here is what a row at an index is.
+  /// The walk is [railRowsAlong]'s, over the edges the window was cut from;
+  /// all that is left here is what a row at an index is.
   List<RailSwipeRow<TimelineDisplayRow>> _railRowsIn(
     double fromY,
     double toY,
-    List<TimelineDisplayRow> windowRows,
-    double leadingSpacerHeight,
-  ) => uniformRailRowsIn<TimelineDisplayRow>(
+    List<TimelineDisplayRow> rows,
+    _RowWindow window,
+  ) => railRowsAlong<TimelineDisplayRow>(
     from: fromY,
     to: toY,
-    origin: leadingSpacerHeight,
-    pitch: _state._metrics.layerRowHeight,
-    count: windowRows.length,
-    rowAt: (index) => _railSwipeRow(windowRows[index]),
+    edges: window.edges,
+    built: window.range,
+    rowAt: (index) => _railSwipeRow(rows[index]),
   );
 
   /// A row as the shared swipe wants it. The identity is what the sweep
@@ -63,7 +60,6 @@ class _LayerGridRailRows {
   /// BOTH.
   RailSwipeRow<TimelineDisplayRow> _railSwipeRow(TimelineDisplayRow row) => (
     row: row,
-    depth: row.depth,
     id: '${row.layer.id.value}/${row.lane?.laneId ?? ''}',
   );
 
@@ -79,9 +75,9 @@ class _LayerGridRailRows {
   /// Lane label rows stay unmemoized: they subscribe to the frame cursor
   /// themselves and their lane models churn identity per build.
   ///
-  /// The memo is the x-sheet header's too ([keptLayerControlsRow]) — one
+  /// The memo is the x-sheet header's too ([KeptLayerControlsRows]) — one
   /// reading of a controls row, one keeping of it, for both grids (F-244).
-  Widget _railRowMemoized(TimelineDisplayRow row) {
+  Widget _railRowMemoized(TimelineDisplayRow row, RowBerthMap berths) {
     if (row.isLane) {
       return _state._rowDrags.draggable(row, _laneRow(row));
     }
@@ -93,14 +89,11 @@ class _LayerGridRailRows {
       fold: fold,
       hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
     );
-    return keptLayerControlsRow(
-      _state._railRowMemo,
+    return _state._railRowMemo.keep(
+      berths,
       row,
       (facts: facts, drag: _state._rowDrags.inputsFor(row)),
-      () => _state._rowDrags.draggable(
-        row,
-        layerControlsRowFrom(facts, row, grid, fold),
-      ),
+      () => layerControlsRowFrom(facts, row, grid, fold),
     );
   }
 
@@ -115,56 +108,54 @@ class _LayerGridRailRows {
     mainExtent: null,
   );
 
-  /// The rail row's element key — ONE builder for the window loop and the
-  /// A5 pin site, so the two can never drift and the pinned element
-  /// re-matches the same State when the window returns.
-  ValueKey<String> _railRowKey(TimelineDisplayRow row) => ValueKey<String>(
-    'timeline-rail-row-'
-    '${row.layer.id}-'
-    '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}',
-  );
+  /// Row [index]'s rail row where [window] lays [rows] — none for a row of
+  /// no extent: an open graph the enlarged one folds stands as its first
+  /// lane's strip (I-89 ③D).
+  ///
+  /// ONE builder for the window loop and the A5 pin site, so the two can
+  /// never drift: the row is built in its BERTH ([RowBerths]), which is
+  /// what re-matches the pinned element's State when the window returns,
+  /// and NAMED for its layer ([Named]) — a key spelled from the layer
+  /// remade every row of the rail on a cut switch (I-57).
+  Widget? _railRowAt(
+    List<TimelineDisplayRow> rows,
+    _RowWindow window,
+    int index,
+  ) => window.edges.extentOf(index) > 0
+      ? Named(
+          _railRowName(rows[index]),
+          key: window.berths.keyOf(rows[index]),
+          child: _railRowMemoized(rows[index], window.berths),
+        )
+      : null;
 
-  /// The legend header's memo gate (UI-R7 #1): rebuilt only when a
-  /// legend-visible fact changes — zoom steps and unrelated session
-  /// notifies reuse the instance, skipping its ~15 tooltip/flyout cells.
-  Widget legendHeaderMemoized(List<TimelineDisplayRow> rows) {
-    final displayedIds = _state._displayedLayerIds(rows);
-    final inputs = (
-      layerRowHeight: _state._metrics.layerRowHeight,
-      layerControlsWidth: _state._metrics.layerControlsWidth,
-      hasLegend: _state.widget.legend != null,
-      hiddenSections: BySet(_state.widget.hooks.hiddenSections),
-      rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: BySet(_state._marksInUse()),
-      kindsInUse: BySet(_state._kindsInUse()),
-      visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
-      anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
-      allSeMuted: _state._allSeMuted(),
-      displayedIds: BySet(displayedIds),
-      masterOpacityValue: _state.widget.masterOpacityValue,
-      hasLaneToggles: _state.widget.hooks.onToggleLayerLanes != null,
-      displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
-      language: AppText.language,
-      hasBlendBulk: _state.widget.legend?.onSetBlendModeForDisplayed != null,
-    );
-    final cached = _state._legendHeaderMemo;
-    if (cached != null && cached.inputs == inputs) {
-      return cached.header;
-    }
-    final header = TimelineLayerControlsHeader(
+  String _railRowName(TimelineDisplayRow row) =>
+      'timeline-rail-row-'
+      '${row.layer.id}-'
+      '${row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'row'}';
+
+  /// The legend header — which keeps itself while what it shows holds
+  /// ([TimelineLayerControlsHeader.facts]): zoom steps, unrelated notifies
+  /// and cut switches hand back the cells it had.
+  Widget legendHeader() => _published(
+    TimelineLayerControlsHeader(
       metrics: _state._metrics,
+      optionalColumns: _state.widget.hooks.optionalRailColumns,
       legend: _state.widget.legend,
       hiddenSections: _state.widget.hooks.hiddenSections,
       onToggleSection: _state.widget.onToggleSection,
       rowFilter: _state.widget.hooks.rowFilter,
-      marksInUse: inputs.marksInUse.value,
-      kindsInUse: inputs.kindsInUse.value,
+      marksInUse: _state._marksInUse,
+      kindsInUse: _state._kindsInUse,
       visibilitySoloEnabled: _state.widget.visibilitySoloEnabled,
-      anyLanesExpanded: inputs.anyLanesExpanded,
-      allSeMuted: inputs.allSeMuted,
-      // The fresh set is captured here — the token's BySet invalidates
-      // the cached header whenever the displayed rows change.
-      displayedLayerIds: () => displayedIds,
+      anyLanesExpanded: _state.widget.hooks.expandedLaneLayerIds.isNotEmpty,
+      allSeMuted: _state._allSeMuted(),
+      // The set a bulk verb ACTS on, read at the press — of the rows the
+      // latest pass drew. 🚨I-57 ㉢-2 (10-13, measured on the user's
+      // project): captured here and kept fresh by the token, it changed at
+      // every cut switch and built the whole header again — 223 widgets of
+      // a crossing's 855, for a set no cell of the header shows.
+      displayedLayerIds: () => _state._displayedLayerIds(_state._dragRows),
       displayedOpacity: _state.widget.masterOpacityValue,
       displayedOnionSkinOn: _state.widget.displayedOnionSkinOn,
       onExpandAllLanes: _state.widget.hooks.onToggleLayerLanes == null
@@ -173,8 +164,15 @@ class _LayerGridRailRows {
       onCollapseAllLanes: _state.widget.hooks.onToggleLayerLanes == null
           ? null
           : _state._lanes._collapseAllLanes,
+    ),
+  );
+
+  /// [header], its menus handed to whoever presses its rows by key (I-40):
+  /// the very menus it opens, counted on this grid's rows.
+  TimelineLayerControlsHeader _published(TimelineLayerControlsHeader header) {
+    _state.widget.onLegendMenus?.call(
+      header.legend == null ? null : header.menus,
     );
-    _state._legendHeaderMemo = (inputs: inputs, header: header);
     return header;
   }
 
@@ -212,10 +210,14 @@ class _LayerGridRailRows {
         onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
         currentRowHooks: _state.widget.hooks.currentRowHooks,
         leadingInset: layerSectionLabelSlotWidth,
-        // The SAME flags the layer row passes, so a group
+        // The SAME answer the layer row reads, so a group
         // header's fx lands in the layer rows' fx column (R5 #7).
-        hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-        hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
+        optionalColumns: _state.widget.hooks.optionalRailColumns,
+        laneGraphs: _state.widget.hooks.laneGraphs,
+        laneGraphVerbs: _state.widget.hooks.laneGraphVerbs,
+        seat: row.graph,
+        height: timelineDisplayRowExtent(row, _state._metrics),
+        folded: row.folded,
       ),
     );
   }
@@ -245,6 +247,7 @@ class _LayerGridRailRows {
   ) {
     final rowWindow = window.range;
     final windowRows = window.rows;
+    final edges = window.edges;
     final leadingRowSpacerHeight = window.leadingSpacerHeight;
     final trailingRowSpacerHeight = window.trailingSpacerHeight;
     final pinnedIndex = window.pinnedIndex;
@@ -268,12 +271,7 @@ class _LayerGridRailRows {
           child: RailColumnSwipe<TimelineDisplayRow>(
             axis: Axis.vertical,
             columns: swipeColumns,
-            rowsIn: (fromY, toY) => _railRowsIn(
-              fromY,
-              toY,
-              windowRows,
-              leadingRowSpacerHeight,
-            ),
+            rowsIn: (fromY, toY) => _railRowsIn(fromY, toY, rows, window),
             // The eyes ride past the row memo — see [RailEyes] for the
             // 3,051 elements a solo used to rebuild.
             child: RailEyes.forLayers(
@@ -306,44 +304,42 @@ class _LayerGridRailRows {
                       // extent is
                       // unchanged.
                       if (pinnedBefore) ...[
-                        if (pinnedIndex > 0)
+                        if (edges.startOf(pinnedIndex) > 0)
+                          SizedBox(height: edges.startOf(pinnedIndex)),
+                        ?_railRowAt(rows, window, pinnedIndex),
+                        if (leadingRowSpacerHeight - edges.endOf(pinnedIndex) >
+                            0)
                           SizedBox(
                             height:
-                                pinnedIndex * _state._metrics.layerRowHeight,
-                          ),
-                        KeyedSubtree(
-                          key: _railRowKey(rows[pinnedIndex]),
-                          child: _railRowMemoized(rows[pinnedIndex]),
-                        ),
-                        if (rowWindow.startIndex - pinnedIndex - 1 > 0)
-                          SizedBox(
-                            height:
-                                (rowWindow.startIndex - pinnedIndex - 1) *
-                                _state._metrics.layerRowHeight,
+                                leadingRowSpacerHeight -
+                                edges.endOf(pinnedIndex),
                           ),
                       ] else if (leadingRowSpacerHeight > 0)
                         SizedBox(height: leadingRowSpacerHeight),
-                      for (final row in windowRows)
-                        KeyedSubtree(
-                          key: _railRowKey(row),
-                          child: _railRowMemoized(row),
-                        ),
+                      for (
+                        var index = rowWindow.startIndex;
+                        index < rowWindow.endIndexExclusive;
+                        index += 1
+                      ) ...[
+                        ?_railRowAt(rows, window, index),
+                        // An open graph's room, after its last lane: no
+                        // row, so nothing of a row's is built in it.
+                        if (edges.roomOf(index) > 0)
+                          SizedBox(height: edges.roomOf(index)),
+                      ],
                       if (pinnedAfter) ...[
-                        if (pinnedIndex - rowWindow.endIndexExclusive > 0)
+                        if (edges.startOf(pinnedIndex) -
+                                edges.startOf(rowWindow.endIndexExclusive) >
+                            0)
                           SizedBox(
                             height:
-                                (pinnedIndex - rowWindow.endIndexExclusive) *
-                                _state._metrics.layerRowHeight,
+                                edges.startOf(pinnedIndex) -
+                                edges.startOf(rowWindow.endIndexExclusive),
                           ),
-                        KeyedSubtree(
-                          key: _railRowKey(rows[pinnedIndex]),
-                          child: _railRowMemoized(rows[pinnedIndex]),
-                        ),
-                        if (rows.length - pinnedIndex - 1 > 0)
+                        ?_railRowAt(rows, window, pinnedIndex),
+                        if (edges.total - edges.endOf(pinnedIndex) > 0)
                           SizedBox(
-                            height:
-                                (rows.length - pinnedIndex - 1) *
-                                _state._metrics.layerRowHeight,
+                            height: edges.total - edges.endOf(pinnedIndex),
                           ),
                       ] else if (trailingRowSpacerHeight > 0)
                         SizedBox(height: trailingRowSpacerHeight),
@@ -373,7 +369,7 @@ class _LayerGridRailRows {
                   Positioned(
                     left: 0,
                     top: 0,
-                    child: _state._sectionBandOverlay(rows),
+                    child: _state._sectionBandOverlay(rows, edges),
                   ),
                   // T1's one band
                   // per contiguous
@@ -402,8 +398,8 @@ class _LayerGridRailRows {
                             row.address,
                           ),
                       ],
-                      rowExtent: _state._metrics.layerRowHeight,
-                      leadingSpacer: leadingRowSpacerHeight,
+                      edges: edges,
+                      firstRow: rowWindow.startIndex,
                       crossExtent:
                           _state._metrics.layerControlsWidth -
                           layerSectionLabelSlotWidth,
@@ -420,8 +416,10 @@ class _LayerGridRailRows {
                           'timeline-layer-placement-entrance',
                         ),
                         rowAxis: Axis.vertical,
-                        pitch: _state._metrics.layerRowHeight,
-                        rows: () => _state._dragRows,
+                        rows: () => (
+                          rows: _state._dragRows,
+                          edges: _state._dragEdges,
+                        ),
                         onHover:
                             _state.widget.hooks.rowDragHooks?.onPlacementHover,
                         onLeave:

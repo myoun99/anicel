@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -13,6 +14,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/playback_cache_budget.dart';
+
+import '../../helpers/draw_on_current_frame.dart';
 
 /// I-22: the green bar asks once per span of one picture, remembering
 /// each picture's full signature — so what it remembers must be dropped
@@ -67,37 +70,42 @@ void main() {
   PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
       s.playbackRig.playbackCache;
 
-  testWidgets('a stroke turns the hold grey on the SAME cut instance — the '
-      'pixel revision moves the signature, not a new cut', (tester) async {
+  testWidgets('🚨a stroke turns the hold grey on the SAME cut instance — '
+      'the row\'s image is of the cel before it', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
       final held = s.activeCutOrNull!;
+      final key = s.brushFrameKeyForCut(
+        held,
+        const LayerId('layer'),
+        const FrameId('frame-a'),
+      );
+      void stroke(double x, double size) => inkCel(
+        s,
+        key,
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: x, y: x),
+        size: size,
+      );
+      stroke(4, 4);
       final budget = budgetOf(s);
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
+
+      await s.playbackRig.canvasPictures.make((
         cut: held,
         frameIndex: 0,
-      );
-
-      expect(budget.playbackReadyRunsForCut(held, 0, 30), [
+      ), shouldAbort: () => false);
+      expect(budget.playbackReadyRuns(0, 30), [
         (startIndex: 0, endIndexExclusive: 30),
-      ], reason: 'one bake answers the whole hold; past it is nothing');
+      ], reason: 'one image answers the whole hold; past it is nothing');
 
-      s.renderCaches.brushFrameStore.markCelEdited(
-        s.brushFrameKeyForCut(
-          held,
-          const LayerId('layer'),
-          const FrameId('frame-a'),
-        ),
-      );
-
+      stroke(2, 2);
       expect(identical(s.activeCutOrNull, held), isTrue);
       expect(
-        budget.playbackReadyRunsForCut(held, 0, 30),
+        budget.playbackReadyRuns(0, 30),
         [(startIndex: 24, endIndexExclusive: 30)],
-        reason: 'the held image is the picture BEFORE the stroke — a '
-            'signature remembered past the pixel revision would still find '
-            'it and call the hold ready',
+        reason: 'the image the row holds is of the cel before the stroke — '
+            'the cel\'s revision moves the picture, not a new cut',
       );
     });
   });
@@ -108,10 +116,24 @@ void main() {
       addTearDown(s.dispose);
       final held = s.activeCutOrNull!;
       final budget = budgetOf(s);
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
+      inkCel(
+        s,
+        s.brushFrameKeyForCut(
+          held,
+          const LayerId('layer'),
+          const FrameId('frame-a'),
+        ),
+        canvasSize: canvasSize,
+        at: CanvasPoint(x: 4, y: 4),
+        size: 4,
+      );
+      expect(budget.playbackReadyRuns(3, 30), [
+        (startIndex: 24, endIndexExclusive: 30),
+      ], reason: '⛔premise: the drawn hold waits for its picture');
+      await s.playbackRig.canvasPictures.make((
         cut: held,
         frameIndex: 0,
-      );
+      ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
         (startIndex: 3, endIndexExclusive: 30),

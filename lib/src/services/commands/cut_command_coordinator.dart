@@ -48,6 +48,8 @@ import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
 import 'link_mirror.dart'
     show
+        existenceMirrorTargets,
+        headMirrorTargets,
         linkCounterpartIn,
         linkMirrorTargets,
         linkedCutSiblings,
@@ -562,17 +564,21 @@ class CutCommandCoordinator {
     // while an empty ORGANIZER is a folder that belongs to no group and
     // sits outside every span. The sweep follows the invalidity, not the
     // emptiness.
+    //
+    // The row goes from every cut whose conte holds its row of the track's
+    // structure (I-73, F-343 — [existenceMirrorTargets]), so every cut it
+    // goes from is asked what it leaves empty there.
     if (isAttachedLayer(layer)) {
-      final emptied = cut.layers.foldersEmptiedByRemoving(
-        {layerId},
-        canRemove: (folder) =>
-            attachOrganizerBaseOf(folder, cut.layers) != null &&
-            repository.requireProject().linkRegistry.groupOf(
-                  cutId: cutId,
-                  layerId: folder.id,
-                ) ==
-                null,
-      );
+      final project = repository.requireProject();
+      final emptied = [
+        for (final target in existenceMirrorTargets(
+          project,
+          cutId: cutId,
+          layerId: layerId,
+        ))
+          for (final folder in _organizersEmptiedBy(project, target))
+            (cutId: target.cutId, folder: folder),
+      ];
       if (emptied.isNotEmpty) {
         historyManager.executeAsOneStep(
           'Delete layer ${layer.name} and its empty '
@@ -582,12 +588,13 @@ class CutCommandCoordinator {
               repository: repository,
               cutId: cutId,
               layerId: layerId,
+              withItsConteRow: true,
             ),
-            for (final folder in emptied)
+            for (final gone in emptied)
               DeleteLayerCommand(
                 repository: repository,
-                cutId: cutId,
-                layerId: folder.id,
+                cutId: gone.cutId,
+                layerId: gone.folder.id,
               ),
           ],
         );
@@ -606,6 +613,7 @@ class CutCommandCoordinator {
           repository: repository,
           cutId: cutId,
           layerId: layerId,
+          withItsConteRow: true,
         ),
       );
       return;
@@ -635,6 +643,25 @@ class CutCommandCoordinator {
           layerId: layerId,
         ),
       ],
+    );
+  }
+
+  /// The unlinked ORGANIZER folders of [row]'s cut that removing it leaves
+  /// with nothing in them — the walk [deleteLayer] says why.
+  List<Layer> _organizersEmptiedBy(
+    Project project,
+    ({CutId cutId, LayerId layerId}) row,
+  ) {
+    final layers = requireCut(project, row.cutId).layers;
+    return layers.foldersEmptiedByRemoving(
+      {row.layerId},
+      canRemove: (folder) =>
+          attachOrganizerBaseOf(folder, layers) != null &&
+          project.linkRegistry.groupOf(
+                cutId: row.cutId,
+                layerId: folder.id,
+              ) ==
+              null,
     );
   }
 
@@ -1008,6 +1035,10 @@ class CutCommandCoordinator {
     LayerAttachDrop attach = const LayerAttachDrop(),
     String description = 'Move layers',
   }) {
+    // ↩️A re-ordering of a track's conte, and a row mounted on it, used to
+    // be written into every other cut's conte here, seat by seat
+    // (I-73-one-head-Q2). The track's structure carries them now (F-343,
+    // `trackWithItsConteLaid`): this writes the cut it was given.
     historyManager.executeAsOneStep(description, [
       ...layerPlacementCommands(
         cutId: cutId,
@@ -1205,8 +1236,18 @@ class CutCommandCoordinator {
       throw StateError('The camera row carries no effect chain of its own.');
     }
     final mirrorsValuesToo = layer.kind.mirrorsEffects;
-    final targets = linkMirrorTargets(
-      repository.requireProject(),
+    final project = repository.requireProject();
+    // The chain's SHAPE is part of the row's head, so it reaches every row
+    // that wears the head — a track's conte rows among them (I-73). Its
+    // VALUES cross only inside the link group: a kind that mirrors them,
+    // and the named keys' 「same name, same value」.
+    final linked = linkMirrorTargets(
+      project,
+      cutId: cutId,
+      layerId: layerId,
+    ).toSet();
+    final targets = headMirrorTargets(
+      project,
       cutId: cutId,
       layerId: layerId,
     );
@@ -1220,15 +1261,18 @@ class CutCommandCoordinator {
         ...() {
           final current = _requireLayerAnywhere(target.layerId).effects;
           final isSource = target.cutId == cutId && target.layerId == layerId;
+          final shaped = effectChainWithSharedShape(authored, onto: current);
           // The source takes the write as authored; a sibling takes only
           // the shape unless its kind mirrors values too — plus whatever
-          // the named links carry.
-          final next = isSource || mirrorsValuesToo
+          // the named links carry. A row that only wears the head takes
+          // the shape and nothing else.
+          final next = isSource
               ? authored
-              : effectsWithNamedValues(
-                  effectChainWithSharedShape(authored, onto: current),
-                  namedChanges,
-                );
+              : !linked.contains(target)
+              ? shaped
+              : mirrorsValuesToo
+              ? authored
+              : effectsWithNamedValues(shaped, namedChanges);
           return listEquals(current, next)
               ? const <Command>[]
               : <Command>[

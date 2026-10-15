@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/named_finders.dart';
 
 /// 🚨F-101 (유저 2026-09-12): 「스토리보드패널 se랑 타임라인패널 se랑 통일
 /// 안되어있음. 뭐냐면 타임라인패널 se엔 네임태그등 fx 있는데 스토리보드패널엔
@@ -101,8 +102,14 @@ Future<void> _openApp(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _press(WidgetTester tester, String key) async {
-  final target = find.byKey(ValueKey<String>(key)).first;
+Future<void> _press(WidgetTester tester, String key) =>
+    _pressFound(tester, find.byKey(ValueKey<String>(key)));
+
+Future<void> _pressNamed(WidgetTester tester, String name) =>
+    _pressFound(tester, find.named(name));
+
+Future<void> _pressFound(WidgetTester tester, Finder found) async {
+  final target = found.first;
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
   await tester.tap(target);
@@ -136,14 +143,15 @@ void main() {
   ) async {
     await _openApp(tester);
 
-    await _press(tester, 'timeline-lane-toggle-${_seId.value}');
+    await _pressNamed(tester, 'timeline-lane-toggle-${_seId.value}');
     final timeline = _laneIdsDownTheRail(
       tester,
       'timeline-lane-label-${_seId.value}-',
     );
 
+    // No press here: the S row's twirl is its SE row's own since F-360's
+    // second half, so the timeline's opened it on this panel too.
     await _press(tester, 'timeline-mode-storyboard-button');
-    await _press(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
     final storyboard = _laneIdsDownTheRail(
       tester,
       'storyboard-lane-label-${_seId.value}-',
@@ -183,8 +191,8 @@ void main() {
     expect(transformOn(), isTrue);
 
     await _press(tester, 'timeline-mode-storyboard-button');
-    await _press(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
-    await _press(
+    await _pressNamed(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
+    await _pressNamed(
       tester,
       'storyboard-lane-group-fx-${_seId.value}-transform-group',
     );
@@ -211,14 +219,14 @@ void main() {
     // The Scale lane is inside the row's Transform group.
     Future<void> openTransform(String panel) async {
       if (chain(panel).evaluate().isEmpty) {
-        await _press(
+        await _pressNamed(
           tester,
           '$panel-lane-group-toggle-${_seId.value}-transform-group',
         );
       }
     }
 
-    await _press(tester, 'timeline-lane-toggle-${_seId.value}');
+    await _pressNamed(tester, 'timeline-lane-toggle-${_seId.value}');
     await openTransform('timeline');
     expect(tool.value.scaleLinked, isTrue, reason: "the tool's default");
     expect(tester.appIconButton(chain('timeline')).isSelected, isTrue);
@@ -227,8 +235,9 @@ void main() {
     expect(tool.value.scaleLinked, isFalse, reason: "the timeline's press");
     expect(tester.appIconButton(chain('timeline')).isSelected, isFalse);
 
+    // The row and its Transform group stand open as the timeline twirled
+    // them — the twirls are the row's.
     await _press(tester, 'timeline-mode-storyboard-button');
-    await _press(tester, 'storyboard-se-lane-toggle-${_trackId.value}-1');
     await openTransform('storyboard');
     expect(
       tester.appIconButton(chain('storyboard')).isSelected,

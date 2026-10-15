@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../text/word_condensation.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_frame_window.dart' show TimelineNextPage;
 
 /// One row's frame cells as a single painter (UI-R9 #12b, the
 /// painterization): the dense, mostly-static cell strip — paper blocks,
@@ -145,10 +146,22 @@ abstract interface class TimelineTileRasterSource {
   TimelineRowCellModel cellModelAt(int frameIndex);
 
   /// The spans `[start, end)` a paint of this row asks the store for, in
-  /// the order it asks: those under its window NOW, then the one past each
-  /// edge it keeps warm. The store asks for them again itself when its
-  /// queue had no room for this row.
-  List<(int, int)> get tileSpans;
+  /// the order it asks: those under its window NOW (`shown`), then the one
+  /// past each edge it keeps warm (`ahead`,
+  /// [TimelineGridTileStore.warmAhead]). The store asks for them again
+  /// itself when its queue had no room for this row.
+  ({List<(int, int)> shown, List<(int, int)> ahead}) get tileSpans;
+
+  /// Where a playing run's next turn stands this row's frame axis: its
+  /// owner's answer, asked once for all the rows it lays
+  /// ([TimelineGridTileStore.warmTheNextPage]). Null where no run turns it.
+  TimelineNextPage? Function()? get nextPage;
+
+  /// The spans a paint of this row asks for once the axis stands at
+  /// [page] — the window there and the span past each of its edges
+  /// ([tileSpans]), cut where the axis is built to there: what a run warms
+  /// while it plays the page before.
+  List<(int, int)> tileSpansOfThePage(TimelineNextPage page);
 
   /// Runs [reads] as ONE pass: however often they ask for a cell, it is
   /// resolved once — what a paint does, and what a tile bakes of a span.

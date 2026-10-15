@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerKindDisplayName;
@@ -128,12 +129,18 @@ int layersOf(WidgetTester tester) =>
 
 void main() {
   group('the registry', () {
-    test('holds the bar\'s menu rows under Timeline, in the bar\'s order, '
+    test('holds the bar\'s menu rows on its pills, in the bar\'s order, '
         'with the frame pill\'s switch between its row and the fx pill\'s '
         'rows', () {
+      const pills = {
+        ShortcutShelf.cutPill,
+        ShortcutShelf.layerPill,
+        ShortcutShelf.framePill,
+        ShortcutShelf.fxPill,
+      };
       final timeline = [
         for (final definition in editorActionDefinitions)
-          if (definition.category == 'Timeline') definition,
+          if (pills.contains(definition.shelf)) definition,
       ];
       expect(
         [
@@ -232,9 +239,9 @@ void main() {
       );
     });
 
-    test('the colour edit list\'s seven are menu rows too — the third list '
+    test('the colour edit list\'s eight are menu rows too — the third list '
         'on the one rule', () {
-      expect(colourEditRows, hasLength(7), reason: '⛔premise');
+      expect(colourEditRows, hasLength(8), reason: '⛔premise');
       for (final id in colourEditRows) {
         expect(
           editorActionDefinitions
@@ -317,6 +324,49 @@ void main() {
       expect(
         silent.where((key) => !key.startsWith('layer-mark-option-')),
         isEmpty,
+      );
+    });
+
+    // 🗣️I-90 (유저 2026-10-10): 「픽셀 잘라내기 버튼 신설. 복사버튼 위」 ·
+    // 「픽셀비우기 버튼 위치가 색관련 버튼이랑 같이있는게 신경쓰임. 아래
+    // 픽셀쪽으로 이동. 위치는 해당항목 제일위」.
+    testWidgets('the colour edit list: the colour verbs, then — past the '
+        'divider — 픽셀 비우기 heading the pixel rows, 픽셀 잘라내기 over 픽셀 '
+        '복사; and the shortcut list in the same order', (tester) async {
+      await pumpApp(tester);
+      final order = [
+        for (final entry in TimelineBarMenus(
+          session: sessionOf(tester),
+          panel: TimelineToolbarPanelContext(sessionOf(tester)),
+        ).colourEdit())
+          switch (entry) {
+            PanelFlyoutItem(:final shortcuts) => shortcuts.single,
+            PanelFlyoutDivider() => '—',
+            _ => null,
+          },
+      ].nonNulls.toList();
+
+      expect(order, [
+        EditorActionIds.editReplaceColour,
+        EditorActionIds.editDeleteColour,
+        EditorActionIds.editKeepColour,
+        '—',
+        EditorActionIds.editClearPixels,
+        EditorActionIds.editCutPixels,
+        EditorActionIds.editCopyPixels,
+        EditorActionIds.editPastePixelsAbove,
+        EditorActionIds.editPastePixelsBelow,
+      ]);
+      expect(
+        [
+          for (final definition in editorActionDefinitions)
+            if (definition.shelf == ShortcutShelf.colourEdit) definition.id,
+        ],
+        [
+          for (final id in order)
+            if (id != '—') id,
+        ],
+        reason: 'the shortcut list shows the rows in the list\'s order',
       );
     });
 

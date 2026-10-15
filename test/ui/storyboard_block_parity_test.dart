@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGripInk, BlockEdgeGripPainter, TimelineBlockEdgeGrip;
 
+import '../helpers/named_finders.dart';
+
 /// B5/B6 (2026-08-17): the storyboard's TRANSITION and SE blocks behave
 /// like FRAME BLOCKS — the same double-tap gate (same cell twice, or it is
 /// two seeks), the same edge zones (the dense rows' one grip placement), and
@@ -469,9 +471,7 @@ void main() {
         'the layer\'s flag', (tester) async {
       await _openStoryboard(tester);
 
-      final toggle = find.byKey(
-        ValueKey<String>('storyboard-layer-timesheet-$_seLayerId'),
-      );
+      final toggle = find.named('storyboard-layer-timesheet-$_seLayerId');
       expect(toggle, findsOneWidget);
       expect(_track(tester).seLayers.single.onTimesheet, isTrue);
 
@@ -487,19 +487,15 @@ void main() {
       final transitionId = _track(tester).transitionLayer.id;
 
       expect(
-        find.byKey(
-          ValueKey<String>('storyboard-layer-timesheet-$transitionId'),
-        ),
+        find.named('storyboard-layer-timesheet-$transitionId'),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('storyboard-layer-mark-$transitionId')),
+        find.named('storyboard-layer-mark-$transitionId'),
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          ValueKey<String>('storyboard-layer-visibility-$transitionId'),
-        ),
+        find.named('storyboard-layer-visibility-$transitionId'),
         findsOneWidget,
       );
     });
@@ -510,9 +506,7 @@ void main() {
       final transitionId = _track(tester).transitionLayer.id;
 
       await tester.tap(
-        find.byKey(
-          ValueKey<String>('storyboard-layer-visibility-$transitionId'),
-        ),
+        find.named('storyboard-layer-visibility-$transitionId'),
       );
       await tester.pumpAndSettle();
 

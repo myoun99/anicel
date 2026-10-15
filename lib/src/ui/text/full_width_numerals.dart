@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 
-/// R9 #15 — full-width numerals become half-width AS THEY ARE TYPED.
+/// R9 #15 — full-width numerals are numerals.
 ///
 /// A Japanese IME sits in 全角 for ordinary text, and the user types a
 /// frame count without leaving it. The app then rejected the input
@@ -8,9 +8,22 @@ import 'package:flutter/services.dart';
 /// `１` a digit, and `int.tryParse('１２')` is null. Nothing was wrong with
 /// what they typed — the field simply refused Japanese numerals.
 ///
-/// Converting at INPUT time is the local convention, and it is also what
-/// makes this ONE change enough: no parse site anywhere can see a
-/// full-width numeral afterwards, so none of them needs its own guard.
+/// 🐛F-355 (유저 2026-10-13): 「５０이라고 입력할때 숫자가 두번 등록되는거같은?
+/// 5500 이런식으로」. The numerals were converted AS THEY WERE TYPED — while
+/// the IME was still composing them — and on Windows a draft the app
+/// changes is a draft the engine forgets: the change ends its composing
+/// (`TextInputModel::SetText`), and the IME's next draft is then laid in
+/// beside the old one, twice. ↩️Converting at input time was what let no
+/// parse site need a guard. A draft is the IME's, so the law has two
+/// halves now, both here:
+///
+/// · The FIELD shows them half-width once the IME commits them — Enter, or
+///   its own confirm ([HalfWidthNumeralsFormatter]). Nothing touches a
+///   draft.
+/// · Whatever READS a number field's text reads its numerals half-width
+///   ([toHalfWidthNumerals] · [halfWidthInt]) — so a draft counts as the
+///   number it shows, and so does one a field lost the focus in the middle
+///   of: Flutter commits that one as it is, past the formatters.
 ///
 /// The range is the numerals plus the two marks that ride with them in a
 /// number: U+FF10–FF19, U+FF0E (．) and U+FF0D (－).
@@ -43,35 +56,58 @@ String toHalfWidthNumerals(String text) {
   return changed ? String.fromCharCodes(out) : text;
 }
 
-/// The formatter form. Length is preserved (one code unit for one), so the
-/// selection survives untouched — the caret does not jump to the end while
-/// the user is still typing.
+/// The whole number a number field's [text] says, its numerals read
+/// half-width. Null where it says none.
+int? halfWidthInt(String text) =>
+    int.tryParse(toHalfWidthNumerals(text).trim());
+
+/// A number field's formatter: in what the IME COMMITS, the full-width
+/// numerals made half-width, and then [then] takes what the field takes of
+/// it. A draft the IME is still composing comes back as it is — Flutter
+/// formats again the moment it is committed.
+///
+/// Length is preserved (one code unit for one), so the selection survives
+/// untouched — the caret does not jump to the end while the user is still
+/// typing.
 class HalfWidthNumeralsFormatter extends TextInputFormatter {
-  const HalfWidthNumeralsFormatter();
+  const HalfWidthNumeralsFormatter({this.then});
+
+  /// The filter, run on the CONVERTED text. Order is the whole point —
+  /// `digitsOnly` ahead of the conversion would delete the full-width
+  /// numerals before they could become digits, which is exactly the
+  /// behaviour the user reported. Null takes it all.
+  final TextInputFormatter? then;
 
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final converted = toHalfWidthNumerals(newValue.text);
-    if (converted == newValue.text) {
+    if (!newValue.composing.isCollapsed) {
       return newValue;
     }
-    return newValue.copyWith(text: converted);
+    final converted = toHalfWidthNumerals(newValue.text);
+    final halfWidth = converted == newValue.text
+        ? newValue
+        : newValue.copyWith(text: converted);
+    return then?.formatEditUpdate(oldValue, halfWidth) ?? halfWidth;
   }
 }
 
-/// THE integer-field formatter list: convert first, then filter. Order is
-/// the whole point — `digitsOnly` ahead of the conversion would delete the
-/// full-width numerals before they could become digits, which is exactly
-/// the behaviour the user reported.
+/// THE integer field's formatters.
 final List<TextInputFormatter> halfWidthDigitsOnly = List.unmodifiable([
-  const HalfWidthNumeralsFormatter(),
-  FilteringTextInputFormatter.digitsOnly,
+  HalfWidthNumeralsFormatter(then: FilteringTextInputFormatter.digitsOnly),
 ]);
 
-/// The decimal-field formatter: conversion alone, so signs, points and
+/// The formatters of a field of whole numbers and the ranges between them
+/// — 「1-200」 — and the spaces around.
+final List<TextInputFormatter> halfWidthNumberRanges = List.unmodifiable([
+  HalfWidthNumeralsFormatter(
+    then: FilteringTextInputFormatter.allow(RegExp(r'[\d\-\s]')),
+  ),
+]);
+
+/// The decimal field's formatters: conversion alone, so signs, points and
 /// units the field's own parser understands still come through.
 const List<TextInputFormatter> halfWidthNumerals = [
   HalfWidthNumeralsFormatter(),

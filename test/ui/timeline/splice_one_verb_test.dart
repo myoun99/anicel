@@ -356,7 +356,7 @@ Future<EditorSessionManager> _pump(
 }
 
 void _stand(EditorSessionManager session, int frameIndex) {
-  session.clearAllSelections();
+  session.clearTimelineSelections();
   session.selectLayer(_layerId);
   session.selectFrameIndex(frameIndex);
 }

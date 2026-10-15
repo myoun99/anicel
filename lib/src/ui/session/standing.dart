@@ -1,17 +1,23 @@
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 
 import '../../services/editing/active_cut_helpers.dart';
+import '../../services/editing/layer_standing_after_change.dart'
+    show conteRowAfterChange, conteRowHandedOff;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project.dart' show Project;
 import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart' show Track;
+import '../../models/track_camera_row.dart';
 import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
+import '../../models/track_projection_row.dart';
+import '../../models/track_row_twirls.dart' show trackRowTwirlsOf;
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -20,12 +26,12 @@ import '../timeline/layer_timeline_display_adapter.dart'
 import '../timeline/property_lane_model.dart'
     show LayerRowHiddenBy, layerRowHiddenBy;
 import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
-import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
 import '../../services/commands/link_mirror.dart'
-    show linkMirrorRows, linkMirrorTargets;
+    show headMirrorTargets;
 import '../../services/commands/update_layer_collapsed_command.dart';
+import '../../services/project_lookup.dart' show cutIdOfLayer;
 import 'playback_rig.dart';
 import 'rail_view.dart';
 import 'active_cut_controllers.dart';
@@ -150,23 +156,70 @@ class Standing {
   /// The row you just made is the subject OF THE PANEL YOU MADE IT IN: made
   /// while working in the storyboard (whose layer pill makes S rows), it is
   /// that rail's row as well — the rail shows it, so that is where you stand.
+  ///
+  /// ↩️「The rail shows it」 meant a track's own row while this rail showed
+  /// no row of a cut. A cut's conte group and its camera are shown on the
+  /// track's projection rows now (I-73), so a row of them made there is
+  /// stood on there (F-322, 유저 2026-10-09: 「콘티행 섰을때 레이어
+  /// 종류버튼으로 어태치레이어 추가안되니 가능하도록」).
   void seatVerbRowOnActiveLayer() {
     final seated = _controllers.layerController.activeLayerId;
     if (seated == null) {
       return;
     }
     final row = LayerRowAddress(seated);
-    final railStands =
-        _working.value == WorkingPanel.storyboard &&
-        _trackSe.isTrackOwnedRailLayerId(seated);
-    if (_timelineRow == row && (!railStands || _storyboardRow == row)) {
+    final railRow = _working.value == WorkingPanel.storyboard
+        ? _railRowShowing(seated)
+        : null;
+    if (_timelineRow == row &&
+        (railRow == null || _storyboardRow == railRow)) {
       return;
     }
     _timelineRow = row;
-    if (railStands) {
-      _storyboardRow = row;
+    if (railRow != null) {
+      _storyboardRow = railRow;
     }
     publishCurrentRow();
+  }
+
+  /// The storyboard rail's row that shows [layerId]: its own for a track's
+  /// row, the projection row for a row of a cut's conte group or its camera
+  /// ([_projectionRowShowing]); null for a row the rail does not show.
+  LayerRowAddress? _railRowShowing(LayerId layerId) {
+    if (_trackSe.isTrackOwnedRailLayerId(layerId)) {
+      return LayerRowAddress(layerId);
+    }
+    final projection = _projectionRowShowing(layerId);
+    return projection == null ? null : LayerRowAddress(projection);
+  }
+
+  /// 🗣️F-322: the rail's stand on a conte row follows its rows to the seat
+  /// an edit moved them to — a drag, a delete, an undo — and goes where the
+  /// timeline's delete hands off once the edit took them all
+  /// ([conteRowAfterChange], [conteRowHandedOff]). The session asks it with
+  /// every change it announces.
+  ///
+  /// Counted from the project the stand was written in ([_railStand]), not
+  /// the last one announced: a door that stands before it announces — the
+  /// row an edit seats ([seatVerbRowOnActiveLayer]) — wrote that seat in
+  /// the project its edit made, and is never carried off by it.
+  void followConteSeats() {
+    final stand = _railStand;
+    final before = stand?.stoodIn;
+    final after = _project.repository.currentProject;
+    if (stand == null ||
+        before == null ||
+        after == null ||
+        identical(before, after)) {
+      return;
+    }
+    final row =
+        conteRowAfterChange(stand.row, before: before, after: after) ??
+        conteRowHandedOff(stand.row, before: before, after: after);
+    _storyboardRow = row;
+    if (row != stand.row) {
+      publishCurrentRow();
+    }
   }
 
   /// The active layer the session last saw in [followActiveLayer].
@@ -193,12 +246,21 @@ class Standing {
   /// never reaches here. ↩️F-187: its doors do move it now, through
   /// [_seatLayer], which seats the timeline's row in the same step — so this
   /// finds the row already there.
+  ///
+  /// 🚨THE SOLO FOLLOWS IT HERE TOO (R4 #7: switching the active layer
+  /// re-solos), for the row's own reason. F-327 (유저 2026-10-09): 「솔로
+  /// 레이어 on인상태로 레이어만들면 새 레이어에 서는데, 이전 레이어의 그림이
+  /// on인채로 있음 … 거기서 레이어 다른곳에서면 정상적으로 돌아옴」 — it
+  /// followed from [_seatLayer] alone, and Add Layer seats its new row
+  /// straight on the controller. Only when the layer MOVED: re-applying it
+  /// on every announcement would fight an eye clicked by hand.
   void followActiveLayer() {
     final active = _selection.activeLayerId;
     if (active == _activeSeen) {
       return;
     }
     _activeSeen = active;
+    _solo.syncVisibilitySolo();
     final row = _timelineRow;
     if (active == null || row == null || row.owningLayerId == active) {
       return;
@@ -279,7 +341,16 @@ class Standing {
 
   /// The storyboard rail's own selected row, as picked. Null = never
   /// picked, which reads as the selected track's V row.
-  TimelineRowAddress? _storyboardRow;
+  TimelineRowAddress? get _storyboardRow => _railStand?.row;
+
+  set _storyboardRow(TimelineRowAddress? row) => _railStand = row == null
+      ? null
+      : (row: row, stoodIn: _project.repository.currentProject);
+
+  /// [_storyboardRow] and the project it was written in — the one whose
+  /// seats a conte row's address counts ([followConteSeats]). ONE field, so
+  /// no write can leave the seat counted in another project.
+  ({TimelineRowAddress row, Project? stoodIn})? _railStand;
 
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
   /// was picked, the way the timeline has exactly one selected layer row.
@@ -302,15 +373,17 @@ class Standing {
   /// A stored row that the rail no longer shows (its track's SE slot went
   /// away) falls back to the track row rather than lighting nothing.
   ///
-  /// The track's CONTE row is a row of this rail too (I-73, 유저 2026-10-08:
-  /// 「콘티행에 서야 콘티행에 서도록」) — the selected track's own: it is
-  /// there in every cut and in a gap, so it is stood on under the row's own
-  /// address ([trackConteRowId]) and never under a cut's layer.
+  /// The track's CONTE rows and its CAMERA row are rows of this rail too
+  /// (I-73, 유저 2026-10-08: 「콘티행에 서야 콘티행에 서도록」 · 「카메라는
+  /// 로컬이랑 똑같이 최상단행」) — the selected track's own: they are there in
+  /// every cut and in a gap, so each is stood on under the row's own address
+  /// ([trackIdOfProjectionRow]) and never under a cut's layer.
   TimelineRowAddress get selectedRow {
     final row = _storyboardRow;
     if (row is LayerRowAddress &&
         (_trackSe.isTrackOwnedRailLayerId(row.layerId) ||
-            trackIdOfConteRow(row.layerId) == _selection.selectedTrackId)) {
+            trackIdOfProjectionRow(row.layerId) ==
+                _selection.selectedTrackId)) {
       return row;
     }
     return TrackRowAddress(_selection.selectedTrackId);
@@ -608,30 +681,81 @@ class Standing {
   /// [laneId] is a GROUP header closing, and it swallows its members alone
   /// — the header itself stays on screen and is where you land.
   ///
-  /// [panel] is the panel whose rail folded: each panel keeps its own
-  /// twirls, so a fold hands on where THAT panel stands.
-  void handOffCurrentRowOnFold(
-    LayerId layerId, {
-    String? laneId,
-    WorkingPanel panel = WorkingPanel.timeline,
-  }) {
+  /// A twirl is its row's (F-360), whichever rail pressed it: the fold hands
+  /// on where the timeline stands, and where the storyboard stands in the
+  /// row that shows the same lanes ([_storyboardRowShowing]).
+  /// ↩️It took the panel whose rail folded and handed on there alone, while
+  /// the storyboard's rail kept twirls of its own.
+  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
     if (laneId == null) {
-      final track = trackIdOfTransformLaneCarrier(layerId);
       handOffOnFold(
-        swallower: track == null
-            ? LayerRowAddress(layerId)
-            : TrackRowAddress(track),
+        swallower: _rowSwallowingLanesOf(layerId),
         vanished: (address) =>
             address is LaneRowAddress && address.layerId == layerId,
-        panel: panel,
       );
+      // The storyboard row that shows this row's lanes twirls with it (I-73
+      // ④ⓔ — the camera row's head is the timeline's camera row): its lanes
+      // go too, and the row swallows them.
+      final shown = _storyboardRowShowing(layerId);
+      if (shown != null) {
+        handOffOnFold(
+          swallower: _rowSwallowingLanesOf(shown),
+          vanished: (address) =>
+              address is LaneRowAddress && address.layerId == shown,
+          panel: WorkingPanel.storyboard,
+        );
+      }
       return;
     }
     handOffOnFold(
       swallower: LaneRowAddress(layerId, laneId),
       vanished: (address) => currentRowIsInsideGroup(address, layerId, laneId),
-      panel: panel,
     );
+    // …and a group the storyboard's row draws shuts there too (I-73 ④ⓔ):
+    // its header swallows the members you stood in.
+    final shown = _storyboardRowShowing(layerId);
+    if (shown != null) {
+      handOffOnFold(
+        swallower: LaneRowAddress(shown, laneId),
+        vanished: (address) => currentRowIsInsideGroup(address, shown, laneId),
+        panel: WorkingPanel.storyboard,
+      );
+    }
+  }
+
+  /// The row that swallows [rowId]'s lanes as they fold: the row itself —
+  /// or, for a V row's lanes, whose carrier is no layer, the TRACK's row.
+  TimelineRowAddress _rowSwallowingLanesOf(LayerId rowId) =>
+      switch (trackIdOfTransformLaneCarrier(rowId)) {
+        final track? => TrackRowAddress(track),
+        null => LayerRowAddress(rowId),
+      };
+
+  /// The storyboard's row that shows [layerId]'s lanes — a track's own row
+  /// (an S row, the V row's carrier) as itself, for the rails draw it as
+  /// one row; the camera row of its cut's track for its camera, a conte row
+  /// for a row of its conte group ([projectionRowIdOf]) — or null for
+  /// every other layer.
+  LayerId? _storyboardRowShowing(LayerId layerId) {
+    final project = _project.repository.requireProject();
+    if (trackRowTwirlsOf(project, layerId) != null) {
+      return layerId;
+    }
+    return _projectionRowShowing(layerId);
+  }
+
+  /// The storyboard's projection row that shows [layerId] — the camera row
+  /// of its cut's track for its camera, a conte row for a row of its conte
+  /// group ([projectionRowIdOf]) — or null for every other layer.
+  LayerId? _projectionRowShowing(LayerId layerId) {
+    for (final track in _project.repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.layers.byId(layerId) != null) {
+          return projectionRowIdOf(track.id, cut, layerId);
+        }
+      }
+    }
+    return null;
   }
 
   /// An ATTACH GROUP folding shut: every row the group holds — the rows
@@ -767,9 +891,13 @@ class Standing {
 
   LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
       switch (storyboardStandingRow) {
-        LayerRowAddress(:final layerId)
-            when trackIdOfConteRow(layerId) != null =>
-          layerAConteStandSeats(before: before),
+        // A projection row's lane seats the row's layer, as an S row's lane
+        // seats the S row's (I-73 ④ⓔ).
+        final row when projectionRowUnder(row) != null =>
+          layerAProjectionStandSeats(
+            before: before,
+            row: projectionRowUnder(row)!,
+          ),
         LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
             when _activeCutHasLayer(layerId) =>
           layerId,
@@ -796,21 +924,39 @@ class Standing {
   }
 
   /// The layer standing on a CONTE CELL of the active cut seats (F-187):
-  /// the cut's conte row when it has one ([storyboardLayerForCut]); else
-  /// [before] — the layer you stood on — when the cut shows it (a track's S
-  /// row does, in every cut); else null, and nothing is done: the cut's own
-  /// landing ([selectCut]'s memory) stands (「컷에설때 콘티레이어가 없다면
-  /// 마지막에 선 레이어 그냥 그대로둠. 아무것도 안하고」).
+  /// the cut's conte when it has one; else [before] — the layer you stood
+  /// on — when the cut shows it (a track's S row does, in every cut); else
+  /// null, and nothing is done: the cut's own landing ([selectCut]'s
+  /// memory) stands (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
+  /// 그대로둠. 아무것도 안하고」).
   ///
-  /// ★One answer for every door that stands on a conte cell — the
-  /// storyboard's conte row and the conte preview's cells. ↩️The
-  /// storyboard's V row was one of them until I-73 (10-08): it stands on
-  /// the CUT, which seats no row ([_seatTimelineOnStoryboardStand]).
-  LayerId? layerAConteStandSeats({required LayerId? before}) {
+  /// ★One answer for every door that stands on a conte cell — the conte
+  /// preview's cells here, the storyboard's conte rows at their seats
+  /// ([layerAProjectionStandSeats], one body). ↩️The storyboard's V row was
+  /// one of them until I-73 (10-08): it stands on the CUT, which seats no
+  /// row ([_seatTimelineOnStoryboardStand]). ↩️It took a SEAT while the
+  /// storyboard's conte rows came through here (I-73); they ask
+  /// [layerAProjectionStandSeats] now, and the preview's cells are the
+  /// conte's own.
+  LayerId? layerAConteStandSeats({required LayerId? before}) =>
+      layerAProjectionStandSeats(
+        before: before,
+        row: LayerRowAddress(trackConteRowId(_selection.selectedTrackId)),
+      );
+
+  /// The layer standing on a cell of the PROJECTION ROW [row] in the active
+  /// cut seats: the cut's layer that row shows ([projectedRowOf]) — a seat of
+  /// its conte group, or its camera layer (I-73 ④: 「타임라인의 자리 = 카메라
+  /// 행」); else [before] when the cut shows it; else null, and the cut's own
+  /// landing stands ([layerAConteStandSeats]'s rule, one body for both).
+  LayerId? layerAProjectionStandSeats({
+    required LayerId? before,
+    required TimelineRowAddress row,
+  }) {
     final cut = _project.activeCutOrNull;
-    final conte = cut == null ? null : storyboardLayerForCut(cut);
-    if (conte != null) {
-      return conte.id;
+    final seated = cut == null ? null : projectedRowOf(cut, row);
+    if (seated != null) {
+      return seated.id;
     }
     return _activeCutHasLayer(before) ? before : null;
   }
@@ -1018,10 +1164,9 @@ class Standing {
     // selection feel like it lagged behind the pointer.
     if (_selection.activeLayerId != layerId) {
       _controllers.layerController.selectLayer(layerId);
-      // The solo mode FOLLOWS the active layer (R4 #7) — nothing to follow
-      // when the layer did not move, and re-applying it is what would have
-      // fought a manual visibility toggle on every click.
-      _solo.syncVisibilitySolo();
+      // ↩️The solo followed the active layer from here, and from no other
+      // door (F-327). It follows at the announcement below now, which every
+      // door passes ([followActiveLayer]).
       changed = true;
     }
     // R10 #13: the TIMELINE's row moves with the layer. It does NOT touch the
@@ -1105,26 +1250,38 @@ class Standing {
     if (shut.isEmpty) {
       return;
     }
-    final repository = _project.repository;
-    final cutId = _project.requireActiveCut.id;
-    for (final folder in shut) {
-      // Every use of the folder opens with it: its fold is the link
-      // group's (F-302), and a walk that opened this cut's alone would
-      // leave one folder folded two ways.
-      for (final use in linkMirrorTargets(
-        repository.requireProject(),
-        cutId: cutId,
-        layerId: folder,
-      )) {
-        UpdateLayerCollapsedCommand.writeCollapsed(
-          repository,
-          cutId: use.cutId,
-          layerId: use.layerId,
-          value: false,
-        );
-      }
-    }
+    shut.forEach(_openFold);
     _changes.notifyChanged();
+  }
+
+  /// Opens [row]'s fold — a folder's members, a base's attach group
+  /// (`Layer.collapsed`) — OUTSIDE history ([_openFoldersAbove] says why),
+  /// on every row the fold's own command writes ([headMirrorTargets]): its
+  /// fold is its link group's (F-302) and its head's (I-73), and a walk that
+  /// opened this cut's alone would leave one fold folded two ways. The rail
+  /// reads it at once ([RailView.readFolds]).
+  ///
+  /// ONE write for the two folds the standing law opens: the folders above
+  /// a row an undo walks back to, and the attach group a row you went to
+  /// rides. ↩️The attach group's was a write of its own on the rail's view
+  /// until F-360, and the folders' reached the link group alone.
+  void _openFold(LayerId row) {
+    final repository = _project.repository;
+    final project = repository.requireProject();
+    // A folder and a base stand in a cut; a row no cut holds folds nothing.
+    final cutId = cutIdOfLayer(project, row);
+    if (cutId == null) {
+      return;
+    }
+    for (final use in headMirrorTargets(project, cutId: cutId, layerId: row)) {
+      UpdateLayerCollapsedCommand.writeCollapsed(
+        repository,
+        cutId: use.cutId,
+        layerId: use.layerId,
+        value: false,
+      );
+    }
+    _railView.readFolds(repository.currentProject);
   }
 
   /// 🚨★★THE STANDING LAW (F-169, 유저 2026-09-24): ①「보이는거만 선택가능하고
@@ -1136,9 +1293,13 @@ class Standing {
   /// a cut switch, a new row, and the rail's own view changes — through the
   /// same [layerRowHiddenBy] the grids draw by. When the row is hidden:
   ///   - [reveal]: you WENT there — made the row, or an undo brought you back
-  ///     to it. What the rail's VIEW hides it with opens: its attach group
-  ///     unfolds, its section shows. A folder's fold is the document's, not
-  ///     the view's, and does not open here.
+  ///     to it. What hides it opens: its attach group unfolds (UI-R20 #9 —
+  ///     a fresh attach layer is visible the moment it is made), its section
+  ///     shows. A shut folder above it opens on the undo's walk
+  ///     ([_openFoldersAbove], I-41), not here. ↩️This read 「what the
+  ///     rail's VIEW hides it with — a folder's fold is the document's」
+  ///     until F-360 made the attach group's fold the document's too; the
+  ///     two still open where they did.
   ///   - otherwise another row takes the standing: the head of the fold it
   ///     is in (the attach group's base, the outermost shut folder — the
   ///     fold law's swallower, R5 #11), else the nearest shown row ABOVE it
@@ -1218,10 +1379,13 @@ class Standing {
       if (layerId == null || track == null) {
         return null;
       }
-      // The conte row is a row of this rail by its own address, and sits
-      // in the section the timeline puts its kind in (I-73).
+      // The conte rows and the camera row are rows of this rail by their own
+      // addresses, and sit in the sections the timeline puts their kinds in
+      // (I-73).
       final kind = trackIdOfConteRow(layerId) != null
           ? LayerKind.storyboard
+          : trackIdOfCameraRow(layerId) != null
+          ? LayerKind.camera
           : [track.transitionLayer, ...track.seLayers]
                 .where((candidate) => candidate.id == layerId)
                 .firstOrNull
@@ -1243,7 +1407,8 @@ class Standing {
   }
 
   /// [keepStandingShown]'s reveal: the section [layer] sits in shows, and
-  /// the attach group it rides unfolds. One write each, only when shut.
+  /// the attach group it rides unfolds ([_openFold]). One write each, only
+  /// when shut.
   void _openViewAround(Layer layer, List<Layer> stack) {
     final section = timelineSectionForLayerKind(layer.kind);
     final hidden = _railView.hiddenSections.value;
@@ -1251,20 +1416,11 @@ class Standing {
       _railView.hiddenSections.value = {...hidden}..remove(section);
     }
     final baseId = attachGroupBaseOf(layer, stack);
-    final folded = _railView.collapsedAttachBaseIds.value;
-    if (baseId != null && folded.contains(baseId)) {
-      // Every use of the base unfolds with it (F-302).
-      final cutId = _project.activeCutId;
-      _railView.collapsedAttachBaseIds.value = {...folded}
-        ..removeAll(
-          cutId == null
-              ? [baseId]
-              : linkMirrorRows(
-                  _project.repository.requireProject(),
-                  cutId: cutId,
-                  layerId: baseId,
-                ),
-        );
+    if (baseId != null &&
+        _railView.collapsedAttachBaseIds.value.contains(baseId)) {
+      // Every use of the base unfolds with it (F-302) — every row that
+      // wears its head (I-73).
+      _openFold(baseId);
     }
   }
 

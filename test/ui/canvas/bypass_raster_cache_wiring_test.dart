@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -14,21 +13,15 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
-import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
-import 'package:anicel/src/ui/playback/canvas_playback_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
-import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -118,6 +111,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 ///    file pins ABSENT on all four again; the reason each was ever
 ///    present is above, and the pin that owns the cause is
 ///    `the_snap_keeps_every_sample_off_the_texel_boundary_test.dart`.
+///  · 2026-10-10 — three: the composite playback view went, the camera
+///    view's run with it onto the canvas's own stack (pinned above).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const projectId = ProjectId('project');
@@ -125,15 +120,6 @@ void main() {
   const cutId = CutId('cut');
   const layerId = LayerId('layer');
   const frameId = FrameId('frame-a');
-
-  BrushFrameKey frameKey(Cut cut, LayerId layer, FrameId frame) =>
-      BrushFrameKey(
-        projectId: projectId,
-        trackId: trackId,
-        cutId: cut.id,
-        layerId: layer,
-        frameId: frame,
-      );
 
   Cut cut() => Cut(
     id: cutId,
@@ -201,70 +187,11 @@ void main() {
   );
 
   testWidgets(
-    'the playback view picture no longer refuses the raster cache — a paused '
-    'frame goes stable and would snap on cache engage',
-    (tester) async {
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
-      final controller = CanvasPlaybackController(
-        resolveProject: () => Project(
-          id: projectId,
-          name: 'Project',
-          frameRate: const ProjectFrameRate.integer(10),
-          cameraSize: canvasSize,
-          tracks: [
-            Track(id: trackId, name: 'Track', cuts: [cut()]),
-          ],
-          createdAt: DateTime.utc(2026),
-        ),
-        resolveActiveCutId: () => cutId,
-        resolveActiveTrackId: () => trackId,
-        resolveFrameRate: () => const ProjectFrameRate.integer(10),
-      );
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CanvasPlaybackView(
-              controller: controller,
-              compositeCache: composites,
-              prerenderProgress: ValueNotifier(PrerenderProgress.none),
-              cameraViewEnabled: false,
-              cameraFrameSize: canvasSize,
-              cameraPoseOf: (cut, frameIndex) =>
-                  CameraPose(center: CanvasPoint(x: 4, y: 4)),
-            ),
-          ),
-        ),
-      );
-
-      final paint = playbackFramePaint(tester);
-      expect(
-        paint.willChange,
-        isFalse,
-        reason: 'retired with the editing stack\'s. A PAUSED playback frame '
-            'is a stable picture the cache will now bake — and it bakes it '
-            'at the integral translation layout already chose, so there is '
-            'no hop to flip into.',
-      );
-    },
-  );
-
-  testWidgets(
     'no parked track-stack picture refuses the raster cache any more — a '
     'parked gap shows a still stack that would snap on cache engage',
     (tester) async {
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
+      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+      addTearDown(images.dispose);
       final project = Project(
         id: projectId,
         name: 'Project',
@@ -285,7 +212,8 @@ void main() {
                 spansOf: (_) => const [],
                 globalFrameIndex: globalFrame,
               ),
-              compositeCache: composites,
+              stackOf: (_, _) => const [],
+              imageCache: images,
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>

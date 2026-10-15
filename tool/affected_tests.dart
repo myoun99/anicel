@@ -180,6 +180,7 @@ Future<void> main(List<String> args) async {
     stderr.writeln('--concurrency takes a whole number of suites, 1 or more.');
     exit(2);
   }
+  _atIdle();
 
   final root = _repoRoot();
   if (root == null) {
@@ -247,6 +248,31 @@ String? _flagValue(List<String> args, String name) {
 }
 
 void _report(String message) => stdout.writeln('[affected] $message');
+
+/// 🗣️유저 2026-09-24 「PC 굳히지 말 것」: every suite this launches runs at
+/// Idle, whoever launched the tool. `lane.sh` lowers its own shell before
+/// its gates; a run started straight from a shell lowered nothing, and on
+/// 2026-10-15 two of them at Normal starved the user's release build of
+/// its AOT compile. Lowered here, the tool hands Idle to everything it
+/// launches — Windows gives an Idle parent's class to its children.
+void _atIdle() {
+  if (!Platform.isWindows) {
+    return;
+  }
+  try {
+    Process.runSync('powershell.exe', idleArguments(pid));
+  } on ProcessException {
+    // No PowerShell to ask: the run goes on at the class it was given.
+  }
+}
+
+/// What PowerShell is asked to run process [processId] at Idle with.
+List<String> idleArguments(int processId) => [
+  '-NoProfile',
+  '-NonInteractive',
+  '-Command',
+  "(Get-Process -Id $processId).PriorityClass = 'Idle'",
+];
 
 Directory? _repoRoot() {
   final result = Process.runSync('git', ['rev-parse', '--show-toplevel']);

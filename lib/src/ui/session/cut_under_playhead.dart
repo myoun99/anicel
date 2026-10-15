@@ -3,34 +3,39 @@ import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import 'active_cut_controllers.dart';
+import '../../services/playback/playback_frame_mapping.dart'
+    show PlaybackPosition;
+import 'playback_own_frame.dart';
 import 'playback_rig.dart';
 import 'session_roles.dart';
 
 /// Where the playhead stands on its track: the cut under it, the frame that
-/// cut starts on, and the playhead's frame inside it.
+/// cut starts on, and the playhead's frame inside it — a frame of the cut's
+/// OWN, which begins before [startFrame] in a cut an O.L arrives into
+/// (`TrackFrameAxis`).
 typedef CutUnderPlayheadPosition = ({Cut cut, int startFrame, int localFrame});
 
 /// The CUT UNDER THE PLAYHEAD — one answer for every surface that shows the
-/// cut being looked at rather than the cut open for editing.
+/// cut being looked at: the active cut at the editing playhead, none where
+/// a live scrub stands in a gap, and while a run plays, the cut and the
+/// frame it plays.
 ///
 /// F-90 (유저 2026-09-12): 「재생시에 컷 넘어가면 타임시트패널도 다음컷 시트
 /// 표시해주는데 왜 룰러 스크럽때는 그게 안되는건지? 법 하나로 통일」.
 ///
-/// Measured first (09-16), neither did. Playback's own follow switches the
-/// active cut QUIETLY (R12-B), so a sheet rebuilt by the session's notify
-/// kept printing the cut being left and turned over only when the crossing
-/// also turned its PAGE. A scrub leaves the active cut alone on purpose
-/// ([FrameScrub.scrubGlobalFrame], UI-R7 #9), so nothing turned it at all.
-///
-/// One rule for the three moments: PLAYING, the playing position's cut; in
-/// a LIVE scrub parked off the active cut's territory, the cut of the parked
-/// frame — none over a gap; otherwise the active cut at the editing
-/// playhead.
+/// ↩️It reconciled two crossings that left the active cut behind: playback's
+/// follow switched it QUIETLY (R12-B), and a scrub parked over another cut's
+/// frames and left it alone (UI-R7 #9) — so 「the cut being looked at」 and
+/// 「the cut open for editing」 were two answers, and every surface showing
+/// the first had to be wired here, one at a time. Since I-57 ② both
+/// crossings land the cut they reach (유저 10-08 · 10-09;
+/// [FrameScrub.scrubGlobalFrame], the session's `followPlaybackCut`), so
+/// the two answers are one but in a gap, and but for the frame a run
+/// stands on between its ticks.
 ///
 /// [listenable] moves on CROSSINGS only. A playback tick or a scrub move
 /// inside the cut it last named costs two integer comparisons, so a panel
-/// turns over once per cut and never rebuilds per frame — the cost R12-B
-/// keeps the follow itself quiet to avoid.
+/// turns over once per cut and never rebuilds per frame.
 class CutUnderPlayhead {
   CutUnderPlayhead({
     required ProjectAccess project,
@@ -57,8 +62,8 @@ class CutUnderPlayhead {
   final ValueNotifier<CutId?> _cutId = ValueNotifier<CutId?>(null);
 
   /// The track frames `[_start, _end)` of the cut last published — what a
-  /// playing or parked playhead is checked against before anything is
-  /// resolved again.
+  /// playing playhead is checked against before anything is resolved again
+  /// (a parked one stands in a gap, outside every cut).
   int _start = 0;
   int _end = -1;
 
@@ -81,12 +86,12 @@ class CutUnderPlayhead {
       return (
         cut: position.cut,
         startFrame: position.globalFrameIndex - position.localFrameIndex,
-        localFrame: position.localFrameIndex,
+        localFrame: _ownFrameOf(position),
       );
     }
-    final parkedFrame = liveParkedFrame;
-    if (parkedFrame != null) {
-      return atTrackFrame(parkedFrame);
+    if (liveParkedFrame != null) {
+      // A live scrub parks only in a gap: no cut there.
+      return null;
     }
     final cut = _project.activeCutOrNull;
     if (cut == null) {
@@ -100,44 +105,23 @@ class CutUnderPlayhead {
   }
 
   /// The playhead's frame inside the cut [resolve] names — cheap enough for
-  /// a paint per tick: playback's own local frame, a parked frame against the
-  /// published cut's start, the editing playhead otherwise.
+  /// a paint per tick: playback's own local frame, the editing playhead
+  /// otherwise.
   int get localFrame {
     final editing = _controllers.timelineController.currentFrameIndex;
     if (_playing) {
-      return _playbackRig.playback.position?.localFrameIndex ?? editing;
+      final position = _playbackRig.playback.position;
+      return position == null ? editing : _ownFrameOf(position);
     }
-    final parked = liveParkedFrame;
-    return parked != null && parked >= _start && parked < _end
-        ? parked - _start
-        : editing;
+    return editing;
   }
 
-  /// A LIVE scrub's parked track frame; null when no drag in progress parks
-  /// the playhead. Only a live scrub asks the parked question: a committed
-  /// parking means there is no cut here (a gap, or the V-row eye's hidden
-  /// picture).
+  /// A LIVE scrub's parked track frame — always a gap since I-57 ②; null
+  /// when no drag in progress parks the playhead. Only a live scrub asks
+  /// the parked question: a committed parking means there is no cut here
+  /// (a gap, or the V-row eye's hidden picture).
   int? get liveParkedFrame =>
       _scrubbing.value ? _timeline.editingSession.gapGlobalFrame : null;
-
-  /// The cut the active track shows at [globalFrame]; null over a gap.
-  CutUnderPlayheadPosition? atTrackFrame(int globalFrame) {
-    // 🚨[TrackFrameAxis.ownerOf] hands a gap frame to the PRECEDING cut on
-    // purpose (its over-end runway) — it is an addressing rule, not a
-    // containment test. [TrackFrameAxis.isGap] is the containment test, and
-    // it is the same pair [selectGlobalFrame] asks, so what the drag frames
-    // and what the release lands cannot disagree.
-    final axis = _timeline.trackFrameAxis();
-    final owner = axis.isGap(globalFrame) ? null : axis.ownerOf(globalFrame);
-    if (owner == null) {
-      return null;
-    }
-    return (
-      cut: owner.cut,
-      startFrame: owner.startFrame,
-      localFrame: globalFrame - owner.startFrame,
-    );
-  }
 
   /// Re-answers after a playback tick, a move of the scrub's parking, or the
   /// scrub starting or ending; inside the published cut it returns at once.
@@ -167,6 +151,14 @@ class CutUnderPlayhead {
     _cutId.dispose();
     _cutName.dispose();
   }
+
+  /// The frame of its cut's own a playing [position] stands on
+  /// ([playbackOwnFrameOf]).
+  int _ownFrameOf(PlaybackPosition position) => playbackOwnFrameOf(
+    position,
+    playback: _playbackRig.playback,
+    axis: _timeline.trackFrameAxis(),
+  );
 
   bool get _playing =>
       _playbackRig.playback.globalFrameIndexListenable.value != null;

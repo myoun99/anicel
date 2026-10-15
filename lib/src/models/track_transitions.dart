@@ -9,6 +9,7 @@ library;
 
 import 'camera_instruction.dart';
 import 'cut.dart';
+import 'cut_camera.dart' show cameraDrawnFrameFloor;
 import 'cut_id.dart';
 import 'layer.dart';
 import 'project.dart';
@@ -36,8 +37,16 @@ TransitionSpan transitionSpanOfEvent(
 List<TransitionSpan> trackTransitionSpans(
   Track track,
   CameraInstructionSet vocabulary,
+) => transitionRowSpans(track.transitionLayer, vocabulary);
+
+/// The spans of a track's transition [row] — the row as stored, or as a
+/// drag in flight shows it (the storyboard's camera row reads a span's
+/// edge while it is dragged, I-73 ④).
+List<TransitionSpan> transitionRowSpans(
+  Layer row,
+  CameraInstructionSet vocabulary,
 ) => [
-  for (final entry in track.transitionLayer.instructions.entries)
+  for (final entry in row.instructions.entries)
     transitionSpanOfEvent(entry, vocabulary),
 ];
 
@@ -64,6 +73,40 @@ int drawnFramesOfCutAt({
     spans: spans,
   ),
 );
+
+/// Whether [row], as [track]'s transition row, draws no cut for fewer
+/// frames than its camera keeps ([cameraDrawnFrameFloor], read off the
+/// frames the track's own row draws it for). A cut drawn for as many frames
+/// or more passes by construction: the floor never stands past them.
+///
+/// 🗣️I-73-camera-row-Q7 (유저 2026-10-09 → `floor`): 「컷 길이 줄이기와
+/// 똑같이 — 안쪽 키 앞에서 멈춤」. A drag that makes a のりしろ shorter
+/// stops short of the camera keys on it, as a cut's end does, the key on
+/// the end coming in with it (`cameraFollowingItsEnd`). What takes a
+/// のりしろ away at once is not stopped: the keys on it come in.
+bool transitionRowKeepsCameraKeys(
+  Track track,
+  Layer row,
+  CameraInstructionSet vocabulary,
+) {
+  final before = trackTransitionSpans(track, vocabulary);
+  final after = transitionRowSpans(row, vocabulary);
+  for (final placed in cutSpansOf(track)) {
+    int drawnAmong(List<TransitionSpan> spans) => drawnFramesOfCutAt(
+      cut: placed.cut,
+      cutStart: placed.startFrame,
+      spans: spans,
+    );
+    final floor = cameraDrawnFrameFloor(
+      placed.cut.camera,
+      drawnFrameCount: drawnAmong(before),
+    );
+    if (drawnAmong(after) < floor) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /// Every cut of [project] with the のりしろ its own track's transitions ask
 /// of it — before its conte (an O.L arriving) and after it (an O.L leaving).

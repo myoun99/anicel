@@ -5,11 +5,15 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../services/commands/toggle_id_in_set_command.dart';
-import '../../services/project_lookup.dart' show layerAnywhereOrNull;
+import '../../models/track_row_twirls.dart';
+import '../../models/track_transform_lane_carrier.dart';
+import '../../services/project_lookup.dart'
+    show cutIdOfLayer, layerAnywhereOrNull, requireCut, rowTwirlsOf;
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
+import '../timeline/lane_graph.dart'
+    show LaneGraph, LaneGraphMode, LaneGraphVerbs;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
 import '../timeline/property_lane_model.dart'
     show laneGroupKey, parseLaneGroupKey;
@@ -116,7 +120,7 @@ class SessionRowButtonPresses {
 
   void pickBlendMode(LayerId pressed, LayerBlendMode mode) =>
       session.layerSwitches.setBlendModeForLayers(
-        session.rowSelectionVerbs.rowsActedOnBy(pressed),
+        session.rowSelectionVerbs.layersActedOnBy(pressed),
         mode,
       );
 
@@ -145,6 +149,11 @@ class SessionRowButtonPresses {
       );
 
   bool? _lanesOpen(LayerId id) {
+    // The V row: no layer, so no layer's lanes to ask about — its button is
+    // drawn only while its track has some, and its twirl is its track's.
+    if (trackIdOfTransformLaneCarrier(id) != null) {
+      return _twirlsOf(id)?.lanesExpanded;
+    }
     final layer = _row(id);
     if (layer == null ||
         timelineLanesForLayer(
@@ -154,29 +163,21 @@ class SessionRowButtonPresses {
         ).isEmpty) {
       return null;
     }
-    return session.railView.expandedLaneLayerIds.value.contains(id);
+    return layer.lanesExpanded;
   }
 
   /// 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
   /// property-lane twirl — the one the fx lanes live under — is a button
-  /// on a layer row like any other.
+  /// on a layer row like any other, and the row's own (F-360): every use
+  /// of a linked row twirls with it (F-302), every row of its head too.
   ///
   /// ⛔The closing half still runs here and NOT inside the command: the
   /// fold law hands the standing row to the layer when its lanes leave
   /// the screen (R5 #11), and that is a selection move, not part of the
-  /// membership this undoes.
+  /// twirl this undoes.
   void _toggleLanesOf(LayerId id) {
-    final expanded = session.railView.expandedLaneLayerIds;
-    final closing = expanded.value.contains(id);
-    session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: expanded,
-        layerId: id,
-        // F-302: every use of a linked row twirls with it.
-        alongWith: session.rowsFoldingWith(id),
-        debugLabel: 'Toggle layer lanes',
-      ),
-    );
+    final closing = _twirlsOf(id)?.lanesExpanded ?? false;
+    session.layerSwitches.toggleLayerLanes(id);
     if (closing) {
       session.handOffCurrentRowOnFold(id);
     }
@@ -191,42 +192,176 @@ class SessionRowButtonPresses {
   /// linked row's effects are one chain, so its groups are one too.
   ///
   /// ↩️It was the workspace's own, and wrote the pressed row's key alone.
+  /// ↩️It was then the rail's view, outside history — the one fold that did
+  /// not undo — until F-360 put it on the row beside its twirl.
   void toggleLaneGroup(String groupKey) {
-    final expanded = session.railView.expandedLaneGroupKeys;
-    final next = Set<String>.of(expanded.value);
     final row = parseLaneGroupKey(groupKey);
-    final everyUse = [
-      groupKey,
+    // A key that names no row has no row to keep its twirl on.
+    final twirls = row == null ? null : _twirlsOf(row.layerId);
+    if (row == null || twirls == null) {
+      return;
+    }
+    final closing = twirls.expandedLaneGroups.contains(row.laneId);
+    if (closing) {
+      // Closing: only this group's MEMBERS go, so the header is what
+      // swallows them and where the standing row lands (R5 #11).
+      session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
+    }
+    session.layerSwitches.setLayerLaneGroupExpanded(
+      row.layerId,
+      row.laneId,
+      expanded: !closing,
+    );
+  }
+
+  /// The header graphs' buttons as a grid is handed them (I-89 ③).
+  LaneGraphVerbs get laneGraphVerbs => (
+    toggle: toggleLaneGraph,
+    togglePin: toggleLanePin,
+    plot: plotLaneGraph,
+    resize: resizeLaneGraph,
+    enlarge: enlargeLaneGraph,
+  );
+
+  /// A group's HEADER GRAPH on or off, by the group's key — on every use of
+  /// its row (F-302, as the group's twirl beside it), and on no other
+  /// group: 「그래프를 누른 레일만 상태변경」 (유저 2026-10-10).
+  ///
+  /// A graph stands in its lanes' place, so one turned on over a shut group
+  /// opens the group with it — through the group's own twirl, the camera
+  /// row's being the row's (㉙). Shutting the group keeps the graph for
+  /// when it opens again. ⚠️View state: no undo — while the twirl it opens
+  /// is the row's, and does (F-360).
+  ///
+  /// The graph is written BEFORE the group opens: the twirl is a command,
+  /// and what follows a command reads the graphs as they stand.
+  void toggleLaneGraph(String groupKey) {
+    final graphs = session.railView.laneGraphs;
+    final open = Map<String, LaneGraph>.of(graphs.value.open);
+    final everyUse = _everyUseOf(groupKey);
+    final opening = !open.containsKey(groupKey);
+    if (opening) {
+      for (final key in everyUse) {
+        open[key] = const LaneGraph();
+      }
+    } else {
+      open.removeWhere((key, _) => everyUse.contains(key));
+    }
+    graphs.value = graphs.value.copyWith(open: open);
+    if (opening) {
+      _openGroupOf(groupKey);
+    }
+  }
+
+  /// A group's open graph ENLARGED over every other row, or let back — on
+  /// every use of its row, as what it plots and how far it stands are; and
+  /// every other graph let back with it: one group's graph is enlarged at
+  /// a time (I-89 ③D, the mock's 5판). A graph that is shut stays shut.
+  /// View state, as the graph is: no undo.
+  void enlargeLaneGraph(String groupKey) {
+    final graphs = session.railView.laneGraphs;
+    final open = graphs.value.open;
+    final pressed = open[groupKey];
+    if (pressed == null) {
+      return;
+    }
+    final enlarging = !pressed.enlarged;
+    final everyUse = _everyUseOf(groupKey);
+    graphs.value = graphs.value.copyWith(
+      open: {
+        for (final MapEntry(:key, value: graph) in open.entries)
+          key: graph.copyWith(enlarged: enlarging && everyUse.contains(key)),
+      },
+    );
+  }
+
+  /// A lane PINNED to every open graph, or let go, by the lane's own key —
+  /// on every use of its row. AE's graph editor set (유저 2026-10-10:
+  /// 「ae의 그래프세트? … 남겨도 될거같긴한데」). View state, no undo.
+  void toggleLanePin(String laneKey) {
+    final graphs = session.railView.laneGraphs;
+    final pinned = Set<String>.of(graphs.value.pinned);
+    final everyUse = _everyUseOf(laneKey);
+    if (pinned.contains(laneKey)) {
+      pinned.removeAll(everyUse);
+    } else {
+      pinned.addAll(everyUse);
+    }
+    graphs.value = graphs.value.copyWith(pinned: pinned);
+  }
+
+  /// What a group's open graph PLOTS, on every use of its row. View state,
+  /// no undo.
+  void plotLaneGraph(String groupKey, LaneGraphMode mode) =>
+      _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(mode: mode));
+
+  /// How far a group's open graph stands along the rail — its grip's — on
+  /// every use of its row. View state, no undo.
+  void resizeLaneGraph(String groupKey, double extent) =>
+      _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(extent: extent));
+
+  /// [reshape] laid on [groupKey]'s graph wherever it stands open on a use
+  /// of its row; a shut one stays shut.
+  void _reshapeLaneGraph(
+    String groupKey,
+    LaneGraph Function(LaneGraph graph) reshape,
+  ) {
+    final graphs = session.railView.laneGraphs;
+    final open = Map<String, LaneGraph>.of(graphs.value.open);
+    for (final key in _everyUseOf(groupKey)) {
+      if (open[key] case final graph?) {
+        open[key] = reshape(graph);
+      }
+    }
+    graphs.value = graphs.value.copyWith(open: open);
+  }
+
+  /// [groupKey]'s group twirled open where it is shut: the camera row's
+  /// lanes — its group is the row — or the header's members.
+  void _openGroupOf(String groupKey) {
+    final row = parseLaneGroupKey(groupKey);
+    if (row == null) {
+      return;
+    }
+    final layer = _row(row.layerId);
+    if (layer == null) {
+      return;
+    }
+    if (layer.kind == LayerKind.camera) {
+      if (!layer.lanesExpanded) {
+        _toggleLanesOf(row.layerId);
+      }
+      return;
+    }
+    if (!layer.expandedLaneGroups.contains(row.laneId)) {
+      toggleLaneGroup(groupKey);
+    }
+  }
+
+  /// The keys a press on one row's lane reaches: [key] itself, and the
+  /// same lane on every use of its row (F-302) — what a group's graph and a
+  /// lane's pin are written to. ↩️Its twirl too, until F-360 put the twirl
+  /// on the row, whose command walks the row's head.
+  List<String> _everyUseOf(String key) {
+    final row = parseLaneGroupKey(key);
+    return [
+      key,
       if (row != null)
         for (final use in session.rowsFoldingWith(row.layerId))
           laneGroupKey(use, row.laneId),
     ];
-    if (next.contains(groupKey)) {
-      next.removeAll(everyUse);
-      // Closing: only this group's MEMBERS go, so the header is what
-      // swallows them and where the standing row lands (R5 #11).
-      if (row != null) {
-        session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
-      }
-    } else {
-      next.addAll(everyUse);
-    }
-    expanded.value = next;
   }
 
   bool? _groupOpen(LayerId id) {
     final layer = _row(id);
-    final layers = session.activeCutOrNull?.layers;
+    final layers = _stackOf(id);
     if (layer == null || layers == null) {
       return null;
     }
-    if (layer.kind.groupsLayers) {
-      return !layer.collapsed;
-    }
-    if (attachedLayersOf(id, layers).isEmpty) {
+    if (!layer.kind.groupsLayers && attachedLayersOf(id, layers).isEmpty) {
       return null;
     }
-    return !session.railView.collapsedAttachBaseIds.value.contains(id);
+    return !layer.collapsed;
   }
 
   void _toggleGroupOf(LayerId id) {
@@ -239,10 +374,10 @@ class SessionRowButtonPresses {
 
   /// A base's attach group, folded or opened — undoable like the lane
   /// twirl beside it (「아무튼 레이어에 있는 버튼 싹다」), which it was not
-  /// until I-32 pressed it across a selection.
+  /// until I-32 pressed it across a selection. The base's own `collapsed`,
+  /// the folder's field and command (F-360).
   void _toggleAttachFoldOf(LayerId baseId) {
-    final folded = session.railView.collapsedAttachBaseIds;
-    if (!folded.value.contains(baseId)) {
+    if (!(_row(baseId)?.collapsed ?? false)) {
       // FOLDING while one of the group's attach rows is active (UI-R24
       // #4): hand the selection to the BASE so the group actually
       // disappears — the active-attach-stays-visible rule otherwise kept
@@ -256,19 +391,12 @@ class SessionRowButtonPresses {
       // this hand-off is what keeps the fold from shutting over you.
       session.handOffCurrentRowOnAttachFold(baseId);
     }
-    session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: folded,
-        layerId: baseId,
-        // F-302: every use of a linked base folds its group with it.
-        alongWith: session.rowsFoldingWith(baseId),
-        debugLabel: 'Toggle attach group',
-      ),
-    );
+    // F-302: every use of a linked base folds its group with it.
+    session.folders.toggleAttachGroup(baseId);
   }
 
   void previewOpacity(LayerId pressed, double opacity) {
-    if (_isCamera(pressed) && cameraDim != null) {
+    if (_isCamera(_actedOn(pressed)) && cameraDim != null) {
       cameraDim!.value = opacity;
       return;
     }
@@ -276,7 +404,7 @@ class SessionRowButtonPresses {
   }
 
   void commitOpacity(LayerId pressed, double opacity) {
-    if (_isCamera(pressed) && cameraDim != null) {
+    if (_isCamera(_actedOn(pressed)) && cameraDim != null) {
       cameraDim!.value = opacity;
       return;
     }
@@ -333,7 +461,7 @@ class SessionRowButtonPresses {
   /// The rows a slider press moves: what the slider of each row it acts on
   /// moves ([_sliderRowsOf]).
   Set<LayerId> _opacityRows(LayerId pressed) => {
-    for (final id in session.rowSelectionVerbs.rowsActedOnBy(pressed))
+    for (final id in session.rowSelectionVerbs.layersActedOnBy(pressed))
       ..._sliderRowsOf(id),
   };
 
@@ -392,9 +520,8 @@ class SessionRowButtonPresses {
   /// The attach layers riding [base] while its group is folded on the rail
   /// — none while it is open.
   List<Layer> _foldedRidersOf(LayerId base) {
-    final layers = session.activeCutOrNull?.layers;
-    if (layers == null ||
-        !session.railView.collapsedAttachBaseIds.value.contains(base)) {
+    final layers = _stackOf(base);
+    if (layers == null || !(_row(base)?.collapsed ?? false)) {
       return const [];
     }
     return attachedLayersOf(base, layers);
@@ -402,8 +529,30 @@ class SessionRowButtonPresses {
 
   bool _isCamera(LayerId id) => _row(id)?.kind == LayerKind.camera;
 
+  /// The layer a press on [pressed] lands on — a storyboard projection
+  /// row's row in hand ([RowSelection.layerActedOn]).
+  LayerId _actedOn(LayerId pressed) =>
+      session.rowSelectionVerbs.layerActedOn(pressed);
+
   Layer? _row(LayerId id) =>
       layerAnywhereOrNull(session.repository.requireProject(), id);
+
+  /// [id]'s twirls as the project holds them ([rowTwirlsOf]).
+  RowTwirls? _twirlsOf(LayerId id) =>
+      rowTwirlsOf(session.repository.requireProject(), id);
+
+  /// The stack [id]'s row stands in — its own cut's, wherever that is: the
+  /// storyboard's rail presses the conte rows of cuts that are not the
+  /// active one (I-73). ↩️The active cut's, always; a base pressed from
+  /// that rail under another cut was then asked about a stack it is not in,
+  /// and answered that it carries no attach group.
+  List<Layer>? _stackOf(LayerId id) {
+    final project = session.repository.requireProject();
+    final cutId = cutIdOfLayer(project, id);
+    return cutId == null
+        ? session.activeCutOrNull?.layers
+        : requireCut(project, cutId).layers;
+  }
 
   /// [read] for a row that has the button ([has]); null for one that has
   /// not, or for an id no row answers to.

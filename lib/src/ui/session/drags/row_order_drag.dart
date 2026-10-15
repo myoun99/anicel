@@ -44,6 +44,7 @@ import '../../timeline/layer_row_drag.dart'
 class RowOrderDrag {
   RowOrderDrag({
     required LayerRowDragSubject subject,
+    LayerRowDragSubject? drawnAs,
     required ValueNotifier<LayerRowDragState?> channel,
     required List<Track> Function() tracksNow,
     required List<LayerEffect>? Function(LayerId) effectChainOf,
@@ -85,6 +86,7 @@ class RowOrderDrag {
     })
     commitPlacement,
   }) : _subject = subject,
+       _drawn = drawnAs ?? subject,
        _channel = channel,
        _tracksNow = tracksNow,
        _effectChainOf = effectChainOf,
@@ -100,13 +102,19 @@ class RowOrderDrag {
        _commitSeOrder = commitSeOrder,
        _commitPlacement = commitPlacement {
     _channel.value = LayerRowDragState(
-      subject: subject,
+      subject: _drawn,
       caretSlot: -1,
       legal: false,
     );
   }
 
   final LayerRowDragSubject _subject;
+
+  /// What the rails see held: [_subject] itself, or the row a rail draws
+  /// for it — a storyboard conte row moves its seat's row of one cut
+  /// ([ConteSeatRowSubject], F-322), and its caret and its lift are that
+  /// conte row's.
+  final LayerRowDragSubject _drawn;
   final ValueNotifier<LayerRowDragState?> _channel;
 
   /// What releasing would commit — held beside the drawn state.
@@ -198,7 +206,7 @@ class RowOrderDrag {
       return;
     }
     _channel.value = LayerRowDragState(
-      subject: _subject,
+      subject: _drawn,
       caretSlot: clamped,
       legal: true,
     );
@@ -232,7 +240,7 @@ class RowOrderDrag {
     );
     _effectOrder = order;
     _channel.value = LayerRowDragState(
-      subject: subject,
+      subject: _drawn,
       caretSlot: slot,
       legal: order != null,
     );
@@ -270,7 +278,7 @@ class RowOrderDrag {
       );
       _seOrder = landing?.value;
       _channel.value = LayerRowDragState(
-        subject: subject,
+        subject: _drawn,
         caretSlot: landing?.slot ?? slot,
         legal: landing != null,
       );
@@ -301,7 +309,7 @@ class RowOrderDrag {
     final plan = landing?.value;
     _plan = plan;
     _channel.value = LayerRowDragState(
-      subject: subject,
+      subject: _drawn,
       caretSlot: landing?.slot ?? slot,
       legal: plan != null,
       joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
@@ -415,7 +423,7 @@ class RowOrderDrag {
     _plan = plan;
     _seOrder = null;
     _channel.value = LayerRowDragState(
-      subject: subject,
+      subject: _drawn,
       caretSlot: -1,
       legal: true,
       onRowTarget: targetId,

@@ -1,5 +1,6 @@
 import 'dart:collection' show SplayTreeMap;
 import 'package:flutter/foundation.dart' show ValueListenable;
+import '../../core/identity_memo.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -11,10 +12,16 @@ import '../../models/transition_geometry.dart';
 import '../text/app_strings.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track_transitions.dart';
+import '../../models/cut_camera.dart';
+import '../../models/cut_id.dart';
 import '../../services/commands/track_transition_commands.dart';
+import '../../services/project_tree_editor.dart' show updateTrackById;
 import '../timeline/instruction_span_editing.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, timelineDragPreviewGlobalLayerFor;
+    show
+        TimelineDragPreview,
+        camerasAsReleased,
+        timelineDragPreviewGlobalLayerFor;
 import 'session_roles.dart';
 import 'camera.dart';
 import 'transition_row_names.dart';
@@ -65,9 +72,16 @@ class Transitions {
       names.rowNamed(_selection.activeTrack, row),
       cutStart: _project.activeCutGlobalStartFrame,
       duration: _project.activeCutOrNull?.duration ?? 0,
+      lead: _openCutLead,
     ).display,
     global: row,
   );
+
+  /// How many of the open cut's OWN frames come before its place on the
+  /// track — its head のりしろ, as the session's lens counts it
+  /// ([ProjectAccess.activeCutMediaStartFrame]).
+  int get _openCutLead =>
+      _project.activeCutGlobalStartFrame - _project.activeCutMediaStartFrame;
 
   /// The active track's transition spans on the GLOBAL frame axis — the one
   /// reader for every surface that has to answer a transition question
@@ -102,6 +116,39 @@ class Transitions {
   bool isTrackTransitionLayerId(LayerId layerId) =>
       trackTransitionOwner(layerId) != null;
 
+  /// Whether [row] — a track's transition row as a drag would leave it —
+  /// draws none of the track's cuts past its camera keys
+  /// ([transitionRowKeepsCameraKeys], I-73-camera-row-Q7): the drags that
+  /// make a のりしろ shorter stop short of them.
+  bool keepsCameraKeys(Layer row) => switch (trackTransitionOwner(row.id)) {
+    final owner? => transitionRowKeepsCameraKeys(
+      owner,
+      row,
+      _project.repository.requireProject().cameraInstructions,
+    ),
+    null => true,
+  };
+
+  /// The cameras [row] moves once written — the key on the last frame of
+  /// each cut it draws for other frames (`cameraFollowingItsEnd`,
+  /// I-73-camera-row-Q7) — so a drag shows them where its release leaves
+  /// them.
+  Map<CutId, CutCamera> camerasCarriedBy(Layer row) {
+    final owner = trackTransitionOwner(row.id);
+    if (owner == null) {
+      return const {};
+    }
+    final project = _project.repository.requireProject();
+    final draft = updateTrackById(
+      project,
+      owner.id,
+      (track) => track.copyWith(transitionLayer: row),
+    );
+    return draft == null
+        ? const {}
+        : camerasAsReleased(_project.repository, draft);
+  }
+
   /// The row as its readers SHOW it — every span named by the cuts it joins
   /// (F-229). ⛔Only for showing: this object's edits never read a name.
   late final names = TransitionRowNames(camera: _camera, selection: _selection);
@@ -116,10 +163,31 @@ class Transitions {
   /// NOT describe where the span really is — the global row does that, and
   /// an edit made on this row is written THERE, to the span the mark was
   /// drawn from ([transitionSpanStartShownInCutAt]).
+  Layer get trackTransitionDisplayLayer => _openCutProjection.display;
+
+  /// [trackTransitionDisplayLayer] with what its walk found — the marks
+  /// whose spans cross the cut, and where each came from — the one answer
+  /// that row and the readers of its walk read.
   ///
-  /// Cached on the same terms as the SE clones: same source layer + same
-  /// window = the same instance back, so identity-keyed row memos hold.
-  Layer get trackTransitionDisplayLayer {
+  /// 🚨ONE PROJECTION PER STATE (I-57, 10-14): the project, the cut stood
+  /// in, the track it stands on and the language its spans are named in
+  /// are all it reads, so it is projected once for them and handed back
+  /// until one changes ([IdentityMemo]). Projected per ask, it was asked
+  /// 327 times a cut crossing on the AMMI OP — every `layers` the session
+  /// composed asked it — and each ask named the row's spans by walking the
+  /// track's cuts.
+  _OpenCutProjection get _openCutProjection => _projection.resolve(
+    identity: _project.repository.requireProject(),
+    key: (_project.activeCutId, _selection.selectedTrackId, AppText.strings),
+    build: _projectOntoTheOpenCut,
+  );
+
+  final _projection = IdentityMemo<_OpenCutProjection>();
+
+  /// The walk behind [_openCutProjection], cached on the same terms as the
+  /// SE clones: same source layer + same window = the same instance back,
+  /// so identity-keyed row memos hold across the states that keep both.
+  _OpenCutProjection _projectOntoTheOpenCut() {
     final track = _selection.activeTrack;
     final source = names.rowNamed(track, track.transitionLayer);
     final cutStart = _project.activeCutGlobalStartFrame;
@@ -129,14 +197,17 @@ class Transitions {
         identical(cached.source, source) &&
         cached.cutStart == cutStart &&
         cached.duration == duration) {
-      return cached.display;
+      return cached;
     }
     final walk = _projectOntoCut(
       source,
       cutStart: cutStart,
       duration: duration,
+      // The same row at the same place owes the same のりしろ: the key
+      // above names both, and need not name this.
+      lead: _openCutLead,
     );
-    _transitionDisplayClone = (
+    return _transitionDisplayClone = (
       source: source,
       cutStart: cutStart,
       duration: duration,
@@ -144,17 +215,18 @@ class Transitions {
       crossing: walk.crossing,
       origins: walk.origins,
     );
-    return walk.display;
   }
 
-  /// The projection walk onto the cut whose frames are `[cutStart,
-  /// cutStart + duration)`, with the projected keys of the one-sided spans
-  /// that cross it, and where each projected mark came from — its span's
-  /// GLOBAL start, by projected key.
+  /// The projection walk onto the cut that stands on `[cutStart, cutStart
+  /// + duration)` and whose own frames begin [lead] frames before that,
+  /// with the projected keys of the one-sided spans that cross it, and
+  /// where each projected mark came from — its span's GLOBAL start, by
+  /// projected key.
   ({Layer display, Set<int> crossing, Map<int, int> origins}) _projectOntoCut(
     Layer source, {
     required int cutStart,
     required int duration,
+    required int lead,
   }) {
     final projected = SplayTreeMap<int, InstructionEvent>();
     // D26: the crossing answer is recorded under the PROJECTED key in the
@@ -168,6 +240,7 @@ class Transitions {
         span: span,
         cutStart: cutStart,
         cutEnd: cutStart + duration,
+        cutLead: lead,
       );
       if (mark == null) {
         continue;
@@ -189,15 +262,7 @@ class Transitions {
     );
   }
 
-  ({
-    Layer source,
-    int cutStart,
-    int duration,
-    Layer display,
-    Set<int> crossing,
-    Map<int, int> origins,
-  })?
-  _transitionDisplayClone;
+  _OpenCutProjection? _transitionDisplayClone;
 
   /// The transition row in the SE rows' spill-in map
   /// (`TrackSe.trackSeSpillInLeadFrames`): its id, with how far into its
@@ -211,12 +276,12 @@ class Transitions {
   /// span lives on — the earlier cut does not draw a fade that is not its
   /// own.
   Map<LayerId, int> get transitionSpillInLeadFrames {
-    final row = trackTransitionDisplayLayer;
-    final start = _transitionDisplayClone?.origins[0];
+    final projection = _openCutProjection;
+    final start = projection.origins[0];
     final cutStart = _project.activeCutGlobalStartFrame;
     return start == null || start >= cutStart
         ? const {}
-        : {row.id: cutStart - start};
+        : {projection.display.id: cutStart - start};
   }
 
   /// D26: the crossing-fade warning for the CUT-VIEW transition row, by
@@ -224,15 +289,10 @@ class Transitions {
   /// in [trackTransitionDisplayLayer]'s own projection walk with the SAME
   /// predicate the apply gate reads ([oneSidedSpanCrossesOwnCut]) — the
   /// T25 one-sentence law: the refusal and the warning cannot drift.
-  String? transitionCrossingWarningInCutAt(int projectedStartKey) {
-    // Resolve the clone first so the cache always answers for the active
-    // cut the row is actually showing.
-    trackTransitionDisplayLayer;
-    return (_transitionDisplayClone?.crossing.contains(projectedStartKey) ??
-            false)
-        ? AppText.strings.tlTransitionCrossingWarning
-        : null;
-  }
+  String? transitionCrossingWarningInCutAt(int projectedStartKey) =>
+      _openCutProjection.crossing.contains(projectedStartKey)
+      ? AppText.strings.tlTransitionCrossingWarning
+      : null;
 
   /// D31 × D26: the transition row the printed SHEET consumes — the
   /// cut-view projection MINUS the spans the apply gate refuses (the
@@ -244,8 +304,10 @@ class Transitions {
   /// sit on; the sheet has no warning channel, so it prints only what
   /// applies.
   ///
-  /// F-90: for the cut the sheet PRINTS — a scrub over another cut makes it
-  /// a different one from the cut open for editing.
+  /// F-90: for the cut the sheet PRINTS — the cut under the playhead
+  /// ([CutUnderPlayhead]). ↩️A scrub over another cut made it a different
+  /// one from the cut open for editing until the scrub crossed into it
+  /// (I-57 ②).
   ///
   /// [olWord] is the sheet's: it prints in the NOTATION language (F-229).
   Layer trackTransitionSheetLayerFor({
@@ -258,6 +320,9 @@ class Transitions {
       names.rowNamed(track, track.transitionLayer, olWord: olWord),
       cutStart: cutStart,
       duration: duration,
+      // The SHEET counts its rows from the cut's place, as its sound
+      // columns do (`SheetSources`) — its own projection, not this lane's.
+      lead: 0,
     );
     if (crossing.isEmpty) {
       return display;
@@ -355,7 +420,7 @@ class Transitions {
       wanted = (startFrame: onTrack.startFrame, length: onTrack.lengthFrames);
     } else if (inCut != null && inCut.coversRow(row)) {
       wanted = (
-        startFrame: _project.activeCutGlobalStartFrame + inCut.startIndex,
+        startFrame: _project.activeCutMediaStartFrame + inCut.startIndex,
         length: inCut.endIndexExclusive - inCut.startIndex,
       );
     } else {
@@ -398,7 +463,7 @@ class Transitions {
     if (plan == null) {
       return null;
     }
-    final local = plan.startFrame - _project.activeCutGlobalStartFrame;
+    final local = plan.startFrame - _project.activeCutMediaStartFrame;
     return transitionShownInCutAt(local) ? null : plan;
   }
 
@@ -421,11 +486,12 @@ class Transitions {
   /// drawn from this cut's frame 0 at its full length, so the frame under
   /// the hand need not be one of its own.
   int? transitionSpanStartShownInCutAt(int localFrame) {
+    final projection = _openCutProjection;
     final shown = instructionSpanCovering(
-      trackTransitionDisplayLayer.instructions,
+      projection.display.instructions,
       localFrame,
     );
-    return shown == null ? null : _transitionDisplayClone?.origins[shown.key];
+    return shown == null ? null : projection.origins[shown.key];
   }
 
   /// [transitionSpanStartShownInCutAt] for the verbs that EDIT — open, delete,
@@ -618,3 +684,16 @@ class Transitions {
   TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) =>
       transitionSpanOfEvent(entry, _camera.cameraInstructionSet);
 }
+
+/// The transition row projected onto the open cut ([Transitions]): the
+/// row it was projected from, the cut's place and length it was projected
+/// onto, the clone, the projected keys of the one-sided spans that cross
+/// the cut, and where each projected mark came from.
+typedef _OpenCutProjection = ({
+  Layer source,
+  int cutStart,
+  int duration,
+  Layer display,
+  Set<int> crossing,
+  Map<int, int> origins,
+});

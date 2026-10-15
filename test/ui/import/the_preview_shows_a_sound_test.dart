@@ -7,13 +7,13 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
-import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
-import 'package:anicel/src/ui/media/audio_viewer_document.dart';
+import 'package:anicel/src/ui/media/waveform_marks_painter.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/import_preview_probe.dart';
 import '../../helpers/the_file_itself.dart';
 
 /// 🚨A SOUND IN THE IMPORT WINDOW IS ITS WAVEFORM, AND IT CAN BE TRIMMED
@@ -73,6 +73,15 @@ void main() {
   TransportBar bar(WidgetTester tester) =>
       tester.widget<TransportBar>(find.byType(TransportBar));
 
+  /// The marks over the band — its playhead and the span kept — or null
+  /// while no sound is on show.
+  WaveformMarksPainter? marks(WidgetTester tester) {
+    final layer = find.byKey(const ValueKey<String>('import-preview-marks'));
+    return layer.evaluate().isEmpty
+        ? null
+        : tester.widget<CustomPaint>(layer).painter as WaveformMarksPainter?;
+  }
+
   testWidgets('the transport runs over the frames the sound lasts, with its '
       'IN/OUT ends', (tester) async {
     await pump(tester);
@@ -109,10 +118,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
-      findsOneWidget,
-    );
+    expect(marks(tester), isNotNull, reason: 'its band is on show');
     expect(bar(tester).frameCount, 48, reason: 'two seconds at 24');
   });
 
@@ -151,10 +157,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
-      findsNothing,
-    );
+    expect(marks(tester), isNull);
   });
 
   testWidgets('its frames are the PROJECT\'s', (tester) async {
@@ -163,19 +166,19 @@ void main() {
     expect(bar(tester).frameCount, 24);
   });
 
-  testWidgets('its picture is the viewer\'s waveform in the viewer\'s ink, '
-      'on no checker', (tester) async {
+  testWidgets('its picture is the viewer\'s waveform page — the band the '
+      'viewer opens a sound as — on no checker', (tester) async {
     await pump(tester);
 
-    final band = tester.widget<CustomPaint>(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
-    );
-    final painter = band.painter! as WaveformPainter;
-    expect(painter.peaks, same(twoSeconds));
-    expect(painter.color, AudioViewerDocument.ink);
     expect(
-      find.byKey(const ValueKey<String>('import-preview-checker')),
-      findsNothing,
+      [for (final page in tester.importPreviewPage!.pages) page.rect],
+      [Offset.zero & const Size(200, 256)],
+      reason: 'two seconds of the viewer\'s band: 100 pixels a second, 256 '
+          'tall (`AudioViewerDocument`, through the viewer\'s door)',
+    );
+    expect(
+      tester.importPreviewCheckered,
+      isFalse,
       reason: 'a sound has no open alpha to show',
     );
   });
@@ -185,27 +188,16 @@ void main() {
   ) async {
     await pump(tester, inFrame: 12, outFrame: 23);
 
-    final band = tester.getRect(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
+    expect(
+      marks(tester)!.kept,
+      (from: 0.5, to: 1.0),
+      reason: 'frames 12 to 23 at 24: from half a second to the end of the '
+          'first',
     );
-    final wash = tester.getRect(
-      find.byKey(const ValueKey<String>('import-preview-kept-span')),
-    );
-    final perFrame = band.width / 48;
-    expect(wash.left - band.left, closeTo(12 * perFrame, 0.01));
-    expect(wash.width, closeTo(12 * perFrame, 0.01));
     expect(
       (bar(tester).range!.inFrame, bar(tester).range!.outFrame),
       (12, 23),
       reason: 'the wash and the transport read one span',
-    );
-    final washBox = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey<String>('import-preview-kept-span')),
-    );
-    expect(
-      (washBox.decoration as BoxDecoration).color,
-      TransportBar.rangeWash,
-      reason: 'washed as the transport washes its range',
     );
   });
 
@@ -213,10 +205,8 @@ void main() {
       'there, so nothing pops in when they do', (tester) async {
     await pump(tester, rangeEditable: false);
 
-    final wash = tester.widget<DecoratedBox>(
-      find.byKey(const ValueKey<String>('import-preview-kept-span')),
-    );
-    expect((wash.decoration as BoxDecoration).color, isNull);
+    expect(marks(tester), isNotNull, reason: 'the layer is there');
+    expect(marks(tester)!.kept, isNull, reason: 'and washes nothing');
   });
 
   testWidgets('⛔a sound that answers after the window moved on is not '
@@ -250,10 +240,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(
-      find.byKey(const ValueKey<String>('import-preview-waveform')),
-      findsNothing,
-    );
+    expect(marks(tester), isNull);
     expect(bar(tester).frameCount, 1);
   });
 }

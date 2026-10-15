@@ -22,7 +22,8 @@ import 'package:flutter/gestures.dart';
 ///   * a pen or a mouse HOVERS, or presses again — that hand is up, so a
 ///     press of it still held lost its lift ([note]). A pen that leaves the
 ///     tablet's range comes back as a NEW pointer, so the press it left
-///     never hears its own lift.
+///     never hears its own lift. A pen in the air says the same of the
+///     mouse: the pen reports itself as one now and then (F-232).
 ///
 /// The cancel reaches what the press reached, so a stroke in flight ends
 /// the way a cancelled stroke ends, and the census hears the cancel like
@@ -51,7 +52,8 @@ class ContactCensus {
   /// that lost its lift is of SOME kind, and which one was never measured
   /// (the law below lets a hand go only by its own hand). The press that
   /// stays is the one whose age only grows; a screenshot of this line at
-  /// the moment undo does nothing says its kind.
+  /// the moment undo does nothing says its kind. ↩️It said `mouse` (유저
+  /// 2026-10-09) — see [_letGoOfLostLifts].
   String get held => _down.isEmpty
       ? 'none'
       : [
@@ -87,15 +89,29 @@ class ContactCensus {
     if (hand == null) {
       return;
     }
-    // A hover is no contact at all, its own pointer included; a press is
-    // the contact now, and every OTHER press of its hand is the lost one.
     final hovering = event is PointerHoverEvent;
+    bool lost(int pointer, PointerDeviceKind kind) {
+      final held = _oneContactHand(kind);
+      if (held == hand) {
+        // A hover is no contact at all, its own pointer included; a press
+        // is the contact now, and every OTHER press of its hand is lost.
+        return hovering || pointer != event.pointer;
+      }
+      // 🗣️F-232 (유저 2026-10-09, the census line the moment undo did
+      // nothing): `mouse#5027 +5.1s` held while only the pen moved. The pen
+      // reports itself as a mouse now and then — a `mouse hover` among its
+      // hovers, at its point, with its 0–1024 pressure range — and that
+      // report's lift can be lost, so a pen in the air says the mouse is up
+      // too. ⛔Not the other way, and not on a pen's press: no pen press a
+      // mouse left has been seen, and a press may be the pen's own contact
+      // reported twice.
+      return hovering &&
+          hand == PointerDeviceKind.stylus &&
+          held == PointerDeviceKind.mouse;
+    }
+
     _down.entries
-        .where(
-          (down) =>
-              _oneContactHand(down.value.kind) == hand &&
-              (hovering || down.key != event.pointer),
-        )
+        .where((down) => lost(down.key, down.value.kind))
         .map((down) => down.key)
         .toList()
         .forEach(_cancel);

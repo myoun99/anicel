@@ -112,8 +112,11 @@ Future<PsdExpansion?> readPsdExpansion({
           surface: await rasterizeImageToSurface(
             image: image,
             canvas: laidOn,
-            fit: fit,
-            placement: placement.rect,
+            placement: rectPlacement(
+              placement.rect,
+              width: crop.width,
+              height: crop.height,
+            ),
           ),
         ),
       );

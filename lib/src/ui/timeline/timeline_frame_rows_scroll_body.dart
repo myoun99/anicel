@@ -3,22 +3,29 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/layer_id.dart';
 import 'property_lane_model.dart';
+import 'row_berths.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_cells_row_facts.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_frame_geometry.dart';
-import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
+import 'timeline_frame_window.dart'
+    show TimelineNextPage, timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
+import 'timeline_lane_graph.dart';
+import 'timeline_row_edges.dart';
 import 'timeline_section_runs.dart' show timelineDisplayRowExtent;
 
 import '../listenable_rebind.dart';
+import '../widgets/named.dart';
 
 class TimelineFrameRowsScrollBody extends StatefulWidget {
   const TimelineFrameRowsScrollBody({
     super.key,
     required this.rows,
+    required this.edges,
+    required this.berths,
+    this.firstRowIndex = 0,
     required this.hooks,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
@@ -36,6 +43,8 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.laneRange,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.frameAxisController,
+    this.nextPage,
   });
 
   /// What the session answers to the rows — the grid's ONE bundle, which
@@ -52,10 +61,28 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
 
+  /// The frame axis' scrollable, which the rows' header graphs keep their
+  /// guest tags in the view by ([TimelineCellsRowGrid.frameAxisController]).
+  final ScrollController? frameAxisController;
+
+  /// Where a playing run's next turn stands the frame axis
+  /// ([TimelineCellsRowGrid.nextPage]).
+  final TimelineNextPage? Function()? nextPage;
+
   /// Display rows: layer rows interleaved with expanded property lanes.
   /// May be a layer-axis WINDOW of the full row list — the spacer heights
   /// preserve the scroll geometry of the rows sliced away.
   final List<TimelineDisplayRow> rows;
+
+  /// Where the FULL row list sits along the layer axis — [rows] begins at
+  /// its row [firstRowIndex].
+  final TimelineRowEdges edges;
+
+  /// Which elements each row is built in — the rail's berths, so a row's
+  /// two halves are kept, and handed over, together ([RowBerths]).
+  final RowBerthMap berths;
+
+  final int firstRowIndex;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -94,14 +121,14 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 
 class _TimelineFrameRowsScrollBodyState
     extends State<TimelineFrameRowsScrollBody> {
-  /// Identity-gated row memo (the timesheet-document memo, per row): on a
-  /// commit-time rebuild the untouched layers come back as the SAME Layer
-  /// instances from the repository, so their rows reuse the cached widget
-  /// INSTANCE and Flutter skips their whole subtree rebuild. What a row
-  /// shows beyond its Layer joins the key ([TimelineCellsRowFacts]) — the
-  /// camera track, the SE waveform peaks — and lane rows, which are few,
-  /// are not memoized ([keptTimelineCellsRow], the x-sheet's columns' too).
-  final Map<LayerId, KeptTimelineCellsRow> _rowMemo = {};
+  /// The cells rows' memo, berth by berth: a row of the same SHAPE comes
+  /// back as the cached widget INSTANCE, so Flutter skips its subtree and
+  /// only the pieces that draw what changed are built again — a commit's
+  /// untouched layers come back as the same Layer instances and draw
+  /// nothing new, and a cut switch repaints ([TimelineCellsRowFacts],
+  /// [BerthWorld]). Lane rows, which are few, are not memoized
+  /// ([keptTimelineCellsRow], the x-sheet's columns' too).
+  final KeptTimelineCellsRows _rowMemo = KeptTimelineCellsRows();
 
   /// The LIVE frame-axis geometry every painted row follows (R28 #4).
   ///
@@ -187,10 +214,11 @@ class _TimelineFrameRowsScrollBodyState
     super.dispose();
   }
 
-  /// Every row keys off its own id; a lane row adds which lane it is.
+  /// Every row is named for its own id; a lane row adds which lane it is.
   /// R10 dropped the folder prefix with the folder's private band — a
-  /// folder row is a cells row now, so it keys like one.
-  String _rowKeySuffix(TimelineDisplayRow row) => row.lane?.laneId ?? 'cells';
+  /// folder row is a cells row now, so it is named like one.
+  String _rowNameSuffix(TimelineDisplayRow row) =>
+      row.lane?.laneId ?? 'cells';
 
   /// The frames this body lays its lane rows over, and their selection
   /// domain ([timelineLaneRowFrom]).
@@ -202,21 +230,21 @@ class _TimelineFrameRowsScrollBodyState
     laneRange: widget.laneRange,
   );
 
-  Widget _buildRow(TimelineDisplayRow row) {
-    final rowKey = ValueKey<String>(
-      'timeline-row-${row.layer.id}-${_rowKeySuffix(row)}',
-    );
+  /// The row built in its berth and named for its layer — a key spelled
+  /// from the layer remade every row's cells on a cut switch (I-57).
+  Widget _buildRow(TimelineDisplayRow row) => Named(
+    'timeline-row-${row.layer.id}-${_rowNameSuffix(row)}',
+    key: widget.berths.keyOf(row),
     // 🚨F-244: the row's own size, laid FRESH on every build. It is what
     // makes the tick layer's constraints tight — and a zoom step keeps the
     // memo entry below while it moves the content extent, so a box inside
     // the memo would hold the old width: the row cut short of its cells.
-    return SizedBox(
-      key: rowKey,
+    child: SizedBox(
       width: widget.totalFrameContentWidth,
       height: timelineDisplayRowExtent(row, widget.metrics),
       child: _layeredRow(row),
-    );
-  }
+    ),
+  );
 
   /// The rows as their cells see them — the x-sheet's columns read the same
   /// record turned on its side.
@@ -226,6 +254,8 @@ class _TimelineFrameRowsScrollBodyState
     geometry: _windowedGeometry,
     windowBucket: widget.windowBucket,
     viewportMainExtent: widget.viewportMainExtent,
+    frameAxisController: widget.frameAxisController,
+    nextPage: widget.nextPage,
     rangeGesture: widget.rangeGesture,
     axis: Axis.horizontal,
     keyPrefix: 'timeline',
@@ -238,7 +268,15 @@ class _TimelineFrameRowsScrollBodyState
           (context, layer) =>
               timelineLaneRowFrom(row, layer, _cellsRowGrid, _laneRowSpan),
         )
-      : keptTimelineCellsRow(_rowMemo, row, _cellsRowGrid);
+      : keptTimelineCellsRow(_rowMemo, widget.berths, row, _cellsRowGrid);
+
+  /// The window's rows as this body lays them ([timelineFrameSide]). The
+  /// window holds a graph's lanes whole ([TimelineRowEdges.window]).
+  List<Widget> _windowRows() => timelineFrameSide(
+    (rows: widget.rows, first: widget.firstRowIndex, edges: widget.edges),
+    _cellsRowGrid,
+    cells: _buildRow,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +286,12 @@ class _TimelineFrameRowsScrollBodyState
     _windowedGeometry.value = _windowedGeometryFromWidget();
     final pinnedLeading = widget.pinnedLeadingRow;
     final pinnedTrailing = widget.pinnedTrailingRow;
-    final rowHeight = widget.metrics.layerRowHeight;
+    final leadingPinExtent = pinnedLeading == null
+        ? 0.0
+        : timelineDisplayRowExtent(pinnedLeading, widget.metrics);
+    final trailingPinExtent = pinnedTrailing == null
+        ? 0.0
+        : timelineDisplayRowExtent(pinnedTrailing, widget.metrics);
     final children = <Widget>[
       // A5/D42: a pinned (held) row is carved out of its spacer — the
       // total extent is unchanged, so the scroll geometry never notices.
@@ -258,33 +301,33 @@ class _TimelineFrameRowsScrollBodyState
         _buildRow(pinnedLeading),
         if (widget.leadingLayerSpacerHeight -
                 widget.pinnedLeadingOffset -
-                rowHeight >
+                leadingPinExtent >
             0)
           SizedBox(
             height:
                 widget.leadingLayerSpacerHeight -
                 widget.pinnedLeadingOffset -
-                rowHeight,
+                leadingPinExtent,
           ),
       ] else if (widget.leadingLayerSpacerHeight > 0)
         SizedBox(
           key: const ValueKey<String>('timeline-leading-layer-spacer'),
           height: widget.leadingLayerSpacerHeight,
         ),
-      for (final row in widget.rows) _buildRow(row),
+      ..._windowRows(),
       if (pinnedTrailing != null) ...[
         if (widget.pinnedTrailingOffset > 0)
           SizedBox(height: widget.pinnedTrailingOffset),
         _buildRow(pinnedTrailing),
         if (widget.trailingLayerSpacerHeight -
                 widget.pinnedTrailingOffset -
-                rowHeight >
+                trailingPinExtent >
             0)
           SizedBox(
             height:
                 widget.trailingLayerSpacerHeight -
                 widget.pinnedTrailingOffset -
-                rowHeight,
+                trailingPinExtent,
           ),
       ] else if (widget.trailingLayerSpacerHeight > 0)
         SizedBox(
@@ -297,15 +340,6 @@ class _TimelineFrameRowsScrollBodyState
           height: widget.metrics.layerRowHeight,
         ),
     ];
-
-    // Bound the memo to the rows built this pass (scrolled-out rows just
-    // rebuild when they come back).
-    final liveLayers = <LayerId>{
-      for (final row in widget.rows) row.layer.id,
-      if (pinnedLeading != null) pinnedLeading.layer.id,
-      if (pinnedTrailing != null) pinnedTrailing.layer.id,
-    };
-    _rowMemo.removeWhere((layerId, _) => !liveLayers.contains(layerId));
 
     return KeyedSubtree(
       key: const ValueKey<String>('timeline-frame-rows-scroll-body'),

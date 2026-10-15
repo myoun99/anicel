@@ -179,6 +179,13 @@ const Set<String> _allowedFiles = {
   // the planner hands over an import's.
   'lib/src/services/commands/cut_command_coordinator.dart',
   'lib/src/services/commands/relink_media_asset_command.dart',
+  // A .clip's sounds are carried through the pool's `addMediaAssets`, whose
+  // `_admit` holds every carried entry's bytes before it records one — the
+  // funnel this scan looks for, one call in. The door builds no asset, and
+  // the copies it took out of the file go only once that wait is over
+  // (pinned by the sound test in `test/ui/import/clip_import_session_test
+  // .dart`: the project holds the bytes and the copy is gone).
+  'lib/src/ui/session/clip_import_door.dart',
   // 🆕A FONT A PROJECT CARRIES (R9-rest, 2026-10-07) is named the way a
   // carry is, and keeps the law another way — these three say `carriedAs`
   // or mint a name, and none of them stages:

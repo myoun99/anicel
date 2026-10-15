@@ -1,6 +1,7 @@
 import 'dart:ui' show Offset;
 
-import 'box_chrome.dart' show boxCrossFootprint, boxHandleFootprint;
+import 'box_chrome.dart'
+    show boxCrossFootprint, boxHandleFootprint, boxTangentCovers;
 
 /// What a press on a transform box takes hold of.
 enum BoxPress {
@@ -9,6 +10,10 @@ enum BoxPress {
 
   /// One of the box's handles ([BoxPressHit.handle] says which).
   handle,
+
+  /// The end of a path's handle at a key — its tangent (I-89 ④;
+  /// [BoxPressHit.handle] says which).
+  tangent,
 
   /// Inside the box: the move.
   inside,
@@ -21,12 +26,16 @@ enum BoxPress {
 typedef BoxPressHit = ({BoxPress press, int handle});
 
 /// Where [press] lands on a box — the ONE order every box on the canvas
-/// keeps (F-222, 「조작마저도 통일」): the cross, then a handle, then the
-/// inside, and outside is the turn. Null when it lands on none of them.
+/// keeps (F-222, 「조작마저도 통일」): the cross, then a handle, then a
+/// path's tangent, then the inside, and outside is the turn. Null when it
+/// lands on none of them.
 ///
 /// [anchor] is null for a box that wears no cross, [handles] empty for one
-/// that does not scale, and [turns] false for one that does not turn — a
-/// box offers what its value can take (R5 #10).
+/// that does not scale, [tangents] empty for one whose path is not bent at
+/// hand (I-89 ④ — a row's position keys), and [turns] false for one that
+/// does not turn — a box offers what its value can take (R5 #10). The
+/// tangents are drawn under the handles and the cross, so they are taken
+/// after them; the last drawn of two that overlap, first.
 ///
 /// ⚠️THE CROSS IS ON TOP, SO IT IS GRABBED FIRST. It is painted over
 /// everything else, and 「what you see is what you grab」 is the only rule
@@ -57,6 +66,7 @@ BoxPressHit? boxPressAt(
   required List<Offset> handles,
   required bool Function(Offset press) inside,
   required bool Function(Offset press) onStage,
+  List<Offset> tangents = const [],
   bool turns = true,
 }) {
   if (anchor != null && boxCrossFootprint(anchor).contains(press)) {
@@ -65,6 +75,11 @@ BoxPressHit? boxPressAt(
   for (var index = 0; index < handles.length; index += 1) {
     if (boxHandleFootprint(handles[index]).contains(press)) {
       return (press: BoxPress.handle, handle: index);
+    }
+  }
+  for (var index = tangents.length - 1; index >= 0; index -= 1) {
+    if (boxTangentCovers(tangents[index], press)) {
+      return (press: BoxPress.tangent, handle: index);
     }
   }
   if (inside(press)) {

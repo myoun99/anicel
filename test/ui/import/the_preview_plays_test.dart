@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -134,9 +135,12 @@ void main() {
           () => bar(tester).currentFrame > 0,
           attempts: 150,
           step: tick,
+          // A movie's pictures follow its sound (`MediaRun`): the device
+          // plays on as time passes, or the picture stands with it.
+          everyFrame: () => sound.playOn(tick),
         ),
         isTrue,
-        reason: 'the playhead walks as the frames land',
+        reason: 'the playhead walks with the sound as the frames land',
       );
 
       await press(tester);
@@ -244,6 +248,46 @@ void main() {
       sound.at = 1.0;
       await tester.pump(const Duration(milliseconds: 16));
       expect(bar(tester).currentFrame, 24, reason: 'one second in, at 24');
+      await press(tester);
+    });
+
+    testWidgets('🚨the clock is read at the time of the frame it draws — '
+        'the canvas\'s reading (④-b)', (tester) async {
+      await show(tester, line);
+      await press(tester);
+      sound.askedAt.clear();
+
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(sound.askedAt, isNotEmpty, reason: 'fixture: the look read it');
+      expect(
+        sound.askedAt.last,
+        SchedulerBinding.instance.currentSystemFrameTimeStamp,
+        reason: 'the frame\'s own time — ↩️it read the device as the tick ran',
+      );
+      await press(tester);
+    });
+
+    testWidgets('🚨the playhead is drawn again when its frame moves, not at '
+        'every look — 「화면을 프레임만큼만 다시그리도록」', (tester) async {
+      await show(tester, line);
+      await press(tester);
+      sound.at = 5.2 / 24;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(bar(tester).currentFrame, 5, reason: 'fixture: on frame 5');
+      final drawn = bar(tester);
+
+      sound.at = 5.6 / 24;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        identical(bar(tester), drawn),
+        isTrue,
+        reason: 'the sound moved within frame 5, and nothing was built again',
+      );
+
+      sound.at = 6.1 / 24;
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(bar(tester).currentFrame, 6, reason: 'and frame 6 is drawn');
       await press(tester);
     });
 

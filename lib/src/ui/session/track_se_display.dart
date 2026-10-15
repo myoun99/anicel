@@ -1,13 +1,15 @@
+import '../../core/identity_memo.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_empty_gaps.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart';
-import '../../models/track_conte_row.dart';
+import '../../models/track_projection_row.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_transform_lane_carrier.dart';
+import '../timeline/memo_token.dart' show ByIdentity;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'transitions.dart';
@@ -34,10 +36,22 @@ class TrackSeDisplay {
   final ActiveCutControllers _controllers;
   final Transitions _transitions;
 
-  TrackSeWindow get trackSeWindow => TrackSeWindow(
-    cutStartFrame: _project.activeCutGlobalStartFrame,
-    cutDurationFrames: _project.activeCutOrNull?.duration ?? 0,
-  );
+  /// The open cut's window on the track's rows — THE converter between the
+  /// cut's frames and the track's. It opens where the cut's OWN frame 0
+  /// stands ([ProjectAccess.activeCutMediaStartFrame]) and its cut ends
+  /// where the cut does on the track, so in a cut an O.L arrives into the
+  /// のりしろ before the conte is inside the window, as it is on every row
+  /// of the cut.
+  TrackSeWindow get trackSeWindow {
+    final cut = _project.activeCutOrNull;
+    final opens = _project.activeCutMediaStartFrame;
+    return TrackSeWindow(
+      cutStartFrame: opens,
+      cutDurationFrames: cut == null
+          ? 0
+          : _project.activeCutGlobalStartFrame + cut.duration - opens,
+    );
+  }
 
   /// Whether [layerId] names a TRACK-owned SE row — a question about what
   /// KIND of row it is, on any track in the project.
@@ -62,7 +76,7 @@ class TrackSeDisplay {
   /// ones that part later; the source scan
   /// `the_row_axis_offset_is_asked_in_one_place_test` keeps it here.
   int rowAxisOffset(LayerId layerId) =>
-      isTrackSeLayerId(layerId) ? _project.activeCutGlobalStartFrame : 0;
+      isTrackSeLayerId(layerId) ? _project.activeCutMediaStartFrame : 0;
 
   /// Whether [layerId] is a TRACK-OWNED row of the storyboard's rail — an SE
   /// lane or the transition row.
@@ -82,11 +96,13 @@ class TrackSeDisplay {
   /// just a yes.
   Track? trackOwnedRailOwner(LayerId layerId) {
     // C②: the V track's synthetic lane CARRIER is a rail row too — an
-    // escalated lane drag anchors the track-axis selection on it. And so is
-    // the track's CONTE row (I-73): the cuts' conte layers shown as one row
-    // of this rail, which no cut's layer id names ([trackConteRowId]).
+    // escalated lane drag anchors the track-axis selection on it. And so are
+    // the track's PROJECTION rows (I-73): the cuts' conte layers and camera
+    // layers shown as rows of this rail, which no cut's layer id names
+    // ([trackIdOfProjectionRow]).
     final mintedFor =
-        trackIdOfTransformLaneCarrier(layerId) ?? trackIdOfConteRow(layerId);
+        trackIdOfTransformLaneCarrier(layerId) ??
+        trackIdOfProjectionRow(layerId);
     return trackSeAnywhere(layerId)?.track ??
         _transitions.trackTransitionOwner(layerId) ??
         (mintedFor == null ? null : _project.trackById(mintedFor));
@@ -146,16 +162,45 @@ class TrackSeDisplay {
   /// While a take rolls, the armed lane shows its PREVIEW state (REC1-C):
   /// the in-flight take landed by the same planner the stop will use —
   /// commits and undo keep reading the repository lane untouched.
+  ///
+  /// 🚨ONE LIST PER STATE (I-57, 10-14): the project, the cut stood in, the
+  /// track it stands on and the take in flight are all it reads, so it is
+  /// listed once for them and handed back until one changes
+  /// ([IdentityMemo]). Listed per ask, it was listed 578 times a cut
+  /// crossing on the AMMI OP — every `layers` the session composed and
+  /// every picture of the track stack asked — each ask walking the track's
+  /// cuts for the window.
   List<Layer> get trackSeDisplayLayers {
-    final window = trackSeWindow;
     final preview = _voiceRecording.voiceRecordPreviewLane.value;
-    return [
+    return _shown.resolve(
+      identity: _project.repository.requireProject(),
+      key: (
+        _project.activeCutId,
+        _selection.selectedTrackId,
+        ByIdentity(preview),
+      ),
+      build: () => _listed(preview),
+    );
+  }
+
+  final _shown = IdentityMemo<List<Layer>>();
+
+  /// [trackSeDisplayLayers] as listed with [preview] in flight.
+  ///
+  /// 🚨A PARAMETER, NOT THE CLOSURE'S CAPTURE (I-57, 2026-10-14): listed
+  /// inside the memo's closure, `preview` was a capture checked inside the
+  /// loop, and the AOT compiler read it past its check — every release
+  /// build died at start with no take rolling
+  /// (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+  List<Layer> _listed(Layer? preview) {
+    final window = trackSeWindow;
+    return List.unmodifiable([
       for (final layer in _selection.activeTrack.seLayers)
         _trackSeDisplayCloneFor(
           window,
           preview != null && preview.id == layer.id ? preview : layer,
         ),
-    ];
+    ]);
   }
 
   /// A row as a drag step leaves it, on its OWN axis, in the two forms a

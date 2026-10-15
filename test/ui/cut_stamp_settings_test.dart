@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../helpers/tool_setting_action_probe.dart';
+
 CutPiece _piece({int scalePercent = 100, bool flipHorizontal = false}) {
   return CutPiece(
     image: BrushStampImage(
@@ -42,6 +44,8 @@ void main() {
     CutPieceSlot? slot,
     VoidCallback? onPasteAtOrigin,
     VoidCallback? onRegisterAsTip,
+    bool cutDeletesSource = false,
+    ValueChanged<BrushToolState>? onChanged,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -50,8 +54,11 @@ void main() {
             width: 320,
             height: 720,
             child: ToolSettingsPanel(
-              state: BrushToolState.defaults.copyWith(tool: tool),
-              onChanged: (_) {},
+              state: BrushToolState.defaults.copyWith(
+                tool: tool,
+                cutDeletesSource: cutDeletesSource,
+              ),
+              onChanged: onChanged ?? (_) {},
               fillOptions: const FloodFillOptions(),
               onFillOptionsChanged: (_) {},
               selectionMaskOptions: SelectionMaskOptions.none,
@@ -66,14 +73,45 @@ void main() {
     );
   }
 
-  testWidgets('the grab tiles say what the tool does and offer no knobs', (
-    tester,
-  ) async {
-    // The grab makes no selection and its mask is hard by law, so there is
-    // genuinely nothing to set — the empty panel is the design.
-    await pump(tester, tool: CanvasTool.cut, slot: CutPieceSlot());
+  // 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
+  // 도구설정으로서 원본 삭제 불리언버튼 추가」. ↩️Until then the grab
+  // offered no knobs at all; it still offers none of a selection's — it
+  // makes no selection, and its mask is hard by law.
+  testWidgets('the grab offers 「원본 삭제」, and its switch is the tool\'s '
+      'own setting', (tester) async {
+    final changes = <BrushToolState>[];
+    await pump(
+      tester,
+      tool: CanvasTool.cut,
+      slot: CutPieceSlot(),
+      onChanged: changes.add,
+    );
     expect(find.byKey(grabKey), findsOneWidget);
     expect(find.byKey(stampKey), findsNothing);
+    const toggle = ValueKey<String>('cut-deletes-source-switch');
+    expect(
+      find.descendant(of: find.byKey(grabKey), matching: find.byKey(toggle)),
+      findsOneWidget,
+    );
+    expect(find.text(AppText.strings.toolCutDeletesSource), findsOneWidget);
+
+    await tester.tap(find.byKey(toggle));
+    await tester.pump();
+    expect(changes.single.cutDeletesSource, isTrue);
+    expect(changes.single.tool, CanvasTool.cut, reason: 'the rest stays');
+
+    // On, a press turns it off.
+    changes.clear();
+    await pump(
+      tester,
+      tool: CanvasTool.cut,
+      slot: CutPieceSlot(),
+      cutDeletesSource: true,
+      onChanged: changes.add,
+    );
+    await tester.tap(find.byKey(toggle));
+    await tester.pump();
+    expect(changes.single.cutDeletesSource, isFalse);
   });
 
   testWidgets('an empty slot tells you to cut something first', (tester) async {
@@ -160,11 +198,11 @@ void main() {
     final slot = CutPieceSlot()..hold(_piece());
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
     final reset = find.byKey(const ValueKey<String>('cut-reset-button'));
-    expect(tester.widget<OutlinedButton>(reset).onPressed, isNull);
+    expect(tester.toolSettingAction(reset).onPressed, isNull);
 
     slot.updatePose(scalePercent: 250);
     await tester.pump();
-    expect(tester.widget<OutlinedButton>(reset).onPressed, isNotNull);
+    expect(tester.toolSettingAction(reset).onPressed, isNotNull);
   });
 
   testWidgets('Reset clears the size AND both flips in one press', (
@@ -210,7 +248,7 @@ void main() {
     await pump(tester, tool: CanvasTool.cutStamp, slot: slot);
     expect(
       tester
-          .widget<OutlinedButton>(
+          .toolSettingAction(
             find.byKey(const ValueKey<String>('cut-paste-at-origin-button')),
           )
           .onPressed,

@@ -6,21 +6,31 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/point_bounds.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/composite_tree.dart';
+import '../../models/pasteboard_bounds.dart';
+import '../../models/project_background.dart';
+import '../../services/camera_frame_corners.dart'
+    show cameraFrameCornersInCanvas;
+import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_paint.dart' show applyCameraProjection;
 import '../../services/straight_rgba_image.dart';
+import '../../services/viewport_transform_matrix.dart'
+    show viewportOfSimilarity;
 import '../canvas/display_resample.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/level_image.dart';
+import '../canvas/paper_background.dart' show paintProjectPaper;
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../playback/camera_shot.dart' show outlineAtLevel, shotClipOnScreen;
 
 /// Surfaces with at least this many pixels assemble their upload buffer in
 /// a background isolate; smaller ones stay synchronous (the spawn/copy
@@ -31,6 +41,11 @@ const int _uploadOffloadPixelThreshold = 512 * 512;
 /// Test override for the isolate cutoff; null = [_uploadOffloadPixelThreshold].
 @visibleForTesting
 int? debugUploadOffloadPixelThreshold;
+
+/// Test hatch: every row composed whole — what the byte-for-byte pins
+/// render the ink against (`a_row_drawn_from_its_ink_is_the_same_bytes_test`).
+@visibleForTesting
+bool debugComposesRowsWhole = false;
 
 /// Converts a tiled [BitmapSurface] into one [ui.Image].
 ///
@@ -121,15 +136,10 @@ Uint8List _assemblePremultipliedRgba(
 /// `1 / (pose.zoom * outputSize/cameraFrameSize)` canvas pixels, and the
 /// canvas appears rotated opposite to the camera's clockwise rotation.
 class CameraFrameRenderService {
-  const CameraFrameRenderService({
-    this.background = const Color(0xFFFFFFFF),
-    this.filterQuality = FilterQuality.low,
-  });
+  const CameraFrameRenderService({this.background = const Color(0xFFFFFFFF)});
 
   /// Fills the whole output, including any area beyond the canvas edges.
   final Color background;
-
-  final FilterQuality filterQuality;
 
   /// [outputSize] defaults to [cameraFrameSize]; a smaller value renders a
   /// scaled-down preview of the exact same view.
@@ -138,21 +148,41 @@ class CameraFrameRenderService {
   /// simply a tree of leaves.
   /// [overlayPass] draws in CANVAS space right after the picture, still
   /// inside the camera projection — the display-time annotations (the SE
-  /// name tags) that must scale with the artwork but never enter a
-  /// composite cache. Cel renders leave it null: a cel is the artwork
-  /// alone.
+  /// name tags) that never enter a composite cache. A tag lays its shot on
+  /// the canvas itself (`ResolvedSeNameTag.shot`), so through this
+  /// projection it stands still in the frame (I-67-Q1). A cel's render
+  /// leaves it null — a cel is the artwork alone — but where the camera's
+  /// work is laid over it (CAM, I-89-Q18).
   ///
-  /// [displayLevels] reduces the artwork as the canvas's display does
-  /// ([displayLevelOf]): each layer's image halved, a 2×2 box mean a time,
+  /// 🚨★★★EVERY RENDER REDUCES AS THE CANVAS'S DISPLAY DOES
+  /// ([displayLevelOf]): each row's image halved, a 2×2 box mean a time,
   /// until what is left of the reduction is over half ([displayResidualOf]),
-  /// which the draw takes with the display's own filter. A panel's picture
-  /// asks for it — the print a conte cell shows beside the canvas's live
-  /// composite of the same cut, which reduces this way (F-215, 유저
-  /// 2026-09-30: 「허용누르면 필터on되는거같은데. 왜 브러시허용이랑
-  /// 렌더링이랑 연관있는거냐고」 · 「축소시 이거 캔버스랑 같은규칙으로
-  /// 안티low 필터같은거 동일적용한거맞나?」). ↩️It was one bilinear draw
-  /// down to a quarter and less, which samples 2×2 of each 4×4 and lets a
-  /// line a pixel wide vanish between them.
+  /// which the draw takes with the display's own filter
+  /// ([filterQualityForDisplayScale]). A panel's picture asked for it first
+  /// — the print a conte cell shows beside the canvas's live composite of
+  /// the same cut (F-215, 유저 2026-09-30: 「축소시 이거 캔버스랑
+  /// 같은규칙으로 안티low 필터같은거 동일적용한거맞나?」) — and the
+  /// exports since (유저 2026-10-13, card video-export-speed-Q2: 「캔버스
+  /// 규칙으로」): a film is what playback shows. ↩️The rest drew with one
+  /// bilinear step down to a quarter and less, which samples 2×2 of each
+  /// 4×4 and lets a line a pixel wide vanish between them (🔬10-13: at a
+  /// camera zoom of 0.42 — the user's film runs at 0.42–0.52 — such a line
+  /// went missing ten pixels and more at a stretch).
+  ///
+  /// [cutTo] cuts the picture at that canvas's edge where the projection
+  /// lays it — the film shows no pasteboard (「페이스트보드는 포함 안
+  /// 시킴」) — as playback cuts it ([shotClipOnScreen]): out to the whole
+  /// pixels around where the rows end on their level's grid
+  /// ([outlineAtLevel]), so the cut takes nothing of a pixel they cover in
+  /// part. Only the rows and [paper]: [overlayPass] is laid over the cut.
+  ///
+  /// [paper] is laid under the rows on [cutTo]'s canvas as the canvas lays
+  /// its paper with its rows ([paperRectAtLevel]) — a stage's, as playback
+  /// lays it (`CanvasTrackStackView._unit`). ↩️A film laid it under the
+  /// picture to the canvas's edge, where rows reduced to a level end in a
+  /// pixel they cover in part, and the paper showed white through it — the
+  /// line playback had too (playback-picture-is-not-the-canvas-picture,
+  /// 유저 10-13: 「끝에 흰 선」).
   ///
   /// [rows] keeps the rows' pictures from one render to the next — a video
   /// run's (F-289-Q21). Each row's picture is asked of it, and what it
@@ -166,18 +196,56 @@ class CameraFrameRenderService {
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
     void Function(ui.Canvas canvas)? overlayPass,
-    bool displayLevels = false,
+    CanvasSize? cutTo,
+    ProjectBackground? paper,
     RowPictures? rows,
   }) async {
+    assert(
+      paper == null || cutTo != null,
+      'a paper is laid on the canvas its picture is cut to',
+    );
     final tree = nodes ?? [for (final layer in layers) CompositeLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
+    final previewScale = resolvedOutput.width / cameraFrameSize.width;
+    // The scale the CTM below is at. A group that rasterises ITSELF needs it,
+    // and a `Canvas` will not tell anyone. Rotation preserves scale, so the
+    // projection's zoom is the whole answer.
+    final cameraRasterScale = (previewScale * pose.zoom).abs();
+    final level = displayLevelOf(cameraRasterScale);
+    // 🚨A ROW IS COMPOSED AS ITS INK ALONE ONLY WHERE IT IS LAID DOWN TEXEL
+    // FOR TEXEL — the playback cache's law (`inkCropDrawsTheSame`,
+    // `LayerFrameImageCache.prepare`'s `inkSuffices`), asked of this route.
+    // A projection that moves every canvas pixel onto an output pixel whole
+    // draws the ink exactly as it draws the whole image; any other has a
+    // crop laid back to the whole first ([drawPosedLayerImage]), which pays
+    // again the raster the crop saved — and so does every render a kept row
+    // is handed to, which is why [rows] has to vouch for all of them. A
+    // canvas-size frame is drawn that way — the camera standing square over
+    // it — and a camera-size one wherever its camera stands on whole pixels.
+    // 🔬2026-10-13, the user's film (1,857 frames, card
+    // export-folders-and-rows-at-their-extent): 151 → 132 s, the video's
+    // bytes the same.
+    final texelCopy = cameraMovesPixelsWhole(
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
+    final rowsAsInk =
+        texelCopy &&
+        (rows?.laidTexelForTexel ?? true) &&
+        !debugComposesRowsWhole;
     final layerImages = <CutFrameCompositeLayer, PositionedSurfaceImage>{};
     // What this render made, and so lets go of when it is done: every row's
-    // picture that [rows] does not keep, and every halving's.
+    // picture that [rows] does not keep.
     final madeHere = <ui.Image>[];
     Future<void> composeImages(
       List<CompositeNode<CutFrameCompositeLayer>> list,
     ) async {
+      // 🚨THE LOOP CHECKS A LOCAL OF ITS OWN FUNCTION (I-57, 2026-10-14):
+      // [rows] is the method's, and a capture checked inside a loop is read
+      // past its check by the AOT compiler — a null one kills the release
+      // build (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+      final kept = rows;
       for (final node in list) {
         switch (node) {
           case CompositeLeaf(payload: final layer):
@@ -191,32 +259,53 @@ class CameraFrameRenderService {
             // threw pasteboard tiles away BEFORE the layer's transform ran —
             // so artwork parked off-canvas and moved INTO frame by a pose
             // was on screen and missing from the file. Playback has always
-            // cropped after (`composePositionedSurfaceImage` +
-            // `cut_frame_composite_cache`), and this is what made the two
-            // disagree about the same frame.
+            // cropped after (`composePositionedSurfaceImage`), and this is
+            // what made the two disagree about the same frame.
             //
-            // ⚠️The output is still canvas-sized: this changes WHEN the crop
-            // happens, not whether. Off-canvas artwork that the pose does
-            // not bring in is still cropped, at the end, by the camera
-            // projection — 유저 확정: 「페이스트보드는 포함 안 시킴」.
+            // ⚠️This changes WHEN the crop happens, not whether. Off-canvas
+            // artwork that the pose does not bring in stays out of an export
+            // all the same, cut at the canvas's edge at the end ([cutTo]) —
+            // 유저 확정: 「페이스트보드는 포함 안 시킴」.
             //
             // Cost is proportional to what is actually there: the positioned
             // compose only rasters a bigger rect when pasteboard tiles
             // exist, so a project that never parks artwork pays nothing.
-            Future<PositionedSurfaceImage> compose() async =>
-                // Non-null without shouldAbort (on-demand render, never
-                // abandoned).
-                //
-                // Somebody waits for every render made here — an export's
-                // frame, a panel's picture — so a tile with no picture gets
-                // one at once ([MissingTilePictures.madeAtOnce]).
-                (await composePositionedSurfaceImage(
-                  layer.surface,
-                  reuse: BitmapTileImageCache.instance,
-                  missing: MissingTilePictures.madeAtOnce,
-                ))!;
-            if (rows != null) {
-              layerImages[layer] = await rows.of(layer.surface, compose);
+            //
+            // At [level]: the row is the picture the render draws, so a row
+            // kept between renders is kept halved, and halved once.
+            Future<PositionedSurfaceImage> compose() async {
+              // Non-null without shouldAbort (on-demand render, never
+              // abandoned).
+              //
+              // Somebody waits for every render made here — an export's
+              // frame, a panel's picture — so a tile with no picture gets
+              // one at once ([MissingTilePictures.madeAtOnce]).
+              final composed = (await composePositionedSurfaceImage(
+                layer.surface,
+                reuse: BitmapTileImageCache.instance,
+                missing: MissingTilePictures.madeAtOnce,
+                over:
+                    rowsAsInk &&
+                        inkCropDrawsTheSame(
+                          placement: layer.placement,
+                          blendMode: layer.blendMode,
+                          effects: layer.effects,
+                        )
+                    ? surfaceInkWorldRect(layer.surface)
+                    : null,
+              ))!;
+              if (level == 0) {
+                return composed;
+              }
+              try {
+                return await _halved(composed, level);
+              } finally {
+                composed.image.dispose();
+              }
+            }
+
+            if (kept != null) {
+              layerImages[layer] = await kept.of(layer.surface, level, compose);
             } else {
               final composed = await compose();
               madeHere.add(composed.image);
@@ -232,31 +321,9 @@ class CameraFrameRenderService {
 
     await composeImages(tree);
 
-    final previewScale = resolvedOutput.width / cameraFrameSize.width;
-    // The scale the CTM below is at. A group that rasterises ITSELF needs it,
-    // and a `Canvas` will not tell anyone. Rotation preserves scale, so the
-    // projection's zoom is the whole answer.
-    final cameraRasterScale = (previewScale * pose.zoom).abs();
-    if (displayLevels) {
-      final level = displayLevelOf(cameraRasterScale);
-      for (final layer in [...layerImages.keys]) {
-        final composed = layerImages[layer]!;
-        final halved = await _halved(composed, level);
-        if (identical(halved.image, composed.image)) {
-          continue;
-        }
-        // A row this render made goes the moment it is halved, as it always
-        // has; a kept one stays its keeper's.
-        if (madeHere.remove(composed.image)) {
-          composed.image.dispose();
-        }
-        madeHere.add(halved.image);
-        layerImages[layer] = halved;
-      }
-    }
-    final leafQuality = displayLevels
-        ? filterQualityForDisplayScale(displayResidualOf(cameraRasterScale))
-        : filterQuality;
+    final leafQuality = filterQualityForDisplayScale(
+      displayResidualOf(cameraRasterScale),
+    );
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -270,40 +337,36 @@ class CameraFrameRenderService {
       Paint()..color = background,
     );
 
-    applyCameraProjection(
-      canvas,
-      pose,
-      cameraFrameSize,
-      outputSize: resolvedOutput,
-    );
-
-    // The group buffer's size hint, in CANVAS space — the space the canvas
-    // is now in. It used to be the camera frame anchored at the canvas
+    // The canvas region this render can SEE, in CANVAS space — the space
+    // the canvas is now in: the output rect pulled back through the camera
+    // projection ([cameraFrameCornersInCanvas]), which is exactly the
+    // editing stack's "visible rect" rule (R5b's lesson: ask whether it is
+    // in shot). It used to be the camera frame anchored at the canvas
     // ORIGIN, which is only the right rect when the camera happens to sit
     // there: a panned or zoomed-out camera clipped group members that the
     // view plainly showed (invisible while a group only carried opacity and
-    // a blend, fatal once it carries a blur). What actually matters is the
-    // canvas region this render can SEE — the output rect pulled back
-    // through the camera projection, which is exactly the editing stack's
-    // "visible rect" rule (R5b's lesson: ask whether it is in shot).
-    final visibleHalfWidth =
-        resolvedOutput.width / 2 / (previewScale * pose.zoom);
-    final visibleHalfHeight =
-        resolvedOutput.height / 2 / (previewScale * pose.zoom);
-    // Rotation turns the rect; the circumscribing half-extent (the
-    // rectangle's own half-diagonal) covers every angle without a matrix.
-    final visibleRadius = math.sqrt(
-      visibleHalfWidth * visibleHalfWidth +
-          visibleHalfHeight * visibleHalfHeight,
+    // a blend, fatal once it carries a blur).
+    final visible = pointsBounds(
+      cameraFrameCornersInCanvas(pose: pose, cameraFrameSize: cameraFrameSize),
     );
-    final groupBounds = Rect.fromCircle(
-      center: Offset(pose.center.x, pose.center.y),
-      radius: visibleRadius,
+    // A sub-tree's buffer: what of it lies [within] what reads it — the shot
+    // at the top, and under a folder that folder's buffer, which a blur on
+    // it reads past the shot ([subtreeBufferBounds]). A row stands for its
+    // content, never the ink alone it may be composed as ([rowsAsInk]).
+    Rect bufferBoundsFor(
+      CompositeNode<CutFrameCompositeLayer> node,
+      Rect within,
+    ) => subtreeBufferBounds(
+      node,
+      within: within,
+      extentOf: (layer) => surfaceContentWorldRect(layer.surface),
+      placementOf: (layer) => layer.placement,
     );
     void paintNodes(
       Canvas canvas,
       List<CompositeNode<CutFrameCompositeLayer>> list,
       double rasterScale,
+      Rect within,
     ) {
       for (final node in list) {
         switch (node) {
@@ -323,16 +386,21 @@ class CameraFrameRenderService {
               blendMode: blendMode,
               effects: groupPlan.finalPaint,
             );
-            // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack, this
-            // walk and the playback cache composite the same tree; if one of
-            // them kept a `saveLayer` the folder would be samplable on
-            // screen and not in the file, which is the asymmetry the whole
-            // round exists to close.
+            // 🚨★★★A GROUP IS AN IMAGE HERE TOO. The editing stack and this
+            // walk composite the same tree; if one of them kept a
+            // `saveLayer` the folder would be samplable on screen and not in
+            // the file, which is the asymmetry the whole round exists to
+            // close.
+            final bounds = effectBufferBounds(
+              bufferBoundsFor(node, within),
+              groupPlan.outsetPixels,
+            );
             drawSubtreeAsImage(
               canvas: canvas,
-              bounds: effectBufferBounds(groupBounds, groupPlan.outsetPixels),
+              bounds: bounds,
               rasterScale: rasterScale,
-              paintSubtree: (into, scale) => paintNodes(into, children, scale),
+              paintSubtree: (into, scale) =>
+                  paintNodes(into, children, scale, bounds),
               compose: (blit) => blit(groupPaint),
               steps: groupPlan.preSteps,
             );
@@ -344,7 +412,7 @@ class CameraFrameRenderService {
             // twice. The outer `saveLayer` stays: it is an alpha group over
             // two draws of one image, not a buffer anything needs to sample.
             final pass = resolveAdjustmentScopePass(
-              bounds: groupBounds,
+              bounds: bufferBoundsFor(node, within),
               effects: effects,
               mix: mix,
             );
@@ -352,7 +420,8 @@ class CameraFrameRenderService {
               canvas: canvas,
               bounds: pass.bufferBounds,
               rasterScale: rasterScale,
-              paintSubtree: (into, scale) => paintNodes(into, children, scale),
+              paintSubtree: (into, scale) =>
+                  paintNodes(into, children, scale, pass.bufferBounds),
               compose: composeAdjustmentScope(canvas, pass),
               steps: pass.preSteps,
             );
@@ -373,18 +442,21 @@ class CameraFrameRenderService {
             drawPosedLayerImage(
               canvas,
               image: layerImage.image,
-              // Composed here over the whole content, never a cache's ink.
+              // The ink alone where it was composed so ([rowsAsInk]), and
+              // otherwise the whole content.
               worldRect: layerImage.worldRect,
-              extent: layerImage.worldRect,
+              extent: surfaceContentWorldRect(layer.surface),
               placement: layer.placement,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: layer.effects,
-              // Drawn through the camera's projection: never a texel copy.
-              texelScale: null,
+              // A texel copy where the projection moves pixels whole, at
+              // the scale this canvas is at — a folder's buffer cut down to
+              // its cap lays a crop back.
+              texelScale: texelCopy ? rasterScale : null,
               filterQuality: leafQuality,
               // ⚠️And the image a texel a canvas pixel: a level
-              // ([displayLevels]) spans the canvas at half and less, and
+              // ([displayLevelOf]) spans the canvas at half and less, and
               // laid at the origin it would draw at that size.
               drawAtOriginWhen: (worldRect, image) =>
                   worldRect.left == 0 &&
@@ -398,8 +470,52 @@ class CameraFrameRenderService {
       }
     }
 
-    paintNodes(canvas, tree, cameraRasterScale);
-    overlayPass?.call(canvas);
+    final projection = cameraProjectionMatrix(
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
+    canvas.save();
+    if (cutTo != null) {
+      final cut = shotClipOnScreen(
+        outlineAtLevel(cutTo.canvasRect, level: level, toScreen: projection),
+        // An output pixel is the device's.
+        1,
+      );
+      canvas.clipPath(
+        Path()..addPolygon(cut.corners, true),
+        doAntiAlias: cut.behavior == Clip.antiAlias,
+      );
+    }
+    applyCameraProjection(
+      canvas,
+      pose,
+      cameraFrameSize,
+      outputSize: resolvedOutput,
+    );
+    if (paper != null) {
+      final view = viewportOfSimilarity(projection);
+      paintProjectPaper(
+        canvas,
+        paperRectAtLevel(cutTo!.canvasRect, level),
+        paper,
+        // The edge a level buffer gives its paper, seen through this
+        // projection.
+        antiAlias:
+            view == null || displayEdgeAntiAliased(view, 1, level: level),
+      );
+    }
+    paintNodes(canvas, tree, cameraRasterScale, visible);
+    canvas.restore();
+    if (overlayPass != null) {
+      applyCameraProjection(
+        canvas,
+        pose,
+        cameraFrameSize,
+        outputSize: resolvedOutput,
+      );
+      overlayPass(canvas);
+    }
 
     final picture = recorder.endRecording();
     try {
@@ -416,13 +532,22 @@ class CameraFrameRenderService {
 /// Where a render's row pictures come from when they are kept between
 /// renders ([CameraFrameRenderService.renderThroughCamera]'s `rows`).
 ///
-/// [of] hands back the picture [surface] composes to — one kept from an
-/// earlier render, or [compose]'s — and it is the keeper's either way.
+/// [of] hands back the picture [surface] composes to at [level]
+/// ([displayLevelOf]) — one kept from an earlier render, or [compose]'s —
+/// and it is the keeper's either way. It may be the ink alone
+/// ([laidTexelForTexel]).
 abstract interface class RowPictures {
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
+    int level,
     Future<PositionedSurfaceImage> Function() compose,
   );
+
+  /// Whether every render a row kept here is handed to lays it down texel
+  /// for texel — so one composed as its ink alone is never laid back whole
+  /// to be drawn, which would pay that raster at every draw
+  /// ([drawPosedLayerImage]).
+  bool get laidTexelForTexel;
 }
 
 /// [composed] with its image halved [level] times over the same canvas

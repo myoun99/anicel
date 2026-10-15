@@ -8,6 +8,9 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
 
@@ -27,17 +30,21 @@ void main() {
     TimelineDisplayRow.layer(layer, layerIndex: 0),
     TimelineDisplayRow.lane(
       layer,
-      const PropertyLaneRow(laneId: 'position', label: 'Position', keyedFrames: {}),
+      const PropertyLaneRow(
+        laneId: 'position',
+        label: 'Position',
+        keyMarks: {},
+      ),
       layerIndex: 0,
     ),
     TimelineDisplayRow.lane(
       layer,
-      const PropertyLaneRow(laneId: 'scale', label: 'Scale', keyedFrames: {}),
+      const PropertyLaneRow(laneId: 'scale', label: 'Scale', keyMarks: {}),
       layerIndex: 0,
     ),
     TimelineDisplayRow.lane(
       layer,
-      const PropertyLaneRow(laneId: 'opacity', label: 'Opacity', keyedFrames: {}),
+      const PropertyLaneRow(laneId: 'opacity', label: 'Opacity', keyMarks: {}),
       layerIndex: 0,
     ),
   ];
@@ -61,6 +68,7 @@ void main() {
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(0),
                   rows: rowsWithLanes(),
+                  edges: timelineRowEdgesOf(rowsWithLanes(), metrics),
                   activeLayerId: const LayerId('a'),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,
@@ -258,6 +266,7 @@ void main() {
                       layerIndex: 0,
                     ),
                   ],
+                  edges: TimelineRowEdges.uniform(2, metrics.layerRowHeight),
                   activeLayerId: const LayerId('a'),
                   frameStartIndex: 0,
                   frameEndIndexExclusive: 20,

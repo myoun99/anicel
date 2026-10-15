@@ -45,7 +45,6 @@ void main() {
     final bytes = await paint(
       tester,
       const PlaybackFramePainter(
-        image: null,
         canvasSize: canvasSize,
         paperBackground: absent,
         checkersAbsentPlanes: true,
@@ -60,7 +59,6 @@ void main() {
     final bytes = await paint(
       tester,
       const PlaybackFramePainter(
-        image: null,
         canvasSize: canvasSize,
         paperBackground: absent,
       ),
@@ -78,7 +76,6 @@ void main() {
     }) async {
       final recorder = ui.PictureRecorder();
       final painter = PlaybackFramePainter(
-        image: null,
         canvasSize: canvasSize,
         cameraPose: CameraPose(center: CanvasPoint(x: 16, y: 16)),
         cameraFrameSize: const CanvasSize(width: 64, height: 64),
@@ -121,7 +118,6 @@ void main() {
     final bytes = await paint(
       tester,
       const PlaybackFramePainter(
-        image: null,
         canvasSize: canvasSize,
         paperBackground: ProjectBackground.color(0xFF3366CC),
         checkersAbsentPlanes: true,

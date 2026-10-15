@@ -1,3 +1,6 @@
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +17,8 @@ import '../../helpers/cel_text_hand.dart';
 /// framework was building: another project's tab coming on screen threw
 /// (found 2026-10-07 by `a_text_registers_the_face_it_is_set_in_test`).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   TextHand aHand() =>
       textHand(bake: bakesAtOnce, next: TextToolOptions.defaults);
 
@@ -94,6 +99,50 @@ void main() {
     hand.tool.celTextsChanged();
 
     expect(told, 1);
+  });
+
+  test('🚨what the bound hand SHOWS is told on shownInHand — a carry too, '
+      'which the hand tells nobody of (F-344) — and of the bound hand '
+      'alone', () async {
+    final commands = CelTextCommands();
+    addTearDown(commands.dispose);
+    final words = CelTextContent(
+      spans: const [
+        CelTextSpan(text: 'hi', style: TextLetterStyle(fontSize: 16)),
+      ],
+      anchor: CanvasPoint(x: 8, y: 8),
+    );
+    final carrying = textHand(bake: bakesAtOnce, text: words);
+    final coming = textHand(bake: bakesAtOnce, text: words);
+    commands.bind(carrying.tool);
+    await turnOver();
+    expect(commands.shownInHand.value, same(carrying.tool.session!.shown));
+    var shown = 0;
+    var told = 0;
+    commands
+      ..shownInHand.addListener(() => shown += 1)
+      ..addListener(() => told += 1);
+
+    carrying.tool.carry(dx: 4, dy: 0);
+
+    expect(shown, 1);
+    expect(told, 0, reason: 'a carry is no other text');
+    expect(commands.shownInHand.value, same(carrying.tool.session!.shown));
+
+    commands
+      ..unbind(carrying.tool)
+      ..bind(coming.tool);
+    await turnOver();
+    expect(commands.shownInHand.value, same(coming.tool.session!.shown));
+    shown = 0;
+    coming.tool.carry(dx: 4, dy: 0);
+
+    expect(shown, 1);
+
+    commands.unbind(coming.tool);
+    await turnOver();
+
+    expect(commands.shownInHand.value, isNull);
   });
 
   test('a channel let go of before the turn was over tells nobody', () async {

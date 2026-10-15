@@ -8,6 +8,7 @@ import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/transform_track.dart' show positionKeySpace;
 import 'camera_pose_resolver.dart';
 import 'camera_projection_matrix.dart';
 
@@ -39,34 +40,31 @@ List<Offset> cameraFrameCornersInCanvas({
   ];
 }
 
-/// The camera's frame at each of its [keys] from frame [from] up to
-/// [toExclusive], in frame order — its four corners on the canvas
-/// ([cameraFrameCornersInCanvas]). What a camera's path is drawn from.
-List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
-  Map<int, CameraPose> keys,
-  CanvasSize cameraFrameSize, {
-  int from = 0,
-  int? toExclusive,
-}) {
-  final frames = [
-    for (final key in keys.entries)
-      if (key.key >= from && (toExclusive == null || key.key < toExclusive))
-        key,
-  ]..sort((a, b) => a.key.compareTo(b.key));
-  return [
-    for (final key in frames)
-      (
-        frameIndex: key.key,
-        corners: cameraFrameCornersInCanvas(
-          pose: key.value,
-          cameraFrameSize: cameraFrameSize,
-        ),
-      ),
-  ];
-}
+/// [cut]'s camera frame at [frameIndex] as playback shows it
+/// ([resolveCameraPoseAt]) — its four corners on the canvas.
+List<Offset> cameraFrameShownAt(
+  Cut cut,
+  CanvasSize cameraFrameSize,
+  int frameIndex,
+) => cameraFrameShownAtTime(cut, cameraFrameSize, frameIndex.toDouble());
+
+/// [cameraFrameShownAt] at a [time] between frames as well — where the
+/// camera's path is drawn between them (I-89 ④).
+List<Offset> cameraFrameShownAtTime(
+  Cut cut,
+  CanvasSize cameraFrameSize,
+  double time,
+) => cameraFrameCornersInCanvas(
+  pose: resolveCameraPoseAtTime(
+    camera: cut.camera,
+    canvasSize: cut.canvasSize,
+    time: time,
+  ),
+  cameraFrameSize: cameraFrameSize,
+);
 
 /// [cut]'s camera frame from frame [first] to frame [last] as playback
-/// shows it ([resolveCameraPoseAt]): at [first], at each key after it, and
+/// shows it ([cameraFrameShownAt]): at [first], at each key after it, and
 /// at [last] — in frame order. What a stretch of the camera's path is drawn
 /// from (유저 2026-10-01, H54: 「카메라 움직임을 키 기준으로 생각하는게
 /// 아니라, 제대로 보여지는 카메라대로 … 그 블록 안에서 일어나는 카메라를
@@ -85,30 +83,30 @@ List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
 /// the corner of the canvas and back (F-310, 유저 2026-10-06: 「카메라가
 /// 움직이지 않는데 콘티용지에 IN OUT이 찍혀있고, 사각실루엣이 카메라밖만큼
 /// 커져있음」).
+///
+/// A key whose time roves (I-89 ④) is framed where the camera passes it —
+/// its value, on the path — not on the frame it stands on, which only
+/// says the cell nearest that time: the frame it stands on would put its
+/// cross off the knobs drawn at its value.
 List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
   Cut cut,
   CanvasSize cameraFrameSize, {
   required int first,
   required int last,
 }) {
-  CameraPose shown(int frameIndex) => resolveCameraPoseAt(
-    camera: cut.camera,
-    canvasSize: cut.canvasSize,
-    frameIndex: frameIndex,
-  );
+  final passed = cut.camera.track.position.rovingTimes(positionKeySpace);
   ({int frameIndex, List<Offset> corners}) shownAt(int frameIndex) => (
     frameIndex: frameIndex,
-    corners: cameraFrameCornersInCanvas(
-      pose: shown(frameIndex),
-      cameraFrameSize: cameraFrameSize,
+    corners: cameraFrameShownAtTime(
+      cut,
+      cameraFrameSize,
+      passed[frameIndex] ?? frameIndex.toDouble(),
     ),
   );
-  final keys = cameraKeyFrames(
-    {for (final frame in cut.camera.track.keyedFrames) frame: shown(frame)},
-    cameraFrameSize,
-    from: first,
-    toExclusive: last + 1,
-  );
+  final keys = [
+    for (final frame in cut.camera.track.keyedFrames)
+      if (frame >= first && frame <= last) shownAt(frame),
+  ];
   final opening = shownAt(first);
   final closing = shownAt(last);
   return [
@@ -119,19 +117,6 @@ List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
       closing,
   ];
 }
-
-/// The trail each corner of the camera's frame draws across [frames], from
-/// the first to the last — four polylines, top-left first.
-///
-/// How a camera's travel reads (유저 2026-09-30, after Storyboard Pro:
-/// 「키마다 궤도? 를 그려둬서 어떻게 진행되는지 알게해줘. 그냥 단순하게
-/// 선으로」 · 「궤도는 중앙이아니라 각 꼭짓점 4개 전부야」): a simple line
-/// per corner, key to key — one through the centre shows no turn and no
-/// push-in.
-List<List<Offset>> cameraCornerTrails(List<List<Offset>> frames) => [
-  for (var corner = 0; corner < 4; corner += 1)
-    [for (final frame in frames) frame[corner]],
-];
 
 /// The canvas region [frames] cover together — the bounds of every corner
 /// of every one ([pointsBounds]).

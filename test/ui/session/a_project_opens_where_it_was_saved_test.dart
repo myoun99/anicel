@@ -6,6 +6,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -13,6 +14,12 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -296,6 +303,7 @@ void main() {
     views.storyboardPixelsPerFrame.value = 3.5;
     views.frameAxisOffsets['timeline']!.value = 480;
     views.frameAxisOffsets['storyboard']!.value = 96;
+    views.layerAxisOffsets['timeline']!.value = 150;
     expect(
       s.projectFile.hasUnsavedChanges,
       isFalse,
@@ -307,6 +315,7 @@ void main() {
       asked: SaveAsked.byAPerson,
     );
     views.frameAxisOffsets['timeline']!.value = 640;
+    views.layerAxisOffsets['xsheet']!.value = 72;
     await s.projectDoor.saveProjectToFile(
       projectPath,
       asked: SaveAsked.byAPerson,
@@ -323,6 +332,12 @@ void main() {
       0,
       reason: 'a panel left at its start opens at its start',
     );
+    expect(
+      back.layerAxisOffsets['timeline']!.value,
+      150,
+      reason: 'the rows too — along the OTHER axis',
+    );
+    expect(back.layerAxisOffsets['xsheet']!.value, 72);
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
     reopened.dispose();
   });
@@ -342,9 +357,83 @@ void main() {
       reopened.panelViews.storyboardPixelsPerFrame.value,
       PanelViewMemory.defaultStoryboardPixelsPerFrame,
     );
-    for (final offset in reopened.panelViews.frameAxisOffsets.values) {
+    for (final offset in [
+      ...reopened.panelViews.frameAxisOffsets.values,
+      ...reopened.panelViews.layerAxisOffsets.values,
+    ]) {
       expect(offset.value, 0);
     }
+    reopened.dispose();
+  });
+
+  test('🚨the header graphs and the lanes pinned to them come back with the '
+      'file — through the append too — and turning them is no edit; a row '
+      'the project no longer has falls back ALONE (유저 답 F-360-Q1 「보기 '
+      '설정처럼 — 저장은 되고 언두는 안 됨」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final row = s.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    final graph = laneGroupKey(row, transformGroupHeaderLane.laneId);
+    final pin = laneGroupKey(row, 'opacity');
+    // A row deleted since its graph was opened: the rail keeps no list of
+    // rows.
+    final gone = laneGroupKey(
+      const LayerId('gone'),
+      transformGroupHeaderLane.laneId,
+    );
+    // The group the graph stands in is the row's fold — an edit (F-360) —
+    // so it is open before the first save.
+    final presses = SessionRowButtonPresses(s)..toggleLaneGroup(graph);
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    final steps = s.historyManager.undoCount;
+    presses
+      ..toggleLaneGraph(graph)
+      ..toggleLaneGraph(gone)
+      ..toggleLanePin(pin)
+      ..toggleLanePin(gone)
+      ..plotLaneGraph(graph, LaneGraphMode.speed);
+    expect(
+      s.historyManager.undoCount,
+      steps,
+      reason: 'no undo step takes a graph back',
+    );
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'and turning one marks nothing unsaved',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    presses
+      ..resizeLaneGraph(graph, 240)
+      ..enlargeLaneGraph(graph);
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(
+      reopened.railView.laneGraphs.value,
+      LaneGraphsView(
+        open: {
+          graph: const LaneGraph(
+            extent: 240,
+            mode: LaneGraphMode.speed,
+            enlarged: true,
+          ),
+        },
+        pinned: {pin},
+      ),
+    );
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
     reopened.dispose();
   });
 }

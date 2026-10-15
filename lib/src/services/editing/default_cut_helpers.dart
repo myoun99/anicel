@@ -16,13 +16,18 @@ const defaultCutDuration = defaultCutDurationFrames;
 /// id keys it uniquely.
 LayerId cameraLayerIdForCut(CutId cutId) => LayerId('${cutId.value}-camera');
 
+/// The name a camera row is born with — and what a track's camera row is
+/// called while none of its cuts has one to ask (`trackCameraRowName`):
+/// one word, not the program language's word for the kind (F-322).
+const String cameraRowBornName = 'Camera';
+
 /// The cut's camera timeline row. It carries no drawing frames; its cells
 /// reflect the cut's camera keyframes and selecting it switches the canvas
 /// into camera manipulation mode.
 Layer createCameraLayer({required CutId cutId}) {
   return Layer(
     id: cameraLayerIdForCut(cutId),
-    name: 'Camera',
+    name: cameraRowBornName,
     frames: const [],
     timeline: const {},
     kind: LayerKind.camera,

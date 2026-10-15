@@ -40,15 +40,35 @@ void main() {
   CanvasPoint cameraAt(CutId cutId, int frame) =>
       cutById(cutId).camera.track.position.keyAt(frame)!.value;
 
-  /// Keys the ACTIVE cut's camera position at [points] (frame → point).
-  void keyCamera(Map<int, CanvasPoint> points) {
+  /// Keys [cutId]'s camera position at [points] (frame → point), named as
+  /// [names] says, standing in that cut.
+  void keyCameraIn(
+    CutId cutId,
+    Map<int, CanvasPoint> points, {
+    Map<int, String> names = const {},
+  }) {
+    session.selectCut(cutId);
     var position = PropertyTrack<CanvasPoint>();
     for (final MapEntry(key: frame, value: point) in points.entries) {
       position = position.withKey(frame, point);
     }
+    for (final MapEntry(key: frame, value: name) in names.entries) {
+      position = position.withKeyName(frame, name);
+    }
     session.camera.updateActiveCutCameraTrack(
       TransformTrack.empty().copyWith(position: position),
     );
+  }
+
+  /// [cutId]'s camera key at [frame] JOINS the name [name] its 겸용 sibling
+  /// holds — taking the value the name holds.
+  void joinName(CutId cutId, int frame, String name) {
+    session.selectCut(cutId);
+    session.standOnRow(
+      LaneRowAddress(cameraOf(cutId).id, 'position'),
+      frameIndex: frame,
+    );
+    session.laneVerbs.linkLaneKeyNamesForSelection(name);
   }
 
   /// Makes the active cut 겸용 with a fresh sibling (which becomes active).
@@ -58,9 +78,13 @@ void main() {
     return (source: source, linked: session.requireActiveCut.id);
   }
 
-  test("a 겸용 cut gets a CAMERA row — a linked copy of the source's, its "
-      'lanes copied rather than shared', () {
-    keyCamera({0: CanvasPoint(x: 0, y: 0), 6: CanvasPoint(x: 60, y: 0)});
+  test("a 겸용 cut gets a CAMERA row — a linked copy of the source's — and "
+      'an EMPTY camera: its keys stay behind', () {
+    final source = session.requireActiveCut.id;
+    keyCameraIn(source, {
+      0: CanvasPoint(x: 0, y: 0),
+      6: CanvasPoint(x: 60, y: 0),
+    });
 
     final pair = makeLinkedPair();
 
@@ -74,24 +98,34 @@ void main() {
       isTrue,
       reason: "linked to the source's — one camera, two uses",
     );
+    // 🗣️유저 2026-10-09 (I-73-camera-row-Q6): 「겸용컷이 키를 복사하는게
+    // 의도한게아님. 겸용컷은 소재는 링크되도 타임라인은 초기화되어야하는건데」.
     expect(
-      cutById(pair.linked).camera,
-      cutById(pair.source).camera,
-      reason: "the lanes arrive as the source's",
+      cutById(pair.linked).camera.track.isEmpty,
+      isTrue,
+      reason: 'the timeline starts empty, the camera\'s too',
+    );
+    expect(
+      cutById(pair.source).camera.track.position.keys.keys,
+      [0, 6],
+      reason: 'the source keeps its own',
     );
   });
 
   test('a NAMED camera key moved in one cut moves in its 겸용 sibling — an '
       "unnamed one stays each cut's own, and one undo takes both", () {
-    session.camera.updateActiveCutCameraTrack(
-      TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>()
-            .withKey(0, CanvasPoint(x: 0, y: 0))
-            .withKey(6, CanvasPoint(x: 60, y: 0))
-            .withKeyName(0, 'A'),
-      ),
-    );
     final pair = makeLinkedPair();
+    keyCameraIn(
+      pair.source,
+      {0: CanvasPoint(x: 0, y: 0), 6: CanvasPoint(x: 60, y: 0)},
+      names: {0: 'A'},
+    );
+    keyCameraIn(pair.linked, {
+      0: CanvasPoint(x: 1, y: 1),
+      6: CanvasPoint(x: 60, y: 0),
+    });
+    joinName(pair.linked, 0, 'A');
+    expect(cameraAt(pair.linked, 0), CanvasPoint(x: 0, y: 0), reason: 'joined');
 
     session.selectCut(pair.source);
     final track = cutById(pair.source).camera.track;
@@ -125,15 +159,10 @@ void main() {
 
   test("a camera lane's names span the 겸용 group: a name held only in the "
       'sibling is TAKEN here, and joining adopts its value', () {
-    keyCamera({0: CanvasPoint(x: 0, y: 0)});
     final pair = makeLinkedPair();
-    // The linked cut moves its own, unnamed key — nothing crosses.
-    final linkedTrack = cutById(pair.linked).camera.track;
-    session.camera.updateActiveCutCameraTrack(
-      linkedTrack.copyWith(
-        position: linkedTrack.position.withKey(0, CanvasPoint(x: 9, y: 9)),
-      ),
-    );
+    keyCameraIn(pair.source, {0: CanvasPoint(x: 0, y: 0)});
+    // The linked cut keys its own, unnamed key — nothing crosses.
+    keyCameraIn(pair.linked, {0: CanvasPoint(x: 9, y: 9)});
     expect(cameraAt(pair.source, 0), CanvasPoint(x: 0, y: 0));
 
     void standOnKey(CutId cutId) {
@@ -171,22 +200,17 @@ void main() {
 
   test('a canvas pose write keeps the key HOLD — and the 겸용 sibling '
       'follows in value AND type', () {
-    session.camera.updateActiveCutCameraTrack(
-      TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>()
-            .withKey(0, CanvasPoint(x: 0, y: 0))
-            .withKeyName(0, 'A'),
-      ),
-    );
-    final source = session.requireActiveCut.id;
+    final pair = makeLinkedPair();
+    keyCameraIn(pair.source, {0: CanvasPoint(x: 0, y: 0)}, names: {0: 'A'});
     session.standOnRow(
-      LaneRowAddress(cameraOf(source).id, 'position'),
+      LaneRowAddress(cameraOf(pair.source).id, 'position'),
       frameIndex: 0,
     );
-    session.laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    session.laneVerbs.setLaneKeyTypeForSelection(
+      const KeyTypePick(sides: KeySidesEdit.hold),
     );
-    final pair = makeLinkedPair();
+    keyCameraIn(pair.linked, {0: CanvasPoint(x: 1, y: 1)});
+    joinName(pair.linked, 0, 'A');
 
     // The canvas gizmo's write: a POSE at the playhead, no type in hand.
     session.selectCut(pair.source);
@@ -197,39 +221,35 @@ void main() {
     PropertyKey<CanvasPoint> keyOf(CutId cutId) =>
         cutById(cutId).camera.track.position.keyAt(0)!;
     expect(
-      keyOf(pair.source).interpolation,
-      PropertyKeyInterpolation.hold,
+      keyOf(pair.source).outgoing,
+      KeyExit.hold,
       reason: '「홀드인상태서 … 값 바꾸면 홀드가 리니어로 돌아와」 — no longer',
     );
     expect(keyOf(pair.linked).value, CanvasPoint(x: 12, y: 12));
     expect(
-      keyOf(pair.linked).interpolation,
-      PropertyKeyInterpolation.hold,
+      keyOf(pair.linked).outgoing,
+      KeyExit.hold,
       reason: 'the sibling holds the same key, type included',
     );
   });
 
   test('the TYPE alone crosses the 겸용 group on a named key', () {
-    session.camera.updateActiveCutCameraTrack(
-      TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>()
-            .withKey(0, CanvasPoint(x: 0, y: 0))
-            .withKeyName(0, 'A'),
-      ),
-    );
     final pair = makeLinkedPair();
+    keyCameraIn(pair.source, {0: CanvasPoint(x: 0, y: 0)}, names: {0: 'A'});
+    keyCameraIn(pair.linked, {0: CanvasPoint(x: 1, y: 1)});
+    joinName(pair.linked, 0, 'A');
 
     session.standOnRow(
       LaneRowAddress(cameraOf(pair.linked).id, 'position'),
       frameIndex: 0,
     );
-    session.laneVerbs.setLaneKeyInterpolationsForSelection(
-      PropertyKeyInterpolation.hold,
+    session.laneVerbs.setLaneKeyTypeForSelection(
+      const KeyTypePick(sides: KeySidesEdit.hold),
     );
 
     expect(
-      cutById(pair.source).camera.track.position.keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      cutById(pair.source).camera.track.position.keyAt(0)!.outgoing,
+      KeyExit.hold,
       reason: '「겸용컷끼리 홀드/리니어타입 … 싹다링크해야하는데」',
     );
   });

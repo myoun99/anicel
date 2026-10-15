@@ -5,6 +5,7 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_grid_range_callbacks.dart';
+import 'timeline_row_edges.dart';
 
 /// THE RANGE GESTURES — the sweep that selects a frame range on a row or
 /// a lane, and the policy that says which rows take one — as their own
@@ -24,6 +25,7 @@ class TimelineGridRangeGestures {
     required this.hooks,
     required this.metrics,
     required this.dragRows,
+    required this.dragEdges,
     required this.rangeMove,
     this.pin,
   });
@@ -34,6 +36,9 @@ class TimelineGridRangeGestures {
   /// The display rows of the pass in flight — a getter, read at CALL time
   /// (see [timelineGridRangeCallbacks] on why never a list).
   final List<TimelineDisplayRow> Function() dragRows;
+
+  /// Where [dragRows] sit — read with them.
+  final TimelineRowEdges Function() dragEdges;
 
   /// The host's row resolver for a range MOVE; [rangeGestureFor] loads it.
   final TimelineRangeMoveRowResolver rangeMove;
@@ -68,8 +73,8 @@ class TimelineGridRangeGestures {
         ? null
         : timelineGridRangeCallbacks(
             rangeHooks: rangeHooks,
-            rowExtent: metrics().layerRowHeight,
             dragRows: dragRows,
+            dragEdges: dragEdges,
             rangeMove: rangeMove,
             onGripTaken: pin?.take,
             onGripReleased: pin?.release,
@@ -86,8 +91,8 @@ class TimelineGridRangeGestures {
         : timelineGridLaneRangeCallbacks(
             hostLaneRange: hostLaneRange,
             rangeHooks: hooks().rangeHooks,
-            rowExtent: metrics().layerRowHeight,
             dragRows: dragRows,
+            dragEdges: dragEdges,
             onGripTaken: pin?.take,
             onGripReleased: pin?.release,
           );

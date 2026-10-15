@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -35,6 +36,15 @@ void main() {
   const cuts = 12;
   const frames = 8;
 
+  Cut shortCut(String id, {int leadingGapFrames = 0}) => Cut(
+    id: CutId(id),
+    name: id,
+    duration: frames,
+    leadingGapFrames: leadingGapFrames,
+    canvasSize: const CanvasSize(width: 640, height: 360),
+    layers: [Layer(id: LayerId('$id-cel'), name: 'A', frames: const [])],
+  );
+
   Project project() => Project(
     id: const ProjectId('scrub-layers'),
     name: 'Scrub layers',
@@ -43,18 +53,31 @@ void main() {
       Track(
         id: const TrackId('t'),
         name: 'Video',
+        cuts: [for (var i = 0; i < cuts; i += 1) shortCut('cut-$i')],
+      ),
+    ],
+  );
+
+  /// The open track's first cut, a long gap and a last cut — and a second
+  /// track's short cuts under the whole of it, so a scrub through the gap
+  /// parks and the stack it shows crosses that track's cuts.
+  Project gapOverAnotherTrack() => Project(
+    id: const ProjectId('scrub-layers-gap'),
+    name: 'Scrub layers gap',
+    createdAt: DateTime.utc(2026, 10, 10),
+    tracks: [
+      Track(
+        id: const TrackId('t'),
+        name: 'Video',
         cuts: [
-          for (var i = 0; i < cuts; i += 1)
-            Cut(
-              id: CutId('cut-$i'),
-              name: 'cut-$i',
-              duration: frames,
-              canvasSize: const CanvasSize(width: 640, height: 360),
-              layers: [
-                Layer(id: LayerId('cut-$i-cel'), name: 'A', frames: const []),
-              ],
-            ),
+          shortCut('open'),
+          shortCut('after', leadingGapFrames: frames * (cuts - 2)),
         ],
+      ),
+      Track(
+        id: const TrackId('under'),
+        name: 'Video 2',
+        cuts: [for (var i = 0; i < cuts; i += 1) shortCut('under-$i')],
       ),
     ],
   );
@@ -134,18 +157,23 @@ void main() {
     });
   }
 
-  // canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): past
-  // the open cut the canvas shows the track stack, which rebuilds as each
-  // move crosses into another cut — bare under the panel content's
-  // LayoutBuilder, that relaid out and repainted the whole canvas panel.
-  testWidgets('a scrub past the open cut repaints the canvas\'s tick layers '
-      'and nothing else of it', (tester) async {
+  // canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): where
+  // a scrub parks, the canvas shows the track stack, which rebuilds as the
+  // frame it follows crosses into another cut — bare under the panel
+  // content's LayoutBuilder, that relaid out and repainted the whole canvas
+  // panel. ↩️A scrub parked past the open cut over every other cut's frames
+  // until I-57 ②; it crosses into those now and parks in a gap alone, where
+  // the stack still crosses cuts — another track's.
+  testWidgets('a scrub through a gap repaints the canvas\'s tick layers and '
+      'nothing else of it, as the stack crosses another track\'s cuts', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
-        home: HomePage(initialProject: project()),
+        home: HomePage(initialProject: gapOverAnotherTrack()),
       ),
     );
     await tester.pumpAndSettle();
@@ -153,6 +181,9 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
     final canvas = find.ancestor(
       of: find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
       matching: find.byType(RepaintBoundary),
@@ -179,19 +210,33 @@ void main() {
     await tester.pump();
     final moves = <String>[];
     var parkedMoves = 0;
+    final crossedUnder = <CutId>{};
     for (var move = 1; move < 20; move += 1) {
-      // The move that takes the canvas OUT of the open cut swaps its content
-      // for the track stack — once, and a new content is laid out whole.
-      // What is measured is every crossing the stack was already showing.
+      // The move that takes the canvas INTO the gap swaps its content for
+      // the track stack — once, and a new content is laid out whole. What
+      // is measured is every move the stack was already showing.
       final parked = find.byType(CanvasTrackStackView).evaluate().isNotEmpty;
       await gesture.moveBy(Offset(step, 0));
+      if (!parked) {
+        // ⚠️A whole frame for a move not measured: the swap mounts new
+        // repaint boundaries, and a frame stopped after its layout leaves
+        // them queued with no layer — every later paint then stops at them
+        // (a framework assertion), and each move after looks like a stray.
+        await tester.pump(const Duration(milliseconds: 16));
+        continue;
+      }
       await tester.pump(const Duration(milliseconds: 16), EnginePhase.layout);
       final now = strays();
-      if (parked) {
-        parkedMoves += 1;
-        if (now.isNotEmpty) {
-          moves.add('move $move:\n${now.join('\n')}');
-        }
+      parkedMoves += 1;
+      final at = session.editingSession.gapGlobalFrame;
+      if (at != null) {
+        crossedUnder.addAll([
+          for (final under in session.rowSpans.trackStackContributionsAt(at))
+            under.cut.id,
+        ]);
+      }
+      if (now.isNotEmpty) {
+        moves.add('move $move:\n${now.join('\n')}');
       }
       await tester.pump();
     }
@@ -201,7 +246,12 @@ void main() {
     expect(
       parkedMoves,
       greaterThan(5),
-      reason: '⛔premise: the scrub crossed cut after cut with the stack shown',
+      reason: '⛔premise: the scrub walked the gap with the stack shown',
+    );
+    expect(
+      crossedUnder.length,
+      greaterThan(2),
+      reason: '⛔premise: the stack crossed cut after cut of the other track',
     );
     expect(moves, isEmpty, reason: moves.join('\n\n'));
   });

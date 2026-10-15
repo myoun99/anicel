@@ -355,8 +355,9 @@ void main() {
       expect(perspectiveOf(committed!, 'p1').vanishingPoints, [at(900, 50)]);
     });
 
-    testWidgets('🚨a third point is offered only while there is room for '
-        'one, and it starts as the VERTICAL family', (tester) async {
+    testWidgets('🚨a third point is taken only while there is room for one '
+        '— the button stays where it was, dead, at three — and it starts as '
+        'the VERTICAL family', (tester) async {
       CutGuides? committed;
       final addButton = find.byKey(
         const ValueKey<String>('guide-add-vanishing-point'),
@@ -380,22 +381,24 @@ void main() {
       expect(points, hasLength(3));
       expect(points.last, VanishingPointTowards(dx: 0, dy: 1));
 
+      CutGuides? fourth;
       await pumpSettings(
         tester,
         CutGuides(guides: [committed!.guides.single]),
         const GuideId('p1'),
-        (_) {},
+        (next) => fourth = next,
       );
-      expect(
-        addButton,
-        findsNothing,
-        reason: 'a PerspectiveShape refuses a fourth',
-      );
+      // ↩️It went away at three — 「없다가 생기는 UI」 (tool-settings-panel-
+      // tidy, 유저 2026-10-10: 「다 통일해서」).
+      expect(addButton, findsOneWidget, reason: 'the button keeps its place');
+      await tester.tap(addButton);
+      await tester.pump();
+      expect(fourth, isNull, reason: 'a PerspectiveShape refuses a fourth');
     });
   });
 
   group('what a vanishing point row says', () {
-    Future<String> subtitleFor(
+    Future<String> readoutFor(
       WidgetTester tester,
       VanishingPoint point,
     ) async {
@@ -409,22 +412,25 @@ void main() {
         const GuideId('p1'),
         (_) {},
       );
-      final tile = tester.widget<ListTile>(
-        find.byKey(const ValueKey<String>('guide-vanishing-point-0')),
-      );
-      return (tile.subtitle! as Text).data!;
+      return tester
+          .widget<Text>(
+            find.byKey(
+              const ValueKey<String>('guide-vanishing-point-0-reads'),
+            ),
+          )
+          .data!;
     }
 
     testWidgets('🚨a point on the paper reads its position ROUNDED, not '
         'truncated — a point at 1234.6 is nearer 1235', (tester) async {
-      expect(await subtitleFor(tester, at(1234.6, -7.4)), '1235, -7');
+      expect(await readoutFor(tester, at(1234.6, -7.4)), '1235, -7');
     });
 
     testWidgets('a point at infinity says so instead of dividing by zero', (
       tester,
     ) async {
       expect(
-        await subtitleFor(tester, VanishingPointTowards(dx: 0, dy: 1)),
+        await readoutFor(tester, VanishingPointTowards(dx: 0, dy: 1)),
         strings.guideVanishingPointAtInfinity,
       );
     });
@@ -444,7 +450,7 @@ void main() {
       expect(degenerate.resolve().isInfinite, isFalse);
 
       expect(
-        await subtitleFor(tester, degenerate),
+        await readoutFor(tester, degenerate),
         strings.guideVanishingPointAtInfinity,
       );
     });

@@ -4,15 +4,21 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_decode_stream.dart';
+import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
+import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show anicelCrc32;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/services/persistence/media_blob_codec.dart'
+    show mediaFramedOrPlainPaths;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/conform_file_path.dart';
+import '../../helpers/memory_decode_stream.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -24,6 +30,16 @@ void main() {
   });
 
   tearDown(() => deleteTempQuietly(temp));
+
+  /// [count] samples that do not repeat for a while — no two windows of a
+  /// long sound alike.
+  Float32List tone(int count) {
+    final out = Float32List(count);
+    for (var index = 0; index < count; index += 1) {
+      out[index] = ((index * 7919) % 2001 - 1000) / 1000.0 * 0.9;
+    }
+    return out;
+  }
 
   Float32List ramp(int frames, int channels) {
     final out = Float32List(frames * channels);
@@ -45,8 +61,8 @@ void main() {
         final bytes = source.readSync();
         try {
           final audio = decodeConform(bytes);
-          return (
-            samples: audio.samples,
+          return MemoryDecodeStream(
+            audio.samples,
             channels: audio.channels,
             sampleRate: audio.sampleRate,
           );
@@ -54,21 +70,14 @@ void main() {
           return null;
         }
       },
-      resample:
-          ({
-            required samples,
-            required channels,
-            required inputRate,
-            required outputRate,
-          }) {
-            resampleLog?.add('$inputRate→$outputRate');
-            return resampleAudioReference(
-              samples: samples,
-              channels: channels,
-              inputRate: inputRate,
-              outputRate: outputRate,
-            ).samples;
-          },
+      resample: ({required channels, required inputRate, required outputRate}) {
+        resampleLog?.add('$inputRate→$outputRate');
+        return AudioResampleStreamReference(
+          channels: channels,
+          inputRate: inputRate,
+          outputRate: outputRate,
+        );
+      },
     );
   }
 
@@ -658,6 +667,37 @@ void main() {
       expect(decodeConform(File(conform).readAsBytesSync()).sampleRate, 48000);
     });
 
+    test('a conform an older decode made is made again — the same file '
+        'decodes to other samples now', () {
+      final source = writeSource('olddecode.wav', rate: 44100);
+      final conform = '${temp.path}/Conformed/olddecode.wav.wav';
+      expect(
+        pipelineFor()
+            .ensureConform(sourcePath: source, conformPath: conform)
+            .outcome,
+        ConformOutcome.built,
+      );
+
+      // The same conform, as a decode before the recipe was recorded wrote
+      // it: an m4a's then still held its encoder's 1,024 frames.
+      final bytes = File(conform).readAsBytesSync()..fillRange(56, 60, 0);
+      File(conform).writeAsBytesSync(bytes);
+
+      final again = pipelineFor().ensureConform(
+        sourcePath: source,
+        conformPath: conform,
+      );
+      expect(
+        again.outcome,
+        ConformOutcome.built,
+        reason: 'what it holds is not what opening the file plays today',
+      );
+      expect(
+        decodeConform(File(conform).readAsBytesSync()).decodeRecipe,
+        conformDecodeRecipe,
+      );
+    });
+
     test('a matching conform is reused instead of rebuilt', () {
       final log = <String>[];
       final source = writeSource('reuse.wav', rate: 44100);
@@ -679,6 +719,253 @@ void main() {
       expect(second.outcome, ConformOutcome.reused);
       expect(log, isEmpty, reason: 'reuse must not redo the work');
       expect(second.peaks, isNotNull);
+    });
+
+    test('🎯a conform past the streaming threshold comes back with NO PCM, '
+        'built and reused alike — its peaks those of its whole PCM, measured '
+        'a window at a time across the windows\' edges; a short one stays '
+        'resident', () {
+      // A tiny project rate keeps a "long" conform small: 100 Hz, past the
+      // threshold, and over two of the pipeline's windows (2^18 frames) —
+      // three frames a bucket, so buckets straddle the windows' edges.
+      const rate = 100;
+      const long = (1 << 18) * 2 + 4321;
+      String sourceOf(String name, int frames) {
+        final path = '${temp.path}/$name';
+        File(path).writeAsBytesSync(
+          encodeConform(samples: tone(frames), channels: 1, sampleRate: rate),
+        );
+        return path;
+      }
+
+      final base = pipelineFor(projectSampleRate: rate);
+      final pipeline = AudioConformPipeline(
+        decode: base.decode,
+        resample: base.resample,
+        projectSampleRate: rate,
+        bucketsPerSecond: 30,
+      );
+      expect(conformStaysOnDisk(
+        frames: long,
+        sampleRate: rate,
+        onDisk: true,
+      ), isTrue, reason: 'the premise: this one is long');
+      final longSource = sourceOf('long.wav', long);
+      final shortSource = sourceOf('short.wav', rate * 3);
+      final whole = peaksFromSamples(
+        samples: decodeConform(File(longSource).readAsBytesSync()).samples,
+        channels: 1,
+        sampleRate: rate,
+        bucketsPerSecond: 30,
+      ).peaks;
+
+      for (final pass in [ConformOutcome.built, ConformOutcome.reused]) {
+        final longOne = pipeline.ensureConform(
+          sourcePath: longSource,
+          conformPath: '${temp.path}/Conformed/long.wav.wav',
+        );
+        expect(longOne.outcome, pass);
+        expect(longOne.samples, isNull, reason: '$pass: its PCM is on disk');
+        expect(longOne.conformBytes, isNotNull, reason: pass.name);
+        expect((longOne.frames, longOne.channels), (long, 1));
+        expect(longOne.peaks!.peaks, whole, reason: '$pass: its peaks');
+
+        final shortOne = pipeline.ensureConform(
+          sourcePath: shortSource,
+          conformPath: '${temp.path}/Conformed/short.wav.wav',
+        );
+        expect(shortOne.outcome, pass);
+        expect(shortOne.samples?.length, rate * 3, reason: '$pass: resident');
+      }
+
+      // With nowhere to write it, a long one has nothing to stream from.
+      final memoryOnly = pipeline.ensureConform(
+        sourcePath: longSource,
+        conformPath: null,
+      );
+      expect(memoryOnly.conformBytes, isNull);
+      expect(memoryOnly.samples?.length, long, reason: 'resident, then');
+    });
+
+    test('🎯a conform made a window at a time is the whole one byte for '
+        'byte — resampled or not, one channel or two — its peaks and its '
+        'resident PCM the whole\'s, and its decoder let go', () {
+      // Over two of the pipeline's windows (2^18 frames), so the resampler
+      // carries its state across their edges.
+      const frames = (1 << 18) * 2 + 7777;
+      for (final (rate, channels) in const [(48000, 1), (44100, 2)]) {
+        final samples = tone(frames * channels);
+        final streams = <MemoryDecodeStream>[];
+        final pipeline = AudioConformPipeline(
+          decode: (source) {
+            final stream = MemoryDecodeStream(
+              samples,
+              channels: channels,
+              sampleRate: rate,
+            );
+            streams.add(stream);
+            return stream;
+          },
+          resample:
+              ({required channels, required inputRate, required outputRate}) =>
+                  AudioResampleStreamReference(
+                    channels: channels,
+                    inputRate: inputRate,
+                    outputRate: outputRate,
+                  ),
+        );
+        // The fake decoder never reads it; the fingerprint does.
+        final source = '${temp.path}/sound-$rate.bin';
+        File(source).writeAsBytesSync(const [1, 2, 3]);
+        final built = pipeline.ensureConform(
+          sourcePath: source,
+          conformPath: '${temp.path}/Conformed/sound-$rate.wav',
+        );
+        final whole = rate == 48000
+            ? samples
+            : resampleAudioReference(
+                samples: samples,
+                channels: channels,
+                inputRate: rate,
+                outputRate: 48000,
+              ).samples;
+        final what = '$rate Hz, $channels ch';
+        expect(built.outcome, ConformOutcome.built, reason: what);
+        final written = built.conformBytes!.readSync();
+        final header = ConformHeader.parse(written);
+        expect(
+          written,
+          encodeConform(
+            samples: whole,
+            channels: channels,
+            sampleRate: 48000,
+            fingerprint: header.fingerprint,
+            sourceStat: header.sourceStat,
+          ),
+          reason: '$what: the conform',
+        );
+        expect(built.samples, whole, reason: '$what: resident');
+        expect(
+          built.peaks!.peaks,
+          peaksFromSamples(
+            samples: whole,
+            channels: channels,
+            sampleRate: 48000,
+            bucketsPerSecond: pipeline.bucketsPerSecond,
+          ).peaks,
+          reason: '$what: peaks',
+        );
+        expect(streams.single.closed, isTrue, reason: '$what: let go');
+      }
+    });
+
+    test('a decoder that stops partway is undecodable — nothing of it is '
+        'left in the cache, and it is let go', () {
+      final stream = _StopsPartway();
+      final source = '${temp.path}/partway.bin';
+      File(source).writeAsBytesSync(const [1, 2, 3]);
+      final result = AudioConformPipeline(
+        decode: (source) => stream,
+        resample:
+            ({required channels, required inputRate, required outputRate}) =>
+                AudioResampleStreamReference(
+                  channels: channels,
+                  inputRate: inputRate,
+                  outputRate: outputRate,
+                ),
+      ).ensureConform(
+        sourcePath: source,
+        conformPath: '${temp.path}/Conformed/partway.wav',
+      );
+      expect(result.outcome, ConformOutcome.undecodable);
+      expect(result.error, contains('partway'));
+      expect(stream.closed, isTrue);
+      expect(
+        Directory('${temp.path}/Conformed').listSync(),
+        isEmpty,
+        reason: 'its scratch goes with it',
+      );
+    });
+
+    test('🎯a long conform the cache refuses at the end is made again in '
+        'memory — the cache never costs the sound', () {
+      // The tiny project rate of the test above: long past the threshold,
+      // and over two of the pipeline's windows.
+      const rate = 100;
+      const long = (1 << 18) * 2 + 4321;
+      final samples = tone(long);
+      final source = '${temp.path}/refused.wav';
+      File(source).writeAsBytesSync(
+        encodeConform(samples: samples, channels: 1, sampleRate: rate),
+      );
+      final base = pipelineFor(projectSampleRate: rate);
+      var decodes = 0;
+      final pipeline = AudioConformPipeline(
+        decode: (source) {
+          decodes += 1;
+          return base.decode(source);
+        },
+        resample: base.resample,
+        projectSampleRate: rate,
+      );
+      // Folders where the conform's two names would land: its scratch is
+      // written beside them, and the finished conform cannot be put there.
+      final conformPath = '${temp.path}/Conformed/refused.wav.wav';
+      for (final name in mediaFramedOrPlainPaths(conformPath)) {
+        Directory(name).createSync(recursive: true);
+      }
+
+      final result = pipeline.ensureConform(
+        sourcePath: source,
+        conformPath: conformPath,
+      );
+
+      expect(result.outcome, ConformOutcome.built);
+      expect(result.conformBytes, isNull);
+      expect(result.error, contains('could not cache'));
+      expect(decodes, 2, reason: 'its PCM had been left on disk');
+      expect(
+        result.samples,
+        decodeConform(File(source).readAsBytesSync()).samples,
+        reason: 'and is held after all',
+      );
+    });
+
+    test('a long sound whose cache will not open at all is held from its one '
+        'pass — never left for a disk that was not there', () {
+      const rate = 100;
+      const long = (1 << 18) * 2 + 4321;
+      final source = '${temp.path}/nowhere.wav';
+      File(source).writeAsBytesSync(
+        encodeConform(samples: tone(long), channels: 1, sampleRate: rate),
+      );
+      final base = pipelineFor(projectSampleRate: rate);
+      var decodes = 0;
+      final pipeline = AudioConformPipeline(
+        decode: (source) {
+          decodes += 1;
+          return base.decode(source);
+        },
+        resample: base.resample,
+        projectSampleRate: rate,
+      );
+      // A FILE where the cache wants a directory: nothing lands under it.
+      final blocker = '${temp.path}/blocker-long';
+      File(blocker).writeAsBytesSync(const [0]);
+
+      final result = pipeline.ensureConform(
+        sourcePath: source,
+        conformPath: '$blocker/nested/nowhere.wav.wav',
+      );
+
+      expect(result.outcome, ConformOutcome.built);
+      expect(result.conformBytes, isNull);
+      expect(result.error, contains('could not cache'));
+      expect(decodes, 1, reason: 'kept as it was made');
+      expect(
+        result.samples,
+        decodeConform(File(source).readAsBytesSync()).samples,
+      );
     });
 
     test('a replaced source rebuilds the conform', () {
@@ -817,4 +1104,29 @@ void main() {
       expect(result.isUsable, isFalse);
     });
   });
+}
+
+/// A decoder that hands back one window of a sound and then fails.
+final class _StopsPartway implements AudioDecodeStream {
+  var _reads = 0;
+
+  bool closed = false;
+
+  @override
+  int get channels => 1;
+
+  @override
+  int get sampleRate => 48000;
+
+  @override
+  Float32List read(int frames) {
+    _reads += 1;
+    if (_reads > 1) {
+      throw const AudioDecodeFailure('the decoder failed partway through');
+    }
+    return Float32List(frames);
+  }
+
+  @override
+  void close() => closed = true;
 }

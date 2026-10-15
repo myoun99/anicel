@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 import '../../helpers/conte_track_fixture.dart';
+import '../../helpers/named_finders.dart';
 
 /// 🗣️I-62 (유저 2026-10-03): 「레이어 비지블off시 색라벨 비활성화색?으로 하는데,
 /// 추가로 레이어 이름도 비활성화색? 반투명? 어둡게」 — on the conte, whose S
@@ -49,7 +50,7 @@ void main() {
     );
     Future<void> pressEye(String layerId) async {
       await tester.tap(
-        find.byKey(ValueKey<String>('storyboard-layer-visibility-$layerId')),
+        find.named('storyboard-layer-visibility-$layerId'),
       );
       await tester.pumpAndSettle();
     }

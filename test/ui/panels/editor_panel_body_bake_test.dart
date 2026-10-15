@@ -201,7 +201,7 @@ void main() {
   testWidgets('🐛F-103: a panel keeps its State when its dock crosses the '
       'floor and back, or folds — a neighbour opening or closing must not '
       'remount it', (tester) async {
-    Widget tabsAt(Size size, {required bool keepAlive, required bool folded}) =>
+    Widget tabsAt(Size size, {required bool cached, required bool folded}) =>
         MaterialApp(
           home: Scaffold(
             body: SizedBox(
@@ -217,7 +217,7 @@ void main() {
                     minContentWidth: 400,
                     minContentHeight: 250,
                     collapsedExtent: 40,
-                    keepAlive: keepAlive,
+                    cachesContent: cached,
                     builder: (context) => const _StateProbe(),
                   ),
                 ],
@@ -238,7 +238,7 @@ void main() {
             scroller.position.maxScrollExtent,
     };
 
-    for (final keepAlive in const [false, true]) {
+    for (final cached in const [false, true]) {
       await tester.pumpWidget(const SizedBox());
       final states = <State>{};
       final reaches = <(Size, bool, Map<Axis, double>)>[];
@@ -253,7 +253,7 @@ void main() {
         (Size(600, 400), false),
       ]) {
         await tester.pumpWidget(
-          tabsAt(size, keepAlive: keepAlive, folded: folded),
+          tabsAt(size, cached: cached, folded: folded),
         );
         await tester.pump();
         states.add(tester.state(find.byType(_StateProbe)));
@@ -263,11 +263,11 @@ void main() {
         states,
         hasLength(1),
         reason:
-            'keepAlive: $keepAlive — fits, over on x, over on y, over on '
+            'cached: $cached — fits, over on x, over on y, over on '
             'both, folded — one State throughout',
       );
       for (final (size, folded, reached) in reaches) {
-        final step = '$size${folded ? ' folded' : ''}, keepAlive: $keepAlive';
+        final step = '$size${folded ? ' folded' : ''}, cached: $cached';
         expect(
           reached[Axis.horizontal],
           !folded && size.width < 400 ? greaterThan(0) : 0,
@@ -282,9 +282,12 @@ void main() {
     }
   });
 
-  testWidgets('two kept tabs with floors in one group each scroll on their '
-      'own — the shown one still says so with its bar after the dock moves, '
+  testWidgets('two tabs with floors in one group: the shown one scrolls and '
+      'says so with its bar after the dock moves, the other is not built, '
       'and a pen still reaches through its coast', (tester) async {
+    // ↩️Both stayed built once visited (keep-alive), and a controller shared
+    // with the one offstage had two positions — the bar read neither. A
+    // panel is built only while it shows now (유저 2026-10-14).
     Widget groupShowing(String active, double height) => MaterialApp(
       scrollBehavior: const AppScrollBehavior(),
       home: Scaffold(
@@ -298,7 +301,7 @@ void main() {
                   id: id,
                   label: id,
                   icon: Icons.circle,
-                  keepAlive: true,
+                  cachesContent: true,
                   minContentHeight: 600,
                   builder: (context) =>
                       _StateProbe(key: ValueKey<String>('probe-$id')),
@@ -321,9 +324,9 @@ void main() {
         .firstWhere((state) => state.axisDirection == AxisDirection.down)
         .position;
 
-    // Both kept tabs are built by the third step. The fourth moves the dock,
-    // which is what makes a bar read its controller again — a bar that is
-    // never rebuilt keeps whatever it last drew.
+    // The last step moves the dock, which is what makes a bar read its
+    // controller again — a bar that is never rebuilt keeps whatever it last
+    // drew.
     for (final (active, height) in const [
       ('a', 300.0),
       ('b', 300.0),
@@ -336,17 +339,20 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'showing $active');
+      final other = active == 'a' ? 'b' : 'a';
+      expect(verticalOf(active).maxScrollExtent, greaterThan(0));
+      expect(
+        find.byKey(ValueKey<String>('probe-$other'), skipOffstage: false),
+        findsNothing,
+        reason: 'showing $active — the tab behind it is not built',
+      );
     }
-    expect(verticalOf('a').maxScrollExtent, greaterThan(0));
-    expect(verticalOf('b').maxScrollExtent, greaterThan(0));
     expect(
       find.byType(AppControllerScrollbar),
       findsOneWidget,
-      reason:
-          'the shown tab overflows and says so; a controller shared with the '
-          'kept tab offstage has two positions, and the bar reads neither',
+      reason: 'the shown tab overflows and says so',
     );
-    for (final scroller in [...scrollersOf('a'), ...scrollersOf('b')]) {
+    for (final scroller in scrollersOf('a')) {
       expect(
         scroller.position,
         isA<PenFriendlyScrollPosition>(),

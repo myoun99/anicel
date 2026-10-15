@@ -51,7 +51,8 @@ class EffectsAndFx {
     LayerId layerId,
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
-  }) => _activeCut.onActiveCutQuietly(
+  }) => _activeCut.onCutOfRowQuietly(
+    cutIdOfLayer(_project.repository.requireProject(), layerId),
     (cutId) => _project.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,

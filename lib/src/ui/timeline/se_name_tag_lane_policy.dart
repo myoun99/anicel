@@ -1,7 +1,8 @@
+import '../../models/key_mark.dart';
 import '../../models/se_name_tag.dart';
 import '../text/app_strings.dart' show AppText;
 import 'property_lane_lens.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 
 /// The SE row's NAME TAG group (R5 #7) — a fixed group, sibling of
@@ -54,8 +55,8 @@ bool laneIsSeNameTag(String? laneId) =>
 String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
   const hex = formatLaneColorValue;
   return switch (laneId) {
-    seNameTagSizeLaneId => formatTrimmedDecimal(resolved.style.fontSize),
-    seNameTagTrackingLaneId => formatTrimmedDecimal(
+    seNameTagSizeLaneId => columnValueText(resolved.style.fontSize),
+    seNameTagTrackingLaneId => columnValueText(
       resolved.style.letterSpacing,
     ),
     seNameTagBoldLaneId => resolved.style.bold ? 'on' : 'off',
@@ -72,7 +73,7 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
 /// of the lane-scoped range move (UI-R23 #3 part 2) through
 /// `LaneKeysShift.keysShifted`. Null for the header and for any id that is
 /// not a member lane.
-LaneLens<SeNameTagTrack>? seNameTagLaneLens(String laneId) =>
+PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
     switch (laneId) {
       seNameTagSizeLaneId => PropertyLaneLens<SeNameTagTrack, double>(
         get: (keys) => keys.fontSize,
@@ -105,11 +106,19 @@ LaneLens<SeNameTagTrack>? seNameTagLaneLens(String laneId) =>
       _ => null,
     };
 
-/// The member lane's keyed frames — the ONE per-lane key reader (the lane
-/// builder, the move machine's keyed gate and the keyframe navigator all
-/// read this; the name-tag twin of `transformLaneKeyFrames`).
+/// The member lane's keyed frames — what the move machine's keyed gate
+/// reads (the name-tag twin of `transformLaneKeyFrames`). The lane rows
+/// read the keys with the marks they wear ([seNameTagLaneKeyMarks]),
+/// through the same table.
 Set<int> seNameTagLaneKeyFrames(SeNameTagTrack keys, String laneId) =>
     seNameTagLaneLens(laneId)?.keyFrames(keys) ?? const {};
+
+/// The member lane's keys with the marks they wear, read through the same
+/// table as its frames — so a flag lane's held keys draw as holds.
+Map<int, KeyMark> seNameTagLaneKeyMarks(SeNameTagTrack keys, String laneId) {
+  final lens = seNameTagLaneLens(laneId);
+  return lens == null ? const {} : keyMarksOf(lens.get(keys));
+}
 
 /// The lane rows for one SE row's name tag: the header, and its members
 /// while the group is twirled open.
@@ -119,15 +128,18 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
   required SeNameTag Function(int frameIndex) resolveAt,
 }) {
   final keys = tag.track ?? SeNameTagTrack.empty();
-  Set<int> keyed(String laneId) => seNameTagLaneKeyFrames(keys, laneId);
 
   return [
     PropertyLaneRow(
       laneId: seNameTagGroupLaneId,
       // F-37: `tlNameTagGroup` was tabled for this header and read by nobody.
       label: AppText.strings.tlNameTagGroup,
-      // The members' key union, the summary every group header shows.
-      keyedFrames: keys.keyedFrames,
+      // The members' key union, the summary every group header shows
+      // ([unionKeyMarks]).
+      keyMarks: unionKeyMarks([
+        for (final laneId in seNameTagLaneDisplayOrder)
+          seNameTagLaneKeyMarks(keys, laneId),
+      ]),
       showsKeyNavigator: false,
       isGroupHeader: true,
       groupExpanded: expanded,
@@ -150,7 +162,7 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
         PropertyLaneRow(
           laneId: laneId,
           label: seNameTagLaneLabel(laneId),
-          keyedFrames: keyed(laneId),
+          keyMarks: seNameTagLaneKeyMarks(keys, laneId),
           valueKind: seNameTagLaneValueKind(laneId),
           colorCanBeNone: seNameTagLaneColorCanBeNone(laneId),
           valueLabel: (frame) =>

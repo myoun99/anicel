@@ -9,8 +9,10 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'timeline/timeline_cell_probe.dart';
+import '../helpers/named_finders.dart';
 
 void main() {
   testWidgets('horizontal mode renders integrated layer timeline', (
@@ -66,17 +68,17 @@ void main() {
 
     final layerCTop = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('timeline-layer-row-layer-c')),
+          find.named('timeline-layer-row-layer-c'),
         )
         .dy;
     final layerBTop = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('timeline-layer-row-layer-b')),
+          find.named('timeline-layer-row-layer-b'),
         )
         .dy;
     final layerATop = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('timeline-layer-row-layer-a')),
+          find.named('timeline-layer-row-layer-a'),
         )
         .dy;
 
@@ -101,17 +103,17 @@ void main() {
 
     final layerALeft = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('xsheet-layer-row-layer-a')),
+          find.named('xsheet-layer-row-layer-a'),
         )
         .dx;
     final layerBLeft = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('xsheet-layer-row-layer-b')),
+          find.named('xsheet-layer-row-layer-b'),
         )
         .dx;
     final layerCLeft = tester
         .getTopLeft(
-          find.byKey(const ValueKey<String>('xsheet-layer-row-layer-c')),
+          find.named('xsheet-layer-row-layer-c'),
         )
         .dx;
 
@@ -258,7 +260,7 @@ void main() {
       _panel(onToggleLayerVisibility: (layerId) => toggledLayerId = layerId),
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-visibility-layer-2')),
+      find.named('timeline-layer-visibility-layer-2'),
     );
 
     expect(toggledLayerId, const LayerId('layer-2'));
@@ -277,7 +279,7 @@ void main() {
       ),
     );
     await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
+      find.named('timeline-layer-opacity-layer-1'),
       const Offset(-30, 0),
     );
 
@@ -305,7 +307,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-name-layer-2')),
+      find.named('timeline-layer-name-layer-2'),
     );
 
     expect(selectedLayerId, const LayerId('layer-2'));
@@ -341,7 +343,7 @@ void main() {
     // local number at the same height it sits at on the storyboard.
     expect(
       tester
-          .widget<Text>(
+          .renderObject<RenderTickText>(
             find.byKey(const ValueKey<String>('timeline-global-frame-counter')),
           )
           .data,
@@ -349,7 +351,7 @@ void main() {
     );
     expect(
       tester
-          .widget<Text>(
+          .renderObject<RenderTickText>(
             find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
           )
           .data,
@@ -397,7 +399,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      find.named('timeline-selected-layer'),
       findsOneWidget,
     );
 
@@ -409,7 +411,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-selected-layer')),
+      find.named('xsheet-selected-layer'),
       findsOneWidget,
     );
   });

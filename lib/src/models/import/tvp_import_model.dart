@@ -12,6 +12,7 @@
 /// project memory `tvpp-format-notes`).
 library;
 
+import '../cut_camera.dart';
 import 'import_warning.dart';
 
 enum TvpEdgeBehavior {
@@ -104,37 +105,20 @@ class TvpCamera {
   const TvpCamera({
     required this.width,
     required this.height,
-    required this.keyframes,
+    required this.keyedOn,
     required this.positions,
   });
 
   final int width;
   final int height;
 
-  /// Authored keys. Empty when the clip has no camera work.
-  final List<TvpCameraPose> keyframes;
+  /// The 0-based frames each channel's authored keys stand on
+  /// (`tvppCameraKeyFrames`). Empty when the clip keys no camera.
+  final CameraKeyFrames keyedOn;
 
   /// One entry per frame — baked by `tvpp_camera_bake.dart` from the
   /// authored keys and their easing profiles.
   final List<TvpCameraPose> positions;
-
-  /// Whether the camera actually goes anywhere — a still camera bakes a
-  /// full [positions] list of identical poses, which is not camera work.
-  bool get isAnimated {
-    if (positions.length < 2) {
-      return false;
-    }
-    final first = positions.first;
-    for (final pose in positions.skip(1)) {
-      if (pose.x != first.x ||
-          pose.y != first.y ||
-          pose.angleDegrees != first.angleDegrees ||
-          pose.scale != first.scale) {
-        return true;
-      }
-    }
-    return false;
-  }
 }
 
 /// One layer of the clip, with its timeline already resolved.
@@ -153,6 +137,7 @@ class TvpLayer {
     required this.blocks,
     this.isFolder = false,
     this.parentIndex = -1,
+    this.collapsed = false,
   });
 
   final String name;
@@ -193,6 +178,11 @@ class TvpLayer {
   /// in the stack), which is the shape [Layer.folderId] wants.
   final bool isFolder;
   final int parentIndex;
+
+  /// A folder that stood FOLDED in TVPaint's timeline — it comes in folded
+  /// (유저 10-07: 「접힌 폴더는 접힌상태로 들여오도록. 이건 tvp든 뭐든
+  /// 임포트할때의 기본」).
+  final bool collapsed;
 
   /// Whether the layer has anything to show at all.
   bool get isEmpty => blocks.isEmpty;

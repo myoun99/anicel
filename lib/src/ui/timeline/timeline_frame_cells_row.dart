@@ -13,13 +13,17 @@ import '../../models/timeline_row_address.dart';
 import '../../models/transition_geometry.dart'
     show transitionEditableInCut, transitionMarkOf;
 import '../media/media_asset_drop_target.dart';
+import '../widgets/named.dart';
+import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
+import 'memo_token.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_frame_span_layout.dart';
@@ -63,27 +67,29 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.acceptsMediaAssetOnLayer,
     this.onHoverMediaAssetOnLayer,
     this.onLeaveMediaAssetOnLayer,
-    this.silhouette,
     this.seClipMarkerTooltip,
     this.showSeconds = false,
     this.audioLane,
     this.commaDrag,
     this.rangeGesture,
     this.runEdit,
-    this.baseLayer,
     this.spillInLeadFrames,
     this.windowBucket,
     this.viewportMainExtent = 0,
+    this.nextPage,
     this.substrateGeneration = '',
-    this.unionLane,
+    this.unionLaneFor,
   });
 
   /// The row's UNION key summary (the CAMERA row, B4 2026-08-17): a
   /// [transformUnionHeader] lane whose keys this row draws with the SHARED
   /// lane key markers — the same drawing, metric law and union data as the
-  /// fx transform header's band. Null on every row whose union lives on a
-  /// real lane row (or that has none).
-  final PropertyLaneRow? unionLane;
+  /// fx transform header's band. It answers null on every row whose union
+  /// lives on a real lane row (or that has none).
+  ///
+  /// Asked of the layer the row SHOWS, each time that changes — a drag step
+  /// re-derives the union like the lanes re-derive (B4).
+  final PropertyLaneRow? Function(Layer layer)? unionLaneFor;
 
   /// #29: the (project, cut) world this row's resolvers answer from —
   /// see [TimelineRowCellsPainter.substrateGeneration]. Rides the same
@@ -91,6 +97,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// generation can never skew from the rows on screen.
   final String substrateGeneration;
 
+  /// The layer the row was BUILT for. 🚨I-57 (10-13): a kept row is kept
+  /// by its SHAPE — what [layer]'s kind mounts — and stands for whichever
+  /// layer its berth does ([BerthRow]): its verbs read that one at the
+  /// event and its pictures draw what it shows ([BerthRow.shows]). This
+  /// one answers both where no berth stands above (a row mounted alone).
   final Layer layer;
   final int playbackFrameCount;
 
@@ -127,6 +138,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// pre-windowed contract.
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
+
+  /// Where a playing run's next turn stands the frame axis
+  /// ([TimelineCellsRowGrid.nextPage]) — the page the painter bakes ahead.
+  final TimelineNextPage? Function()? nextPage;
+
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -189,17 +205,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// The file is off this row: it left, or it was let go.
   final VoidCallback? onLeaveMediaAssetOnLayer;
 
-  /// The cells this row would GAIN if the file now being dragged were let
-  /// go — 「끄는 동안 보이는 것은 놓았을 때 생길 것이다」 (미디어 배치 라운드
-  /// 2d-2). Null when nothing is being dragged over this row.
-  ///
-  /// ⚠️The cells themselves come from [layer], which is already the drag
-  /// preview's row (the gate above substituted it): the blocks in the way
-  /// have moved, and these are the ones that are not there yet. This span
-  /// only says WHICH — it does not author anything, and nothing here asks
-  /// where the drop would go.
-  final ({int startIndex, int endIndexExclusive})? silhouette;
-
   /// Clipped-take marker tooltip (REC1-D); null = markers off (the
   /// clipping-notice toggle, threaded as the string itself).
   final String? seClipMarkerTooltip;
@@ -222,11 +227,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
 
-  /// The row's COMMITTED repository layer while [layer] carries a drag
-  /// preview (kept for callers even though the range gesture layer mounts
-  /// row-wide and never unmounts mid-preview); null falls back to [layer].
-  final Layer? baseLayer;
-
   /// How far into its block the cut's frame 0 already is, when this
   /// track-owned row's display clone starts with a block spilling in from an
   /// earlier cut — null when nothing spills in. UI-R7 #6: the block's start
@@ -239,33 +239,55 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// the cut before is drawn from this cut's frame 0.
   final int? spillInLeadFrames;
 
+  /// What the row draws now ([BerthRow.shows]) — the row as it was built,
+  /// where no berth stands above it.
+  _Shows _showsAt(BuildContext context) {
+    final berth = BerthRow.shows(context);
+    return (
+      shown: berth?.shown ?? layer,
+      base: berth?.layer ?? layer,
+      silhouette: berth?.silhouette,
+      world:
+          berth?.world ??
+          (
+            substrateGeneration: substrateGeneration,
+            playbackFrameCount: playbackFrameCount,
+            spillInLeadFrames: spillInLeadFrames,
+            coverageIdentity: ByIdentity(coverageIdentity),
+            seAudioPeaks: const ByList([]),
+          ),
+    );
+  }
+
+  /// 🚨I-57 (10-13, profile, the user's project): THE ROW IS BUILT FROM ITS
+  /// SHAPE. Every piece below is mounted by what [layer]'s kind mounts, and
+  /// a piece that draws the layer reads what the row shows where it draws
+  /// it ([_Shown]) — so a cut switch hands every row of the same shape
+  /// back whole, rebuilds only those pieces and repaints. The row was built
+  /// again at every crossing a scrub or a play made, ~25 widgets apiece, and
+  /// its gesture layers described themselves to the semantics tree again —
+  /// the largest share of a crossing frame once the waveform stopped
+  /// drawing what nobody sees.
   @override
   Widget build(BuildContext context) {
-    // The SPARSE kinds' build-time snapshot. The painted paths never read
-    // this — they take the listenable and follow it live.
-    final frames = geometry.value;
-    final overlays = _spanOverlays(context, frames);
-    final grips = _spanGrips(frames);
-    final chrome = _chromeResolver();
     final stack = Stack(
-      key: ValueKey<String>('$keyPrefix-frame-$_axisWord-area-${layer.id}'),
       // The frame-axis box below sizes this row, so the cell strip (the one
       // non-positioned child) takes the box outright instead of sizing it.
       fit: StackFit.expand,
       children: [
         _cellsPaintArea(context),
-        ?_silhouetteLayer(),
+        _shownSpans(_silhouetteSpans),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
         // the rail's gutter bracket carries the section identity.
         // NO empty-stretch furniture here (R5-②): uncovered timeline cells
         // are already dark — the gray wash is print-sheet-only.
-        if (overlays.isNotEmpty) _spanLayer(overlays),
+        if (_mountsOverlays) _shownSpans(_spanOverlays),
         ?_rangeGestureLayer(),
-        ?_editChromeLayer(chrome),
+        ?_editChromeLayer(),
         // Grips ride ABOVE the chrome so the edges keep comma-drag priority.
-        if (grips.isNotEmpty) _spanLayer(grips),
-        ?_assetDropTarget(frames),
+        if (_mountsSpanGrips) _shownSpans(_spanGrips),
+        ?_assetDropTarget(),
       ],
     );
     // THE row's box (zoom round): it reports the row's content extent, as it
@@ -279,7 +301,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
       geometry: geometry,
       crossAxisExtent: crossAxisExtent,
       axis: axis,
-      child: stack,
+      // Named, not keyed, as every handle in a row is (I-57, 10-13): the
+      // row shows one layer and then another in the same elements.
+      child: Named(
+        '$keyPrefix-frame-$_axisWord-area-${layer.id}',
+        child: stack,
+      ),
     );
     // The X-sheet column is cross-axis sized to the layer's row height (its
     // width); the horizontal row takes its height from the parent list.
@@ -313,24 +340,31 @@ class TimelineFrameCellsRow extends StatelessWidget {
       !layerKindUsesSeSheetCells(layer.kind) &&
       !isSyncedAttachedLayer(layer);
 
-  TimelineRowChromeResolver? _chromeResolver() {
+  /// The chrome's targets on what the row shows: they position on the
+  /// DISPLAY layer — they ride previews — and call back with the run's
+  /// identity on the row's COMMITTED layer, [_Shows.base] (R12-③).
+  TimelineRowChromeResolver _chromeResolver(_Shows shows) {
     final wantsGrips = _wantsGrips;
-    final wantsRunEdges = _wantsRunEdges;
-    if (!wantsGrips && !wantsRunEdges) return null;
+    final layer = shows.shown;
     return TimelineRowChromeResolver(
-      gripBlocks: wantsGrips ? _gripBlocks() : const [],
+      gripBlocks: wantsGrips
+          ? _gripBlocks(layer, shows.world.spillInLeadFrames)
+          : const [],
       gripIdScope: layer.id.value,
       layer: layer,
-      baseLayer: baseLayer,
+      baseLayer: shows.base,
       // I-44: the chrome stands on the block's PAPER — the row short of its
       // seam — so the edge triangles sit in the paper's own corners.
       crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
       axis: axis,
-      includeRunEdges: wantsRunEdges,
+      includeRunEdges: _wantsRunEdges,
     );
   }
 
-  List<TimelineChromeGripBlock> _gripBlocks() => timelineLayerGripBlocks(
+  List<TimelineChromeGripBlock> _gripBlocks(
+    Layer layer,
+    int? spillInLeadFrames,
+  ) => timelineLayerGripBlocks(
     layer,
     // The spill-in block's `~` replaces its start grip (UI-R7 #6) — and
     // the conte row's first block answers the same way, for its own
@@ -349,7 +383,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     suppressFirstStartGrip:
         (spillInLeadFrames != null &&
             layerKindUsesSeSheetCells(layer.kind)) ||
-        layer.kind.coversWithoutGaps,
+        layerCoversWithoutGaps(layer),
   );
 
   /// A positioned overlay layer placed by [TimelineFrameSpanLayout] at
@@ -364,12 +398,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// gestures: a silhouette is something to look at, not something to press
   /// (a painter-only `CustomPaint` answers no hit test, so the range pan and
   /// the drop target underneath keep every pointer).
-  Widget? _silhouetteLayer() {
-    final span = silhouette;
+  List<Widget> _silhouetteSpans(BuildContext context, _Shows shows) {
+    final span = shows.silhouette;
     if (span == null) {
-      return null;
+      return const [];
     }
-    return _spanLayer([
+    return [
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
           startIndex: span.startIndex,
@@ -382,28 +416,46 @@ class TimelineFrameCellsRow extends StatelessWidget {
           ),
         ),
       ),
-    ]);
+    ];
   }
 
-  Widget _spanLayer(List<Widget> children) => Positioned.fill(
-    child: TimelineFrameSpanLayout(
-      geometry: geometry,
-      crossAxisExtent: crossAxisExtent,
-      axis: axis,
-      children: children,
+  /// A span layer of what the row SHOWS ([_Shown]): its spans are built
+  /// again whenever that changes, and nothing else of the row is.
+  Widget _shownSpans(
+    List<Widget> Function(BuildContext context, _Shows shows) spans,
+  ) => Positioned.fill(
+    child: _Shown(
+      row: this,
+      builder: (context, shows) => TimelineFrameSpanLayout(
+        geometry: geometry,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+        children: spans(context, shows),
+      ),
     ),
   );
 
   // ── the sparse kinds' span overlays ───────────────────────────────────
 
-  List<Widget> _spanOverlays(
-    BuildContext context,
-    TimelineFrameGeometry frames,
-  ) => [
-    ..._seOverlays(context, frames),
-    ..._instructionOverlays(context, frames),
-    ..._unionMarkers(),
-  ];
+  /// Whether [layer]'s kind writes over its cells — the rows whose span
+  /// overlays [_spanOverlays] builds. The union is asked of the layer the
+  /// row is built for: [unionLaneFor] answers by its kind (a camera row's),
+  /// so what it answers is the row's shape.
+  bool get _mountsOverlays =>
+      layerKindUsesSeSheetCells(layer.kind) ||
+      (layer.kind.carriesInstructions && instructionDefById != null) ||
+      unionLaneFor?.call(layer) != null;
+
+  List<Widget> _spanOverlays(BuildContext context, _Shows shows) {
+    // The SPARSE kinds' build-time snapshot. The painted paths never read
+    // this — they take the listenable and follow it live.
+    final frames = geometry.value;
+    return [
+      ..._seOverlays(context, shows, frames),
+      ..._instructionOverlays(context, shows.shown, frames),
+      ..._unionMarkers(shows.shown),
+    ];
+  }
 
   /// SE rows: audio clips painted over the paper cells (clipped to the
   /// row's drawing blocks — no block, no waveform), the sheet's writing on
@@ -413,11 +465,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// running past the cut end / spilling in from the previous cut announces
   /// its other half), and the media-browser drop targets (sound → block
   /// frame).
-  List<Widget> _seOverlays(BuildContext context, TimelineFrameGeometry frames) {
+  List<Widget> _seOverlays(
+    BuildContext context,
+    _Shows shows,
+    TimelineFrameGeometry frames,
+  ) {
+    final layer = shows.shown;
     if (!layerKindUsesSeSheetCells(layer.kind)) return const [];
     final peaksFor = audioPeaksFor;
     final clipTooltip = seClipMarkerTooltip;
     final onDropAsset = audioLane?.onDropMediaAsset;
+    final spillInLeadFrames = shows.world.spillInLeadFrames;
     return [
       if (peaksFor != null)
         ...timelineRowAudioOverlays(
@@ -451,7 +509,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ),
       ...timelineRowSeContinuationMarks(
         layer: layer,
-        cutFrameCount: playbackFrameCount,
+        cutFrameCount: shows.world.playbackFrameCount,
         spillsInAtStart: spillInLeadFrames != null,
         frameStartIndex: frames.frameStartIndex,
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
@@ -475,6 +533,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// marks are a projection of the global row, read-only but visible.
   List<Widget> _instructionOverlays(
     BuildContext context,
+    Layer layer,
     TimelineFrameGeometry frames,
   ) {
     final defById = instructionDefById;
@@ -501,8 +560,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// drawing at THE union size, placed by the span layout so the row's memo
   /// survives zoom steps. Display-only — the range gesture layer above owns
   /// every pointer, exactly like the lane bands'.
-  List<Widget> _unionMarkers() {
-    final lane = unionLane;
+  List<Widget> _unionMarkers(Layer layer) {
+    final lane = unionLaneFor?.call(layer);
     if (lane == null) return const [];
     return timelineUnionKeyMarkerSpans(
       keyPrefix: keyPrefix,
@@ -525,11 +584,14 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// an O.L's mark takes no grip at all — it is drawn whole in both cuts it
   /// joins and edited on the storyboard ([transitionEditableInCut], 유저
   /// 2026-09-26).
-  List<Widget> _spanGrips(TimelineFrameGeometry frames) {
-    final drag = commaDrag;
-    if (drag == null || !layer.kind.carriesInstructions) {
-      return const [];
-    }
+  bool get _mountsSpanGrips =>
+      commaDrag != null && layer.kind.carriesInstructions;
+
+  List<Widget> _spanGrips(BuildContext context, _Shows shows) {
+    final drag = commaDrag!;
+    final layer = shows.shown;
+    // The sparse kinds' build-time snapshot ([_spanOverlays]).
+    final frames = geometry.value;
     final defById = instructionDefById;
     return timelineRowInstructionEdgeGrips(
       layer: layer,
@@ -539,7 +601,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       commaDrag: drag,
       axis: axis,
       crossAxisExtent: crossAxisExtent,
-      suppressStartGripAtZero: spillInLeadFrames != null,
+      suppressStartGripAtZero: shows.world.spillInLeadFrames != null,
       spanTakesGrips: layer.kind == LayerKind.transition
           ? (event) => transitionEditableInCut(
               transitionMarkOf(defById?.call(event.instructionId)),
@@ -564,8 +626,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
     axis: axis,
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
+    nextPage: nextPage,
     substrateGeneration: substrateGeneration,
-    foregroundPainter: _runLabelsPainter(context),
+    foregroundPainterFor: layer.kind.hasBlocks ? _runLabelsPainter : null,
     // Instruction-carrying rows have no timeline entries — their events
     // adapt onto the shared exposure states so the cells paint the same
     // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
@@ -599,8 +662,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// ↩️그걸 `LayerKind.holdsDrawings` 로 물었더니 디렉션 · 트랜지션 행이
   /// 빠졌다(F-228) — 그 술어는 그림 행의 다른 가구에도 답한다. 이제
   /// `LayerKind.hasBlocks` 가 그 한 질문이다.
-  CustomPainter? _runLabelsPainter(BuildContext context) {
-    if (!layer.kind.hasBlocks) return null;
+  CustomPainter _runLabelsPainter(BuildContext context, Layer layer) {
     return TimelineRowRunLabelsPainter(
       layer: layer,
       geometry: geometry,
@@ -627,17 +689,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
   Widget? _rangeGestureLayer() {
     final gesture = rangeGesture;
     if (gesture == null) return null;
-    return TimelineFrameRangeGestureLayer(
-      // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews add/remove
-      // sibling overlays in this Stack — without a key the positional
-      // rematch REMOUNTS this layer and its dispose commits the move under
-      // the pointer.
-      key: ValueKey<String>('$keyPrefix-range-gesture-slot-${layer.id}'),
-      row: LayerRowAddress(layer.id),
-      geometry: geometry,
-      crossAxisExtent: crossAxisExtent,
-      callbacks: gesture,
-      axis: axis,
+    // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews add/remove
+    // sibling overlays in this Stack — without a key the positional rematch
+    // REMOUNTS this layer and its dispose commits the move under the
+    // pointer. It says WHICH SLOT among its siblings, so it carries no
+    // layer (I-57, 10-13): the layer is the name's to say.
+    return Named(
+      '$keyPrefix-range-gesture-slot-${layer.id}',
+      key: ValueKey<String>('$keyPrefix-range-gesture-slot'),
+      child: TimelineFrameRangeGestureLayer(
+        row: LayerRowAddress(layer.id),
+        geometry: geometry,
+        crossAxisExtent: crossAxisExtent,
+        callbacks: gesture,
+        axis: axis,
+      ),
     );
   }
 
@@ -651,39 +717,49 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// on the DISPLAY layer (they ride previews) but call back with the
   /// COMMITTED run's identity, and the layer itself no longer remounts
   /// mid-gesture at all — its state lives at row level.
-  Widget? _editChromeLayer(TimelineRowChromeResolver? resolver) {
-    if (resolver == null) return null;
+  ///
+  /// It draws what the row shows, so it is one of the pieces built again
+  /// when that changes ([_Shown]) — in its slot, keeping its State.
+  Widget? _editChromeLayer() {
+    if (!_wantsGrips && !_wantsRunEdges) return null;
     final drag = commaDrag;
     return Positioned.fill(
       // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews add/remove
-      // sibling overlays in this Stack.
-      key: ValueKey<String>('$keyPrefix-edit-chrome-slot-${layer.id}'),
-      child: TimelineRowEditChromeLayer(
-        paintKey: ValueKey<String>('$keyPrefix-edit-chrome-${layer.id}'),
-        layerId: layer.id,
-        resolver: resolver,
-        geometry: geometry,
-        axis: axis,
-        // The grips sit on THIS row's blocks, and the blocks are the layer's
-        // color label (⑲) — so a purple row's bars go black by the same
-        // ground law its numbers follow.
-        gripGround: layerMarkColor(layer.mark),
-        // The cells' window: what the chrome draws, as the cells under it.
-        windowBucket: windowBucket,
-        viewportMainExtent: viewportMainExtent,
-        // The row closes its LayerId into the identity-free grip hooks — the
-        // chrome layer serves cut rows too now, and a grip drag is the same
-        // gesture on both.
-        grips: drag == null
-            ? null
-            : TimelineRowGripCallbacks(
-                onBegin: (blockStartIndex, _, edge) =>
-                    drag.onBegin(layer.id, blockStartIndex, edge),
-                onUpdate: drag.onUpdate,
-                onEnd: drag.onEnd,
-                onCancel: drag.onCancel,
-              ),
-        runEdit: runEdit,
+      // sibling overlays in this Stack. Which slot, not which layer (I-57).
+      key: ValueKey<String>('$keyPrefix-edit-chrome-slot'),
+      child: _Shown(
+        row: this,
+        builder: (context, shows) {
+          final layer = shows.shown;
+          return TimelineRowEditChromeLayer(
+            paintName: '$keyPrefix-edit-chrome-${layer.id}',
+            layerId: layer.id,
+            resolver: _chromeResolver(shows),
+            geometry: geometry,
+            axis: axis,
+            // The grips sit on THIS row's blocks, and the blocks are the
+            // layer's color label (⑲) — so a purple row's bars go black by
+            // the same ground law its numbers follow.
+            gripGround: layerMarkColor(layer.mark),
+            // The cells' window: what the chrome draws, as the cells under
+            // it.
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportMainExtent,
+            // The row closes its LayerId into the identity-free grip hooks —
+            // the chrome layer serves cut rows too now, and a grip drag is
+            // the same gesture on both.
+            grips: drag == null
+                ? null
+                : TimelineRowGripCallbacks(
+                    onBegin: (blockStartIndex, _, edge) =>
+                        drag.onBegin(layer.id, blockStartIndex, edge),
+                    onUpdate: drag.onUpdate,
+                    onEnd: drag.onEnd,
+                    onCancel: drag.onCancel,
+                  ),
+            runEdit: runEdit,
+          );
+        },
       ),
     );
   }
@@ -706,22 +782,38 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// while it lays out and hit-tests only the geometry's WINDOW, so a filled
   /// child is mostly rectangle nobody can touch — its centre lands outside
   /// the window on any row long enough to scroll.
-  Widget? _assetDropTarget(TimelineFrameGeometry frames) {
+  ///
+  /// The span is the CUT's frames and the drop names the row's layer, so it
+  /// is built from what the row shows ([_Shown]): a kept row takes the next
+  /// cut's span with its layer.
+  Widget? _assetDropTarget() {
     final onDrop = onDropMediaAssetOnLayer;
     if (onDrop == null || !layer.kind.holdsDrawings) {
       return null;
     }
     if (layerKindUsesSeSheetCells(layer.kind)) {
-      return _seCellDropTargets(frames, onDrop);
+      return _shownSpans(
+        (context, shows) => _seCellDropTargets(shows.shown, onDrop),
+      );
     }
-    return _spanLayer([
+    return _shownSpans(
+      (context, shows) => _layerDropTargets(shows.shown, onDrop),
+    );
+  }
+
+  List<Widget> _layerDropTargets(
+    Layer layer,
+    void Function(LayerId layerId, int frameIndex, String path) onDrop,
+  ) {
+    final frames = geometry.value;
+    return [
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
           startIndex: frames.frameStartIndex,
           endIndexExclusive: frames.frameEndIndexExclusive,
         ),
         child: _LayerAssetDropTarget(
-          dropKey: ValueKey<String>('$keyPrefix-layer-asset-drop-${layer.id}'),
+          dropName: '$keyPrefix-layer-asset-drop-${layer.id}',
           layerId: layer.id,
           geometry: geometry,
           axis: axis,
@@ -731,7 +823,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
           onLeave: onLeaveMediaAssetOnLayer,
         ),
       ),
-    ]);
+    ];
   }
 
   /// An SE row's EMPTY stretches, each a place entrance for a new sound
@@ -740,19 +832,17 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// cell's drop lands on THEM — but only over the gaps: a block keeps its
   /// own target in [_seOverlays], and a sound let go on it joins it, as
   /// before. The gaps are [emptyGapsBetween]'s, the one free-span answer.
-  Widget? _seCellDropTargets(
-    TimelineFrameGeometry frames,
+  List<Widget> _seCellDropTargets(
+    Layer layer,
     void Function(LayerId layerId, int frameIndex, String path) onDrop,
   ) {
+    final frames = geometry.value;
     final gaps = emptyGapsBetween(
       layer,
       frames.frameStartIndex,
       frames.frameEndIndexExclusive,
     );
-    if (gaps.isEmpty) {
-      return null;
-    }
-    return _spanLayer([
+    return [
       for (final gap in gaps)
         TimelineFrameSpan(
           placement: TimelineFrameSpanPlacement(
@@ -760,9 +850,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             endIndexExclusive: gap.startIndex + gap.length,
           ),
           child: _LayerAssetDropTarget(
-            dropKey: ValueKey<String>(
-              '$keyPrefix-se-cell-drop-${layer.id}-${gap.startIndex}',
-            ),
+            dropName:
+                '$keyPrefix-se-cell-drop-${layer.id}-${gap.startIndex}',
             layerId: layer.id,
             geometry: geometry,
             axis: axis,
@@ -773,8 +862,32 @@ class TimelineFrameCellsRow extends StatelessWidget {
             onLeave: onLeaveMediaAssetOnLayer,
           ),
         ),
-    ]);
+    ];
   }
+}
+
+/// What a row draws now: the layer it shows (a drag's preview while one
+/// stands on it), the layer it stands for, the cells a held file would
+/// add, and the world it stands in ([BerthRow.shows]).
+typedef _Shows = ({
+  Layer shown,
+  Layer base,
+  ({int startIndex, int endIndexExclusive})? silhouette,
+  BerthWorld world,
+});
+
+/// A piece of a row that draws what the row SHOWS: built again, alone,
+/// whenever that changes ([BerthRow.shows]). Everything else in the row is
+/// built from its shape and kept through a cut switch.
+class _Shown extends StatelessWidget {
+  const _Shown({required this.row, required this.builder});
+
+  final TimelineFrameCellsRow row;
+  final Widget Function(BuildContext context, _Shows shows) builder;
+
+  @override
+  Widget build(BuildContext context) =>
+      builder(context, row._showsAt(context));
 }
 
 /// The row's share of a place entrance ([MediaAssetDropTarget] is the
@@ -785,7 +898,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
 /// documents — this is the host that depends on it.
 class _LayerAssetDropTarget extends StatelessWidget {
   const _LayerAssetDropTarget({
-    required this.dropKey,
+    required this.dropName,
     required this.layerId,
     required this.geometry,
     required this.axis,
@@ -796,7 +909,8 @@ class _LayerAssetDropTarget extends StatelessWidget {
     this.onLeave,
   });
 
-  final Key dropKey;
+  /// What a finder calls the target ([Named]).
+  final String dropName;
   final LayerId layerId;
   final TimelineFrameGeometryHandle geometry;
   final Axis axis;
@@ -839,25 +953,27 @@ class _LayerAssetDropTarget extends StatelessWidget {
   Widget build(BuildContext context) {
     final accepts = acceptsDrop;
     final hover = onHoverAt;
-    return MediaAssetDropTarget(
-      key: dropKey,
-      accepts: accepts == null
-          ? null
-          : (data, globalPosition) => accepts(
-              layerId,
-              _frameIndexAt(context, globalPosition),
-              data.path,
-            ),
-      onHover: hover == null
-          ? null
-          : (data, globalPosition) => hover(
-              layerId,
-              _frameIndexAt(context, globalPosition),
-              data.path,
-            ),
-      onLeave: onLeave,
-      onDrop: (data, globalPosition) =>
-          onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
+    return Named(
+      dropName,
+      child: MediaAssetDropTarget(
+        accepts: accepts == null
+            ? null
+            : (data, globalPosition) => accepts(
+                layerId,
+                _frameIndexAt(context, globalPosition),
+                data.path,
+              ),
+        onHover: hover == null
+            ? null
+            : (data, globalPosition) => hover(
+                layerId,
+                _frameIndexAt(context, globalPosition),
+                data.path,
+              ),
+        onLeave: onLeave,
+        onDrop: (data, globalPosition) =>
+            onDrop(layerId, _frameIndexAt(context, globalPosition), data.path),
+      ),
     );
   }
 }

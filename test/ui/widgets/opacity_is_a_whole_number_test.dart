@@ -10,9 +10,9 @@ import '../../helpers/dart_sources.dart';
 /// 조절시 자연수이도록.** 물론 변형툴의 확대율같은 예외는 있음」.
 ///
 /// ⛔ROUNDING THE LABEL IS NOT THE SAME THING, and that is what the app had.
-/// `sliderValueText` rounded to one decimal for display, so a bar reading
-/// `50%` could be holding 0.4963 — and whatever read that number next (a
-/// composite, an export, the file) got 0.4963.
+/// `sliderValueText` (now `readoutText`) rounded to one decimal for
+/// display, so a bar reading `50%` could be holding 0.4963 — and whatever
+/// read that number next (a composite, an export, the file) got 0.4963.
 void main() {
   Future<List<double>> dragAcross(WidgetTester tester, Widget bar) async {
     final seen = <double>[];
@@ -107,9 +107,11 @@ void main() {
             .sublist(i, (i + 14).clamp(0, lines.length))
             .join(' ');
         // An opacity bar is recognisable by what it does with the number:
-        // a 0..1 model value shown as a percentage.
-        if (RegExp(r'min:\s*0\b').hasMatch(window) &&
-            RegExp(r'max:\s*1\b').hasMatch(window) &&
+        // a 0..1 model value shown as a percentage. ↩️`min:\s*0\b` read
+        // `0.01` as a zero — the key window's 세기 starts at 1% (an ease
+        // cannot have no influence; I-89 ②) and is no opacity bar.
+        if (RegExp(r'min:\s*0(\.0*)?(?![.\d])').hasMatch(window) &&
+            RegExp(r'max:\s*1(\.0*)?(?![.\d])').hasMatch(window) &&
             window.contains("unit: '%'")) {
           offenders.add('$relative:${i + 1}');
         }

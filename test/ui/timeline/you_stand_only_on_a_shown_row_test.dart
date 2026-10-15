@@ -28,6 +28,9 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
+import '../../helpers/named_finders.dart';
+import '../../helpers/row_folds.dart';
+
 /// 🚨★★F-169 — THE STANDING LAW (유저 2026-09-24): ①「보이는거만 선택가능하고
 /// 안보이는거 선택되는상황엔 다른 보이는레이어 선택하도록」 ②「언두시에 접혀있는
 /// 레이어로 이동하면 펼치고 해당 레이어에 서게」.
@@ -106,11 +109,11 @@ Future<EditorSessionManager> _open(WidgetTester tester, Project project) async {
 }
 
 Finder _row(LayerId id) =>
-    find.byKey(ValueKey<String>('timeline-layer-row-${id.value}'));
+    find.named('timeline-layer-row-${id.value}');
 
 Future<void> _twirl(WidgetTester tester, LayerId base) async {
   await tester.tap(
-    find.byKey(ValueKey<String>('timeline-attach-twirl-${base.value}')),
+    find.named('timeline-attach-twirl-${base.value}'),
   );
   await tester.pumpAndSettle();
 }
@@ -149,8 +152,13 @@ void main() {
       expect(session.railView.collapsedAttachBaseIds.value, {_b});
     });
 
-    testWidgets('undoing the Add Layer stands on the base too — and the redo '
-        'brings you back to the row it made', (tester) async {
+    // ↩️The undo stood on B, the deletion law's shown row, until F-350 (유저
+    // 2026-10-12: 「레이어 여러개 생성하고 언두할때 매번 카메라 레이어로 이동하는
+    // 1개 과정이 있음. 한번에 바로 삭제해야하는데」) handed an undone row's
+    // stand back to the row its add found you on. A is shown, so ① holds.
+    testWidgets('undoing the Add Layer hands you back to the row it was added '
+        'from, and the group stays shut — and the redo brings you back to '
+        'the row it made', (tester) async {
       final session = await _open(tester, _project(_reported));
       await _twirl(tester, _b);
       session.selectLayer(_a);
@@ -160,7 +168,7 @@ void main() {
 
       session.undo();
       await tester.pumpAndSettle();
-      expect(session.activeLayerId, _b);
+      expect(session.activeLayerId, _a);
       expect(_row(_bMinus1), findsNothing);
 
       session.redo();
@@ -342,7 +350,7 @@ void main() {
         _drawing('x'),
       ]);
       s.selectLayer(plusOne);
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
       final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown();
@@ -363,7 +371,7 @@ void main() {
     test('③ a group opened for where you went asks for the scroll too', () {
       final s = session(_reported);
       s.selectLayer(_bMinus1);
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
       final reveals = s.rangeSelections.revealSelectionTick.value;
 
       s.standing.keepStandingShown(reveal: true);
@@ -389,7 +397,7 @@ void main() {
         _drawing('x', mark: red),
       ]);
       s.selectLayer(plusOne);
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
       s.railView.rowFilter.value = TimelineRowFilter(markColors: {red});
 
       s.standing.keepStandingShown();
@@ -456,8 +464,9 @@ void main() {
       // 싹다」 — the lane twirl beside it already was), so the undo below
       // would take the FOLD back first and never reach the delete. The law
       // this pins is the unfolding, so the group is folded the way the undo
-      // stream does not hold — the rail's view set, written directly.
-      session.railView.collapsedAttachBaseIds.value = {_b};
+      // stream does not hold — the base's fold, written outside history
+      // (↩️the rail's view set, until F-360 put the fold on the base).
+      setRowFolds(session, _b, collapsed: true);
       await tester.pumpAndSettle();
       expect(_row(_bMinus2), findsNothing);
 
@@ -531,8 +540,14 @@ void main() {
     // file opens as a session of its own now (I-7), born with nothing
     // folded; `a_project_opens_where_it_was_saved_test` pins where it stands.
 
-    test('① a playback that follows into another cut stops on a row the '
-        'rail shows', () async {
+    // ↩️The follow seated the cut's bottom row QUIETLY, outside the law, and
+    // the stop asked the law for it (F-169). A crossing is a cut switch like
+    // any other since I-57 ②, so the law answers at the crossing itself —
+    // once the frame that shows it is out (I-57, 10-13).
+    testWidgets('① a playback that follows into another cut stands on a row '
+        'the rail shows — at the crossing, and where it stops', (
+      tester,
+    ) async {
       const base = LayerId('c');
       final s = EditorSessionManager(
         initialProject: _project(
@@ -541,9 +556,10 @@ void main() {
         ),
       );
       addTearDown(s.dispose);
-      s.railView.collapsedAttachBaseIds.value = {base};
+      setRowFolds(s, base, collapsed: true);
       s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
       s.playbackRig.playback.seekToGlobalFrame(12);
+      await tester.pump();
       expect(
         s.activeCutId,
         const CutId('cut-2'),
@@ -551,12 +567,12 @@ void main() {
       );
       expect(
         s.activeLayerId,
-        const LayerId('c-1'),
-        reason: 'fixture: the quiet follow seats the bottom row, folded away',
+        base,
+        reason: 'the bottom row is folded away under its base',
       );
 
       s.playbackRig.playback.stop();
-      await pumpEventQueue();
+      await tester.pumpAndSettle();
 
       expect(s.activeLayerId, base);
     });

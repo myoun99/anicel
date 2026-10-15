@@ -37,6 +37,16 @@ enum CelPixelVerb {
   bool get selectsByColour =>
       this == CelPixelVerb.deleteColour || this == CelPixelVerb.keepColour;
 
+  /// Whether this verb works with the current colour — writes it (색 변환)
+  /// or picks its pixels by it ([selectsByColour]). 픽셀 비우기 does
+  /// neither: it empties whatever the region covers.
+  ///
+  /// 🗣️I-90 (유저 2026-10-10): 「픽셀비우기 버튼 위치가 색관련 버튼이랑
+  /// 같이있는게 신경쓰임. 아래 픽셀쪽으로 이동. 위치는 해당항목 제일위」 — the
+  /// 색 편집 list stands these with the colour, the rest with the pixels.
+  bool get usesTheColour =>
+      this == CelPixelVerb.replaceColour || selectsByColour;
+
   /// The selector for [argb], or null for the verbs that take everything.
   ///
   /// ★THE SAME [CelColorKey] THE FX USES, on purpose. 유저 I-8 asked for one
@@ -823,9 +833,16 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
   final pixelCount = tileSize * tileSize;
   var index = 0;
   return (tile, mask) => rewriteTileLazily(tile, tileSize, (view) {
+    // 🚨THE LOOP CHECKS LOCALS OF ITS OWN FUNCTION (I-57, 2026-10-14): the
+    // mask and the recipe are captures, and a capture checked inside a loop
+    // is read past its check by the AOT compiler — a null one kills the
+    // release build
+    // (`a_value_checked_in_a_loop_is_read_through_a_local_test`).
+    final coverage = mask;
+    final recipe = restore;
     Uint8List? out;
     for (var pixel = 0; pixel < pixelCount; pixel += 1) {
-      final maskValue = mask == null ? 255 : mask[pixel];
+      final maskValue = coverage == null ? 255 : coverage[pixel];
       final offset = pixel * 4;
       if (!celPixelParticipates(
         channel: channel,
@@ -842,18 +859,18 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
         original[byte] = view[offset + channel.byteOffset(byte)];
       }
       builder?.addRun(original, 0, 1);
-      if (restore != null) {
+      if (recipe != null) {
         // ⛔A recipe shorter than its walk was built over some other
         // surface. The C pass has to refuse it — reading on there reads
         // whatever memory follows the stream — so this one refuses it too,
         // or the two passes would answer one malformed undo differently.
-        if (index >= restore.touchedPixelCount) {
+        if (index >= recipe.touchedPixelCount) {
           throw StateError(
-            'the recipe holds ${restore.touchedPixelCount} pixels and the '
+            'the recipe holds ${recipe.touchedPixelCount} pixels and the '
             'walk it replays goes past them',
           );
         }
-        restore.readInto(incoming, index);
+        recipe.readInto(incoming, index);
       }
       index += 1;
       out ??= Uint8List.fromList(view);
@@ -866,7 +883,7 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
             // it — a feathered recolour of flat black came back as
             // [55, 61, 67] rather than [10, 20, 30], and a second undo
             // would have drifted again.
-            restore != null || maskValue == 255
+            recipe != null || maskValue == 255
             ? incoming[byte]
             // Forward, partial coverage blends the VALUE, so a feathered
             // edge fades between the old colour and the new one while the

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -21,6 +22,9 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// R10 R6 — THE X-SHEET IS THE TIMELINE, TURNED ON ITS SIDE.
 ///
@@ -126,30 +130,60 @@ void main() {
   });
 
   group('the header block is the rail, stood up', () {
-    test('the natural block is the WHOLE rail, plus its two hairlines', () {
+    test('the natural block is the WHOLE rail, plus its two hairlines — '
+        'as its rows need it stood up', () {
       // The user overturned the shedding design outright: "타임라인에
-      // 있는거 싹다 넣어. 뭐 빼지말고."
+      // 있는거 싹다 넣어. 뭐 빼지말고." — every control. The room the rail
+      // pays a lane's value hands is a need ALONG it: on the sheet a lane's
+      // value row, turned (유저 2026-10-11), fits in the lane's own column
+      // under its name — paid, the block outgrew the tallest dock. And it
+      // keeps the 22 a header graph's slot gave it, where a stood-up lane
+      // stands its pin and chips (I-89-Q17 A: 「시트 머리는 지금 높이
+      // 그대로(+22)」).
+      const carried = timelineLayerControlsWidth -
+          layerLaneValueHandsWidth +
+          22 +
+          2;
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          hasOnionColumn: true,
-          hasBlendColumn: true,
+          optionalColumns: (onion: true, blend: true),
         ),
-        timelineLayerControlsWidth + 2,
+        carried,
       );
-      // A host that declines the two optional columns costs exactly them
-      // less — the legend beside the headers sizes from the same call, so
-      // the two cannot part.
+      expect(carried, 443 + 22 + 2);
+      // A host that declines the optional columns costs exactly them less
+      // — the legend beside the headers sizes from the same call, so the
+      // two cannot part.
       expect(
         XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          hasOnionColumn: false,
-          hasBlendColumn: false,
+          optionalColumns: noOptionalRailColumns,
         ),
-        timelineLayerControlsWidth +
-            2 -
-            layerOnionSlotWidth -
-            layerBlendSlotWidth,
+        carried - layerOnionSlotWidth - layerBlendSlotWidth,
+      );
+    });
+
+    test('under the OS text size the block grows as the rail does — every '
+        'word-holding column the rail pays for, the lane value\'s included', () {
+      // The rail pays its word-holding columns' growth
+      // ([timelineLayerControlsWidthFor]); the stood-up rail is that rail.
+      // ↩️The header listed the rail's slots by hand at 1×, and the lane
+      // value column's growth went unpaid here.
+      const grown = (
+        opacity: layerOpacitySlotWidth + 9,
+        blend: layerBlendSlotWidth + 14,
+        laneValue: layerLaneValueSlotWidth + 30,
+      );
+      expect(
+        XSheetTimelineGrid.naturalHeaderBlockExtent(
+          columns: grown,
+          optionalColumns: (onion: true, blend: true),
+        ),
+        timelineLayerControlsWidthFor(grown) -
+            layerLaneValueHandsWidth +
+            22 +
+            2,
       );
     });
 
@@ -163,8 +197,7 @@ void main() {
       // the same answer.
       final natural = XSheetTimelineGrid.naturalHeaderBlockExtent(
         columns: layerRailColumnWidthsAtOne,
-        hasOnionColumn: false,
-        hasBlendColumn: false,
+        optionalColumns: noOptionalRailColumns,
       );
       for (final height in [700.0, 1000.0]) {
         await tester.pumpWidget(_grid(height: height));
@@ -190,15 +223,14 @@ void main() {
       addTearDown(rail.dispose);
       await tester.pumpWidget(_grid(railExtent: rail));
 
-      const headerKey = ValueKey<String>('xsheet-layer-row-layer-1');
-      final naturalHeader = tester.getSize(find.byKey(headerKey)).height;
+      final header = find.named('xsheet-layer-row-layer-1');
+      final naturalHeader = tester.getSize(header).height;
 
       rail.resizeBy(
         -100,
         naturalExtent: XSheetTimelineGrid.naturalHeaderBlockExtent(
           columns: layerRailColumnWidthsAtOne,
-          hasOnionColumn: false,
-          hasBlendColumn: false,
+          optionalColumns: noOptionalRailColumns,
         ),
       );
       await tester.pump();
@@ -206,7 +238,7 @@ void main() {
       // NOTHING inside rearranged — that is the whole model. R10 R6 packed
       // the name here and R6a scaled the column; both would move this
       // number.
-      expect(tester.getSize(find.byKey(headerKey)).height, naturalHeader);
+      expect(tester.getSize(header).height, naturalHeader);
       // What changed is the WINDOW, and the legend beside it was cut at
       // exactly the same line (R6a's bug: the legend clipped while the
       // headers scaled, and below 494px they visibly parted).
@@ -274,8 +306,8 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(900, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      // Even untouched — the natural block is 436 and most of this range
-      // cannot pay for it, so the WINDOW is what gives.
+      // Even untouched — most of this range cannot pay for the natural
+      // block, so the WINDOW is what gives.
       for (var height = 200.0; height <= 900; height += 20) {
         await tester.pumpWidget(_grid(height: height));
         final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
@@ -311,12 +343,11 @@ void main() {
       final expected =
           XSheetTimelineGrid.naturalHeaderBlockExtent(
             columns: layerRailColumnWidthsAtOne,
-            hasOnionColumn: false,
-            hasBlendColumn: false,
+            optionalColumns: noOptionalRailColumns,
           ) -
           layerSectionLabelSlotWidth;
       final header = tester.getRect(
-        find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
+        find.named('xsheet-layer-row-layer-1'),
       );
       expect(header.height, closeTo(expected, 0.01));
       expect(header.width, XSheetTimelineGrid.defaultMetrics.layerRowHeight);
@@ -331,8 +362,7 @@ void main() {
 
       final expected = XSheetTimelineGrid.naturalHeaderBlockExtent(
         columns: layerRailColumnWidthsAtOne,
-        hasOnionColumn: false,
-        hasBlendColumn: false,
+        optionalColumns: noOptionalRailColumns,
       );
       final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
       expect(legend.height, closeTo(expected, 0.01));
@@ -363,7 +393,7 @@ void main() {
           reason: 'a $height panel overflowed',
         );
         final name = tester.getRect(
-          find.byKey(const ValueKey<String>('xsheet-layer-name-layer-1')),
+          find.named('xsheet-layer-name-layer-1'),
         );
         if (height >= 240) {
           expect(
@@ -375,7 +405,7 @@ void main() {
           // ladder's last rung, so a size alone proves nothing: a name
           // pushed past the clip still measures its forced extent.
           final header = tester.getRect(
-            find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
+            find.named('xsheet-layer-row-layer-1'),
           );
           expect(
             name.bottom,
@@ -467,7 +497,7 @@ void main() {
           .top;
       final headerTop = tester
           .getRect(
-            find.byKey(const ValueKey<String>('xsheet-layer-row-layer-1')),
+            find.named('xsheet-layer-row-layer-1'),
           )
           .top;
       // The header starts one band strip below the legend's own top.
@@ -478,7 +508,7 @@ void main() {
         find.byKey(const ValueKey<String>('legend-eye')),
       );
       final eyeRow = centerOf(
-        find.byKey(const ValueKey<String>('xsheet-layer-visibility-layer-1')),
+        find.named('xsheet-layer-visibility-layer-1'),
       );
       expect(
         eyeLegend - legendTop,
@@ -506,9 +536,7 @@ void main() {
           find.byKey(const ValueKey<String>('xsheet-frame-rail-scrub-area')),
         );
         // Where the frame rows sit before anyone touches anything.
-        final cells = find.byKey(
-          const ValueKey<String>('xsheet-column-layer-1-cells'),
-        );
+        final cells = find.named('xsheet-column-layer-1-cells');
         final before = tester.getRect(cells);
 
         for (final y in [rail.top + 2, rail.bottom - 2, rail.center.dy]) {
@@ -549,7 +577,7 @@ void main() {
                 lane: PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: const {0},
+                  keyMarks: const {0: KeyMark.linear},
                   valueLabel: (_) => '0.0, 0.0',
                 ),
                 metrics: XSheetTimelineGrid.defaultMetrics,
@@ -573,8 +601,9 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(400, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      // Roomy: everything is there.
-      await pumpLane(tester, 300);
+      // Roomy: everything is there — the value turned at the rail's length
+      // (유저 2026-10-11) is the column's longest control.
+      await pumpLane(tester, 420);
       expect(
         find.byKey(
           const ValueKey<String>('xsheet-lane-key-toggle-layer-1-position'),
@@ -590,7 +619,7 @@ void main() {
 
       // Cramped: the value goes first, then the navigator — and the label
       // never packs below two frame rows.
-      for (var height = 60.0; height <= 300; height += 4) {
+      for (var height = 60.0; height <= 420; height += 4) {
         await pumpLane(tester, height);
         expect(tester.takeException(), isNull, reason: 'lane at $height');
         final label = tester.getSize(
@@ -615,6 +644,7 @@ void main() {
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
           from: LayerRailTrailingSlot.mute,
+          optionalColumns: noOptionalRailColumns,
         ),
         layerMuteSlotWidth + layerOpacitySlotWidth,
       );
@@ -622,7 +652,7 @@ void main() {
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
           from: LayerRailTrailingSlot.mute,
-          hasBlendColumn: true,
+          optionalColumns: (onion: false, blend: true),
         ),
         layerMuteSlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
       );
@@ -633,11 +663,12 @@ void main() {
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
               from: LayerRailTrailingSlot.mute,
-              hasBlendColumn: true,
+              optionalColumns: (onion: false, blend: true),
             ) -
             layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
               from: LayerRailTrailingSlot.mute,
+              optionalColumns: noOptionalRailColumns,
             ),
         layerBlendSlotWidth,
       );
@@ -645,16 +676,18 @@ void main() {
 
     test('the optional columns are the only ones a host may decline', () {
       // Onion and blend are the two the SKELETON makes optional, and the
-      // sheet now carries both. Nothing else can be dropped: every rail
-      // surface draws every other slot, which is what makes the legend's
-      // icons line up over them.
+      // sheet carries both. Nothing else can be dropped: every rail surface
+      // draws every other slot, which is what makes the legend's icons line
+      // up over them.
       expect(
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              hasOnionColumn: true,
-              hasBlendColumn: true,
+              optionalColumns: (onion: true, blend: true),
             ) -
-            layerRailTrailingWidth(columns: layerRailColumnWidthsAtOne),
+            layerRailTrailingWidth(
+              columns: layerRailColumnWidthsAtOne,
+              optionalColumns: noOptionalRailColumns,
+            ),
         layerOnionSlotWidth + layerBlendSlotWidth,
       );
 
@@ -709,9 +742,7 @@ void main() {
                 .widget<Container>(
                   find
                       .descendant(
-                        of: find.byKey(
-                          ValueKey<String>('xsheet-layer-row-$id'),
-                        ),
+                        of: find.named('xsheet-layer-row-$id'),
                         matching: find.byType(Container),
                       )
                       .first,
@@ -790,17 +821,17 @@ layers: [folder, member],
       await tester.pumpWidget(gridWithFolder(onToggleCollapsed: folded.add));
 
       expect(
-        find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+        find.named('xsheet-folder-twirl-f'),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('xsheet-folder-twirl-member')),
+        find.named('xsheet-folder-twirl-member'),
         findsNothing,
         reason: 'only a row that holds other rows has a fold',
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+        find.named('xsheet-folder-twirl-f'),
       );
       await tester.pump();
       expect(folded, [const LayerId('f')]);
@@ -814,19 +845,25 @@ layers: [folder, member],
           gridWithFolder(onToggleCollapsed: (_) {}, collapsed: collapsed),
         );
         return tester
-            .widget<Icon>(
-              find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>('xsheet-folder-twirl-f'),
-                ),
-                matching: find.byType(Icon),
-              ),
+            .appIconButton(
+              find.named('xsheet-folder-twirl-f'),
             )
             .icon!;
       }
 
       expect(await glyph(collapsed: false), layerRailTwirlIcon(expanded: true));
       expect(await glyph(collapsed: true), layerRailTwirlIcon(expanded: false));
+    });
+
+    testWidgets('its box is turned with the sheet — its slot along the '
+        'column, the row\'s 24 across it', (tester) async {
+      await tester.pumpWidget(gridWithFolder(onToggleCollapsed: (_) {}));
+      expect(
+        tester.getSize(
+          find.named('xsheet-folder-twirl-f'),
+        ),
+        const Size(24, layerLaneToggleSlotWidth),
+      );
     });
   });
 }

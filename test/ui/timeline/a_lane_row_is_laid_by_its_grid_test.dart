@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -47,7 +48,7 @@ void main() {
   const position = PropertyLaneRow(
     laneId: 'position',
     label: 'Position',
-    keyedFrames: {5},
+    keyMarks: {5: KeyMark.linear},
   );
 
   /// The box [key] is laid in when [row] is built at [layer] by a grid that
@@ -93,6 +94,8 @@ void main() {
       geometry: geometry,
       windowBucket: null,
       viewportMainExtent: 400.0,
+      frameAxisController: null,
+      nextPage: null,
       rangeGesture: null,
       axis: axis,
       keyPrefix: keyPrefix,

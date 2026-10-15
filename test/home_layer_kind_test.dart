@@ -10,6 +10,7 @@ import 'helpers/vertical_text_finder.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('uses the sample cut resolved from the project by default', (
@@ -26,11 +27,11 @@ void main() {
     // F-211: layer A opens with its first cel (↩️an empty row, reading X).
     expectCellMark('default-layer-1', 0, unnamedDrawingMark);
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-1')),
+      find.named('timeline-row-cells-default-layer-1'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
+      find.named('timeline-row-cells-default-layer-2'),
       findsNothing,
     );
     await expectActiveCutName(tester, '1');
@@ -42,9 +43,7 @@ void main() {
     await tester.pumpWidget(const AnicelApp());
 
     expect(
-      find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-default-layer-1'),
-      ),
+      find.named('timeline-layer-type-button-default-layer-1'),
       findsOneWidget,
     );
     expect(layerKindIcon(tester, 'default-layer-1'), Icons.filter_outlined);
@@ -60,9 +59,7 @@ void main() {
     await addLayer(tester);
 
     expect(
-      find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-default-layer-2'),
-      ),
+      find.named('timeline-layer-type-button-default-layer-2'),
       findsOneWidget,
     );
     expect(layerKindIcon(tester, 'default-layer-2'), Icons.filter_outlined);
@@ -118,9 +115,7 @@ void main() {
     expect(find.text('A'), findsWidgets);
     expect(find.text('B'), findsWidgets);
 
-    final layerAName = find.byKey(
-      const ValueKey<String>('timeline-layer-name-default-layer-1'),
-    );
+    final layerAName = find.named('timeline-layer-name-default-layer-1');
     await tester.ensureVisible(layerAName);
     await tester.pumpAndSettle();
     await tester.tap(layerAName);
@@ -136,7 +131,7 @@ void main() {
 
     expectActiveLayerName('A');
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-default-layer-2')),
+      find.named('timeline-layer-row-default-layer-2'),
       findsNothing,
     );
 
@@ -144,27 +139,23 @@ void main() {
 
     expectActiveLayerName('B');
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
+      find.named('timeline-row-cells-default-layer-2'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      find.named('timeline-selected-layer'),
       findsOneWidget,
     );
     expectCellText('default-layer-2', 0, 'X');
 
     var layerBTop = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('timeline-layer-row-default-layer-2'),
-          ),
+          find.named('timeline-layer-row-default-layer-2'),
         )
         .dy;
     var layerATop = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('timeline-layer-row-default-layer-1'),
-          ),
+          find.named('timeline-layer-row-default-layer-1'),
         )
         .dy;
     expect(layerBTop, lessThan(layerATop));
@@ -173,7 +164,7 @@ void main() {
 
     expectActiveLayerName('C');
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-3')),
+      find.named('timeline-row-cells-default-layer-3'),
       findsOneWidget,
     );
     expectCellText('default-layer-3', 0, 'X');
@@ -196,32 +187,24 @@ void main() {
 
     final layerCTop = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('timeline-layer-row-default-layer-3'),
-          ),
+          find.named('timeline-layer-row-default-layer-3'),
         )
         .dy;
     layerBTop = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('timeline-layer-row-default-layer-2'),
-          ),
+          find.named('timeline-layer-row-default-layer-2'),
         )
         .dy;
     layerATop = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('timeline-layer-row-default-layer-1'),
-          ),
+          find.named('timeline-layer-row-default-layer-1'),
         )
         .dy;
 
     expect(layerCTop, lessThan(layerBTop));
     expect(layerBTop, lessThan(layerATop));
     expect(
-      find.byKey(
-        const ValueKey<String>('timeline-layer-kind-icon-default-layer-3'),
-      ),
+      find.named('timeline-layer-type-button-default-layer-3'),
       findsOneWidget,
     );
   });
@@ -240,38 +223,32 @@ void main() {
 
     final layerALeft = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('xsheet-layer-row-default-layer-1'),
-          ),
+          find.named('xsheet-layer-row-default-layer-1'),
         )
         .dx;
     final layerBLeft = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('xsheet-layer-row-default-layer-2'),
-          ),
+          find.named('xsheet-layer-row-default-layer-2'),
         )
         .dx;
     final layerCLeft = tester
         .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('xsheet-layer-row-default-layer-3'),
-          ),
+          find.named('xsheet-layer-row-default-layer-3'),
         )
         .dx;
 
     expect(layerALeft, lessThan(layerBLeft));
     expect(layerBLeft, lessThan(layerCLeft));
     expect(
-      find.byKey(const ValueKey<String>('xsheet-row-cells-default-layer-1')),
+      find.named('xsheet-row-cells-default-layer-1'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-row-cells-default-layer-2')),
+      find.named('xsheet-row-cells-default-layer-2'),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('xsheet-row-cells-default-layer-3')),
+      find.named('xsheet-row-cells-default-layer-3'),
       findsOneWidget,
     );
 
@@ -280,7 +257,7 @@ void main() {
     // R10 R6: the selected column's name is vertical writing now.
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('xsheet-selected-layer')),
+        of: find.named('xsheet-selected-layer'),
         matching: findVerticalText('A'),
       ),
       findsOneWidget,

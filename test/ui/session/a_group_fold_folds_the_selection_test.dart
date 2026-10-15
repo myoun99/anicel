@@ -57,6 +57,28 @@ void main() {
     expect(r.open(r.baseA), isFalse);
     expect(r.open(r.plain), isNull, reason: 'no chevron, nothing to fold');
   });
+
+  test('a selected row folded already stays folded — the press SETS what '
+      'the pressed row turns to, on every row', () {
+    final r = _Rig();
+    r.presses
+      ..toggleGroupFold(r.baseB)
+      ..toggleGroupFold(r.folder);
+    expect(
+      [r.open(r.baseB), r.open(r.folder)],
+      [false, false],
+      reason: 'the premise: a base and the folder shut before the press',
+    );
+    r.select([r.baseA, r.folder, r.baseB]);
+
+    r.presses.toggleGroupFold(r.baseA);
+
+    expect(
+      [r.open(r.baseA), r.open(r.folder), r.open(r.baseB)],
+      [false, false, false],
+      reason: 'a row that showed otherwise is not flipped open',
+    );
+  });
 }
 
 /// Two bases carrying an attach row each, a folder holding a third cel, and a

@@ -4,6 +4,7 @@ import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
+import '../helpers/reference_to.dart';
 
 /// 🚨★★★**THE POOL IS KEYED BY PATH, AND A PATH HAS ONE SPELLING** — given
 /// by the models themselves, whatever door the path came by (audit
@@ -20,7 +21,7 @@ void main() {
   test('a pool entry, a row\'s reference and a sound each spell the path the '
       'one way', () {
     expect(MediaAsset(path: os, name: 'A1').path, pool);
-    expect(MediaReference(assetPath: os).assetPath, pool);
+    expect(referenceTo(os).assetPath, pool);
     expect(
       AudioClip(filePath: os, frameId: const FrameId('f')).filePath,
       pool,
@@ -31,7 +32,11 @@ void main() {
     final asset = MediaAsset(path: pool, name: 'A1');
     expect(asset.copyWith(path: os).path, pool);
     expect(MediaAsset.fromJson({...asset.toJson(), 'path': os}).path, pool);
-    expect(MediaReference.fromJson({'path': os}).assetPath, pool);
+    expect(
+      MediaReference.fromJson({...referenceTo(pool).toJson(), 'path': os})
+          .assetPath,
+      pool,
+    );
     final clip = AudioClip(filePath: pool, frameId: const FrameId('f'));
     expect(clip.copyWith(filePath: os).filePath, pool);
     expect(AudioClip.fromJson({...clip.toJson(), 'file': os}).filePath, pool);

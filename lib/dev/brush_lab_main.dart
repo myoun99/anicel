@@ -156,7 +156,7 @@ class _LabPhase {
   final bool collideRestroke;
 
   /// R16-④: FILL tool taps (empty full-canvas cel + painted cel) with the
-  /// tap's wall time and the buildFillDab probe decomposition logged.
+  /// tap's wall time and the buildFillDabs probe decomposition logged.
   final bool fillTaps;
 
   /// R17-②: the ruler-scrub × commit collision — pen-up fires a scrub in
@@ -497,7 +497,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
   /// R16-④: measured fill taps — an EMPTY full-canvas cel (the user's
   /// exact repro: "빈 프레임에 그냥 칠하기") alternating with a painted
   /// one, undone between taps so every tap floods the full region. The
-  /// wall time prints per tap; the [labProbe]s inside buildFillDab print
+  /// wall time prints per tap; the [labProbe]s inside buildFillDabs print
   /// the decomposition.
   Future<void> _runFillTaps(
     EditorSessionManager session,

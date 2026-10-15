@@ -43,7 +43,11 @@ TransformTrack? transformTrackWithLaneKeyToggled(
       return track.copyWith(
         position: track.position.keyAt(frameIndex) != null
             ? track.position.withoutKey(frameIndex)
-            : track.position.withKey(frameIndex, resolvedPose.center),
+            : positionLaneKeyed(
+                track.position,
+                frameIndex,
+                resolvedPose.center,
+              ),
       );
     case 'scale':
       return track.copyWith(
@@ -87,94 +91,53 @@ TransformTrack? transformTrackWithLaneKeyRemoved(
       lane.keyAt(frameIndex) == null ? null : lane.withoutKey(frameIndex),
 );
 
-/// [track] with lane [laneId]'s keys inside [frames] named [name] (null
-/// un-names them), all collapsed onto ONE value. Null when nothing changed.
+/// The key window's write on lane [laneId] (F-17 · I-89): the keys inside
+/// [frames] named as [naming] says (a null name un-names them) — all
+/// collapsed onto ONE value, the key the name already holds on [adoptFrom]
+/// where it holds one (this row's 겸용 sibling, or this very track) — and
+/// then as [pick] leaves them: its path and its roving time on a lane
+/// whose keys walk a path alone ([walksAPath]). ONE write of the lane
+/// ([PropertyTrack.withKeysWritten]). Null when nothing changed.
 ///
 /// The range form of naming — see [PropertyTrack.withRangeNamed] for why
-/// the collapse is the intent rather than a side effect. [adoptFrom]
-/// supplies the value when the name is already held elsewhere in the
-/// naming space (this row's 겸용 sibling, or this very track).
-TransformTrack? transformTrackWithLaneRangeNamed(
+/// the collapse is the intent rather than a side effect. The type it
+/// writes replaced a per-key Toggle Hold that only the camera's own key
+/// window ever called. That window is gone, and the common one says WHICH
+/// type rather than flipping whichever it was.
+TransformTrack? transformTrackWithLaneKeysWritten(
   TransformTrack track, {
   required String laneId,
   required Set<int> frames,
-  required String? name,
+  ({String? name, int? preferredFrame})? naming,
   TransformTrack? adoptFrom,
-  int? preferredFrame,
+  KeyTypePick pick = const KeyTypePick(),
 }) {
-  PropertyKey<T>? held<T>(PropertyTrack<T> Function(TransformTrack) lane) {
-    if (name == null || adoptFrom == null) {
-      return null;
-    }
-    return lane(adoptFrom).keyForName(name);
-  }
-
-  switch (laneId) {
-    case 'anchor-point':
-      final lane = track.anchorPoint.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.anchorPoint),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(anchorPoint: lane);
-    case 'position':
-      final lane = track.position.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.position),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(position: lane);
-    case 'scale':
-      final lane = track.scale.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.scale),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(scale: lane);
-    case 'rotation':
-      final lane = track.rotation.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.rotation),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(rotation: lane);
-    case 'opacity':
-      final lane = track.opacity.withRangeNamed(
-        frames: frames,
-        name: name,
-        adopted: held((t) => t.opacity),
-        preferredFrame: preferredFrame,
-      );
-      return lane == null ? null : track.copyWith(opacity: lane);
-  }
-  return null;
+  final property = transformPropertyOfLaneId(laneId);
+  final picked = property != null && walksAPath(property)
+      ? pick
+      : pick.sidesAlone;
+  return transformLaneLens(laneId)?.updateBeside(track, adoptFrom, <U>(
+    PropertyTrack<U> lane,
+    PropertyTrack<U>? holder,
+  ) {
+    final name = naming?.name;
+    return lane.withKeysWritten(
+      frames: frames,
+      naming: naming == null
+          ? null
+          : (
+              name: name,
+              adopted: name == null ? null : holder?.keyForName(name),
+              preferredFrame: naming.preferredFrame,
+            ),
+      pick: picked,
+    );
+  });
 }
-
-/// Sets lane [laneId]'s keys inside [frames] to [interpolation] — the key
-/// window's TYPE (F-17), in the range form every key verb takes. Null when
-/// nothing changed.
-///
-/// It replaced a per-key Toggle Hold that only the camera's own key window
-/// ever called. That window is gone, and the common one says WHICH type
-/// rather than flipping whichever it was.
-TransformTrack? transformTrackWithLaneKeysInterpolated(
-  TransformTrack track, {
-  required String laneId,
-  required Set<int> frames,
-  required PropertyKeyInterpolation interpolation,
-}) => transformLaneLens(laneId)?.update(
-  track,
-  <U>(PropertyTrack<U> lane) =>
-      lane.withKeysInterpolated(frames: frames, interpolation: interpolation),
-);
 
 /// Applies a value typed into a lane's value editor: sets/updates the key
 /// at [frameIndex] (AE: changing an animated value keys it at the
-/// playhead), preserving an existing key's interpolation. Accepted input
+/// playhead), preserving an existing key's sides. Accepted input
 /// per lane (AE display units): position/anchor `x, y`; scale as the row's
 /// [scaleForm] reads it — a camera's one zoom `150%`, a layer's two
 /// `150, 80%`, the one left as shown carried when [scaleLinked]
@@ -209,10 +172,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         return null;
       }
       return track.copyWith(
-        position: track.position.withKey(
-          frameIndex,
-          point,
-        ),
+        position: positionLaneKeyed(track.position, frameIndex, point),
       );
     case 'scale':
       // What the lane shows at the frame is what the typed value is read
@@ -222,7 +182,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         current: track.scale.resolveAt(
           frameIndex: frameIndex,
           orElse: () => uniformScale(1),
-          lerp: CanvasPoint.lerp,
+          space: pointKeySpace,
         ),
         linked: scaleLinked,
       );
@@ -231,7 +191,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
       }
       return track.copyWith(scale: track.scale.withKey(frameIndex, scale));
     case 'rotation':
-      final degrees = double.tryParse(input.replaceAll('°', '').trim());
+      final degrees = _parseDegrees(input);
       if (degrees == null) {
         return null;
       }
@@ -266,11 +226,22 @@ TransformTrack transformTrackWithPositionDragged(
   required CanvasPoint position,
 }) {
   return track.copyWith(
-    position: track.position.withKey(
-      frameIndex,
-      position,
-    ),
+    position: positionLaneKeyed(track.position, frameIndex, position),
   );
+}
+
+/// A path's knob carried on the canvas (I-89 ④-Q4 A: 「캔버스에서 끈 접선 —
+/// 반대쪽은 거울」): the position key at [frameIndex] bends along [tangent],
+/// how far the knob stands from the key — its mirror behind it. The key's
+/// value, sides and name stay as they are, and where no position key stands
+/// nothing changes.
+TransformTrack transformTrackWithPositionHandle(
+  TransformTrack track, {
+  required int frameIndex,
+  required CanvasPoint tangent,
+}) {
+  final bent = track.position.withKeyPath(frameIndex, HandledPath(tangent));
+  return bent == null ? track : track.copyWith(position: bent);
 }
 
 /// The transform box's SCALE release (R5 #10): ONE key at the playhead on
@@ -315,6 +286,38 @@ TransformTrack transformTrackWithAnchorDragged(
   );
 }
 
+/// A value typed into one lane of a lone POSE — a reference fx's (I-68),
+/// one value with no keys. [laneId] is the transform lane it is
+/// (`position`, `scale` or `rotation`), read the way
+/// [transformTrackWithLaneValueEdited] reads that lane. Null on parse
+/// failure.
+TransformPose? poseWithLaneValueEdited(
+  TransformPose pose, {
+  required String laneId,
+  required String input,
+  required ScaleLaneForm scaleForm,
+  required bool scaleLinked,
+}) {
+  switch (laneId) {
+    case 'position':
+      final point = _parsePoint(input);
+      return point == null ? null : pose.copyWith(center: point);
+    case 'scale':
+      final scale = scaleForm.typed(
+        input,
+        current: pose.scale,
+        linked: scaleLinked,
+      );
+      return scale == null
+          ? null
+          : pose.copyWith(scaleX: scale.x, scaleY: scale.y);
+    case 'rotation':
+      final degrees = _parseDegrees(input);
+      return degrees == null ? null : pose.copyWith(rotationDegrees: degrees);
+  }
+  return null;
+}
+
 CanvasPoint? _parsePoint(String input) {
   final parts = input.split(',');
   if (parts.length != 2) {
@@ -327,6 +330,9 @@ CanvasPoint? _parsePoint(String input) {
   }
   return CanvasPoint(x: x, y: y);
 }
+
+double? _parseDegrees(String input) =>
+    double.tryParse(input.replaceAll('°', '').trim());
 
 
 /// AE's group Reset, for the Transform group (R5, user 2026-08-09).
@@ -357,7 +363,12 @@ TransformTrack? transformTrackWithGroupReset(
     return null;
   }
 
-  PropertyTrack<T>? reset<T>(PropertyTrack<T> lane, T value) {
+  PropertyTrack<T>? reset<T>(
+    PropertyTrack<T> lane,
+    T value, [
+    PropertyTrack<T> Function(PropertyTrack<T> lane, int frame, T value)?
+        keyed,
+  ]) {
     // Untouched by design: no keys means the lane already resolves to its
     // default everywhere.
     if (lane.isEmpty) {
@@ -368,16 +379,13 @@ TransformTrack? transformTrackWithGroupReset(
       if (keyedFramesOnly && lane.keyAt(frame) == null) {
         continue;
       }
-      next = next.withKey(
-        frame,
-        value,
-      );
+      next = keyed?.call(next, frame, value) ?? next.withKey(frame, value);
     }
     return next == lane ? null : next;
   }
 
   final anchor = reset(track.anchorPoint, defaultAnchorPoint);
-  final position = reset(track.position, identity.center);
+  final position = reset(track.position, identity.center, positionLaneKeyed);
   final scale = reset(track.scale, identity.scale);
   final rotation = reset(track.rotation, identity.rotationDegrees);
   final opacity = reset(track.opacity, 1.0);
@@ -400,7 +408,7 @@ TransformTrack? transformTrackWithGroupReset(
 /// The transform family's lane table: where each lane id lives on the
 /// track. The single-lane range move is [LaneKeysShift.keysShifted] on
 /// this table; null for an id that is not a transform lane.
-LaneLens<TransformTrack>? transformLaneLens(String laneId) =>
+PropertyLaneLens<TransformTrack, Object?>? transformLaneLens(String laneId) =>
     switch (laneId) {
       'anchor-point' => PropertyLaneLens<TransformTrack, CanvasPoint>(
         get: (track) => track.anchorPoint,

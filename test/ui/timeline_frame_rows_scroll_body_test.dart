@@ -17,8 +17,12 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 
 import '../helpers/exposure_of.dart';
+import '../helpers/named_finders.dart';
+import '../helpers/row_berths_in_order.dart';
 import 'timeline/timeline_cell_probe.dart';
 
 void main() {
@@ -41,7 +45,7 @@ void main() {
       expect(find.byType(TimelineFrameCellsRow), findsNWidgets(layers.length));
       for (final layer in layers) {
         expect(
-          find.byKey(ValueKey<String>('timeline-frame-row-area-${layer.id}')),
+          find.named('timeline-frame-row-area-${layer.id}'),
           findsOneWidget,
         );
       }
@@ -93,7 +97,10 @@ void main() {
       );
 
       expect(_bodyFinder, findsOneWidget);
-      expect(_keyStartingWith('timeline-frame-row-area-'), findsNothing);
+      expect(
+        find.namedWhere((name) => name.startsWith('timeline-frame-row-area-')),
+        findsNothing,
+      );
       expect(_keyStartingWith('timeline-cell-'), findsNothing);
       expect(
         find.descendant(
@@ -224,9 +231,7 @@ void main() {
       // it mounts the shared row's gesture slot rather than a folder one.
       // The contract below — the selection addresses the folder ROW — is
       // what matters, and it reads the same on both.
-      final gesture = _stableKeyFinder(
-        'timeline-range-gesture-slot-${folder.id}',
-      );
+      final gesture = find.named('timeline-range-gesture-slot-${folder.id}');
       expect(gesture, findsOneWidget);
 
       final box = tester.getRect(gesture);
@@ -324,9 +329,7 @@ void main() {
           ),
         ),
       );
-      final box = tester.getRect(
-        _stableKeyFinder('timeline-range-gesture-slot-a'),
-      );
+      final box = tester.getRect(find.named('timeline-range-gesture-slot-a'));
       final pointer = await tester.startGesture(
         box.center,
         kind: PointerDeviceKind.mouse,
@@ -392,7 +395,7 @@ Finder _keyStartingWith(String prefix) => find.byWidgetPredicate((widget) {
 });
 
 Finder _rowFinder(Layer layer) =>
-    find.byKey(ValueKey<String>('timeline-frame-row-area-${layer.id}'));
+    find.named('timeline-frame-row-area-${layer.id}');
 
 Widget _body({
   required List<Layer> layers,
@@ -411,15 +414,18 @@ Widget _body({
   ValueChanged<int>? onSelectFrame,
   TimelineRangeGestureCallbacks? rangeGesture,
 }) {
+  final rows = buildTimelineDisplayRows(
+    layers: layers,
+    expandedLayerIds: const {},
+    lanesForLayer: (_) => const [],
+  );
   return MaterialApp(
     home: Scaffold(
       body: Material(
         child: TimelineFrameRowsScrollBody(
-          rows: buildTimelineDisplayRows(
-            layers: layers,
-            expandedLayerIds: const {},
-            lanesForLayer: (_) => const [],
-          ),
+          rows: rows,
+          berths: berthsInOrder(rows),
+          edges: timelineRowEdgesOf(rows, metrics),
           hooks: TimelineGridHooks(
             activeLayerId: null,
             frameCursor: ValueNotifier<int>(0),

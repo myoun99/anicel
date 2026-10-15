@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/pen_sidecars.dart';
@@ -190,5 +191,61 @@ void main() {
       isNull,
       reason: 'a device with no orientation axes leans nowhere',
     );
+  });
+
+  /// 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): 「우선 1번
+  /// 제일 확실한방법 좋아. 앞으로의 펜 작동 기준으로 삼으면 좋을거같고」 —
+  /// the driver says the pen is touching, so it is the pen, whatever the OS
+  /// called it.
+  test('🚨THE PEN LAW: a MOUSE while the driver says the pen is down is the '
+      'pen — and nothing else moves it', () {
+    const mouse = PointerDeviceKind.mouse;
+    const stylus = PointerDeviceKind.stylus;
+    expect(PenSidecars.kindOf(mouse), mouse, reason: 'no driver speaks');
+
+    final wintab = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    wintab.debugPollOverride = () => const [];
+    wintab.start();
+    wintab.debugInjectPacket(
+      const QaTabletPacket(pressure: 0, timeMs: 1, buttons: 0),
+    );
+    expect(PenSidecars.penTouching(), isFalse);
+    expect(PenSidecars.kindOf(mouse), mouse, reason: 'a hovering pen');
+
+    wintab.debugInjectPacket(
+      const QaTabletPacket(pressure: 0, timeMs: 2, buttons: 1),
+    );
+    expect(PenSidecars.kindOf(mouse), stylus, reason: 'the tip bit');
+    wintab.debugInjectPacket(
+      const QaTabletPacket(pressure: 0.3, timeMs: 3, buttons: 0),
+    );
+    expect(
+      PenSidecars.kindOf(mouse),
+      stylus,
+      reason: 'a reading that touches, from a driver that leaves the bit '
+          'clear',
+    );
+    for (final kind in const [
+      PointerDeviceKind.touch,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.invertedStylus,
+      PointerDeviceKind.trackpad,
+    ]) {
+      expect(PenSidecars.kindOf(kind), kind, reason: 'only a mouse is asked');
+    }
+    wintab.debugReset();
+
+    // Raw Input's tip switch says the same, on its own.
+    final hid = RawPenInputService.instance;
+    addTearDown(hid.debugReset);
+    RawPenInputService.debugClockOverride = () => DateTime(2024);
+    QaPenRawState? report;
+    hid.debugPollOverride = () => report;
+    hid.start();
+    report = const QaPenRawState(flags: 0x00, sequence: 1);
+    expect(PenSidecars.kindOf(mouse), mouse, reason: 'in range, tip up');
+    report = const QaPenRawState(flags: 0x01, sequence: 2);
+    expect(PenSidecars.kindOf(mouse), stylus, reason: 'HID Tip Switch');
   });
 }

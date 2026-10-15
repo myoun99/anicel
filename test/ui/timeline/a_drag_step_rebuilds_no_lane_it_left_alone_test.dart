@@ -29,7 +29,7 @@ void main() {
     const position = PropertyLaneRow(
       laneId: 'position',
       label: 'Position',
-      keyedFrames: {},
+      keyMarks: {},
     );
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(preview.dispose);

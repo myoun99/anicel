@@ -1,9 +1,9 @@
-import 'dart:math' as math;
 
 import 'canvas_size.dart';
 import 'property_track.dart';
 import 'text_cel_style.dart';
-import 'transform_track.dart' show lerpArgb, lerpBoolHold, lerpDouble;
+import 'transform_track.dart'
+    show argbKeySpace, boolHoldKeySpace, doubleKeySpace;
 
 /// An SE row's ON-CANVAS NAME TAG (R5b, §6-z15): the アフレコ label —
 /// white text in a red box — that names who is speaking over the picture,
@@ -179,22 +179,22 @@ class SeNameTag {
     double size(double fallback) => keys.fontSize.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpDouble,
+      space: doubleKeySpace,
     );
     double tracking(double fallback) => keys.letterSpacing.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpDouble,
+      space: doubleKeySpace,
     );
     bool weight(bool fallback) => keys.bold.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpBoolHold,
+      space: boolHoldKeySpace,
     );
     int ink(PropertyTrack<int> lane, int fallback) => lane.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
-      lerp: lerpArgb,
+      space: argbKeySpace,
     );
     return SeNameTag(
       style: style.copyWith(
@@ -218,7 +218,7 @@ class SeNameTag {
       showLine: keys.showLine.resolveAt(
         frameIndex: frameIndex,
         orElse: () => showLine,
-        lerp: lerpBoolHold,
+        space: boolHoldKeySpace,
       ),
       track: keys,
     );
@@ -233,6 +233,11 @@ class SeNameTag {
   // it — the same rule a layer follows, and the reason there is nothing to
   // store here: a position field would be a second place to keep one
   // position, and a per-row default would be a third.
+  //
+  // ↩️I-67-Q1 (user, 2026-10-10: 「이름표를 카메라 화면 기준으로 읽는다」):
+  // that transform is read in the SHOT — the frame the camera shows — so
+  // the centre is the shot's, and a camera move leaves the tag where it
+  // stands on screen (`ResolvedSeNameTag.shot`).
 
   /// The NAME run: the white-on-red box.
   final TextCelStyle style;
@@ -318,25 +323,11 @@ class SeNameTag {
   int get hashCode => Object.hash(style, lineStyle, showLine, track);
 }
 
-/// The camera's rect in CANVAS coordinates at the resting pose (centered,
-/// zoom 1) — the SHOT, which is what every framed surface shows. The
-/// canvas is bigger than the frame by default (2340×1654 paper against a
-/// 1920×1080 camera), so anything placed relative to the canvas can sit
-/// perfectly visible while editing and be clipped away in playback's
-/// camera view and in the delivered video.
-({double left, double top, double width, double height}) shotRectIn({
-  required CanvasSize canvas,
-  required CanvasSize cameraFrame,
-}) {
-  final width = math.min(cameraFrame.width, canvas.width).toDouble();
-  final height = math.min(cameraFrame.height, canvas.height).toDouble();
-  return (
-    left: (canvas.width - width) / 2,
-    top: (canvas.height - height) / 2,
-    width: width,
-    height: height,
-  );
-}
+// ↩️`shotRectIn` — the camera's rect on the canvas at the resting pose —
+// went with I-67-Q1: a tag stands in the shot itself now, so nothing has to
+// find where the shot lies on the canvas to keep a tag inside it (the
+// canvas is bigger than the frame by default, 2340×1654 paper against a
+// 1920×1080 camera, which is why that was ever asked).
 
 // `defaultSeNameTagPosition` stacked unconfigured rows up from the shot's
 // bottom-left so S1·S2·S3 would not pile on one spot. It is gone with the
@@ -347,14 +338,10 @@ class SeNameTag {
 // identity — and moving one is moving that row's Position. Rows DO pile up
 // until you move them, and that is the point: one rule, no per-row
 // exception, and the pile is visible so nobody wonders where a tag went.
+// (I-67-Q1: the shot's centre — the transform is read in the shot.)
 
 /// The width a tag may occupy before it shrinks to fit: the shot's width
 /// minus the same 6% margin on both sides. Without a budget a long line
 /// runs off the picture and is silently cropped.
-double seNameTagWidthBudget({
-  required CanvasSize canvas,
-  required CanvasSize cameraFrame,
-}) {
-  final shot = shotRectIn(canvas: canvas, cameraFrame: cameraFrame);
-  return shot.width * 0.88;
-}
+double seNameTagWidthBudget(CanvasSize cameraFrame) =>
+    cameraFrame.width * 0.88;

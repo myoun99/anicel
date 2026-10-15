@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 
 /// 🚨★★★A HELD CROP IS LAID BACK ONCE, HOWEVER OFTEN ITS SLOTS ARE RECORDED
 /// (유저 2026-09-24 「성능적인 면은 아주 중요하니까 철저하게 하자」).
@@ -298,6 +299,7 @@ class _OnlyTheFullLevel extends LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     bool Function()? shouldAbort,
     bool inkSuffices = false,
+    Future<QuietTurn?> Function()? turn,
   }) => _serves(quality)
       ? super.prepare(
           key: key,
@@ -306,6 +308,7 @@ class _OnlyTheFullLevel extends LayerFrameImageCache {
           sourceEffects: sourceEffects,
           shouldAbort: shouldAbort,
           inkSuffices: inkSuffices,
+          turn: turn,
         )
       // Still being made: the stack keeps what it holds.
       : Completer<LayerFrameImage?>().future;

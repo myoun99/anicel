@@ -10,14 +10,16 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../flyout_test_helpers.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/app_shortcuts.dart';
 import '../../helpers/frame_keys.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
@@ -27,15 +29,16 @@ void main() {
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
   }
 
   // The counter stacks track-global over cut-local (2026-08-10); the flip
   // these tests drive is a CUT-local move, so the local line is the reading.
   String counterText(WidgetTester tester) => tester
-      .widget<Text>(
+      .renderObject<RenderTickText>(
         find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
       )
-      .data!;
+      .data;
 
   testWidgets('Shift+arrows step frames; plain arrows walk blocks', (
     tester,
@@ -332,14 +335,14 @@ void main() {
       reason: 'the pan took the key — it does nothing else',
     );
     await tester.pump();
-    expect(CanvasPanHold.held.value, isTrue);
+    expect(CanvasViewHold.held.value, ViewHold.pan);
     expect(
       find.byKey(const ValueKey<String>('canvas-playback-view')),
       findsNothing,
     );
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     await tester.pump();
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
 
     // Playback starts from its button (the playback view mounts). Plain
     // pumps: the playback ticker never lets pumpAndSettle settle.
@@ -371,7 +374,7 @@ void main() {
           'canvas is back to its drawing surface — and no ticker is left '
           'running for the teardown to trip over',
     );
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
     await tester.pumpAndSettle();
   });
@@ -440,6 +443,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Every category stands shut (menu-rows-and-panels-are-shortcut-rows):
+    // the search finds the row and opens its category.
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('shortcut-search-field')),
+      'Next Frame',
+    );
+    await tester.pumpAndSettle();
     // Record N as the new Next Frame key.
     await tester.tap(
       find.byKey(const ValueKey<String>('shortcut-record-frame-next')),

@@ -6,8 +6,10 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
@@ -34,7 +36,8 @@ import '../../../helpers/placement_reading.dart';
 ///
 /// The stage is the 32×32 test canvas at FOUR screen pixels a canvas pixel
 /// unless a test says otherwise, so the canvas pixel (x, y) is at (4x, 4y)
-/// on the panel. In the test font 「ab」 at 8 is 16 wide on a line 10 tall.
+/// on the panel. In the test font 「ab」 at 8 is 16 wide on a line 10 tall,
+/// and its box reaches 2 past it on every side — a quarter of its 8.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -49,12 +52,16 @@ void main() {
   CelText carried(int id, CelTextContent content) =>
       CelText(id: id, content: content, plate: plateOf(content));
 
+  /// A text that grows, begun at [anchor].
+  _Begun grows(CanvasPoint anchor) =>
+      (anchor: anchor, wrapWidth: null, minHeight: null);
+
   /// The tool, the stage it is on, and what a press on nothing handed back.
   ({
     CelTextTool tool,
     CelTextScene scene,
     HeldBaker baker,
-    List<({CanvasPoint anchor, double? wrapWidth})> begun,
+    List<_Begun> begun,
     List<Rect?> traced,
   })
   table({
@@ -65,7 +72,7 @@ void main() {
   }) {
     final baker = HeldBaker();
     final tool = CelTextTool(host: _Host(columns: columns), bake: baker.call);
-    final begun = <({CanvasPoint anchor, double? wrapWidth})>[];
+    final begun = <_Begun>[];
     final traced = <Rect?>[];
     final CelTextCel cel = (
       key: celTextTestKey,
@@ -86,8 +93,9 @@ void main() {
             ),
         cel: noCel ? null : cel,
         onTraced: traced.add,
-        onBegin: (anchor, {wrapWidth}) =>
-            begun.add((anchor: anchor, wrapWidth: wrapWidth)),
+        onBegin: (anchor, {wrapWidth, minHeight}) => begun.add(
+          (anchor: anchor, wrapWidth: wrapWidth, minHeight: minHeight),
+        ),
       ),
       baker: baker,
       begun: begun,
@@ -140,7 +148,7 @@ void main() {
       final down = press(scene, 10.4, 11.6)!;
       up(scene, down, 10.4, 11.6);
 
-      expect(begun, [(anchor: CanvasPoint(x: 10, y: 12), wrapWidth: null)]);
+      expect(begun, [grows(CanvasPoint(x: 10, y: 12))]);
       expect(traced, isEmpty);
 
       final again = press(scene, 10.6, 11.4)!;
@@ -164,7 +172,7 @@ void main() {
       move(scene, down, 15, 10);
       up(scene, down, 15, 10);
 
-      expect(begun, [(anchor: CanvasPoint(x: 10, y: 10), wrapWidth: null)]);
+      expect(begun, [grows(CanvasPoint(x: 10, y: 10))]);
     });
 
     test('dragged, it traces a box and begins one as wide as the drag, '
@@ -177,7 +185,12 @@ void main() {
       up(scene, down, 6.4, 3.8);
 
       expect(traced.last, const Rect.fromLTRB(6.4, 3.8, 20.2, 14));
-      expect(begun, [(anchor: CanvasPoint(x: 6, y: 4), wrapWidth: 14)]);
+      // The drag IS the box: its letters go in as far as a box reaches
+      // past them, a quarter of the 8 they are written at — 9.8 of room,
+      // and at least 6.2 deep (F-317), hung from (8.4, 5.8).
+      expect(begun, [
+        (anchor: CanvasPoint(x: 8, y: 6), wrapWidth: 10, minHeight: 6),
+      ]);
     });
 
     // 세로쓰기 (유저 2026-10-06): the drag's room is its letters' — down.
@@ -192,7 +205,11 @@ void main() {
       up(scene, down, 6.4, 3.8);
 
       expect(traced.last, const Rect.fromLTRB(6.4, 3.8, 20.2, 14));
-      expect(begun, [(anchor: CanvasPoint(x: 20, y: 4), wrapWidth: 10)]);
+      // 6.2 of room down the column, and at least 9.8 across the columns,
+      // hung from (18.2, 5.8).
+      expect(begun, [
+        (anchor: CanvasPoint(x: 18, y: 6), wrapWidth: 6, minHeight: 10),
+      ]);
     });
 
     test('🚨a hand that wandered less than its slop is still a click, and '
@@ -210,10 +227,48 @@ void main() {
       final back = table();
       final drag = press(back.scene, 10, 10)!;
       move(back.scene, drag, 18, 14);
-      move(back.scene, drag, 14, 10);
-      up(back.scene, drag, 14, 10);
+      move(back.scene, drag, 16, 10);
+      up(back.scene, drag, 16, 10);
 
-      expect(back.begun.single.wrapWidth, 4);
+      // As wide as where it came back to — 6, less the box's 2 on either
+      // side — and not as far as it went.
+      expect(back.begun.single.wrapWidth, 2);
+    });
+
+    // 🗣️THE PEN LAW (tool-settings-panel-tidy, 유저 2026-10-10): a pen the
+    // OS hands over as a MOUSE is the pen while its driver says it is down
+    // (`PenSidecars.kindOf`) — and a pen may wobble a pen's slop.
+    test('🚨a MOUSE press while the driver says the pen is down wobbles as '
+        'the pen may: ten screen pixels and it is still a click', () {
+      final wintab = WintabPenService.instance;
+      addTearDown(wintab.debugReset);
+      WintabPenService.debugClockOverride = () => DateTime(2024);
+      wintab.debugPollOverride = () => const [];
+      wintab.start();
+      CelTextScene sceneAtOne() => table(
+        stage: CelTextStage(
+          viewport: CanvasViewport(),
+          canvasSize: celTextTestCanvas,
+          placement: null,
+        ),
+      ).scene;
+
+      // ⛔Fixture: hovering, the same wobble is a mouse's drag.
+      wintab.debugInjectPacket(
+        const QaTabletPacket(pressure: 0, timeMs: 1, buttons: 0),
+      );
+      final hovering = sceneAtOne();
+      final mouse = press(hovering, 10, 10)!;
+      move(hovering, mouse, 20, 10);
+      expect(mouse.dragged, isTrue, reason: '⛔fixture: one pixel is a drag');
+
+      wintab.debugInjectPacket(
+        const QaTabletPacket(pressure: 0.4, timeMs: 2, buttons: 1),
+      );
+      final touching = sceneAtOne();
+      final pen = press(touching, 10, 10)!;
+      move(touching, pen, 20, 10);
+      expect(pen.dragged, isFalse, reason: 'the pen\'s slop');
     });
 
     test('a drag too small to have meant a box — under two canvas pixels '
@@ -226,10 +281,11 @@ void main() {
       move(scene, down, 11.5, 11.5);
       up(scene, down, 11.5, 11.5);
 
-      expect(begun, [(anchor: CanvasPoint(x: 10, y: 10), wrapWidth: null)]);
+      expect(begun, [grows(CanvasPoint(x: 10, y: 10))]);
     });
 
-    test('a box is never narrower than a pixel: a drag straight down', () {
+    test('a box is never narrower than a pixel: a drag straight down — nor '
+        'less than a pixel tall: a drag straight across', () {
       final (tool: _, :scene, baker: _, :begun, traced: _) = table();
 
       final down = press(scene, 10, 10)!;
@@ -237,6 +293,12 @@ void main() {
       up(scene, down, 10, 20);
 
       expect(begun.single.wrapWidth, 1);
+
+      final across = press(scene, 10, 10)!;
+      move(scene, across, 20, 10);
+      up(scene, across, 20, 10);
+
+      expect(begun.last.minHeight, 1);
     });
 
     test('on a frame with NO CEL it is the press it is anywhere: a click, '
@@ -252,8 +314,8 @@ void main() {
       up(scene, drag, 22, 16);
 
       expect(begun, [
-        (anchor: CanvasPoint(x: 10, y: 10), wrapWidth: null),
-        (anchor: CanvasPoint(x: 10, y: 10), wrapWidth: 12),
+        grows(CanvasPoint(x: 10, y: 10)),
+        (anchor: CanvasPoint(x: 12, y: 12), wrapWidth: 8, minHeight: 2),
       ]);
     });
   });
@@ -455,7 +517,7 @@ void main() {
     test('the side edge of a TURNED box sets its width along the text\'s '
         'own line', () async {
       // A box 16 wide turned a quarter: its line runs DOWN from (16, 4), and
-      // the middle of its far edge is at (11, 20).
+      // the middle of its far edge is at (11, 22) — 2 past its letters.
       final turned = CelTextContent(
         spans: const [CelTextSpan(text: 'ab', style: letters)],
         anchor: CanvasPoint(x: 16, y: 4),
@@ -469,9 +531,9 @@ void main() {
       expect(tool.session!.textId, 4, reason: '⛔fixture');
 
       // Three across the line and four along it.
-      final edge = press(scene, 11, 20)!;
-      move(scene, edge, 14, 24);
-      up(scene, edge, 14, 24);
+      final edge = press(scene, 11, 22)!;
+      move(scene, edge, 14, 26);
+      up(scene, edge, 14, 26);
       await baker.pending.answer();
 
       final widened = textOf(scene, 4).content;
@@ -479,9 +541,72 @@ void main() {
       expect(widened.anchor, CanvasPoint(x: 16, y: 4));
     });
 
+    // 🗣️F-317 (유저 2026-10-08): 「지금 좌우중앙 사각형만있는데 위아래 사각형도
+    // 존재하는게 좋을듯」 — and F-317-Q2: 「끈 높이는 최소치」.
+    group('the top and the bottom edge of a box in LINES', () {
+      /// 「ab」 in a box 16 wide hung from (8, 4): its line stands from 4
+      /// down to 12, and its box reaches 2 past it, from 2 down to 14.
+      final box = CelTextContent(
+        spans: const [CelTextSpan(text: 'ab', style: letters)],
+        anchor: CanvasPoint(x: 8, y: 4),
+        wrapWidth: 16,
+        lineHeight: 1,
+      );
+
+      test('🚨the BOTTOM edge sets how tall it is at least, by how far the '
+          'hand goes DOWN — and it stays hung where it was', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, box)],
+        );
+        press(scene, 12, 8);
+        expect(tool.session!.textId, 4, reason: '⛔fixture');
+
+        // Three across and four down.
+        final edge = press(scene, 16, 14)!;
+        move(scene, edge, 19, 18);
+        up(scene, edge, 19, 18);
+        await baker.pending.answer();
+
+        final deepened = textOf(scene, 4).content;
+        expect(deepened.minHeight, 12);
+        expect(deepened.wrapWidth, 16);
+        expect(deepened.anchor, CanvasPoint(x: 8, y: 4));
+        expect(tool.hold, CelTextHold.box);
+      });
+
+      test('🚨the TOP edge carries the anchor, so the bottom stays where it '
+          'was — and taken down into the line, it stops at it', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, box)],
+        );
+        press(scene, 12, 8);
+        expect(tool.session!.textId, 4, reason: '⛔fixture');
+
+        final up4 = press(scene, 16, 2)!;
+        move(scene, up4, 16, -2);
+        up(scene, up4, 16, -2);
+        await baker.pending.answer();
+
+        final deepened = textOf(scene, 4).content;
+        expect(deepened.minHeight, 12);
+        expect(deepened.anchor, CanvasPoint(x: 8, y: 0));
+
+        // Its top edge is now at -2: down past the line's foot.
+        final down = press(scene, 16, -2)!;
+        move(scene, down, 16, 20);
+        up(scene, down, 16, 20);
+        await baker.pending.answer();
+
+        final stopped = textOf(scene, 4).content;
+        expect(stopped.minHeight, 8);
+        expect(stopped.anchor, CanvasPoint(x: 8, y: 4));
+      });
+    });
+
     group('a box in COLUMNS', () {
-      /// 「ab」 lying down a column 16 long, hung from (16, 4): the box is
-      /// 8 wide — from 8 to 16 — and runs from 4 down to 20.
+      /// 「ab」 lying down a column 16 long, hung from (16, 4): its letters
+      /// stand 8 wide — from 8 to 16 — and run from 4 down to 20, and its
+      /// box reaches 2 past them, from 6 to 18 and from 2 down to 22.
       final box = CelTextContent(
         spans: const [CelTextSpan(text: 'ab', style: letters)],
         anchor: CanvasPoint(x: 16, y: 4),
@@ -490,18 +615,21 @@ void main() {
         vertical: true,
       );
 
-      test('🚨wears its room\'s handles on its TOP and its BOTTOM edge — '
-          'the top one first, the edge its anchor is on', () {
+      test('🚨wears its room\'s handles on its TOP and its BOTTOM edge, and '
+          'its depth\'s on its RIGHT and its LEFT — of each, first the edge '
+          'its anchor is on', () {
         final layout = layoutCelText(box);
         addTearDown(layout.dispose);
 
-        final handles = celTextHandlesOf(layout);
+        expect(celTextHandlesOf(layout).sublist(4), const [
+          Offset(12, 2),
+          Offset(12, 22),
+          Offset(18, 12),
+          Offset(6, 12),
+        ]);
 
-        expect(handles, hasLength(6));
-        expect(handles[4], const Offset(12, 4));
-        expect(handles[5], const Offset(12, 20));
-
-        // ⛔CONTROL: in lines they are on its two sides.
+        // ⛔CONTROL: in lines the room's are on its two sides, and its
+        // depth's on its top and its bottom.
         final lines = layoutCelText(
           CelTextContent(
             spans: const [CelTextSpan(text: 'ab', style: letters)],
@@ -512,9 +640,51 @@ void main() {
         );
         addTearDown(lines.dispose);
         expect(celTextHandlesOf(lines).sublist(4), const [
-          Offset(8, 8),
-          Offset(24, 8),
+          Offset(6, 8),
+          Offset(26, 8),
+          Offset(16, 2),
+          Offset(16, 14),
         ]);
+      });
+
+      // F-317: the side a box's columns stack along is how WIDE it is at
+      // least.
+      test('🚨its LEFT edge sets how wide it is at least, by how far the hand '
+          'goes LEFT — and it stays hung where it was', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, box)],
+        );
+        press(scene, 12, 12);
+        expect(tool.session!.textId, 4, reason: '⛔fixture');
+
+        // Four left, three down.
+        final edge = press(scene, 6, 12)!;
+        move(scene, edge, 2, 15);
+        up(scene, edge, 2, 15);
+        await baker.pending.answer();
+
+        final widened = textOf(scene, 4).content;
+        expect(widened.minHeight, 12);
+        expect(widened.wrapWidth, 16);
+        expect(widened.anchor, CanvasPoint(x: 16, y: 4));
+      });
+
+      test('🚨its RIGHT edge carries the anchor: the left edge stays where '
+          'it was', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, box)],
+        );
+        press(scene, 12, 12);
+        expect(tool.session!.textId, 4, reason: '⛔fixture');
+
+        final edge = press(scene, 18, 12)!;
+        move(scene, edge, 22, 12);
+        up(scene, edge, 22, 12);
+        await baker.pending.answer();
+
+        final widened = textOf(scene, 4).content;
+        expect(widened.minHeight, 12);
+        expect(widened.anchor, CanvasPoint(x: 20, y: 4));
       });
 
       test('🚨its BOTTOM edge sets how long its columns run, by how far the '
@@ -526,9 +696,9 @@ void main() {
         expect(tool.session!.textId, 4, reason: '⛔fixture');
 
         // Three across the column and four down it.
-        final edge = press(scene, 12, 20)!;
-        move(scene, edge, 15, 24);
-        up(scene, edge, 15, 24);
+        final edge = press(scene, 12, 22)!;
+        move(scene, edge, 15, 26);
+        up(scene, edge, 15, 26);
         await baker.pending.answer();
 
         final lengthened = textOf(scene, 4).content;
@@ -544,9 +714,9 @@ void main() {
         press(scene, 12, 12);
         expect(tool.session!.textId, 4, reason: '⛔fixture');
 
-        final edge = press(scene, 12, 4)!;
-        move(scene, edge, 12, 8);
-        up(scene, edge, 12, 8);
+        final edge = press(scene, 12, 2)!;
+        move(scene, edge, 12, 6);
+        up(scene, edge, 12, 6);
         await baker.pending.answer();
 
         final shortened = textOf(scene, 4).content;
@@ -597,9 +767,10 @@ void main() {
   // 「기본값은 중심인데, 그걸 유저가 드래그해서 움직이는방식 … 앵커포인트는
   // 회전시 앵커를 기준으로 회전해」, and 확대/축소 is 「항상 상자의 중심」.
   //
-  // 「ab」 stands from (8, 8) to (24, 18): its middle, and its cross until
-  // a hand carries it, at (16, 13). At four screen pixels a canvas pixel the
-  // cross's arms reach 1.75 canvas pixels from it.
+  // 「ab」 stands from (8, 8) to (24, 18), and its box from (6, 6) to
+  // (26, 20): its middle, and its cross until a hand carries it, at
+  // (16, 13). At four screen pixels a canvas pixel the cross's arms reach
+  // 1.75 canvas pixels from it.
   group('the cross of a text in hand by its box', () {
     /// Takes 「ab」 by its box — a click on it, off the cross.
     void take(CelTextScene scene) {
@@ -701,30 +872,30 @@ void main() {
         texts: [carried(4, says('ab'))],
       );
       take(scene);
-      // Six down: a pixel past the box's own edge. Nothing clamps it.
-      carry(tool, scene, 0, 6);
-      expect(crossOf(tool), const Offset(16, 19), reason: '⛔fixture');
+      // Eight down: a pixel past the box's own edge. Nothing clamps it.
+      carry(tool, scene, 0, 8);
+      expect(crossOf(tool), const Offset(16, 21), reason: '⛔fixture');
 
       // From due right of the cross to due below it: a quarter turn, the
       // way a clock's hand goes.
-      final turn = press(scene, 26, 19)!;
-      move(scene, turn, 16, 29);
-      up(scene, turn, 16, 29);
+      final turn = press(scene, 30, 21)!;
+      move(scene, turn, 16, 35);
+      up(scene, turn, 16, 35);
       await baker.pending.answer();
 
       final landed = textOf(scene, 4).content;
       expect(landed.rotationDegrees, closeTo(90, 1e-9));
-      // The anchor stood (−8, −11) from the cross; it stands (11, −8) now.
-      expect(landed.anchor.x, closeTo(27, 1e-9));
-      expect(landed.anchor.y, closeTo(11, 1e-9));
-      // And the middle of the box, which stood six above it, six to its
+      // The anchor stood (−8, −13) from the cross; it stands (13, −8) now.
+      expect(landed.anchor.x, closeTo(29, 1e-9));
+      expect(landed.anchor.y, closeTo(13, 1e-9));
+      // And the middle of the box, which stood eight above it, eight to its
       // right.
       final middle = tool.session!.shown.layout.onCanvas.centre;
-      expect(middle.dx, closeTo(22, 1e-9));
-      expect(middle.dy, closeTo(19, 1e-9));
+      expect(middle.dx, closeTo(24, 1e-9));
+      expect(middle.dy, closeTo(21, 1e-9));
       expect(crossOf(tool).dx, closeTo(16, 1e-9));
-      expect(crossOf(tool).dy, closeTo(19, 1e-9));
-      expect(tool.crossOffCentre, const Offset(0, 6));
+      expect(crossOf(tool).dy, closeTo(21, 1e-9));
+      expect(tool.crossOffCentre, const Offset(0, 8));
       expect((tool.host as _Host).history.undoCount, 1);
     });
 
@@ -740,9 +911,9 @@ void main() {
 
       // The corner taken twice as far from the middle (16, 13): everything
       // doubles — about the cross it would have left the anchor at (6, 0).
-      final corner = press(scene, 24, 18)!;
-      move(scene, corner, 32, 23);
-      up(scene, corner, 32, 23);
+      final corner = press(scene, 26, 20)!;
+      move(scene, corner, 36, 27);
+      up(scene, corner, 36, 27);
       await baker.pending.answer();
 
       final landed = textOf(scene, 4).content;
@@ -913,6 +1084,112 @@ void main() {
     });
   });
 
+  // 🗣️F-342 (유저 2026-10-12): 「마지막으로 사용한 크기값 기억해서 그거대로
+  // 만들도록」. The next text is set at 8 here.
+  group('the size a corner gives a text', () {
+    /// Takes [content] by its box: its box's bottom right corner, the
+    /// middle of that box, and where the corner is twice as far from it.
+    ({Offset corner, Offset doubled}) taken(
+      CelTextScene scene,
+      CelTextTool tool,
+    ) {
+      final down = press(scene, 10, 10)!;
+      up(scene, down, 10, 10);
+      final layout = tool.session!.shown.layout;
+      final corner = celTextHandlesOf(layout)[2];
+      final middle = layout.onCanvas.centre;
+      return (corner: corner, doubled: middle + (corner - middle) * 2);
+    }
+
+    double nextSize(CelTextTool tool) =>
+        tool.host.options.letters(brushColour: null).fontSize;
+
+    test('🚨is the next text\'s', () async {
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      final (:corner, :doubled) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      move(scene, down, doubled.dx, doubled.dy);
+      up(scene, down, doubled.dx, doubled.dy);
+      await baker.pending.answer();
+
+      expect(
+        textOf(scene, 4).content.spans.single.style.fontSize,
+        closeTo(16, 1e-9),
+        reason: '⛔fixture',
+      );
+      expect(nextSize(tool), closeTo(16, 1e-9));
+    });
+
+    test('a text of two sizes gives its FIRST letter\'s', () async {
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
+        texts: [
+          carried(
+            4,
+            CelTextContent(
+              spans: const [
+                CelTextSpan(text: 'a', style: letters),
+                CelTextSpan(text: 'b', style: TextLetterStyle(fontSize: 16)),
+              ],
+              anchor: CanvasPoint(x: 8, y: 8),
+            ),
+          ),
+        ],
+      );
+      final (:corner, :doubled) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      move(scene, down, doubled.dx, doubled.dy);
+      up(scene, down, doubled.dx, doubled.dy);
+      await baker.pending.answer();
+
+      expect(nextSize(tool), closeTo(16, 1e-9));
+    });
+
+    test('a corner press that goes away gives the next text nothing', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      final (:corner, :doubled) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      move(scene, down, doubled.dx, doubled.dy);
+      expect(
+        tool.contentInHand!.spans.single.style.fontSize,
+        closeTo(16, 1e-9),
+        reason: '⛔fixture: it was following the hand',
+      );
+      down.cancel(scene);
+
+      expect(nextSize(tool), 8);
+    });
+
+    test('a corner let go where it went down gives the next text nothing '
+        'of the size the text had', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [
+          carried(
+            4,
+            CelTextContent(
+              spans: const [
+                CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 12)),
+              ],
+              anchor: CanvasPoint(x: 8, y: 8),
+            ),
+          ),
+        ],
+      );
+      final (:corner, doubled: _) = taken(scene, tool);
+
+      final down = press(scene, corner.dx, corner.dy)!;
+      up(scene, down, corner.dx, corner.dy);
+
+      expect(nextSize(tool), 8);
+    });
+  });
+
   group('with a text in hand by its letters', () {
     test('a press inside sets the caret, and dragged, selects from it; a '
         'press on another text confirms and takes that one', () async {
@@ -1028,6 +1305,9 @@ void main() {
   });
 }
 
+/// What a press on nothing began a text with.
+typedef _Begun = ({CanvasPoint anchor, double? wrapWidth, double? minHeight});
+
 /// The canvas panel the hand works on, stood in for: real history.
 class _Host implements CelTextToolHost {
   _Host({this.columns = false});
@@ -1038,10 +1318,13 @@ class _Host implements CelTextToolHost {
   final HistoryManager history = HistoryManager();
 
   @override
-  TextToolOptions get options => TextToolOptions(
+  late TextToolOptions options = TextToolOptions(
     letters: const TextLetterStyle(fontSize: 8),
     vertical: columns,
   );
+
+  @override
+  int? get brushColour => null;
 
   /// A press is handed its cel; none is named for the settings' list.
   @override

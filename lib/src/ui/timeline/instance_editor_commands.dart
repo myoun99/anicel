@@ -6,7 +6,7 @@ import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/property_track.dart' show PropertyKeyInterpolation;
+import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileName;
 import '../../models/se_line_type.dart';
@@ -24,15 +24,16 @@ import '../editor_session_manager.dart';
 import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
-import '../widgets/pill_strip.dart' show PillItem, PillStrip;
+import 'key_flag_row.dart' show KeyFlagRow;
+import 'key_sides_rows.dart' show KeySidesRows;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
 import 'toolbar_panel_context.dart'
     show
-        StoryboardEditConteCells,
         StoryboardEditCut,
         StoryboardEditLaneKey,
         StoryboardEditSeEntry,
+        StoryboardEditTimelineCells,
         StoryboardEditTransitionSpan,
         StoryboardToolbarPanelContext,
         ToolbarPanelContext;
@@ -265,9 +266,9 @@ Future<void> editOnPanel(
       // Lane-key state is session-shared, so the shared cell entrance
       // serves it from this panel too.
       await editActiveInstance(context, session);
-    case StoryboardEditConteCells():
+    case StoryboardEditTimelineCells():
       // F-186 · I-73: the timeline's own cells — a band of them, or the
-      // panel the conte row stands on — so the timeline's Edit: the same
+      // cell a projection row stands on — so the timeline's Edit: the same
       // subject its gate read.
       await editSelectionInstance(context, session, cutsAreThisPanels: false);
     case null:
@@ -739,16 +740,15 @@ Future<void> _editInstructionSet(
 );
 
 /// The rename prompt a frame and a lane key ask their name with. Its
-/// `fieldTrailing` is content confirmed alongside the name — the key
-/// window's TYPE — built with the window's own setState so it can show its
-/// pick.
+/// `extra` is content confirmed with the name — the key window's SIDES —
+/// built with the window's own setState so it can show its picks.
 Future<String?> _askName(
   BuildContext context,
   ({
     String initialName,
     String? title,
     String? fieldLabel,
-    Widget Function(StateSetter setLocal)? fieldTrailing,
+    Widget Function(StateSetter setLocal)? extra,
   })
   prompt,
 ) => showDialogVerb<String>(
@@ -758,7 +758,7 @@ Future<String?> _askName(
       initialName: prompt.initialName,
       title: prompt.title,
       fieldLabel: prompt.fieldLabel,
-      fieldTrailing: prompt.fieldTrailing?.call(setLocal),
+      extra: prompt.extra?.call(setLocal),
     ),
   ),
 );
@@ -791,8 +791,12 @@ Future<void> _renameLaneKey(
   // the joining key's own type to every key the name reaches — a join
   // ADOPTS (유저 2026-09-12: 「싹다링크해야하는데」 put the type inside the
   // link, so re-stating it is no longer free).
-  final agreed = session.laneVerbs.laneKeyInterpolationForSelection;
-  PropertyKeyInterpolation? picked;
+  var picked = const KeyTypePick();
+  // The keys stand still while the window is up: read them once.
+  final sides = session.laneVerbs.laneKeySidesForSelection;
+  final paths = session.laneVerbs.laneKeyPathsForSelection;
+  final roving = session.laneVerbs.laneKeyRovingForSelection;
+  final sidesCount = session.laneVerbs.laneKeySidesCountForSelection;
   return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
@@ -801,9 +805,47 @@ Future<void> _renameLaneKey(
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
-      fieldTrailing: (setLocal) => _keyInterpolationPills(
-        selected: picked ?? agreed,
-        onPicked: (kind) => setLocal(() => picked = kind),
+      extra: (setLocal) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // A key whose time roves wears no sides: where every key the
+          // window covers would, its two rows stand refused — at once as the
+          // roving row is picked, and back as it is picked off.
+          KeySidesRows(
+            sides: sides,
+            picked: picked.sides ?? const KeySidesEdit(),
+            onPicked: sidesCount(picked.roving)
+                ? (edit) =>
+                      setLocal(() => picked = picked.copyWith(sides: edit))
+                : null,
+          ),
+          const SizedBox(height: 10),
+          KeyFlagRow(
+            label: strings.keyPath,
+            off: (
+              id: 'rename-key-path-straight',
+              word: strings.keyPathStraight,
+            ),
+            on: (id: 'rename-key-path-curved', word: strings.keyPathCurved),
+            flags: [for (final path in paths) path.curved],
+            picked: picked.curved,
+            onPicked: (bends) =>
+                setLocal(() => picked = picked.copyWith(curved: bends)),
+          ),
+          const SizedBox(height: 10),
+          // I-89 ④-Q5 (A′ while it is asked): After Effects' Rove Across
+          // Time, under the path it rides.
+          KeyFlagRow(
+            label: strings.keyRoving,
+            off: (id: 'rename-key-rove-off', word: strings.commonOff),
+            on: (id: 'rename-key-rove-on', word: strings.commonOn),
+            flags: roving,
+            picked: picked.roving,
+            onPicked: (roves) =>
+                setLocal(() => picked = picked.copyWith(roving: roves)),
+          ),
+        ],
       ),
     )),
     // The RANGE form is the only one called: a single key is the one-frame
@@ -815,7 +857,7 @@ Future<void> _renameLaneKey(
       final trimmed = nextName.trim();
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
-            interpolation: picked,
+            pick: picked,
           )
           ? trimmed
           : null;
@@ -827,43 +869,16 @@ Future<void> _renameLaneKey(
         session.repository.requireProject(),
         lane.layerId,
       ),
-      join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
-        name,
-        interpolation: picked,
-      ),
+      join: (name) =>
+          session.laneVerbs.linkLaneKeyNamesForSelection(name, pick: picked),
       // The name stood down; a type the user picked in the same window was
       // still confirmed, so it lands.
       decline: () {
-        final kind = picked;
-        if (kind != null) {
-          session.laneVerbs.setLaneKeyInterpolationsForSelection(kind);
+        if (!picked.isEmpty) {
+          session.laneVerbs.setLaneKeyTypeForSelection(picked);
         }
       },
     ),
-  );
-}
-
-/// The key window's TYPE — the grouped-choice control (유저 2026-09-09:
-/// 「여러개중 하나 선택한다거나 … 그룹으로 묶여있는 선택은 이 ui 사용하도록
-/// 공용화」). Nothing is lit while the covered keys disagree.
-Widget _keyInterpolationPills({
-  required PropertyKeyInterpolation? selected,
-  required ValueChanged<PropertyKeyInterpolation> onPicked,
-}) {
-  final strings = AppText.strings;
-  return PillStrip(
-    items: [
-      for (final (kind, label) in [
-        (PropertyKeyInterpolation.linear, strings.keyInterpolationLinear),
-        (PropertyKeyInterpolation.hold, strings.keyInterpolationHold),
-      ])
-        PillItem(
-          keyValue: 'rename-key-interpolation-${kind.name}',
-          label: label,
-          selected: selected == kind,
-          onTap: () => onPicked(kind),
-        ),
-    ],
   );
 }
 
@@ -884,7 +899,7 @@ Future<void> _renameSelectedFrame(
       initialName: session.selectedFrameName ?? '',
       title: null,
       fieldLabel: null,
-      fieldTrailing: null,
+      extra: null,
     )),
     name: session.frameVerbs.renameSelectedFrame,
     onConflict: (

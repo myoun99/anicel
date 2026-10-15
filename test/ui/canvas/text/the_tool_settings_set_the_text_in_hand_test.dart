@@ -1,15 +1,40 @@
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
+import 'package:anicel/src/ui/brush/text_tool_settings.dart'
+    show TextToolSettings;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/brush/tool_settings_section.dart'
+    show ToolSettingsSection;
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction, ToolSettingChoiceRow, ToolSettingRow;
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/shortcuts/panel_keys.dart' show PanelKeysBinding;
+import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
+import 'package:anicel/src/ui/text/readout_text.dart' show columnValueText;
+import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/settings_rows.dart'
+    show SettingsSwitchRow;
+import 'package:flutter/gestures.dart'
+    show
+        PointerDeviceKind,
+        PointerDownEvent,
+        PointerMoveEvent,
+        PointerUpEvent,
+        kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_tool_harness.dart';
+import '../../../helpers/frame_census.dart';
+import '../../../helpers/tool_setting_action_probe.dart';
 
 /// 🚨★★★THE TOOL SETTINGS AND THE TEXT ON THE CANVAS (R9-rest) — the real
 /// app, the real panel, a real mouse.
@@ -26,6 +51,12 @@ import '../../../helpers/cel_text_tool_harness.dart';
 /// a text being typed.
 void main() {
   Finder row(String name) => find.byKey(ValueKey<String>('text-tool-$name'));
+
+  /// The box [name] reading [number].
+  Finder reading(String name, double number) => find.descendant(
+    of: row(name),
+    matching: find.text(columnValueText(number)),
+  );
 
   /// The real app with the text tool in hand and its settings on screen.
   ///
@@ -170,6 +201,180 @@ void main() {
     expect(landed.align, TextCelAlign.center);
   });
 
+  group('the keyboard, while a text is typed into', () {
+    final typed = find.byKey(const ValueKey<String>('field-slider-type-input'));
+
+    /// The pencil of the bar [name], brought on screen and pressed.
+    Future<void> pencil(WidgetTester tester, String name) async {
+      await reach(tester, name);
+      await tester.tap(
+        find.descendant(
+          of: row(name),
+          matching: find.byKey(const ValueKey<String>('field-slider-type')),
+        ),
+      );
+      await pumpFrames(tester);
+    }
+
+    EditableText typedIn(WidgetTester tester, String name) =>
+        tester.widget<EditableText>(
+          find.descendant(
+            of: find.descendant(of: row(name), matching: typed),
+            matching: find.byType(EditableText),
+          ),
+        );
+
+    bool textHasTheKeyboard(WidgetTester tester) =>
+        tester.widget<EditableText>(textField()).focusNode.hasFocus;
+
+    // 🗣️유저 2026-10-14 (F-353): 「텍스트도구로 화면에 클릭해서 캐럿이
+    // 생긴상황. 즉 텍스트 편집중인 상황에서 크기쪽 연필누르면 텍스트 선택되지
+    // 않은 상태. 추가로 자간같은거 연필누르면 여러 박스가 강조색 되있는상태」.
+    testWidgets('🚨F-353: its pencil takes the keyboard, the number '
+        'selected — another bar\'s closes it, ONE field open — and the '
+        'keyboard goes back to the text when that one closes', (
+      tester,
+    ) async {
+      await pumpWithSettings(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      expect(textHasTheKeyboard(tester), isTrue, reason: '⛔fixture');
+
+      await pencil(tester, 'size');
+
+      final size = typedIn(tester, 'size');
+      expect(size.focusNode.hasFocus, isTrue);
+      expect(
+        size.controller.selection,
+        TextSelection(baseOffset: 0, extentOffset: size.controller.text.length),
+      );
+
+      // A face arrives in the engine meanwhile: the tool reads its texts
+      // again and tells whoever listens — and the keyboard stays put.
+      textToolOf(tester).celTextsChanged();
+      await pumpFrames(tester);
+
+      expect(typedIn(tester, 'size').focusNode.hasFocus, isTrue);
+
+      await pencil(tester, 'tracking');
+
+      expect(typed, findsOneWidget, reason: 'one field open');
+      expect(typedIn(tester, 'tracking').focusNode.hasFocus, isTrue);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+
+      expect(typed, findsNothing);
+      expect(textToolOf(tester).letters, isNotNull, reason: 'still typing');
+      expect(textHasTheKeyboard(tester), isTrue);
+    });
+
+    testWidgets('🚨but letters TAKEN UP take the keyboard from whoever holds '
+        'it — the person pressed into a text', (tester) async {
+      await pumpWithSettings(tester);
+      // A field that keeps the keyboard through a press outside it, as a
+      // stock one does through a touch.
+      final elsewhere = FocusNode();
+      final field = OverlayEntry(
+        builder: (_) => Positioned(
+          left: 0,
+          top: 0,
+          width: 120,
+          child: Material(
+            child: TextField(focusNode: elsewhere, onTapOutside: (_) {}),
+          ),
+        ),
+      );
+      tester
+          .state<NavigatorState>(find.byType(Navigator).first)
+          .overlay!
+          .insert(field);
+      await pumpFrames(tester);
+      elsewhere.requestFocus();
+      await pumpFrames(tester);
+      expect(elsewhere.hasFocus, isTrue, reason: '⛔fixture');
+
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+
+      expect(textToolOf(tester).letters, isNotNull, reason: '⛔fixture');
+      expect(textHasTheKeyboard(tester), isTrue);
+      field.remove();
+      await pumpFrames(tester);
+      elsewhere.dispose();
+    });
+
+    testWidgets('🚨and held by NO field — a control took the keyboard — the '
+        'text takes it back at its next change', (tester) async {
+      await pumpWithSettings(tester);
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      final control = FocusNode();
+      final entry = OverlayEntry(
+        builder: (_) => Positioned(
+          left: 0,
+          top: 0,
+          child: Focus(
+            focusNode: control,
+            child: const SizedBox(width: 8, height: 8),
+          ),
+        ),
+      );
+      tester
+          .state<NavigatorState>(find.byType(Navigator).first)
+          .overlay!
+          .insert(entry);
+      await pumpFrames(tester);
+      control.requestFocus();
+      await pumpFrames(tester);
+      expect(textHasTheKeyboard(tester), isFalse, reason: '⛔fixture');
+
+      textToolOf(tester).celTextsChanged();
+      await pumpFrames(tester);
+
+      expect(textHasTheKeyboard(tester), isTrue);
+      entry.remove();
+      await pumpFrames(tester);
+      control.dispose();
+    });
+
+    testWidgets('🚨with letters SELECTED it reaches those alone — and the '
+        'keyboard is the text\'s again once it is set', (tester) async {
+      final c = await hiInHand(tester);
+      await clickAt(tester, c.dx + 20, c.dy + 12);
+      await dragFrom(
+        tester,
+        Offset(c.dx + 50, c.dy + 30),
+        Offset(c.dx + 95, c.dy + 30),
+      );
+      expect(
+        textToolOf(tester).letters!.selection,
+        const TextSelection(baseOffset: 1, extentOffset: 2),
+        reason: '⛔fixture',
+      );
+
+      await pencil(tester, 'size');
+      await tester.enterText(typed, '50');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await pumpFrames(tester);
+
+      expect(typed, findsNothing, reason: '⛔fixture: set');
+      expect(textHasTheKeyboard(tester), isTrue);
+      expect(
+        textToolOf(tester).letters!.selection,
+        const TextSelection(baseOffset: 1, extentOffset: 2),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      final spans = celOf(tester).texts.single.content.spans;
+      expect([for (final span in spans) span.text], ['h', 'i']);
+      expect(spans.last.style.fontSize, closeTo(50, 1e-9));
+      expect(spans.first.style.fontSize, isNot(closeTo(50, 1e-9)));
+    });
+  });
+
   testWidgets('with NOTHING in hand a setting is the next text\'s: the '
       'letters typed after it wear it', (tester) async {
     await pumpWithSettings(tester);
@@ -208,9 +413,9 @@ void main() {
 
   // 🗣️유저 2026-10-06: 「텍스트 그림으로 굳히기 아이디어 좋네 … 나중에
   // 도구설정에 등장시키기로. 동작은 텍스트 선택하면 해당 버튼 활성화색」.
-  group('「그림으로 굳히기」', () {
-    FilledButton button(WidgetTester tester) =>
-        tester.widget<FilledButton>(row('into-drawing'));
+  group('「래스터라이즈」', () {
+    ToolSettingAction button(WidgetTester tester) =>
+        tester.toolSettingAction(row('into-drawing'));
 
     testWidgets('🚨pressed, the text in hand is its cel\'s DRAWING: the '
         'canvas shows what it showed, to the byte, the hand is free — and '
@@ -488,5 +693,311 @@ void main() {
           c.dy.toInt() + y,
         ),
     ], before);
+  });
+
+  // 🗣️I-95 (유저 2026-10-12): 「텍스트도구에도 변형도구처럼 위치값 존재 …
+  // 프리미어처럼 글자 캔버스에서 가로중앙정렬해서 중앙에 넣는다던가」 —
+  // I-95-Q1 (10-14): 「개념적으로 트랜스폼이랑 같은 인식임」.
+  group('「위치」', () {
+    /// The middle of the box of the cel's one text, as it landed.
+    Offset landedCentre(WidgetTester tester) =>
+        celTextBoxOf(celOf(tester).texts.single.content).centre;
+
+    DragValueLabel box(WidgetTester tester, String name) =>
+        tester.widget<DragValueLabel>(
+          find.ancestor(of: row(name), matching: find.byType(DragValueLabel)),
+        );
+
+    testWidgets('🚨X and Y read where the middle of the box stands — a '
+        'number typed stands it there, and a step goes a pixel on: a step '
+        'back each, the text still in hand', (tester) async {
+      await hiInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = landedCentre(tester);
+      await reach(tester, 'x');
+
+      expect(reading('x', before.dx), findsOneWidget);
+      expect(reading('y', before.dy), findsOneWidget);
+
+      await tester.tap(row('x-edit'));
+      await pumpFrames(tester);
+      await tester.enterText(row('x-input'), '500');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await pumpFrames(tester);
+
+      expect(
+        landedCentre(tester),
+        offsetMoreOrLessEquals(Offset(500, before.dy)),
+      );
+      expect(reading('x', 500), findsOneWidget);
+      expect(history.undoCount, steps + 1);
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
+
+      await press(tester, 'x-step-up');
+
+      expect(
+        landedCentre(tester),
+        offsetMoreOrLessEquals(Offset(501, before.dy)),
+      );
+      expect(history.undoCount, steps + 2);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester).dx, moreOrLessEquals(500));
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(before));
+    });
+
+    testWidgets('🚨a scrub on X carries the text a whole pixel at a time and '
+        'lands nothing as it goes — and is ONE step back', (tester) async {
+      await hiInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = landedCentre(tester);
+      await reach(tester, 'x');
+
+      // ⚠️A hand-driven gesture, not `tester.drag`: that delivers the whole
+      // travel as ONE update, and would pass on a box that landed each.
+      final scrub = await tester.startGesture(
+        tester.getCenter(row('x')),
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var i = 0; i < 4; i += 1) {
+        await scrub.moveBy(const Offset(10, 0));
+        await tester.pump();
+      }
+      final carried =
+          textToolOf(tester).session!.shown.layout.onCanvas.centre - before;
+
+      expect(carried.dx, greaterThan(0), reason: '⛔전제: it was carried');
+      expect(carried.dx, moreOrLessEquals(carried.dx.roundToDouble()));
+      expect(carried.dy, moreOrLessEquals(0));
+      expect(history.undoCount, steps, reason: 'nothing landed as it went');
+
+      await scrub.up();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(before + carried));
+      expect(history.undoCount, steps + 1);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(before));
+    });
+
+    testWidgets('가로 가운데 · 세로 가운데 stand it on the canvas\'s middle '
+        'lines, a step each — and with nothing in hand all of 「위치」 keeps '
+        'its place, dimmed', (tester) async {
+      await pumpWithSettings(tester);
+      await reach(tester, 'x');
+
+      for (final name in ['x', 'y']) {
+        expect(box(tester, name).enabled, isFalse, reason: name);
+      }
+      for (final name in ['centre-across', 'centre-down']) {
+        expect(
+          tester.toolSettingAction(row(name)).onPressed,
+          isNull,
+          reason: name,
+        );
+      }
+
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = landedCentre(tester);
+      final middle = Offset(
+        defaultCutCanvasSize.width / 2,
+        defaultCutCanvasSize.height / 2,
+      );
+      for (final (stands, middleOf) in [
+        (before.dx, middle.dx),
+        (before.dy, middle.dy),
+      ]) {
+        expect(stands, isNot(moreOrLessEquals(middleOf)), reason: '⛔fixture');
+      }
+
+      await press(tester, 'centre-across');
+
+      expect(
+        landedCentre(tester),
+        offsetMoreOrLessEquals(Offset(middle.dx, before.dy)),
+      );
+
+      await press(tester, 'centre-down');
+
+      expect(landedCentre(tester), offsetMoreOrLessEquals(middle));
+      expect(history.undoCount, steps + 2);
+    });
+  });
+
+  // 🚨text-settings-redrawn-per-drag-sample (10-14): the hand tells of every
+  // sample of a drag, and the settings were ONE builder on it — every row
+  // was built again for each. A control hears only what it shows (F-164,
+  // the transform tool's numbers: 「패널리빌드하지말고 글자만 바꾸게」).
+  group('one sample of a drag on the canvas', () {
+    /// What no sample of a drag of the text in hand builds again: the
+    /// section, its rows and keys, and every control whose value such a
+    /// drag does not move.
+    const steady = [
+      TextToolSettings,
+      ToolSettingsSection,
+      PanelKeysBinding,
+      ToolSettingRow,
+      SettingsSwitchRow,
+      ToolSettingChoiceRow<bool>,
+      ToolSettingChoiceRow<TextCelAlign>,
+      ColorSwatchButton,
+      PanelFlyoutButton,
+    ];
+
+    /// The mouse, event by event: the census is of ONE sample, and the
+    /// harness's gestures pump between theirs.
+    const mouse = 41;
+    PointerDownEvent downAt(Offset at) => PointerDownEvent(
+      pointer: mouse,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+      position: at,
+    );
+    PointerMoveEvent moveTo(Offset at) => PointerMoveEvent(
+      pointer: mouse,
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+      position: at,
+    );
+
+    /// A drag on the screen from [from] by [first] and then [then], the
+    /// census taken of the second sample alone — [meanwhile] asked before
+    /// the mouse lets go.
+    Future<List<Type>> dragged(
+      WidgetTester tester,
+      Offset from, {
+      required Offset first,
+      required Offset then,
+      required void Function() meanwhile,
+    }) async {
+      final binding = tester.binding;
+      binding.handlePointerEvent(downAt(from));
+      await tester.pump();
+      binding.handlePointerEvent(moveTo(from + first));
+      await tester.pump();
+      final census = await frameCensus(
+        tester,
+        () => binding.handlePointerEvent(moveTo(from + first + then)),
+      );
+      meanwhile();
+      binding.handlePointerEvent(
+        PointerUpEvent(
+          pointer: mouse,
+          kind: PointerDeviceKind.mouse,
+          position: from + first + then,
+        ),
+      );
+      await pumpFrames(tester);
+      return census.rebuilt;
+    }
+
+    Offset shownCentre(WidgetTester tester) =>
+        textToolOf(tester).session!.shown.layout.onCanvas.centre;
+
+    testWidgets('🚨the text CARRIED builds its X again — and nothing else of '
+        'the settings, not even its Y', (tester) async {
+      final c = await hiInHand(tester);
+      await reach(tester, 'x');
+      final before = shownCentre(tester);
+
+      final rebuilt = await dragged(
+        tester,
+        onScreen(tester, c.dx + 10, c.dy + 30),
+        first: const Offset(20, 0),
+        then: const Offset(20, 0),
+        meanwhile: () {
+          final centre = shownCentre(tester);
+          expect(centre.dx, greaterThan(before.dx), reason: '⛔fixture');
+          expect(reading('x', centre.dx), findsOneWidget, reason: 'LIVENESS');
+        },
+      );
+
+      expect(
+        rebuilt.where((type) => type == DragValueLabel),
+        hasLength(1),
+        reason: 'the X — and not the Y, which stood still',
+      );
+      for (final type in [...steady, FieldSlider]) {
+        expect(rebuilt, isNot(contains(type)), reason: '$type');
+      }
+    });
+
+    testWidgets('🚨the text SIZED by a corner builds its size again — and no '
+        'row, switch, choice, colour or list of the settings', (tester) async {
+      await hiInHand(tester);
+      await reach(tester, 'size');
+      final before = textToolOf(tester).contentInHand!.spans.single.style;
+      final corner = textToolOf(tester).session!.shown.layout.onCanvas.corners
+          .reduce((a, b) => a.dx + a.dy > b.dx + b.dy ? a : b);
+
+      final rebuilt = await dragged(
+        tester,
+        onScreen(tester, corner.dx, corner.dy),
+        first: const Offset(10, 10),
+        then: const Offset(20, 20),
+        meanwhile: () {
+          final sized = textToolOf(tester).contentInHand!.spans.single.style;
+          expect(
+            sized.fontSize,
+            isNot(before.fontSize),
+            reason: '⛔fixture: the corner sizes it',
+          );
+          expect(
+            tester.widget<FieldSlider>(row('size')).value,
+            sized.fontSize,
+            reason: 'LIVENESS',
+          );
+        },
+      );
+
+      expect(rebuilt, contains(FieldSlider));
+      for (final type in steady) {
+        expect(rebuilt, isNot(contains(type)), reason: '$type');
+      }
+    });
+
+    testWidgets('🚨letters SWEPT OVER that agree on everything build nothing '
+        'of the settings again', (tester) async {
+      final c = await hiInHand(tester);
+      // Into the letters — a click inside the box, beside the cross in its
+      // middle.
+      await clickAt(tester, c.dx + 20, c.dy + 12);
+      expect(textToolOf(tester).hold, CelTextHold.letters, reason: '⛔fixture');
+      Offset along(double pixels) =>
+          onLayer(tester, pixels, 0) - onLayer(tester, 0, 0);
+
+      final rebuilt = await dragged(
+        tester,
+        onScreen(tester, c.dx + 5, c.dy + 30),
+        first: along(40),
+        then: along(45),
+        meanwhile: () => expect(
+          textToolOf(tester).letters!.selection,
+          const TextSelection(baseOffset: 0, extentOffset: 2),
+          reason: 'LIVENESS: the letters were swept over',
+        ),
+      );
+
+      for (final type in [...steady, FieldSlider, DragValueLabel]) {
+        expect(rebuilt, isNot(contains(type)), reason: '$type');
+      }
+    });
   });
 }

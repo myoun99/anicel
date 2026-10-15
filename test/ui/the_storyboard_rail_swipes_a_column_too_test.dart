@@ -14,6 +14,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerBlendSlotWidth;
+
+import '../helpers/app_icon_button_probe.dart';
+import '../helpers/named_finders.dart';
+import '../helpers/storyboard_twirls.dart';
 
 /// 🚨★★★THE STORYBOARD RAIL SWIPES A COLUMN, LIKE THE TIMELINE RAIL DOES.
 ///
@@ -106,10 +112,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -130,7 +140,7 @@ void main() {
   /// 어때」). The eye column is the S rows' and the transition rows' now,
   /// and a V row is a row the sweep steps over.
   Finder eyeOf(String trackId) =>
-      find.byKey(ValueKey<String>('storyboard-layer-visibility-$trackId-s1'));
+      find.named('storyboard-layer-visibility-$trackId-s1');
 
   /// The transition rows, the other kind that carries the eye column — this
   /// one on the track's transition layer.
@@ -144,15 +154,11 @@ void main() {
   Set<String> openSeRows(WidgetTester tester) => {
     for (final id in const ['t1', 't2', 't3'])
       if (tester
-          .widgetList<Icon>(
-            find.descendant(
-              of: find.byKey(
-                ValueKey<String>('storyboard-se-lane-toggle-$id-1'),
-              ),
-              matching: find.byType(Icon),
-            ),
-          )
-          .any((icon) => icon.icon == Icons.arrow_drop_down))
+              .appIconButton(
+                find.named('storyboard-se-lane-toggle-$id-1'),
+              )
+              .icon ==
+          Icons.arrow_drop_down)
         '$id-1',
   };
 
@@ -193,12 +199,19 @@ void main() {
       greaterThan(0),
       reason: 'the eye stands inside the rail, or nothing below means much',
     );
+    // ↩️Under 80 until the rail took the blend column with the conte row's
+    // head (I-73, 2026-10-08): that slot stands between the eye and the
+    // edge on every row now, the rows with no blend to show included.
     expect(
       rail.right - eye.right,
-      lessThan(80),
+      allOf(
+        greaterThan(layerBlendSlotWidth),
+        lessThan(80 + layerBlendSlotWidth),
+      ),
       reason:
           'the eye is a TRAILING column: it sits near the rail\'s right '
-          'edge, which is what the band arithmetic counts back from',
+          'edge — the mute, the opacity and the blend slots off it — which '
+          'is what the band arithmetic counts back from',
     );
   });
 
@@ -333,7 +346,7 @@ void main() {
     final session = await pumpRail(tester);
     final sheets = [
       for (final id in const ['t1-s1', 't2-s1', 't3-s1'])
-        find.byKey(ValueKey<String>('storyboard-layer-timesheet-$id')),
+        find.named('storyboard-layer-timesheet-$id'),
     ];
     for (final sheet in sheets) {
       expect(sheet, findsOneWidget, reason: 'the fixture mounts the button');
@@ -393,10 +406,10 @@ void main() {
     );
 
     final first = tester.getCenter(
-      find.byKey(const ValueKey<String>('storyboard-track-fx-t1')),
+      find.named('storyboard-track-fx-t1'),
     );
     final next = tester.getCenter(
-      find.byKey(const ValueKey<String>('storyboard-layer-fx-t1-s1')),
+      find.named('storyboard-layer-fx-t1-s1'),
     );
     final gesture = await tester.startGesture(first);
     for (var step = 1; step <= 6; step += 1) {
@@ -427,7 +440,7 @@ void main() {
     await pumpRail(tester);
     final twirls = [
       for (final id in const ['t1', 't2', 't3'])
-        find.byKey(ValueKey<String>('storyboard-se-lane-toggle-$id-1')),
+        find.named('storyboard-se-lane-toggle-$id-1'),
     ];
     for (final twirl in twirls) {
       expect(twirl, findsOneWidget, reason: 'the fixture mounts the twirl');
@@ -490,7 +503,7 @@ void main() {
     ) async {
       final session = await pumpRail(tester);
       final key = start.keyOf(session.repository.requireProject().tracks.first);
-      final from = find.byKey(ValueKey<String>(key));
+      final from = find.named(key);
       expect(from, findsOneWidget, reason: 'the fixture mounts $key');
 
       final gesture = await tester.startGesture(tester.getCenter(from));
@@ -568,10 +581,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardTabHost(
               session: session,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -586,7 +603,7 @@ void main() {
 
     Track theTrack() => session.repository.requireProject().tracks.single;
     Finder eye(String id) =>
-        find.byKey(ValueKey<String>('storyboard-layer-visibility-$id'));
+        find.named('storyboard-layer-visibility-$id');
     final cue = tester.getCenter(eye('${theTrack().transitionLayer.id}'));
     final upper = tester.getRect(eye('t1-s2'));
     expect(

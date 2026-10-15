@@ -1,10 +1,16 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -18,16 +24,30 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
+/// One covered cut's share of the frame as the stack lays it: the unit's
+/// fade, the painter under its picture (the apron, an absent paper's
+/// checkerboard), the thinning on its picture, the picture's own stack —
+/// its paper with it — and the painter over it (names, veils).
+typedef _Unit = ({
+  double fade,
+  PlaybackFramePainter under,
+  double thinning,
+  CanvasLayerStackView stack,
+  PlaybackFramePainter over,
+});
+
 /// The multitrack display path's canvas content: every track's covered cut
-/// stacks as one camera projection per track (bottom letterboxes + paper,
-/// the rest composite transparently), and uncovered frames stay the void.
+/// stacks as one camera projection per track (the bottom's paper under it,
+/// the rest composite transparently), drawn from its rows' images as the
+/// canvas draws them, and uncovered frames stay the void.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const cameraFrameSize = CanvasSize(width: 4, height: 2);
@@ -42,9 +62,7 @@ void main() {
   );
 
   /// track-1: cut-a [0,4) — track-2: cut-c [2,12). Frame 3 is covered by
-  /// both; frame 5 by track-2 alone; frame 12+ by nobody. The V effects
-  /// live on each TRACK now (R4) and reach the view via [pumpView]'s
-  /// `transformTrackOf` callback, keyed on the GLOBAL frame axis.
+  /// both; frame 5 by track-2 alone; frame 12+ by nobody.
   Project project() => Project(
     id: const ProjectId('project'),
     name: 'Project',
@@ -64,46 +82,46 @@ void main() {
     createdAt: DateTime.utc(2026),
   );
 
-  BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
-      BrushFrameKey(
-        projectId: const ProjectId('project'),
-        trackId: const TrackId('track-1'),
-        cutId: cut.id,
-        layerId: layerId,
-        frameId: frameId,
-      );
+  /// A cut's frame as the stack is told it — one row naming the cut and the
+  /// frame, so a unit says which frame of which cut it was handed.
+  List<CompositeNode<CanvasStackRow>> stackOf(Cut cut, int frameIndex) => [
+    CompositeLeaf(
+      CanvasLayerImageRequest(
+        frameKey: BrushFrameKey(
+          projectId: const ProjectId('project'),
+          trackId: const TrackId('track-1'),
+          cutId: cut.id,
+          layerId: const LayerId('layer'),
+          frameId: FrameId('${cut.id.value}@$frameIndex'),
+        ),
+        opacity: 1,
+      ),
+    ),
+  ];
 
-  ({
-    CutFrameCompositeCache composites,
-    ValueNotifier<int?> frame,
-    List<StoryboardTimelineLayoutEntry> layout,
-  })
-  fixture() {
-    final store = BrushFrameStore();
-    final composites = CutFrameCompositeCache(
-      layerImages: LayerFrameImageCache(frameStore: store),
-      frameStore: store,
-      frameKeyOf: frameKey,
-    );
-    return (
-      composites: composites,
-      frame: ValueNotifier<int?>(null),
-      layout: buildStoryboardTimelineLayout(project()),
-    );
-  }
+  String? toldFrame(CanvasLayerStackView stack) =>
+      stack.layers.single.frameKey.frameId.value;
+
+  ({ValueNotifier<int?> frame, List<StoryboardTimelineLayoutEntry> layout})
+  fixture() => (
+    frame: ValueNotifier<int?>(null),
+    layout: buildStoryboardTimelineLayout(project()),
+  );
 
   Future<void> pumpView(
     WidgetTester tester, {
-    required CutFrameCompositeCache composites,
     required ValueNotifier<int?> frame,
     required List<StoryboardTimelineLayoutEntry> layout,
-    bool Function(CutId cutId)? cutFxEnabledOf,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
+    StackRun? run,
+    void Function(Object cut, int bytes)? onBufferBytes,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
     bool pasteboardNone = false,
   }) async {
+    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+    addTearDown(images.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -114,13 +132,15 @@ void main() {
               spansOf: spansOf ?? (_) => const [],
               globalFrameIndex: globalFrame,
             ),
-            compositeCache: composites,
+            stackOf: stackOf,
+            imageCache: images,
             cameraFrameSize: cameraFrameSize,
             cameraViewEnabled: cameraViewEnabled,
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
-            cutFxEnabledOf: cutFxEnabledOf,
             seNameTagsOf: seNameTagsOf,
+            run: run,
+            onBufferBytes: onBufferBytes,
             pasteboardArgb: 0xff123456,
             backdropNone: backdropNone,
             pasteboardNone: pasteboardNone,
@@ -130,75 +150,164 @@ void main() {
     );
   }
 
-  List<PlaybackFramePainter> paintersOf(WidgetTester tester) {
-    return [
-      for (final paint in tester.widgetList<CustomPaint>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('canvas-track-stack-frames')),
-          matching: find.byType(CustomPaint),
-        ),
-      ))
-        // An absent backdrop's checkerboard floor rides the same stack
-        // (F-114); only the frames are asked about here.
-        if (paint.painter case final PlaybackFramePainter painter) painter,
-    ];
-  }
-
-  Future<void> warm(
-    WidgetTester tester,
-    CutFrameCompositeCache composites,
-    List<StoryboardTimelineLayoutEntry> layout,
-    List<(String, int)> frames,
-  ) async {
-    await tester.runAsync(() async {
-      for (final (cutId, frameIndex) in frames) {
-        final cut = layout
-            .firstWhere((entry) => entry.cutId == CutId(cutId))
-            .cut;
-        await composites.prepareComposite(
-          cut: cut,
-          frameIndex: frameIndex,
+  List<_Unit> unitsOf(WidgetTester tester) => [
+    for (final unit in find
+        .byWidgetPredicate(
+          (widget) => switch (widget.key) {
+            ValueKey<Object>(value: ('track-stack-unit', _)) => true,
+            _ => false,
+          },
+        )
+        .evaluate())
+      () {
+        final inUnit = find.byElementPredicate(
+          (element) => identical(element, unit),
         );
-      }
-    });
+        final painters = [
+          for (final paint in tester.widgetList<CustomPaint>(
+            find.descendant(of: inUnit, matching: find.byType(CustomPaint)),
+          ))
+            if (paint.painter case final PlaybackFramePainter painter) painter,
+        ];
+        return (
+          fade: (unit.widget as Opacity).opacity,
+          under: painters.first,
+          thinning: tester
+              .widget<Opacity>(
+                find.descendant(of: inUnit, matching: find.byType(Opacity)),
+              )
+              .opacity,
+          stack: tester.widget<CanvasLayerStackView>(
+            find.descendant(
+              of: inUnit,
+              matching: find.byType(CanvasLayerStackView),
+            ),
+          ),
+          over: painters.last,
+        );
+      }(),
+  ];
+
+  const backdrop = 0xFF2040C0;
+  final screen = GlobalKey();
+
+  /// The stack at [frame] seen through the camera, twenty screen pixels a
+  /// canvas pixel — the camera's frame is the screen's top left 80×40 — and
+  /// what it put on screen, as the colour at a pixel.
+  Future<int Function(int x, int y)> seenAt(
+    WidgetTester tester,
+    int frame, {
+    required List<StoryboardTimelineLayoutEntry> layout,
+    List<TransitionSpan> Function(TrackId trackId)? spansOf,
+    bool backdropNone = false,
+  }) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+    addTearDown(images.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: RepaintBoundary(
+            key: screen,
+            child: SizedBox(
+              width: 100,
+              height: 60,
+              child: CanvasTrackStackView(
+                globalFrame: ValueNotifier<int?>(frame),
+                positionsOf: (globalFrame) => resolveTrackStackContributions(
+                  layout: layout,
+                  spansOf: spansOf ?? (_) => const [],
+                  globalFrameIndex: globalFrame,
+                ),
+                // Nothing drawn: what shows is the stage alone.
+                stackOf: (_, _) => const [],
+                imageCache: images,
+                cameraFrameSize: cameraFrameSize,
+                cameraViewEnabled: true,
+                cameraPoseOf: (cut, frameIndex) =>
+                    CameraPose(center: CanvasPoint(x: 4, y: 4)),
+                viewport: CanvasViewport(zoom: 20),
+                backdropArgb: backdrop,
+                backdropNone: backdropNone,
+                pasteboardArgb: 0xff123456,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final render =
+        screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final rgba = (await tester.runAsync<Uint8List>(() async {
+      final image = await render.toImage();
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    }))!;
+    return (int x, int y) {
+      final o = (y * 100 + x) * 4;
+      return (rgba[o + 3] << 24) |
+          (rgba[o] << 16) |
+          (rgba[o + 1] << 8) |
+          rgba[o + 2];
+    };
   }
 
   testWidgets('a frame covered by both tracks stacks one camera projection '
-      'per track — the bottom letterboxes and papers, the one above '
-      'composites transparently', (tester) async {
+      'per track — the bottom papers, the one above composites '
+      'transparently', (tester) async {
     final f = fixture();
-    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
-
     f.frame.value = 3;
-    await pumpView(
-      tester,
-      composites: f.composites,
-      frame: f.frame,
-      layout: f.layout,
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+
+    final units = unitsOf(tester);
+    expect(units, hasLength(2));
+    expect(units[0].under.cameraPose, isNotNull, reason: 'camera framing');
+    expect(units[0].under.cameraFrameSize, cameraFrameSize);
+    expect(units[0].stack.paintPaper, isTrue);
+    expect(units[1].under.cameraPose, isNotNull);
+    expect(units[1].stack.paintPaper, isFalse, reason: 'stacks over the bottom');
+    expect(
+      [
+        for (final unit in units) ...[
+          unit.under.paintLetterbox,
+          unit.over.paintLetterbox,
+        ],
+      ],
+      everyElement(isFalse),
+      reason: 'the letterbox is the floor\'s, under every track',
     );
+  });
 
-    final painters = paintersOf(tester);
-    expect(painters, hasLength(2));
-    expect(painters[0].image, isNotNull);
-    expect(painters[0].cameraPose, isNotNull, reason: 'camera framing');
-    expect(painters[0].cameraFrameSize, cameraFrameSize);
-    expect(painters[0].paintPaper, isTrue);
-    expect(painters[0].paintLetterbox, isTrue);
-    expect(painters[1].image, isNotNull);
-    expect(painters[1].cameraPose, isNotNull);
-    expect(painters[1].paintPaper, isFalse, reason: 'stacks over the bottom');
-    expect(painters[1].paintLetterbox, isFalse);
+  testWidgets('🚨each unit is its OWN cut\'s tree at its own frame, drawn '
+      'through the camera from the canvas\'s images', (tester) async {
+    final f = fixture();
+    f.frame.value = 3;
+    await pumpView(tester, frame: f.frame, layout: f.layout);
 
-    f.composites.dispose();
+    final units = unitsOf(tester);
+    expect(
+      [for (final unit in units) toldFrame(unit.stack)],
+      ['cut-a@3', 'cut-c@1'],
+      reason: 'cut-a at its frame 3, cut-c — two frames in — at its frame 1',
+    );
+    expect(
+      units.first.stack.viewport,
+      isNot(CanvasViewport()),
+      reason: 'seen through the camera: the panel\'s view with the '
+          'projection under it',
+    );
   });
 
   testWidgets('each unit carries the names its OWN cut speaks, at its own '
       'frame', (tester) async {
     final f = fixture();
-    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
     ResolvedSeNameTag tagOf(Cut cut, int frame) => ResolvedSeNameTag(
       layerId: '${cut.id.value}@$frame',
       widthBudget: 100,
+      shot: const LayerPlacement.identity(),
       content: TextCelContent(
         text: cut.id.value,
         style: SeNameTag.defaultStyle,
@@ -209,7 +318,6 @@ void main() {
     f.frame.value = 3;
     await pumpView(
       tester,
-      composites: f.composites,
       frame: f.frame,
       layout: f.layout,
       seNameTagsOf: (cut, frame) => [tagOf(cut, frame)],
@@ -217,8 +325,8 @@ void main() {
 
     expect(
       [
-        for (final painter in paintersOf(tester))
-          [for (final tag in painter.seNameTags) tag.layerId],
+        for (final unit in unitsOf(tester))
+          [for (final tag in unit.over.seNameTags) tag.layerId],
       ],
       [
         ['cut-a@3'],
@@ -226,29 +334,44 @@ void main() {
       ],
       reason: 'resolved PER CUT (R5b): each covered track its own speakers',
     );
-
-    f.composites.dispose();
+    expect(
+      [for (final unit in unitsOf(tester)) unit.under.seNameTags],
+      everyElement(isEmpty),
+      reason: 'the names lie over the picture, never under it',
+    );
   });
 
   testWidgets('a frame covered on one track alone paints just that track '
       '(the gap on the other contributes nothing)', (tester) async {
     final f = fixture();
-    await warm(tester, f.composites, f.layout, [('cut-c', 3)]);
-
     f.frame.value = 5; // track-1 has no cut here
-    await pumpView(
-      tester,
-      composites: f.composites,
-      frame: f.frame,
-      layout: f.layout,
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+
+    final units = unitsOf(tester);
+    expect(units, hasLength(1));
+    expect(units.single.stack.paintPaper, isTrue);
+    expect(
+      units.single.under.paintPaper,
+      isFalse,
+      reason: 'the paper is the canvas\'s own, drawn with its rows',
     );
+    expect(units.single.under.paintLetterbox, isFalse, reason: 'the floor\'s');
+  });
 
-    final painters = paintersOf(tester);
-    expect(painters, hasLength(1));
-    expect(painters.single.paintPaper, isTrue);
-    expect(painters.single.paintLetterbox, isTrue);
+  testWidgets('seen through the camera, the floor is the letterbox past its '
+      'frame and the backdrop in it — or the checkerboard, where there is '
+      'none (F-114)', (tester) async {
+    final layout = buildStoryboardTimelineLayout(project());
+    var at = await seenAt(tester, 20, layout: layout);
+    expect(at(40, 20), backdrop, reason: 'in the frame, no track covers it');
+    expect(at(90, 50), PlaybackFramePainter.letterboxColor.toARGB32());
 
-    f.composites.dispose();
+    at = await seenAt(tester, 20, layout: layout, backdropNone: true);
+    expect(
+      at(40, 20),
+      isNot(anyOf(backdrop, PlaybackFramePainter.letterboxColor.toARGB32())),
+      reason: 'the checkerboard',
+    );
   });
 
   testWidgets('a frame no track covers (and the null no-parking state) '
@@ -256,12 +379,7 @@ void main() {
     final f = fixture();
 
     f.frame.value = 20;
-    await pumpView(
-      tester,
-      composites: f.composites,
-      frame: f.frame,
-      layout: f.layout,
-    );
+    await pumpView(tester, frame: f.frame, layout: f.layout);
     expect(
       find.byKey(const ValueKey<String>('canvas-track-stack-void')),
       findsOneWidget,
@@ -273,25 +391,19 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-track-stack-void')),
       findsOneWidget,
     );
-
-    f.composites.dispose();
   });
 
   testWidgets('moving the parking repaints the stack to the new frame\'s '
       'coverage', (tester) async {
     final f = fixture();
     f.frame.value = 3;
-    await pumpView(
-      tester,
-      composites: f.composites,
-      frame: f.frame,
-      layout: f.layout,
-    );
-    expect(paintersOf(tester), hasLength(2));
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+    expect(unitsOf(tester), hasLength(2));
 
     f.frame.value = 5;
     await tester.pump();
-    expect(paintersOf(tester), hasLength(1), reason: 'track-1 gapped away');
+    expect(unitsOf(tester), hasLength(1), reason: 'track-1 gapped away');
+    expect(toldFrame(unitsOf(tester).single.stack), 'cut-c@3');
 
     f.frame.value = 20;
     await tester.pump();
@@ -299,41 +411,38 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-track-stack-void')),
       findsOneWidget,
     );
-
-    f.composites.dispose();
   });
 
-  testWidgets('cache misses show no picture yet; a later warm shows on the '
-      'next build, and moving to an unwarmed frame keeps the stale held '
-      'frame (the playback stale policy)', (tester) async {
+  testWidgets('a run\'s pictures are the warmer\'s; a parked frame\'s, each '
+      'cut makes its own', (tester) async {
     final f = fixture();
     f.frame.value = 3;
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+    expect(
+      [for (final unit in unitsOf(tester)) unit.stack.run],
+      [null, null],
+      reason: 'parked: 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206)',
+    );
+    expect(
+      [for (final unit in unitsOf(tester)) unit.stack.wholeFrames],
+      [true, true],
+      reason: 'and a drag that parks frame after frame shows each cut\'s last '
+          'whole frame until the next is made, never its bare paper',
+    );
+
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
     await pumpView(
       tester,
-      composites: f.composites,
       frame: f.frame,
       layout: f.layout,
+      run: (landings: landings, gaveUpOn: (_) => false),
     );
-    expect(paintersOf(tester)[0].image, isNull, reason: 'nothing warmed yet');
-
-    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
-    await pumpView(
-      tester,
-      composites: f.composites,
-      frame: f.frame,
-      layout: f.layout,
+    expect(
+      [for (final unit in unitsOf(tester)) unit.stack.run?.landings],
+      [same(landings), same(landings)],
+      reason: 'a run: every cut it shows waits on the one maker',
     );
-    expect(paintersOf(tester)[0].image, isNotNull);
-    expect(paintersOf(tester)[1].image, isNotNull);
-
-    // Frame 2 is covered by both tracks but only warmed for neither: the
-    // held clones stand in (no flicker to blank).
-    f.frame.value = 2;
-    await tester.pump();
-    expect(paintersOf(tester)[0].image, isNotNull, reason: 'stale held');
-    expect(paintersOf(tester)[1].image, isNotNull, reason: 'stale held');
-
-    f.composites.dispose();
   });
 
   // ↩️Two pins stood here for the V row's own gates, which left its head on
@@ -346,17 +455,10 @@ void main() {
       'washing the stage below', (tester) async {
     // track-1: cut-a [0,10) — the stage. track-2: cut-c [0,4) then cut-d
     // [4,10), with the O.L over [2,6).
-    final store = BrushFrameStore();
-    final composites = CutFrameCompositeCache(
-      layerImages: LayerFrameImageCache(frameStore: store),
-      frameStore: store,
-      frameKeyOf: frameKey,
-    );
     final frame = ValueNotifier<int?>(3);
     addTearDown(frame.dispose);
     await pumpView(
       tester,
-      composites: composites,
       frame: frame,
       layout: buildStoryboardTimelineLayout(
         Project(
@@ -383,27 +485,30 @@ void main() {
           : const [],
     );
 
-    final painters = paintersOf(tester);
-    expect(painters, hasLength(3), reason: 'the stage, and the O.L\'s two');
-    expect(painters[0].fadeOpacity, 1);
-    expect(painters[0].imageOpacity, 1);
-    for (final upper in painters.skip(1)) {
+    final units = unitsOf(tester);
+    expect(units, hasLength(3), reason: 'the stage, and the O.L\'s two');
+    expect(units[0].fade, 1);
+    expect(units[0].thinning, 1);
+    for (final upper in units.skip(1)) {
       expect(
-        upper.fadeOpacity,
+        upper.fade,
         1,
         reason: 'an upper wash would cover the whole frame below',
       );
     }
     // Frame 3 = offset 1 of 4: the leaving cut opaque, the arriving one at
     // the ramp's 1/3 — the bottom track's own two weights, on the picture.
-    expect(painters[1].imageOpacity, 1);
+    expect(units[1].thinning, 1);
     expect(
-      painters[2].imageOpacity,
+      units[2].thinning,
       closeTo(1 / 3, 1e-9),
       reason: 'its own picture thins',
     );
-
-    composites.dispose();
+    expect(
+      units[2].over.imageOpacity,
+      closeTo(1 / 3, 1e-9),
+      reason: 'and its names and veils with it',
+    );
   });
 
   group('a cut-crossing O.L', () {
@@ -424,94 +529,161 @@ void main() {
       createdAt: DateTime.utc(2026),
     );
 
-    List<TransitionSpan> spans(TrackId _) => const [(start: 2, length: 4, mark: CameraInstructionMarkType.ol)];
+    List<TransitionSpan> spans(TrackId _) =>
+        const [(start: 2, length: 4, mark: CameraInstructionMarkType.ol)];
 
     testWidgets('puts BOTH cuts on screen, leaving one first, and both paint '
         'the stage — a 場面転換 cross-fades the paper too, so keying it to the '
         'bottom CONTRIBUTION would superimpose line art over the old paper', (
       tester,
     ) async {
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      final layout = buildStoryboardTimelineLayout(olProject());
       final frame = ValueNotifier<int?>(3);
       await pumpView(
         tester,
-        composites: composites,
         frame: frame,
-        layout: layout,
+        layout: buildStoryboardTimelineLayout(olProject()),
         spansOf: spans,
       );
 
-      final painters = paintersOf(tester);
-      expect(painters, hasLength(2));
-      expect(painters[0].paintPaper, isTrue);
-      expect(painters[1].paintPaper, isTrue, reason: 'the arriving cut too');
-      expect(painters[0].paintLetterbox, isTrue);
-      expect(painters[1].paintLetterbox, isTrue);
+      final units = unitsOf(tester);
+      expect(units, hasLength(2));
+      expect(units[0].stack.paintPaper, isTrue);
+      expect(units[1].stack.paintPaper, isTrue, reason: 'the arriving cut too');
+      expect(
+        [toldFrame(units[0].stack), toldFrame(units[1].stack)],
+        ['cut-a@3', 'cut-b@1'],
+        reason: 'the leaving cut first, each at its own frame — the '
+            'arriving cut\'s own frames begin at its head のりしろ, two '
+            'before its place on the track (cutMediaRange)',
+      );
+      expect(
+        [units[0].under.paintLetterbox, units[1].under.paintLetterbox],
+        [false, false],
+        reason: 'neither lays a letterbox over the other — the floor holds '
+            'it, under both',
+      );
+    });
 
-      composites.dispose();
+    /// A stack holds its last whole frame until the next one is: a cut's
+    /// stack that went to the other cut would show the other's picture
+    /// until its own is made.
+    testWidgets('🚨each cut keeps its own stack as the other comes and goes '
+        '— the cut left alone does not take over the one that left', (
+      tester,
+    ) async {
+      final frame = ValueNotifier<int?>(1);
+      await pumpView(
+        tester,
+        frame: frame,
+        layout: buildStoryboardTimelineLayout(olProject()),
+        spansOf: spans,
+      );
+      State stackOf(String cut) => tester.state(
+        find.descendant(
+          of: find.byKey(ValueKey<Object>(('track-stack-unit', CutId(cut)))),
+          matching: find.byType(CanvasLayerStackView),
+        ),
+      );
+      final a = stackOf('cut-a');
+
+      frame.value = 3;
+      await tester.pump();
+      expect(unitsOf(tester), hasLength(2), reason: '⛔premise: the O.L');
+      expect(stackOf('cut-a'), same(a), reason: 'the leaving cut keeps its own');
+      final b = stackOf('cut-b');
+      expect(b, isNot(same(a)));
+
+      frame.value = 6;
+      await tester.pump();
+      expect(unitsOf(tester), hasLength(1), reason: '⛔premise: past the O.L');
+      expect(
+        stackOf('cut-b'),
+        same(b),
+        reason: 'the arriving cut, alone now in the first slot, keeps its own '
+            '— not the stack the leaving cut held its pictures in',
+      );
+    });
+
+    /// The census adds the buffers up by name: two cuts telling under one
+    /// would count whichever told last, and the one that went first would
+    /// take the other's bytes off with it.
+    testWidgets('each cut tells its own buffer\'s bytes under its own name', (
+      tester,
+    ) async {
+      final told = <Object, int>{};
+      await pumpView(
+        tester,
+        frame: ValueNotifier<int?>(3),
+        layout: buildStoryboardTimelineLayout(olProject()),
+        spansOf: spans,
+        onBufferBytes: (cut, bytes) => told[cut] = bytes,
+      );
+      final stacks = tester
+          .widgetList<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
+          .toList();
+      expect(stacks, hasLength(2), reason: '⛔premise: the O.L');
+      for (final (i, stack) in stacks.indexed) {
+        stack.onBufferBytes!(100 + i);
+      }
+      expect(told, {const CutId('cut-a'): 100, const CutId('cut-b'): 101});
     });
 
     testWidgets('lays the leaving cut down OPAQUE and the arriving one at the '
         'ramp — painting both at their own share leaves t(1-t) of the floor '
         'showing, which is a dip to black mid-dissolve', (tester) async {
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      final layout = buildStoryboardTimelineLayout(olProject());
       final frame = ValueNotifier<int?>(3);
       await pumpView(
         tester,
-        composites: composites,
         frame: frame,
-        layout: layout,
+        layout: buildStoryboardTimelineLayout(olProject()),
         spansOf: spans,
       );
 
       // Frame 3 = offset 1 of 4 → the canonical ramp bottoms out ON the last
       // frame, so t = 1/3 and the leaving cut owns 2/3.
-      final painters = paintersOf(tester);
-      expect(painters[0].fadeOpacity, 1, reason: 'no floor may show through');
-      expect(painters[1].fadeOpacity, closeTo(1 / 3, 1e-9));
+      final units = unitsOf(tester);
+      expect(units[0].fade, 1, reason: 'no floor may show through');
+      expect(units[1].fade, closeTo(1 / 3, 1e-9));
+      expect(
+        [units[0].thinning, units[1].thinning],
+        [1, 1],
+        reason: 'the stage thins as one unit — paper, picture, names — never '
+            'its picture alone',
+      );
       // The mix the two weights actually produce IS the ramp: source-over of
       // 1 then 1/3 gives 2/3 of the leaving picture and 1/3 of the arriving.
       expect((1 - 1 / 3) * 1, closeTo(2 / 3, 1e-9));
+    });
 
-      composites.dispose();
+    /// 10-10: each stage contribution laid its own letterbox over the whole
+    /// screen, under its fade, so the arriving cut covered the leaving one
+    /// with it — two white papers met at (99,102,104).
+    testWidgets('🚨seen through the camera, it dissolves one paper into the '
+        'other — no letterbox shows through', (tester) async {
+      final at = await seenAt(
+        tester,
+        3,
+        layout: buildStoryboardTimelineLayout(olProject()),
+        spansOf: spans,
+      );
+      expect(at(40, 20), 0xFFFFFFFF, reason: 'paper into paper is paper');
+      expect(at(90, 50), PlaybackFramePainter.letterboxColor.toARGB32());
     });
 
     testWidgets('outside the span nothing changes — one contribution, its own '
         'share, exactly as a project with no transition', (tester) async {
-      final store = BrushFrameStore();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      final layout = buildStoryboardTimelineLayout(olProject());
       final frame = ValueNotifier<int?>(8);
       await pumpView(
         tester,
-        composites: composites,
         frame: frame,
-        layout: layout,
+        layout: buildStoryboardTimelineLayout(olProject()),
         spansOf: spans,
       );
 
-      final painters = paintersOf(tester);
-      expect(painters, hasLength(1));
-      expect(painters.single.fadeOpacity, 1);
-      expect(painters.single.paintPaper, isTrue);
-
-      composites.dispose();
+      final units = unitsOf(tester);
+      expect(units, hasLength(1));
+      expect(units.single.fade, 1);
+      expect(units.single.stack.paintPaper, isTrue);
     });
   });
 
@@ -520,39 +692,37 @@ void main() {
       'stack is what shows while scrubbing, and it used to reframe into the '
       'camera whatever the toggle said', (tester) async {
     final f = fixture();
-    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
     f.frame.value = 3;
 
     await pumpView(
       tester,
-      composites: f.composites,
       frame: f.frame,
       layout: f.layout,
       cameraViewEnabled: false,
     );
-    var painters = paintersOf(tester);
-    expect(painters[0].cameraFrameSize, isNull);
-    expect(painters[0].cameraPose, isNull);
-    expect(painters[0].paintLetterbox, isFalse);
-    expect(painters[0].pasteboardColor, isNull);
-    expect(painters[0].paintPaper, isTrue, reason: 'the paper is not the crop');
-    expect(painters[0].image, isNotNull);
+    var units = unitsOf(tester);
+    expect(units[0].under.cameraFrameSize, isNull);
+    expect(units[0].under.cameraPose, isNull);
+    expect(units[0].under.paintLetterbox, isFalse);
+    expect(units[0].under.pasteboardColor, isNull);
+    expect(
+      units[0].stack.paintPaper,
+      isTrue,
+      reason: 'the paper is not the crop',
+    );
+    expect(
+      units[0].stack.viewport,
+      CanvasViewport(),
+      reason: 'the cut in its own canvas space, the panel\'s view',
+    );
 
     // Toggle on: the crop is back, so framing stays available while scrubbing
     // rather than being reserved for playback.
-    await pumpView(
-      tester,
-      composites: f.composites,
-      frame: f.frame,
-      layout: f.layout,
-    );
-    painters = paintersOf(tester);
-    expect(painters[0].cameraFrameSize, cameraFrameSize);
-    expect(painters[0].cameraPose, isNotNull);
-    expect(painters[0].paintLetterbox, isTrue);
-    expect(painters[0].pasteboardColor, isNotNull);
-
-    f.composites.dispose();
+    await pumpView(tester, frame: f.frame, layout: f.layout);
+    units = unitsOf(tester);
+    expect(units[0].under.cameraFrameSize, cameraFrameSize);
+    expect(units[0].under.cameraPose, isNotNull);
+    expect(units[0].under.pasteboardColor, isNotNull);
   });
 
   testWidgets('🚨F-114: an ABSENT backdrop is the checkerboard floor, and an '
@@ -564,7 +734,6 @@ void main() {
     // editing canvas keeps, so a scrub into playback does not trade the
     // checkerboard for a colour.
     final f = fixture();
-    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
     f.frame.value = 3;
     Widget floor() => tester.widget(
       find.byKey(const ValueKey<String>('canvas-track-stack-floor')),
@@ -572,29 +741,36 @@ void main() {
 
     await pumpView(
       tester,
-      composites: f.composites,
       frame: f.frame,
       layout: f.layout,
+      cameraViewEnabled: false,
     );
     expect(floor(), isA<ColoredBox>(), reason: 'control: a backdrop that is there');
 
     await pumpView(
       tester,
-      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+      cameraViewEnabled: false,
+      backdropNone: true,
+    );
+    expect(floor(), isA<CustomPaint>(), reason: 'the checkerboard floor');
+
+    // Seen through the camera, the floor is its own painter, in the frame
+    // (pinned by pixels in the camera floor group).
+    await pumpView(
+      tester,
       frame: f.frame,
       layout: f.layout,
       backdropNone: true,
       pasteboardNone: true,
     );
-    expect(floor(), isA<CustomPaint>(), reason: 'the checkerboard floor');
-    final bottom = paintersOf(tester).first;
+    final bottom = unitsOf(tester).first.under;
     expect(bottom.pasteboardNone, isTrue);
     expect(
       bottom.checkersAbsentPlanes,
       isTrue,
       reason: 'on screen the absent apron checkers — the export never sets it',
     );
-
-    f.composites.dispose();
   });
 }

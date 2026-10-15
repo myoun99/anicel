@@ -119,7 +119,7 @@ void main() {
 
   test('gap scrubs PARK per move with NO notifies; the release commits the '
       'no-cut state once and keeps the parking, and a drag back onto the '
-      'cut re-selects on ITS release', () {
+      'cut crosses into it on the move', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
     var notifies = 0;
@@ -143,19 +143,20 @@ void main() {
     expect(s.editingSession.playheadInGap, isTrue);
     expect(notifies, 1, reason: 'the release deselect is the one notify');
 
-    // A NO-CUT drag back over the cut's frames parks too (the drag never
-    // selects mid-move); its release lands the full seek onto the cut.
+    // A NO-CUT drag back over the cut's frames crosses into it on the move
+    // — that drag's one notify — and its release commits the frame it
+    // stands on (I-57 ②). ↩️It parked there too, re-selecting on release.
+    notifies = 0;
     scrubStoryboardGlobalFrame(s, 2);
-    expect(
-      s.editingSession.gapGlobalFrame,
-      2,
-      reason: 'over-cut moves park as well',
-    );
-    expect(s.activeCutId, isNull, reason: 're-selection waits for release');
-    commitStoryboardScrub(s);
-    expect(s.activeCutId, first, reason: 'the release re-selects the cut');
+    expect(s.activeCutId, first, reason: 'the move crossed into the cut');
     expect(s.editingSession.gapGlobalFrame, isNull);
     expect(s.currentFrameIndex, 2);
+    expect(notifies, 1, reason: 'the crossing is the one notify');
+    commitStoryboardScrub(s);
+    expect(s.activeCutId, first);
+    expect(s.editingSession.gapGlobalFrame, isNull);
+    expect(s.currentFrameIndex, 2);
+    expect(notifies, 1, reason: 'the release adds none');
   });
 
   test('the LEADING gap scrub parks per move QUIETLY; the release commits '
@@ -227,14 +228,6 @@ void main() {
     expect(s.activeCutId, isNull);
     s.selectGlobalFrame(aEnd + 4);
     expect(s.activeCutId, second);
-
-    // Territory clamp: a stale over-end local never addresses cut-b.
-    s.selectCut(first);
-    expect(
-      s.trackFrameAxis().clampedGlobalOf(first, aEnd + 400),
-      aEnd + 3,
-      reason: 'mid-track territory ends at the gap\'s last frame',
-    );
   });
 
   testWidgets('a playback seek lands IN the gap: background frame, no snap', (

@@ -4,6 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerLaneValueSlotWidth;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
@@ -27,7 +30,7 @@ void main() {
       PropertyLaneRow(
         laneId: 'scale',
         label: 'Scale',
-        keyedFrames: const {},
+        keyMarks: const {},
         valueLabel: (_) => '150, 80%',
         linkable: linkable,
         showsKeyNavigator: navigator,
@@ -46,7 +49,6 @@ void main() {
           on.value = !on.value;
           presses.add(on.value);
         },
-        tooltip: 'Link scale',
       ),
       presses: presses,
     );
@@ -98,7 +100,11 @@ void main() {
 
       expect(keyed('value-link'), findsOneWidget);
       expect(tester.appIconButton(keyed('value-link')).isSelected, isTrue);
-      expect(tester.appIconButton(keyed('value-link')).tooltip, 'Link scale');
+      expect(
+        tester.appIconButton(keyed('value-link')).tooltip,
+        AppText.strings.trScaleLink,
+        reason: "the transform tool's 「배율 연동」 — one switch, one name",
+      );
 
       await tester.tap(keyed('value-link'));
       await tester.pump();
@@ -187,6 +193,10 @@ void main() {
 
   group('down the sheet', () {
     final column = TimelineGridMetrics.defaults.layerRowHeight;
+    // The value is the rail's value row turned on its side (유저
+    // 2026-10-11), as long down the column as the rail gives it — the
+    // column's longest control, so its room is counted from it.
+    const valueLength = layerLaneValueSlotWidth;
 
     Future<({bool navigator, bool value, bool chain})> shownAt(
       WidgetTester tester,
@@ -214,7 +224,7 @@ void main() {
       final on = ValueNotifier(true);
       addTearDown(on.dispose);
 
-      final shown = await shownAt(tester, 260, on);
+      final shown = await shownAt(tester, valueLength + 180, on);
 
       expect(shown, (navigator: true, value: true, chain: true));
       final chain = tester.getRect(keyed('value-link', prefix: 'xsheet'));
@@ -233,7 +243,7 @@ void main() {
       var seenChain = false;
       var seenValueAlone = false;
       var seenNavigatorWithoutChain = false;
-      for (var height = 80.0; height <= 260; height += 2) {
+      for (var height = 80.0; height <= valueLength + 200; height += 2) {
         final shown = await shownAt(tester, height, on);
         if (shown.chain) {
           expect(shown.value, isTrue, reason: 'at $height');
@@ -267,7 +277,7 @@ void main() {
 
       var seenChain = false;
       var seenNeither = false;
-      for (var height = 60.0; height <= 200; height += 2) {
+      for (var height = 60.0; height <= valueLength + 140; height += 2) {
         final shown = await shownAt(tester, height, on, navigator: false);
         expect(shown.navigator, isFalse, reason: 'at $height');
         if (shown.chain) {

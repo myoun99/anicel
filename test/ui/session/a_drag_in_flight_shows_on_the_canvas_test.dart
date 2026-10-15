@@ -1,8 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -10,6 +15,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge, coveringDrawingBlockAt;
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -462,5 +468,223 @@ void main() {
 
     expect(drawn(), before);
     session.dragPreview.value = null;
+  });
+
+  // 🚨F-313 (유저 2026-10-08): 「다른행이동하면 일시적으로 빈 블록으로 만드는
+  // 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」. A cel carried
+  // onto another row keeps its pixels under the row it came from until the
+  // release re-keys them, and whatever shows it reads them there.
+  group('a cel carried onto ANOTHER row shows its own picture before the '
+      'release — F-313', () {
+    /// One opaque pixel on [cel] of [layerId], where its pixels live.
+    void paint(EditorSessionManager session, LayerId layerId, FrameId cel) {
+      final cut = session.requireActiveCut;
+      session.renderCaches.brushFrameStore.storeBakedSurface(
+        session.brushFrameKeyForCut(cut, layerId, cel),
+        BitmapSurface(
+          canvasSize: cut.canvasSize,
+          tileSize: 8,
+          tiles: {
+            TileCoord(x: 0, y: 0): BitmapTile(
+              size: 8,
+              pixels: Uint8List(8 * 8 * 4)..[3] = 255,
+            ),
+          },
+        ),
+      );
+    }
+
+    /// Whether the store holds a picture under [key].
+    bool drawn(EditorSessionManager session, BrushFrameKey key) =>
+        session.renderCaches.brushFrameStore.celHasRenderableContent(key);
+
+    /// For each image the canvas draws of [cel], whether the key it asks
+    /// with holds a picture.
+    List<bool> pictureOf(EditorSessionManager session, FrameId cel) => [
+      for (final row in rowsOf(session).whereType<CanvasLayerImageRequest>())
+        if (row.frameKey.frameId == cel) drawn(session, row.frameKey),
+    ];
+
+    /// Whether [layerId]'s block at [at] reads as holding a picture, the row
+    /// as the drag in flight shows it.
+    bool blockDrawn(EditorSessionManager session, LayerId layerId, int at) =>
+        session.layerStack.celHasContentForLayer(
+          timelineDragPreviewLayerFor(session.dragPreview.value, layerId) ??
+              session.requireActiveCut.layers.byId(layerId)!,
+          at,
+        );
+
+    test('a block dragged onto another row: on the canvas, and its block '
+        'not greyed as empty', () {
+      final (session, a, b) = twoRows();
+      session.selectFrameIndex(0);
+      final cel = celAt(session, a, 0);
+      paint(session, a, cel);
+      paint(session, b, celAt(session, b, 3));
+
+      expect(
+        session.drawingBlockMove.beginDrawingBlockMoveDrag(
+          layerId: a,
+          blockStartIndex: 0,
+        ),
+        isTrue,
+      );
+      session.drawingBlockMove.updateDrawingBlockMoveDrag(
+        frameDelta: 0,
+        targetLayerId: b,
+      );
+      expect(session.dragPreview.value, isA<BlockMoveDragPreview>());
+
+      expect(pictureOf(session, cel), [true]);
+      expect(blockDrawn(session, b, 0), isTrue);
+      expect(
+        blockDrawn(session, b, 3),
+        isTrue,
+        reason: 'a cel of B\'s own, beside the carried one, is under B',
+      );
+
+      session.drawingBlockMove.endDrawingBlockMoveDrag();
+      expect(
+        drawn(session, liveRowOf(session)!.frameKey!),
+        isTrue,
+        reason: 'the release keeps it: the brush holds it on B now',
+      );
+    });
+
+    test('a frame range dragged onto another row', () {
+      final (session, a, b) = twoRows();
+      session.selectFrameIndex(0);
+      final cel = celAt(session, a, 0);
+      paint(session, a, cel);
+
+      session.updateFrameRangeSelectionDrag(
+        layerId: a,
+        anchorIndex: 0,
+        headIndex: 0,
+      );
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: b,
+      );
+
+      expect(pictureOf(session, cel), [true]);
+      expect(blockDrawn(session, b, 0), isTrue);
+
+      session.rangeMove.endFrameRangeMoveDrag();
+      expect(drawn(session, liveRowOf(session)!.frameKey!), isTrue);
+    });
+
+    test('several rows carried down a row together — each cel in the '
+        'pixels of the row it left', () {
+      final session = open();
+      session.createDrawingAtCurrentFrame();
+      final a = session.activeLayer!.id;
+      session.layerStack.addLayer();
+      final b = session.activeLayer!.id;
+      session.createDrawingAtCurrentFrame();
+      session.layerStack.addLayer();
+      final c = session.activeLayer!.id;
+      final aCel = celAt(session, a, 0);
+      final bCel = celAt(session, b, 0);
+      paint(session, a, aCel);
+      paint(session, b, bCel);
+
+      session.selectLayer(a);
+      session.updateFrameRangeSelectionDrag(
+        layerId: a,
+        anchorIndex: 0,
+        headIndex: 0,
+        headLayerId: b,
+      );
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: b,
+      );
+      expect(
+        timelineDragPreviewLayerFor(session.dragPreview.value, c)
+            ?.timeline[0]
+            ?.frameId,
+        bCel,
+        reason: 'the premise: A onto B, B onto C',
+      );
+
+      expect(pictureOf(session, aCel), [true]);
+      expect(pictureOf(session, bCel), [true]);
+      expect(blockDrawn(session, b, 0), isTrue);
+      expect(blockDrawn(session, c, 0), isTrue);
+      session.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    // The editing canvas draws a direction row no picture (none before the
+    // drag either); its block is what shows the drawing.
+    test('a direction drawing dropped on another direction row: its block '
+        'not greyed as empty', () {
+      final session = open();
+      final source = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.instruction,
+      );
+      session.selectLayer(source.id);
+      session.instructionVerbs.upsertInstructionEventAt(
+        source.id,
+        2,
+        const InstructionEvent(instructionId: 'pan', length: 2),
+        createLengthFrames: 2,
+      );
+      final cel = celAt(session, source.id, 2);
+      paint(session, source.id, cel);
+      session.layerStack.addLayerOfKind(LayerKind.instruction);
+      final target = session.requireActiveCut.layers.lastWhere(
+        (layer) =>
+            layer.kind == LayerKind.instruction && layer.id != source.id,
+      );
+      session.selectLayer(source.id);
+      session.selectFrameIndex(2);
+      expect(blockDrawn(session, source.id, 2), isTrue, reason: 'the premise');
+
+      session.updateFrameRangeSelectionDrag(
+        layerId: source.id,
+        anchorIndex: 2,
+        headIndex: 3,
+      );
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: target.id,
+      );
+
+      expect(blockDrawn(session, target.id, 2), isTrue);
+      session.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('its onion ghost on the row it is carried onto', () {
+      final (session, a, b) = twoRows();
+      final cel = celAt(session, a, 0);
+      paint(session, a, cel);
+      session.onionSkin.toggleLayerOnionSkin(b);
+      session.selectFrameIndex(1);
+
+      expect(
+        session.drawingBlockMove.beginDrawingBlockMoveDrag(
+          layerId: a,
+          blockStartIndex: 0,
+        ),
+        isTrue,
+      );
+      session.drawingBlockMove.updateDrawingBlockMoveDrag(
+        frameDelta: 0,
+        targetLayerId: b,
+      );
+
+      expect(
+        [
+          for (final ghost in session.onionSkin.onionSkinCanvasRequests())
+            if (ghost.frameKey.frameId == cel) drawn(session, ghost.frameKey),
+        ],
+        [true],
+      );
+      session.drawingBlockMove.cancelDrawingBlockMoveDrag();
+    });
   });
 }

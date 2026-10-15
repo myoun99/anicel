@@ -14,8 +14,9 @@ void main() {
   const sliderKey = ValueKey<String>('field-slider-under-test');
 
   /// The TRACK, not the widget box. ⚠️A [FieldSlider] is a Row now — the bar
-  /// plus the +/− stepper — so the widget's own rect no longer maps to the
-  /// value. Position arithmetic has to address the bar, and this is how.
+  /// plus its hands, the +/− pair and the pencil — so the widget's own rect
+  /// no longer maps to the value. Position arithmetic has to address the
+  /// bar, and this is how.
   Finder trackOf(Key key) => find.descendant(
     of: find.byKey(key),
     matching: find.byType(DragVerbClaim),
@@ -109,11 +110,13 @@ void main() {
   testWidgets('shift drag moves at one tenth speed', (tester) async {
     final value = ValueNotifier<double>(0.5);
     await tester.pumpWidget(harness(value: value));
+    final track = tester.getSize(trackOf(sliderKey)).width;
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.drag(trackOf(sliderKey), const Offset(100, 0));
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pump();
-    expect(value.value, moreOrLessEquals(0.55, epsilon: 0.01));
+    // A tenth of the travel, as a fraction of the MEASURED track.
+    expect(value.value, moreOrLessEquals(0.5 + 10 / track, epsilon: 0.01));
   });
 
   testWidgets('scroll wheel steps by one percent of the track', (tester) async {
@@ -132,13 +135,29 @@ void main() {
     expect(value.value, moreOrLessEquals(0.49, epsilon: 0.001));
   });
 
+  testWidgets('with Shift held, a wheel notch is a tenth of one', (
+    tester,
+  ) async {
+    final value = ValueNotifier<double>(0.5);
+    await tester.pumpWidget(harness(value: value));
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(tester.getCenter(trackOf(sliderKey)));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, -40)));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(value.value, moreOrLessEquals(0.501, epsilon: 0.0001));
+  });
+
   testWidgets('divisions snap dragged values to whole steps', (tester) async {
     final value = ValueNotifier<double>(0);
     await tester.pumpWidget(
       harness(value: value, min: 0, max: 8, divisions: 8),
     );
+    // Past a quarter of the MEASURED track — 2.2 of 8, which snaps to 2.
+    final track = tester.getRect(trackOf(sliderKey));
     await tester.tapAt(
-      tester.getTopLeft(trackOf(sliderKey)) + const Offset(55, 12),
+      Offset(track.left + track.width * 2.2 / 8, track.center.dy),
     );
     await tester.pump();
     expect(value.value, 2);
@@ -576,15 +595,15 @@ void main() {
           ),
         ),
       );
-      await tester.drag(find.byKey(sliderKey), const Offset(0, -80));
+      await tester.drag(trackOf(sliderKey), const Offset(0, -80));
       await tester.pump();
       expect(
         controller.offset,
         0,
         reason: 'the press landed on the bar, so the list gets nothing',
       );
-      // And the press STANDS. `drag` presses the centre, and answering the
-      // press is what this bar does (유저: 「상단띠 브러시사이즈 변경처럼
+      // And the press STANDS. `drag` presses the track's centre, and
+      // answering the press is what this bar does (유저: 「상단띠 브러시사이즈 변경처럼
       // 대충눌러도 바뀌도록하고싶음」) — so the value is the centre's. The
       // straight-down travel adds nothing, because down is across this bar's
       // axis; what matters is that it is not TAKEN AWAY afterwards, which is

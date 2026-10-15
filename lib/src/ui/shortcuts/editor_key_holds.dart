@@ -6,9 +6,10 @@ import 'package:flutter/widgets.dart';
 
 import '../brush/brush_tool_state.dart';
 import '../brush/temporary_tool.dart';
-import '../canvas/canvas_pan_hold.dart';
+import '../canvas/canvas_view_hold.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
+import 'shortcut_activator_codec.dart' show isModifierKey;
 
 /// The keys that are HELD rather than pressed (I-15).
 ///
@@ -22,7 +23,7 @@ import 'editor_shortcut_bindings.dart';
 /// and letting go ends it. A pen or mouse button always worked that way
 /// (PEN-7a — the tool switches through [TemporaryTool], a wheel click
 /// pans); a held key now goes through the same two doors: the eyedropper
-/// through [TemporaryTool], the pan through [CanvasPanHold].
+/// through [TemporaryTool], the pan and the turn through [CanvasViewHold].
 ///
 /// ⚠️TAKEN on the shortcut road, LET GO on the keyboard's. A press is taken
 /// where every shortcut is (`EditorShortcutManager`), so a focused text
@@ -68,24 +69,34 @@ final class EditorKeyHolds {
 
   final Map<LogicalKeyboardKey, _KeyHold> _held = {};
 
+  /// The presses holding the view, by key, the latest last — kept to be
+  /// asked again as the modifiers change under them. 🗣️I-88 (유저
+  /// 2026-10-09): 「스페이스바+컨트롤상태에선 회전으로 작동하도록」 — a STATE of
+  /// the keys, not an order: Space then the turn's modifier turns, and that
+  /// modifier let go pans again. ↩️I-88-Q1 moved the turn to Shift+Space;
+  /// the law did not move with it.
+  final Map<LogicalKeyboardKey, KeyEvent> _viewPresses = {};
+
   /// Eyedropper keys that came down mid-stroke: held, and in force the
   /// moment the stroke ends.
   final Set<LogicalKeyboardKey> _waiting = {};
 
-  /// A key event on the shortcut road. HANDLED when it belongs to the pan —
-  /// the space bar then does nothing else, its repeats included; the
+  /// A key event on the shortcut road. HANDLED when it holds the view — the
+  /// space bar then does nothing else, its repeats included; the
   /// eyedropper's Alt passes on, because it still modifies whatever it is
   /// held with.
   KeyEventResult engage(KeyEvent event) {
     final key = event.logicalKey;
     if (event is! KeyDownEvent || _held.containsKey(key)) {
-      return _held[key] == _KeyHold.pan
+      return _held[key] == _KeyHold.view
           ? KeyEventResult.handled
           : KeyEventResult.ignored;
     }
-    if (bindings.presses(EditorActionIds.canvasPanHold, event)) {
-      _held[key] = _KeyHold.pan;
-      CanvasPanHold.held.value = true;
+    final view = _viewHoldOf(event);
+    if (view != null) {
+      _held[key] = _KeyHold.view;
+      _viewPresses[key] = event;
+      CanvasViewHold.held.value = view;
       return KeyEventResult.handled;
     }
     if (_isEyedropperKey(key)) {
@@ -96,6 +107,18 @@ final class EditorKeyHolds {
       }
     }
     return KeyEventResult.ignored;
+  }
+
+  /// What [press] holds the view for, with the modifiers as they stand —
+  /// or null.
+  ViewHold? _viewHoldOf(KeyEvent press) {
+    if (bindings.presses(EditorActionIds.canvasRotateHold, press)) {
+      return ViewHold.turn;
+    }
+    if (bindings.presses(EditorActionIds.canvasPanHold, press)) {
+      return ViewHold.pan;
+    }
+    return null;
   }
 
   /// The eyedropper takes hold whatever tool is in hand (F-299) — but for
@@ -130,14 +153,25 @@ final class EditorKeyHolds {
     waiting.forEach(_holdEyedropper);
   }
 
-  /// Every key let go, app-wide. Never consumes.
+  /// Every key let go, app-wide — and every modifier that goes down or up
+  /// under a held view key, which asks that key's press again. Never
+  /// consumes.
   bool _onKey(KeyEvent event) {
     if (event is KeyUpEvent) {
       final key = event.logicalKey;
       _waiting.remove(key);
+      _viewPresses.remove(key);
       final hold = _held.remove(key);
       if (hold != null) {
         _end(hold);
+      }
+    }
+    if (_viewPresses.isNotEmpty && isModifierKey(event.logicalKey)) {
+      // A modifier that turns the press into neither keeps the hold as it
+      // is: Alt under Space is not a reason to let the view go.
+      final view = _viewHoldOf(_viewPresses.values.last);
+      if (view != null) {
+        CanvasViewHold.held.value = view;
       }
     }
     return false;
@@ -149,8 +183,8 @@ final class EditorKeyHolds {
       return;
     }
     switch (hold) {
-      case _KeyHold.pan:
-        CanvasPanHold.held.value = false;
+      case _KeyHold.view:
+        CanvasViewHold.held.value = null;
       case _KeyHold.eyedropper:
         temporaryTool.release(keep: false);
     }
@@ -161,25 +195,28 @@ final class EditorKeyHolds {
   /// release this window gets, and that one it does not get).
   void letGoOfEverything() {
     _waiting.clear();
+    _viewPresses.clear();
     final holds = {..._held.values};
     _held.clear();
     holds.forEach(_end);
   }
 
-  /// A shell that goes away holds nothing. The pan's flag is app-wide, so
+  /// A shell that goes away holds nothing. The view's hold is app-wide, so
   /// it lets go; a switched tool goes with the shell that owns it — putting
   /// it back would rebuild a tree that is being taken down.
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
     _strokeLive.removeListener(_onStrokeLive);
     _waiting.clear();
+    _viewPresses.clear();
     _held.clear();
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
   }
 }
 
-/// What a held key stands for while it is down.
-enum _KeyHold { pan, eyedropper }
+/// What a held key stands for while it is down — the view (a pan or a
+/// turn, [CanvasViewHold]) or the eyedropper.
+enum _KeyHold { view, eyedropper }
 
 /// The eyedropper's key — Alt, as it always was (유저: 「스포이드는
 /// 그대로」). ⛔Not a registry binding: Flutter's [SingleActivator] refuses

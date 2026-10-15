@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerBlendSlotWidth, layerLaneValueSlotWidth, layerOpacitySlotWidth;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_second.dart';
 
@@ -11,7 +13,12 @@ void main() {
       // 312 → 340 → 372: the wider layer-name column (UI-R3 #8, UI-R4 #9).
       // 372 → 434 (R27 #6): the blend-mode column joined the label.
       // 434 → 443 (text-scale-rail-opac): the opacity column holds OPAC.
-      expect(metrics.layerControlsWidth, 443);
+      // 443 → 519 (tool-settings-panel-tidy): a lane's value boxes took
+      // their ± and pencil, and the rail pays them.
+      // 519 → 563 (I-89 ③): a lane's chips and pin for the header graph,
+      // and a header's graph button out of them.
+      // 563 → 519 (I-89 Q1): a row's own buttons come out of its name.
+      expect(metrics.layerControlsWidth, 519);
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);
@@ -108,6 +115,18 @@ void main() {
       expect(metrics.frameCellWidth, 32);
       expect(metrics.layerRowHeight, 44);
       expect(metrics.verticalScrollbarWidth, 12);
+    });
+    test('🚨the rail pays for every word-holding column that grew — a '
+        'lane value\'s boxes too (tool-settings-panel-tidy)', () {
+      const grown = (
+        opacity: layerOpacitySlotWidth + 3,
+        blend: layerBlendSlotWidth + 5,
+        laneValue: layerLaneValueSlotWidth + 7,
+      );
+      expect(
+        timelineLayerControlsWidthFor(grown),
+        timelineLayerControlsWidth + 15,
+      );
     });
   });
 }

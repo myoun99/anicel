@@ -178,15 +178,6 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     return null;
   }
 
-  /// The active tab of every dock, for visibility checks.
-  Iterable<String> get activeTabs sync* {
-    for (final group in _docks.values) {
-      if (group != null) {
-        yield group._activeTabId;
-      }
-    }
-  }
-
   void selectTab(String dockId, String tabId) {
     final group = _docks[dockId];
     if (group == null ||

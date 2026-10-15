@@ -45,6 +45,18 @@ constexpr char kAppSaidExit[] = R"("response":"exit")";
 // engine down. The engine posts its re-sent WM_CLOSE for the same reason.
 constexpr UINT kCloseApproved = WM_APP + 0x128;
 
+// 🚨★★★I-57-Q3 — THE ACCESSIBILITY TREE WAITS FOR A SCREEN READER.
+//
+// 유저 2026-10-15: 「스크린리더가 켜져 있을 때만 받는다 — 릴리즈도」. Windows
+// turns the tree on for any Flutter window whatever speaks UI Automation asks
+// (an IME does), so the app takes that request only while the flag Narrator,
+// NVDA and JAWS raise is up (lib/src/ui/platform_semantics_gate.dart). The
+// flag changes with a WM_SETTINGCHANGE for SPI_SETSCREENREADER, sent to every
+// top-level window: the runner says so on this channel, and the app reads the
+// flag again. test/ui/windows_takes_semantics_only_for_a_screen_reader_test.dart
+// reads this literal and sends it to the app.
+constexpr char kScreenReaderChannel[] = "anicel/screen_reader";
+
 // 🚨★★★I-19 ④ — THE IME LISTENS ONLY WHILE A TEXT FIELD DOES.
 //
 // 유저 2026-09-13: 「일본어 키보드나 한국어 상태등 키보드가 영어가 아닐때도
@@ -145,6 +157,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   switch (message) {
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
+      break;
+    case WM_SETTINGCHANGE:
+      if (wparam == SPI_SETSCREENREADER && flutter_controller_) {
+        flutter_controller_->engine()->messenger()->Send(kScreenReaderChannel,
+                                                         nullptr, 0);
+      }
       break;
   }
 

@@ -10,6 +10,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('timeline action toolbar hosts cell action controls', (
@@ -75,7 +76,7 @@ void main() {
       'drawing start',
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-default-layer-2')),
+      find.named('timeline-row-cells-default-layer-2'),
       findsNothing,
     );
     // One comma: the empty run starts on frame 2. Paper-sheet style, only

@@ -1,7 +1,7 @@
 import '../core/collection_equality.dart';
 import 'property_track.dart';
 import 'string_id.dart';
-import 'transform_track.dart' show lerpDouble;
+import 'transform_track.dart' show doubleKeySpace;
 
 /// Stable identity of one effect INSTANCE on a layer — the lane address
 /// (`fx:<id>:<parameter>`) and the undo commands both name effects by this,
@@ -306,10 +306,14 @@ class EffectParameter {
 
   /// The value at [frameIndex] — the key track when it has keys, the
   /// static value otherwise.
-  double resolveAt(int frameIndex) => track.resolveAt(
-    frameIndex: frameIndex,
+  double resolveAt(int frameIndex) => resolveAtTime(frameIndex.toDouble());
+
+  /// [resolveAt] at a [time] between frames as well — a header graph's
+  /// curve (I-89 ③).
+  double resolveAtTime(double time) => track.resolveAtTime(
+    time: time,
     orElse: () => value,
-    lerp: lerpDouble,
+    space: doubleKeySpace,
   );
 
   EffectParameter copyWith({double? value, PropertyTrack<double>? track}) =>
@@ -591,18 +595,16 @@ class NamedEffectKeyChange {
     required this.effectId,
     required this.parameterId,
     required this.name,
-    required this.value,
-    required this.interpolation,
+    required this.held,
   });
 
   final EffectId effectId;
   final String parameterId;
   final String name;
-  final double value;
 
-  /// The type of the segment leaving the key — carried with the value
-  /// (F-84 실기, 유저 2026-09-12: 「싹다링크해야하는데」).
-  final PropertyKeyInterpolation interpolation;
+  /// The number and both sides, carried together (F-84 실기, 유저
+  /// 2026-09-12: 「싹다링크해야하는데」).
+  final NamedKeyValue<double> held;
 }
 
 /// The named keys whose VALUE differs between [before] and [after] — the
@@ -637,8 +639,7 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
             effectId: effect.id,
             parameterId: entry.key,
             name: moved.key,
-            value: moved.value.value,
-            interpolation: moved.value.interpolation,
+            held: moved.value,
           ),
         );
       }
@@ -681,10 +682,23 @@ double effectParameterValueAt(
   EffectId effectId,
   String parameterId,
   int frameIndex,
+) => effectParameterValueAtTime(
+  effects,
+  effectId,
+  parameterId,
+  frameIndex.toDouble(),
+);
+
+/// [effectParameterValueAt] at a [time] between frames as well (I-89 ③).
+double effectParameterValueAtTime(
+  List<LayerEffect> effects,
+  EffectId effectId,
+  String parameterId,
+  double time,
 ) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameterOf(parameterId).resolveAt(frameIndex);
+      return effect.parameterOf(parameterId).resolveAtTime(time);
     }
   }
   return 0;
@@ -710,10 +724,7 @@ List<LayerEffect> effectsWithNamedValues(
     if (parameter == null) {
       continue;
     }
-    final track = parameter.track.withNamedKey(change.name, (
-      value: change.value,
-      interpolation: change.interpolation,
-    ));
+    final track = parameter.track.withNamedKey(change.name, change.held);
     if (track == parameter.track) {
       continue;
     }
@@ -758,4 +769,22 @@ List<LayerEffect> effectChainWithSharedShape(
         final existing => existing.copyWith(enabled: effect.enabled),
       },
   ];
+}
+
+/// Whether [a] and [b] are chains of one SHAPE ([effectChainWithSharedShape]
+/// lays [b]'s over [a] as [a]): the same effects in the same order, each
+/// switched the same way — whatever their numbers.
+bool sameEffectChainShape(List<LayerEffect> a, List<LayerEffect> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var index = 0; index < a.length; index += 1) {
+    final (left, right) = (a[index], b[index]);
+    if (left.id != right.id ||
+        left.kind != right.kind ||
+        left.enabled != right.enabled) {
+      return false;
+    }
+  }
+  return true;
 }

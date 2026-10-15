@@ -334,10 +334,93 @@ Future<void> answerAll(HttpServer server) async {
       await _handle(request);
     } on Object catch (e) {
       stderr.writeln('board: request failed: $e');
+      _noteFailed(request, e);
       request.response.statusCode = 500;
       await request.response.close();
     }
   }
+}
+
+/// The file a request that broke the server leaves its line in, beside the
+/// records — this machine's, like the flags.
+///
+/// 🚨`board_up.sh` starts the server with its stderr thrown away, so until
+/// 2026-10-09 a 500 said nothing about itself: the phone was told 「500」 at
+/// the door with the right secret typed, and the exception that did it
+/// existed for a moment in a stream nobody read. The line is the only record
+/// of a request the server could not answer.
+const kRequestFailureLog = '.board_server.failures.log';
+
+/// Past this size the file starts over: it is a place to look at the last
+/// few failures, not a history.
+const _kFailureLogCeiling = 256 * 1024;
+
+/// Headers whose VALUE is somebody's key — only that it came is written.
+const _kHeadersKeptOut = {'cookie', 'authorization', 'proxy-authorization'};
+
+/// One line for a request that failed: when, what was asked, by whom, the
+/// error, and every header it carried — how many times, and what each said.
+///
+/// ⚠️HOW MANY TIMES is the part a 500 at the door needed: a header sent
+/// twice and a body that is not text look the same from the page. The secret
+/// itself is never written (the cookie and the bearer give their length), and
+/// neither is the body.
+String requestFailureLine({
+  required DateTime at,
+  required String method,
+  required String path,
+  required String? from,
+  required Map<String, List<String>> headers,
+  required Object error,
+}) {
+  String oneLine(String s, int most) {
+    final flat = s.replaceAll(RegExp(r'[\r\n\t]+'), ' ');
+    return flat.length <= most ? flat : '${flat.substring(0, most)}…';
+  }
+
+  String carriedOf(MapEntry<String, List<String>> header) {
+    final keptOut = _kHeadersKeptOut.contains(header.key.toLowerCase());
+    final said = keptOut
+        ? '<${header.value.join().length} chars>'
+        : oneLine(header.value.join(' ⏎ '), 160);
+    return '${header.key}×${header.value.length}=$said';
+  }
+
+  final carried = headers.entries.map(carriedOf).join(' | ');
+  return '${at.toIso8601String()} $method ${oneLine(path, 120)} '
+      'from ${from ?? '?'} — ${oneLine('$error', 300)} — $carried';
+}
+
+/// Appends [line] to [log]; starts the file over past the ceiling.
+/// ⛔Never throws: a failure to note a failure must not take the answer with it.
+void noteRequestFailure(File log, String line) {
+  try {
+    if (log.existsSync() && log.lengthSync() > _kFailureLogCeiling) {
+      log.deleteSync();
+    }
+    log.writeAsStringSync('$line\n', mode: FileMode.append);
+  } on Object catch (_) {}
+}
+
+void _noteFailed(HttpRequest request, Object error) {
+  try {
+    final headers = <String, List<String>>{};
+    request.headers.forEach((name, values) => headers[name] = values);
+    noteRequestFailure(
+      File('${File(_recordsPath).parent.path}/$kRequestFailureLog'),
+      withoutSecret(
+        _door,
+        requestFailureLine(
+          at: DateTime.now(),
+          method: request.method,
+          path: request.uri.path,
+          from: request.connectionInfo?.remoteAddress.address,
+          headers: headers,
+          error: error,
+        ),
+      ),
+    );
+  } on Object catch (_) {}
 }
 
 String? _flag(List<String> args, String name) {
@@ -354,9 +437,9 @@ Future<void> _handle(HttpRequest req) async {
   // browser — see [asksFromTheBoardItself].
   if (req.method == 'POST' &&
       !asksFromTheBoardItself(
-        fetchSite: req.headers.value('sec-fetch-site'),
-        origin: req.headers.value('origin'),
-        host: req.headers.value(HttpHeaders.hostHeader),
+        fetchSite: oneValueOf(req.headers['sec-fetch-site']),
+        origin: oneValueOf(req.headers['origin']),
+        host: oneValueOf(req.headers[HttpHeaders.hostHeader]),
       )) {
     req.response.statusCode = HttpStatus.forbidden;
     await req.response.close();
@@ -425,6 +508,31 @@ Future<void> _handle(HttpRequest req) async {
       ..headers.contentType = ContentType.text
       ..headers.set('Cache-Control', 'no-store')
       ..write(taken);
+    await req.response.close();
+    return;
+  }
+
+  // 🆕AN ACK, through the server (card an-away-machine-cannot-ack-the-gate,
+  // 10-08): a gate run on another machine is judged here, by the acks beside
+  // the records, so it is here that it has to be able to write one. What
+  // becomes of the asking is the very function `board_ack` runs on this
+  // machine. `{"key":…,"why":…}` leaves a key alone; `/unack` takes it back.
+  if (req.method == 'POST' && (path == '/ack' || path == '/unack')) {
+    final asked = jsonDecode(await utf8.decoder.bind(req).join());
+    final key = asked is Map ? '${asked['key'] ?? ''}' : '';
+    final records = File(_recordsPath);
+    final refusal = path == '/ack'
+        ? ackOnBoard(
+            records,
+            key,
+            asked is Map ? '${asked['why'] ?? ''}' : '',
+            DateTime.now(),
+          )
+        : unackOnBoard(records, key);
+    req.response
+      ..statusCode = refusal == null ? HttpStatus.ok : HttpStatus.badRequest
+      ..headers.contentType = ContentType.text
+      ..write(refusal ?? '');
     await req.response.close();
     return;
   }
@@ -794,11 +902,24 @@ Future<void> _handle(HttpRequest req) async {
 Future<bool> _letIn(HttpRequest req, String path) async {
   final from = req.connectionInfo?.remoteAddress;
   final here = from != null && _isThisMachine(from);
-  if (doorAdmits(_door, fromThisMachine: here, shown: secretShown(req))) {
+  // 🚨`/enter` IS THE DOOR'S, WHOEVER ASKS — a browser that already holds the
+  // key too. Until 2026-10-09 a request the cookie admitted went on down the
+  // routes, and `/enter` is not one: its body, the secret, was handed to the
+  // JSON reader of the POST routes ("Missing expected digit" — a secret that
+  // starts with `1e`) and the phone with the right key got 500. 🧪Every try
+  // from this machine had no cookie yet, so none could meet it. Shown again,
+  // the secret is checked again and the cookie handed again, which is also
+  // how a cookie changed to a new kind reaches a browser that has the old.
+  final entering = req.method == 'POST' && path == '/enter';
+  if (!entering &&
+      doorAdmits(_door, fromThisMachine: here, shown: secretShown(req))) {
     return true;
   }
-  if (req.method == 'POST' && path == '/enter') {
-    final shown = (await utf8.decoder.bind(req).join()).trim();
+  if (entering) {
+    // 🚨A stranger's body is decoded leniently: bytes that are not text are a
+    // secret that does not match (401), never an exception (500).
+    final shown =
+        (await const Utf8Decoder(allowMalformed: true).bind(req).join()).trim();
     if (doorAdmits(_door, fromThisMachine: false, shown: shown)) {
       req.response
         ..cookies.add(doorCookie(shown))
@@ -808,6 +929,10 @@ Future<bool> _letIn(HttpRequest req, String path) async {
       return false;
     }
   }
+  // What the door turned away is noted like what broke the server: from the
+  // phone, 「no reaction」, 「401」 and 「it held a key and was shown the
+  // door anyway」 are three different stories and look the same.
+  _noteFailed(req, 'turned away at the door (401)');
   req.response
     ..statusCode = HttpStatus.unauthorized
     ..headers.set('Cache-Control', 'no-store');
@@ -823,30 +948,76 @@ Future<bool> _letIn(HttpRequest req, String path) async {
 /// What a browser from another machine sees until it has shown the secret.
 /// ⚠️Self-contained, like the rebuilding page: nothing of the board — not
 /// its script, not its style — is handed to somebody who is not in yet.
+// 🗣️card board-door-shows-what-was-typed (유저 2026-10-09, from the phone:
+// 「적어도 비밀번호 표시하는버튼있으면 틀린지아닌지 알수있을텐데」). The page
+// answered only a door that opened: a wrong secret, a refusal, a board it
+// could not reach and a browser that kept no key all looked the same — a
+// press that did nothing — so nobody could tell from the phone what had
+// failed. ⇒ What was typed can be SHOWN, a phone keyboard does not get to
+// change it (no capital, no correction), and a door that stays shut says
+// which of the four it was, on a line whose place is always there.
 String _doorPage() => """
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>보드</title>
 <style>
-body{margin:0;display:grid;place-items:center;height:100vh;
+body{margin:0;display:grid;place-items:center;min-height:100vh;
   font:15px/1.6 "BIZ UDPGothic","Nanum Gothic",system-ui,sans-serif;
   background:#14161a;color:#e6e8ec}
-form{display:flex;gap:8px}
+main{width:min(32em,92vw)}
+form{display:flex;flex-wrap:wrap;gap:8px}
 input,button{font:inherit;padding:8px 12px;border-radius:6px;
   border:1px solid #3a3f4a;background:#1c1f25;color:inherit}
-input{width:22em}
-</style></head><body>
+input{flex:1 1 14em;min-width:0}
+#why{min-height:3.2em;margin:8px 0 0;color:#ff8a80}
+</style></head><body><main>
 <form id="door">
 <input id="secret" type="password" autocomplete="current-password"
+  autocapitalize="none" autocorrect="off" spellcheck="false"
   aria-label="비밀값" autofocus>
+<button type="button" id="show" aria-pressed="false">보기</button>
 <button>들어가기</button>
 </form>
+<p id="why" role="status"></p>
+</main>
 <script>
+var secret = document.getElementById('secret');
+var why = document.getElementById('why');
+var shown = document.getElementById('show');
+shown.addEventListener('click', function(){
+  var hidden = secret.type === 'password';
+  secret.type = hidden ? 'text' : 'password';
+  shown.textContent = hidden ? '숨기기' : '보기';
+  shown.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+  secret.focus();
+});
+// Let in a moment ago, and shown the door again: the cookie did not stay.
+try {
+  var entered = Number(sessionStorage.getItem('door-entered') || 0);
+  sessionStorage.removeItem('door-entered');
+  if (entered && Date.now() - entered < 15000) {
+    why.textContent = '비밀값은 맞았는데 브라우저가 열쇠(쿠키)를 남기지 않았습니다.';
+  }
+} catch (e) {}
 document.getElementById('door').addEventListener('submit', function(e){
   e.preventDefault();
-  var secret = document.getElementById('secret').value;
-  fetch('/enter', {method:'POST', body: secret})
-    .then(function(r){ if (r.ok) location.reload(); });
+  why.textContent = '';
+  fetch('/enter', {method:'POST', body: secret.value, cache:'no-store'})
+    .then(function(r){
+      if (r.ok) {
+        try { sessionStorage.setItem('door-entered', String(Date.now())); }
+        catch (e) {}
+        location.reload();
+        return;
+      }
+      why.textContent = r.status === 401
+        ? '비밀값이 맞지 않습니다.'
+        : r.status === 403
+        ? '보드가 거절했습니다 — 이 페이지 밖에서 온 요청으로 보였습니다(403).'
+        : '보드가 ' + r.status + ' 로 답했습니다.';
+    }, function(){
+      why.textContent = '보드 서버에 닿지 못했습니다.';
+    });
 });
 </script>
 </body></html>

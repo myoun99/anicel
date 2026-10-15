@@ -25,8 +25,12 @@ void main() {
         'fade-in / fade-out INSTRUCTION glyphs: a picture of an effect, '
         'nothing toggles',
     'lib/src/ui/timeline/timeline_layer_controls_header.dart':
-        '모두 보이기/숨기기 flyout entries and the legend column glyph — menu '
-        'items and a heading, not a control with an on state',
+        'the legend column glyph — a heading, not a control with an on '
+        'state',
+    'lib/src/ui/timeline/timeline_legend_menus.dart':
+        '모두 보이기/숨기기 flyout entries — menu items, not a control with '
+        'an on state (they moved here from the header with the rest of '
+        'the legend menus, I-40)',
   };
 
   test('only the ledger names the eye glyph', () {

@@ -1,14 +1,14 @@
-import '../../models/cut_camera.dart' show CutCamera;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
-import '../../models/transform_pose.dart';
-import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
+import '../../services/project_lookup.dart' show cutIdOfLayer, requireCut;
 import '../editor_session_manager.dart';
+import 'lane_graph_seats.dart' show LaneGraphLine;
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
-import 'scale_lane_form.dart';
+import 'timeline_current_row.dart' show laneGroupOf;
+import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
 import 'transform_lane_policy.dart'
-    show transformPropertyLanes, transformUnionHeader;
+    show cameraPropertyLanes, cameraUnionHeader;
 
 /// THE property lanes a layer contributes, in display order.
 ///
@@ -46,14 +46,30 @@ List<PropertyLaneRow> timelineLanesForLayer({
     // is what this rail shows.
     valueSourceAt: (frameIndex) =>
         session.laneVerbs.laneValueSourceAt(layer, frameIndex),
-    poseCentre: session.activeCutOrNull?.canvasSize,
+    // An S row is posed in the shot (I-67-Q1), as the storyboard's rail
+    // already read it.
+    poseCentre: layer.kind.poseSpace(
+      shot: session.camera.cameraFrameSize,
+      canvas: session.activeCutOrNull?.canvasSize,
+    ),
   );
 }
 
 /// The CAMERA row's lanes: its cut's camera track, the member lanes alone.
 List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
-  // A camera row on screen implies an active cut.
-  final cut = session.requireActiveCut;
+  // The cut that holds the row — the active one wherever the timeline
+  // draws it, but the storyboard's camera row twirls any cut's camera, a
+  // gap's included (I-73 ④ⓔ). ↩️It read the active cut, required: in a gap
+  // the storyboard's twirl-all threw here.
+  final project = session.repository.requireProject();
+  final cutId = cutIdOfLayer(project, row.id) ?? session.activeCutId;
+  if (cutId == null) {
+    return const [];
+  }
+  final cut = requireCut(project, cutId);
+  if (cut.id != session.activeCutId) {
+    return cameraPropertyLanes(row, cut.camera.track, canvasSize: cut.canvasSize);
+  }
   // ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
   // 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.
   // 펼치면 포지션/스케일/로테이션만 남도록.」
@@ -75,19 +91,7 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
   // Layer — reading the cut here is exactly why camera member lanes sat
   // still while every other transform lane followed its drag live.
   final cameraTrack = session.camera.activeCutCameraTrack ?? cut.camera.track;
-  return transformPropertyLanes(
-    cameraTrack,
-    scaleForm: scaleLaneFormOf(row),
-    poseAt: (frameIndex) => TransformPose.ofCamera(
-      resolveCameraPoseAt(
-        // The SAME track the lanes are built from, so the value column
-        // follows an in-flight key move like the diamonds do.
-        camera: CutCamera.fromTrack(cameraTrack),
-        canvasSize: cut.canvasSize,
-        frameIndex: frameIndex,
-      ),
-    ),
-  ).where((lane) => !lane.isGroupHeader).toList();
+  return cameraPropertyLanes(row, cameraTrack, canvasSize: cut.canvasSize);
 }
 
 /// The CAMERA row's union summary lane — the row band's key markers.
@@ -119,5 +123,48 @@ PropertyLaneRow? timelineCameraUnionLane({
   if (track == null) {
     return null;
   }
-  return transformUnionHeader(track: track, expanded: false);
+  return cameraUnionHeader(
+    track,
+    defById: session.camera.cameraInstructionSet.defById,
+  );
+}
+
+/// The lane the pin [key] names (I-89 ③, a `laneGroupKey`) as a header
+/// graph draws it — or null once its row or its lane is gone, or for a
+/// lane that draws no line.
+///
+/// Read with the lane's own group twirled open, whatever the rail shows:
+/// a pin in a folded group still reaches every graph (I-89-Q4 A, 유저
+/// 2026-10-12: 「계속 그림(AE 그래프 편집기 세트처럼)」).
+///
+/// Read as a drag in flight shows its row — the one substitution every drag
+/// makes ([timelineDragPreviewLayerFor]) — so a pin follows a handle pulled
+/// on it, as its own row does.
+LaneGraphLine? timelineLaneGraphLine(
+  String key, {
+  required EditorSessionManager session,
+}) {
+  final pinned = parseLaneGroupKey(key);
+  if (pinned == null) {
+    return null;
+  }
+  for (final row in session.layers) {
+    if (row.id != pinned.layerId) {
+      continue;
+    }
+    final layer =
+        timelineDragPreviewLayerFor(session.dragPreview.value, row.id) ?? row;
+    final group = laneGroupOf(pinned.laneId);
+    final lanes = timelineLanesForLayer(
+      layer: layer,
+      session: session,
+      expandedGroupKeys: {if (group != null) laneGroupKey(layer.id, group)},
+    );
+    for (final lane in lanes) {
+      if (lane.laneId == pinned.laneId && lane.curve != null) {
+        return (layer: layer, lane: lane);
+      }
+    }
+  }
+  return null;
 }

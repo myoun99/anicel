@@ -14,6 +14,35 @@ typedef TileInkBounds = ({
   int bottomExclusive,
 });
 
+/// Where tile blocks come from, as one isolate tells another: the engine's
+/// allocator by its functions' addresses, or `malloc` when that isolate runs
+/// without one (both zero). [BitmapTile.blocks] reads it, [tileBlocksHere]
+/// binds it.
+///
+/// 🚨A worker filling blocks for [BitmapTile.adoptNative] takes them from
+/// the isolate that ADOPTS them: [BitmapTile._adopt] attaches the finalizer
+/// by that isolate's engine, and the worker's own probe can answer otherwise.
+typedef TileBlocks = ({int alloc, int free});
+
+/// What fills tile blocks where [TileBlocks] were sent: where a block comes
+/// from, and where it goes back when the work it was for fails.
+typedef TileBlockHands = ({
+  Pointer<Uint8> Function(int byteLength) allocate,
+  void Function(Pointer<Uint8> block) free,
+});
+
+/// [blocks] bound in the isolate they were sent to.
+TileBlockHands tileBlocksHere(TileBlocks blocks) {
+  if (blocks.alloc == 0) {
+    return (
+      allocate: (byteLength) => malloc<Uint8>(byteLength),
+      free: malloc.free,
+    );
+  }
+  final engine = QaTileBlocksAt(alloc: blocks.alloc, free: blocks.free);
+  return (allocate: engine.alloc, free: engine.free);
+}
+
 /// One immutable 4-byte-RGBA tile whose pixels live in NATIVE memory
 /// (R19-Z zero-copy tile storage).
 ///
@@ -60,7 +89,8 @@ class BitmapTile implements Finalizable {
   /// Allocation contract: the buffer must come from
   /// [QaNativeEngine.tileAlloc] when the engine is loaded (the commit
   /// scratch does), from `malloc` otherwise — the finalizer choice below
-  /// mirrors exactly that.
+  /// mirrors exactly that. A worker's blocks keep it by [tileBlocksHere]
+  /// bound to this isolate's [blocks].
   factory BitmapTile.adoptNative({
     required int size,
     required Pointer<Uint8> pixels,
@@ -81,12 +111,24 @@ class BitmapTile implements Finalizable {
     );
   }
 
+  /// Throws for a [size] no tile takes — what every constructor asks first.
+  static void checkSize(int size) => _validateSize(size);
+
   static Pointer<Uint8> _allocate(int byteLength) {
     final engine = QaNativeEngine.instance;
     if (engine != null) {
       return engine.tileAlloc(byteLength);
     }
     return malloc<Uint8>(byteLength);
+  }
+
+  /// Where THIS isolate's tiles take their blocks from — [_allocate]'s
+  /// choice, as a worker filling blocks for [adoptNative] here is told it.
+  static TileBlocks get blocks {
+    final engine = QaNativeEngine.instance;
+    return engine == null
+        ? (alloc: 0, free: 0)
+        : (alloc: engine.tileAllocAddress, free: engine.tileFreeAddress);
   }
 
   static final NativeFinalizer _mallocFinalizer = NativeFinalizer(

@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// THE frame-axis window (zoom round): the row's laid-out box stops being
 /// `frames * cellWidth` so a zoom step re-lays-out one box per row instead of
@@ -131,7 +132,7 @@ void main() {
   }) {
     // The row's cell strip: its render object is inside the frame-axis box,
     // so its size IS what the box lays the row out at.
-    final finder = find.byKey(ValueKey<String>('$prefix-row-cells-$layerId'));
+    final finder = find.named('$prefix-row-cells-$layerId');
     return tester.renderObject<RenderBox>(finder);
   }
 
@@ -210,8 +211,11 @@ void main() {
     // The INDEPENDENT truth: frame F sits at content x = F * cellWidth, and
     // the viewport shows content x at screen x - left + offset.
     const cellWidth = 24.0;
-    final frameUnderPointer =
-        ((scrolled + viewportRect.width / 2) / cellWidth).floor();
+    // A cell inside its block of four, clear of the comma grips on the
+    // block's two ends: a press on a grip is the grip's (I-43), and which
+    // cell the view's middle meets moves with the rail's width.
+    final middle = ((scrolled + viewportRect.width / 2) / cellWidth).floor();
+    final frameUnderPointer = middle - middle % 4 + 2;
     final expectedLeft =
         viewportRect.left + frameUnderPointer * cellWidth - scrolled;
 

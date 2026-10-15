@@ -10,24 +10,22 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
-/// 🚨SE ROWS LIVE ON THE TRACK'S GLOBAL AXIS; A CUT SHOWS A WINDOW ONTO
-/// THEM.
+/// 🚨SE ROWS LIVE ON THE TRACK'S GLOBAL AXIS; A RUN SHOWS A WINDOW ONTO
+/// THEM ([PlaybackWindow]) — and the sound is read off the track through
+/// it, never through the run's cuts (F-341, 유저 10-12: 「분명 독립적인
+/// 글로벌 행이라고 했는데 아직도 연관시켜버린 코드가 존재하나본데」).
 ///
-/// So the schedule's real work is mapping each playlist entry back onto
-/// that axis — and two parts of that had nothing pinning them (the
-/// audit's cognitive split, 2026-09-05):
-///
-/// * a PLAYED leading gap is covered by the window, so a sound starting
-///   inside the gap is scheduled rather than dropped;
-/// * a run START also carries sounds spilling in from before the window,
-///   while interior entries emit only spans starting in theirs — which is
-///   what keeps one sound from being scheduled twice.
+/// So a sound is heard wherever the window is: inside a cut, in a gap, in
+/// the movie's trailing frames, on a track with no cut at all. ↩️It was
+/// laid cut by cut: a track with no cut was silent, a sound in the
+/// trailing frames was never scheduled, and one running into them stopped
+/// at the last cut's end.
 void main() {
   const rate = ProjectFrameRate.fps24;
   const canvas = CanvasSize(width: 64, height: 64);
@@ -74,50 +72,42 @@ void main() {
     ],
   );
 
-  StoryboardTimelineLayoutEntry entry(Cut source, {required int startFrame}) =>
-      StoryboardTimelineLayoutEntry(
+  PlaybackWindow window({required int trackStart, required int frames}) =>
+      PlaybackWindow(
         trackId: const TrackId('t'),
-        cutId: source.id,
-        trackIndex: 0,
-        cutIndex: 0,
-        startFrame: startFrame,
-        endFrame: startFrame + source.duration,
-        duration: source.duration,
-        cut: source,
+        trackStart: trackStart,
+        frames: frames,
       );
 
   List<ScheduledAudioClip> schedule({
     required Project project,
-    required List<StoryboardTimelineLayoutEntry> playlist,
+    required PlaybackWindow window,
   }) => buildAudioPlaybackSchedule(
-    playlist: playlist,
+    window: window,
     project: project,
     rate: rate,
     durationSecondsFor: (_) => 100,
   );
 
-  test('a sound inside a cut is scheduled at the entry that shows it', () {
-    final only = cut('c1');
+  test('a sound inside a cut is scheduled where the window shows it', () {
     final scheduled = schedule(
-      project: projectWith(cuts: [only], sound: (start: 2, length: 3)),
-      playlist: [entry(only, startFrame: 0)],
+      project: projectWith(cuts: [cut('c1')], sound: (start: 2, length: 3)),
+      window: window(trackStart: 0, frames: 10),
     );
 
     expect(scheduled, hasLength(1));
     expect(scheduled.single.startFrame, 2);
+    expect(scheduled.single.endFrameExclusive, 5);
   });
 
-  test('🚨a sound starting inside a PLAYED leading gap is scheduled — the '
-      'window reaches back over the gap the playlist plays as black', () {
-    final second = cut('c2', leadingGap: 4);
-    final first = cut('c1');
+  test('a sound starting inside a gap between cuts is scheduled', () {
     final scheduled = schedule(
       project: projectWith(
-        cuts: [first, second],
+        cuts: [cut('c1'), cut('c2', leadingGap: 4)],
         // Track frames 10..13 are the gap before c2.
         sound: (start: 11, length: 2),
       ),
-      playlist: [entry(first, startFrame: 0), entry(second, startFrame: 14)],
+      window: window(trackStart: 0, frames: 24),
     );
 
     expect(
@@ -128,29 +118,29 @@ void main() {
     expect(scheduled.single.startFrame, 11);
   });
 
-  test('🚨a sound spanning a cut boundary is scheduled ONCE — the interior '
-      'entry emits only spans STARTING in its window', () {
-    final first = cut('c1');
-    final second = cut('c2');
+  test('a sound spanning a cut boundary is scheduled ONCE, whole', () {
     final scheduled = schedule(
-      project: projectWith(cuts: [first, second], sound: (start: 8, length: 8)),
-      playlist: [entry(first, startFrame: 0), entry(second, startFrame: 10)],
+      project: projectWith(
+        cuts: [cut('c1'), cut('c2')],
+        sound: (start: 8, length: 8),
+      ),
+      window: window(trackStart: 0, frames: 20),
     );
 
     expect(scheduled, hasLength(1));
     expect(scheduled.single.startFrame, 8);
+    expect(scheduled.single.endFrameExclusive, 16);
   });
 
-  test('🚨a playlist that STARTS mid-sound still plays it — the run start '
-      'takes the spill and bumps the file offset by the clipped lead', () {
-    final second = cut('c2');
+  test('🚨a window that opens mid-sound still plays it — from where it has '
+      'got to, the file offset bumped by the clipped lead', () {
     final scheduled = schedule(
       project: projectWith(
-        cuts: [cut('c1'), second],
+        cuts: [cut('c1'), cut('c2')],
         sound: (start: 6, length: 10),
       ),
-      // The playlist is c2 alone, rebased to 0: the sound began before it.
-      playlist: [entry(second, startFrame: 0)],
+      // c2 played alone: its frame 0 is track frame 10.
+      window: window(trackStart: 10, frames: 10),
     );
 
     expect(scheduled, hasLength(1));
@@ -161,49 +151,97 @@ void main() {
     );
     expect(
       scheduled.single.offsetFrames,
-      greaterThan(0),
-      reason: 'and it starts part-way into the file',
+      4,
+      reason: 'and it starts four frames into the file',
+    );
+    expect(scheduled.single.endFrameExclusive, 6);
+  });
+
+  test('🚨F-341: a track with NO cut is heard all the same — the window is '
+      'the track\'s, not its cuts\'', () {
+    final scheduled = schedule(
+      project: projectWith(cuts: const [], sound: (start: 10, length: 4)),
+      window: window(trackStart: 0, frames: 48),
+    );
+
+    expect(scheduled, hasLength(1));
+    expect(scheduled.single.startFrame, 10);
+    expect(scheduled.single.endFrameExclusive, 14);
+  });
+
+  test('🚨F-341: a sound in the movie\'s trailing frames is heard, and one '
+      'running into them is not cut off at the last cut', () {
+    final starting = schedule(
+      project: projectWith(cuts: [cut('c1')], sound: (start: 14, length: 3)),
+      // The cut's 10 frames and 10 trailing ones.
+      window: window(trackStart: 0, frames: 20),
+    );
+    expect(starting.single.startFrame, 14);
+
+    final running = schedule(
+      project: projectWith(cuts: [cut('c1')], sound: (start: 8, length: 8)),
+      window: window(trackStart: 0, frames: 20),
+    );
+    expect(
+      running.single.endFrameExclusive,
+      16,
+      reason: 'it runs to its own end, past the last cut\'s 10',
     );
   });
 
-  test('🚨a playlist that JUMPS starts a new run mid-list — c1 then c3, and '
-      'the sound running across the skipped c2 is still heard', () {
-    final third = cut('c3');
-    final scheduled = schedule(
-      project: projectWith(
-        cuts: [cut('c1'), cut('c2'), third],
-        // Track 18..23: it begins inside the SKIPPED c2 and runs into c3.
-        sound: (start: 18, length: 6),
-      ),
-      // Two frames of playlist that are not two frames of track: the
-      // entries are adjacent in the list and far apart on the axis.
-      playlist: [entry(cut('c1'), startFrame: 0), entry(third, startFrame: 12)],
+  test('the window\'s end is the sound\'s end — and nothing past it plays', () {
+    final project = projectWith(
+      cuts: [cut('c1')],
+      sound: (start: 15, length: 10),
     );
+    expect(
+      schedule(
+        project: project,
+        window: window(trackStart: 0, frames: 20),
+      ).single.endFrameExclusive,
+      20,
+    );
+    expect(
+      schedule(project: project, window: window(trackStart: 0, frames: 15)),
+      isEmpty,
+      reason: 'a sound starting where the window ends is not in it',
+    );
+  });
 
-    expect(
-      scheduled,
-      hasLength(1),
-      reason: 'the jump makes c3 a run start, and a run start takes the spill',
+  // Asking a file's length starts its conform on the first ask
+  // (`AudioConformStore.durationSecondsFor`): a scrub over one cut must not
+  // set every sound on the track decoding.
+  test('a sound outside the window is never looked up — on either side', () {
+    final project = projectWith(
+      cuts: [cut('c1')],
+      sound: (start: 15, length: 10),
     );
-    expect(
-      scheduled.single.startFrame,
-      12,
-      reason:
-          'at the entry, NOT two frames early — the playlist gap here is '
-          'not a played leading gap, so the window does not reach back',
-    );
-    expect(
-      scheduled.single.offsetFrames,
-      2,
-      reason: 'and the part heard before the jump is skipped in the file',
-    );
+    final asked = <String>[];
+    for (final outside in [
+      window(trackStart: 0, frames: 15),
+      window(trackStart: 25, frames: 5),
+    ]) {
+      buildAudioPlaybackSchedule(
+        window: outside,
+        project: project,
+        rate: rate,
+        durationSecondsFor: (path) {
+          asked.add(path);
+          return 100;
+        },
+      );
+    }
+
+    expect(asked, isEmpty);
   });
 
   test('⛔a MUTED row is silent', () {
-    final only = cut('c1');
-    final project = projectWith(cuts: [only], sound: (start: 2, length: 3));
+    final project = projectWith(
+      cuts: [cut('c1')],
+      sound: (start: 2, length: 3),
+    );
     final scheduled = buildAudioPlaybackSchedule(
-      playlist: [entry(only, startFrame: 0)],
+      window: window(trackStart: 0, frames: 10),
       project: project,
       rate: rate,
       durationSecondsFor: (_) => 100,
@@ -214,10 +252,12 @@ void main() {
   });
 
   test('⛔SOLO narrows to itself — a row that is not soloed is silent', () {
-    final only = cut('c1');
-    final project = projectWith(cuts: [only], sound: (start: 2, length: 3));
+    final project = projectWith(
+      cuts: [cut('c1')],
+      sound: (start: 2, length: 3),
+    );
     final scheduled = buildAudioPlaybackSchedule(
-      playlist: [entry(only, startFrame: 0)],
+      window: window(trackStart: 0, frames: 10),
       project: project,
       rate: rate,
       durationSecondsFor: (_) => 100,

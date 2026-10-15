@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
 
 import '../helpers/panel_finders.dart';
 import '../helpers/settings_flyout.dart';
@@ -443,12 +444,16 @@ void main() {
       );
       expect(rail.top, greaterThan(strip.top));
       // It is a panel, not a column: it stops at its own saved height, well
-      // short of the rail's own box. The width grip spans exactly the panel
-      // it belongs to, so it measures the panel.
+      // short of the rail's own box. The width grip runs the panel's height
+      // one corner short of each end (I-60), so it measures the panel less
+      // two corners.
       final group = tester.getRect(
         find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
       );
-      expect(group.height, closeTo(EditorWorkspace.railGroupHeight, 0.5));
+      expect(
+        group.height + 2 * DockEdgeSplitter.endInset,
+        closeTo(EditorWorkspace.railGroupHeight, 0.5),
+      );
       expect(
         group.bottom,
         lessThan(rail.bottom - 100),

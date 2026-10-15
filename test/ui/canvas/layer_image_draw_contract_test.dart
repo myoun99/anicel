@@ -277,6 +277,18 @@ void main() {
 /// export/export_frame_renderer — a canvas-size video frame drew its baked
 /// cut in one place and each cut of a mixed frame in another, the same
 /// draw written twice; it is one function now (`_paintCutInFrame`).
+/// **29** on 2026-10-10 (board `playback-plays-the-screen-material`, a level
+/// made from its tiles): −1 in canvas/tiled_surface_compose — the async and
+/// the sync compose each drew a tile at its place; one tile laying does now,
+/// whole or halved (`_TileLaying`).
+/// **30** on 2026-10-15 (board `F-344`, 유저 「놓을 때와 같은 코드로 —
+/// 완전히 같게」): +1 in canvas/text/cel_text_float — on a row that keys its
+/// colours, the text in hand floats as the very bytes it lands as
+/// (`CelTextLanding`), pictured through the door every tile takes and drawn
+/// 1:1 in the cel's pixels — below 100% its region is painted at level 0
+/// and halved (F-240). The 1:1 blit class, owning `FilterQuality.none` on
+/// its own Paint, and `BlendMode.src`: it replaces what the hole shows
+/// there.
 const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(

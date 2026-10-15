@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-81 (유저 2026-09-11): 「일반 폴더의 내부 레이어에 이름영역 왼쪽에 ㅣ
 /// 아이콘? 있는데 너무 어두우니 좀 더 밝게. 그리고 이 아이콘이 어태치폴더의 내부
 /// 레이어에 안생김. 로직 다른거같은데 통일해서 법 하나로 만들도록. 그리고
@@ -121,9 +123,7 @@ void main() {
     expect(session.activeLayerId, attachFolder);
 
     await tester.tap(
-      find
-          .byKey(ValueKey<String>('timeline-attach-twirl-${groupBase.value}'))
-          .first,
+      find.named('timeline-attach-twirl-${groupBase.value}').first,
     );
     await tester.pumpAndSettle();
 

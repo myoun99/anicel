@@ -1,8 +1,6 @@
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
-import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:anicel/src/services/cache_invalidation_executor.dart';
 import 'package:anicel/src/ui/brush/eyedropper_swatch_painter.dart';
 import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
@@ -30,25 +28,14 @@ int? eyedropperSwatchColor(WidgetTester tester) =>
 
 class FakeCacheInvalidationSink implements CacheInvalidationSink {
   final layerTiles = <LayerTileCacheKey>[];
-  final frameComposites = <FrameCompositeCacheKey>[];
-  final playbackPreviews = <PlaybackPreviewCacheKey>[];
 
-  int get totalCalls =>
-      layerTiles.length + frameComposites.length + playbackPreviews.length;
+  int get totalCalls => layerTiles.length;
 
   @override
   void invalidateLayerTile(LayerTileCacheKey key) => layerTiles.add(key);
 
   @override
   void invalidateBrushFrame(BrushFrameCacheInvalidation invalidation) {}
-
-  @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) =>
-      frameComposites.add(key);
-
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) =>
-      playbackPreviews.add(key);
 }
 
 Finder interactiveBrushCanvasFinder() =>

@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineRangeSelectionBandDecorationAt;
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
+import '../helpers/named_finders.dart';
 import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -705,15 +706,24 @@ void main() {
       expect(session.selectedRow, _conteRow);
       expect(session.editingGlobalFrame, 16);
       expect(session.activeLayerId, const LayerId('cut-2-sb'));
-      // …and it is the one row the rail lights.
-      const lit = ValueKey<String>('storyboard-selected-row');
-      expect(find.byKey(lit), findsOneWidget);
+      // …and it is the one row the rail lights — as the timeline's row is
+      // lit, which the conte's head is now (I-73: 「타임라인의 콘티 행
+      // 그대로이고 머리도 같습니다」, the drawn proposal 유저 took on
+      // 2026-10-08). ↩️The rail's own label stood there, lit by the key its
+      // other rows still wear.
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        findsNothing,
+        reason: 'no other row of the rail is lit',
+      );
+      final lit = find.named('storyboard-selected-layer');
+      expect(lit, findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(
             ValueKey<String>('storyboard-conte-label-${_trackId.value}'),
           ),
-          matching: find.byKey(lit),
+          matching: lit,
         ),
         findsOneWidget,
       );

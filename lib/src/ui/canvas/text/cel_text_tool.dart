@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
 import '../../../models/bitmap_surface.dart';
@@ -8,6 +9,8 @@ import '../../../models/canvas_point.dart';
 import '../../../models/canvas_size.dart';
 import '../../../models/cel_text.dart';
 import '../../../models/text_cel_style.dart';
+import '../../../services/bitmap_surface_geometry.dart'
+    show celTextContentMoved;
 import '../../../services/brush_frame_editing_coordinator.dart';
 import '../../../services/cache_invalidation_executor.dart';
 import '../../../services/cel_text_edits.dart';
@@ -22,6 +25,7 @@ import 'cel_text_editing_controller.dart';
 import 'cel_text_session.dart';
 
 part 'cel_text_tool_list.dart';
+part 'cel_text_tool_on_canvas.dart';
 part 'cel_text_tool_way_out.dart';
 
 /// A cel a text can be set on: its key, what holds its picture, the canvas
@@ -42,6 +46,16 @@ enum CelTextHold { box, letters }
 abstract interface class CelTextToolHost {
   /// What the next text starts as (the tool settings).
   TextToolOptions get options;
+
+  /// What the hand leaves [options] as: setting a text seeds them
+  /// ([TextToolOptions.seeded]), and sizing one by its corner gives the
+  /// next text that size (F-342).
+  set options(TextToolOptions options);
+
+  /// The brush's colour — the next text's while the tool has none of its
+  /// own ([TextToolOptions.takesTheBrushColour]). Null where there is no
+  /// brush to read.
+  int? get brushColour;
 
   /// The cel under the tool — the one a press sets a text on or takes one
   /// from. Null where none is under the playhead, or its row takes no
@@ -69,8 +83,11 @@ abstract interface class CelTextToolHost {
   /// Where history stands now — null where there is none to stand in.
   HistoryMark? get historyMark;
 
-  /// What the tool shows on the canvas changed: the cel has to be drawn
-  /// again.
+  /// What the canvas draws for a cel in place of its picture changed — a
+  /// text taken or let go of, one let go of set or landed
+  /// ([CelTextOnCanvas.shownSurfaceFor]): it has to be drawn again. What the
+  /// text in hand makes of itself floats, and is told on
+  /// [CelTextTool.shownInHand] instead.
   void shownChanged();
 }
 
@@ -94,6 +111,12 @@ class _Holding {
   /// ⛔THE HOLD'S, AND SO GONE WITH IT: a text let go of and taken again
   /// has its cross in the middle, with nothing anywhere to put back.
   Offset crossOffCentre = Offset.zero;
+
+  /// The carry of the text under way ([CelTextTool.carry]): where it stood
+  /// when it began — as shown, and as a setting finds it — and how far it
+  /// has gone, until it lands ([CelTextTool.landEdit]).
+  ({CelTextMoveOrigin origin, CelTextContent content, int dx, int dy})?
+  carry;
 
   /// Whether this text was let go of TO BECOME DRAWING
   /// ([CelTextTool.turnIntoDrawing]): once it has landed it is laid into
@@ -176,6 +199,45 @@ class CelTextTool extends ChangeNotifier {
   Listenable get crossCarried => _crossCarried;
   final _Telling _crossCarried = _Telling();
 
+  /// Whether a carry of the text in hand is under way ([carry]).
+  bool get carrying => _held?.carry != null;
+
+  /// How far the text in hand has been carried since the carry under way
+  /// began, in whole pixels — nothing while none is ([carry]).
+  ({int dx, int dy}) get carried {
+    final carry = _held?.carry;
+    return carry == null ? (dx: 0, dy: 0) : (dx: carry.dx, dy: carry.dy);
+  }
+
+  /// The text in hand shown [dx] across and [dy] down, in whole pixels,
+  /// from where it stood when this carry began — by a hand on its box, or
+  /// by the steps of its place in the tool settings (I-95): ONE carry,
+  /// whichever moves it. Its pixels go with it rather than being set
+  /// again, where they can (`CelTextSession.showMoved`); with its letters
+  /// held it is set where it goes. [landEdit] lands it, and a carry after
+  /// that begins where this one ended.
+  void carry({required int dx, required int dy}) {
+    final held = _held;
+    if (held == null) {
+      return;
+    }
+    final session = held.session;
+    final from =
+        held.carry ??
+        (
+          origin: session.moveOrigin,
+          content: _contentInHand(session),
+          dx: 0,
+          dy: 0,
+        );
+    held.carry = (origin: from.origin, content: from.content, dx: dx, dy: dy);
+    if (_letters != null) {
+      showEdit(celTextContentMoved(from.content, dx: dx, dy: dy));
+      return;
+    }
+    session.showMoved(from.origin, dx: dx, dy: dy);
+  }
+
   /// The way out of the hand: the landing of what it lets go of, and the
   /// texts let go of that still owe theirs ([_CelTextWayOut]).
   late final _CelTextWayOut _wayOut = _CelTextWayOut(this);
@@ -184,62 +246,31 @@ class CelTextTool extends ChangeNotifier {
 
   // ── what the canvas shows ───────────────────────────────────────────
 
-  /// [cel] — [key]'s picture as it stands — with every text this tool has
-  /// in hand laid in as it is shown, or null when it holds none on that
-  /// cel that differs from what the cel carries.
-  BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) {
-    var surface = cel;
-    for (final leaving in _wayOut.leaving) {
-      if (leaving.session.key == key) {
-        surface = leaving.session.shownOver(surface);
-      }
-    }
-    final held = _held;
-    if (held != null && held.session.key == key) {
-      surface = held.session.shownOver(surface);
-    }
-    return identical(surface, cel) ? null : surface;
-  }
+  /// What the canvas shows for what the hand holds: the cel's place, what
+  /// floats over it and the boxes the texts wear ([CelTextOnCanvas]).
+  late final CelTextOnCanvas onCanvas = CelTextOnCanvas._(this);
 
-  /// Where the texts of [key]'s cel stand that are in NOBODY'S hand:
-  /// [cel]'s own, but for the ones this tool speaks for — and, of those,
-  /// the ones let go of that still owe a landing, as they are shown.
+  /// What of the text in hand is on screen, told whenever it is another — a
+  /// bake made, a hand carried it, another text taken. Null with none.
   ///
-  /// 🗣️유저 2026-10-02: 「텍스트는 텍스트 툴을 선택했을때만 **텍스트별로
-  /// 박스가 떠서** 편집가능. 화면에 텍스트박스를 선택해서(선택된지 알수있도록
-  /// ui 필요.)」 — every text wears a box while the tool is in hand, and the
-  /// one in hand wears its own ([session]), which says it is the one.
-  List<CelTextBox> restingBoxesOn(BrushFrameKey key, BitmapSurface cel) {
-    final leaving = [
-      for (final holding in _wayOut.leaving)
-        if (holding.session.key == key) holding,
-    ];
-    final held = _held?.session;
-    final spokenFor = {
-      for (final holding in leaving) holding.session.textId,
-      if (held != null && held.key == key) held.textId,
-    };
-    return [
-      for (final text in celTextsInReach(cel))
-        if (!spokenFor.contains(text.id)) celTextBoxOf(text.content),
-      for (final _Holding(:session, :becomesDrawing) in leaving)
-        // A text with no letters is not there, shown or landed — and one
-        // on its way into the drawing is no text of the tool's any more
-        // ([takeableOn]).
-        if (!session.shown.content.isEmpty && !becomesDrawing)
-          session.shown.layout.onCanvas,
-    ];
-  }
+  /// ⛔ITS OWN LINE, for [crossCarried]'s reason: a text a hand carries is
+  /// no other text, so neither the panel is built again at every move nor
+  /// the settings' rows. Whoever draws the text listens here — and whoever
+  /// shows where it stands, through the app's channel
+  /// (`CelTextCommands.shownInHand`).
+  ValueListenable<CelTextShown?> get shownInHand => _shownInHand;
+  final ValueNotifier<CelTextShown?> _shownInHand = ValueNotifier(null);
 
   /// The texts of [cel] a hand can take hold of now, bottom to top: the
   /// ones in reach ([celTextsInReach]) but for those let go of to become
   /// drawing ([turnIntoDrawing]) whose last want is still being set.
   ///
   /// 🚨FOR THE TOOL SUCH A TEXT IS DRAWING ALREADY — it wears no box
-  /// ([restingBoxesOn]), a press finds nothing of it and the settings'
-  /// list has no row for it. Taken in hand again it would be a text under
-  /// the hand at the moment the drawing took it, and what the hand then
-  /// landed would set it on the cel a second time, over its own pixels.
+  /// ([CelTextOnCanvas.restingBoxesOn]), a press finds nothing of it and
+  /// the settings' list has no row for it. Taken in hand again it would be
+  /// a text under the hand at the moment the drawing took it, and what the
+  /// hand then landed would set it on the cel a second time, over its own
+  /// pixels.
   List<CelText> takeableOn(CelTextCel cel) {
     final turning = {
       for (final holding in _wayOut.leaving)
@@ -277,8 +308,8 @@ class CelTextTool extends ChangeNotifier {
   HistoryMark? get historyMark => host.historyMark;
 
   /// Starts a text on [cel] at [anchor] and takes it by its letters — as
-  /// wide as [wrapWidth] says, or growing with what is typed. Whatever was
-  /// in hand lands first.
+  /// wide as [wrapWidth] says and at least [minHeight] tall, or growing
+  /// with what is typed. Whatever was in hand lands first.
   ///
   /// [celMadeSince] is [historyMark] as the press that MADE [cel] found
   /// it: the text and its cel then land as one step
@@ -287,16 +318,25 @@ class CelTextTool extends ChangeNotifier {
     CelTextCel cel,
     CanvasPoint anchor, {
     double? wrapWidth,
+    double? minHeight,
     HistoryMark? celMadeSince,
   }) {
     confirm();
-    final options = host.options;
+    // The text is set in the brush's colour while the tool has none of its
+    // own — and from here the tool keeps that colour (F-334-Q1).
+    final options = host.options = host.options.seeded(
+      brushColour: host.brushColour,
+    );
     _hold(
       _Holding(
         _sessionOn(
           cel,
           standing: null,
-          content: options.newTextAt(anchor, wrapWidth: wrapWidth),
+          content: options.newTextAt(
+            anchor,
+            wrapWidth: wrapWidth,
+            minHeight: minHeight,
+          ),
         ),
         cel,
         celMadeSince: celMadeSince,
@@ -331,12 +371,14 @@ class CelTextTool extends ChangeNotifier {
     tileSize: cel.coordinator.currentSurfaceOf(cel.key).tileSize,
     standing: standing,
     content: content,
-    nextLetterStyle: host.options.letters,
+    nextLetterStyle: host.options.letters(brushColour: host.brushColour),
     bake: _bake,
   );
 
   void _hold(_Holding holding) {
-    holding.session.addListener(_sessionChanged);
+    holding.session
+      ..addListener(_sessionChanged)
+      ..showing.addListener(_sessionShown);
     _held = holding;
     _changed();
   }
@@ -419,6 +461,7 @@ class CelTextTool extends ChangeNotifier {
   /// [showEdit] showed lands as one step. While the LETTERS are held it is
   /// part of that visit instead — one step back there — and lands with it.
   void landEdit() {
+    _held?.carry = null;
     _editGoesOn = false;
     if (_letters == null) {
       _wayOut.landHeld(thenLetGo: false);
@@ -608,15 +651,61 @@ class CelTextTool extends ChangeNotifier {
   void _retire(CelTextSession session) {
     session
       ..removeListener(_sessionChanged)
+      ..showing.removeListener(_sessionShown)
       ..dispose();
   }
 
-  void _sessionChanged() => _changed();
+  /// A text this tool holds or still owes a landing made something of
+  /// itself.
+  ///
+  /// 🚨F-344: THE PANEL IS BUILT AGAIN ONLY WHERE WHAT IT DRAWS IN THE
+  /// CEL'S PLACE CHANGED ([CelTextOnCanvas.shownSurfaceFor]) — the text in
+  /// hand lifted off or put back ([_lifts]), or one let go of, laid in
+  /// there, set again. The text in hand floats over that
+  /// ([CelTextOnCanvas.floatingOn]) and is drawn again from [shownInHand].
+  void _sessionChanged() {
+    if (_disposed) {
+      return;
+    }
+    if (!_tellIfLifted() && _wayOut.leaving.isNotEmpty) {
+      host.shownChanged();
+    }
+    notifyListeners();
+  }
+
+  void _sessionShown() {
+    if (_disposed) {
+      return;
+    }
+    _shownInHand.value = _held?.session.shown;
+    _tellIfLifted();
+  }
+
+  /// Whether the text in hand is lifted off its cel: in hand, and shown as
+  /// something other than what the cel carries.
+  bool get _lifts => !(_held?.session.shownAsCarried ?? true);
+
+  /// [_lifts] as the panel was last told of it.
+  bool _toldLifted = false;
+
+  /// Tells the panel when [_lifts] is not what it was told — and answers
+  /// whether it did.
+  bool _tellIfLifted() {
+    final lifts = _lifts;
+    if (lifts == _toldLifted) {
+      return false;
+    }
+    _toldLifted = lifts;
+    host.shownChanged();
+    return true;
+  }
 
   void _changed() {
     if (_disposed) {
       return;
     }
+    _shownInHand.value = _held?.session.shown;
+    _toldLifted = _lifts;
     host.shownChanged();
     notifyListeners();
   }
@@ -627,6 +716,7 @@ class CelTextTool extends ChangeNotifier {
     _disposed = true;
     _wayOut.landAll();
     _crossCarried.dispose();
+    _shownInHand.dispose();
     super.dispose();
   }
 }
@@ -639,7 +729,7 @@ class CelTextTool extends ChangeNotifier {
 /// would do with it — draw its box, ask whether a press is inside it, take
 /// it in hand — is measured in its letters, and until its face is here
 /// those would be set in another. So for the tool it is not there yet, in
-/// every place alike: the boxes ([CelTextTool.restingBoxesOn]), a press
+/// every place alike: the boxes ([CelTextOnCanvas.restingBoxesOn]), a press
 /// (`cel_text_press`), the settings' list ([CelTextList]). Asking is what
 /// sends for the face, and its arrival is told (`CanvasLetterFaces.changes`).
 Iterable<CelText> celTextsInReach(BitmapSurface picture) =>

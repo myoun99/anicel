@@ -55,19 +55,11 @@ void main() {
     }
 
     CacheInvalidationExecutionResult zeroResult() {
-      return CacheInvalidationExecutionResult(
-        layerTileCount: 0,
-        frameCompositeCount: 0,
-        playbackPreviewCount: 0,
-      );
+      return CacheInvalidationExecutionResult(layerTileCount: 0);
     }
 
     CacheInvalidationExecutionResult nonZeroResult() {
-      return CacheInvalidationExecutionResult(
-        layerTileCount: 1,
-        frameCompositeCount: 2,
-        playbackPreviewCount: 3,
-      );
+      return CacheInvalidationExecutionResult(layerTileCount: 1);
     }
 
     BrushEditSessionCacheOperationResult result({

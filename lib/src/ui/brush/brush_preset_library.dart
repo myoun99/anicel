@@ -20,8 +20,10 @@ import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
 import 'picked_file.dart';
 import '../../models/brush_hand_settings.dart';
+import '../../models/import/import_warning.dart' show ImportRefusal;
 import '../../services/brush_pack_file.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 
 /// The brush preset library: the groups, the preset list and every
 /// mutation on them — save/rename/reorder/
@@ -322,6 +324,10 @@ class BrushPresetLibrary extends ChangeNotifier {
     import: _importBrushFile,
   );
 
+  /// The same import of a file already in hand — the one door's (F-282):
+  /// a brush file opened or dropped like any other file comes here.
+  Future<String?> importFile(PickedFile file) => _importBrushFile(file);
+
   /// Writes [presets] — and the groups they belong to — as one `.anibrush`.
   ///
   /// 🚨유저 확정 (`brush-export-format-Q1`, 답 1): our own format, nothing
@@ -486,12 +492,8 @@ class BrushPresetLibrary extends ChangeNotifier {
         imported = result.presets;
         warnings = result.warnings;
       }
-    } on BrushPackFormatException catch (error) {
-      return error.message;
-    } on AbrDecodeException catch (error) {
-      return error.message;
-    } on SutDecodeException catch (error) {
-      return error.message;
+    } on ImportRefusal catch (error) {
+      return error.reason.textFor(AppText.language);
     } on Exception {
       return AppText.strings.brImportUnreadable;
     }

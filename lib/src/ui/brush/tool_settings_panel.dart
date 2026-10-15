@@ -1,7 +1,4 @@
-import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
-
-import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
 
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
@@ -16,6 +13,8 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/transform_box_law.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart' show PanelKeysBinding;
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
@@ -36,11 +35,12 @@ import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
 import '../text/imported_fonts.dart';
 import '../text/model_vocabulary.dart';
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/fill_reference_button.dart';
 import '../listenable_rebind.dart';
 import '../widgets/pill_strip.dart';
+import '../widgets/scale_chain_button.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
 /// knobs for the ACTIVE tool. Painting tools show the brush settings, the
@@ -221,90 +221,7 @@ class ToolSettingsPanel extends StatelessWidget {
     final preview = _preview();
     final settings = Material(
       type: MaterialType.transparency,
-      child: switch (state.tool) {
-        CanvasTool.brush || CanvasTool.eraser => BrushSettingsPanel(
-          state: state,
-          onChanged: onChanged,
-          tips: tips,
-          onTipImportRequested: onTipImportRequested,
-          onRenameTip: onRenameTip,
-          onDeleteTip: onDeleteTip,
-        ),
-        CanvasTool.fill => _FillSettings(
-          options: fillOptions,
-          onChanged: onFillOptionsChanged,
-          readLayerNames: _namesReadBy(fillOptions.source),
-          activeLayerIsFillReference: activeLayerIsFillReference,
-          onToggleActiveLayerFillReference: onToggleActiveLayerFillReference,
-        ),
-        // 유저 확정 ⑥: a panel PER TILE, showing what actually applies.
-        // The bucket's knobs above are about reading the picture — where
-        // the flood may go — and a drawn outline never asks that question,
-        // so tolerance, gap close and pasteboard-fill are simply not here.
-        // Only the edge is shared, because only the edge is shared.
-        CanvasTool.fillShape => _ShapeFillSettings(
-          options: fillOptions,
-          onChanged: onFillOptionsChanged,
-          shapeKind: state.activeShapeKind,
-          selectionCommands: selectionCommands,
-        ),
-        // I-69: what the shape tool lays and what lays its line. A line of
-        // the brush type is drawn by the brush in hand — its size and
-        // opacity are the strip's, the rest the brush's own panel's; the
-        // tool's own values are the strip's too, wherever it draws by them.
-        CanvasTool.shape => _ShapeToolSettings(
-          state: state,
-          onChanged: onChanged,
-        ),
-        // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
-        CanvasTool.eyedropper => _EyedropperSettings(
-          source: eyedropperSource,
-          onChanged: onEyedropperSourceChanged,
-          readLayerNames: _namesReadBy(eyedropperSource),
-        ),
-        CanvasTool.select => _SelectionSettings(
-          state: state,
-          onChanged: onChanged,
-          maskOptions: selectionMaskOptions,
-          onMaskOptionsChanged: onSelectionMaskOptionsChanged,
-          selectionCommands: selectionCommands,
-          canvasSize: canvasSize,
-          language: language,
-        ),
-        // The CUT grab: nothing to set whatever shape it is wearing (the
-        // grab is hard-edged by law — 2치 보존 — and it makes no selection,
-        // so there is no combine mode either) — except the polygon's
-        // confirm, which every drag-out verb needs while a trace is open.
-        CanvasTool.cut => _CutGrabSettings(
-          shapeKind: state.activeShapeKind,
-          selectionCommands: selectionCommands,
-        ),
-        CanvasTool.cutStamp => _CutStampSettings(
-          slot: cutPieceSlot,
-          onPasteAtOrigin: onCutPasteAtOrigin,
-          onRegisterAsTip: onRegisterCutPieceAsTip,
-        ),
-        CanvasTool.move => _MoveSettings(
-          selectionCommands: selectionCommands,
-          options: transformOptions,
-          onOptionsChanged: onTransformOptionsChanged,
-        ),
-        CanvasTool.text => TextToolSettings(
-          options: textOptions,
-          commands: textCommands,
-          // The brush's colour, for the colour window's 「현재 색 반영」.
-          currentColorOf: () => state.color,
-          fonts: textFonts,
-        ),
-        // Guides get their knobs HERE, like every other tool. There is no
-        // guide panel of its own.
-        CanvasTool.guide => GuideSettings(
-          guides: guides ?? CutGuides.empty,
-          selectedGuideId: selectedGuideId,
-          onGuidesCommitted: onGuidesCommitted ?? (_) {},
-          onGuidesPreview: onGuidesPreview ?? (_) {},
-        ),
-      },
+      child: ToolSettingSurface(child: _settingsOfTheTool()),
     );
     if (preview == null) {
       return settings;
@@ -317,14 +234,93 @@ class ToolSettingsPanel extends StatelessWidget {
       children: [preview, Expanded(child: settings)],
     );
   }
+
+  /// The section of the tool in hand.
+  Widget _settingsOfTheTool() => switch (state.tool) {
+    CanvasTool.brush || CanvasTool.eraser => BrushSettingsPanel(
+      state: state,
+      onChanged: onChanged,
+      tips: tips,
+      onTipImportRequested: onTipImportRequested,
+      onRenameTip: onRenameTip,
+      onDeleteTip: onDeleteTip,
+    ),
+    CanvasTool.fill => _FillSettings(
+      options: fillOptions,
+      onChanged: onFillOptionsChanged,
+      readLayerNames: _namesReadBy(fillOptions.source),
+      activeLayerIsFillReference: activeLayerIsFillReference,
+      onToggleActiveLayerFillReference: onToggleActiveLayerFillReference,
+    ),
+    // 유저 확정 ⑥: a panel PER TILE, showing what actually applies.
+    // The bucket's knobs above are about reading the picture — where
+    // the flood may go — and a drawn outline never asks that question,
+    // so tolerance, gap close and pasteboard-fill are simply not here.
+    // Only the edge is shared, because only the edge is shared.
+    CanvasTool.fillShape => _ShapeFillSettings(
+      options: fillOptions,
+      onChanged: onFillOptionsChanged,
+      shapeKind: state.activeShapeKind,
+      selectionCommands: selectionCommands,
+    ),
+    // I-69: what the shape tool lays and what lays its line. A line of
+    // the brush type is drawn by the brush in hand — its size and
+    // opacity are the strip's, the rest the brush's own panel's; the
+    // tool's own values are the strip's too, wherever it draws by them.
+    CanvasTool.shape => _ShapeToolSettings(
+      state: state,
+      onChanged: onChanged,
+    ),
+    // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
+    CanvasTool.eyedropper => _EyedropperSettings(
+      source: eyedropperSource,
+      onChanged: onEyedropperSourceChanged,
+      readLayerNames: _namesReadBy(eyedropperSource),
+    ),
+    CanvasTool.select => _SelectionSettings(
+      state: state,
+      onChanged: onChanged,
+      maskOptions: selectionMaskOptions,
+      onMaskOptionsChanged: onSelectionMaskOptionsChanged,
+      selectionCommands: selectionCommands,
+      canvasSize: canvasSize,
+      language: language,
+    ),
+    // The CUT grab: 「원본 삭제」 and the polygon's confirm, whatever shape
+    // it is wearing — and nothing of a selection's (see the class).
+    CanvasTool.cut => _CutGrabSettings(
+      state: state,
+      onChanged: onChanged,
+      selectionCommands: selectionCommands,
+    ),
+    CanvasTool.cutStamp => _CutStampSettings(
+      slot: cutPieceSlot,
+      onPasteAtOrigin: onCutPasteAtOrigin,
+      onRegisterAsTip: onRegisterCutPieceAsTip,
+    ),
+    CanvasTool.move => _MoveSettings(
+      selectionCommands: selectionCommands,
+      options: transformOptions,
+      onOptionsChanged: onTransformOptionsChanged,
+    ),
+    CanvasTool.text => TextToolSettings(
+      options: textOptions,
+      commands: textCommands,
+      // The brush's colour, for the colour window's 「현재 색 반영」.
+      currentColorOf: () => state.color,
+      fonts: textFonts,
+    ),
+    // Guides get their knobs HERE, like every other tool. There is no
+    // guide panel of its own.
+    CanvasTool.guide => GuideSettings(
+      guides: guides ?? CutGuides.empty,
+      selectedGuideId: selectedGuideId,
+      onGuidesCommitted: onGuidesCommitted ?? (_) {},
+      onGuidesPreview: onGuidesPreview ?? (_) {},
+    ),
+  };
 }
 
-/// The two GRAB tiles have nothing to set.
-///
-/// Not an oversight: the grab makes no selection, so there is no combine
-/// mode to offer, and its mask is hard-edged by law (2치 보존) rather than
-/// by a default someone could nudge. The soft-edge knobs that would
-/// otherwise belong here already live on the Select tool.
 /// The SHAPE FILL tile's knobs.
 ///
 /// Short on purpose. A drawn outline is filled whatever is inside it (유저
@@ -351,16 +347,21 @@ class _ShapeFillSettings extends StatelessWidget {
       tool: 'fill-shape',
       title: AppText.strings.toolShapeFill,
       children: [
-        _ClosePolygonButton(
-          shapeKind: shapeKind,
-          selectionCommands: selectionCommands,
-        ),
-        const SizedBox(height: 8),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('fill-shape-anti-alias-switch'),
           label: AppText.strings.brAntiAlias,
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
+        ),
+        ToolSettingActions(
+          lines: [
+            [
+              _ClosePolygonButton(
+                shapeKind: shapeKind,
+                selectionCommands: selectionCommands,
+              ),
+            ],
+          ],
         ),
       ],
     );
@@ -488,13 +489,27 @@ class _ShapeToolSettings extends StatelessWidget {
   );
 }
 
+/// The CUT grab's knobs: 「원본 삭제」, and the polygon's confirm, which
+/// every drag-out verb needs while a trace is open.
+///
+/// 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
+/// 도구설정으로서 원본 삭제 불리언버튼 추가」 — one switch for every outline
+/// the grab drags, and for 전체 잘라내기 ([BrushToolState.cutDeletesSource]).
+///
+/// ↩️「The two GRAB tiles have nothing to set」 stood here until then, and
+/// its reasons still hold for everything else: the grab makes no selection,
+/// so there is no combine mode to offer, and its mask is hard-edged by law
+/// (2치 보존) rather than by a default someone could nudge. The soft-edge
+/// knobs that would otherwise belong here already live on the Select tool.
 class _CutGrabSettings extends StatelessWidget {
   const _CutGrabSettings({
-    required this.shapeKind,
+    required this.state,
+    required this.onChanged,
     required this.selectionCommands,
   });
 
-  final CanvasShapeKind? shapeKind;
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
   final CanvasSelectionCommands? selectionCommands;
 
   @override
@@ -503,21 +518,44 @@ class _CutGrabSettings extends StatelessWidget {
       tool: 'cut-grab',
       scrolls: false,
       children: [
-        _ClosePolygonButton(
-          shapeKind: shapeKind,
-          selectionCommands: selectionCommands,
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('cut-deletes-source-switch'),
+          label: AppText.strings.toolCutDeletesSource,
+          value: state.cutDeletesSource,
+          onChanged: (value) =>
+              onChanged(state.copyWith(cutDeletesSource: value)),
+        ),
+        ToolSettingActions(
+          lines: [
+            [
+              _ClosePolygonButton(
+                shapeKind: state.activeShapeKind,
+                selectionCommands: selectionCommands,
+              ),
+            ],
+          ],
         ),
       ],
     );
   }
 }
 
-/// The polygon's confirm, for hands with no Enter key.
+/// The polygon's confirm, for hands with no Enter key — an ACTION of the
+/// tools that trace one ([ToolSettingActions]).
 ///
-/// Shows only while the polygon shape is armed, and only bites once three
-/// vertices are down — a button offering to close nothing would be lying
-/// about what a tap does. Nothing at all is rendered otherwise, so the
-/// panel does not grow a permanent dead row for the other shapes.
+/// It bites only while the polygon shape is armed and three vertices are
+/// down — a button offering to close nothing would be lying about what a
+/// tap does.
+///
+/// ↩️It rendered nothing for the other shapes, 「so the panel does not grow
+/// a permanent dead row」 — which is 「없다가 생기는 UI」: tool-settings-
+/// panel-tidy (유저 2026-10-10, 「다 추천대로」 — 「자리를 늘 두고 아닐 때는
+/// 흐리게」). It keeps its place and dims.
+///
+/// It is 확정's polygon half (`ConfirmVerb` closes an open outline before
+/// anything else it might confirm — 유저 확정 「폴리곤 확정은 확정 버튼으로」),
+/// so it names 확정 rather than an action of its own (I-40): Enter is its
+/// key.
 class _ClosePolygonButton extends StatelessWidget {
   const _ClosePolygonButton({
     required this.shapeKind,
@@ -527,22 +565,23 @@ class _ClosePolygonButton extends StatelessWidget {
   final CanvasShapeKind? shapeKind;
   final CanvasSelectionCommands? selectionCommands;
 
+  Widget _button(VoidCallback? close) => ToolSettingAction(
+    keyValue: 'selection-close-polygon-button',
+    label: AppText.strings.selectionClosePolygon,
+    shortcuts: const [EditorActionIds.confirm],
+    onPressed: close,
+  );
+
   @override
   Widget build(BuildContext context) {
     final commands = selectionCommands;
     if (shapeKind != CanvasShapeKind.polygon || commands == null) {
-      return const SizedBox.shrink();
+      return _button(null);
     }
     return ListenableBuilder(
       listenable: commands,
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.only(top: 12),
-        child: FilledButton.tonal(
-          key: const ValueKey<String>('selection-close-polygon-button'),
-          onPressed: commands.canClosePolygon ? commands.closePolygon : null,
-          child: Text(AppText.strings.selectionClosePolygon),
-        ),
-      ),
+      builder: (context, _) =>
+          _button(commands.canClosePolygon ? commands.closePolygon : null),
     );
   }
 }
@@ -597,30 +636,26 @@ class _CutStampSettings extends StatelessWidget {
             ],
           );
         }
-        return ToolSettingsSection(
+        final reset = piece.isPosed ? holder.resetPose : null;
+        final section = ToolSettingsSection(
           tool: 'cut-stamp',
           children: [
-            Text(
-              AppText.strings.toolCutHoldingTemplate
-                  .replaceAll('{width}', '${piece.image.width}')
-                  .replaceAll('{height}', '${piece.image.height}'),
-              key: const ValueKey<String>('cut-stamp-holding'),
-              style: theme.textTheme.labelMedium,
+            Padding(
+              padding: const EdgeInsets.only(
+                bottom: ToolSettingsSection.rowGap,
+              ),
+              child: Text(
+                AppText.strings.toolCutHoldingTemplate
+                    .replaceAll('{width}', '${piece.image.width}')
+                    .replaceAll('{height}', '${piece.image.height}'),
+                key: const ValueKey<String>('cut-stamp-holding'),
+                style: theme.textTheme.labelMedium,
+              ),
             ),
             // 🪦A copy of this preview stood here in its own 88-tall box —
             // I-33 moved it to the panel's one slot, where it is pinned
             // instead of scrolling away with the knobs.
-            const SizedBox(height: 12),
-            // ONE button, and the strip's blend decides whether the pixels
-            // land over what is there or under it (TS8). The two buttons
-            // this replaced were `color` and `behind` under other names —
-            // the same two entries the blend list has always carried.
-            OutlinedButton(
-              key: const ValueKey<String>('cut-paste-at-origin-button'),
-              onPressed: onPasteAtOrigin,
-              child: Text(AppText.strings.toolCutPasteAtOrigin),
-            ),
-            const SizedBox(height: 16),
+            //
             // Flip is a flag applied at stamp time, never baked into the
             // held bytes: baking would destroy the original, and flipping
             // is a byte re-order that keeps the 1:1 contract intact.
@@ -636,45 +671,77 @@ class _CutStampSettings extends StatelessWidget {
               value: piece.flipVertical,
               onChanged: (value) => holder.updatePose(flipVertical: value),
             ),
-            const SizedBox(height: 8),
             // Percent, not pixels: with pixels "original" is 300 for one
             // piece and 40 for the next, so the number would have to be
             // remembered. And NOT the top strip's brush size — sharing it
             // would multiply the piece by whatever pen width was last
             // used, the same failure the locked 100% opacity avoids.
-            FieldSlider(
-              key: const ValueKey<String>('cut-scale-slider'),
+            ToolSettingRow.bar(
               label: AppText.strings.brSize,
-              min: CutPiece.minScalePercent.toDouble(),
-              max: 400,
-              divisions: 400 - CutPiece.minScalePercent,
-              value: piece.scalePercent.clamp(1, 400).toDouble(),
-              unit: '%',
-              onChanged: (value) =>
-                  holder.updatePose(scalePercent: value.round()),
+              bar: FieldSlider.cell(
+                key: const ValueKey<String>('cut-scale-slider'),
+                label: AppText.strings.brSize,
+                min: CutPiece.minScalePercent.toDouble(),
+                max: 400,
+                divisions: 400 - CutPiece.minScalePercent,
+                value: piece.scalePercent.clamp(1, 400).toDouble(),
+                unit: '%',
+                onChanged: (value) =>
+                    holder.updatePose(scalePercent: value.round()),
+              ),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                // Reset clears size AND both flips, which is why there is
-                // no separate "original size" button: those two knobs are
-                // everything this panel poses.
-                OutlinedButton(
-                  key: const ValueKey<String>('cut-reset-button'),
-                  onPressed: piece.isPosed ? holder.resetPose : null,
-                  child: Text(AppText.strings.commonReset),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    key: const ValueKey<String>('cut-register-tip-button'),
-                    onPressed: onRegisterAsTip,
-                    child: Text(AppText.strings.toolCutRegisterTip),
+            // ↩️The paste stood under the name of the piece, and the reset
+            // and the registration in a row of their own under the size —
+            // three outlined buttons in two places. They are the tool's
+            // actions (tool-settings-panel-tidy, 유저 2026-10-10 「다
+            // 추천대로」), the paste's name too long to share its line.
+            ToolSettingActions(
+              lines: [
+                [
+                  // ONE button, and the strip's blend decides whether the
+                  // pixels land over what is there or under it (TS8). The
+                  // two buttons this replaced were `color` and `behind`
+                  // under other names — the same two entries the blend list
+                  // has always carried.
+                  ToolSettingAction(
+                    keyValue: 'cut-paste-at-origin-button',
+                    label: AppText.strings.toolCutPasteAtOrigin,
+                    shortcuts: const [EditorActionIds.cutStampPasteAtOrigin],
+                    onPressed: onPasteAtOrigin,
                   ),
-                ),
+                ],
+                [
+                  // Reset clears size AND both flips, which is why there is
+                  // no separate "original size" button: those two knobs are
+                  // everything this panel poses.
+                  ToolSettingAction(
+                    keyValue: 'cut-reset-button',
+                    label: AppText.strings.commonReset,
+                    shortcuts: const [EditorActionIds.cutStampReset],
+                    onPressed: reset,
+                  ),
+                  ToolSettingAction(
+                    keyValue: 'cut-register-tip-button',
+                    label: AppText.strings.toolCutRegisterTip,
+                    shortcuts: const [EditorActionIds.cutStampRegisterTip],
+                    onPressed: onRegisterAsTip,
+                  ),
+                ],
               ],
             ),
           ],
+        );
+        // A key presses the three as the stamp's settings (I-40) while a
+        // piece is held: with none they are not here, and a key has
+        // nothing to press.
+        return PanelKeysBinding(
+          tool: CanvasTool.cutStamp,
+          buttons: {
+            EditorActionIds.cutStampPasteAtOrigin: onPasteAtOrigin,
+            EditorActionIds.cutStampReset: reset,
+            EditorActionIds.cutStampRegisterTip: onRegisterAsTip,
+          },
+          child: section,
         );
       },
     );
@@ -718,14 +785,9 @@ class _SelectionSettings extends StatelessWidget {
       tool: 'selection',
       title: AppText.strings.toolSelect,
       children: [
-        _ClosePolygonButton(
-          shapeKind: state.activeShapeKind,
-          selectionCommands: commands,
-        ),
         // R26 #16: 갱신 / 추가 / 삭제 / 선택중 — how the next drag folds
         // into the region already selected. Default 추가 (유저 원문).
-        if (commands != null) ...[
-          const SizedBox(height: 8),
+        if (commands != null)
           ListenableBuilder(
             listenable: commands,
             builder: (context, _) => _SelectionModeRow(
@@ -734,60 +796,72 @@ class _SelectionSettings extends StatelessWidget {
               onChanged: (mode) => commands.combineMode = mode,
             ),
           ),
-          const SizedBox(height: 8),
-          // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
-          // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
-          // (with nothing selected it selects the whole wall), and greyed —
-          // never gone — when there is no canvas to take the wall from.
-          // The press is the button's own (control_press_claim): a drag that
-          // starts on it never scrolls the panel.
-          ControlPressClaim(
-            onPressed: invert,
-            child: OutlinedButton(
-              key: const ValueKey<String>('selection-invert-button'),
-              onPressed: silentPress(invert),
-              child: Text(AppText.strings.selectionInvert),
+        if (onMask != null) ...[
+          ToolSettingRow.bar(
+            label: AppText.strings.brGrowShrink,
+            bar: FieldSlider.cell(
+              key: const ValueKey<String>('selection-grow-slider'),
+              min: -20,
+              max: 20,
+              divisions: 40,
+              value: maskOptions.growPx.toDouble().clamp(-20, 20),
+              label: AppText.strings.brGrowShrink,
+              unit: ' px',
+              valueTextBuilder: (grow, derived) => grow == 0
+                  ? 'off'
+                  : '${grow > 0 ? '+' : ''}$derived',
+              onChanged: (value) =>
+                  onMask(maskOptions.copyWith(growPx: value.round())),
             ),
           ),
-        ],
-        if (onMask != null) ...[
-          const SizedBox(height: 8),
-          FieldSlider(
-            key: const ValueKey<String>('selection-grow-slider'),
-            min: -20,
-            max: 20,
-            divisions: 40,
-            value: maskOptions.growPx.toDouble().clamp(-20, 20),
-            label: AppText.strings.brGrowShrink,
-            unit: ' px',
-            valueTextBuilder: (grow, derived) => grow == 0
-                ? 'off'
-                : '${grow > 0 ? '+' : ''}$derived',
-            onChanged: (value) =>
-                onMask(maskOptions.copyWith(growPx: value.round())),
-          ),
-          const SizedBox(height: 8),
-          FieldSlider(
-            key: const ValueKey<String>('selection-feather-slider'),
-            min: 0,
-            max: 50,
-            divisions: 50,
-            value: maskOptions.featherPx.clamp(0, 50),
+          ToolSettingRow.bar(
             label: AppText.strings.brFeather,
-            unit: ' px',
-            valueTextBuilder: (feather, derived) =>
-                feather <= 0 ? 'off' : derived,
-            onChanged: (value) =>
-                onMask(maskOptions.copyWith(featherPx: value.roundToDouble())),
+            bar: FieldSlider.cell(
+              key: const ValueKey<String>('selection-feather-slider'),
+              min: 0,
+              max: 50,
+              divisions: 50,
+              value: maskOptions.featherPx.clamp(0, 50),
+              label: AppText.strings.brFeather,
+              unit: ' px',
+              valueTextBuilder: (feather, derived) =>
+                  feather <= 0 ? 'off' : derived,
+              onChanged: (value) => onMask(
+                maskOptions.copyWith(featherPx: value.roundToDouble()),
+              ),
+            ),
           ),
           SettingsSwitchRow(
             tileKey: const ValueKey<String>('selection-anti-alias-switch'),
-            label: AppText.strings.brAntiAliasEdge,
+            label: AppText.strings.brAntiAlias,
             value: maskOptions.antiAlias,
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(antiAlias: value)),
           ),
         ],
+        ToolSettingActions(
+          lines: [
+            [
+              _ClosePolygonButton(
+                shapeKind: state.activeShapeKind,
+                selectionCommands: commands,
+              ),
+              // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
+              // 선택툴일때의 툴설정. 버튼.」 In its place whatever is
+              // selected (with nothing selected it selects the whole wall),
+              // and greyed — never gone — when there is no canvas to take
+              // the wall from. Its key answers under every tool, in the
+              // shell (I-40-Q8), and runs this same verb.
+              if (commands != null)
+                ToolSettingAction(
+                  keyValue: 'selection-invert-button',
+                  label: AppText.strings.selectionInvert,
+                  shortcuts: const [EditorActionIds.selectionInvert],
+                  onPressed: invert,
+                ),
+            ],
+          ],
+        ),
       ],
     );
   }
@@ -814,29 +888,28 @@ class _SelectionModeRow extends StatelessWidget {
     SelectionCombineMode.intersect: Icons.join_inner,
   };
 
+  /// A CHOICE like every other setting's: the four share the control
+  /// column as the app's one grouped choice ([PillStrip.even]), each drawn
+  /// as its glyph and named by its tooltip. ↩️It was the four alone at the
+  /// tool RAIL's 42px square, then four icon buttons at the row's end (유저
+  /// 2026-10-10: 「사각형 박스 크기가 다 달라서 정돈된느낌 하나도안들어」).
   @override
   Widget build(BuildContext context) {
-    return Row(
-      key: const ValueKey<String>('selection-mode-row'),
-      children: [
-        for (final candidate in SelectionCombineMode.values)
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            // 🚨THE THIRD FILLED CHIP THE AUDIT FOUND. 「선택 표시는 색상만」
-            // — an accent foreground, never a filled chip and never a check
-            // mark ([[ui-selection-style]]). This row wore
-            // `surfaceContainerHigh` behind the selected mode, the same way
-            // the tool rail did.
-            child: AppIconButton(
+    return ToolSettingRow(
+      label: AppText.strings.toolSelectionMode,
+      child: PillStrip.even(
+        key: const ValueKey<String>('selection-mode-row'),
+        items: [
+          for (final candidate in SelectionCombineMode.values)
+            PillItem(
               keyValue: 'selection-mode-${candidate.name}',
-              tooltip: candidate.labelFor(language),
-              isSelected: candidate == mode,
-              size: AppIconButtonSize.tool,
-              icon: Icon(_icons[candidate]),
-              onPressed: () => onChanged(candidate),
+              label: candidate.labelFor(language),
+              icon: _icons[candidate],
+              selected: candidate == mode,
+              onTap: () => onChanged(candidate),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -864,7 +937,7 @@ class _BoxValue {
   final double perUnit;
 
   String shown(TransformValues values) =>
-      '${formatTrimmedDecimal(read(values) / perUnit, fractionDigits: 2)}'
+      '${columnValueText(read(values) / perUnit)}'
       '$unit';
 }
 
@@ -975,121 +1048,92 @@ class _MoveSettingsState extends State<_MoveSettings> {
         )
       : written;
 
-  /// One of the box's values as a channel: a scrub adds to what the box
-  /// holds now, a typed number replaces it, and neither names another value.
-  Widget _valueChannel({
+  /// One of the box's values as a NUMBER BOX ([DragValueLabel.box]): a
+  /// scrub adds to what the box holds now, a typed number replaces it, and
+  /// neither names another value.
+  ///
+  /// 🚨★★★**THE DIGITS, LIVE — and ONLY the digits.**
+  ///
+  /// 🗣️유저 2026-09-18 (F-164): 「변형중에 툴도구의 X,Y값같은거 **실시간
+  /// 으로 바뀌게**해주고. **무겁지 않을 구조로 패널리빌드하지말고 글자만
+  /// 바꾸게**」.
+  ///
+  /// The number comes from [CanvasSelectionCommands.liveTransformValues]
+  /// through a `ValueListenableBuilder`, so a transform drag repaints one box
+  /// and nothing above it. ⛔The alternative — this panel's own `setState` on
+  /// the channel's ping — rebuilds every row of every section on every
+  /// pointer sample, which is the one thing the user ruled out in the same
+  /// sentence they asked for the numbers.
+  Widget _valueBox({
     required String keyValue,
-    required String label,
+    String? name,
     required _BoxValue value,
   }) {
-    return _channel(
+    Widget box(TransformValues values) => DragValueLabel.box(
       keyValue: keyValue,
-      label: label,
-      text: value.shown(_values),
-      live: (values) => value.shown(values ?? _values),
-      onDrag: (units) => _write(
+      name: name,
+      text: value.shown(values),
+      onDragDelta: (units) => _write(
         (now) => value.write(now, value.read(now) + units * value.perUnit),
       ),
-      onSubmit: (typed) =>
-          _write((now) => value.write(now, typed * value.perUnit)),
-    );
-  }
-
-  /// One transform channel as the shared DRAG VALUE READOUT (R26 #14 —
-  /// the canvas bar's zoom/angle vocabulary: drag = a unit per pixel,
-  /// double-tap = type).
-  Widget _channel({
-    required String keyValue,
-    required String label,
-    required String text,
-    required void Function(double units) onDrag,
-    required void Function(double parsed) onSubmit,
-
-    /// 🚨★★★**THE DIGITS, LIVE — and ONLY the digits.**
-    ///
-    /// 🗣️유저 2026-09-18 (F-164): 「변형중에 툴도구의 X,Y값같은거 **실시간
-    /// 으로 바뀌게**해주고. **무겁지 않을 구조로 패널리빌드하지말고 글자만
-    /// 바꾸게**」.
-    ///
-    /// Given, this channel's number comes from
-    /// [CanvasSelectionCommands.liveTransformValues] through a
-    /// `ValueListenableBuilder`, so a transform drag repaints one `Text`
-    /// and nothing above it. ⛔The alternative — this panel's own
-    /// `setState` on the channel's ping — rebuilds every row of every
-    /// section on every pointer sample, which is the one thing the user
-    /// ruled out in the same sentence they asked for the numbers.
-    String Function(TransformValues? values)? live,
-  }) {
-    final theme = Theme.of(context);
-    final notifier = widget.selectionCommands?.liveTransformValues;
-    Widget readout(String shown) => DragValueLabel(
-      keyValue: keyValue,
-      text: shown,
-      tooltip: AppText.strings.viewDragDoubleTap,
-      width: 72,
-      textAlign: TextAlign.right,
-      textStyle: const TextStyle(fontSize: 12),
-      onDragDelta: onDrag,
       // 🚨★★★**ONE SCRUB IS ONE STEP BACK** (유저 2026-09-20: 「변형에 대한
       // **조작마다** 언두로 기록」). A scrub is forty writes and one
       // operation; the canvas takes its own step when a press lands, and
       // this is the same announcement from the other entrance.
       onOperationStart: widget.selectionCommands?.beginTransformStep,
       onEditSubmit: (raw) {
-        final parsed = double.tryParse(
+        final typed = double.tryParse(
           raw.replaceAll('%', '').replaceAll('°', '').trim(),
         );
-        if (parsed != null) {
-          onSubmit(parsed);
+        if (typed != null) {
+          _write((now) => value.write(now, typed * value.perUnit));
         }
       },
     );
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 56,
-          child: Text(label, style: theme.textTheme.bodySmall),
-        ),
-        // 유저 08-13: 수치값은 오른쪽 정렬. Scoped to this panel — the
-        // readout is shared with the canvas bar, the conte page field and
-        // the timesheet, and those are a UI-session decision, not this
-        // round's.
-        if (live == null || notifier == null)
-          readout(text)
-        else
-          ValueListenableBuilder<TransformValues?>(
+    final notifier = widget.selectionCommands?.liveTransformValues;
+    return notifier == null
+        ? box(_values)
+        : ValueListenableBuilder<TransformValues?>(
             valueListenable: notifier,
-            builder: (context, values, _) => readout(live(values)),
-          ),
-      ],
-    );
+            builder: (context, values, _) => box(values ?? _values),
+          );
   }
 
-  /// The mesh grid's cell count on one axis.
-  Widget _gridChannel({
+  /// The mesh grid's cell count on one axis, as a number box.
+  Widget _meshBox({
     required String keyValue,
-    required String label,
+    required String name,
     required int value,
+    required bool live,
     required ValueChanged<int> onChanged,
-  }) {
-    final handler = widget.onOptionsChanged;
-    return _channel(
-      keyValue: keyValue,
-      label: label,
-      text: '$value',
-      onDrag: handler == null
-          ? (_) {}
-          : (units) => onChanged(
-              TransformToolOptions.clampMeshCells(value + units.round()),
-            ),
-      onSubmit: handler == null
-          ? (_) {}
-          : (parsed) =>
-                onChanged(TransformToolOptions.clampMeshCells(parsed.round())),
-    );
-  }
+  }) => DragValueLabel.box(
+    keyValue: keyValue,
+    name: name,
+    text: '$value',
+    enabled: live,
+    onDragDelta: (units) => onChanged(
+      TransformToolOptions.clampMeshCells(value + units.round()),
+    ),
+    onEditSubmit: (raw) {
+      final typed = double.tryParse(raw.trim());
+      if (typed != null) {
+        onChanged(TransformToolOptions.clampMeshCells(typed.round()));
+      }
+    },
+  );
 
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10, 「다 추천대로」): the
+  /// values in ROWS AND COLUMNS — 위치 · 배율 · 회전 · 기준점 · 메시 — the
+  /// scale's link as the chain beside 「배율」, and 초기화 · 적용 as the last
+  /// line ([ToolSettingActions]). ONE VALUE A LINE, its hands where a bar's
+  /// stand ([ToolSettingRow.bar]): X on the name's line, Y under it, and the
+  /// flips a line of their own under 회전, half the control column each.
+  /// 🗣️유저 2026-10-10: 「상자에 한걸음 올리기 내리기버튼들도 동일하게
+  /// 넣고싶어 … 공간 꽤 많이필요하니까 그냥 열당 하나. x만두고 다음열에 y두고」.
+  /// ↩️It was a list of nine name-and-number lines with the link's switch
+  /// row between them and its four buttons folding onto two lines under
+  /// them; then X beside Y, a pair a row, the flips in the rotation row's
+  /// second cell — until each value took its ± and its pencil.
   @override
   Widget build(BuildContext context) {
     // The one gate for the whole panel. Choosing the tool is always
@@ -1098,189 +1142,207 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final canEdit = widget.selectionCommands?.canEditTransform ?? false;
     final options = widget.options;
     final onOptions = canEdit ? widget.onOptionsChanged : null;
-    return ToolSettingsSection(
+    final commands = widget.selectionCommands;
+    final strings = AppText.strings;
+    // The mesh's density, shown as numbers because that is what it is
+    // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). It takes a hand in
+    // 메쉬 alone — a grid size means nothing to the other two modes.
+    // ↩️It was only THERE in 메쉬, which is 「없다가 생기는 UI」: the row
+    // keeps its place and dims.
+    final meshHandler = widget.onOptionsChanged;
+    final meshLive = options.mode == TransformMode.mesh && meshHandler != null;
+    final flipHorizontal = canEdit
+        ? () => commands?.flipTransform(horizontal: true)
+        : null;
+    final flipVertical = canEdit
+        ? () => commands?.flipTransform(horizontal: false)
+        : null;
+    final reset = canEdit ? () => commands?.resetTransform() : null;
+    final section = ToolSettingsSection(
       tool: 'move',
-      title: AppText.strings.toolTransform,
+      title: strings.toolTransform,
       children: [
-        const SizedBox(height: 8),
-        _valueChannel(
-          keyValue: 'move-x-field',
-          label: 'X',
-          value: _BoxValue(
-            read: (values) => values.tx,
-            write: (now, tx) => now.copyWith(tx: tx),
+        ToolSettingRow.bar(
+          label: strings.trPosition,
+          bar: _valueBox(
+            keyValue: 'move-x-field',
+            name: 'X',
+            value: _BoxValue(
+              read: (values) => values.tx,
+              write: (now, tx) => now.copyWith(tx: tx),
+            ),
           ),
         ),
-        const SizedBox(height: 4),
-        _valueChannel(
-          keyValue: 'move-y-field',
-          label: 'Y',
-          value: _BoxValue(
-            read: (values) => values.ty,
-            write: (now, ty) => now.copyWith(ty: ty),
-          ),
-        ),
-        const SizedBox(height: 4),
-        _valueChannel(
-          keyValue: 'move-angle-field',
-          label: AppText.strings.brAngle,
-          value: _BoxValue(
-            read: (values) => values.rotationDegrees,
-            write: (now, degrees) => now.copyWith(rotationDegrees: degrees),
-            unit: '°',
+        ToolSettingRow.bar(
+          label: '',
+          bar: _valueBox(
+            keyValue: 'move-y-field',
+            name: 'Y',
+            value: _BoxValue(
+              read: (values) => values.ty,
+              write: (now, ty) => now.copyWith(ty: ty),
+            ),
           ),
         ),
         // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
         // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
         // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
         // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
-        // held two; this row showed the horizontal one as 「배율」 and wrote
-        // it to both. An edge middle's stretch reads on its own row now, and
-        // a mirror reads as the minus it is.
+        // held two; this row showed the horizontal one as 「배율」 and
+        // wrote it to both. An edge middle's stretch reads on its own
+        // box now, and a mirror reads as the minus it is.
         //
         // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
-        // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each row still names its own
-        // axis; linked, the write carries the other along by the same ratio
-        // and leaves its sign alone (`TransformValues.withScaleX`).
-        const SizedBox(height: 4),
-        _valueChannel(
-          keyValue: 'move-scale-x-field',
-          label: AppText.strings.trScaleX,
-          value: _BoxValue(
-            read: (values) => values.sx,
-            write: (now, sx) => _linkedWithin(
-              now.withScaleX(_scaleWithin(sx), linked: options.scaleLinked),
+        // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each box still names its own
+        // axis; linked, the write carries the other along by the same
+        // ratio and leaves its sign alone (`TransformValues.withScaleX`).
+        ToolSettingRow.bar(
+          label: strings.trScale,
+          labelEnd: ScaleChainButton(
+            keyValue: 'move-scale-link-switch',
+            isOn: options.scaleLinked,
+            onPressed: onOptions == null
+                ? null
+                : () => onOptions(
+                    options.copyWith(scaleLinked: !options.scaleLinked),
+                  ),
+          ),
+          bar: _valueBox(
+            keyValue: 'move-scale-x-field',
+            name: 'X',
+            value: _BoxValue(
+              read: (values) => values.sx,
+              write: (now, sx) => _linkedWithin(
+                now.withScaleX(
+                  _scaleWithin(sx),
+                  linked: options.scaleLinked,
+                ),
+              ),
+              unit: '%',
+              perUnit: 0.01,
             ),
-            unit: '%',
-            perUnit: 0.01,
           ),
         ),
-        const SizedBox(height: 4),
-        _valueChannel(
-          keyValue: 'move-scale-y-field',
-          label: AppText.strings.trScaleY,
-          value: _BoxValue(
-            read: (values) => values.sy,
-            write: (now, sy) => _linkedWithin(
-              now.withScaleY(_scaleWithin(sy), linked: options.scaleLinked),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _valueBox(
+            keyValue: 'move-scale-y-field',
+            name: 'Y',
+            value: _BoxValue(
+              read: (values) => values.sy,
+              write: (now, sy) => _linkedWithin(
+                now.withScaleY(
+                  _scaleWithin(sy),
+                  linked: options.scaleLinked,
+                ),
+              ),
+              unit: '%',
+              perUnit: 0.01,
             ),
-            unit: '%',
-            perUnit: 0.01,
           ),
         ),
-        SettingsSwitchRow(
-          tileKey: const ValueKey<String>('move-scale-link-switch'),
-          label: AppText.strings.trScaleLink,
-          value: options.scaleLinked,
-          onChanged: onOptions == null
-              ? null
-              : (value) => onOptions(options.copyWith(scaleLinked: value)),
+        ToolSettingRow.bar(
+          label: strings.trRotation,
+          bar: _valueBox(
+            keyValue: 'move-angle-field',
+            value: _BoxValue(
+              read: (values) => values.rotationDegrees,
+              write: (now, degrees) =>
+                  now.copyWith(rotationDegrees: degrees),
+              unit: '°',
+            ),
+          ),
+        ),
+        // ↩️유저 08-13 put them in a row of their own, in this order:
+        // 좌우반전 · 상하반전 · 리셋 · 적용. The two flips turn the box the
+        // way the angle does, so they stand under it — in the view pill's
+        // own glyphs, half the control column each (유저 2026-10-10).
+        ToolSettingRow.pair(
+          label: '',
+          first: ToolSettingAction.glyph(
+            keyValue: 'move-flip-horizontal-button',
+            label: strings.trFlipHorizontal,
+            glyph: const Icon(Icons.flip),
+            shortcuts: const [EditorActionIds.transformFlipHorizontal],
+            onPressed: flipHorizontal,
+          ),
+          second: ToolSettingAction.glyph(
+            keyValue: 'move-flip-vertical-button',
+            label: strings.trFlipVertical,
+            glyph: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
+            shortcuts: const [EditorActionIds.transformFlipVertical],
+            onPressed: flipVertical,
+          ),
         ),
         // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
-        // beside the other digits, and written the way they are: each row
-        // names its own value and restates none ([_write]).
+        // beside the other digits, and written the way they are: each
+        // box names its own value and restates none ([_write]).
         //
-        // ⚠️Always here, never mode-gated: the rotation the anchor serves
-        // works in every mode (outside the box is the rotation), so a row
-        // that appeared and vanished would be inventing a rule the
-        // rotation does not have — and 「없다가 생기는 UI 금지」 besides.
-        const SizedBox(height: 4),
-        _valueChannel(
-          keyValue: 'move-anchor-x-field',
-          label: AppText.strings.trAnchorPointX,
-          value: _BoxValue(
-            read: (values) => values.anchorX,
-            write: (now, anchorX) => now.copyWith(anchorX: anchorX),
+        // ⚠️Always here, never mode-gated: the rotation the anchor
+        // serves works in every mode (outside the box is the rotation),
+        // so a row that appeared and vanished would be inventing a rule
+        // the rotation does not have — and 「없다가 생기는 UI 금지」
+        // besides.
+        ToolSettingRow.bar(
+          label: strings.trAnchorPoint,
+          bar: _valueBox(
+            keyValue: 'move-anchor-x-field',
+            name: 'X',
+            value: _BoxValue(
+              read: (values) => values.anchorX,
+              write: (now, anchorX) => now.copyWith(anchorX: anchorX),
+            ),
           ),
         ),
-        const SizedBox(height: 4),
-        _valueChannel(
-          keyValue: 'move-anchor-y-field',
-          label: AppText.strings.trAnchorPointY,
-          value: _BoxValue(
-            read: (values) => values.anchorY,
-            write: (now, anchorY) => now.copyWith(anchorY: anchorY),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _valueBox(
+            keyValue: 'move-anchor-y-field',
+            name: 'Y',
+            value: _BoxValue(
+              read: (values) => values.anchorY,
+              write: (now, anchorY) => now.copyWith(anchorY: anchorY),
+            ),
           ),
         ),
-        // The mesh's density, shown as numbers because that is what it is
-        // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). Only in 메쉬
-        // — a grid size means nothing to the other two modes.
-        if (options.mode == TransformMode.mesh) ...[
-          const SizedBox(height: 4),
-          _gridChannel(
+        ToolSettingRow.bar(
+          label: strings.trMesh,
+          bar: _meshBox(
             keyValue: 'move-mesh-columns-field',
-            label: AppText.strings.trMeshColumns,
+            name: strings.trMeshColumns,
             value: options.meshColumns,
-            onChanged: (cells) => widget.onOptionsChanged?.call(
-              options.copyWith(meshColumns: cells),
-            ),
+            live: meshLive,
+            onChanged: (cells) =>
+                meshHandler?.call(options.copyWith(meshColumns: cells)),
           ),
-          const SizedBox(height: 4),
-          _gridChannel(
-            keyValue: 'move-mesh-rows-field',
-            label: AppText.strings.trMeshRows,
-            value: options.meshRows,
-            onChanged: (cells) => widget.onOptionsChanged?.call(
-              options.copyWith(meshRows: cells),
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        // 유저 08-13, in this order: 좌우반전 · 상하반전 · 리셋 · 적용.
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton(
-              key: const ValueKey<String>('move-flip-horizontal-button'),
-              onPressed: canEdit
-                  ? () => widget.selectionCommands?.flipTransform(
-                      horizontal: true,
-                    )
-                  : null,
-              child: Text(AppText.strings.trFlipHorizontal),
-            ),
-            OutlinedButton(
-              key: const ValueKey<String>('move-flip-vertical-button'),
-              onPressed: canEdit
-                  ? () => widget.selectionCommands?.flipTransform(
-                      horizontal: false,
-                    )
-                  : null,
-              child: Text(AppText.strings.trFlipVertical),
-            ),
-            OutlinedButton(
-              key: const ValueKey<String>('move-reset-button'),
-              onPressed: canEdit
-                  ? () => widget.selectionCommands?.resetTransform()
-                  : null,
-              child: Text(AppText.strings.commonReset),
-            ),
-            // 적용 is 확정's transform half (confirm-button) — grey when it has
-            // nothing to do, like the rail's ↵ and the box's ✓, because all
-            // three ask the one verb.
-            FilledButton(
-              key: const ValueKey<String>('move-apply-button'),
-              onPressed: widget.selectionCommands?.canApplyTransform ?? false
-                  ? () => widget.selectionCommands?.applyTransform()
-                  : null,
-              child: Text(AppText.strings.commonApply),
-            ),
-          ],
         ),
-        const SizedBox(height: 12),
+        ToolSettingRow.bar(
+          label: '',
+          bar: _meshBox(
+            keyValue: 'move-mesh-rows-field',
+            name: strings.trMeshRows,
+            value: options.meshRows,
+            live: meshLive,
+            onChanged: (cells) =>
+                meshHandler?.call(options.copyWith(meshRows: cells)),
+          ),
+        ),
+        ToolSettingsGroupHeader(strings.trFinish),
         // AA, and nothing else.
         //
         // It was "Preserve original colours" over a paragraph about
         // in-between shades, which is the same switch described from the
         // far side: the argmax preserves the source words BECAUSE it
         // refuses to blend, and the blend anti-aliases BECAUSE it does.
-        // 유저 08-13 asked for the two letters and the polarity that goes
-        // with them — AA on is the smoothing default, AA off is the
-        // two-value copy.
+        // 유저 08-13 asked for the polarity that goes with it — on is the
+        // smoothing default, off is the two-value copy.
+        //
+        // ↩️And for the two letters, 「AA」 — the one tool whose switch did
+        // not say what every other tool's did. 🗣️유저 2026-10-10: 「안티앨리어스는
+        // 왜 변형도구만 이름 다른건지도 모르겠고. 안티앨리어스로 이름 다 통일」.
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('move-antialias-switch'),
-          label: 'AA',
+          label: strings.brAntiAlias,
           value: options.resampleMode == ResampleMode.blend,
           onChanged: onOptions == null
               ? null
@@ -1292,7 +1354,43 @@ class _MoveSettingsState extends State<_MoveSettings> {
                   ),
                 ),
         ),
+        ToolSettingActions(
+          lines: [
+            [
+              ToolSettingAction(
+                keyValue: 'move-reset-button',
+                label: strings.commonReset,
+                shortcuts: const [EditorActionIds.transformReset],
+                onPressed: reset,
+              ),
+              // 적용 is 확정's transform half (confirm-button) — grey when it
+              // has nothing to do, like the rail's ↵ and the box's ✓,
+              // because all three ask the one verb — so it names 확정, as
+              // they do (I-40).
+              ToolSettingAction(
+                keyValue: 'move-apply-button',
+                label: strings.commonApply,
+                decides: true,
+                shortcuts: const [EditorActionIds.confirm],
+                onPressed: commands?.canApplyTransform ?? false
+                    ? () => commands?.applyTransform()
+                    : null,
+              ),
+            ],
+          ],
+        ),
       ],
+    );
+    // A key presses the flips and 초기화 as the Transform tool's settings
+    // (I-40); 적용 is 확정's, whose key reaches it anywhere.
+    return PanelKeysBinding(
+      tool: CanvasTool.move,
+      buttons: {
+        EditorActionIds.transformFlipHorizontal: flipHorizontal,
+        EditorActionIds.transformFlipVertical: flipVertical,
+        EditorActionIds.transformReset: reset,
+      },
+      child: section,
     );
   }
 }
@@ -1319,7 +1417,6 @@ class _EyedropperSettings extends StatelessWidget {
       tool: 'eyedropper',
       title: AppText.strings.toolEyedropper,
       children: [
-        const SizedBox(height: 8),
         _ReadSourceControl(
           tool: 'eyedropper',
           offered: const [CanvasReadSource.display, CanvasReadSource.layer],
@@ -1375,54 +1472,56 @@ class _ReadSourceControl extends StatelessWidget {
     final names = readLayerNames;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          AppText.strings.toolReadSource,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 4),
         // Selection shows through COLOR only — no check glyphs (the
         // program's selection style).
         //
-        // STOOD UP, one answer per line: side by side, three answers in the
-        // panel's width folded 「References」 onto four lines (measured in
-        // the real panel, 2026-09-24). Both tools wear the one shape — the
-        // app's one grouped choice (board pill-group-everywhere), down.
-        PillStrip(
-          key: ValueKey<String>('$tool-source-segments'),
-          axis: Axis.vertical,
-          items: [
-            for (final offer in offered)
-              PillItem(
-                keyValue: '$tool-source-${offer.name}',
-                label: _label(offer),
-                selected: offer == source,
-                onTap: handler == null ? null : () => handler(offer),
-              ),
-          ],
+        // ↩️It stood one answer per line under its name, because three
+        // answers side by side folded 「References」 onto four lines
+        // (measured, 2026-09-24). It is a choice row like every other now —
+        // its name in the name column, the answers sharing the control
+        // column, a long word ellipsising (tool-settings-panel-tidy, 유저
+        // 2026-10-10: 「채우기 참조는 왜 세로로 버튼이 있는건지도
+        // 모르겠고」).
+        ToolSettingRow(
+          label: AppText.strings.toolReadSource,
+          child: PillStrip.even(
+            key: ValueKey<String>('$tool-source-segments'),
+            items: [
+              for (final offer in offered)
+                PillItem(
+                  keyValue: '$tool-source-${offer.name}',
+                  label: _label(offer),
+                  selected: offer == source,
+                  onTap: handler == null ? null : () => handler(offer),
+                ),
+            ],
+          ),
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                names == null
-                    ? AppText.strings.toolReadsEveryVisibleLayer
-                    : names.isEmpty
-                    ? '—'
-                    : names.join(' · '),
-                key: ValueKey<String>('$tool-reads'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+        // What the answer reads right now, under the answers.
+        ToolSettingRow(
+          label: '',
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  names == null
+                      ? AppText.strings.toolReadsEveryVisibleLayer
+                      : names.isEmpty
+                      ? '—'
+                      : names.join(' · '),
+                  key: ValueKey<String>('$tool-reads'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-            ?trailing,
-          ],
+              ?trailing,
+            ],
+          ),
         ),
       ],
     );
@@ -1450,7 +1549,6 @@ class _FillSettings extends StatelessWidget {
       tool: 'fill',
       title: AppText.strings.toolFill,
       children: [
-        const SizedBox(height: 8),
         _ReadSourceControl(
           tool: 'fill',
           offered: CanvasReadSource.values,
@@ -1458,46 +1556,52 @@ class _FillSettings extends StatelessWidget {
           onChanged: (source) => onChanged(options.copyWith(source: source)),
           readLayerNames: readLayerNames,
           trailing: FillReferenceButton(
-            keyValue: 'fill-active-layer-reference',
+            name: 'fill-active-layer-reference',
             isOn: activeLayerIsFillReference,
             onPressed: onToggleActiveLayerFillReference,
           ),
         ),
-        const SizedBox(height: 8),
-        FieldSlider(
-          key: const ValueKey<String>('fill-tolerance-slider'),
-          min: 0,
-          max: 128,
-          divisions: 128,
-          value: options.tolerance.toDouble().clamp(0, 128),
+        ToolSettingRow.bar(
           label: AppText.strings.brTolerance,
-          onChanged: (value) =>
-              onChanged(options.copyWith(tolerance: value.round())),
+          bar: FieldSlider.cell(
+            key: const ValueKey<String>('fill-tolerance-slider'),
+            min: 0,
+            max: 128,
+            divisions: 128,
+            value: options.tolerance.toDouble().clamp(0, 128),
+            label: AppText.strings.brTolerance,
+            onChanged: (value) =>
+                onChanged(options.copyWith(tolerance: value.round())),
+          ),
         ),
-        const SizedBox(height: 8),
-        FieldSlider(
-          key: const ValueKey<String>('fill-expand-slider'),
-          min: 0,
-          max: 4,
-          divisions: 4,
-          value: options.expandPx.toDouble().clamp(0, 4),
+        ToolSettingRow.bar(
           label: AppText.strings.brExpand,
-          unit: ' px',
-          onChanged: (value) =>
-              onChanged(options.copyWith(expandPx: value.round())),
+          bar: FieldSlider.cell(
+            key: const ValueKey<String>('fill-expand-slider'),
+            min: 0,
+            max: 4,
+            divisions: 4,
+            value: options.expandPx.toDouble().clamp(0, 4),
+            label: AppText.strings.brExpand,
+            unit: ' px',
+            onChanged: (value) =>
+                onChanged(options.copyWith(expandPx: value.round())),
+          ),
         ),
-        const SizedBox(height: 8),
-        FieldSlider(
-          key: const ValueKey<String>('fill-gap-close-slider'),
-          min: 0,
-          max: 8,
-          divisions: 8,
-          value: options.gapClosePx.toDouble().clamp(0, 8),
+        ToolSettingRow.bar(
           label: AppText.strings.brGapClose,
-          unit: ' px',
-          valueTextBuilder: (gap, derived) => gap == 0 ? 'off' : derived,
-          onChanged: (value) =>
-              onChanged(options.copyWith(gapClosePx: value.round())),
+          bar: FieldSlider.cell(
+            key: const ValueKey<String>('fill-gap-close-slider'),
+            min: 0,
+            max: 8,
+            divisions: 8,
+            value: options.gapClosePx.toDouble().clamp(0, 8),
+            label: AppText.strings.brGapClose,
+            unit: ' px',
+            valueTextBuilder: (gap, derived) => gap == 0 ? 'off' : derived,
+            onChanged: (value) =>
+                onChanged(options.copyWith(gapClosePx: value.round())),
+          ),
         ),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('fill-anti-alias-switch'),

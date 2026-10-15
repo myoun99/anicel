@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import '../../core/bounded_memo.dart';
 import 'axis_turn.dart' show extentAlong, offsetAlong;
 import 'frame_window_semantics.dart';
 
@@ -10,6 +11,7 @@ import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_frame_window.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_second.dart';
@@ -170,7 +172,7 @@ class TimelineFrameRulerPainter extends CustomPainter
   final TimelineRulerScale scale;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
     final linePaint = Paint()..strokeWidth = 1;
 
@@ -228,7 +230,7 @@ class TimelineFrameRulerPainter extends CustomPainter
                 ? colorScheme.onSurface
                 : colorScheme.onSurfaceVariant,
           );
-      final painter = timelineGlyphPainter(
+      final painter = laidOutGlyph(
         writing.number,
         scale.inkOf(style, current: current),
       );
@@ -315,6 +317,23 @@ final Expando<int> _labelEveryFramesOf = Expando<int>('labelEveryFrames');
 
 /// [TimelineRulerScale.secondsLabelEverySeconds], measured once per scale.
 final Expando<int> _secondsLabelEveryOf = Expando<int>('secondsLabelEvery');
+
+/// [TimelineRulerScale.writtenAt]: what each scale has laid out, by layout,
+/// frame and whether it is the playhead's pair.
+final Expando<
+  BoundedMemo<
+    (TimelineRulerGlyphLayout, int, bool),
+    List<TimelineGlyphPlacement>
+  >
+>
+_writtenOf = Expando('written');
+
+/// How many frames' writing a scale holds laid out ([TimelineRulerScale
+/// .writtenAt]) before it lets them all go. A playing tick asks for a
+/// dozen; a window that walks more frames than this lays itself out as it
+/// did before a scale held any, and a run down a long cut lays the strip
+/// out again rather than holding every frame it passed.
+const int _writtenHeld = 512;
 
 /// The frame SCALE a frame-axis strip draws: the bounds, the playhead and
 /// playback range, the leading spacer along the main axis, the metrics and
@@ -554,11 +573,34 @@ final class TimelineRulerScale {
       frameIndex < window.endIndexExclusive;
       frameIndex += step
     ) {
-      for (final glyph in layout(this, frameIndex, current: false)) {
+      for (final glyph in writtenAt(layout, frameIndex, current: false)) {
         glyph.paint(canvas);
       }
     }
   }
+
+  /// What [layout] writes at [frameIndex] on this scale — laid out the
+  /// first time it is asked and handed back after that.
+  ///
+  /// 🚨I-57 (10-15, profile, the user's project): the playhead's writing
+  /// walks the frames round the playhead on every tick of a run, and laid
+  /// each one's number and second out again — styles made, the glyph cache
+  /// asked, the second's corner placed: a dozen layouts a tick at 12µs, the
+  /// dearest paint of a playing frame (0.24ms). A layout reads nothing but
+  /// the scale it is handed, and a scale is the strip as one build stands
+  /// it, so a frame's writing is the same every time it is asked.
+  /// Measured with the memo on and off by turns (same build): the layouts
+  /// a drawn frame asks fall from eleven to under two — the frames a run
+  /// meets for the first time, each a fresh layout — and the writing's
+  /// share from 0.24 to about 0.20ms.
+  List<TimelineGlyphPlacement> writtenAt(
+    TimelineRulerGlyphLayout layout,
+    int frameIndex, {
+    required bool current,
+  }) => (_writtenOf[this] ??= BoundedMemo(_writtenHeld)).resolve(
+    (layout, frameIndex, current),
+    () => layout(this, frameIndex, current: current),
+  );
 
   /// The paper under [frames] — each stretch of one ground as ONE rect, and
   /// on it THE boundary line wherever the law rules one: the grid law's ink
@@ -679,7 +721,7 @@ final class TimelineRulerScale {
   }) {
     var widest = 0.0;
     for (var digit = 0; digit <= 9; digit += 1) {
-      final glyph = timelineGlyphPainter('$digit' * digits, type);
+      final glyph = laidOutGlyph('$digit' * digits, type);
       final extent = extentAlong(
         axis,
         Size(math.min(glyph.width, widthAtMost), glyph.height),

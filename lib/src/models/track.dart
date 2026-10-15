@@ -3,6 +3,7 @@ import 'cut.dart';
 import 'layer.dart';
 import 'layer_effect.dart';
 import 'layer_section_defaults.dart';
+import 'track_conte.dart';
 import 'track_id.dart';
 
 enum TrackType { video, audio }
@@ -17,12 +18,17 @@ class Track {
     List<LayerEffect> effects = const [],
     this.type = TrackType.video,
     this.fxEnabled = true,
+    TrackConte? conte,
+    this.lanesExpanded = false,
+    Set<String> expandedLaneGroups = const {},
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
        // ⛔NOT NORMALIZED, the same as a row — order is free and it means
        // what it says.
        effects = List.unmodifiable(effects),
-       transitionLayer = transitionLayer ?? createTrackTransitionLayer(id);
+       transitionLayer = transitionLayer ?? createTrackTransitionLayer(id),
+       conte = conte ?? TrackConte.none,
+       expandedLaneGroups = Set.unmodifiable(expandedLaneGroups);
 
   final TrackId id;
   final String name;
@@ -95,6 +101,26 @@ class Track {
   /// under it stay as they were.
   final bool fxEnabled;
 
+  /// The STRUCTURE every cut's conte wears (F-343): the rows and 공정
+  /// folders riding the conte, in order, and what each one wears. The
+  /// rows themselves stay each cut's — this says only which there are and
+  /// how they stand ([TrackConte]).
+  final TrackConte conte;
+
+  /// Whether the V row's property-lane twirl-down is open — the lanes of
+  /// its [effects] live under it. The row's own, as a layer row's is
+  /// ([Layer.lanesExpanded], F-360): it undoes, and the file keeps it. The
+  /// rails name the row by its lane carrier (`trackTransformLaneCarrierId`).
+  /// ↩️It was the storyboard's `RailView.storyboardTransformTracks`,
+  /// session-only.
+  final bool lanesExpanded;
+
+  /// The LANE GROUPS twirled open inside the V row's twirl-down, by lane id
+  /// — one header per effect — as a layer row's are
+  /// ([Layer.expandedLaneGroups]). ↩️They were the storyboard's
+  /// `RailView.storyboardTransformGroups`, session-only.
+  final Set<String> expandedLaneGroups;
+
   Track copyWith({
     TrackId? id,
     String? name,
@@ -104,6 +130,9 @@ class Track {
     List<LayerEffect>? effects,
     TrackType? type,
     bool? fxEnabled,
+    TrackConte? conte,
+    bool? lanesExpanded,
+    Set<String>? expandedLaneGroups,
   }) {
     return Track(
       id: id ?? this.id,
@@ -114,6 +143,9 @@ class Track {
       effects: effects ?? this.effects,
       type: type ?? this.type,
       fxEnabled: fxEnabled ?? this.fxEnabled,
+      conte: conte ?? this.conte,
+      lanesExpanded: lanesExpanded ?? this.lanesExpanded,
+      expandedLaneGroups: expandedLaneGroups ?? this.expandedLaneGroups,
     );
   }
 
@@ -132,6 +164,12 @@ class Track {
     'type': type.name,
     // R8's rule: a default is silence — a switch that is on writes no key.
     if (!fxEnabled) 'fxEnabled': false,
+    // R8's rule again: a track no conte stood on writes nothing.
+    if (!conte.isEmpty) 'conte': conte.toJson(),
+    // …and a shut twirl nothing, as a layer row's does.
+    if (lanesExpanded) 'lanesExpanded': true,
+    if (expandedLaneGroups.isNotEmpty)
+      'expandedLaneGroups': [...expandedLaneGroups]..sort(),
   };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -162,6 +200,19 @@ class Track {
       effects: effects,
       type: TrackType.values.byName(json['type'] as String),
       fxEnabled: fxEnabled,
+      // No key = a track no conte stood on, which the writer leaves out —
+      // or one whose cuts' contes say their structure themselves, which
+      // the first write lays from them (`trackWithItsConteLaid`).
+      conte: switch (json['conte']) {
+        final Map<String, dynamic> conte => TrackConte.fromJson(conte),
+        _ => TrackConte.none,
+      },
+      lanesExpanded: json['lanesExpanded'] as bool? ?? false,
+      expandedLaneGroups: {
+        for (final laneId
+            in json['expandedLaneGroups'] as List<dynamic>? ?? const [])
+          laneId as String,
+      },
     );
   }
 
@@ -176,7 +227,10 @@ class Track {
           other.transitionLayer == transitionLayer &&
           listEquals(other.effects, effects) &&
           other.type == type &&
-          other.fxEnabled == fxEnabled;
+          other.fxEnabled == fxEnabled &&
+          other.conte == conte &&
+          other.lanesExpanded == lanesExpanded &&
+          setEquals(other.expandedLaneGroups, expandedLaneGroups);
 
   @override
   int get hashCode => Object.hash(
@@ -188,6 +242,9 @@ class Track {
     Object.hashAll(effects),
     type,
     fxEnabled,
+    conte,
+    lanesExpanded,
+    Object.hashAllUnordered(expandedLaneGroups),
   );
 
   @override

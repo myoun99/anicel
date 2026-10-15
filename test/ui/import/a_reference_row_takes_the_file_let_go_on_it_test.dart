@@ -3,25 +3,37 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
+import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/native/qa_video_decoder.dart' show QaVideoInfo;
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/media/video_decode_worker.dart'
+    show debugVideoDecodeBackend;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 
+import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/three_frame_gif.dart';
+import '../../helpers/named_finders.dart';
 
 /// I-47 (유저 2026-09-25): 「이미지 레이어의 프레임영역에 떨구면 참조변경 …
 /// 기존의 트랜스폼값같은거 안건들이고 진짜 참조대상만 변경하는느낌」 — and
@@ -44,22 +56,26 @@ void main() {
   /// placement window's reference road — and [next] in the pool, whose
   /// panel is open. [nextBytes] replaces what a solid blue picture of
   /// [size] would write there; [carryNext] pools it CARRIED and then takes
-  /// its original away.
+  /// its original away. With [oldGifFrame] the row is that one frame of a
+  /// three-frame GIF instead — a still that is not its file's first picture.
   Future<({EditorSessionManager session, Layer row, String next})> open(
     WidgetTester tester, {
     String next = 'next.png',
     List<int>? nextBytes,
     ({int width, int height}) size = (width: 8, height: 8),
     bool carryNext = false,
+    int? oldGifFrame,
   }) async {
     final paths = (await tester.runAsync(() async {
-      final old = await writeSolidPng(
-        tempDir,
-        'old.png',
-        width: size.width,
-        height: size.height,
-        rgba: red,
-      );
+      final old = oldGifFrame == null
+          ? await writeSolidPng(
+              tempDir,
+              'old.png',
+              width: size.width,
+              height: size.height,
+              rgba: red,
+            )
+          : await writeThreeFrameGif(tempDir, 'old.gif');
       final path = '${tempDir.path}${Platform.pathSeparator}$next';
       if (nextBytes == null) {
         await writeSolidPng(
@@ -118,6 +134,8 @@ void main() {
           path: paths.old,
           destination: ImportDestination.activeCutLayer,
           copyIntoProject: false,
+          inFrame: oldGifFrame ?? 0,
+          outFrame: oldGifFrame,
         ),
         isTrue,
         reason: 'premise: the reference row is placed',
@@ -158,9 +176,7 @@ void main() {
   /// answering how many frames the silhouette covered while it hovered,
   /// or null when none stood there.
   Future<int?> dragOnto(WidgetTester tester, Layer row, String path) async {
-    final target = find.byKey(
-      ValueKey<String>('timeline-layer-asset-drop-${row.id}'),
-    );
+    final target = find.named('timeline-layer-asset-drop-${row.id}');
     final frames = tester
         .widgetList<CustomPaint>(find.byType(CustomPaint))
         .map((paint) => paint.painter)
@@ -242,8 +258,8 @@ void main() {
     expect(centre(session, row), [255, 0, 0, 255]);
   });
 
-  testWidgets('the new picture stands where the old one stood — at the fit '
-      'the row was placed with', (tester) async {
+  testWidgets('the new picture stands where the old one stood — at the row\'s '
+      'reference fx, over its own pixels (I-68)', (tester) async {
     final (:session, :row, :next) = await open(
       tester,
       size: (width: 16, height: 8),
@@ -309,6 +325,63 @@ void main() {
     expect(centre(session, row), [255, 0, 0, 255]);
   });
 
+  // ⓐ (I-68 「가」, 유저 2026-10-10 「추천대로가자」): a swap keeps the
+  // number of the picture a cel shows, as a move of the fx does.
+  testWidgets('🎯a still that is a GIF\'s 2nd frame looks for the 2nd picture '
+      'of what is let go on it: a PNG has none, so nothing changes — and the '
+      'drop says THAT, not that the file did not read', (tester) async {
+    final (:session, :row, :next) = await open(tester, oldGifFrame: 1);
+    expect(row.frames.single.filePicture, 1, reason: 'premise');
+    const said = 'next.png: the file has no picture 2.';
+
+    await dragOnto(tester, row, next);
+    await settle(tester, () => find.text(said).evaluate().isNotEmpty);
+
+    expect(find.text(said), findsOneWidget);
+    expect(find.text('next.png: could not read the file.'), findsNothing);
+    expect(session.layerById(row.id), row);
+  });
+
+  group('what a swap says', () {
+    tearDown(() => AppText.settings.value = const AppLanguageSettings());
+
+    test('nothing when the file came in or the row was left as it was — a '
+        'row that changed while the file was read included; the file and '
+        'why when it did not', () {
+      expect(referenceSwapWords(const ReferenceLaid(), '/w/bg.png'), isNull);
+      expect(
+        referenceSwapWords(const ReferenceLeftAlone(), '/w/bg.png'),
+        isNull,
+        reason: '↩️it said 「could not read the file」',
+      );
+      expect(
+        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png'),
+        AppText.strings.imUnreadable('bg.png'),
+      );
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+        notationLanguage: AppLanguage.ko,
+      );
+      expect(
+        referenceSwapWords(const ReferenceLacksPicture(1), '/w/bg.png'),
+        'bg.png: 이 파일에는 2번째 그림이 없습니다.',
+        reason: 'counted from 1 where a person reads it',
+      );
+    });
+
+    test('every language names the file and the picture it lacks', () {
+      for (final language in AppLanguage.values) {
+        final words = AppStrings.of(language).imLacksPicture('bg.png', 7);
+        expect(
+          words,
+          allOf(contains('bg.png'), contains('7')),
+          reason: '$language',
+        );
+        expect(words, isNot(contains('{')), reason: '$language');
+      }
+    });
+  });
+
   testWidgets('the swap tidies up as every edit that moves the document does '
       '— a frame range goes, as the swap\'s undo takes it — and leaves the '
       'standing to the door', (tester) async {
@@ -328,7 +401,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(swapped, isTrue);
+    expect(swapped, isA<ReferenceLaid>());
     expect(session.frameRangeSelection.value, isNull);
     expect(session.activeLayerId, other.id);
   });
@@ -347,13 +420,27 @@ void main() {
     });
     await tester.pumpAndSettle();
 
-    expect(swapped, isFalse);
+    expect(swapped, isA<ReferenceLeftAlone>());
     expect(pointsAt(session, row, row.mediaReference!.assetPath), isTrue);
     expect(centre(session, row), [255, 0, 0, 255]);
   });
 
   group('a movie reference row', () {
     const takeRow = LayerId('take-row');
+
+    /// [path] from its 4th frame on, standing where its reference fx says —
+    /// a pose of its own, which no fit of the canvas would give.
+    MediaReference shows(String path) => MediaReference(
+      assetPath: path,
+      frameOffset: 3,
+      pose: TransformPose(
+        center: CanvasPoint(x: 700, y: 500),
+        scaleX: 1.5,
+        scaleY: 1.5,
+        rotationDegrees: 10,
+      ),
+      pictureSize: const CanvasSize(width: 640, height: 360),
+    );
 
     Layer movieRow(String path) => Layer(
       id: takeRow,
@@ -364,12 +451,14 @@ void main() {
       timeline: {
         0: const TimelineExposure.drawing(FrameId('take-cel'), length: 6),
       },
-      mediaReference: MediaReference(assetPath: path, frameOffset: 3),
+      mediaReference: shows(path),
     );
 
     testWidgets('takes a movie let go on it — the reference is all that '
-        'moves, where in the file it starts included — and nothing else',
-        (tester) async {
+        'moves, where in the file it starts and where it stands included — '
+        'and nothing else', (tester) async {
+      debugVideoDecodeBackend = FakeVideoBackend(width: 1280, height: 720);
+      addTearDown(() => debugVideoDecodeBackend = null);
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -389,27 +478,72 @@ void main() {
           layerId: takeRow,
           path: '/work/still.png',
         ),
-        isFalse,
+        isA<ReferenceLeftAlone>(),
         reason: 'the door asks the same question the drop does',
       );
 
-      final swapped = await session.importDoors.swapReference(
-        layerId: takeRow,
-        path: '/work/take2.mp4',
+      final swapped = await tester.runAsync(
+        () => session.importDoors.swapReference(
+          layerId: takeRow,
+          path: '/work/take2.mp4',
+        ),
       );
 
-      expect(swapped, isTrue);
+      expect(swapped, isA<ReferenceLaid>());
       expect(
         session.layerById(takeRow)!.mediaReference,
-        MediaReference(assetPath: '/work/take2.mp4', frameOffset: 3),
+        shows('/work/take2.mp4').copyWith(
+          pictureSize: const CanvasSize(width: 1280, height: 720),
+        ),
+        reason:
+            'the same pose over the new movie\'s own frame — I-68: '
+            '「해상도가 달라도 같은크기로 겹치지않게」',
       );
       session.historyManager.undo();
       expect(
         session.layerById(takeRow)!.mediaReference,
-        MediaReference(assetPath: '/work/take1.mp4', frameOffset: 3),
+        shows('/work/take1.mp4'),
       );
       // The edit's own settling timers, run out on the test's clock.
       await tester.pump(const Duration(minutes: 1));
     });
+
+    testWidgets('a movie that does not open is a file that does not read — '
+        'nothing changes, and the drop says so', (tester) async {
+      debugVideoDecodeBackend = _NothingOpens();
+      addTearDown(() => debugVideoDecodeBackend = null);
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.repository.insertLayer(
+        cutId: session.requireActiveCut.id,
+        layer: movieRow('/work/take1.mp4'),
+      );
+      final row = session.layerById(takeRow);
+
+      final answer = await tester.runAsync(
+        () => session.importDoors.swapReference(
+          layerId: takeRow,
+          path: '/work/take2.mp4',
+        ),
+      );
+
+      expect(answer, isA<ReferenceUnreadable>());
+      expect(session.layerById(takeRow), row);
+      expect(
+        referenceSwapWords(answer!, '/work/take2.mp4'),
+        AppText.strings.imUnreadable('take2.mp4'),
+      );
+    });
   });
+}
+
+/// A decoder that opens no movie at all.
+class _NothingOpens extends FakeVideoBackend {
+  @override
+  Future<({int token, QaVideoInfo info})?> open(
+    String path, {
+    ({int offset, int length, bool framed})? span,
+  }) async => null;
 }

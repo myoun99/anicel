@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/named_finders.dart';
+
 void main() {
   group('the timeline rail', () {
     for (final (key, read) in _switches) {
@@ -33,7 +35,7 @@ void main() {
         final was = read(s, b);
         expect(read(s, a), was, reason: 'the premise: two rows alike');
 
-        await tester.tap(find.byKey(ValueKey<String>('timeline-layer-$key-$a')));
+        await tester.tap(find.named('timeline-layer-$key-$a'));
         await tester.pumpAndSettle();
 
         expect([read(s, a), read(s, b)], [!was, !was]);
@@ -44,7 +46,7 @@ void main() {
         'selected row', (tester) async {
       final (s, a, b) = await _timelineRail(tester);
 
-      await tester.tap(find.byKey(ValueKey<String>('timeline-layer-mark-$a')));
+      await tester.tap(find.named('timeline-layer-mark-$a'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('layer-mark-option-paper')),
@@ -68,7 +70,7 @@ void main() {
       final labelOfA = _row(s, a).mark.process;
       expect(labelOfA, isNot(LayerProcess.paper), reason: 'the premise');
 
-      await tester.tap(find.byKey(ValueKey<String>('timeline-layer-take-$a')));
+      await tester.tap(find.named('timeline-layer-take-$a'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey<String>('layer-take-option-3')),
@@ -87,7 +89,7 @@ void main() {
         'row', (tester) async {
       final (s, a, b) = await _timelineRail(tester);
 
-      await tester.tap(find.byKey(ValueKey<String>('timeline-layer-blend-$a')));
+      await tester.tap(find.named('timeline-layer-blend-$a'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
@@ -106,7 +108,7 @@ void main() {
         'selected row', (tester) async {
       final (s, a, b) = await _timelineRail(tester);
       final slider = tester.widget<FieldSlider>(
-        find.byKey(ValueKey<String>('timeline-layer-opacity-$a')),
+        find.named('timeline-layer-opacity-$a'),
       );
 
       slider.onChanged!(0.3);
@@ -127,9 +129,7 @@ void main() {
         final was = read(s, s2);
         expect(read(s, s1), was, reason: 'the premise: two rows alike');
 
-        await tester.tap(
-          find.byKey(ValueKey<String>('storyboard-layer-$key-$s1')).first,
-        );
+        await tester.tap(find.named('storyboard-layer-$key-$s1').first);
         await tester.pumpAndSettle();
 
         expect([read(s, s1), read(s, s2)], [!was, !was]);
@@ -141,7 +141,7 @@ void main() {
       final (s, s1, s2) = await _storyboardRail(tester);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('storyboard-layer-mark-$s1')).first,
+        find.named('storyboard-layer-mark-$s1').first,
       );
       await tester.pumpAndSettle();
       await tester.tap(
@@ -159,7 +159,7 @@ void main() {
         'selected row', (tester) async {
       final (s, s1, s2) = await _storyboardRail(tester);
       final slider = tester.widget<FieldSlider>(
-        find.byKey(ValueKey<String>('storyboard-layer-opacity-$s1')).first,
+        find.named('storyboard-layer-opacity-$s1').first,
       );
 
       slider.onChanged!(0.3);

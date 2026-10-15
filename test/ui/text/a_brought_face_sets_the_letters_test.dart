@@ -66,9 +66,18 @@ void main() {
     return width;
   }
 
+  /// How wide [content]'s KEPT box is ([celTextBoxOf]).
   double boxWidthOf(CelTextContent content) {
     final corners = celTextBoxOf(content).corners;
     return corners[1].dx - corners[0].dx;
+  }
+
+  /// How wide [content]'s box is with its letters set afresh.
+  double boxWidthSetOf(CelTextContent content) {
+    final layout = layoutCelText(content);
+    final width = layout.box.width;
+    layout.dispose();
+    return width;
   }
 
   /// Sends for [family], and waits until it is in the engine.
@@ -125,7 +134,7 @@ void main() {
     await theFaceIsHere();
 
     expect(boxWidthOf(text), isNot(early));
-    expect(boxWidthOf(text), widthSetOf(text));
+    expect(boxWidthOf(text), boxWidthSetOf(text));
     // Asked again with nothing changed, it is the box that was kept.
     expect(celTextBoxOf(text), same(celTextBoxOf(text)));
   });
@@ -135,15 +144,16 @@ void main() {
       'with them', () async {
     final text = said(face: family);
     final own = widthSetOf(said());
+    final ownBox = boxWidthSetOf(said());
     await fonts.importBytes(regular);
     await theFaceIsHere();
     final inIt = boxWidthOf(text);
-    expect(inIt, isNot(own), reason: '⛔fixture');
+    expect(inIt, isNot(ownBox), reason: '⛔fixture');
 
     await fonts.delete(family);
 
     expect(widthSetOf(text), own);
-    expect(boxWidthOf(text), own);
+    expect(boxWidthOf(text), ownBox);
     expect(celTextAwaitsAFace(text), isFalse);
   });
 

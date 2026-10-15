@@ -14,17 +14,20 @@ import 'package:flutter/rendering.dart';
 /// painter's own draw, so the buffer holds it — and the buffer's KEY knew
 /// (a hover was a miss) while its tokens did not (the miss could not say
 /// where, and fell through to a full raster of the whole canvas, once per
-/// pointer move: measured at 25 full composes for 25 moves). [ghost] is
-/// the preview BY VALUE (its `==` is identity on the piece and the image,
-/// value on the rect, the opacity and the blend — exactly what a hover
-/// changes) beside the rect it covered, so the next paint can patch where
-/// it was and where it is. A record rather than the preview's own type so
-/// this file, which every canvas paint reads, does not import the brush
-/// tool's.
+/// pointer move: measured at 25 full composes for 25 moves). The ghost is
+/// one of [previews]: BY VALUE (its `==` is identity on the piece and the
+/// image, value on the rect, the opacity and the blend — exactly what a
+/// hover changes) beside the rect it covered, so the next paint can patch
+/// where it was and where it is. A record rather than the preview's own
+/// type so this file, which every canvas paint reads, does not import the
+/// brush tool's.
+///
+/// F-344: and the text in hand, floated over its hole by the same painter
+/// (`BitmapSurfacePainter.landingPreview`) — the other preview there is.
 typedef LiveSurfaceTokens = ({
   Map<Object, Object> overlay,
   Map<Object, Object> tiles,
-  ({Object value, Rect rect})? ghost,
+  List<({Object value, Rect rect})> previews,
 });
 
 /// 🚨THE ONE SENTINEL for 「nothing was kept to measure from」 — a cold
@@ -35,7 +38,7 @@ typedef LiveSurfaceTokens = ({
 const LiveSurfaceTokens noLiveSurfaceTokens = (
   overlay: {},
   tiles: {},
-  ghost: null,
+  previews: [],
 );
 
 /// 🚨★★★ (v) — THE COMPOSITE BUFFER, KEPT WHILE NOTHING HAS CHANGED.

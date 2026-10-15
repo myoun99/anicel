@@ -55,7 +55,7 @@ List<PropertyLaneRow> seAudioLanesFor(Layer layer) {
       // F-37: the word the storyboard's audio lane already read — the
       // timeline said 'Audio' in every language beside it.
       label: AppText.strings.tlAudioLane,
-      keyedFrames: const {},
+      keyMarks: const {},
       showsKeyNavigator: false,
     ),
   ];

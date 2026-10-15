@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/named_finders.dart';
 
 /// 「끄는 동안 보이는 것은 놓았을 때 생길 것이다」 (미디어 배치 라운드 2d
 /// 2부) for a SOUND held over an SE row's empty cell: the block it would
@@ -134,9 +135,7 @@ void main() {
     expect(silhouette, findsNothing, reason: 'premise: nothing held yet');
 
     // Cell 8: two cells into the stretch after the block on 2..5.
-    final gap = find.byKey(
-      const ValueKey<String>('timeline-se-cell-drop-se-row-6'),
-    );
+    final gap = find.named('timeline-se-cell-drop-se-row-6');
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(dragSourceKey)),
     );

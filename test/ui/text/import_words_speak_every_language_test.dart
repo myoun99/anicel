@@ -28,8 +28,10 @@ void main() {
   /// ★A NEW WARNING ADDS ITS KEY HERE. The keys are the raising sites'
   /// own — `psd*` the Photoshop reader and its layer plan, `folder*` the
   /// cut folder's parse and plan, `tvp*`/`tvpp*` the TVPaint planner,
-  /// parser and converter, three the .tvpp door itself, and `clip*` the
-  /// CLIP STUDIO planner.
+  /// parser and converter, three the .tvpp door itself, `clip*` the CLIP
+  /// STUDIO planner and door, `brushPack*` · `abr*` · `sut*` the brush file
+  /// readers' refusals (F-273) — and `unsupportedLayerKind` every decoder's
+  /// one word (`import_warning.dart`).
   const keys = [
     'psdBitDepth',
     'psdVectorMask',
@@ -41,7 +43,6 @@ void main() {
     'psdIndexedNoPalette',
     'psdCmyk',
     'psdLab',
-    'psdAdjustment',
     'psdClipping',
     'psdLayerEffects',
     'psdBlend',
@@ -64,15 +65,33 @@ void main() {
     'clipNoSuchCel',
     'clipCelLayers',
     'clipSpread',
+    'clipLineOrder',
     'clipVector',
-    'clipText',
-    'clipPaper',
-    'clipFill',
     'clipSound',
-    'clipUnknownLayer',
+    'clipSoundMissing',
+    'clipSoundSpeed',
+    'clipSoundVolume',
+    'clipCurve',
     'clipBlend',
     'clipNotColour',
     'clipTransform',
+    'clipVectorUnread',
+    'brushPackUnreadable',
+    'brushPackNotOurs',
+    'brushPackNewer',
+    'brushPackEmpty',
+    'brushPackDamaged',
+    'abrTooShort',
+    'abrOldVersion',
+    'abrUnknownVersion',
+    'abrCorruptSection',
+    'abrNoBrushes',
+    'abrNothingImportable',
+    'sutCannotOpen',
+    'sutUnreadable',
+    'sutNoBrushData',
+    'sutNothingImportable',
+    'unsupportedLayerKind',
   ];
 
   for (final language in translated) {

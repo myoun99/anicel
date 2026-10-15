@@ -45,15 +45,17 @@ TimelineGridSheetPainter _sheet({
   ]),
 );
 
-SelectionAntsPainter _ants(List<CanvasSelectionShape> shapes) =>
-    SelectionAntsPainter(
-      repaint: const AlwaysStoppedAnimation<double>(0),
-      viewport: CanvasViewport(),
-      committedRegion: null,
-      screenOffset: Offset.zero,
-      marqueeShapes: shapes,
-      openTrail: const <CanvasPoint>[],
-    );
+SelectionAntsPainter _ants(
+  List<CanvasSelectionShape> shapes, {
+  List<List<CanvasPoint>> trails = const <List<CanvasPoint>>[],
+}) => SelectionAntsPainter(
+  repaint: const AlwaysStoppedAnimation<double>(0),
+  viewport: CanvasViewport(),
+  committedRegion: null,
+  screenOffset: Offset.zero,
+  marqueeShapes: shapes,
+  openTrails: trails,
+);
 
 void main() {
   group('a changed prop repaints, an equal one does not', () {
@@ -148,6 +150,25 @@ void main() {
       final old = _ants(<CanvasSelectionShape>[shape]);
       expect(_ants(<CanvasSelectionShape>[shape]).shouldRepaint(old), isFalse);
       expect(_ants(const <CanvasSelectionShape>[]).shouldRepaint(old), isTrue);
+    });
+
+    // A trail and every copy a guide makes of it (I-69-Q6): the copies are
+    // compared each as it is, so the same trails in a rebuilt list are the
+    // same input, and a trail that moved — or one more copy — is not.
+    test('SelectionAntsPainter: open trails, each by identity', () {
+      final line = [CanvasPoint(x: 1, y: 2), CanvasPoint(x: 30, y: 2)];
+      final mirror = [CanvasPoint(x: 99, y: 2), CanvasPoint(x: 70, y: 2)];
+      final old = _ants(const [], trails: [line, mirror]);
+      expect(
+        _ants(const [], trails: [line, mirror]).shouldRepaint(old),
+        isFalse,
+      );
+      expect(
+        _ants(const [], trails: [line, [...mirror]]).shouldRepaint(old),
+        isTrue,
+        reason: 'a fresh trail is a pointer sample that moved',
+      );
+      expect(_ants(const [], trails: [line]).shouldRepaint(old), isTrue);
     });
   });
 }

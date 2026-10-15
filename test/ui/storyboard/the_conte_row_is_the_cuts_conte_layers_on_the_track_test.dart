@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
@@ -19,6 +21,10 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/editing/default_cut_helpers.dart'
+    show cameraRowBornName;
+import 'package:anicel/src/services/editing/default_layer_helpers.dart'
+    show conteRowBornName, createCoveringLayer;
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart'
     show StoryboardConteCreatePainter;
@@ -115,6 +121,57 @@ void main() {
       expect(blocksOf(row), {0: ('a1', 4), 4: ('a2', 6), 13: ('b1', 8)});
       expect(row.id, trackConteRowId(trackId));
       expect(row.kind, LayerKind.storyboard);
+    });
+
+    test('🚨laid alike, it is the same row — what draws it knows it by '
+        'identity (I-57)', () {
+      final a = cut('a', 10, conteLayer: conte('a', {0: block('a1', 10)}));
+      final [laid] = entriesOf([a]);
+      // The very cut laid again — as a drag in flight lays the cuts behind
+      // the one it re-times: the same instance, elsewhere.
+      StoryboardTimelineLayoutEntry relaid({int by = 0, int? duration}) =>
+          StoryboardTimelineLayoutEntry(
+            trackId: laid.trackId,
+            cutId: laid.cutId,
+            trackIndex: laid.trackIndex,
+            cutIndex: laid.cutIndex,
+            startFrame: laid.startFrame + by,
+            endFrame: laid.startFrame + by + (duration ?? laid.duration),
+            duration: duration ?? laid.duration,
+            cut: a,
+          );
+      final row = trackConteRowShown(trackId, [laid]);
+
+      expect(
+        trackConteRowShown(trackId, entriesOf([a])),
+        same(row),
+        reason: '↩️a new row each build: the storyboard repainted the whole '
+            'film\'s conte cells, and said them all again, for a cut '
+            'crossed under the playhead',
+      );
+      // Each laying is asked right after [laid]'s row was, so it is told
+      // apart from THAT one.
+      for (final (other, seat, reason) in [
+        ([relaid(by: 3)], 0, 'the very cut moved is another row'),
+        ([relaid(duration: 6)], 0, 'and so is the very cut held shorter'),
+        (entriesOf([cut('z', 4), a]), 0, 'and the cut laid after another'),
+        (entriesOf([a, cut('z', 4)]), 0, 'and the cut with another after'),
+        (
+          entriesOf([
+            cut('a', 10, conteLayer: conte('a', {0: block('a2', 10)})),
+          ]),
+          0,
+          'and another cut in its place',
+        ),
+        ([laid], 1, 'and the row at another seat'),
+      ]) {
+        final kept = trackConteRowShown(trackId, [laid]);
+        expect(
+          trackConteRowShown(trackId, other, seat: seat),
+          isNot(same(kept)),
+          reason: reason,
+        );
+      }
     });
 
     test('a cut with no conte layer, and a gap, hold nothing', () {
@@ -250,7 +307,7 @@ void main() {
       final row = trackConteRowShown(trackId, entries);
       expect((row.name, row.mark), ('B', conteMark));
       expect(
-        trackConteHeadLayer([for (final entry in entries) entry.cut])?.id,
+        conteHeadRowAt([for (final entry in entries) entry.cut], 0)?.id,
         const LayerId('sb-b'),
       );
 
@@ -259,13 +316,59 @@ void main() {
       final bare = entriesOf([cut('a', 4)]);
       final bareCuts = [for (final entry in bare) entry.cut];
       expect(trackConteRowShown(trackId, bare).mark, LayerMark.none);
-      expect(trackConteHeadLayer(bareCuts), isNull);
+      expect(conteHeadRowAt(bareCuts, 0), isNull);
       // One name wherever the row is written: the rail's label reads
-      // [trackConteRowName], the flip window the row as drawn.
-      final kindsWord = LayerKind.storyboard.labelFor(AppText.language);
-      expect(kindsWord, isNotEmpty, reason: '⛔전제');
-      expect(trackConteRowName(bareCuts), kindsWord);
-      expect(trackConteRowShown(trackId, bare).name, kindsWord);
+      // [trackConteRowName], the flip window the row as drawn — the name a
+      // conte row is born with, in every program language. 🗣️F-322 (유저
+      // 2026-10-09): 「처음 이름이 한글로 콘티이고 칸 생성 하고나면 Conte로
+      // 바뀌는데 그냥 통일. 멋대로 한글로 콘티라고 하지말것」.
+      final before = AppText.settings.value;
+      addTearDown(() => AppText.settings.value = before);
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      expect(
+        LayerKind.storyboard.labelFor(AppText.language),
+        isNot(conteRowBornName),
+        reason: '⛔전제: the kind\'s Korean word is not the row\'s name',
+      );
+      expect(trackConteRowName(bareCuts), conteRowBornName);
+      expect(trackConteRowShown(trackId, bare).name, conteRowBornName);
+      expect(
+        createCoveringLayer(
+          layerId: const LayerId('born'),
+          frameId: const FrameId('born-1'),
+          cut: bareCuts.single,
+        ).name,
+        conteRowBornName,
+        reason: 'the row the first panel makes is called the same',
+      );
+    });
+
+    test('a camera row in a gap is called what the track\'s cameras are, '
+        'not the kind\'s word — and what one is born as with none', () {
+      final before = AppText.settings.value;
+      addTearDown(() => AppText.settings.value = before);
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      Cut withCamera(String id, String name) => cut(id, 4).copyWith(
+        layers: [
+          Layer(
+            id: LayerId('$id-cam'),
+            name: name,
+            kind: LayerKind.camera,
+            frames: const [],
+          ),
+        ],
+      );
+
+      final cuts = [withCamera('a', 'CAM'), withCamera('b', 'CAM')];
+      expect(trackCameraRowName(cuts, standingIn: null), 'CAM');
+      expect(
+        trackCameraRowName([cut('a', 4)], standingIn: null),
+        cameraRowBornName,
+      );
     });
   });
 
@@ -293,26 +396,26 @@ void main() {
     test('a cut that begins its conte at 0: the frame counted from the '
         'cut\'s start', () {
       final entry = entryOf(plain);
-      expect(conteRowOwnFrameAt(entry, plain, 24), 0);
-      expect(conteRowOwnFrameAt(entry, plain, 30), 6);
-      expect(conteRowGlobalFrameOf(entry, plain, 6), 30);
+      expect(conteRowOwnFrameAt(entry, 24), 0);
+      expect(conteRowOwnFrameAt(entry, 30), 6);
+      expect(conteRowGlobalFrameOf(entry, 6), 30);
     });
 
     test('🚨a cut an O.L arrives into: that much further into the row — '
         'past the のりしろ', () {
       final entry = entryOf(arriving);
-      expect(conteRowOwnFrameAt(entry, arriving, 24), 6);
-      expect(conteRowOwnFrameAt(entry, arriving, 30), 12);
-      expect(conteRowGlobalFrameOf(entry, arriving, 6), 24);
-      expect(conteRowGlobalFrameOf(entry, arriving, 18), 36);
+      expect(conteRowOwnFrameAt(entry, 24), 6);
+      expect(conteRowOwnFrameAt(entry, 30), 12);
+      expect(conteRowGlobalFrameOf(entry, 6), 24);
+      expect(conteRowGlobalFrameOf(entry, 18), 36);
     });
 
     test('a frame outside the cut is held to the cut — a drag that leaves '
         'its cut stops at its edge', () {
       final entry = entryOf(arriving);
-      expect(conteRowOwnFrameAt(entry, arriving, 3), 6, reason: 'before it');
-      expect(conteRowOwnFrameAt(entry, arriving, 99), 29, reason: 'past it');
-      expect(conteRowOwnFrameAt(entry, plain, 99), 23);
+      expect(conteRowOwnFrameAt(entry, 3), 6, reason: 'before it');
+      expect(conteRowOwnFrameAt(entry, 99), 29, reason: 'past it');
+      expect(conteRowOwnFrameAt(entryOf(plain), 99), 23);
     });
   });
 

@@ -12,7 +12,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_folder.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -24,9 +23,12 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/three_frame_gif.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨THE DROP PLACE DECIDES (유저 2026-09-11, 미디어 배치 라운드: 「떨어뜨린
 /// 자리가 곧 답」). A file let go on a picture row's frame area becomes new
@@ -106,13 +108,13 @@ void main() {
     );
     expect(
       s.mediaPool.mediaAssets,
-      hasLength(1),
-      reason: '「구워도 풀에 남음」 — the material of a placement is a pool entry',
+      isEmpty,
+      reason: 'frames on a row are its own pixels — baked, so the file '
+          'registers nothing (F-282-Q6; ↩️「구워도 풀에 남음」)',
     );
 
     s.undo();
     expect(blocksOf(s.layerById(row.id)!), blocksOf(row));
-    expect(s.mediaPool.mediaAssets, isEmpty);
     // A landing wakes the playback pre-render; let it finish its turn.
     await tester.pumpAndSettle();
   });
@@ -182,34 +184,13 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  /// A three-frame GIF, one pixel a frame, black · white · black — no two
-  /// neighbours alike, because the import folds a repeated frame into a
-  /// hold and three equal frames would land as ONE cel.
-  Future<String> writeGif(String name) async {
-    // [lzw] is the pixel's LZW code: 0x44 for palette 0, 0x4C for 1.
-    List<int> frame(int lzw) => [
-      0x21, 0xF9, 0x04, 0x00, 0x0A, 0x00, 0x00, 0x00, // graphic control
-      0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, // image
-      0x02, 0x02, lzw, 0x01, 0x00, // its one pixel
-    ];
-    final file = File('${tempDir.path}${Platform.pathSeparator}$name');
-    await file.writeAsBytes([
-      ...'GIF89a'.codeUnits,
-      0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00, // 1×1, two colours
-      0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF,
-      ...frame(0x44), ...frame(0x4C), ...frame(0x44),
-      0x3B,
-    ]);
-    return file.path;
-  }
-
   testWidgets('a GIF\'s IN/OUT lands only the frames it keeps — a cell '
       'each, from the drop cell', (tester) async {
     final s = session();
     final row = seedBlock(s, drawingRow(s), 0, 1);
 
     final landed = await tester.runAsync(() async {
-      final path = await writeGif('walk.gif');
+      final path = await writeThreeFrameGif(tempDir, 'walk.gif');
       return s.importDoors.importImageFile(
         path: path,
         destination: ImportDestination.activeCutLayer,
@@ -226,6 +207,12 @@ void main() {
     expect(after.timeline[4]?.length, 1);
     expect(after.timeline[5], isNull, reason: 'its first frame is outside');
     expect(after.frames, hasLength(3), reason: 'the held cel and the two');
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'frames on a row are its own pixels, a sequence\'s too — '
+          'baked, so the file registers nothing (F-282-Q6)',
+    );
     await tester.pumpAndSettle();
   });
 
@@ -260,6 +247,12 @@ void main() {
       {1, 2},
       reason: 'the second and third pages — the span, from its first page',
     );
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'pages on a row are its own pixels — baked, so the file '
+          'registers nothing (F-282-Q6)',
+    );
     await tester.pumpAndSettle();
   });
 
@@ -278,7 +271,7 @@ void main() {
     );
     s.repository.insertLayer(cutId: cut.id, layer: image);
     final reference = drawing.copyWith(
-      mediaReference: MediaReference(assetPath: 'take.png'),
+      mediaReference: referenceTo('take.png'),
     );
 
     expect(s.acceptsPlacedFrames(drawing.id), isTrue);
@@ -383,12 +376,18 @@ void main() {
         .evaluate()
         .isNotEmpty;
 
+    /// A pool row let go on [spot] — the window every drop that answers a
+    /// place opens ([ImportDialog.placeOnly]). Its file is one the pool
+    /// holds, so the row has nothing left to register: its 「미디어」 is off.
     Future<void> open(
       WidgetTester tester,
       EditorSessionManager s,
       String path,
       ImportLayerSpot spot,
     ) async {
+      await tester.runAsync(
+        () => s.mediaPool.importMediaFiles([path], copyIntoProject: false),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -401,7 +400,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump();
+      await settleLoadedPages(tester);
     }
 
     Future<void> press(WidgetTester tester, String id, String path) async {

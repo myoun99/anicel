@@ -206,7 +206,7 @@ void main() {
 
     Future<void> typeZoom(WidgetTester tester, String text) async {
       await tester.tap(
-        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
       await tester.enterText(

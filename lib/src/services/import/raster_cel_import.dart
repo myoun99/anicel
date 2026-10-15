@@ -1,16 +1,22 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
+import '../../models/media_reference.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/placed_tile.dart';
 import '../../models/tile_coord.dart';
+import '../../models/transform_pose.dart';
 import '../brush_frame_store.dart';
+import '../guide_geometry.dart' show GuideTransform;
+import '../layer_pose_matrix.dart';
 import '../photoshop/psd_image.dart';
 import '../photoshop/psd_reader.dart';
 
@@ -93,67 +99,121 @@ Future<ui.Image?> firstPictureOf(Uint8List bytes) async {
   return frames.isEmpty ? null : frames.first.image;
 }
 
-/// The placement rect [fit] gives [source] on [canvas] (§6-q: fit is a
-/// placement decision): stretch fills the canvas, contain letterboxes
-/// inside it, none centers 1:1 (the pasteboard keeps the overflow).
-ui.Rect placementRectFor({
-  required int sourceWidth,
-  required int sourceHeight,
+/// Where [fit] stands a picture of [picture]'s size on [canvas] (§6-q: fit
+/// is a placement decision): its centre on the canvas's, scaled over its
+/// own pixels — stretch fills the canvas, contain letterboxes inside it,
+/// none is 1:1 (the pasteboard keeps the overflow).
+///
+/// ↩️It was a RECT (`placementRectFor`), which says where a picture lies
+/// and not how it stands: a reference's pose is a transform's (I-68), and a
+/// fit is only where one starts. ONE fit, read as a pose everywhere.
+///
+/// A picture with no pixels has no size to fit and stands 1:1.
+TransformPose fitPose({
+  required CanvasSize picture,
   required CanvasSize canvas,
   required MediaFitMode fit,
 }) {
-  final canvasWidth = canvas.width.toDouble();
-  final canvasHeight = canvas.height.toDouble();
-  switch (fit) {
-    case MediaFitMode.stretch:
-      return ui.Rect.fromLTWH(0, 0, canvasWidth, canvasHeight);
-    case MediaFitMode.contain:
-      final scale = (canvasWidth / sourceWidth) < (canvasHeight / sourceHeight)
-          ? canvasWidth / sourceWidth
-          : canvasHeight / sourceHeight;
-      final width = sourceWidth * scale;
-      final height = sourceHeight * scale;
-      return ui.Rect.fromLTWH(
-        (canvasWidth - width) / 2,
-        (canvasHeight - height) / 2,
-        width,
-        height,
-      );
-    case MediaFitMode.none:
-      return ui.Rect.fromLTWH(
-        (canvasWidth - sourceWidth) / 2,
-        (canvasHeight - sourceHeight) / 2,
-        sourceWidth.toDouble(),
-        sourceHeight.toDouble(),
-      );
+  final center = CanvasPoint(x: canvas.width / 2, y: canvas.height / 2);
+  if (picture.width <= 0 || picture.height <= 0) {
+    return TransformPose(center: center);
   }
+  final across = canvas.width / picture.width;
+  final down = canvas.height / picture.height;
+  return switch (fit) {
+    MediaFitMode.stretch => TransformPose(
+      center: center,
+      scaleX: across,
+      scaleY: down,
+    ),
+    MediaFitMode.contain => TransformPose.uniform(
+      center: center,
+      zoom: math.min(across, down),
+    ),
+    MediaFitMode.none => TransformPose(center: center),
+  };
 }
+
+/// The reference a placement makes to SHOW [path]: the picture's own size
+/// ([picture]) and the pose [fit] starts it at on [canvas] — where it then
+/// stands until it is moved (I-68: 「배치된 값, 원본값 유지」).
+MediaReference placedReference(
+  String path,
+  CanvasSize picture,
+  CanvasSize canvas,
+  MediaFitMode fit,
+) => MediaReference(
+  assetPath: path,
+  pose: fitPose(picture: picture, canvas: canvas, fit: fit),
+  pictureSize: picture,
+);
+
+/// Where [pose] lays a picture of [picture]'s size: its own pixels → the
+/// canvas. The picture turns and scales about its own centre — the anchor a
+/// pose of a picture has (I-68: 「변형도구랑 같은거」).
+LayerPlacement picturePlacement(TransformPose pose, CanvasSize picture) =>
+    placementOf((pose: pose, anchorPoint: null), picture);
+
+/// The move that takes a picture laid at [from] to where [to] stands it —
+/// in the canvas space its cel is drawn in (I-68: what a reference fx in
+/// flight shows the cels by, before they are laid again). Null when [from]
+/// collapsed the picture (a zero scale), which no move brings back.
+///
+/// The picture's own size cancels out of the move; [picture] only names
+/// the space the two poses share.
+LayerPlacement? pictureMoved({
+  required TransformPose from,
+  required TransformPose to,
+  required CanvasSize picture,
+}) {
+  final back = canvasToArtwork(picturePlacement(from, picture));
+  return back == null ? null : picturePlacement(to, picture).compose(back);
+}
+
+/// Where [fit] lays [image] on [canvas] ([fitPose] as a placement).
+LayerPlacement fitPlacement(
+  ui.Image image,
+  CanvasSize canvas,
+  MediaFitMode fit,
+) {
+  final picture = CanvasSize(width: image.width, height: image.height);
+  return picturePlacement(
+    fitPose(picture: picture, canvas: canvas, fit: fit),
+    picture,
+  );
+}
+
+/// A picture [width] × [height] laid over [rect] — for a caller that already
+/// knows exactly where the image goes (the text bake renders its own
+/// bounds; an expanded PSD layer carries its document's fit).
+LayerPlacement rectPlacement(
+  ui.Rect rect, {
+  required int width,
+  required int height,
+}) => GuideTransform(
+  rect.width / width,
+  0,
+  0,
+  rect.height / height,
+  rect.left,
+  rect.top,
+);
 
 /// Rasterizes [image] into a [BitmapSurface] at [canvas]'s exact size
 /// (the store's hard gate: a cel sized for another canvas is invisible
-/// everywhere). The raster covers the canvas rect UNION the placement
-/// rect clipped to the pasteboard — fit=none overflow lives on the
-/// pasteboard exactly like an oversized selection drop.
-///
-/// [placement] overrides the [fit] math when the caller already knows
-/// exactly where the image goes (the text bake renders its own bounds);
-/// the wall clip and tile slice below treat it like any other placement.
+/// everywhere), laid by [placement] — the image's own pixels → the canvas.
+/// The raster covers what the placed picture covers, clipped to the
+/// pasteboard — fit=none overflow lives on the pasteboard exactly like an
+/// oversized selection drop.
 Future<BitmapSurface> rasterizeImageToSurface({
   required ui.Image image,
   required CanvasSize canvas,
-  required MediaFitMode fit,
-  ui.Rect? placement,
+  required LayerPlacement placement,
   int tileSize = defaultCelTileSize,
 }) async {
-  placement ??= placementRectFor(
-    sourceWidth: image.width,
-    sourceHeight: image.height,
-    canvas: canvas,
-    fit: fit,
-  );
   // The pasteboard wall (tiles beyond it are refused by the surface).
   final wall = canvas.pasteboardRect;
-  final clipped = placement.intersect(wall);
+  final clipped = _placedBounds(placement, image).intersect(wall);
   if (clipped.isEmpty) {
     return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
   }
@@ -188,20 +248,20 @@ Future<BitmapSurface> rasterizeImageToSurface({
   // 28/255 gray through the cubic kernel — and the text bake's whole
   // contract is that the store pixels ARE the engine render.
   final identityPlacement =
-      placement.width == image.width.toDouble() &&
-      placement.height == image.height.toDouble() &&
-      placement.left == placement.left.truncateToDouble() &&
-      placement.top == placement.top.truncateToDouble();
-  paintCanvas.drawImageRect(
-    image,
-    ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-    placement,
-    ui.Paint()
-      ..filterQuality = identityPlacement
-          ? ui.FilterQuality.none
-          : ui.FilterQuality.high
-      ..isAntiAlias = true,
-  );
+      placement.isPureTranslation &&
+      placement.tx == placement.tx.truncateToDouble() &&
+      placement.ty == placement.ty.truncateToDouble();
+  paintCanvas
+    ..transform(placementMatrix(placement).storage)
+    ..drawImage(
+      image,
+      ui.Offset.zero,
+      ui.Paint()
+        ..filterQuality = identityPlacement
+            ? ui.FilterQuality.none
+            : ui.FilterQuality.high
+        ..isAntiAlias = true,
+    );
   final picture = recorder.endRecording();
   // 🚨THE `finally` IS THE POINT. `toImage` is the awaited call, and an await
   // that throws skips every statement after it — so a dispose written on the
@@ -273,6 +333,28 @@ Future<BitmapSurface> rasterizeImageToSurface({
   } finally {
     raster.dispose();
   }
+}
+
+/// The canvas rect [placement] lays [image]'s pixels over — its four
+/// corners' bounds, so a turned picture is covered whole.
+ui.Rect _placedBounds(LayerPlacement placement, ui.Image image) {
+  final width = image.width.toDouble();
+  final height = image.height.toDouble();
+  final corners = [
+    for (final (x, y) in [
+      (0.0, 0.0),
+      (width, 0.0),
+      (width, height),
+      (0.0, height),
+    ])
+      placement.apply(CanvasPoint(x: x, y: y)),
+  ];
+  return ui.Rect.fromLTRB(
+    corners.map((point) => point.x).reduce(math.min),
+    corners.map((point) => point.y).reduce(math.min),
+    corners.map((point) => point.x).reduce(math.max),
+    corners.map((point) => point.y).reduce(math.max),
+  );
 }
 
 /// Bakes [tiles] — a decoded picture already cut into cel tiles of

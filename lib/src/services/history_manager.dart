@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/brush_frame_key.dart';
 import '../models/standing_place.dart';
 import 'history_places.dart';
+import 'history_step_scope.dart';
 import 'cels_ahead.dart';
 import 'command.dart';
 import 'memory_pressure_budget.dart';
@@ -114,6 +115,10 @@ class HistoryManager extends ChangeNotifier {
   StandingPlace? get undoPlace =>
       _undoStack.isEmpty ? null : places.of(_undoStack.last);
 
+  /// Where the next undo's edit found the user ([HistoryPlaces.foundAt]).
+  StandingPlace? get undoFound =>
+      _undoStack.isEmpty ? null : places.foundAt(_undoStack.last);
+
   /// Where the next redo's edit was made, or null when nothing says.
   ///
   /// ⚠️A walk back never says: it is not an edit, so nothing ever stamps
@@ -190,8 +195,9 @@ class HistoryManager extends ChangeNotifier {
     }
     final group = <Command>[];
     _group = group;
+    final List<Object> made;
     try {
-      body();
+      made = _made.run(body);
     } finally {
       _group = null;
     }
@@ -200,6 +206,7 @@ class HistoryManager extends ChangeNotifier {
     final step = oneStepOf(description, group);
     if (step != null) {
       _push(step);
+      _made.keep(step, made);
     }
   }
 
@@ -224,14 +231,24 @@ class HistoryManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 🚨How each step is run against the project behind this history, and
+  /// what a step made that its own undo does not take back
+  /// ([HistoryStepScope]) — the session's (F-343). Null in a history no
+  /// project stands behind.
+  HistoryStepScope? get scope => _made.scope;
+  set scope(HistoryStepScope? value) => _made.scope = value;
+  final _MadeBySteps _made = _MadeBySteps();
+
   void execute(Command command) {
-    command.execute();
     final group = _group;
     if (group != null) {
+      command.execute();
       group.add(command);
       return;
     }
+    final made = _made.run(command.execute);
     _push(command);
+    _made.keep(command, made);
   }
 
   void _push(Command command) {
@@ -555,14 +572,14 @@ class HistoryManager extends ChangeNotifier {
   void undo() => _step(
     from: _undoStack,
     to: _redoStack,
-    apply: (command) => command.undo(),
+    apply: _made.undo,
     nothingToDo: 'No commands to undo.',
   );
 
   void redo() => _step(
     from: _redoStack,
     to: _undoStack,
-    apply: (command) => command.execute(),
+    apply: _made.redo,
     nothingToDo: 'No commands to redo.',
   );
 
@@ -639,6 +656,14 @@ class HistoryGestures {
   int _pushed = 0;
   int _retracted = 0;
 
+  /// Runs [body] as ONE entry — a gesture that writes many rows in ONE
+  /// event (the legend's twirl-all), so it needs no [mark]: the synchronous
+  /// run [HistoryManager.runAsOneStep] groups before anything is pushed.
+  /// ⛔Not [foldSince] after it: a stack at its depth cap trims under the
+  /// writes, and the fold leaves them a step per row.
+  void runAsOneStep(String description, void Function() body) =>
+      _history.runAsOneStep(description, body);
+
   /// Where the stack stands now — taken before a gesture's first write.
   HistoryMark get mark => (
     pushed: _pushed,
@@ -661,7 +686,7 @@ class HistoryGestures {
       return false;
     }
     final command = stack.removeLast();
-    command.undo();
+    _history._made.undo(command);
     dropPayloadsOf([command]);
     _retracted += 1;
     _history._changed();
@@ -693,7 +718,54 @@ class HistoryGestures {
     // nothing a second time.
     final folded = oneStepOf(description, run)!;
     _history.places.stamp(folded);
+    _history._made.fold(folded, run);
     stack.add(folded);
     _history._changed();
   }
+}
+
+/// What each step of a [HistoryManager] made that its own undo does not
+/// take back, and the [HistoryStepScope] every step runs in — its own
+/// object for the class ratchet's reason, as [HistoryGestures] is.
+final class _MadeBySteps {
+  HistoryStepScope? scope;
+
+  final Expando<List<Object>> _of = Expando('made by a step');
+
+  /// Runs a new step's [write]; what it made is [keep]'s to file.
+  List<Object> run(void Function() write) {
+    final scope = this.scope;
+    if (scope == null) {
+      write();
+      return const [];
+    }
+    return [?scope.execute(write)];
+  }
+
+  /// Files [made] as what [step] made — nothing, when it made nothing.
+  void keep(Command step, List<Object> made) =>
+      _of[step] = made.isEmpty ? null : made;
+
+  void undo(Command step) {
+    final scope = this.scope;
+    if (scope == null) {
+      step.undo();
+      return;
+    }
+    scope.undo(step.undo, _of[step] ?? const []);
+  }
+
+  /// The step done again — and what it made this time is what it made.
+  void redo(Command step) {
+    final scope = this.scope;
+    if (scope == null) {
+      step.execute();
+      return;
+    }
+    keep(step, [?scope.redo(step.execute)]);
+  }
+
+  /// [folded] made what each step of [run], the steps it folds, made.
+  void fold(Command folded, List<Command> run) =>
+      keep(folded, [for (final step in run) ...?_of[step]]);
 }

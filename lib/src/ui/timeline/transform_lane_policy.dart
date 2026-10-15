@@ -1,20 +1,26 @@
 import 'lane_span_in_order.dart';
-import 'dart:ui' show Offset;
+import 'dart:ui' show Color, Offset;
 
+import '../../models/camera_instruction.dart'
+    show CameraInstructionDef, instructionTermName;
+import '../../models/camera_moves.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
+import '../../models/cut_camera.dart' show CutCamera;
+import '../../models/key_mark.dart';
 import '../../models/key_range_move.dart'
-    show
-        transformKeyFrameUnion,
-        transformKeyHoldUnion,
-        transformKeyMixedUnion,
-        transformKeyNameUnion;
+    show transformKeyMarkUnion, transformKeyNameUnion;
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
+import '../../services/camera_pose_resolver.dart'
+    show resolveCameraPoseAtTime;
 import 'effect_lane_policy.dart';
 import '../text/app_strings.dart';
-import '../text/trimmed_decimal.dart';
+import '../theme/lane_curve_palette.dart';
+import '../text/readout_text.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
 
@@ -31,59 +37,55 @@ import 'scale_lane_form.dart';
 PropertyLaneRow get transformGroupHeaderLane => PropertyLaneRow(
   laneId: 'transform-group',
   label: AppText.strings.tlTransformGroup,
-  keyedFrames: const {},
+  keyMarks: const {},
   showsKeyNavigator: false,
   isGroupHeader: true,
+  headsAGraph: true,
 );
 
 /// [transformGroupHeaderLane] carrying the collapse state (the header's
 /// chevron; tapping the header toggles it — AE group collapse).
 ///
-/// [keyedFrames] is the member lanes' KEY UNION (UI-R20 #13, the camera
-/// row's summary pattern): the header band shows every keyed frame at a
-/// glance — display-only markers (a union diamond has no single lane to
-/// edit); the range move shifts the keys through the LAYER row's
-/// selection.
+/// [keyMarks] is the member lanes' KEY UNION (UI-R20 #13, the camera row's
+/// summary pattern) — see [transformKeyMarkUnion]: the header band shows
+/// every keyed frame at a glance — display-only markers (a union mark has
+/// no single lane to edit); the range move shifts the keys through the
+/// LAYER row's selection.
 PropertyLaneRow transformGroupHeader({
   required bool expanded,
-  Set<int> keyedFrames = const {},
-  Set<int> holdOutFrames = const {},
-  Set<int> mixedFrames = const {},
+  Map<int, KeyMark> keyMarks = const {},
   Map<int, String> keyNames = const {},
   bool? enabled,
+  List<LaneStretchWord> stretchWords = const [],
 }) {
   return PropertyLaneRow(
     laneId: transformGroupHeaderLane.laneId,
     label: transformGroupHeaderLane.label,
-    keyedFrames: keyedFrames,
-    // The all-hold frames — see [transformKeyHoldUnion] (the ■ law).
-    holdOutFrames: holdOutFrames,
-    // F-17: and the frames whose members DISAGREE (the ○ law) — see
-    // [transformKeyMixedUnion]. The two come out of one walk, so a frame
-    // can never claim both.
-    mixedFrames: mixedFrames,
+    keyMarks: keyMarks,
     // ㉚: the members' name where they agree, `...` where they do not —
     // see [transformKeyNameUnion].
     keyNames: keyNames,
     showsKeyNavigator: false,
     isGroupHeader: true,
     groupExpanded: expanded,
+    headsAGraph: true,
     // R8: the group's own bypass, the same switch every effect header
     // carries ([Layer.transformEnabled]). Null on rows that have no
     // transform of their own to bypass (the camera moves through the cut's
     // camera track; its row-level switch covers that).
     groupEnabled: enabled,
+    stretchWords: stretchWords,
   );
 }
 
-/// THE union summary of [track] as a lane row — keyed union, all-hold
-/// union, name union — the ONE derivation behind every union mark
-/// (2026-08-17 B4: 「한 로직으로 통일이 요구의 본체」).
+/// THE union summary of [track] as a lane row — mark union, name union —
+/// the ONE derivation behind every union mark (2026-08-17 B4: 「한 로직으로
+/// 통일이 요구의 본체」).
 ///
 /// Two rows draw it: the fx TRANSFORM GROUP HEADER (its collapsed summary,
 /// UI-R20 #13) and the CAMERA row, which since ㉙ *is* its own transform
 /// group header. Both build their union through this function, so the mark
-/// they draw — which frames key, which read as hold squares, what they are
+/// they draw — which frames key, which mark each wears, what they are
 /// called — can never drift apart again. The camera's used to be a text
 /// glyph channel with its own ◆/■/○ table, and the ○ is exactly what a
 /// second derivation grows when nobody is looking.
@@ -91,35 +93,88 @@ PropertyLaneRow transformUnionHeader({
   required TransformTrack track,
   required bool expanded,
   bool? enabled,
+  List<LaneStretchWord> stretchWords = const [],
 }) {
   return transformGroupHeader(
     expanded: expanded,
-    keyedFrames: transformKeyFrameUnion(track),
-    holdOutFrames: transformKeyHoldUnion(track),
-    // F-17: the third answer the ■/◆ pair could not give.
-    mixedFrames: transformKeyMixedUnion(track),
+    keyMarks: transformKeyMarkUnion(track),
     keyNames: transformKeyNameUnion(track),
     enabled: enabled,
+    stretchWords: stretchWords,
   );
 }
+
+/// THE CAMERA ROW'S LANE — its keys' union ([transformUnionHeader]) with,
+/// over the line between them, the move each stretch makes
+/// ([cameraMoves], I-73 ⑤) by its name in the vocabulary [defById] reads,
+/// in the row's key colour (`timelineStretchWordSpan`): the timeline's
+/// camera row and the storyboard's draw this one lane.
+PropertyLaneRow cameraUnionHeader(
+  TransformTrack track, {
+  required CameraInstructionDef? Function(String id) defById,
+}) => transformUnionHeader(
+  track: track,
+  expanded: false,
+  stretchWords: [
+    for (final move in cameraMoves(track))
+      (
+        from: move.from,
+        to: move.to,
+        word: instructionTermName(move.term, defById(move.term)),
+      ),
+  ],
+);
+
+/// THE CAMERA ROW'S LANES — the member lanes of the camera [track] its
+/// [row] rides, valued by the camera's pose over a [canvasSize] frame: the
+/// lanes the timeline's camera row twirls down, and the storyboard's camera
+/// row each cut's (I-73 ④ⓔ). No [canvasSize] leaves them unvalued — a
+/// rail with no cut to read them in.
+///
+/// ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
+/// 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.
+/// 펼치면 포지션/스케일/로테이션만 남도록.」 — the row IS the transform
+/// group, so the header is not among them.
+List<PropertyLaneRow> cameraPropertyLanes(
+  Layer row,
+  TransformTrack track, {
+  required CanvasSize? canvasSize,
+}) => transformPropertyLanes(
+  track,
+  scaleForm: scaleLaneFormOf(row),
+  poseAt: canvasSize == null
+      ? null
+      : (time) => TransformPose.ofCamera(
+          resolveCameraPoseAtTime(
+            // The SAME track the lanes are built from, so the value column
+            // follows an in-flight key move like the diamonds do.
+            camera: CutCamera.fromTrack(track),
+            canvasSize: canvasSize,
+            time: time,
+          ),
+        ),
+).where((lane) => !lane.isGroupHeader).toList();
 
 /// The AE Transform-group lanes of a [TransformTrack], in AE order under
 /// the 'Transform' group header — Anchor Point / Position / Scale /
 /// Rotation / Opacity ([includeAnchorAndOpacity] gates the two layer-only
 /// lanes; the camera's group stays the pose trio).
 ///
-/// [poseAt]/[anchorAt]/[opacityAt] resolve the values for the value column
+/// [poseAt]/[anchorAt]/[opacityAt] resolve the values at a time — a frame,
+/// or between two: the value column reads them at its frame, a header
+/// graph's curve between frames too (I-89 ③), so the two are one reading
 /// (AE display units: Position and Anchor Point in canvas px, Scale as its
 /// [scaleForm] prints it, Rotation in clockwise degrees, Opacity ·100 %);
-/// null hides the values.
+/// null hides the values, and the curve with them.
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
   required ScaleLaneForm scaleForm,
   bool includeAnchorAndOpacity = false,
-  TransformPose Function(int frameIndex)? poseAt,
-  CanvasPoint Function(int frameIndex)? anchorAt,
-  double Function(int frameIndex)? opacityAt,
+  TransformPose Function(double time)? poseAt,
+  CanvasPoint Function(double time)? anchorAt,
+  double Function(double time)? opacityAt,
 }) {
+  const point = [LaneCurvePalette.across, LaneCurvePalette.down];
   return [
     transformGroupHeaderLane,
     if (includeAnchorAndOpacity)
@@ -127,12 +182,13 @@ List<PropertyLaneRow> transformPropertyLanes(
         'anchor-point',
         AppText.strings.tlLaneAnchorPoint,
         track.anchorPoint,
-        valueLabel: anchorAt == null
-            ? null
-            : (frame) {
-                final anchor = anchorAt(frame);
-                return '${formatTrimmedDecimal(anchor.x)}, ${formatTrimmedDecimal(anchor.y)}';
-              },
+        _reading(
+          anchorAt,
+          (anchor) => [anchor.x, anchor.y],
+          parts: point,
+          printed: (anchor) =>
+              '${columnValueText(anchor.x)}, ${columnValueText(anchor.y)}',
+        ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
       ),
@@ -140,19 +196,32 @@ List<PropertyLaneRow> transformPropertyLanes(
       'position',
       AppText.strings.tlLanePosition,
       track.position,
-      valueLabel: poseAt == null
-          ? null
-          : (frame) => formatTransformLaneValue('position', poseAt(frame)),
+      _reading(
+        poseAt,
+        (pose) => [pose.center.x, pose.center.y],
+        parts: point,
+        printed: (pose) => formatTransformLaneValue('position', pose),
+      ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('position', label, delta),
+      walks: positionKeySpace,
     ),
     _lane(
       'scale',
       AppText.strings.tlLaneScale,
       track.scale,
-      valueLabel: poseAt == null
-          ? null
-          : (frame) => scaleForm.label(poseAt(frame).scale),
+      _reading(
+        poseAt,
+        (pose) => scaleForm.numbers(pose.scale),
+        parts: switch (scaleForm) {
+          OneZoom() => const [LaneCurvePalette.scale],
+          TwoScales() => const [
+            LaneCurvePalette.scale,
+            LaneCurvePalette.scaleDown,
+          ],
+        },
+        printed: (pose) => scaleForm.label(pose.scale),
+      ),
       scrubValue: scaleForm.scrubbed,
       linkable: scaleForm.links,
     ),
@@ -160,9 +229,12 @@ List<PropertyLaneRow> transformPropertyLanes(
       'rotation',
       AppText.strings.tlLaneRotation,
       track.rotation,
-      valueLabel: poseAt == null
-          ? null
-          : (frame) => formatTransformLaneValue('rotation', poseAt(frame)),
+      _reading(
+        poseAt,
+        (pose) => [pose.rotationDegrees],
+        parts: const [LaneCurvePalette.rotation],
+        printed: (pose) => formatTransformLaneValue('rotation', pose),
+      ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('rotation', label, delta),
     ),
@@ -171,14 +243,41 @@ List<PropertyLaneRow> transformPropertyLanes(
         'opacity',
         AppText.strings.tlLaneOpacity,
         track.opacity,
-        valueLabel: opacityAt == null
-            ? null
-            : (frame) => '${formatTrimmedDecimal(opacityAt(frame) * 100)}%',
+        _reading(
+          opacityAt,
+          (opacity) => [opacity * 100],
+          parts: const [LaneCurvePalette.opacity],
+          printed: (opacity) => '${columnValueText(opacity * 100)}%',
+        ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('opacity', label, delta),
       ),
   ];
 }
+
+/// What a lane's value column prints and the line a header graph draws it
+/// by (I-89 ③), off ONE reading of its value — so the two cannot come to
+/// disagree. The line's keys are the track's ([_lane]).
+typedef _LaneReading = ({
+  String Function(int frameIndex)? label,
+  ({List<Color> parts, List<double> Function(double time) at})? curve,
+});
+
+/// The lane's value [at] a time — null where the rail has nothing to read
+/// it in, which hides the column and the line with it — as [printed] writes
+/// it on a frame, and as the [numbers] it holds at any time, each in its
+/// colour of [parts].
+_LaneReading _reading<V>(
+  V Function(double time)? at,
+  List<double> Function(V value) numbers, {
+  required List<Color> parts,
+  required String Function(V value) printed,
+}) => at == null
+    ? (label: null, curve: null)
+    : (
+        label: (frame) => printed(at(frame.toDouble())),
+        curve: (parts: parts, at: (time) => numbers(at(time))),
+      );
 
 /// Canonical display order of the transform lanes (the AE order
 /// [transformPropertyLanes] emits) — the lane-row span (R26 #3) resolves
@@ -288,8 +387,8 @@ bool laneSelectionCoversBandRow(
 /// AE-style value formatting for a transform lane.
 String formatTransformLaneValue(String laneId, TransformPose pose) {
   return switch (laneId) {
-    'position' => '${formatTrimmedDecimal(pose.center.x)}, ${formatTrimmedDecimal(pose.center.y)}',
-    'rotation' => '${formatTrimmedDecimal(pose.rotationDegrees)}°',
+    'position' => '${columnValueText(pose.center.x)}, ${columnValueText(pose.center.y)}',
+    'rotation' => '${columnValueText(pose.rotationDegrees)}°',
     _ => '',
   };
 }
@@ -318,44 +417,51 @@ String? scrubTransformLaneValue(
       if (x == null || y == null) {
         return null;
       }
-      return '${formatTrimmedDecimal(x + dragDelta.dx)}, ${formatTrimmedDecimal(y + dragDelta.dy)}';
+      return '${columnValueText(x + dragDelta.dx)}, ${columnValueText(y + dragDelta.dy)}';
     case 'rotation':
       final degrees = parse(currentLabel);
       if (degrees == null) {
         return null;
       }
-      return '${formatTrimmedDecimal(degrees + dragDelta.dx * 0.5)}°';
+      return '${columnValueText(degrees + dragDelta.dx * 0.5)}°';
     case 'opacity':
       final percent = parse(currentLabel);
       if (percent == null) {
         return null;
       }
       final scrubbed = (percent + dragDelta.dx * 0.5).clamp(0.0, 100.0);
-      return '${formatTrimmedDecimal(scrubbed)}%';
+      return '${columnValueText(scrubbed)}%';
   }
   return null;
 }
 
+/// [track]'s lane, its line drawn off [reading] — walking the path [walks]
+/// lays, where it is given one ([LaneCurve.way]).
 PropertyLaneRow _lane<T>(
   String id,
   String label,
-  PropertyTrack<T> track, {
-  String Function(int frameIndex)? valueLabel,
+  PropertyTrack<T> track,
+  _LaneReading reading, {
   String? Function(String currentLabel, Offset dragDelta)? scrubValue,
   bool linkable = false,
+  KeyValueSpace<T>? walks,
 }) {
   return PropertyLaneRow(
     laneId: id,
     label: label,
-    keyedFrames: track.keys.keys.toSet(),
-    holdOutFrames: {
-      for (final entry in track.keys.entries)
-        if (entry.value.interpolation == PropertyKeyInterpolation.hold)
-          entry.key,
-    },
+    keyMarks: keyMarksOf(track),
     keyNames: track.namedKeysByFrame,
-    valueLabel: valueLabel,
+    valueLabel: reading.label,
     scrubValue: scrubValue,
     linkable: linkable,
+    curve: switch (reading.curve) {
+      (:final parts, :final at) => (
+        parts: parts,
+        at: at,
+        sides: track.sidesByFrame,
+        way: walks == null ? null : (from) => track.wayFrom(from, walks),
+      ),
+      null => null,
+    },
   );
 }

@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/timeline/timeline_playhead.dart'
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/the_classic_rail.dart';
 import '../../helpers/repaint_strays.dart';
 import '../../helpers/scrollable_of.dart';
 
@@ -307,6 +308,8 @@ void main() {
       // anchors from is not frame 0 — where its leading edge would
       // answer 0 at every zoom and agree by accident.
       beforeFold: () async {
+        // The two windows a frame stands between, as they were drawn.
+        await standTheClassicRail(tester);
         final axis = gridAxis();
         axis.jumpTo(scrolledCells * TimelineZoomLimits.defaultPixelsPerFrame);
         await tester.pumpAndSettle();

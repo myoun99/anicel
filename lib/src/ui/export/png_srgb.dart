@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 
-import '../../services/persistence/anicel_incremental_writer.dart'
-    show anicelCrc32;
+import '../../services/media/png_writing.dart' show pngChunk, pngUint32;
 
 /// C1-v1 (R28): stamps a PNG as sRGB.
 ///
 /// The app's WORKING COLOR SPACE IS sRGB — every brush, fill and
 /// composite treats the 8-bit bytes as sRGB, exactly like the drawing
 /// stage of TVPaint/CSP pipelines (color conversion for delivery
-/// happens downstream in compositing). Flutter's PNG encoder writes no
+/// happens downstream in compositing). Neither Flutter's PNG encoder nor
+/// this app's own (`encodeStillPng`, the PNG without alpha) writes a
 /// color-space chunk, so consumers had to guess; this inserts the
 /// standard trio right after IHDR so Photoshop/browsers/editors read
 /// the colors identically:
@@ -25,34 +25,16 @@ Uint8List tagPngAsSrgb(Uint8List png) {
     return png; // Not a PNG we understand — pass through untouched.
   }
 
-  Uint8List chunk(String type, List<int> data) {
-    final typeAndData = Uint8List(4 + data.length);
-    for (var i = 0; i < 4; i += 1) {
-      typeAndData[i] = type.codeUnitAt(i);
-    }
-    typeAndData.setAll(4, data);
-    final out = BytesBuilder(copy: false);
-    final header = ByteData(4)..setUint32(0, data.length);
-    out.add(header.buffer.asUint8List());
-    out.add(typeAndData);
-    final crc = ByteData(4)..setUint32(0, anicelCrc32(typeAndData));
-    out.add(crc.buffer.asUint8List());
-    return out.takeBytes();
-  }
-
-  Uint8List be32(int value) =>
-      (ByteData(4)..setUint32(0, value)).buffer.asUint8List();
-
   final builder = BytesBuilder(copy: false)
     ..add(Uint8List.sublistView(png, 0, insertAt))
-    ..add(chunk('sRGB', const [0]))
-    ..add(chunk('gAMA', be32(45455)))
+    ..add(pngChunk('sRGB', const [0]))
+    ..add(pngChunk('gAMA', pngUint32(45455)))
     ..add(
-      chunk('cHRM', [
-        ...be32(31270), ...be32(32900), // white point
-        ...be32(64000), ...be32(33000), // red
-        ...be32(30000), ...be32(60000), // green
-        ...be32(15000), ...be32(6000), // blue
+      pngChunk('cHRM', [
+        ...pngUint32(31270), ...pngUint32(32900), // white point
+        ...pngUint32(64000), ...pngUint32(33000), // red
+        ...pngUint32(30000), ...pngUint32(60000), // green
+        ...pngUint32(15000), ...pngUint32(6000), // blue
       ]),
     )
     ..add(Uint8List.sublistView(png, insertAt));

@@ -56,7 +56,7 @@ class _TimelineDrawingFrames {
     // so a push at ANY head — not only the first 유저 named — would shove
     // the last panel past the cut's end. The reason is the predicate, so
     // a new gapless kind refuses without being named here.
-    return !layer.kind.coversWithoutGaps;
+    return !layerCoversWithoutGaps(layer);
   }
 
   void createDrawingFrameForLayer({

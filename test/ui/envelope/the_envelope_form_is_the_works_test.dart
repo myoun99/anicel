@@ -5,11 +5,13 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 
+import '../../helpers/envelope_format.dart';
+
 /// The 봉투 form is the WORK's choice (유저 답 sheet-form-choice-home:
 /// 「해당 패널에 지금처럼 두고싶고, 그 상태에서 작품에 저장되도록」): the
-/// panel still picks it, and what it picks is written to the project — one
-/// undo takes it back. ↩️It was a workspace value that died with the
-/// session.
+/// panel still picks it — in its format window since I-93 — and what it
+/// picks is written to the project; one undo takes it back. ↩️It was a
+/// workspace value that died with the session.
 void main() {
   testWidgets('picking a form in the panel writes it to the work, and one '
       'undo takes it back', (tester) async {
@@ -31,12 +33,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.timesheetInfo.envelopeFormId, CutEnvelopePresets.analogId);
 
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('envelope-form-${CutEnvelopePresets.digitalId}'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pickEnvelopeForm(tester, CutEnvelopePresets.digitalId);
     expect(session.timesheetInfo.envelopeFormId, CutEnvelopePresets.digitalId);
 
     session.undo();

@@ -17,7 +17,7 @@ part of '../interactive_brush_edit_canvas_view.dart';
 /// What differs is only what a pen brings and a tool does not: no pointer,
 /// no pressure to read (the stroke is laid at full pressure the whole
 /// way), no hand to steady and no ray to snap to — its points go straight
-/// to the stroke's advance ([_BrushEditStroke.beginToolStroke]).
+/// to the stroke's advance ([_BrushEditStroke.startToolStrokeAt]).
 class _BrushEditPathStroke {
   _BrushEditPathStroke(this._state);
 
@@ -25,8 +25,8 @@ class _BrushEditPathStroke {
 
   /// Draws [path] — two or more points in this view's own space — as one
   /// stroke, and answers whether it is drawn, or will be once the cel it
-  /// asked for is there. Published as a [PathStroker] while the view is
-  /// mounted.
+  /// asked for is there: laid and landed in one go, where nothing of it was
+  /// laid while it was dragged ([ShapeShow.landStroke]).
   bool strokeAlong(List<CanvasPoint> path) {
     if (path.length < 2 || _state._activeDrawingPointer != null) {
       return false;
@@ -58,17 +58,51 @@ class _BrushEditPathStroke {
     if (!_state.widget.rowAcceptsStrokes) {
       return false;
     }
-    _state._stroke.beginToolStroke(
-      path.first,
-      startsInsidePasteboard: _state._isInsidePasteboard(path.first),
-      // One path, one roll: the same shape drawn again rolls the same
-      // scatter and jitter.
-      dice: Object.hashAll(path),
-    );
-    for (final point in path.skip(1)) {
-      _state._stroke.advanceStrokeTo(point);
+    final stroke = _state._stroke..openToolStroke();
+    final waypoints = _strokeWaypoints(path);
+    // One path, one roll: the same shape drawn again rolls the same
+    // scatter and jitter.
+    stroke.startToolStrokeAt(waypoints.first, dice: Object.hashAll(path));
+    for (final point in waypoints.skip(1)) {
+      stroke.advanceStrokeTo(point);
     }
+    stroke.flyToolStroke();
     _state._press.landActiveStroke();
     return true;
   }
 }
+
+/// The points a stroke along [path] is taken through
+/// ([_BrushEditStroke.advanceStrokeTo]): the path's own, and between two
+/// more than [_waypointSpan] apart, evenly spaced ones on the line between
+/// — so no one advance lays more than a share of a frame's dabs. A dragged
+/// shape's stroke is laid an advance a step ([_BrushEditShapeShow]), and
+/// one laid in one go goes through the very same points, so the two lay
+/// the same dabs.
+///
+/// 🔬An advance along a 2000px edge with a 4px brush made its 2000 dabs in
+/// 5–13ms on the desktop's VM (2026-10-09), a quarter frame's share three
+/// times over, and the outline the hand drags waited on it.
+List<CanvasPoint> _strokeWaypoints(List<CanvasPoint> path) {
+  if (path.isEmpty) {
+    return const [];
+  }
+  final points = [path.first];
+  for (var i = 1; i < path.length; i += 1) {
+    final from = path[i - 1];
+    final to = path[i];
+    final pieces = (from.distanceTo(to) / _waypointSpan).ceil();
+    for (var piece = 1; piece < pieces; piece += 1) {
+      points.add(CanvasPoint.lerp(from, to, piece / pieces));
+    }
+    points.add(to);
+  }
+  return points;
+}
+
+/// The longest stretch one advance takes. A stroke lays a dab a pixel at
+/// most — its spacing never falls under one
+/// ([BrushDabInterpolator.spacingForBrushSize]) — so one advance lays at
+/// this many places at most, at each as many dabs as the brush lays at one
+/// (its symmetry copies, its scatter).
+const double _waypointSpan = 128;

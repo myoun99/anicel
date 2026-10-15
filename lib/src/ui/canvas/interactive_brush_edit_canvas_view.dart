@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
@@ -18,8 +20,10 @@ import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/dirty_region.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
+import '../../models/tile_coord.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_ground_color_mixing.dart';
 import '../../services/brush_ground_color_sampling.dart';
@@ -47,6 +51,7 @@ import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_path_stroke.dart';
+part 'brush_edit/brush_edit_shape_show.dart';
 part 'brush_edit/brush_edit_opening.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
@@ -71,15 +76,52 @@ List<BrushDab>? debugStrokeDabsLaid;
 /// one verb a save needs, not a handle onto its input state.
 typedef StrokeLander = bool Function();
 
-/// Draws a path — two or more points in the view's own space — as ONE
-/// stroke of the brush in hand, and answers whether it is drawn (or will
-/// be, once the cel it asked for is there):
-/// [_BrushEditPathStroke.strokeAlong] handed out, so the tool that traced
-/// the path can have it drawn (I-69, the shape tool).
+/// How long one frame may spend laying a dragged shape before it hands the
+/// rest of the frame back ([_BrushEditShapeShow]) — a quarter of a 60 Hz
+/// frame, so the outline the hand drags is drawn in the rest of it. A test
+/// sets it to zero to lay one piece a frame and watch the shape come up.
+@visibleForTesting
+Duration shapeShowFrameShare = const Duration(microseconds: 4000);
+
+/// A shape the shape tool's drag hands this view to SHOW while it is
+/// dragged and to LAND when it is let go (유저 답 I-69-Q4ⓒ): an area laid as
+/// stamp pieces made one at a time — every call of [pieces] makes them
+/// afresh — under [blend]. [shape] is what the pieces are OF, compared by
+/// value: the same shape asked for again asks for nothing new.
+typedef ShapeArea = ({
+  Object shape,
+  Iterable<BrushDab> Function() pieces,
+  BrushBlendMode blend,
+});
+
+/// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
+/// [_BrushEditShapeShow] handed out, published as [StrokeLander] is.
 ///
-/// ⚠️A FUNCTION, for [StrokeLander]'s reason: what leaves this view is the
-/// one verb, not a handle onto its stroke.
-typedef PathStroker = bool Function(List<CanvasPoint> path);
+/// A shape is an AREA ([show], [land]) or a PATH drawn as ONE stroke of the
+/// brush in hand ([showStroke], [landStroke]) — two or more points in the
+/// view's own space, laid by the stroke's own code (I-69: 「브러시 상태를
+/// 그대로 사용해서 도형그림」).
+abstract interface class ShapeShow {
+  /// Lays [area] off screen and shows it when it is whole — the hand's
+  /// newest shape once the one being laid is done.
+  void show(ShapeArea area);
+
+  /// Lands [area] as it is shown — or, when the hand moved on from it, as
+  /// laid whole now — and answers whether anything landed.
+  bool land(ShapeArea area);
+
+  /// [show] for the stroke along [path].
+  void showStroke(List<CanvasPoint> path);
+
+  /// [land] for the stroke along [path] — laid and landed in one go when
+  /// nothing of it was laid ahead, asking for the cel where there is none
+  /// — and answers whether it is drawn, or will be once that cel is there.
+  bool landStroke(List<CanvasPoint> path);
+
+  /// Takes back whatever is shown or being laid: the drag ended without a
+  /// shape.
+  void drop();
+}
 
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
@@ -103,11 +145,11 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
-    this.onPathStrokerChanged,
+    this.onShapeShowChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
-    this.fillDabAt,
+    this.fillDabsAt,
     this.selectionRegion,
     this.overlayModel,
     this.paintsContent = true,
@@ -234,9 +276,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// four-step ordering written twice.
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// Handed this view's [PathStroker] while it is mounted, and null when
-  /// it goes — published the way [onStrokeLanderChanged] is.
-  final ValueChanged<PathStroker?>? onPathStrokerChanged;
+  /// Handed this view's [ShapeShow] while it is mounted, and null when it
+  /// goes — published the way [onStrokeLanderChanged] is.
+  final ValueChanged<ShapeShow?>? onShapeShowChanged;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
@@ -259,13 +301,17 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final CanvasToolHolds? toolHolds;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
-  /// primary tap builds the flood's stamp dab here and the view runs it
-  /// as a stroke of one dab (`promoteFillDab`): the overlay shows the
-  /// result tiles the very next frame and the commit lands them through
+  /// primary tap builds the flood's stamp pieces here and the view runs
+  /// them as one stroke (`promoteFillDabs`): the overlay shows the result
+  /// tiles the very next frame and the commit lands them through
   /// [onSourceStrokeCommitted] with their pictures already made — no
   /// tile-by-tile reveal on big fills.
-  final BrushDab? Function(CanvasPoint point, int color, SymmetryShape? symmetry)?
-  fillDabAt;
+  final List<BrushDab> Function(
+    CanvasPoint point,
+    int color,
+    SymmetryShape? symmetry,
+  )?
+  fillDabsAt;
 
   /// R26 #18: the live selection region (canvas coordinates). Non-null
   /// confines the stroke to it — the region goes to the RASTERIZER, which
@@ -382,10 +428,11 @@ class _InteractiveBrushEditCanvasViewState
   /// interpolation, so every downstream route sees the smoothed chain.
   StrokeStabilizer? _stabilizer;
 
-  /// Perspective ray lock for the active stroke: created at pointer-down
-  /// when a perspective guide is snapping, and fed AFTER the stabilizer —
-  /// smoothing a snapped line would bend the straightness back out of it.
-  PerspectiveSnapSession? _snapSession;
+  /// The active stroke's lock — a snapping perspective's ray, or the eight
+  /// ways while Shift is held (I-61): created at pointer-down, and fed
+  /// AFTER the stabilizer — smoothing a snapped line would bend the
+  /// straightness back out of it.
+  StrokeLock? _strokeLock;
 
   /// The acting symmetry's copy transforms, frozen at pointer-down so an
   /// axis edited mid-stroke cannot tear the stroke in half. One identity
@@ -428,7 +475,7 @@ class _InteractiveBrushEditCanvasViewState
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
-    widget.onPathStrokerChanged?.call(_pathStroke.strokeAlong);
+    widget.onShapeShowChanged?.call(_shapeShow);
     _toolHolds.handOver = _door;
   }
 
@@ -456,6 +503,8 @@ class _InteractiveBrushEditCanvasViewState
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       _endStrokeAfterTheFrame();
+      // A shape laid on the cel that went is no shape of this one's.
+      _shapeShow.drop();
       _overlay.resetOverlay();
       // clear() before dropping: the live tiles are native-backed (R21)
       // and return to the engine's free list through it.
@@ -497,7 +546,7 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
-    widget.onPathStrokerChanged?.call(null);
+    widget.onShapeShowChanged?.call(null);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
@@ -602,6 +651,9 @@ class _InteractiveBrushEditCanvasViewState
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
 
   late final _BrushEditPathStroke _pathStroke = _BrushEditPathStroke(this);
+
+  /// The shape tool's shape while it is dragged (I-69-Q4ⓒ).
+  late final _BrushEditShapeShow _shapeShow = _BrushEditShapeShow(this);
 
   /// What the stroke's contact has read so far, and what it holds until it
   /// has (H43).
@@ -734,11 +786,11 @@ class _InteractiveBrushEditCanvasViewState
         (_activeStrokeInputSettings ?? widget.inputSettings()).opacity;
   }
 
-  /// A fill shown and not yet committed: its dab, the surface its result
-  /// tiles were made against, and those tiles ([_BrushEditFill]). The
-  /// post-frame commit lands them; a second tap while this is set is the
-  /// busy case.
-  ({BrushDab dab, BitmapSurface base, List<PromotedStrokeTile> tiles})?
+  /// A fill shown and not yet committed: its stamp pieces, the surface its
+  /// result tiles were made against, and those tiles ([_BrushEditFill]).
+  /// The post-frame commit lands them; a second tap while this is set is
+  /// the busy case.
+  ({List<BrushDab> dabs, BitmapSurface base, List<PromotedStrokeTile> tiles})?
   _pendingFill;
 
   /// The touch pointer whose lift will run a fill, and where it landed.

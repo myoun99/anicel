@@ -297,10 +297,11 @@ void main() {
       expect(loaded.presets.single.name, 'Lost');
     });
 
-    test('default path points into the per-user app-data directory, in the '
-        'settings room', () {
+    test('default path is the presets\' own file in the settings room', () {
+      // Under a test that room is the run's sandbox — whether a store may
+      // resolve the user's own is settings_live_in_one_room_test's to say.
       final path = BrushPresetFileService.defaultBrushPresetFilePath();
-      expect(path, endsWith('anicel/Settings/brush_presets.json'));
+      expect(path, endsWith('/Settings/brush_presets.json'));
     });
   });
 

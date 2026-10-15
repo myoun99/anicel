@@ -63,6 +63,7 @@ void main() {
     TransformMode mode = TransformMode.normal,
   }) => FloatWarp(
     box: box,
+    base: stampRectOf(float()),
     float: float(),
     options: TransformToolOptions(mode: mode),
     pasteboard: wall,
@@ -126,6 +127,21 @@ void main() {
       expect(warp(meshBox(), mode: TransformMode.mesh).carry, isA<MeshCarry>());
     });
 
+    test('I-37: over several floats it stands on what holds them all — a '
+        'float is carried through that, not through its own rect', () {
+      const base = (left: 80.0, top: 40.0, width: 100.0, height: 60.0);
+      final over = FloatWarp(
+        box: quadBox(),
+        base: base,
+        float: float(),
+        options: const TransformToolOptions(mode: TransformMode.perspective),
+        pasteboard: wall,
+      );
+
+      expect(over.stampRectCorners(), cornersOfStampRect(base));
+      expect((over.carry! as QuadCarry).base, cornersOfStampRect(base));
+    });
+
     test('a box that changes no pixel carries nothing', () {
       expect(warp(box()).carry, isNull);
       expect(warp(box(), mode: TransformMode.perspective).carry, isNull);
@@ -149,8 +165,7 @@ void main() {
 
     test('the float through it is what the commit lands', () {
       final open = warp(box(scale: 2));
-      final host = _Host(open);
-      final preview = FloatResamplePreview(host);
+      final preview = FloatResamplePreview(_Host(), () => open);
       addTearDown(preview.discard);
 
       final landed = preview.warped()!;
@@ -166,8 +181,9 @@ void main() {
     late FloatResamplePreview preview;
 
     setUp(() {
-      host = _Host(warp(box(scale: 2)));
-      preview = FloatResamplePreview(host);
+      host = _Host();
+      final open = warp(box(scale: 2));
+      preview = FloatResamplePreview(host, () => open);
       addTearDown(preview.discard);
     });
 
@@ -206,11 +222,6 @@ void main() {
 }
 
 class _Host implements FloatWarpHost {
-  _Host(this.floatWarp);
-
-  @override
-  final FloatWarp floatWarp;
-
   SelectionVisibleRect? visible;
 
   @override

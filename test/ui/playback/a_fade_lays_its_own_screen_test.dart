@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 
 /// 🗣️F-192 (유저 2026-09-27): 「컷의 페이드인은 애초에 쌩 검은화면에서
@@ -41,7 +42,6 @@ void main() {
   PlaybackFramePainter unit({
     required List<({int color, double opacity})> veils,
   }) => PlaybackFramePainter(
-    image: null,
     canvasSize: size,
     cameraPose: CameraPose(center: CanvasPoint(x: 2, y: 2)),
     cameraFrameSize: size,
@@ -79,6 +79,37 @@ void main() {
   testWidgets('no screen, no change — the unit as it was', (tester) async {
     await tester.runAsync(() async {
       expect(await centreOf(unit(veils: const [])), (0, 255, 0, 255));
+    });
+  });
+
+  /// 🚨Seen through no camera a cut's unit reaches as far as its pasteboard
+  /// — a cut played whole shows it, as the canvas does standing still
+  /// (conte-playback-hides-the-pasteboard) — and its screen covers that
+  /// too. ↩️It covered the canvas alone.
+  testWidgets('seen through no camera, a closed F.O covers the pasteboard '
+      'past the canvas too', (tester) async {
+    // At half size the canvas is the box's top-left quarter: the centre is
+    // past it, on its pasteboard.
+    PlaybackFramePainter seenThroughNone({
+      required List<({int color, double opacity})> veils,
+    }) => PlaybackFramePainter(
+      canvasSize: size,
+      viewport: CanvasViewport(zoom: 0.5),
+      paintPaper: false,
+      veils: veils,
+    );
+    await tester.runAsync(() async {
+      expect(
+        await centreOf(seenThroughNone(veils: const [])),
+        (255, 0, 0, 255),
+        reason: 'LIVENESS: nothing else lies there',
+      );
+      expect(
+        await centreOf(
+          seenThroughNone(veils: const [(color: 0xFF000000, opacity: 1)]),
+        ),
+        (0, 0, 0, 255),
+      );
     });
   });
 }

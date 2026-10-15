@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -24,6 +24,9 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerLaneToggleSlotWidth;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerRailLeadingSlot, layerRailLeadingWidthTo;
+
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// **I-1 — a row button's swipe is about the COLUMN, not about the eye.**
 ///
@@ -85,17 +88,15 @@ void main() {
     return sessionOf(tester);
   }
 
-  /// Presses the button on [fromKey] and drags DOWN across [rows] rows.
+  /// Presses the button on [fromName] and drags DOWN across [rows] rows.
   Future<void> swipeDown(
     WidgetTester tester,
-    String fromKey, {
+    String fromName, {
     required int rows,
-    String rowKey = 'timeline-layer-row-l4',
+    String rowName = 'timeline-layer-row-l4',
   }) async {
-    final start = tester.getCenter(find.byKey(ValueKey<String>(fromKey)));
-    final rowHeight = tester
-        .getRect(find.byKey(ValueKey<String>(rowKey)))
-        .height;
+    final start = tester.getCenter(find.named(fromName));
+    final rowHeight = tester.getRect(find.named(rowName)).height;
     final gesture = await tester.startGesture(
       start,
       kind: PointerDeviceKind.mouse,
@@ -156,9 +157,7 @@ void main() {
     tester,
   ) async {
     final s = await pump(tester);
-    final row = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-row-l4')),
-    );
+    final row = tester.getRect(find.named('timeline-layer-row-l4'));
     // The NAME area — a place to grab the row by, never a column.
     final gesture = await tester.startGesture(
       Offset(row.left + 40, row.center.dy),
@@ -313,7 +312,7 @@ void main() {
         tester,
         'timeline-layer-timesheet-m1',
         rows: 3,
-        rowKey: 'timeline-layer-row-m1',
+        rowName: 'timeline-layer-row-m1',
       );
 
       expect(
@@ -343,11 +342,9 @@ void main() {
       (tester) async {
         final s = await pumpNested(tester);
         final unnested = tester.getCenter(
-          find.byKey(const ValueKey<String>('timeline-layer-timesheet-l1')),
+          find.named('timeline-layer-timesheet-l1'),
         );
-        final nestedRow = tester.getRect(
-          find.byKey(const ValueKey<String>('timeline-layer-row-m1')),
-        );
+        final nestedRow = tester.getRect(find.named('timeline-layer-row-m1'));
 
         final gesture = await tester.startGesture(
           Offset(unnested.dx, nestedRow.center.dy),
@@ -370,9 +367,7 @@ void main() {
     );
     testWidgets('the LANE TWIRL column paints too', (tester) async {
       await pump(tester);
-      Finder openTwirls() => find.byWidgetPredicate(
-        (widget) => widget is Icon && widget.icon == Icons.arrow_drop_down,
-      );
+      Finder openTwirls() => find.railIcon(Icons.arrow_drop_down);
       final before = openTwirls().evaluate().length;
 
       await swipeDown(tester, 'timeline-lane-toggle-l4', rows: 2);
@@ -393,10 +388,10 @@ void main() {
 
         double insetOf(String rowId) {
           final button = tester.getTopLeft(
-            find.byKey(ValueKey<String>('timeline-layer-timesheet-$rowId')),
+            find.named('timeline-layer-timesheet-$rowId'),
           );
           final row = tester.getTopLeft(
-            find.byKey(ValueKey<String>('timeline-layer-row-$rowId')),
+            find.named('timeline-layer-row-$rowId'),
           );
           return button.dx - row.dx;
         }
@@ -435,17 +430,17 @@ void main() {
       // decided by the WIDGET, so the fix is that it stops being a
       // different widget; comparing painted pixels would be measuring the
       // shadow of that.
-      for (final key in const <String>[
+      for (final name in const <String>[
         'timeline-lane-toggle-l4',
         'timeline-layer-onion-l4',
       ]) {
-        final finder = find.byKey(ValueKey<String>(key));
-        expect(finder, findsOneWidget, reason: 'fixture premise: $key exists');
+        final finder = find.named(name);
+        expect(finder, findsOneWidget, reason: 'fixture premise: $name exists');
         expect(
           tester.widget(finder),
-          isA<AppIconButtonFace>(),
+          isA<RailGlyphFace>(),
           reason:
-              '$key must be the app\'s icon button face. A bare InkWell hovers '
+              '$name must be the rail\'s button face. A bare InkWell hovers '
               'as a different shape from its neighbours — that is the '
               'report.',
         );
@@ -453,9 +448,7 @@ void main() {
 
       // …and it still fits. The slot is 16px, and a Material IconButton left alone
       // asked for 48 (the face asks only for its token), so the tight box stays load-bearing.
-      final box = tester.getRect(
-        find.byKey(const ValueKey<String>('timeline-lane-toggle-l4')),
-      );
+      final box = tester.getRect(find.named('timeline-lane-toggle-l4'));
       expect(
         box.width,
         lessThanOrEqualTo(layerLaneToggleSlotWidth),

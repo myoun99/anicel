@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/text/cel_text_box_width.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/cel_text_fixture.dart' show celTextTestCanvas;
 import '../../helpers/cel_text_hand.dart';
 import '../../helpers/cel_text_held_baker.dart';
 
@@ -34,6 +35,7 @@ void main() {
     TextCelAlign align = TextCelAlign.left,
     double lineHeight = CelTextContent.defaultLineHeight,
     int? background,
+    double turned = 0,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: 8, y: 8),
@@ -41,6 +43,7 @@ void main() {
     align: align,
     lineHeight: lineHeight,
     backgroundColor: background,
+    rotationDegrees: turned,
   );
 
   /// The settings over a hand that holds [text] by its box — or, with
@@ -106,7 +109,7 @@ void main() {
         ..setLineHeight(1.5)
         ..setBackgroundColor(0xFF112233);
 
-      expect(options.value.letters.fontSize, 30);
+      expect(options.value.letters(brushColour: null).fontSize, 30);
       expect(options.value.align, TextCelAlign.center);
       expect(options.value.lineHeight, 1.5);
       expect(options.value.backgroundColor, 0xFF112233);
@@ -197,7 +200,7 @@ void main() {
         run('cd', large.copyWith(bold: true)),
       ]);
       expect(host.ran, hasLength(1));
-      expect(options.value.letters, plain.copyWith(bold: true));
+      expect(options.value.letters(brushColour: null), plain.copyWith(bold: true));
       expect(values.letter((style) => style.bold), (value: true, mixed: false));
     });
 
@@ -238,7 +241,7 @@ void main() {
       values.setLetters((style) => style.copyWith(color: 0xFF0000FF));
 
       expect(tool.session!.nextLetterStyle.color, 0xFF0000FF);
-      expect(options.value.letters.color, 0xFF0000FF);
+      expect(options.value.letters(brushColour: null).color, 0xFF0000FF);
       expect(values.letter((style) => style.color).value, 0xFF0000FF);
     });
 
@@ -470,13 +473,198 @@ void main() {
     });
   });
 
+  // 🗣️I-95 (유저 2026-10-12): 「텍스트도구에도 변형도구처럼 위치값 존재」 —
+  // I-95-Q1 (10-14): 「상자의 가운데 — 캔버스 왼쪽 위에서 잰 픽셀」.
+  group('its place: where the middle of its box stands', () {
+    /// Every bake asked for, answered — the newest want is asked for only
+    /// once the one before it is made.
+    Future<void> allMade(HeldBaker baker) async {
+      while (baker.asked.any((bake) => !bake.answered)) {
+        await baker.pending.answer();
+      }
+    }
+
+    test('🚨is the middle of the box as it stands on the canvas — a turned '
+        'text\'s too — and with none in hand there is none', () {
+      expect(settings().values.boxCentre, isNull);
+      for (final turned in const [0.0, 30.0]) {
+        final (:values, options: _, :tool, host: _, baker: _, cel: _) =
+            settings(text: said([run('ab')], turned: turned));
+        final corners = tool.session!.shown.layout.boxCorners;
+
+        expect(
+          values.boxCentre,
+          offsetMoreOrLessEquals((corners[0] + corners[2]) / 2),
+          reason: 'turned $turned°',
+        );
+      }
+    });
+
+    test('🚨a number typed stands the middle THERE — one step — and the '
+        'other way stays where it was', () async {
+      final (:values, options: _, tool: _, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+      final before = values.boxCentre!;
+
+      values.setBoxCentre(x: 20.5);
+      await allMade(baker);
+
+      expect(values.boxCentre, offsetMoreOrLessEquals(Offset(20.5, before.dy)));
+      expect(landed(cel).anchor.x, moreOrLessEquals(8 + 20.5 - before.dx));
+      expect(host.ran, hasLength(1));
+
+      values.setBoxCentre(y: 3);
+      await allMade(baker);
+
+      expect(values.boxCentre, offsetMoreOrLessEquals(const Offset(20.5, 3)));
+      expect(host.ran, hasLength(2));
+    });
+
+    test('🚨two numbers typed before the text is set again: it stands where '
+        'the SECOND says', () async {
+      final (:values, options: _, tool: _, host: _, :baker, cel: _) =
+          settings(text: said([run('ab')]));
+
+      values
+        ..setBoxCentre(x: 20)
+        ..setBoxCentre(x: 24);
+      await allMade(baker);
+
+      expect(values.boxCentre!.dx, moreOrLessEquals(24));
+    });
+
+    test('🚨a scrub carries it a whole pixel at a time and lands NOTHING '
+        'until it comes to rest — then ONE step, and the next scrub goes on '
+        'from there', () async {
+      final (:values, options: _, :tool, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+      final before = values.boxCentre!;
+
+      values
+        ..carryBy(dx: 1)
+        ..carryBy(dx: 1)
+        ..carryBy(dy: -2);
+      await allMade(baker);
+
+      expect(tool.carried, (dx: 2, dy: -2));
+      expect(
+        values.boxCentre,
+        offsetMoreOrLessEquals(before + const Offset(2, -2)),
+      );
+      expect(host.ran, isEmpty);
+
+      values.settle();
+      await allMade(baker);
+
+      expect(host.ran, hasLength(1));
+      expect(landed(cel).anchor, CanvasPoint(x: 10, y: 6));
+      expect(tool.carried, (dx: 0, dy: 0));
+
+      values
+        ..carryBy(dx: 3)
+        ..settle();
+      await allMade(baker);
+
+      expect(landed(cel).anchor, CanvasPoint(x: 13, y: 6));
+      expect(host.ran, hasLength(2));
+    });
+
+    test('🚨with its LETTERS held the scrub carries the text and they stay '
+        'held — a letter typed after it goes where it was carried — and '
+        'it lands with the visit', () async {
+      final (:values, options: _, :tool, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+      tool.typeAt(const TextSelection.collapsed(offset: 1));
+
+      values
+        ..carryBy(dx: 2)
+        ..settle();
+      await allMade(baker);
+
+      expect(tool.hold, CelTextHold.letters);
+      expect(tool.session!.shown.content.anchor, CanvasPoint(x: 10, y: 8));
+      expect(host.ran, isEmpty);
+
+      // The letters held are the ones carried: a text moved under them
+      // alone would go back where it stood at the next letter.
+      tool.letters!.value = const TextEditingValue(
+        text: 'aXb',
+        selection: TextSelection.collapsed(offset: 2),
+      );
+      await allMade(baker);
+
+      expect(tool.session!.shown.content.anchor, CanvasPoint(x: 10, y: 8));
+
+      tool.stopTyping();
+      await allMade(baker);
+
+      expect(landed(cel).anchor, CanvasPoint(x: 10, y: 8));
+      expect(landed(cel).text, 'aXb');
+      expect(host.ran, hasLength(1));
+    });
+
+    test('the middle lines of the canvas: 가로 가운데 stands it on the one '
+        'down its middle, 세로 가운데 on the one across it — a step '
+        'each', () async {
+      final (:values, options: _, tool: _, :host, :baker, cel: _) = settings(
+        text: said([run('abcd')]),
+      );
+      final before = values.boxCentre!;
+      final middle = Offset(
+        celTextTestCanvas.width / 2,
+        celTextTestCanvas.height / 2,
+      );
+      for (final (stands, middleOf) in [
+        (before.dx, middle.dx),
+        (before.dy, middle.dy),
+      ]) {
+        expect(stands, isNot(moreOrLessEquals(middleOf)), reason: '⛔fixture');
+      }
+
+      values.centreBox(across: true);
+      await allMade(baker);
+
+      expect(
+        values.boxCentre,
+        offsetMoreOrLessEquals(Offset(middle.dx, before.dy)),
+      );
+
+      values.centreBox(across: false);
+      await allMade(baker);
+
+      expect(values.boxCentre, offsetMoreOrLessEquals(middle));
+      expect(host.ran, hasLength(2));
+    });
+
+    test('with none in hand nothing moves, and the next text hears nothing '
+        'of it', () {
+      final (:values, :options, :tool, :host, :baker, cel: _) = settings();
+      final next = options.value;
+
+      values
+        ..carryBy(dx: 4)
+        ..setBoxCentre(x: 4, y: 4)
+        ..centreBox(across: true)
+        ..settle();
+
+      expect(tool.carrying, isFalse);
+      expect(baker.asked, isEmpty);
+      expect(host.ran, isEmpty);
+      expect(options.value, next);
+    });
+  });
+
   group('where a change can go', () {
     test('a host that owns no settings and holds no text takes none', () {
       const nowhere = TextToolSettingsValues(options: null, tool: null);
 
       expect(nowhere.writable, isFalse);
+      expect(nowhere.boxCentre, isNull);
       expect(nowhere.letter((style) => style.fontSize), (
-        value: TextToolOptions.defaults.letters.fontSize,
+        value: TextToolOptions.defaults.letters(brushColour: null).fontSize,
         mixed: false,
       ));
       expect(nowhere.align, TextToolOptions.defaults.align);
@@ -486,6 +674,9 @@ void main() {
         ..setLetters((style) => style.copyWith(bold: true))
         ..setAlign(TextCelAlign.right)
         ..setWraps(true)
+        ..carryBy(dx: 1)
+        ..setBoxCentre(x: 1)
+        ..centreBox(across: true)
         ..settle();
     });
 
@@ -498,7 +689,7 @@ void main() {
 
       values.setLetters((style) => style.copyWith(bold: true));
 
-      expect(options.value.letters.bold, isTrue);
+      expect(options.value.letters(brushColour: null).bold, isTrue);
     });
 
     test('with a text in hand and no settings of its own, the text', () async {

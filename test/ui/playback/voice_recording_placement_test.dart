@@ -170,6 +170,41 @@ void main() {
     },
   );
 
+  test('a head below nothing — the anchor heard before the microphone '
+      'opened — lands that much silence before the take', () async {
+    final manager = session();
+    await manager.projectDoor.saveProjectToFile(
+      '${directory.path}/scene.anicel',
+      asked: SaveAsked.byAPerson,
+    );
+
+    expect(
+      await manager.voiceRecording.placeVoiceRecording(
+        takeOfSeconds(1.0),
+        laneId: manager.activeTrack.seLayers.first.id,
+        anchorFrame: 0,
+        headTrimSamples: -12000, // a take begun 250 ms into its anchor
+      ),
+      isTrue,
+    );
+    final clip = manager.activeTrack.seLayers.first.audioClips.single;
+    final decoded = readWrittenWav(
+      manager.projectFile.mediaByteSourceFor(clip.filePath).readSync(),
+    );
+    expect(decoded.length, 48000 + 12000);
+    expect(
+      decoded.samples.sublist(0, 12000),
+      everyElement(0),
+      reason: 'what the microphone never heard is silence',
+    );
+    expect(
+      decoded.samples[12000],
+      isNot(0),
+      reason: 'the take starts that much after the anchor',
+    );
+    manager.dispose();
+  });
+
   test('REC1-B: a second take over the first TRIMS it, tape-style — same '
       'lane, no new row, both files kept', () async {
     final manager = session();

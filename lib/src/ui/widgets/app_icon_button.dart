@@ -139,10 +139,14 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 /// anyone hovered or not. The semantics tree mirrors every one of those
 /// nodes, which is where the 「접근성 트리 10MB」 actually came from.
 ///
-/// ⛔THE CHANGE IS HERE AND NOWHERE ELSE. A light button for the rail alone
-/// would have been a second button, which 「앱에 버튼은 한 종류」 forbids —
-/// so every surface got lighter together, and they still look the same as
-/// each other.
+/// THE CHANGE WAS HERE AND NOWHERE ELSE, so every surface got lighter
+/// together. ↩️The rail has a button of its own since 유저 10-09 (I-57 ①:
+/// 「가볍기만하면 레일전용버튼해도 상관없어. 결과적으로 어디가 더
+/// 가벼워지는거에따라 맞추고 통일할거 알아서 통일하고」) — `RailGlyphButton`,
+/// one render object for a whole face, because a cut switch mounts every
+/// rail row anew and this face of ~35 elements was most of a row. It wears
+/// THIS button's ink and shape ([IconButtonInk], [appIconButtonShape]), so
+/// the two still look the same as each other.
 ///
 /// What is KEPT, each pinned by `app_icon_button_test.dart`:
 ///  * the press law — [ControlPressClaim] still owns the firing;
@@ -248,31 +252,7 @@ class AppIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final grid = DeviceGrid.of(context);
-    // 🎯The single largest source of off-grid PAINTED edges in this app —
-    // 34 of them come from this one widget, because every toolbar and rail
-    // button is an AppIconButton and each draws its shape at its own bounds
-    // (a Material shape until 2026-09-10, a [ShapeDecoration] since — the
-    // bounds are what matter, and they did not move). `controlLarge` is 42,
-    // and 42 × 1.25 = 52.5.
-    //
-    // ⚠️MEASURED, and smaller than it looks: painted boxes off the grid go
-    // 350 → 340 at 1.25 and 356 → 356 at 1.35. Size quantization alone buys
-    // almost nothing while ORIGINS are off, because a box whose origin is
-    // fractional has a fractional far edge whatever its width. What this
-    // actually earns is that the button stops ADDING a fraction — it is what
-    // keeps the row on the grid once the origins are fixed, not what fixes
-    // them.
-    //
-    // ⛔So do not read this as the pattern to copy across the other
-    // wrappers: the same edit on five more of them would cost five diffs for
-    // the same ~3%. The origins are the lever.
-    // ⛔A PROMISED BOX IS NOT OURS TO ROUND. The rails' slots are 20–22px
-    // numbers the surrounding layout was built around, and
-    // [[widget-between-slot-and-plate]] is the record of what a changed slot
-    // costs — a hundred tests that never mention it. Quantizing a token is a
-    // style choice; quantizing a promise is breaking it.
-    double onGrid(double v) => size.parentOwnsBox ? v : grid.position(v);
+    final box = appIconButtonBoxOnGrid(context, size);
     // 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
     // 누르면 작동안함 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
     //
@@ -312,29 +292,159 @@ class AppIconButton extends StatelessWidget {
         onSemanticTap: onPressed,
         isSelected: isSelected,
         danger: danger,
-        minWidth: onGrid(size.minWidth),
-        maxWidth: onGrid(size.maxWidth),
-        height: onGrid(size.height),
+        minWidth: box.minWidth,
+        maxWidth: box.maxWidth,
+        height: box.height,
         iconSize: size.iconSize,
-        // Its own height, not the theme's default box: a bar button and a
-        // strip button are different sizes, and the app's corner is a RATIO
-        // of the short axis, so each has to ask for its own.
-        shape: AppShapes.control(
+        shape: appIconButtonShape(
           size.height,
-          side: outlined
-              ? BorderSide(
-                  color: danger
-                      ? AppColors.danger
-                      : isSelected
-                      ? AppColors.accent
-                      : AppColors.hairlineStrong,
-                )
-              : BorderSide.none,
+          outlined: outlined,
+          danger: danger,
+          isSelected: isSelected,
         ),
         icon: icon,
       ),
     );
   }
+}
+
+/// [size]'s box as the device grid draws it — for every face that wears an
+/// icon button's metrics: [AppIconButton] and the rail's glyph
+/// (`RailGlyphButton`).
+///
+/// 🎯The single largest source of off-grid PAINTED edges in this app — 34
+/// of them came from [AppIconButton], because every toolbar and rail button
+/// was one and each draws its shape at its own bounds (a Material shape
+/// until 2026-09-10, a [ShapeDecoration] since — the bounds are what matter,
+/// and they did not move). `controlLarge` is 42, and 42 × 1.25 = 52.5.
+///
+/// ⚠️MEASURED, and smaller than it looks: painted boxes off the grid go 350
+/// → 340 at 1.25 and 356 → 356 at 1.35. Size quantization alone buys almost
+/// nothing while ORIGINS are off, because a box whose origin is fractional
+/// has a fractional far edge whatever its width. What this actually earns is
+/// that the button stops ADDING a fraction — it is what keeps the row on the
+/// grid once the origins are fixed, not what fixes them.
+///
+/// ⛔So do not read this as the pattern to copy across the other wrappers:
+/// the same edit on five more of them would cost five diffs for the same
+/// ~3%. The origins are the lever.
+/// ⛔A PROMISED BOX IS NOT OURS TO ROUND. The rails' slots are 20–22px
+/// numbers the surrounding layout was built around, and
+/// [[widget-between-slot-and-plate]] is the record of what a changed slot
+/// costs — a hundred tests that never mention it. Quantizing a token is a
+/// style choice; quantizing a promise is breaking it.
+({double minWidth, double maxWidth, double height}) appIconButtonBoxOnGrid(
+  BuildContext context,
+  AppIconButtonMetrics size,
+) {
+  if (size.parentOwnsBox) {
+    return (
+      minWidth: size.minWidth,
+      maxWidth: size.maxWidth,
+      height: size.height,
+    );
+  }
+  final grid = DeviceGrid.of(context);
+  return (
+    minWidth: grid.position(size.minWidth),
+    maxWidth: grid.position(size.maxWidth),
+    height: grid.position(size.height),
+  );
+}
+
+/// An icon button's box: the app's control corner for its OWN height — a
+/// bar button and a strip button are different sizes, and the corner is a
+/// RATIO of the short axis, so each asks for its own — with the edge drawn
+/// when [outlined] ([AppIconButton.outlined]).
+///
+/// One shape for every face that wears it: [AppIconButtonFace] and the
+/// rail's glyph (`RailGlyphButton`).
+ShapeBorder appIconButtonShape(
+  double height, {
+  required bool outlined,
+  required bool danger,
+  required bool isSelected,
+}) => AppShapes.control(
+  height,
+  side: outlined
+      ? BorderSide(
+          color: danger
+              ? AppColors.danger
+              : isSelected
+              ? AppColors.accent
+              : AppColors.hairlineStrong,
+        )
+      : BorderSide.none,
+);
+
+/// THE INK OF AN ICON BUTTON — its glyph's colour and the state layer under
+/// it, for whatever state it is in — read in Material's ORDER: the button's
+/// own style (the accent on the ON state, [AppColors.danger] while something
+/// is wrong), then the app's `IconButtonTheme`, then M3's defaults; the first
+/// non-null answer wins, as in `ButtonStyleButton`.
+///
+/// Read once per build and asked per state: a face that tracks its own hover
+/// and press (the rail's glyph, `RailGlyphButton`) asks it again at paint
+/// without the context — the two faces cannot come to wear different ink.
+final class IconButtonInk {
+  IconButtonInk.of(
+    BuildContext context, {
+    required bool isSelected,
+    required bool danger,
+  }) : _own = danger
+           ? AppIconButtonFace._dangerInk
+           : isSelected
+           ? AppIconButtonFace._accentInk
+           : null,
+       _theme = IconButtonTheme.of(context).style,
+       _defaults = AppIconButtonFace._m3DefaultsFor(
+         Theme.of(context).colorScheme,
+       );
+
+  /// 🚨DANGER OUTRANKS SELECTED. The red is about the thing the button acts
+  /// on and stands until that is fixed; selected says only that its popover
+  /// is open this instant.
+  final ButtonStyle? _own;
+  final ButtonStyle? _theme;
+  final ButtonStyle _defaults;
+
+  /// `ButtonStyleButton`'s icon colour. Its own- and default-style
+  /// `iconColor` steps are dropped: `styleFrom` never sets one, so only a
+  /// theme can answer there.
+  Color foreground(Set<WidgetState> states) =>
+      AppIconButtonFace._firstResolved(states, [
+        _theme?.iconColor,
+        _own?.foregroundColor,
+        _theme?.foregroundColor,
+        _defaults.foregroundColor,
+      ])!;
+
+  /// The state layer. A disabled Material button's ink drew none, and at
+  /// rest every step answers null — so nothing is painted, as with the ink.
+  Color? overlay(Set<WidgetState> states) =>
+      states.contains(WidgetState.disabled)
+      ? null
+      : AppIconButtonFace._firstResolved(states, [
+          _own?.overlayColor,
+          _theme?.overlayColor,
+          _defaults.overlayColor,
+        ]);
+
+  /// Equal while every step is the SAME style object — the theme's and the
+  /// defaults' are kept per scheme, so a rebuild in the same theme is equal.
+  @override
+  bool operator ==(Object other) =>
+      other is IconButtonInk &&
+      identical(other._own, _own) &&
+      identical(other._theme, _theme) &&
+      identical(other._defaults, _defaults);
+
+  @override
+  int get hashCode => Object.hash(
+    identityHashCode(_own),
+    identityHashCode(_theme),
+    identityHashCode(_defaults),
+  );
 }
 
 /// The part of an [AppIconButton] you can see and hear: its box, its glyph,
@@ -529,38 +639,16 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
   Widget build(BuildContext context) {
     final enabled = _enabled;
     final states = _states;
-    // 🚨DANGER OUTRANKS SELECTED. The red is about the thing the button
-    // acts on and stands until that is fixed; selected says only that its
-    // popover is open this instant — and a button that fell back to accent
-    // while its own popover was open would drop the louder fact at exactly
-    // the moment the popover is there to explain it.
-    final own = widget.danger
-        ? AppIconButtonFace._dangerInk
-        : widget.isSelected
-        ? AppIconButtonFace._accentInk
-        : null;
-    final theme = IconButtonTheme.of(context).style;
-    final defaults = AppIconButtonFace._m3DefaultsFor(
-      Theme.of(context).colorScheme,
+    // 🚨DANGER OUTRANKS SELECTED — and a button that fell back to accent while
+    // its own popover was open would drop the louder fact at exactly the
+    // moment the popover is there to explain it ([IconButtonInk]).
+    final ink = IconButtonInk.of(
+      context,
+      isSelected: widget.isSelected,
+      danger: widget.danger,
     );
-    // `ButtonStyleButton`'s icon colour. Its own- and default-style
-    // `iconColor` steps are dropped: `styleFrom` never sets one, so only a
-    // theme can answer there.
-    final foreground = AppIconButtonFace._firstResolved(states, [
-      theme?.iconColor,
-      own?.foregroundColor,
-      theme?.foregroundColor,
-      defaults.foregroundColor,
-    ])!;
-    // A disabled Material button's ink drew no layer, and at rest every
-    // step answers null — so nothing is painted, as with the ink.
-    final overlay = enabled
-        ? AppIconButtonFace._firstResolved(states, [
-            own?.overlayColor,
-            theme?.overlayColor,
-            defaults.overlayColor,
-          ])
-        : null;
+    final foreground = ink.foreground(states);
+    final overlay = ink.overlay(states);
     // ONE node per button: container, so a row of six does not collapse into
     // a single node, and the Tooltip below hangs its message on this one. The
     // focus flags and the tap action are said HERE rather than by `Focus` and

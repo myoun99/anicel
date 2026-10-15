@@ -38,7 +38,7 @@ void main() {
     required bool collapsed,
     double tabCollapsedExtent = collapsedExtent,
     double? minContentHeight = 200,
-    bool keepAlive = false,
+    bool cachesContent = false,
   }) {
     final height =
         EditorPanelTabs.stripHeight +
@@ -63,7 +63,7 @@ void main() {
                     icon: Icons.abc,
                     minContentHeight: minContentHeight,
                     collapsedExtent: tabCollapsedExtent,
-                    keepAlive: keepAlive,
+                    cachesContent: cachesContent,
                     staticRaster: false,
                     builder: panel,
                   ),
@@ -137,13 +137,13 @@ void main() {
     );
   });
 
-  testWidgets('a KEEP-ALIVE panel with a floor folds without a crop and '
+  testWidgets('a CACHED panel with a floor folds without a crop and '
       'opens to its floor, whichever way it was first built', (tester) async {
-    // A kept tab's content is built on its first visit and served from the
-    // cache after, so a fold decided where the content is built held the
-    // first visit's answer: built open, it folded into a crop; built folded,
-    // it opened under its floor with nothing to scroll. The fold is read
-    // below the cache, through the scope.
+    // A cached tab's content is built when it opens and served from the
+    // cache while it stays open, so a fold decided where the content is built
+    // held the first build's answer: built open, it folded into a crop; built
+    // folded, it opened under its floor with nothing to scroll. The fold is
+    // read below the cache, through the scope.
     for (final firstFolded in const [false, true]) {
       await tester.pumpWidget(const SizedBox());
       for (final collapsed in [firstFolded, !firstFolded, firstFolded]) {
@@ -151,7 +151,7 @@ void main() {
           tester,
           collapsed: collapsed,
           minContentHeight: 400,
-          keepAlive: true,
+          cachesContent: true,
         );
         final first = firstFolded ? 'folded' : 'open';
         final now = collapsed ? 'folded' : 'open';
@@ -164,24 +164,31 @@ void main() {
     }
   });
 
-  testWidgets('a tab that declares no collapsed form shows NOTHING', (
+  testWidgets('a tab that declares no collapsed form is not built at all', (
     tester,
   ) async {
-    // 유저 확정 for 콘티·뷰어: 「진짜 깔끔하게 내용물 안 보이게」. The subtree
-    // stays MOUNTED (a keep-alive tab must not lose its state to a fold);
-    // it simply does not lay out.
-    await pumpGroup(tester, collapsed: true, tabCollapsedExtent: 0);
-    expect(find.text('BAR'), findsNothing);
-    expect(find.text('BODY'), findsNothing);
+    // 유저 확정 for 콘티·뷰어: 「진짜 깔끔하게 내용물 안 보이게」 — and a panel is
+    // built only while it shows (유저 2026-10-14), cached or not: nothing of
+    // it is in the tree, offstage included.
+    for (final cachesContent in const [false, true]) {
+      await pumpGroup(
+        tester,
+        collapsed: true,
+        tabCollapsedExtent: 0,
+        cachesContent: cachesContent,
+      );
+      expect(find.text('BAR', skipOffstage: false), findsNothing);
+      expect(find.text('BODY', skipOffstage: false), findsNothing);
+    }
   });
 
-  testWidgets('collapsing reaches a KEEP-ALIVE panel through the scope', (
+  testWidgets('collapsing reaches a CACHED panel through the scope', (
     tester,
   ) async {
-    // The trap this pins: keep-alive tabs are served from a widget cache, so
-    // the instance handed to the framework is identical across folds. An
-    // inherited dependency is what still reaches them — which is why the
-    // scope sits OUTSIDE that cache.
+    // The trap this pins: an open cached tab is served from a widget cache,
+    // so the instance handed to the framework is identical across folds. An
+    // inherited dependency is what still reaches it — which is why the scope
+    // sits OUTSIDE that cache.
     var collapsed = false;
     late StateSetter setOuter;
     await tester.pumpWidget(
@@ -201,7 +208,7 @@ void main() {
                       id: 'a',
                       label: 'A',
                       icon: Icons.abc,
-                      keepAlive: true,
+                      cachesContent: true,
                       collapsedExtent: 36,
                       staticRaster: false,
                       builder: panel,

@@ -20,7 +20,7 @@ PropertyLaneRow _lane(String id, {bool isGroupHeader = false}) =>
     PropertyLaneRow(
       laneId: id,
       label: id,
-      keyedFrames: const {},
+      keyMarks: const {},
       isGroupHeader: isGroupHeader,
     );
 

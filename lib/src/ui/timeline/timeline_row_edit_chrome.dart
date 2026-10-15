@@ -3,10 +3,10 @@ import 'dart:ui' show ClipOp;
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../input/eager_pan_gesture_recognizer.dart';
+import '../input/hit_gate.dart';
 import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
@@ -18,6 +18,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_repeat.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import '../widgets/named.dart';
 import '../widgets/panel_flyout.dart';
 import 'timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt, timelineDrawingHeldColor;
@@ -717,7 +718,7 @@ class TimelineRowEditChromePainter extends CustomPainter with RepaintOnProps {
 /// and ONE gesture layer that routes by hit target.
 ///
 /// The layer fills the row but only ACCEPTS pointers that land on a target
-/// ([_ChromeHitGate]); everything else falls straight through to the range
+/// ([HitGate]); everything else falls straight through to the range
 /// gesture layer and the cells below, which is what the small per-affordance
 /// boxes used to do implicitly.
 /// The chrome layer's own grip hooks — identity-free on purpose.
@@ -752,7 +753,7 @@ class TimelineRowGripCallbacks {
 class TimelineRowEditChromeLayer extends StatefulWidget {
   const TimelineRowEditChromeLayer({
     super.key,
-    required this.paintKey,
+    required this.paintName,
     required this.layerId,
     required this.resolver,
     required this.geometry,
@@ -765,9 +766,9 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     this.viewportMainExtent = 0,
   });
 
-  /// Key placed on the [CustomPaint] itself: tests read the painter (and
-  /// its render box, for target geometry) off this.
-  final Key paintKey;
+  /// What a finder calls the [CustomPaint] itself ([Named]): tests read the
+  /// painter (and its render box, for target geometry) off it.
+  final String paintName;
 
   /// The row's scroll window, as its cells take it — what the painter draws
   /// ([TimelineRowEditChromePainter.windowBucket]).
@@ -1291,8 +1292,23 @@ class _TimelineRowEditChromeLayerState
   @override
   Widget build(BuildContext context) {
     _refreshGestureSettings(context);
+    // 🚨A LAYER OF ITS OWN (유저 2026-09-27: 「층 최대한 나눠서 굽는다던가」).
+    // The chrome repaints on every window-bucket crossing — it draws only
+    // the targets its window can show — and with no boundary of its own
+    // that repaint climbed to the row's layer and re-recorded the whole
+    // row with it, every gesture layer and overlay included: a page turn
+    // re-recorded 1,134 render objects over 27 rows (measured 2026-10-11).
+    // The cells already stand on a boundary of their own
+    // ([timelineRowCellsPaintArea]); this was the one painter that follows
+    // the bucket and did not.
+    return RepaintBoundary(child: _painted(context));
+  }
+
+  Widget _painted(BuildContext context) =>
+      Named(widget.paintName, child: _paint(context));
+
+  CustomPaint _paint(BuildContext context) {
     return CustomPaint(
-      key: widget.paintKey,
       painter: TimelineRowEditChromePainter(
         resolver: widget.resolver,
         geometry: widget.geometry,
@@ -1309,10 +1325,10 @@ class _TimelineRowEditChromeLayerState
         windowBucket: widget.windowBucket,
         viewportMainExtent: widget.viewportMainExtent,
       ),
-      child: _ChromeHitGate(
+      child: HitGate(
         // Off-target pixels belong to the cells: the gate keeps the
         // row-wide layer from swallowing seeks and range drags.
-        isTarget: (position) => _targetAt(position) != null,
+        admits: (position) => _targetAt(position) != null,
         child: MouseRegion(
           cursor: _cursor,
           // ENTER as well as hover: a pointer can come to rest on a target
@@ -1337,36 +1353,5 @@ class _TimelineRowEditChromeLayerState
         ),
       ),
     );
-  }
-}
-
-/// Passes a hit through only where the row actually has an affordance.
-class _ChromeHitGate extends SingleChildRenderObjectWidget {
-  const _ChromeHitGate({required this.isTarget, required super.child});
-
-  final bool Function(Offset position) isTarget;
-
-  @override
-  _RenderChromeHitGate createRenderObject(BuildContext context) =>
-      _RenderChromeHitGate(isTarget);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderChromeHitGate renderObject,
-  ) => renderObject.isTarget = isTarget;
-}
-
-class _RenderChromeHitGate extends RenderProxyBox {
-  _RenderChromeHitGate(this.isTarget);
-
-  bool Function(Offset position) isTarget;
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    if (!size.contains(position) || !isTarget(position)) {
-      return false;
-    }
-    return super.hitTest(result, position: position);
   }
 }

@@ -47,14 +47,22 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
     required this.caretLit,
     required this.color,
     // ⚠️The cross is told of on a line of its own: carrying it draws this
-    // again and wakes nobody else (`CelTextTool.carryCross`).
-  }) : super(repaint: Listenable.merge([tool, tool.crossCarried, caretLit]));
+    // again and wakes nobody else (`CelTextTool.carryCross`). So is the
+    // text a hand carries (`CelTextTool.shownInHand`, F-344).
+  }) : super(
+         repaint: Listenable.merge([
+           tool,
+           tool.crossCarried,
+           tool.shownInHand,
+           caretLit,
+         ]),
+       );
 
   final CelTextTool tool;
   final CelTextStage stage;
 
   /// The boxes of the cel's texts that are in nobody's hand, on the artwork
-  /// ([CelTextTool.restingBoxesOn]).
+  /// ([CelTextOnCanvas.restingBoxesOn]).
   final List<CelTextBox> restingBoxes;
 
   /// The box an empty drag is tracing, on the artwork.

@@ -9,6 +9,8 @@ import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
+import 'named.dart';
+import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
 ///
@@ -266,6 +268,8 @@ class PanelFlyoutChoice {
     required this.label,
     this.icon,
     this.shortcuts = const [],
+    this.enabled = true,
+    this.warning,
   });
 
   final String key;
@@ -275,6 +279,14 @@ class PanelFlyoutChoice {
   /// The actions picking this value is ([PanelFlyoutItem.shortcuts]) — a
   /// value that is a row of the shortcut list prints that row's key.
   final List<String> shortcuts;
+
+  /// False keeps the value's row in the list, off ([PanelFlyoutItem.enabled])
+  /// — an export codec this build cannot write.
+  final bool enabled;
+
+  /// [PanelFlyoutItem.warning]: what to know before picking it — why an
+  /// export codec cannot be written here.
+  final String? warning;
 }
 
 /// One [PanelFlyoutItem] per value, the one equal to [current] marked as
@@ -310,6 +322,8 @@ extension PanelFlyoutValueChoices<T> on Iterable<T> {
           icon: choice.icon,
           shortcuts: choice.shortcuts,
           selected: value == current,
+          enabled: choice.enabled,
+          warning: choice.warning,
           onSelected: () => onPicked(value),
         ),
   ];
@@ -1176,6 +1190,56 @@ class PanelFlyoutTrigger extends StatelessWidget {
       return button;
     }
     return AppTooltip(message: message, child: button);
+  }
+}
+
+/// [PanelFlyoutTrigger] for a rail's PLATE — the layer row's mark and take
+/// ([RailPlateFace]): the claim and ONE render object around the plate,
+/// instead of a tooltip, a portal, a [Material], a physical model and an
+/// [InkWell] of their own — ~45 elements a plate, mounted anew for every
+/// row on every cut switch (I-57 ①, measured on the user's project).
+///
+/// The ink is not lost: the plate is opaque, and the ink was drawn on the
+/// [Material] UNDER it. A screen reader's activation opens the list too —
+/// the face carries the real opener, as a [RailGlyphButton]'s node does.
+class RailFlyoutTrigger extends StatelessWidget {
+  const RailFlyoutTrigger({
+    super.key,
+    required this.name,
+    required this.tooltip,
+    required this.entriesBuilder,
+    required this.child,
+    this.semanticLabel,
+  });
+
+  /// What a finder calls the [RailPlateFace], the box the user sees and
+  /// presses — a [Named], as a [RailGlyphButton.name] is and for its
+  /// reason.
+  final String name;
+  final String tooltip;
+  final List<PanelFlyoutEntry> Function() entriesBuilder;
+
+  /// The plate.
+  final Widget child;
+
+  /// What a screen reader calls it.
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    void open() => showPanelFlyout(context, entries: entriesBuilder());
+    return ControlPressClaim(
+      onPressed: open,
+      child: Named(
+        name,
+        child: RailPlateFace(
+          tooltip: tooltip,
+          onSemanticTap: open,
+          semanticLabel: semanticLabel,
+          child: child,
+        ),
+      ),
+    );
   }
 }
 

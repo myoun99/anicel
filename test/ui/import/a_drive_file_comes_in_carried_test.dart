@@ -7,9 +7,11 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -87,10 +89,11 @@ void main() {
             grants;
   }
 
-  Future<EditorSessionManager> openWindow(
-    WidgetTester tester, {
-    Future<String?> Function()? directoryPicker,
-  }) async {
+  /// The one door's pick (F-282 — the window picks nothing itself), and the
+  /// window opened on what it handed over, as the media panel's ＋ opens
+  /// it — then the pick, and any copy it starts, given their turn to
+  /// answer.
+  Future<EditorSessionManager> openPicked(WidgetTester tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     await tester.pumpWidget(
@@ -98,14 +101,17 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (_) => ImportDialog(
-                  session: s,
-                  poolOnly: true,
-                  directoryPicker: directoryPicker,
-                ),
-              ),
+              onPressed: () async {
+                final picked = await pickFilesToOpen(context);
+                if (!context.mounted) {
+                  return;
+                }
+                await showDialog<void>(
+                  context: context,
+                  builder: (_) =>
+                      ImportDialog(session: s, poolOnly: true, picked: picked),
+                );
+              },
               child: const Text('import'),
             ),
           ),
@@ -113,18 +119,10 @@ void main() {
       ),
     );
     await tester.tap(find.text('import'));
-    await tester.pumpAndSettle();
-    return s;
-  }
-
-  /// Presses Files and lets the pick — and any copy it starts — answer.
-  Future<void> pickFiles(WidgetTester tester) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-browse-files-button')),
-    );
     for (var tries = 0; tries < 20; tries += 1) {
       await tester.pump();
     }
+    return s;
   }
 
   /// Presses Import and waits for the window to close — it closes once
@@ -154,9 +152,7 @@ void main() {
     final bytes = await tester.runAsync(() => writeSolidPng(temp, 'doc.png'));
     documents[uri] = bytes!;
     pickerAnswers(const [FolderGrant.providerDocument(drive)]);
-    final s = await openWindow(tester);
-
-    await pickFiles(tester);
+    final s = await openPicked(tester);
 
     expect(
       find.byKey(const ValueKey<String>('folder-no-path-dialog')),
@@ -179,8 +175,13 @@ void main() {
       findsOneWidget,
     );
 
+    // ⚠️Brought into view first: the table scrolls sideways in a window too
+    // narrow for it, and a tap that misses the cell would offer nothing
+    // either — the findsNothing below would pass on a miss.
+    await tester.ensureVisible(fileCell(copy));
+    await tester.pump();
     await tester.tap(fileCell(copy));
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     expect(
       find.byKey(const ValueKey<String>('import-option-file-reference')),
       findsNothing,
@@ -223,13 +224,13 @@ void main() {
       const FolderGrant.providerDocument(drive),
       FolderGrant.granted(path: local, kind: GrantKind.file),
     ]);
-    final s = await openWindow(tester);
-
-    await pickFiles(tester);
+    final s = await openPicked(tester);
     final copy = ProviderDocuments.workingCopyOf(uri)!;
 
+    await tester.ensureVisible(fileCell(copy));
+    await tester.pump();
     await tester.tap(fileCell(copy));
-    await tester.pumpAndSettle();
+    await settleLoadedPages(tester);
     expect(
       find.byKey(const ValueKey<String>('import-option-file-reference')),
       findsNothing,
@@ -238,7 +239,7 @@ void main() {
     // Both rows selected: a cell press speaks for every selected row.
     for (final row in ['A1.png', 'local.png']) {
       await tester.tap(find.byKey(ValueKey<String>('import-row-$row')));
-      await tester.pumpAndSettle();
+      await settleLoadedPages(tester);
     }
     await tester.ensureVisible(fileCell(local));
     await tester.pumpAndSettle();
@@ -268,61 +269,23 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a pick that REPLACES a Drive file lets go of its copy at once '
-      '— another file or a cut folder alike', (tester) async {
-    const second = ProviderDocument(
-      uri: 'content://drive/doc/2',
-      name: 'B1.png',
-    );
-    final (bytes, folder) = (await tester.runAsync(() async {
-      final bytes = await writeSolidPng(temp, 'doc.png');
-      final folder = Directory('${temp.path}/cut_01_001_lo')..createSync();
-      await writeSolidPng(folder, 'A1.png');
-      return (bytes, folder.path);
-    }))!;
-    documents[uri] = bytes;
-    documents[second.uri] = bytes;
-    await openWindow(tester, directoryPicker: () async => folder);
-
-    pickerAnswers(const [FolderGrant.providerDocument(drive)]);
-    await pickFiles(tester);
-    final first = ProviderDocuments.workingCopyOf(uri)!;
-    pickerAnswers(const [FolderGrant.providerDocument(second)]);
-    await pickFiles(tester);
-
-    expect(File(first).parent.existsSync(), isFalse);
-    final then = ProviderDocuments.workingCopyOf(second.uri)!;
-    expect(File(then).existsSync(), isTrue);
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-browse-folder-button')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(File(then).parent.existsSync(), isFalse);
-  });
-
   testWidgets('🚨Stop while the copy comes: nothing is listed, the file is '
       'named on the status line, and no folder is left in the room', (
     tester,
   ) async {
     holdCopy = Completer<bool>();
     pickerAnswers(const [FolderGrant.providerDocument(drive)]);
-    await openWindow(tester);
-
-    await pickFiles(tester);
+    await openPicked(tester);
     expect(copiedTo, hasLength(1), reason: 'the copy is under way');
-    for (final source in ['files', 'folder']) {
-      expect(
-        tester
-            .widget<OutlinedButton>(
-              find.byKey(ValueKey<String>('import-browse-$source-button')),
-            )
-            .onPressed,
-        isNull,
-        reason: 'no second pick while the first is still coming ($source)',
-      );
-    }
+    expect(
+      tester
+          .widget<ButtonStyleButton>(
+            find.byKey(const ValueKey<String>('import-run-button')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'nothing runs while the first file is still coming',
+    );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));
     for (var tries = 0; tries < 10; tries += 1) {
@@ -344,14 +307,19 @@ void main() {
   });
 
   group('the window closing while a Drive file is still coming', () {
-    Future<void> closeMidCopy(WidgetTester tester) async {
+    /// Closes the window while the copy is held mid-way — [asItCloses]
+    /// runs in the same breath as the close, before anything settles.
+    Future<void> closeMidCopy(
+      WidgetTester tester, {
+      void Function()? asItCloses,
+    }) async {
       holdCopy = Completer<bool>();
       pickerAnswers(const [FolderGrant.providerDocument(drive)]);
-      await openWindow(tester);
-      await pickFiles(tester);
+      await openPicked(tester);
       expect(copiedTo, hasLength(1), reason: 'the copy is under way');
 
       await tester.tap(find.byKey(const ValueKey<String>('app-window-close')));
+      asItCloses?.call();
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey<String>('import-dialog')), findsNothing);
     }
@@ -376,9 +344,11 @@ void main() {
       documents[uri] = (await tester.runAsync(
         () => writeSolidPng(temp, 'doc.png'),
       ))!;
-      await closeMidCopy(tester);
+      // The copy lands as the window closes — not after a settle that may
+      // already have carried the stop down (the window's dispose asks for
+      // one, and a settle that runs long enough delivers it).
+      await closeMidCopy(tester, asItCloses: () => holdCopy!.complete(true));
 
-      holdCopy!.complete(true);
       for (var tries = 0; tries < 10; tries += 1) {
         await tester.pump();
       }

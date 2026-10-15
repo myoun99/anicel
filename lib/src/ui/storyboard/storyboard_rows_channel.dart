@@ -1,6 +1,25 @@
+import 'package:flutter/widgets.dart';
+
 import '../../models/timeline_row_address.dart';
 import '../canvas/flip_hud_controller.dart' show FlipHudAxis;
 import '../canvas/flip_hud_model.dart';
+import '../timeline/timeline_frame_geometry.dart'
+    show TimelineFrameGeometryHandle;
+
+/// A row of the storyboard as the FOLDED overlay shows it (🗣️F-322, 유저
+/// 2026-10-09: 「콘티패널 간편오버레이가 제대로 서있는곳 행에 맞춰서
+/// 안보여주고 V행고정인데 서있는곳 보여주도록. 타임라인패널이랑 통일」): its
+/// height, the window's picture of it, and its own rail label and strip —
+/// built by the panel that draws them, display-only and chromeless. A null
+/// [rail] or [frames] is drawn from the [snapshot], as the timeline's folded
+/// lanes are.
+typedef StoryboardFoldedRow = ({
+  double height,
+  FlipHudSnapshot Function() snapshot,
+  Widget Function()? rail,
+  Widget Function(BuildContext context, TimelineFrameGeometryHandle geometry)?
+  frames,
+});
 
 /// What the STORYBOARD panel stacks, handed to the shell's walkers — the
 /// ↑/↓ walk and the flip window — for the time the storyboard is the panel
@@ -19,16 +38,19 @@ import '../canvas/flip_hud_model.dart';
 class StoryboardRowsChannel {
   List<TimelineRowAddress> Function()? _rows;
   FlipHudSnapshot Function(FlipHudAxis axis)? _snapshotOf;
+  StoryboardFoldedRow? Function(TimelineRowAddress row)? _foldedRowFor;
   Object? _owner;
 
   void bind(
     Object owner, {
     required List<TimelineRowAddress> Function() rows,
     required FlipHudSnapshot Function(FlipHudAxis axis) snapshotOf,
+    StoryboardFoldedRow? Function(TimelineRowAddress row)? foldedRowFor,
   }) {
     _owner = owner;
     _rows = rows;
     _snapshotOf = snapshotOf;
+    _foldedRowFor = foldedRowFor;
   }
 
   void unbind(Object owner) {
@@ -38,6 +60,7 @@ class StoryboardRowsChannel {
     _owner = null;
     _rows = null;
     _snapshotOf = null;
+    _foldedRowFor = null;
   }
 
   /// The storyboard's rows, top to bottom — every track's rows in the order
@@ -47,4 +70,10 @@ class StoryboardRowsChannel {
   /// The flip window's picture of those rows; null while no storyboard is
   /// mounted.
   FlipHudSnapshot? snapshotFor(FlipHudAxis axis) => _snapshotOf?.call(axis);
+
+  /// [row] as the folded overlay shows it ([StoryboardFoldedRow]); null for
+  /// the V row — the overlay's own track row — for a row the storyboard
+  /// does not draw, and while no storyboard is mounted.
+  StoryboardFoldedRow? foldedRowFor(TimelineRowAddress row) =>
+      _foldedRowFor?.call(row);
 }

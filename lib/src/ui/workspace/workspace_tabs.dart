@@ -51,6 +51,40 @@ class _WorkspaceTabs {
     return () => session.layerSwitches.toggleLayerFillReference(layer.id);
   }
 
+  /// What the tool settings show of the session — the slice their panel
+  /// rebuilds by, with [fillSource] and [eyedropperSource] the two sources
+  /// it names the read layers of.
+  ///
+  /// 🚨I-57 ㉢ (10-13, measured on the user's project): every tool's panel
+  /// is kept alive, and each one rebuilt on EVERY session notify — a cut
+  /// switch rebuilt them all, 121 widgets a panel, and so did every
+  /// stroke's commit, though the brush's panel shows nothing of the cut.
+  _ToolSettingsCut _toolSettingsCut(
+    CanvasReadSource fillSource,
+    CanvasReadSource eyedropperSource,
+  ) {
+    final session = _state.widget.session;
+    ByList<String>? reads(CanvasReadSource source) => switch (layerNamesReadBy(
+      source,
+      session.activeCutOrNull,
+      session.activeLayerId,
+    )) {
+      final names? => ByList(names),
+      null => null,
+    };
+    return (
+      tips: _state._tipLibrary.tips,
+      guides: session.cutVerbs.activeCutGuides,
+      selectedGuideId: session.cutVerbs.selectedGuideId,
+      fillReads: reads(fillSource),
+      eyedropperReads: reads(eyedropperSource),
+      activeLayerIsFillReference: session.activeLayer?.isFillReference ?? false,
+      canToggleFillReference: _activeLayerFillReferenceToggle() != null,
+      canvasSize: session.activeCutOrNull?.canvasSize,
+      language: session.languageSettings.value.programLanguage,
+    );
+  }
+
   /// A panel's host — the timeline's, the storyboard's, the conte's, the
   /// envelope's, the timesheet's: [host], built again whenever [listenable]
   /// moves, on a layer of its own.
@@ -67,8 +101,11 @@ class _WorkspaceTabs {
   Widget _panelHost({
     required Listenable listenable,
     required WidgetBuilder host,
-  }) => TickLayer(
-    child: PanelAwareListenableBuilder(listenable: listenable, builder: host),
+  }) => TickLayer.host(
+    child: ListenableBuilder(
+      listenable: listenable,
+      builder: (context, _) => host(context),
+    ),
   );
 
   /// A frame panel's 문턱: the transport [panel]'s keys press too
@@ -102,19 +139,19 @@ class _WorkspaceTabs {
       label: label,
       icon: icon,
       locked: locked,
-      // Keeps its decoded pages/PDF document across tab switches.
-      keepAlive: true,
-      builder: (context) => PanelAwareListenableBuilder(
+      cachesContent: true,
+      builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
         // nothing here rebuilds it for them.
         listenable: _state.widget.session.languageSettings,
-        builder: (context) => MediaViewerTabHost(
+        builder: (context, _) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
           request: slot.request,
           position: slot.position,
           onRequestPicked: slot.open,
+          onRequestClosed: () => slot.open(null),
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
           loudness: slot.loudness,
@@ -124,19 +161,15 @@ class _WorkspaceTabs {
           brushTool: _state._brushTool,
           cutPieceSlot: _state._cutPieceSlot,
           // 유저 확정 ⑱: the promote button calls the SAME import every
-          // other entrance calls, and takes the SAME copy-or-reference
-          // default the import window opens on — a viewer-only policy
-          // here would be a third import surface nobody remembers to fix.
-          //
-          // ⚠️The same default the import window starts on: the project
-          // carries what it can. This button exists to promote a loose
-          // path into something that travels with the project, so a
-          // reference here would be the one answer it cannot mean.
-          onRegisterAsset: (path) => unawaited(
-            _state.widget.session.mediaPool.importMediaFiles([
-              path,
-            ], copyIntoProject: true),
-          ),
+          // other entrance calls — a viewer-only policy here would be a
+          // third import surface nobody remembers to fix. Since F-282-Q4
+          // (유저 2026-10-09, 가) that is literally the same window: the
+          // file goes through the one door to the pool's import window.
+          // ↩️It registered on the spot until then, carried — the default
+          // the window opens on, which it still is.
+          onRegisterAsset: (path) => _state._door.open(_state.context, [
+            handedPath(path),
+          ], toPool: true),
           isPathRegistered: (path) =>
               _state.widget.session.repository.currentProject?.mediaAssetByPath(
                 path,
@@ -268,7 +301,7 @@ class _WorkspaceTabs {
           label: AppText.strings.panelCanvas,
           icon: Icons.image_outlined,
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // The one panel that opts out of the static bake. It is full
           // of repaint boundaries by design (the artwork, the cursor
           // deck, the ants each own one), and its live-stroke path must
@@ -289,7 +322,7 @@ class _WorkspaceTabs {
               // page's root — the canvas is a panel host like the others
               // ([_panelHost]), on a layer of its own. The expanding stack is
               // what makes the layer's constraints tight.
-              TickLayer(
+              TickLayer.host(
                 child: EditorCanvasArea(
                   key: _state._canvasAreaKey,
                   onInvokeAction: _state.widget.onInvokeAction,
@@ -467,9 +500,13 @@ class _WorkspaceTabs {
                         // The cut's own guides. Unlike the brush library
                         // above — app-wide and permanent — this list belongs
                         // to the CUT, so it follows the session.
-                        guideLibrary: ListenableBuilder(
+                        // What it shows is the slice: a session notify that
+                        // changes none of it — a stroke's commit, a switch
+                        // between cuts with the same guides — stops here
+                        // (I-57 ㉢).
+                        guideLibrary: SlicedListenableBuilder(
                           listenable: _state.widget.session,
-                          builder: (context, _) => GuideLibraryList(
+                          slice: () => (
                             guides:
                                 _state.widget.session.cutVerbs.activeCutGuides,
                             canvasSize:
@@ -481,6 +518,11 @@ class _WorkspaceTabs {
                                 BrushCanvasDefaults.canvasSize,
                             selectedGuideId:
                                 _state.widget.session.cutVerbs.selectedGuideId,
+                          ),
+                          builder: (context, shown) => GuideLibraryList(
+                            guides: shown.guides,
+                            canvasSize: shown.canvasSize,
+                            selectedGuideId: shown.selectedGuideId,
                             onGuideSelected: (id) =>
                                 _state.widget.session.cutVerbs.selectedGuideId =
                                     id,
@@ -538,7 +580,9 @@ class _WorkspaceTabs {
                                   // The tip library loads in two passes,
                                   // so the pickers have to follow it.
                                   builder: (context, eyedropperSource, _) =>
-                                      ListenableBuilder(
+                                      SlicedListenableBuilder<
+                                        _ToolSettingsCut
+                                      >(
                                         // The guides live on the CUT and
                                         // the selection is UI state, so
                                         // both have to reach this panel:
@@ -549,21 +593,19 @@ class _WorkspaceTabs {
                                         listenable: Listenable.merge([
                                           _state._tipLibrary,
                                           _state.widget.session,
+                                          _state.widget.session
+                                              .languageSettings,
                                         ]),
-                                        builder: (context, _) => ToolSettingsPanel(
+                                        slice: () => _toolSettingsCut(
+                                          fillOptions.source,
+                                          eyedropperSource,
+                                        ),
+                                        builder: (context, cut) => ToolSettingsPanel(
                                           state: toolState,
                                           onChanged: (state) =>
                                               _state._brushTool.value = state,
-                                          guides: _state
-                                              .widget
-                                              .session
-                                              .cutVerbs
-                                              .activeCutGuides,
-                                          selectedGuideId: _state
-                                              .widget
-                                              .session
-                                              .cutVerbs
-                                              .selectedGuideId,
+                                          guides: cut.guides,
+                                          selectedGuideId: cut.selectedGuideId,
                                           onGuidesCommitted: _state
                                               .widget
                                               .session
@@ -574,7 +616,7 @@ class _WorkspaceTabs {
                                               .session
                                               .cutVerbs
                                               .previewActiveCutGuides,
-                                          tips: _state._tipLibrary.tips,
+                                          tips: cut.tips,
                                           onTipImportRequested: () {
                                             unawaited(
                                               _state._brushPresets
@@ -609,12 +651,7 @@ class _WorkspaceTabs {
                                                     .activeLayerId,
                                               ),
                                           activeLayerIsFillReference:
-                                              _state
-                                                  .widget
-                                                  .session
-                                                  .activeLayer
-                                                  ?.isFillReference ??
-                                              false,
+                                              cut.activeLayerIsFillReference,
                                           onToggleActiveLayerFillReference:
                                               _activeLayerFillReferenceToggle(),
                                           selectionMaskOptions: maskOptions,
@@ -641,11 +678,7 @@ class _WorkspaceTabs {
                                           textFonts: _state._fonts,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
-                                          canvasSize: _state
-                                              .widget
-                                              .session
-                                              .activeCutOrNull
-                                              ?.canvasSize,
+                                          canvasSize: cut.canvasSize,
                                           cutPieceSlot: _state._cutPieceSlot,
                                           // TS8: composite order is
                                           // the BLEND's answer, so
@@ -661,12 +694,7 @@ class _WorkspaceTabs {
                                               _state._brushPresets._renameTip,
                                           onDeleteTip:
                                               _state._brushPresets._deleteTip,
-                                          language: _state
-                                              .widget
-                                              .session
-                                              .languageSettings
-                                              .value
-                                              .programLanguage,
+                                          language: cut.language,
                                         ),
                                       ),
                                 ),
@@ -737,7 +765,8 @@ class _WorkspaceTabs {
                       framePlace: _state.widget.session.framePlaceLabel,
                     ),
                   ),
-              onImportRequested: () => _state._openImportWindow(poolOnly: true),
+              onImportRequested: () =>
+                  unawaited(_state._pickAndOpen(toPool: true)),
               onRenameAsset: _state.widget.session.mediaPool.renameMediaAsset,
               onRelinkAsset: (oldPath, newPath, grants) {
                 // The token first: the relink itself is undoable and the
@@ -816,9 +845,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          // The heavy frame-axis panels keep their subtree offstage
-          // across switches (R10-②) — switching back is instant.
-          keepAlive: true,
+          cachesContent: true,
           // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
           // ACTIVE tab's sill controls are mounted, so the timeline's
           // active-cut transport and the storyboard's all-cuts one share
@@ -835,8 +862,6 @@ class _WorkspaceTabs {
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
             // grids ride the frame cursor and never rebuild for them.
-            // Panel-aware (R12-①): notifies arriving while the tab sits
-            // offstage are deferred to one catch-up on re-activation.
             listenable: Listenable.merge([
               _state.widget.session,
               _state._timelineOrientation,
@@ -846,6 +871,7 @@ class _WorkspaceTabs {
               _state._showSecondsDisplay,
               _state.widget.session.railView.expandedLaneLayerIds,
               _state.widget.session.railView.expandedLaneGroupKeys,
+              _state.widget.session.railView.laneGraphs,
               _state.widget.session.railView.hiddenSections,
               _state.widget.session.railView.collapsedAttachBaseIds,
               _state.widget.session.railView.rowFilter,
@@ -882,10 +908,12 @@ class _WorkspaceTabs {
                   unawaited(_state._swapReference(layerId, path));
                   return;
                 }
-                _state._openImportWindow(
-                  initialPaths: [path],
-                  placeOnly: true,
-                  spot: spot,
+                unawaited(
+                  _state._openImportWindow(
+                    initialPaths: [path],
+                    placeOnly: true,
+                    spot: spot,
+                  ),
                 );
               },
               // A pool row let go on the LAYER AREA: a new layer at the gap
@@ -900,17 +928,16 @@ class _WorkspaceTabs {
                 if (spot == null) {
                   return;
                 }
-                _state._openImportWindow(
-                  initialPaths: [path],
-                  placeOnly: true,
-                  spot: spot,
+                unawaited(
+                  _state._openImportWindow(
+                    initialPaths: [path],
+                    placeOnly: true,
+                    spot: spot,
+                  ),
                 );
               },
               orientation: _state._timelineOrientation.value,
-              onOrientationChanged: (orientation) {
-                _state._timelineOrientation.value = orientation;
-                _state._flipHud.syncFlipAxis();
-              },
+              onOrientationChanged: _state._setTimelineOrientation,
               pixelsPerFrame: _state._timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
               onPixelsPerFrameChanged: _state._setTimelineZoom,
@@ -923,6 +950,10 @@ class _WorkspaceTabs {
               timelineFrameAxisOffset:
                   _state._frameAxisOffsets[LayerRailId.timeline],
               xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
+              timelineLayerAxisOffset:
+                  _state._layerAxisOffsets[LayerRailId.timeline],
+              xsheetLayerAxisOffset:
+                  _state._layerAxisOffsets[LayerRailId.xsheet],
               expandedLaneLayerIds:
                   _state.widget.session.railView.expandedLaneLayerIds.value,
               onToggleLayerLanes: SessionRowButtonPresses(
@@ -931,6 +962,10 @@ class _WorkspaceTabs {
               expandedLaneGroupKeys:
                   _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
+              laneGraphs: _state.widget.session.railView.laneGraphs.value,
+              laneGraphVerbs: SessionRowButtonPresses(
+                _state.widget.session,
+              ).laneGraphVerbs,
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,
               onToggleSection: _state._toggleTimelineSection,
@@ -961,7 +996,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
@@ -978,8 +1013,7 @@ class _WorkspaceTabs {
             // bar's own subscription). `frameSeekCommitted` sat in THIS
             // merge until 2026-08-05 and cost a whole-panel rebuild per
             // arrow press — measured at 38ms a step (12 build / 22 layout /
-            // 3 paint) with a six-cut project. Panel-aware (R12-①):
-            // offstage notifies defer to one catch-up on re-activation.
+            // 3 paint) with a six-cut project.
             // ↩️The thumbnail store sat here too, so every picture that
             // landed rebuilt the whole panel — at I-22's ten-minute zoom,
             // one per cut on the film. The blocks that ask repaint on it
@@ -989,6 +1023,15 @@ class _WorkspaceTabs {
               _state._storyboardPixelsPerFrame,
               // F-199: a section toggle is not a session notify.
               _state.widget.session.railView.hiddenSections,
+              // Nor is a fold: the conte row's twirl folds its attach rows
+              // here as it does on the timeline's rail (I-73).
+              _state.widget.session.railView.collapsedAttachBaseIds,
+              // Nor a twirl: the camera row opens its lanes, a conte row its
+              // lanes and their groups (I-73 ④ⓔ), an S row its SE row's, a
+              // V row its track's (F-360).
+              _state.widget.session.railView.expandedLaneLayerIds,
+              _state.widget.session.railView.expandedLaneGroupKeys,
+              _state.widget.session.railView.twirledTrackIds,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -1012,6 +1055,22 @@ class _WorkspaceTabs {
               hiddenSections:
                   _state.widget.session.railView.hiddenSections.value,
               onToggleSection: _state._toggleTimelineSection,
+              // And the attach folds — the timeline's own set and verb.
+              collapsedAttachBaseIds:
+                  _state.widget.session.railView.collapsedAttachBaseIds.value,
+              onToggleAttachGroup: SessionRowButtonPresses(
+                _state.widget.session,
+              ).toggleGroupFold,
+              // And the lane twirls (I-73 ④ⓔ) — the camera row's head is the
+              // timeline's camera row, and turns its lanes there too.
+              expandedLaneLayerIds:
+                  _state.widget.session.railView.expandedLaneLayerIds.value,
+              onToggleLayerLanes: SessionRowButtonPresses(
+                _state.widget.session,
+              ).toggleLanes,
+              expandedLaneGroupKeys:
+                  _state.widget.session.railView.expandedLaneGroupKeys.value,
+              onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,
@@ -1020,6 +1079,7 @@ class _WorkspaceTabs {
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
               frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
+              layerAxisOffset: _state._layerAxisOffsets[LayerRailId.storyboard],
               // ⛔No steppers any more (B7): the V rows' splitter is the
               // height's one writer, and it asks the NOTIFIER, not the value
               // this build took — a drag's steps outrun the rebuilds.
@@ -1040,9 +1100,13 @@ class _WorkspaceTabs {
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
               rowsChannel: _state._storyboardRows,
-              // ⛔The camera-view notifier no longer comes through here:
-              // R28 #1's toggle rides the sill with the transport now
-              // (`sillTrailing` above), so the panel does not see it.
+              // The camera row's head is the timeline's camera row (I-73 ④):
+              // its eye and slider drive the same camera-view state as the
+              // timeline's, the canvas overlay and the camera panel. R28 #1's
+              // TOGGLE still rides the sill with the transport
+              // (`sillTrailing` above).
+              cameraViewEnabled: _state._views._cameraViewEnabled,
+              cameraDimOpacity: _state._views._cameraDimOpacity,
             ),
           ),
         );
@@ -1054,7 +1118,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // The sheet reads the project and the SAME picture store the
           // storyboard strip draws from, so a cell and its strip panel are
           // one render rather than two that must be kept in step.
@@ -1105,7 +1169,7 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          keepAlive: true,
+          cachesContent: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
@@ -1158,17 +1222,18 @@ class _WorkspaceTabs {
           // to include the playhead, and would then stand itself down
           // for the whole of playback.
           staticRaster: false,
-          keepAlive: true,
+          cachesContent: true,
           builder: (context) => _panelHost(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
             // sheet layout never depends on it, and rebuilding the whole
-            // (keep-alive, often hidden) B4 document on every tool
-            // switch / color notch was measurably half the tool-switch
-            // jank. Only the ink overlay consumes the tool state, through
-            // its own boundary builder inside the host.
+            // B4 document on every tool switch / color notch was
+            // measurably half the tool-switch jank. Only the ink overlay
+            // consumes the tool state, through its own boundary builder
+            // inside the host.
             listenable: Listenable.merge([
               _state._views._timesheetViewport,
               _state._views._timesheetBrushAllowed,
+              _state._views._timesheetDataSheet,
               // F-90: a crossing, played or dragged over, turns the sheet
               // over to the cut under the playhead.
               _state.widget.session.cutUnderPlayhead.listenable,
@@ -1185,6 +1250,10 @@ class _WorkspaceTabs {
               brushAllowed: _state._views._timesheetBrushAllowed.value,
               onBrushAllowedChanged: (enabled) {
                 _state._views._timesheetBrushAllowed.value = enabled;
+              },
+              dataSheet: _state._views._timesheetDataSheet.value,
+              onDataSheetChanged: (shown) {
+                _state._views._timesheetDataSheet.value = shown;
               },
             ),
           ),
@@ -1236,3 +1305,18 @@ class _WorkspaceTabs {
     });
   }
 }
+
+/// What the tool settings show of the session ([_WorkspaceTabs
+/// ._toolSettingsCut]): equal answers, no rebuild. The tips compare by the
+/// list — the library hands a new one for every change.
+typedef _ToolSettingsCut = ({
+  List<BrushTipEntry> tips,
+  CutGuides guides,
+  GuideId? selectedGuideId,
+  ByList<String>? fillReads,
+  ByList<String>? eyedropperReads,
+  bool activeLayerIsFillReference,
+  bool canToggleFillReference,
+  CanvasSize? canvasSize,
+  AppLanguage language,
+});

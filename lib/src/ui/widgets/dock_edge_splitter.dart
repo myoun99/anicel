@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
 import '../theme/app_theme.dart';
+import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'owning_axis_grip.dart';
 
 /// A draggable divider between two areas that share an extent.
@@ -40,11 +41,12 @@ import 'owning_axis_grip.dart';
 /// hairlineStrong -> gripHover -> accent).
 ///
 /// ★It does NOT round itself. It is laid inside the panel's own ClipPath,
-/// so the panel's silhouette cuts the band's outer corners and the lit edge
-/// follows the curve exactly — which a shape of its own could never do,
-/// because a 5px-wide band cannot carry a 14px corner (유저, R2 #11: 패널의
+/// so the panel's silhouette cuts the band's outer edge (유저, R2 #11: 패널의
 /// 옆부분을 형태그대로 색만 바꾸는 느낌). Whoever positions one is therefore
-/// responsible for putting it inside the clip.
+/// responsible for putting it inside the clip. ↩️It used to run the whole
+/// edge and follow the corner's curve too; a panel's edge grip now stops
+/// short of both ends ([endInset], I-60 2026-10-13: 「곡선 전에 끝나도록」),
+/// and a corner that takes both edges is a [DockCornerGrip].
 ///
 /// It used to paint an opaque [ColorScheme.surfaceContainerLow] band the
 /// whole time, OUTSIDE the clip. That band is what covered the floating
@@ -92,6 +94,17 @@ class DockEdgeSplitter extends StatefulWidget {
   /// The hit extent, and the band's extent: they are the same thing now.
   static const double thickness = 5;
 
+  /// How far a panel's edge grip stays off each END of its edge: it runs
+  /// along the straight part alone.
+  ///
+  /// 🗣️I-60 (유저 2026-10-13): 「아래 스플리터랑 꼭짓점 스플리터랑 영역이
+  /// 겹침. 꼭짓점 스플리터를 우선으로, 이 가로나 세로 스플리터의 ui?를 딱 그
+  /// 앞까지만 하도록 … 꼭짓점 반대도 마찬가지로 곡선 전에 끝나도록」. Where
+  /// the edge meets a corner grip it ends where the grip begins; where it
+  /// meets a bare corner it ends where the curve begins — one distance, as
+  /// the corner grip is as long as the curve ([DockCornerGrip.extent]).
+  static const double endInset = DockCornerGrip.extent;
+
   @override
   State<DockEdgeSplitter> createState() => _DockEdgeSplitterState();
 }
@@ -100,20 +113,9 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   bool _hovered = false;
   bool _dragging = false;
 
-  /// Travel the owner could not use, in pointer pixels, signed.
-  ///
-  /// It is the distance the hand has run past the edge — so it is also
-  /// exactly the distance the hand must come back before the edge is
-  /// entitled to move, which is what makes the return trip line up.
-  double _owed = 0;
+  final TravelDebt _debt = TravelDebt();
 
-  void _applyDelta(double delta) {
-    final wanted = _owed + delta;
-    // A debt of the SAME sign as the new travel is the hand going further
-    // out; it is not repaid by going further out.
-    final used = widget.onDragDelta(wanted);
-    _owed = wanted - used;
-  }
+  void _applyDelta(double delta) => _debt.apply(delta, widget.onDragDelta);
 
   /// 🚨★ THE POINTER PATH — 유저 확정 2026-08-14, ⛔재론 금지.
   ///
@@ -155,6 +157,20 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     _applyDelta(
       _dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy,
     );
+    // An edge inside the content it sizes stands in a scroll of its own
+    // axis — a header graph's (I-89 ③), the storyboard's V rows' — and a
+    // pull that reaches the view's edge pans it, the pan folded into the
+    // travel as every drag-borne edge pan's is: as far as the edge follows
+    // and no further, so an edge at its ceiling stays under the hand
+    // (I-89 ③D). The pan moves the hand no more than the edge, so it owes
+    // the drag nothing. The panels' and the rails' edges stand in no such
+    // scroll, so for them this is nothing.
+    edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: _dragAxis,
+      follow: widget.onDragDelta,
+    );
   }
 
   /// Wires one drag recogniser. Both axes take the same handlers, so the
@@ -193,7 +209,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     // The debt belongs to ONE drag. Carrying it into the next one would
     // make a fresh grab start dead — the hand would have to pay off travel
     // it never made.
-    _owed = 0;
+    _debt.clear();
     if (value) {
       widget.onDragStart?.call();
     } else {
@@ -283,5 +299,175 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
       grip = AppTooltip(message: tooltip, child: grip);
     }
     return grip;
+  }
+}
+
+/// Travel a drag could not use, in pointer pixels, signed — one axis of it.
+///
+/// It is the distance the hand has run past the edge — so it is also
+/// exactly the distance the hand must come back before the edge is
+/// entitled to move, which is what makes the return trip line up
+/// ([DockEdgeSplitter]'s law). A corner keeps one per axis.
+class TravelDebt {
+  double _owed = 0;
+
+  /// Hands [use] this frame's [delta] with the debt folded in, and keeps
+  /// what it did not use.
+  void apply(double delta, double Function(double delta) use) {
+    final wanted = _owed + delta;
+    // A debt of the SAME sign as the new travel is the hand going further
+    // out; it is not repaid by going further out.
+    final used = use(wanted);
+    _owed = wanted - used;
+  }
+
+  /// A new drag owes nothing.
+  void clear() => _owed = 0;
+}
+
+/// A panel's CORNER, where its two grips meet: one drag moves both edges.
+///
+/// 🗣️I-60 (유저 2026-10-02): 「패널의 꼭짓점 끌어서 x값y값 동시 조절하는기능
+/// 추가」.
+///
+/// ★It is the two edges' splitters at once, not a third kind of grip: each
+/// axis spends its travel through the SAME callback its edge's splitter
+/// calls, and keeps its own [TravelDebt] — a corner pulled past one edge's
+/// floor pays back that axis only, as the edge would. It lights the way an
+/// edge does (invisible → hover → accent), on the two edge bands it is
+/// made of.
+///
+/// Like a splitter it lies inside the panel's own clip, so the panel's
+/// curve cuts it — the corner you can take is the corner you see.
+class DockCornerGrip extends StatefulWidget {
+  const DockCornerGrip({
+    super.key,
+    required this.corner,
+    required this.onDragX,
+    required this.onDragY,
+    this.onDragStart,
+    this.onDragEnd,
+  });
+
+  /// Which corner of the panel this is.
+  final Alignment corner;
+
+  /// The edges' own [DockEdgeSplitter.onDragDelta]s, one per axis.
+  final double Function(double delta) onDragX;
+  final double Function(double delta) onDragY;
+
+  /// The edges' own drag boundaries, for owners that accumulate across one.
+  final VoidCallback? onDragStart;
+  final VoidCallback? onDragEnd;
+
+  /// As long as the panel's corner is round: the curve IS the corner.
+  static const double extent = AppShapes.floatingPanelRadius;
+
+  @override
+  State<DockCornerGrip> createState() => _DockCornerGripState();
+}
+
+class _DockCornerGripState extends State<DockCornerGrip> {
+  bool _hovered = false;
+  bool _dragging = false;
+  final TravelDebt _x = TravelDebt();
+  final TravelDebt _y = TravelDebt();
+
+  void _setDragging(bool value) {
+    if (_dragging == value) {
+      return;
+    }
+    setState(() => _dragging = value);
+    _x.clear();
+    _y.clear();
+    if (value) {
+      widget.onDragStart?.call();
+    } else {
+      widget.onDragEnd?.call();
+    }
+  }
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    if (!_dragging) {
+      return;
+    }
+    // An edge the hand did not move along is not written: a resize handed
+    // zero still STORES that edge's extent, and a height that was following
+    // the window (D37's opening) would become pixels nobody chose — a
+    // sideways pull must leave the height as un-chosen as it found it.
+    if (details.delta.dx != 0) {
+      _x.apply(details.delta.dx, widget.onDragX);
+    }
+    if (details.delta.dy != 0) {
+      _y.apply(details.delta.dy, widget.onDragY);
+    }
+  }
+
+  void _configureDrag(DragGestureRecognizer recognizer) {
+    recognizer
+      ..dragStartBehavior = DragStartBehavior.down
+      ..onDown = (_) {
+        _setDragging(true);
+      }
+      ..onUpdate = _handleDragUpdate
+      ..onEnd = (_) {
+        _setDragging(false);
+      }
+      ..onCancel = () {
+        _setDragging(false);
+      };
+  }
+
+  Color get _lineColor {
+    if (_dragging) {
+      return AppColors.accent;
+    }
+    if (_hovered) {
+      return AppColors.gripHover;
+    }
+    return Colors.transparent;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final corner = widget.corner;
+    // ↖↘ for the corners on that diagonal, ↗↙ for the other.
+    final falling = (corner.x < 0) == (corner.y < 0);
+    const band = DockEdgeSplitter.thickness;
+    return MouseRegion(
+      cursor: falling
+          ? SystemMouseCursors.resizeUpLeftDownRight
+          : SystemMouseCursors.resizeUpRightDownLeft,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: OwningAxisGrip(
+        axis: null,
+        configure: _configureDrag,
+        child: SizedBox.square(
+          dimension: DockCornerGrip.extent,
+          child: Stack(
+            children: [
+              // The two edge bands this corner is made of.
+              Positioned(
+                left: corner.x < 0 ? 0 : null,
+                right: corner.x < 0 ? null : 0,
+                top: 0,
+                bottom: 0,
+                width: band,
+                child: ColoredBox(color: _lineColor),
+              ),
+              Positioned(
+                top: corner.y < 0 ? 0 : null,
+                bottom: corner.y < 0 ? null : 0,
+                left: 0,
+                right: 0,
+                height: band,
+                child: ColoredBox(color: _lineColor),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -55,8 +55,27 @@ PlaybackPosition? resolvePlaybackPosition({
   return null;
 }
 
-int playlistTotalFrames(List<StoryboardTimelineLayoutEntry> playlist) {
-  return playlist.isEmpty ? 0 : playlist.last.endFrame;
+/// The stretch of ONE track's axis a playback run plays: its frame 0 shows
+/// the track's frame [trackStart], and it runs [frames] frames.
+///
+/// 🚨THE RUN'S SOUND IS READ OFF THE TRACK THROUGH THIS, NOT THROUGH ITS
+/// CUTS (F-341, 유저 10-12: 「분명 독립적인 글로벌 행이라고 했는데 아직도
+/// 연관시켜버린 코드가 존재하나본데 독립적인 부분은 제대로 독립적으로
+/// 존재하도록」). The playlist's cuts are the run's PICTURES; the track's own
+/// rows play wherever the run is — a gap, the movie's trailing frames, a
+/// track with no cut at all. ↩️Until then the sound was laid cut by cut: a
+/// track with no cut played nothing, a sound in the trailing frames was
+/// never heard, and one running into them stopped at the last cut.
+class PlaybackWindow {
+  const PlaybackWindow({
+    required this.trackId,
+    required this.trackStart,
+    required this.frames,
+  });
+
+  final TrackId trackId;
+  final int trackStart;
+  final int frames;
 }
 
 /// One cut's contribution to a global frame while a transition is running.

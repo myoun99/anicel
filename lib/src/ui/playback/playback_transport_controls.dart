@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -8,7 +10,9 @@ import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
+import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/tick_layer.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
 import 'canvas_playback_controller.dart';
@@ -76,6 +80,13 @@ void skipToStart(
     return;
   }
   onSkipToStart?.call();
+}
+
+/// The loop button's press — and its key's (I-40): loop ⇄ play once.
+void toggleLoop(CanvasPlaybackController controller) {
+  controller.loopMode = controller.loopMode == PlaybackLoopMode.loop
+      ? PlaybackLoopMode.once
+      : PlaybackLoopMode.loop;
 }
 
 /// 🚨T29 — the drop readout's fixed slot. Wide enough for a four-digit
@@ -305,14 +316,10 @@ class PlaybackTransportControls extends StatelessWidget {
       tooltip: controller.loopMode == PlaybackLoopMode.loop
           ? AppText.strings.transportLoop
           : AppText.strings.transportOnce,
+      shortcuts: const [EditorActionIds.playbackLoopToggle],
       isSelected: controller.loopMode == PlaybackLoopMode.loop,
       icon: const Icon(Icons.repeat),
-      onPressed: () {
-        controller.loopMode =
-            controller.loopMode == PlaybackLoopMode.loop
-            ? PlaybackLoopMode.once
-            : PlaybackLoopMode.loop;
-      },
+      onPressed: () => toggleLoop(controller),
     );
   }
 
@@ -353,28 +360,52 @@ class PlaybackTransportControls extends StatelessWidget {
   /// on every frame the device misses — exactly when there is no time to
   /// spare — and while the count was part of what the ROW showed, every drop
   /// rebuilt every button beside it. It rebuilds this slot alone now.
-  Widget _droppedFramesSlot() => _OnWhatItShows<int>(
-    controller: controller,
-    read: _droppedHere,
+  ///
+  /// 🚨AND IS LAID OUT, PAINTED AND DESCRIBED ALONE ([TickLayer], 10-12): the
+  /// slot was fixed in width only, so a new count laid the row out again up
+  /// to the panel's tab strip — whose layer is a tick's — and re-walked the
+  /// strip's semantics whole: 🔬108 render objects at each count a run
+  /// dropped (the real app, debug, cut 302). Its height is stated too now —
+  /// the row's buttons', or one line of its words where the OS text size
+  /// makes that taller — so the count changes nothing outside it.
+  Widget _droppedFramesSlot() => Builder(
     builder: (context) {
-      final dropped = _droppedHere(controller);
+      final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.error,
+      );
       return SizedBox(
         width: _dropSlotWidth,
-        child: dropped > 0
-            ? Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Text(
-                  '$dropped dropped',
-                  key: const ValueKey<String>('playback-dropped-indicator'),
-                  textAlign: TextAlign.right,
-                  maxLines: 1,
-                  overflow: TextOverflow.clip,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              )
-            : null,
+        height: math.max(
+          AppIconButtonSize.bar.height,
+          TextMeasure(context, style).size(TextMeasure.everyScript).height,
+        ),
+        child: TickLayer(
+          child: _OnWhatItShows<int>(
+            controller: controller,
+            read: _droppedHere,
+            builder: (context) {
+              final dropped = _droppedHere(controller);
+              return dropped > 0
+                  ? Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Text(
+                          '$dropped dropped',
+                          key: const ValueKey<String>(
+                            'playback-dropped-indicator',
+                          ),
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.clip,
+                          style: style,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink();
+            },
+          ),
+        ),
       );
     },
   );

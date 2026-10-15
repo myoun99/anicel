@@ -16,9 +16,17 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart'
+    show TimelineNoriShiro;
+import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart'
+    show nextPageScrollOffset;
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
+    show timelineFrameWindowBucketOf;
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart'
+    show TimelineRowCellsPainter;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 /// 🚨★★★**F-110 (유저 2026-09-12)**: 「재생시에도 플레이헤드 밖 나갈때
@@ -41,6 +49,9 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 /// ④ the LAST page turns too, past where the built cells end (F-225, 유저
 ///    2026-09-29: 「언제든 넘어가도록 통일」) — the frame axis is endless, and
 ///    the page was held to the cells already built.
+/// ⑤ the rows are told where the NEXT turn stands the axis — the same law
+///    asked ahead, for a run of every frame the cut is drawn for: what a
+///    run bakes that page's tiles for while it plays this one.
 ///
 /// ⛔**All three surfaces, not the one that was easiest to mount.** The rail
 /// runs its frames across, the x-sheet runs them DOWN, and the storyboard
@@ -82,11 +93,13 @@ void main() {
   TimelineGridHooks hooks({
     required ValueListenable<int> cursor,
     required ValueListenable<int?> playback,
+    TimelineNoriShiro Function()? noriShiro,
   }) => TimelineGridHooks(
     activeLayerId: const LayerId('draw-0'),
     frameCursor: cursor,
     playbackFrame: playback,
     playbackFrameCount: frames,
+    noriShiro: noriShiro,
     exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
     onSelectLayer: (_) {},
     onSelectFrame: (_) {},
@@ -149,6 +162,70 @@ void main() {
     );
   }
 
+  /// A run of the cut plays every frame it is DRAWN for (F-227) — here
+  /// sixty past the red line.
+  const drawn = frames + 60;
+
+  /// The rows [tester] shows that bake their cells as tiles.
+  List<TimelineRowCellsPainter> tiledRows(WidgetTester tester) => [
+    for (final paint in tester.widgetList<CustomPaint>(
+      find.byType(CustomPaint),
+    ))
+      if (paint.painter case final TimelineRowCellsPainter row
+          when row.tileStore != null)
+        row,
+  ];
+
+  /// ⑤ The rows that bake their cells as tiles are told where a run's NEXT
+  /// turn stands [axis] — by one asker for all of them, however many builds
+  /// laid them, so a warm-up asks it once — and the run it asks for is the
+  /// drawn one: on the last page built, a run to the red line wraps to the
+  /// first, and this one turns on. [show] lays the surface over its rows.
+  Future<void> rowsAreToldTheNextTurn(
+    WidgetTester tester, {
+    required Future<void> Function(List<Layer> shown) show,
+    required ScrollPosition Function() axis,
+  }) async {
+    await show(layers);
+    axis().jumpTo(axis().maxScrollExtent);
+    await tester.pump();
+    int turnsTo({required int runFrames}) => timelineFrameWindowBucketOf(
+      offset: nextPageScrollOffset(
+        (offset: axis().pixels, viewport: axis().viewportDimension),
+        extent: cell,
+        runSteps: runFrames,
+      ),
+      cellExtent: cell,
+    );
+    expect(turnsTo(runFrames: frames), 0, reason: '⛔premise: it wraps here');
+    expect(turnsTo(runFrames: drawn), isNot(0), reason: '⛔premise: turns on');
+
+    final rows = tiledRows(tester);
+    expect(rows, isNotEmpty, reason: '⛔premise: rows that bake tiles');
+    expect(
+      {for (final row in rows) row.nextPage},
+      hasLength(1),
+      reason: 'one asker for every row the axis lays',
+    );
+    expect(rows.first.nextPage?.call()?.bucket, turnsTo(runFrames: drawn));
+
+    // One row's layer comes back new: that row is laid again and the rest
+    // are kept, so the rows are of two builds.
+    await show([layer('draw-0', LayerKind.animation), ...layers.skip(1)]);
+    final again = tiledRows(tester);
+    expect(again.where(rows.contains), isNotEmpty, reason: '⛔premise: kept');
+    expect(
+      again.where((row) => !rows.contains(row)),
+      isNotEmpty,
+      reason: '⛔premise: a row laid again',
+    );
+    expect(
+      {for (final row in again) row.nextPage},
+      hasLength(1),
+      reason: 'rows laid in two builds still share the one asker',
+    );
+  }
+
   testWidgets('the rail turns its page under a playing playhead, once per '
       'window, and not at all without one', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 400));
@@ -182,6 +259,51 @@ void main() {
     );
   });
 
+  testWidgets('🚨the page turns on the frame AFTER the one that carried the '
+      'playhead out — that frame shows the film frame, not the turn', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final cursor = ValueNotifier<int>(0);
+    final playing = ValueNotifier<int?>(90);
+    addTearDown(cursor.dispose);
+    addTearDown(playing.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LayerTimelineGrid(
+            hooks: hooks(cursor: cursor, playback: playing),
+            layers: layers,
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              frameCellWidth: cell,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double offset() =>
+        positionOf(tester, 'timeline-frame-scroll-viewport').pixels;
+
+    // The playhead carried out of the page by a frame's own tick, as a run
+    // carries it — and the page read where that frame ends, before anything
+    // that frame asked to happen after it.
+    double? atTheEndOfThatFrame;
+    tester.binding
+      ..addPostFrameCallback((_) => atTheEndOfThatFrame = offset())
+      ..scheduleFrameCallback((_) => cursor.value = 91);
+    await tester.pump();
+
+    expect(
+      atTheEndOfThatFrame,
+      0,
+      reason: 'the frame that moved the playhead did not also move every '
+          'row\'s window',
+    );
+    expect(offset(), 91 * cell, reason: 'and the page turned after it');
+  });
+
   testWidgets('the x-sheet turns its page the same way, down its own axis', (
     tester,
   ) async {
@@ -211,6 +333,82 @@ void main() {
       move: (frame) async {
         cursor.value = frame;
         await tester.pump();
+      },
+      axis: () => positionOf(tester, 'xsheet-frame-vertical-viewport'),
+    );
+  });
+
+  testWidgets('🚨the rail\'s rows are told where a run\'s next turn stands '
+      'the axis', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final cursor = ValueNotifier<int>(0);
+    final playing = ValueNotifier<int?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(playing.dispose);
+
+    // One host's hooks for both builds: a host's callbacks are its own, the
+    // same from one build to the next.
+    final grid = hooks(
+      cursor: cursor,
+      playback: playing,
+      noriShiro: () => (drawnFrameCount: drawn, label: ''),
+    );
+
+    await rowsAreToldTheNextTurn(
+      tester,
+      show: (shown) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LayerTimelineGrid(
+                hooks: grid,
+                layers: shown,
+                metrics: TimelineGridMetrics.defaults.copyWith(
+                  frameCellWidth: cell,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      },
+      axis: () => positionOf(tester, 'timeline-frame-scroll-viewport'),
+    );
+  });
+
+  testWidgets('🚨the x-sheet\'s columns are told where a run\'s next turn '
+      'stands the axis', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final cursor = ValueNotifier<int>(0);
+    final playing = ValueNotifier<int?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(playing.dispose);
+
+    final grid = hooks(
+      cursor: cursor,
+      playback: playing,
+      noriShiro: () => (drawnFrameCount: drawn, label: ''),
+    );
+
+    await rowsAreToldTheNextTurn(
+      tester,
+      show: (shown) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: XSheetTimelineGrid(
+                hooks: grid,
+                layers: shown,
+                metrics: XSheetTimelineGrid.defaultMetrics.copyWith(
+                  frameCellWidth: cell,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
       },
       axis: () => positionOf(tester, 'xsheet-frame-vertical-viewport'),
     );

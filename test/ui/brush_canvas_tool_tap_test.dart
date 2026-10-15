@@ -15,11 +15,14 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
@@ -96,7 +99,7 @@ void main() {
             brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
               tool: CanvasTool.fill,
             )),
-            fillDabAt: (_, color, _) => fillDab(color),
+            fillDabsAt: (_, color, _) => [fillDab(color)],
           ),
         ),
       );
@@ -148,9 +151,11 @@ void main() {
             // under the first. ⛔Not the seed point — the canvas is 2340px
             // wide inside a small viewport, so a local offset is nowhere
             // near the canvas coordinate of the same name.
-            fillDabAt: (_, color, _) => fillDab(color).copyWith(
-              center: CanvasPoint(x: 4 + 20.0 * fills++, y: 4),
-            ),
+            fillDabsAt: (_, color, _) => [
+              fillDab(color).copyWith(
+                center: CanvasPoint(x: 4 + 20.0 * fills++, y: 4),
+              ),
+            ],
           ),
         ),
       );
@@ -219,6 +224,8 @@ void main() {
     // panel. Erase rides a flag on the DAB, so passing only the blend mode
     // would paint the flooded region instead of clearing it — asserted on
     // the raster, because a flag can be set and still not erase.
+    // ⚠️A REAL fill's pieces: a plain dab erases on the blend mode alone,
+    // so it never takes the stamp's road, where erase is the dab's flag.
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -243,7 +250,13 @@ void main() {
             tool: CanvasTool.fill,
             fillBlendMode: BrushBlendMode.erase,
           )),
-          fillDabAt: (_, color, _) => fillDab(color),
+          fillDabsAt: (_, color, _) => buildRegionFillDabs(
+            region: CanvasSelectionRegion.shape(
+              CanvasSelectionShape.rect(left: 0, top: 0, right: 16, bottom: 8),
+            ),
+            color: color,
+            options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+          ),
         ),
       ),
     );
@@ -271,7 +284,7 @@ void main() {
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
           sampleColorAt: (_) => 0xFF123456,
           onEyedropperPick: (_) {},
-          fillDabAt: (_, color, _) => fillDab(color),
+          fillDabsAt: (_, color, _) => [fillDab(color)],
         ),
       ),
     );
@@ -511,9 +524,9 @@ void main() {
             tool: CanvasTool.fill,
             color: 0xFF3366CC,
           )),
-          fillDabAt: (point, color, _) {
+          fillDabsAt: (point, color, _) {
             fillColors.add(color);
-            return fillDab(color);
+            return [fillDab(color)];
           },
         ),
       ),
@@ -580,11 +593,13 @@ void main() {
           brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
           )),
-          fillDabAt: (_, color, _) => fillDab(color).copyWith(
-            center: CanvasPoint(x: 0, y: 0),
-            size: 64,
-            stamp: stamp,
-          ),
+          fillDabsAt: (_, color, _) => [
+            fillDab(color).copyWith(
+              center: CanvasPoint(x: 0, y: 0),
+              size: 64,
+              stamp: stamp,
+            ),
+          ],
         ),
       ),
     );
@@ -632,7 +647,7 @@ void main() {
           brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
             tool: CanvasTool.fill,
           )),
-          fillDabAt: (_, _, _) => null,
+          fillDabsAt: (_, _, _) => const [],
         ),
       ),
     );
@@ -656,7 +671,7 @@ void main() {
       'and every tool stands down; let go and the same drag draws', (
     tester,
   ) async {
-    addTearDown(() => CanvasPanHold.held.value = false);
+    addTearDown(() => CanvasViewHold.held.value = null);
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -691,14 +706,14 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    CanvasPanHold.held.value = true;
+    CanvasViewHold.held.value = ViewHold.pan;
     await tester.pump();
     expect(hand, findsOneWidget, reason: 'the hand says what a press does');
     await mouseDrag();
     expect(viewports, isNotEmpty, reason: 'the drag moved the view');
     expect(drawn(), isFalse, reason: 'the brush stood down for the pan');
 
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
     await tester.pump();
     expect(hand, findsNothing);
     viewports.clear();

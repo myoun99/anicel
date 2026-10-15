@@ -11,6 +11,7 @@ import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
+import 'package:anicel/src/ui/canvas/tile_blocks.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/awaited_uploads.dart';
@@ -49,17 +50,22 @@ void main() {
   }
 
   /// A cel of [count] small tiles in a row, each with ink and none with a
-  /// picture.
+  /// picture — each in a block of its own ([tileBlockEdge]), so each is a
+  /// picture of its own.
   BitmapSurface rowOfTiles(int count) {
     const size = 8;
+    const apart = tileBlockEdge ~/ size;
     var surface = BitmapSurface(
-      canvasSize: CanvasSize(width: size * count, height: size),
+      canvasSize: CanvasSize(
+        width: size * (apart * (count - 1) + 1),
+        height: size,
+      ),
       tileSize: size,
     );
     for (var x = 0; x < count; x += 1) {
       surface = surface.putTiles([
         (
-          coord: TileCoord(x: x, y: 0),
+          coord: TileCoord(x: x * apart, y: 0),
           tile: BitmapTile(
             size: size,
             pixels: Uint8List(size * size * 4)
@@ -166,10 +172,9 @@ void main() {
   });
 
   testWidgets('🚨the compose in turn is a snapshot WAITED FOR unless its '
-      'caller takes it as a step of a chain: the canvas-sized one always, '
-      'the positioned one by its word — the same pixels either way', (
-    tester,
-  ) async {
+      'caller takes it as a step of a chain: the canvas-sized and the '
+      'positioned one always, the halved one by its word — the same pixels '
+      'either way', (tester) async {
     await tester.runAsync(() async {
       final surface = patternedSurface(
         const CanvasSize(width: 300, height: 200),
@@ -183,18 +188,26 @@ void main() {
       canvasSized.dispose();
 
       waited.clear();
-      final kept = (await composePositionedSurfaceImage(surface))!;
-      expect(waited, [(kept.image.width, kept.image.height)]);
-      final want = await bytesOf(kept.image);
+      final positioned = (await composePositionedSurfaceImage(surface))!;
+      expect(waited, [(positioned.image.width, positioned.image.height)]);
+      positioned.image.dispose();
+
+      // The first level — the step a level image begins with.
+      final over = surfaceContentWorldRect(surface);
+      waited.clear();
+      final kept = (await composeHalvedSurfaceImage(surface, over: over))!;
+      expect(waited, [(kept.width, kept.height)]);
+      final want = await bytesOf(kept);
 
       waited.clear();
-      final step = (await composePositionedSurfaceImage(
+      final step = (await composeHalvedSurfaceImage(
         surface,
+        over: over,
         deferred: true,
       ))!;
       expect(waited, isEmpty, reason: 'a step of a chain waits for nothing');
-      expect(step.worldRect, kept.worldRect);
-      expect(await bytesOf(step.image), want);
+      expect((step.width, step.height), (kept.width, kept.height));
+      expect(await bytesOf(step), want);
     });
   });
 
@@ -299,7 +312,7 @@ void main() {
     });
   });
 
-  testWidgets('shouldAbort stops the compose at tile granularity and '
+  testWidgets('shouldAbort stops the compose a picture at a time and '
       'before the final raster (R13-4)', (tester) async {
     await tester.runAsync(() async {
       final surface = patternedSurface(
@@ -427,11 +440,15 @@ void main() {
       return abandoned();
     };
 
+    // The corpus holds a clock of its own (`flutter_test_config.dart`): it
+    // is handed back, not dropped for the wall's.
+    int Function()? corpusClock;
     setUp(() {
       clock = 0;
+      corpusClock = debugTilePictureClock;
       debugTilePictureClock = () => clock;
     });
-    tearDown(() => debugTilePictureClock = null);
+    tearDown(() => debugTilePictureClock = corpusClock);
 
     testWidgets('🚨what was waiting in the event queue is heard before a '
         'compose longer than a run is done — and a compose somebody waits '
@@ -565,6 +582,162 @@ void main() {
       );
       expect(checks, 1, reason: 'no picture was missing: the one check is '
           'the raster\'s');
+    });
+  });
+
+  group('🚨a cel nobody has pictured goes up a BLOCK at a time — the same '
+      'bytes as a tile at a time (board a-cold-cel-composes-tile-by-tile)', () {
+    /// A cel of 128 px tiles at [coords], each tile's pixels its own and
+    /// every alpha regime in each — a picture that laid a tile in the wrong
+    /// place, or premultiplied it twice, cannot match. Runs of four equal
+    /// pixels keep the test runner's straight drawing short.
+    BitmapSurface celOf(Iterable<(int, int)> coords) {
+      const size = 128;
+      return BitmapSurface(
+        canvasSize: const CanvasSize(width: 1280, height: 768),
+        tiles: {
+          for (final (tileX, tileY) in coords)
+            TileCoord(x: tileX, y: tileY): BitmapTile(
+              size: size,
+              pixels: Uint8List(size * size * 4)
+                ..setAll(0, [
+                  for (var y = 0; y < size; y += 1)
+                    for (var x = 0; x < size; x += 1) ...[
+                      (x ~/ 4 * 37 + tileX * 11) & 0xFF,
+                      (y * 23 + tileY * 7) & 0xFF,
+                      ((x ~/ 4) ^ y) & 0xFF,
+                      ((x ~/ 4 + y) * 9 + tileX) % 256,
+                    ],
+                ]),
+            ),
+        },
+      );
+    }
+
+    // Whole blocks, one part-filled across a corner (a gap in its picture),
+    // a lone tile, and the pasteboard's.
+    final coords = [
+      for (var y = 0; y < 4; y += 1)
+        for (var x = 0; x < 4; x += 1) (x, y),
+      (4, 0),
+      (5, 1),
+      (9, 5),
+      (-1, -1),
+      (-1, 2),
+    ];
+
+    testWidgets('🚨one picture a BLOCK: four tiles are one, a second block a '
+        'second', (tester) async {
+      await tester.runAsync(() async {
+        // The check before each picture, and the one before the raster.
+        Future<int> checksFor(BitmapSurface surface) async {
+          var checks = 0;
+          (await composeTiledSurfaceImage(
+            surface,
+            shouldAbort: () {
+              checks += 1;
+              return false;
+            },
+          ))!.dispose();
+          return checks;
+        }
+
+        expect(tileBlockEdge, 256);
+        expect(await checksFor(celOf([(0, 0), (1, 0), (0, 1), (1, 1)])), 2);
+        expect(
+          await checksFor(celOf([
+            for (var y = 0; y < 2; y += 1)
+              for (var x = 0; x < 4; x += 1) (x, y),
+          ])),
+          3,
+        );
+      });
+    });
+
+    testWidgets('🚨the blocks show what the tiles show — 1:1, canvas-sized '
+        'and positioned, against the cel pictured a tile at a time and the '
+        'CPU assembly; a block whose tiles all have pictures drawn from '
+        'them, one that has some pictured whole', (tester) async {
+      await tester.runAsync(() async {
+        final surface = celOf(coords);
+        final tileAt = surface.tileAt;
+        // Every tile of the lone tile's block, and two of the whole block's.
+        final reuse = BitmapTileImageCache()
+          ..pictureFor(tileAt(TileCoord(x: 9, y: 5))!)
+          ..pictureFor(tileAt(TileCoord(x: 0, y: 0))!)
+          ..pictureFor(tileAt(TileCoord(x: 3, y: 2))!);
+
+        debugUploadOffloadPixelThreshold = 1 << 62; // CPU path stays sync
+        final reference = await bytesOf(await bitmapSurfaceToImage(surface));
+        expect(
+          await bytesOf((await composeTiledSurfaceImage(surface))!),
+          reference,
+          reason: 'every block cold',
+        );
+        expect(
+          await bytesOf(
+            (await composeTiledSurfaceImage(surface, reuse: reuse))!,
+          ),
+          reference,
+          reason: 'some blocks held, one in part',
+        );
+
+        final blocks = (await composePositionedSurfaceImage(
+          surface,
+          reuse: reuse,
+        ))!;
+        final tiles = composePositionedSurfaceImageSync(
+          surface,
+          reuse: BitmapTileImageCache(),
+          makePictures: true,
+          snapshot: true,
+        )!;
+        expect(blocks.worldRect, tiles.deferred.worldRect);
+        expect(
+          blocks.worldRect,
+          const ui.Rect.fromLTRB(-128, -128, 1280, 768),
+          reason: 'fixture: the pasteboard\'s tiles grow the content',
+        );
+        tiles.deferred.image.dispose();
+        expect(await bytesOf(blocks.image), await bytesOf(await tiles.real!));
+      });
+    });
+
+    testWidgets('🚨the blocks HALVED are the tiles halved — the first level '
+        'of a cel the warm makes, against the one the canvas makes', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final surface = celOf(coords);
+        final over = surfaceContentWorldRect(surface);
+        final shared = BitmapTileImageCache.instance;
+        expect(
+          surface.tiles.values.every((tile) => shared.imageFor(tile) == null),
+          isTrue,
+          reason: 'fixture: nothing has pictured these tiles',
+        );
+        // One block in part: pictured whole.
+        shared.pictureFor(surface.tileAt(TileCoord(x: 1, y: 1))!);
+        addTearDown(() {
+          for (final tile in surface.tiles.values) {
+            shared.releasePicture(tile);
+          }
+        });
+
+        final blocks = await bytesOf(
+          (await composeHalvedSurfaceImage(surface, over: over))!,
+        );
+        // Made now, every tile pictured on its own and kept — the road the
+        // canvas shows a cel by.
+        final tiles = composeHalvedSurfaceImageSync(
+          surface,
+          makePictures: true,
+          snapshot: true,
+          over: over,
+        )!;
+        tiles.deferred.dispose();
+        expect(blocks, await bytesOf(await tiles.real!));
+      });
     });
   });
 }

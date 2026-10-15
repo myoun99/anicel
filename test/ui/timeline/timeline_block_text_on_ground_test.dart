@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
@@ -139,7 +140,7 @@ void main() {
   ({int left, int top, int right, int bottom}) glyphRect() {
     final painter = labelsPainter();
     final label = painter.runLabels().single;
-    final glyph = timelineGlyphPainter(label.text, painter.labelStyle);
+    final glyph = laidOutGlyph(label.text, painter.labelStyle);
     return (
       left: (label.anchor.dx - glyph.width / 2).floor(),
       top: (crossExtent - glyph.height - 1).floor(),
@@ -493,14 +494,18 @@ void main() {
   });
   test('the inverting and outline arms are GONE from the glyph pipeline — '
       'the ground-law solid is the only arm left', () {
-    final cache = File(
+    final entry = File(
       'lib/src/ui/timeline/timeline_glyph_cache.dart',
     ).readAsStringSync();
     expect(
-      cache,
+      entry,
       contains('timelineTextOnColor'),
       reason: 'the ground law resolves the ink in the shared paint entry',
     );
+    // The pipeline is the entry and the one cache it lays out from.
+    final cache =
+        entry +
+        File('lib/src/ui/text/laid_out_glyph.dart').readAsStringSync();
     expect(
       cache,
       isNot(contains('BlendMode.difference')),

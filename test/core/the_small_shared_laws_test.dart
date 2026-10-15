@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/argb_channels.dart';
+import 'package:anicel/src/core/bounded_memo.dart';
 import 'package:anicel/src/core/contain_rect.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/identity_memo.dart';
@@ -77,6 +78,36 @@ void main() {
       final same = _Twin();
       expect(memo.resolve(identity: same, build: build), 3);
       expect(memo.resolve(identity: same, build: build), 3);
+    });
+  });
+
+  group('BoundedMemo — built once, and let go whole when it is full', () {
+    test('a key asked again answers the SAME value without a second '
+        'build', () {
+      final memo = BoundedMemo<int, List<int>>(4);
+      var builds = 0;
+      List<int> build() => [++builds];
+
+      final first = memo.resolve(1, build);
+      expect(identical(memo.resolve(1, build), first), isTrue);
+      expect(builds, 1);
+    });
+
+    test('one more than it holds starts it over — every value goes, not '
+        'the oldest (a recency shuffle a dab was the dab share\'s cost)', () {
+      final memo = BoundedMemo<int, List<int>>(2);
+      var builds = 0;
+      List<int> build() => [++builds];
+
+      memo
+        ..resolve(1, build)
+        ..resolve(2, build)
+        ..resolve(3, build);
+      expect(builds, 3);
+      memo.resolve(3, build);
+      expect(builds, 3, reason: 'the value it started over with is held');
+      memo.resolve(2, build);
+      expect(builds, 4, reason: 'the newest it held went with the rest');
     });
   });
 

@@ -26,6 +26,10 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/held_row_pin.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
+
+import '../../helpers/named_finders.dart';
+import '../../helpers/row_folds.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -186,7 +190,7 @@ Future<void> _pump(WidgetTester tester, {Project? project}) async {
 }
 
 Finder _railRow(String id) =>
-    find.byKey(ValueKey<String>('timeline-layer-row-$id'));
+    find.named('timeline-layer-row-$id');
 
 /// Where a rail row is GRABBED: its name — the part of the row that only
 /// ever means the row. ⛔Not the row's centre: the rail's columns decide
@@ -194,7 +198,7 @@ Finder _railRow(String id) =>
 /// (text-scale-rail-opac, 유저 2026-09-25) a drawing row's centre became its
 /// fill-reference button, which owns the press.
 Finder _railRowGrip(String id) =>
-    find.byKey(ValueKey<String>('timeline-layer-name-$id'));
+    find.named('timeline-layer-name-$id');
 
 /// ⑨ (user, 2026-08-12): 「첫 드래그가 선택(1개/여러 개), 그 다음이 드래그」.
 ///
@@ -424,7 +428,7 @@ void main() {
     expect(before.length, 2);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-b')),
+      find.named('timeline-lane-toggle-b'),
     );
     await tester.pumpAndSettle();
 
@@ -490,9 +494,9 @@ void main() {
     // is nearest, so from a grab in this column's middle it takes one and a
     // half columns to stand on the next one — the rail's rule transposed,
     // which is the whole point of the two surfaces sharing this drag.
-    final header = find.byKey(const ValueKey<String>('xsheet-layer-row-a'));
+    final header = find.named('xsheet-layer-row-a');
     // Grabbed by its name, like the rail's rows ([_railRowGrip]).
-    final grip = find.byKey(const ValueKey<String>('xsheet-layer-name-a'));
+    final grip = find.named('xsheet-layer-name-a');
     await tester.ensureVisible(grip);
     await tester.pumpAndSettle();
     // ⑨: the sheet runs the other way, so its select nudge does too.
@@ -810,10 +814,8 @@ void main() {
       'the inside of a group nobody can see', (tester) async {
     await _pump(tester, project: _facingGroupsProject());
     final session = _sessionOf(tester);
-    session.railView.collapsedAttachBaseIds.value = {
-      const LayerId('b1'),
-      const LayerId('b2'),
-    };
+    setRowFolds(session, const LayerId('b1'), collapsed: true);
+    setRowFolds(session, const LayerId('b2'), collapsed: true);
     await tester.pumpAndSettle();
     expect(_railRow('b2down'), findsNothing, reason: '⛔전제: folded');
     expect(_railRow('b1up'), findsNothing, reason: '⛔전제: folded');
@@ -960,7 +962,7 @@ void main() {
     final session = _sessionOf(tester);
     expect(_layerOf(session, 'm').attachedToLayerId, isNull);
 
-    final row = find.byKey(const ValueKey<String>('timeline-folder-row-f'));
+    final row = find.named('timeline-folder-row-f');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     // ⑨'s select first. The folder row's LEFT edge is buttons, so the grab
@@ -1004,7 +1006,7 @@ void main() {
     final session = _sessionOf(tester);
     expect(_layerOf(session, 'f').attachedToLayerId, isNull);
 
-    final row = find.byKey(const ValueKey<String>('timeline-folder-row-f'));
+    final row = find.named('timeline-folder-row-f');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     // ⑨'s select first. The folder row's LEFT edge is buttons, so the grab
@@ -1121,6 +1123,7 @@ void main() {
                 row: row,
                 dragRows: () => [row],
                 rowExtent: 28,
+                dragEdges: () => TimelineRowEdges.uniform(1, 28),
                 axis: Axis.horizontal,
                 hooks: TimelineRowDragHooks(
                   drag: drag,

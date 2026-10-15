@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'clip_document.dart';
 import 'clip_offscreen.dart';
+import 'clip_placement.dart';
 
 /// One tile of a cel's picture: its place in tiles, and its straight RGBA.
 typedef ClipCelTile = ({int x, int y, Uint8List pixels});
@@ -18,29 +19,34 @@ typedef ClipPicture = ({
   bool moveOnly,
 });
 
-/// [layer]'s stored picture — its render where the layer stands, or a
-/// dropped picture's original where its transform takes the original's
-/// top-left. Null for a layer that stores none.
+/// [layer]'s stored picture — a dropped picture's ORIGINAL where its
+/// transform takes the original's top-left, and any other layer's render
+/// where the layer stands. Null for a layer that stores none.
 ///
-/// The transform (`ResizableImageInfo`, big-endian — memory
-/// `csp-clip-format-notes` §4): scale x · y at @40 · @48, the turn in
-/// degrees at @56, the point the picture is placed at (px, py) at @64 ·
-/// @72, and the point in the picture that goes there (cx, cy) at @80 ·
-/// @88. A point (u, v) of the original lands at `(a·u + c·v + e, b·u + d·v
-/// + f)` with `a = cos·sx, b = sin·sx, c = −sin·sy, d = cos·sy, e = px −
-/// a·cx − c·cy, f = py − b·cx − d·cy`, moved by `LayerOffset`. The samples
-/// carry no scale or turn, so only the move is drawn (MoArt reads the
-/// rest).
+/// A dropped picture declares a render too, and the file never stores it
+/// (all 22 of the samples' — read first, it came in as 「A / 1: 그림을 읽지
+/// 못했습니다」 on a sample the user opened, 10-09); one with no original
+/// falls to its render, which says so when it is not there either.
+///
+/// The transform is the picture's placement ([clipPlacementOf]): the
+/// original's top-left lands where [clipPlaced] takes its corner, moved by
+/// `LayerOffset`. The samples carry no scale or turn, so only the move is
+/// drawn (MoArt reads the rest).
 ClipPicture? clipPictureOf(ClipLayer layer) {
-  if (layer.render case final render?) {
-    return (source: render, left: layer.left, top: layer.top, moveOnly: true);
-  }
-  final original = layer.original;
+  final original = layer.kind == ClipLayerKind.picture ? layer.original : null;
   if (original == null) {
-    return null;
+    return switch (layer.render) {
+      final render? => (
+        source: render,
+        left: layer.left,
+        top: layer.top,
+        moveOnly: true,
+      ),
+      null => null,
+    };
   }
-  final transform = layer.originalTransform;
-  if (transform == null || transform.length < 96) {
+  final placement = clipPlacementOf(layer.originalTransform);
+  if (placement == null) {
     return (
       source: original,
       left: layer.offsetX,
@@ -48,26 +54,12 @@ ClipPicture? clipPictureOf(ClipLayer layer) {
       moveOnly: true,
     );
   }
-  final data = ByteData.sublistView(transform);
-  final sx = data.getFloat64(40);
-  final sy = data.getFloat64(48);
-  final turn = data.getFloat64(56) * math.pi / 180;
-  final a = math.cos(turn) * sx;
-  final b = math.sin(turn) * sx;
-  final c = -math.sin(turn) * sy;
-  final d = math.cos(turn) * sy;
-  final cx = data.getFloat64(80);
-  final cy = data.getFloat64(88);
-  const exact = 1e-6;
+  final corner = clipPlaced(placement, 0, 0);
   return (
     source: original,
-    left: layer.offsetX + (data.getFloat64(64) - a * cx - c * cy).round(),
-    top: layer.offsetY + (data.getFloat64(72) - b * cx - d * cy).round(),
-    moveOnly:
-        (a - 1).abs() < exact &&
-        b.abs() < exact &&
-        c.abs() < exact &&
-        (d - 1).abs() < exact,
+    left: layer.offsetX + corner.x.round(),
+    top: layer.offsetY + corner.y.round(),
+    moveOnly: clipPlacementOnlyMoves(placement),
   );
 }
 
@@ -87,9 +79,6 @@ typedef ClipCelTarget = ({
 /// or null for a picture that is not colour: a grey or monochrome layer,
 /// which this reader does not turn into colour.
 ///
-/// What falls off the canvas is dropped, and a tile with no ink is not
-/// there at all — the shape the drawing store gives an empty tile.
-///
 /// Pure, so it runs on a worker: the two byte lists are all it is given.
 List<ClipCelTile>? clipCelTiles(
   Uint8List attribute,
@@ -101,19 +90,34 @@ List<ClipCelTile>? clipCelTiles(
   if (rgba == null) {
     return null;
   }
+  return clipCelTilesOf(
+    (rgba: rgba, width: shape.width, height: shape.height),
+    target,
+  );
+}
+
+/// [picture] — straight RGBA — as cel tiles on [target]: a stored picture
+/// once decoded ([clipCelTiles]), and a vector layer once drawn.
+///
+/// What falls off the canvas is dropped, and a tile with no ink is not
+/// there at all — the shape the drawing store gives an empty tile.
+List<ClipCelTile> clipCelTilesOf(
+  ({Uint8List rgba, int width, int height}) picture,
+  ClipCelTarget target,
+) {
   final size = target.tileSize;
   // The picture's part on the canvas, in canvas pixels.
   final on = (
     left: math.max(0, target.left),
     top: math.max(0, target.top),
-    right: math.min(target.canvasWidth, target.left + shape.width),
-    bottom: math.min(target.canvasHeight, target.top + shape.height),
+    right: math.min(target.canvasWidth, target.left + picture.width),
+    bottom: math.min(target.canvasHeight, target.top + picture.height),
   );
   final tiles = <ClipCelTile>[];
   for (var ty = on.top ~/ size; ty * size < on.bottom; ty += 1) {
     for (var tx = on.left ~/ size; tx * size < on.right; tx += 1) {
       final pixels = _tileOf(
-        (rgba: rgba, width: shape.width),
+        (rgba: picture.rgba, width: picture.width),
         target,
         (x: tx, y: ty),
         on,

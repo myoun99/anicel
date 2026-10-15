@@ -98,6 +98,7 @@ class ConformAudio {
     this.sourceStat,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
+    this.decodeRecipe = 0,
   });
 
   /// Interleaved by channel, normalized to [-1, 1].
@@ -126,6 +127,9 @@ class ConformAudio {
   /// absent keys read as 1/1.
   final int speedNumerator;
   final int speedDenominator;
+
+  /// Which of the engine's decodes made [samples] ([conformDecodeRecipe]).
+  final int decodeRecipe;
 
   /// Samples per channel.
   int get length => channels <= 0 ? 0 : samples.length ~/ channels;
@@ -178,7 +182,8 @@ class ConformFormatException implements Exception {
 /// 40   4  sourceCrc32         u32
 /// 44   4  (reserved, 0)
 /// 48   8  sourceModifiedMicros i64
-/// 56   8  (reserved, 0)
+/// 56   4  decodeRecipe        u32   which decode made the PCM (0 = before)
+/// 60   4  (reserved, 0)
 /// 64  ..  int16 LE, interleaved
 /// ```
 ///
@@ -203,7 +208,43 @@ class ConformHeader {
     required this.speedDenominator,
     this.fingerprint,
     this.sourceStat,
+    this.decodeRecipe = 0,
   });
+
+  /// The header a conform of [frames] is written with today — the one
+  /// [encodeConform] and the pipeline's streamed write both lay down.
+  factory ConformHeader.of({
+    required int frames,
+    required int channels,
+    required int sampleRate,
+    ConformSourceFingerprint? fingerprint,
+    MediaSourceStamp? sourceStat,
+    int speedNumerator = 1,
+    int speedDenominator = 1,
+  }) {
+    if (channels <= 0) {
+      throw const ConformFormatException('channels must be positive');
+    }
+    if (sampleRate <= 0) {
+      throw const ConformFormatException('sampleRate must be positive');
+    }
+    // ⚠️The stat rides ONLY alongside a fingerprint. It is the cheap half of
+    // one question — 「has the source changed」 — and on its own it cannot
+    // answer it: a conform written before the fingerprint was content-based
+    // carried a timestamp and nothing to derive a hash from, and those had
+    // to be treated as unknown. Storing a stat with no fingerprint would put
+    // that state back within reach.
+    return ConformHeader(
+      sampleRate: sampleRate,
+      channels: channels,
+      frames: frames,
+      speedNumerator: speedNumerator,
+      speedDenominator: speedDenominator,
+      fingerprint: fingerprint,
+      sourceStat: fingerprint == null ? null : sourceStat,
+      decodeRecipe: conformDecodeRecipe,
+    );
+  }
 
   /// Bytes before the first sample. Fixed — that is the whole point.
   static const int length = 64;
@@ -225,6 +266,10 @@ class ConformHeader {
   final int speedDenominator;
   final ConformSourceFingerprint? fingerprint;
   final MediaSourceStamp? sourceStat;
+
+  /// Which of the engine's decodes made the PCM — [conformDecodeRecipe] when
+  /// this app wrote it today, 0 on a conform written before the field.
+  final int decodeRecipe;
 
   /// Bytes of PCM this header claims.
   int get dataBytes => frames * channels * 2;
@@ -250,6 +295,7 @@ class ConformHeader {
     view.setUint64(32, fingerprint?.sourceLength ?? 0, Endian.little);
     view.setUint32(40, fingerprint?.sourceCrc32 ?? 0, Endian.little);
     view.setInt64(48, sourceStat?.modifiedMicros ?? 0, Endian.little);
+    view.setUint32(56, decodeRecipe, Endian.little);
     return out;
   }
 
@@ -298,9 +344,21 @@ class ConformHeader {
               lengthBytes: sourceLength,
               modifiedMicros: view.getInt64(48, Endian.little),
             ),
+      decodeRecipe: view.getUint32(56, Endian.little),
     );
   }
 }
+
+/// Which of the engine's decodes made a conform's PCM, as every conform this
+/// app writes now records it. A conform another one made is made again —
+/// from its source, which a conform is never used without.
+///
+/// 🚨Bump it when the engine's decode starts handing back different samples
+/// for the same file: what an old conform holds is then not what opening the
+/// file today would play. 0 = before 2026-10-09; 1 = a container's head says
+/// whether dr_mp3 may try it, and the frames an encoder put before the sound
+/// come off (board sound-lands-on-its-exact-sample).
+const int conformDecodeRecipe = 1;
 
 /// Whether [head] starts with the conform magic — the cheap half of「is this
 /// file ours」, and all the cache collector needs before it counts or deletes
@@ -332,38 +390,24 @@ Uint8List encodeConform({
   int speedNumerator = 1,
   int speedDenominator = 1,
 }) {
-  if (channels <= 0) {
-    throw const ConformFormatException('channels must be positive');
-  }
-  if (sampleRate <= 0) {
-    throw const ConformFormatException('sampleRate must be positive');
-  }
-  // ⚠️The stat rides ONLY alongside a fingerprint. It is the cheap half of
-  // one question — 「has the source changed」 — and on its own it cannot
-  // answer it: a conform written before the fingerprint was content-based
-  // carried a timestamp and nothing to derive a hash from, and those had to
-  // be treated as unknown. Storing a stat with no fingerprint would put that
-  // state back within reach.
-  final header = ConformHeader(
-    sampleRate: sampleRate,
+  final header = ConformHeader.of(
+    frames: channels <= 0 ? 0 : samples.length ~/ channels,
     channels: channels,
-    frames: samples.length ~/ channels,
+    sampleRate: sampleRate,
+    fingerprint: fingerprint,
+    sourceStat: sourceStat,
     speedNumerator: speedNumerator,
     speedDenominator: speedDenominator,
-    fingerprint: fingerprint,
-    sourceStat: fingerprint == null ? null : sourceStat,
   );
-  final out = Uint8List(ConformHeader.length + header.dataBytes);
+  final out = Uint8List(header.totalBytes);
   out.setRange(0, ConformHeader.length, header.toBytes());
-  final view = ByteData.sublistView(out, ConformHeader.length);
   final count = header.frames * channels;
-  for (var index = 0; index < count; index += 1) {
-    view.setInt16(
-      index * 2,
-      int16FromUnitSample(samples[index]),
-      Endian.little,
-    );
-  }
+  // The 64-byte header keeps the PCM's start even, so a 16-bit view lands
+  // on it ([conformPcmToFloat32]'s rule, written instead of read).
+  int16PcmOf(
+    Float32List.sublistView(samples, 0, count),
+    into: Int16List.view(out.buffer, ConformHeader.length, count),
+  );
   return out;
 }
 
@@ -431,16 +475,17 @@ ConformAudio decodeConform(Uint8List bytes) {
     sourceStat: header.sourceStat,
     speedNumerator: header.speedNumerator,
     speedDenominator: header.speedDenominator,
+    decodeRecipe: header.decodeRecipe,
   );
 }
 
+/// Whether a conform whose header records [recorded] is still of the source
+/// that now fingerprints as [current].
+///
 /// A conform with NO fingerprint counts as stale: it was not written by us,
 /// so nothing is known about what it came from, and guessing wrong means
 /// playing the wrong audio against someone's drawing.
 bool conformMatchesSource(
-  ConformAudio conform,
+  ConformSourceFingerprint? recorded,
   ConformSourceFingerprint current,
-) {
-  final fingerprint = conform.fingerprint;
-  return fingerprint != null && fingerprint.matches(current);
-}
+) => recorded != null && recorded.matches(current);

@@ -186,6 +186,7 @@ class CameraInstructionSet {
 
   final List<CameraInstructionDef> defs;
 
+  /// Every term of this vocabulary, by id.
   CameraInstructionDef? defById(String id) {
     for (final def in defs) {
       if (def.id == id) {
@@ -343,7 +344,7 @@ class InstructionEvent {
     if (text != null && text.isNotEmpty) {
       return text;
     }
-    return def?.name ?? instructionId;
+    return instructionTermName(instructionId, def);
   }
 
   InstructionEvent copyWith({
@@ -462,3 +463,9 @@ List<Map<String, dynamic>> instructionMapToJson(
       {'index': entry.key, ...entry.value.toJson()},
   ];
 }
+/// What a term is written as: its [def]'s name in the vocabulary, or the
+/// raw [id] where the vocabulary has none (a term since deleted) — an
+/// instruction span's fallback ([InstructionEvent.displayLabel]) and the
+/// camera's moves' only name (I-73 ⑤).
+String instructionTermName(String id, CameraInstructionDef? def) =>
+    def?.name ?? id;

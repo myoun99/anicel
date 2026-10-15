@@ -1,18 +1,21 @@
 import 'dart:async' show unawaited;
 
+import '../../core/in_flight.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/media_asset.dart' show MediaCarry;
+import '../../models/media_reference.dart';
 import '../../models/movie_cel.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/cut_frame_composite_plan.dart'
     show resolveCutFrameCompositeEntries;
 import '../../services/import/raster_cel_import.dart'
-    show rasterizeImageToSurface;
+    show picturePlacement, rasterizeImageToSurface;
 import '../../services/media/media_byte_source.dart'
     show HeldBytesMove, HeldMediaBytes, HoldMediaBytes;
 import '../../services/media/movie_bytes.dart';
@@ -48,8 +51,14 @@ typedef _OpenMovie = ({
 typedef _Movie = ({String path, MediaCarry? carry});
 
 /// One picture of a movie, as a canvas shows it: the movie, the movie
-/// frame, and the canvas it was fitted to.
-typedef _MoviePicture = (_Movie movie, int movieFrame, CanvasSize canvas);
+/// frame, the canvas it was laid on and the pose it stands at there (the
+/// row's reference fx, I-68).
+typedef _MoviePicture = (
+  _Movie movie,
+  int movieFrame,
+  CanvasSize canvas,
+  TransformPose pose,
+);
 
 /// Decodes the MOVIE cels a cut shows into the cel store (미디어 배치 라운드
 /// 6; 08-31 「굽지 않고 재생할 때 디코드」).
@@ -111,7 +120,7 @@ class MovieCelHydrator {
   /// Pictures being decoded right now: positions that show one frame of the
   /// file — and askers that come back before it lands — wait for ONE
   /// decode.
-  final Map<_MoviePicture, Future<BitmapSurface?>> _decoding = {};
+  final InFlight<_MoviePicture, BitmapSurface?> _decoding = InFlight();
 
   /// Pictures decoded before, for as long as the store still holds them —
   /// the next position showing the same movie frame takes the same
@@ -119,9 +128,22 @@ class MovieCelHydrator {
   /// lives, not this.
   final Map<_MoviePicture, WeakReference<BitmapSurface>> _decoded = {};
 
+  /// What each cel's installed picture is OF: the movie, and the pose it
+  /// stands at. A cel keeps its key when its row is pointed at another movie
+  /// (I-47) or its reference fx moves (I-68), and the store knows only that
+  /// it holds A picture at that canvas — so a picture of another movie, or
+  /// at another pose, is decoded again here.
+  final Map<BrushFrameKey, (_Movie, TransformPose)> _shown = {};
+
   /// Set by [dispose]. A decode still on its way installs nothing: the store
   /// it would fill goes with the session.
   bool _disposed = false;
+
+  /// Where [key]'s installed movie picture was laid — the pose it was
+  /// decoded at — or null while none has been. A row whose reference fx
+  /// moved shows that picture moved to its new pose until the new one is
+  /// decoded (`EditingStackMap`).
+  TransformPose? laidAt(BrushFrameKey key) => _shown[key]?.$2;
 
   /// What the DECODER said [path] is, or null while nothing has opened it.
   ///
@@ -170,10 +192,11 @@ class MovieCelHydrator {
         entry.layer.id,
         entry.frame.id,
       );
-      if (store.hasMovieCel(key, cut.canvasSize)) {
+      if (store.hasMovieCel(key, cut.canvasSize) &&
+          _shown[key] == (_movieAt(reference.assetPath), reference.pose)) {
         continue;
       }
-      jobs.add(_fill(key, cut, reference.assetPath, movieCel.elapsed));
+      jobs.add(_fill(key, cut, reference, movieCel.elapsed));
     }
     return Future.wait(jobs);
   }
@@ -181,10 +204,10 @@ class MovieCelHydrator {
   Future<void> _fill(
     BrushFrameKey key,
     Cut cut,
-    String path,
+    MediaReference reference,
     int elapsed,
   ) async {
-    final at = _movieAt(path);
+    final at = _movieAt(reference.assetPath);
     final movie = await _movieFor(at);
     if (movie == null || _disposed) {
       return;
@@ -198,11 +221,13 @@ class MovieCelHydrator {
       at,
       movieFrame,
       cut.canvasSize,
+      reference.pose,
     ));
     if (picture == null || _disposed) {
       return;
     }
     _renderCaches.brushFrameStore.installMovieCel(key, picture);
+    _shown[key] = (at, reference.pose);
   }
 
   Future<BitmapSurface?> _pictureOf(_OpenMovie movie, _MoviePicture at) {
@@ -211,18 +236,11 @@ class MovieCelHydrator {
       return Future.value(kept);
     }
     _decoded.remove(at);
-    return _decoding[at] ??= _decode(movie, at).whenComplete(() {
-      // 🚨A BLOCK, NOT AN ARROW. `remove` answers what it removed — this
-      // very future — and a `whenComplete` callback that returns a future
-      // is waited for: the arrow made the decode wait on itself, and the
-      // playback warmer stopped for good at the first movie frame.
-      // What `remove` answers is dropped on purpose.
-      unawaited(_decoding.remove(at));
-    });
+    return _decoding.join(at, () => _decode(movie, at));
   }
 
   Future<BitmapSurface?> _decode(_OpenMovie movie, _MoviePicture at) async {
-    final ((:path, carry: _), movieFrame, canvas) = at;
+    final (_, movieFrame, canvas, pose) = at;
     final rgba = await movie.reader.frame(movie.token, movieFrame);
     if (rgba == null || _disposed) {
       return null;
@@ -233,10 +251,16 @@ class MovieCelHydrator {
       height: movie.info.height,
     );
     try {
+      // Where the row's reference fx stands the frame (I-68). ↩️It was the
+      // pool's fit for the file, fitted to the canvas as it was at each
+      // decode — so a canvas grown since put the movie in its middle.
       final surface = await rasterizeImageToSurface(
         image: image,
         canvas: canvas,
-        fit: _project.repository.requireProject().mediaFitModeFor(path),
+        placement: picturePlacement(
+          pose,
+          CanvasSize(width: image.width, height: image.height),
+        ),
       );
       _decoded[at] = WeakReference(surface);
       return surface;
@@ -411,6 +435,7 @@ class MovieCelHydrator {
     _opened.clear();
     _facts.clear();
     _decoded.clear();
+    _shown.clear();
     for (final document in opened) {
       await _close(document);
     }

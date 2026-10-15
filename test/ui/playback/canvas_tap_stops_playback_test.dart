@@ -6,7 +6,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// D13, the whole chain through the REAL app: the actuation gate's
 /// navigation hole lets a press reach the canvas panel during playback,
-/// and a plain TAP there stops — `CanvasPlaybackView`'s own tap handler,
+/// and a plain TAP there stops — the run's own press (`PlaybackRunLayer`),
 /// awake again now that pointers reach it (the pre-T28-c law). One
 /// gesture, both halves: the hole passes, the canvas stops.
 void main() {

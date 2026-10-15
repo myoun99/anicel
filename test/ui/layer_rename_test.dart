@@ -18,7 +18,9 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import 'flyout_test_helpers.dart';
+import '../helpers/named_finders.dart';
 
 /// 🚨T25 — renaming a layer goes through the SHARED pill's Edit Instance
 /// now (유저 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동 … 그러고
@@ -79,7 +81,7 @@ void main() {
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-name-layer-a')),
+      find.named('timeline-layer-name-layer-a'),
       findsOneWidget,
     );
     expect(_layerNameText(tester, _layerAId).data, 'A');
@@ -90,7 +92,7 @@ void main() {
     expect(_layerNameText(tester, _layerAId).data, 'BG');
     expect(find.text('BG'), findsWidgets);
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
+      find.named('timeline-selected-layer'),
       findsOneWidget,
     );
     expect(_layerNameText(tester, _layerAId).data, 'BG');
@@ -153,7 +155,7 @@ void main() {
     await _pumpHome(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
+      find.named('timeline-layer-type-button-layer-a'),
       findsOneWidget,
     );
     expect(_layerKindIcon(tester, _layerAId), Icons.filter_outlined);
@@ -161,7 +163,7 @@ void main() {
     await _renameLayer(tester, 'BG');
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-a')),
+      find.named('timeline-layer-type-button-layer-a'),
       findsOneWidget,
     );
     expect(_layerKindIcon(tester, _layerAId), Icons.filter_outlined);
@@ -222,9 +224,7 @@ Layer _layer(ProjectRepository repository, LayerId layerId) {
 }
 
 Text _layerNameText(WidgetTester tester, LayerId layerId) {
-  final nameFinder = find.byKey(
-    ValueKey<String>('timeline-layer-name-$layerId'),
-  );
+  final nameFinder = find.named('timeline-layer-name-$layerId');
   final textFinder = find.descendant(
     of: nameFinder,
     matching: find.byType(Text),
@@ -232,13 +232,11 @@ Text _layerNameText(WidgetTester tester, LayerId layerId) {
   return tester.widget<Text>(textFinder.first);
 }
 
-IconData _layerKindIcon(WidgetTester tester, LayerId layerId) {
-  return tester
-      .widget<Icon>(
-        find.byKey(ValueKey<String>('timeline-layer-kind-icon-$layerId')),
-      )
-      .icon!;
-}
+IconData _layerKindIcon(WidgetTester tester, LayerId layerId) => tester
+    .appIconButton(
+      find.named('timeline-layer-type-button-$layerId'),
+    )
+    .icon!;
 
 Project _project({List<Layer>? layers}) {
   return Project(

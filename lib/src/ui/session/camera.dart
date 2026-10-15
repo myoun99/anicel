@@ -9,6 +9,7 @@ import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../services/camera_path.dart';
 import '../../services/camera_pose_resolver.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_cut_camera_command.dart';
@@ -19,7 +20,10 @@ import 'active_cut_edits.dart';
 import 'cut_under_playhead.dart';
 import 'session_roles.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, laneEditInFlight;
+    show
+        TimelineDragPreview,
+        laneEditInFlight,
+        timelineDragPreviewCarriedCamera;
 
 /// The CAMERA — the frame size, the pose at a frame, the keyframes and the
 /// track that holds them, the instruction set and the block preview — as its
@@ -108,6 +112,22 @@ class Camera {
     );
   }
 
+  /// The camera pose [cut]'s frame [frameIndex] is SHOWN through — the
+  /// render route's ([cameraPoseForCut], the camera row's fx switch
+  /// included), the open cut's read from the track the display reads
+  /// ([activeCutCameraTrack]) so what rides the camera follows a camera
+  /// edit in flight. What stands in the shot is placed by it: an SE row's
+  /// name tag (I-67-Q1).
+  CameraPose cameraPoseShowingCut(Cut cut, int frameIndex) {
+    final shown = cut.id == _project.activeCutOrNull?.id
+        ? activeCutCameraTrack
+        : null;
+    return cameraPoseForCut(
+      shown == null ? cut : cut.copyWith(camera: CutCamera.fromTrack(shown)),
+      frameIndex,
+    );
+  }
+
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work) —
   /// of the track the display reads ([activeCutCameraTrack]), so the frame
@@ -122,37 +142,23 @@ class Camera {
     );
   }
 
-  /// The camera pose the canvas should FRAME right now — not always the
-  /// ACTIVE cut's (㊲).
+  /// The camera pose the canvas should FRAME right now — the active cut's,
+  /// and none where the playhead is parked: a parking is a gap (or the
+  /// V-row eye's hidden picture), and there is nothing to frame there.
   ///
-  /// "Which cut am I editing" and "which cut is under the playhead" are two
-  /// questions, and a live scrub makes them disagree ON PURPOSE: crossing a
-  /// boundary parks per move and leaves the active cut alone, because
-  /// switching it per move rebuilt every panel ([FrameScrub.scrubGlobalFrame]). The
-  /// camera frame read the active cut through that, so a T.U that ended
-  /// zoomed kept framing the NEXT cut's pictures at the size the cut being
-  /// left had finished on — and dragging the other way showed no camera
-  /// work at all.
-  ///
-  /// Only a LIVE scrub asks the parked question: a committed parking means
-  /// there is no cut here (a gap, or the V-row eye's hidden picture), and
-  /// then there is nothing to frame. Null says exactly that.
+  /// ↩️㊲: a live scrub used to park over ANOTHER cut's frames too and leave
+  /// the active cut alone, so this asked the parked frame's cut for its pose
+  /// (a T.U that ended zoomed had kept framing the next cut's pictures at
+  /// the size the cut being left finished on). A scrub crosses into the cut
+  /// under it now (I-57 ②, [FrameScrub.scrubGlobalFrame]), so the cut under
+  /// the playhead is the active cut, and the parked question is only ever
+  /// asked of a gap.
   CameraPose? get displayedCameraPose {
-    final parked = _cutUnderPlayhead.liveParkedFrame;
-    if (parked == null) {
-      return _project.activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
-    }
-    // ↩️F-90: the gap-versus-owner rule for a parked frame lives in
-    // [CutUnderPlayhead.atTrackFrame] now, its warning with it — the sheet
-    // asks the same question and must get the same answer.
-    final at = _cutUnderPlayhead.atTrackFrame(parked);
-    if (at == null) {
+    if (_cutUnderPlayhead.liveParkedFrame != null ||
+        _project.activeCutOrNull == null) {
       return null;
     }
-    // The RENDER route's resolver (fx bypass honoured), because the picture
-    // under this rectangle came through it too: preview and camera frame
-    // must not disagree about the same cut.
-    return cameraPoseForCut(at.cut, at.localFrame);
+    return cameraPoseAtCurrentFrame;
   }
 
   bool get hasCameraKeyframeAtCurrentFrame =>
@@ -249,12 +255,15 @@ class Camera {
     }
     var camera = cut.camera;
     var changed = false;
+    // Keys only on the frames the cut is drawn for (I-73-camera-row-Q2).
+    final drawn = _project.activeCutDrawnFrameCount;
     for (
       var frame = selection.startIndex;
       frame < selection.endIndexExclusive;
       frame += 1
     ) {
-      if (frame < 0 || camera.keyframeAt(frame) != null) {
+      if (!cameraKeyFits(frame, drawnFrameCount: drawn) ||
+          camera.keyframeAt(frame) != null) {
         continue;
       }
       // Freeze the RESOLVED pose (AE behavior): keys appear, the picture
@@ -298,14 +307,67 @@ class Camera {
   /// 🚨F-195: the camera FRAME was the reader B4 missed — it resolved the
   /// committed camera, so dragging a camera value in its lane moved every
   /// marker and label and left the frame where it was until the release.
+  ///
+  /// …and a length change in flight — a trim (I-73-camera-row-Q4) or an
+  /// O.L's edge (Q7): the key on the cut's last frame moves with it under
+  /// the hand ([timelineDragPreviewCarriedCamera]).
   TransformTrack? get activeCutCameraTrack {
     final cut = _project.activeCutOrNull;
-    final edit = laneEditInFlight(_dragPreview.value);
+    final preview = _dragPreview.value;
+    final edit = laneEditInFlight(preview);
     if (cut != null && edit?.cameraCutId == cut.id) {
       return edit!.cameraTrack;
     }
-    return _cameraKeysDragPreview ?? cut?.camera.track;
+    final carried = cut == null
+        ? null
+        : timelineDragPreviewCarriedCamera(preview, cut.id);
+    return _cameraKeysDragPreview ?? carried?.track ?? cut?.camera.track;
   }
+
+  /// The path the active cut's camera takes (I-89 ④), its frames [frameSize]
+  /// canvas pixels at zoom 1 — of the track the display reads
+  /// ([activeCutCameraTrack]), so it follows a camera edit in flight; null
+  /// where there is no cut or the camera moves nothing ([CameraPath.of]).
+  ///
+  /// Built again only for another track or size: the frames between its
+  /// keys are read as the canvas asks for them, and kept while it asks
+  /// again at every step of a scrub.
+  CameraPath? activeCutCameraPath(CanvasSize frameSize) {
+    final cut = _project.activeCutOrNull;
+    final track = activeCutCameraTrack;
+    if (cut == null || track == null) {
+      return null;
+    }
+    if (_path case (
+      track: final pathTrack,
+      canvasSize: final canvasSize,
+      frameSize: final pathFrameSize,
+      :final path,
+    ) when identical(pathTrack, track) &&
+        canvasSize == cut.canvasSize &&
+        pathFrameSize == frameSize) {
+      return path;
+    }
+    final path = CameraPath.of(
+      cut.copyWith(camera: CutCamera.fromTrack(track)),
+      frameSize,
+    );
+    _path = (
+      track: track,
+      canvasSize: cut.canvasSize,
+      frameSize: frameSize,
+      path: path,
+    );
+    return path;
+  }
+
+  ({
+    TransformTrack track,
+    CanvasSize canvasSize,
+    CanvasSize frameSize,
+    CameraPath? path,
+  })?
+  _path;
 
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag

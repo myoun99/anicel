@@ -19,7 +19,7 @@ import 'layer_folder.dart';
 export 'layer_folder.dart'
     show attachFolderLevelsAbove, attachGroupBaseOf, attachOrganizerBaseOf;
 import 'layer_id.dart';
-import 'layer_section_defaults.dart' show firstUnusedLayerName;
+import 'layer_section_defaults.dart' show firstUnusedName;
 import 'layer_stack_order.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
@@ -381,18 +381,19 @@ int attachedGroupStartIndex(LayerId baseId, List<Layer> layers) {
   if (start == -1) {
     return layers.length;
   }
-  while (start > 0) {
-    final layer = layers[start - 1];
-    final inGroup =
-        layer.attachedToLayerId == baseId ||
-        attachOrganizerBaseOf(layer, layers) == baseId;
-    if (!inGroup) {
-      break;
-    }
+  while (start > 0 && _ofAttachGroup(layers[start - 1], baseId, layers)) {
     start -= 1;
   }
   return start;
 }
+
+/// Whether [layer] is a row of [baseId]'s attach group other than the base:
+/// one riding it, or an organizer folder over rows that do — the one test
+/// the group's run ([attachedGroupSlice]) and its members wherever they
+/// stand ([attachedGroupMembers]) are read by.
+bool _ofAttachGroup(Layer layer, LayerId baseId, List<Layer> layers) =>
+    layer.attachedToLayerId == baseId ||
+    attachOrganizerBaseOf(layer, layers) == baseId;
 
 /// The index just past [baseId]'s attach group — base plus its contiguous
 /// attach rows AND their organizer folder rows — in [layers]; insertion
@@ -405,14 +406,7 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
     return layers.length;
   }
   end += 1;
-  while (end < layers.length) {
-    final layer = layers[end];
-    final inGroup =
-        layer.attachedToLayerId == baseId ||
-        attachOrganizerBaseOf(layer, layers) == baseId;
-    if (!inGroup) {
-      break;
-    }
+  while (end < layers.length && _ofAttachGroup(layers[end], baseId, layers)) {
     end += 1;
   }
   return end;
@@ -456,6 +450,25 @@ List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
       attachedGroupEndIndex(baseId, layers),
     );
 
+/// [baseId]'s attach group WHEREVER ITS ROWS STAND in [layers], in stack
+/// order: the base, the rows riding it and the organizer folders over them
+/// — the [attachedGroupSlice] when none stands apart from the run. Empty
+/// for a missing base, as the slice is.
+///
+/// What a track's conte structure reads a cut's conte by (F-343): a row
+/// riding the conte is a seat of it wherever it stands — the seats count it
+/// so (`conteGroupOf`) — and the laying gathers the group back into one
+/// run, which nothing else may stand inside (R26 #36, `newRowPlacement`).
+List<Layer> attachedGroupMembers(LayerId baseId, List<Layer> layers) {
+  if (!layers.any((layer) => layer.id == baseId)) {
+    return const [];
+  }
+  return [
+    for (final layer in layers)
+      if (layer.id == baseId || _ofAttachGroup(layer, baseId, layers)) layer,
+  ];
+}
+
 /// A fresh attach-row name, signed by placement (UI-R20 #11, the
 /// mathematical read): rows stacking ABOVE the base are `+1`, `+2`, …,
 /// rows below are `-1`, `-2`, … — each side numbers its own.
@@ -468,15 +481,30 @@ List<Layer> attachedGroupSlice(LayerId baseId, List<Layer> layers) =>
 /// 나눠쓰는 규칙 그대로 쓰면서 통일할거 통일해서 제대로 순서대로 생성하도록」.
 /// ↩️The number was the side's COUNT plus one, so a side that had lost a
 /// row handed out a name still in use. It is the first one no row of
-/// [layers] wears ([firstUnusedLayerName]) — the cels' own rule, and the
+/// [layers] wears (`firstUnusedLayerName`) — the cels' own rule, and the
 /// fifth row kind to name itself by it: A with A-2 gets A-1.
 String nextAttachedLayerName(
   Layer base,
   List<Layer> layers,
   AttachedPlacement placement,
+) => attachedLayerNameAmong(
+  base.name,
+  {for (final layer in layers) layer.name},
+  placement,
+);
+
+/// [nextAttachedLayerName] among [used] names, for a base named [baseName]
+/// whose cut is still a plan — the CLIP STUDIO import names the attach
+/// rows its cels' layers make by it (유저 10-09: 「레이어이름은
+/// 들쭉날쭉하니까 무시해도되. 그래서 그냥 우리방식대로 A라는 기준레이어랑
+/// A-1 이런식으로 해줘」).
+String attachedLayerNameAmong(
+  String baseName,
+  Set<String> used,
+  AttachedPlacement placement,
 ) {
   final sign = placement == AttachedPlacement.above ? '+' : '-';
-  return firstUnusedLayerName(layers, (index) => '${base.name}$sign$index');
+  return firstUnusedName(used, (index) => '$baseName$sign$index');
 }
 
 /// Whether [layer] wears its BASE's composite instead of authoring its own

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 
@@ -47,6 +49,69 @@ abstract interface class FrameDemand {
   int leadFor(Duration composeTime);
 }
 
+/// The frame a run that STANDS on [center] wants at step [step] of its
+/// [count] frames, or null past the last: from [center] outwards, the frame
+/// after before the frame before at each distance, and the longer side's
+/// rest once the shorter has run out.
+///
+/// 🚨ONE ORDER for whatever stands — a cut's frames ([StandingDemand]) and
+/// a document's pages (`MediaRun.wantedAt`) — read either way round by this
+/// and [standingStepOf] (viewer-plays-by-the-one-playback-law, ②).
+int? standingFrameAt(int step, {required int center, required int count}) {
+  if (step < 0 || step >= count) {
+    return null;
+  }
+  // Both sides reach this far: their frames alternate, after first.
+  final both = math.min(center, count - 1 - center);
+  if (step <= 2 * both) {
+    final distance = (step + 1) ~/ 2;
+    return step.isOdd ? center + distance : center - distance;
+  }
+  final distance = step - both;
+  return center < count - 1 - center ? center + distance : center - distance;
+}
+
+/// [standingFrameAt] read back: the step [frame] is wanted at, or null for
+/// a frame outside the [count].
+int? standingStepOf(int frame, {required int center, required int count}) {
+  if (frame < 0 || frame >= count) {
+    return null;
+  }
+  final distance = (frame - center).abs();
+  if (distance == 0) {
+    return 0;
+  }
+  final both = math.min(center, count - 1 - center);
+  if (distance > both) {
+    // On the longer side, past where the shorter ran out.
+    return both + distance;
+  }
+  return frame > center ? 2 * distance - 1 : 2 * distance;
+}
+
+/// How many steps on from [playhead] a run that PLAYS shows frame [frame]
+/// of its [total], or null where it does not: round to the frame behind the
+/// playhead when it [loops], and never again behind it when it plays once.
+///
+/// 🚨ONE ORDER for whatever plays — a canvas run's frames ([PlayingDemand])
+/// and a document's pages (`MediaRun.wantedAt`).
+int? playingStepOf(
+  int frame, {
+  required int playhead,
+  required int total,
+  required bool loops,
+}) {
+  if (frame < 0 || frame >= total) {
+    return null;
+  }
+  final ahead = frame - playhead;
+  if (loops) {
+    return ahead % total;
+  }
+  // Played once, a frame behind the playhead is not shown again.
+  return ahead >= 0 ? ahead : null;
+}
+
 /// What is wanted while nothing plays: the cut being worked on, from the
 /// playhead outwards ("navigate away from a frame and it gets pre-rendered"),
 /// and then — when there is one — the cut after it, from its first frame.
@@ -69,24 +134,11 @@ class StandingDemand implements FrameDemand {
     this.nextCutId,
     int nextFrameCount = 0,
     required this.resolveCut,
-  }) : _nextFrameCount = nextCutId == null || nextCutId == cutId
+  }) : _frameCount = frameCount,
+       _center = around.clamp(0, frameCount - 1),
+       _nextFrameCount = nextCutId == null || nextCutId == cutId
            ? 0
-           : nextFrameCount {
-    final center = around.clamp(0, frameCount - 1);
-    _stepOfFrame = List<int>.filled(frameCount, 0);
-    _frameAtStep.add(center);
-    for (var distance = 1; distance < frameCount; distance += 1) {
-      if (center + distance < frameCount) {
-        _frameAtStep.add(center + distance);
-      }
-      if (center - distance >= 0) {
-        _frameAtStep.add(center - distance);
-      }
-    }
-    for (var step = 0; step < _frameAtStep.length; step += 1) {
-      _stepOfFrame[_frameAtStep[step]] = step;
-    }
-  }
+           : nextFrameCount;
 
   final CutId cutId;
   final CutId? nextCutId;
@@ -95,19 +147,19 @@ class StandingDemand implements FrameDemand {
   /// one this was asked with would be a picture of what the cut was.
   final Cut? Function(CutId cutId) resolveCut;
 
+  final int _frameCount;
+  final int _center;
   final int _nextFrameCount;
-  final List<int> _frameAtStep = <int>[];
-  late final List<int> _stepOfFrame;
 
   @override
-  int get length => _frameAtStep.length + _nextFrameCount;
+  int get length => _frameCount + _nextFrameCount;
 
   @override
   List<DemandedPicture>? picturesAt(int step) {
     if (step < 0 || step >= length) {
       return null;
     }
-    final own = step < _frameAtStep.length;
+    final own = step < _frameCount;
     final cut = resolveCut(own ? cutId : nextCutId!);
     if (cut == null) {
       return const [];
@@ -115,21 +167,20 @@ class StandingDemand implements FrameDemand {
     return [
       (
         cut: cut,
-        frameIndex: own ? _frameAtStep[step] : step - _frameAtStep.length,
+        frameIndex: own
+            ? standingFrameAt(step, center: _center, count: _frameCount)!
+            : step - _frameCount,
       ),
     ];
   }
 
   @override
   int? stepOf(CutId cutId, int frameIndex) {
-    if (frameIndex < 0) {
-      return null;
-    }
     if (cutId == this.cutId) {
-      return frameIndex < _stepOfFrame.length ? _stepOfFrame[frameIndex] : null;
+      return standingStepOf(frameIndex, center: _center, count: _frameCount);
     }
-    if (cutId == nextCutId && frameIndex < _nextFrameCount) {
-      return _frameAtStep.length + frameIndex;
+    if (cutId == nextCutId && frameIndex >= 0 && frameIndex < _nextFrameCount) {
+      return _frameCount + frameIndex;
     }
     return null;
   }
@@ -199,15 +250,14 @@ class PlayingDemand implements FrameDemand {
   @override
   int? stepOf(CutId cutId, int frameIndex) {
     final frame = playlistFrameOf(cutId, frameIndex);
-    if (frame == null || frame < 0 || frame >= totalFrames) {
-      return null;
-    }
-    final ahead = frame - playhead();
-    if (loops()) {
-      return ahead % totalFrames;
-    }
-    // Played once, a frame behind the playhead is not shown again.
-    return ahead >= 0 ? ahead : null;
+    return frame == null
+        ? null
+        : playingStepOf(
+            frame,
+            playhead: playhead(),
+            total: totalFrames,
+            loops: loops(),
+          );
   }
 
   @override

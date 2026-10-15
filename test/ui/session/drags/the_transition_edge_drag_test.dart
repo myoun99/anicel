@@ -35,6 +35,7 @@ void main() {
     int spanStartIndex = 4,
     TimelineBlockEdge edge = TimelineBlockEdge.end,
     LayerId? layerId,
+    bool Function(Layer row)? keepsCameraKeys,
   }) {
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(preview.dispose);
@@ -51,6 +52,8 @@ void main() {
         // two forms it is reading.
         formsOf: (row) =>
             (shown: row.copyWith(name: 'in the cut'), global: row),
+        keepsCameraKeys: keepsCameraKeys ?? (_) => true,
+        camerasCarriedBy: (_) => const {},
         commitInstructions: (instructions, {required description}) =>
             commits.add((instructions: instructions, description: description)),
       ),
@@ -159,6 +162,40 @@ void main() {
 
     expect(session.commits, isEmpty);
     expect(session.preview.value, isNull);
+  });
+
+  test('🚨an edge that would draw a cut past its camera keys stops short of '
+      'them — on the nearest step back that does not (I-73-camera-row-Q7)', () {
+    // The track's cuts keep their keys while the span keeps 4 frames.
+    final session = open(
+      keepsCameraKeys: (row) => row.instructions[4]!.length >= 4,
+    );
+
+    session.drag!.update(-1);
+    expect(inFlight(session.preview)?.instructions[4]?.length, 5);
+    session.drag!.update(-5);
+    expect(
+      inFlight(session.preview)?.instructions[4]?.length,
+      4,
+      reason: 'held at the floor, not at the last step',
+    );
+    session.drag!.update(-999);
+    expect(inFlight(session.preview)?.instructions[4]?.length, 4);
+
+    session.drag!.commit();
+    expect(session.commits.single.instructions[4]?.length, 4);
+  });
+
+  test('an edge already at the floor lands nothing when pushed in', () {
+    final session = open(
+      keepsCameraKeys: (row) => row.instructions[4]!.length >= 6,
+    );
+
+    session.drag!.update(-3);
+    session.drag!.commit();
+
+    expect(session.preview.value, isNull);
+    expect(session.commits, isEmpty);
   });
 
   test('cancel drops the preview and touches no history', () {

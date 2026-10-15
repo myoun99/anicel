@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_playhead_writing.dart';
 
+import '../../helpers/recording_ruler_layout.dart';
+
 /// I-22 ②: the playhead's writing (I-16) is worked out on every playback
 /// tick, and it used to lay out the strip's writing at EVERY frame of the
 /// painted window to find what the pair stands on — a thousand frames at
@@ -59,28 +61,15 @@ void main() {
       3000,
       reason: 'fixture: the whole strip is the painted window',
     );
-    var laidOut = 0;
-    List<TimelineGlyphPlacement> counting(
-      TimelineRulerScale scale,
-      int frameIndex, {
-      required bool current,
-    }) {
-      laidOut += 1;
-      return TimelineFrameRulerPainter.glyphsAt(
-        scale,
-        frameIndex,
-        current: current,
-      );
-    }
-
+    final recorded = recordingRulerLayout();
     timelineRulerPlayheadWriting(
       scale: scale,
       frame: 1500,
-      layout: counting,
+      layout: recorded.layout,
     );
     expect(
-      laidOut,
-      lessThan(400),
+      recorded.asked,
+      hasLength(lessThan(400)),
       reason: 'a tick lays out the neighbourhood of the pair, not all 3000 '
           'frames of the window',
     );
@@ -95,33 +84,57 @@ void main() {
     final scale = await rulerOf(tester, cell: 0.16, frames: 3000);
     final step = scale.writingStep;
     expect(step, greaterThan(1), reason: 'fixture: the strip thins its marks');
-    final visited = <int>[];
-    List<TimelineGlyphPlacement> counting(
-      TimelineRulerScale scale,
-      int frameIndex, {
-      required bool current,
-    }) {
-      if (!current) {
-        visited.add(frameIndex);
-      }
-      return TimelineFrameRulerPainter.glyphsAt(
-        scale,
-        frameIndex,
-        current: current,
-      );
-    }
-
+    final recorded = recordingRulerLayout();
     timelineRulerPlayheadWriting(
       scale: scale,
       frame: 1500,
-      layout: counting,
+      layout: recorded.layout,
     );
+    final visited = [
+      for (final ask in recorded.asked)
+        if (!ask.current) ask.frame,
+    ];
     expect(visited, isNotEmpty, reason: 'premise: the neighbourhood was read');
     expect(
       visited.where((frame) => frame % step != 0),
       isEmpty,
       reason: 'only the frames the strip itself writes at',
     );
+  });
+
+  // 🚨I-57 (10-15, profile, the user's project): every tick of a run laid
+  // its whole neighbourhood out again — a dozen layouts at 12µs, the dearest
+  // paint of a playing frame — though the next tick's neighbourhood is the
+  // last one's moved a frame ([TimelineRulerScale.writtenAt]).
+  testWidgets('a tick lays out only what no tick before it did', (
+    tester,
+  ) async {
+    final scale = await rulerOf(tester, cell: 24, frames: 3000);
+    final recorded = recordingRulerLayout();
+    void tick(int frame) => timelineRulerPlayheadWriting(
+      scale: scale,
+      frame: frame,
+      layout: recorded.layout,
+    );
+
+    tick(1500);
+    final first = recorded.asked.toSet();
+    expect(
+      first,
+      hasLength(greaterThan(3)),
+      reason: 'premise: a tick reads a neighbourhood round the pair',
+    );
+    recorded.asked.clear();
+    tick(1501);
+    expect(
+      recorded.asked,
+      isNotEmpty,
+      reason: 'premise: the pair moved to a frame not yet written',
+    );
+    expect(recorded.asked.where(first.contains), isEmpty);
+    recorded.asked.clear();
+    tick(1500);
+    expect(recorded.asked, isEmpty, reason: 'a loop come back round');
   });
 
   testWidgets('what the neighbourhood finds is what the whole window would '

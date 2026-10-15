@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_camera_row.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
@@ -23,11 +24,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerKindDisplayName;
+import 'package:anicel/src/services/editing/default_layer_helpers.dart'
+    show conteRowBornName;
 
+import '../helpers/app_shortcuts.dart';
 import '../helpers/conte_track_fixture.dart';
 import '../helpers/home_page_probes.dart';
+import '../helpers/named_finders.dart';
 
 /// 🗣️유저 2026-09-24 — THE PANEL LAST TOUCHED ANSWERS, through the app:
 ///
@@ -52,6 +55,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: project)),
     );
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
   }
 
   Future<void> key(WidgetTester tester, LogicalKeyboardKey key) async {
@@ -198,8 +202,8 @@ void main() {
     await pumpHome(tester, project: conteTrackProject());
     final session = sessionOf(tester);
     await showStoryboardPanel(tester);
-    final twirl = find.byKey(
-      ValueKey<String>('storyboard-se-lane-toggle-${conteTrackId.value}-1'),
+    final twirl = find.named(
+      'storyboard-se-lane-toggle-${conteTrackId.value}-1',
     );
     await tester.ensureVisible(twirl);
     await tester.pumpAndSettle();
@@ -242,9 +246,15 @@ void main() {
       await dropTab(tester, 'storyboard', rightRailButton(6));
       await dropTab(tester, 'timesheet', rightRailButton(6));
       expect(
-        find.byType(StoryboardPanel, skipOffstage: false),
+        find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
         findsOneWidget,
         reason: 'premise: still docked there, behind the sheet',
+      );
+      expect(
+        find.byType(StoryboardPanel, skipOffstage: false),
+        findsNothing,
+        reason: 'premise: a panel behind another is not built (유저 '
+            '2026-10-14)',
       );
       expect(session.workingPanel, WorkingPanel.timeline);
     });
@@ -288,14 +298,22 @@ void main() {
     expect(session.currentRow, LayerRowAddress(track.seLayers[1].id));
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(session.currentRow, LayerRowAddress(track.transitionLayer.id));
+    // I-73 ④: the camera row heads the CAM section, over the transition row.
+    final cameraRow = LayerRowAddress(trackCameraRowId(track.id));
     await key(tester, LogicalKeyboardKey.arrowUp);
     expect(
       session.currentRow,
-      LayerRowAddress(track.transitionLayer.id),
+      cameraRow,
+      reason: '↩️the transition row was the top of the storyboard\'s rows',
+    );
+    await key(tester, LogicalKeyboardKey.arrowUp);
+    expect(
+      session.currentRow,
+      cameraRow,
       reason: 'clamped at the top of the storyboard\'s rows',
     );
 
-    for (var step = 0; step < 3; step += 1) {
+    for (var step = 0; step < 4; step += 1) {
       await key(tester, LogicalKeyboardKey.arrowDown);
     }
     expect(session.currentRow, TrackRowAddress(track.id));
@@ -326,17 +344,29 @@ void main() {
 
     final storyboard = hud.debugSnapshotFor(FlipHudAxis.row)!;
     expect(
-      [for (final row in storyboard.rows.skip(1)) row.name],
-      ['S2', 'S1', 'V1', layerKindDisplayName(LayerKind.storyboard)],
-      reason: 'the storyboard\'s own stack under its transition row — the '
-          'conte row last, by the name its rail label wears (no cut has a '
-          'conte layer here, so the kind\'s own word)',
+      storyboard.rows.first.name,
+      session.activeCutOrNull!.layers.cameraLayer!.name,
+      reason: 'the camera row heads it (I-73 ④), by its head\'s name',
     );
-    expect(storyboard.currentRow!.name, 'V1');
+    expect(
+      [for (final row in storyboard.rows.skip(2)) row.name],
+      ['S2', 'S1', storyboardVideoRowName(0), conteRowBornName],
+      reason: 'the storyboard\'s own stack under its camera and transition '
+          'rows — the conte row last, by the name its rail label wears (no '
+          'cut has a conte layer here, so the name a conte is born with — '
+          'F-322: never the kind\'s word in the program\'s language)',
+    );
+    expect(storyboard.currentRow!.name, storyboardVideoRowName(0));
 
     session.claimTimelineRow();
     final timeline = hud.debugSnapshotFor(FlipHudAxis.row)!;
-    expect(timeline.rows.length, isNot(storyboard.rows.length));
+    // ↩️It compared how MANY rows the two drew — and once the storyboard
+    // had a camera row (I-73 ④) both drew six.
+    expect(
+      [for (final row in timeline.rows) row.name],
+      isNot([for (final row in storyboard.rows) row.name]),
+      reason: 'the timeline\'s own rows, not the storyboard\'s',
+    );
     expect(
       timeline.currentRow!.name,
       session.activeLayer!.name,
@@ -351,7 +381,7 @@ void main() {
     final hud = workspaceOf(tester).flipHud!;
     final layerId = session.activeLayerId!;
     await tester.tap(
-      find.byKey(ValueKey<String>('timeline-lane-toggle-${layerId.value}')),
+      find.named('timeline-lane-toggle-${layerId.value}'),
     );
     await tester.pumpAndSettle();
     session.standOnRow(LaneRowAddress(layerId, 'transform-group'));

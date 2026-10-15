@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/the_classic_rail.dart';
+
 /// UI-R18 #14: the timeline's red cut-end boundary line grows a drag
 /// grip — dragging it end-trims the ACTIVE cut through the session's
 /// trim channel, and the LINE follows the live preview.
@@ -79,6 +81,7 @@ void main() {
         ),
       ),
     );
+    await standTheClassicRail(tester);
 
     final handle = find.byKey(
       const ValueKey<String>('timeline-cut-end-handle'),

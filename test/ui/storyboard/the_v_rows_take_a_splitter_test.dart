@@ -3,6 +3,7 @@
 // splitter rides the bottom edge of a V row's label and moves the ONE height
 // every V row shares, inside its legal range — and the layout file keeps it
 // the way it keeps the rail widths, absent while it is the default.
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -201,7 +202,15 @@ void main() {
     // Closed first: closing saves the layout it holds.
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
-    await tester.runAsync(() => store.save({...written!, _key: kept}));
+    // ⛔Not inside runAsync: this save queues behind the closing one, and
+    // while that is still on the disk only a pump lands it — awaited in
+    // runAsync, the test hung for its ten minutes under load.
+    var landed = false;
+    unawaited(
+      store.save({...written!, _key: kept}).then((_) => landed = true),
+    );
+    await _settleIo(tester, () => landed);
+    expect(landed, isTrue, reason: '⛔전제: the kept height is on the file');
     await _openStoryboard(tester, store, window: const Size(1600, 1800));
     await _settleIo(tester, () => _laneHeights(tester).first != _default);
     await tester.drag(
@@ -266,5 +275,65 @@ void main() {
       isFalse,
       reason: 'the default is absent from the file, like a rail never dragged',
     );
+  });
+
+  testWidgets('a pull that reaches the foot of the view pans the rows, and '
+      'the edge stays under the hand — the one splitter pans the scroll it '
+      'stands in, as a header graph\'s grip does (I-89 ③)', (tester) async {
+    await _openStoryboard(tester, await _store(tester));
+    // Tall enough that the view stops growing with the rows and scrolls.
+    await _dragSplitter(tester, 150);
+    final viewport = find.byKey(
+      const ValueKey<String>('storyboard-vertical-viewport'),
+    );
+    // The viewport's own scroll — the first below it.
+    final rows = tester
+        .stateList<ScrollableState>(
+          find.descendant(of: viewport, matching: find.byType(Scrollable)),
+        )
+        .first
+        .position;
+    final view = tester.getRect(viewport);
+    expect(rows.pixels, 0, reason: '⛔전제');
+    expect(rows.maxScrollExtent, greaterThan(0), reason: '⛔전제: it scrolls');
+    var hand = tester.getCenter(_splitters().first);
+    expect(
+      hand.dy,
+      lessThan(view.bottom - 24),
+      reason: '⛔전제: short of the band where a drag pans',
+    );
+
+    final gesture = await tester.startGesture(
+      hand,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    hand = Offset(hand.dx, view.bottom - 20);
+    await gesture.moveTo(hand);
+    await tester.pump();
+    for (var step = 0; step < 6; step += 1) {
+      hand = hand.translate(0, 0.5);
+      await gesture.moveTo(hand);
+      await tester.pump();
+    }
+    expect(
+      _laneHeights(tester).single,
+      lessThan(
+        StoryboardPanel.maxTrackLaneHeightFor(
+          defaultProjectCameraSize,
+          tester.view.devicePixelRatio,
+        ),
+      ),
+      reason: '⛔전제: short of the ceiling, where the edge stops',
+    );
+    expect(rows.pixels, greaterThan(0), reason: 'the rows panned');
+    expect(
+      tester.getCenter(_splitters().first).dy,
+      moreOrLessEquals(hand.dy, epsilon: 1),
+      reason: 'the pan is folded into the pull — the edge did not slide off',
+    );
+    await gesture.up();
+    await gesture.removePointer();
+    await tester.pumpAndSettle();
   });
 }

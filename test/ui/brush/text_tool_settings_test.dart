@@ -19,22 +19,38 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/cel_text_hand.dart';
+import '../../helpers/tool_setting_action_probe.dart';
+
+/// A box as tall as every row of the settings.
+const double _asTallAsTheRows = 900;
 
 /// R9-rest (the text tool): THE ROWS OF ITS SETTINGS — the layout 유저 took
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
 /// face, size, tracking, bold, colour, outline, outline width, the
-/// smoothing of the letters' edges · 상자 —
+/// smoothing of the letters' edges · 상자 — its place (I-95),
 /// alignment, box width, line spacing, background · and at the foot
-/// 「그림으로 굳히기」.
+/// 「래스터라이즈」.
 ///
 /// What a row reads and writes is `TextToolSettingsValues`'s, measured
 /// there. Here: every row is there, shows what it should, and a hand on it
 /// reaches the text — once a drag, once a window.
 void main() {
+  /// The test's window made tall enough for [_asTallAsTheRows]: the list
+  /// builds only the rows it shows, and the window's own 600 left the foot
+  /// unbuilt once 「위치」 (I-95) took its three rows.
+  Future<void> standTall(WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(
+      const Size(800, _asTallAsTheRows + 100),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  }
+
   const plain = TextLetterStyle(fontSize: 16);
   const red = TextLetterStyle(fontSize: 16, color: 0xFFFF0000);
 
@@ -60,11 +76,12 @@ void main() {
     WidgetTester tester, {
     CelTextContent? text,
     TextToolOptions next = const TextToolOptions(letters: plain),
-    double height = 640,
+    double height = _asTallAsTheRows,
   }) async {
     final hand = textHand(bake: bakesAtOnce, text: text, next: next);
     final commands = CelTextCommands()..bind(hand.tool);
     addTearDown(commands.dispose);
+    await standTall(tester);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
@@ -113,9 +130,9 @@ void main() {
         ),
       );
 
-  /// 「그림으로 굳히기」, as the button it is.
-  FilledButton intoDrawing(WidgetTester tester) =>
-      tester.widget<FilledButton>(row('into-drawing'));
+  /// 「래스터라이즈」, as the button it is.
+  ToolSettingAction intoDrawing(WidgetTester tester) =>
+      tester.toolSettingAction(row('into-drawing'));
 
   BooleanDot boldRing(WidgetTester tester) => tester.widget<BooleanDot>(
     find.descendant(of: row('bold'), matching: find.byType(BooleanDot)),
@@ -138,6 +155,11 @@ void main() {
       'outline',
       'outline-width',
       'antialias',
+      // I-95: the place, at the head of the box's rows.
+      'x',
+      'y',
+      'centre-across',
+      'centre-down',
       'writing',
       'align',
       'box-width',
@@ -232,7 +254,7 @@ void main() {
       );
     });
 
-    testWidgets('「그림으로 굳히기」 keeps its seat and is OUT: there is no '
+    testWidgets('「래스터라이즈」 keeps its seat and is OUT: there is no '
         'text to turn', (tester) async {
       await pumpSettings(tester);
 
@@ -256,7 +278,7 @@ void main() {
       await tester.tap(row('writing-columns'));
       await tester.pump();
 
-      expect(hand.options.value.letters.bold, isTrue);
+      expect(hand.options.value.letters(brushColour: null).bold, isTrue);
       expect(hand.options.value.align, TextCelAlign.right);
       expect(hand.options.value.vertical, isTrue);
       expect(hand.host.ran, isEmpty);
@@ -361,7 +383,7 @@ void main() {
 
       expect(hand.host.ran, hasLength(1));
       expect(landedOn(hand.cel).spans.single.style.fontSize, shown);
-      expect(hand.options.value.letters.fontSize, shown);
+      expect(hand.options.value.letters(brushColour: null).fontSize, shown);
     });
 
     testWidgets('🚨each bar reads and sets its OWN number of the letters: '
@@ -401,7 +423,7 @@ void main() {
       // The next text is told each number too — and nothing it was not: it
       // has no outline to be the width of.
       expect(
-        hand.options.value.letters,
+        hand.options.value.letters(brushColour: null),
         plain.copyWith(
           letterSpacing: tracked.letterSpacing,
           outlineWidth: widened.outlineWidth,
@@ -446,7 +468,7 @@ void main() {
       );
       expect(hand.host.ran, hasLength(1));
       expect(smoothRing(tester).value, isFalse);
-      expect(hand.options.value.letters.antialias, isFalse);
+      expect(hand.options.value.letters(brushColour: null).antialias, isFalse);
     });
 
     testWidgets('letters that do not agree on it show its ring MIXED, and a '
@@ -571,7 +593,7 @@ void main() {
         landedOn(hand.cel).spans.single.style.fontFamily,
         'Nanum Gothic',
       );
-      expect(hand.options.value.letters.fontFamily, 'Nanum Gothic');
+      expect(hand.options.value.letters(brushColour: null).fontFamily, 'Nanum Gothic');
       expect(
         tester.widget<PanelFlyoutButton>(row('font')).label,
         'Nanum Gothic',
@@ -615,7 +637,7 @@ void main() {
       expect(wheel, findsNothing, reason: '⛔fixture: the window closed');
       expect(hand.host.ran, hasLength(1));
       expect(landedOn(hand.cel).spans.single.style.color, picked);
-      expect(hand.options.value.letters.color, picked);
+      expect(hand.options.value.letters(brushColour: null).color, picked);
     });
 
     testWidgets('「현재 색 반영」 brings the brush\'s colour to the letters', (
@@ -724,11 +746,12 @@ void main() {
 
       expect(written('line-height', '125%'), findsOneWidget);
 
-      // Four fifths of the way along its TRACK — the bar less the +/− pair
-      // at its end, 14 wide and 3 clear of it.
+      // Four fifths of the way along its TRACK — the bar less the hands at
+      // its end, the +/− pair and the pencil.
       final line = tester.getRect(row('line-height'));
       await tester.tapAt(
-        line.centerLeft + Offset((line.width - 17) * 0.8, 0),
+        line.centerLeft +
+            Offset((line.width - FieldSlider.handsReach) * 0.8, 0),
       );
       await tester.pump();
 
@@ -783,9 +806,11 @@ void main() {
     );
   });
 
-  test('「그림으로 굳히기」 is said in EVERY language — in Korean as the '
-      'layout 유저 took wrote it, elsewhere by the app\'s own word for a '
-      'layer made pixels', () {
+  // ↩️Korean said it as the layout 유저 took wrote it, 「그림으로
+  // 굳히기」, until 유저 2026-10-10: 「굽기버튼도 마찬가지야. 뭐는 굽기 뭐는
+  // 래스터라이즈. 래스터라이즈로 통일」.
+  test('「래스터라이즈」 is said in EVERY language by the app\'s own word '
+      'for a layer made pixels', () {
     expect(
       {
         for (final language in AppLanguage.values)
@@ -794,7 +819,7 @@ void main() {
       {
         AppLanguage.en: 'Rasterize',
         AppLanguage.ja: 'ラスタライズ',
-        AppLanguage.ko: '그림으로 굳히기',
+        AppLanguage.ko: '래스터라이즈',
         AppLanguage.fr: 'Pixelliser',
         AppLanguage.zhHans: '栅格化',
       },
@@ -802,7 +827,7 @@ void main() {
   });
 
   // 유저 2026-10-06: 「동작은 텍스트 선택하면 해당 버튼 활성화색」.
-  testWidgets('🚨「그림으로 굳히기」 is LIT while a text is in hand, and '
+  testWidgets('🚨「래스터라이즈」 is LIT while a text is in hand, and '
       'pressed it turns that text into its cel\'s drawing — one step, the '
       'hand free, and the button out again', (tester) async {
     final hand = await pumpSettings(tester, text: said([run('ab')]));
@@ -828,7 +853,7 @@ void main() {
 
   // The press law (CLAUDE.md): 「컨트롤 위에서 시작한 제스처는 그 컨트롤의
   // 것이다. 스크롤은 그 외에서 일어난다」.
-  testWidgets('🚨a press on 「그림으로 굳히기」 that WOBBLES is still the '
+  testWidgets('🚨a press on 「래스터라이즈」 that WOBBLES is still the '
       'button\'s: the text turns, and the settings do not scroll', (
     tester,
   ) async {
@@ -854,7 +879,11 @@ void main() {
     await tester.pump();
     final scrolledTo = list.pixels;
     final button = tester.getRect(row('into-drawing'));
-    expect(button.height, greaterThan(24), reason: '⛔fixture: room to wobble');
+    expect(
+      button.height,
+      greaterThanOrEqualTo(24),
+      reason: '⛔fixture: room to wobble past the slop',
+    );
 
     // Down at its top, and past a finger's slop (18) before it comes up —
     // inside the button all the way.
@@ -862,9 +891,9 @@ void main() {
       button.topCenter + const Offset(0, 2),
     );
     await tester.pump();
-    await finger.moveBy(const Offset(0, 11));
+    await finger.moveBy(const Offset(0, 10));
     await tester.pump();
-    await finger.moveBy(const Offset(0, 11));
+    await finger.moveBy(const Offset(0, 9));
     await tester.pump();
     await finger.up();
     await tester.pump();
@@ -1103,18 +1132,19 @@ void main() {
     );
     await tester.pump();
 
-    expect(options.value.letters.color, 0xFF336699);
+    expect(options.value.letters(brushColour: null).color, 0xFF336699);
   });
 
   testWidgets('a host that owns no settings and holds no text shows the '
       'defaults, and its controls are shut', (tester) async {
+    await standTall(tester);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
         home: const Scaffold(
           body: SizedBox(
             width: 260,
-            height: 640,
+            height: _asTallAsTheRows,
             child: TextToolSettings(options: null, commands: null),
           ),
         ),

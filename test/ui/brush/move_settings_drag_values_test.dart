@@ -1,14 +1,21 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/tool_setting_action_probe.dart';
 import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/scale_chain_button.dart';
 
 /// R26 #14: the Move/Transform settings' x/y/angle/scale are the shared
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a
@@ -111,10 +118,10 @@ void main() {
     return commands;
   }
 
-  /// Types [text] into the readout [key]: a press that moved nothing opens
-  /// its editor, and Enter commits.
+  /// Types [text] into the readout [key]: its pencil opens its editor, and
+  /// Enter commits.
   Future<void> typeInto(WidgetTester tester, String key, String text) async {
-    await tester.tap(find.byKey(ValueKey<String>(key)));
+    await tester.tap(find.byKey(ValueKey<String>('$key-edit')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(ValueKey<String>('$key-input')), text);
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -259,13 +266,13 @@ void main() {
       scaleLinked: false,
     );
 
-    expect(find.text('-150%'), findsOneWidget, reason: '가로: 반전 + 150%');
-    expect(find.text('75%'), findsOneWidget, reason: '세로: 75%');
+    expect(find.text('-150.00%'), findsOneWidget, reason: '가로: 반전 + 150%');
+    expect(find.text('75.00%'), findsOneWidget, reason: '세로: 75%');
 
     await typeInto(tester, 'move-scale-y-field', '-100');
 
     expect(applied.last, stretched.copyWith(sy: -1));
-    expect(find.text('-100%'), findsOneWidget);
+    expect(find.text('-100.00%'), findsOneWidget);
   });
 
   /// 🚨★★★**⑤ONE SCRUB IS ONE STEP BACK, not forty.**
@@ -273,8 +280,10 @@ void main() {
   /// 🗣️유저 2026-09-20: 「변형에 대한 **조작마다** 언두로 기록」. A label
   /// scrub writes a value per pixel; only the label knows where the
   /// operation began, so it is the label that says so.
-  testWidgets('⑤a label scrub announces ONE operation, a press that only '
-      'opens the editor announces none', (tester) async {
+  testWidgets('⑤a label scrub announces ONE operation, a press that moves '
+      'nothing and the pencil announce none, a step announces one', (
+    tester,
+  ) async {
     final applied = <AppliedTransform>[];
     var steps = 0;
     final commands = await pumpMoveSettings(tester, applied: applied);
@@ -315,11 +324,28 @@ void main() {
       );
     }
 
-    // A press that never moves the value opens the text field instead —
-    // nothing has happened yet, so there is nothing to step back to.
+    // A press that never moves the value does nothing, and the pencil only
+    // opens the field — nothing has happened yet, so there is nothing to
+    // step back to.
     await tester.tap(find.byKey(const ValueKey<String>('move-y-field')));
     await tester.pump(const Duration(milliseconds: 500));
     expect(steps, 1, reason: '⛔a tap is not an operation');
+    await tester.tap(
+      find.byKey(const ValueKey<String>('move-y-field-edit')),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(steps, 1, reason: '⛔opening the field is not one');
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+
+    // A step is a whole operation of its own, as a scrub is.
+    final before = applied.length;
+    await tester.tap(
+      find.byKey(const ValueKey<String>('move-y-field-step-up')),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(steps, 2, reason: 'one step, one operation');
+    expect(applied.length, before + 1, reason: 'and one write');
   });
 
   testWidgets('a scale never rests on zero, and never past the ceiling — '
@@ -496,8 +522,8 @@ void main() {
     );
   });
 
-  testWidgets('the link switch reaches the tool\'s options, and reads back '
-      'from them', (tester) async {
+  testWidgets('the chain beside 배율 reaches the tool\'s options, and reads '
+      'back from them', (tester) async {
     final chosen = <TransformToolOptions>[];
     await pumpMoveSettings(
       tester,
@@ -506,9 +532,14 @@ void main() {
     );
     final link = find.byKey(const ValueKey<String>('move-scale-link-switch'));
     expect(
-      tester.booleanDotIn(link).value,
+      tester.appIconButton(link).isSelected,
       isTrue,
       reason: 'the chain is on as the tool begins — AE\'s',
+    );
+    expect(
+      find.ancestor(of: link, matching: find.byType(ScaleChainButton)),
+      findsOneWidget,
+      reason: 'the timeline Scale row\'s own chain — one switch, one face',
     );
 
     await tester.tap(link);
@@ -530,7 +561,7 @@ void main() {
       scaleLinked: false,
       onOptionsChanged: chosen.add,
     );
-    expect(tester.booleanDotIn(link).value, isFalse);
+    expect(tester.appIconButton(link).isSelected, isFalse);
     await tester.tap(link);
     await tester.pump();
     expect(chosen.last.scaleLinked, isTrue);
@@ -598,37 +629,38 @@ void main() {
       onResampleModeChanged: (_) {},
       canEdit: false,
     );
-    for (final key in const [
-      'move-antialias-switch',
-      'move-scale-link-switch',
-    ]) {
-      expect(
-        tester.booleanDotIn(find.byKey(ValueKey<String>(key))).enabled,
-        isFalse,
-        reason: '$key must be flat with nothing to transform',
-      );
-    }
+    expect(
+      tester
+          .booleanDotIn(
+            find.byKey(const ValueKey<String>('move-antialias-switch')),
+          )
+          .enabled,
+      isFalse,
+      reason: 'the AA switch must be flat with nothing to transform',
+    );
+    expect(
+      tester
+          .appIconButton(
+            find.byKey(const ValueKey<String>('move-scale-link-switch')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'the chain must not be pressable with nothing to transform',
+    );
     for (final key in const [
       'move-flip-horizontal-button',
       'move-flip-vertical-button',
       'move-reset-button',
+      'move-apply-button',
     ]) {
       expect(
         tester
-            .widget<OutlinedButton>(find.byKey(ValueKey<String>(key)))
+            .toolSettingAction(find.byKey(ValueKey<String>(key)))
             .onPressed,
         isNull,
         reason: '$key must not be pressable with nothing to transform',
       );
     }
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const ValueKey<String>('move-apply-button')),
-          )
-          .onPressed,
-      isNull,
-    );
   });
 
   testWidgets('적용 is grey when 적용 has nothing to do, though the tool can '
@@ -636,7 +668,7 @@ void main() {
     // confirm-button (유저 2026-09-24): 「할 게 없으면 회색」. ↩️It asked
     // whether the TOOL could edit, so it lit over a box with nothing to
     // confirm and nothing to replay, and pressing it did nothing.
-    FilledButton apply() => tester.widget<FilledButton>(
+    ToolSettingAction apply() => tester.toolSettingAction(
       find.byKey(const ValueKey<String>('move-apply-button')),
     );
     await pumpMoveSettings(tester, applied: []);
@@ -646,54 +678,113 @@ void main() {
     expect(apply().onPressed, isNotNull);
   });
 
-  testWidgets('the four buttons come in the order the user asked for, and '
-      'the mesh grid shows only in 메쉬', (tester) async {
-    final applied = <AppliedTransform>[];
+  /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): the values in rows and
+  /// columns — ONE VALUE A LINE, X over Y, each with its ± and its pencil
+  /// where a bar's stand (「열당 하나. x만두고 다음열에 y두고」); the flips a
+  /// line of their own under 회전, half the control column each; 초기화 ·
+  /// 적용 as the last line. ↩️X beside Y, a pair a row, the flips in the
+  /// rotation row's second cell; before that 유저 08-13's order 좌우반전 ·
+  /// 상하반전 · 리셋 · 적용 was one row of its own under the numbers.
+  testWidgets('a value a line, X over Y in one column, each with its hands '
+      'at the end; the flips a line under 회전; 초기화 · 적용 end the '
+      'settings', (tester) async {
     await pumpMoveSettings(
       tester,
-      applied: applied,
+      applied: [],
       onResampleModeChanged: (_) {},
     );
-    // 좌우반전 · 상하반전 · 리셋 · 적용.
-    final buttons = <Offset>[
-      for (final key in const [
-        'move-flip-horizontal-button',
-        'move-flip-vertical-button',
-        'move-reset-button',
-        'move-apply-button',
-      ])
-        tester.getTopLeft(find.byKey(ValueKey<String>(key))),
+    Rect at(String key) => tester.getRect(find.byKey(ValueKey<String>(key)));
+
+    const values = [
+      'move-x-field',
+      'move-y-field',
+      'move-scale-x-field',
+      'move-scale-y-field',
+      'move-angle-field',
+      'move-anchor-x-field',
+      'move-anchor-y-field',
+      'move-mesh-columns-field',
+      'move-mesh-rows-field',
     ];
-    for (var i = 1; i < buttons.length; i += 1) {
+    final first = at(values.first);
+    for (final (index, key) in values.indexed) {
+      final box = at(key);
+      expect(box.left, first.left, reason: '$key: the one column');
+      expect(box.right, first.right, reason: '$key: the one column');
+      expect(at('$key-step-up').left, at('move-x-field-step-up').left,
+          reason: '$key: its ± in the one end column');
+      expect(at('$key-edit').left, at('move-x-field-edit').left,
+          reason: '$key: its pencil after them');
+      expect(at('$key-step-up').left, greaterThan(box.right),
+          reason: '$key: the hands after the box');
+      if (index > 0) {
+        expect(box.top, greaterThan(at(values[index - 1]).bottom),
+            reason: '$key: a line under ${values[index - 1]}');
+      }
+    }
+
+    final angle = at('move-angle-field');
+    final flipAcross = at('move-flip-horizontal-button');
+    final flipDown = at('move-flip-vertical-button');
+    for (final flip in [flipAcross, flipDown]) {
+      expect(flip.top, greaterThan(angle.bottom), reason: 'under 회전');
+      expect(flip.bottom, lessThan(at('move-anchor-x-field').top),
+          reason: 'over 기준점');
+      expect(flip.center.dy, flipAcross.center.dy, reason: 'one line');
+    }
+    expect(flipAcross.left, angle.left, reason: 'the control column');
+    expect(flipDown.right, angle.right, reason: 'ending where the boxes do');
+    expect(flipAcross.width, flipDown.width, reason: 'half each');
+    expect(flipAcross.right, lessThan(flipDown.left));
+
+    final reset = at('move-reset-button');
+    final apply = at('move-apply-button');
+    expect(reset.center.dy, apply.center.dy, reason: 'one line');
+    expect(reset.right, lessThan(apply.left));
+    expect(reset.width, apply.width, reason: 'one width each');
+    expect(reset.height, apply.height, reason: 'one height');
+    expect(
+      reset.top,
+      greaterThan(at('move-antialias-switch').bottom),
+      reason: 'the last line of the settings',
+    );
+  });
+
+  testWidgets('the mesh row keeps its place, and takes a hand in 메쉬 alone', (
+    tester,
+  ) async {
+    DragValueLabel box(String key) => tester.widget<DragValueLabel>(
+      find.ancestor(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(DragValueLabel),
+      ),
+    );
+    await pumpMoveSettings(
+      tester,
+      applied: [],
+      onResampleModeChanged: (_) {},
+    );
+    for (final key in const [
+      'move-mesh-columns-field',
+      'move-mesh-rows-field',
+    ]) {
+      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
       expect(
-        buttons[i].dy > buttons[i - 1].dy ||
-            (buttons[i].dy == buttons[i - 1].dy &&
-                buttons[i].dx > buttons[i - 1].dx),
-        isTrue,
-        reason: 'button $i sits after button ${i - 1}',
+        box(key).enabled,
+        isFalse,
+        reason: '$key: a grid size means nothing outside 메쉬',
       );
     }
-    expect(
-      find.byKey(const ValueKey<String>('move-mesh-columns-field')),
-      findsNothing,
-      reason: 'a grid size means nothing outside 메쉬',
-    );
 
     await tester.pumpWidget(const SizedBox.shrink());
     await pumpMoveSettings(
       tester,
-      applied: applied,
+      applied: [],
       onResampleModeChanged: (_) {},
       mode: TransformMode.mesh,
     );
-    expect(
-      find.byKey(const ValueKey<String>('move-mesh-columns-field')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('move-mesh-rows-field')),
-      findsOneWidget,
-    );
+    expect(box('move-mesh-columns-field').enabled, isTrue);
+    expect(box('move-mesh-rows-field').enabled, isTrue);
   });
 
   /// 🚨★★★**F-164 ③④ — 유저 2026-09-18**: 「변형중에 툴도구의 X,Y값같은거
@@ -704,7 +795,11 @@ void main() {
   ) async {
     final commands = await pumpMoveSettings(tester, applied: []);
 
-    expect(find.text('0'), findsWidgets, reason: '⛔fixture premise: identity');
+    expect(
+      find.text('0.00'),
+      findsWidgets,
+      reason: '⛔fixture premise: identity',
+    );
 
     // What the LAYER publishes while a handle is being dragged.
     commands.publishTransformValues(const TransformValues(tx: 12, ty: -4));
@@ -714,8 +809,8 @@ void main() {
       find.byKey(const ValueKey<String>('move-x-field')),
       findsOneWidget,
     );
-    expect(find.text('12'), findsOneWidget, reason: 'X followed the box');
-    expect(find.text('-4'), findsOneWidget, reason: 'Y followed the box');
+    expect(find.text('12.00'), findsOneWidget, reason: 'X followed the box');
+    expect(find.text('-4.00'), findsOneWidget, reason: 'Y followed the box');
   });
 
   testWidgets('⛔and the digits are the only thing listening', (tester) async {

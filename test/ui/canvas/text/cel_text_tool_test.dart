@@ -83,9 +83,31 @@ void main() {
     for (final text in pictureOf(cel).texts) (text.id, text.content.text),
   ];
 
-  /// What the canvas is given to draw for [cel] — null: the cel as it is.
-  BitmapSurface? shownFor(CelTextTool tool, CelTextCel cel) =>
-      tool.shownSurfaceFor(cel.key, pictureOf(cel));
+  /// What the canvas draws for [cel], as one picture — null: the cel as it
+  /// is. What it draws in the cel's place, with what floats over that
+  /// (F-344) laid on top in its order: the text in hand as it is shown,
+  /// then the texts of the cel above it.
+  BitmapSurface? shownFor(CelTextTool tool, CelTextCel cel) {
+    final picture = pictureOf(cel);
+    final hole = tool.onCanvas.shownSurfaceFor(cel.key, picture);
+    final floating = tool.onCanvas.floatingOn(cel.key, picture);
+    if (floating == null) {
+      return hole;
+    }
+    final session = tool.session!;
+    final shown = session.shown;
+    final under = hole ?? picture;
+    return under.withTexts([
+      ...under.texts,
+      if (!shown.content.isEmpty)
+        CelText(
+          id: session.textId ?? nextCelTextId(under.texts),
+          content: shown.content,
+          plate: shown.plate,
+        ),
+      ...floating.above,
+    ]);
+  }
 
   /// The keyboard leaves [text] in the field of the text in hand.
   void typeInto(CelTextTool tool, String text) {
@@ -632,7 +654,7 @@ void main() {
       expect(tool.holdsAnything, isTrue, reason: 'a landing is still owed');
       expect(host.ran, isEmpty);
       expect(textsOn(cel), [(4, 'ab')], reason: 'still a text of the cel');
-      expect(tool.restingBoxesOn(cel.key, pictureOf(cel)), isEmpty);
+      expect(tool.onCanvas.restingBoxesOn(cel.key, pictureOf(cel)), isEmpty);
       expect(tool.takeableOn(cel), isEmpty);
       expect(tool.list.texts, isEmpty);
       tool.list.take(4);
@@ -660,7 +682,10 @@ void main() {
       tool.confirm();
 
       expect(tool.holdsAnything, isTrue, reason: '⛔fixture');
-      expect(tool.restingBoxesOn(cel.key, pictureOf(cel)), hasLength(1));
+      expect(
+        tool.onCanvas.restingBoxesOn(cel.key, pictureOf(cel)),
+        hasLength(1),
+      );
       expect(tool.takeableOn(cel), hasLength(1));
       expect(tool.list.texts, hasLength(1));
       await baker.pending.answer();
@@ -1153,14 +1178,14 @@ void main() {
       await baker.pending.answer();
 
       expect(shownFor(tool, cel), isNotNull, reason: '⛔fixture');
-      expect(tool.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
+      expect(tool.onCanvas.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
 
       // And the same of a text on its way out, still drawn until it lands.
       typeInto(tool, 'ab');
       tool.confirm();
 
       expect(shownFor(tool, cel), isNotNull, reason: '⛔fixture');
-      expect(tool.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
+      expect(tool.onCanvas.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
     });
 
     test('the canvas is told when what it shows changes — a text begun, a '
@@ -1179,6 +1204,214 @@ void main() {
       tool.confirm();
       expect(host.redrawn, greaterThan(baked));
     });
+
+    test('🚨F-344: a text in hand shown otherwise is LIFTED — in the cel\'s '
+        'place the cel without it and without the texts above it, and '
+        'those float over it in their order', () {
+      final below = carried(3, said([run('lo')]));
+      final held = carried(4, said([run('ab')], x: 12));
+      final over = carried(5, said([run('hi')], y: 14));
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [below, held, over],
+      );
+      tool.takeText(cel, held);
+      final session = tool.session!;
+
+      session.showMoved(session.moveOrigin, dx: 8, dy: 0);
+
+      final picture = pictureOf(cel);
+      final hole = tool.onCanvas.shownSurfaceFor(cel.key, picture)!;
+      final floating = tool.onCanvas.floatingOn(cel.key, picture)!;
+      expect([for (final text in hole.texts) text.id], [3]);
+      expect(hole.tiles, picture.tiles, reason: 'the drawing stays');
+      expect([for (final text in floating.above) text.id], [5]);
+      expect(floating.under, same(hole));
+      expect(floating.pixels.plate, same(held.plate));
+      expect((floating.pixels.dx, floating.pixels.dy), (8, 0));
+    });
+
+    test('🚨F-344-Q3: a canvas that floats the LANDING is given the cel '
+        'without the text in hand alone — the texts above it stay', () {
+      final below = carried(3, said([run('lo')]));
+      final held = carried(4, said([run('ab')], x: 12));
+      final over = carried(5, said([run('hi')], y: 14));
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [below, held, over],
+      );
+      tool.takeText(cel, held);
+      final session = tool.session!;
+      expect(
+        tool.onCanvas.shownWithoutFor(cel.key, pictureOf(cel)),
+        isNull,
+        reason: 'taken and not yet carried, it is shown as the cel has it',
+      );
+
+      session.showMoved(session.moveOrigin, dx: 8, dy: 0);
+
+      final picture = pictureOf(cel);
+      final without = tool.onCanvas.shownWithoutFor(cel.key, picture)!;
+      expect([for (final text in without.texts) text.id], [3, 5]);
+      expect(without.tiles, picture.tiles, reason: 'the drawing stays');
+      expect(
+        tool.onCanvas.shownWithoutFor(cel.key, picture),
+        same(without),
+        reason: 'one picture for the whole carry',
+      );
+    });
+
+    test('🚨F-344: a hand carrying the text tells the panel only as the '
+        'text lifts off and as it is put back — each move between is told '
+        'on shownInHand alone', () {
+      final standing = carried(4, said([run('ab')]));
+      final (:tool, :host, baker: _, :cel) = hand(texts: [standing]);
+      tool.takeText(cel, standing);
+      final session = tool.session!;
+      final origin = session.moveOrigin;
+      final taken = host.redrawn;
+      BitmapSurface? hole() =>
+          tool.onCanvas.shownSurfaceFor(cel.key, pictureOf(cel));
+      var moves = 0;
+      var settings = 0;
+      tool
+        ..shownInHand.addListener(() => moves += 1)
+        ..addListener(() => settings += 1);
+
+      session.showMoved(origin, dx: 1, dy: 0);
+      final lifted = hole();
+      for (var dx = 2; dx <= 6; dx++) {
+        session.showMoved(origin, dx: dx, dy: 0);
+      }
+
+      expect(host.redrawn, taken + 1, reason: 'lifted off, once');
+      expect(moves, 6);
+      expect(settings, 0, reason: 'a carry is no other text');
+      expect(lifted, isNotNull, reason: '⛔fixture');
+      expect(hole(), same(lifted), reason: 'one hole for the whole carry');
+      expect(tool.shownInHand.value, same(session.shown));
+
+      session.showMoved(origin, dx: 0, dy: 0);
+
+      expect(host.redrawn, taken + 2, reason: 'put back');
+      expect(hole(), isNull);
+    });
+
+    test('🚨F-344: letters typed into a text in hand tell the panel once, as '
+        'the text lifts off — each bake after that is told on shownInHand '
+        'alone', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      final begun = host.redrawn;
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      expect(host.redrawn, begun + 1, reason: 'lifted off');
+      var shown = 0;
+      tool.shownInHand.addListener(() => shown += 1);
+
+      for (final words in ['ab', 'abc']) {
+        typeInto(tool, words);
+        await baker.pending.answer();
+      }
+
+      expect(host.redrawn, begun + 1, reason: 'still lifted');
+      expect(shown, 2);
+      final floating = tool.onCanvas.floatingOn(cel.key, pictureOf(cel))!;
+      expect(floating.pixels.plate, same(tool.session!.shown.plate));
+    });
+
+    test('🚨F-344: the text taken is on shownInHand at once — another '
+        'taken is, and none is once it is let go of', () {
+      final first = carried(4, said([run('ab')]));
+      final second = carried(5, said([run('cd')], y: 24));
+      final (:tool, host: _, baker: _, :cel) = hand(texts: [first, second]);
+
+      tool.takeText(cel, first);
+      final one = tool.shownInHand.value;
+      tool.takeText(cel, second);
+      final other = tool.shownInHand.value;
+      final session = tool.session!;
+      tool.confirm();
+
+      expect(one?.content, first.content);
+      expect(other, same(session.shown));
+      expect(tool.shownInHand.value, isNull);
+    });
+
+    test('🚨F-344: a text carried and DELETED leaves nothing lifted — the '
+        'next one carried lifts off in its turn, and the panel is told', () {
+      final first = carried(4, said([run('ab')]));
+      final second = carried(5, said([run('cd')], y: 24));
+      final (:tool, :host, baker: _, :cel) = hand(texts: [first, second]);
+      tool.takeText(cel, first);
+      final one = tool.session!;
+      one.showMoved(one.moveOrigin, dx: 4, dy: 0);
+      tool
+        ..deleteText()
+        ..takeText(cel, second);
+      final other = tool.session!;
+      final taken = host.redrawn;
+
+      other.showMoved(other.moveOrigin, dx: 4, dy: 0);
+
+      expect(textsOn(cel), [(5, 'cd')], reason: '⛔fixture: deleted');
+      expect(host.redrawn, taken + 1, reason: 'lifted off');
+    });
+
+    test('🚨F-344: the text in hand landed as it is shown is put back — '
+        'and the panel is told', () {
+      final standing = carried(4, said([run('ab')]));
+      final (:tool, :host, baker: _, :cel) = hand(texts: [standing]);
+      tool.takeText(cel, standing);
+      final session = tool.session!;
+      session.showMoved(session.moveOrigin, dx: 4, dy: 0);
+      final carrying = host.redrawn;
+
+      expect(tool.landShown(), isTrue);
+
+      expect(host.redrawn, carrying + 1, reason: 'put back');
+      expect(tool.onCanvas.shownSurfaceFor(cel.key, pictureOf(cel)), isNull);
+    });
+
+    test('🚨F-344: the text in hand landed as it is shown tells the panel '
+        'ONCE that it is put back — with another let go of still owed its '
+        'landing', () {
+      final first = carried(4, said([run('ab')]));
+      final second = carried(5, said([run('cd')], y: 24));
+      final (:tool, :host, :baker, :cel) = hand(texts: [first, second]);
+      tool
+        ..takeText(cel, first)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      // The other taken: this one is let go of, its last want owed.
+      tool.takeText(cel, second);
+      final session = tool.session!;
+      session.showMoved(session.moveOrigin, dx: 4, dy: 0);
+      final carrying = host.redrawn;
+      expect(
+        baker.pending.content.text,
+        'abc',
+        reason: '⛔fixture: the one let go of is still owed its last want',
+      );
+
+      expect(tool.landShown(), isTrue);
+
+      expect(host.ran, hasLength(1), reason: 'the one in hand, as shown');
+      expect(host.redrawn, carrying + 1, reason: 'put back, once');
+    });
+
+    test('a NEW text has nothing above it: its hole is its cel, and it '
+        'floats over all of the cel\'s texts', () async {
+      final standing = carried(4, said([run('ab')]));
+      final (:tool, host: _, :baker, :cel) = hand(texts: [standing]);
+      tool.beginText(cel, CanvasPoint(x: 4, y: 20));
+      typeInto(tool, 'cd');
+      await baker.pending.answer();
+
+      final picture = pictureOf(cel);
+      final floating = tool.onCanvas.floatingOn(cel.key, picture)!;
+      expect(tool.onCanvas.shownSurfaceFor(cel.key, picture), isNull);
+      expect(floating.above, isEmpty);
+      expect(floating.pixels.plate, same(tool.session!.shown.plate));
+    });
   });
 
   group('the boxes of the texts in nobody\'s hand', () {
@@ -1190,7 +1423,7 @@ void main() {
     }
 
     List<List<Offset>> resting(CelTextTool tool, CelTextCel cel) => [
-      for (final box in tool.restingBoxesOn(cel.key, pictureOf(cel)))
+      for (final box in tool.onCanvas.restingBoxesOn(cel.key, pictureOf(cel)))
         box.corners,
     ];
 
@@ -1231,7 +1464,10 @@ void main() {
 
       expect(
         [
-          for (final box in tool.restingBoxesOn(elsewhere, pictureOf(cel)))
+          for (final box in tool.onCanvas.restingBoxesOn(
+            elsewhere,
+            pictureOf(cel),
+          ))
             box.corners,
         ],
         [boxOf(first), boxOf(second)],
@@ -1277,7 +1513,10 @@ void main() {
       final other = drawingOf(const {}).withTexts([carried(1, second)]);
 
       expect(
-        [for (final box in tool.restingBoxesOn(elsewhere, other)) box.corners],
+        [
+          for (final box in tool.onCanvas.restingBoxesOn(elsewhere, other))
+            box.corners,
+        ],
         [boxOf(second)],
       );
     });
@@ -1741,6 +1980,9 @@ class _Host implements CelTextToolHost {
   TextToolOptions options = const TextToolOptions(
     letters: TextLetterStyle(fontSize: 8),
   );
+
+  @override
+  int? get brushColour => null;
 
   final List<({Command command, HistoryMark? withCelMadeSince})> ran = [];
 

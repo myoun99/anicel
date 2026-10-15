@@ -24,9 +24,10 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/grip_band.dart';
+
+import '../../helpers/app_shortcuts.dart';
 
 const _window = Size(1600, 1000);
 const _shot = ValueKey<String>('the-whole-window');
@@ -182,9 +183,7 @@ void main() {
     tester,
   ) async {
     await _pumpApp(tester);
-    final keys = EditorShortcutScope.peek(
-      tester.element(find.byType(EditorWorkspace)),
-    )!;
+    final keys = appShortcuts(tester);
     keys.setActivators(EditorActionIds.regionOnTop, const [
       SingleActivator(LogicalKeyboardKey.keyK, control: true, shift: true),
     ]);

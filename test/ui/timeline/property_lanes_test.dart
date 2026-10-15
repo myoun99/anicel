@@ -1,7 +1,9 @@
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/camera_pose.dart';
@@ -33,16 +35,28 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
 import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerLaneValueSlotWidth;
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
+
+/// A straight key that holds from there on — AE's Toggle Hold Keyframe.
+const _heldOut = SidesKeyMark(
+  incoming: KeySideKind.linear,
+  outgoing: KeySideKind.hold,
+);
 
 const _cameraLayerId = LayerId('lane-cam-layer');
-const _laneToggleKey = ValueKey<String>('timeline-lane-toggle-lane-cam-layer');
+const _laneToggleName = 'timeline-lane-toggle-lane-cam-layer';
 
 Project _project({CutCamera? camera}) {
   return Project(
@@ -98,7 +112,10 @@ Future<void> _pump(WidgetTester tester, Project project) async {
   // window and no further, so the window has to be twice what these rows
   // need. It used to lean on a ceiling of "everything but the canvas's
   // floor", which let this drag reach 1074 of 1200 — 89% of the screen.
-  await tester.binding.setSurfaceSize(const Size(1280, 2200));
+  // 1280 → 1360 wide (tool-settings-panel-tidy, 2026-10-10): the rail took
+  // 76 for its lane values' hands, which the frames beside it gave up — a
+  // key dragged two frames right then reached the edge that scrolls.
+  await tester.binding.setSurfaceSize(const Size(1360, 2200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();
@@ -120,8 +137,8 @@ Future<void> _expandTransformGroup(
   String layerId, {
   String keyPrefix = 'timeline',
 }) async {
-  final toggle = find.byKey(
-    ValueKey<String>('$keyPrefix-lane-group-toggle-$layerId-transform-group'),
+  final toggle = find.named(
+    '$keyPrefix-lane-group-toggle-$layerId-transform-group',
   );
   if (toggle.evaluate().isEmpty) {
     return;
@@ -130,6 +147,29 @@ Future<void> _expandTransformGroup(
   await tester.pumpAndSettle();
   await tester.tap(toggle);
   await tester.pumpAndSettle();
+}
+
+/// A scrub of [cell] by [dx] as a hand makes one: past the slop a
+/// number box waits out before its number moves (`DragValueLabel`),
+/// then the travel.
+Future<void> _scrubBy(
+  WidgetTester tester,
+  Finder cell,
+  double dx, {
+  PointerDeviceKind kind = PointerDeviceKind.touch,
+  Axis along = Axis.horizontal,
+}) async {
+  // From the first pixel, whatever the pointer: the box has no tap to
+  // keep apart from a drag (tool-settings-panel-tidy, 2026-10-10).
+  final gesture = await tester.startGesture(
+    tester.getCenter(cell),
+    kind: kind,
+  );
+  await gesture.moveBy(
+    along == Axis.horizontal ? Offset(dx, 0) : Offset(0, dx),
+  );
+  await tester.pump();
+  await gesture.up();
 }
 
 Finder _laneKey(String laneId, int frame) => find.byKey(
@@ -153,7 +193,7 @@ void main() {
       const lane = PropertyLaneRow(
         laneId: 'position',
         label: 'Position',
-        keyedFrames: {1},
+        keyMarks: {1: KeyMark.linear},
       );
 
       final collapsed = buildTimelineDisplayRows(
@@ -202,7 +242,7 @@ void main() {
       const lane = PropertyLaneRow(
         laneId: 'position',
         label: 'Position',
-        keyedFrames: {},
+        keyMarks: {},
       );
       List<String> orderOf(List<Layer> layers, Set<LayerId> expanded) =>
           buildTimelineDisplayRows(
@@ -253,7 +293,7 @@ void main() {
             .withKey(
               6,
               CanvasPoint(x: 5, y: 5),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
             ),
         rotation: PropertyTrack<double>().withKey(3, 90),
       );
@@ -273,8 +313,7 @@ void main() {
       ]);
       expect(lanes.first.isGroupHeader, isTrue);
       expect(lanes.first.showsKeyNavigator, isFalse);
-      expect(lanes[1].keyedFrames, {0, 6});
-      expect(lanes[1].holdOutFrames, {6});
+      expect(lanes[1].keyMarks, {0: KeyMark.linear, 6: _heldOut});
       expect(lanes[2].keyedFrames, isEmpty);
       expect(lanes[3].keyedFrames, {3});
     });
@@ -306,9 +345,9 @@ void main() {
         'opacity',
       ]);
       expect(lanes[1].keyedFrames, {2});
-      expect(lanes[1].valueLabel!(0), '10, 20');
+      expect(lanes[1].valueLabel!(0), '10.00, 20.00');
       expect(lanes[5].keyedFrames, {5});
-      expect(lanes[5].valueLabel!(0), '50%');
+      expect(lanes[5].valueLabel!(0), '50.00%');
     });
   });
 
@@ -321,10 +360,10 @@ void main() {
       );
 
       // Collapsed by default: chevron present, lanes hidden.
-      expect(find.byKey(_laneToggleKey), findsOneWidget);
+      expect(find.named(_laneToggleName), findsOneWidget);
       expect(_laneLabel('position'), findsNothing);
 
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
 
       // ㉙ (유저 2026-08-12): the camera row has NO Transform group header —
@@ -344,21 +383,22 @@ void main() {
         expect(_laneKey(laneId, 8), findsOneWidget);
       }
 
-      // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9)
-      // — union headers and member lanes alike; selection speaks through
-      // the accent silhouette alone.
-      Color markerFill(Finder marker) {
-        final container = tester.widget<Container>(
-          find.descendant(of: marker, matching: find.byType(Container)).first,
-        );
-        return (container.decoration! as BoxDecoration).color!;
-      }
-
-      expect(markerFill(_laneKey('position', 0)), timelineDrawingStartColor);
+      // EVERY key mark fills like the frame blocks (UI-R24 #9) — union
+      // headers and member lanes alike; selection speaks through the
+      // accent silhouette alone.
+      expect(
+        tester.renderObject(
+          find.descendant(
+            of: _laneKey('position', 0),
+            matching: find.byType(CustomPaint),
+          ),
+        ),
+        paints..path(color: timelineDrawingStartColor),
+      );
 
       // ㉙: no header to collapse here, so the ROW's twirl is the only fold —
       // and it takes every lane with it.
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
       expect(_laneLabel('position'), findsNothing);
       expect(_laneLabel('scale'), findsNothing);
@@ -375,20 +415,40 @@ void main() {
               position: PropertyTrack<CanvasPoint>().withKey(
                 4,
                 CanvasPoint(x: 1, y: 1),
-                interpolation: PropertyKeyInterpolation.hold,
+                outgoing: KeyExit.hold,
               ),
             ),
           ),
         ),
       );
 
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
       await _expandTransformGroup(tester, 'lane-cam-layer');
 
       expect(_laneKey('position', 4), findsOneWidget);
       expect(_laneKey('scale', 4), findsNothing);
       expect(_laneKey('rotation', 4), findsNothing);
+    });
+
+    testWidgets('a lane group\'s twirl keeps the box its glyph had — the one '
+        'twirl, as small as the header is', (tester) async {
+      await _pump(tester, _project());
+      final rowTwirl = find.named('timeline-lane-toggle-lane-draw-layer');
+      await tester.ensureVisible(rowTwirl);
+      await tester.pumpAndSettle();
+      await tester.tap(rowTwirl);
+      await tester.pumpAndSettle();
+
+      final groupTwirl = find.named(
+        'timeline-lane-group-toggle-lane-draw-layer-transform-group',
+      );
+      expect(groupTwirl, findsOneWidget, reason: 'fixture premise');
+      expect(
+        tester.getSize(groupTwirl),
+        const Size(16, 16),
+        reason: 'it was its 16px glyph alone before it was the one twirl',
+      );
     });
 
     testWidgets('drawing layers twirl down the same Transform lanes onto '
@@ -423,9 +483,7 @@ void main() {
           .firstWhere((layer) => layer.id == const LayerId('lane-draw-layer'));
 
       // The drawing layer carries the twirl-down chevron now.
-      final toggle = find.byKey(
-        const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-      );
+      final toggle = find.named('timeline-lane-toggle-lane-draw-layer');
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
@@ -471,10 +529,10 @@ void main() {
     ) async {
       await _pump(tester, _project());
       for (final twirl in const [
-        ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-        _laneToggleKey,
+        'timeline-lane-toggle-lane-draw-layer',
+        _laneToggleName,
       ]) {
-        await tester.tap(find.byKey(twirl));
+        await tester.tap(find.named(twirl));
         await tester.pumpAndSettle();
       }
       await _expandTransformGroup(tester, 'lane-draw-layer');
@@ -496,16 +554,22 @@ void main() {
       /// Types [across] into the first of the Scale lane's two boxes and
       /// leaves the second as it is shown.
       Future<void> typeAcross(String across) async {
-        await tester.tap(draw('value'));
+        await tester.tap(
+          find.byKey(
+            const ValueKey<String>(
+              'timeline-lane-value-lane-draw-layer-scale-edit',
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
         expect(
           find.byKey(
             const ValueKey<String>(
-              'timeline-lane-value-field-lane-draw-layer-scale-1',
+              'timeline-lane-value-lane-draw-layer-scale-1',
             ),
           ),
           findsOneWidget,
-          reason: 'two boxes: across, and down',
+          reason: 'two boxes: across, and down — the second as shown',
         );
         await tester.enterText(draw('value-field'), across);
         await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -637,9 +701,7 @@ void main() {
           .firstWhere((layer) => layer.id == seLayerId);
 
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('timeline-lane-toggle-lane-se-layer'),
-        ),
+        find.named('timeline-lane-toggle-lane-se-layer'),
       );
       await tester.pumpAndSettle();
 
@@ -748,9 +810,7 @@ void main() {
           .layers
           .firstWhere((layer) => layer.id == instructionLayerId);
 
-      final toggle = find.byKey(
-        const ValueKey<String>('timeline-lane-toggle-lane-instr-layer'),
-      );
+      final toggle = find.named('timeline-lane-toggle-lane-instr-layer');
       expect(toggle, findsOneWidget);
       await tester.tap(toggle);
       await tester.pumpAndSettle();
@@ -820,8 +880,8 @@ void main() {
 
       // The union marks are the SHARED widget at the SHARED union size —
       // not a text glyph of their own any more.
-      expect(cameraUnionMarker(tester, 0).shape, PropertyLaneKeyShape.smooth);
-      expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
+      expect(cameraUnionMarker(tester, 0).mark, KeyMark.linear);
+      expect(cameraUnionMarker(tester, 8).mark, KeyMark.linear);
       expect(
         cameraUnionMarker(tester, 0).markerSize,
         timelineLaneUnionKeyMarkerSize(
@@ -841,15 +901,17 @@ void main() {
       }
       // The a11y surface moved from a per-cell Semantics widget to the row
       // painter's semanticsBuilder — still a real semantics tree, just not
-      // one `find.bySemanticsLabel` can see.
+      // one `find.bySemanticsLabel` can see — and says the row in one
+      // sentence (I-57-Q3 c): both keys, at their frames.
       final semantics = tester.ensureSemantics();
       await tester.pumpAndSettle();
       expect(
-        timelineCellSemanticsLabels(
-          tester,
-          'lane-cam-layer',
-        ).where((label) => label == 'camera keyframe'),
-        hasLength(2),
+        RegExp(r'camera keyframe, frame (\d+)')
+            .allMatches(
+              timelineCellSemanticsLabels(tester, 'lane-cam-layer').join('\n'),
+            )
+            .map((match) => match.group(1)),
+        ['1', '9'],
       );
       semantics.dispose();
     });
@@ -865,7 +927,7 @@ void main() {
               position: PropertyTrack<CanvasPoint>().withKey(
                 4,
                 CanvasPoint(x: 1, y: 1),
-                interpolation: PropertyKeyInterpolation.hold,
+                outgoing: KeyExit.hold,
               ),
               rotation: PropertyTrack<double>().withKey(8, 12),
             ),
@@ -873,13 +935,13 @@ void main() {
         ),
       );
 
-      expect(cameraUnionMarker(tester, 4).shape, PropertyLaneKeyShape.hold);
+      expect(cameraUnionMarker(tester, 4).mark, _heldOut);
       // A LINEAR key reads as a diamond even when another lane would hold
-      // elsewhere — [transformKeyHoldUnion], the one ■ law. ⚠️This fixture
+      // elsewhere — [transformKeyMarkUnion], the one union law. ⚠️This fixture
       // used to MAKE that key by overwriting a hold one, back when a value
       // edit reset the type; it keeps the type now (유저 2026-09-12), so the
       // linear key is written as one.
-      expect(cameraUnionMarker(tester, 8).shape, PropertyLaneKeyShape.smooth);
+      expect(cameraUnionMarker(tester, 8).mark, KeyMark.linear);
     });
   });
 
@@ -989,7 +1051,7 @@ void main() {
         scale: PropertyTrack<CanvasPoint>().withKey(
           0,
           uniformScale(1),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
       );
 
@@ -1012,8 +1074,8 @@ void main() {
       final scaled = edited('scale', 0, '250%')!;
       expect(scaled.scale.keyAt(0)!.value, uniformScale(2.5));
       expect(
-        scaled.scale.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        scaled.scale.keyAt(0)!.outgoing,
+        KeyExit.hold,
         reason: 'editing a value keeps the key interpolation',
       );
 
@@ -1082,27 +1144,27 @@ void main() {
             .withKeyName(3, 'A'),
       );
 
-      final held = transformTrackWithLaneKeysInterpolated(
+      final held = transformTrackWithLaneKeysWritten(
         track,
         laneId: 'rotation',
         frames: {3},
-        interpolation: PropertyKeyInterpolation.hold,
+        pick: const KeyTypePick(sides: KeySidesEdit.hold),
       )!;
       final key = held.rotation.keyAt(3)!;
-      expect(key.interpolation, PropertyKeyInterpolation.hold);
+      expect(key.outgoing, KeyExit.hold);
       expect(key.name, 'A', reason: 'the name rides across');
       expect(key.value, 45, reason: 'and so does the value');
       expect(
-        held.rotation.keyAt(5)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        held.rotation.keyAt(5)!.outgoing,
+        KeySide.linear,
         reason: 'outside the range, untouched',
       );
       expect(
-        transformTrackWithLaneKeysInterpolated(
+        transformTrackWithLaneKeysWritten(
           held,
           laneId: 'rotation',
           frames: {3},
-          interpolation: PropertyKeyInterpolation.hold,
+          pick: const KeyTypePick(sides: KeySidesEdit.hold),
         ),
         isNull,
         reason: 'already that type: nothing to write',
@@ -1112,7 +1174,7 @@ void main() {
 
   group('camera lane key editing in the timeline', () {
     Future<void> expand(WidgetTester tester) async {
-      await tester.tap(find.byKey(_laneToggleKey));
+      await tester.tap(find.named(_laneToggleName));
       await tester.pumpAndSettle();
       await _expandTransformGroup(tester, 'lane-cam-layer');
     }
@@ -1206,9 +1268,7 @@ void main() {
       // atomic keyframes, they carry the lane selection domain, which is
       // what lets a press make the lane the verb's subject.
       await tester.tap(
-        find.byKey(
-          const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
-        ),
+        find.named('timeline-lane-toggle-lane-draw-layer'),
       );
       await tester.pumpAndSettle();
       await _expandTransformGroup(tester, 'lane-draw-layer');
@@ -1296,13 +1356,16 @@ void main() {
               ),
             )
             .data,
-        '150%',
+        '150.00%',
       );
 
-      // Type a new scale: Enter commits and keys the value there.
+      // Type a new scale from its pencil: Enter commits and keys the value
+      // there.
       await tester.tap(
         find.byKey(
-          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+          const ValueKey<String>(
+            'timeline-lane-value-lane-cam-layer-scale-edit',
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -1319,7 +1382,7 @@ void main() {
             )
             .controller!
             .text,
-        '150',
+        '150.00',
         reason: 'the unit is not in the box the user types in',
       );
       await tester.enterText(
@@ -1346,7 +1409,7 @@ void main() {
               ),
             )
             .data,
-        '200%',
+        '200.00%',
       );
       // The scale lane stays keyed at frame 0 with the new value; other
       // lanes are untouched.
@@ -1371,44 +1434,45 @@ void main() {
         'timeline-lane-value-field-lane-cam-layer-position-1',
       );
 
-      final readout = tester
-          .widget<Text>(
-            find.descendant(of: find.byKey(valueKey), matching: find.byType(Text)),
+      const secondKey = ValueKey<String>(
+        'timeline-lane-value-lane-cam-layer-position-1',
+      );
+      String shown(ValueKey<String> box) => tester
+          .widget<DragValueLabel>(
+            find.ancestor(
+              of: find.byKey(box),
+              matching: find.byType(DragValueLabel),
+            ),
           )
-          .data!;
-      expect(readout, contains(','), reason: 'premise: the READOUT is a pair');
-
-      await tester.tap(find.byKey(valueKey));
-      await tester.pumpAndSettle();
+          .text;
+      final x = shown(valueKey);
+      final y = shown(secondKey);
 
       // 🚨Two boxes, each holding one bare number. One box holding
       // `120, 45` is what this replaced — nudging y meant retyping x, the
       // comma and the space around the one number that changed.
-      expect(find.byKey(xKey), findsOneWidget);
-      expect(find.byKey(yKey), findsOneWidget);
-      final x = tester.widget<TextField>(find.byKey(xKey)).controller!.text;
-      final y = tester.widget<TextField>(find.byKey(yKey)).controller!.text;
       expect(x, isNot(contains(',')));
       expect(y, isNot(contains(',')));
-      expect('$x, $y', readout, reason: 'together they ARE the readout');
+
+      // Its pencil opens the box it stands by, and that one alone.
+      await tester.tap(
+        find.byKey(ValueKey<String>('${secondKey.value}-edit')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(yKey), findsOneWidget);
+      expect(find.byKey(xKey), findsNothing, reason: 'x stands as shown');
+      expect(
+        tester.widget<TextField>(find.byKey(yKey)).controller!.text,
+        y,
+      );
 
       // Type into the SECOND box alone; the first stands.
       await tester.enterText(find.byKey(yKey), '77');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<Text>(
-              find.descendant(
-                of: find.byKey(valueKey),
-                matching: find.byType(Text),
-              ),
-            )
-            .data,
-        '$x, 77',
-        reason: 'the untouched element survived the commit',
-      );
+      expect(shown(valueKey), x, reason: 'the untouched element survived');
+      expect(shown(secondKey), '77.00');
       expect(_laneKey('position', 0), findsOneWidget);
     });
 
@@ -1416,24 +1480,24 @@ void main() {
         'editor text form', () {
       expect(
         scrubTransformLaneValue('position', '12, -3', const Offset(10, 5)),
-        '22, 2',
+        '22.00, 2.00',
       );
       expect(
         scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
-        '-5°',
+        '-5.00°',
       );
       // The anchor lane scrubs like position; opacity clamps to 0–100.
       expect(
         scrubTransformLaneValue('anchor-point', '10, 20', const Offset(4, -6)),
-        '14, 14',
+        '14.00, 14.00',
       );
       expect(
         scrubTransformLaneValue('opacity', '100%', const Offset(-30, 0)),
-        '85%',
+        '85.00%',
       );
       expect(
         scrubTransformLaneValue('opacity', '100%', const Offset(30, 0)),
-        '100%',
+        '100.00%',
       );
       expect(
         scrubTransformLaneValue('rotation', 'garbage', const Offset(1, 0)),
@@ -1450,11 +1514,12 @@ void main() {
       await expand(tester);
 
       // +40px horizontally = +20% at the scale lane's 0.5%/px rate.
-      await tester.drag(
+      await _scrubBy(
+        tester,
         find.byKey(
           const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
         ),
-        const Offset(40, 0),
+        40,
       );
       await tester.pumpAndSettle();
 
@@ -1471,7 +1536,7 @@ void main() {
               ),
             )
             .data,
-        '170%',
+        '170.00%',
       );
       expect(_laneKey('scale', 0), findsOneWidget);
     });
@@ -1492,12 +1557,12 @@ void main() {
       );
       await expand(tester);
 
-      await tester.drag(
+      await _scrubBy(
+        tester,
         find.byKey(
           const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
         ),
-        const Offset(40, 0),
-        kind: PointerDeviceKind.touch,
+        40,
       );
       await tester.pumpAndSettle();
 
@@ -1514,7 +1579,7 @@ void main() {
               ),
             )
             .data,
-        '170%',
+        '170.00%',
       );
     });
 
@@ -1538,7 +1603,7 @@ void main() {
 
       expect(
         tester
-            .widget<Text>(
+            .renderObject<RenderTickText>(
               find.byKey(
                 const ValueKey<String>('timeline-local-frame-counter'),
               ),
@@ -1550,7 +1615,7 @@ void main() {
   });
 
   group('camera property lanes in the X-sheet', () {
-    const laneToggleKey = ValueKey<String>('xsheet-lane-toggle-lane-cam-layer');
+    const laneToggleName = 'xsheet-lane-toggle-lane-cam-layer';
 
     Finder laneLabel(String laneId) => find.byKey(
       ValueKey<String>('xsheet-lane-label-lane-cam-layer-$laneId'),
@@ -1581,7 +1646,7 @@ void main() {
     }
 
     Future<void> expand(WidgetTester tester) async {
-      await tester.tap(find.byKey(laneToggleKey));
+      await tester.tap(find.named(laneToggleName));
       await tester.pumpAndSettle();
       await _expandTransformGroup(
         tester,
@@ -1599,7 +1664,7 @@ void main() {
 
       // Collapsed by default: chevron on the camera column header, no lane
       // columns.
-      expect(find.byKey(laneToggleKey), findsOneWidget);
+      expect(find.named(laneToggleName), findsOneWidget);
       expect(laneLabel('position'), findsNothing);
 
       await expand(tester);
@@ -1743,12 +1808,12 @@ void main() {
           .map((text) => text.data ?? '')
           .toList();
 
-      expect(valueLines(), ['150%']);
+      expect(valueLines(), ['150.00%']);
 
       // Typing keys the value at the playhead (Enter commits).
       await tester.tap(
         find.byKey(
-          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
+          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale-edit'),
         ),
       );
       await tester.pumpAndSettle();
@@ -1764,49 +1829,90 @@ void main() {
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(valueLines(), ['200%']);
+      expect(valueLines(), ['200.00%']);
 
-      // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
-      // drag-axis mapping is the LANE's, identical in both orientations.
-      await tester.drag(
+      // Scrubbing: +40px DOWN the column = +20% at the 0.5%/px rate — the
+      // box is the rail's, turned, so its drag runs along the column; the
+      // rate is the LANE's, identical in both orientations.
+      await _scrubBy(
+        tester,
         find.byKey(
           const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
         ),
-        const Offset(40, 0),
+        40,
+        along: Axis.vertical,
       );
       await tester.pumpAndSettle();
-      expect(valueLines(), ['220%']);
+      expect(valueLines(), ['220.00%']);
       expect(laneKey('scale', 0), findsOneWidget);
     });
 
-    testWidgets('a coordinate pair stacks as number, comma, number', (
-      tester,
-    ) async {
+    testWidgets('a coordinate pair is the rail\'s two boxes TURNED: X then Y '
+        'down the column, each with its ± and its pencil after it, at the '
+        'rail\'s length', (tester) async {
       await pumpXSheet(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(100), 4: _pose(80)})),
       );
       await expand(tester);
 
-      // The whole point of the change (user, 2026-08-08): `1170, 827` is
-      // three READABLE tokens down the column, not seven glyph cells —
-      // a four-digit run is past the 縦中横 limit and the vertical writer
-      // used to fall back to one digit per cell.
+      // 🗣️유저 2026-10-11: 「일본어 세로쓰기에서 영어 세로쓰기인데 진짜로
+      // 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑 똑같이
+      // 들어갈거같은데 그렇게하자」. ↩️Two small boxes stood one under the
+      // other, each with its pencil under it and no ± (2026-10-10); three
+      // lines down the column before that (2026-08-08).
+      final x = find.byKey(
+        const ValueKey<String>('xsheet-lane-value-lane-cam-layer-position'),
+      );
+      final y = find.byKey(
+        const ValueKey<String>('xsheet-lane-value-lane-cam-layer-position-1'),
+      );
+      Finder hand(String suffix) => find.byKey(
+        ValueKey<String>('xsheet-lane-value-lane-cam-layer-position-$suffix'),
+      );
+      for (final box in [x, y]) {
+        expect(
+          find.ancestor(of: box, matching: find.byType(RotatedBox)),
+          findsOneWidget,
+        );
+        final rect = tester.getRect(box);
+        expect(rect.width, FieldSlider.defaultHeight, reason: 'on its side');
+        expect(rect.height, greaterThan(rect.width));
+      }
       expect(
-        tester
-            .widgetList<Text>(
-              find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>(
-                    'xsheet-lane-value-lane-cam-layer-position',
-                  ),
-                ),
-                matching: find.byType(Text),
-              ),
-            )
-            .map((text) => text.data ?? '')
-            .toList(),
-        hasLength(3),
+        find.descendant(of: x, matching: find.text('X')),
+        findsOneWidget,
+        reason: 'named, as on the rail',
+      );
+      expect(
+        tester.getRect(hand('step-up')).top,
+        greaterThanOrEqualTo(tester.getRect(x).bottom - 0.01),
+        reason: 'its ± after it, down the column',
+      );
+      expect(
+        tester.getRect(hand('edit')).top,
+        greaterThanOrEqualTo(tester.getRect(hand('step-up')).top),
+      );
+      expect(
+        tester.getRect(y).top,
+        greaterThan(tester.getRect(hand('edit')).bottom - 0.01),
+        reason: 'Y after X',
+      );
+      expect(
+        tester.getRect(hand('1-edit')).bottom - tester.getRect(x).top,
+        closeTo(layerLaneValueSlotWidth, 0.01),
+        reason: 'the rail\'s value column, its length unchanged',
+      );
+
+      // Its drag runs down the column, and its cursor says so.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(x));
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      expect(
+        // A test mouse is device 1, whatever its pointer.
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.resizeUpDown,
       );
     });
 
@@ -1830,7 +1936,7 @@ void main() {
 
       expect(
         tester
-            .widget<Text>(
+            .renderObject<RenderTickText>(
               find.byKey(
                 const ValueKey<String>('timeline-local-frame-counter'),
               ),

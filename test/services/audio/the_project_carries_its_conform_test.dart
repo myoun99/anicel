@@ -8,6 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/persistence/media_blob_codec.dart';
+import '../../helpers/memory_decode_stream.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**WHAT `conform-in-project` = always ACTUALLY BUYS.**
@@ -65,8 +66,8 @@ void main() {
           final bytes = source.readSync();
           decodes.add(bytes.length);
           final audio = decodeConform(bytes);
-          return (
-            samples: audio.samples,
+          return MemoryDecodeStream(
+            audio.samples,
             channels: audio.channels,
             sampleRate: audio.sampleRate,
           );
@@ -74,12 +75,8 @@ void main() {
         // Identity: this file is about what gets decoded, not about the
         // filter. The resampler has its own parity pins.
         resample:
-            ({
-              required samples,
-              required channels,
-              required inputRate,
-              required outputRate,
-            }) => samples,
+            ({required channels, required inputRate, required outputRate}) =>
+                UnchangedResampleStream(),
       ),
     );
   }

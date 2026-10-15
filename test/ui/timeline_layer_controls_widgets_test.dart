@@ -8,12 +8,16 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/named_finders.dart';
 
 void main() {
   group('TimelineLayerControlsHeader', () {
@@ -67,23 +71,23 @@ void main() {
       await tester.pumpWidget(_row(layer: layer));
 
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-row-${layer.id}')),
+        find.named('timeline-layer-row-${layer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-name-${layer.id}')),
+        find.named('timeline-layer-name-${layer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-kind-icon-${layer.id}')),
+        find.named('timeline-layer-type-button-${layer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-visibility-${layer.id}')),
+        find.named('timeline-layer-visibility-${layer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-opacity-${layer.id}')),
+        find.named('timeline-layer-opacity-${layer.id}'),
         findsOneWidget,
       );
     });
@@ -97,9 +101,7 @@ void main() {
         final container = tester.widget<Container>(
           find
               .descendant(
-                of: find.byKey(
-                  ValueKey<String>('timeline-layer-row-${layer.id}'),
-                ),
+                of: find.named('timeline-layer-row-${layer.id}'),
                 matching: find.byType(Container),
               )
               .first,
@@ -145,7 +147,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-row-${layer.id}')),
+        find.named('timeline-layer-row-${layer.id}'),
       );
 
       expect(selectedLayerId, layer.id);
@@ -163,7 +165,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-name-${layer.id}')),
+        find.named('timeline-layer-name-${layer.id}'),
       );
 
       expect(selectedLayerId, layer.id);
@@ -183,7 +185,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-visibility-${layer.id}')),
+        find.named('timeline-layer-visibility-${layer.id}'),
       );
 
       expect(toggledLayerId, layer.id);
@@ -207,7 +209,7 @@ void main() {
       );
 
       final slider = tester.widget<FieldSlider>(
-        find.byKey(ValueKey<String>('timeline-layer-opacity-${layer.id}')),
+        find.named('timeline-layer-opacity-${layer.id}'),
       );
       slider.onChanged?.call(0.25);
 
@@ -224,9 +226,7 @@ void main() {
       addTearDown(preview.dispose);
 
       await tester.pumpWidget(_row(layer: layer, opacityDragPreview: preview));
-      final sliderFinder = find.byKey(
-        ValueKey<String>('timeline-layer-opacity-${layer.id}'),
-      );
+      final sliderFinder = find.named('timeline-layer-opacity-${layer.id}');
       expect(tester.widget<FieldSlider>(sliderFinder).value, 1.0);
 
       // A drag step targeting THIS layer moves the slider live.
@@ -256,14 +256,14 @@ void main() {
       await tester.pumpWidget(_row(layer: layer, active: true));
 
       expect(
-        find.byKey(const ValueKey<String>('timeline-selected-layer')),
+        find.named('timeline-selected-layer'),
         findsOneWidget,
       );
 
       await tester.pumpWidget(_row(layer: layer));
 
       expect(
-        find.byKey(const ValueKey<String>('timeline-selected-layer')),
+        find.named('timeline-selected-layer'),
         findsNothing,
       );
     });
@@ -279,10 +279,10 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Remove from timesheet'), findsOneWidget);
+      expect(find.railTooltip('Remove from timesheet'), findsOneWidget);
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-timesheet-${layer.id}')),
+        find.named('timeline-layer-timesheet-${layer.id}'),
       );
 
       expect(toggledLayerId, layer.id);
@@ -295,8 +295,8 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer));
 
-      expect(find.byTooltip('Add to timesheet'), findsOneWidget);
-      expect(find.byTooltip('Remove from timesheet'), findsNothing);
+      expect(find.railTooltip('Add to timesheet'), findsOneWidget);
+      expect(find.railTooltip('Remove from timesheet'), findsNothing);
     });
 
     testWidgets('selecting a mark from the chip popup reports it', (
@@ -317,7 +317,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(ValueKey<String>('timeline-layer-mark-${layer.id}')),
+        find.named('timeline-layer-mark-${layer.id}'),
       );
       await tester.pumpAndSettle();
 
@@ -337,15 +337,16 @@ void main() {
       final layer = _layer();
       await tester.pumpWidget(_row(layer: layer));
 
-      final chip = find.byKey(
-        ValueKey<String>('timeline-layer-mark-${layer.id}'),
-      );
+      final chip = find.named('timeline-layer-mark-${layer.id}');
       expect(
         chip,
         findsOneWidget,
         reason: 'the rail key survives the migration',
       );
-      expect(tester.widget(chip), isA<PanelFlyoutTrigger>());
+      // The rail's plate face ([RailFlyoutTrigger]), which opens the shared
+      // list as [PanelFlyoutTrigger] does — the row height below says it is
+      // that list. ↩️It was a [PanelFlyoutTrigger] of its own (I-57 ①).
+      expect(tester.widget(chip), isA<RailPlateFace>());
 
       await tester.tap(chip);
       await tester.pumpAndSettle();
@@ -369,15 +370,11 @@ void main() {
       await tester.pumpWidget(_row(layer: storyboardLayer));
 
       expect(
-        find.byKey(
-          ValueKey<String>('timeline-layer-timesheet-${storyboardLayer.id}'),
-        ),
+        find.named('timeline-layer-timesheet-${storyboardLayer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          ValueKey<String>('timeline-layer-mark-${storyboardLayer.id}'),
-        ),
+        find.named('timeline-layer-mark-${storyboardLayer.id}'),
         findsOneWidget,
       );
     });
@@ -389,19 +386,15 @@ void main() {
       await tester.pumpWidget(_row(layer: cameraLayer));
 
       expect(
-        find.byKey(
-          ValueKey<String>('timeline-layer-timesheet-${cameraLayer.id}'),
-        ),
+        find.named('timeline-layer-timesheet-${cameraLayer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('timeline-layer-mark-${cameraLayer.id}')),
+        find.named('timeline-layer-mark-${cameraLayer.id}'),
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          ValueKey<String>('timeline-layer-opacity-${cameraLayer.id}'),
-        ),
+        find.named('timeline-layer-opacity-${cameraLayer.id}'),
         findsOneWidget,
       );
     });
@@ -412,13 +405,13 @@ void main() {
   /// way a tap will resolve the row.
   group('the fx master switch (R8)', () {
     Finder fxButton(Layer layer) =>
-        find.byKey(ValueKey<String>('timeline-layer-fx-${layer.id}'));
+        find.named('timeline-layer-fx-${layer.id}');
 
-    TextStyle glyphStyle(WidgetTester tester, Layer layer) => tester
-        .widget<Text>(
-          find.descendant(of: fxButton(layer), matching: find.text('fx')),
-        )
-        .style!;
+    TextStyle glyphStyle(WidgetTester tester, Layer layer) {
+      final glyph = tester.widget<RailGlyphFace>(fxButton(layer)).glyph;
+      expect(glyph, isA<RailTextGlyph>().having((g) => g.text, 'text', 'fx'));
+      return (glyph as RailTextGlyph).style;
+    }
 
     testWidgets('MIXED reads as neither on nor off — half accent plus an '
         'underline the colour-blind eye can see', (tester) async {
@@ -497,7 +490,10 @@ void main() {
 Widget _header() {
   return const MaterialApp(
     home: Material(
-      child: TimelineLayerControlsHeader(metrics: TimelineGridMetrics.defaults),
+      child: TimelineLayerControlsHeader(
+        metrics: TimelineGridMetrics.defaults,
+        optionalColumns: noOptionalRailColumns,
+      ),
     ),
   );
 }

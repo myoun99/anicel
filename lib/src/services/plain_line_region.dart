@@ -12,7 +12,7 @@ import 'canvas_selection_shape.dart';
 /// 「일반은 브러시랑 전혀 관계없는 독립적인것임」. So nothing is stamped
 /// along the path, whichever way its corners turn: the line is one region,
 /// laid as one mask down the road a shape fill is laid by
-/// (`buildRegionFillDab`), with that road's edge.
+/// (`buildRegionFillDabs`), with that road's edge.
 /// ↩️The card first described 「둥글게」 as a hard round brush drawn through
 /// the stroke's code. That would have been the brush's engine under a type
 /// that is not the brush's, its four-step edge under a switch that has two

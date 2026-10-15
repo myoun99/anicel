@@ -4,9 +4,9 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import '../helpers/reference_to.dart';
 
 /// 🚨HOW FAR INTO ITS MOVIE A ROW REACHES — the one law three readers share
 /// (미디어 배치 라운드; 유저 2026-09-12 `video-place` Q3).
@@ -26,10 +26,7 @@ void main() {
     frames: const [],
     timeline: timeline,
     kind: LayerKind.animation,
-    mediaReference: MediaReference(
-      assetPath: '/takes/pan.mov',
-      frameOffset: offset,
-    ),
+    mediaReference: referenceTo('/takes/pan.mov', frameOffset: offset),
   );
 
   Map<int, TimelineExposure> blocksOf(Map<int, int> startToLength) => {
@@ -41,8 +38,8 @@ void main() {
   };
 
   group('한 위치가 영상의 어디인가', () {
-    final cut = MediaReference(assetPath: '/takes/pan.mov', frameOffset: 7);
-    final whole = MediaReference(assetPath: '/takes/pan.mov');
+    final cut = referenceTo('/takes/pan.mov', frameOffset: 7);
+    final whole = referenceTo('/takes/pan.mov');
 
     test('머리를 자른 만큼 안쪽에서 시작한다', () {
       expect(movieElapsedAt(cut, 0), 7);

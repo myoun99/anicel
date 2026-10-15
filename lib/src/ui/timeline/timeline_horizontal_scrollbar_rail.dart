@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/app_scrollbar.dart';
+import 'memo_token.dart' show KeptPiece;
 
 /// The timeline's bottom scrollbar rail: the shared [AppControllerScrollbar]
 /// under a top hairline, on the panel's own surface. The rail height is the
 /// hit lane; the thumb inside stays visually thin.
-class TimelineHorizontalScrollbarRail extends StatelessWidget {
+class TimelineHorizontalScrollbarRail extends KeptPiece {
   const TimelineHorizontalScrollbarRail({
     super.key,
     required this.controller,
@@ -21,7 +22,10 @@ class TimelineHorizontalScrollbarRail extends StatelessWidget {
   final double height;
 
   @override
-  Widget build(BuildContext context) {
+  Object? get facts => (controller, viewportWidth, contentWidth, height);
+
+  @override
+  Widget buildKept(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(

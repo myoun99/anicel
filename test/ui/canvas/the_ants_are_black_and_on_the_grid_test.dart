@@ -68,7 +68,7 @@ void main() {
     committedRegion: region,
     screenOffset: Offset.zero,
     marqueeShapes: const [],
-    openTrail: const [],
+    openTrails: const [],
     outlineIsLive: live,
   );
 

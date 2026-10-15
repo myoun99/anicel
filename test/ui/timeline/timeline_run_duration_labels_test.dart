@@ -12,6 +12,8 @@ import 'timeline_cell_probe.dart';
 import 'timeline_frame_geometry_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// R26 #7 + R27 #3: every frame block prints ITS OWN length — one label
 /// per block (never the glued run's total), bare number (no `f`), bold,
 /// bottom-CENTRE of the block's last cell.
@@ -30,7 +32,7 @@ void main() {
   }) =>
       tester
               .widget<CustomPaint>(
-                find.byKey(ValueKey<String>('timeline-row-cells-$layerId')),
+                find.named('timeline-row-cells-$layerId'),
               )
               .foregroundPainter
           as TimelineRowRunLabelsPainter?;

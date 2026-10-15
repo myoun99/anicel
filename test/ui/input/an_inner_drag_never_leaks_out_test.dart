@@ -4,19 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/frame.dart';
-import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
-import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/input/two_axis_drag.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 /// 🗣️F-202 (유저 2026-09-27): 「띠가 스크롤되는거, 같은상황에서 뷰어패널
@@ -457,84 +450,95 @@ void main() {
     }
   });
 
-  group('the x-sheet', () {
-    // The product's touch: a finger scrolls the timeline sheets, and their
-    // edit gestures let it go (1핑거 드로잉 off — `AppInputSettings`).
-    setUp(() => AppInput.settings.value = const AppInputSettings());
-    tearDown(
-      () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
-    );
+  group('a sheet', () {
+    // F-351: a sheet's two axes take no drag of their own — the sheet's one
+    // drag moves both ([TwoAxisDrag]) — so what used to hold a pull for
+    // them is that drag now.
+    late TwoAxisScrollController rows;
+    late TwoAxisScrollController frames;
+    late ScrollController around;
+    setUp(() {
+      rows = TwoAxisScrollController();
+      frames = TwoAxisScrollController();
+      around = ScrollController();
+    });
+    tearDown(() {
+      rows.dispose();
+      frames.dispose();
+      around.dispose();
+    });
 
-    ScrollController controllerOf(WidgetTester tester, String key) => tester
-        .widget<SingleChildScrollView>(find.byKey(ValueKey<String>(key)))
-        .controller!;
-
-    testWidgets('pulled sideways on its frames, its layers go — the layers '
-        'and the frames are ONE surface', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(560, 520));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final cursor = ValueNotifier<int>(0);
-      addTearDown(cursor.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          scrollBehavior: const AppScrollBehavior(),
-          home: Scaffold(
-            body: TimelinePanel(
-              layers: [
-                for (var i = 0; i < 30; i += 1)
-                  Layer(
-                    id: LayerId('draw-$i'),
-                    name: 'draw-$i',
-                    kind: LayerKind.animation,
-                    frames: [
-                      Frame(
-                        id: FrameId('draw-$i-cel'),
-                        duration: 1,
-                        strokes: const [],
+    /// A sheet whose frames fit it — it cannot scroll sideways — inside a
+    /// scroller that can: a panel's squeezed floor.
+    Future<void> pumpSheet(WidgetTester tester, {required double rowsTall}) =>
+        tester.pumpWidget(
+          MaterialApp(
+            scrollBehavior: const AppScrollBehavior(),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                controller: around,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: 1600,
+                  height: 300,
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: SizedBox(
+                      key: const ValueKey<String>('sheet'),
+                      width: 400,
+                      height: 300,
+                      child: TwoAxisDrag(
+                        axes: [rows, frames],
+                        child: SingleChildScrollView(
+                          controller: rows,
+                          child: SingleChildScrollView(
+                            controller: frames,
+                            scrollDirection: Axis.horizontal,
+                            child: SizedBox(width: 400, height: rowsTall),
+                          ),
+                        ),
                       ),
-                    ],
-                    timeline: const {},
+                    ),
                   ),
-              ],
-              activeLayerId: const LayerId('draw-0'),
-              frameCursor: cursor,
-              playbackFrameCount: 400,
-              exposureStateForLayer: (_, _) =>
-                  TimelineCellExposureState.uncovered,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onAddLayer: () {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              orientation: TimelineOrientation.vertical,
-              onOrientationChanged: (_) {},
+                ),
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final layers = controllerOf(tester, 'xsheet-layer-horizontal-viewport');
-      final frames = controllerOf(tester, 'xsheet-frame-vertical-viewport');
-      expect(
-        [layers.position.maxScrollExtent, frames.position.maxScrollExtent],
-        everyElement(greaterThan(0)),
-        reason: '⛔fixture premise: the sheet scrolls both ways',
-      );
+        );
 
-      await tester.dragFrom(
-        tester.getTopLeft(
-              find.byKey(
-                const ValueKey<String>('xsheet-frame-vertical-viewport'),
-              ),
-            ) +
-            const Offset(60, 60),
-        const Offset(-200, 0),
-      );
-      await tester.pumpAndSettle();
+    for (final kind in devices) {
+      testWidgets('pulled with a ${kind.name} along the way it cannot '
+          'scroll, it still keeps the pull while it can scroll the other', (
+        tester,
+      ) async {
+        await pumpSheet(tester, rowsTall: 900);
+        expect(rows.position.maxScrollExtent, greaterThan(0));
+        expect(frames.position.maxScrollExtent, 0);
 
-      expect(layers.offset, greaterThan(0));
-    });
+        await tester.dragFrom(
+          tester.getCenter(find.byKey(const ValueKey<String>('sheet'))),
+          const Offset(-200, 0),
+          kind: kind,
+        );
+        await tester.pumpAndSettle();
+
+        expect(around.offset, 0);
+      });
+
+      testWidgets('…and a sheet that cannot scroll either way takes no '
+          '${kind.name} pull at all', (tester) async {
+        await pumpSheet(tester, rowsTall: 300);
+        expect(rows.position.maxScrollExtent, 0);
+
+        await tester.dragFrom(
+          tester.getCenter(find.byKey(const ValueKey<String>('sheet'))),
+          const Offset(-200, 0),
+          kind: kind,
+        );
+        await tester.pumpAndSettle();
+
+        expect(around.offset, greaterThan(0));
+      });
+    }
   });
 }

@@ -136,7 +136,6 @@ void main() {
       return s.importDoors.importPsdExpanded(
         path: file.path,
         destination: ImportDestination.activeCutLayer,
-        copyIntoProject: false,
       );
     });
 

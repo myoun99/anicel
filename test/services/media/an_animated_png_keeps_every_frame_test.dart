@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:anicel/src/services/media/animated_png_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/png_chunks.dart';
+
 /// The piece a trimmed animated image is carried as (유저 2026-09-23: 「비디오든
 /// 이미지든 오디오든 관계없이 법 하나로」). What it has to promise is that the
 /// app reads back EXACTLY what was cut — every pixel, every delay — through
@@ -40,9 +42,6 @@ void main() {
     return frames;
   }
 
-  /// IHDR's colour type byte: 3 = palette, 6 = RGBA.
-  int colourTypeOf(Uint8List png) => png[8 + 8 + 9];
-
   test('🎯a few colours come back frame for frame, delay for delay — and as a '
       'PALETTE, so the piece is not bigger than what it was cut from', () async {
     final frames = [
@@ -63,7 +62,12 @@ void main() {
     final png = encodeAnimatedPng(width: width, height: height, frames: frames);
     final back = await decoded(png);
 
-    expect(colourTypeOf(png), 3, reason: 'four colours fit a palette');
+    expect(pngColourTypeOf(png), 3, reason: 'four colours fit a palette');
+    expect(
+      pngRowFiltersOf(png, stride: width),
+      List.filled(height, 0),
+      reason: 'palette rows unfiltered — the PNG spec\'s own advice',
+    );
     expect(back, hasLength(3));
     for (var i = 0; i < frames.length; i += 1) {
       expect(back[i].rgba, frames[i].rgba, reason: 'frame $i pixels');
@@ -89,7 +93,7 @@ void main() {
     final png = encodeAnimatedPng(width: width, height: height, frames: frames);
     final back = await decoded(png);
 
-    expect(colourTypeOf(png), 6, reason: 'the frames use more than 256');
+    expect(pngColourTypeOf(png), 6, reason: 'the frames use more than 256');
     expect(back, hasLength(frames.length));
     for (var i = 0; i < frames.length; i += 1) {
       expect(back[i].rgba, frames[i].rgba, reason: 'frame $i pixels');

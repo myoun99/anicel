@@ -6,7 +6,8 @@ import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinWrapWidth;
 import '../../services/cel_text_edits.dart';
-import '../timeline/axis_turn.dart' show extentAlong, offsetAlong;
+import '../timeline/axis_turn.dart'
+    show extentAcross, extentAlong, offsetAlong;
 import 'cel_text_layout.dart';
 
 /// A TEXT THAT GROWS, AND A BOX — SWAPPED (R9-rest).
@@ -128,8 +129,11 @@ CelTextContent celTextUnboxed(CelTextContent content) {
     ),
   );
   layout.dispose();
+  // How tall a box is at least goes with the box (F-317): its lines stand
+  // at its top, so none of them moves.
   return broken.copyWith(
     wrapWidth: null,
+    minHeight: null,
     anchor: CanvasPoint(x: about.dx, y: about.dy),
   );
 }
@@ -140,7 +144,9 @@ CelTextContent celTextUnboxed(CelTextContent content) {
 /// A box keeps its SHAPE as near as a box can: the room its letters had
 /// across them becomes the room they have along them — a box four lines
 /// tall is, in columns, four lines long — and its other side is whatever
-/// its letters then take.
+/// its letters then take; or for a box that is at least so tall
+/// ([CelTextContent.minHeight], F-317), the room they had along them
+/// becomes that least, and the box is the shape it was.
 ///
 /// [content] itself when it is written that way already.
 CelTextContent celTextWrittenAs(
@@ -154,15 +160,19 @@ CelTextContent celTextWrittenAs(
   final block = before.block;
   final corner = before.toCanvas(block.topLeft);
   before.dispose();
+  final axis = celTextLettersAxis(vertical: vertical);
   final written = content.copyWith(
     vertical: vertical,
     wrapWidth: content.wrapWidth == null
         ? null
         : math.max(
-            extentAlong(
-              celTextLettersAxis(vertical: vertical),
-              block.size,
-            ).ceilToDouble(),
+            extentAlong(axis, block.size).ceilToDouble(),
+            celTextMinWrapWidth,
+          ),
+    minHeight: content.minHeight == null
+        ? null
+        : math.max(
+            extentAcross(axis, block.size).ceilToDouble(),
             celTextMinWrapWidth,
           ),
   );

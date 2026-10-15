@@ -17,6 +17,8 @@ import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// Stands on the Transform GROUP header — the row that declares every
 /// manipulator its members do (R5 #10).
 ///
@@ -46,7 +48,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>().withKey(
           0,
           CanvasPoint(x: 1, y: 1),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
       );
 
@@ -57,8 +59,8 @@ void main() {
       );
       expect(dragged.position.keyAt(0)!.value, CanvasPoint(x: 9, y: 3));
       expect(
-        dragged.position.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        dragged.position.keyAt(0)!.outgoing,
+        KeyExit.hold,
       );
 
       final keyedFresh = transformTrackWithPositionDragged(
@@ -68,8 +70,8 @@ void main() {
       );
       expect(keyedFresh.position.keyAt(4)!.value, CanvasPoint(x: 2, y: 2));
       expect(
-        keyedFresh.position.keyAt(4)!.interpolation,
-        PropertyKeyInterpolation.linear,
+        keyedFresh.position.keyAt(4)!.outgoing,
+        KeySide.linear,
       );
     });
   });
@@ -135,7 +137,7 @@ void main() {
     // handle on the artwork: reading a row's properties is not asking to
     // pose it, which is the whole of R5 #10.
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-gizmo-draw')),
+      find.named('timeline-lane-toggle-gizmo-draw'),
     );
     await tester.pumpAndSettle();
     expect(find.byType(RowTransformBox), findsNothing);
@@ -160,7 +162,7 @@ void main() {
     // Stepping back onto the LAYER row takes it away — the layer is what
     // you draw on, and nothing there declares a manipulator.
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-layer-name-gizmo-draw')),
+      find.named('timeline-layer-name-gizmo-draw'),
     );
     await tester.pumpAndSettle();
     expect(find.byType(RowTransformBox), findsNothing);
@@ -219,16 +221,14 @@ void main() {
 
     // Twirl the row's lanes open and stand on the Transform group.
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-gizmo-draw')),
+      find.named('timeline-lane-toggle-gizmo-draw'),
     );
     await tester.pumpAndSettle();
     await _standOnTransformHeader(tester);
     expect(find.byType(RowTransformBox), findsOneWidget);
 
-    final headerSwitch = find.byKey(
-      const ValueKey<String>(
-        'timeline-lane-group-fx-gizmo-draw-transform-group',
-      ),
+    final headerSwitch = find.named(
+      'timeline-lane-group-fx-gizmo-draw-transform-group',
     );
     await tester.ensureVisible(headerSwitch);
     await tester.pumpAndSettle();

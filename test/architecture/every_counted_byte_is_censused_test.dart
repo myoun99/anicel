@@ -174,13 +174,9 @@ const _notCensused = <String, String>{
       'census reads',
 
   // — Budgets, not holdings. A ceiling is not memory in use.
-  'lib/src/ui/playback/cut_frame_composite_cache.dart → lastComposeLayerBytes':
-      'a size to leave room for — what the picture composed last was made '
-      'of — not a holding: the layer images themselves are '
-      'LayerFrameImageCache.estimatedBytes, which the census reads',
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':
-      'a CEILING. What is actually held is counted by the two playback '
-      'caches the census already reads',
+      'a CEILING. What is actually held is counted by the playback cache — '
+      'the layer images — which the census already reads',
   'lib/src/ui/session/playback_cache_budget.dart → lendableBytes':
       'a CEILING — how much an export run may hold on playback\'s line; '
       'what it holds is lentBytes, which the census reads',
@@ -194,10 +190,11 @@ const _notCensused = <String, String>{
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
   'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
-      'via:canvasBufferBytes — the census PULLS from holders the session '
-      'owns and this lives in a widget State, so the view pushes it onto '
-      'RenderCaches, the way the media viewers already do — a live conte '
-      'picture\'s view onto livePictureBufferBytes, the same census row',
+      'via:stackBufferBytes — the census PULLS from holders the session '
+      'owns and this lives in a widget State, so each stack view pushes it '
+      'onto RenderCaches under its own name — the canvas, a live conte '
+      'picture, each cut of the track stack — the way the media viewers '
+      'already do, one census row',
   'lib/src/native/native_upload_cache.dart → residentBytes':
       'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
       'mask alphas) and sums them; ALSO ledgered because the bare name is '
@@ -215,7 +212,7 @@ const _notCensused = <String, String>{
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
   'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
-      'via:canvasBufferBytes — the view that owns the bake reports it '
+      'via:stackBufferBytes — the view that owns the bake reports it '
       'together with its display buffer: both are the view holding a '
       'raster of itself',
 };
@@ -257,13 +254,6 @@ const _imageHolders = <String, String>{
       'a handful of decoded logos, cover pictures and stamps, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '
       'the day it holds cels',
-  'lib/src/ui/playback/canvas_track_stack_view.dart → _heldFrames':
-      'clones of the composites on screen, one per covered cut; each is '
-      'pinned in the composite cache (`_heldPins`), which the census reads '
-      'as playbackFrames',
-  'lib/src/ui/playback/canvas_track_stack_view.dart → _heldSources':
-      'identities only: the cache images the clones came from, possibly '
-      'already disposed; nothing is held through them',
   'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
       'the tiles of the stroke in progress, each freed as it settles into '
       'the surface',

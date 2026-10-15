@@ -1,63 +1,72 @@
-import 'dart:async';
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
-import '../../models/cut_id.dart';
-import '../../models/layer_effect.dart' show LayerEffect;
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
+import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/project_background.dart';
-import '../../models/transform_track.dart';
+import '../../services/camera_projection_matrix.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
+import '../canvas/canvas_layer_stack_view.dart';
 import '../canvas/paper_background.dart'
-    show AlphaCheckerboardPainter;
-import '../track_effect_paint_policy.dart';
-import 'cut_frame_composite_cache.dart';
+    show AlphaCheckerboardPainter, paintAlphaCheckerboard;
+import '../canvas/stage_planes_painter.dart';
+import 'camera_shot.dart';
+import 'layer_frame_image_cache.dart';
 import 'playback_frame_painter.dart';
 import '../effective_device_pixel_ratio.dart';
-import '../listenable_rebind.dart';
+import '../canvas/viewport_canvas_transform.dart';
+import '../repaint_props.dart';
 
 /// The parked-state canvas content — the multitrack display path.
 ///
 /// With NO active cut (a gap parking, UI-R9 #3) the canvas used to show a
 /// paperless void even when the parked frame sits ON a cut (an SE-row
 /// press parks in place, feedback #7). Now every track answers "which of
-/// my cuts covers this global frame?" and the covered cuts' cached
-/// composites stack in CAMERA-FRAME space, each projected through its own
-/// cut's camera pose — playback's camera view, one layer per track.
-/// Editing stays single-active-cut; this path only displays ("draw on the
-/// canvas, watch through the camera" — with nothing active, everything
-/// here is watched).
+/// my cuts covers this global frame?" and the covered cuts stack in
+/// CAMERA-FRAME space, each projected through its own cut's camera pose —
+/// playback's camera view, one layer per track. Editing stays
+/// single-active-cut; this path only displays ("draw on the canvas, watch
+/// through the camera" — with nothing active, everything here is watched).
 ///
-/// The first covered track paints the letterbox, its cut's paper, and the
-/// full-frame fade wash (playback parity in the single-track case); the
+/// 🚨★★★A CUT IS DRAWN FROM ITS ROWS' IMAGES, AS THE CANVAS DRAWS IT
+/// (playback-plays-the-screen-material, 2026-10-10; 유저 F-296-Q6
+/// 「중복소재 안만들고 싶은것」, 10-10 「전체컷재생도 동일하게 합성본 안만들고
+/// 통일하고싶고」): each covered cut is its composite tree
+/// ([stackOf] — the V row's fx a group over it) on a [CanvasLayerStackView]
+/// out of the canvas's own image cache, seen through the view the canvas
+/// would see it through. ↩️Each covered cut was one composite per frame,
+/// made and held here beside the very images the canvas holds — a second
+/// picture of everything the film showed.
+///
+/// The bottom covered track is the STAGE: its paper and apron lie under its
+/// picture, and its fade thins the whole unit, revealing the floor; the
 /// tracks above composite transparently, their fades applied to their own
-/// contribution only — a full-frame wash there would blank the stage
-/// below instead of revealing it.
+/// picture only — a full-frame wash there would blank the stage below
+/// instead of revealing it.
 ///
 /// No covered track at all keeps the void (the panel background shows
 /// through) — the same gap semantics playback and the scrub preview
 /// already have.
-class CanvasTrackStackView extends StatefulWidget {
+class CanvasTrackStackView extends StatelessWidget {
   const CanvasTrackStackView({
     super.key = const ValueKey<String>('canvas-track-stack-view'),
     required this.globalFrame,
     required this.positionsOf,
-    required this.compositeCache,
+    required this.stackOf,
+    required this.imageCache,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
     this.cameraViewEnabled = true,
     this.seNameTagsOf,
-    this.cutFxEnabledOf,
-    this.onFrameCached,
-    this.picturesLanded,
+    this.run,
+    this.onBufferBytes,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
@@ -65,8 +74,6 @@ class CanvasTrackStackView extends StatefulWidget {
     this.paintsFloor = true,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
-    this.transformTrackOf,
-    this.trackEffectsOf,
   });
 
   /// The parked global frame (the session's gap parking): moves per
@@ -80,18 +87,26 @@ class CanvasTrackStackView extends StatefulWidget {
   /// cuts, the leaving one first.
   final List<TrackStackContribution> Function(int globalFrame) positionsOf;
 
-  /// Whether the CAMERA VIEW is on — the same view-mode flag the playback
-  /// view takes, and the reason this stack no longer crops unconditionally.
+  /// A covered cut's frame as a run shows it — its composite tree under the
+  /// V row's fx ([EditingCanvas.playedStackAt]).
+  final List<CompositeNode<CanvasStackRow>> Function(Cut cut, int frameIndex)
+  stackOf;
+
+  /// The canvas's own images, the ones every cut here is drawn from.
+  final LayerFrameImageCache imageCache;
+
+  /// Whether the CAMERA VIEW is on — the same view-mode flag the canvas
+  /// takes, and the reason this stack no longer crops unconditionally.
   ///
-  /// ★A ruler scrub across cut boundaries parks per move (UI-R7 #9), so the
-  /// parked stack is what the storyboard shows while you drag. It used to
-  /// be the one display path that ignored the toggle, which meant dragging
-  /// the ruler reframed the canvas into the camera crop even with camera
-  /// view off. The law is one line now: camera view decides the framing,
-  /// wherever the picture comes from.
+  /// ★A ruler scrub parks per move in a gap (UI-R7 #9), so the parked stack
+  /// is what the canvas shows while you drag through one (until I-57 ② it
+  /// showed another cut's frames this way too). It used to be the one
+  /// display path that ignored the toggle, which meant dragging the ruler
+  /// reframed the canvas into the camera crop even with camera view off.
+  /// The law is one line now: camera view decides the framing, wherever the
+  /// picture comes from.
   final bool cameraViewEnabled;
 
-  final CutFrameCompositeCache compositeCache;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
 
@@ -101,29 +116,21 @@ class CanvasTrackStackView extends StatefulWidget {
   final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
   seNameTagsOf;
 
-  /// The storyboard V row's display gate (R9), exactly as playback applies
-  /// it: fx off bypasses the cut-level fx work. Null = always on. (↩️The
-  /// eye and the static opacity it stood beside left the V row's head with
-  /// I-73 — see [CanvasPlaybackView.cutFxEnabledOf].)
-  final bool Function(CutId cutId)? cutFxEnabledOf;
-
-  /// Called after each on-demand composite lands in the cache (the
-  /// session's budget trim): the parked state has no warmer running its
-  /// afterFrameCached hook, so without this nothing would trim what a
-  /// long parked scrub piles up.
-  final void Function()? onFrameCached;
-
-  /// Null where this view makes what is missing itself: a parked frame, an
-  /// O.L partner — 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206).
+  /// Null where this view's cuts make what they lack themselves: a parked
+  /// frame, an O.L partner — 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206).
   ///
-  /// Set where a run PLAYS through it
-  /// ([PlaybackPrerenderScheduler.landings]): the warmer follows the run and
-  /// is the one maker of its pictures, in the order the run wants them, so
-  /// this view shows what has landed and repaints when more does. ↩️It
-  /// composed the frame under the playhead itself, beside a warmer that was
-  /// baking the playlist from wherever play had been pressed — two makers,
-  /// one picture between them at the worst moment.
-  final Listenable? picturesLanded;
+  /// Set where a run PLAYS through it: the warmer follows the run and is the
+  /// one maker of its pictures, in the order the run wants them, so each cut
+  /// here shows what has landed and changes frames whole
+  /// ([CanvasLayerStackView.run]). ↩️It composed the frame under the
+  /// playhead itself, beside a warmer that was baking the playlist from
+  /// wherever play had been pressed — two makers, one picture between them
+  /// at the worst moment.
+  final StackRun? run;
+
+  /// Told how many bytes each cut's display buffer holds, by cut, whenever
+  /// that changes — 0 when it goes ([CanvasLayerStackView.onBufferBytes]).
+  final void Function(Object cut, int bytes)? onBufferBytes;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -152,192 +159,38 @@ class CanvasTrackStackView extends StatefulWidget {
   /// [sourceOverWeights] describes.
   final bool paintsFloor;
 
-  /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
-  /// global axis). Null = no effects (tests, plain fixtures).
-  final TransformTrack Function(CutId cutId)? transformTrackOf;
-
-  /// The owning TRACK's EFFECT chain per cut — the V row's fx, filtering the
-  /// whole composited cut. Null = none (tests, plain fixtures).
-  final List<LayerEffect> Function(CutId cutId)? trackEffectsOf;
-
   @override
-  State<CanvasTrackStackView> createState() => _CanvasTrackStackViewState();
-}
+  Widget build(BuildContext context) => ValueListenableBuilder<int?>(
+    valueListenable: globalFrame,
+    builder: (context, frame, _) => _frame(context, frame),
+  );
 
-class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
-  /// Our own clones of the displayed composites, one per covered cut: the
-  /// cache may evict and dispose its image at any time; a clone shares the
-  /// pixels but has an independent lifetime.
-  final Map<CutId, ui.Image> _heldFrames = <CutId, ui.Image>{};
-
-  /// The cache images the clones came from (identity only, may be
-  /// disposed) — cloning happens only when the source changes.
-  final Map<CutId, ui.Image> _heldSources = <CutId, ui.Image>{};
-
-  /// The canvas size each held clone was composed at: a stale clone must
-  /// not stretch into a RESIZED cut's rect (the playback view's guard).
-  final Map<CutId, CanvasSize> _heldCanvasSizes = <CutId, CanvasSize>{};
-
-  /// A6: the slot each held clone came from, pinned in the composite
-  /// cache for as long as the hold lasts. The parked stack shows OTHER
-  /// cuts' composites, which the non-playing protection range (the active
-  /// cut only) never covered — without the pins the budget could evict
-  /// the exact frames this widget is displaying.
-  final Map<CutId, (CutId, int)> _heldPins = {};
-
-  void _swapHeldPin(CutId cutId, (CutId, int)? next) {
-    final previous = _heldPins[cutId];
-    if (previous != null) {
-      widget.compositeCache.releasePin(previous);
-    }
-    if (next != null) {
-      _heldPins[cutId] = next;
-      widget.compositeCache.retainPin(next);
-    } else {
-      _heldPins.remove(cutId);
-    }
-  }
-
-  /// ONE in-flight compose per track (per cut): a fast gap scrub crosses
-  /// many cold frames, and unbounded fire-and-forget composes would contend
-  /// with the live drag long after the parking moved on.
-  ///
-  /// 🚨F-206 (유저 2026-09-28: 「스크럽하던 뭐던 존재하는게 보여야함」): the
-  /// compose in flight is FINISHED and shown even when the scrub has moved
-  /// on — only a cut that left the view stands it down. It used to stand
-  /// down the moment the wanted frame changed (latest-frame-wins, #768), so
-  /// a drag that kept moving faster than one compose threw every compose
-  /// away: a cut the drag entered never showed its picture, only the paper
-  /// and — over an F.I — a screen of black, until the release handed the
-  /// canvas back. The completion repaint still asks for whatever frame is
-  /// current then, so the picture trails the pointer by one compose at most
-  /// instead of never arriving.
-  final Map<CutId, int> _inFlightFrame = <CutId, int>{};
-
-  /// What each covered cut should show right now, refreshed every build — a
-  /// cut missing here has left the view, which is what stands its compose
-  /// down.
-  final Map<CutId, int> _wantedFrame = <CutId, int>{};
-
-  /// Holds [composite] — [cut]'s picture at [frameIndex] — as what the view
-  /// shows for the cut until a newer one lands: our own clone, and a pin on
-  /// its cache slot. Cloning happens only when the source changes.
-  void _hold(Cut cut, int frameIndex, ui.Image composite) {
-    if (identical(composite, _heldSources[cut.id])) {
-      return;
-    }
-    _heldFrames[cut.id]?.dispose();
-    _heldSources[cut.id] = composite;
-    _heldFrames[cut.id] = composite.clone();
-    _heldCanvasSizes[cut.id] = cut.canvasSize;
-    _swapHeldPin(cut.id, (cut.id, frameIndex));
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.globalFrame.addListener(_onFrameMoved);
-    widget.picturesLanded?.addListener(_onFrameMoved);
-  }
-
-  @override
-  void didUpdateWidget(covariant CanvasTrackStackView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    rebindListener(oldWidget.globalFrame, widget.globalFrame, _onFrameMoved);
-    rebindListener(
-      oldWidget.picturesLanded,
-      widget.picturesLanded,
-      _onFrameMoved,
-    );
-  }
-
-  @override
-  void dispose() {
-    widget.globalFrame.removeListener(_onFrameMoved);
-    widget.picturesLanded?.removeListener(_onFrameMoved);
-    for (final image in _heldFrames.values) {
-      image.dispose();
-    }
-    for (final pin in _heldPins.values) {
-      widget.compositeCache.releasePin(pin);
-    }
-    _heldPins.clear();
-    super.dispose();
-  }
-
-  void _onFrameMoved() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _prepare(Cut cut, int frameIndex) {
-    if (_inFlightFrame.containsKey(cut.id)) {
-      return;
-    }
-    _inFlightFrame[cut.id] = frameIndex;
-    unawaited(widget.compositeCache
-        .prepareCompositeInterruptible(
-          cut: cut,
-          frameIndex: frameIndex,
-          shouldAbort: () => !mounted || !_wantedFrame.containsKey(cut.id),
-        )
-        .then(
-          (image) {
-            _inFlightFrame.remove(cut.id);
-            // Held BEFORE the budget trim below: the pin is what keeps the
-            // trim from evicting the frame that just landed.
-            if (image != null &&
-                mounted &&
-                _wantedFrame.containsKey(cut.id)) {
-              _hold(cut, frameIndex, image);
-            }
-            if (image != null) {
-              widget.onFrameCached?.call();
-            }
-            // Repaint either way (when still mounted): a landed image
-            // shows, and the build asks for the frame that is wanted NOW.
-            if (mounted) {
-              setState(() {});
-            }
-          },
-          // No repaint on failure: a repaint would re-request and a
-          // persistently failing composite (store torn down) would spin.
-          onError: (Object _) => _inFlightFrame.remove(cut.id),
-        ));
-  }
-
-  /// Drops held state for cuts no longer covered, so a long parked
-  /// session does not accumulate one clone per cut ever displayed.
-  void _pruneStale(Iterable<CutId> covered) {
-    final keep = covered.toSet();
-    _heldFrames.removeWhere((cutId, image) {
-      if (keep.contains(cutId)) {
-        return false;
-      }
-      image.dispose();
-      _heldSources.remove(cutId);
-      _heldCanvasSizes.remove(cutId);
-      _swapHeldPin(cutId, null);
-      return true;
-    });
-    _wantedFrame.removeWhere((cutId, _) => !keep.contains(cutId));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final frame = widget.globalFrame.value;
+  Widget _frame(BuildContext context, int? frame) {
     final positions = frame == null
         ? const <TrackStackContribution>[]
-        : widget.positionsOf(frame);
-    _pruneStale([for (final position in positions) position.cutId]);
+        : positionsOf(frame);
+    final ratio = EffectiveDevicePixelRatio.of(context);
+    final view = viewport ?? CanvasViewport();
     // The BACKDROP floor (R3b): the void is retired — an uncovered frame
     // shows the stage's floor, exactly what an opaque export bakes there.
     // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
-    // canvas.
-    final Widget? floor = !widget.paintsFloor
+    // canvas. Seen through the camera, the floor past its frame is the
+    // letterbox ([_CameraFloor]).
+    final Widget? floor = !paintsFloor
         ? null
-        : widget.backdropNone
+        : cameraViewEnabled
+        ? CustomPaint(
+            key: const ValueKey<String>('canvas-track-stack-floor'),
+            painter: _CameraFloor(
+              viewport: viewport,
+              frameSize: cameraFrameSize,
+              backdrop: Color(backdropArgb),
+              backdropNone: backdropNone,
+              devicePixelRatio: ratio,
+            ),
+            child: const SizedBox.expand(),
+          )
+        : backdropNone
         ? const CustomPaint(
             key: ValueKey<String>('canvas-track-stack-floor'),
             painter: AlphaCheckerboardPainter(),
@@ -345,7 +198,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           )
         : ColoredBox(
             key: const ValueKey<String>('canvas-track-stack-floor'),
-            color: Color(widget.backdropArgb),
+            color: Color(backdropArgb),
           );
     if (positions.isEmpty) {
       return SizedBox.expand(
@@ -353,114 +206,198 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         child: floor,
       );
     }
-
-    final layers = <Widget>[?floor];
     // The unit alpha of each contribution: its transition share. The
     // weights that follow turn those into source-over alphas — see
     // [sourceOverWeights] for why they are not the same number.
-    final unitAlphas = <double>[
+    final weights = trackGroupSourceOverWeights(positions, [
       for (final position in positions) position.opacity,
-    ];
-    final weights = trackGroupSourceOverWeights(positions, unitAlphas);
-    for (var i = 0; i < positions.length; i++) {
-      final position = positions[i];
-      final cut = position.cut;
-      final localFrame = position.localFrameIndex;
-      _wantedFrame[cut.id] = localFrame;
-
-      final composite = widget.compositeCache.validCompositeOrNull(
-        cut: cut,
-        frameIndex: localFrame,
-      );
-      if (composite != null) {
-        _hold(cut, localFrame, composite);
-      } else if (widget.picturesLanded == null) {
-        _prepare(cut, localFrame);
-      }
-
-      final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;
-
-      final globalFrame = position.globalFrameIndex;
-      final weight = weights[i];
-      // The stage — paper, letterbox, apron — belongs to the bottom covered
-      // TRACK, and to EVERY contribution of it: a 場面転換 cross-fades the
-      // whole screen, so the arriving cut brings its own paper and the
-      // weights mix the two. Tracks above composite transparently over it.
-      final isStage = position.isBottomTrack;
-      final cameraView = widget.cameraViewEnabled;
-      layers.add(
-        CustomPaint(
-          // ⛔The `willChange: true` hint this picture carried is GONE with
-          // the editing stack's (see `canvas_layer_stack_view.dart` for the
-          // #1100→R11 history and the two symptoms to watch for). It was
-          // here because a parked gap shows this stack STILL, so the
-          // desktop raster cache would snap its layer to integral device
-          // translation on engage — the 1px artwork hop. The layout offset
-          // it would have snapped away from is now integral to begin with.
-          //
-          // 🚨**This site is not symmetric with the other three, and it is
-          // the one to check first on device.** The hint was set once per
-          // contributing track inside this loop, but every call landed on
-          // the SAME recording layer — so it was one hinted picture, not N.
-          // Removing it makes N pictures independently cacheable: N
-          // view-sized RGBA entries, none of them visible to
-          // `playbackCacheBudgetBytes`. And because each track is now its
-          // own entry, tracks can engage on DIFFERENT frames — so the
-          // signature here is tracks sliding 1px APART FROM EACH OTHER
-          // rather than the stage moving as one. That variant is
-          // unambiguous.
-          painter: PlaybackFramePainter(
-            image: _heldCanvasSizes[cut.id] == cut.canvasSize
-                ? _heldFrames[cut.id]
-                : null,
-            canvasSize: cut.canvasSize,
-            viewport: widget.viewport,
-            // The pan-phase snap's device grid — one phase across the
-            // whole stack and the editing canvas it stands in for.
-            devicePixelRatio:
-                EffectiveDevicePixelRatio.of(context),
-            // Camera view off: the cut sits in its own canvas space, uncropped
-            // and unprojected — the editing framing, which is what a ruler
-            // scrub should keep showing.
-            cameraPose: cameraView
-                ? widget.cameraPoseOf(cut, localFrame)
-                : null,
-            seNameTags: widget.seNameTagsOf?.call(cut, localFrame) ?? const [],
-            cameraFrameSize: cameraView ? widget.cameraFrameSize : null,
-            // No cutPose/cutAnchorPoint: the V row has no transform. The
-            // camera is what moves the picture on the stage.
-            // The V row's chain, on the cut's picture — the canvas's own
-            // size, so a blur radius is canvas pixels as it stands.
-            cutEffects: trackEffectsAt(
-              widget.trackEffectsOf?.call(cut.id) ?? const [],
-              globalFrame,
-              enabled: cutFxEnabled,
-            ),
-            paperBackground: widget.background,
-            paintPaper: isStage,
-            // Nothing to letterbox against without a camera frame.
-            paintLetterbox: isStage && cameraView,
-            // The apron rides the camera view, as the playback view's does:
-            // it is what the camera sees past the paper.
-            pasteboardColor: isStage && cameraView
-                ? Color(widget.pasteboardArgb)
-                : null,
-            // F-114: absent planes show the checkerboard here as on the
-            // editing canvas — on screen only.
-            pasteboardNone: widget.pasteboardNone,
-            checkersAbsentPlanes: true,
-            fadeOpacity: isStage ? weight : 1,
-            imageOpacity: isStage ? 1 : weight,
-            veils: position.veils,
-          ),
-        ),
-      );
-    }
-
+    ]);
     return Stack(
       key: const ValueKey<String>('canvas-track-stack-frames'),
       fit: StackFit.expand,
-      children: layers,
+      children: [
+        ?floor,
+        for (final (i, position) in positions.indexed)
+          _unit(position, weights[i], view: view, ratio: ratio),
+      ],
     );
   }
+
+  /// One covered cut's share of the frame: the stage's planes under it when
+  /// it is the stage, its rows' images — cut to its canvas inside the
+  /// camera's frame through the camera, and nowhere without one — and its
+  /// names and veils over it.
+  Widget _unit(
+    TrackStackContribution position,
+    double weight, {
+    required CanvasViewport view,
+    required double ratio,
+  }) {
+    final cut = position.cut;
+    final localFrame = position.localFrameIndex;
+    final pose = cameraViewEnabled ? cameraPoseOf(cut, localFrame) : null;
+    // The stage — paper, apron — belongs to the bottom covered TRACK, and
+    // to EVERY contribution of it: a 場面転換 cross-fades the whole screen,
+    // so the arriving cut brings its own paper and the weights mix the two.
+    // Tracks above composite transparently over it.
+    final isStage = position.isBottomTrack;
+    final shot = pose == null
+        ? null
+        : (
+            pose: pose,
+            frameSize: cameraFrameSize,
+            frameView: viewportAfter(
+              view,
+              cameraProjectionMatrix(pose, cameraFrameSize),
+            ),
+          );
+    PlaybackFramePainter painter({required bool under}) => PlaybackFramePainter(
+      canvasSize: cut.canvasSize,
+      viewport: view,
+      devicePixelRatio: ratio,
+      cameraPose: pose,
+      cameraFrameSize: pose == null ? null : cameraFrameSize,
+      paperBackground: background,
+      // The paper is the canvas's own, drawn with its rows (as the camera's
+      // shot leaves it). Here, through the camera, is only its plane where
+      // it is ABSENT (F-114): the checkerboard in its place.
+      // 🚨playback-picture-is-not-the-canvas-picture (유저 10-13 「끝에 흰
+      // 선」): painted here under the rows, the paper filled the canvas
+      // to its edge — under a level image whose last pixel the edge cuts
+      // part-way, which the stack's own paper yields to (#15) — and showed
+      // white through it.
+      paintPaper: under && isStage && background.none,
+      // The letterbox is the FLOOR's, laid once under every track
+      // ([_CameraFloor]). ↩️Each stage contribution laid its own over
+      // the whole screen, opaque, under its fade — so in an O.L the
+      // arriving cut covered the leaving one and the dissolve went
+      // through the letterbox (measured 10-10: two white papers met at
+      // (99,102,104)), and a fade showed it where the backdrop is.
+      paintLetterbox: false,
+      // The apron rides the camera view: it is what the camera sees past
+      // the paper.
+      pasteboardColor: under && isStage ? Color(pasteboardArgb) : null,
+      // F-114: absent planes show the checkerboard here as on the editing
+      // canvas — on screen only.
+      pasteboardNone: pasteboardNone,
+      checkersAbsentPlanes: true,
+      seNameTags: under
+          ? const []
+          : seNameTagsOf?.call(cut, localFrame) ?? const [],
+      // An upper track thins its names and veils with its picture.
+      imageOpacity: isStage ? 1 : weight,
+      veils: under ? const [] : position.veils,
+    );
+    // 🚨Seen through no camera the stage is the EDITING CANVAS's — its
+    // pasteboard where its cut's pasteboard is, the checkerboard where the
+    // paper is absent, laid by the painter the canvas lays them with — and
+    // nothing of the picture is cut: a cut played whole shows what it shows
+    // standing still (conte-playback-hides-the-pasteboard, 유저 10-13 「둘 다
+    // 보인다(편집 캔버스처럼)」). ↩️The film cut every cut at its canvas's
+    // edge on the floor while a cut's run on the canvas showed the
+    // pasteboard. Through the camera, the planes are what the camera sees.
+    final CustomPainter? planes = pose != null
+        ? painter(under: true)
+        : isStage
+        ? StagePlanesPainter(
+            pasteboard: (color: Color(pasteboardArgb), none: pasteboardNone),
+            paperNone: background.none,
+            canvasSize: cut.canvasSize,
+            viewport: view,
+          )
+        : null;
+    final unit = Stack(
+      fit: StackFit.expand,
+      children: [
+        CustomPaint(painter: planes),
+        Opacity(
+          opacity: isStage ? 1 : weight,
+          child: ShotClip(
+            outline: pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
+            child: CanvasLayerStackView(
+              nodes: stackOf(cut, localFrame),
+              imageCache: imageCache,
+              canvasSize: cut.canvasSize,
+              viewport: shot?.frameView ?? view,
+              paintPaper: isStage,
+              paperBackground: background,
+              // A drag parks one frame after another: a cut shows its last
+              // whole frame until the next one is — a run's are whole anyway
+              // ([CanvasLayerStackView.wholeFrames]).
+              wholeFrames: true,
+              run: run,
+              onBufferBytes: onBufferBytes == null
+                  ? null
+                  : (bytes) => onBufferBytes!(cut.id, bytes),
+            ),
+          ),
+        ),
+        CustomPaint(painter: painter(under: false)),
+      ],
+    );
+    // The FADE is transparency (R3b): the stage's whole contribution —
+    // apron, paper, picture, names, veils — thins as one layer, revealing
+    // whatever lies behind (the tracks below, then the backdrop).
+    return Opacity(
+      // The cut's own: what its stack holds — the last whole frame among it
+      // — stays its own when another cut comes in beside it or leaves.
+      key: ValueKey<Object>(('track-stack-unit', cut.id)),
+      opacity: isStage ? weight : 1,
+      child: unit,
+    );
+  }
+}
+
+/// The stage's floor seen through the camera (R3b): the letterbox past the
+/// camera's frame, and in the frame the backdrop every track's unit lies
+/// on — what a fade or a dissolve reveals. An ABSENT backdrop (F-114) is
+/// the checkerboard there, as the apron's is.
+///
+/// ONE floor under every track: the letterbox is laid once, so no unit can
+/// cover the one under it with it (see the frames' `paintLetterbox`).
+class _CameraFloor extends CustomPainter with RepaintOnProps {
+  const _CameraFloor({
+    required this.viewport,
+    required this.frameSize,
+    required this.backdrop,
+    required this.backdropNone,
+    required this.devicePixelRatio,
+  });
+
+  /// The panel's pan/zoom; identity when null.
+  final CanvasViewport? viewport;
+  final CanvasSize frameSize;
+  final Color backdrop;
+  final bool backdropNone;
+
+  /// The pan-phase snap's device grid — the frame lands where the frames
+  /// over it clip to.
+  final double devicePixelRatio;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = PlaybackFramePainter.letterboxColor,
+    );
+    if (viewport case final viewport?) {
+      applyViewportTransform(
+        canvas,
+        viewport,
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (backdropNone) {
+      paintAlphaCheckerboard(canvas, frameSize.canvasRect);
+    } else {
+      canvas.drawRect(frameSize.canvasRect, Paint()..color = backdrop);
+    }
+    canvas.restore();
+  }
+
+  @override
+  Object get props =>
+      (viewport, frameSize, backdrop, backdropNone, devicePixelRatio);
 }

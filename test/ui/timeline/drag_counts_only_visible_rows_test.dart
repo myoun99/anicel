@@ -36,7 +36,7 @@ void main() {
   TimelineDisplayRow laneRow(Layer layer, String laneId, int layerIndex) =>
       TimelineDisplayRow.lane(
         layer,
-        PropertyLaneRow(laneId: laneId, label: laneId, keyedFrames: const {}),
+        PropertyLaneRow(laneId: laneId, label: laneId, keyMarks: const {}),
         layerIndex: layerIndex,
       );
 

@@ -14,6 +14,7 @@ import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
+import '../../services/camera_path.dart' show CameraPath;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -46,10 +47,10 @@ import 'conte_pdf_writer.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
 import 'export_cels_board.dart';
+import 'export_cels_stack.dart';
 import 'export_cels_standing.dart';
 import 'export_conte_render.dart';
 import 'export_cels_selection.dart';
-import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
@@ -265,9 +266,6 @@ class ExportDialogState extends State<ExportDialog> {
   /// Where the Cels list stands ([ExportCelsStanding]).
   ExportCelsStanding _celStanding = const ExportCelsStanding();
 
-  /// The rows of the Cels list whose twirl is shut.
-  final Set<LayerId> _celShut = {};
-
   /// Why a press in this window did nothing, said at the pointer — the
   /// window's own channel: the editor's overlay lies under this window's
   /// barrier, where a notice would be said to nobody.
@@ -482,10 +480,7 @@ class ExportDialogState extends State<ExportDialog> {
   _celsList() {
     final plan = _celGroupPlan();
     final cut = _celCutShown(plan);
-    final rows = ExportCelsListing(
-      cut,
-      _specs.cels,
-    ).rows(selection: _celsSelectionOf(cut), plan: plan, shut: _celShut);
+    final rows = _celRowsOf(plan, cut);
     return (
       plan: plan,
       cut: cut,
@@ -493,6 +488,25 @@ class ExportDialogState extends State<ExportDialog> {
       standing: _celStanding.settledOn(rows),
     );
   }
+
+  /// The Cels list's rows for [cut] under [plan] — memoized on the two, the
+  /// rows' only inputs: the plan is made again whenever the project or the
+  /// spec moves ([_celGroupPlan]), so a new plan is new rows, and the board,
+  /// the preview, the label button and the settle share one reading a
+  /// build.
+  List<ExportCelsBoardRow> _celRowsOf(ExportCelGroupPlan plan, Cut cut) {
+    final cached = _celRowsCache;
+    if (cached != null &&
+        identical(cached.$1, plan) &&
+        identical(cached.$2, cut)) {
+      return cached.$3;
+    }
+    final rows = ExportCelsListing(cut, _specs.cels).rows(plan);
+    _celRowsCache = (plan, cut, rows);
+    return rows;
+  }
+
+  (ExportCelGroupPlan, Cut, List<ExportCelsBoardRow>)? _celRowsCache;
 
   /// The Cels tab's list, under its preview ([ExportCelsBoard]): the rules
   /// that pick the rows, the band, and the cut's rows with a block a
@@ -509,6 +523,7 @@ class ExportDialogState extends State<ExportDialog> {
     final (cut: _, :pages, :at) = _celPages();
     return ExportCelsBoard(
       rules: _celRules(cut),
+      stack: _celStack(cut, row),
       band: ExportCelsBand(
         cutPicker: _celCutPicker(plan, cut),
         count: AppText.strings.exWrittenCount(plan.length),
@@ -516,28 +531,81 @@ class ExportDialogState extends State<ExportDialog> {
         canStepBack: at > 0,
         canStepOn: at >= 0 && at < pages.length - 1,
         directions: _celDirections(cut, standing.sheetIn(rows)),
+        camera: _celCamera(cut, standing.sheetIn(rows)),
       ),
       rows: rows,
-      layers: cut.layers,
       standing: row?.idValue,
       shown: standing.shown,
       enabled: !_isExporting,
-      onRowSwitched: (row, on) => switch (row) {
-        ExportCelsLayerRow(:final layer) => _toggleCelRows(
-          cut,
-          row.isFolder
-              ? ExportCelsListing(cut, _specs.cels).leavesOf(layer)
-              : [layer],
-          on,
-        ),
-        ExportCelsDocumentRow() => _toggleCelDocument(row, on),
-      },
-      onFolded: _foldCelRow,
+      onRowSwitched: (row, on) => _switchCelRow(cut, row, on),
       onStoodOn: (row) => _standCels(
         (standing, rows) => standing.standingOn(row.idValue, rows),
       ),
       onSheetPressed: _pressCelSheet,
     );
+  }
+
+  /// The attach column of [row] — the row the list stands on
+  /// ([ExportCelsStack]): what its files can hold, each line switched as the
+  /// rules and the hand say ([_celsSelectionOf]).
+  Widget _celStack(Cut cut, ExportCelsBoardRow? row) {
+    final selection = _celsSelectionOf(cut);
+    return ExportCelsStack(
+      row: row,
+      lines: [
+        if (row != null)
+          for (final layer in ExportCelsListing(
+            cut,
+            _specs.cels,
+          ).stackOf(row, _celsSelectionOf(cut, withDelta: false)))
+            (layer: layer, on: selection.includes(layer)),
+      ],
+      onSwitched: _isExporting
+          ? null
+          : (layer, on) => _toggleCelRows(cut, [layer], on),
+    );
+  }
+
+  /// A row's switch: every file of the row turned off, or back on
+  /// (export-four-tabs ③). On a row whose stack holds no picture there is
+  /// no file to turn: its BASE is put back in, and its files come with it
+  /// (ⓑ, 유저 2026-10-09: 「가」).
+  void _switchCelRow(Cut cut, ExportCelsBoardRow row, bool on) {
+    final files = [
+      for (final sheet in row.sheets)
+        if (sheet.planned) sheet,
+    ];
+    if (files.isNotEmpty) {
+      _turnCelFiles(files, off: !on);
+      return;
+    }
+    if (on && row is ExportCelsLayerRow) {
+      _toggleCelRows(cut, [
+        for (final layer in cut.layers)
+          if (layer.id == row.base) layer,
+      ], true);
+    }
+  }
+
+  /// Turns [files] off, or back on — each in the delta of its own cut (a
+  /// 겸용 group's cuts each keep a timesheet): a block's press is one file,
+  /// a row's switch every file of its row.
+  void _turnCelFiles(Iterable<ExportListSheet> files, {required bool off}) {
+    _session.repository.updateExportOverrides((overrides) {
+      var next = overrides;
+      for (final file in files) {
+        next = next.withCelsDelta(
+          file.deltaCut,
+          file.offIn(
+            next.deltaFor(file.deltaCut) ?? ExportCelsCutDelta(),
+            off: off,
+          ),
+        );
+      }
+      return next;
+    });
+    setState(() {});
+    _settleStanding();
   }
 
   /// Moves where the Cels list stands, and shows it.
@@ -556,21 +624,6 @@ class ExportDialogState extends State<ExportDialog> {
   void _stepCel(int steps) =>
       _standCels((standing, rows) => standing.stepped(steps, rows));
 
-  /// A twirl, pressed: what the row holds under it folds away, or comes
-  /// back. The window's own fold — the film's folds are the film's.
-  void _foldCelRow(ExportCelsBoardRow row) {
-    // Only a row of the cut holds rows under it.
-    if (row is! ExportCelsLayerRow) {
-      return;
-    }
-    setState(() {
-      if (!_celShut.remove(row.layer.id)) {
-        _celShut.add(row.layer.id);
-      }
-    });
-    _settleStanding();
-  }
-
   /// A block, pressed: a file the export would write is turned off, or
   /// back on — and one it would not says why, where the pointer is
   /// (유저 2026-10-06: 「나갈 수 없는 그림은 작동하려하면 이유 띄우자」).
@@ -579,43 +632,13 @@ class ExportDialogState extends State<ExportDialog> {
     if (refused != null) {
       final strings = AppText.strings;
       _notices.show(switch (refused) {
-        ExportCelRefusal.rowOff => strings.noticeExportRowOff,
         ExportCelRefusal.noPicture => strings.noticeExportNoPicture,
         ExportCelRefusal.notPlaced => strings.noticeExportNotPlaced,
         ExportCelRefusal.sameName => strings.noticeExportSameName,
-        ExportCelRefusal.ridesBase => strings.noticeExportRidesBase,
       });
       return;
     }
-    _editCelDelta(sheet.deltaCut, (delta) => switch (sheet) {
-      ExportCelSheet() => delta.withCelSkipped(sheet.ref, !sheet.skipped),
-      ExportDocumentSheet() => delta.withPageSkipped(
-        sheet.ref,
-        !sheet.skipped,
-      ),
-      _ => delta,
-    });
-  }
-
-  /// A document row's switch: its files are written, or none of them is —
-  /// each answer kept with the cut its document is of (a 겸용 group's cuts
-  /// each keep a timesheet).
-  void _toggleCelDocument(ExportCelsDocumentRow row, bool on) {
-    _session.repository.updateExportOverrides((overrides) {
-      var next = overrides;
-      for (final cutId in {for (final sheet in row.sheets) sheet.deltaCut}) {
-        next = next.withCelsDelta(
-          cutId,
-          (next.deltaFor(cutId) ?? ExportCelsCutDelta()).withDocumentOff(
-            row.kind,
-            !on,
-          ),
-        );
-      }
-      return next;
-    });
-    setState(() {});
-    _settleStanding();
+    _turnCelFiles([sheet], off: !sheet.skipped);
   }
 
   /// The direction drawings of [cut] the band offers to lay over [shown],
@@ -654,6 +677,31 @@ class ExportDialogState extends State<ExportDialog> {
               : null,
         ),
     ];
+  }
+
+  /// [cut]'s camera's work as the band offers to lay it over [shown]: lit
+  /// while it is laid. Like a direction it is laid over a drawing — not
+  /// over a document's page, and not while none is shown — and there is
+  /// none to lay where the camera moves nothing: the canvas draws no path
+  /// there ([CameraPath.of]).
+  ExportCelsCamera _celCamera(Cut cut, ExportListSheet? sheet) {
+    final shown = sheet is ExportCelSheet ? sheet : null;
+    if (shown == null) {
+      return const (laid: false, onPressed: null);
+    }
+    final laid =
+        _overrides.deltaFor(cut.id)?.cameraOver.contains(shown.ref) ?? false;
+    final moves =
+        CameraPath.of(cut, _session.camera.cameraFrameSize) != null;
+    return (
+      laid: laid,
+      onPressed: moves && !_isExporting
+          ? () => _editCelDelta(
+              cut.id,
+              (delta) => delta.withCameraOver(shown.ref, !laid),
+            )
+          : null,
+    );
   }
 
   /// The cut the list shows, as a popover of the cuts the plan lists
@@ -1264,7 +1312,7 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: format,
     );
-    // The video run burns the SE name tags in (renderCompositeForVideo);
+    // The video run burns the SE name tags in (videoRun);
     // stills stay clean because they are compositing sources. The preview
     // has to answer the same question, or it shows a frame the export
     // will not produce.
@@ -1519,12 +1567,12 @@ class ExportDialogState extends State<ExportDialog> {
         }
         // The file exactly as the naming rule will write it, extension
         // included (유저 2026-09-09: 「이름 규칙같은거에서 적용된걸 그대로 …
-        // A0001.png 이런식으로 확장자까지」) — and one that is no file by its
-        // whole name.
+        // A0001.png 이런식으로 확장자까지」) — a file turned off by the name
+        // it keeps. ↩️A drawing that could be no file was turned through
+        // too, on a row that was off, and named by its whole name
+        // (export-four-tabs).
         final sheet = pages[at];
-        return sheet.fileName.isNotEmpty
-            ? (name: sheet.fileName, absent: false)
-            : (name: sheet.fullName, absent: true);
+        return (name: sheet.fileName, absent: !sheet.written);
       case ExportTab.conte:
         final (_, pages) = _conteSheet();
         if (pages.isEmpty) {
@@ -2340,16 +2388,17 @@ class ExportDialogState extends State<ExportDialog> {
       _singleFileName(_sequenceFileController, format.container.fileExtension),
     );
     final audioMixPath = spec.includeAudio ? await _renderAudioMix(plan) : null;
+    // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α keeps
+    // the channel (transparent ground, fade still paints).
+    final run = renderer.videoRun(
+      plan,
+      spec.sizeMode,
+      preserveAlpha: alphaVideo,
+    );
     try {
       final summary = await widget.videoExportService.exportVideo(
         count: plan.length,
-        // Opaque codecs bake the cut fade/pose into RGB; ProRes 4444 α
-        // keeps the channel (transparent ground, fade still paints).
-        renderImage: (index) => renderer.renderCompositeForVideo(
-          plan[index],
-          spec.sizeMode,
-          preserveAlpha: alphaVideo,
-        ),
+        renderImage: run.frame,
         outputFilePath: videoPath,
         frameRate: _session.projectSettings.projectFrameRate,
         audioMixPath: audioMixPath,
@@ -2383,7 +2432,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  Future<String> _exportPngSequence() {
+  Future<String> _exportPngSequence() async {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: false);
     final renderer = ExportFrameRenderer.forFormat(
@@ -2391,14 +2440,22 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
     );
-    return _runImageExport(
-      count: plan.length,
-      renderImage: (index) =>
-          renderer.renderComposite(plan[index], spec.sizeMode),
-      fileNameFor: _sequenceFileNameFor,
-      encoderFor: (_) => stillEncoderFor(spec.format),
-      says: _Tally.frames,
-    );
+    final run = renderer.stillRun(plan, spec.sizeMode);
+    // ONE encoder for every frame: a frame that is the picture before it is
+    // written as the bytes before it only when the same encoder made them
+    // ([PngSequenceExportService.exportImages]).
+    final encoder = stillEncoderFor(spec.format);
+    try {
+      return await _runImageExport(
+        count: plan.length,
+        renderImage: run.frame,
+        fileNameFor: _sequenceFileNameFor,
+        encoderFor: (_) => encoder,
+        says: _Tally.frames,
+      );
+    } finally {
+      renderer.dispose();
+    }
   }
 
   Future<String> _exportCurrentFrame() async {
@@ -2695,8 +2752,8 @@ class ExportDialogState extends State<ExportDialog> {
       return _noCutsDialog(context);
     }
     // LayoutBuilder sits OUTSIDE the window now: AppWindow owns the Dialog,
-    // so the room the drawers negotiate over is the screen minus the
-    // window's inset, not the dialog's interior.
+    // so the room the drawers negotiate over is the screen's half, not the
+    // dialog's interior.
     return LayoutBuilder(
       builder: (context, constraints) {
         final room = _windowMetrics(constraints);
@@ -2765,8 +2822,10 @@ class ExportDialogState extends State<ExportDialog> {
   static const double _previewColumnWidth = ExportCelsBoard.minimumWidth + 16;
   static const double _settingsColumnWidth = 272;
 
-  /// The window's size and whether each drawer still fits, for the room the
-  /// screen leaves.
+  /// The window's size and whether each drawer still fits: its share of the
+  /// app screen ([AppWindow.screenShare]), never narrower than the four
+  /// columns with both drawers folded — the share yields before the preview
+  /// does, as the drawers do.
   ///
   /// The drawers yield before the preview does (v10: 전개 ~1020 / 최소
   /// ~700): a tight surface collapses the queue, then the presets, to
@@ -2774,25 +2833,18 @@ class ExportDialogState extends State<ExportDialog> {
   /// drawer comes back the moment the room does.
   ({double width, double height, bool presetsOpen, bool queueOpen})
   _windowMetrics(BoxConstraints constraints) {
-    // ⚠️The window sits in a Material `Dialog`, whose own insetPadding is
-    // 40 a side horizontally and 24 vertically. Taking the full room means
-    // taking THAT room: ask for more and the window overflows its dialog.
-    const sideInset = 80.0;
-    const verticalInset = 64.0;
-    final availableWidth = constraints.maxWidth - sideInset;
-    final availableHeight = constraints.maxHeight - verticalInset;
+    final room = AppWindow.screenShare(
+      constraints,
+      least: Size(_columnsWidth(presetsOpen: false, queueOpen: false), 0),
+    );
     var presetsOpen = _presetsOpen;
     var queueOpen = _queueOpen;
     double widthFor() =>
-        _drawerWidth(presetsOpen, _presetsDrawerWidth) +
-        _previewColumnWidth +
-        _settingsColumnWidth +
-        _drawerWidth(queueOpen, _queueDrawerWidth) +
-        4;
-    if (widthFor() > availableWidth && queueOpen) {
+        _columnsWidth(presetsOpen: presetsOpen, queueOpen: queueOpen);
+    if (widthFor() > room.width && queueOpen) {
       queueOpen = false;
     }
-    if (widthFor() > availableWidth && presetsOpen) {
+    if (widthFor() > room.width && presetsOpen) {
       presetsOpen = false;
     }
     // 🗣️유저 2026-09-16: 「미리보기 셀 리스트 가로길이가 길어서 미리보기
@@ -2802,16 +2854,28 @@ class ExportDialogState extends State<ExportDialog> {
     //
     // The window used to be exactly the four columns' sum, so the preview —
     // the only column that stretches — got whatever the fixed three left,
-    // and the cel list ate into that. It takes the room the screen leaves
-    // now; [widthFor] stays because it answers a different question: whether
-    // a drawer still fits.
+    // and the cel list ate into that. It takes its share of the app screen
+    // now (F-337 — ↩️all the room the screen leaves, from that day); [widthFor]
+    // stays because it answers a different question: whether a drawer
+    // still fits.
     return (
-      width: availableWidth,
-      height: availableHeight,
+      width: room.width,
+      height: room.height,
       presetsOpen: presetsOpen,
       queueOpen: queueOpen,
     );
   }
+
+  /// The four columns side by side, each drawer open or folded.
+  static double _columnsWidth({
+    required bool presetsOpen,
+    required bool queueOpen,
+  }) =>
+      _drawerWidth(presetsOpen, _presetsDrawerWidth) +
+      _previewColumnWidth +
+      _settingsColumnWidth +
+      _drawerWidth(queueOpen, _queueDrawerWidth) +
+      4;
 
   static double _drawerWidth(bool open, double openWidth) =>
       open ? openWidth : _collapsedDrawerWidth;
@@ -3306,8 +3370,10 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// Turns [rows] of [cut] on or off — storing null where the wish equals
   /// the rule's outcome, so the delta stays exactly the hand exceptions
-  /// (Reset = clear, a filter press re-applies the rule). A row's switch and
-  /// a folder's (every row under it at once) are one write.
+  /// (Reset = clear, a filter press re-applies the rule). A line of the
+  /// attach column ([ExportCelsStack]), and the base a row with no file
+  /// puts back ([_switchCelRow]). ↩️A list row's switch, and a folder's
+  /// (every row under it at once).
   void _toggleCelRows(Cut cut, Iterable<Layer> rows, bool include) {
     final rule = _celsSelectionOf(cut, withDelta: false);
     _editCelDelta(cut.id, (delta) {

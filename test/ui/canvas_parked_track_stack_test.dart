@@ -4,11 +4,11 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
-import 'package:anicel/src/ui/playback/canvas_playback_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
@@ -115,17 +115,14 @@ void main() {
     final landings = s.playbackRig.prerenderScheduler.landings;
     CanvasTrackStackView stack() =>
         tester.widget<CanvasTrackStackView>(find.byKey(stackKey));
-    CanvasPlaybackView playbackView() =>
-        tester.widget<CanvasPlaybackView>(find.byType(CanvasPlaybackView));
 
     s.parkGlobalFrame(1);
     await tester.pump();
-    expect(stack().picturesLanded, isNull, reason: 'parked: it makes its own');
+    expect(stack().run, isNull, reason: 'parked: it makes its own');
 
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
-    expect(stack().picturesLanded, same(landings));
-    expect(playbackView().picturesLanded, same(landings));
+    expect(stack().run?.landings, same(landings));
     s.playbackRig.playback.stop();
     await tester.pump();
 
@@ -133,7 +130,15 @@ void main() {
     await tester.pump();
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(playbackView().picturesLanded, same(landings));
+    expect(
+      tester
+          .widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
+          .run
+          ?.landings,
+      same(landings),
+      reason: 'a cut played alone plays on the canvas, from the warmer\'s '
+          'pictures (playback-plays-the-screen-material)',
+    );
     s.playbackRig.playback.stop();
     await drainWarming(tester);
   });
@@ -183,20 +188,21 @@ void main() {
     await drainWarming(tester);
   });
 
-  /// 🚨The storyboard RULER DRAG (user 2026-08-11).
+  /// 🚨The RULER DRAG through a gap (user 2026-08-11).
   ///
-  /// `scrubGlobalFrame` parks the moment the frame belongs to another cut, so
-  /// dragging the ruler across cuts is this stack — and it used to CROP to the
-  /// camera while the state the drag started from showed the whole canvas with
-  /// the frame drawn over it. Same picture, two framings, one gesture apart.
+  /// `scrubGlobalFrame` parks per move in a gap, so dragging the ruler
+  /// through one is this stack — and it used to CROP to the camera while the
+  /// state the drag started from showed the whole canvas with the frame drawn
+  /// over it. Same picture, two framings, one gesture apart. (Until I-57 ②
+  /// another cut's frames parked the drag here too.)
   ///
   /// The rule now: the crop is PLAYBACK's. A preview is canvas + overlay.
   bool stackCrops(WidgetTester tester) => tester
       .widget<CanvasTrackStackView>(find.byKey(stackKey))
       .cameraViewEnabled;
 
-  testWidgets('a ruler drag across cuts shows the WHOLE canvas, camera view '
-      'on or off — the crop does not appear one gesture into a drag', (
+  testWidgets('a ruler drag through a gap shows the WHOLE canvas, camera '
+      'view on or off — the crop does not appear one gesture into a drag', (
     tester,
   ) async {
     final (s, first, aEnd) = gappedSession();
@@ -205,8 +211,8 @@ void main() {
     await pumpArea(tester, s, cameraViewEnabled: true);
     expect(find.byKey(stackKey), findsNothing, reason: 'cut active = editing');
 
-    // Two out-of-territory moves: the preview engages on the SECOND, never on
-    // the pointer-down alone — the real drag, not a tap.
+    // Two moves in the gap: its display engages on the SECOND, never on the
+    // pointer-down alone — the real drag, not a tap.
     scrub(s).scrubGlobalFrame(aEnd + 1);
     scrub(s).scrubGlobalFrame(aEnd + 2);
     await tester.pump();
@@ -221,41 +227,76 @@ void main() {
     await drainWarming(tester);
   });
 
-  testWidgets('D6: a drag that STARTED inside the cut crosses the boundary '
-      'and the canvas follows — the previous cut\'s picture does not '
-      'linger until release', (tester) async {
+  testWidgets('🗣️I-57 ②: a drag that started in one cut CROSSES into the '
+      'next — the canvas is that cut\'s own editing canvas, not a preview '
+      'of it, and the cut is the active one before the finger lifts', (
+    tester,
+  ) async {
     final (s, first, aEnd) = gappedSession();
     addTearDown(s.dispose);
+    final second = s.repository.requireProject().tracks.first.cuts[1].id;
     s.selectCut(first);
     await pumpArea(tester, s);
 
-    // The drag starts IN territory: engages the scrub without ever
-    // taking the out-of-territory path (the exact shape the old code
-    // left invisible — frameScrub.active was already true, so the later
-    // crossing had no rebuild trigger).
     scrub(s).scrubGlobalFrame(1);
     await tester.pump();
     expect(s.frameScrub.active.value, isTrue);
     expect(find.byKey(stackKey), findsNothing);
 
-    // Cross onto the SECOND cut's frames: the multitrack preview must
-    // mount NOW, not on release.
+    // Onto the SECOND cut's frames, past the gap.
     scrub(s).scrubGlobalFrame(aEnd + 5);
+    await tester.pump();
+    expect(s.activeCutId, second, reason: 'the scrub crossed into it');
+    expect(s.currentFrameIndex, 1, reason: 'its frame under the playhead');
+    expect(
+      find.byKey(stackKey),
+      findsNothing,
+      reason: 'a crossing is a cut switch, not the track stack\'s preview',
+    );
+    expect(find.byType(CanvasLayerStackView), findsOneWidget);
+
+    // And back: the first cut is the one again, mid-gesture.
+    scrub(s).scrubGlobalFrame(1);
+    await tester.pump();
+    expect(s.activeCutId, first);
+    expect(find.byKey(stackKey), findsNothing);
+
+    scrub(s).commitFrameScrub();
+    expect(s.activeCutId, first, reason: 'the release lands where it is');
+    await drainWarming(tester);
+  });
+
+  testWidgets('D6: a drag that STARTED inside the cut walks into a gap and '
+      'the canvas follows — the cut\'s picture does not linger until '
+      'release', (tester) async {
+    final (s, first, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    await pumpArea(tester, s);
+
+    // The drag starts on the cut: engages the scrub without ever taking
+    // the gap's path (the exact shape the old code left invisible —
+    // frameScrub.active was already true, so the later crossing had no
+    // rebuild trigger).
+    scrub(s).scrubGlobalFrame(1);
+    await tester.pump();
+    expect(s.frameScrub.active.value, isTrue);
+    expect(find.byKey(stackKey), findsNothing);
+
+    // Into the gap: its display must mount NOW, not on release.
+    scrub(s).scrubGlobalFrame(aEnd + 2);
     await tester.pump();
     expect(
       find.byKey(stackKey),
       findsOneWidget,
       reason:
-          'the crossing is the edge — before D6 the canvas kept the '
-          'previous cut\'s picture for the rest of the drag',
+          'the gap is the edge — before D6 the canvas kept the cut\'s '
+          'picture for the rest of the drag',
     );
-    expect(
-      find.byKey(framesKey),
-      findsOneWidget,
-      reason: 'the crossed-onto cut paints its composite',
-    );
+    expect(find.byKey(voidKey), findsOneWidget, reason: 'no track covers it');
+    expect(s.activeCutId, first, reason: 'the release lands a gap, not this');
 
-    // Scrub back in: the interactive canvas returns mid-gesture too.
+    // Back onto the cut: the interactive canvas returns mid-gesture too.
     scrub(s).scrubGlobalFrame(1);
     await tester.pump();
     expect(find.byKey(stackKey), findsNothing);
@@ -264,12 +305,12 @@ void main() {
     await drainWarming(tester);
   });
 
-  test('D6: the territory flag fires per EDGE, not per move — and a tap '
+  test('D6: the gap flag fires per EDGE, not per move — and a tap '
       'never sets it (the no-flash rule)', () {
     final (s, first, aEnd) = gappedSession();
     s.selectCut(first);
     var fires = 0;
-    s.frameScrub.outOfTerritory.addListener(() => fires += 1);
+    s.frameScrub.inGap.addListener(() => fires += 1);
 
     // A TAP over the gap: pointer-down parks, no move follows.
     scrub(s).scrubGlobalFrame(aEnd + 1);
@@ -277,12 +318,12 @@ void main() {
     scrub(s).commitFrameScrub();
     expect(fires, 0);
 
-    // A real drag: in-territory start, cross out, wander, come back.
+    // A real drag: start on the cut, into the gap, wander, come back.
     s.selectCut(first);
     scrub(s).scrubGlobalFrame(1);
     expect(fires, 0);
     scrub(s).scrubGlobalFrame(aEnd + 1);
-    expect(fires, 1, reason: 'the exit edge fires once');
+    expect(fires, 1, reason: 'the gap edge fires once');
     scrub(s).scrubGlobalFrame(aEnd + 2);
     scrub(s).scrubGlobalFrame(aEnd + 3);
     expect(fires, 1, reason: 'per-move parking stays notify-quiet');
@@ -290,7 +331,7 @@ void main() {
     expect(fires, 2, reason: 're-entry is the other edge');
     scrub(s).commitFrameScrub();
     expect(fires, 2);
-    expect(s.frameScrub.outOfTerritory.value, isFalse);
+    expect(s.frameScrub.inGap.value, isFalse);
     s.dispose();
   });
 
@@ -307,47 +348,47 @@ void main() {
     scrub(s).scrubGlobalFrame(aEnd + 1);
     expect(s.frameScrub.active.value, isTrue);
     expect(
-      s.frameScrub.outOfTerritory.value,
+      s.frameScrub.inGap.value,
       isTrue,
       reason:
-          'the crossing is a real drag move — the down was in '
-          'territory, so the no-flash rule does not apply to it',
+          'the step into the gap is a real drag move — the down was on '
+          'the cut, so the no-flash rule does not apply to it',
     );
 
-    // A bare out-of-territory DOWN still engages nothing (no-flash).
+    // A bare DOWN in the gap still engages nothing (no-flash).
     scrub(s).commitFrameScrub();
     s.selectCut(first);
     scrub(s).scrubGlobalFrame(aEnd + 1);
     expect(s.frameScrub.active.value, isFalse);
-    expect(s.frameScrub.outOfTerritory.value, isFalse);
+    expect(s.frameScrub.inGap.value, isFalse);
     scrub(s).commitFrameScrub();
     s.dispose();
   });
 
   test('D6: playback taking the transport mid-drag clears the WHOLE '
-      'preview state — a leaked territory flag would swallow the next '
-      'drag\'s exit edge', () {
+      'preview state — a leaked gap flag would swallow the next '
+      'drag\'s gap edge', () {
     final (s, first, aEnd) = gappedSession();
     s.selectCut(first);
     scrub(s).scrubGlobalFrame(1);
     scrub(s).scrubGlobalFrame(aEnd + 1);
     expect(s.frameScrub.active.value, isTrue);
-    expect(s.frameScrub.outOfTerritory.value, isTrue);
+    expect(s.frameScrub.inGap.value, isTrue);
 
     // Space mid-drag: playback engages; the release path has no editing
     // seek to commit and must abandon the preview instead.
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     commitStoryboardScrub(s);
     expect(s.frameScrub.active.value, isFalse);
-    expect(s.frameScrub.outOfTerritory.value, isFalse);
+    expect(s.frameScrub.inGap.value, isFalse);
 
     s.playbackRig.playback.stop();
-    // The NEXT drag's exit edge fires cleanly.
+    // The NEXT drag's gap edge fires cleanly.
     s.selectCut(first);
     scrub(s).scrubGlobalFrame(1);
     scrub(s).scrubGlobalFrame(aEnd + 1);
     expect(
-      s.frameScrub.outOfTerritory.value,
+      s.frameScrub.inGap.value,
       isTrue,
       reason: 'no leak: the edge is alive on the very next drag',
     );

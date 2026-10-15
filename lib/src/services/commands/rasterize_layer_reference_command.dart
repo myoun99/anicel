@@ -1,4 +1,5 @@
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/media_reference.dart';
 import '../command.dart';
@@ -6,16 +7,20 @@ import '../project_lookup.dart';
 import '../project_repository.dart';
 
 /// RASTERIZE (§6-f/§6-z23): the reference layer's pixels are ALREADY its
-/// cels, so the verb nulls [Layer.mediaReference] — nothing else. One undo
-/// restores it.
+/// cels, so the verb nulls [Layer.mediaReference] — and what each cel said
+/// of the file it came from ([Frame.filePicture], I-68), which is the
+/// reference's — nothing else. One undo restores both.
 ///
 /// ↩️It also unregistered the asset when this was the last layer pointing at
 /// it — 「§3: baked = unregistered」, from the 07-30 import design
 /// (`98f529fc`). The user reversed that on 2026-09-11 (미디어 배치 라운드 6:
-/// 「구워도 풀에 남음」): the material of every placement is a pool entry,
-/// and a baked layer's file is still the pool's to offer again. The
-/// placement window's bake keeps it for the same reason, so the two doors to
-/// this one verb say the same thing.
+/// 「구워도 풀에 남음」), and it stays reversed HERE: the entry was made when
+/// the reference was placed, and the pool is not this verb's to empty.
+///
+/// ⚠️What a placement REGISTERS is another question: a placement baked in
+/// the import window registers nothing since F-282-Q6 (유저 2026-10-09, 가 —
+/// `placementRegisters`). That keeps an entry from being made for pixels
+/// that never draw from the file; it does not take away one that exists.
 class RasterizeLayerReferenceCommand implements Command {
   RasterizeLayerReferenceCommand({
     required this.repository,
@@ -28,6 +33,9 @@ class RasterizeLayerReferenceCommand implements Command {
   final LayerId layerId;
 
   MediaReference? _referenceBefore;
+
+  /// The picture of the file each cel was, while the row showed it.
+  Map<FrameId, int?>? _picturesBefore;
   bool _hasExecuted = false;
 
   @override
@@ -43,9 +51,17 @@ class RasterizeLayerReferenceCommand implements Command {
       return;
     }
     _referenceBefore ??= reference;
+    _picturesBefore ??= {
+      for (final frame in layer.frames) frame.id: frame.filePicture,
+    };
     repository.updateLayer(
       layerId: layerId,
-      update: (layer) => layer.copyWith(mediaReference: null),
+      update: (layer) => layer.copyWith(
+        mediaReference: null,
+        frames: [
+          for (final frame in layer.frames) frame.copyWith(filePicture: null),
+        ],
+      ),
     );
     _hasExecuted = true;
   }
@@ -61,7 +77,13 @@ class RasterizeLayerReferenceCommand implements Command {
     }
     repository.updateLayer(
       layerId: layerId,
-      update: (layer) => layer.copyWith(mediaReference: reference),
+      update: (layer) => layer.copyWith(
+        mediaReference: reference,
+        frames: [
+          for (final frame in layer.frames)
+            frame.copyWith(filePicture: _picturesBefore?[frame.id]),
+        ],
+      ),
     );
   }
 }

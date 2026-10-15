@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// F-16 — an UNMOVABLE row (camera, transition) takes the row drag's fork like
 /// every other row: inside the selection it is picked up, and it settles
 /// where it was.
@@ -98,7 +100,7 @@ void main() {
   Future<TestGesture> hold(WidgetTester tester) async {
     final gesture = await tester.startGesture(
       tester.getCenter(
-        find.byKey(const ValueKey<String>('timeline-layer-row-layer-1')),
+        find.named('timeline-layer-row-layer-1'),
       ),
       kind: PointerDeviceKind.mouse,
     );

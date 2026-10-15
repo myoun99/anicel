@@ -92,8 +92,44 @@ void main() {
     expect(fake.asked, [
       for (var i = 0; i < 12; i += 1) i,
     ], reason: 'each movie frame read once, in order');
-    final asset = s.mediaPool.mediaAssets.single;
-    expect((asset.kind, asset.frameCount), (MediaAssetKind.video, 12));
+    expect(
+      s.mediaPool.mediaAssets,
+      isEmpty,
+      reason: 'baked, its file stays out of the pool (F-282-Q6, 유저 '
+          '2026-10-09: 「구우면 풀에 안 남긴다」)',
+    );
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('baked WITH its sound, the sound still reads the file — so the '
+      'pool keeps the movie\'s one entry (F-282-Q6)', (tester) async {
+    debugVideoDecodeBackend = FakeVideoBackend(
+      frameCount: 12,
+      fpsNumerator: 12,
+    );
+    final s = session();
+
+    expect(
+      await place(
+        tester,
+        s,
+        rasterize: true,
+        parts: MovieParts.pictureAndSound,
+      ),
+      isTrue,
+    );
+
+    expect(movieRow(s).mediaReference, isNull, reason: 'CONTROL: baked');
+    expect(
+      [for (final layer in s.activeTrack.seLayers) ...layer.audioClips],
+      isNotEmpty,
+      reason: 'CONTROL: its sound came with it',
+    );
+    expect(
+      s.mediaPool.mediaAssets.single.kind,
+      MediaAssetKind.video,
+      reason: 'what the SE row plays is the file — so its entry stays',
+    );
     await tester.pumpAndSettle();
   });
 
@@ -114,6 +150,8 @@ void main() {
     expect(layer.timeline[0]!.length, 6, reason: 'IN 4 through OUT 9');
     expect(layer.mediaReference?.assetPath, normalizedMediaPath(moviePath));
     expect(layer.mediaReference?.frameOffset, 4);
+    final asset = s.mediaPool.mediaAssets.single;
+    expect((asset.kind, asset.frameCount), (MediaAssetKind.video, 24));
     expect(
       s.renderCaches.brushSurfaceForLayerFrame(layer, layer.frames.single),
       isNull,

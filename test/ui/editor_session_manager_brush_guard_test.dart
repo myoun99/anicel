@@ -3,10 +3,10 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../helpers/reference_to.dart';
 
 /// R6-④: the brush only lands on drawing-section layers — SE cels are
 /// timing/dialogue data and camera rows are notation, so they never produce
@@ -58,7 +58,7 @@ void main() {
     expect(layerAcceptsBrushInput(drawn), isTrue);
 
     final referenced = drawn.copyWith(
-      mediaReference: MediaReference(assetPath: 'C:/bg.png'),
+      mediaReference: referenceTo('C:/bg.png'),
     );
     expect(layerAcceptsBrushInput(referenced), isFalse);
 

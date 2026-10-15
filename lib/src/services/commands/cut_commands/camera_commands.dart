@@ -24,6 +24,15 @@ class _CameraCommands {
       );
     }
 
+    // A key stands only on a frame its cut is drawn for (I-73-camera-row-Q2,
+    // [cutWithCameraInsideItsFrames]): past the end there is none to set.
+    final drawn = cutDrawnFrameCount(
+      _coordinator.repository.requireProject(),
+      cutId,
+    );
+    if (drawn == null || !cameraKeyFits(frameIndex, drawnFrameCount: drawn)) {
+      return;
+    }
     final camera = _coordinator._requireCut(cutId).camera;
     if (camera.keyframeAt(frameIndex) == pose) {
       return;

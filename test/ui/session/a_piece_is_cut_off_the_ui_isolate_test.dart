@@ -2,18 +2,18 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/native/qa_video_encoder.dart';
 import 'package:anicel/src/services/audio/wav16_header.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/trimmed_pieces.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨The ROAD THE APP TAKES. `flutter_test_config.dart` cuts every piece
-/// inline ([TrimmedPieces.debugCutInline]) because a widget test's clock
+/// inline ([debugWorkersRunHere]) because a widget test's clock
 /// cannot await a worker — so without this file nothing would ever run the
 /// cut in the isolate production uses, and a closure that reached for
 /// something that cannot cross (the session, a callback holding it) would
@@ -24,11 +24,11 @@ void main() {
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('anicel-piece-worker');
-    TrimmedPieces.debugCutInline = false;
+    debugWorkersRunHere = false;
   });
 
   tearDown(() {
-    TrimmedPieces.debugCutInline = true;
+    debugWorkersRunHere = true;
     deleteTempQuietly(tempDir);
   });
 

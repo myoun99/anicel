@@ -10,7 +10,7 @@ import '../../models/onion_skin_settings.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/onion_skin_plan.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, cutShowingDragPreview;
+    show TimelineDragPreview, celPixelsRowOf, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
@@ -178,7 +178,8 @@ class OnionSkin {
   ///
   /// Planned from the cut as a drag in flight shows it, like the picture
   /// they ghost around (canvas-follows-block-moves) — a block moved past the
-  /// playhead moves its ghost with it.
+  /// playhead moves its ghost with it, and one carried onto another row
+  /// ghosts the pixels still under the row it came from ([celPixelsRowOf]).
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final pegs = settings.value;
     final committed = _project.activeCutOrNull;
@@ -186,7 +187,8 @@ class OnionSkin {
     if (committed == null || enabledIds.isEmpty) {
       return const [];
     }
-    final cut = cutShowingDragPreview(committed, _dragPreview.value);
+    final dragPreview = _dragPreview.value;
+    final cut = cutShowingDragPreview(committed, dragPreview);
     return [
       for (final layer in cut.layers)
         // A ghost is that layer's artwork, so it is shown exactly when the
@@ -205,7 +207,7 @@ class OnionSkin {
             CanvasLayerImageRequest(
               frameKey: _project.brushFrameKeyForCut(
                 cut,
-                layer.id,
+                celPixelsRowOf(dragPreview, layer.id, plan.frameId),
                 plan.frameId,
               ),
               opacity: plan.opacity,

@@ -6,7 +6,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
+import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_camera_path_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_frame_count_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_frame_grid_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
@@ -32,7 +34,7 @@ import 'package:anicel/src/models/app_workspace_colors.dart';
 import '../../helpers/library_source.dart';
 import '../../helpers/project_scratch_folder.dart';
 
-/// The EIGHT app-level settings families `EditorAppSettings` keeps: each has
+/// Every app-level settings family `EditorAppSettings` keeps: each has
 /// to be persisted through ITS OWN injected store and read back by the next
 /// run.
 ///
@@ -56,6 +58,7 @@ void main() {
     AppMemory.settings.value = const AppMemorySettings();
     AppFrameGridSettings.settings.value = const AppFrameGridSettings();
     AppFrameCountSettings.settings.value = const AppFrameCountSettings();
+    CameraPathSettings.settings.value = const CameraPathSettings();
   }
 
   setUp(resetAppWideDefaults);
@@ -77,6 +80,7 @@ void main() {
       'onion',
       'grid',
       'count',
+      'campath',
     ];
     String path(String name) => '${directory.path}/$name.json';
 
@@ -103,6 +107,9 @@ void main() {
         ),
         frameCountSettingsStore: AppFrameCountSettingsStore(
           filePath: path('count'),
+        ),
+        cameraPathSettingsStore: AppCameraPathSettingsStore(
+          filePath: path('campath'),
         ),
       )..restore();
       addTearDown(settings.dispose);
@@ -175,6 +182,16 @@ void main() {
     appSettingsOf(first).setFrameCountSettings(
       const AppFrameCountSettings(lastEntry: FrameCountEntry.secondsPlusFrames),
     );
+    // How the canvas shows a camera's path (I-89 ④) — every field off its
+    // default, since a lost store returns the defaults.
+    appSettingsOf(first).setCameraPathSettings(
+      const CameraPathSettings(
+        show: CameraPathShow.space,
+        range: CameraPathRange.aroundPlayhead,
+        tickEvery: 6,
+        around: 4,
+      ),
+    );
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
     await _settleUntil(
@@ -209,6 +226,7 @@ void main() {
           AppFrameGridSettings.settings.value.blockFrameLines &&
           AppFrameCountSettings.settings.value.lastEntry ==
               FrameCountEntry.secondsPlusFrames &&
+          CameraPathSettings.settings.value.tickEvery == 6 &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
     );
 
@@ -224,6 +242,15 @@ void main() {
     expect(
       AppFrameCountSettings.settings.value.lastEntry,
       FrameCountEntry.secondsPlusFrames,
+    );
+    expect(
+      CameraPathSettings.settings.value,
+      const CameraPathSettings(
+        show: CameraPathShow.space,
+        range: CameraPathRange.aroundPlayhead,
+        tickEvery: 6,
+        around: 4,
+      ),
     );
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
     expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);

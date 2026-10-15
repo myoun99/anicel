@@ -1355,7 +1355,100 @@ void main() {
         service.debugReset();
       },
     );
+
+    testWidgets(
+      '🚨a stream that never reached the contact is not the pen lifting — '
+      'the stylus keeps its own reading (F-331)',
+      (tester) async {
+        // 「필압이 인식이 안된다면 마우스랑 동일하게 필압1인채로 그리거나 하는데
+        // 그게 안되있음」 (유저 2026-10-10): a pen whose pressure the driver
+        // never reads still draws, with what it has.
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        live();
+        final service = WintabPenService.instance;
+        final hid = hidTipDown();
+
+        service.debugInjectPacket(_packet(pressure: 0, buttons: 0));
+        _down(tester, const Offset(4, 8), time: _ms(0), force: 0.3);
+        await tester.pump();
+        queue = [_packet(pressure: 0, buttons: 0)];
+        _move(tester, const Offset(40, 8), time: _ms(8), force: 0.5);
+        await tester.pump();
+        _up(tester, const Offset(40, 8), time: _ms(16));
+        await tester.pump();
+
+        expect(results.single.first.pressure, closeTo(0.3, 1e-9));
+        expect(results.single.last.pressure, closeTo(0.5, 1e-9));
+        service.debugReset();
+        hid.debugReset();
+      },
+    );
+
+    testWidgets(
+      '…and a contact the stream DID reach is not the next one\'s: what it '
+      'touched once is forgotten at the next press',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        live();
+        final service = WintabPenService.instance;
+        final hid = hidTipDown();
+
+        service.debugInjectPacket(_packet(pressure: 0.6, buttons: 1));
+        _down(tester, const Offset(4, 8), time: _ms(0), force: 0.3);
+        await tester.pump();
+        _up(tester, const Offset(4, 8), time: _ms(8));
+        await tester.pump();
+        expect(
+          results.single.single.pressure,
+          closeTo(0.6, 1e-9),
+          reason: '⛔premise: the stream read the first contact',
+        );
+
+        queue = [_packet(pressure: 0, buttons: 0)];
+        _down(tester, const Offset(4, 20), time: _ms(100), force: 0.3);
+        await tester.pump();
+        queue = [_packet(pressure: 0, buttons: 0)];
+        _move(tester, const Offset(40, 20), time: _ms(108), force: 0.5);
+        await tester.pump();
+        _up(tester, const Offset(40, 20), time: _ms(116));
+        await tester.pump();
+
+        expect(results.last.first.pressure, closeTo(0.3, 1e-9));
+        expect(results.last.last.pressure, closeTo(0.5, 1e-9));
+        service.debugReset();
+        hid.debugReset();
+      },
+    );
   });
+
+  testWidgets(
+    '🚨a pen the OS hands over as a MOUSE draws while the driver\'s report '
+    'still says it hovers — as the mouse, at full pressure (F-331)',
+    (tester) async {
+      // 「윈도우 잉크를 끄면 애니셀 설정이 윈탭이든 표준이든 펜으로 선이
+      // 안그려짐. 마우스는 그려지는데」 (유저 2026-10-10).
+      final results = <List<BrushDab>>[];
+      await _pump(tester, _pressureBrush, results);
+      final hid = RawPenInputService.instance;
+      RawPenInputService.debugClockOverride = () => DateTime(2024);
+      hid.debugPollOverride = () => const QaPenRawState(flags: 0, sequence: 1);
+      hid.start();
+
+      const mouse = PointerDeviceKind.mouse;
+      _down(tester, const Offset(4, 8), time: _ms(0), kind: mouse);
+      await tester.pump();
+      _move(tester, const Offset(40, 8), time: _ms(8), kind: mouse);
+      await tester.pump();
+      _up(tester, const Offset(40, 8), time: _ms(16), kind: mouse);
+      await tester.pump();
+
+      expect(results.single.first.center.x, 4);
+      expect(results.single.map((dab) => dab.pressure).toSet(), {1.0});
+      hid.debugReset();
+    },
+  );
 }
 
 /// Apple Pencil's `maximumPossibleForce`, which the iOS engine hands over

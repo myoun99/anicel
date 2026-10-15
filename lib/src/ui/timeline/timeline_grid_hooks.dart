@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'layer_label_controls.dart' show LayerMarkEdit;
+import 'layer_rail_columns.dart' show LayerRailOptionalColumns;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
@@ -19,6 +20,8 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
+import 'lane_graph_seats.dart' show LaneGraphLine, seatLaneGraphs;
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
@@ -94,6 +97,7 @@ class TimelineGridHooks {
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
+    this.onOpenCameraPath,
     this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
     required this.onToggleLayerVisibility,
@@ -118,6 +122,10 @@ class TimelineGridHooks {
     this.runEdit,
     this.readyRunsIn,
     this.expandedLaneLayerIds = const {},
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
+    this.laneGraphsNow,
+    this.laneGraphLineOf,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -186,6 +194,11 @@ class TimelineGridHooks {
   /// on the committed margin until the release
   /// (`ruler-norishiro-follows-drags`).
   final TimelineNoriShiro Function()? noriShiro;
+
+  /// How many frames a run of the cut plays before it wraps: every frame it
+  /// is DRAWN for ([noriShiro]) — F-227, 「재생도 타임라인패널의 재생이면
+  /// 여백까지 재생」 — its 尺 where nothing crosses it.
+  int get runFrames => noriShiro?.call().drawnFrameCount ?? playbackFrameCount;
 
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
@@ -299,6 +312,10 @@ class TimelineGridHooks {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
 
+  /// The camera row's path button: how the canvas shows the camera's path
+  /// (I-89 ④). Null mounts no button.
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
+
   /// Whether that row asks its file for more than the file can show — the
   /// button goes red and the popover says by how much (유저 2026-09-12).
   final bool Function(LayerId layerId)? layerSourceIsShortOf;
@@ -404,6 +421,25 @@ class TimelineGridHooks {
   /// AE-style property lanes: layers whose twirl-down is open, the toggle,
   /// and the lane provider (generic — transform lanes now, FX lanes later).
   final Set<LayerId> expandedLaneLayerIds;
+
+  /// The rail's header graphs (I-89 ③): which groups' lanes are drawn as
+  /// one graph, and how. View state, like the twirls beside it.
+  final LaneGraphsView laneGraphs;
+
+  /// What the header graphs' buttons tell — a group's graph on or off, a
+  /// lane pinned or let go. Null mounts none of them.
+  final LaneGraphVerbs? laneGraphVerbs;
+
+  /// A LIVE read of the header graphs, when the host can give one — what
+  /// [laneOpenOf] is to the twirls: [laneGraphs] reaches here a build late,
+  /// and a sweep begun on a graph button spreads what the down just set.
+  final LaneGraphsView Function()? laneGraphsNow;
+
+  /// The lane a pin names, by its key in [LaneGraphsView.pinned], as a
+  /// graph draws it — read whether or not the rail shows its row, so a pin
+  /// reaches every graph from wherever it was pinned. Null draws no
+  /// guests.
+  final LaneGraphLine? Function(String key)? laneGraphLineOf;
 
   /// A LIVE read of the twirl state, when the host can give one.
   ///
@@ -524,28 +560,45 @@ class TimelineGridHooks {
   bool isLayerFxEnabled(LayerId layerId) =>
       fxEnabledFromState(layerFxStateOf?.call(layerId));
 
+  /// The optional columns this host's rail carries — each one as far as the
+  /// host handed over its verb. Read here once for the rows, the legend,
+  /// the swipe and the sheet's header block alike.
+  LayerRailOptionalColumns get optionalRailColumns => (
+    onion: onToggleLayerOnionSkin != null,
+    blend: onLayerBlendModeSelected != null,
+  );
+
   /// The rows a grid shows for [layers]: [buildTimelineDisplayRows] fed the
   /// bundle's own view state — open twirls, hidden sections, the row
-  /// filter, folded attach groups, the active layer and the fx predicate.
+  /// filter, folded attach groups, the active layer and the fx predicate —
+  /// with the lanes of every open header graph seated in it, the row
+  /// selection and the pins told to each seat.
   ///
   /// The rail and the sheet each listed these six hand-offs (the audit's
   /// clone scan, 2026-09-06); a grid that forgot one showed rows the other
   /// hid. What is a surface's own stays a parameter: its lane provider and
   /// which side of the layer its lanes open on ([lanesPrecedeLayer], R9
-  /// #23 — the sheet's open LEFTWARD).
+  /// #23 — the sheet's open LEFTWARD: [laneRunsMovedAhead], laid on the
+  /// rows once they are seated).
   List<TimelineDisplayRow> displayRows(
     List<Layer> layers, {
     required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
     bool lanesPrecedeLayer = false,
-  }) => buildTimelineDisplayRows(
-    layers: layers,
-    expandedLayerIds: expandedLaneLayerIds,
-    lanesForLayer: lanesForLayer,
-    hiddenSections: hiddenSections,
-    rowFilter: rowFilter,
-    collapsedAttachBaseIds: collapsedAttachBaseIds,
-    activeLayerId: activeLayerId,
-    fxEnabledOf: isLayerFxEnabled,
-    lanesPrecedeLayer: lanesPrecedeLayer,
-  );
+  }) {
+    final rows = seatLaneGraphs(
+      buildTimelineDisplayRows(
+        layers: layers,
+        expandedLayerIds: expandedLaneLayerIds,
+        lanesForLayer: lanesForLayer,
+        hiddenSections: hiddenSections,
+        rowFilter: rowFilter,
+        collapsedAttachBaseIds: collapsedAttachBaseIds,
+        activeLayerId: activeLayerId,
+        fxEnabledOf: isLayerFxEnabled,
+      ),
+      laneGraphs,
+      selection: selectedRows,
+    );
+    return lanesPrecedeLayer ? laneRunsMovedAhead(rows) : rows;
+  }
 }

@@ -511,62 +511,133 @@ class SeSpanVisual extends StatelessWidget {
   final String dialogue;
   final String? seName;
 
+  /// 🚨A ZOOM LAYS THE SPAN OUT AGAIN; IT DOES NOT BUILD IT AGAIN
+  /// (zoom-step-lays-out-five-times-the-07-25-count, 10-12): how far the
+  /// chip runs is the BOX's question, so it is asked where the box is known
+  /// — by the layout that places the chip and by the paint that tints its
+  /// ground ([_SeSpanFit]). ↩️A `LayoutBuilder` asked it here, so every SE
+  /// span built its chip, its dialogue and the flex between them again on
+  /// every zoom step: 100 of each in the 07-25 harness, the most of a step's
+  /// 498 rebuilds.
   @override
   Widget build(BuildContext context) {
     final seName = this.seName ?? '';
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // ↩️Narrow spans USED to DROP the name box instead of overflowing
-        // it (the storyboard's zoomed-out blocks can be slimmer than the
-        // box — same rule as narrow cut blocks dropping their thumbnail
-        // slot).
-        //
-        // 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야.
-        // 유지한채로 가로 길이만 작게하란거야」 — the chip STAYS and narrows,
-        // the way the dialogue glyphs beside it narrow rather than vanish
-        // (`wordCondensation`).
-        final horizontal = axis == Axis.horizontal;
-        final mainExtent = horizontal
-            ? constraints.maxWidth
-            : constraints.maxHeight;
-        final nameExtent = seNameBoxExtentIn(
-          mainExtent,
-          dialogueExtent: dialogueNaturalExtent(
-            dialogue,
-            axis: axis,
-            style: dialogueFitStyle(context, color: timelineDrawingInkColor),
-            maxCrossExtent: horizontal
-                ? constraints.maxHeight
-                : constraints.maxWidth,
+    final fit = _SeSpanFit(
+      axis: axis,
+      dialogue: dialogue,
+      style: dialogueFitStyle(context, color: timelineDrawingInkColor),
+    );
+    return CustomPaint(
+      painter: seName.isEmpty
+          ? null
+          : _SeNameGroundPainter(frames: frames, fit: fit),
+      child: CustomMultiChildLayout(
+        delegate: _SeSpanLayout(fit),
+        children: [
+          if (seName.isNotEmpty)
+            LayoutId(
+              id: _SeSpanSlot.chip,
+              child: _SeNameBox(axis: axis, name: seName),
+            ),
+          LayoutId(
+            id: _SeSpanSlot.dialogue,
+            child: DialogueFitText(
+              text: dialogue,
+              axis: axis,
+              color: timelineDrawingInkColor,
+            ),
           ),
-        );
-        return CustomPaint(
-          painter: seName.isEmpty
-              ? null
-              : _SeNameGroundPainter(
-                  axis: axis,
-                  frames: frames,
-                  extent: nameExtent,
-                ),
-          child: Flex(
-            direction: axis,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (seName.isNotEmpty)
-                _SeNameBox(axis: axis, name: seName, extent: nameExtent),
-              Expanded(
-                child: DialogueFitText(
-                  text: dialogue,
-                  axis: axis,
-                  color: timelineDrawingInkColor,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
+}
+
+/// How far an SE span's name chip runs along the box the span lies in:
+/// [seNameBoxExtentIn] of the box's length, against the dialogue's own
+/// length at its natural size across that box — measured once for each
+/// width across, not once for each zoom step.
+///
+/// ↩️Narrow spans USED to DROP the name box instead of overflowing it (the
+/// storyboard's zoomed-out blocks can be slimmer than the box — same rule
+/// as narrow cut blocks dropping their thumbnail slot).
+///
+/// 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야. 유지한채로 가로
+/// 길이만 작게하란거야」 — the chip STAYS and narrows, the way the dialogue
+/// glyphs beside it narrow rather than vanish (`wordCondensation`).
+final class _SeSpanFit {
+  _SeSpanFit({required this.axis, required this.dialogue, required this.style});
+
+  final Axis axis;
+  final String dialogue;
+  final TextStyle style;
+
+  double? _measuredAcross;
+  double _dialogueExtent = 0;
+
+  double chipExtentIn(Size size) {
+    final across = extentAcross(axis, size);
+    if (_measuredAcross != across) {
+      _measuredAcross = across;
+      _dialogueExtent = dialogueNaturalExtent(
+        dialogue,
+        axis: axis,
+        style: style,
+        maxCrossExtent: across,
+      );
+    }
+    return seNameBoxExtentIn(
+      extentAlong(axis, size),
+      dialogueExtent: _dialogueExtent,
+    );
+  }
+
+  /// Whether [other] answers as this does for every box.
+  bool answersAs(_SeSpanFit other) =>
+      axis == other.axis && dialogue == other.dialogue && style == other.style;
+}
+
+enum _SeSpanSlot { chip, dialogue }
+
+/// The chip at the span's start and the dialogue over the rest of it, each
+/// centred across — as the flex that laid them did — the chip as long as
+/// the box says ([_SeSpanFit]).
+class _SeSpanLayout extends MultiChildLayoutDelegate {
+  _SeSpanLayout(this.fit);
+
+  final _SeSpanFit fit;
+
+  @override
+  void performLayout(Size size) {
+    final axis = fit.axis;
+    final across = extentAcross(axis, size);
+    final chip = hasChild(_SeSpanSlot.chip) ? fit.chipExtentIn(size) : 0.0;
+    void lay(_SeSpanSlot slot, double from, double extent) {
+      final laid = layoutChild(
+        slot,
+        axis == Axis.horizontal
+            ? BoxConstraints.tightFor(width: extent).copyWith(maxHeight: across)
+            : BoxConstraints.tightFor(height: extent).copyWith(maxWidth: across),
+      );
+      positionChild(
+        slot,
+        offsetAlong(
+          axis,
+          along: from,
+          across: (across - extentAcross(axis, laid)) / 2,
+        ),
+      );
+    }
+
+    if (hasChild(_SeSpanSlot.chip)) {
+      lay(_SeSpanSlot.chip, 0, chip);
+    }
+    lay(_SeSpanSlot.dialogue, chip, extentAlong(axis, size) - chip);
+  }
+
+  @override
+  bool shouldRelayout(_SeSpanLayout oldDelegate) =>
+      !fit.answersAs(oldDelegate.fit);
 }
 
 /// The name chip's GROUND: the block's own paper, tinted over the chip's
@@ -581,23 +652,19 @@ class SeSpanVisual extends StatelessWidget {
 /// ([timelineBlockPaperShape]) — so a short block the chip takes whole is
 /// round at its far end too, with nobody having to think of that case.
 class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
-  const _SeNameGroundPainter({
-    required this.axis,
-    required this.frames,
-    required this.extent,
-  });
-
-  final Axis axis;
+  const _SeNameGroundPainter({required this.frames, required this.fit});
 
   /// The block's length in frames: the box over this is the live cell.
   final int frames;
 
-  /// How far the chip runs ALONG the block ([seNameBoxExtentIn]).
-  final double extent;
+  /// How far the chip runs ALONG the block, for the box it is painted in.
+  final _SeSpanFit fit;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final axis = fit.axis;
     final across = extentAcross(axis, size);
+    final extent = fit.chipExtentIn(size);
     canvas
       ..save()
       ..clipRRect(
@@ -621,24 +688,21 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// The accent is LIVE (UI-R22 #5): read here rather than taken, so it is
-  /// named here for a change of it to repaint.
+  /// named here for a change of it to repaint. The chip's length is the
+  /// box's: a box of a new size is painted again whatever these say.
   @override
-  Object get props => (axis, frames, extent, AppColors.accent);
+  Object get props =>
+      (fit.axis, fit.dialogue, fit.style, frames, AppColors.accent);
 }
 
+/// The chip's room and its name. How far it runs ALONG the block is the
+/// layout's to say ([_SeSpanLayout]): its [seNameBoxExtent], narrowed with
+/// the dialogue beside it (F-224).
 class _SeNameBox extends StatelessWidget {
-  const _SeNameBox({
-    required this.axis,
-    required this.name,
-    required this.extent,
-  });
+  const _SeNameBox({required this.axis, required this.name});
 
   final Axis axis;
   final String name;
-
-  /// How far the chip runs ALONG the block ([seNameBoxExtentIn]): its
-  /// [seNameBoxExtent], narrowed with the dialogue beside it (F-224).
-  final double extent;
 
   @override
   Widget build(BuildContext context) {
@@ -650,14 +714,13 @@ class _SeNameBox extends StatelessWidget {
     //
     // The tint itself is the BLOCK's to lay ([_SeNameGroundPainter], F-270):
     // this box is the chip's room and its name.
-    final box = Semantics(
+    return Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog
       // preview) — tests and screen readers address the box directly.
       container: true,
       child: _word(),
     );
-    return alongBox(axis, extent, child: box);
   }
 
   /// The name written in the chip: down it on the row strip, along it on

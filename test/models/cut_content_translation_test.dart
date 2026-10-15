@@ -1,11 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_content_translation.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
@@ -178,6 +180,51 @@ void main() {
     );
   });
 
+  // I-68 (유저 2026-10-10 「캔버스 크기 변경 … 가」 — 기준점대로): where a
+  // reference's picture stands is a place on the canvas, like a camera's
+  // centre, so it moves by the CONTENT offset — never by Δcentre, which a
+  // null anchor's position follows — and nothing else of its pose moves.
+  test('a reference\'s pose moves by the content offset, its scale and turn '
+      'untouched — its row\'s own empty transform as it was', () {
+    final pose = TransformPose(
+      center: CanvasPoint(x: 1170, y: 827),
+      scaleX: 0.5,
+      scaleY: 2,
+      rotationDegrees: 30,
+    );
+    final reference = Layer(
+      id: const LayerId('paper'),
+      name: 'P',
+      frames: const [],
+      timeline: const {},
+      mediaReference: MediaReference(
+        assetPath: '/paper.png',
+        pose: pose,
+        pictureSize: const CanvasSize(width: 100, height: 60),
+      ),
+    );
+
+    final moved = translateLayerForResize(
+      reference,
+      dx: 600,
+      dy: -40,
+      centreDx: 300,
+      centreDy: -20,
+    );
+
+    expect(
+      moved.mediaReference!.pose,
+      pose.copyWith(center: CanvasPoint(x: 1770, y: 787)),
+    );
+    expect(moved.mediaReference!.assetPath, '/paper.png');
+    expect(
+      moved.mediaReference!.pictureSize,
+      const CanvasSize(width: 100, height: 60),
+    );
+    expect(moved.transformTrack.position.isEmpty, isTrue);
+    expect(moved.transformTrack.anchorPoint.isEmpty, isTrue);
+  });
+
   test('camera translation goes through the LANES: hold interpolation, '
       'key names and a lone scale key all survive', () {
     final camera = CutCamera.fromTrack(
@@ -186,7 +233,7 @@ void main() {
           keys: {
             0: PropertyKey(
               CanvasPoint(x: 100, y: 50),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
               name: 'A',
             ),
             8: PropertyKey(CanvasPoint(x: 300, y: 200)),
@@ -200,8 +247,8 @@ void main() {
     final position = moved.track.position;
     expect(position.keyAt(0)!.value.x, 110);
     expect(
-      position.keyAt(0)!.interpolation,
-      PropertyKeyInterpolation.hold,
+      position.keyAt(0)!.outgoing,
+      KeyExit.hold,
       reason: 'a stepped camera must not start panning after a resize — '
           'the pose-facade rebuild linearized holds (adversarial review)',
     );

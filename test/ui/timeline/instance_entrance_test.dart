@@ -19,6 +19,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/the_classic_rail.dart';
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
 
@@ -125,6 +126,7 @@ void main() {
   testWidgets('drawing cell double-tap opens the frame-name editor; single '
       'tap still selects', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     // Single tap: selection only, no dialog.
     await tapTimelineCell(tester, 'draw', 2);
@@ -180,6 +182,7 @@ void main() {
   testWidgets('an EMPTY camera cell double-tap KEYS it, and a second '
       'double-tap opens the dialog', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     expect(
       _cut(repository).camera.track.position.keyAt(2),
       isNull,
@@ -232,6 +235,7 @@ void main() {
     tester,
   ) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     Layer se() => _cut(
       repository,
     ).layers.firstWhere((layer) => layer.kind == LayerKind.se);
@@ -259,6 +263,7 @@ void main() {
   testWidgets('an EMPTY drawing cell double-tap makes a cel, and does NOT '
       'rename the one next door', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     // The fixture's drawing row is exposed over frames 0..3 only.
     expect(_cut(repository).layers.first.frames, hasLength(1));
 
@@ -306,6 +311,7 @@ void main() {
   testWidgets('the camera row edits its keys in the COMMON key window — a '
       'name and a type on every member, ONE undo step', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'cam', 2);
     await tester.pumpAndSettle();
@@ -322,7 +328,7 @@ void main() {
       reason: 'the common window — the camera no longer keeps one of its own',
     );
     Pill pill(String kind) => tester.widget<Pill>(
-      find.byKey(ValueKey<String>('rename-key-interpolation-$kind')),
+      find.byKey(ValueKey<String>('rename-key-out-$kind')),
     );
     expect(
       pill('linear').selected,
@@ -336,11 +342,23 @@ void main() {
       'Wall',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('rename-key-interpolation-hold')),
+      find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
     await tester.pumpAndSettle();
     expect(pill('hold').selected, isTrue, reason: 'the pick shows at once');
     expect(pill('linear').selected, isFalse);
+    // I-89 ④: and the path its position walks through it — smooth as the
+    // key was made (I-89-Q10 B), a corner picked here.
+    final curved = find.byKey(const ValueKey<String>('rename-key-path-curved'));
+    final corner = find.byKey(
+      const ValueKey<String>('rename-key-path-straight'),
+    );
+    await tester.ensureVisible(corner);
+    expect(tester.widget<Pill>(curved).selected, isTrue, reason: '⛔전제');
+    await tester.tap(corner);
+    await tester.pumpAndSettle();
+    expect(tester.widget<Pill>(corner).selected, isTrue);
+    expect(tester.widget<Pill>(curved).selected, isFalse);
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-ok-button')),
     );
@@ -354,26 +372,33 @@ void main() {
     ]) {
       expect(key!.name, 'Wall', reason: 'the header names every member');
       expect(
-        key.interpolation,
-        PropertyKeyInterpolation.hold,
+        key.outgoing,
+        KeyExit.hold,
         reason: 'and types every member (「일괄변경」)',
       );
     }
+    expect(
+      track.position.keyAt(2)!.path,
+      KeyPath.straight,
+      reason: 'and straightens the member that walks a path',
+    );
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
     final undone = _cut(repository).camera.track.position.keyAt(2)!;
     expect(undone.name, isNull, reason: 'ONE step took the name…');
     expect(
-      undone.interpolation,
-      PropertyKeyInterpolation.linear,
+      undone.outgoing,
+      KeySide.linear,
       reason: '…and the type with it',
     );
+    expect(undone.path, KeyPath.auto, reason: '…and the path');
   });
 
   testWidgets('toolbar Add on the camera layer keys the current pose at '
       'the playhead', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'cam', 4);
     await tester.pumpAndSettle();
@@ -389,6 +414,7 @@ void main() {
       'directly — no dialog (UI-R25 #2); the Edit Instance dialog labels '
       'it afterwards', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'voice', 3);
     await tester.pumpAndSettle();
@@ -463,6 +489,7 @@ void main() {
   testWidgets('toolbar Edit Instance is DARK on an EMPTY SE cell, and a press '
       'there makes nothing (F-105)', (tester) async {
     final repository = await _pumpHome(tester);
+    await standTheClassicRail(tester);
     await tapTimelineCell(tester, 'voice', 3);
     await tester.pumpAndSettle();
 

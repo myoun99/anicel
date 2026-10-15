@@ -6,6 +6,7 @@ import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_current_row.dart';
+import 'timeline_row_edges.dart';
 
 /// What a display row's ground is decided from — the same for every row of
 /// one sheet, so the sheet reads it once and hands it to each: the host's
@@ -47,16 +48,19 @@ Color timelineRowGround(TimelineDisplayRow row, TimelineGridStand stand) {
 }
 
 /// The grid sheet of the two grids whose rows are DISPLAY rows — the
-/// timeline and the X-sheet — every row at the one pitch, each on its
+/// timeline and the X-sheet — every row where [edges] puts it, each on its
 /// [timelineRowGround].
 ///
 /// [rows] is the list the rows body draws from (the silhouette row
 /// included), so the sheet's row k and the body's row k are the same row.
+///
+/// An open graph's lanes are ONE sheet row, the room after them included
+/// (I-89 ③): the graph is one picture, so no seam runs through it.
 class TimelineRowsGridSheet extends StatelessWidget {
   const TimelineRowsGridSheet({
     super.key,
     required this.rows,
-    required this.rowExtent,
+    required this.edges,
     required this.frameCellExtent,
     required this.activeLayerId,
     this.standing,
@@ -65,9 +69,9 @@ class TimelineRowsGridSheet extends StatelessWidget {
 
   final List<TimelineDisplayRow> rows;
 
-  /// The rows' one pitch across the cross axis — the timeline's row height,
-  /// the X-sheet's column width.
-  final double rowExtent;
+  /// Where [rows] sit across the cross axis — down the timeline, across
+  /// the X-sheet.
+  final TimelineRowEdges edges;
   final double frameCellExtent;
   final LayerId? activeLayerId;
 
@@ -106,8 +110,21 @@ class TimelineRowsGridSheet extends StatelessWidget {
     );
   }
 
-  TimelineGridRows _rowsOn(TimelineGridStand stand) => TimelineGridRows([
-    for (final row in rows)
-      (extent: rowExtent, ground: timelineRowGround(row, stand)),
-  ]);
+  TimelineGridRows _rowsOn(TimelineGridStand stand) {
+    final sheet = <TimelineGridRow>[];
+    var index = 0;
+    while (index < rows.length) {
+      final row = rows[index];
+      sheet.add((
+        extent: edges.unitSpanOf(index).extent,
+        // A graph rests on the lane ground — what is stood on inside it
+        // shows on its curves, not as a wash across the whole picture.
+        ground: row.graph == null
+            ? timelineRowGround(row, stand)
+            : timelineLaneGround(stand.hostGround),
+      ));
+      index = edges.unitOf(index).last + 1;
+    }
+    return TimelineGridRows(sheet);
+  }
 }

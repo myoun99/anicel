@@ -8,7 +8,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -16,6 +15,10 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/reference_to.dart';
+import '../../helpers/named_finders.dart';
 
 /// The rail row memo's gate (frame-axis round): the row is ~200 Material
 /// widgets and a timesheet edit changes nothing it renders, so the memo asks
@@ -51,7 +54,7 @@ void main() {
       'collapsed': (layer) => layer.copyWith(collapsed: !layer.collapsed),
       'isFillReference': (layer) =>
           layer.copyWith(isFillReference: !layer.isFillReference),
-      'attachedToLayerId': (layer) =>
+      'an attach': (layer) =>
           layer.copyWith(attachedToLayerId: const LayerId('other')),
       'attachedPlacement': (layer) => layer.copyWith(
         attachedPlacement: layer.attachedPlacement == AttachedPlacement.above
@@ -61,7 +64,7 @@ void main() {
       // F-308: the reference button stands on a row that stands on a file.
       'mediaReference': (layer) => layer.copyWith(
         mediaReference: layer.mediaReference == null
-            ? MediaReference(assetPath: '/clips/a.mp4')
+            ? referenceTo('/clips/a.mp4')
             : null,
       ),
     };
@@ -91,17 +94,42 @@ void main() {
       );
     });
 
+    test('🚨WHICH layer the row stands for is not in the token — a cut '
+        'switch hands a row of the same face back whole (I-57 ㉣)', () {
+      expect(
+        ControlsRowFace(base) ==
+            ControlsRowFace(base.copyWith(id: const LayerId('next-cut'))),
+        isTrue,
+        reason: 'the rail\'s rows were 544 of a crossing\'s rebuilds on the '
+            'user\'s project; the row asks its layer at the press',
+      );
+    });
+
+    test('which layer an attach row is attached to is not shown — only '
+        'that it is one', () {
+      final attached = base.copyWith(
+        attachedToLayerId: const LayerId('a-base'),
+      );
+      expect(
+        ControlsRowFace(attached) ==
+            ControlsRowFace(
+              attached.copyWith(attachedToLayerId: const LayerId('b-base')),
+            ),
+        isTrue,
+      );
+    });
+
     test('which file a reference row stands on is not shown — moving its '
         'start keeps the row', () {
       final reference = base.copyWith(
-        mediaReference: MediaReference(assetPath: '/clips/a.mp4'),
+        mediaReference: referenceTo('/clips/a.mp4'),
       );
       expect(
         ControlsRowFace(reference) ==
             ControlsRowFace(
               reference.copyWith(
-                mediaReference: MediaReference(
-                  assetPath: '/clips/a.mp4',
+                mediaReference: referenceTo(
+                  '/clips/a.mp4',
                   frameOffset: 12,
                 ),
               ),
@@ -236,6 +264,16 @@ void main() {
       isFalse,
       reason: 'a rename must refresh the rail row',
     );
+    expect(
+      find.descendant(
+        of: find.byWidget(rowFor(activeId)),
+        matching: find.text('renamed'),
+      ),
+      findsOneWidget,
+      reason: 'and SHOWS it: the name is drawn in the eye\'s own builder '
+          '([RailEyeBuilder]), which hands back what it built while the eye '
+          'stays the same — a row built again builds it again',
+    );
 
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
@@ -276,13 +314,8 @@ void main() {
           widget is TimelineLayerControlsRow && widget.layer.id == activeId,
     );
     IconData? eyeGlyph() => tester
-        .widget<Icon>(
-          find.descendant(
-            of: find.byKey(
-              ValueKey<String>('timeline-layer-visibility-$activeId'),
-            ),
-            matching: find.byType(Icon),
-          ),
+        .appIconButton(
+          find.named('timeline-layer-visibility-$activeId'),
         )
         .icon;
     bool plateLit() => tester

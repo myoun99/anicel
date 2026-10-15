@@ -12,82 +12,23 @@ library;
 import 'camera_instruction.dart';
 import 'cel_bank_lanes.dart';
 import 'drawing_block_move.dart';
+import 'key_mark.dart';
 import 'key_range_shift.dart';
 import 'layer.dart';
-import 'property_track.dart';
 import 'transform_track.dart';
 
-/// Every frame carrying a key on ANY lane of [track] — the transform
-/// group header's summary display (UI-R20 #13, the camera row pattern).
-Set<int> transformKeyFrameUnion(TransformTrack track) => {
-  ...track.anchorPoint.keys.keys,
-  ...track.position.keys.keys,
-  ...track.scale.keys.keys,
-  ...track.rotation.keys.keys,
-  ...track.opacity.keys.keys,
-};
-
-/// The union frames whose keyed lanes ALL hold — the union mark draws the
-/// AE hold square there, a diamond everywhere else.
+/// The transform group header's marks — its members' ([unionKeyMarks]):
+/// the camera row and the layer's Transform header draw this one union.
 ///
-/// This was the camera row's ■ rule alone while its summary was a text
-/// glyph; the 2026-08-17 unification (B4) made it the ONE law every union
-/// mark reads — camera row and transform group header alike — through
-/// [transformUnionHeader]'s hold set.
-Set<int> transformKeyHoldUnion(TransformTrack track) =>
-    _transformKeyShapeUnions(track).hold;
-
-/// The union frames whose keyed lanes DISAGREE — some hold, some do not.
+/// 🚨F-17 (유저): 「**멤버 타입이 서로 다르면 헤더에 동그라미**」 — where the
+/// keyed members disagree the union says so, rather than draw one member's
+/// mark as though the group agreed.
 ///
-/// 🚨F-17 (유저): 「**멤버 타입이 서로 다르면 헤더에 동그라미**」. The union
-/// mark had two shapes and three cases: ■ where every keyed member holds,
-/// ◆ everywhere else — so "they all interpolate" and "they disagree" drew
-/// the same mark, and the header claimed an agreement that was not there.
-///
-/// ⚠️A ○ used to exist. The camera row's summary was a text glyph channel
-/// with its own ◆/■/○ table, and the 2026-08-17 unification (B4) folded it
-/// into [transformKeyHoldUnion] — which has no room for a third answer, so
-/// the ○ was dropped rather than moved. It comes back HERE, as the one
-/// derivation both the camera row and the fx header read, which is what
-/// that unification was for.
-///
-/// ⛔Never overlaps [transformKeyHoldUnion]: a frame where every member
-/// holds agrees, and a frame that disagrees is not all-hold. The two sets
-/// are computed from the same walk so they cannot drift into claiming both.
-Set<int> transformKeyMixedUnion(TransformTrack track) =>
-    _transformKeyShapeUnions(track).mixed;
-
-({Set<int> hold, Set<int> mixed}) _transformKeyShapeUnions(
-  TransformTrack track,
-) {
-  final lanes = [
-    track.anchorPoint,
-    track.position,
-    track.scale,
-    track.rotation,
-    track.opacity,
-  ];
-  final holds = <int>{};
-  final mixed = <int>{};
-  for (final frame in transformKeyFrameUnion(track)) {
-    final interpolations = [
-      for (final lane in lanes)
-        if (lane.keyAt(frame) case final key?) key.interpolation,
-    ];
-    if (interpolations.isEmpty) {
-      continue;
-    }
-    final first = interpolations.first;
-    if (interpolations.every((interpolation) => interpolation == first)) {
-      if (first == PropertyKeyInterpolation.hold) {
-        holds.add(frame);
-      }
-      continue;
-    }
-    mixed.add(frame);
-  }
-  return (hold: holds, mixed: mixed);
-}
+/// ↩️It was two sets, the all-hold frames and the disagreeing ones, walked
+/// together so a frame could never claim both; a map from frame to ONE
+/// mark cannot.
+Map<int, KeyMark> transformKeyMarkUnion(TransformTrack track) =>
+    unionKeyMarks(track.lanes.map(keyMarksOf));
 
 /// The union header's NAME at each frame.
 ///
@@ -104,15 +45,9 @@ Set<int> transformKeyMixedUnion(TransformTrack track) =>
 ///   group — would claim the whole union carries a name that only one lane
 ///   actually has.
 Map<int, String> transformKeyNameUnion(TransformTrack track) {
-  final tracks = [
-    track.anchorPoint,
-    track.position,
-    track.scale,
-    track.rotation,
-    track.opacity,
-  ];
+  final tracks = track.lanes;
   final names = <int, String>{};
-  for (final frame in transformKeyFrameUnion(track)) {
+  for (final frame in track.keyedFrames) {
     // Only the lanes that actually hold a key here get a vote.
     final memberNames = <String?>[
       for (final member in tracks)
@@ -131,6 +66,15 @@ Map<int, String> transformKeyNameUnion(TransformTrack track) {
 
 /// What a union prints where its members disagree (㉚).
 const String unionMixedKeyName = '...';
+
+/// The NAME [track]'s keys carry where they are written on a picture — the
+/// one its lanes agree on ([transformKeyNameUnion]); a key whose lanes
+/// disagree carries none, as an unnamed one does (유저 2026-09-30: 「레인끼리
+/// 달라서 헤더가 ...으로 표시되는 경우 … 이름 안정해진거랑 같은 규칙으로」).
+Map<int, String> transformKeyAgreedNames(TransformTrack track) => {
+  for (final MapEntry(:key, :value) in transformKeyNameUnion(track).entries)
+    if (value != unionMixedKeyName) key: value,
+};
 
 /// An SE→SE ROW move (P3b-4, 같은 섹션 행이동): the selected sound
 /// blocks land on a SIBLING SE row — cels travel with the blocks (the

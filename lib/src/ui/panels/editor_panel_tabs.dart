@@ -8,6 +8,7 @@ import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
+import '../widgets/kept_tail_row.dart';
 import '../widgets/overflow_scrollers.dart';
 import '../widgets/owning_draggable.dart';
 import '../widgets/panel_flyout.dart';
@@ -16,7 +17,6 @@ import '../widgets/superellipse_clip.dart';
 import '../widgets/tick_layer.dart';
 import 'panel_collapsed_scope.dart';
 import 'panel_flash.dart';
-import 'panel_visibility_scope.dart';
 import '../input/control_press_claim.dart';
 
 /// One tab in an [EditorPanelTabs] group.
@@ -30,7 +30,7 @@ class EditorPanelTab {
     this.minContentWidth,
     this.minContentHeight,
     this.locked = false,
-    this.keepAlive = false,
+    this.cachesContent = false,
     this.staticRaster = true,
     this.stillRaster = true,
     this.sillTrailing,
@@ -44,17 +44,21 @@ class EditorPanelTab {
   final String label;
   final IconData icon;
 
-  /// Builds the tab's content; only the ACTIVE tab is built (panel state
-  /// that must survive switches lives above the tab group) — unless
-  /// [keepAlive] retains it offstage after its first activation.
+  /// Builds the tab's content. Only the ACTIVE tab is built, and only while
+  /// its region shows it — what must survive a switch lives above the tab
+  /// group ([EditorPanelTabs]).
   final WidgetBuilder builder;
 
-  /// Once built, keep this tab's subtree mounted OFFSTAGE while another
-  /// tab is active (R10-②): heavy panels (timeline, storyboard,
-  /// timesheet, canvas) then switch back instantly instead of rebuilding
-  /// from scratch. Offstage subtrees still rebuild on their listenables —
-  /// keep this off for cheap panels.
-  final bool keepAlive;
+  /// Whether the group may hand back the content it built for this tab, as
+  /// the same instance, every time the group itself is built again while
+  /// the tab stays open (R12-①): a heavy panel's subtree is then skipped
+  /// wholesale by a tab switch elsewhere, a lock toggle or a layout notify.
+  ///
+  /// CONTRACT: the builder closes over stable objects only (the session,
+  /// long-lived notifiers) and subscribes to what it shows itself — the
+  /// group never runs it again while the tab stays open for the same
+  /// [contentIdentity].
+  final bool cachesContent;
 
   /// Key for the tab strip button. Groups replacing older toggle buttons
   /// keep the legacy keys here so existing flows and tests keep working.
@@ -124,13 +128,13 @@ class EditorPanelTab {
   final double collapsedExtent;
 
   /// What this tab's content is built FOR — null for a tab whose builder
-  /// is the same whatever happens. A kept-alive tab's content is kept only
-  /// while this stays the same; see [builtFor].
+  /// is the same whatever happens. Cached content ([cachesContent]) is
+  /// handed back only while this stays the same; see [builtFor].
   final Object? contentIdentity;
 
   /// This tab with everything it builds — the content and the sill's
   /// controls — keyed by [identity], so both are made again whenever that
-  /// changes and never carry their State across it, the kept-alive cache
+  /// changes and never carry their State across it, the content cache
   /// included ([contentIdentity]).
   EditorPanelTab builtFor(Object identity) {
     final key = ObjectKey(identity);
@@ -144,7 +148,7 @@ class EditorPanelTab {
       minContentWidth: minContentWidth,
       minContentHeight: minContentHeight,
       locked: locked,
-      keepAlive: keepAlive,
+      cachesContent: cachesContent,
       staticRaster: staticRaster,
       stillRaster: stillRaster,
       sillTrailing: sill == null
@@ -306,43 +310,74 @@ class EditorPanelTabs extends StatefulWidget {
 }
 
 class _EditorPanelTabsState extends State<EditorPanelTabs> {
-  /// Keep-alive tabs that have been activated at least once: they stay
-  /// mounted offstage so switching back is instant (R10-②).
-  final Set<String> _builtTabIds = <String>{};
-
-  /// Keep-alive tabs' built content, cached by tab id (R12-①): a strip
-  /// rebuild (tab switch, lock toggle, any layout notify) hands Flutter
+  /// The open tab's built content, while it stays open
+  /// ([EditorPanelTab.cachesContent], R12-①): a strip rebuild hands Flutter
   /// the IDENTICAL widget instance, so the heavy panel subtree is skipped
-  /// wholesale and a switch costs an Offstage flag flip. CONTRACT: a
-  /// keep-alive tab's builder must close over stable objects only (the
-  /// session, long-lived notifiers) and subscribe internally — the cache
-  /// never re-runs it.
+  /// wholesale.
   ///
   /// 🚨…while the tab is built for the SAME thing ([EditorPanelTab
   /// .contentIdentity]). The session stopped being stable with a project
   /// per tab (I-7): the cached canvas went on showing the project that was
   /// switched away from, because nothing here re-ran its builder.
-  final Map<String, ({Object? identity, Widget content})> _contentCache =
-      <String, ({Object? identity, Widget content})>{};
+  ({String tabId, Object? identity, Widget content})? _openContent;
 
-  /// [tab]'s kept content — built again when it is built for something
-  /// else now.
-  Widget _keptContent(EditorPanelTab tab) {
-    final kept = _contentCache[tab.id];
-    if (kept != null && identical(kept.identity, tab.contentIdentity)) {
-      return kept.content;
+  /// What the content area holds: the open tab's content, as its region
+  /// shows it — nothing at all when the region is folded and the tab has no
+  /// folded form.
+  ///
+  /// 🚨★★★A PANEL IS BUILT ONLY WHILE IT SHOWS (유저 2026-10-14: 「한번이라도
+  /// 열린 뒤? 열려있을때만 지어지는게 맞는구조 아닌가?」 · 「이건 모든 패널
+  /// 공통적인 사항이야」). ↩️A heavy tab used to stay mounted OFFSTAGE once
+  /// opened (R10-②, so a switch back was instant), and offstage still builds
+  /// and lays out: 🔬in the I-57 playback census (10-14) the timeline kept
+  /// behind the storyboard was 65% of every film frame's rebuilds — its
+  /// grid turning pages for a playhead nobody could see. What must outlive a
+  /// switch lives above the tab group; a gate that stood a hidden panel down
+  /// (R12-①) has nothing left to stand down.
+  ///
+  /// 🚨결정 3 (유저 2026-08-22, 세 번째 요청) — **A TICKER RUNS WHERE THE PANEL
+  /// SHOWS.**
+  ///
+  /// > 「아직도 접기 직전의 인덱스 상태 기준으로 활성/비활성 **색**. **내부
+  /// > 로직 자체는 제대로 작동**하니 **겉모습만** 갱신 안 되는 듯. 그리고
+  /// > **3번째 말하는 것 같은데** 접고나서 **버튼 호버시 바탕 흰색** 되는 게
+  /// > 사라진다」
+  ///
+  /// ⛔The mute that kept it read `&& !widget.collapsed`, which muted a tab
+  /// that had DECLARED a folded form — a surface still on screen. Every
+  /// `IconButton`'s colour crosses an `AnimatedTheme` and every hover wash is
+  /// an `InkHighlight` fade; both are driven by tickers, so both froze at the
+  /// value they held when the fold happened. Built only where it shows, a
+  /// panel has no ticker to mute: ⛔put no `TickerMode` around a tab here.
+  Widget? _contentOf(EditorPanelTab active) {
+    if (widget.collapsed && active.collapsedExtent <= 0) {
+      _openContent = null;
+      return null;
     }
-    final content = _buildTabContent(tab);
-    _contentCache[tab.id] = (identity: tab.contentIdentity, content: content);
-    return content;
+    if (!active.cachesContent) {
+      _openContent = null;
+      return _buildTabContent(active);
+    }
+    return _cachedContent(active);
   }
 
-  /// Stable per-tab visibility feeds for [PanelVisibilityScope] (heavy
-  /// hosts pause their rebuilds while offstage). Never disposed eagerly:
-  /// a pruned tab's subtree unmounts in the same build and detaches its
-  /// own listeners; the plain notifier then just gets collected.
-  final Map<String, ValueNotifier<bool>> _tabVisibility =
-      <String, ValueNotifier<bool>>{};
+  /// [tab]'s content — the one built when it was opened, unless it is
+  /// built for something else now.
+  Widget _cachedContent(EditorPanelTab tab) {
+    final open = _openContent;
+    if (open != null &&
+        open.tabId == tab.id &&
+        identical(open.identity, tab.contentIdentity)) {
+      return open.content;
+    }
+    final content = _buildTabContent(tab);
+    _openContent = (
+      tabId: tab.id,
+      identity: tab.contentIdentity,
+      content: content,
+    );
+    return content;
+  }
 
   /// Whether the pointer is anywhere on this PANEL.
   ///
@@ -374,17 +409,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       (tab) => tab.id == widget.activeTabId,
       orElse: () => tabs.first,
     );
-    // Retention bookkeeping inline with build (no setState needed — the
-    // set only ever matters to THIS build): the active keep-alive tab
-    // joins, tabs that left the group drop out.
-    _builtTabIds.removeWhere(
-      (id) => !tabs.any((tab) => tab.id == id && tab.keepAlive),
-    );
-    _contentCache.removeWhere((id, _) => !_builtTabIds.contains(id));
-    _tabVisibility.removeWhere((id, _) => !tabs.any((tab) => tab.id == id));
-    if (active.keepAlive) {
-      _builtTabIds.add(active.id);
-    }
+    final content = _contentOf(active);
 
     final strip = _strip(context, colorScheme, tabs, active);
 
@@ -397,9 +422,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         children: [
           if (strip != null && !widget.stripAtBottom) strip,
           // The content area shares the selected tab's background so the tab
-          // reads as part of the panel, not a floating chip above it. Built
-          // keep-alive tabs stay in the stack offstage (state, scroll
-          // positions and caches survive the switch).
+          // reads as part of the panel, not a floating chip above it.
           Expanded(
             // A panel's content may not paint outside the panel.
             //
@@ -417,9 +440,19 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    for (final tab in tabs)
-                      if (tab.id == active.id || _builtTabIds.contains(tab.id))
-                        _tabHost(tab, active),
+                    if (content != null)
+                      KeyedSubtree(
+                        key: ValueKey<String>('panel-content-${active.id}'),
+                        // OUTSIDE the cached content on purpose: that
+                        // instance never changes, and an inherited
+                        // dependency marks its dependents dirty directly —
+                        // so a fold reaches the panel without dropping the
+                        // cache.
+                        child: PanelCollapsedScope(
+                          collapsed: widget.collapsed,
+                          child: content,
+                        ),
+                      ),
                     if (widget.flash != null) _flashOverlay(tabs),
                   ],
                 ),
@@ -441,19 +474,17 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     List<EditorPanelTab> tabs,
     EditorPanelTab active,
   ) {
+    // A link in the chain to the RAIL-DOCKED canvas: everything in the
+    // panel below this strip starts at this height, and a docked canvas is
+    // one of those things. 30 × 1.25 = 37.5 — unlike the 48s in the window
+    // chain, this one is off the grid at Windows' own scaling steps, and it
+    // is measurably what held the second canvas boundary off at every ratio
+    // while the editing canvas was already clean.
+    final height = DeviceGrid.of(context).position(EditorPanelTabs.stripHeight);
     return widget.chromeless
         ? null
         : Container(
-            // A link in the chain to the RAIL-DOCKED canvas: everything in
-            // the panel below this strip starts at this height, and a
-            // docked canvas is one of those things. 30 × 1.25 = 37.5 —
-            // unlike the 48s in the window chain, this one is off the grid
-            // at Windows' own scaling steps, and it is measurably what
-            // held the second canvas boundary off at every ratio while the
-            // editing canvas was already clean.
-            height: DeviceGrid.of(
-              context,
-            ).position(EditorPanelTabs.stripHeight),
+            height: height,
             color: colorScheme.surfaceContainerLow,
             // 🚨The strip is a TICK LAYER (I-22 ③): the sill carries the
             // transport, whose readouts move on a tick — the level meter on
@@ -516,146 +547,71 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                   // Buttons STRETCH the strip's full height so the selected
                   // tab meets the content edge-to-edge.
                   //
-                  // ★ONE Row, not a Stack overlay (2026-08-10). The trailing
+                  // ★ONE row, not a Stack overlay (2026-08-10). The trailing
                   // group used to be `Align`ed over the tabs and the tab count
                   // guessed 32px of room for it — which was fine while it held
                   // one chevron and wrong the moment the sill grew a transport
-                  // and a settings pill. A Row lays its INFLEXIBLE child out
-                  // first and hands the `Flexible` what is left, so the tab
-                  // count is measured against the room that actually exists
-                  // and cannot drift from what the trailing group costs.
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
-                      // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」
-                      //
-                      // `Expanded`, not `Flexible`. A loose `Flexible` is
-                      // only as wide as the tabs inside it, so the trailing
-                      // group sat immediately after them — reading as
-                      // left-aligned, and sliding sideways every time a tab was
-                      // added. Taking all the room pins the trailing group to
-                      // the right edge, which is the entire reason it was put
-                      // there (유저 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때
-                      // 재생 버튼이 밀린다」).
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            // How many fit. The overflow button costs one slot,
-                            // so it only appears when it actually buys room.
-                            final fits =
-                                (constraints.maxWidth /
-                                        EditorPanelTabs._tabExtent)
-                                    .floor();
-                            final overflowing = fits < tabs.length;
-                            final shown = overflowing
-                                ? math.max(0, fits - 1)
-                                : tabs.length;
-                            // Room for less than one tab — a timeline or a
-                            // storyboard docked in a rail, whose sill takes
-                            // nearly the rail's whole width — still holds the
-                            // overflow button, the one way to its tabs. It is
-                            // cut at the room's edge rather than laid out
-                            // past it: ↩️the Row overflowed by the button's
-                            // missing width and threw.
-                            return ClipRect(
-                              child: OverflowBox(
-                                alignment: AlignmentDirectional.centerStart,
-                                maxWidth: double.infinity,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    for (
-                                      var index = 0;
-                                      index < shown;
-                                      index += 1
-                                    )
-                                      _buildTabButton(index),
-                                    if (overflowing)
-                                      _TabOverflowButton(
-                                        groupId: widget.groupId,
-                                        hidden: tabs.sublist(shown),
-                                        activeTabId: widget.activeTabId,
-                                        onTabSelected: widget.onTabSelected,
-                                      ),
-                                  ],
-                                ),
+                  // and a settings pill. The row lays the trailing group out
+                  // first and hands the tabs what is left ([KeptTailRow]), so
+                  // the tab count is measured against the room that actually
+                  // exists and cannot drift from what the trailing group costs.
+                  //
+                  // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
+                  // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」 The tabs
+                  // take ALL the room the group leaves, which pins the group
+                  // to the right edge — the entire reason it was put there
+                  // (유저 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때 재생
+                  // 버튼이 밀린다」). ↩️A loose `Flexible` was only as wide as
+                  // the tabs inside it, so the group sat immediately after
+                  // them — reading as left-aligned, and sliding sideways every
+                  // time a tab was added.
+                  //
+                  // A strip too narrow for the group and one tab — a timeline
+                  // or a storyboard docked in a rail, whose sill takes nearly
+                  // the rail's whole width; a 340px window — shows the group
+                  // whole, smaller, and the tabs keep one tab's place: the
+                  // overflow button, the one way to them. ↩️The group was
+                  // laid out past the strip's end, and the button cut at the
+                  // room's edge (09-25) — 10px over at 340 (2026-10-15).
+                  KeptTailRow(
+                    headKeeps: EditorPanelTabs._tabExtent,
+                    head: LayoutBuilder(
+                      builder: (context, constraints) {
+                        // How many fit. The overflow button costs one slot,
+                        // so it only appears when it actually buys room.
+                        final fits =
+                            (constraints.maxWidth / EditorPanelTabs._tabExtent)
+                                .floor();
+                        final overflowing = fits < tabs.length;
+                        final shown = overflowing
+                            ? math.max(0, fits - 1)
+                            : tabs.length;
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (var index = 0; index < shown; index += 1)
+                              _buildTabButton(index),
+                            if (overflowing)
+                              _TabOverflowButton(
+                                groupId: widget.groupId,
+                                hidden: tabs.sublist(shown),
+                                activeTabId: widget.activeTabId,
+                                onTabSelected: widget.onTabSelected,
                               ),
-                            );
-                          },
-                        ),
-                      ),
-                      _buildSillTrailing(context, active),
-                    ],
+                          ],
+                        );
+                      },
+                    ),
+                    tail: SizedBox(
+                      height: height,
+                      child: _buildSillTrailing(context, active),
+                    ),
                   ),
                 ],
               ),
             ),
           );
   }
-
-  /// One tab's content, hosted offstage unless it is the active one (or
-  /// the group is collapsed to nothing): kept-alive tabs stay built and
-  /// cached, the ticker and the visibility scope follow the active tab.
-  Widget _tabHost(EditorPanelTab tab, EditorPanelTab active) => Offstage(
-    key: ValueKey<String>('panel-content-${tab.id}'),
-    // A collapsed region whose active tab declared no
-    // collapsed form shows NOTHING — not a crop of the
-    // panel, not a sliver of its top. That is the whole
-    // contract, and offstage is how it is kept: the
-    // subtree stays mounted (a keep-alive tab must not
-    // lose its state to a fold) and simply does not lay
-    // out.
-    offstage:
-        tab.id != active.id || (widget.collapsed && tab.collapsedExtent <= 0),
-    // 🚨결정 3 (유저 2026-08-22, 세 번째 요청) — **A
-    // TICKER RUNS WHERE THE PANEL SHOWS.**
-    //
-    // > 「아직도 접기 직전의 인덱스 상태 기준으로
-    // > 활성/비활성 **색**. **내부 로직 자체는 제대로
-    // > 작동**하니 **겉모습만** 갱신 안 되는 듯. 그리고
-    // > **3번째 말하는 것 같은데** 접고나서 **버튼 호버시
-    // > 바탕 흰색** 되는 게 사라진다」
-    //
-    // ⛔This read `&& !widget.collapsed`, which muted a
-    // tab that had DECLARED a collapsed form — a
-    // surface the line directly above keeps ON SCREEN.
-    // Every `IconButton`'s colour crosses an
-    // `AnimatedTheme` and every hover wash is an
-    // `InkHighlight` fade; both are driven by tickers,
-    // so both froze at the value they held when the
-    // fold happened. That is exactly "the logic is
-    // right and only the look is stale", and it is why
-    // the two complaints were one bug.
-    //
-    // ★The condition is the offstage one, negated —
-    // said once, so a button cannot need a rule of its
-    // own to look right in a place it is visible. A tab
-    // with no collapsed form is still muted, which is
-    // what the mute was for.
-    child: TickerMode(
-      enabled:
-          tab.id == active.id &&
-          !(widget.collapsed && tab.collapsedExtent <= 0),
-      child: PanelVisibilityScope(
-        visible: _visibilityFor(tab.id, visible: tab.id == active.id),
-        // OUTSIDE the content cache on purpose: the
-        // cached widget instance never changes, and an
-        // inherited dependency marks its dependents
-        // dirty directly — so folding reaches a
-        // keep-alive panel without dropping the cache
-        // that makes tab switches instant.
-        child: PanelCollapsedScope(
-          collapsed: widget.collapsed && tab.id == active.id,
-          child: tab.keepAlive
-              ? _keptContent(tab)
-              : _buildTabContent(tab),
-        ),
-      ),
-    ),
-  );
 
   /// The reveal blink (UI-R17 #5): fires when the flash channel names a
   /// tab this group hosts.
@@ -713,18 +669,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     );
   }
 
-  /// The stable visibility feed for [tabId], its value refreshed inline
-  /// with this build. Setting the value here fires descendant listeners
-  /// mid-build — legal, they are below this widget and rebuild this frame.
-  ValueNotifier<bool> _visibilityFor(String tabId, {required bool visible}) {
-    final notifier = _tabVisibility.putIfAbsent(
-      tabId,
-      () => ValueNotifier<bool>(visible),
-    );
-    notifier.value = visible;
-    return notifier;
-  }
-
   /// One tab's content; panels with a minimum content size larger than
   /// the dock render at that size inside scrollers.
   ///
@@ -748,29 +692,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     if (!tab.staticRaster) {
       return child;
     }
-    // A keep-alive tab stays MOUNTED offstage, and `Offstage` keeps the
-    // render object attached — so nothing would ever release its baked
-    // image. Seven tabs ship keep-alive; that is seven full-panel RGBA
-    // surfaces held for panels nobody is looking at.
-    //
-    // The visibility feed is already here for the same reason (heavy
-    // hosts stand down offstage), and `enabled` drops the image in its
-    // setter rather than waiting for a paint that will never come while
-    // hidden. `child` is captured OUTSIDE the builder, so a tab switch
-    // rebuilds one widget and not the panel.
-    final visible = _tabVisibility[tab.id];
-    StaticRaster bake(bool enabled) => StaticRaster(
-      debugLabel: 'panel:${tab.id}',
-      enabled: enabled,
-      child: child,
-    );
-    if (visible == null) {
-      return bake(true);
-    }
-    return ValueListenableBuilder<bool>(
-      valueListenable: visible,
-      builder: (context, isVisible, _) => bake(isVisible),
-    );
+    return StaticRaster(debugLabel: 'panel:${tab.id}', child: child);
   }
 
   Widget _buildTabInterior(EditorPanelTab tab) {
@@ -801,10 +723,10 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         // would give it back a height it did not ask for.
         //
         // The fold is read HERE, through the scope, and not where the tab's
-        // content is built: a keep-alive tab's content is built once and
-        // cached, so a fold decided there held whatever its first build saw
-        // (F-103). [body] is built OUTSIDE this builder, so a fold rebuilds
-        // the scrollers and not the panel.
+        // content is built: cached content ([EditorPanelTab.cachesContent])
+        // is built once, so a fold decided there held whatever its first
+        // build saw (F-103). [body] is built OUTSIDE this builder, so a fold
+        // rebuilds the scrollers and not the panel.
         final folded = PanelCollapsedScope.of(context);
         return OverflowScrollers(
           minWidth: folded ? 0 : tab.minContentWidth ?? 0,

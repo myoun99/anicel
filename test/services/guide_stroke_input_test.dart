@@ -49,10 +49,10 @@ PerspectiveShape _horizontalVanishing({bool snapEnabled = true}) =>
     );
 
 void main() {
-  group('PerspectiveSnapSession', () {
+  group('RayLock', () {
     test('no snapping guide means no session at all', () {
       expect(
-        PerspectiveSnapSession.maybeStart(
+        RayLock.ofGuides(
           guides: CutGuides.empty,
           start: _point(0, 0),
           zoom: 1,
@@ -60,7 +60,7 @@ void main() {
         isNull,
       );
       expect(
-        PerspectiveSnapSession.maybeStart(
+        RayLock.ofGuides(
           guides: _guidesWith(_horizontalVanishing(snapEnabled: false)),
           start: _point(0, 0),
           zoom: 1,
@@ -70,7 +70,7 @@ void main() {
     });
 
     test('holds early points, then releases them all on the ray', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 1,
@@ -92,7 +92,7 @@ void main() {
     });
 
     test('once locked, later points project immediately', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 1,
@@ -108,7 +108,7 @@ void main() {
     test('the ray never changes once chosen', () {
       // A stroke that curves away must stay on the family it started in
       // rather than hopping to the nearer one.
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(
           PerspectiveShape(
             vanishingPoints: [
@@ -132,7 +132,7 @@ void main() {
     });
 
     test('a short flick still draws — pen-up settles on a best guess', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 1,
@@ -146,7 +146,7 @@ void main() {
     });
 
     test('finishing an already-locked stroke releases nothing extra', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 1,
@@ -157,7 +157,7 @@ void main() {
     });
 
     test('a stroke that never moves locks onto nothing', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(5, 5),
         zoom: 1,
@@ -171,14 +171,14 @@ void main() {
     test('the lock travel is screen distance, so zoom does not change feel', () {
       // Zoomed 10x in, the same SCREEN travel is a tenth of the canvas
       // distance — the stroke must lock at the same point under the pen.
-      final zoomedIn = PerspectiveSnapSession.maybeStart(
+      final zoomedIn = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 10,
       )!;
 
       final released = zoomedIn.follow(
-        _point(kPerspectiveSnapLockTravel / 10, 0),
+        _point(kRayLockTravel / 10, 0),
       );
 
       expect(released, isNotEmpty);
@@ -189,7 +189,7 @@ void main() {
   // be stretched along one axis, and the guides are the canvas's: the
   // session measures where the user is looking and hands the stroke back
   // its own points.
-  group('PerspectiveSnapSession in a placed row', () {
+  group('RayLock in a placed row', () {
     /// A row twice as wide and half as tall: its (x, y) shows at (2x, y/2).
     const stretched = GuideSpace(
       toCanvas: GuideTransform(2, 0, 0, 0.5, 0, 0),
@@ -206,7 +206,7 @@ void main() {
         );
 
     test('a point lands where the ray comes nearest the pen ON THE CANVAS', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(towards([(1, 1)])),
         // Shown at (20, 20).
         start: _point(10, 40),
@@ -232,7 +232,7 @@ void main() {
         toCanvas: GuideTransform(1, 0, 0, 10, 0, 0),
         toStroke: GuideTransform(1, 0, 0, 0.1, 0, 0),
       );
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(towards([(1, 0), (0, 1)])),
         start: _point(0, 0),
         zoom: 1,
@@ -251,7 +251,7 @@ void main() {
         toCanvas: GuideTransform(0.25, 0, 0, 0.25, 0, 0),
         toStroke: GuideTransform(4, 0, 0, 4, 0, 0),
       );
-      final slow = PerspectiveSnapSession.maybeStart(
+      final slow = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 1,
@@ -265,7 +265,7 @@ void main() {
         toCanvas: GuideTransform(4, 0, 0, 4, 0, 0),
         toStroke: GuideTransform(0.25, 0, 0, 0.25, 0, 0),
       );
-      final quick = PerspectiveSnapSession.maybeStart(
+      final quick = RayLock.ofGuides(
         guides: _guidesWith(_horizontalVanishing()),
         start: _point(0, 0),
         zoom: 1,
@@ -275,7 +275,7 @@ void main() {
     });
 
     test('a short flick settles on the canvas\'s ray too', () {
-      final session = PerspectiveSnapSession.maybeStart(
+      final session = RayLock.ofGuides(
         guides: _guidesWith(towards([(1, 1)])),
         start: _point(10, 40),
         zoom: 1,
@@ -288,6 +288,121 @@ void main() {
 
       final shown = stretched.toCanvas.apply(released.single);
       _expectPoint(shown, 21.5, 21.5);
+    });
+  });
+
+  // 🗣️I-61-Q1 (유저 2026-10-08): 「둘 다 — Shift 는 45° 잠금, 직선 긋기는
+  // 도형 도구로」.
+  group('RayLock.eightWays', () {
+    test('🚨locks onto the nearest of the eight ways — across, down and '
+        'both diagonals, either way along each', () {
+      for (final (dx, dy, x, y) in const [
+        (20.0, 3.0, 120.0, 100.0),
+        (-20.0, 2.0, 80.0, 100.0),
+        (2.0, 20.0, 100.0, 120.0),
+        (15.0, 12.0, 113.5, 113.5),
+        (-14.0, 11.0, 87.5, 112.5),
+        (10.0, -12.0, 111.0, 89.0),
+      ]) {
+        final lock = RayLock.eightWays(start: _point(100, 100), zoom: 1);
+
+        final out = lock.follow(_point(100 + dx, 100 + dy));
+
+        expect(out, hasLength(1), reason: '($dx, $dy)');
+        _expectPoint(out.single, x, y);
+      }
+    });
+  });
+
+  // 🗣️I-61-Q2 (유저 2026-10-08): 「누르고 있는 동안만 — 누른 그 자리에서부터
+  // 잠긴다」.
+  group('StrokeLock', () {
+    StrokeLock free() =>
+        StrokeLock(guides: CutGuides.empty, start: _point(0, 0), zoom: 1);
+
+    test('with Shift up and no guide snapping, each point goes as it '
+        'came', () {
+      final lock = free();
+
+      _expectPoint(lock.follow(_point(3, 1), shift: false).single, 3, 1);
+      _expectPoint(lock.follow(_point(9, -4), shift: false).single, 9, -4);
+      expect(lock.finish(), isEmpty);
+    });
+
+    test('🚨Shift held from the start holds the stroke to the nearest of '
+        'the eight ways from where it began', () {
+      final lock = free();
+
+      expect(lock.follow(_point(2, 1), shift: true), isEmpty);
+      final out = lock.follow(_point(20, 18), shift: true);
+
+      expect(out, hasLength(2));
+      _expectPoint(out[0], 1.5, 1.5);
+      _expectPoint(out[1], 19, 19);
+      _expectPoint(lock.follow(_point(30, 0), shift: true).single, 15, 15);
+    });
+
+    test('🚨pressed in the MIDDLE it locks from where the stroke has got '
+        'to — and let go, the stroke is free again from there', () {
+      final lock = free();
+      _expectPoint(lock.follow(_point(10, 5), shift: false).single, 10, 5);
+
+      expect(lock.follow(_point(12, 9), shift: true), isEmpty);
+      final down = lock.follow(_point(11, 25), shift: true);
+
+      expect(down, hasLength(2));
+      _expectPoint(down[0], 10, 9);
+      _expectPoint(down[1], 10, 25);
+
+      _expectPoint(lock.follow(_point(30, 31), shift: false).single, 30, 31);
+    });
+
+    test('pressed and let go again and again in one stroke: each stretch '
+        'starts where the last one ended', () {
+      final lock = free();
+
+      _expectPoint(lock.follow(_point(20, 3), shift: true).single, 20, 0);
+      _expectPoint(lock.follow(_point(25, 7), shift: false).single, 25, 7);
+      _expectPoint(
+        lock.follow(_point(40, 21), shift: true).single,
+        39.5,
+        21.5,
+      );
+      _expectPoint(lock.follow(_point(41, 40), shift: false).single, 41, 40);
+    });
+
+    test('a Shift let go before the stroke went far enough to choose still '
+        'straightens what it held — and pen-up settles a stretch the '
+        'same way', () {
+      final lock = free();
+      expect(lock.follow(_point(1, 0), shift: true), isEmpty);
+      expect(lock.follow(_point(3, 1), shift: true), isEmpty);
+
+      final out = lock.follow(_point(4, 4), shift: false);
+
+      expect(out, hasLength(3));
+      _expectPoint(out[0], 1, 0);
+      _expectPoint(out[1], 3, 0);
+      _expectPoint(out[2], 4, 4);
+
+      expect(lock.follow(_point(6, 5), shift: true), isEmpty);
+      _expectPoint(lock.finish().single, 5.5, 5.5);
+    });
+
+    test('🚨with a snapping perspective the guides\' ray is the stroke\'s '
+        'until Shift is pressed; Shift wins while it is held, and let go '
+        'the stroke goes on along a ray of the guides chosen afresh '
+        'there', () {
+      final lock = StrokeLock(
+        guides: _guidesWith(_horizontalVanishing()),
+        start: _point(0, 0),
+        zoom: 1,
+      );
+
+      _expectPoint(lock.follow(_point(20, 3), shift: false).single, 20, 0);
+      _expectPoint(lock.follow(_point(50, -80), shift: false).single, 50, 0);
+      _expectPoint(lock.follow(_point(52, 20), shift: true).single, 50, 20);
+      _expectPoint(lock.follow(_point(80, 30), shift: false).single, 80, 20);
     });
   });
 

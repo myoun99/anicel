@@ -24,12 +24,28 @@ class HistoryPlaces {
   /// Weak, so an entry that falls off the deep end takes its place along.
   final Expando<StandingPlace> _places = Expando<StandingPlace>('I-41');
 
+  /// Where each entry FOUND the user — written once, as it is first
+  /// stamped ([foundAt]).
+  final Expando<StandingPlace> _found = Expando<StandingPlace>('F-350');
+
   /// The entry the last action pushed or stepped, until that action has
   /// settled.
   Command? _settling;
 
   /// Where [entry] was made, or null when nothing says.
   StandingPlace? of(Command entry) => _places[entry];
+
+  /// Where [entry] found the user — what an undo that takes away the row
+  /// they stand on hands back.
+  ///
+  /// 🗣️F-350 (유저 2026-10-12): 「레이어 여러개 생성하고 언두할때 매번
+  /// 카메라 레이어로 이동하는 1개 과정이 있음. 한번에 바로 삭제해야하는데」.
+  /// Taking a new row back left the user on the row that took its place in
+  /// the list — the one above, the camera at the top of the stack — so the
+  /// next undo walked to the row the row before was made on ([of]), and
+  /// every row took two presses. Handed back to where the add found them,
+  /// they stand where the next undo was made.
+  StandingPlace? foundAt(Command entry) => _found[entry];
 
   /// 🚨WHERE THE ACTION LEFT THE USER, not where it found them.
   ///
@@ -56,6 +72,7 @@ class HistoryPlaces {
     final place = placeNow();
     if (place != null) {
       _places[entry] = place;
+      _found[entry] ??= place;
     }
     _settling = entry;
     scheduleMicrotask(() {

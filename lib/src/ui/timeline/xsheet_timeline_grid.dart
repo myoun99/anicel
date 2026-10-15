@@ -1,5 +1,6 @@
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../widgets/empty_state_text.dart';
+import '../widgets/named.dart';
 import '../widgets/tick_layer.dart';
 import 'dart:math' as math;
 
@@ -27,7 +28,6 @@ import 'timeline_cut_end_handle.dart';
 import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/layer_id.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, rowsWithSilhouette;
@@ -45,14 +45,15 @@ import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_glyph_cache.dart';
 import 'property_lane_model.dart';
+import 'row_berths.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';
-import '../input/pen_friendly_scroll_controller.dart';
-import '../input/scroller_press_hold.dart';
+import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
@@ -61,6 +62,9 @@ import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
+import 'timeline_visible_range.dart';
+import 'timeline_lane_graph.dart' show timelineFrameSide;
+import 'timeline_row_edges.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_grid_sheet.dart';
@@ -95,6 +99,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.layers,
     this.railExtent,
     this.frameAxisOffset,
+    this.layerAxisOffset,
     this.metrics = defaultMetrics,
   });
 
@@ -113,6 +118,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// .frameAxisOffset], transposed: kept by the workspace so a fold does
   /// not throw it away (F-143). Null = a session-local one of our own.
   final ValueNotifier<double>? frameAxisOffset;
+
+  /// Where the LAYER axis stands — the rail's [LayerTimelineGrid
+  /// .layerAxisOffset], transposed: across the columns, the project's
+  /// (F-267). Null = nobody keeps it; the columns start at the left.
+  final ValueNotifier<double>? layerAxisOffset;
 
   /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
   /// as the frame ROW height here.
@@ -158,37 +168,59 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// narrower WINDOW onto it (the rail-window round): the tail is cut, the
   /// splitter says where, and nothing inside rearranges.
   ///
-  /// [hasOnionColumn]/[hasBlendColumn] are the HOST's answer about which
-  /// optional columns exist at all — the legend beside the headers must
-  /// size from the same answer or its icons stop naming the columns under
-  /// them.
+  /// [optionalColumns] is the HOST's answer about which optional columns
+  /// exist at all — the legend beside the headers must size from the same
+  /// answer or its icons stop naming the columns under them.
   static double naturalHeaderBlockExtent({
-    required bool hasOnionColumn,
-    required bool hasBlendColumn,
+    required LayerRailOptionalColumns optionalColumns,
     required LayerRailColumnWidths columns,
   }) =>
       _sectionBandHeight +
       (layerRailLeadingWidth - layerSectionLabelSlotWidth) +
-      _naturalNameExtent +
+      _naturalNameExtent(columns) +
+      _laneGraphRoom +
       layerRailTrailingWidth(
         columns: columns,
-        hasOnionColumn: hasOnionColumn,
-        hasBlendColumn: hasBlendColumn,
+        optionalColumns: optionalColumns,
       ) +
       _headerBorderExtent;
 
+  /// What the block keeps past the rail stood up (I-89-Q17 A, 유저
+  /// 2026-10-12: 「시트 머리는 지금 높이 그대로(+22)」): a header graph's
+  /// slot gave it this room from 10-11, a stood-up lane stands its pin and
+  /// chips in it, and the rail's answer to I-89 Q1 took the slot and left
+  /// the room. Taken off, the lanes shed both — the pin and chips are what
+  /// a column pays last.
+  static const double _laneGraphRoom = 22;
+
   /// The NAME's share of the rail — what the horizontal row's `Expanded`
-  /// resolves to once every slot has been served.
-  static const double _naturalNameExtent =
-      timelineLayerControlsWidth -
+  /// resolves to once every slot has been served, the onion's and the
+  /// blend's among them — read off the rail's own width
+  /// ([timelineLayerControlsWidthFor]) and its own slots
+  /// ([layerRailTrailingWidth]), so the stood-up rail grows as the rail
+  /// does under the OS text size. ↩️The slots were listed here by hand, at
+  /// 1×: the rail paid its lane value column's growth and the sheet did not.
+  ///
+  /// Less the room the rail pays a lane's value HANDS
+  /// ([layerLaneValueHandsWidth]): the sheet writes a lane's value row
+  /// turned on its side, at the rail's length, in the lane's own column,
+  /// where it fits under the lane's name (유저 2026-10-11: 「머리칸이라기보다
+  /// 편집숫자들 … 진짜로 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑
+  /// 똑같이 들어갈거같은데」). 🔬Paid, the header took 76 of a bottom dock
+  /// that stops at 640 (`EditorPanelLayoutModel.maxDockExtent`): its frame
+  /// rows went from about four to two (2026-10-10), and once the value was
+  /// turned the block no longer fit the tallest dock at all — the window
+  /// cut its tail, the SE speaker and the opacity and blend columns with it
+  /// (2026-10-11). Asked with the rail's full length on offer, the user
+  /// kept this one (유저 2026-10-11 「여쭐것 둘다 문제없음」).
+  static double _naturalNameExtent(LayerRailColumnWidths columns) =>
+      timelineLayerControlsWidthFor(columns) -
+      layerLaneValueHandsWidth -
       layerRailLeadingWidth -
-      layerFillReferenceSlotWidth -
-      layerFxSlotWidth -
-      layerOnionSlotWidth -
-      layerVisibilitySlotWidth -
-      layerMuteSlotWidth -
-      layerOpacitySlotWidth -
-      layerBlendSlotWidth;
+      layerRailTrailingWidth(
+        columns: columns,
+        optionalColumns: (onion: true, blend: true),
+      );
 
   /// The column header's own hairlines, top and bottom.
   static const double _headerBorderExtent = 2;
@@ -292,8 +324,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// own group joins the cells law, exactly as on the horizontal grid.
   TimelineLaneRangeCallbacks? _laneRange;
 
-  late final ScrollController _frameScrollController;
-  late final ScrollController _layerScrollController;
+  // The layers and the frames are the sheet: one sheet, dragged both ways
+  // at once (F-351).
+  late final TwoAxisScrollController _frameScrollController;
+  late final TwoAxisScrollController _layerScrollController;
 
   /// Frame-axis offset + window bucket notifiers (UI-R9 #12a, the
   /// horizontal grid's structure transposed): scroll pixels move the rail
@@ -306,6 +340,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   final ValueNotifier<double> _ownedFrameAxisOffset = ValueNotifier<double>(0);
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
 
+  /// The host's record of the layer axis ([XSheetTimelineGrid
+  /// .layerAxisOffset]) — read ONCE, as the frame axis's is.
+  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
+
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
+  late final VoidCallback _letGoOfKeptColumns;
+
   /// The frame axis following its controller — the rail's follower, the
   /// same object, transposed by nothing but which controller it holds.
   late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
@@ -314,9 +355,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     frameWindowBucket: _frameWindowBucket,
     cellExtent: () => _metrics.frameCellWidth,
     baseFrameCount: () => _rangeGestures.frameRangePolicy.visibleFrameCount,
+    viewportFillFrames: () => _viewportFillFrameCells,
     rebuild: _rebuild,
     isMounted: () => mounted,
   );
+
+  /// Where the playing run's next turn stands the frame axis — what the
+  /// columns bake that page's tiles for while it plays this one.
+  TimelineNextPage? _nextPage() =>
+      _frameAxis.nextPage(runFrames: widget.hooks.runFrames);
 
   /// UI-R9 #9, transposed to y: the frame axis pulled to the offset the
   /// layout resolved, one frame later — the rail's object.
@@ -336,14 +383,19 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     // Born where the axis stands, as on the rail (F-143) — an orientation
     // switch builds this sheet afresh (a fold did too, until 09-28), and a
     // newborn 0 would be recorded as a scroll.
-    _frameScrollController = PenFriendlyScrollController(
+    _frameScrollController = TwoAxisScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
-    _layerScrollController = PenFriendlyScrollController();
-    // The layers and the frames are the sheet: one surface scrolled two
-    // ways (F-202).
-    scrollTogether(_layerScrollController, _frameScrollController);
+    // The columns too, where the project left them (F-267).
+    _layerScrollController = TwoAxisScrollController(
+      initialScrollOffset: _keptLayerAxis?.value ?? 0,
+    );
     _frameScrollController.addListener(_frameAxis.handleScroll);
+    _letGoOfKeptColumns = followKeptAxis(
+      _layerScrollController,
+      _keptLayerAxis,
+      isMounted: () => mounted,
+    );
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
     widget.hooks.frameCursor.addListener(_reveal.handlePlaybackPage);
@@ -389,6 +441,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _frameScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
+    _letGoOfKeptColumns();
     _layerScrollController.dispose();
     _frameWindowBucket.removeListener(_frameScroll.handleFrameWindowBucket);
     _frameGeometry.dispose();
@@ -412,6 +465,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         hooks: () => widget.hooks,
         metrics: () => _metrics,
         dragRows: () => _dragRows,
+        dragEdges: () => _dragEdges,
         rangeMove: _rangeMoveResolver,
       );
 
@@ -435,6 +489,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The display entries of the pass in flight, for the drag's row → slot
   /// conversion (see [effectHeaderRowsOf]).
   List<TimelineDisplayRow> _dragRows = const [];
+
+  /// Where [_dragRows] sit across the sheet — what a pointer's x is read
+  /// in, beside the list it is counted in.
+  TimelineRowEdges _dragEdges = TimelineRowEdges.uniform(0, 0);
+
+  /// Which elements each column is built in — its header's and its cells'
+  /// alike, as the rail's rows and the timeline's cells are ([RowBerths]).
+  final RowBerths _rowBerths = RowBerths();
+
+  /// The berths of the columns the pass in flight DRAWS.
+  late RowBerthMap _berths;
 
   /// The shared virtualization plan with the frame axis fed through the
   /// "horizontal" inputs (the axes are swapped in this grid). Read INSIDE
@@ -472,12 +537,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The grid sheet under the columns (I-44) — the timeline's, turned on
   /// its side: every column's ground, every frame line and every column
   /// seam, once.
-  Widget _buildGridSheet(List<TimelineDisplayRow> entries) {
+  Widget _buildGridSheet(
+    List<TimelineDisplayRow> entries,
+    TimelineRowEdges edges,
+  ) {
     return TimelineRowsGridSheet(
       key: const ValueKey<String>('xsheet-grid-sheet'),
       axis: Axis.vertical,
       rows: entries,
-      rowExtent: _metrics.layerRowHeight,
+      edges: edges,
       frameCellExtent: _metrics.frameCellWidth,
       activeLayerId: widget.hooks.activeLayerId,
       standing: widget.hooks.currentRowHooks?.currentRow,
@@ -503,16 +571,24 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             valueListenable: _frameWindowBucket,
             builder: (context, _, _) {
               final plan = _framePlan(bodyViewportHeight, entries);
+              final edges = geometry.columnEdges;
               // The timeline's stack, turned on its side: the grid sheet
               // under the columns (D32, I-44), the cursor layer over them,
               // and where the film stops stated over everything (the user's
               // layer order).
               return TimelineFrameGridStack(
                 axis: Axis.vertical,
-                rowsBody: _columns.buildColumns(entries, plan, bodyViewportHeight),
-                gridSheet: _buildGridSheet(entries),
+                rowsBody: _rowBerths.counting(
+                  _columns.buildColumns(
+                    entries,
+                    edges,
+                    plan,
+                    bodyViewportHeight,
+                  ),
+                ),
+                gridSheet: _buildGridSheet(entries, edges),
                 playheadExtent: geometry.totalFrameContentHeight,
-                playhead: _buildCursorLayer(entries, plan),
+                playhead: _buildCursorLayer(entries, edges, plan),
                 cutEndDrag: widget.hooks.cutEndDrag,
                 dragPreview: widget.hooks.dragPreview,
                 frameCellExtent: _metrics.frameCellWidth,
@@ -530,6 +606,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// repaint it alone.
   Widget _buildCursorLayer(
     List<TimelineDisplayRow> entries,
+    TimelineRowEdges edges,
     TimelineVirtualizationPlan plan,
   ) {
     final frameRange = plan.frameRange;
@@ -543,12 +620,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       dragPreview: widget.hooks.dragPreview,
       frameCursor: widget.hooks.frameCursor,
       rows: entries,
+      edges: edges,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: frameRange.startIndex,
       frameEndIndexExclusive: frameRange.endIndexExclusive,
       leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
       metrics: _metrics,
-      crossAxisExtent: entries.length * _metrics.layerRowHeight,
+      crossAxisExtent: edges.total,
     );
   }
 
@@ -626,8 +704,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               height: XSheetTimelineGrid._sectionBandHeight,
                               extent: timelineSectionRunExtent(
                                 run,
-                                entries,
-                                _metrics,
+                                geometry.columnEdges,
                               ),
                             ),
                         ],
@@ -649,8 +726,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           RailColumnSwipe<TimelineDisplayRow>(
                             axis: Axis.horizontal,
                             columns: _columns.swipeColumns(),
-                            rowsIn: (from, to) =>
-                                _columns.columnsIn(from, to, entries),
+                            rowsIn: (from, to) => _columns.columnsIn(
+                              from,
+                              to,
+                              entries,
+                              geometry.columnEdges,
+                            ),
                             // The rail's eyes, turned on their side with it
                             // — a folder's flip dims its members' eyes here
                             // as it does there (F-185).
@@ -660,11 +741,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   if (!entry.isLane) entry.layer,
                               ],
                               stack: widget.layers,
-                              child: Row(
-                                children: [
-                                  for (final entry in entries)
-                                    _headers.header(entry),
-                                ],
+                              child: _rowBerths.counting(
+                                Row(
+                                  children: _headers.headers(
+                                    entries,
+                                    geometry.columnEdges,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -677,8 +760,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     entry.address,
                                   ),
                               ],
-                              rowExtent: _metrics.layerRowHeight,
-                              leadingSpacer: 0,
+                              edges: geometry.columnEdges,
                               crossExtent: _headers.naturalHeaderExtent,
                             ),
                           ),
@@ -692,8 +774,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   'xsheet-layer-placement-entrance',
                                 ),
                                 rowAxis: Axis.horizontal,
-                                pitch: _metrics.layerRowHeight,
-                                rows: () => _dragRows,
+                                rows: () =>
+                                    (rows: _dragRows, edges: _dragEdges),
                                 onHover:
                                     widget.hooks.rowDragHooks?.onPlacementHover,
                                 onLeave:
@@ -1029,6 +1111,20 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // The row drag counts COLUMNS and lands on slots; only this
             // list knows how many columns sit between two fx headers.
             _dragRows = entries;
+            // The columns' view: the sheet less the frame-number rail and
+            // the scrollbar column beside it (the row of three below) —
+            // as far as an enlarged graph stands (I-89 ③D).
+            final columnsView = constraints.hasBoundedWidth
+                ? math.max(
+                    0.0,
+                    constraints.maxWidth -
+                        _metrics.layerControlsWidth -
+                        _metrics.verticalScrollbarWidth,
+                  )
+                : 0.0;
+            TimelineRowEdges lay(List<TimelineDisplayRow> laid) =>
+                timelineRowEdgesOf(laid, _metrics, view: columnsView);
+            _dragEdges = lay(entries);
             // ⚠️AFTER the line above: the sheet draws the silhouette column
             // the timeline draws, and the gap is counted on the list
             // without it ([rowsWithSilhouette]).
@@ -1036,6 +1132,18 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               entries,
               widget.hooks.dragPreview?.value,
             );
+            // Over the DRAWN columns: the headers and the cells are both
+            // built from them.
+            _berths = _rowBerths.berthsFor(
+              drawnEntries,
+              world: widget.hooks.substrateGeneration,
+            );
+            // Drawn, so the content is one column wider while a file
+            // hovers — an extent that forgot it would clip the column it
+            // pushed along.
+            final columnEdges = identical(drawnEntries, entries)
+                ? _dragEdges
+                : lay(drawnEntries);
             // The bundles are FIELDS here (the x-sheet reads them from more
             // than one builder), so the assignment stays and only the
             // construction moved.
@@ -1051,19 +1159,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             // INSIDE the window-bucket subscribers (UI-R9 #12a): scroll pixels
             // re-window nothing.
             final totalFrameContentHeight = _frameScroll._totalFrameContentHeight;
-            // Every column is ONE width (`timelineDisplayRowExtent` returns
-            // `layerRowHeight` unconditionally). The old note here claimed
-            // collapsed sections folded to a slim strip; they never did, and
-            // believing it would send someone to the height-table row
-            // resolver when `uniformRowDeltaForCrossOffset` — which requires
-            // this uniformity — is the right one.
-            final columnsContentWidth = timelineDisplayRowsExtent(
-              // Drawn, so the content is one column wider while a file
-              // hovers — an extent that forgot it would clip the column it
-              // pushed along.
-              drawnEntries,
-              _metrics,
-            );
             final cutEndBoundaryOffset = timelineCutEndBoundaryX(
               playbackFrameCount: widget.hooks.playbackFrameCount,
               metrics: _metrics,
@@ -1075,7 +1170,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               splitterSlotExtent: splitterSlotExtent,
               bodyViewportHeight: bodyViewportHeight,
               totalFrameContentHeight: totalFrameContentHeight,
-              columnsContentWidth: columnsContentWidth,
+              columnEdges: columnEdges,
               cutEndBoundaryOffset: cutEndBoundaryOffset,
             );
             // The DRAWN end, following a live trim so the blue line, the wash
@@ -1116,7 +1211,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                         ? constraints.maxWidth
                                         : 0.0,
                                     contentWidth: math.max(
-                                      columnsContentWidth,
+                                      geometry.columnsContentWidth,
                                       _metrics.layerRowHeight,
                                     ),
                                     height: layerAxisScrollbarExtent,
@@ -1154,16 +1249,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     // the optional columns from, so it is told
                                     // what the ROWS carry — or its icons stop
                                     // naming the columns under them.
-                                    hasOnionColumn:
-                                        widget
-                                            .hooks
-                                            .onToggleLayerOnionSkin !=
-                                        null,
-                                    hasBlendColumn:
-                                        widget
-                                            .hooks
-                                            .onLayerBlendModeSelected !=
-                                        null,
+                                    optionalColumns:
+                                        widget.hooks.optionalRailColumns,
                                     hiddenSections:
                                         widget.hooks.hiddenSections,
                                   ),
@@ -1216,15 +1303,21 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                     behavior: ScrollConfiguration.of(
                                       context,
                                     ).copyWith(scrollbars: false),
-                                    child: _buildLayerHorizontalViewport(
-                                      colorScheme,
-                                      // THE drawing entrance — the columns
-                                      // and their headers come from here, so
-                                      // the silhouette column enters once,
-                                      // for both.
-                                      drawnEntries,
-                                      sectionRuns,
-                                      geometry,
+                                    child: TwoAxisDrag(
+                                      axes: [
+                                        _layerScrollController,
+                                        _frameScrollController,
+                                      ],
+                                      child: _buildLayerHorizontalViewport(
+                                        colorScheme,
+                                        // THE drawing entrance — the columns
+                                        // and their headers come from here,
+                                        // so the silhouette column enters
+                                        // once, for both.
+                                        drawnEntries,
+                                        sectionRuns,
+                                        geometry,
+                                      ),
                                     ),
                                   ),
                           ),
@@ -1364,7 +1457,7 @@ class XSheetFrameRailPainter extends CustomPainter
   final TimelineRulerScale scale;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     final colorScheme = scale.colorScheme;
     final linePaint = Paint()..strokeWidth = 1;
     // D8 (2026-08-18): the rail used to stroke a faint RECT around every
@@ -1430,7 +1523,7 @@ class XSheetFrameRailPainter extends CustomPainter
                 ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
                 : colorScheme.onSurface,
           );
-      final painter = timelineGlyphPainter(
+      final painter = laidOutGlyph(
         writing.number,
         scale.inkOf(style, current: current),
       );
@@ -1551,7 +1644,7 @@ class _SheetGeometry {
     required this.splitterSlotExtent,
     required this.bodyViewportHeight,
     required this.totalFrameContentHeight,
-    required this.columnsContentWidth,
+    required this.columnEdges,
     required this.cutEndBoundaryOffset,
   });
 
@@ -1562,6 +1655,11 @@ class _SheetGeometry {
   final double splitterSlotExtent;
   final double bodyViewportHeight;
   final double totalFrameContentHeight;
-  final double columnsContentWidth;
+
+  /// Where the DRAWN columns sit across the sheet — the rail's
+  /// [TimelineRowEdges], turned on its side.
+  final TimelineRowEdges columnEdges;
   final double cutEndBoundaryOffset;
+
+  double get columnsContentWidth => columnEdges.total;
 }

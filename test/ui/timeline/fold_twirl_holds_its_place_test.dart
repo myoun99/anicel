@@ -12,6 +12,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// F-29 — **the fold twirl holds its place.**
 ///
 /// 유저 2026-08-24: 「어태치나 폴더의 접기 펼치기 아이콘 위치 조정. 지금
@@ -80,12 +82,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final short = find.byKey(
-      const ValueKey<String>('timeline-folder-twirl-fold-short'),
-    );
-    final long = find.byKey(
-      const ValueKey<String>('timeline-folder-twirl-fold-long'),
-    );
+    final short = find.named('timeline-folder-twirl-fold-short');
+    final long = find.named('timeline-folder-twirl-fold-long');
     expect(short, findsOneWidget, reason: 'fixture: both folders draw one');
     expect(long, findsOneWidget);
 
@@ -107,10 +105,10 @@ void main() {
     await tester.pumpAndSettle();
 
     final nameRegion = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-name-fold-short')),
+      find.named('timeline-layer-name-fold-short'),
     );
     final twirl = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-folder-twirl-fold-short')),
+      find.named('timeline-folder-twirl-fold-short'),
     );
 
     expect(

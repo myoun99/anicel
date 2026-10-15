@@ -7,9 +7,10 @@
 // what is being heard. A free-running timer can; that is the defect this
 // program started from.
 //
-// NON-NEGOTIABLE: no Dart runs in the callback. Dart uploads the schedule
-// and the PCM, starts and stops the transport, and polls the position.
-// Everything the callback touches is already resident C memory.
+// NON-NEGOTIABLE: no Dart runs in the callback. Dart makes the PCM in C
+// buffers, uploads the schedule that names them, starts and stops the
+// transport, and polls the position. Everything the callback touches is
+// already resident C memory.
 //
 // The schedule lives in TWO slots (AUDIO-PRO R3): the callback reads the
 // active one, a replacement builds in the standby one, and an atomic flip
@@ -143,15 +144,122 @@ static int64_t qa_clock_now_us(void) {
 
 #define QA_DEVICE_MAX_BLOCK 8192
 
+// THE DEVICE'S OWN PCM (play-press-first-frame-stall, 10-15). Every source
+// a schedule plays is a BUFFER made once in C memory (qa_audio_buffer_new)
+// and named by the address of its samples. A schedule copies none of them:
+// each source of the slot that plays a buffer HOLDS it, and a buffer goes
+// when its maker has let go of it and no slot holds it any more - so its
+// maker may let go at any time, even while it plays. ↩️Each schedule
+// copied every source's PCM into a block of its own - the resident sounds
+// and the streaming windows alike, at every press, seek and window advance
+// - after its maker had copied them once on the way in (🔬33ms on the AMMI
+// OP press, and the garbage the way in left).
+//
+// The holds are counted atomically: a maker on any thread may let go. The
+// callback never holds or lets go - it reads a slot, and the slot's holds
+// outlive every block that reads it (the flip in set_schedule).
+typedef struct {
+  uint32_t magic;
+  volatile ma_uint32 holds;
+  int64_t floats;
+  int64_t reserved[2];  // the samples after it start 16-byte aligned
+} qa_audio_buffer_head;
+
+#define QA_AUDIO_BUFFER_MAGIC 0x51414255u
+
+// The head of the buffer whose samples start at [samples], or NULL when
+// they are not a buffer's.
+static qa_audio_buffer_head* qa_audio_buffer_head_of(const float* samples) {
+  if (samples == NULL) {
+    return NULL;
+  }
+  qa_audio_buffer_head* head = (qa_audio_buffer_head*)(
+      (uintptr_t)samples - sizeof(qa_audio_buffer_head));
+  return head->magic == QA_AUDIO_BUFFER_MAGIC ? head : NULL;
+}
+
+static void qa_audio_buffer_hold(qa_audio_buffer_head* head) {
+  ma_atomic_fetch_add_32(&head->holds, 1);
+}
+
+static void qa_audio_buffer_let_go(qa_audio_buffer_head* head) {
+  if (ma_atomic_fetch_sub_32(&head->holds, 1) == 1) {
+    head->magic = 0;
+    free(head);
+  }
+}
+
+// A buffer of [floats] samples for the device to play, its maker holding it
+// until qa_audio_buffer_release. The samples are the maker's to fill before
+// a schedule names them. NULL when the memory is not there.
+QA_EXPORT float* qa_audio_buffer_new(int64_t floats) {
+  if (floats < 0) {
+    return NULL;
+  }
+  qa_audio_buffer_head* head = (qa_audio_buffer_head*)malloc(
+      sizeof(qa_audio_buffer_head) +
+      (size_t)(floats > 0 ? floats : 1) * sizeof(float));
+  if (head == NULL) {
+    return NULL;
+  }
+  head->magic = QA_AUDIO_BUFFER_MAGIC;
+  ma_atomic_store_32(&head->holds, 1);
+  head->floats = floats;
+  head->reserved[0] = 0;
+  head->reserved[1] = 0;
+  return (float*)(head + 1);
+}
+
+// One more hold on [samples] (a qa_audio_buffer_new's), for a caller about
+// to name them in a schedule while its maker may let go. Returns [samples],
+// or NULL when they are not a buffer's.
+QA_EXPORT float* qa_audio_buffer_retain(float* samples) {
+  qa_audio_buffer_head* head = qa_audio_buffer_head_of(samples);
+  if (head == NULL) {
+    return NULL;
+  }
+  qa_audio_buffer_hold(head);
+  return samples;
+}
+
+// Lets go of one hold on [samples] - the maker's or a retain's. A slot still
+// playing them keeps them until the slot goes.
+QA_EXPORT void qa_audio_buffer_release(float* samples) {
+  qa_audio_buffer_head* head = qa_audio_buffer_head_of(samples);
+  if (head != NULL) {
+    qa_audio_buffer_let_go(head);
+  }
+}
+
+// How many hold [samples] (a qa_audio_buffer_new's): its maker, a retain's
+// caller, and each source of a slot that plays them. -1 when they are not
+// a buffer's.
+QA_EXPORT int32_t qa_audio_buffer_holds(float* samples) {
+  qa_audio_buffer_head* head = qa_audio_buffer_head_of(samples);
+  return head == NULL ? -1 : qa_transport_load_32(&head->holds);
+}
+
+// Whether the callback may read [source]: it plays nothing, or every one of
+// its length x channels samples lies inside a buffer.
+static int32_t qa_audio_source_reads_a_buffer(const qa_audio_source* source) {
+  if (source->samples == NULL) {
+    return 1;
+  }
+  const qa_audio_buffer_head* head = qa_audio_buffer_head_of(source->samples);
+  if (head == NULL) {
+    return 0;
+  }
+  return source->length <= 0 || source->channels <= 0 ||
+         source->length <= head->floats / source->channels;
+}
+
 // One complete schedule: everything a mixed block reads (AUDIO-PRO R3
 // made it a SLOT so a standby copy can build while the active one plays).
 typedef struct {
   qa_audio_clip* clips;
   int32_t clip_count;
-  qa_audio_source* sources;
+  qa_audio_source* sources;  // each holding the buffer it plays
   int32_t source_count;
-  float* source_pcm;  // one owned block holding every source's samples
-  int64_t source_pcm_floats;
   qa_audio_envelope_key* envelope_keys;  // the clips' shared key array
   int32_t envelope_key_count;
 } qa_audio_schedule;
@@ -465,9 +573,15 @@ static void qa_audio_data_callback(ma_device* device,
 }
 
 static void qa_audio_free_slot(qa_audio_schedule* slot) {
+  for (int32_t index = 0; index < slot->source_count; index += 1) {
+    qa_audio_buffer_head* head =
+        qa_audio_buffer_head_of(slot->sources[index].samples);
+    if (head != NULL) {
+      qa_audio_buffer_let_go(head);
+    }
+  }
   free(slot->clips);
   free(slot->sources);
-  free(slot->source_pcm);
   free(slot->envelope_keys);
   memset(slot, 0, sizeof(*slot));
 }
@@ -589,21 +703,25 @@ QA_EXPORT int64_t qa_audio_device_latency_samples(void) {
 // thread, never the realtime one — for the acknowledgment before freeing
 // the old arrays.
 //
-// The PCM is COPIED into one owned block: the callback must never chase a
-// pointer into Dart-managed memory that could move or be collected.
+// Every source's samples are a BUFFER's (qa_audio_buffer_new), or NULL for
+// a source with nothing in it; the slot HOLDS each buffer it plays and
+// copies no samples. A source naming anything else, or reading past its
+// buffer, refuses the schedule: the callback must never chase a pointer
+// whose life nobody holds.
 QA_EXPORT int32_t qa_audio_device_set_schedule(
     const qa_audio_clip* clips,
     int32_t clip_count,
     const qa_audio_source* sources,
     int32_t source_count,
-    const float* pcm,
-    int64_t pcm_floats,
-    const int64_t* source_offsets,
     const qa_audio_envelope_key* envelope_keys,
     int32_t envelope_key_count) {
-  if (clip_count < 0 || source_count < 0 || pcm_floats < 0 ||
-      envelope_key_count < 0) {
+  if (clip_count < 0 || source_count < 0 || envelope_key_count < 0) {
     return 0;
+  }
+  for (int32_t index = 0; index < source_count; index += 1) {
+    if (!qa_audio_source_reads_a_buffer(&sources[index])) {
+      return 0;
+    }
   }
 
   // ALWAYS build into the standby slot and flip — even stopped, a
@@ -640,16 +758,6 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
     slot->envelope_key_count = envelope_key_count;
   }
 
-  if (pcm_floats > 0) {
-    slot->source_pcm = (float*)malloc((size_t)pcm_floats * sizeof(float));
-    if (slot->source_pcm == NULL) {
-      qa_audio_free_slot(slot);
-      return 0;
-    }
-    memcpy(slot->source_pcm, pcm, (size_t)pcm_floats * sizeof(float));
-    slot->source_pcm_floats = pcm_floats;
-  }
-
   if (source_count > 0) {
     slot->sources =
         (qa_audio_source*)malloc((size_t)source_count * sizeof(qa_audio_source));
@@ -659,16 +767,14 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
     }
     memcpy(slot->sources, sources,
            (size_t)source_count * sizeof(qa_audio_source));
-    // Repoint every source at our copy: the caller's `samples` pointers
-    // describe ITS memory, and the offsets say where each block landed in
-    // the flattened PCM.
-    for (int32_t index = 0; index < source_count; index += 1) {
-      const int64_t offset = source_offsets == NULL ? 0 : source_offsets[index];
-      slot->sources[index].samples =
-          (offset >= 0 && offset < pcm_floats) ? slot->source_pcm + offset
-                                               : NULL;
-    }
     slot->source_count = source_count;
+    for (int32_t index = 0; index < source_count; index += 1) {
+      qa_audio_buffer_head* head =
+          qa_audio_buffer_head_of(sources[index].samples);
+      if (head != NULL) {
+        qa_audio_buffer_hold(head);
+      }
+    }
   }
 
   // Publish, then prove the handoff before freeing the old arrays: the
@@ -824,9 +930,31 @@ typedef struct {
   volatile ma_uint64 write_total;
   volatile ma_uint64 read_total;
   volatile ma_uint64 dropped_frames;
+
+  // THE CAPTURE'S CLOCK LINE (take-head-trims-at-the-playback-start,
+  // 10-15), the playback's own shape (`clock_position`): each callback
+  // says how many frames the ring had been given when it returned, and
+  // when it was asked for them — so a take is placed by what the
+  // microphone had taken in at the moment its anchor was HEARD, both
+  // lines read on qa_clock_now_us. One writer — the callback — read whole
+  // through `clock_seq`; a point with no time (0) is no point.
+  volatile ma_uint32 clock_seq;
+  volatile ma_uint64 clock_frames;
+  volatile ma_uint64 clock_time_us;
 } qa_capture_state;
 
 static qa_capture_state g_capture;
+
+// The capture callback's last word: the frames given, and when it was
+// asked. ⚠️The playback's stamp (qa_audio_stamp_clock) is the same
+// seqlock with an arm serial on top — a third would make them one.
+static void qa_capture_stamp_clock(int64_t frames, int64_t time_us) {
+  const ma_uint32 seq = ma_atomic_load_32(&g_capture.clock_seq);
+  ma_atomic_store_32(&g_capture.clock_seq, seq + 1);
+  ma_atomic_store_64(&g_capture.clock_frames, (ma_uint64)frames);
+  ma_atomic_store_64(&g_capture.clock_time_us, (ma_uint64)time_us);
+  ma_atomic_store_32(&g_capture.clock_seq, seq + 2);
+}
 
 static void qa_audio_capture_callback(ma_device* device,
                                       void* output,
@@ -834,6 +962,7 @@ static void qa_audio_capture_callback(ma_device* device,
                                       ma_uint32 frame_count) {
   (void)device;
   (void)output;
+  const int64_t asked_at_us = qa_clock_now_us();
   if (input == NULL || g_capture.ring == NULL) {
     return;
   }
@@ -868,6 +997,7 @@ static void qa_audio_capture_callback(ma_device* device,
   // Publish AFTER the copy: the reader must never see an index that
   // covers bytes still being written.
   ma_atomic_store_64(&g_capture.write_total, (ma_uint64)(written + floats));
+  qa_capture_stamp_clock((written + floats) / channels, asked_at_us);
 }
 
 // Opens the capture device and starts delivering into the ring.
@@ -920,6 +1050,8 @@ QA_EXPORT int32_t qa_audio_capture_start(int32_t sample_rate,
   ma_atomic_store_64(&g_capture.write_total, 0);
   ma_atomic_store_64(&g_capture.read_total, 0);
   ma_atomic_store_64(&g_capture.dropped_frames, 0);
+  // No callback of this capture has spoken: the last one's point is gone.
+  ma_atomic_store_64(&g_capture.clock_time_us, 0);
   // Open BEFORE start: the callback checks ring != NULL, and start makes
   // it live immediately.
   g_capture.open = 1;
@@ -987,6 +1119,44 @@ QA_EXPORT int32_t qa_audio_capture_sample_rate(void) {
 // a silently shortened file.
 QA_EXPORT int64_t qa_audio_capture_dropped_frames(void) {
   return (int64_t)ma_atomic_load_64(&g_capture.dropped_frames);
+}
+
+// Frames the ring has been given so far — the capture's stair.
+QA_EXPORT int64_t qa_audio_capture_frames(void) {
+  if (!g_capture.open || g_capture.channels <= 0) {
+    return 0;
+  }
+  return (int64_t)ma_atomic_load_64(&g_capture.write_total) /
+         (int64_t)g_capture.channels;
+}
+
+// The latest point of the capture's line: out2[0] = the frames the ring
+// had been given when that callback returned, out2[1] = when it was asked
+// for them, on qa_audio_clock_now_us's clock. 0 = none open, or no
+// callback of this capture has spoken yet.
+QA_EXPORT int32_t qa_audio_capture_clock(int64_t* out2) {
+  if (out2 == NULL || !g_capture.open) {
+    return 0;
+  }
+  for (int attempt = 0; attempt < 16; attempt += 1) {
+    const ma_uint32 before = ma_atomic_load_32(&g_capture.clock_seq);
+    if (before & 1u) {
+      continue;
+    }
+    const int64_t frames = (int64_t)ma_atomic_load_64(&g_capture.clock_frames);
+    const int64_t time_us =
+        (int64_t)ma_atomic_load_64(&g_capture.clock_time_us);
+    if (ma_atomic_load_32(&g_capture.clock_seq) != before) {
+      continue;
+    }
+    if (time_us == 0) {
+      return 0;
+    }
+    out2[0] = frames;
+    out2[1] = time_us;
+    return 1;
+  }
+  return 0;
 }
 
 // The capture path's own buffering, in samples — how far behind "now" the

@@ -26,8 +26,11 @@ class BrushTipLibraryService {
   /// Folder holding `index.json` and one PNG per tip.
   final String directoryPath;
 
+  /// ⚠️Sandboxed under `FLUTTER_TEST`, as the presets that point at these
+  /// tips are: the workspace builds this library itself, so a widget test
+  /// reaches it through the production wiring.
   static String defaultBrushTipDirectoryPath() =>
-      appSettingsFilePath('brush_tips');
+      testRedirectedAppSettingsPath('brush_tips', sandbox: 'brush_tips');
 
   /// Index file format version.
   static const int indexVersion = 1;

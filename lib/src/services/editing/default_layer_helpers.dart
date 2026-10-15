@@ -100,12 +100,21 @@ Layer createCoveringLayer({
     // ([LayerKind.isSingletonPerCut]), so the name needs no number. ⛔Not
     // [LayerKind.unnamedCelIsTheLayer]: what a row is CALLED and what its
     // unnamed cel IS are two questions, whatever answers them alike today.
-    name: kind == LayerKind.image ? nextImageLayerNameForCut(cut) : 'Conte',
+    name: kind == LayerKind.image
+        ? nextImageLayerNameForCut(cut)
+        : conteRowBornName,
     kind: kind,
     frames: [cel.frame],
     timeline: cel.timeline,
   );
 }
+
+/// The name a conte row is born with (F-76) — and what a track's conte row
+/// is called while none of its cuts has one (`trackConteRowName`): one word,
+/// not the program language's word for the kind. 🗣️F-322 (유저 2026-10-09):
+/// 「처음 이름이 한글로 콘티이고 칸 생성 하고나면 Conte로 바뀌는데 그냥 통일.
+/// 멋대로 한글로 콘티라고 하지말것」.
+const String conteRowBornName = 'Conte';
 
 /// The one cel a COVERING row is born with over a cut of [cutDuration]
 /// frames, and its exposure edge to edge — what [createCoveringLayer] makes

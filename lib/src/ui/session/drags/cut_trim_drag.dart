@@ -14,6 +14,7 @@ import '../../../models/storyboard_timeline_layout.dart';
 import '../../../models/timeline_exposure.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../../models/timeline_repeat.dart' show ghostFreeTimeline;
+import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import 'edge_drag_roles.dart';
@@ -419,7 +420,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     final layout = planBlockRunLeadEdge(
       slots: [for (final panel in panels) panel.slot],
       targetIndex: targetIndex,
-      frameDelta: cumulativeDelta,
+      frameDelta: _cameraBounded(cumulativeDelta),
     );
     _plannedPanels = panels;
     _plannedPanelLengths = layout.lengths;
@@ -429,6 +430,43 @@ final class CutLeadTrimDrag extends CutTrimDrag {
       lengths: layout.lengths,
       before: before,
     );
+  }
+
+  /// [cumulativeDelta] as far as the cameras let it go (I-73-camera-row-Q4,
+  /// [minimumCutDurationForCamera]): shrinking the cut from its front stops
+  /// short of its keys, and drawing it out stops short of the keys of the
+  /// glued cut in front, which gives the frames once the gap between them
+  /// is spent. Only on the cut's FIRST panel: an inner panel trades frames
+  /// inside its own cut, whose length stays.
+  int _cameraBounded(int cumulativeDelta) {
+    if (_panelIndex != 0) {
+      return cumulativeDelta;
+    }
+    if (cumulativeDelta > 0) {
+      return math.min(cumulativeDelta, _cameraRoomOf(_cutId));
+    }
+    final index = _order.indexOf(_cutId);
+    if (index <= 0) {
+      return cumulativeDelta;
+    }
+    final gap = _beforeGaps[_cutId] ?? 0;
+    return math.max(cumulativeDelta, -(gap + _cameraRoomOf(_order[index - 1])));
+  }
+
+  /// How far [id] may shrink before its camera would leave a key outside
+  /// it: the key on its last frame comes in with the end, and the end stops
+  /// short of the others.
+  int _cameraRoomOf(CutId id) {
+    final cut = _roles.project.cutById(id);
+    if (cut == null) {
+      return 0;
+    }
+    final project = _roles.project.repository.requireProject();
+    final floor = minimumCutDurationForCamera(
+      cut,
+      drawnFrameCount: cutDrawnFrameCount(project, id) ?? cut.duration,
+    );
+    return math.max(0, cut.duration - floor);
   }
 
   /// The conte row's division keys for [id], in the CONTE's frames (the
@@ -503,12 +541,20 @@ final class CutTrailTrimDrag extends CutTrimDrag {
     int cumulativeDelta,
   ) {
     // The trailing edge sits on the LAST panel, so its floor is the row's
-    // full extent ([minimumCutDurationFor]); cuts without a storyboard row
-    // keep the plain one-frame floor.
+    // full extent ([minimumCutDurationFor]) — and the camera's last key but
+    // the one on the end; cuts with neither keep the plain one-frame floor.
     final trimmedCut = _roles.project.cutById(_cutId);
     final minDuration = trimmedCut == null
         ? 1
-        : minimumCutDurationFor(trimmedCut);
+        : minimumCutDurationFor(
+            trimmedCut,
+            drawnFrameCount:
+                cutDrawnFrameCount(
+                  _roles.project.repository.requireProject(),
+                  _cutId,
+                ) ??
+                trimmedCut.duration,
+          );
     final beforeDuration = _beforeDurations[_cutId]!;
     final newDuration = math.max(minDuration, beforeDuration + cumulativeDelta);
     final gaps = <CutId, int>{};

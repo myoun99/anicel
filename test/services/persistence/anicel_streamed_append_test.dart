@@ -7,6 +7,7 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/whole_carry.dart';
 
 /// Appending media without holding it.
 ///
@@ -47,7 +48,7 @@ void main() {
     final archive = seedArchive();
     final source = writeSource('bgm.wav', 700 * 1024);
     final expected = File(source).readAsBytesSync();
-    final entryName = anicelMediaEntryName((poolPath: source, token: 'c1'));
+    final entryName = anicelMediaEntryName(wholeCarry(source, 'c1'));
 
     appendAnicelEntries(
       path: archive,
@@ -72,7 +73,7 @@ void main() {
     final archive = seedArchive();
     final source = writeSource('voice.wav', 300 * 1024);
     final expected = File(source).readAsBytesSync();
-    final entryName = anicelMediaEntryName((poolPath: source, token: 'c1'));
+    final entryName = anicelMediaEntryName(wholeCarry(source, 'c1'));
 
     final layout = appendAnicelEntries(
       path: archive,

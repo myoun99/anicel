@@ -13,7 +13,8 @@ class _CanvasPanelText implements CelTextToolHost {
 
   final _BrushCanvasPanelState _state;
 
-  late final CelTextTool tool = CelTextTool(host: this);
+  late final CelTextTool tool = CelTextTool(host: this)
+    ..shownInHand.addListener(_shownInHand);
 
   /// The app's channel this hand is bound to, so that it is the one let go
   /// of on the way out.
@@ -34,6 +35,8 @@ class _CanvasPanelText implements CelTextToolHost {
     _boundTo?.unbind(tool);
     _boundTo = null;
     tool.dispose();
+    float.dispose();
+    _letTheLandingGo();
   }
 
   /// Whether the tool is in hand on a panel that runs it.
@@ -43,6 +46,13 @@ class _CanvasPanelText implements CelTextToolHost {
   @override
   TextToolOptions get options =>
       _state.widget.textToolOptions?.value ?? TextToolOptions.defaults;
+
+  @override
+  set options(TextToolOptions options) =>
+      _state.widget.textToolOptions?.value = options;
+
+  @override
+  int? get brushColour => _state.widget.brushToolState?.value.color;
 
   @override
   HistoryMark? get historyMark =>
@@ -134,10 +144,196 @@ class _CanvasPanelText implements CelTextToolHost {
   }
 
   /// What the interactive painter draws for [key] in place of [cel] while a
-  /// text of it is in hand — null when none is, or the one that is shows
-  /// exactly as the cel carries it.
+  /// text of it is in hand — null when none is: the HOLE the text in hand
+  /// left, with [float] over it. Where the float is what the cel will show
+  /// there ([_floatsTheLanding]), the texts above the one in hand stay in
+  /// the hole, as they are on the cel.
   BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) =>
-      tool.shownSurfaceFor(key, cel);
+      _floatsTheLanding
+      ? tool.onCanvas.shownWithoutFor(key, cel)
+      : tool.onCanvas.shownSurfaceFor(key, cel);
+
+  /// Whether what floats over the hole is what the cel will SHOW where the
+  /// text in hand lands ([CelTextLanding]) — on a row that keys its colours
+  /// — rather than the text's own pixels ([CelTextFloat]).
+  ///
+  /// 🗣️유저 2026-10-15 (F-344-Q3), asked how a keyed row should show a text
+  /// in hand over ink: 「놓을 때와 같은 코드로 — 완전히 같게」. The answer
+  /// kept every other row on the float as it was (its words: 「키 없는
+  /// 레이어는 지금처럼 GPU 플로트」) — there the float already lands as it is
+  /// shown, but for partly clear pixels over ink, one apart at most, and
+  /// it costs nothing per move of the hand.
+  bool get _floatsTheLanding =>
+      celSourceEffectSignature(_state.widget.activeSourceEffects).isNotEmpty;
+
+  // ── the float ───────────────────────────────────────────────────────
+
+  /// What floats over the hole the text in hand left (F-344,
+  /// [CelTextOnCanvas.floatingOn]) — read by the painter of that hole itself
+  /// (`BitmapSurfacePainter.landingPreview`), so a hand carrying the text
+  /// draws the canvas again and builds nothing.
+  final ValueNotifier<LandingPreview?> float = ValueNotifier(null);
+
+  /// The cel the painter of the hole was made for, which is the cel the
+  /// float is made over until that painter is made again.
+  ({BitmapSurface surface, BrushFrameKey key, String fx})? _floatOn;
+
+  /// Makes [float] over [identity], the cel the painter is drawing now —
+  /// asked as that painter is chosen, so the hole and what floats over it
+  /// are of one moment.
+  ///
+  /// A write during build is safe here for the selection layer's reason
+  /// (`_publishFloats`): a repaint is all it triggers.
+  void floatOver(({BitmapSurface surface, BrushFrameKey key, String fx})? on) {
+    _floatOn = on;
+    _float();
+  }
+
+  /// The text in hand showed something else — a hand carried it, a bake
+  /// made it.
+  void _shownInHand() => _float();
+
+  void _float() {
+    final on = _floatOn;
+    final floating = on == null
+        ? null
+        : tool.onCanvas.floatingOn(on.key, on.surface);
+    if (on == null || floating == null) {
+      _letTheLandingGo();
+      float.value = null;
+      return;
+    }
+    if (_floatsTheLanding) {
+      float.value = _landingOf(floating, on);
+      return;
+    }
+    _letTheLandingGo();
+    float.value = _floatOf(floating, on);
+  }
+
+  /// What the cel will show where the text in hand lands, made once for
+  /// each place a hand carries it to ([celTextLandingAsShown]) — null where
+  /// it holds no ink.
+  ///
+  /// Made again when the text's pixels or their place are others (a plate
+  /// is the object it is: its map compares by identity), when the picture
+  /// it was lifted off is another — the texts above it are of that picture
+  /// — or when the row's keys are.
+  CelTextLanding? _landingOf(
+    CelTextFloating floating,
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final (:pixels, :under, :above) = floating;
+    final kept = _landing;
+    if (kept != null &&
+        kept.of == pixels &&
+        identical(kept.under, under) &&
+        kept.fx == on.fx) {
+      return kept.shown;
+    }
+    _letTheLandingGo();
+    final made = celTextLandingAsShown(
+      under: under,
+      carried: pixels,
+      above: above,
+      effects: _state.widget.activeSourceEffects,
+    );
+    final shown = made == null
+        ? null
+        : CelTextLanding.of(made.region, made.straight);
+    _landing = (of: pixels, under: under, fx: on.fx, shown: shown);
+    return shown;
+  }
+
+  ({
+    CelTextPixels of,
+    BitmapSurface under,
+    String fx,
+    CelTextLanding? shown,
+  })?
+  _landing;
+
+  /// The landing last made is shown no more.
+  void _letTheLandingGo() {
+    _landing?.shown?.letGo();
+    _landing = null;
+  }
+
+  CelTextFloat _floatOf(
+    CelTextFloating floating,
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final (:pixels, under: _, :above) = floating;
+    // The pasteboard: what crosses it is cut there, as it is on the cel.
+    final wall = on.surface.canvasSize.pasteboardRect;
+    return CelTextFloat(
+      held: SelectionFloatPaint(
+        surface: _heldPainter(pixels.plate, on),
+        surfaceOffset: CanvasPoint(
+          x: pixels.dx.toDouble(),
+          y: pixels.dy.toDouble(),
+        ),
+        clip: wall,
+      ),
+      above: above.isEmpty
+          ? null
+          : SelectionFloatPaint(surface: _abovePainter(above, on), clip: wall),
+    );
+  }
+
+  /// The painter of a plate, made once for it, as its cel shows it
+  /// ([celSurfaceAsShown]).
+  BitmapSurfacePainter _heldPainter(
+    Map<TileCoord, BitmapTile> plate,
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final kept = _held;
+    if (kept != null && identical(kept.of, plate) && kept.fx == on.fx) {
+      return kept.painter;
+    }
+    final painter = _floatPainter(
+      celTextPlateSurface(
+        plate,
+        canvasSize: on.surface.canvasSize,
+        tileSize: on.surface.tileSize,
+      ),
+    );
+    _held = (of: plate, fx: on.fx, painter: painter);
+    return painter;
+  }
+
+  ({Object of, String fx, BitmapSurfacePainter painter})? _held;
+
+  /// The painter of the texts above the one in hand, made once for them.
+  BitmapSurfacePainter _abovePainter(
+    List<CelText> above,
+    ({BitmapSurface surface, BrushFrameKey key, String fx}) on,
+  ) {
+    final kept = _above;
+    if (kept != null && identical(kept.of, above) && kept.fx == on.fx) {
+      return kept.painter;
+    }
+    final painter = _floatPainter(
+      BitmapSurface(
+        canvasSize: on.surface.canvasSize,
+        tileSize: on.surface.tileSize,
+        texts: above,
+      ),
+    );
+    _above = (of: above, fx: on.fx, painter: painter);
+    return painter;
+  }
+
+  ({Object of, String fx, BitmapSurfacePainter painter})? _above;
+
+  /// A painter of what floats: drawn in its row's own space by the painter
+  /// it floats over, so it brings no paper and is nobody's cel.
+  BitmapSurfacePainter _floatPainter(BitmapSurface surface) =>
+      BitmapSurfacePainter(
+        surface: celSurfaceAsShown(surface, _state.widget.activeSourceEffects),
+        showTransparentBackground: false,
+        lineage: TilePyramid.noLineage,
+      );
 
   Widget layer() => Positioned.fill(
     child: CelTextToolLayer(

@@ -115,6 +115,10 @@ const _allowed = <String>[
   // pushed, to notice it changing. A `ClipRRectLayer` BUILT anywhere would
   // still be caught — only the switch case that reads one is let through.
   'case ClipRRectLayer(',
+  // Not a corner either: `StillRaster` pushes AGAIN the rounded clip a
+  // descendant pushed, to draw what that clip holds into the region's image
+  // and its live ticks back under it — the descendant's own corner.
+  'builder.pushClipRRect(clipRRect, clipBehavior: clipBehavior)',
 ];
 
 /// Whole files the rule cannot reach.

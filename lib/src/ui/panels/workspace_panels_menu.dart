@@ -78,6 +78,11 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   bool Function()? _regionOnTop;
   void Function(bool onTop)? _regionMover;
 
+  /// The floating region's fold — its chevron's press, and its key's (I-40).
+  void toggleRegionFolded() => _regionFolder?.call();
+
+  VoidCallback? _regionFolder;
+
   /// Called by the workspace; [relay] (the layout model) drives menu
   /// refreshes.
   void attach({
@@ -92,6 +97,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     void Function(String tabId)? floorTabSelector,
     bool Function()? regionOnTop,
     void Function(bool onTop)? regionMover,
+    VoidCallback? regionFolder,
   }) {
     _relay?.removeListener(notifyListeners);
     _entriesProvider = entriesProvider;
@@ -104,6 +110,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabSelector = floorTabSelector;
     _regionOnTop = regionOnTop;
     _regionMover = regionMover;
+    _regionFolder = regionFolder;
     _relay = relay..addListener(notifyListeners);
     // Attach runs inside the workspace's initState — mid-build. The menu
     // strip sits ABOVE the workspace in the tree and is already built, so
@@ -129,5 +136,6 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabSelector = null;
     _regionOnTop = null;
     _regionMover = null;
+    _regionFolder = null;
   }
 }

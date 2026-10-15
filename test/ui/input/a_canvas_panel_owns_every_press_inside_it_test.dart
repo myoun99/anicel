@@ -9,7 +9,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
@@ -39,7 +39,7 @@ import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 /// 12 viewports emitted without the scroller around it, 0 with it.
 void main() {
   tearDown(() {
-    CanvasPanHold.held.value = false;
+    CanvasViewHold.held.value = null;
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     debugClearValueControlPointers();
   });
@@ -189,7 +189,7 @@ void main() {
         tester,
       ) async {
         final h = await pump(tester, mount);
-        CanvasPanHold.held.value = true;
+        CanvasViewHold.held.value = ViewHold.pan;
         await tester.pump();
         await drag(tester, inside(tester), PointerDeviceKind.mouse);
         expect(h.emitted, isNotEmpty, reason: 'the canvas took the pan');
@@ -330,7 +330,7 @@ void main() {
       tester,
     ) async {
       final h = await pumpClaimed(tester);
-      CanvasPanHold.held.value = true;
+      CanvasViewHold.held.value = ViewHold.pan;
       await tester.pump();
       final g = await tester.startGesture(
         const Offset(120, 250),
@@ -455,7 +455,7 @@ void main() {
       tester,
     ) async {
       await pumpClaimed(tester);
-      CanvasPanHold.held.value = true;
+      CanvasViewHold.held.value = ViewHold.pan;
       await tester.pump();
       final g = await tester.startGesture(
         const Offset(120, 250),

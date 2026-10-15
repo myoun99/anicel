@@ -20,6 +20,7 @@ import '../../native/qa_audio_native.dart';
 import '../../native/qa_engine_abi.dart';
 import '../media/media_byte_source.dart';
 import 'audio_conform_pipeline.dart';
+import 'audio_decode_stream.dart';
 import 'audio_resampler_reference.dart';
 
 /// One conform request — every field a sendable value so the whole thing
@@ -158,20 +159,16 @@ void _applyLibraryOverride(String? override) {
 /// was false — compression is decided per file and an MP4 shrinks 6.7% —
 /// so a carried movie's soundtrack arrived whole in memory before a decoder
 /// saw it (2026-09-24).
+///
+/// [window]: only those of the sound's own frames, and only those held — see
+/// [QaAudioDecoder.decodeSpan].
 ({Float32List samples, int channels, int sampleRate})? decodeAudioSource(
-  MediaByteSource source,
-) {
-  final span = source.span;
-  if (span == null) {
-    // Only a file that is no longer there has no span; say so the way
-    // reading it would have, so the pipeline counts it as unreadable.
-    throw FileSystemException('the sound is not there to decode', '$source');
-  }
+  MediaByteSource source, {
+  ({int start, int count})? window,
+}) {
   final decoded = QaAudioDecoder.instance?.decodeSpan(
-    span.path,
-    offset: span.offset,
-    length: span.length,
-    framed: span.framed,
+    _spanOf(source),
+    window: window,
   );
   if (decoded == null) {
     return null;
@@ -183,39 +180,49 @@ void _applyLibraryOverride(String? override) {
   );
 }
 
+/// [source]'s sound opened to be read on, at its own rate — what a conform
+/// is made from, so a long one is never held whole (user 2026-10-10, board
+/// long-sound-conform-memory-Q1). Null when no decoder recognized it.
+/// Decoded where it lies, as [decodeAudioSource] is.
+AudioDecodeStream? openAudioSource(MediaByteSource source) =>
+    QaAudioDecoder.instance?.openSpan(_spanOf(source));
+
+/// Where [source]'s bytes lie for the decoder.
+MediaSpan _spanOf(MediaByteSource source) {
+  final span = source.span;
+  if (span == null) {
+    // Only a file that is no longer there has no span; say so the way
+    // reading it would have, so the pipeline counts it as unreadable.
+    throw FileSystemException('the sound is not there to decode', '$source');
+  }
+  return span;
+}
+
 /// The pipeline itself, on whichever isolate this is called from —
 /// [runConformInIsolate]'s worker body, and directly callable by tests
 /// that want the real native path without isolate indirection.
 ConformResult runConformHere(ConformRequest request) {
   _applyLibraryOverride(request.libraryPathOverride);
   final pipeline = AudioConformPipeline(
-    decode: decodeAudioSource,
+    decode: openAudioSource,
     // Native resampler when the binary is present; the byte-identical Dart
     // reference otherwise. Either way the SAME filter design — that is what
     // the parity pins are for.
-    resample:
-        ({
-          required samples,
-          required channels,
-          required inputRate,
-          required outputRate,
-        }) {
-          final native = QaAudioNative.instance;
-          if (native != null) {
-            return native.resample(
-              samples: samples,
-              channels: channels,
-              inputRate: inputRate,
-              outputRate: outputRate,
-            );
-          }
-          return resampleAudioReference(
-            samples: samples,
-            channels: channels,
-            inputRate: inputRate,
-            outputRate: outputRate,
-          ).samples;
-        },
+    resample: ({required channels, required inputRate, required outputRate}) {
+      final native = QaAudioNative.instance;
+      if (native != null) {
+        return native.openResampler(
+          channels: channels,
+          inputRate: inputRate,
+          outputRate: outputRate,
+        );
+      }
+      return AudioResampleStreamReference(
+        channels: channels,
+        inputRate: inputRate,
+        outputRate: outputRate,
+      );
+    },
     projectSampleRate: request.projectSampleRate,
     bucketsPerSecond: request.bucketsPerSecond,
     speedNumerator: request.speedNumerator,

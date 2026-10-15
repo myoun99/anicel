@@ -36,8 +36,8 @@ extension ExportCelsBoardProbe on WidgetTester {
   Finder celsBoardSwitch(String rowId) =>
       find.byKey(ValueKey<String>('export-cels-switch-$rowId'));
 
-  /// What [rowId]'s switch DRAWS: the app's boolean on a row, the one that
-  /// can say 「mixed」 on a folder.
+  /// What [rowId]'s switch DRAWS: on, off — or 「mixed」 where its files
+  /// disagree.
   BooleanMix celsBoardSwitchState(String rowId) {
     final mixed = find.descendant(
       of: celsBoardSwitch(rowId),
@@ -83,6 +83,42 @@ extension ExportCelsBoardProbe on WidgetTester {
             sheet.written,
           ),
   ];
+
+  Finder celsStackSwitch(String rowId) =>
+      find.byKey(ValueKey<String>('export-cels-stack-switch-$rowId'));
+
+  /// The attach column's lines in the order they are DRAWN, top to bottom
+  /// — each row's id and whether its switch says the files hold it.
+  List<(String, bool)> get celsStackLines {
+    const prefix = 'export-cels-stack-line-';
+    final lines = <(double, String)>[
+      for (final element in find
+          .byWidgetPredicate(
+            (widget) =>
+                widget.key is ValueKey<String> &&
+                (widget.key! as ValueKey<String>).value.startsWith(prefix),
+          )
+          .evaluate())
+        (
+          getTopLeft(find.byWidget(element.widget)).dy,
+          (element.widget.key! as ValueKey<String>).value.substring(
+            prefix.length,
+          ),
+        ),
+    ]..sort((a, b) => a.$1.compareTo(b.$1));
+    return [
+      for (final (_, id) in lines)
+        (
+          id,
+          widget<BooleanDot>(
+            find.descendant(
+              of: celsStackSwitch(id),
+              matching: find.byType(BooleanDot),
+            ),
+          ).value,
+        ),
+    ];
+  }
 
   /// Presses a control of the list after bringing it into view.
   Future<void> pressInCelsBoard(Finder control) async {

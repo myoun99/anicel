@@ -242,8 +242,8 @@ void main() {
                 selectionCommands: commands,
                 viewport: liveViewport,
                 onViewportChanged: onViewportChanged,
-                shapeFillDabFor: (shape, color) => buildShapeFillDab(
-                  shape: shape,
+                shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+                  region: area,
                   color: color,
                   options: const FloodFillOptions(
                     expandPx: 0,
@@ -468,7 +468,8 @@ void main() {
       .widgetList<CustomPaint>(find.byType(CustomPaint))
       .map((paint) => paint.painter)
       .whereType<SelectionFloatPainter>()
-      .map((painter) => painter.float.surface)
+      .expand((painter) => painter.floats)
+      .map((float) => float.surface)
       .whereType<BitmapSurfacePainter>()
       .where((painter) => !identical(painter.surface, committed))
       .toList();
@@ -1044,7 +1045,8 @@ void main() {
           .map((paint) => paint.painter)
           .whereType<SelectionFloatPainter>()
           .single
-          .float;
+          .floats
+          .single;
       expect(
         surfacePixelRgba(
           float.surface!.surface,
@@ -1494,6 +1496,45 @@ void main() {
     // that DRAWS — and that rig must open with this same control, because
     // an instrument that cannot move satisfies 「the ink went up」 by
     // failing, and satisfies nothing at all by passing.
+  });
+
+  /// 🚨`a-box-walked-onto-an-empty-cel-floats-the-old-picture` (measured
+  /// 2026-10-09): a box walked onto a cel with nothing to lift went on
+  /// showing the float of the cel it had left — the float's pictures lived
+  /// on the layer and outlived the session they were made from. F-164 ①
+  /// (「프레임2가면 프레임1의 그림이 그대로 남아있는 문제」) was pinned only
+  /// where the cel walked to HAS ink, whose fresh lift replaced them.
+  testWidgets('a box walked onto a cel with nothing to lift floats nothing '
+      'there — the cel it left does not follow', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+    await moveBoxBy(tester, const Offset(15, 15));
+    final preview = find.byKey(
+      const ValueKey<String>('transform-resample-preview'),
+    );
+    expect(
+      preview,
+      findsOneWidget,
+      reason: '⛔fixture premise: frame one floats its stroke',
+    );
+
+    // Frame two has no ink at all.
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'the box walks with its numbers (유저 확정 2026-09-17)',
+    );
+    expect(
+      preview,
+      findsNothing,
+      reason: '🚨frame one\'s float is drawn over frame two',
+    );
   });
 
   /// 🚨★★★**③ 유저 2026-09-18: 「프레임2의 변형이 시작되야하는데 시작되지도
@@ -5715,7 +5756,8 @@ void main() {
               .widgetList<CustomPaint>(find.byType(CustomPaint))
               .map((paint) => paint.painter)
               .whereType<SelectionFloatPainter>()
-              .map((painter) => painter.float.surface)
+              .expand((painter) => painter.floats)
+              .map((float) => float.surface)
               .whereType<BitmapSurfacePainter>(),
         ];
         for (final painter in painters) {
@@ -6251,7 +6293,9 @@ void main() {
           .widgetList<CustomPaint>(find.byType(CustomPaint))
           .map((paint) => paint.painter)
           .whereType<SelectionFloatPainter>()
-          .any((painter) => painter.float.image != null);
+          .any(
+            (painter) => painter.floats.any((float) => float.image != null),
+          );
       await pumpUntil(
         tester,
         decodedPreviewIsUp,
@@ -7198,7 +7242,7 @@ void main() {
     // 「채움은 타입과 무관하다」.
     group('「채움」', () {
       // The fixture's fill tool lays an exact shape with a hard edge at
-      // full opacity (the harness's own `shapeFillDabFor`).
+      // full opacity (the harness's own `shapeFillDabsFor`).
       const exactFill = ShapeToolOptions(
         part: ShapePart.fill,
         antiAlias: false,

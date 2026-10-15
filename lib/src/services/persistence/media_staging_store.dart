@@ -1,9 +1,9 @@
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
+import 'package:flutter/foundation.dart' show immutable;
 
+import '../../core/on_a_worker.dart';
 import '../../core/path_names.dart';
 import '../../models/media_asset.dart'
     show MediaCarry, isOneStoredName, mediaCarryName, mediaNameParts;
@@ -65,27 +65,6 @@ class MediaStagingStore {
   /// ⚠️**CALLING THIS BUILDS AND LOCKS THE ROOM**, which is why
   /// [directoryPath] resolves it on use rather than in the constructor.
   static String defaultDirectory() => SessionScratch.stagedFolder();
-
-  /// Test seam: do the staging work HERE instead of in an isolate.
-  ///
-  /// 🚨★★★**A `testWidgets` CLOCK NEVER LETS A REAL ISOLATE FINISH.** The
-  /// widget binding runs the body in a fake-async zone, so awaiting
-  /// [Isolate.run] is a hang, not a wait — every voice-take and import
-  /// widget test stopped at「did not complete」the moment this moved off
-  /// the UI isolate. `tester.runAsync` is the other answer and it does not
-  /// fit: these tests pump between the await and the assertion.
-  ///
-  /// ⛔**Inline is not a second implementation.** The same [_stageBytes]
-  /// runs either way, and [stageCarriedBytes] stays `async` either way — so the
-  /// ORDER a caller sees is identical, which is what the entrances'
-  /// invariant actually rests on.
-  ///
-  /// ⚠️`flutter_test_config.dart` turns this ON for the whole suite, so the
-  /// isolate road needs one test that turns it back OFF — see
-  /// `media_staging_store_test`. Without that, nothing would ever run the
-  /// road production takes.
-  @visibleForTesting
-  static bool debugStageInline = false;
 
   /// 🚨Separators normalised HERE, once — every path built from it
   /// ([_basePathFor]) is in the one spelling, and a path the file system
@@ -292,10 +271,12 @@ class MediaStagingStore {
     Directory(directoryPath).createSync(recursive: true);
     // Scalars only. The closure crosses an isolate boundary, so it opens
     // its own handles over there rather than capturing any from here.
+    // ⛔Run here in a test ([debugWorkersRunHere]) it is not a second
+    // implementation: the same [_stageBytes], and this stays `async` either
+    // way — so the ORDER a caller sees is identical, which is what the
+    // entrances' invariant actually rests on.
     final directory = directoryPath;
-    final written = debugStageInline
-        ? _stageBytes(todo, directory)
-        : await Isolate.run(() => _stageBytes(todo, directory));
+    final written = await onAWorker(() => _stageBytes(todo, directory));
     for (final one in written) {
       done.add(
         StagedMedia(
@@ -344,9 +325,7 @@ class MediaStagingStore {
       return done;
     }
     Directory(directoryPath).createSync(recursive: true);
-    final written = debugStageInline
-        ? _stageBytesFrom(todo)
-        : await Isolate.run(() => _stageBytesFrom(todo));
+    final written = await onAWorker(() => _stageBytesFrom(todo));
     for (final (carry, one) in written) {
       done.add((
         carry: carry,

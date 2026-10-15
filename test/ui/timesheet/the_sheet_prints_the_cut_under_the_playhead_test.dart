@@ -17,9 +17,10 @@ import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 ///
 /// Measured first (09-16), with two one-page cuts: a playback crossing left
 /// the sheet on the cut being left until stop, and a ruler drag left it
-/// there until release. The app is driven with its own sheets group — the
-/// sheet turns over through the workspace's listenables, which a bare host
-/// would never hear.
+/// there until release. Since I-57 ② both crossings land the cut they
+/// reach. The app is driven with its own sheets group — the sheet turns
+/// over through the workspace's listenables, which a bare host would never
+/// hear.
 List<Cut> _cutsOf(EditorSessionManager session) =>
     session.repository.requireProject().tracks.first.cuts;
 
@@ -116,8 +117,8 @@ void main() {
 
     expect(
       session.activeCutId,
-      first.id,
-      reason: 'fixture: a drag leaves the open cut alone (UI-R7 #9)',
+      second.id,
+      reason: 'the drag crossed into it (I-57 ②)',
     );
     expect(_printedCut(tester), second.name);
     expect(
@@ -126,8 +127,8 @@ void main() {
       reason: 'the playhead row is the dragged frame of the printed cut',
     );
 
-    // Inside the printed cut a drag moves nothing but the parking, and the
-    // playhead row has to repaint for it.
+    // Inside the printed cut a drag moves nothing but the editing cursor,
+    // and the playhead row has to repaint for it.
     final overlay = tester.renderObject<RenderCustomPaint>(
       find.byKey(const ValueKey<String>('timesheet-playhead-overlay')),
     );
@@ -136,7 +137,7 @@ void main() {
     expect(
       overlay.debugNeedsPaint,
       isTrue,
-      reason: 'a move of the parking repaints the playhead row',
+      reason: 'a move of the cursor repaints the playhead row',
     );
     await tester.pump();
     expect(_sheetPlayheadFrame(tester), 4);

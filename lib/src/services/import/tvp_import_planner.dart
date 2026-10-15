@@ -36,9 +36,9 @@ import '../../models/import/tvp_import_model.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
-import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart';
+import 'camera_track.dart';
 import 'media_import_planner.dart' show ImportIdMint, PlannedCelBake;
 import '../../models/import/import_warning.dart';
 
@@ -60,15 +60,13 @@ class TvpImportPlan {
 /// into something the session can read — for the .tvpp reader that is a
 /// synthetic slot key resolved against the file bytes at bake time.
 ///
-/// [fit] defaults to [MediaFitMode.none]: a clip's cels are already
-/// the clip's exact size and the cut is created at that size, so 1:1 is
-/// both correct and the only mode that copies bytes instead of resampling
-/// them.
+/// 🪦A `fit` (default 1:1) rode on every planned bake here, and the door
+/// never read it: a clip's cels are decoded tile for tile at the clip's
+/// own size (`bakeCelTiles`), on a cut made at that size.
 TvpImportPlan planTvpImport({
   required TvpImportClip parsed,
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
-  MediaFitMode fit = MediaFitMode.none,
   String? cutName,
 }) {
   final warnings = [...parsed.warnings];
@@ -97,6 +95,7 @@ TvpImportPlan planTvpImport({
           timeline: SplayTreeMap<int, TimelineExposure>(),
           opacity: source.opacity,
           kind: LayerKind.folder,
+          collapsed: source.collapsed,
         ),
       );
       continue;
@@ -142,7 +141,6 @@ TvpImportPlan planTvpImport({
               layerId: layerId,
               frameId: frameId,
               sourceFile: resolveFile(block.file),
-              fit: fit,
             ),
           );
         }
@@ -324,22 +322,9 @@ SplayTreeMap<int, TimelineExposure> _withTvpEdgeMarks(
   return marked;
 }
 
-/// Deviations a straight line may have before the simplifier keeps the
-/// frame as its own key. Sized to stay under a quarter canvas pixel on a
-/// 2000px-ish canvas: position is already in canvas pixels; a 1e-4 zoom
-/// error moves a 2000px span by 0.2px, and 0.01° swings a 1000px radius
-/// by 0.17px.
-const double _cameraPositionTolerance = 0.25;
-const double _cameraZoomTolerance = 1e-4;
-const double _cameraRotationTolerance = 0.01;
-
-/// A key at least this often, so the simplifier's per-run rescan cannot
-/// turn quadratic on a very long clip.
-const int _cameraMaxRunFrames = 512;
-
 /// The clip's camera as a [CutCamera].
 ///
-/// **Built from the BAKED `positions`, not the authored `points`.**
+/// **Played from the BAKED `positions`, not the authored `points`.**
 /// TVPaint's own curve does not reach its keyframe values: in the
 /// `edge_behaviors` fixture the key at frame 24 reads `y: 853.0` while the
 /// baked curve TVPaint displayed ends at `y: 845.332`, and the first key's
@@ -347,10 +332,16 @@ const int _cameraMaxRunFrames = 512;
 /// framed the move they SAW, so the baked curve is the truth and the keys
 /// are a lossy summary of it.
 ///
-/// A key on every frame would be unreadable on the timeline, so
-/// [_simplifyCameraTrack] drops every frame a straight line between its
-/// neighbours already reproduces: a linear pan collapses back to two keys,
-/// a hold to one, and easing keeps exactly the keys it needs.
+/// So the keys stand where TVPaint's stand, each channel's on its own
+/// frames ([TvpCamera.keyedOn], I-89 ⑦), each carrying the pose TVPaint
+/// shows on its frame, and every way between two is TVPaint's ease as an
+/// AE ease, as far as one plays it ([cutCameraOfFramePoses], the .clip
+/// import's as well). TVPaint stretches its whole path a frame long — it
+/// passes each key after the key's own frame, the last a whole frame late —
+/// so a cut that runs on past the last key has one more key where the move
+/// really stops. ↩️A key was kept wherever a straight line stopped playing
+/// the bake: a slow start came in as many linear keys rather than two keys
+/// and an ease.
 ///
 /// `angle` arrives NEGATED — the two apps count rotation opposite ways.
 /// See [_cameraPoseFor] for the measurement that settled it.
@@ -358,26 +349,13 @@ CutCamera planTvpCamera({
   required TvpCamera camera,
   required int frameCount,
 }) {
-  // `keyframes` is the gate: the .tvpp reader only fills either list
-  // when the clip's `[cameradata]` carries authored keys.
-  if (camera.keyframes.isEmpty || camera.positions.isEmpty) {
+  // `positions` is the gate: the .tvpp reader only bakes it when the
+  // clip's `[cameradata]` carries authored keys.
+  if (camera.positions.isEmpty) {
     return CutCamera.empty();
   }
-  final source = camera.positions;
-  // A STILL camera stays one key. The baked curve holds one pose per
-  // frame either way, and the simplifier keeps both endpoints of any
-  // track it walks — which turned TVPaint's single frame-1 key into a
-  // key on the last frame too (288, hands-on).
-  if (!camera.isAnimated) {
-    final first = source.first;
-    final index = (first.frame - 1).clamp(0, frameCount - 1);
-    return CutCamera(
-      keyframes: {index: _cameraPoseFor(first)},
-    );
-  }
-
   final byFrame = SplayTreeMap<int, CameraPose>();
-  for (final pose in source) {
+  for (final pose in camera.positions) {
     // Poses number frames from 1, TVPaint-style.
     final index = pose.frame - 1;
     if (index < 0 || index >= frameCount) {
@@ -385,18 +363,7 @@ CutCamera planTvpCamera({
     }
     byFrame.putIfAbsent(index, () => _cameraPoseFor(pose));
   }
-  if (byFrame.isEmpty) {
-    return CutCamera.empty();
-  }
-
-  final frames = byFrame.keys.toList();
-  final poses = byFrame.values.toList();
-  return CutCamera(
-    keyframes: {
-      for (final index in _simplifyCameraTrack(frames, poses))
-        frames[index]: poses[index],
-    },
-  );
+  return cutCameraOfFramePoses(byFrame, keyedOn: camera.keyedOn);
 }
 
 /// One TVPaint pose in Anicel's terms. [CameraPose.center] is the view
@@ -435,59 +402,6 @@ CameraPose _cameraPoseFor(TvpCameraPose pose) {
     // Copying the sign through would mirror every rotating move.
     rotationDegrees: pose.angleDegrees.isFinite ? -pose.angleDegrees : 0,
   );
-}
-
-/// Indexes worth keeping: the ends, plus every frame a straight line
-/// between the surrounding kept frames fails to reproduce.
-List<int> _simplifyCameraTrack(List<int> frames, List<CameraPose> poses) {
-  if (poses.length <= 2) {
-    return [for (var i = 0; i < poses.length; i += 1) i];
-  }
-  final kept = <int>[0];
-  var anchor = 0;
-  for (var candidate = 2; candidate < poses.length; candidate += 1) {
-    if (frames[candidate] - frames[anchor] > _cameraMaxRunFrames ||
-        !_lineReproduces(frames, poses, anchor, candidate)) {
-      kept.add(candidate - 1);
-      anchor = candidate - 1;
-    }
-  }
-  kept.add(poses.length - 1);
-  return kept;
-}
-
-bool _lineReproduces(
-  List<int> frames,
-  List<CameraPose> poses,
-  int from,
-  int to,
-) {
-  final span = frames[to] - frames[from];
-  if (span <= 0) {
-    return false;
-  }
-  final start = poses[from];
-  final end = poses[to];
-  for (var middle = from + 1; middle < to; middle += 1) {
-    final t = (frames[middle] - frames[from]) / span;
-    final pose = poses[middle];
-    double off(double a, double b, double actual) => (a + (b - a) * t - actual)
-        .abs();
-    if (off(start.center.x, end.center.x, pose.center.x) >
-            _cameraPositionTolerance ||
-        off(start.center.y, end.center.y, pose.center.y) >
-            _cameraPositionTolerance ||
-        off(start.zoom, end.zoom, pose.zoom) > _cameraZoomTolerance ||
-        off(
-              start.rotationDegrees,
-              end.rotationDegrees,
-              pose.rotationDegrees,
-            ) >
-            _cameraRotationTolerance) {
-      return false;
-    }
-  }
-  return true;
 }
 
 /// TVPaint's blending-mode NAME to Anicel's enum.

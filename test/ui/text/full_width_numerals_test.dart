@@ -1,13 +1,17 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/dialogs/app_prompt_dialog.dart';
 import 'package:anicel/src/ui/text/full_width_numerals.dart';
+
+import '../../helpers/dart_sources.dart';
 
 /// R9 #15 — a Japanese IME sitting in 全角 types numerals the app used to
 /// refuse outright: `digitsOnly` does not consider `１` a digit, and
-/// `int.tryParse('１２')` is null. Converting at INPUT time is the local
-/// convention, and it is what makes one change enough — no parse site can
-/// see a full-width numeral afterwards.
+/// `int.tryParse('１２')` is null.
+///
+/// 🐛F-355 (유저 2026-10-13): 「５０이라고 입력할때 숫자가 두번 등록되는거같은?」
+/// — converting a numeral while the IME still composed it doubled what was
+/// typed next on Windows. The field converts what the IME COMMITS, and
+/// whatever reads a number field reads its numerals half-width.
 void main() {
   group('toHalfWidthNumerals', () {
     test('numerals, the decimal point and the minus sign convert', () {
@@ -32,6 +36,16 @@ void main() {
       expect(int.tryParse(toHalfWidthNumerals('１２')), 12);
       expect(double.tryParse(toHalfWidthNumerals('－１．５')), -1.5);
     });
+  });
+
+  test('halfWidthInt reads a number field\'s whole number, full-width or '
+      'not, around its spaces', () {
+    expect(halfWidthInt('５０'), 50);
+    expect(halfWidthInt(' １２ '), 12);
+    expect(halfWidthInt('－３'), -3);
+    expect(halfWidthInt('34'), 34);
+    expect(halfWidthInt('５ａ'), isNull);
+    expect(halfWidthInt(''), isNull);
   });
 
   group('the formatter', () {
@@ -63,6 +77,19 @@ void main() {
       final value = format('123');
       expect(value.text, '123');
     });
+
+    test('🚨a draft the IME is still composing comes back as it is — '
+        'changed, it doubled what was typed next', () {
+      const draft = TextEditingValue(
+        text: '５０',
+        selection: TextSelection.collapsed(offset: 2),
+        composing: TextRange(start: 0, end: 2),
+      );
+      expect(
+        formatter.formatEditUpdate(TextEditingValue.empty, draft),
+        same(draft),
+      );
+    });
   });
 
   test('the integer list converts BEFORE it filters — the order is the '
@@ -80,29 +107,67 @@ void main() {
     );
   });
 
-  testWidgets('the shared numeric prompt accepts 全角 digits', (tester) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: AppPromptDialog(
-            title: 'Frames',
-            fieldLabel: 'Count',
-            initialValue: '',
-            confirmLabel: 'Set',
-            numeric: true,
-            fieldKey: ValueKey<String>('prompt-field'),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+  test('the integer list leaves a draft whole — what it would drop too — '
+      'and filters it once committed', () {
+    TextEditingValue format(TextEditingValue value) {
+      for (final formatter in halfWidthDigitsOnly) {
+        value = formatter.formatEditUpdate(TextEditingValue.empty, value);
+      }
+      return value;
+    }
 
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('prompt-field')),
-      '１２',
+    const draft = TextEditingValue(
+      text: '５ａ',
+      selection: TextSelection.collapsed(offset: 2),
+      composing: TextRange(start: 0, end: 2),
     );
-    await tester.pumpAndSettle();
+    expect(format(draft).text, '５ａ');
+    expect(
+      format(draft.copyWith(composing: TextRange.empty)).text,
+      '5',
+    );
+  });
 
-    expect(find.text('12'), findsOneWidget);
+  test('the range list converts the minus between two numbers', () {
+    var value = const TextEditingValue(text: '１－２０ａ');
+    for (final formatter in halfWidthNumberRanges) {
+      value = formatter.formatEditUpdate(TextEditingValue.empty, value);
+    }
+    expect(value.text, '1-20');
+  });
+
+  group('every number field keeps this law', () {
+    test('a filter of what is typed is a number field\'s, run on what the '
+        'IME commits — no file but the law hands one to a field', () {
+      final strays = [
+        for (final file in dartFilesUnder('lib'))
+          if (libPath(file) != 'lib/src/ui/text/full_width_numerals.dart' &&
+              file.readAsStringSync().contains('FilteringTextInputFormatter'))
+            libPath(file),
+      ];
+      expect(
+        strays,
+        isEmpty,
+        reason: 'a filter of its own touches the draft the IME is composing '
+            '— on Windows that doubles what is typed next (F-355)',
+      );
+    });
+
+    test('every field with a number pad takes full-width numerals', () {
+      final numberPads = [
+        for (final file in dartFilesUnder('lib'))
+          if (RegExp(
+            r'TextInputType\.number|numberWithOptions',
+          ).hasMatch(file.readAsStringSync()))
+            file,
+      ];
+      expect(numberPads, isNotEmpty, reason: '⛔the scan measured nothing');
+      final strays = [
+        for (final file in numberPads)
+          if (!file.readAsStringSync().contains('full_width_numerals.dart'))
+            libPath(file),
+      ];
+      expect(strays, isEmpty);
+    });
   });
 }

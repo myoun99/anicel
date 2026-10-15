@@ -14,8 +14,9 @@ import '../../models/layer_id.dart';
 import '../../native/qa_native_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
+import '../quiet_turns.dart';
 import 'timeline_frame_window.dart';
-import 'timeline_glyph_cache.dart';
+import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
@@ -78,6 +79,13 @@ class TimelineGridTileStore {
   /// detached ([noticesFor]), so a row nothing shows is not here.
   final Map<String, List<VoidCallback>> _shown = <String, List<VoidCallback>>{};
 
+  /// Whether [row] is shown now and [painter] paints the live state — the
+  /// only rows the store asks anything for of its own accord: a warm-up,
+  /// or a request its queue once turned away.
+  bool _showsLive(String row, TimelineTileRasterSource painter) =>
+      _shown.containsKey(row) &&
+      painter.substrateGeneration == _liveGeneration;
+
   /// The rows the queue turned a request of away, each with the latest one
   /// it turned away — see [_revisitStarved].
   final LinkedHashMap<String, _TileRequest> _starved =
@@ -92,6 +100,36 @@ class TimelineGridTileStore {
       LinkedHashMap<String, _TileEntry>();
   final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
   bool _drainScheduled = false;
+
+  /// The latest painter each row's paint asked through, with the device
+  /// pixel ratio it asked at — whom a warm-up asks for its next page
+  /// ([warmTheNextPage]).
+  final Map<String, ({TimelineTileRasterSource painter, double ratio})>
+  _askedBy = <String, ({TimelineTileRasterSource painter, double ratio})>{};
+
+  /// The next pages' spans, rastered while no shown span waits — at most as
+  /// many a warm-up as the run asked for ([warmTheNextPage]).
+  final LinkedHashMap<String, _TileRequest> _warming =
+      LinkedHashMap<String, _TileRequest>();
+
+  /// The spans past the edges of the rows' windows ([warmAhead]): rastered
+  /// as the next pages' are, but every one of them, by whichever warm-up
+  /// runs.
+  ///
+  /// ⛔Not in [_warming]: a run asks for its pages a few spans each frame
+  /// it changes its film frame in, and nothing asks at rest — a paint's
+  /// spans there, held to that count, waited for a run that never came.
+  final LinkedHashMap<String, _TileRequest> _ahead =
+      LinkedHashMap<String, _TileRequest>();
+
+  /// Whether a paint's [warmAhead] has a warm-up's start waiting for the
+  /// paint phase to end.
+  bool _warmScheduled = false;
+
+  /// The keys a warm-up has in flight, and of those the ones a paint asked
+  /// for meanwhile — whose landing tells the row, as a shown one's does.
+  final Set<String> _warmInFlight = <String>{};
+  final Set<String> _askedWhileWarm = <String>{};
 
   /// The keys a drain has taken off the queue and not landed yet.
   final Set<String> _inFlight = <String>{};
@@ -123,7 +161,8 @@ class TimelineGridTileStore {
   /// which is how `timeline_viewport_resize_test` went red in bulk runs and
   /// green alone (2026-09-03). Idle is the store's word, not a timer's.
   @visibleForTesting
-  bool get debugBusy => _drainsRunning > 0 || _pending.isNotEmpty;
+  bool get debugBusy =>
+      _drainsRunning > 0 || _pending.isNotEmpty || _warmScheduled;
 
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
@@ -152,6 +191,11 @@ class TimelineGridTileStore {
     _pending.clear();
     _starved.clear();
     _inFlight.clear();
+    _warming.clear();
+    _ahead.clear();
+    _warmInFlight.clear();
+    _askedWhileWarm.clear();
+    _warmSpan.micros = 0;
     _drainsRunning = 0;
     _epoch += 1;
   }
@@ -200,22 +244,17 @@ class TimelineGridTileStore {
       painter.layer.id,
       painter.axis,
     );
-    final key = '$row:$spanStartIndex';
-    final entry = _entries.remove(key);
-    if (entry != null) {
-      _entries[key] = entry;
-      if (entry.matches(painter, spanEndIndexExclusive, devicePixelRatio)) {
-        return entry.image;
-      }
-      if (entry.stillShows(
-        painter,
-        spanStartIndex,
-        spanEndIndexExclusive,
-        devicePixelRatio,
-      )) {
-        entry.celContentRevision = painter.celContentRevision;
-        return entry.image;
-      }
+    final key = _TileRequest.keyOf(row, spanStartIndex);
+    _askedBy[row] = (painter: painter, ratio: devicePixelRatio);
+    final entry = _touched(key);
+    if (entry != null &&
+        entry.showsNow(
+          painter,
+          spanStartIndex,
+          spanEndIndexExclusive,
+          devicePixelRatio,
+        )) {
+      return entry.image;
     }
     // Cold or stale: schedule ONE raster per key (the newest look wins —
     // a stale in-flight request re-checks at drain time). The queue is
@@ -231,7 +270,11 @@ class TimelineGridTileStore {
     // another repaint. Measured in the pin: 900 rasters of 19 tiles, 450
     // drains beside each other. Its landing repaints the row, which asks
     // then if the look moved meanwhile.
+    // A span a warm-up still holds becomes a shown one's to raster first; one
+    // a warm-up has in flight tells this row when it lands.
     if (!_inFlight.contains(key)) {
+      _warming.remove(key);
+      _ahead.remove(key);
       _enqueue(
         key,
         _TileRequest(
@@ -242,6 +285,8 @@ class TimelineGridTileStore {
           devicePixelRatio: devicePixelRatio,
         ),
       );
+    } else if (_warmInFlight.contains(key)) {
+      _askedWhileWarm.add(key);
     }
     // Stale-while-revalidate (UI-R20 #6, widened for R26 #27): WHATEVER
     // went stale — a look flip or a content edit (a new layer instance) —
@@ -290,6 +335,16 @@ class TimelineGridTileStore {
     return null;
   }
 
+  /// The tile at [key], made the newest in the cache: a span asked for —
+  /// shown, or warmed to be — is one about to be shown.
+  _TileEntry? _touched(String key) {
+    final entry = _entries.remove(key);
+    if (entry != null) {
+      _entries[key] = entry;
+    }
+    return entry;
+  }
+
   void _enqueue(String key, _TileRequest request) {
     _pending.remove(key);
     _pending[key] = request;
@@ -326,78 +381,316 @@ class TimelineGridTileStore {
     _drainsRunning += 1;
     try {
       while (_pending.isNotEmpty) {
-        final key = _pending.keys.first;
-        final request = _pending.remove(key)!;
-        // A dead-generation request is discarded, not rastered: its
-        // painter's resolvers answer from the live session, which no longer
-        // describes its rows. ⛔This check and the resolver reads are one
-        // synchronous block — `_raster` emits the substrate and collects
-        // the glyph cells before its first await — so nothing can change
-        // the session between the check and the answers it guards.
-        if (request.painter.substrateGeneration != _liveGeneration) {
-          continue;
-        }
-        _inFlight.add(key);
-        final _Rastered? rastered;
-        try {
-          rastered = await _raster(engine, request);
-        } finally {
-          if (epoch == _epoch) {
-            _inFlight.remove(key);
-          }
-        }
-        if (epoch != _epoch) {
-          rastered?.image.dispose();
+        final request = _pending.remove(_pending.keys.first)!;
+        if (!await _rasterAndLand(engine, request, epoch, warm: false)) {
           return;
         }
-        if (rastered == null) {
-          continue;
-        }
-        _entries.remove(key)?.image.dispose();
-        _entries[key] = _TileEntry(
-          substrateGeneration: request.painter.substrateGeneration,
-          layer: request.painter.layer,
-          coverageIdentity: request.painter.coverageIdentity,
-          frameCellExtent: request.painter.frameCellExtent,
-          crossAxisExtent: request.painter.crossAxisExtent,
-          colorScheme: request.painter.colorScheme,
-          exposureStateForLayer: request.painter.exposureStateForLayer,
-          frameNameForLayer: request.painter.frameNameForLayer,
-          celHasContentForLayer: request.painter.celHasContentForLayer,
-          // ⛔The revision the RASTER sampled, never a live read. `_raster`
-          // suspends between its content reads and this landing (the glyph
-          // A8 bake, the ImmutableBuffer upload are real awaits), so a
-          // crossing that bumps the revision inside that window would give
-          // pixels of revision N a stamp of N+1 — and `matches()` compares
-          // the NUMBER, so the poisoned tile was served as fresh forever
-          // (the LRU survives cut trips and the 'projectId:cutId' string is
-          // reproduced exactly on return; only the NEXT bump healed it).
-          celContentRevision: rastered.celContentRevision,
-          substrate: rastered.substrate,
-          baseTextStyle: request.painter.baseTextStyle,
-          spanEndIndexExclusive: request.spanEndIndexExclusive,
-          devicePixelRatio: request.devicePixelRatio,
-          paperGround: request.painter.paperGround,
-          blockFrameLines: request.painter.blockFrameLines,
-          framesPerSecond: request.painter.framesPerSecond,
-          image: rastered.image,
-        );
-        while (_entries.length > capacity) {
-          _entries.remove(_entries.keys.first)!.image.dispose();
-        }
-        revision.value += 1;
-        // A row whose tile lands asks again for itself when it repaints —
-        // coming back to it could only find an older painter.
-        _starved.remove(request.row);
-        _noticeLanding(request.row);
       }
       _revisitStarved();
+    } finally {
+      if (epoch == _epoch) {
+        _drainsRunning -= 1;
+        // What is on the screen is rastered; what is past it goes on. The
+        // next pages wait for the run to ask again.
+        _startWarming();
+      }
+    }
+  }
+
+  /// Rasters [request] and lands its tile — false when a [clear] fenced the
+  /// drain off while it was in flight.
+  ///
+  /// A shown span's landing tells its row, which repaints with it. A warm
+  /// one's tells nobody — the row does not show the span yet, and a repaint
+  /// of a row for a tile it does not show is a frame drawn for nothing —
+  /// unless a paint asked for it while it was in flight ([_askedWhileWarm]).
+  Future<bool> _rasterAndLand(
+    QaNativeEngine engine,
+    _TileRequest request,
+    int epoch, {
+    required bool warm,
+  }) async {
+    final key = request.key;
+    // A dead-generation request is discarded, not rastered: its painter's
+    // resolvers answer from the live session, which no longer describes its
+    // rows. ⛔This check and the resolver reads are one synchronous block —
+    // `_raster` emits the substrate and collects the glyph cells before its
+    // first await — so nothing can change the session between the check and
+    // the answers it guards.
+    if (request.painter.substrateGeneration != _liveGeneration) {
+      return true;
+    }
+    _inFlight.add(key);
+    if (warm) {
+      _warmInFlight.add(key);
+    }
+    final _Rastered? rastered;
+    try {
+      rastered = await _raster(engine, request);
+    } finally {
+      if (epoch == _epoch) {
+        _inFlight.remove(key);
+        _warmInFlight.remove(key);
+      }
+    }
+    if (epoch != _epoch) {
+      rastered?.image.dispose();
+      return false;
+    }
+    if (rastered == null) {
+      return true;
+    }
+    _entries.remove(key)?.image.dispose();
+    _entries[key] = _TileEntry(
+      substrateGeneration: request.painter.substrateGeneration,
+      layer: request.painter.layer,
+      coverageIdentity: request.painter.coverageIdentity,
+      frameCellExtent: request.painter.frameCellExtent,
+      crossAxisExtent: request.painter.crossAxisExtent,
+      colorScheme: request.painter.colorScheme,
+      exposureStateForLayer: request.painter.exposureStateForLayer,
+      frameNameForLayer: request.painter.frameNameForLayer,
+      celHasContentForLayer: request.painter.celHasContentForLayer,
+      // ⛔The revision the RASTER sampled, never a live read. `_raster`
+      // suspends between its content reads and this landing (the glyph A8
+      // bake, the ImmutableBuffer upload are real awaits), so a crossing
+      // that bumps the revision inside that window would give pixels of
+      // revision N a stamp of N+1 — and `matches()` compares the NUMBER, so
+      // the poisoned tile was served as fresh forever (the LRU survives cut
+      // trips and the 'projectId:cutId' string is reproduced exactly on
+      // return; only the NEXT bump healed it).
+      celContentRevision: rastered.celContentRevision,
+      substrate: rastered.substrate,
+      baseTextStyle: request.painter.baseTextStyle,
+      spanEndIndexExclusive: request.spanEndIndexExclusive,
+      devicePixelRatio: request.devicePixelRatio,
+      paperGround: request.painter.paperGround,
+      blockFrameLines: request.painter.blockFrameLines,
+      framesPerSecond: request.painter.framesPerSecond,
+      image: rastered.image,
+    );
+    while (_entries.length > capacity) {
+      _entries.remove(_entries.keys.first)!.image.dispose();
+    }
+    revision.value += 1;
+    if (!warm || _askedWhileWarm.remove(key)) {
+      // A row whose tile lands asks again for itself when it repaints —
+      // coming back to it could only find an older painter.
+      _starved.remove(request.row);
+      _noticeLanding(request.row);
+    }
+    return true;
+  }
+
+  /// 🚨A RUN'S NEXT PAGE IS BAKED WHILE IT PLAYS THE PAGE BEFORE (유저
+  /// 2026-10-11: 「144hz든 몇이든 확실하게 근본/구조적으로 해결하도록」).
+  ///
+  /// A page turn used to bring every row's next spans under the window at
+  /// once, cold: 🔬40-odd tiles and their words rastered, baked and
+  /// uploaded in the frames right after the turn (profile, 144Hz, a cut of
+  /// 132 frames, first loop) — the raster thread held 20–35ms, the UI
+  /// thread long enough that the clock's next look came a refresh late, and
+  /// a film frame shown seven refreshes long beside one five long at every
+  /// turn. Asked for here instead, a few spans at a time, after each frame a
+  /// clock's look changed what it shows — and rastered, baked and uploaded
+  /// only in the quiet between that frame's raster and the next held one
+  /// ([QuietTurns]): a first attempt that began them straight after the
+  /// frame had their uploads running beside its raster, which they slowed
+  /// past its vblank.
+  ///
+  /// [tiles] at most a call, and none while any raster is under way: the
+  /// surfaces that turn their pages in one frame start one warm-up between
+  /// them, and what is on the screen is rastered first ([tileFor] takes a
+  /// span over from here), and what is past it next ([warmAhead]).
+  ///
+  /// Where the turn stands an axis is asked of its owner once a call, and
+  /// every row it lays cuts its spans from that one answer
+  /// ([TimelineTileRasterSource.nextPage]) — the run's end it reads is the
+  /// cut's drawn length, worked out again at each asking.
+  void warmTheNextPage({int tiles = 6}) {
+    if (QaNativeEngine.instance == null) {
+      return;
+    }
+    final pages = <TimelineNextPage? Function(), TimelineNextPage?>{};
+    for (final MapEntry(key: row, value: (:painter, :ratio))
+        in _askedBy.entries) {
+      final ask = painter.nextPage;
+      if (ask == null || !_showsLive(row, painter)) {
+        continue;
+      }
+      final page = pages.putIfAbsent(ask, ask);
+      if (page == null) {
+        continue;
+      }
+      for (final (start, end) in painter.tileSpansOfThePage(page)) {
+        _warm(
+          _warming,
+          _TileRequest(
+            row: row,
+            painter: painter,
+            spanStartIndex: start,
+            spanEndIndexExclusive: end,
+            devicePixelRatio: ratio,
+          ),
+        );
+      }
+    }
+    _startWarming(pageTiles: tiles);
+  }
+
+  /// The span past either edge of [painter]'s window, asked for so a
+  /// scroll — or a page turn — finds it warm: rastered as the next page is
+  /// ([warmTheNextPage]), once no shown span waits and in the quiet between
+  /// held frames, and its landing repaints nothing. Every such span is
+  /// rastered by the next warm-up that runs, a run's or not ([_ahead]).
+  ///
+  /// ↩️It was asked for as a shown span ([tileFor]): rastered at once,
+  /// beside whatever frame was under way, and its landing repainted a row
+  /// that does not show it. 🔬A playing timeline's turn brings every row
+  /// one such span — the first of the page after the new one — so every
+  /// row repainted a few frames after every turn, and the dock's still
+  /// region read each row as moving and was taken again when they stopped
+  /// (10-12, cut 302 at 144Hz: about two images a page).
+  void warmAhead({
+    required TimelineTileRasterSource painter,
+    required int spanStartIndex,
+    required int spanEndIndexExclusive,
+    required double devicePixelRatio,
+  }) {
+    if (QaNativeEngine.instance == null) {
+      return;
+    }
+    _warm(
+      _ahead,
+      _TileRequest(
+        row: _rowKey(
+          painter.substrateGeneration,
+          painter.layer.id,
+          painter.axis,
+        ),
+        painter: painter,
+        spanStartIndex: spanStartIndex,
+        spanEndIndexExclusive: spanEndIndexExclusive,
+        devicePixelRatio: devicePixelRatio,
+      ),
+    );
+    if (_ahead.isEmpty || _warmScheduled) {
+      return;
+    }
+    _warmScheduled = true;
+    // Off the paint phase, as a shown span's drain is ([_enqueue]).
+    scheduleMicrotask(() {
+      _warmScheduled = false;
+      _startWarming();
+    });
+  }
+
+  /// Queues [request] in [queue] unless a tile shows its span already or
+  /// it is on its way. One the next page's warm-up holds moves to [_ahead]
+  /// when a paint asks for it there.
+  void _warm(
+    LinkedHashMap<String, _TileRequest> queue,
+    _TileRequest request,
+  ) {
+    final key = request.key;
+    if (_inFlight.contains(key) ||
+        _pending.containsKey(key) ||
+        _ahead.containsKey(key) ||
+        queue.containsKey(key)) {
+      return;
+    }
+    final entry = _touched(key);
+    if (entry != null &&
+        entry.showsNow(
+          request.painter,
+          request.spanStartIndex,
+          request.spanEndIndexExclusive,
+          request.devicePixelRatio,
+        )) {
+      return;
+    }
+    _warming.remove(key);
+    queue[key] = request;
+  }
+
+  /// Starts a warm-up when no raster is under way and it has something to
+  /// warm — what is on the screen is rastered first.
+  void _startWarming({int pageTiles = 0}) {
+    final engine = QaNativeEngine.instance;
+    if (engine != null &&
+        _drainsRunning == 0 &&
+        _warmQueue(pageTiles) != null) {
+      unawaited(_drainWarm(engine, pageTiles));
+    }
+  }
+
+  /// Where a warm-up takes its next span from: past the windows' edges
+  /// while any is left there, then the next pages' while it has [pageTiles]
+  /// of them left to take — and nowhere while a shown span waits.
+  LinkedHashMap<String, _TileRequest>? _warmQueue(int pageTiles) {
+    if (_pending.isNotEmpty) {
+      return null;
+    }
+    if (_ahead.isNotEmpty) {
+      return _ahead;
+    }
+    return pageTiles > 0 && _warming.isNotEmpty ? _warming : null;
+  }
+
+  Future<void> _drainWarm(QaNativeEngine engine, int pageTiles) async {
+    final epoch = _epoch;
+    _drainsRunning += 1;
+    var pagesLeft = pageTiles;
+    try {
+      while (_warmQueue(pagesLeft) != null) {
+        // 🚨A WARM SPAN IS RASTERED, BAKED AND UPLOADED IN THE QUIET
+        // BETWEEN TWO HELD FRAMES ([QuietTurns]): turned away — no room, or
+        // a [clear] came while it waited — the warm-up goes on after the
+        // next held frame, which asks again ([warmTheNextPage]). With
+        // nothing held there is no quiet to keep, and a warm span is taken
+        // in the same turn as the call that asked for it, as it always was.
+        final turn = await quietTurns.inThisQuiet(
+          _warmSpan,
+          gone: () => epoch != _epoch,
+        );
+        if (turn == null) {
+          return;
+        }
+        var landed = false;
+        try {
+          final queue = _warmQueue(pagesLeft);
+          if (queue == null) {
+            return;
+          }
+          if (identical(queue, _warming)) {
+            pagesLeft -= 1;
+          }
+          final request = queue.remove(queue.keys.first)!;
+          landed = await _rasterAndLand(engine, request, epoch, warm: true);
+          if (!landed) {
+            return;
+          }
+        } finally {
+          // The next span is asked for once the GPU is done with this one:
+          // turns are first come, first served, and a job that asked
+          // meanwhile goes before it.
+          await (landed ? turn.landed() : turn.gaveUp());
+        }
+      }
     } finally {
       if (epoch == _epoch) {
         _drainsRunning -= 1;
       }
     }
   }
+
+  /// Where a warm-up takes its turns in the quiet between held frames.
+  @visibleForTesting
+  QuietTurns quietTurns = QuietTurns.instance;
+
+  /// How long a warm span took from its raster to its landing, at the most
+  /// of late — what one more has to fit in before the quiet ends.
+  final QuietSpan _warmSpan = QuietSpan();
 
   /// Once the queue has run dry, asks again for the first row it turned
   /// away that is still shown — through the latest request it turned away,
@@ -417,16 +710,28 @@ class TimelineGridTileStore {
       final row = _starved.keys.first;
       final request = _starved.remove(row)!;
       final painter = request.painter;
-      if (!_shown.containsKey(row) ||
-          painter.substrateGeneration != _liveGeneration) {
+      if (!_showsLive(row, painter)) {
         continue;
       }
-      for (final (start, end) in painter.tileSpans) {
+      final (:shown, :ahead) = painter.tileSpans;
+      for (final (start, end) in shown) {
         tileFor(
           painter: painter,
           spanStartIndex: start,
           spanEndIndexExclusive: end,
           devicePixelRatio: request.devicePixelRatio,
+        );
+      }
+      for (final (start, end) in ahead) {
+        _warm(
+          _ahead,
+          _TileRequest(
+            row: row,
+            painter: painter,
+            spanStartIndex: start,
+            spanEndIndexExclusive: end,
+            devicePixelRatio: request.devicePixelRatio,
+          ),
         );
       }
       if (_pending.isNotEmpty) {
@@ -479,7 +784,7 @@ class TimelineGridTileStore {
     // parameter, so the shrink and the narrowing happen in the bake, before
     // upload; the native ABI is untouched.
     return bakeWordCoverage(
-      timelineGlyphPainter(
+      laidOutGlyph(
         text,
         style.copyWith(color: const Color(0xFFFFFFFF)),
         tightening: tightening,
@@ -822,6 +1127,11 @@ class _TileRequest {
   final int spanStartIndex;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
+
+  /// The store's key for the tile: the row and the frame its span starts on.
+  String get key => keyOf(row, spanStartIndex);
+
+  static String keyOf(String row, int spanStartIndex) => '$row:$spanStartIndex';
 }
 
 /// A row's side of the store's landing notices ([TimelineGridTileStore.
@@ -847,6 +1157,7 @@ class _RowNotices implements Listenable {
     listeners.remove(listener);
     if (listeners.isEmpty) {
       _store._shown.remove(_row);
+      _store._askedBy.remove(_row);
     }
   }
 }
@@ -928,8 +1239,8 @@ class _TileEntry {
   /// mid-raster would stamp pre-crossing pixels as post-crossing and
   /// `matches` would serve them fresh forever).
   ///
-  /// It moves only by [stillShows]: a newer revision whose substrate is
-  /// this tile's own, read in one synchronous block.
+  /// It moves only in [showsNow], to a newer revision whose substrate
+  /// [stillShows] finds this tile's own, read in one synchronous block.
   int celContentRevision;
 
   /// The paper and lines `_raster` laid down — read in the same block as
@@ -964,6 +1275,31 @@ class _TileEntry {
   ) =>
       celContentRevision == painter.celContentRevision &&
       _sameLookBesideContent(painter, spanEndIndexExclusive, devicePixelRatio);
+
+  /// Whether this tile shows [painter]'s span as the row is now — the look
+  /// it was rastered for, or one whose change it does not show
+  /// ([stillShows], whose revision it then takes). Asked alike by every
+  /// asker: a span shown, past the window or a page away.
+  bool showsNow(
+    TimelineTileRasterSource painter,
+    int spanStartIndex,
+    int spanEndIndexExclusive,
+    double devicePixelRatio,
+  ) {
+    if (matches(painter, spanEndIndexExclusive, devicePixelRatio)) {
+      return true;
+    }
+    if (stillShows(
+      painter,
+      spanStartIndex,
+      spanEndIndexExclusive,
+      devicePixelRatio,
+    )) {
+      celContentRevision = painter.celContentRevision;
+      return true;
+    }
+    return false;
+  }
 
   /// Whether this tile still shows the row although the content revision
   /// moved.

@@ -101,7 +101,7 @@ void main() {
     await pumpFrames(tester);
 
     expect(
-      textToolOf(tester).host.options.letters.fontFamily,
+      textToolOf(tester).host.options.letters(brushColour: null).fontFamily,
       'Probe Sans',
     );
     expect(
@@ -137,7 +137,7 @@ void main() {
     expect(dialog.filters, [isEmpty], reason: 'one dialog, no filter');
     expect(library.files.values, [sans]);
     expect(
-      textToolOf(tester).host.options.letters.fontFamily,
+      textToolOf(tester).host.options.letters(brushColour: null).fontFamily,
       'Probe Sans',
       reason: 'the face brought is the face picked',
     );

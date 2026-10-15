@@ -71,6 +71,11 @@ void main() {
   /// is arithmetic wearing quotes, not a sentence anyone translates.
   final onScreen = <RegExp>[
     RegExp(r"""Text\(\s*(?:const\s+)?'([^'$]*)'"""),
+    // ⚠️AND IT GREW AGAIN (tool-settings-panel-tidy, 2026-10-10): a tool
+    // settings group is HANDED its words, unnamed, and the brush panel's
+    // seven — 「Ink」, 「Brush tip」, … — read English in every language
+    // under a scan that never matched them.
+    RegExp(r"""ToolSettingsGroupHeader\(\s*'([^'$]*)'"""),
     RegExp(
       '''(?:label|help|title|tooltip|hintText|message|labelText'''
       '''|semanticLabel|fieldLabel|confirmLabel|actionLabel'''
@@ -261,7 +266,48 @@ void main() {
   /// translations as of this round. ★The debt went DOWN (that switch, and
   /// its 「Unpin」 twin) while the number went up by twenty-two: the number
   /// is where English is written, not how much is owed.
-  const untranslatedElsewhere = 118;
+  ///
+  /// 122 (117 + 5 — I-40, the view pill and the playback bar, 2026-10-09):
+  /// the English rows of five new registry actions — the pill's vertical
+  /// flip, straighten, fit and 1:1, and the bar's loop. Their buttons keep
+  /// the words they wore; each action is answered in the other four
+  /// languages by id. The ceiling had one line of slack (117) when it came.
+  ///
+  /// 126 (I-40, the timeline bar, 2026-10-09): the English rows of four new
+  /// registry actions — the timeline zoom's − and +, the ⇄ X-sheet and the
+  /// camera view — each answered in the other four languages by id. ★The
+  /// bar's six English tooltips the round translated (「Zoom In」, 「Show
+  /// X-sheet」, 「Camera view (on)」 and their twins) were never in this
+  /// count: each was one arm of a ternary, which the scan does not read.
+  ///
+  /// 127 (I-40, the region's fold, 2026-10-09): the English row of one new
+  /// registry action, the floating region's fold chevron — answered in the
+  /// other four languages by id. The chevron keeps its own two words.
+  ///
+  /// 129 (126 + 3 — I-40, the panels' buttons, 2026-10-09): the English
+  /// rows of three new registry actions — the guide list's two ＋ and the
+  /// timesheet's notation ⇄ data switch — each answered in the other four
+  /// languages by id. The round's other three (Delete text, Import…, Sheet
+  /// format…) are composed from the table and add none. The ceiling stood
+  /// one above the count (126) when it came.
+  ///
+  /// 130 (I-88, the turn key, 2026-10-10): the English row of one new
+  /// registry action, 「Rotate (hold)」 — answered in the other four
+  /// languages by id. The ceiling stood at the count (129) when it came.
+  ///
+  /// 131 (I-90, 2026-10-10): the English row of one new registry action,
+  /// 「Cut Pixels」 — 색 편집's 픽셀 잘라내기, answered in the other four
+  /// languages by id (`shortcutAction.edit-cut-pixels`). The cut tool's
+  /// 「원본 삭제」 is worded through the table and adds none.
+  ///
+  /// 135 (I-40, the tool settings' buttons, 2026-10-11): the English rows
+  /// of four new registry actions — the transform's two flips and its
+  /// reset, and the stamp's reset — each answered in the other four
+  /// languages by id (`shortcutAction.transform-reset` …). The round's
+  /// other five (Invert Selection, Paste at original position, Register as
+  /// Tip…, Add vanishing point, Rasterize) are composed from the table and
+  /// add none. The ceiling stood at the count (131) when it came.
+  const untranslatedElsewhere = 135;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

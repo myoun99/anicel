@@ -332,4 +332,148 @@ void main() {
       expect(resampled.sampleRate, 48000);
     });
   });
+
+  group('fed a piece at a time', () {
+    Float32List noise(int frames, int channels, int seed) {
+      final random = math.Random(seed);
+      return Float32List.fromList([
+        for (var i = 0; i < frames * channels; i += 1)
+          random.nextDouble() * 2 - 1,
+      ]);
+    }
+
+    /// [samples] pushed through a stream in pieces of [pieces] frames, in
+    /// turn — what the stream wrote, end to end, and the most input it held
+    /// after any piece.
+    ({Float32List samples, int mostHeld}) streamed(
+      Float32List samples, {
+      required int channels,
+      required int inputRate,
+      required int outputRate,
+      required List<int> pieces,
+    }) {
+      final stream = AudioResampleStreamReference(
+        channels: channels,
+        inputRate: inputRate,
+        outputRate: outputRate,
+      );
+      final out = <double>[];
+      var at = 0;
+      var mostHeld = 0;
+      for (var turn = 0; at < samples.length; turn += 1) {
+        final frames = pieces[turn % pieces.length];
+        final end = math.min(at + frames * channels, samples.length);
+        out.addAll(stream.push(Float32List.sublistView(samples, at, end)));
+        mostHeld = math.max(mostHeld, stream.heldFrames);
+        at = end;
+      }
+      out.addAll(stream.finish());
+      stream.close();
+      return (samples: Float32List.fromList(out), mostHeld: mostHeld);
+    }
+
+    test('🎯the pieces\' outputs are the whole conversion\'s, bit for bit — '
+        'whatever the pieces, the ratio or the channels', () {
+      const pairs = [
+        (44100, 48000),
+        (48000, 44100),
+        (8000, 48000),
+        (96000, 48000),
+        (48048000, 48000000),
+      ];
+      const cuts = [
+        [1, 7, 333, 4096, 5000, 2],
+        [1],
+        [100000],
+      ];
+      for (final (inputRate, outputRate) in pairs) {
+        for (final channels in const [1, 2]) {
+          final samples = noise(7001, channels, inputRate + channels);
+          final whole = resampleAudioReference(
+            samples: samples,
+            channels: channels,
+            inputRate: inputRate,
+            outputRate: outputRate,
+          ).samples;
+          for (final pieces in cuts) {
+            expect(
+              streamed(
+                samples,
+                channels: channels,
+                inputRate: inputRate,
+                outputRate: outputRate,
+                pieces: pieces,
+              ).samples,
+              whole,
+              reason: '$inputRate → $outputRate, $channels ch, $pieces',
+            );
+          }
+        }
+      }
+    });
+
+    test('a sound shorter than the filter comes out as the whole one does', () {
+      for (final frames in const [0, 1, 5, 150]) {
+        final samples = noise(frames, 2, frames);
+        expect(
+          streamed(
+            samples,
+            channels: 2,
+            inputRate: 44100,
+            outputRate: 48000,
+            pieces: const [3],
+          ).samples,
+          resampleAudioReference(
+            samples: samples,
+            channels: 2,
+            inputRate: 44100,
+            outputRate: 48000,
+          ).samples,
+          reason: '$frames frames',
+        );
+      }
+    });
+
+    test('🎯it lets go of what no output still to come reads — the input it '
+        'holds is a piece and the filter\'s reach, not the sound', () {
+      // 44.1k → 48k is 24,963 taps, ~156 input frames of reach.
+      final held = streamed(
+        noise(200000, 1, 3),
+        channels: 1,
+        inputRate: 44100,
+        outputRate: 48000,
+        pieces: const [4096],
+      ).mostHeld;
+      expect(held, greaterThan(4096), reason: 'a piece and its history');
+      expect(held, lessThan(4096 + 400), reason: 'and no more');
+    });
+
+    test('nothing is pushed after the end', () {
+      final stream = AudioResampleStreamReference(
+        channels: 1,
+        inputRate: 44100,
+        outputRate: 48000,
+      )..finish();
+      expect(() => stream.push(Float32List(4)), throwsStateError);
+    });
+
+    test('equal rates and nonsense geometry are no conversion', () {
+      for (final (channels, inputRate, outputRate) in const [
+        (1, 48000, 48000),
+        (0, 44100, 48000),
+        (1, 0, 48000),
+        (1, 44100, 0),
+      ]) {
+        expect(
+          () => AudioResampleStreamReference(
+            channels: channels,
+            inputRate: inputRate,
+            outputRate: outputRate,
+          ),
+          throwsArgumentError,
+          reason: '$channels ch, $inputRate → $outputRate',
+        );
+      }
+    });
+  });
 }

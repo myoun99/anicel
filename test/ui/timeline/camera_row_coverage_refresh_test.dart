@@ -8,7 +8,10 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+
+import '../../helpers/row_berths_in_order.dart';
 
 /// ㉘ (user, 2026-08-12): 「카메라 행에 프레임을 추가하면 즉시 갱신이 안 된다
 /// — 다른 레이어로 이동해야 보인다」.
@@ -39,6 +42,7 @@ void main() {
     frames: const [],
     timeline: const {},
   );
+  final rows = [TimelineDisplayRow.layer(cameraLayer, layerIndex: 0)];
 
   Widget body({required Object? cameraTrack}) => MaterialApp(
     home: Material(
@@ -46,7 +50,12 @@ void main() {
         width: 700,
         height: 200,
         child: TimelineFrameRowsScrollBody(
-          rows: [TimelineDisplayRow.layer(cameraLayer, layerIndex: 0)],
+          rows: rows,
+          berths: berthsInOrder(rows),
+          edges: TimelineRowEdges.uniform(
+            1,
+            TimelineGridMetrics.defaults.layerRowHeight,
+          ),
           hooks: TimelineGridHooks(
             activeLayerId: null,
             frameCursor: ValueNotifier<int>(0),

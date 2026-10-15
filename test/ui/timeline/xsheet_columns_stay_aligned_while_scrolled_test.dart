@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// 🚨F-32 (유저): 「트랜지션·카메라 레이어만 **스크롤에 따라** 위치가
 /// 어긋난다」.
 ///
@@ -124,8 +126,8 @@ void main() {
       await tester.pumpAndSettle();
       for (final row in layers) {
         final id = row.id.value;
-        final header = find.byKey(ValueKey<String>('xsheet-layer-row-$id'));
-        final cells = find.byKey(ValueKey<String>('xsheet-column-$id-cells'));
+        final header = find.named('xsheet-layer-row-$id');
+        final cells = find.named('xsheet-column-$id-cells');
         if (header.evaluate().isEmpty || cells.evaluate().isEmpty) {
           // Scrolled out of the window — windowing is not what this is about.
           continue;

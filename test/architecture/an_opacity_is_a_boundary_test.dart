@@ -76,6 +76,17 @@ void main() {
           'mounting a wrapper conditionally swaps the element type at that '
           'slot and deactivates everything under it.',
     ),
+    'lib/src/ui/playback/canvas_track_stack_view.dart': (
+      count: 2,
+      why: 'a covered cut\'s FADE and an upper track\'s THINNING. A cut\'s '
+          'picture is its stack view — rows that overlap — with its paper '
+          'and names, so the alpha has to land on the composed whole: '
+          'thinned row by row, the rows would show through one another. '
+          'Both stand at 1.0 outside a fade or an O.L, always mounted (the '
+          'tab row\'s reason), on the canvas panel, which never bakes. '
+          '↩️The cut was one composite, thinned in its painter\'s paint, '
+          'until it was drawn on the canvas\'s own stack (2026-10-10).',
+    ),
     'lib/src/ui/timeline/collapsed_row_overlay.dart': (
       count: 1,
       why: 'an overlay over the timeline GRID, which is the one surface in '

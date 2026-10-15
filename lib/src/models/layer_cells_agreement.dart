@@ -15,7 +15,8 @@ import 'layer.dart';
 ///
 /// Why every cell before the answer is drawn alike from either layer:
 /// * everything but the timeline agrees ([Layer.sameBesideTimeline]) — else
-///   the answer is 0;
+///   the answer is 0. The row's folds are not asked: no cell reads them
+///   ([Layer.foldsLike]);
 /// * timeline entries cannot overlap, so the entries before the first key
 ///   the two timelines part at cover every frame before that key alike —
 ///   and neither of them can reach past it;

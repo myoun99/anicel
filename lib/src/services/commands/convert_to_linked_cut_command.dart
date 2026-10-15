@@ -153,6 +153,13 @@ class ConvertToLinkedCutCommand implements Command {
               resolution.retargetedFrameIds,
             ),
         },
+        // F-302: a row that joins a link group folds and twirls as its
+        // group does — the origin's, which every use of it wears. ↩️The
+        // rail's view made the twirls agree after a command
+        // (`RailView.followLinks`) until F-360 put them on the rows.
+        collapsed: origin.collapsed,
+        lanesExpanded: origin.lanesExpanded,
+        expandedLaneGroups: origin.expandedLaneGroups,
       );
 
       groups = linkGroupsJoined(

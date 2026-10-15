@@ -14,6 +14,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
@@ -91,13 +92,13 @@ void main() {
       'the conte start rings six frames in — where the picture is there', () {
     final s = session();
     addTearDown(s.dispose);
-    final playlist = s.playbackRig.playback.playlistForScope(
+    final window = s.playbackRig.playback.windowForScope(
       PlaybackScope.activeCut,
     );
-    expect(playlist.single.mediaLead, 6);
+    expect(window!.trackStart, 18, reason: 'b\'s conte start 24, less 6');
 
     final scheduled = buildAudioPlaybackSchedule(
-      playlist: playlist,
+      window: window,
       project: s.repository.requireProject(),
       rate: s.projectSettings.projectFrameRate,
       durationSecondsFor: (_) => 100,
@@ -109,13 +110,13 @@ void main() {
     final s = session();
     addTearDown(s.dispose);
     s.selectCut(const CutId('a'));
-    final playlist = s.playbackRig.playback.playlistForScope(
+    final window = s.playbackRig.playback.windowForScope(
       PlaybackScope.activeCut,
     );
-    expect(playlist.single.mediaLead, 0);
+    expect(window!.trackStart, 0);
     expect(
       buildAudioPlaybackSchedule(
-        playlist: playlist,
+        window: window,
         project: s.repository.requireProject(),
         rate: s.projectSettings.projectFrameRate,
         durationSecondsFor: (_) => 100,
@@ -212,6 +213,42 @@ void main() {
       VoiceRecordStartResult.started,
     );
     // The roll is b's frame 0, track 18; the punch at track 30 is b's 12.
+    expect(
+      s.voiceRecording.voiceRecordStreamerWindow,
+      (startFrame: 0, punchFrame: 12),
+    );
+    await s.voiceRecording.stopVoiceRecordingAndPlace();
+    playback.stop();
+    await pumpEventQueue();
+  });
+
+  // The same four frames, picked on the timeline's own cells: b's 12..15.
+  // ↩️The cells were counted from b's place on the track, so this punch
+  // opened six frames late (I-73-ol-index-space).
+  test('🚨a punch picked on the timeline\'s cells is the punch over the '
+      'pictures those cells show', () async {
+    final s = session();
+    addTearDown(s.dispose);
+    s.selectLayer(const LayerId('se'));
+    s.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('se'),
+      startIndex: 12,
+      endIndexExclusive: 16,
+    );
+    final playback = s.playbackRig.playback;
+    playback.play(scope: PlaybackScope.activeCut);
+    s.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(
+      AudioRecording(
+        samples: Float32List(48000)..fillRange(0, 48000, 0.25),
+        channels: 1,
+        sampleRate: 48000,
+        droppedFrames: 0,
+      ),
+    );
+    expect(
+      s.voiceRecording.startVoiceRecording(),
+      VoiceRecordStartResult.started,
+    );
     expect(
       s.voiceRecording.voiceRecordStreamerWindow,
       (startFrame: 0, punchFrame: 12),

@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowDragTarget;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
+import '../helpers/named_finders.dart';
+
 /// 🚨storyboard-filter-leaves-the-strips (found 2026-09-25, measured): the
 /// legend's filter hid a storyboard row on the RAIL only. Its strip stayed,
 /// so every row under it parted from its label by one row — S1's name at 94
@@ -157,7 +159,7 @@ void main() {
 
     // From S1's fx switch — the last row with a switch the rail shows —
     // down through where the hidden V row would have stood.
-    final from = tester.getCenter(keyed('storyboard-layer-fx-$layerId'));
+    final from = tester.getCenter(find.named('storyboard-layer-fx-$layerId'));
     final gesture = await tester.startGesture(from);
     for (var step = 1; step <= 6; step += 1) {
       await gesture.moveTo(from + Offset(0, step * 12.0));
@@ -294,8 +296,14 @@ void main() {
       final shown = await pumpFiltered(
         tester,
         rowFilter: markFilter,
-        arrange: (session) =>
-            session.layerStack.addLayerOfKind(LayerKind.storyboard),
+        // The conte made is where the rail stands (F-322) and a filter
+        // spares the row stood on — so back to S1, and the filter is asked
+        // of the conte row.
+        arrange: (session) => session
+          ..layerStack.addLayerOfKind(LayerKind.storyboard)
+          ..selectRow(
+            LayerRowAddress(seLayerIdForTrack(session.selectedTrackId, 1)),
+          ),
       );
       expectConteRowHidden(shown.track);
     });

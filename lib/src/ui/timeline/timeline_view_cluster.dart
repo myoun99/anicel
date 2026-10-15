@@ -3,9 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/tick_text.dart';
 import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
@@ -59,7 +62,7 @@ class TimelineViewCluster extends StatelessWidget {
   });
 
   /// The editing/playback cursor — the counter subscribes to this alone so
-  /// a tick rebuilds one Text, nothing else (playback-perf architecture).
+  /// a tick rebuilds its lines, nothing else (playback-perf architecture).
   final ValueListenable<int> frameCursor;
 
   /// Track-global playhead frame (UI-R9 #6, storyboard only): when set,
@@ -126,9 +129,15 @@ class TimelineViewCluster extends StatelessWidget {
         ? pixelsPerFrame >= TimelineZoomLimits.maxPixelsPerFrame
         : pixelsPerFrame <= _minPixelsPerFrame;
     final enabled = onPixelsPerFrameChanged != null && !atBound;
+    final action = zoomIn
+        ? EditorActionIds.timelineZoomIn
+        : EditorActionIds.timelineZoomOut;
     return AppIconButton(
       keyValue: zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
-      tooltip: zoomIn ? 'Zoom In' : 'Zoom Out',
+      // The registry's name, in the program's language. ↩️「Zoom In」 and
+      // 「Zoom Out」 stood here in English everywhere until I-40 (10-09).
+      tooltip: editorActionLabel(action),
+      shortcuts: [action],
       icon: Icon(zoomIn ? Icons.zoom_in : Icons.zoom_out),
       onPressed: enabled
           ? () => onPixelsPerFrameChanged!(
@@ -146,6 +155,7 @@ class TimelineViewCluster extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final globalFrame = this.globalFrame;
+    final counterStyle = _counterMetrics.copyWith(color: colorScheme.primary);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -162,48 +172,46 @@ class TimelineViewCluster extends StatelessWidget {
         // 🚫No width reserved for the widest number either — it grows into
         // the free space on its left, and the bar's own scroller takes the
         // squeeze exactly as every other overflow on this row does.
-        ListenableBuilder(
-          listenable: globalFrame == null
-              ? frameCursor
-              : Listenable.merge([frameCursor, globalFrame]),
-          builder: (context, _) {
-            final local = _frameLabel(frameCursor.value + 1);
-            final global = globalFrame?.value;
-            final style = _counterMetrics.copyWith(
-              color: colorScheme.primary,
-            );
-            return Column(
-              key: const ValueKey<String>('timeline-current-frame-counter'),
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // Dimmer, never smaller: the two numbers have to line up
-                // digit for digit, and a second size would break that at
-                // the one moment it matters — reading them together.
-                //
-                // 🪦The dimming was an `Opacity(0.62)` around this one
-                // `Text`, and an `Opacity` is a repaint boundary at any
-                // alpha above zero — a permanent one, in the bar that bakes
-                // itself in zones. ⛔For a single run of opaque glyphs the
-                // two are the same pixels: a layer at 62% over the ground
-                // and a glyph colour at 62% alpha are one expression
-                // (`test/architecture/an_opacity_is_a_boundary_test.dart`
-                // carries the law).
-                Text(
-                  global == null ? '' : _frameLabel(global + 1),
-                  key: const ValueKey<String>('timeline-global-frame-counter'),
-                  style: style.copyWith(
-                    color: style.color!.withValues(alpha: 0.62),
-                  ),
-                ),
-                Text(
-                  local,
-                  key: const ValueKey<String>('timeline-local-frame-counter'),
-                  style: style,
-                ),
-              ],
-            );
-          },
+        //
+        // 🚨EACH LINE HEARS ITS OWN CHANNEL, AND NOTHING IS BUILT FOR A
+        // TICK ([TickText], I-57 10-14): a listener round two `Text`s laid
+        // out and painted the whole bar at every frame played. A line that
+        // keeps its width paints itself alone.
+        Column(
+          key: const ValueKey<String>('timeline-current-frame-counter'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // Dimmer, never smaller: the two numbers have to line up digit
+            // for digit, and a second size would break that at the one
+            // moment it matters — reading them together.
+            //
+            // 🪦The dimming was an `Opacity(0.62)` around this one `Text`,
+            // and an `Opacity` is a repaint boundary at any alpha above
+            // zero — a permanent one, in the bar that bakes itself in
+            // zones. ⛔For a single run of opaque glyphs the two are the
+            // same pixels: a layer at 62% over the ground and a glyph
+            // colour at 62% alpha are one expression
+            // (`test/architecture/an_opacity_is_a_boundary_test.dart`
+            // carries the law).
+            TickText(
+              key: const ValueKey<String>('timeline-global-frame-counter'),
+              ticks: globalFrame,
+              words: () => switch (globalFrame?.value) {
+                final global? => _frameLabel(global + 1),
+                null => '',
+              },
+              style: counterStyle.copyWith(
+                color: counterStyle.color!.withValues(alpha: 0.62),
+              ),
+            ),
+            TickText(
+              key: const ValueKey<String>('timeline-local-frame-counter'),
+              ticks: frameCursor,
+              words: () => _frameLabel(frameCursor.value + 1),
+              style: counterStyle,
+            ),
+          ],
         ),
         const SizedBox(width: 4),
         // I-57: the cut the counter counts, named between the counter and
@@ -227,47 +235,71 @@ class TimelineViewCluster extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 4),
-        // UI-R11 #11: the flanking glyphs are real STEP buttons now, not
-        // decorations — click-to-zoom without the slider's drag precision.
-        _zoomStepButton(zoomIn: false),
-        SizedBox(
-          width: 140,
-          child: FieldSlider(
-            key: const ValueKey<String>('timeline-zoom-slider'),
-            min: _minPixelsPerFrame,
-            max: TimelineZoomLimits.maxPixelsPerFrame,
-            value: pixelsPerFrame.clamp(
-              _minPixelsPerFrame,
-              TimelineZoomLimits.maxPixelsPerFrame,
+        // 🚨THE ZOOM STANDS BESIDE A TICK, ON A LAYER OF ITS OWN
+        // (playback-making-pictures-shakes-the-frames, 10-11). The counter
+        // ticks with every frame played and its width moves the row, so the
+        // bar this sits in is one tick layer ([TimelineCommandBar]) — and
+        // everything on it was painted again with the counter: 🔬72–78 render
+        // objects a frame, the slider most of them. Standing on its own
+        // boundary the zoom is moved, not painted, when the row moves.
+        // 🚨AND NOT DESCRIBED (10-12): the row's layout marks the bar's
+        // semantics too, and the bar's walk went through the zoom, its
+        // buttons and the orientation toggle — 🔬50 render objects re-walked
+        // for every frame played. A semantics boundary of its own stops the
+        // walk at the zoom; it reads as one group to a screen reader.
+        Semantics(
+          container: true,
+          child: RepaintBoundary(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // UI-R11 #11: the flanking glyphs are real STEP buttons
+                // now, not decorations — click-to-zoom without the
+                // slider's drag precision.
+                _zoomStepButton(zoomIn: false),
+                _zoomSlider(context),
+                _zoomStepButton(zoomIn: true),
+                ...trailing,
+              ],
             ),
-            // Zoom reads as percent of the default frame width.
-            unit: '%',
-            displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
-            height: _zoomBarHeight + FieldSlider.growthIn(context),
-            // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of
-            // its length on 24→96px and left the whole narrow half — the
-            // half the user zooms out into — inside its first few pixels.
-            // Equal travel is equal RATIO here, as it is on every editor
-            // zoom in the app.
-            scale: FieldSliderScale.exponential,
-            // F-220: every value the bar reaches is the zoom — held inside
-            // the range, and nothing else ([TimelineZoomLimits.clamped]).
-            onChanged: onPixelsPerFrameChanged == null
-                ? null
-                : (value) {
-                    final zoom = TimelineZoomLimits.clamped(
-                      value,
-                      framesPerSecond: projectFrameRate.countingBase,
-                    );
-                    if (zoom != pixelsPerFrame) {
-                      onPixelsPerFrameChanged!(zoom);
-                    }
-                  },
           ),
         ),
-        _zoomStepButton(zoomIn: true),
-        ...trailing,
       ],
     );
   }
+
+  Widget _zoomSlider(BuildContext context) => SizedBox(
+    width: 140,
+    child: FieldSlider(
+      key: const ValueKey<String>('timeline-zoom-slider'),
+      min: _minPixelsPerFrame,
+      max: TimelineZoomLimits.maxPixelsPerFrame,
+      value: pixelsPerFrame.clamp(
+        _minPixelsPerFrame,
+        TimelineZoomLimits.maxPixelsPerFrame,
+      ),
+      // Zoom reads as percent of the default frame width.
+      unit: '%',
+      displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
+      height: _zoomBarHeight + FieldSlider.growthIn(context),
+      // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of its
+      // length on 24→96px and left the whole narrow half — the half the
+      // user zooms out into — inside its first few pixels. Equal travel is
+      // equal RATIO here, as it is on every editor zoom in the app.
+      scale: FieldSliderScale.exponential,
+      // F-220: every value the bar reaches is the zoom — held inside the
+      // range, and nothing else ([TimelineZoomLimits.clamped]).
+      onChanged: onPixelsPerFrameChanged == null
+          ? null
+          : (value) {
+              final zoom = TimelineZoomLimits.clamped(
+                value,
+                framesPerSecond: projectFrameRate.countingBase,
+              );
+              if (zoom != pixelsPerFrame) {
+                onPixelsPerFrameChanged!(zoom);
+              }
+            },
+    ),
+  );
 }

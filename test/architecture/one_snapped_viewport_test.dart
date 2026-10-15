@@ -161,8 +161,8 @@ void main() {
     // body, and they still came 600px off their cells: the offset they
     // moved by was a notifier fed from the controller's listeners, and a
     // viewport that grows past its content's end corrects its position
-    // during layout without calling one. `ScrollFollower` reads the
-    // position when it paints and wears the body's correction, so a
+    // during layout without calling one. `ScrollFollower` is landed by the
+    // body's own object, reading the position as the frame is drawn, so a
     // scroll-offset translate written anywhere else is wrong whatever
     // surrounds it.
     final offenders = <String>[];
@@ -195,7 +195,8 @@ void main() {
       isEmpty,
       reason:
           'mount it through ScrollFollower — it reads the scroll position '
-          'when it paints and takes DeviceGridScrollBody\'s correction; an '
+          'as the frame is drawn and lands by DeviceGridScrollBody\'s own '
+          'object; an '
           'offset carried in a notifier misses the corrections a viewport '
           'makes during layout (F-95), and a raw translate keeps the '
           'fraction the cells cancelled (F-32)',

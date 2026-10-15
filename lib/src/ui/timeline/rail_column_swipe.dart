@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import '../../services/history_manager.dart';
@@ -9,68 +11,75 @@ import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
         layerFxSlotWidth,
+        layerGraphSlotWidth,
+        layerLanePinSlotWidth,
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
 import '../widgets/axis_gesture_detector.dart';
+import 'timeline_row_edges.dart';
+import 'timeline_visible_range.dart';
 
-/// A column a rail can SWIPE: where its band sits at a given row depth,
-/// what value a row shows there, and how to flip that row.
+/// A column a rail can SWIPE: where its band sits on a given row, what
+/// value a row shows there, and how to flip that row.
 ///
-/// 🚨A band RESOLVER rather than a fixed x-range (I-1): a leading column
-/// sits after the folder indent, so where it is depends on the row under
-/// the press. That is also why the swipe paints by column IDENTITY once it
-/// has latched — one drag can cross rows at different depths without ever
-/// leaving its column.
+/// 🚨A band RESOLVER rather than a fixed x-range: a button at the end of a
+/// row's NAME stands where that row's name ends — a layer row keeps its
+/// fold slot last (F-29), a header has none — so where the column is
+/// depends on the row under the press (I-89 Q1). That is also why the
+/// swipe paints by column IDENTITY once it has latched — one drag can
+/// cross rows whose buttons stand at different places without ever
+/// leaving its column. ↩️It was asked the row's DEPTH, for the leading
+/// columns the folder indent used to push (I-1); the indent lives in the
+/// name now, and no band read it.
 ///
 /// [valueOf] returns null for a row that HAS NO control in this column (an
 /// attach row's sheet slot holds an arrow, a laneless row has no twirl).
 /// Null is skipped: a swipe cannot paint what a tap could not.
 typedef RailToggleColumn<TRow> = ({
-  ({double start, double end}) Function(int depth) bandAt,
+  ({double start, double end}) Function(TRow row) bandAt,
   bool? Function(TRow row) valueOf,
   void Function(TRow row) toggle,
 });
 
-/// A row the swipe landed on: the subject, its indent depth, and the
-/// identity the sweep dedupes by so one drag paints each row once.
-typedef RailSwipeRow<TRow> = ({TRow row, int depth, Object id});
+/// A row the swipe landed on: the subject, and the identity the sweep
+/// dedupes by so one drag paints each row once.
+typedef RailSwipeRow<TRow> = ({TRow row, Object id});
 
-/// [RailColumnSwipe.rowsIn] for a strip of UNIFORM PITCH: the rows a
-/// segment covers are the whole index range between the row holding one
-/// end and the row holding the other, ends included, clipped to [count].
+/// [RailColumnSwipe.rowsIn] for a strip whose rows sit at [edges]: the rows
+/// a segment covers ([TimelineRowEdges.rowsIn] — every row from the one
+/// holding one end to the one holding the other, ends included), among the
+/// ones the window [built]: a row not built is not on screen to paint.
+/// Room between rows covers none.
 ///
 /// 🚨★★★BOTH TIMELINE GRIDS ARE THAT STRIP, AND WRITING IT TWICE IS A COPY
 /// WHATEVER THE TEXT (유저: 「사본 남으면 진짜 용서안할게」). The rail's rows
-/// and the x-sheet's columns are one `layerRowHeight` apart — the same rail
-/// turned on its side — so they had the same division in point form all
-/// along; splitting the point into a segment (F-66) is only what made the
-/// clone long enough to see, and the architecture ratchet named the pair
-/// the moment it did.
+/// and the x-sheet's columns are the same rail turned on its side, so they
+/// had the same division in point form all along; splitting the point into
+/// a segment (F-66) is only what made the clone long enough to see, and the
+/// architecture ratchet named the pair the moment it did.
 ///
-/// ⛔The STORYBOARD rail is not this strip and must not be pushed into it:
-/// it stacks a transition row, S rows and a V row at three heights with
-/// lane groups between them, so it walks its own layout instead.
+/// ↩️It divided by one row pitch until a header graph (I-89 ③) stood
+/// taller than its lanes; the edges are where the window cut the rows.
 ///
-/// [origin] is where row 0 starts — the layer rail's leading spacer, and 0
-/// for a strip that begins at its own edge. [rowAt] is the ONLY thing left
-/// that differs between the two: what a row at an index IS, and what
-/// identity it carries.
-List<RailSwipeRow<TRow>> uniformRailRowsIn<TRow>({
+/// ⛔The STORYBOARD rail walks its own layout: it stacks a transition row,
+/// S rows and a V row at three heights with lane groups between them, and
+/// builds each track's slots only as far as the walk reaches.
+///
+/// [rowAt] is the ONLY thing left that differs between the two grids: what
+/// a row at an index IS, and what identity it carries.
+List<RailSwipeRow<TRow>> railRowsAlong<TRow>({
   required double from,
   required double to,
-  required double origin,
-  required double pitch,
-  required int count,
+  required TimelineRowEdges edges,
+  required TimelineVisibleRange built,
   required RailSwipeRow<TRow> Function(int index) rowAt,
 }) {
-  var first = (((from <= to ? from : to) - origin) / pitch).floor();
-  var last = (((from <= to ? to : from) - origin) / pitch).floor();
-  if (first < 0) {
-    first = 0;
+  final covered = edges.rowsIn(from, to);
+  if (covered == null) {
+    return const [];
   }
-  if (last > count - 1) {
-    last = count - 1;
-  }
+  final first = math.max(covered.first, built.startIndex);
+  final last = math.min(covered.last, built.endIndexExclusive - 1);
   return [for (var index = first; index <= last; index += 1) rowAt(index)];
 }
 
@@ -108,6 +117,23 @@ class RailSweepHistory extends InheritedWidget {
   /// dependency.
   static RailSweepHistory? maybeOf(BuildContext context) =>
       context.getInheritedWidgetOfExactType<RailSweepHistory>();
+
+  /// Runs [body] — ONE press that writes many rows, the legend's twirl-all
+  /// over a rail whose twirls are the rows' (F-360) — as ONE undo step, the
+  /// same 「다 한번에 언두」 as a sweep's ([HistoryGestures.runAsOneStep]).
+  /// Absent, [body] writes row by row, as a sweep does.
+  static void asOneStep(
+    BuildContext context,
+    String description,
+    VoidCallback body,
+  ) {
+    final history = maybeOf(context)?.history;
+    if (history == null) {
+      body();
+      return;
+    }
+    history.runAsOneStep(description, body);
+  }
 
   @override
   bool updateShouldNotify(RailSweepHistory oldWidget) =>
@@ -323,7 +349,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     }
     final across = _across(local);
     for (var index = 0; index < widget.columns.length; index += 1) {
-      final band = widget.columns[index].bandAt(row.depth);
+      final band = widget.columns[index].bandAt(row.row);
       if (across >= band.start && across <= band.end) {
         return index;
       }
@@ -603,44 +629,45 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double crossExtent,
   required double leadingOrigin,
   required LayerRailColumnWidths columns,
-  bool hasOnionColumn = false,
-  bool hasBlendColumn = false,
+  required LayerRailOptionalColumns optionalColumns,
+  ({RailToggle<TRow> toggle, double Function(TRow row) after})? graph,
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
   RailToggle<TRow>? fx,
   RailToggle<TRow>? timesheet,
   RailToggle<TRow>? laneToggle,
+  ({RailToggle<TRow> toggle, double inset})? lanePin,
 }) {
-  /// A LEADING column's x depends on the row: the nesting indent falls
-  /// between the mark and the twirl, so the twirl and the sheet toggle move
-  /// one whole slot per level. A rail that does not nest passes rows of
-  /// depth 0 and gets the same band every time.
-  ({double start, double end}) Function(int depth) leadingBand(
+  /// A LEADING column, read off the slot skeleton from the row's start.
+  ({double start, double end}) Function(TRow row) leadingBand(
     LayerRailLeadingSlot slot,
-  ) => (depth) {
+  ) {
     // The row plate's left border comes before its first cell, so a column
     // measured from the row's edge is that much further in than the slot
     // skeleton alone says.
     final start = leadingOrigin + layerRailLeadingWidthTo(to: slot);
-    return (start: start, end: start + layerRailLeadingSlotWidth(slot));
-  };
+    final at = (start: start, end: start + layerRailLeadingSlotWidth(slot));
+    return (_) => at;
+  }
 
-  /// Everything from [after] onward is what sits to this column's right,
-  /// read off the slot skeleton — so adding a column cannot put the bands
-  /// out of date.
-  ({double start, double end}) Function(int depth) trailingBand(
+  /// Where [from] begins: everything from it onward is what sits to its
+  /// right, read off the slot skeleton — so adding a column cannot put the
+  /// bands out of date.
+  double trailingEdge(LayerRailTrailingSlot from) =>
+      crossExtent -
+      _railTrailingPadding -
+      layerRailTrailingWidth(
+        columns: columns,
+        from: from,
+        optionalColumns: optionalColumns,
+      );
+
+  /// The column right before [after].
+  ({double start, double end}) Function(TRow row) trailingBand(
     LayerRailTrailingSlot after,
     double width,
   ) {
-    final edge =
-        crossExtent -
-        _railTrailingPadding -
-        layerRailTrailingWidth(
-          columns: columns,
-          from: after,
-          hasOnionColumn: hasOnionColumn,
-          hasBlendColumn: hasBlendColumn,
-        );
+    final edge = trailingEdge(after);
     // A little tolerance so a thin band is easy to hit with a pen.
     //
     // ⛔None on the leading bands: the twirl and the sheet toggle are
@@ -652,8 +679,36 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     return (_) => at;
   }
 
+  /// A MEMBER LANE's column, [inset] from the row's end — where its cell
+  /// lays it, which no slot skeleton does. ⛔No slack either side: the
+  /// chain, or the name a press stands on, is before it, and the value a
+  /// gap after.
+  ({double start, double end}) Function(TRow row) laneEndBand(
+    double inset,
+    double width,
+  ) {
+    final end = crossExtent - inset;
+    final at = (start: end - width, end: end);
+    return (_) => at;
+  }
+
+  /// A button at the END OF A ROW'S NAME (I-89 Q1), [after] short of the
+  /// trailing run on that row — what its row lays past it there. ⛔No slack
+  /// either side: the name, or a button of the name's, is before it, and a
+  /// slot after.
+  ({double start, double end}) Function(TRow row) nameEndBand(
+    double Function(TRow row) after,
+    double width,
+  ) {
+    final edge = trailingEdge(LayerRailTrailingSlot.fillReference);
+    return (row) {
+      final end = edge - after(row);
+      return (start: end - width, end: end);
+    };
+  }
+
   RailToggleColumn<TRow> column(
-    ({double start, double end}) Function(int depth) bandAt,
+    ({double start, double end}) Function(TRow row) bandAt,
     RailToggle<TRow> toggle,
   ) => (bandAt: bandAt, valueOf: toggle.valueOf, toggle: toggle.toggle);
 
@@ -670,6 +725,13 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
       ),
     if (fx != null)
       column(trailingBand(LayerRailTrailingSlot.onion, layerFxSlotWidth), fx),
+    if (graph != null)
+      column(nameEndBand(graph.after, layerGraphSlotWidth), graph.toggle),
+    if (lanePin != null)
+      column(
+        laneEndBand(lanePin.inset, layerLanePinSlotWidth),
+        lanePin.toggle,
+      ),
     if (timesheet != null)
       column(leadingBand(LayerRailLeadingSlot.timesheet), timesheet),
     if (laneToggle != null)

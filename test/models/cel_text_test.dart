@@ -128,6 +128,35 @@ void main() {
       expect(boxed.copyWith(backgroundColor: null).wrapWidth, 200);
     });
 
+    // F-317: 「위아래 크기지정도 처음에 사각형 만들때 살린다」.
+    test('how tall a box is at least is part of what it is: changed, it is '
+        'another content; written and read back, the same one — and a box '
+        'with none writes no word of it', () {
+      final boxed = base.copyWith(wrapWidth: 200);
+      final tall = boxed.copyWith(minHeight: 40.5);
+
+      expect(tall, isNot(boxed));
+      expect(tall.hashCode, isNot(boxed.hashCode));
+      expect(CelTextContent.fromJson(throughJson(tall.toJson())), tall);
+      expect(boxed.toJson().containsKey('minHeight'), isFalse);
+      expect(boxed.copyWith(minHeight: 40).minHeight, 40.0);
+      expect(tall.copyWith(minHeight: null).minHeight, isNull);
+      expect(tall.copyWith(lineHeight: 2).minHeight, 40.5);
+    });
+
+    test('🚨a text that GROWS has no box to be tall: a least height without '
+        'a width is refused, and so is taking the width off a box that '
+        'has one', () {
+      final tall = base.copyWith(wrapWidth: 200, minHeight: 40);
+
+      expect(() => base.copyWith(minHeight: 40), throwsArgumentError);
+      expect(() => tall.copyWith(wrapWidth: null), throwsArgumentError);
+      expect(
+        tall.copyWith(wrapWidth: null, minHeight: null).wrapWidth,
+        isNull,
+      );
+    });
+
     test('🚨a box of no width, a pitch of nothing and a turn that is not a '
         'number are refused where the content is MADE — not set, baked and '
         'kept', () {
@@ -136,6 +165,13 @@ void main() {
           () => base.copyWith(wrapWidth: width),
           throwsArgumentError,
           reason: 'a box $width wide',
+        );
+      }
+      for (final least in [0.0, -1.0, double.infinity, double.nan]) {
+        expect(
+          () => base.copyWith(wrapWidth: 200, minHeight: least),
+          throwsArgumentError,
+          reason: 'a box $least tall at least',
         );
       }
       for (final pitch in [0.0, -1.25, double.infinity, double.nan]) {
@@ -153,6 +189,7 @@ void main() {
         );
       }
       expect(base.copyWith(wrapWidth: 0.5).wrapWidth, 0.5);
+      expect(base.copyWith(wrapWidth: 1, minHeight: 0.5).minHeight, 0.5);
       expect(base.copyWith(lineHeight: 0.5).lineHeight, 0.5);
       expect(base.copyWith(rotationDegrees: -725).rotationDegrees, -725);
     });

@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../helpers/named_finders.dart';
+
 void main() {
   group('LayerTimelineGrid extracted composition', () {
     testWidgets('extracted frame-grid structure appears together', (
@@ -81,10 +83,10 @@ void main() {
     ) async {
       await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
-      _expectKeyOnce('timeline-frame-row-area-layer-1');
-      _expectKeyOnce('timeline-frame-row-area-layer-2');
-      _expectKeyOnce('timeline-row-cells-layer-1');
-      _expectKeyOnce('timeline-row-cells-layer-2');
+      _expectNamedOnce('timeline-frame-row-area-layer-1');
+      _expectNamedOnce('timeline-frame-row-area-layer-2');
+      _expectNamedOnce('timeline-row-cells-layer-1');
+      _expectNamedOnce('timeline-row-cells-layer-2');
 
       for (final key in _structuralKeys) {
         _expectKeyOnce(key);
@@ -114,6 +116,10 @@ Finder _key(String key) => find.byKey(ValueKey<String>(key));
 
 void _expectKeyOnce(String key) {
   expect(_key(key), findsOneWidget, reason: key);
+}
+
+void _expectNamedOnce(String name) {
+  expect(find.named(name), findsOneWidget, reason: name);
 }
 
 Widget _grid({int currentFrameIndex = 0, int playbackFrameCount = 24}) {

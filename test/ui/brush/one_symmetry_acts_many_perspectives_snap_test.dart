@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/brush/guide_panels.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// What the guide LIBRARY list decides — the panel was 7% executed before
 /// this file (the audit's coverage pass, 2026-09-08), so every law below
 /// was standing on nothing.
@@ -50,10 +52,10 @@ void main() {
   /// Mounts the list and hands back what it committed. The list is
   /// stateless by design — the cut is the caller's — so one gesture per
   /// pump is the honest shape of the test.
-  Future<CutGuides?> tapAndReadCommit(
+  Future<CutGuides?> pressAndReadCommit(
     WidgetTester tester,
     CutGuides guides,
-    String key, {
+    Finder control, {
     GuideId? selected,
     List<GuideId?>? selections,
   }) async {
@@ -71,10 +73,25 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byKey(ValueKey<String>(key)));
+    await tester.tap(control);
     await tester.pump();
     return committed;
   }
+
+  /// [pressAndReadCommit] on the control keyed [key].
+  Future<CutGuides?> tapAndReadCommit(
+    WidgetTester tester,
+    CutGuides guides,
+    String key, {
+    GuideId? selected,
+    List<GuideId?>? selections,
+  }) => pressAndReadCommit(
+    tester,
+    guides,
+    find.byKey(ValueKey<String>(key)),
+    selected: selected,
+    selections: selections,
+  );
 
   group('the act toggles', () {
     testWidgets('🚨switching a symmetry ON stops the one that was acting — '
@@ -255,7 +272,7 @@ void main() {
 
       for (final id in ['s1', 'p1']) {
         final rename = find.byKey(ValueKey<String>('guide-rename-$id'));
-        final visible = find.byKey(ValueKey<String>('guide-visible-$id'));
+        final visible = find.named('guide-visible-$id');
         expect(rename, findsOneWidget, reason: 'the $id row has no rename');
         expect(
           tester.getTopLeft(rename).dx,
@@ -384,7 +401,11 @@ void main() {
         activeSymmetryId: const GuideId('s1'),
       );
 
-      final committed = await tapAndReadCommit(tester, cut, 'guide-visible-s1');
+      final committed = await pressAndReadCommit(
+        tester,
+        cut,
+        find.named('guide-visible-s1'),
+      );
 
       expect(committed!.guideFor(const GuideId('s1'))!.visible, isFalse);
       expect(committed.activeSymmetryId, const GuideId('s1'));
@@ -396,7 +417,11 @@ void main() {
     ) async {
       final cut = CutGuides(guides: [perspective('p1'), perspective('p2')]);
 
-      final hidden = await tapAndReadCommit(tester, cut, 'guide-visible-p1');
+      final hidden = await pressAndReadCommit(
+        tester,
+        cut,
+        find.named('guide-visible-p1'),
+      );
       expect(hidden!.guideFor(const GuideId('p1'))!.visible, isFalse);
       expect(
         snapOf(hidden, 'p1').snapEnabled,

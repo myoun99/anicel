@@ -5,6 +5,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/menu/editor_top_strip.dart'
+    show projectTabLabel;
 import 'package:anicel/src/ui/open_projects.dart';
 
 import '../helpers/fake_playback_transport.dart';
@@ -146,6 +148,50 @@ void main() {
     final three = projects.open(createDefaultProject());
     expect(projects.untitledNumberOf(two), 2, reason: 'kept after a close');
     expect(projects.untitledNumberOf(three), 3, reason: 'never reused');
+  });
+
+  test('🗣️an untitled tab\'s project is CALLED what its tab is, until a '
+      'file names it — a project from a file keeps its own, and the naming '
+      'is no edit (유저 10-09, project-name-is-its-file-name-Q1: 「안의 '
+      '이름도 탭과 같게」)', () {
+    final projects = make();
+    final one = projects.active;
+    final converted = projects.prepare(
+      createDefaultProject().copyWith(name: 'scene 3'),
+    );
+    projects.adopt(converted);
+    final two = projects.open(createDefaultProject());
+    String name(EditorSessionManager session) =>
+        session.repository.requireProject().name;
+
+    expect((name(one), name(two)), (
+      untitledProjectName(1),
+      untitledProjectName(2),
+    ));
+    expect(name(two), projectTabLabel(projects, two), reason: 'one name');
+    expect(name(converted), 'scene 3', reason: 'what it came from names it');
+    expect(two.historyManager.canUndo, isFalse, reason: 'nothing to undo');
+    expect(
+      two.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'nothing unsaved',
+    );
+
+    bind(two, 'C:/work/cut12.anicel');
+    expect(name(two), 'cut12', reason: 'the file names it from then on');
+  });
+
+  test('🗣️a project READ out of a file takes no number even before it is '
+      'bound to one — a .tvpp or .clip names it (유저 10-09: 「클튜 '
+      '임포트하니까 프로젝트이름 제목없음 이런식인데 파일이름대로」)', () {
+    final projects = make();
+    final converted = projects.prepare(createDefaultProject());
+    projects.adopt(converted);
+    final next = projects.open(createDefaultProject());
+
+    expect(converted.projectFile.path, isNull, reason: 'not saved yet');
+    expect(projects.untitledNumberOf(converted), isNull);
+    expect(projects.untitledNumberOf(next), 2, reason: 'the first tab is 1');
   });
 
   test('boundTo finds the tab bound to the same file, however the path is '

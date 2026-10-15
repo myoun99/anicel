@@ -1,16 +1,21 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../../core/tree_nodes.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
+import '../../models/transform_pose.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, cutShowingDragPreview, layersShowingDragPreview;
+import '../track_effect_paint_policy.dart' show underTheCutsFx;
 import 'active_cut_controllers.dart';
 import 'editing_stack_map.dart';
 import 'opacity_verbs.dart';
@@ -44,14 +49,24 @@ class EditingCanvas {
     required ActiveCutControllers controllers,
     required OpacityVerbs opacityVerbs,
     required TrackSeDisplay trackSe,
-  }) : _project = project,
+    required List<ResolvedLayerEffect> Function(CutId cutId, int frameIndex)
+    cutEffectsAt,
+    required TransformPose? Function(BrushFrameKey key) movieLaidAt,
+  }) : _cutEffectsAt = cutEffectsAt,
+       _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _dragPreview = dragPreview,
        _controllers = controllers,
        _opacityVerbs = opacityVerbs,
-       _trackSe = trackSe;
+       _trackSe = trackSe,
+       _movieLaidAt = movieLaidAt;
+
+  /// Where a movie cel's installed picture was laid
+  /// (`MovieCelHydrator.laidAt`) — the stack moves it to where its row's
+  /// reference fx stands now ([EditingStackMap]).
+  final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -61,6 +76,13 @@ class EditingCanvas {
   final ActiveCutControllers _controllers;
   final OpacityVerbs _opacityVerbs;
   final TrackSeDisplay _trackSe;
+
+  /// The V row's fx over [cutId]'s finished picture at its own frame
+  /// [frameIndex], sampled on the track's axis and bypassed by the row's fx
+  /// switch — the one chain playback, the track stack and the file filter
+  /// the cut through.
+  final List<ResolvedLayerEffect> Function(CutId cutId, int frameIndex)
+  _cutEffectsAt;
 
   /// The editing canvas's composite TREE at the playhead — the same tree
   /// playback and export composite, with the ACTIVE layer standing in it
@@ -81,9 +103,62 @@ class EditingCanvas {
     double activeLayerOpacity,
     List<ResolvedLayerEffect> activeSourceEffects,
   })
-  get stack {
+  get stack => _stackAtThePlayhead(_selection.activeLayerId);
+
+  /// [stack] as a RUN shows it: the same tree with no row standing live. A
+  /// run draws on nothing, so every row is the cached image the warmer made
+  /// ahead of the playhead ([playedRowsAt]) — the picture is the one the
+  /// canvas shows standing still, made of the same images
+  /// (playback-plays-the-screen-material).
+  ({
+    List<CompositeNode<CanvasStackRow>> nodes,
+    double activeLayerOpacity,
+    List<ResolvedLayerEffect> activeSourceEffects,
+  })
+  get playingStack => _stackAtThePlayhead(null);
+
+  /// Every row [cut]'s frame [frameIndex] draws as a cached image while a
+  /// run plays it — [playedStackAt]'s leaves: what the warmer makes ahead of
+  /// the playhead, so the screen holds it when it gets there.
+  List<CanvasLayerImageRequest> playedRowsAt(Cut cut, int frameIndex) => [
+    for (final node in preorderNodes(playedStackAt(cut, frameIndex)))
+      if (node case CompositeLeaf(payload: final CanvasLayerImageRequest row))
+        row,
+  ];
+
+  /// [cut]'s frame [frameIndex] as a RUN shows it, wherever it is shown: the
+  /// composite tree under the V row's fx with no row standing live — what
+  /// the track stack draws for a cut it shows (the whole film, a gap's
+  /// parking, an O.L's partner), and every row the warmer makes ahead of
+  /// the playhead ([playedRowsAt]); the canvas's own at the playhead is
+  /// [playingStack], which also follows a drag in flight.
+  ///
+  /// ⚠️The track's SE rows join the open cut's frames only: their clones are
+  /// the open cut's window ([TrackSeDisplay.trackSeWindow]), and another
+  /// cut's would stand where they do not.
+  List<CompositeNode<CanvasStackRow>> playedStackAt(Cut cut, int frameIndex) =>
+      [
+        ..._underTheCutsFx(
+          cut.id,
+          frameIndex,
+          stackAt(cut: cut, frameIndex: frameIndex, drawingLayerId: null).nodes,
+        ),
+        if (cut.id == _project.activeCutOrNull?.id)
+          ..._trackSeDisplayNodes(
+            cut,
+            frameIndex: frameIndex,
+            dragPreview: null,
+            preview: null,
+          ),
+      ];
+
+  ({
+    List<CompositeNode<CanvasStackRow>> nodes,
+    double activeLayerOpacity,
+    List<ResolvedLayerEffect> activeSourceEffects,
+  })
+  _stackAtThePlayhead(LayerId? drawingLayerId) {
     final cut = _project.activeCutOrNull;
-    final activeLayerId = _selection.activeLayerId;
     if (cut == null) {
       return (
         nodes: const <CompositeNode<CanvasStackRow>>[],
@@ -113,11 +188,12 @@ class EditingCanvas {
     final drawn = stackAt(
       cut: cut,
       stackCut: stackCut,
+      dragPreview: dragPreview,
       frameIndex: frameIndex,
-      drawingLayerId: activeLayerId,
+      drawingLayerId: drawingLayerId,
     );
     final nodes = <CompositeNode<CanvasStackRow>>[
-      ...drawn.nodes,
+      ..._underTheCutsFx(cut.id, frameIndex, drawn.nodes),
       // Track-owned SE rows join as their cut-local display clones — they
       // composite read-only like before the ownership move (their
       // transform tracks are stripped, so the plain resolve path
@@ -145,7 +221,8 @@ class EditingCanvas {
   /// [stackCut] is [cut] as it composites right now (the drag in flight, the
   /// canvas's opacity drag preview); [cut] is what the brush holds. The live
   /// row stands in the tree only when it takes brush input and shows the cel
-  /// the brush holds; otherwise it composites like any other.
+  /// the brush holds; otherwise it composites like any other. [dragPreview]
+  /// is the drag [stackCut] shows, if any ([EditingStackMap.dragPreview]).
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
@@ -154,6 +231,7 @@ class EditingCanvas {
   stackAt({
     required Cut cut,
     Cut? stackCut,
+    TimelineDragPreview? dragPreview,
     required int frameIndex,
     required LayerId? drawingLayerId,
   }) {
@@ -163,8 +241,10 @@ class EditingCanvas {
       project: _project,
       cut: cut,
       stackCut: shown,
+      dragPreview: dragPreview,
       frameIndex: frameIndex,
       activeLayerId: drawingLayerId,
+      movieLaidAt: _movieLaidAt,
     );
     final drawing = drawingLayerId == null
         ? null
@@ -184,6 +264,24 @@ class EditingCanvas {
       activeSourceEffects: walk.activeSourceEffects,
     );
   }
+
+  /// [cutNodes] under the V row's fx ([_cutEffectsAt]), as every route that
+  /// draws the cut lays it ([underTheCutsFx]).
+  ///
+  /// 🚨THE CANVAS WAS THE ONE ROUTE WITHOUT IT (playback-plays-the-screen-
+  /// material, 10-09): playback, the parked track stack and both exports
+  /// filtered the cut through the V row's chain, and the canvas you stand on
+  /// showed it bare — so the same frame read two ways the moment a run
+  /// began (유저 절대규칙 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
+  ///
+  /// ⛔Here and not in [stackAt]: a conte picture's live stack walks that
+  /// too, and its printed picture is the cut's composite, which carries no
+  /// V row.
+  List<CompositeNode<CanvasStackRow>> _underTheCutsFx(
+    CutId cutId,
+    int frameIndex,
+    List<CompositeNode<CanvasStackRow>> cutNodes,
+  ) => underTheCutsFx(cutNodes, _cutEffectsAt(cutId, frameIndex));
 
   /// [source] with the DRAGGED rows' opacity substituted in — display
   /// only, so the canvas follows an opacity drag without a repo write per

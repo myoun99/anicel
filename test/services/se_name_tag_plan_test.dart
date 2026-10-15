@@ -11,6 +11,8 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/services/camera_projection_matrix.dart';
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 
 /// The on-canvas SE name tag resolution (R5b, §6-z15): which rows show
@@ -56,17 +58,21 @@ void main() {
     );
   }
 
-  List<ResolvedSeNameTag> resolve(
-    List<Layer> rows, {
-    int cutStartFrame = 0,
-    int localFrameIndex = 0,
-  }) => resolveSeNameTagsAt(
-    trackSeLayers: rows,
-    cutStartFrame: cutStartFrame,
-    localFrameIndex: localFrameIndex,
-    canvas: canvas,
-    cameraFrame: camera,
+  /// The shot of a camera at rest over [canvas] — centred, zoom 1.
+  final atRest = shotPlacement(
+    CameraPose(
+      center: CanvasPoint(x: canvas.width / 2, y: canvas.height / 2),
+    ),
+    camera,
   );
+
+  List<ResolvedSeNameTag> resolve(List<Layer> rows, {int globalFrame = 0}) =>
+      resolveSeNameTagsAt(
+        trackSeLayers: rows,
+        globalFrame: globalFrame,
+        cameraFrame: camera,
+        shot: atRest,
+      );
 
   test('a covered row shows the name and the dialogue as SEPARATE runs, and '
       'the stacked default lands INSIDE THE SHOT — the canvas is bigger '
@@ -75,7 +81,7 @@ void main() {
     final tags = resolve([
       seRow(id: 's1', name: 'S1', seName: 'タモツ', dialogue: 'おはよう'),
       seRow(id: 's2', name: 'S2', seName: 'ユキ', dialogue: 'うん'),
-    ], localFrameIndex: 3);
+    ], globalFrame: 3);
 
     // R5 #7: two runs, not one `[name] line` string — the name lives in
     // the box and the dialogue hangs beside it with its own ink.
@@ -83,18 +89,18 @@ void main() {
     expect(tags.map((tag) => tag.line?.text), ['おはよう', 'うん']);
     expect(tags.first.layerId, 's1');
 
-    // The camera's rect on the canvas at the resting pose.
-    final shot = shotRectIn(canvas: canvas, cameraFrame: camera);
+    // A tag's position is the shot's own (I-67-Q1): inside the frame by
+    // what it is, wherever the shot lies on the canvas.
     for (final tag in tags) {
       final position = tag.content.position!;
       expect(
         position.dx,
-        inInclusiveRange(shot.left, shot.left + shot.width),
+        inInclusiveRange(0, camera.width),
         reason: 'inside the shot horizontally',
       );
       expect(
         position.dy,
-        inInclusiveRange(shot.top, shot.top + shot.height),
+        inInclusiveRange(0, camera.height),
         reason:
             'inside the shot vertically — the defect that shipped tags '
             'to an editing canvas and an empty MP4',
@@ -109,7 +115,7 @@ void main() {
     );
     expect(
       tags.first.widthBudget,
-      lessThanOrEqualTo(shot.width),
+      lessThanOrEqualTo(camera.width),
       reason: 'a long line shrinks to the shot, never runs off it',
     );
   });
@@ -135,36 +141,46 @@ void main() {
     expect(resolve([seRow(id: 's1', name: 'S1', seName: 'タモツ')]), hasLength(1));
   });
 
-  test('SE rows key on the TRACK-GLOBAL axis: the cut start converts, and '
-      'a block that spills in from an earlier cut still shows', () {
+  // ↩️This passed a cut's start and a frame of the cut, which the function
+  // added: where a cut's frames stand on the track is the caller's to say
+  // (I-73-ol-index-space).
+  test('SE rows key on the TRACK-GLOBAL axis: a block shows over the '
+      'frames of the track it covers, and nowhere else', () {
     final rows = [
-      // Global frames 20..32 — the cut starts at 24, so the block spills
-      // in and covers this cut's frames 0..8.
+      // Global frames 20..32.
       seRow(id: 's1', name: 'S1', seName: 'タモツ', startFrame: 20, length: 12),
     ];
-    expect(
-      resolve(rows, cutStartFrame: 24, localFrameIndex: 0),
-      hasLength(1),
-      reason: 'covered from before the cut',
-    );
-    expect(
-      resolve(rows, cutStartFrame: 24, localFrameIndex: 10),
-      isEmpty,
-      reason: 'global frame 34 is past the block',
-    );
+    expect(resolve(rows, globalFrame: 24), hasLength(1));
+    expect(resolve(rows, globalFrame: 20), hasLength(1));
+    expect(resolve(rows, globalFrame: 19), isEmpty, reason: 'before it');
+    expect(resolve(rows, globalFrame: 32), isEmpty, reason: 'past it');
+    expect(resolve(rows, globalFrame: -1), isEmpty);
   });
 
   // R5 #7 (user, 2026-08-09): the tag has no position of its own, and rows
-  // get no per-row default. Every tag starts at the canvas centre and the
-  // SE row's TRANSFORM moves it — one rule, no exception per row.
-  test('an untouched row puts its tag at the CANVAS CENTRE, and so does '
-      'every other row', () {
+  // get no per-row default. Every tag starts at the centre and the SE
+  // row's TRANSFORM moves it — one rule, no exception per row. I-67-Q1
+  // (user, 2026-10-10): the SHOT's centre — the transform is the shot's.
+  test('an untouched row puts its tag at the SHOT\'S CENTRE, and so does '
+      'every other row — a camera at rest lays it on the canvas centre', () {
     final tags = resolve([
       seRow(id: 's1', name: 'S1', seName: 'タモツ'),
       seRow(id: 's2', name: 'S2', seName: 'ユキ'),
     ]);
-    final centre = Offset(canvas.width / 2, canvas.height / 2);
+    final centre = Offset(camera.width / 2, camera.height / 2);
     expect(tags.map((tag) => tag.content.position), [centre, centre]);
+    expect(
+      atRest.apply(CanvasPoint(x: centre.dx, y: centre.dy)),
+      CanvasPoint(x: canvas.width / 2, y: canvas.height / 2),
+    );
+  });
+
+  test('every tag carries the shot it stands in', () {
+    final tags = resolve([
+      seRow(id: 's1', name: 'S1', seName: 'タモツ'),
+      seRow(id: 's2', name: 'S2', seName: 'ユキ'),
+    ]);
+    expect(tags.map((tag) => tag.shot), [atRest, atRest]);
   });
 
   test('the row\'s TRANSFORM is what moves it', () {
@@ -188,7 +204,7 @@ void main() {
     expect(SeNameTag.fromJson(styleOnly.toJson()), styleOnly);
     expect(
       styled.single.content.position,
-      Offset(canvas.width / 2, canvas.height / 2),
+      Offset(camera.width / 2, camera.height / 2),
     );
   });
 }

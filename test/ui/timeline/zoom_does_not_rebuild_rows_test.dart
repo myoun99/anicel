@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -13,11 +14,15 @@ import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneUnionKeyMarkerSize;
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
+import '../../helpers/row_berths_in_order.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 /// R28 #4: a ZOOM STEP MUST NOT REBUILD A PAINTED ROW.
 ///
@@ -62,44 +67,50 @@ void main() {
     double cellWidth, {
     bool showSeconds = false,
     PropertyLaneRow? Function(Layer layer)? unionLaneForLayer,
-  }) => MaterialApp(
-    home: Scaffold(
-      body: Material(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: TimelineFrameRowsScrollBody(
-            rows: [
-              for (var i = 0; i < layers.length; i += 1)
-                TimelineDisplayRow.layer(layers[i], layerIndex: i),
-            ],
-            hooks: TimelineGridHooks(
-              activeLayerId: null,
-              frameCursor: ValueNotifier<int>(0),
-              playbackFrameCount: 12,
-              exposureStateForLayer: stateFor,
-              onSelectLayer: (_) {},
-              onSelectFrame: (_) {},
-              onToggleLayerVisibility: (_) {},
-              onLayerOpacityChanged: (_, _) {},
-              onToggleLayerTimesheet: (_) {},
-              onLayerMarkSelected: (_, _) {},
-              showSeconds: showSeconds,
-              unionLaneForLayer: unionLaneForLayer,
-            ),
-            frameStartIndex: 0,
-            frameEndIndexExclusive: 12,
-            leadingFrameSpacerWidth: 0,
-            trailingFrameSpacerWidth: 0,
-            totalFrameContentWidth: 12 * cellWidth,
-            metrics: TimelineGridMetrics(
-              frameCellWidth: cellWidth,
-              layerRowHeight: 28,
+  }) {
+    final rows = [
+      for (var i = 0; i < layers.length; i += 1)
+        TimelineDisplayRow.layer(layers[i], layerIndex: i),
+    ];
+    final metrics = TimelineGridMetrics(
+      frameCellWidth: cellWidth,
+      layerRowHeight: 28,
+    );
+    return MaterialApp(
+      home: Scaffold(
+        body: Material(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: TimelineFrameRowsScrollBody(
+              rows: rows,
+              berths: berthsInOrder(rows),
+              edges: timelineRowEdgesOf(rows, metrics),
+              hooks: TimelineGridHooks(
+                activeLayerId: null,
+                frameCursor: ValueNotifier<int>(0),
+                playbackFrameCount: 12,
+                exposureStateForLayer: stateFor,
+                onSelectLayer: (_) {},
+                onSelectFrame: (_) {},
+                onToggleLayerVisibility: (_) {},
+                onLayerOpacityChanged: (_, _) {},
+                onToggleLayerTimesheet: (_) {},
+                onLayerMarkSelected: (_, _) {},
+                showSeconds: showSeconds,
+                unionLaneForLayer: unionLaneForLayer,
+              ),
+              frameStartIndex: 0,
+              frameEndIndexExclusive: 12,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              totalFrameContentWidth: 12 * cellWidth,
+              metrics: metrics,
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   /// The row widget object currently mounted for [layerId].
   TimelineFrameCellsRow rowWidget(WidgetTester tester, String layerId) =>
@@ -186,15 +197,15 @@ void main() {
     const lane = PropertyLaneRow(
       laneId: 'transform-group',
       label: 'Transform',
-      keyedFrames: {2},
+      keyMarks: {2: KeyMark.linear},
       isGroupHeader: true,
     );
     final layers = [drawingLayer('a')];
-    Widget pumpable(double cellWidth) => harness(
-      layers,
-      cellWidth,
-      unionLaneForLayer: (_) => lane,
-    );
+    // ONE function, as the host's method is: a resolver is a fact the row
+    // keeps by equality, so a fresh closure per pump would be a new row.
+    PropertyLaneRow? union(Layer _) => lane;
+    Widget pumpable(double cellWidth) =>
+        harness(layers, cellWidth, unionLaneForLayer: union);
 
     await tester.pumpWidget(pumpable(24));
     final before = rowWidget(tester, 'a');
@@ -241,9 +252,7 @@ void main() {
     List<String> labelTexts() =>
         (tester
                     .widget<CustomPaint>(
-                      find.byKey(
-                        const ValueKey<String>('timeline-row-cells-a'),
-                      ),
+                      find.named('timeline-row-cells-a'),
                     )
                     .foregroundPainter!
                 as TimelineRowRunLabelsPainter)

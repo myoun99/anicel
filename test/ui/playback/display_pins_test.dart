@@ -7,21 +7,16 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
@@ -98,7 +93,7 @@ void main() {
         );
 
         cache.retainPin(keyFor('frame-a'), PlaybackQuality.full);
-        cache.evictLeastRecentlyUsed(targetBytes: 0);
+        cache.enforceBudget(maxBytes: 0);
 
         expect(
           cache.validImageOrNull(
@@ -128,7 +123,7 @@ void main() {
 
         cache.releasePin(keyFor('frame-a'), PlaybackQuality.full);
         expect(cache.pinnedBytes, 0);
-        cache.evictLeastRecentlyUsed(targetBytes: 0);
+        cache.enforceBudget(maxBytes: 0);
         expect(
           cache.validImageOrNull(
             keyFor('frame-a'),
@@ -139,104 +134,6 @@ void main() {
           isNull,
           reason: 'released means evictable again',
         );
-        cache.dispose();
-      });
-    });
-  });
-
-  group('cut frame composite cache', () {
-    Cut cut() => Cut(
-      id: const CutId('cut'),
-      name: 'Cut',
-      duration: 4,
-      canvasSize: canvasSize,
-      layers: [
-        Layer(
-          id: const LayerId('layer'),
-          name: 'A',
-          frames: [
-            Frame(
-              id: const FrameId('frame-a'),
-              duration: 1,
-              strokes: const [],
-            ),
-          ],
-          timeline: {
-            0: const TimelineExposure.drawing(FrameId('frame-a'), length: 2),
-          },
-        ),
-      ],
-    );
-
-    CutFrameCompositeCache compositeCache() {
-      final store = storeWithStrokes(['frame-a']);
-      return CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: (cut, layerId, frameId) => BrushFrameKey(
-          projectId: const ProjectId('project'),
-          trackId: const TrackId('track'),
-          cutId: cut.id,
-          layerId: layerId,
-          frameId: frameId,
-        ),
-      );
-    }
-
-    testWidgets('a pinned frame survives a zero-budget enforcement',
-        (tester) async {
-      await tester.runAsync(() async {
-        final cache = compositeCache();
-        await cache.prepareComposite(cut: cut(), frameIndex: 0);
-        // Past the held drawing the cut composes to nothing — a second
-        // picture, and nobody shows it.
-        await cache.prepareComposite(cut: cut(), frameIndex: 2);
-
-        cache.retainPin((const CutId('cut'), 0));
-        cache.enforceBudget(maxBytes: 0);
-
-        expect(
-          cache.validCompositeOrNull(cut: cut(), frameIndex: 0),
-          isNotNull,
-          reason: 'the held frame is on screen through a clone — evicting '
-              'it returns no bytes and re-composites the exact picture '
-              'being shown',
-        );
-        expect(
-          cache.validCompositeOrNull(cut: cut(), frameIndex: 2),
-          isNull,
-          reason: 'the unpinned picture goes',
-        );
-        cache.releasePin((const CutId('cut'), 0));
-        cache.dispose();
-      });
-    });
-
-    testWidgets('pinnedBytes counts a shared image once — held exposures '
-        'share one image under many keys', (tester) async {
-      await tester.runAsync(() async {
-        final cache = compositeCache();
-        // Frames 0 and 1 are one held exposure: equal signatures, one
-        // stored image, two index keys.
-        await cache.prepareComposite(
-          cut: cut(),
-          frameIndex: 0,
-        );
-        await cache.prepareComposite(
-          cut: cut(),
-          frameIndex: 1,
-        );
-
-        cache.retainPin((const CutId('cut'), 0));
-        cache.retainPin((const CutId('cut'), 1));
-        expect(
-          cache.pinnedBytes,
-          8 * 8 * 4,
-          reason: 'two pinned keys, one image — the reserve must not '
-              'double-bill content addressing',
-        );
-        cache.releasePin((const CutId('cut'), 0));
-        cache.releasePin((const CutId('cut'), 1));
         cache.dispose();
       });
     });

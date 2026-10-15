@@ -1,8 +1,11 @@
 import 'dart:math' as math;
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../panels/panel_collapsed_scope.dart';
+import 'timeline_grid_tile_store.dart';
+import 'timeline_row_edges.dart';
 
 /// How far a drag at [pos] has pushed past either end of a [extent]-long
 /// axis, once it enters the [edge]-wide band at either end: negative near
@@ -93,6 +96,29 @@ double pageScrollOffset(ScrollWindow window, RevealedItem item) {
   return inside ? window.offset : item.start;
 }
 
+/// Where a playing run's NEXT turn pages [window] ([pageScrollOffset]): the
+/// first of its [extent]-long steps the playhead leaves the window by,
+/// going on, comes to its start — unless a run of [runSteps] wraps before
+/// it gets there, and then its first step's page is the next: [window]
+/// itself while that step is inside it, where no turn comes.
+///
+/// ⚠️A run behind its clock drops frames ([playheadWay]) and may leave by a
+/// later step: that turn is not told before it comes.
+double nextPageScrollOffset(
+  ScrollWindow window, {
+  required double extent,
+  required int runSteps,
+}) {
+  if (extent <= 0) {
+    return window.offset;
+  }
+  final leaving = ((window.offset + window.viewport) / extent).floor();
+  return pageScrollOffset(
+    window,
+    _itemAt(leaving < runSteps ? leaving : 0, extent),
+  );
+}
+
 /// Applies [law] to [controller]'s live position, within the scrollable's
 /// own range, and not at all when it would not move.
 ///
@@ -166,6 +192,77 @@ bool scrollableIsShown(ScrollPosition position) =>
     position.hasViewportDimension &&
     !PanelCollapsedScope.isFolded(position.context.storageContext);
 
+/// Writes where [position] stands into [kept], the host's record of the
+/// axis — while it [scrollableIsShown]. Folded away, clamped to its own
+/// range or pulled there by its own layout, it would hand the axis a place
+/// nobody turned it to. Both axes keep theirs through this: the frames
+/// ([TimelineFrameAxisFollower]) and the layers (F-267).
+void keepWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
+  if (scrollableIsShown(position)) {
+    kept.value = position.pixels;
+  }
+}
+
+/// The window each kept FRAME axis was last shown in, in pixels — what a
+/// panel brought forward again reveals its playhead against before it is
+/// laid out (유저 2026-10-14, panels-are-built-only-while-open-Q1). Written
+/// where its grid lays out on screen ([keepWindowWhereShown]); an axis no
+/// grid has shown since the project opened has none.
+///
+/// ⚠️This device's and this run's, so never saved: the project keeps where
+/// its axes stand (F-267), not how long a window showed them.
+final Expando<double> keptAxisWindows = Expando<double>('kept axis window');
+
+/// Writes the window [position] shows into [keptAxisWindows] for [kept] —
+/// while it [scrollableIsShown], as [keepWhereShown] writes where it stands.
+void keepWindowWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
+  if (scrollableIsShown(position)) {
+    keptAxisWindows[kept] = position.viewportDimension;
+  }
+}
+
+/// [kept] following [controller] for good — a panel's LAYER axis, the
+/// project's (F-267): every scroll of its scrollable writes it
+/// ([keepWhereShown]), and so does the first layout after it is built.
+///
+/// ⚠️The first layout is a write of its own because it says nothing: a
+/// scrollable born past its content's end — the rows were folded since, or
+/// fewer — is held to that end there and no scroll is notified (measured
+/// 10-09: born at 1000 over a 200 range, it stands at 200 from its first
+/// frame). Without it the project goes on keeping a place nobody sees.
+///
+/// Being born where [kept] stands is the caller's (`initialScrollOffset`).
+/// The answer lets go.
+///
+/// A panel whose host keeps no layer axis — null [kept] — follows none, and
+/// its answer lets go of nothing. Asked here, once: the timeline, the
+/// x-sheet and the conte each asked it for themselves, and F-351's two-way
+/// drag made the three alike enough for the clone scan to count the third.
+VoidCallback followKeptAxis(
+  ScrollController controller,
+  ValueNotifier<double>? kept, {
+  required bool Function() isMounted,
+}) {
+  if (kept == null) {
+    return _keepsNothing;
+  }
+  void keep() {
+    if (controller.hasClients) {
+      keepWhereShown(controller.position, kept);
+    }
+  }
+
+  controller.addListener(keep);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (isMounted()) {
+      keep();
+    }
+  });
+  return () => controller.removeListener(keep);
+}
+
+void _keepsNothing() {}
+
 /// One axis kept as a VALUE rather than by a scrollable — the folded row's,
 /// which stands at the host's kept offset (F-143): where it stands, how
 /// long its window is, how long one step is, and which step the playhead
@@ -178,8 +275,10 @@ typedef KeptStep = ({
 });
 
 /// [pageToPlayhead] for a kept axis — the same law ([pageScrollOffset]),
-/// against the window the row itself shows.
-void pageKeptAxis(KeptStep axis) => _moveKept(axis, pageScrollOffset);
+/// against the window the row itself shows, on the same frame
+/// ([_turnAfterThisFrame]).
+void pageKeptAxis(KeptStep axis) =>
+    _turnAfterThisFrame(() => _moveKept(axis, pageScrollOffset));
 
 /// [revealSelectionOnBothAxes]'s frame-axis law ([revealScrollOffset]) for
 /// a kept axis.
@@ -232,6 +331,12 @@ double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
 /// pointer moving over stationary content, so a travel that ignores it
 /// freezes the moment the view begins to scroll.
 ///
+/// [follow] folds it in FIRST, for a travel with an end — an edge pulled
+/// to its floor or its ceiling (I-89 ③D): it is handed the pan, returns
+/// how much of it the travel took, and the view pans that far and no
+/// further. A pan the travel cannot take would only carry what it moves
+/// off from under the hand.
+///
 /// Per POINTER MOVE, no timer (the row drag's convention): holding still
 /// at the edge holds still; it is the reaching that scrolls. Clamped at
 /// BOTH extents — the ruler/rail scrubs that deliberately overshoot to
@@ -240,6 +345,7 @@ double edgeAutoPanApply({
   required BuildContext context,
   required Offset globalPosition,
   required Axis axis,
+  double Function(double pan)? follow,
 }) {
   final scrollable = Scrollable.maybeOf(context, axis: axis);
   final viewport = scrollable?.context.findRenderObject();
@@ -260,11 +366,12 @@ double edgeAutoPanApply({
     position.minScrollExtent,
     position.maxScrollExtent,
   );
-  final applied = target - position.pixels;
+  final reach = target - position.pixels;
+  final applied = reach == 0 || follow == null ? reach : follow(reach);
   if (applied == 0) {
     return 0;
   }
-  position.jumpTo(target);
+  position.jumpTo(position.pixels + applied);
   return applied;
 }
 
@@ -296,6 +403,19 @@ void edgeAutoPanOvershoot(ScrollController controller, double delta) {
 /// [indexOfDisplayRow] and every other row walk already gives.
 typedef RevealedStep = ({ScrollController controller, double extent, int at});
 
+/// The ROW axis of a grid's reveal: the scrollable that runs it, and the row
+/// the selection stands on — null when it is not drawn — at its own place
+/// along the rail (I-89 ③: the rows are not all one height, so a row is no
+/// longer step `at` of one [RevealedStep.extent]).
+typedef RevealedRow = ({ScrollController controller, RevealedItem? item});
+
+/// Row [at] of [edges] as a reveal brings it into view, with [margin] of
+/// neighbour kept in sight around it — null for a row that is not drawn.
+RevealedItem? revealedRowOf(TimelineRowEdges edges, int at, double margin) =>
+    at < 0 || at >= edges.count
+    ? null
+    : (start: edges.startOf(at), extent: edges.extentOf(at), margin: margin);
+
 /// Brings the SELECTION back into view on BOTH of a grid's axes (R5, user
 /// 2026-08-09): the frame under the cursor along the frame axis, the row it
 /// stands on along the rail.
@@ -306,28 +426,25 @@ typedef RevealedStep = ({ScrollController controller, double extent, int at});
 /// 🚨ONE function for both grids. The timeline runs the frames across and
 /// the rows down, the X-sheet runs the frames down and the columns across,
 /// and each spelled the whole thing (the audit's clone scan, round 8). An
-/// axis is a [RevealedStep] here, so neither grid states an orientation at
-/// all — it hands its two scrollables in whichever order it holds them.
+/// axis is a [RevealedStep] or a [RevealedRow] here, so neither grid states
+/// an orientation at all — it hands its two scrollables in whichever order
+/// it holds them.
 ///
-/// An axis with no clients, a non-positive extent or a negative
-/// [RevealedStep.at] is left where it is; the other still moves.
+/// An axis with no clients, a non-positive extent or a selection it does
+/// not draw is left where it is; the other still moves.
 ///
 /// The two are NAMED for what they are because they no longer move alike:
 /// the [frames] reach past the built end (F-225), the [rows] do not.
 void revealSelectionOnBothAxes({
   required RevealedStep frames,
-  required RevealedStep rows,
+  required RevealedRow rows,
 }) {
   if (_axisCanMove(frames)) {
     jumpToReveal(frames.controller, _itemOf(frames));
   }
-  if (_axisCanMove(rows)) {
-    _jumpUsing(
-      rows.controller,
-      _itemOf(rows),
-      revealScrollOffset,
-      endless: false,
-    );
+  final row = rows.item;
+  if (row != null && row.extent > 0 && rows.controller.hasClients) {
+    _jumpUsing(rows.controller, row, revealScrollOffset, endless: false);
   }
 }
 
@@ -364,8 +481,30 @@ RevealedItem _itemAt(int at, double extent) =>
 /// Every surface that follows the playhead calls THIS — the timeline's
 /// frames, the x-sheet's (which run down, not across) and the storyboard's
 /// global strip — so the page law has one home, as the walk does.
-void pageToPlayhead(RevealedStep axis) {
+///
+/// And the page after the one it stands on is baked while it stands there
+/// ([TimelineGridTileStore.warmTheNextPage]): the turn finds it warm.
+void pageToPlayhead(RevealedStep axis) => _turnAfterThisFrame(() {
   if (_axisCanMove(axis)) {
     jumpToPage(axis.controller, _itemOf(axis));
   }
+  TimelineGridTileStore.instance.warmTheNextPage();
+});
+
+/// 🚨A PAGE TURNS ON THE FRAME AFTER THE ONE THAT CARRIED THE PLAYHEAD OUT.
+/// A turn moves every row's window, and every row lays its widgets out
+/// again where the window put them: 🔬profile 10-10, a turn frame painted
+/// ~1,000 render objects (PAINT 9ms · SEMANTICS 7ms, against 0.6 · 0.2 on
+/// the frames between) and took vsync to raster 25–60ms at the median
+/// against 13–32. Turned in the frame that changed the film frame, all of
+/// that stood between the new film frame and the screen. A film's frames
+/// are farther apart than the screen's refreshes, and the turn takes the
+/// next one, where nothing else is shown.
+///
+/// One home for both kinds of axis — a scrollable's ([pageToPlayhead]) and
+/// a kept one's ([pageKeptAxis]).
+void _turnAfterThisFrame(VoidCallback turn) {
+  SchedulerBinding.instance
+    ..addPostFrameCallback((_) => turn())
+    ..ensureVisualUpdate();
 }

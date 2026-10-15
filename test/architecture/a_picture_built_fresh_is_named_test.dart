@@ -29,8 +29,9 @@ void main() {
       count: 4,
       why:
           'a resize and a move build their result fresh — each passes '
-          '`texts: _textsMoved(…)`; the fourth wraps one plate so it can '
-          'take the same pass',
+          '`texts: _textsMoved(…)`; the fourth is the ONE wrapping of a '
+          'text\'s plate as a surface of its own (`celTextPlateSurface`), '
+          'so its pixels take the passes and reads a drawing\'s take',
     ),
     'lib/src/services/undo_surface_snapshot.dart': (
       count: 1,
@@ -64,6 +65,12 @@ void main() {
       count: 1,
       why: 'the empty picture that takes a forked cel away again',
     ),
+    'lib/src/services/import/clip_vector_raster.dart': (
+      count: 1,
+      why:
+          'a scratch surface a CLIP STUDIO vector layer\'s strokes are laid '
+          'on and read from — its pixels go on as a decoded picture\'s do',
+    ),
     'lib/src/services/import/raster_cel_import.dart': (
       count: 3,
       why:
@@ -75,6 +82,13 @@ void main() {
       count: 1,
       why: 'a scratch surface the selection\'s outline is stamped on',
     ),
+    'lib/src/ui/brush/canvas_panel/canvas_panel_text.dart': (
+      count: 1,
+      why:
+          'the texts above the one in hand, handed in (`texts: above`) on '
+          'a blank of its cel\'s grid — what floats over it while a hand '
+          'carries it (F-344)',
+    ),
   };
 
   /// The places that put the texts back themselves, and how many times
@@ -82,8 +96,10 @@ void main() {
   const carriers = <String, int>{
     'lib/src/services/bitmap_surface_geometry.dart': 3,
     'lib/src/services/undo_surface_snapshot.dart': 1,
-    // Read back from an entry, and written into one.
-    'lib/src/services/persistence/brush_drawing_binary_codec.dart': 2,
+    // Read back from an entry, written into one, and laid on a worker for
+    // the main isolate to adopt (`layCelEntry`, card
+    // `cel-thaw-holds-the-ui-thread`).
+    'lib/src/services/persistence/brush_drawing_binary_codec.dart': 3,
   };
 
   const model = 'lib/src/models/bitmap_surface.dart';
@@ -123,7 +139,7 @@ void main() {
           '`texts:`; if it really starts a picture, name it in the ledger '
           'with the reason',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 16);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 18);
   });
 
   test('the places that rebuild a picture from its parts hand the texts '

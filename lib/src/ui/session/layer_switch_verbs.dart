@@ -7,7 +7,8 @@ import '../../models/storyboard_coverage.dart';
 import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_fill_reference_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
-import '../../services/project_lookup.dart' show requireLayerAnywhere;
+import '../../services/project_lookup.dart'
+    show layerAnywhereOrNull, requireLayerAnywhere, rowTwirlsOf;
 import '../timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'active_cut_controllers.dart';
 import 'row_sweep.dart';
@@ -51,6 +52,23 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
+  /// The row's property-lane twirl, and [laneId]'s group inside it — the
+  /// row's own, undone as its fold is (F-360). ⚠️No session notify: the
+  /// rails read them off the document ([RailView.readFolds]), which every
+  /// history change re-reads — as they heard the view's sets before.
+  void toggleLayerLanes(LayerId layerId) =>
+      _controllers.layerController.toggleLayerLanes(layerId);
+
+  void setLayerLaneGroupExpanded(
+    LayerId layerId,
+    String laneId, {
+    required bool expanded,
+  }) => _controllers.layerController.setLayerLaneGroupExpanded(
+    layerId,
+    laneId,
+    expanded: expanded,
+  );
+
   /// Silences/unsilences an SE row's sounds: playback and export skip
   /// muted layers' clips, waveforms keep displaying. An undoable edit, so
   /// the history listener re-uploads a live mix — no refresh of its own.
@@ -85,12 +103,18 @@ class LayerSwitchVerbs {
   /// change are written, so a no-op pick costs nothing.
   void setBlendModeForLayers(Set<LayerId> layerIds, LayerBlendMode mode) {
     // ⛔ONE undo step for one blend pick, however many rows it lands on.
+    //
+    // Rows are found ANYWHERE, as every other row button finds them
+    // (`SessionRowButtonPresses`): the storyboard's one conte head is some
+    // cut's row, pressed under whichever cut is active (I-73). ↩️It walked
+    // the active cut's rows, which was every row a blend chip stood on.
+    final project = _project.repository.requireProject();
     final targets = [
-      for (final layer in _project.layers)
-        if (layerIds.contains(layer.id) &&
-            layerKindShowsBlendControl(layer.kind) &&
-            layer.blendMode != mode)
-          layer.id,
+      for (final id in layerIds)
+        if (layerAnywhereOrNull(project, id) case final layer?
+            when layerKindShowsBlendControl(layer.kind) &&
+                layer.blendMode != mode)
+          id,
     ];
     if (targets.isNotEmpty) {
       _controllers.layerController.setLayersBlendMode(
@@ -129,10 +153,23 @@ class LayerSwitchVerbs {
   }
 
   /// The row as the project holds it THIS instant — the one lookup the
-  /// three live reads below share (cut-owned rows and track fixtures
-  /// alike).
+  /// live reads below share (cut-owned rows and track fixtures alike).
   Layer _rowAnywhere(LayerId layerId) =>
       requireLayerAnywhere(_project.repository.requireProject(), layerId);
+
+  /// Whether [layerId]'s property lanes are twirled down right now — the
+  /// row's own (F-360), and a V row's, by its lane carrier, its track's
+  /// ([rowTwirlsOf]).
+  ///
+  /// 🚨A LIVE READ, like [isLayerEyeOn]: the legend's twirl-all turns row
+  /// after row as ONE step, and the rail's sets are read back off the
+  /// document only when the step lands ([RailView.readFolds]) — while a
+  /// press spread across the selection may already have turned the next
+  /// row, which a stale read would turn back.
+  bool isLayerLanesOpen(LayerId layerId) =>
+      rowTwirlsOf(_project.repository.requireProject(), layerId)
+          ?.lanesExpanded ??
+      false;
 
   /// Whether [layerId]'s TRANSFORM group is applied right now.
   ///
@@ -271,9 +308,11 @@ class LayerSwitchVerbs {
       return true;
     }
 
-    return !_controllers.layerController.layers.any(
-      (layer) =>
-          layer.id != targetLayer.id && layer.kind == LayerKind.storyboard,
+    // The cut's ONE conte ([holdsSingletonOfKind]) — the target is not a
+    // storyboard row here, so it cannot be the one found.
+    return !holdsSingletonOfKind(
+      _controllers.layerController.layers,
+      LayerKind.storyboard,
     );
   }
 

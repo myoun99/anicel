@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/cut.dart';
 import '../../models/layer_id.dart';
+import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/rename_cut_dialog.dart';
@@ -122,7 +123,7 @@ VoidCallback renameOnLabelDoubleClick(
   LayerId pressed,
 ) {
   final rows = session.layerVerbs.renameableOf(
-    session.rowSelectionVerbs.rowsActedOnBy(pressed),
+    session.rowSelectionVerbs.layersActedOnBy(pressed),
   );
   return () => unawaited(
     _askRowsName(
@@ -149,8 +150,10 @@ Future<void> _askRowsName(
   if (rows.isEmpty) {
     return Future<void>.value();
   }
+  // Wherever it lives: a row the storyboard names may stand in another cut
+  // than the active one, or in none (F-322).
   final sole = rows.length == 1
-      ? session.layers.where((layer) => layer.id == rows.single).firstOrNull
+      ? layerAnywhereOrNull(session.repository.requireProject(), rows.single)
       : null;
   return askThenCommit<String>(
     context,

@@ -8,10 +8,12 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'ui/timeline/timeline_ruler_probe.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/the_classic_rail.dart';
 
 void main() {
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
@@ -32,7 +34,8 @@ void main() {
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
     );
-    expect(find.byTooltip('Add'), findsOneWidget);
+    // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
+    expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);
@@ -65,6 +68,7 @@ void main() {
   ) async {
     withTouchScroll();
     await tester.pumpWidget(const AnicelApp());
+    await standTheClassicRail(tester);
 
     // The bottom dock runs between the two vertical tool bars, so the
     // grid viewport is 88px narrower than the window — scroll far enough
@@ -210,10 +214,10 @@ void main() {
     await tester.pumpWidget(const AnicelApp());
 
     String counterText() => tester
-        .widget<Text>(
+        .renderObject<RenderTickText>(
           find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
         )
-        .data!;
+        .data;
     expect(counterText(), '1');
 
     // F-284 (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에

@@ -24,7 +24,7 @@ import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
-import '../services/project_lookup.dart' show celBankLanesOf;
+import '../services/project_lookup.dart' show celBankLanesOf, cutIdOfLayer;
 import '../services/project_repository.dart';
 
 part 'timeline/timeline_marks.dart';
@@ -656,7 +656,10 @@ class TimelineController {
     return UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
-      after: rederiveRunBehaviors(after, drawnFrameCount: _drawnFrameCount()),
+      after: rederiveRunBehaviors(
+        after,
+        drawnFrameCount: _drawnFrameCountFor(after.id),
+      ),
     );
   }
 
@@ -674,7 +677,7 @@ class TimelineController {
   ) {
     final next = rederiveRunBehaviors(
       layer.copyWith(timeline: timeline),
-      drawnFrameCount: _drawnFrameCount(),
+      drawnFrameCount: _drawnFrameCountFor(layer.id),
     );
     return next == layer ? null : next;
   }
@@ -734,7 +737,7 @@ class TimelineController {
     // gates then had to say "a parked playhead has no cut to lens through"
     // — the same sentence three times, guarding one lookup. The row lives
     // on the TRACK, so the gap has no bearing on finding it: the shift it
-    // asks for is `activeCutGlobalStartFrame`, which is 0 with no cut,
+    // asks for is `activeCutMediaStartFrame`, which is 0 with no cut,
     // which is exactly the identity a global row wants.
     for (final layer in _trackSeLayers?.call() ?? const <Layer>[]) {
       if (layer.id == layerId) {
@@ -748,16 +751,28 @@ class TimelineController {
     throw StateError('Layer not found: $layerId');
   }
 
-  /// The run-behavior fill boundary: hold/repeat edges fill ghosts to the
-  /// cut's DRAWN end — the conte 尺 plus its のりしろ (F-227). Zero (no cut)
-  /// renders no end-side ghosts.
-  int _drawnFrameCount() {
+  /// The run-behavior fill boundary of [layerId]'s row: hold/repeat edges
+  /// fill ghosts to the cut's DRAWN end — the conte 尺 plus its のりしろ
+  /// (F-227). Zero (no cut) renders no end-side ghosts.
+  ///
+  /// The cut is the one the ROW is in — the write's own reading, which
+  /// settles each cut's rows against that cut
+  /// (`ProjectRepository._normalizedCut`). A track-owned row is in none,
+  /// and is counted against the open cut.
+  ///
+  /// ↩️Read off the open cut for every row until I-73 (2026-10-08). The
+  /// storyboard's strip hands this controller rows of cuts the session is
+  /// not in — a conte's panel, a block of a row riding it — and their drag
+  /// previewed a hold to the wrong cut's end (🧪a block holding to the end
+  /// of its 20-frame cut, dragged while the session stood in a 12-frame
+  /// one, showed its ghost stop at 12 and jump to 20 on release).
+  int _drawnFrameCountFor(LayerId layerId) {
     final project = _repository.currentProject;
-    final cutId = _cutId;
-    if (project == null || cutId == null) {
+    if (project == null) {
       return 0;
     }
-    return cutDrawnFrameCount(project, cutId) ?? 0;
+    final cutId = cutIdOfLayer(project, layerId) ?? _cutId;
+    return cutId == null ? 0 : cutDrawnFrameCount(project, cutId) ?? 0;
   }
 
   Cut? _findCutOrNull() {

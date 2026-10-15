@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 
 import '../services/audio/audio_mixer_reference.dart';
 import '../services/audio/audio_resampler_reference.dart';
+import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
 
 /// Whether [library] lays the audio structs out byte-for-byte the way
@@ -54,6 +55,7 @@ final class QaAudioNative {
     this._resample,
     this._resampleFrames,
     this._denoise,
+    this._resampler,
   );
 
   final void Function(
@@ -84,6 +86,7 @@ final class QaAudioNative {
   _resample;
   final int Function(int, int, int) _resampleFrames;
   final int Function(Pointer<Float>, int, int, int) _denoise;
+  final _QaResamplerApi _resampler;
 
   static QaAudioNative? _instance;
   static bool _tried = false;
@@ -182,6 +185,7 @@ final class QaAudioNative {
           Int32 Function(Pointer<Float>, Int64, Int32, Int32),
           int Function(Pointer<Float>, int, int, int)
         >('qa_audio_denoise_f32'),
+        _QaResamplerApi(library),
       );
     } on Object {
       return null;
@@ -387,6 +391,139 @@ extension QaAudioNativeResampling on QaAudioNative {
       calloc.free(input);
     }
   }
+
+  /// A conversion of [channels] from [inputRate] to [outputRate] fed a
+  /// piece at a time through the native resampler, by the conform's filter
+  /// — the loop [resample] runs, so the pieces' outputs are its outputs bit
+  /// for bit. The rates unequal: equal ones skip the filter.
+  QaAudioResampleStream openResampler({
+    required int channels,
+    required int inputRate,
+    required int outputRate,
+  }) {
+    final handle = _resampler.open(
+      channels,
+      inputRate,
+      outputRate,
+      defaultResamplerStopbandDb,
+      defaultResamplerBandwidth,
+    );
+    if (handle == nullptr) {
+      throw ArgumentError(
+        'no conversion of $channels channels from $inputRate to $outputRate',
+      );
+    }
+    return QaAudioResampleStream._(_resampler, handle, channels);
+  }
+}
+
+/// The engine's resampler fed a piece at a time — `qa_audio_resampler_*`.
+final class _QaResamplerApi {
+  _QaResamplerApi(DynamicLibrary library)
+    : open = library
+          .lookupFunction<
+            Pointer<Void> Function(Int32, Int32, Int32, Double, Double),
+            Pointer<Void> Function(int, int, int, double, double)
+          >('qa_audio_resampler_open'),
+      push = library
+          .lookupFunction<
+            Int32 Function(Pointer<Void>, Pointer<Float>, Int64),
+            int Function(Pointer<Void>, Pointer<Float>, int)
+          >('qa_audio_resampler_push'),
+      end = library
+          .lookupFunction<
+            Void Function(Pointer<Void>),
+            void Function(Pointer<Void>)
+          >('qa_audio_resampler_end'),
+      ready = library
+          .lookupFunction<
+            Int64 Function(Pointer<Void>),
+            int Function(Pointer<Void>)
+          >('qa_audio_resampler_ready'),
+      pull = library
+          .lookupFunction<
+            Int64 Function(Pointer<Void>, Pointer<Float>, Int64),
+            int Function(Pointer<Void>, Pointer<Float>, int)
+          >('qa_audio_resampler_pull'),
+      held = library
+          .lookupFunction<
+            Int64 Function(Pointer<Void>),
+            int Function(Pointer<Void>)
+          >('qa_audio_resampler_held'),
+      close = library
+          .lookupFunction<
+            Void Function(Pointer<Void>),
+            void Function(Pointer<Void>)
+          >('qa_audio_resampler_close');
+
+  final Pointer<Void> Function(int, int, int, double, double) open;
+  final int Function(Pointer<Void>, Pointer<Float>, int) push;
+  final void Function(Pointer<Void>) end;
+  final int Function(Pointer<Void>) ready;
+  final int Function(Pointer<Void>, Pointer<Float>, int) pull;
+  final int Function(Pointer<Void>) held;
+  final void Function(Pointer<Void>) close;
+}
+
+/// The native resampler fed a piece at a time
+/// ([QaAudioNativeResampling.openResampler]).
+final class QaAudioResampleStream implements AudioResampleStream {
+  QaAudioResampleStream._(this._api, this._handle, this._channels);
+
+  final _QaResamplerApi _api;
+  Pointer<Void> _handle;
+  final int _channels;
+
+  /// Input frames it holds now — for the tests that tell a conversion that
+  /// lets go of its input from one that keeps the whole sound.
+  int get heldFrames => _api.held(_handle);
+
+  /// ⚠️One for the isolate, not one per conversion: nothing here suspends
+  /// between filling it and copying out of it, a piece in or a piece out.
+  static final NativeScratch<Float> _room = NativeScratch<Float>(
+    (count) => calloc<Float>(count),
+    bytesPerElement: sizeOf<Float>(),
+  );
+
+  @override
+  Float32List push(Float32List samples) {
+    final frames = samples.length ~/ _channels;
+    if (frames > 0) {
+      final input = _room.ensure(frames * _channels);
+      input
+          .asTypedList(frames * _channels)
+          .setAll(0, Float32List.sublistView(samples, 0, frames * _channels));
+      if (_api.push(_handle, input, frames) == 0) {
+        throw StateError('the native resampler could not take the piece');
+      }
+    }
+    return _pull();
+  }
+
+  @override
+  Float32List finish() {
+    _api.end(_handle);
+    return _pull();
+  }
+
+  Float32List _pull() {
+    final ready = _api.ready(_handle);
+    if (ready <= 0) {
+      return Float32List(0);
+    }
+    final out = _room.ensure(ready * _channels);
+    final written = _api.pull(_handle, out, ready);
+    // Copied out: the room is the next piece's.
+    return Float32List.fromList(out.asTypedList(written * _channels));
+  }
+
+  @override
+  void close() {
+    if (_handle != nullptr) {
+      _api.close(_handle);
+      _handle = nullptr;
+    }
+  }
 }
 
 
@@ -412,10 +549,10 @@ int qaAudioEnvelopeTotal(List<AudioMixClip> clips) {
 /// [qaAudioWriteClips] names.
 ///
 /// What genuinely differs between the two paths stays with each caller:
-/// the device flattens its PCM into one block with an offset table
-/// (the C copies it), the mixer callocs a buffer per source and points
-/// the struct at it. That is a value — the `samples` pointer handed to
-/// [writeSource] — not a mode.
+/// the device points each struct at a buffer of its own that it holds
+/// for the call (the slot holds it after), the mixer callocs a buffer per
+/// source and points the struct at it. That is a value — the `samples`
+/// pointer handed to [writeSource] — not a mode.
 final class QaAudioScheduleArrays {
   factory QaAudioScheduleArrays(
     List<AudioMixClip> clips,
@@ -454,9 +591,8 @@ final class QaAudioScheduleArrays {
   final Pointer<QaAudioEnvelopeKeyStruct> envelopeArray;
   final int envelopeTotal;
 
-  /// Writes [source]'s struct at [index], pointed at [samples] — the C
-  /// copy's `nullptr` for the device path, a Dart-owned buffer for the
-  /// mixer's.
+  /// Writes [source]'s struct at [index], pointed at [samples] — a device
+  /// buffer for the device path, a Dart-owned buffer for the mixer's.
   void writeSource(int index, AudioMixSource source, Pointer<Float> samples) {
     final target = sourceArray[index];
     target.sourceStart = source.sourceStart;

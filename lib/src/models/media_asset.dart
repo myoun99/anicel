@@ -466,25 +466,68 @@ class MediaAsset {
 /// outside — a picker, a drop — still spells it here first.
 String normalizedMediaPath(String path) => path.replaceAll('\\', '/');
 
+/// Raster formats the tip/image decoders accept.
+///
+/// `psd`/`psb` are in here because the decoders read them THEMSELVES now
+/// (`services/photoshop`), not because a platform codec grew a new format.
+/// ⚠️`psd` reaches the Apple pickers through the `public.image` umbrella —
+/// Apple declares `com.adobe.photoshop-image` and it conforms — but `psb`
+/// has no system type, so it is imported in both Info.plists like `flac`.
+///
+/// A Photoshop document is an image kind: merged it IS one picture, and
+/// expanding it into layers is a placement decision the import window
+/// makes, not a different kind of asset.
+const List<String> imageFileExtensions = [
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'bmp',
+  'gif',
+  'psd',
+  'psb',
+];
+
+/// Sound formats the audio conform can decode.
+const List<String> audioFileExtensions = [
+  'mp3',
+  'wav',
+  'm4a',
+  'aac',
+  'flac',
+  'ogg',
+];
+
+/// Movie containers the media pool will register.
+const List<String> videoFileExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
+
+/// The document format, a kind of its own.
+const List<String> pdfFileExtensions = ['pdf'];
+
 /// The asset kind [path]'s extension implies; null for unrecognized
 /// extensions (the import sheet asks or refuses).
+///
+/// 🚨THE ONE SPELLING of which file is which kind: the pickers' lists
+/// (`FileTypeGroups.poolMedia`) are these same four, so a file a picker
+/// offers is a file this names a kind for. They were two spellings until
+/// 2026-10-09 — this switch and the pickers' lists, agreeing by luck.
 MediaAssetKind? mediaAssetKindForPath(String path) {
   final dot = path.lastIndexOf('.');
   if (dot == -1) {
     return null;
   }
   final extension = path.substring(dot + 1).toLowerCase();
-  return switch (extension) {
-    'mp3' || 'wav' || 'm4a' || 'aac' || 'flac' || 'ogg' => MediaAssetKind.audio,
-    // A Photoshop document is an image kind: merged it IS one picture, and
-    // expanding it into layers is a placement decision the import window
-    // makes, not a different kind of asset.
-    'png' || 'jpg' || 'jpeg' || 'webp' || 'bmp' || 'gif' || 'psd' || 'psb' =>
-      MediaAssetKind.image,
-    'mp4' || 'mov' || 'avi' || 'mkv' || 'webm' => MediaAssetKind.video,
-    'pdf' => MediaAssetKind.pdf,
-    _ => null,
-  };
+  for (final (kind, extensions) in const [
+    (MediaAssetKind.audio, audioFileExtensions),
+    (MediaAssetKind.image, imageFileExtensions),
+    (MediaAssetKind.video, videoFileExtensions),
+    (MediaAssetKind.pdf, pdfFileExtensions),
+  ]) {
+    if (extensions.contains(extension)) {
+      return kind;
+    }
+  }
+  return null;
 }
 
 /// [path]'s file name: its last segment, of either separator style (the

@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/session/row_selection.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
 /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 완전히 같은 순서.
 /// 선택 상태에서 복사·삭제·이름편집(선택된 편집가능 레이어 전부를 같은
@@ -150,7 +152,7 @@ void main() {
   // 물건 클릭해도 사라지도록 하고싶어. 선택레이어로 ABC선택하고, C 클릭하면
   // 사라지도록. 프레임셀쪽도 마찬가지」.
   group('a CLICK clears — even a click inside the selection', () {
-    test('clearAllSelections empties every kind at once', () {
+    test('clearTimelineSelections empties every timeline kind at once', () {
       final s = session();
       final drawing = s.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
@@ -162,12 +164,12 @@ void main() {
         headIndex: 3,
       );
       expect(s.frameRangeSelection.value, isNotNull);
-      s.clearAllSelections();
+      s.clearTimelineSelections();
       expect(s.frameRangeSelection.value, isNull);
 
       s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(drawing.id));
       expect(s.rowSelection.value, isNotEmpty);
-      s.clearAllSelections();
+      s.clearTimelineSelections();
       expect(s.rowSelection.value, isEmpty);
     });
 
@@ -195,9 +197,7 @@ void main() {
       final drawing = s.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
       );
-      final row = find.byKey(
-        ValueKey<String>('timeline-layer-name-${drawing.id}'),
-      );
+      final row = find.named('timeline-layer-name-${drawing.id}');
       await tester.ensureVisible(row);
       await tester.pumpAndSettle();
 
@@ -246,9 +246,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(s.frameRangeSelection.value, isNotNull, reason: 'the premise');
 
-      final cells = find.byKey(
-        ValueKey<String>('timeline-row-cells-${drawing.id}'),
-      );
+      final cells = find.named('timeline-row-cells-${drawing.id}');
       await tester.ensureVisible(cells);
       await tester.pumpAndSettle();
       final rect = tester.getRect(cells);
@@ -497,7 +495,7 @@ void main() {
         final container = tester.widget<Container>(
           find
               .descendant(
-                of: find.byKey(ValueKey<String>('timeline-layer-row-$id')),
+                of: find.named('timeline-layer-row-$id'),
                 matching: find.byType(Container),
               )
               .first,
@@ -505,14 +503,10 @@ void main() {
         return (container.decoration! as BoxDecoration).color!;
       }
 
-      final row = find.byKey(
-        ValueKey<String>('timeline-layer-row-${target.id}'),
-      );
+      final row = find.named('timeline-layer-row-${target.id}');
       // Taken by its name — a drawing row's centre is its fill-reference
       // button since the opacity column widened (text-scale-rail-opac).
-      final grip = find.byKey(
-        ValueKey<String>('timeline-layer-name-${target.id}'),
-      );
+      final grip = find.named('timeline-layer-name-${target.id}');
       await tester.ensureVisible(row);
       await tester.pumpAndSettle();
       // ⚠️CONTRACT CHANGED (T1, 2026-08-13): the ring per row became ONE band

@@ -221,7 +221,40 @@ import 'dart:io';
 ///   per share in Dart and copied into the batch arena once per batch, so no
 ///   pixel pays a power and both kernels read the same numbers.
 ///   `qa_dab_spec_sizeof` moves.
-const int kQaEngineAbiVersion = 41;
+/// - v42: `qa_audio_decode_span_window` — a window of a sound's frames, and
+///   only those held: a piece cut from a long reel decodes from the start
+///   but keeps the piece (board sound-lands-on-its-exact-sample-Q5, 유저
+///   2026-10-09). `qa_audio_decode_span` is its whole window.
+/// - v43: `qa_audio_stream_open` / `_read` / `_close` — a sound opened once
+///   and read on, every decoder through one door (the window decode is that
+///   stream, passed over to the window) — and `qa_audio_resampler_*`, the
+///   resampler fed a piece at a time through the loop `qa_audio_resample`
+///   runs. A long sound is conformed as it is decoded instead of whole in
+///   memory (board long-sound-conform-memory-Q1, 유저 2026-10-10 「지금
+///   한다 — 전 플랫폼」).
+/// - v44: `qa_display_vblank` / `qa_display_wait_until_us` — the
+///   compositor's vblank (Windows' DWM; 0 everywhere else) and a wait that
+///   ends on a microsecond, for a clock's frame to be handed to the GPU
+///   where it lands on the vblank it claimed (`QaDisplayTiming`, board
+///   playback-frame-raster-is-the-whole-window, 유저 2026-10-11 「144hz든
+///   몇이든 확실하게」).
+/// - v45: `qa_display_compose_every_vblank` — the compositor kept composing
+///   on every vblank while a clock runs, so a picture handed over between
+///   two vblanks is taken at the second of them however idle the desktop
+///   leaves it (`QaDisplayTiming.composeEveryVblank`; the same board card).
+/// - v46: `qa_premultiply_rgba_rows` — the premultiplied copy between two
+///   row strides, so the tiles of a cel nobody has pictured go up a block
+///   at a time with one call a tile (`surfaceRegionPicture`,
+///   board a-cold-cel-composes-tile-by-tile).
+/// - v47: `qa_audio_capture_clock` / `qa_audio_capture_frames` — the
+///   capture's own clock line, the playback's shape, so a take is placed by
+///   what the microphone had taken in when its anchor was HEARD
+///   (`AudioRecorder.capturedAt`, board take-head-trims-at-the-playback-start).
+/// - v48: `qa_audio_buffer_new` / `_retain` / `_release` / `_holds`, and a
+///   `qa_audio_device_set_schedule` that names buffers — the device's PCM
+///   is made once in C memory and a schedule copies none of it
+///   (`QaAudioDevice.setSchedule`, board play-press-first-frame-stall).
+const int kQaEngineAbiVersion = 48;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

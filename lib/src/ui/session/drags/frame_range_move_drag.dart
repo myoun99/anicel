@@ -21,7 +21,6 @@ import '../../../models/timeline_row_address.dart';
 import '../../../models/track_frame_range.dart';
 import '../../../models/transform_track.dart';
 import '../../../services/command.dart';
-import '../../../services/commands/rekey_brush_frames_command.dart';
 import '../../../services/commands/track_transition_commands.dart';
 import '../../../services/commands/update_cut_camera_command.dart';
 import '../../../services/commands/update_layer_timeline_command.dart';
@@ -37,7 +36,6 @@ import '../drawing_block_move_drag.dart';
 import '../folder_bands.dart' show folderBandsFollowing;
 import '../folders_and_attachments.dart';
 import '../range_selections.dart';
-import '../render_caches.dart';
 import '../row_spans.dart';
 import '../session_roles.dart';
 import '../track_se_display.dart';
@@ -285,7 +283,7 @@ KeySources _castKeySources(
     }
     if (layer.kind == LayerKind.camera) {
       final track = project.activeCutOrNull?.camera.track;
-      if (track != null && anyKeyIn(transformKeyFrameUnion(track))) {
+      if (track != null && anyKeyIn(track.keyedFrames)) {
         camera = (before: track, layerId: id);
       }
       continue;
@@ -404,7 +402,6 @@ typedef FrameRangeMoveRoles = ({
   RetimeLaw retime,
   ValueNotifier<TimelineDragPreview?> dragPreview,
   DrawingBlockMoveDragVerbs blockMove,
-  RenderCaches renderCaches,
   Camera camera,
   Transitions transitions,
   TrackSeDisplay trackSe,
@@ -448,7 +445,6 @@ class FrameRangeMoveDrag {
        _retime = roles.retime,
        _dragPreview = roles.dragPreview,
        _blockMove = roles.blockMove,
-       _renderCaches = roles.renderCaches,
        _camera = roles.camera,
        _transitions = roles.transitions,
        _trackSe = roles.trackSe,
@@ -705,7 +701,6 @@ class FrameRangeMoveDrag {
   final RetimeLaw _retime;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final DrawingBlockMoveDragVerbs _blockMove;
-  final RenderCaches _renderCaches;
   final Camera _camera;
   final Transitions _transitions;
 
@@ -982,6 +977,7 @@ class FrameRangeMoveDrag {
             drawnFrameCount: drawn,
           ),
         }),
+        rekeys: plan.rekeys,
       );
       followOutline();
       return true;
@@ -1374,7 +1370,14 @@ class FrameRangeMoveDrag {
         rangeEndIndexExclusive: selection.endIndexExclusive,
         frameDelta: frameDelta,
       );
-      if (cameraShifted == null) {
+      // …and none of them out of the cut (🗣️I-73-camera-row-Q2), the
+      // lanes' own move asks the same ([cameraWriteKeepsKeysIn]).
+      if (cameraShifted == null ||
+          !cameraWriteKeepsKeysIn(
+            cameraKeys.before,
+            cameraShifted,
+            drawnFrameCount: _project.activeCutDrawnFrameCount,
+          )) {
         return null;
       }
     }
@@ -1395,7 +1398,14 @@ class FrameRangeMoveDrag {
         starts: starts,
         frameDelta: frameDelta,
       );
-      if (shifted == null) {
+      // …nor one that draws a cut past its camera keys: a のりしろ made
+      // shorter stops short of them (🗣️I-73-camera-row-Q7).
+      if (shifted == null ||
+          !_transitions.keepsCameraKeys(
+            row.copyWith(
+              instructions: SplayTreeMap<int, InstructionEvent>.from(shifted),
+            ),
+          )) {
         return null;
       }
       instructionShifted[row.id] = shifted;
@@ -1476,6 +1486,7 @@ class FrameRangeMoveDrag {
             drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
       }),
+      rekeys: plan?.rekeys ?? const [],
       // C2: the SE passengers' global forms, for the storyboard strips.
       previewGlobalLayers: {
         for (final entry in sePreviews.entries) entry.key: ?entry.value.global,
@@ -1721,6 +1732,7 @@ class FrameRangeMoveDrag {
             drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
       }),
+      rekeys: plan.rekeys,
     );
     _slideSelectionOutline(
       _selectionBefore,
@@ -2146,18 +2158,7 @@ class FrameRangeMoveDrag {
     commands.addAll(_multiRowLayerCommands(multiRowPlan));
     commands.addAll(_riderCommands(cut));
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
-      commands.add(
-        RekeyBrushFramesCommand(
-          store: _renderCaches.brushFrameStore,
-          pairs: [
-            for (final rekey in multiRowPlan!.rekeys)
-              (
-                _project.brushFrameKeyForCut(cut, rekey.from, rekey.frameId),
-                _project.brushFrameKeyForCut(cut, rekey.to, rekey.frameId),
-              ),
-          ],
-        ),
-      );
+      commands.add(_blockMove.celRekeyCommand(cut, multiRowPlan!.rekeys));
     }
     if (!_commitRangeMoveCommands(commands, landedSelection)) {
       return;

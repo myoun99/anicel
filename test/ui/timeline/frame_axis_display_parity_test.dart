@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart'
@@ -28,11 +29,11 @@ void main() {
     );
 
     List<PropertyLaneRow> lanes(Layer layer) => const [
-      PropertyLaneRow(laneId: 'fx-blur', label: 'Blur', keyedFrames: {}),
+      PropertyLaneRow(laneId: 'fx-blur', label: 'Blur', keyMarks: {}),
       PropertyLaneRow(
         laneId: 'transform-position',
         label: 'Position',
-        keyedFrames: {},
+        keyMarks: {},
       ),
     ];
 
@@ -52,11 +53,12 @@ void main() {
 
     test('the x-sheet puts the same list BEFORE the layer, reversed — the '
         'last-applied reads furthest LEFT', () {
-      final rows = buildTimelineDisplayRows(
-        layers: [owner],
-        expandedLayerIds: {owner.id},
-        lanesForLayer: lanes,
-        lanesPrecedeLayer: true,
+      final rows = laneRunsMovedAhead(
+        buildTimelineDisplayRows(
+          layers: [owner],
+          expandedLayerIds: {owner.id},
+          lanesForLayer: lanes,
+        ),
       );
 
       expect(rows.map(nameOf), ['transform-position', 'fx-blur', 'A']);
@@ -96,11 +98,12 @@ void main() {
         'A-above',
       ]);
 
-      final sheet = buildTimelineDisplayRows(
-        layers: stack,
-        expandedLayerIds: {owner.id},
-        lanesForLayer: lanes,
-        lanesPrecedeLayer: true,
+      final sheet = laneRunsMovedAhead(
+        buildTimelineDisplayRows(
+          layers: stack,
+          expandedLayerIds: {owner.id},
+          lanesForLayer: lanes,
+        ),
       );
       expect(sheet.map(nameOf), [
         'A-below',
@@ -119,11 +122,12 @@ void main() {
         kind: LayerKind.animation,
       );
 
-      final sheet = buildTimelineDisplayRows(
-        layers: [owner, second],
-        expandedLayerIds: {owner.id, second.id},
-        lanesForLayer: lanes,
-        lanesPrecedeLayer: true,
+      final sheet = laneRunsMovedAhead(
+        buildTimelineDisplayRows(
+          layers: [owner, second],
+          expandedLayerIds: {owner.id, second.id},
+          lanesForLayer: lanes,
+        ),
       );
 
       expect(sheet.map(nameOf), [
@@ -171,7 +175,7 @@ void main() {
         rail(16),
         everyFrame: true,
       );
-      final glyph = timelineGlyphPainter('00', type);
+      final glyph = laidOutGlyph('00', type);
       expect(
         glyph.height + timelineMarkGap,
         lessThanOrEqualTo(16),

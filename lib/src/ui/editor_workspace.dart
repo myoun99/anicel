@@ -25,6 +25,7 @@ import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset, mediaFileName;
+import '../models/reference_swap.dart';
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
@@ -33,7 +34,10 @@ import '../services/font_library_service.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../models/app_language.dart' show AppLanguage;
 import '../models/brush_tip_entry.dart';
+import '../models/canvas_size.dart';
+import '../models/drawing_guide.dart' show CutGuides, GuideId;
 import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
@@ -74,7 +78,8 @@ import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
-import 'menu/project_open_door.dart' show opensAsProject;
+import 'menu/opened_files_door.dart';
+import 'menu/project_open_door.dart' show ProjectPick;
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
@@ -94,7 +99,6 @@ import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
 import 'panels/panel_flash.dart';
-import 'panels/panel_visibility_scope.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
@@ -104,6 +108,7 @@ import 'widgets/superellipse_clip.dart';
 import 'widgets/tick_layer.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
+import 'timeline/memo_token.dart' show ByList;
 import 'conte/conte_ink.dart';
 import 'conte/conte_picture_ink.dart';
 import 'conte/conte_tab_host.dart';
@@ -114,20 +119,30 @@ import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart'
     show StandingCut, storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart'
-    show StoryboardPanel, StoryboardPlayheadTint, StoryboardTrackLabelRow;
+    show
+        StoryboardPanel,
+        StoryboardPlayheadTint,
+        StoryboardTrackLabelRow,
+        storyboardVideoRowName;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'timeline/collapsed_row_overlay.dart';
+import 'timeline/layer_label_controls.dart'
+    show layerRailColumnWidthsIn;
 import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/timeline_grid_metrics.dart'
-    show TimelineGridMetrics, timelineLayerRowHeightIn;
+    show
+        TimelineGridMetrics,
+        timelineLayerControlsWidthFor,
+        timelineLayerRowHeightIn;
 import 'timeline/timeline_cel_content_source.dart'
     show TimelineCelContentSource;
 import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
 import 'timeline/timeline_frame_cursor_layer.dart' show TimelineCursorLayer;
+import 'timeline/timeline_row_edges.dart' show TimelineRowEdges;
 import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometryHandle;
 import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
 import 'timeline/timeline_layer_controls_row.dart'
@@ -155,7 +170,14 @@ import 'panels/tool_size_preset_panel.dart';
 import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../models/canvas_viewport.dart';
+import 'timeline/timeline_edge_auto_pan.dart'
+    show keptAxisWindows, revealKeptAxis;
 import 'timeline/timeline_orientation.dart';
+import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
+import 'workspace/workspace_bar_commands.dart';
+import 'workspace/workspace_door_commands.dart';
+import '../services/persistence/folder_grant.dart' show FolderGrant;
+import 'camera/camera_view_toggle_button.dart' show toggleCameraView;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -166,6 +188,7 @@ import 'timesheet_tab_host.dart';
 import 'input/control_press_claim.dart';
 
 part 'workspace/workspace_collapsed_rows.dart';
+part 'workspace/workspace_folded_storyboard.dart';
 part 'workspace/workspace_docks.dart';
 part 'workspace/workspace_layout_persistence.dart';
 part 'workspace/workspace_tabs.dart';
@@ -195,7 +218,7 @@ class EditorWorkspace extends StatefulWidget {
   const EditorWorkspace({
     super.key,
     required this.session,
-    required this.onProjectFilesDropped,
+    required this.onOpenProjects,
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
@@ -216,6 +239,8 @@ class EditorWorkspace extends StatefulWidget {
     this.confirm,
     this.history,
     this.layerNav,
+    this.barCommands,
+    this.doorCommands,
     this.onInvokeAction,
     this.flipHud,
     this.brushKeys,
@@ -223,10 +248,11 @@ class EditorWorkspace extends StatefulWidget {
 
   final EditorSessionManager session;
 
-  /// Project files dropped on the window (F-247), handed to the shell's
-  /// Open door — the shell holds the tabs a project opens into. The
-  /// workspace only tells them from the rest ([opensAsProject]).
-  final void Function(List<String> paths) onProjectFilesDropped;
+  /// Project files the door was handed (F-247, F-282) — the menu's 「파일
+  /// 열기…」, a drop on the window, the media panel's ＋ — handed on to the
+  /// shell's Open door, which holds the tabs a project opens into. The
+  /// workspace only tells them from the rest ([OpenedFilesDoor]).
+  final Future<void> Function(List<ProjectPick> picks) onOpenProjects;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts and the workspace panels drive one state. Null keeps a
@@ -285,6 +311,14 @@ class EditorWorkspace extends StatefulWidget {
   /// the handler because it owns the timeline view state (row filter,
   /// hidden sections) the displayed-row walk must respect.
   final TimelineLayerNavCommands? layerNav;
+
+  /// The shell-owned channel to the bar buttons whose state this holds —
+  /// the zooms, the ⇄ and the camera view (I-40).
+  final WorkspaceBarCommands? barCommands;
+
+  /// The shell-owned channel the top strip's 「파일 열기…」 and 「폴더
+  /// 열기…」 knock on: this state holds what the door hands files to.
+  final WorkspaceDoorCommands? doorCommands;
 
   /// PEN-7b: the shell's action funnel for the canvas flip touch slot.
   final void Function(String actionId)? onInvokeAction;
@@ -871,6 +905,39 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardPixelsPerFrame.value = value;
   }
 
+  /// One press of [panel]'s zoom − or + — the step its view cluster's
+  /// button takes, through the same writer (I-40's key).
+  void _stepZoom(WorkingPanel panel, {required bool zoomIn}) {
+    final framesPerSecond =
+        widget.session.projectSettings.projectFrameRate.countingBase;
+    double stepped(double from) => TimelineZoomLimits.stepped(
+      from,
+      zoomIn: zoomIn,
+      framesPerSecond: framesPerSecond,
+    );
+    switch (panel) {
+      case WorkingPanel.timeline:
+        _setTimelineZoom(stepped(_timelinePixelsPerFrame.value));
+      case WorkingPanel.storyboard:
+        _setStoryboardZoom(stepped(_storyboardPixelsPerFrame.value));
+    }
+  }
+
+  /// The timeline's ⇄ — its button's one writer.
+  void _setTimelineOrientation(TimelineOrientation orientation) {
+    _timelineOrientation.value = orientation;
+    _flipHud.syncFlipAxis();
+  }
+
+  /// One press of [panel]'s ⇄ (I-40's key). Only the timeline's bar has
+  /// one: the conte's answers nothing, as its missing button would.
+  void _toggleOrientation(WorkingPanel panel) {
+    if (panel != WorkingPanel.timeline) {
+      return;
+    }
+    _setTimelineOrientation(_timelineOrientation.value.toggled);
+  }
+
   /// The storyboard's V rows share ONE height (user's rule), kept here so
   /// it survives a tab switch the way the zoom does — as the splitter or a
   /// saved layout SET it. What the rows are drawn at is
@@ -934,6 +1001,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// storyboard each fold, and each had its own offset die with it.
   Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
       widget.session.panelViews.frameAxisOffsets;
+
+  /// Where each frame grid's LAYER axis is scrolled to — the project's as
+  /// well, and saved with it (F-267).
+  Map<String, ValueNotifier<double>> get _layerAxisOffsets =>
+      widget.session.panelViews.layerAxisOffsets;
 
   // The lane twirl and the group fold are pressed through
   // `SessionRowButtonPresses` — a press inside the row selection folds every
@@ -1151,8 +1223,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         setState(() => _regionOnTop = onTop);
         _layoutPersistence.scheduleLayoutSave();
       },
+      regionFolder: _toggleRegionFolded,
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
+    widget.barCommands?.bind(
+      this,
+      zoomStep: _stepZoom,
+      toggleOrientation: _toggleOrientation,
+      toggleCameraView: () => toggleCameraView(_views._cameraViewEnabled),
+    );
+    widget.doorCommands?.bind(
+      this,
+      openFiles: () => unawaited(_pickAndOpen()),
+      openFolder: () => unawaited(_pickFolderAndOpen()),
+    );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
       slot.request.addListener(_writeViewerBookmarks);
@@ -1205,13 +1289,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
-    // The marquee, as the fifth selection kind — so one 선택 해제 can let go
-    // of everything rather than half of it.
-    // ⛔Not a cascade: an arrow closure swallows the next `..` section.
-    session.rangeSelections.canvasHasSelection = () =>
-        widget.canvasSelectionCommands?.hasRegion ?? false;
-    session.rangeSelections.clearCanvasSelection = () =>
-        widget.canvasSelectionCommands?.deselect();
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1337,15 +1414,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // this window's to report or to clear.
     session.pixelVerbs.pixelVerbCanvas = null;
     session.pixelVerbs.cutToolHand = null;
-    session.rangeSelections
-      ..canvasHasSelection = null
-      ..clearCanvasSelection = null;
     session.memoryPressureTicks.removeListener(
       _storyboardThumbnails.respondToMemoryPressure,
     );
     // Its pictures go with it; the store reports the zero to [session].
     _storyboardThumbnails.dispose();
     _views.unbindSession();
+    _foldedStoryboard.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
     session.removeListener(_followTimelineZoomToCut);
@@ -1365,6 +1440,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final _WorkspaceCollapsedRows _collapsedRows = _WorkspaceCollapsedRows(
     this,
   );
+
+  /// The folded storyboard where it stands on another row than its V row
+  /// (workspace/workspace_folded_storyboard.dart, F-322).
+  late final _WorkspaceFoldedStoryboard _foldedStoryboard =
+      _WorkspaceFoldedStoryboard(this);
 
   /// What the STORYBOARD panel stacks — bound by that panel, read by the ↑/↓
   /// walk and the flip window while it is the panel being worked in.
@@ -1435,7 +1515,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // the same row with the arrows kept it, and the frame flip — which does
     // clear — disagreed with its own sibling.
     //
-    // ⛔The fix is not another `clearAllSelections()` here. The law has a
+    // ⛔The fix is not another `clearTimelineSelections()` here. The law has a
     // house, and the way to obey it is to walk through the door rather than
     // to copy the sentence written on it.
     session.standOnRow(target);
@@ -1615,6 +1695,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   void dispose() {
     _unbindSession(widget.session);
+    _foldedStoryboard.dispose();
     _mediaDropVerdict.dispose();
     _brushTool.removeListener(_brushPresets.followBrushTool);
     // A pending debounce would write after the tree is gone; the values are
@@ -1655,6 +1736,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _subViewer.dispose();
     _draggingTab.dispose();
     widget.layerNav?.unbind(this);
+    widget.barCommands?.unbind(this);
+    widget.doorCommands?.unbind(this);
     widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
     _layoutPersistence._layoutSaveTimer?.cancel();
@@ -1669,15 +1752,77 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     super.dispose();
   }
 
-  /// Runs a layout mutation and clamps the playhead when the storyboard
-  /// just came on screen (over-end playheads on non-last cuts must land
-  /// back on the counter frame — timeline parity).
+  /// Runs a change to what the docks show — a layout mutation, or a rail
+  /// group opening — and answers each frame panel it brought in front: the
+  /// storyboard's playhead is clamped (over-end playheads on non-last cuts
+  /// must land back on the counter frame — timeline parity), then the
+  /// playhead is shown on the panel's own axis ([_revealThePlayheadOn]).
+  ///
+  /// ⚠️A rail group opening is one of these changes: a panel in front of a
+  /// closed group is not on screen. ↩️It counted as shown wherever it was
+  /// in front, since before there were rails.
   void _mutatingLayout(VoidCallback mutate) {
-    final wasVisible = _layoutPersistence.isStoryboardVisible;
+    final before = _framePanelsInFront();
     mutate();
-    if (!wasVisible && _layoutPersistence.isStoryboardVisible) {
+    final cameForward = _framePanelsInFront().difference(before);
+    if (cameForward.contains(EditorWorkspace.storyboardTabId)) {
       clampPlayheadForStoryboard(widget.session);
     }
+    cameForward.forEach(_revealThePlayheadOn);
+  }
+
+  /// The frame panels in front of a dock that shows.
+  Set<String> _framePanelsInFront() => {
+    for (final tabId in const [
+      EditorWorkspace.timelineTabId,
+      EditorWorkspace.storyboardTabId,
+    ])
+      if (_layout.locateTab(tabId) case final at?
+          when _layout.activeTabIn(at.dockId) == tabId &&
+              _rail.dockShows(at.dockId))
+        tabId,
+  };
+
+  /// 🚨A FRAME PANEL BROUGHT FORWARD AGAIN SHOWS ITS PLAYHEAD (유저
+  /// 2026-10-14, panels-are-built-only-while-open-Q1: 「다시 열 때
+  /// 플레이헤드를 드러낸다」). A panel is built only while it shows, so one
+  /// put back in front is built anew where its axis was left — and a run
+  /// played meanwhile, or a walk on another panel, left the playhead
+  /// elsewhere. Once, as it comes forward, the walk's law ([revealKeptAxis]):
+  /// nothing moves while the playhead is in sight, else the least move that
+  /// shows it. ⚠️The cost the answer took: a view scrolled away from the
+  /// playhead on purpose is pulled back to it too.
+  ///
+  /// By VALUE, on the kept axis, before the panel is built — against the
+  /// window it last showed ([keptAxisWindows]) — so its first frame stands
+  /// there. A panel not shown since the project opened has no window, and
+  /// stands where the project left it (F-267).
+  void _revealThePlayheadOn(String tabId) {
+    final cursors = widget.session.playheadCursors;
+    final (railId, playhead, extent) = tabId == EditorWorkspace.timelineTabId
+        ? (
+            _timelineOrientation.value == TimelineOrientation.horizontal
+                ? LayerRailId.timeline
+                : LayerRailId.xsheet,
+            cursors.cutFrame.value,
+            _timelinePixelsPerFrame.value,
+          )
+        : (
+            LayerRailId.storyboard,
+            cursors.trackFrame.value,
+            _storyboardPixelsPerFrame.value,
+          );
+    final kept = _frameAxisOffsets[railId];
+    final window = kept == null ? null : keptAxisWindows[kept];
+    if (kept == null || window == null || playhead == null) {
+      return;
+    }
+    revealKeptAxis((
+      offset: kept,
+      viewport: window,
+      extent: extent,
+      at: playhead,
+    ));
   }
 
   /// A panel brought forward by ITS OWN BUTTON — its tab, the floor switch
@@ -1807,6 +1952,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   bool _bottomDockCollapsed = false;
 
+  /// The floating region's fold — its chevron's one writer, which the key
+  /// presses too (I-40).
+  void _toggleRegionFolded() {
+    _rebuild(() => _bottomDockCollapsed = !_bottomDockCollapsed);
+    _layoutPersistence.scheduleLayoutSave();
+  }
+
   /// How far the floating region is pulled in from BOTH side edges, once
   /// somebody has SAID how far. Null means nobody has, and the default
   /// below answers instead.
@@ -1916,8 +2068,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // as a straight bar.
       left: right ? null : 0,
       right: right ? 0 : null,
-      top: onTop ? EditorPanelTabs.stripHeight : 0,
-      bottom: onTop ? 0 : EditorPanelTabs.stripHeight,
+      top: onTop ? EditorPanelTabs.stripHeight : DockEdgeSplitter.endInset,
+      bottom: onTop ? DockEdgeSplitter.endInset : EditorPanelTabs.stripHeight,
       width: DockEdgeSplitter.thickness,
       child: DockEdgeSplitter(
         key: ValueKey<String>('bottom-inset-${right ? 'right' : 'left'}'),
@@ -1931,26 +2083,40 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         },
         onDragStart: () => _bottomInsetDragRaw = inset,
         onDragEnd: () => _bottomInsetDragRaw = null,
-        onDragDelta: (delta) {
-          // Pulling the LEFT edge right and the RIGHT edge left both grow
-          // the inset, which is what "symmetric" means from the hand's side.
-          final before = _bottomInsetDragRaw ?? inset;
-          final raw = (before + (right ? -delta : delta))
-              .clamp(0.0, maxInset)
-              .toDouble();
-          _bottomInsetDragRaw = raw;
-          _bottomInsetOverride.value = _detented(raw, railSpan);
-          _layoutPersistence.scheduleLayoutSave();
-          // The DETENT costs nothing — `_bottomInsetDragRaw` keeps the
-          // un-snapped total (R3 #2), so the magnet can be left. The WALLS
-          // at 0 and maxInset do cost, and that is what goes back to the
-          // splitter, converted out of inset units into pointer ones.
-          final movedInset = raw - before;
-          return right ? -movedInset : movedInset;
-        },
+        onDragDelta: _insetTravel(
+          right: right,
+          inset: inset,
+          railSpan: railSpan,
+          maxInset: maxInset,
+        ),
       ),
     );
   }
+
+  /// The side edge's travel, one frame of it — its grip's and its
+  /// corner's.
+  double Function(double delta) _insetTravel({
+    required bool right,
+    required double inset,
+    required double railSpan,
+    required double maxInset,
+  }) => (delta) {
+    // Pulling the LEFT edge right and the RIGHT edge left both grow
+    // the inset, which is what "symmetric" means from the hand's side.
+    final before = _bottomInsetDragRaw ?? inset;
+    final raw = (before + (right ? -delta : delta))
+        .clamp(0.0, maxInset)
+        .toDouble();
+    _bottomInsetDragRaw = raw;
+    _bottomInsetOverride.value = _detented(raw, railSpan);
+    _layoutPersistence.scheduleLayoutSave();
+    // The DETENT costs nothing — `_bottomInsetDragRaw` keeps the
+    // un-snapped total (R3 #2), so the magnet can be left. The WALLS
+    // at 0 and maxInset do cost, and that is what goes back to the
+    // splitter, converted out of inset units into pointer ones.
+    final movedInset = raw - before;
+    return right ? -movedInset : movedInset;
+  };
 
   /// Snaps to the rail's width when the drag lands near it, so the
   /// pass-through boundary is reachable on purpose.
@@ -1959,81 +2125,109 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ? railSpan
       : inset;
 
-  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, the
-  /// import/placement window opens with the dropped paths — never an
-  /// instant import. Folders drop too (the cut-folder parser's entrance).
+  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, what it
+  /// holds goes through the one door — never an instant import. Folders
+  /// drop too (the cut-folder parser's entrance).
   ///
   /// ↩️F-247 (유저 2026-09-30): 「anicel이면 배치창이아니라 새 프로젝트로
   /// 열도록. tvpp도 똑같이」 — a file 「열기」 opens is not imported: it opens
-  /// through that door ([EditorWorkspace.onProjectFilesDropped]), each in a
-  /// tab of its own. Everything else still comes in through the window.
-  /// When one drop holds both, the window comes first — its files go into
-  /// the project the drop landed on, which an open would take off the
-  /// screen — and the projects open once it is closed.
-  void _onOsFilesDropped(DropDoneDetails details) {
-    final paths = [for (final file in details.files) file.path];
-    final projects = [for (final path in paths) if (opensAsProject(path)) path];
-    final rest = [for (final path in paths) if (!opensAsProject(path)) path];
-    void openProjects() {
-      if (projects.isNotEmpty) {
-        widget.onProjectFilesDropped(projects);
-      }
-    }
+  /// in a tab of its own, once the import window has closed
+  /// ([OpenedFilesDoor]).
+  void _onOsFilesDropped(DropDoneDetails details) => unawaited(
+    _door.open(context, [
+      for (final file in details.files) handedPath(file.path),
+    ]),
+  );
 
-    if (rest.isEmpty) {
-      openProjects();
+  /// THE ONE DOOR, with what this workspace holds for it (F-282): the
+  /// shell's Open door for projects, the import window, the brush library
+  /// and the fonts.
+  OpenedFilesDoor get _door => OpenedFilesDoor(
+    openProjects: widget.onOpenProjects,
+    importWindow: (picked, {required toPool}) =>
+        _openImportWindow(picked: picked, poolOnly: toPool),
+    bringBrushes: (name, bytes) =>
+        _presetLibrary.importFile((name: name, bytes: bytes)),
+    bringFont: (bytes) async {
+      final outcome = await _fonts.importBytes(bytes);
+      final family = outcome.family;
+      return _fonts.noticeOf(outcome) ??
+          (family == null ? null : AppText.strings.fontBrought(family));
+    },
+  );
+
+  /// The top strip's 「파일 열기…」 — and the media panel's ＋, which
+  /// [toPool] says: the files it brings register.
+  Future<void> _pickAndOpen({bool toPool = false}) async {
+    final picked = await pickFilesToOpen(context);
+    if (picked.isEmpty || !mounted) {
       return;
     }
-    _openImportWindow(initialPaths: rest, onClosed: openProjects);
+    await _door.open(context, picked, toPool: toPool);
+  }
+
+  /// The top strip's 「폴더 열기…」: a cut folder, into the import window.
+  Future<void> _pickFolderAndOpen() async {
+    // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
+    // returns a SAF tree URI on Android — and the window the folder goes to
+    // lists it with `Directory(folder).listSync(recursive: true)`, which
+    // answers "that folder is gone" for a URI. A wrong answer that looks
+    // like a right one. (The import window's own 「컷 폴더…」 picked it so
+    // until F-282.)
+    final grant = await pickFolderGrantForUser(context);
+    if (grant == null || !mounted) {
+      return;
+    }
+    await _door.open(context, [grant]);
   }
 
   /// A reference row shows [path] instead of its file (I-47) — no window:
   /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
   /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
-  /// window would have said it.
+  /// window would have said it — and why ([referenceSwapWords]).
   Future<void> _swapReference(LayerId layerId, String path) async {
-    final swapped = await widget.session.importDoors.swapReference(
-      layerId: layerId,
-      path: path,
+    final words = referenceSwapWords(
+      await widget.session.importDoors.swapReference(
+        layerId: layerId,
+        path: path,
+      ),
+      path,
     );
-    if (swapped || !mounted) {
+    if (words == null || !mounted) {
       return;
     }
     await showAppNotice(
       context,
       title: AppText.strings.commonNotice,
-      message: AppText.strings.imUnreadable(mediaFileName(path)),
+      message: words,
     );
   }
 
-  /// The one import window, from whichever entrance asked for it.
+  /// The one import window, from whichever entrance asked for it — done
+  /// once it has closed.
   ///
-  /// [poolOnly] is the media pool's ＋: it starts on the pool because
-  /// registering for later is what that panel is for, and the other
-  /// destinations stay on offer because it is the same window. [spot] is
-  /// where a drop put the file — the window shows it locked. [onClosed] runs
-  /// once the window is gone: an OS drop that also held project files opens
-  /// them then (F-247).
-  void _openImportWindow({
+  /// [picked] is what the door handed it ([OpenedFilesDoor]); [initialPaths]
+  /// are files the app already holds (a media row, a drag from the pool).
+  /// [poolOnly] is a pool's door — the media panel's ＋, the viewer's
+  /// 「미디어에 등록」: registering for later is what was asked. [spot] is
+  /// where a drop put the file — the window shows it locked.
+  Future<void> _openImportWindow({
     List<String> initialPaths = const [],
+    List<FolderGrant> picked = const [],
     bool poolOnly = false,
     bool placeOnly = false,
     ImportLayerSpot? spot,
-    VoidCallback? onClosed,
-  }) {
-    unawaited(
-      showDialog<void>(
-        context: context,
-        builder: (context) => ImportDialog(
-          session: widget.session,
-          initialPaths: initialPaths,
-          poolOnly: poolOnly,
-          placeOnly: placeOnly,
-          spot: spot,
-        ),
-      ).then((_) => onClosed?.call()),
-    );
-  }
+  }) => showDialog<void>(
+    context: context,
+    builder: (context) => ImportDialog(
+      session: widget.session,
+      initialPaths: initialPaths,
+      picked: picked,
+      poolOnly: poolOnly,
+      placeOnly: placeOnly,
+      spot: spot,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2166,6 +2360,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     listenable: Listenable.merge([
                       _layout.extentRevision,
                       _bottomInsetOverride,
+                      // The folded storyboard is the row it stands on, as
+                      // tall as that row (F-322).
+                      _foldedStoryboard.stand,
                     ]),
                     child: _docks.buildCenterDock(),
                     builder: (context, floor) =>
@@ -2515,6 +2712,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         railSpan: frame.rightRailSpanRaw,
         maxInset: maxInset,
       ),
+      // Where those sides meet the height's edge (I-60) — gone with the
+      // height grip while folded, which is the axis the fold is about.
+      if (!_bottomDockCollapsed) ...[
+        _bottomCornerGrip(right: false, frame: frame, maxInset: maxInset),
+        _bottomCornerGrip(right: true, frame: frame, maxInset: maxInset),
+      ],
     ];
   }
 
@@ -2625,8 +2828,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Positioned _bottomHeightGrip(bool onTop, BoxConstraints constraints) {
     return Positioned(
-      left: 0,
-      right: 0,
+      left: DockEdgeSplitter.endInset,
+      right: DockEdgeSplitter.endInset,
       // 기하는 캔버스 향한 변에: the resize
       // handle rides whichever edge faces
       // the artwork, which flips with the
@@ -2640,56 +2843,97 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           'dock-resize-bottom',
         ),
         axis: Axis.horizontal,
-        onDragDelta: (delta) {
-          // What the edge used, back in
-          // POINTER units — the sign flip
-          // below has to be undone or the
-          // splitter would bank the debt
-          // the wrong way round.
-          final used = _layout.resizeDock(
-            EditorWorkspace.bottomGroupId,
-            // Toward the artwork GROWS the
-            // region, on either edge: down
-            // when it is on top, up when it
-            // is on the bottom.
-            onTop ? delta : -delta,
-            fallback: EditorWorkspace
-                .bottomPanelHeight,
-            // The splitter stops where the
-            // panels stop shrinking, and
-            // never banks height past what
-            // the window can show — a
-            // surplus behind the ceiling is
-            // spent before the edge moves
-            // again, which reads as a
-            // splitter that lags the cursor.
-            minExtent: math.min(
-              _verticalDockMinimumExtent(
-                EditorWorkspace
-                    .bottomGroupId,
-              ),
-              _docks.bottomDockCeiling(
-                constraints.maxHeight,
-              ),
-            ),
-            // The model's own 640 still
-            // applies here — the region
-            // has always had it, and
-            // lifting it is a separate
-            // decision from fixing the
-            // banking.
-            // 결정 8: the HAND stops at
-            // half the window.
-            maxExtent: math.min(
-              EditorPanelLayoutModel
-                  .maxDockExtent,
-              _docks.bottomDockDragCeiling(
-                constraints.maxHeight,
-              ),
-            ),
-          );
-          return onTop ? used : -used;
+        onDragDelta: _heightTravel(onTop, constraints),
+      ),
+    );
+  }
+
+  /// The artwork-facing edge's travel, one frame of it — its grip's and
+  /// its corners'.
+  double Function(double delta) _heightTravel(
+    bool onTop,
+    BoxConstraints constraints,
+  ) => (delta) {
+    // What the edge used, back in
+    // POINTER units — the sign flip
+    // below has to be undone or the
+    // splitter would bank the debt
+    // the wrong way round.
+    final used = _layout.resizeDock(
+      EditorWorkspace.bottomGroupId,
+      // Toward the artwork GROWS the
+      // region, on either edge: down
+      // when it is on top, up when it
+      // is on the bottom.
+      onTop ? delta : -delta,
+      // ↩️It fell back on the fixed 350 while the region is DRAWN at its
+      // D37 opening (half the window), so the first pull of a region
+      // nobody had sized jumped it to 350 and moved on from there — 125px
+      // the wrong way on a 1000px window (found by I-60's corner, which is
+      // this edge). The same opening the drawing reads.
+      fallback: EditorWorkspace.bottomDockHeightFallbackFor(
+        constraints.maxHeight,
+        DeviceGrid.of(context),
+      ),
+      // The splitter stops where the
+      // panels stop shrinking, and
+      // never banks height past what
+      // the window can show — a
+      // surplus behind the ceiling is
+      // spent before the edge moves
+      // again, which reads as a
+      // splitter that lags the cursor.
+      minExtent: math.min(
+        _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
+        _docks.bottomDockCeiling(constraints.maxHeight),
+      ),
+      // The model's own 640 still
+      // applies here — the region
+      // has always had it, and
+      // lifting it is a separate
+      // decision from fixing the
+      // banking.
+      // 결정 8: the HAND stops at
+      // half the window.
+      maxExtent: math.min(
+        EditorPanelLayoutModel.maxDockExtent,
+        _docks.bottomDockDragCeiling(constraints.maxHeight),
+      ),
+    );
+    return onTop ? used : -used;
+  };
+
+  /// A CORNER of the artwork-facing edge, where a side edge meets it
+  /// (I-60): one drag, the side's width and the height, each through the
+  /// travel its own grip spends.
+  Positioned _bottomCornerGrip({
+    required bool right,
+    required _WorkspaceFrame frame,
+    required double maxInset,
+  }) {
+    final onTop = frame.onTop;
+    return Positioned(
+      left: right ? null : 0,
+      right: right ? 0 : null,
+      top: onTop ? null : 0,
+      bottom: onTop ? 0 : null,
+      child: DockCornerGrip(
+        key: ValueKey<String>('bottom-corner-${right ? 'right' : 'left'}'),
+        corner: switch ((onTop, right)) {
+          (false, false) => Alignment.topLeft,
+          (false, true) => Alignment.topRight,
+          (true, false) => Alignment.bottomLeft,
+          (true, true) => Alignment.bottomRight,
         },
+        onDragStart: () => _bottomInsetDragRaw = frame.bottomInset,
+        onDragEnd: () => _bottomInsetDragRaw = null,
+        onDragX: _insetTravel(
+          right: right,
+          inset: frame.bottomInset,
+          railSpan: right ? frame.rightRailSpanRaw : frame.leftRailSpanRaw,
+          maxInset: maxInset,
+        ),
+        onDragY: _heightTravel(onTop, frame.constraints),
       ),
     );
   }
@@ -2869,3 +3113,23 @@ class _WorkspaceRoom {
 class _CanvasAreaKey extends GlobalObjectKey {
   const _CanvasAreaKey(super.value);
 }
+
+/// What a person reads when a file let go on a reference row did not come
+/// in (I-47): the program language's sentence for why — or null when there
+/// is nothing to say, the file in or the row left as it was.
+///
+/// 🗣️I-68 「가」 ⓐ (유저 2026-10-10 「추천대로가자」): a file that reads, and
+/// only lacks the picture the row's cel shows, says that — 「bg.png에는
+/// 2번째 그림이 없습니다」. ↩️It was told 「could not read the file」, and so
+/// was a row that changed while its file was read.
+String? referenceSwapWords(ReferenceRedraw answer, String path) =>
+    switch (answer) {
+      ReferenceLaid() || ReferenceLeftAlone() => null,
+      ReferenceUnreadable() => AppText.strings.imUnreadable(
+        mediaFileName(path),
+      ),
+      ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
+        mediaFileName(path),
+        picture + 1,
+      ),
+    };

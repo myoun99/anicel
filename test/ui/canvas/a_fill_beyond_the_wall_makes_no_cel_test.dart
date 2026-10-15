@@ -54,7 +54,7 @@ void main() {
             brushToolState: ValueNotifier(
               BrushToolState.defaults.copyWith(tool: tool),
             ),
-            fillDabAt: (_, color, _) => fillDab(color),
+            fillDabsAt: (_, color, _) => [fillDab(color)],
             onPressNeedsCel: () {
               asked.add(1);
               return false;

@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 
+import '../../helpers/ime_draft.dart';
+
 /// SAVE-1: the unified Preferences dialog — sections switch in place and
 /// the Autosave section drives the live save policy.
 void main() {
@@ -219,6 +221,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.appSettings.audioSyncSettings.value.offset, 120);
     expect(session.appSettings.audioSyncSettings.value.unit, AvOffsetUnit.milliseconds);
+
+    // 🐛F-355: a 全角 IME's draft is not changed under it — the offset reads
+    // its numerals half-width, its minus too; what the IME commits shows
+    // half-width.
+    await composeDraft(tester, offset, '－３０');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(session.appSettings.audioSyncSettings.value.offset, -30);
+    await composeDraft(tester, offset, '－２０');
+    await commitDraft(tester, '－２０');
+    expect(
+      tester
+          .widget<TextField>(
+            find.descendant(of: offset, matching: find.byType(TextField)),
+          )
+          .controller!
+          .text,
+      '-20',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
 
     // A typo-sized value clamps instead of being accepted as a "setup"
     // (5000 ms of shift would just look like a sync bug).

@@ -6,16 +6,21 @@ import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../canvas/text/cel_text_tool.dart';
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
-import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
+import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import '../text/app_strings.dart';
 import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
+import '../text/readout_text.dart' show columnValueText;
 import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart';
+import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
+import 'brush_tool_state.dart' show CanvasTool;
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
 import 'text_tool_settings_values.dart';
@@ -30,7 +35,7 @@ import 'tool_settings_section.dart';
 /// outline, outline width, and the smoothing of their edges (유저: 「2차에서
 /// 스위치로 넣음」) · **상자** — the way it is written (가로 · 세로,
 /// 유저: 「세로쓰기 … 그거 통합하면서 진행」), alignment, box width, line spacing,
-/// background · and at the foot 「그림으로 굳히기」.
+/// background · and at the foot 「래스터라이즈」.
 ///
 /// What every row reads and writes is ONE law, and it is not in this file
 /// ([TextToolSettingsValues]): the text in hand by the letters a setting
@@ -58,47 +63,123 @@ class TextToolSettings extends StatelessWidget {
   /// canvas to hold one.
   final CelTextCommands? commands;
 
-  /// The brush's colour — what 「현재 색 반영」 copies into a colour here.
-  /// Null where there is no brush to read.
+  /// The brush's colour — what 「현재 색 반영」 copies into a colour here, and
+  /// the next text's while the tool has none of its own
+  /// ([TextToolOptions.takesTheBrushColour]). Null where there is no brush
+  /// to read.
   final int Function()? currentColorOf;
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    // ⚠️Not the fonts: the list of faces is made when it OPENS, and nothing
-    // on the row itself is read from them.
-    listenable: Listenable.merge([?options, ?commands]),
-    builder: (context, _) {
-      final values = TextToolSettingsValues(
-        options: options,
-        tool: commands?.tool,
-      );
-      final strings = AppText.strings;
-      return ToolSettingsSection(
-        tool: 'text',
-        title: strings.toolText,
-        children: [
-          const SizedBox(height: 8),
-          _TextInHandRow(commands: commands),
-          ToolSettingsGroupHeader(strings.textToolLetters),
-          _LetterRows(
-            values: values,
-            currentColorOf: currentColorOf,
-            fonts: fonts,
+  Widget build(BuildContext context) {
+    final reading = _Reading(
+      options: options,
+      commands: commands,
+      currentColorOf: currentColorOf,
+    );
+    final strings = AppText.strings;
+    final section = ToolSettingsSection(
+      tool: 'text',
+      title: strings.toolText,
+      children: [
+        _TextInHandRow(reading: reading),
+        ToolSettingsGroupHeader(strings.textToolLetters),
+        _LetterRows(
+          reading: reading,
+          currentColorOf: currentColorOf,
+          fonts: fonts,
+        ),
+        ToolSettingsGroupHeader(strings.textToolBox),
+        _BoxRows(reading: reading, currentColorOf: currentColorOf),
+        _IntoDrawingButton(reading: reading),
+      ],
+    );
+    // A key presses the 🗑, the two centrings and 래스터라이즈 as the text
+    // tool's settings (I-40) — bound again when any of them comes to have
+    // something to press, and the section handed on as it was.
+    return reading.follow(
+      (values) => (
+        delete: _TextInHandRow.deleteOf(commands) != null,
+        centre: values.boxCentre != null,
+        turn: _IntoDrawingButton.turnOf(commands) != null,
+      ),
+      (_) => PanelKeysBinding(
+        tool: CanvasTool.text,
+        buttons: {
+          EditorActionIds.textDeleteText: _TextInHandRow.deleteOf(commands),
+          EditorActionIds.textCentreAcross: _BoxRows.centreOf(
+            reading,
+            across: true,
           ),
-          ToolSettingsGroupHeader(strings.textToolBox),
-          _BoxRows(values: values, currentColorOf: currentColorOf),
-          _IntoDrawingButton(commands: commands),
-        ],
-      );
-    },
+          EditorActionIds.textCentreDown: _BoxRows.centreOf(
+            reading,
+            across: false,
+          ),
+          EditorActionIds.textIntoDrawing: _IntoDrawingButton.turnOf(
+            commands,
+          ),
+        },
+        child: section,
+      ),
+    );
+  }
+}
+
+/// What the section's controls read, and the news that can change it.
+///
+/// 🚨★★★EACH CONTROL HEARS ONLY WHAT IT SHOWS ([follow]). The hand tells of
+/// every sample of a drag — a text carried, sized or turned on the canvas,
+/// letters swept over, a bar scrubbed — and the section was ONE builder on
+/// it: every row was built again for every sample
+/// (`text-settings-redrawn-per-drag-sample`, 2026-10-14). 유저's law of the
+/// transform tool's numbers is the one kept here — F-164 (2026-09-18):
+/// 「변형중에 툴도구의 X,Y값같은거 실시간으로 바뀌게 해주고. 무겁지 않을
+/// 구조로 패널리빌드하지말고 글자만 바꾸게」 — by the rule the tool settings'
+/// host keeps for the session's news (I-57 ㉢): news that moves none of what
+/// a control shows stops before it. A text carried across the canvas
+/// builds its X again, and nothing else here.
+class _Reading {
+  _Reading({
+    required this.options,
+    required this.commands,
+    required this.currentColorOf,
+  }) : news = Listenable.merge([?options, ?commands, ?commands?.shownInHand]);
+
+  final ValueNotifier<TextToolOptions>? options;
+  final CelTextCommands? commands;
+  final int Function()? currentColorOf;
+
+  /// What can change what the section shows: the next text's values and
+  /// the hand — and what the hand shows, which a carry tells of alone
+  /// ([CelTextCommands.shownInHand]). ⚠️Not the fonts: the list of faces
+  /// is made when it OPENS, and nothing on the row itself is read from
+  /// them.
+  final Listenable news;
+
+  /// The values as they stand NOW — what a control's slice is read from,
+  /// and what its presses write through. ⛔Never a copy a build was handed:
+  /// what changed without reaching that build would be written back as it
+  /// was (`SlicedValueListenableBuilder`'s callback discipline).
+  TextToolSettingsValues get now => TextToolSettingsValues(
+    options: options,
+    tool: commands?.tool,
+    brushColour: currentColorOf?.call(),
+  );
+
+  /// A control built from [shows] — what it shows of the values — and
+  /// built again when, and only when, that changes. [shows] answers what
+  /// compares by value: a record, a number, a string.
+  Widget follow<S>(
+    S Function(TextToolSettingsValues values) shows,
+    Widget Function(S shown) build,
+  ) => SlicedListenableBuilder<S>(
+    listenable: news,
+    slice: () => shows(now),
+    builder: (context, shown) => build(shown),
   );
 }
 
 /// What a value several letters do not agree on reads as (유저 2026-10-06).
 const String _mixed = '—';
-
-/// The gap between two bars, as every section of the panel keeps it.
-const SizedBox _gap = SizedBox(height: 8);
 
 /// The text in hand, by its own letters — and the list of the cel's texts
 /// it is picked from. 유저 2026-10-06: 「도구설정에 선택된 텍스트라는 항목이
@@ -107,42 +188,57 @@ const SizedBox _gap = SizedBox(height: 8);
 /// 삭제버튼 있고」 — a delete beside the field, and one on every row of the
 /// list (the drawing taken with it: 「1 ok」).
 class _TextInHandRow extends StatelessWidget {
-  const _TextInHandRow({required this.commands});
+  const _TextInHandRow({required this.reading});
 
-  final CelTextCommands? commands;
+  final _Reading reading;
 
   /// A text's name is its own letters on ONE line: its breaks are not its
   /// name's.
   static String _nameOf(String text) => text.replaceAll('\n', ' ');
 
+  /// What the 🗑 presses: the text in hand off its cel — nothing while
+  /// none is in hand.
+  static VoidCallback? deleteOf(CelTextCommands? commands) =>
+      commands?.tool?.contentInHand == null ? null : commands?.deleteText;
+
   @override
   Widget build(BuildContext context) {
-    final tool = commands?.tool;
-    final inHand = tool?.contentInHand;
-    return Row(
-      children: [
-        Expanded(
-          child: PanelFlyoutButton(
-            key: const ValueKey<String>('text-tool-selected-text'),
-            label: inHand == null ? '' : _nameOf(inHand.text),
-            tooltip: AppText.strings.textToolSelectedText,
-            expand: true,
-            // With no text on the cel there is none to pick.
-            enabled: tool != null && tool.list.texts.isNotEmpty,
-            entriesBuilder: () => _listOf(tool),
-          ),
+    final commands = reading.commands;
+    // Named in the grid's name column like every row under it
+    // (tool-settings-panel-tidy, 유저 2026-10-10: 「정돈된 행/열」).
+    return ToolSettingRow(
+      label: AppText.strings.textToolSelectedText,
+      child: reading.follow(
+        (values) => (
+          name: values.tool?.contentInHand?.text,
+          // With no text on the cel there is none to pick.
+          listed: values.tool?.list.texts.isNotEmpty ?? false,
         ),
-        const SizedBox(width: 4),
-        AppIconButton(
-          keyValue: 'text-tool-delete-text',
-          tooltip: AppText.strings.textToolDeleteText,
-          icon: Icon(
-            Icons.delete_outline,
-            color: AppColors.deleteGlyph(enabled: inHand != null),
-          ),
-          onPressed: inHand == null ? null : commands?.deleteText,
+        (shown) => Row(
+          children: [
+            Expanded(
+              child: PanelFlyoutButton(
+                key: const ValueKey<String>('text-tool-selected-text'),
+                label: _nameOf(shown.name ?? ''),
+                expand: true,
+                enabled: shown.listed,
+                entriesBuilder: () => _listOf(commands?.tool),
+              ),
+            ),
+            const SizedBox(width: ToolSettingColumns.gap),
+            AppIconButton(
+              keyValue: 'text-tool-delete-text',
+              tooltip: AppText.strings.textToolDeleteText,
+              shortcuts: const [EditorActionIds.textDeleteText],
+              icon: Icon(
+                Icons.delete_outline,
+                color: AppColors.deleteGlyph(enabled: shown.name != null),
+              ),
+              onPressed: deleteOf(commands),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -168,8 +264,10 @@ class _TextInHandRow extends StatelessWidget {
   ];
 }
 
-/// 「그림으로 굳히기」: the text in hand becomes its cel's drawing
-/// ([CelTextTool.turnIntoDrawing]).
+/// 「래스터라이즈」: the text in hand becomes its cel's drawing
+/// ([CelTextTool.turnIntoDrawing]). ↩️It read 「그림으로 굳히기」 while the
+/// import's read 「굽기」 and the layer's 「래스터라이즈」 — 🗣️유저 2026-10-10:
+/// 「굽기버튼도 마찬가지야. 뭐는 굽기 뭐는 래스터라이즈. 래스터라이즈로 통일」.
 ///
 /// 🗣️유저 2026-10-06: 「나중에 도구설정에 등장시키기로. 동작은 **텍스트
 /// 선택하면 해당 버튼 활성화색**」 — at the foot of the settings, where the
@@ -177,32 +275,37 @@ class _TextInHandRow extends StatelessWidget {
 /// lit only while a text is in hand. The filled button the transform tool's
 /// 적용 is, grey the same way when it has nothing to do.
 ///
-/// The press is the button's own (`control_press_claim`): it stands in a
-/// list that scrolls, and a press that wobbles on it turns the text all the
-/// same — it never scrolls the settings.
+/// The tool's one ACTION ([ToolSettingActions] — the line every tool ends
+/// with, tool-settings-panel-tidy 유저 2026-10-10 「다 추천대로」), whose
+/// press is the button's own: a press that wobbles on it turns the text all
+/// the same, and never scrolls the settings.
 class _IntoDrawingButton extends StatelessWidget {
-  const _IntoDrawingButton({required this.commands});
+  const _IntoDrawingButton({required this.reading});
 
-  final CelTextCommands? commands;
+  final _Reading reading;
+
+  /// What it presses: the text in hand turned — nothing while none is in
+  /// hand.
+  static VoidCallback? turnOf(CelTextCommands? commands) =>
+      commands != null && commands.holdsText ? commands.turnIntoDrawing : null;
 
   @override
-  Widget build(BuildContext context) {
-    final commands = this.commands;
-    final turn = commands != null && commands.holdsText
-        ? commands.turnIntoDrawing
-        : null;
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: ControlPressClaim(
-        onPressed: turn,
-        child: FilledButton(
-          key: const ValueKey<String>('text-tool-into-drawing'),
-          onPressed: silentPress(turn),
-          child: Text(AppText.strings.textToolIntoDrawing),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => reading.follow(
+    (_) => turnOf(reading.commands) != null,
+    (_) => ToolSettingActions(
+      lines: [
+        [
+          ToolSettingAction(
+            keyValue: 'text-tool-into-drawing',
+            label: AppText.strings.textToolIntoDrawing,
+            decides: true,
+            shortcuts: const [EditorActionIds.textIntoDrawing],
+            onPressed: turnOf(reading.commands),
+          ),
+        ],
+      ],
+    ),
+  );
 }
 
 /// A number of the letters that a bar sets.
@@ -226,12 +329,12 @@ typedef _LetterBar = ({
 /// reaches the selected ones or, with none selected, the whole text.
 class _LetterRows extends StatelessWidget {
   const _LetterRows({
-    required this.values,
+    required this.reading,
     required this.currentColorOf,
     required this.fonts,
   });
 
-  final TextToolSettingsValues values;
+  final _Reading reading;
   final int Function()? currentColorOf;
   final ImportedFonts? fonts;
 
@@ -246,39 +349,46 @@ class _LetterRows extends StatelessWidget {
   static const double _widestOutline = 64;
 
   @override
-  Widget build(BuildContext context) {
-    final bold = values.letter((style) => style.bold);
-    final outlined = values.letter((style) => style.outlineColor != null);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _FaceRow(values: values, fonts: fonts),
-        _gap,
-        _bar(_LetterNumber.size),
-        _gap,
-        _bar(_LetterNumber.tracking),
-        SettingsSwitchRow(
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      ToolSettingRow(
+        label: AppText.strings.textToolFont,
+        child: _FaceRow(reading: reading, fonts: fonts),
+      ),
+      _bar(_LetterNumber.size),
+      _bar(_LetterNumber.tracking),
+      reading.follow(
+        (values) => (
+          bold: values.letter((style) => style.bold),
+          writable: values.writable,
+        ),
+        (shown) => SettingsSwitchRow(
           tileKey: const ValueKey<String>('text-tool-bold'),
           label: AppText.strings.textToolBold,
-          value: !bold.mixed && bold.value,
-          mixed: bold.mixed,
-          onChanged: values.writable
-              ? (on) => values.setLetters((style) => style.copyWith(bold: on))
+          value: !shown.bold.mixed && shown.bold.value,
+          mixed: shown.bold.mixed,
+          onChanged: shown.writable
+              ? (on) => reading.now.setLetters(
+                  (style) => style.copyWith(bold: on),
+                )
               : null,
         ),
-        _colour(),
-        _outline(),
-        _gap,
-        // A width with no colour is no outline: until the letters have one
-        // there is nothing for it to be the width of.
-        _bar(
-          _LetterNumber.outlineWidth,
-          live: outlined.mixed || outlined.value,
-        ),
-        _smoothing(),
-      ],
-    );
+      ),
+      _colour(),
+      _outline(),
+      // A width with no colour is no outline: until the letters have one
+      // there is nothing for it to be the width of.
+      _bar(_LetterNumber.outlineWidth, live: _outlined),
+      _smoothing(),
+    ],
+  );
+
+  /// Whether the letters have an outline — some of them, at least.
+  static bool _outlined(TextToolSettingsValues values) {
+    final outlined = values.letter((style) => style.outlineColor != null);
+    return outlined.mixed || outlined.value;
   }
 
   /// Whether the letters' edges are smoothed — the switch the shape fill
@@ -287,42 +397,59 @@ class _LetterRows extends StatelessWidget {
   /// 🗣️유저 2026-10-06 (asked whether letters need it): 「권장대로. 2차에서
   /// 스위치로 넣음」 — in this group, so it is a setting of LETTERS: it
   /// reaches the selected ones or, with none selected, the whole text.
-  Widget _smoothing() {
-    final smooth = values.letter((style) => style.antialias);
-    return SettingsSwitchRow(
+  Widget _smoothing() => reading.follow(
+    (values) => (
+      smooth: values.letter((style) => style.antialias),
+      writable: values.writable,
+    ),
+    (shown) => SettingsSwitchRow(
       tileKey: const ValueKey<String>('text-tool-antialias'),
       label: AppText.strings.brAntiAlias,
-      value: !smooth.mixed && smooth.value,
-      mixed: smooth.mixed,
-      onChanged: values.writable
-          ? (on) => values.setLetters((style) => style.copyWith(antialias: on))
+      value: !shown.smooth.mixed && shown.smooth.value,
+      mixed: shown.smooth.mixed,
+      onChanged: shown.writable
+          ? (on) => reading.now.setLetters(
+              (style) => style.copyWith(antialias: on),
+            )
           : null,
-    );
-  }
+    ),
+  );
 
   /// One number of the letters as a bar: dragged it shows, and where the
-  /// hand lets go it lands.
-  Widget _bar(_LetterNumber number, {bool live = true}) {
+  /// hand lets go it lands. [live] says whether it takes a change at all.
+  Widget _bar(
+    _LetterNumber number, {
+    bool Function(TextToolSettingsValues values)? live,
+  }) {
     final bar = _barOf(number);
-    final shown = values.letter(bar.read);
-    void set(double value, {required bool settled}) => values.setLetters(
-      (style) => bar.write(style, value),
-      settled: settled,
-    );
-    return FieldSlider(
-      key: ValueKey<String>('text-tool-${bar.name}'),
+    void set(double value, {required bool settled}) =>
+        reading.now.setLetters(
+          (style) => bar.write(style, value),
+          settled: settled,
+        );
+    return ToolSettingRow.bar(
       label: bar.label,
-      min: bar.min,
-      max: bar.max,
-      scale: bar.scale,
-      divisions: bar.divisions,
-      unit: bar.unit,
-      value: shown.value.clamp(bar.min, bar.max),
-      valueTextBuilder: shown.mixed ? (_, _) => _mixed : null,
-      onChanged: values.writable && live
-          ? (value) => set(value, settled: false)
-          : null,
-      onChangeEnd: (value) => set(value, settled: true),
+      bar: reading.follow(
+        (values) => (
+          number: values.letter(bar.read),
+          takes: values.writable && (live?.call(values) ?? true),
+        ),
+        (shown) => FieldSlider.cell(
+          key: ValueKey<String>('text-tool-${bar.name}'),
+          label: bar.label,
+          min: bar.min,
+          max: bar.max,
+          scale: bar.scale,
+          divisions: bar.divisions,
+          unit: bar.unit,
+          value: shown.number.value.clamp(bar.min, bar.max),
+          valueTextBuilder: shown.number.mixed ? (_, _) => _mixed : null,
+          onChanged: shown.takes
+              ? (value) => set(value, settled: false)
+              : null,
+          onChangeEnd: (value) => set(value, settled: true),
+        ),
+      ),
     );
   }
 
@@ -363,40 +490,39 @@ class _LetterRows extends StatelessWidget {
     ),
   };
 
-  Widget _colour() {
-    final colour = values.letter((style) => style.color);
-    return ToolSettingRow(
-      label: AppText.strings.textToolColor,
-      child: ColorSwatchButton(
+  Widget _colour() => ToolSettingRow.atEnd(
+    label: AppText.strings.textToolColor,
+    child: reading.follow(
+      (values) => values.letter((style) => style.color),
+      (colour) => ColorSwatchButton(
         keyValue: 'text-tool-color',
         color: colour.value,
         mixed: colour.mixed,
         currentColorOf: currentColorOf,
-        onChanged: (argb) => values.setLetters(
-          (style) => style.copyWith(color: argb),
-          settled: false,
-        ),
-        onSettled: values.settle,
+        onChanged: (argb) => reading.now.setColour(argb, settled: false),
+        onSettled: () => reading.now.settle(),
       ),
-    );
-  }
+    ),
+  );
 
   Widget _outline() {
-    final outline = values.letter((style) => style.outlineColor);
-    void set(int? argb) => values.setLetters(
+    void set(int? argb) => reading.now.setLetters(
       (style) => style.copyWith(outlineColor: argb),
       settled: false,
     );
-    return ToolSettingRow(
+    return ToolSettingRow.atEnd(
       label: AppText.strings.textToolOutline,
-      child: ColorSwatchButton(
-        keyValue: 'text-tool-outline',
-        color: outline.value,
-        mixed: outline.mixed,
-        currentColorOf: currentColorOf,
-        onChanged: set,
-        onNone: () => set(null),
-        onSettled: values.settle,
+      child: reading.follow(
+        (values) => values.letter((style) => style.outlineColor),
+        (outline) => ColorSwatchButton(
+          keyValue: 'text-tool-outline',
+          color: outline.value,
+          mixed: outline.mixed,
+          currentColorOf: currentColorOf,
+          onChanged: set,
+          onNone: () => set(null),
+          onSettled: () => reading.now.settle(),
+        ),
       ),
     );
   }
@@ -410,9 +536,9 @@ class _LetterRows extends StatelessWidget {
 /// 🗣️유저 2026-10-06: 「유저가 알아서 자기가 가지고있는 글꼴 넣는게
 /// 아니야?」 — the ＋ picks a FILE.
 class _FaceRow extends StatelessWidget {
-  const _FaceRow({required this.values, required this.fonts});
+  const _FaceRow({required this.reading, required this.fonts});
 
-  final TextToolSettingsValues values;
+  final _Reading reading;
   final ImportedFonts? fonts;
 
   static const List<String?> _appFaces = [
@@ -423,18 +549,20 @@ class _FaceRow extends StatelessWidget {
   static String _nameOf(String? family) =>
       family ?? AppTypography.bundledFamily;
 
+  static ShownLetterSetting<String?> _faceOf(TextToolSettingsValues values) =>
+      values.letter((style) => style.fontFamily);
+
   @override
-  Widget build(BuildContext context) {
-    final face = values.letter((style) => style.fontFamily);
-    return PanelFlyoutButton(
+  Widget build(BuildContext context) => reading.follow(
+    (values) => (face: _faceOf(values), writable: values.writable),
+    (shown) => PanelFlyoutButton(
       key: const ValueKey<String>('text-tool-font'),
-      label: face.mixed ? _mixed : _nameOf(face.value),
-      tooltip: AppText.strings.textToolFont,
+      label: shown.face.mixed ? _mixed : _nameOf(shown.face.value),
       expand: true,
-      enabled: values.writable,
-      entriesBuilder: () => _faces(context, inUse: face),
-    );
-  }
+      enabled: shown.writable,
+      entriesBuilder: () => _faces(context, inUse: _faceOf(reading.now)),
+    ),
+  );
 
   /// The list, as it is when it OPENS.
   List<PanelFlyoutEntry> _faces(
@@ -569,28 +697,22 @@ class _FaceRow extends StatelessWidget {
   /// waiting. Picked is when it is known to be wanted.
   void _pick(String? family) {
     CanvasLetterFaces.current.sendFor(family);
-    values.setLetters((style) => style.copyWith(fontFamily: family));
+    reading.now.setLetters((style) => style.copyWith(fontFamily: family));
   }
 
   /// The ＋: picks a file and brings it as a font — and the face brought is
   /// the face picked, for the ＋ stands in the list a face is picked from.
   ///
-  /// A file that is not taken says why. So does one that IS taken and may
-  /// not ride in a project (유저 2026-10-06: 「글꼴을 등록할때? 사용할때든
-  /// 뭐든 글꼴 고를때든 … 적어두자」 — when it is registered is the first of
-  /// those, and its row in the list says it from then on).
+  /// What it says is what every door a font comes in through says
+  /// ([ImportedFonts.noticeOf]) — and its row in the list says it from then
+  /// on.
   Future<void> _bring(BuildContext context, ImportedFonts fonts) async {
     final outcome = await fonts.importFromFile();
     final family = outcome.family;
     if (family != null) {
       _pick(family);
     }
-    final rides = family == null
-        ? null
-        : fonts.familyNamed(family)?.ridesInEditedDocuments;
-    final notice =
-        outcome.refusal ??
-        (rides == false ? AppText.strings.textToolFontStaysOnThisDevice : null);
+    final notice = fonts.noticeOf(outcome);
     if (notice != null && context.mounted) {
       await showAppNotice(
         context,
@@ -603,9 +725,9 @@ class _FaceRow extends StatelessWidget {
 
 /// The rows of the 상자 group — every one a setting of the WHOLE text.
 class _BoxRows extends StatelessWidget {
-  const _BoxRows({required this.values, required this.currentColorOf});
+  const _BoxRows({required this.reading, required this.currentColorOf});
 
-  final TextToolSettingsValues values;
+  final _Reading reading;
   final int Function()? currentColorOf;
 
   /// The line pitches set from here, as multiples of the letters' size, and
@@ -614,18 +736,104 @@ class _BoxRows extends StatelessWidget {
   static const double _loosest = 3;
   static const double _pitchStep = 0.05;
 
+  /// What a centring presses, button or key: the text in hand stood on the
+  /// canvas's middle line [across] (or down), through the values as they
+  /// stand at the press — nothing while none is in hand.
+  static VoidCallback? centreOf(_Reading reading, {required bool across}) =>
+      reading.now.boxCentre == null
+      ? null
+      : () => reading.now.centreBox(across: across);
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
     children: [
+      ..._place(),
       _writing(),
       _alignment(),
       _boxWidth(),
-      _gap,
       _linePitch(),
       _background(),
     ],
+  );
+
+  /// Where the middle of the text in hand's box stands (I-95,
+  /// [TextToolSettingsValues.boxCentre]) — in the transform tool's own
+  /// boxes and rows: X on the name's line, Y under it. A scrub or a step
+  /// carries the text as a hand does, one step back a scrub; a number
+  /// typed stands it there exactly. Under them, the two that stand it on
+  /// the canvas's middle lines. With none in hand all keep their places,
+  /// dimmed.
+  List<Widget> _place() {
+    final strings = AppText.strings;
+    return [
+      ToolSettingRow.bar(
+        label: strings.trPosition,
+        bar: _valueBox(keyValue: 'text-tool-x', name: 'X', across: true),
+      ),
+      ToolSettingRow.bar(
+        label: '',
+        bar: _valueBox(keyValue: 'text-tool-y', name: 'Y', across: false),
+      ),
+      reading.follow(
+        (values) => values.boxCentre != null,
+        (_) => ToolSettingRow.pair(
+          label: '',
+          first: ToolSettingAction.glyph(
+            keyValue: 'text-tool-centre-across',
+            label: strings.textToolCentreAcross,
+            glyph: const Icon(Icons.align_horizontal_center),
+            shortcuts: const [EditorActionIds.textCentreAcross],
+            onPressed: centreOf(reading, across: true),
+          ),
+          second: ToolSettingAction.glyph(
+            keyValue: 'text-tool-centre-down',
+            label: strings.textToolCentreDown,
+            glyph: const Icon(Icons.align_vertical_center),
+            shortcuts: const [EditorActionIds.textCentreDown],
+            onPressed: centreOf(reading, across: false),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  /// One of the place's numbers, X [across] or Y, as it reads — none with
+  /// nothing in hand. A box of its own, as each of the transform tool's is
+  /// (`_valueBox` there).
+  Widget _valueBox({
+    required String keyValue,
+    required String name,
+    required bool across,
+  }) => reading.follow(
+    (values) {
+      final centre = values.boxCentre;
+      return centre == null
+          ? null
+          : columnValueText(across ? centre.dx : centre.dy);
+    },
+    (number) => DragValueLabel.box(
+      keyValue: keyValue,
+      name: name,
+      text: number ?? '',
+      enabled: number != null,
+      onDragDelta: (units) => across
+          ? reading.now.carryBy(dx: units.round())
+          : reading.now.carryBy(dy: units.round()),
+      onOperationEnd: () => reading.now.settle(),
+      onEditSubmit: (raw) {
+        final typed = double.tryParse(raw.trim());
+        if (typed == null) {
+          return;
+        }
+        if (across) {
+          reading.now.setBoxCentre(x: typed);
+        } else {
+          reading.now.setBoxCentre(y: typed);
+        }
+      },
+    ),
   );
 
   /// Lines, or columns (縦書き) — of the text in hand, which is then
@@ -636,17 +844,25 @@ class _BoxRows extends StatelessWidget {
   /// 진행해도될듯」.
   Widget _writing() {
     final strings = AppText.strings;
-    return ToolSettingChoiceRow<bool>(
-      tool: 'text-tool',
-      name: 'writing',
-      label: strings.textToolWriting,
-      current: values.vertical,
-      answers: [
-        (value: false, key: 'lines', label: strings.textToolWritingLines),
-        (value: true, key: 'columns', label: strings.textToolWritingColumns),
-      ],
-      onPick: (vertical) =>
-          values.writable ? () => values.setVertical(vertical) : null,
+    return reading.follow(
+      (values) => (vertical: values.vertical, writable: values.writable),
+      (shown) => ToolSettingChoiceRow<bool>(
+        tool: 'text-tool',
+        name: 'writing',
+        label: strings.textToolWriting,
+        current: shown.vertical,
+        answers: [
+          (value: false, key: 'lines', label: strings.textToolWritingLines),
+          (
+            value: true,
+            key: 'columns',
+            label: strings.textToolWritingColumns,
+          ),
+        ],
+        onPick: (vertical) => shown.writable
+            ? () => reading.now.setVertical(vertical)
+            : null,
+      ),
     );
   }
 
@@ -656,28 +872,38 @@ class _BoxRows extends StatelessWidget {
   /// column.
   Widget _alignment() {
     final strings = AppText.strings;
-    final columns = values.vertical;
-    return ToolSettingChoiceRow<TextCelAlign>(
-      tool: 'text-tool',
-      name: 'align',
-      label: strings.textToolAlign,
-      current: values.align,
-      answers: [
-        for (final (align, label) in [
-          (
-            TextCelAlign.left,
-            columns ? strings.textToolAlignTop : strings.textToolAlignLeft,
-          ),
-          (TextCelAlign.center, strings.textToolAlignCenter),
-          (
-            TextCelAlign.right,
-            columns ? strings.textToolAlignBottom : strings.textToolAlignRight,
-          ),
-        ])
-          (value: align, key: align.name, label: label),
-      ],
-      onPick: (align) =>
-          values.writable ? () => values.setAlign(align) : null,
+    return reading.follow(
+      (values) => (
+        align: values.align,
+        columns: values.vertical,
+        writable: values.writable,
+      ),
+      (shown) => ToolSettingChoiceRow<TextCelAlign>(
+        tool: 'text-tool',
+        name: 'align',
+        label: strings.textToolAlign,
+        current: shown.align,
+        answers: [
+          for (final (align, label) in [
+            (
+              TextCelAlign.left,
+              shown.columns
+                  ? strings.textToolAlignTop
+                  : strings.textToolAlignLeft,
+            ),
+            (TextCelAlign.center, strings.textToolAlignCenter),
+            (
+              TextCelAlign.right,
+              shown.columns
+                  ? strings.textToolAlignBottom
+                  : strings.textToolAlignRight,
+            ),
+          ])
+            (value: align, key: align.name, label: label),
+        ],
+        onPick: (align) =>
+            shown.writable ? () => reading.now.setAlign(align) : null,
+      ),
     );
   }
 
@@ -685,46 +911,63 @@ class _BoxRows extends StatelessWidget {
   /// text in hand: with none, neither is lit and neither is taken.
   Widget _boxWidth() {
     final strings = AppText.strings;
-    return ToolSettingChoiceRow<bool>(
-      tool: 'text-tool',
-      name: 'box-width',
-      label: strings.textToolBoxWidth,
-      current: values.wraps,
-      answers: [
-        (value: false, key: 'auto', label: strings.textToolWidthAuto),
-        (value: true, key: 'fixed', label: strings.textToolWidthFixed),
-      ],
-      onPick: (boxed) => values.canSetWraps(wraps: boxed)
-          ? () => values.setWraps(boxed)
-          : null,
+    return reading.follow(
+      (values) => (
+        wraps: values.wraps,
+        toGrow: values.canSetWraps(wraps: false),
+        toBox: values.canSetWraps(wraps: true),
+      ),
+      (shown) => ToolSettingChoiceRow<bool>(
+        tool: 'text-tool',
+        name: 'box-width',
+        label: strings.textToolBoxWidth,
+        current: shown.wraps,
+        answers: [
+          (value: false, key: 'auto', label: strings.textToolWidthAuto),
+          (value: true, key: 'fixed', label: strings.textToolWidthFixed),
+        ],
+        onPick: (boxed) => (boxed ? shown.toBox : shown.toGrow)
+            ? () => reading.now.setWraps(boxed)
+            : null,
+      ),
     );
   }
 
   /// A line's pitch, read as a share of its letters' size.
-  Widget _linePitch() => FieldSlider(
-    key: const ValueKey<String>('text-tool-line-height'),
+  Widget _linePitch() => ToolSettingRow.bar(
     label: AppText.strings.textToolLineHeight,
-    min: _tightest,
-    max: _loosest,
-    divisions: ((_loosest - _tightest) / _pitchStep).round(),
-    displayScale: 100,
-    unit: '%',
-    value: values.lineHeight.clamp(_tightest, _loosest),
-    onChanged: values.writable
-        ? (pitch) => values.setLineHeight(pitch, settled: false)
-        : null,
-    onChangeEnd: values.setLineHeight,
+    bar: reading.follow(
+      (values) => (pitch: values.lineHeight, writable: values.writable),
+      (shown) => FieldSlider.cell(
+        key: const ValueKey<String>('text-tool-line-height'),
+        label: AppText.strings.textToolLineHeight,
+        min: _tightest,
+        max: _loosest,
+        divisions: ((_loosest - _tightest) / _pitchStep).round(),
+        displayScale: 100,
+        unit: '%',
+        value: shown.pitch.clamp(_tightest, _loosest),
+        onChanged: shown.writable
+            ? (pitch) => reading.now.setLineHeight(pitch, settled: false)
+            : null,
+        onChangeEnd: (pitch) => reading.now.setLineHeight(pitch),
+      ),
+    ),
   );
 
-  Widget _background() => ToolSettingRow(
+  Widget _background() => ToolSettingRow.atEnd(
     label: AppText.strings.textToolBackground,
-    child: ColorSwatchButton(
-      keyValue: 'text-tool-background',
-      color: values.backgroundColor,
-      currentColorOf: currentColorOf,
-      onChanged: (argb) => values.setBackgroundColor(argb, settled: false),
-      onNone: () => values.setBackgroundColor(null, settled: false),
-      onSettled: values.settle,
+    child: reading.follow(
+      (values) => values.backgroundColor,
+      (colour) => ColorSwatchButton(
+        keyValue: 'text-tool-background',
+        color: colour,
+        currentColorOf: currentColorOf,
+        onChanged: (argb) =>
+            reading.now.setBackgroundColor(argb, settled: false),
+        onNone: () => reading.now.setBackgroundColor(null, settled: false),
+        onSettled: () => reading.now.settle(),
+      ),
     ),
   );
 }

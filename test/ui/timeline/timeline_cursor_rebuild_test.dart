@@ -12,6 +12,8 @@ import '../../helpers/exposure_of.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// THE playback-performance invariant: moving the frame cursor (a playback
 /// tick, an editing seek) repaints the cursor layer and rulers only — the
 /// grids' cell widgets are never rebuilt. Pinned via widget identity: a
@@ -58,9 +60,7 @@ void main() {
       ),
     );
 
-    final rowFinder = find.byKey(
-      const ValueKey<String>('timeline-row-cells-layer-1'),
-    );
+    final rowFinder = find.named('timeline-row-cells-layer-1');
     final rowBefore = tester.widget(rowFinder);
     final ring = find.byKey(const ValueKey<String>('timeline-selected-cell'));
     expect(
@@ -111,9 +111,7 @@ void main() {
       ),
     );
 
-    final columnFinder = find.byKey(
-      const ValueKey<String>('xsheet-row-cells-layer-1'),
-    );
+    final columnFinder = find.named('xsheet-row-cells-layer-1');
     final columnBefore = tester.widget(columnFinder);
 
     for (final frame in [2, 3, 4]) {

@@ -1,17 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
-import '../../models/rgba_image_bytes.dart';
-import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../core/dev_profile.dart';
-import 'cut_frame_composite_cache.dart';
+import 'playback_pictures.dart';
 
 /// How much of what is wanted is composited already.
 @immutable
@@ -78,7 +75,7 @@ abstract interface class PictureRoom {
 /// kept.
 class PlaybackPrerenderScheduler {
   PlaybackPrerenderScheduler({
-    required this.composites,
+    required this.pictures,
     required this.resolveCut,
     this.room,
     this.afterFrameCached,
@@ -86,7 +83,9 @@ class PlaybackPrerenderScheduler {
     this.idleDelay = const Duration(milliseconds: 400),
   });
 
-  final CutFrameCompositeCache composites;
+  /// What a frame's picture is, where the screen looks for it — what is
+  /// made, what [has] counts, and what a picture that threw is remembered by.
+  final PlaybackPictures pictures;
   final Cut? Function(CutId cutId) resolveCut;
 
   /// Null = there is room for everything (a test that fills no budget).
@@ -102,33 +101,6 @@ class PlaybackPrerenderScheduler {
   final Future<void> Function(Cut cut, int frameIndex)? beforeCompose;
 
   final Duration idleDelay;
-
-  /// Frames whose composite threw, and the content signature they threw
-  /// at — the warm's half of the layer stack's `_failedRevisions`.
-  ///
-  /// A throwing compose caches nothing, so the frame can never read as
-  /// there; and the walk starts over shortly after every stroke. Without
-  /// this, one unreachable cel is re-opened, re-thrown and re-reported once
-  /// per walk, on every stroke, for the life of the session — a blocking
-  /// file open each time, which is the hot loop the sibling record exists to
-  /// stop. The signature comes from the composite cache so "has this frame
-  /// changed" stays one rule rather than two.
-  final Map<(CutId, int), CutFrameCompositeSignature> _failedSignatures = {};
-
-  /// The store generation those records belong to. A project OPEN bumps
-  /// it — the one moment a cel the filesystem refused can have become
-  /// readable — and dropping the map there is also what stops it growing
-  /// for the life of the session.
-  int _failedSignaturesGeneration = 0;
-
-  void _forgetStaleFailures() {
-    final generation = composites.frameStore.celContentRevision.value;
-    if (generation == _failedSignaturesGeneration) {
-      return;
-    }
-    _failedSignaturesGeneration = generation;
-    _failedSignatures.clear();
-  }
 
   final ValueNotifier<PrerenderProgress> _progress = ValueNotifier(
     PrerenderProgress.none,
@@ -184,34 +156,20 @@ class PlaybackPrerenderScheduler {
     busy?.complete();
   }
 
-  /// Whether every one of [pictures] is there to show — or can never be: a
-  /// picture whose compose throws is not waited for.
-  bool has(List<DemandedPicture> pictures) => _firstMissing(pictures) == null;
+  /// Whether every one of [shown] is there to show — or can never be: a
+  /// picture whose making throws is not waited for.
+  bool has(List<DemandedPicture> shown) => _firstMissing(shown) == null;
 
-  DemandedPicture? _firstMissing(List<DemandedPicture> pictures) {
-    for (final picture in pictures) {
-      if (_imageOf(picture) == null && !_failed(picture)) {
+  /// ⛔A picture that already threw at this exact content is not missing:
+  /// nothing about it changed, and the open blocks — so it is not paid for
+  /// again ([PlaybackPictures.failed]).
+  DemandedPicture? _firstMissing(List<DemandedPicture> shown) {
+    for (final picture in shown) {
+      if (!pictures.has(picture) && !pictures.failed(picture)) {
         return picture;
       }
     }
     return null;
-  }
-
-  ui.Image? _imageOf(DemandedPicture picture) => composites.validCompositeOrNull(
-    cut: picture.cut,
-    frameIndex: picture.frameIndex,
-  );
-
-  /// Whether this exact content already threw. Nothing about it changed,
-  /// and the open blocks — so it is not paid for again.
-  bool _failed(DemandedPicture picture) {
-    final failed = _failedSignatures[(picture.cut.id, picture.frameIndex)];
-    return failed != null &&
-        failed ==
-            composites.signatureOf(
-              cut: picture.cut,
-              frameIndex: picture.frameIndex,
-            );
   }
 
   /// Warms one cut, playhead-outward from [aroundFrameIndex] — and then,
@@ -375,14 +333,14 @@ class PlaybackPrerenderScheduler {
   static const int _walkBurst = 32;
 
   Future<void> _run(int generation, FrameDemand demand) async {
-    _forgetStaleFailures();
     // How many frames, on from where the walk starts, are there.
     var reached = 0;
-    // What the pictures of those frames weigh, one count a picture: what a
+    // What the pictures of those frames weigh, each part once: what a
     // window that is still filling is measured by.
     var walkedBytes = 0;
-    ui.Image? walkedLast;
+    final weighed = <Object>{};
     var startedAhead = 0;
+    final askedAhead = _AskedAhead(this, generation, demand);
     while (true) {
       if (demand.yieldsToEditing) {
         await _idleGate(generation);
@@ -401,6 +359,7 @@ class PlaybackPrerenderScheduler {
       final lead = math.min(demand.leadFor(_composeTime), length - 1);
       List<DemandedPicture>? at(int index) =>
           index < length ? demand.picturesAt((lead + index) % length) : null;
+      final pass = (at: at, stepAt: (int index) => (lead + index) % length);
 
       final moved = demand.advanced();
       if (moved > 0 && reached > 0) {
@@ -421,25 +380,23 @@ class PlaybackPrerenderScheduler {
       }
       if (reached == 0) {
         walkedBytes = 0;
-        walkedLast = null;
+        weighed.clear();
       }
 
       DemandedPicture? missing;
       var ended = false;
       for (var burst = 0; burst < _walkBurst; burst += 1) {
-        final pictures = at(reached);
-        if (pictures == null) {
+        final shown = at(reached);
+        if (shown == null) {
           ended = true;
           break;
         }
-        missing = _firstMissing(pictures);
+        missing = _firstMissing(shown);
         if (missing != null) {
           break;
         }
-        final shown = pictures.isEmpty ? null : _imageOf(pictures.first);
-        if (shown != null && !identical(shown, walkedLast)) {
-          walkedBytes += estimatedImageBytes(shown.width, shown.height);
-          walkedLast = shown;
+        if (shown.isNotEmpty) {
+          walkedBytes += pictures.weighNew(shown.first, weighed);
         }
         reached += 1;
       }
@@ -454,10 +411,25 @@ class PlaybackPrerenderScheduler {
         await _rest(generation);
         continue;
       }
-      final pictureBytes = estimatedImageBytes(
-        missing.cut.canvasSize.width,
-        missing.cut.canvasSize.height,
-      );
+      // Asked for ahead and still being made: the walk waits for it — its
+      // room was made then, and its landing is told where it lands — and
+      // keeps asking past it, so as many stay on their way.
+      final waitingFor = (missing.cut.id, missing.frameIndex);
+      final asked = askedAhead.landingOf(waitingFor);
+      if (asked != null) {
+        _progress.value = PrerenderProgress(
+          cached: reached,
+          total: _expected(length, reached: reached, walkedBytes: walkedBytes),
+        );
+        askedAhead.askPast(pass, from: reached + 1, waitingFor: waitingFor);
+        await asked;
+        if (_isStale(generation)) {
+          return;
+        }
+        await _wait(Duration.zero);
+        continue;
+      }
+      final pictureBytes = pictures.bytesToMake(missing);
       final step = (lead + reached) % length;
       final madeRoom =
           room?.makeRoomFor(bytes: pictureBytes, step: step) ?? true;
@@ -475,7 +447,14 @@ class PlaybackPrerenderScheduler {
         cached: reached,
         total: _expected(length, reached: reached, walkedBytes: walkedBytes),
       );
-      final landed = await _compose(generation, demand, missing);
+      final making = pictures.partsToMake(missing);
+      final landing = _compose(generation, demand, missing);
+      askedAhead.askPast(
+        pass,
+        from: reached + 1,
+        making: (bytes: pictureBytes, parts: making),
+      );
+      final landed = await landing;
       if (_isStale(generation)) {
         return;
       }
@@ -508,8 +487,8 @@ class PlaybackPrerenderScheduler {
     return math.min(length, math.max(fitting, reached + 1));
   }
 
-  /// Composites [picture]; true when it landed. False when it was
-  /// interrupted or threw.
+  /// Makes [picture]; true when it landed. False when it was interrupted
+  /// or threw.
   Future<bool> _compose(
     int generation,
     FrameDemand demand,
@@ -518,29 +497,26 @@ class PlaybackPrerenderScheduler {
     final cut = picture.cut;
     final frameIndex = picture.frameIndex;
     final watch = Stopwatch()..start();
-    // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. The composite reads cel
-    // STORAGE, so a cel whose bytes are unreachable throws from in here —
-    // and this future is nobody's to await, so a throw used to abandon the
-    // whole walk: progress froze where it stopped and every later frame was
-    // never warmed. Give up on the frame, keep the walk.
-    final ui.Image? image;
+    // 🚨ONE FRAME'S FAILURE IS ONE FRAME'S. A picture reads cel STORAGE, so
+    // a cel whose bytes are unreachable throws from in here — and this
+    // future is nobody's to await, so a throw used to abandon the whole
+    // walk: progress froze where it stopped and every later frame was never
+    // warmed. Give up on the frame, keep the walk.
+    final bool landed;
     try {
       await beforeCompose?.call(cut, frameIndex);
       if (_isStale(generation)) {
         return false;
       }
-      image = await composites.prepareCompositeInterruptible(
-        cut: cut,
-        frameIndex: frameIndex,
+      landed = await pictures.make(
+        picture,
         shouldAbort: () =>
             _isStale(generation) ||
             (demand.yieldsToEditing && !_isQuietNow()),
+        due: () => _shownNextIsMissing(demand),
       );
     } catch (error, stack) {
-      _failedSignatures[(cut.id, frameIndex)] = composites.signatureOf(
-        cut: cut,
-        frameIndex: frameIndex,
-      );
+      pictures.noteFailure(picture);
       // Skipping the frame is right; hiding WHY is not. The failure reaches
       // the framework's error channel rather than vanishing, so a
       // permanently unreachable cel is diagnosable instead of showing up
@@ -562,10 +538,10 @@ class PlaybackPrerenderScheduler {
       // ignore: avoid_print — BRUSH_LAB_PROFILE-armed builds only.
       print(
         '[lab-warm] f=$frameIndex ${watch.elapsedMilliseconds}ms'
-        '${image == null ? ' INTERRUPTED' : ''}',
+        '${landed ? '' : ' INTERRUPTED'}',
       );
     }
-    if (image == null) {
+    if (!landed) {
       return false;
     }
     final took = watch.elapsed;
@@ -576,6 +552,15 @@ class PlaybackPrerenderScheduler {
   }
 
   bool _isStale(int generation) => _disposed || generation != _generation;
+
+  /// 🚨WHAT A RUN SHOWS NEXT IS NOT BACKGROUND WORK ([PlaybackPictures.make]):
+  /// while the frame under the playhead or the one after it has no picture,
+  /// nothing the walk makes waits for a quiet between the run's held frames
+  /// — the next held frame shows it, and the quiet that frame leaves comes
+  /// after it. A walk that keeps ahead of the playhead makes in the quiets.
+  bool _shownNextIsMissing(FrameDemand demand) =>
+      !has(demand.picturesAt(0) ?? const []) ||
+      !has(demand.picturesAt(1) ?? const []);
 
   Future<void> _idleGate(int generation) async {
     while (!_isStale(generation)) {
@@ -591,6 +576,115 @@ class PlaybackPrerenderScheduler {
             ? remaining
             : const Duration(milliseconds: 50),
       );
+    }
+  }
+}
+
+/// Where one pass of a walk stands: the pictures each index on from its
+/// start shows ([at]), and the step that index is ([stepAt]).
+typedef _Pass = ({
+  List<DemandedPicture>? Function(int index) at,
+  int Function(int index) stepAt,
+});
+
+/// 🚨WHAT THE WALK WANTS NEXT IS ASKED FOR BEFORE IT WAITS. A picture
+/// waits for its raster to come back; the next missing pictures' rasters
+/// queue behind it meanwhile. Measured 10-10 (camera view, profile, two
+/// rounds): the whole cut made 7–30% sooner.
+///
+/// One per walk ([PlaybackPrerenderScheduler]'s): the pictures it asked for
+/// ahead while they are being made, by cut and frame, each with what it was
+/// to weigh and the parts it makes.
+final class _AskedAhead {
+  _AskedAhead(this._scheduler, this._generation, this._demand);
+
+  /// How many missing pictures past the one it waits for a walk asks for
+  /// before it waits.
+  static const int _most = 2;
+
+  final PlaybackPrerenderScheduler _scheduler;
+  final int _generation;
+  final FrameDemand _demand;
+  final _onTheirWay =
+      <(CutId, int), ({Future<bool> landing, int bytes, Set<Object> parts})>{};
+
+  /// The landing of the picture at [picture] — cut and frame — while it is
+  /// on its way.
+  Future<bool>? landingOf((CutId, int) picture) =>
+      _onTheirWay[picture]?.landing;
+
+  /// Asks for the missing pictures past [from], in the pass's order, until
+  /// [_most] are on their way. [making] is what the walk makes itself;
+  /// [waitingFor], one asked ahead that the walk waits for now — its own
+  /// now, not one ahead of it.
+  ///
+  /// Each is the walk's own compose — what a frame reads from outside the
+  /// cel store is filled first, a failure is said once — with its room made
+  /// first, as the walk makes room: room for everything still being made as
+  /// well, since a picture being made is not in the cache yet, and a room
+  /// that counted only the cache held a third picture where two fit. A
+  /// frame whose parts are all being made already comes with them and is
+  /// not asked for: a held drawing shown on the next frames would take every
+  /// place ahead. Its landing is told when it lands, as the walk tells its
+  /// own: a run waiting for that frame learns it then, not when the walk
+  /// gets there.
+  void askPast(
+    _Pass pass, {
+    required int from,
+    ({int bytes, Set<Object> parts}) making = const (
+      bytes: 0,
+      parts: <Object>{},
+    ),
+    (CutId, int)? waitingFor,
+  }) {
+    final scheduler = _scheduler;
+    int ahead() =>
+        _onTheirWay.length - (_onTheirWay.containsKey(waitingFor) ? 1 : 0);
+    var pending = making.bytes;
+    final spoken = {...making.parts};
+    for (final asked in _onTheirWay.values) {
+      pending += asked.bytes;
+      spoken.addAll(asked.parts);
+    }
+    for (var look = from;
+        ahead() < _most &&
+            look < from + PlaybackPrerenderScheduler._walkBurst;
+        look += 1) {
+      final shown = pass.at(look);
+      if (shown == null) {
+        return;
+      }
+      final picture = scheduler._firstMissing(shown);
+      if (picture == null) {
+        continue;
+      }
+      final key = (picture.cut.id, picture.frameIndex);
+      final parts = scheduler.pictures.partsToMake(picture);
+      if (_onTheirWay.containsKey(key) || spoken.containsAll(parts)) {
+        continue;
+      }
+      final bytes = scheduler.pictures.bytesToMake(picture);
+      final step = pass.stepAt(look);
+      if (!(scheduler.room?.makeRoomFor(bytes: pending + bytes, step: step) ??
+          true)) {
+        return;
+      }
+      pending += bytes;
+      spoken.addAll(parts);
+      final landing = scheduler._compose(_generation, _demand, picture).then((
+        landed,
+      ) {
+        _onTheirWay.remove(key);
+        if (!scheduler._isStale(_generation)) {
+          if (landed) {
+            scheduler.afterFrameCached?.call();
+            scheduler._landings.value += 1;
+          }
+          scheduler._changes.value += 1;
+        }
+        return landed;
+      });
+      _onTheirWay[key] = (landing: landing, bytes: bytes, parts: parts);
     }
   }
 }

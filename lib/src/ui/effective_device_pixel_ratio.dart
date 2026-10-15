@@ -105,8 +105,8 @@ class EffectiveDevicePixelRatioScope extends StatelessWidget {
       // app: every session, canvas, controller and focus node. At 1.0
       // `scaleMediaQueryData` returns the ambient data unchanged, so an
       // always-mounted MediaQuery costs one identical inherited widget and
-      // notifies nobody. (Same law as `DeviceGridScrollBody`'s always-on
-      // `Transform`.)
+      // notifies nobody. (Same law as `DeviceGridScrollBody`'s
+      // always-mounted correction.)
       scoped = MediaQuery(
         data: scaleMediaQueryData(ambient, scale),
         child: scoped,

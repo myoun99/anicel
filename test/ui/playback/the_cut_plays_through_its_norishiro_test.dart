@@ -93,11 +93,11 @@ void main() {
   ) async {
     final s = session(overlapped: true);
     addTearDown(s.dispose);
-    final playlist = s.playbackRig.playback.playlistForScope(
+    final window = s.playbackRig.playback.windowForScope(
       PlaybackScope.activeCut,
-    );
-    expect(playlist.single.cutId, leaving);
-    expect(playlist.single.endFrame, 30, reason: '24 + 6 of のりしろ');
+    )!;
+    expect(window.trackStart, 0, reason: 'the leaving cut, from its start');
+    expect(window.frames, 30, reason: '24 + 6 of のりしろ');
   });
 
   testWidgets('CONTROL: with nothing crossing it plays to the red line', (
@@ -105,10 +105,10 @@ void main() {
   ) async {
     final s = session(overlapped: false);
     addTearDown(s.dispose);
-    final playlist = s.playbackRig.playback.playlistForScope(
+    final window = s.playbackRig.playback.windowForScope(
       PlaybackScope.activeCut,
-    );
-    expect(playlist.single.endFrame, 24);
+    )!;
+    expect(window.frames, 24);
   });
 
   testWidgets('while the storyboard plays, each cut is wanted through every '

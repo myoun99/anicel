@@ -1,8 +1,12 @@
+import '../../models/attached_layer_resolve.dart' show attachedGroupMembers;
+import '../../models/conte_key.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer.dart' show Layer, LayerStackQueries;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/track_conte_laying.dart' show conteBaseOf;
 import '../../models/transform_track.dart';
 import '../project_lookup.dart';
 
@@ -55,6 +59,233 @@ List<LayerId> linkMirrorRows(
   ))
     target.layerId,
 ];
+
+/// 🚨★★★THE CONTE ROWS OF A TRACK WEAR ONE HEAD (I-73).
+///
+/// 유저 2026-10-08: 「콘티레이어 권고한대로 머리만 한벌 ok. 맘에드는
+/// 생각이야. 겸용컷이랑 같은 느낌이네」 · 「6. 이거만 눈이랑 불투명도조차
+/// 링크하도록. 그거마저 머리로서 하나로되도록 통일 프레임 이름으로
+/// 링크하는거 자체는 컷 기준으로 내부에서만 이름같으면, 겸용컷에서만
+/// 이름같으면 이런식은 지키는게 나을듯」. The storyboard draws a track's
+/// conte as ONE set of rows over all its cuts, so each of those rows has one
+/// head: its name, its label, its blend, its static opacity, its eye, the
+/// shape of its fx. What stays each cut's own is what the row HOLDS — its
+/// panels, its pictures, the values and keys of its fx.
+///
+/// Every (cut, row) of [layerId]'s track that is the same row of the
+/// track's conte as [layerId] — the conte itself in every cut that has one,
+/// or the rows that name its row of the structure ([Layer.conteKey]) — the
+/// row itself first. Empty for a row riding no conte.
+///
+/// ↩️It found them by SEAT. Since F-343 they are the rows of one row of
+/// the track's structure, and the structure lays the head on every one of
+/// them whatever wrote it (`trackWithItsConteLaid`) — a head edit still
+/// walks them ([headMirrorTargets]) for the link group each one has.
+///
+/// The row's cut is FOUND, not handed in: a rail that draws one head for
+/// every cut presses it under whichever cut is active, and a layer id is
+/// its own address — unique across the project.
+///
+/// ⛔NOT a link group, and it must not be made one: a link group shares the
+/// cel bank and the named keys' values ([linkMirrorTargets] answers for
+/// those too), and two cuts' conte rows in one group would turn every pair
+/// of same-named panels into one picture. The head is a relation of its own
+/// — the track's structure, which holds no picture.
+List<({CutId cutId, LayerId layerId})> conteHeadTargets(
+  Project project,
+  LayerId layerId,
+) => _rowsAtOnePlace(
+  project,
+  layerId,
+  placeOf: (cut) => _contePlaceOf(cut, layerId),
+  rowAt: _conteRowAt,
+);
+
+/// Where [layerId] stands in [cut]'s conte: the conte itself (no key), or
+/// the row of the structure its key names — null when it is neither.
+({ConteKey? key})? _contePlaceOf(Cut cut, LayerId layerId) {
+  final base = conteBaseOf(cut);
+  if (base == null) {
+    return null;
+  }
+  if (base.id == layerId) {
+    return (key: null);
+  }
+  for (final member in attachedGroupMembers(base.id, cut.layers)) {
+    if (member.id == layerId) {
+      return switch (member.conteKey) {
+        final key? => (key: key),
+        null => null,
+      };
+    }
+  }
+  return null;
+}
+
+/// [cut]'s row at [place] of its conte ([_contePlaceOf]) — null where it
+/// holds none.
+Layer? _conteRowAt(Cut cut, ({ConteKey? key}) place) {
+  final base = conteBaseOf(cut);
+  final key = place.key;
+  if (base == null || key == null) {
+    return base;
+  }
+  for (final member in attachedGroupMembers(base.id, cut.layers)) {
+    if (member.conteKey == key && member.id != base.id) {
+      return member;
+    }
+  }
+  return null;
+}
+
+/// Every (cut, row) of the track that holds [layerId] — the row itself
+/// first — at the place [placeOf] finds it at in its cut: the rows ONE head
+/// is worn by across a track ([conteHeadTargets], [cameraHeadTargets]).
+/// Empty where no cut holds it at such a place.
+List<({CutId cutId, LayerId layerId})> _rowsAtOnePlace<P extends Object>(
+  Project project,
+  LayerId layerId, {
+  required P? Function(Cut cut) placeOf,
+  required Layer? Function(Cut cut, P place) rowAt,
+}) {
+  for (final track in project.tracks) {
+    for (final cut in track.cuts) {
+      final place = placeOf(cut);
+      if (place == null) {
+        continue;
+      }
+      return [
+        (cutId: cut.id, layerId: layerId),
+        for (final other in track.cuts)
+          if (other.id != cut.id)
+            if (rowAt(other, place) case final row?)
+              (cutId: other.id, layerId: row.id),
+      ];
+    }
+  }
+  return const [];
+}
+
+/// 🚨A TRACK'S CAMERAS WEAR ONE HEAD TOO — ITS NAME AND ITS FX SWITCH (I-73
+/// ④).
+///
+/// 유저 2026-10-09: 「그럼 카메라행도 글로벌? 콘티행처럼 머리 같도록
+/// 할까하는데」, and of the head that drew (I-73-camera-row-Q1): 「좋은데
+/// 색라벨은 컷마다 있는게 좋을거같은데」. The storyboard draws a track's
+/// cameras as ONE row, so the row's name and its fx switch — the camera
+/// work on or off — are one for every cut of the track. ⛔The colour label
+/// stays each cut's own: the row draws each cut's keys and line in it. The
+/// eye and the opacity are the camera VIEW's, no layer's at all.
+///
+/// Every (cut, camera row) of the track [layerId]'s camera stands on — the
+/// row itself first. Empty for any other row.
+///
+/// ⛔Not a link group either: what a camera HOLDS — its keys, their names
+/// and values — stays each cut's own, as a conte row's panels do.
+List<({CutId cutId, LayerId layerId})> cameraHeadTargets(
+  Project project,
+  LayerId layerId,
+) => _rowsAtOnePlace(
+  project,
+  layerId,
+  // A cut has one camera row: its place is the row itself.
+  placeOf: (cut) => cut.layers.cameraLayer?.id == layerId ? () : null,
+  rowAt: (cut, _) => cut.layers.cameraLayer,
+);
+
+/// The addresses a HEAD edit lands on: the row's link group
+/// ([linkMirrorTargets]), the rows of the same row of its track's conte
+/// ([conteHeadTargets]) and, of a camera field ([cameraHead]), every
+/// camera of the track ([cameraHeadTargets]) — the closure of the three,
+/// the row itself first and each address once. A 겸용 sibling's conte on
+/// another track brings that track's conte rows with it: one head is one
+/// head.
+///
+/// What walks it: a row's name, label, blend, static opacity and fold, its
+/// transform switch and the shape of its effect chain. ⛔Never the named
+/// keys' space or the cel bank — those are the link group's alone.
+///
+/// ⚠️The track's conte rows are walked though the structure lays the head
+/// on them (F-343): it lays them within the TRACK, and a link group leaves
+/// it. ↩️F-343 walked the link group alone, and a 겸용 sibling on another
+/// track was left wearing the old head — the walk reaches it through the
+/// conte row of the track it is linked to.
+///
+/// [cameraHead]: whether the field is one a track's cameras wear as one as
+/// well — the name, the transform switch and the twirl, and not the label.
+List<({CutId cutId, LayerId layerId})> headMirrorTargets(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  bool cameraHead = false,
+}) {
+  // From the cut that HOLDS the row ([conteHeadTargets] says why): the
+  // registry keys a row's group by its own cut, and would call a row
+  // addressed under another one unlinked.
+  final reached = [
+    (cutId: cutIdOfLayer(project, layerId) ?? cutId, layerId: layerId),
+  ];
+  final seen = {reached.first};
+  for (var index = 0; index < reached.length; index += 1) {
+    final at = reached[index];
+    final next = [
+      ...linkMirrorTargets(project, cutId: at.cutId, layerId: at.layerId),
+      ...conteHeadTargets(project, at.layerId),
+      if (cameraHead) ...cameraHeadTargets(project, at.layerId),
+    ];
+    for (final target in next) {
+      if (seen.add(target)) {
+        reached.add(target);
+      }
+    }
+  }
+  return reached;
+}
+
+/// The ROWS of [headMirrorTargets] — what [linkMirrorRows] is to the link
+/// group: every row a head edit is written to, by id.
+List<LayerId> headMirrorRows(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+  bool cameraHead = false,
+}) => [
+  for (final target in headMirrorTargets(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+    cameraHead: cameraHead,
+  ))
+    target.layerId,
+];
+
+/// The rows that EXIST as one with ([cutId], [layerId]) — what a delete
+/// takes together.
+///
+/// A linked row is one layer seen from several cuts ([linkMirrorTargets]).
+/// And a ROW OF A TRACK'S CONTE — an attach row, or a 공정 folder filing
+/// them — is one row of its structure (I-73, the drawn proposal 유저 took
+/// on 2026-10-08: 「머리 — … 어태치 구성 … — 트랙의 모든 컷이 하나」, and
+/// F-343): it goes from every cut of the track at once, each cut's own link
+/// group with it. Taken from one cut alone, the structure would give it
+/// back to that cut, empty.
+///
+/// ⛔Not the conte itself. A cut has a conte or has none, cut by cut — the
+/// rail keeps the button that makes one in every cut that has none — so
+/// deleting one cut's is that cut's alone (and its link group's).
+List<({CutId cutId, LayerId layerId})> existenceMirrorTargets(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) {
+  final ofTheStructure = conteHeadTargets(project, layerId);
+  final ridesAConte =
+      ofTheStructure.isNotEmpty &&
+      layerAnywhereOrNull(project, layerId)?.conteKey != null;
+  return ridesAConte
+      ? headMirrorTargets(project, cutId: cutId, layerId: layerId)
+      : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
+}
 
 /// The transform track ([cutId], [layerId]) keys: the row's own, except the
 /// CAMERA row's — the row is its cut's transform header (F-17), and its

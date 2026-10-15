@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -22,7 +23,11 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart';
 
+import '../../helpers/app_faces.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
@@ -118,7 +123,10 @@ void main() {
     required ExportScopeKind scope,
   }) async {
     AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    // Its share (F-337) a little wider than the window's least (1018): in
+    // the TEST font the band's 「C1-C2」 runs 5 px past its room there — in
+    // the app's own faces it holds (the last test here).
+    await tester.binding.setSurfaceSize(const Size(1280, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -217,4 +225,49 @@ void main() {
     );
     session.playbackRig.prerenderScheduler.cancel();
   });
+
+  /// F-337: the window takes its share of the screen, and never less than
+  /// its four columns with both drawers folded — where the list stands at
+  /// its least, under the band that names the pair. In the app's own faces
+  /// the band holds 「C1-C2」 there, in every language the program speaks.
+  for (final language in AppLanguage.values) {
+    testWidgets('🚨at the window\'s least the band holds the pair\'s name, in '
+        'the app\'s own faces — ${language.name}', (tester) async {
+      await loadTheAppFaces();
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      AppExport.settings.value = exportSettingsWritingCelsAlone(
+        scope: ExportScopeKind.cut,
+      );
+      final session = linkedPair();
+      addTearDown(session.dispose);
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: ExportDialog(
+              session: session,
+              formatAvailability: ExportFormatAvailability.permissive(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
+      await tester.pump();
+
+      expect(
+        tester.widget<AppWindow>(find.byType(AppWindow)).width,
+        1018,
+        reason: 'the four columns with both drawers folded — two thirds of '
+            '1200 by area is narrower',
+      );
+      expect(picker(tester).label, 'C1-C2');
+      expect(tester.takeException(), isNull);
+      session.playbackRig.prerenderScheduler.cancel();
+    });
+  }
 }

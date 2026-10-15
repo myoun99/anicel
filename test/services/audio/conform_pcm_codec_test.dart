@@ -99,7 +99,7 @@ void main() {
         ),
       );
       expect(decoded.fingerprint, fingerprint);
-      expect(conformMatchesSource(decoded, fingerprint), isTrue);
+      expect(conformMatchesSource(decoded.fingerprint, fingerprint), isTrue);
     });
 
     test('a replaced source is detected', () {
@@ -115,13 +115,29 @@ void main() {
         sourceLength: 123456,
         sourceCrc32: 0x9AE0DAB0, // same size, different bytes
       );
-      expect(conformMatchesSource(decoded, edited), isFalse);
+      expect(conformMatchesSource(decoded.fingerprint, edited), isFalse);
 
       const regrown = ConformSourceFingerprint(
         sourceLength: 999999, // different length
         sourceCrc32: 0x9AE0DAAF,
       );
-      expect(conformMatchesSource(decoded, regrown), isFalse);
+      expect(conformMatchesSource(decoded.fingerprint, regrown), isFalse);
+    });
+
+    test('the decode that made the PCM rides in the header — today\'s when '
+        'this app writes, 0 on a conform from before it was recorded', () {
+      final bytes = encodeConform(
+        samples: ramp(64),
+        channels: 1,
+        sampleRate: 48000,
+        fingerprint: fingerprint,
+      );
+      expect(decodeConform(bytes).decodeRecipe, conformDecodeRecipe);
+
+      // The slot was reserved and written as 0 until it was given this job.
+      bytes.fillRange(56, 60, 0);
+      expect(decodeConform(bytes).decodeRecipe, 0);
+      expect(decodeConform(bytes).fingerprint, fingerprint);
     });
 
     test('a conform with no fingerprint counts as stale', () {
@@ -132,7 +148,7 @@ void main() {
         encodeConform(samples: ramp(16), channels: 1, sampleRate: 48000),
       );
       expect(decoded.fingerprint, isNull);
-      expect(conformMatchesSource(decoded, fingerprint), isFalse);
+      expect(conformMatchesSource(decoded.fingerprint, fingerprint), isFalse);
     });
 
     test('🪦a corrupt provenance chunk is not a state any more', () {
@@ -150,7 +166,7 @@ void main() {
       expect(noFingerprint.fingerprint, isNull);
       expect(noFingerprint.samples.length, 16, reason: 'the audio is fine');
       expect(
-        conformMatchesSource(noFingerprint, fingerprint),
+        conformMatchesSource(noFingerprint.fingerprint, fingerprint),
         isFalse,
         reason: 'unknown provenance means rebuild, never「probably fine」',
       );

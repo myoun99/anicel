@@ -3,14 +3,15 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/open_project_file.dart';
-import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
-import 'package:anicel/src/ui/session/trimmed_pieces.dart';
+import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart'
+    show debugTilePictureClock;
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
@@ -130,20 +131,30 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // notice for every file after it.
   debugDriveNoticeShown = false;
   AppStorage.debugAllFilesAccessOverride = null;
-  // 🚨SET rather than reset, and it is the only one here that is. Carrying
+  // 🚨SET rather than reset, as is the one after it. Carrying
   // a file secures its bytes in an isolate so a big movie stops freezing
-  // the app; a `testWidgets` clock is fake, so awaiting a real isolate is a
-  // hang and every voice-take and import widget test stopped at「did not
-  // complete」. The same work runs either way and `stageCarriedBytes` stays async
-  // either way, so the ORDER the entrances depend on is unchanged.
+  // the app — as a trimmed file's piece is cut, and a cel still in the file
+  // is thawed ahead for playback; a `testWidgets` clock is fake, so awaiting
+  // a real isolate is a hang and every voice-take and import widget test
+  // stopped at「did not complete」. The same work runs either way and each
+  // caller stays async either way, so the ORDER the entrances depend on is
+  // unchanged.
   //
-  // ⚠️The isolate road therefore needs one test that turns this back OFF —
-  // `media_staging_store_test` has it. Deleting that test would leave the
-  // road production takes with no coverage at all.
-  MediaStagingStore.debugStageInline = true;
-  // The same fake-clock reason: cutting a trimmed file's piece runs in a
-  // worker in the app, and a widget test cannot await one.
-  TrimmedPieces.debugCutInline = true;
+  // ⚠️Each worker's road therefore needs a test that turns this back OFF
+  // (`debugWorkersRunHere = false` — the staging's, the cut's and the
+  // thaw's each have theirs). Deleting one would leave the road production
+  // takes there with no coverage at all.
+  debugWorkersRunHere = true;
+  // The same fake clock again: a compose that makes tile pictures in turn
+  // gives way through a turn of the REAL event queue (a port message),
+  // which a `testWidgets` clock never waits — a test that settles a cold
+  // cel looks before the cel lands. Read off the wall, a run is two
+  // milliseconds a loaded machine can spend before a compose's first
+  // picture (🔬a first call's compile alone took 0.56 ms on an idle one,
+  // 2026-10-15), and `static_bake_render_parity_test` failed only inside a
+  // full run. Held, no run ends; the group that studies the run holds a
+  // clock of its own.
+  debugTilePictureClock = () => 0;
   // 🚨★★★**ONE PROCESS HOLDS ONE PROJECT FILE OPEN, AND A TEST CORPUS
   // MAKES A NEW PROJECT PER TEST.** A file-backed cel reads through
   // [OpenProjectFile], which keeps the `.anicel` open for the next read;

@@ -22,7 +22,13 @@ class _SurfacePaintPass {
   late final Paint _tileImagePaint;
   late final int _level;
   late final Rect _visibleRect;
+
+  /// The float the caller handed in — a selection's, from the row's slot.
   late final RowFloat? _float;
+
+  /// Every float this paint draws over the surface: the caller's, and the
+  /// painter's own ([BitmapSurfacePainter.landingPreview]).
+  late final List<RowFloat> _floats;
 
   /// The one answer to what a coordinate shows ([_CoordinatePicture]).
   late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
@@ -63,6 +69,7 @@ class _SurfacePaintPass {
     _float = float == null || float.preview.drawnWorldRect.isEmpty
         ? null
         : float;
+    _floats = [?_float, ?_painter._ownFloat];
     _painter.pictureBudget.paintBegan(_painter.lineage);
     if (_level > 0) {
       TilePyramid.instance.paintBegan(_painter.lineage);
@@ -333,22 +340,20 @@ class _SurfacePaintPass {
     }
   }
 
-  /// The selection's lifted float, over everything this surface drew. It
-  /// is CANVAS space, so into a posed row it goes through the row's matrix.
+  /// The floats, over everything this surface drew. A selection's is
+  /// CANVAS space, so into a posed row it goes through the row's matrix.
   void _paintFloat() {
-    final float = _float;
-    if (float == null) {
-      return;
-    }
-    final toRow = float.canvasToRow;
-    if (toRow == null) {
+    for (final float in _floats) {
+      final toRow = float.canvasToRow;
+      if (toRow == null) {
+        float.preview.paintInto(_canvas);
+        continue;
+      }
+      _canvas.save();
+      _canvas.transform(toRow.storage);
       float.preview.paintInto(_canvas);
-      return;
+      _canvas.restore();
     }
-    _canvas.save();
-    _canvas.transform(toRow.storage);
-    float.preview.paintInto(_canvas);
-    _canvas.restore();
   }
 
   /// Where this paint's landing previews — the stamp's ghost, the float —
@@ -360,8 +365,7 @@ class _SurfacePaintPass {
     if (ghost != null && ghost.image != null) {
       covered = ghost.canvasRect;
     }
-    final float = _float;
-    if (float != null) {
+    for (final float in _floats) {
       final toRow = float.canvasToRow;
       final drawn = float.preview.drawnWorldRect;
       final inRow = toRow == null

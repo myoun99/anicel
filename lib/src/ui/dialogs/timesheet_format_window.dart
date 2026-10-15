@@ -4,7 +4,9 @@ import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
+import 'dialog_verb.dart';
 import '../text/app_strings.dart';
+import '../text/full_width_numerals.dart';
 import '../widgets/pill_strip.dart';
 
 /// What the 「타임시트 서식」 window answers: the work's sheet format and the
@@ -79,7 +81,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
   }
 
   void _submit() {
-    final threshold = int.tryParse(_exposureBarThresholdController.text.trim());
+    final threshold = halfWidthInt(_exposureBarThresholdController.text);
     // 🚨★★★copyWith, NOT a fresh TimesheetInfo. Building one from scratch
     // listed the fields this dialog edits and silently dropped every field
     // it does not — `staff` and `logoAssetPath` both default to empty, so
@@ -179,6 +181,7 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
               controller: _exposureBarThresholdController,
               enabled: _exposureBarEnabled,
               keyboardType: TextInputType.number,
+              inputFormatters: halfWidthDigitsOnly,
               decoration: const InputDecoration(prefixText: 'N  '),
             ),
           ),
@@ -238,19 +241,11 @@ class _TimesheetFormatWindowState extends State<TimesheetFormatWindow> {
           ],
         ),
       ),
-      actions: [
-        AppWindowAction(
-          label: strings.commonCancel,
-          actionKey: const ValueKey<String>('timesheet-format-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        AppWindowAction(
-          label: strings.commonSave,
-          actionKey: const ValueKey<String>('timesheet-format-save-button'),
-          emphasis: AppWindowActionEmphasis.primary,
-          onPressed: _submit,
-        ),
-      ],
+      actions: saveActions(
+        context,
+        prefix: 'timesheet-format',
+        onSave: _submit,
+      ),
     );
   }
 }

@@ -14,7 +14,6 @@ class StoryboardTimelineLayoutEntry {
     required this.endFrame,
     required this.duration,
     required this.cut,
-    this.mediaLead = 0,
   });
 
   final TrackId trackId;
@@ -26,13 +25,33 @@ class StoryboardTimelineLayoutEntry {
   final int duration;
   final Cut cut;
 
-  /// How many of this entry's frames come BEFORE its cut's conte start —
-  /// the のりしろ an O.L arriving into the cut asks, played when the entry
-  /// is the cut's OWN drawn run (single-cut playback, F-227 ④) rather than
-  /// its place on the track. What its first frame shows on the track is
-  /// the conte start less this (`cutMediaStartFrame`'s answer) — the one
-  /// number the picture and the sound both play from.
-  final int mediaLead;
+  /// Two entries are one when they lay the very same cut at the same place.
+  ///
+  /// 🚨The cut by IDENTITY, never by its deep `==`, which walks every frame
+  /// of every layer: the storyboard's rows, and the conte row they draw,
+  /// are kept while their cuts lie alike (I-57, 10-14) — asked on every
+  /// build of the panel, every notify and every cut crossed, of every entry
+  /// of the track.
+  @override
+  bool operator ==(Object other) =>
+      other is StoryboardTimelineLayoutEntry &&
+      identical(other.cut, cut) &&
+      other.trackId == trackId &&
+      other.cutId == cutId &&
+      other.trackIndex == trackIndex &&
+      other.cutIndex == cutIndex &&
+      other.startFrame == startFrame &&
+      other.endFrame == endFrame &&
+      other.duration == duration;
+
+  @override
+  int get hashCode => Object.hash(
+    identityHashCode(cut),
+    trackIndex,
+    cutIndex,
+    startFrame,
+    endFrame,
+  );
 }
 
 List<StoryboardTimelineLayoutEntry> buildStoryboardTimelineLayout(

@@ -15,7 +15,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
@@ -27,6 +26,7 @@ import 'package:anicel/src/ui/session/frame_verbs.dart';
 import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
 import 'package:anicel/src/ui/session/opacity_verbs.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/reference_to.dart';
 
 /// 🚨F-278 · F-98 — A LINKED ROW'S PICTURES ARE ONE BANK, AND A PICTURE IS
 /// SHARED BY ITS NAME: on an animation row, on an image row, and on the
@@ -598,7 +598,7 @@ void main() {
       s.repository.updateLayer(
         layerId: row,
         update: (layer) => layer.copyWith(
-          mediaReference: MediaReference(assetPath: 'media/a.png'),
+          mediaReference: referenceTo('media/a.png'),
         ),
       );
       s.selectFrameIndex(2);

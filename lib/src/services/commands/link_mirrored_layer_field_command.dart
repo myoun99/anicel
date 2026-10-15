@@ -28,6 +28,8 @@ class LinkMirroredLayerFieldCommand<T>
     required this.fieldName,
     required T Function(Layer layer) read,
     required LayerFieldWrite<T> write,
+    this.ofTheHead = true,
+    this.ofTheCameraHead = false,
   }) : _read = read,
        _write = write;
 
@@ -37,15 +39,38 @@ class LinkMirroredLayerFieldCommand<T>
   final T Function(Layer layer) _read;
   final LayerFieldWrite<T> _write;
 
+  /// Whether the field is part of the row's HEAD — what a track's conte
+  /// rows wear as one across its cuts ([headMirrorTargets], I-73): the name,
+  /// the label, the blend, the static opacity, a folder's fold.
+  ///
+  /// ⛔The KIND is not — the head the proposal drew lists 「이름 · 라벨 ·
+  /// 블렌드 · 불투명도 · 눈 · 어태치 구성 · fx 구성」 and no kind. It is what
+  /// makes a row a cut's conte at all: the storyboard toggle turns ONE
+  /// cut's conte back into a drawing row, and the others keep theirs. It
+  /// reaches the link group alone, as it always did.
+  final bool ofTheHead;
+
+  /// Whether the field is part of the head a track's CAMERAS wear as one
+  /// ([cameraHeadTargets], I-73 ④) as well — the name, and not the label
+  /// (🗣️I-73-camera-row-Q1: 「색라벨은 컷마다」).
+  final bool ofTheCameraHead;
+
   @override
   String get description => 'Update layer $fieldName $layerId';
 
   // Anywhere lookup: track-owned SE rows are not in the cut's layer list but
   // carry marks like every row (unified layer controls). SE rows are never
-  // linked, so their mirror target set is just themselves.
+  // linked and sit in no conte group, so their target set is just themselves.
   @override
   List<({CutId cutId, LayerId layerId})> membersOf(Project project) =>
-      linkMirrorTargets(project, cutId: cutId, layerId: layerId);
+      ofTheHead
+      ? headMirrorTargets(
+          project,
+          cutId: cutId,
+          layerId: layerId,
+          cameraHead: ofTheCameraHead,
+        )
+      : linkMirrorTargets(project, cutId: cutId, layerId: layerId);
 
   @override
   T valueOf(Project project, ({CutId cutId, LayerId layerId}) member) =>

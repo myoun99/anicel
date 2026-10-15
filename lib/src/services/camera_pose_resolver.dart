@@ -21,10 +21,22 @@ CameraPose resolveCameraPoseAt({
   required CutCamera camera,
   required CanvasSize canvasSize,
   required int frameIndex,
+}) => resolveCameraPoseAtTime(
+  camera: camera,
+  canvasSize: canvasSize,
+  time: frameIndex.toDouble(),
+);
+
+/// [resolveCameraPoseAt] at a [time] between frames as well — the camera
+/// row's header graph (I-89 ③).
+CameraPose resolveCameraPoseAtTime({
+  required CutCamera camera,
+  required CanvasSize canvasSize,
+  required double time,
 }) {
   return camera.track
-      .resolveAt(
-        frameIndex: frameIndex,
+      .resolveAtTime(
+        time: time,
         orElse: () => TransformPose.ofCamera(defaultCameraPoseFor(canvasSize)),
       )
       .toCameraPose();

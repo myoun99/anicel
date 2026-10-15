@@ -16,9 +16,13 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_press.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
+    show ToolSettingAction;
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
+
+import '../../helpers/tool_setting_action_probe.dart';
 
 /// R11-④: the Tool Library / Tool Settings panels follow the active tool.
 void main() {
@@ -526,18 +530,25 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('is absent for the shapes that have no trace to close', (
-      tester,
-    ) async {
-      // Every shape but the polygon finishes on the release of one drag,
-      // so a confirm there would be a permanently dead row.
+    // ↩️It was ABSENT for the other shapes — 「a confirm there would be a
+    // permanently dead row」 — which is 「없다가 생기는 UI」
+    // (tool-settings-panel-tidy, 유저 2026-10-10: 「자리를 늘 두고 아닐 때는
+    // 흐리게」).
+    testWidgets('keeps its place, dead, for the shapes that have no trace '
+        'to close', (tester) async {
+      // Every shape but the polygon finishes on the release of one drag.
       for (final shape in const [
         CanvasShapeKind.rect,
         CanvasShapeKind.ellipse,
         CanvasShapeKind.lasso,
       ]) {
         await pumpSettings(tester, shape: shape, points: 0);
-        expect(find.byKey(buttonKey), findsNothing, reason: '$shape');
+        expect(find.byKey(buttonKey), findsOneWidget, reason: '$shape');
+        expect(
+          tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
+          isNull,
+          reason: '$shape',
+        );
       }
     });
 
@@ -548,7 +559,7 @@ void main() {
         points: 2,
       );
       expect(
-        tester.widget<FilledButton>(find.byKey(buttonKey)).onPressed,
+        tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
         isNull,
       );
     });
@@ -597,8 +608,8 @@ void main() {
       await tester.pump();
     }
 
-    OutlinedButton button(WidgetTester tester) =>
-        tester.widget<OutlinedButton>(find.byKey(buttonKey));
+    ToolSettingAction button(WidgetTester tester) =>
+        tester.toolSettingAction(find.byKey(buttonKey));
 
     testWidgets('stands in one place, live, with a selection and without', (
       tester,
@@ -739,7 +750,7 @@ void main() {
               press,
               tool: tool,
               transform: options,
-              cutWhole: () {},
+              cutWhole: ({required takeWhatItCuts}) {},
             ),
             brushLibrary: const SizedBox.shrink(),
             transformOptions: options,

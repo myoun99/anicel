@@ -89,7 +89,7 @@ void main() {
             const TvpCamera(
               width: 10,
               height: 10,
-              keyframes: [],
+              keyedOn: (position: [], zoom: [], rotation: []),
               positions: [],
             ),
         layers: layers,
@@ -292,7 +292,7 @@ void main() {
           camera: TvpCamera(
             width: sizeX.round(),
             height: sizeY.round(),
-            keyframes: [pose],
+            keyedOn: (position: [0], zoom: [0], rotation: [0]),
             positions: [pose],
           ),
         ),
@@ -342,24 +342,15 @@ void main() {
     test('a STILL camera stays one key — the baked curve must not grow '
         'an end key', () {
       // 288: one authored key on frame 1 arrived as keys on frames 1
-      // AND 96, because the track simplifier keeps both endpoints of
-      // whatever it walks.
-      const pose = TvpCameraPose(
-        frame: 1,
-        x: 100,
-        y: 80,
-        angleDegrees: 0,
-        scale: 1,
-        sizeX: 1920,
-        sizeY: 1080,
-      );
+      // AND 96, because the track simplifier kept both endpoints of
+      // whatever it walked.
       final result = plan(
         clip(
           frameCount: 8,
           camera: TvpCamera(
             width: 1920,
             height: 1080,
-            keyframes: [pose],
+            keyedOn: (position: [0], zoom: [0], rotation: [0]),
             positions: [
               for (var f = 1; f <= 8; f++)
                 TvpCameraPose(
@@ -376,6 +367,40 @@ void main() {
         ),
       );
       expect(result.cut.camera.track.keyframes, hasLength(1));
+    });
+
+    test('a MOVING camera is the keys its move needs — a straight pan is '
+        'its two ends, its angle counted the other way round', () {
+      TvpCameraPose at(int frame) => TvpCameraPose(
+        frame: frame,
+        x: 100 + (frame - 1) * 10.0,
+        y: 80,
+        angleDegrees: -(frame - 1) * 2.0,
+        scale: 1,
+        sizeX: 1920,
+        sizeY: 1080,
+      );
+      final result = plan(
+        clip(
+          frameCount: 8,
+          camera: TvpCamera(
+            width: 1920,
+            height: 1080,
+            keyedOn: (position: [0, 7], zoom: [0, 7], rotation: [0, 7]),
+            positions: [for (var f = 1; f <= 8; f++) at(f)],
+          ),
+        ),
+      );
+
+      final camera = result.cut.camera;
+      expect(camera.keyframes.keys, [0, 7]);
+      expect(
+        (
+          camera.keyframeAt(7)!.center.x,
+          camera.keyframeAt(7)!.rotationDegrees,
+        ),
+        (170, 14),
+      );
     });
   });
 }

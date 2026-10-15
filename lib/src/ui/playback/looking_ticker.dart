@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/scheduler.dart';
 
 import '../look_only_frames.dart';
+import '../present_pacing.dart';
 
 /// The ticker of a clock that follows time: it LOOKS at every vsync, and
 /// asks for nothing to be drawn.
@@ -20,28 +21,75 @@ import '../look_only_frames.dart';
 /// route that is not shown still silences it, and a test still drives it
 /// with a pump.
 class LookingTicker {
-  LookingTicker(this._onTick);
+  /// [shownAt] says when the frame under way is shown ([frameShownAt]); a
+  /// test hands its own.
+  LookingTicker(this._onTick, {Duration Function()? shownAt})
+    : _shownAt = shownAt ?? frameShownAt;
 
   final TickerCallback _onTick;
+  final Duration Function() _shownAt;
   Ticker? _ticker;
+
+  /// When the first tick's frame is shown — what the elapsed time counts
+  /// from.
+  Duration? _firstShown;
+
+  /// The furthest elapsed time a tick has carried since the start.
+  Duration _furthest = Duration.zero;
 
   bool get isRunning => _ticker != null;
 
   /// Starts afresh on [vsync]: the elapsed time its ticks carry counts from
   /// the first of them.
+  ///
+  /// 🚨ON THE MOMENTS THEIR FRAMES ARE SHOWN ([frameShownAt]), not on the
+  /// engine's vsyncs: on Windows those are a grid of the engine's own that
+  /// jumps by a part of a refresh several times a run, and a clock counted
+  /// on it changed its film frame a refresh early or late at every jump
+  /// (`PresentClaims`). Where the engine's vsync is the display's, the two
+  /// are the same times.
+  ///
+  /// A clock is running from here to [stop] ([clockStarted]) — started
+  /// afresh, it never stopped.
   void start(TickerProvider vsync) {
-    stop();
+    _ticker?.dispose();
+    _firstShown = null;
+    _furthest = Duration.zero;
     final ticker = _ticker = vsync.createTicker(_tick);
+    clockStarted(this);
     _onlyToLook(() => unawaited(ticker.start()));
   }
 
+  /// A clock that is not running has nothing to stop and says nothing
+  /// ([clockStopped]): every dispose stops its clocks, and a session can be
+  /// disposed where no binding was ever made.
   void stop() {
-    _ticker?.dispose();
+    final ticker = _ticker;
+    if (ticker == null) {
+      return;
+    }
+    ticker.dispose();
     _ticker = null;
+    _firstShown = null;
+    clockStopped(this);
   }
 
   void _tick(Duration elapsed) {
-    _onTick(elapsed);
+    // Counted from where the ticker's own count starts — the frame it was
+    // started in — and on from there by the moments shown.
+    final shown = _shownAt();
+    final since = shown - (_firstShown ??= shown - elapsed);
+    // 🚨NEVER A STEP BACK (F-364, 유저 2026-10-15: 「초록바가 차기
+    // 시작하는곳으로 재생헤드가 점프」). The moment a frame is shown is
+    // estimated afresh at every look, and goes back when the vblank claims
+    // start again on an earlier vblank (`PresentClaims`) — and a clock that
+    // steps back is read as its lap wrapping (`playheadWay`). The time it
+    // has reached stands until the moments catch it up, as what is heard
+    // does on the device (`HeardOnTheDevice`).
+    if (since > _furthest) {
+      _furthest = since;
+    }
+    _onTick(_furthest);
     // The tick may have ended this clock: then there is nothing to look
     // again with. (It may have started it afresh, too; the ticker it then
     // has looks again like any other.)

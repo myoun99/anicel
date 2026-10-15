@@ -1,8 +1,12 @@
+import 'package:file_selector/file_selector.dart' show XTypeGroup;
+
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/key_side.dart' show KeySideKind;
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
+import '../../models/layer_mark.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../services/canvas_selection_region.dart';
 import 'app_strings.dart';
@@ -48,6 +52,12 @@ extension EffectKindWords on EffectKind {
       AppStrings.of(language).effectKindName(jsonValue, label);
 }
 
+/// A key side's kind — the key window's choices (I-89 ②).
+extension KeySideKindWords on KeySideKind {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).keySideKindName(name, label);
+}
+
 /// A row kind's name. Its words are rows of their own in the tables
 /// (`tlKind*`) rather than one keyed lookup, so this is the one place that
 /// pairs a kind with its row — `layerKindDisplayName` asks here in the
@@ -66,6 +76,26 @@ extension LayerKindWords on LayerKind {
       LayerKind.folder => strings.tlKindFolder,
       LayerKind.adjustment => strings.tlKindAdjustment,
     };
+  }
+}
+
+/// A colour label's unabbreviated reading — its stage, and its correction
+/// after it — empty for no label. `layerMarkLabel` asks here in the
+/// program's language; a key's name asks in the language it is shown in
+/// (I-40: the legend's colour solos as actions).
+extension LayerMarkWords on LayerMark {
+  String labelFor(AppLanguage language) {
+    final stage = process;
+    if (stage == null) {
+      return '';
+    }
+    final strings = AppStrings.of(language);
+    final name = strings.layerProcessName(stage.jsonValue, stage.displayName);
+    final correction = revise;
+    return correction == null
+        ? name
+        : '$name '
+              '${strings.layerReviseName(correction.jsonValue, correction.displayName)}';
   }
 }
 
@@ -94,4 +124,27 @@ extension ImportWarningWords on ImportWarning {
 extension ExclusionReasonWords on ExclusionReason {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).exclusionReason(name, label);
+}
+
+/// A save window's file type, its name said in a language — the group keeps
+/// its English `label` (`file_type_groups.dart`), the tables the rest.
+///
+/// ⚠️Keyed by EVERY extension the group names, joined, so a group of
+/// several is never answered by the row of one of them.
+extension FileTypeGroupWords on XTypeGroup {
+  XTypeGroup labelledFor(AppLanguage language) {
+    final english = label;
+    if (english == null) {
+      return this;
+    }
+    return XTypeGroup(
+      label: AppStrings.of(
+        language,
+      ).fileTypeLabel((extensions ?? const []).join(','), english),
+      extensions: extensions,
+      mimeTypes: mimeTypes,
+      uniformTypeIdentifiers: uniformTypeIdentifiers,
+      webWildCards: webWildCards,
+    );
+  }
 }

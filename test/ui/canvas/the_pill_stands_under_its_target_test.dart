@@ -4,11 +4,10 @@ import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 
 /// 🗣️I-79-Q1 (유저 2026-10-08): 「아니 그냥 위쪽 가운데 말고 아래쪽 가운데로
-/// 하자」 — the pill a canvas verb wears stands under its target, centred,
-/// steps inside when there is no room under it, and never leaves the room
-/// it is given.
+/// 하자」 — the pill a canvas verb wears stands under its target, centred —
+/// and F-332 (유저 2026-10-10): 「위치 고정적으로 움직이지않도록.
+/// 확인버튼 안보여져도되니까」 — wherever that is.
 void main() {
-  const room = Rect.fromLTWH(0, 0, 800, 600);
   const pill = Size(68, 28);
 
   group('targetPillOffset', () {
@@ -17,42 +16,34 @@ void main() {
         targetPillOffset(
           target: const Rect.fromLTRB(100, 100, 300, 200),
           pill: pill,
-          room: room,
         ),
         const Offset(200 - 34, 200 + targetPillGap),
       );
     });
 
-    test('no room under it: it steps inside, over the same edge', () {
+    test('🚨it does not move for the room — a target at the edge of the view '
+        'or past it keeps its pill under it all the same (F-332)', () {
       expect(
         targetPillOffset(
           target: const Rect.fromLTRB(100, 100, 300, 580),
           pill: pill,
-          room: room,
         ),
-        const Offset(200 - 34, 580 - targetPillGap - 28),
+        const Offset(200 - 34, 580 + targetPillGap),
+        reason: 'no stepping inside the box where there is no room under it',
       );
-    });
-
-    test('it never leaves the room — a target past the edges keeps it in',
-        () {
       expect(
         targetPillOffset(
           target: const Rect.fromLTRB(-400, -100, 30, 900),
           pill: pill,
-          room: const Rect.fromLTRB(10, 40, 790, 500),
         ),
-        const Offset(10, 500 - 28),
+        const Offset(-185 - 34, 900 + targetPillGap),
+        reason: 'and no pulling in from past the edges',
       );
     });
   });
 
   group('CanvasTargetPill', () {
-    Future<void> mount(
-      WidgetTester tester, {
-      required Rect target,
-      EdgeInsets cover = EdgeInsets.zero,
-    }) async {
+    Future<void> mount(WidgetTester tester, {required Rect target}) async {
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
@@ -61,18 +52,13 @@ void main() {
             child: SizedBox(
               width: 400,
               height: 300,
-              // The panel gives its tools the cover this way, once for
-              // every pill they raise.
-              child: CanvasPillRoom(
-                cover: cover,
-                child: CanvasTargetPill(
-                  keyValue: 'probe-pill',
-                  target: target,
-                  children: const [
-                    SizedBox(width: 30, height: 24),
-                    SizedBox(width: 30, height: 24),
-                  ],
-                ),
+              child: CanvasTargetPill(
+                keyValue: 'probe-pill',
+                target: target,
+                children: const [
+                  SizedBox(width: 30, height: 24),
+                  SizedBox(width: 30, height: 24),
+                ],
               ),
             ),
           ),
@@ -98,19 +84,10 @@ void main() {
       );
     });
 
-    testWidgets('the cover is not room: it keeps out from under what stands '
-        'on its edges', (tester) async {
-      await mount(
-        tester,
-        target: const Rect.fromLTRB(100, 50, 300, 260),
-        cover: const EdgeInsets.only(bottom: 100),
-      );
-      expect(
-        pillRect(tester).bottom,
-        300 - 100,
-        reason: 'under the target is under the cover — it stands on the '
-            'cover\'s edge instead',
-      );
+    testWidgets('past the edge of what it stands in, it stands under its '
+        'target all the same', (tester) async {
+      await mount(tester, target: const Rect.fromLTRB(100, 50, 300, 290));
+      expect(pillRect(tester).top, 290 + targetPillGap);
     });
   });
 }

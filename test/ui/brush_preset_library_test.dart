@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../helpers/temp_dir.dart';
+import '../services/abr_test_builder.dart';
 
 const _ink = BrushGroupId('ink');
 const _paint = BrushGroupId('paint');
@@ -114,6 +115,80 @@ void main() {
         ko.brImportPickFailed('Bad state: no dialog'),
       );
       expect(await garbled.importFromFile(), ko.brImportUnreadable);
+    });
+
+    test('🎯each reader\'s refusal is said in the program language — the '
+        'Anicel brush file, Photoshop\'s and CLIP STUDIO\'s (F-273)', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      const untabled = ' ';
+      final ko = AppStrings.of(AppLanguage.ko);
+      Future<String?> refusalOf(String name, List<int> bytes) async {
+        final library = BrushPresetLibrary(
+          fileService: service,
+          filePicker: () async =>
+              (name: name, bytes: Uint8List.fromList(bytes)),
+        );
+        addTearDown(library.dispose);
+        return library.importFromFile();
+      }
+
+      expect(
+        await refusalOf('x.anibrush', utf8.encode('{"presets":[]}')),
+        ko.importWarning('brushPackNotOurs', untabled),
+      );
+      expect(
+        await refusalOf('x.abr', const [0, 6]),
+        ko.importWarning('abrTooShort', untabled),
+      );
+      // An empty file is an empty database to SQLite: no tables at all.
+      expect(
+        await refusalOf('x.sut', const []),
+        ko.importWarning('sutNoBrushData', untabled),
+      );
+    });
+
+    test('a file that lands with warnings says so in the program language — '
+        'its brushes counted, and how many said something', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      final ko = AppStrings.of(AppLanguage.ko);
+      // Two tips: one at 8 bits, and one at 16 the decoder skips with a
+      // warning.
+      final samp = AbrBytes();
+      writeSampEntry(
+        samp,
+        uuid: 'deep-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(8, 1),
+        depth: 16,
+      );
+      writeSampEntry(
+        samp,
+        uuid: 'ok-tip',
+        width: 2,
+        height: 2,
+        pixels: List<int>.filled(4, 9),
+      );
+      final file = AbrBytes()
+        ..i16(6)
+        ..i16(2);
+      write8bimSection(file, 'samp', samp.bytes);
+      final library = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async => (name: 'pack.abr', bytes: file.bytes),
+      );
+      addTearDown(library.dispose);
+
+      expect(
+        await library.importFromFile(),
+        ko.brImportWarnings(ko.brImported(1, 'pack.abr'), 1),
+      );
     });
 
     test('a cancelled pick is nothing, not an error', () async {

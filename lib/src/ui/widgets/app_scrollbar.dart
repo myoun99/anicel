@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'app_scrollbar_lane.dart';
 import 'owning_axis_grip.dart';
+import 'tick_layer.dart';
 
 /// The lane vocabulary lives next door so calculation-only files can name
 /// a width without importing a widget; everyone who has the scrollbar has
@@ -460,32 +461,52 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
     // narrower question ([[duplication-program]] — the last step is deleting
     // the predecessor).
     _scheduleSettledCheck();
-    return AnimatedBuilder(
-      animation: widget.controller,
-      builder: (context, _) {
-        final metrics = _metrics;
-        final viewportExtent = metrics.viewport;
-        final contentExtent = metrics.content;
-        final offset = metrics.offset;
-        // Recorded from INSIDE the AnimatedBuilder: an offset notification
-        // rebuilds only this closure, and the check must compare against
-        // what was actually painted rather than the outer build's snapshot.
-        _drawn = metrics;
-        return AppScrollbar(
-          axis: widget.axis,
-          offset: offset,
-          viewportExtent: viewportExtent,
-          contentExtent: contentExtent,
-          lanePress: widget.lanePress,
-          minThumbExtent: widget.minThumbExtent,
-          thumbSeat: widget.thumbSeat,
-          thumbKey: widget.thumbKey,
-          laneKey: widget.laneKey,
-          onOffsetChanged: _jumpTo,
-        );
-      },
-    );
+    // 🚨A SCROLL REDRAWS THE BAR AND NOTHING BESIDE IT
+    // (playback-page-turn-repaints-the-whole-timeline, 10-11). The bar is
+    // built again at every pixel of scroll, and a widget built again is laid
+    // out by the nearest [LayoutBuilder] above it — Flutter runs a
+    // LayoutBuilder's subtree's rebuilds in its own layout. So the bar
+    // brings its own: given the lane it fills as TIGHT constraints, it is a
+    // relayout boundary, and the layer above it keeps the repaint there.
+    // ↩️The rebuild was laid out by the panel's LayoutBuilder around the
+    // bar, whose relayout climbed to the panel, and that panel's layer was
+    // painted again whole: 🔬393 of the timeline's render objects for a
+    // one-pixel scroll of its frame axis — at every page turn of a run.
+    // (The bar's [Stack] expands to its lane already, so tightening it
+    // changes no size.)
+    // ↩️It brought the paint and the layout halves of a [TickLayer] by hand
+    // and not the third: a scroll's relayout climbed to the semantics
+    // boundary above it, and a page turn of a run re-walked 351 render
+    // objects of the workspace for a moved thumb (2026-10-11). It is a tick
+    // of the scroll, so it is one.
+    return SizedBox.expand(child: TickLayer(child: _bar()));
   }
+
+  Widget _bar() => AnimatedBuilder(
+    animation: widget.controller,
+    builder: (context, _) {
+      final metrics = _metrics;
+      final viewportExtent = metrics.viewport;
+      final contentExtent = metrics.content;
+      final offset = metrics.offset;
+      // Recorded from INSIDE the AnimatedBuilder: an offset notification
+      // rebuilds only this closure, and the check must compare against
+      // what was actually painted rather than the outer build's snapshot.
+      _drawn = metrics;
+      return AppScrollbar(
+        axis: widget.axis,
+        offset: offset,
+        viewportExtent: viewportExtent,
+        contentExtent: contentExtent,
+        lanePress: widget.lanePress,
+        minThumbExtent: widget.minThumbExtent,
+        thumbSeat: widget.thumbSeat,
+        thumbKey: widget.thumbKey,
+        laneKey: widget.laneKey,
+        onOffsetChanged: _jumpTo,
+      );
+    },
+  );
 
   void _jumpTo(double offset) {
     final position = _position;

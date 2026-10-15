@@ -5,8 +5,7 @@ import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart';
 import '../../native/qa_video_encoder.dart';
-import '../audio/audio_conform_runner.dart' show decodeAudioSource;
-import '../audio/sound_span.dart' show int16PcmOfFrames;
+import '../audio/sound_span.dart' show decodeAudioOfFrames, int16PcmOfFrames;
 import 'media_byte_source.dart';
 
 /// Writes the movie at [sourcePath] over the project frames [trim] keeps of
@@ -62,8 +61,13 @@ import 'media_byte_source.dart';
       outFrame: trim.outFrame,
     );
     final pace = clock.rate.inSourceTime(clock.speed);
-    final decoded = decodeAudioSource(MediaFileBytes(sourcePath));
-    final sound = decoded != null && decoded.channels > 0 ? decoded : null;
+    // Only the span's own samples: a minute cut from a two-hour reel holds
+    // a minute (Q5).
+    final sound = decodeAudioOfFrames(
+      MediaFileBytes(sourcePath),
+      (first: kept.first, count: kept.count),
+      pace,
+    );
     if (!encoder.open(
       path: piecePath,
       width: info.width,
@@ -75,6 +79,22 @@ import 'media_byte_source.dart';
     )) {
       return (kept: null, failure: encoder.lastError);
     }
+    // The source samples project frame [at] plays, handed to the encoder —
+    // the sound was decoded from the span's first frame on.
+    bool writeSoundOf(int at) {
+      final heard = sound;
+      if (heard == null) {
+        return true;
+      }
+      final pcm = int16PcmOfFrames(
+        heard,
+        (first: at, count: 1),
+        pace,
+        from: kept.first,
+      );
+      return encoder.writeAudio(pcm, pcm.length ~/ heard.channels);
+    }
+
     var finished = false;
     try {
       final frame = Uint8List(info.width * info.height * 4);
@@ -87,8 +107,7 @@ import 'media_byte_source.dart';
         if (rgba == null) {
           return (kept: null, failure: decoder.lastError);
         }
-        if (!encoder.writeFrame(rgba) ||
-            (sound != null && !_writeSoundOf(encoder, sound, at, pace))) {
+        if (!encoder.writeFrame(rgba) || !writeSoundOf(at)) {
           return (kept: null, failure: encoder.lastError);
         }
       }
@@ -104,15 +123,4 @@ import 'media_byte_source.dart';
   } finally {
     decoder.closeDocument(document);
   }
-}
-
-/// The source samples project frame [frame] plays, handed to [encoder].
-bool _writeSoundOf(
-  QaVideoEncoder encoder,
-  ({Float32List samples, int channels, int sampleRate}) sound,
-  int frame,
-  ProjectFrameRate pace,
-) {
-  final pcm = int16PcmOfFrames(sound, (first: frame, count: 1), pace);
-  return encoder.writeAudio(pcm, pcm.length ~/ sound.channels);
 }

@@ -288,16 +288,24 @@ void main() {
       expect(conteRow(s, receiving).timeline[32]!.memo?.inkId, inkId);
     });
 
-    test('the storyboard cursor 25 frames into the receiving cut stands on '
-        'panel 2 on the conte row — conte time, not the held-back frames', () {
+    // The storyboard presses in the TRACK's frames: 25 into the receiving
+    // cut's conte is the track's 48 + 25, and the session stands on the
+    // cut's own frame that plays there — 12 further in.
+    // ↩️This handed the conte's 25 on as the cut's frame, which is what the
+    // storyboard's seek did; the cursor's reader added the のりしろ back
+    // (I-73-ol-index-space).
+    test('the storyboard cursor 25 frames into the receiving cut\'s conte '
+        'stands on panel 2 on the conte row — on the cut\'s own frame, past '
+        'the held-back frames', () {
       final s = session();
       addTearDown(s.dispose);
       s.selectCut(receiving);
       s.standOnRow(
         LayerRowAddress(trackConteRowId(const TrackId('t'))),
         panel: WorkingPanel.storyboard,
-        frameIndex: 25,
+        globalFrameIndex: 48 + 25,
       );
+      expect(s.currentFrameIndex, 12 + 25);
       final block = s.storyboardCursor.storyboardCursorBlockOrNull();
       expect(block, isA<StoryboardCursorStoryboardPanel>());
       expect(
@@ -316,7 +324,7 @@ void main() {
       s.standOnRow(
         const TrackRowAddress(TrackId('t')),
         panel: WorkingPanel.storyboard,
-        frameIndex: 25,
+        globalFrameIndex: 48 + 25,
       );
       final block = s.storyboardCursor.storyboardCursorBlockOrNull();
       expect(block, isA<StoryboardCursorCutBlock>());

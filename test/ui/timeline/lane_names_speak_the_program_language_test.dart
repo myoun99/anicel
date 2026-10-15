@@ -22,6 +22,9 @@ import 'package:anicel/src/ui/timeline/se_audio_lane.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/named_finders.dart';
+
 /// F-37 — a lane's name is read in the program language.
 ///
 /// 유저 2026-09-15 (F-37-Q1): 「전부 번역 — 레인 이름도 한국어로」, and 「ae도
@@ -129,23 +132,19 @@ void main() {
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
     final layerId = session.activeLayerId!;
-    final laneToggle = find.byKey(
-      ValueKey<String>('timeline-lane-toggle-$layerId'),
-    );
+    final laneToggle = find.named('timeline-lane-toggle-$layerId');
     await tester.ensureVisible(laneToggle);
     await tester.pumpAndSettle();
     await tester.tap(laneToggle);
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(
-        ValueKey<String>('timeline-lane-group-fx-$layerId-transform-group'),
-      ),
+      find.named('timeline-lane-group-fx-$layerId-transform-group'),
       findsOneWidget,
       reason: 'fixture premise: the Transform header is on screen',
     );
-    expect(find.byTooltip('변형 우회'), findsOneWidget);
-    expect(find.byTooltip('Bypass Transform'), findsNothing);
+    expect(find.railTooltip('변형 우회'), findsOneWidget);
+    expect(find.railTooltip('Bypass Transform'), findsNothing);
   });
 }
 

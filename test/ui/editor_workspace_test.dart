@@ -28,8 +28,9 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
+import '../helpers/reference_to.dart';
+import '../helpers/named_finders.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
@@ -550,9 +551,7 @@ void main() {
                         // Hidden, so the canvas never goes looking for it.
                         layer.copyWith(
                           isVisible: false,
-                          mediaReference: MediaReference(
-                            assetPath: still,
-                          ),
+                          mediaReference: referenceTo(still),
                         )
                       else
                         layer,
@@ -671,9 +670,7 @@ void main() {
       final row = session.requireActiveCut.layers.firstWhere(
         (layer) => layer.kind == LayerKind.animation,
       );
-      final rowTarget = find.byKey(
-        ValueKey<String>('timeline-layer-asset-drop-${row.id}'),
-      );
+      final rowTarget = find.named('timeline-layer-asset-drop-${row.id}');
       // Near the row's LEFT edge: a whole-row target is wider than the
       // screen, so its centre is off it.
       final nearStart = tester.getTopLeft(rowTarget) + const Offset(2, 2);
@@ -695,9 +692,7 @@ void main() {
 
       // 「SE 행의 빈 칸 → 새 블록」: a sound on an SE row's empty cell.
       final se = session.activeTrack.seLayers.first;
-      final cellTarget = find.byKey(
-        ValueKey<String>('timeline-se-cell-drop-${se.id}-0'),
-      );
+      final cellTarget = find.named('timeline-se-cell-drop-${se.id}-0');
       final cellStart = tester.getTopLeft(cellTarget) + const Offset(2, 2);
       drop(cellTarget, 'door.wav', cellStart);
       await tester.pump();
@@ -720,9 +715,7 @@ void main() {
       final entrance = find.byKey(
         const ValueKey<String>('timeline-layer-placement-entrance'),
       );
-      final railRow = find.byKey(
-        ValueKey<String>('timeline-rail-row-${row.id}-row'),
-      );
+      final railRow = find.named('timeline-rail-row-${row.id}-row');
       drop(
         entrance,
         'bg.png',

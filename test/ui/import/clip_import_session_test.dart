@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart'
     show attachedMirrorCelId;
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -60,7 +61,13 @@ void main() {
   /// [troubled] puts three more layers on top that cannot all be drawn: a
   /// grey one, a dropped picture its transform doubles, and one whose
   /// blocks the file does not hold.
-  String writeClip({bool troubled = false}) {
+  ///
+  /// [strokes] puts a vector layer 「lines」 on top instead, moved to (30, 40)
+  /// and beside its strokes a render whose blocks the file does not hold, as
+  /// the one sample with vectors keeps. Its strokes ([_Strokes.held]): one 0
+  /// … 40 across at its row 10, six across, and one record of a kind not
+  /// drawn.
+  String writeClip({bool troubled = false, _Strokes? strokes}) {
     final attribute = offscreenAttributeBytes(
       width: 64,
       height: 64,
@@ -74,6 +81,10 @@ void main() {
       externalId(4): square(0, 8, (200, 200, 200)),
       externalId(5): square(0, 2, (9, 9, 9)),
       externalId(6): blockRecordsBytes({0: null}),
+      externalId(20): [
+        ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
+        ...vectorStrokeBytes([(0, 0, 1)], flags: 2),
+      ],
       // Timeline one, A: 「1」 at tick 0, 「2」 at tick 12 (frame 6 — two
       // ticks a frame at 30 fps), to tick 24 (frame 12). BG throughout.
       externalId(10): trackDataBytes(
@@ -124,12 +135,18 @@ void main() {
         'LayerRenderMipmap, AnimationFolder) '
         'VALUES (?, ?, ?, ?, 1, 256, ?, ?, ?, ?, ?, ?, ?, ?)',
       );
+      // The layer chained on top of A, if any.
+      final onTopOfA = troubled
+          ? 8
+          : strokes != null
+          ? 11
+          : 0;
       // id, name, type, folder, composite, uuid, x, y, child, next,
       // render, animation.
       for (final row in <List<Object?>>[
         [1, '', 256, 1, 0, '', 0, 0, 2, 0, 0, 0],
         [2, 'BG', 1, 0, 0, uuidBg, 120, 50, 0, 3, 100, 0],
-        [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, if (troubled) 8 else 0, 0, 1],
+        [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, onTopOfA, 0, 1],
         [4, '1', 0, 1, 0, '', 0, 0, 5, 7, 0, 0],
         [5, 'under', 1, 0, 0, '', 0, 0, 0, 6, 101, 0],
         [6, 'top', 1, 0, 0, '', 0, 0, 0, 0, 102, 0],
@@ -138,10 +155,40 @@ void main() {
           [8, 'grey', 1, 0, 0, '', 0, 0, 0, 9, 105, 0],
           [10, 'lost', 1, 0, 0, '', 0, 0, 0, 0, 106, 0],
         ],
+        if (strokes != null) [11, 'lines', 1, 0, 0, '', 30, 40, 0, 0, 107, 0],
       ]) {
         layer.execute(row);
       }
       layer.close();
+      if (strokes != null) {
+        db.execute('''
+          INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (107, 207);
+          INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+            VALUES (207, 100, 307, 0);
+        ''');
+        db.execute(
+          'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
+          'VALUES (307, ?, ?)',
+          [attribute, externalId(98)],
+        );
+        if (strokes == _Strokes.none) {
+          // A vector layer by its render type alone: no stroke at all.
+          db.execute(
+            'UPDATE Layer SET DrawToRenderOffscreenType = 10 '
+            'WHERE MainId = 11',
+          );
+        } else {
+          db.execute(
+            'INSERT INTO VectorObjectList(MainId, CanvasId, LayerId, '
+            'VectorData) VALUES (1, 1, 11, ?)',
+            [
+              Uint8List.fromList(
+                externalId(strokes == _Strokes.lost ? 97 : 20).codeUnits,
+              ),
+            ],
+          );
+        }
+      }
       if (troubled) {
         db
           ..execute(
@@ -302,13 +349,13 @@ void main() {
     final base = row(one, 'A', kind: LayerKind.animation);
     final cel1 = base.frames.firstWhere((cel) => cel.name == '1').id;
     final cel2 = base.frames.firstWhere((cel) => cel.name == '2').id;
-    final a2 = row(one, 'A-2');
+    final a1 = row(one, 'A-1');
     final bg = row(one, 'BG');
 
     expect(inked(session, one, base.id, cel1), 6 * 6, reason: 'top');
     expect(inked(session, one, base.id, cel2), 8 * 8, reason: 'cel 2');
     expect(
-      inked(session, one, a2.id, attachedMirrorCelId(a2.id, cel1)),
+      inked(session, one, a1.id, attachedMirrorCelId(a1.id, cel1)),
       4 * 4,
       reason: 'the layer under the top one, on the attach row',
     );
@@ -382,6 +429,373 @@ void main() {
     );
   });
 
+  test('🎯a vector layer is drawn from its strokes, where its offset puts '
+      'them — the render it keeps without blocks is not refused for it '
+      '(6-1 item 8: 「벡터 레이어는 래스터로 그려 넣는다」)', () async {
+    final opened = await openedClip(writeClip(strokes: _Strokes.held));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipVector', 'lines'),
+        ('clipVectorUnread', 'lines'),
+      ]),
+      reason: 'drawn with a round pen is said, and the record it does not '
+          'draw; 「could not be read」 is not',
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    final surface = session.renderCaches.brushFrameStore.bakedSurfaceOrNull(
+      session.brushFrameKeyForCut(cut, lines.id, lines.frames.single.id),
+    )!;
+    final tile = surface.tiles.values.single;
+    int alphaAt(int x, int y) => tile.pixels[(y * 128 + x) * 4 + 3];
+    // Stored 0 … 40 across at row 10, moved by (30, 40): 30 … 70 at row 50.
+    expect(alphaAt(50, 49), closeTo(255, 1));
+    expect(alphaAt(50, 45), 0, reason: 'six across, not more');
+    expect(alphaAt(20, 9), 0, reason: 'not where it is stored');
+  });
+
+  test('strokes the file does not hold are said by name, and the layer '
+      'stays, empty', () async {
+    final opened = await openedClip(writeClip(strokes: _Strokes.lost));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipVector', 'lines'),
+        ('celUnreadable', 'lines'),
+      ]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
+  });
+
+  test('a vector layer with no stroke is an empty picture — not one 「that '
+      'could not be read」 for the render it keeps without blocks', () async {
+    final opened = await openedClip(writeClip(strokes: _Strokes.none));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([('clipCelLayers', 'A'), ('clipVector', 'lines')]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final lines = cut.layers.singleWhere((layer) => layer.name == 'lines');
+    expect(inked(session, cut, lines.id, lines.frames.single.id), 0);
+  });
+
+  test('🎯a sound the file holds comes in CARRIED — on the track\'s SE row, '
+      'its bytes the project\'s, the copy taken out gone, nothing to undo '
+      '(유저 10-09: 「소리도 가져오게 못하나? 단일파일안에있을거아냐」)', () async {
+    const uuidVoice = '99990000-aaaa-bbbb-cccc-ddddeeeeffff';
+    const object = 'aaaa1111-2222-3333-4444-555566667777';
+    const bank = 'bbbb1111-2222-3333-4444-555566667777';
+    final mp3 = [0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0, 1, 2, 3];
+    final database = clipDatabaseBytes(temp, (db) {
+      db
+        ..execute(clipSchema)
+        ..execute('ALTER TABLE Layer ADD COLUMN AudioLayer INTEGER')
+        ..execute('ALTER TABLE Layer ADD COLUMN FirstLayerObject INTEGER')
+        ..execute(
+          'CREATE TABLE LayerObject(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, LayerId INTEGER, ObjectUuid TEXT, '
+          'BankItemUuid TEXT, ObjectName TEXT, ObjectNext INTEGER)',
+        )
+        ..execute(
+          'CREATE TABLE CanvasItem(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, ItemUuid TEXT, ItemType TEXT, '
+          'ItemFileExtension TEXT, ItemBinaryMainIndex INTEGER)',
+        )
+        ..execute(
+          'CREATE TABLE CanvasItemBinary(_PW_ID INTEGER PRIMARY KEY, '
+          'MainId INTEGER, ItemBinaryData TEXT)',
+        )
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerVisibility, LayerUuid, AudioLayer, FirstLayerObject) '
+          "VALUES (2, 'voice', 8720, 0, 1, '$uuidVoice', 1, 10)",
+        )
+        ..execute(
+          'INSERT INTO LayerObject(MainId, LayerId, ObjectUuid, '
+          'BankItemUuid, ObjectName, ObjectNext) '
+          "VALUES (10, 2, '$object', '$bank', 'take.mp3', 0)",
+        )
+        ..execute(
+          'INSERT INTO CanvasItem(MainId, ItemUuid, ItemType, '
+          'ItemFileExtension, ItemBinaryMainIndex) '
+          "VALUES (20, '$bank', 'Audio', 'mp3', 30)",
+        )
+        ..execute(
+          'INSERT INTO CanvasItemBinary(MainId, ItemBinaryData) '
+          "VALUES (30, '${externalId(5)}')",
+        )
+        ..execute('''
+          INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex)
+            VALUES (1, 40, 0);
+          INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, FrameRate,
+            StartFrame, EndFrame, FirstTrack) VALUES
+            (40, 0, 'one', 24.0, 0, 48, 50);
+        ''');
+      final track = db.prepare(
+        'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
+        'LayerUuidWithTrack, TrackActionMixer2) VALUES (?, ?, ?, ?, ?)',
+      );
+      track
+        ..execute([50, 0, 4001, clipUuidBytes(uuidVoice), externalId(6)])
+        ..close();
+    });
+    final path = '${temp.path}${Platform.pathSeparator}voiced.clip';
+    File(path).writeAsBytesSync(
+      clipFileBytes(
+        database: database,
+        externals: {
+          externalId(5): mp3,
+          // The sound from the clip's head, its own speed, at its level.
+          externalId(6): trackDataBytes(
+            cmtDocumentBytes(
+              clipTrackSpec([
+                CmtSpec(
+                  'ActionNodeClip',
+                  'null',
+                  children: [
+                    ...clipNodeSpec(time: [0, 120], motion: [0, 120]).children,
+                    const CmtSpec(
+                      'AnimInfo',
+                      'null',
+                      children: [
+                        CmtSpec(
+                          'Param',
+                          'Int32',
+                          value: 3,
+                          attributes: {'Name': 'AudioPlayer', 'Tag': object},
+                        ),
+                        CmtSpec(
+                          'Param',
+                          'Double',
+                          value: 100,
+                          attributes: {'Name': 'AudioVolume'},
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ]),
+            ),
+          ),
+        },
+      ),
+    );
+
+    final opened = await openedClip(path);
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    final project = session.repository.requireProject();
+    // A track keeps two SE rows at least; the sound's is the one it plays on.
+    final row = project.tracks.single.seLayers.singleWhere(
+      (layer) => layer.audioClips.isNotEmpty,
+    );
+    final clip = row.audioClips.single;
+    expect(clip.filePath, endsWith('/take.mp3'), reason: 'called as it was');
+    expect((clip.offsetFrames, clip.gain), (0, 1.0));
+    final asset = session.mediaPool.mediaAssets.singleWhere(
+      (asset) => asset.path == clip.filePath,
+    );
+    expect(asset.carriedAs, isNotNull, reason: 'carried, as a recording is');
+    expect(session.projectFile.projectHoldsMediaBytes(clip.filePath), isTrue);
+    expect(
+      File(clip.filePath).existsSync(),
+      isFalse,
+      reason: 'the copy taken out goes once the project holds its bytes',
+    );
+    expect(session.historyManager.canUndo, isFalse, reason: 'not an edit');
+    expect(
+      [for (final warning in opened.warnings) warning.key],
+      isNot(contains('clipSound')),
+    );
+  });
+
+  test('🎯a 2D camera folder\'s move is its folder\'s transform — its keys '
+      'where the pan needs them — and the cut\'s camera the frame it shoots, '
+      'still (유저 10-13: 「카메라폴더는 그냥 폴더에 트랜스폼 움직이는걸로 … '
+      '이름은 카메라폴더 이름 그대로」)', () async {
+    const uuidCamera = '22223333-4444-5555-6666-777788889999';
+    // At rest on the shooting frame: the frame's own size, its centre
+    // (100, 50) placed on the frame's centre (320, 180).
+    final rest = ByteData(184)
+      ..setFloat64(40, 1)
+      ..setFloat64(48, 1)
+      ..setFloat64(64, 320)
+      ..setFloat64(72, 180)
+      ..setFloat64(80, 100)
+      ..setFloat64(88, 50);
+    final database = clipDatabaseBytes(temp, (db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'ALTER TABLE Layer ADD COLUMN Camera2DResizableImageInfo BLOB',
+        )
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder, CropFrameInnerWidth, CropFrameInnerHeight, '
+          'CropFrameCropOffsetX, CropFrameCropOffsetY, '
+          'CropFrameInnerOffsetX, CropFrameInnerOffsetY) '
+          'VALUES (1, 640, 360, 1, 200, 100, 0, 0, 0, 0)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute('''
+          INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex)
+            VALUES (1, 40, 0);
+          INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, FrameRate,
+            StartFrame, EndFrame, FirstTrack) VALUES
+            (40, 0, 'one', 24.0, 0, 12, 50);
+        ''');
+      db.prepare(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerVisibility, LayerUuid, LayerFirstChildIndex, '
+          'Camera2DResizableImageInfo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        ..execute([
+          2,
+          'camera',
+          512,
+          1,
+          1,
+          uuidCamera,
+          0,
+          rest.buffer.asUint8List(),
+        ])
+        ..close();
+      db.prepare(
+          'INSERT INTO Track(MainId, TrackNextIndex, TrackKind, '
+          'LayerUuidWithTrack, TrackActionMixer2) VALUES (?, ?, ?, ?, ?)',
+        )
+        ..execute([50, 0, 2005, clipUuidBytes(uuidCamera), externalId(6)])
+        ..close();
+    });
+    final path = '${temp.path}${Platform.pathSeparator}panned.clip';
+    File(path).writeAsBytesSync(
+      clipFileBytes(
+        database: database,
+        externals: {
+          // Ticks at 60 a second on 24 fps: the clip is frames 0 … 12, and
+          // tick 27.5 frame 11. Across from x 100 to 210; the rest held.
+          externalId(6): trackDataBytes(
+            cmtDocumentBytes(
+              clipTrackSpec([
+                const CmtSpec(
+                  'ActionNodeClip',
+                  'null',
+                  children: [
+                    CmtSpec(
+                      'TimeClip',
+                      'null',
+                      children: [
+                        CmtSpec('Start', 'Double', value: 0),
+                        CmtSpec('End', 'Double', value: 30),
+                        CmtSpec('Rate', 'Double', value: 60),
+                      ],
+                    ),
+                    CmtSpec(
+                      'MotionClip',
+                      'null',
+                      children: [
+                        CmtSpec('Start', 'Double', value: 0),
+                        CmtSpec('End', 'Double', value: 30),
+                      ],
+                    ),
+                    CmtSpec(
+                      'AnimInfo',
+                      'null',
+                      children: [
+                        CmtSpec(
+                          'FCurve',
+                          'null',
+                          attributes: {'Type': 'ImagePosition', 'Axis': 'X'},
+                          children: [
+                            CmtSpec('Frame', 'Double[]', value: [0, 27.5]),
+                            CmtSpec('Value', 'Double[]', value: [100, 210]),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ]),
+            ),
+          ),
+        },
+      ),
+    );
+
+    final opened = await openedClip(path);
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    final project = session.repository.requireProject();
+    expect(
+      (project.cameraSize.width, project.cameraSize.height),
+      (200, 100),
+      reason: 'the frame it shoots is the project\'s camera',
+    );
+    final cut = project.tracks.single.cuts.single;
+    expect(
+      [
+        for (final MapEntry(key: frame, value: pose)
+            in cut.camera.keyframes.entries)
+          (frame, pose.center),
+      ],
+      [(0, CanvasPoint(x: 320, y: 180))],
+      reason: 'CLIP STUDIO\'s own camera does not move',
+    );
+    final folder = cut.layers.singleWhere((layer) => layer.name == 'camera');
+    expect(folder.kind, LayerKind.folder);
+    final transform = folder.transformTrack;
+    expect(
+      {
+        for (final MapEntry(key: frame, value: key)
+            in transform.anchorPoint.keys.entries)
+          frame: key.value,
+      },
+      {0: CanvasPoint(x: 100, y: 180), 11: CanvasPoint(x: 210, y: 180)},
+      reason: 'a pan: its ends, on the point the camera stands at',
+    );
+    expect(
+      transform.position.keys.values.single.value,
+      CanvasPoint(x: 320, y: 180),
+      reason: 'the frame\'s point its pivot is',
+    );
+  });
+
   test('a file that is not a CLIP STUDIO file is not one', () async {
     final path = '${temp.path}${Platform.pathSeparator}not.clip';
     File(path).writeAsStringSync('nothing in particular');
@@ -389,3 +803,7 @@ void main() {
     expect(await openedClip(path), isNull);
   });
 }
+
+/// What the vector layer of [writeClip] holds: its strokes, strokes the file
+/// does not hold, or none at all.
+enum _Strokes { held, lost, none }

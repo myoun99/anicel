@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'axis_turn.dart';
 import 'timeline_frame_geometry.dart';
 
 /// Where a child sits along the FRAME axis, in frame terms.
@@ -309,9 +310,15 @@ class RenderTimelineFrameSpanLayout extends RenderBox
     axis: axis,
   );
 
+  /// Whether a child of a WINDOWED row runs past its window along the frame
+  /// axis — what [paint] clips.
+  bool _runsPastTheWindow = false;
+
   @override
   void performLayout() {
     final frames = geometry.value;
+    final windowEnd = extentAlong(axis, size);
+    var runsPast = false;
     var child = firstChild;
     while (child != null) {
       final parentData = child.parentData! as TimelineFrameSpanParentData;
@@ -327,13 +334,53 @@ class RenderTimelineFrameSpanLayout extends RenderBox
       final rect = rectFor(placement, frames);
       child.layout(BoxConstraints.tight(rect.size));
       parentData.offset = rect.topLeft;
+      final (start, end) = axis == Axis.horizontal
+          ? (rect.left, rect.right)
+          : (rect.top, rect.bottom);
+      runsPast = runsPast || start < 0 || end > windowEnd;
       child = parentData.nextSibling;
     }
+    _runsPastTheWindow = frames.isWindowed && runsPast;
+  }
+
+  final LayerHandle<ClipRectLayer> _windowClip = LayerHandle<ClipRectLayer>();
+
+  /// 🚨I-57 (10-13, profile, the user's project): a span longer than the
+  /// window — a sound running on far past the cut — is drawn as far as the
+  /// window and no further, so a painter that reads its canvas's clip knows
+  /// what of it can be seen (`WaveformPainter`: a long sound's band was
+  /// 6–20ms of a cut crossing's frame, built whole at every paint).
+  ///
+  /// Only a WINDOWED row, and only along the frame axis: past the window is
+  /// off-screen by construction ([RenderTimelineFrameAxisBox] — the window
+  /// covers the viewport with a margin, and the row is painted again when it
+  /// moves), so the clip hides nothing anyone sees. A box that is not
+  /// windowed spans its whole content, and across the axis what a span draws
+  /// is not this clip's question — it reaches as far as it always did.
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (!_runsPastTheWindow) {
+      _windowClip.layer = null;
+      defaultPaint(context, offset);
+      return;
+    }
+    const largest = Rect.largest;
+    _windowClip.layer = context.pushClipRect(
+      needsCompositing,
+      offset,
+      axis == Axis.horizontal
+          ? Rect.fromLTRB(0, largest.top, size.width, largest.bottom)
+          : Rect.fromLTRB(largest.left, 0, largest.right, size.height),
+      defaultPaint,
+      oldLayer: _windowClip.layer,
+    );
   }
 
   @override
-  void paint(PaintingContext context, Offset offset) =>
-      defaultPaint(context, offset);
+  void dispose() {
+    _windowClip.layer = null;
+    super.dispose();
+  }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>

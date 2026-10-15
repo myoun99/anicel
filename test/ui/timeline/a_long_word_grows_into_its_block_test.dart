@@ -28,7 +28,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
@@ -95,7 +95,7 @@ void main() {
   /// The name's laid-out width, through the painter's own style.
   double nameWidth(TimelineRowCellsPainter painter) {
     final model = painter.cellModelAt(2);
-    return timelineGlyphPainter(model.glyph, painter.glyphStyleFor(model))
+    return laidOutGlyph(model.glyph, painter.glyphStyleFor(model))
         .width;
   }
 
@@ -259,7 +259,7 @@ void main() {
       substrateGeneration: 'g-short',
     );
     final model = painter.cellModelAt(0);
-    final natural = timelineGlyphPainter(
+    final natural = laidOutGlyph(
       model.glyph,
       painter.glyphStyleFor(model),
     ).size;
@@ -338,7 +338,7 @@ void main() {
       countingBase: 24,
     );
     final label = painter.runLabels().single;
-    final width = timelineGlyphPainter(label.text, painter.labelStyle).width;
+    final width = laidOutGlyph(label.text, painter.labelStyle).width;
     expect(width, greaterThan(smallCell), reason: 'fixture');
     final spy = _Spy();
     painter.paint(spy, const Size(smallCell * 40, crossExtent));

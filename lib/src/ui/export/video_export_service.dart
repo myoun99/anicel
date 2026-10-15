@@ -494,6 +494,11 @@ class VideoExportService {
 /// ↩️Every frame was read back (F-289, measured 2026-10-07: 27 ms a frame
 /// of 960×540 beside 5.5 ms for the OS encoder to take it — on a film
 /// where four frames in five are the frame before them).
+///
+/// ⚠️A picture file's bytes are kept the same way, by the image sequence's
+/// writer (`PngSequenceExportService`'s `_BytesBefore`, 2026-10-13). Two
+/// are left apart until a third keeps something of the image before (the
+/// rule of three) — that one makes them one.
 class _FramePixels {
   _FramePixels(this.format);
 

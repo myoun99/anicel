@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 
+import '../../helpers/app_shortcuts.dart';
+
 /// 🗣️I-31 (유저 2026-09-14): 「도구의 블렌드모드(브러시나 채우기나)내용
 /// 숏컷으로서 등록. 컬러,비하인드 등 리스트 전부. 그리고 위에서부터 순서대로
 /// F1부터 F12까지 등록할수있는만큼 초기값으로서 숏컷 등록」.
@@ -64,6 +66,7 @@ void main() {
       'where the strip\'s chooser could', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     BrushToolState tool() => tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .brushTool!

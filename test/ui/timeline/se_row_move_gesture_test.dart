@@ -8,6 +8,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/named_finders.dart';
+
 /// UI-R22 #1: the SE row-change gesture SURVIVES the whole drag — the
 /// preview's overlay churn on the source row must never remount the
 /// gesture layer (whose dispose would commit the move under the still-
@@ -51,9 +53,7 @@ void main() {
         .timeline
         .isNotEmpty;
 
-    final gestureLayer = find.byKey(
-      ValueKey<String>('timeline-range-gesture-${s1.id}'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-${s1.id}');
     final origin = tester.getTopLeft(gestureLayer);
 
     // SELECT the block (drag on the cells), release.

@@ -37,7 +37,7 @@ void main() {
 
   CanvasPlaybackController controller({
     void Function(PlaybackPosition)? onStopped,
-    void Function(PlaybackScope scope, int frames)? onWarm,
+    void Function(PlaybackScope scope, int cuts)? onWarm,
   }) {
     return CanvasPlaybackController(
       resolveProject: project,
@@ -48,7 +48,7 @@ void main() {
       onPlaylistWarmRequested: onWarm == null
           ? null
           : (List<StoryboardTimelineLayoutEntry> playlist, scope, _) =>
-                onWarm(scope, playlistTotalFrames(playlist)),
+                onWarm(scope, playlist.length),
     );
   }
 
@@ -220,14 +220,14 @@ void main() {
   testWidgets('play requests playlist warming', (tester) async {
     final warmCalls = <(PlaybackScope, int)>[];
     final c = controller(
-      onWarm: (scope, frames) => warmCalls.add((scope, frames)),
+      onWarm: (scope, cuts) => warmCalls.add((scope, cuts)),
     );
     c.attachTicker(const TestVSync());
     addTearDown(c.dispose);
 
     c.play(scope: PlaybackScope.allCuts);
 
-    expect(warmCalls, [(PlaybackScope.allCuts, 10)]);
+    expect(warmCalls, [(PlaybackScope.allCuts, 2)]);
 
     c.stop();
     c.detachTicker();

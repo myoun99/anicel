@@ -18,6 +18,8 @@ import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'widgets/page_turn_strip.dart';
+import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
+import 'shortcuts/panel_keys.dart';
 import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
@@ -45,6 +47,8 @@ class TimesheetTabHost extends StatefulWidget {
     this.brushToolState,
     this.brushAllowed = false,
     this.onBrushAllowedChanged,
+    this.dataSheet = false,
+    this.onDataSheetChanged,
   });
 
   final EditorSessionManager session;
@@ -71,8 +75,7 @@ class TimesheetTabHost extends StatefulWidget {
   /// The editor's current brush/eraser LISTENABLE; required for ink
   /// input. A listenable, not a value (R18 UI-3): the sheet layout never
   /// depends on the tool state, so only the ink overlay subscribes —
-  /// tool switches and setting tweaks must not rebuild the whole
-  /// (keep-alive) document.
+  /// tool switches and setting tweaks must not rebuild the whole document.
   final ValueListenable<BrushToolState>? brushToolState;
 
   /// The sheet's brush switch (브러시 허용, owned above the tab group): off
@@ -81,6 +84,14 @@ class TimesheetTabHost extends StatefulWidget {
   /// Off by default, like every sheet's.
   final bool brushAllowed;
   final ValueChanged<bool>? onBrushAllowedChanged;
+
+  /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
+  /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
+  /// notation shorthand — for auditing exactly what the file will carry.
+  /// View state, session-only, owned above the tab group like the brush
+  /// switch beside it.
+  final bool dataSheet;
+  final ValueChanged<bool>? onDataSheetChanged;
 
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
@@ -108,11 +119,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   int? _documentFps;
   bool? _documentDataSheet;
 
-  /// DATA-sheet mode (UI-R24 #1): the sheet prints the EXPORT-SOURCE data
-  /// (ghost chains verbatim, the labels XDTS/TDTS write) instead of the
-  /// notation shorthand — for auditing exactly what the file will carry.
-  /// View state, session-only.
-  bool _dataSheet = false;
+  bool get _dataSheet => widget.dataSheet;
 
   /// Null in the GAP state (no active cut, UI-R9 #3): the host renders the
   /// bare sheet background instead of a document.
@@ -257,6 +264,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       AppIconButton(
         keyValue: 'timesheet-format-button',
         tooltip: AppText.strings.sheetFormatTitle,
+        shortcuts: const [EditorActionIds.timesheetFormat],
         icon: const Icon(Icons.edit_note),
         size: AppIconButtonSize.strip,
         onPressed: _editSheetFormat,
@@ -286,12 +294,16 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         tooltip: _dataSheet
             ? AppText.strings.sheetModeNotation
             : AppText.strings.sheetModeData,
+        shortcuts: const [EditorActionIds.timesheetDataMode],
         icon: const Icon(Icons.receipt_long_outlined),
         isSelected: _dataSheet,
-        onPressed: () => setState(() => _dataSheet = !_dataSheet),
+        onPressed: _toggleDataSheet,
       ),
     ];
   }
+
+  /// Notation ⇄ data — the switch's press, and its key's (I-40).
+  void _toggleDataSheet() => widget.onDataSheetChanged?.call(!_dataSheet);
 
   /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
   /// 2026-08-13) rather than in the pill.
@@ -326,7 +338,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // And the page read, which the panel moves as the view scrolls.
     final listenable = Listenable.merge([session, ?inkController, _reading]);
 
-    return ListenableBuilder(
+    final sheet = ListenableBuilder(
       listenable: listenable,
       builder: (context, _) {
         final strings = AppStrings.of(
@@ -545,6 +557,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           ],
         );
       },
+    );
+    // A key presses the format window and the notation ⇄ data switch —
+    // the timesheet is one panel, whatever is in hand (I-40).
+    return PanelKeysBinding(
+      buttons: {
+        EditorActionIds.timesheetFormat: _editSheetFormat,
+        EditorActionIds.timesheetDataMode: _toggleDataSheet,
+      },
+      child: sheet,
     );
   }
 }

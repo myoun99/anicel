@@ -39,6 +39,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
         storyboardPanelPictureGroundColor,
         timelineSelectedFrameBorderColor,
         timelineStandingWashColor;
+import 'package:anicel/src/ui/timeline/timeline_current_row.dart'
+    show TimelineCurrentRowHooks;
 import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
@@ -532,6 +534,96 @@ void main() {
         layerMarkColor(_art).toARGB32(),
         layerMarkColor(_art).toARGB32(),
       ]);
+    });
+
+    /// The panel standing in cut-1 on one project, built again by the test
+    /// itself: the rail's own row [on], the session's [current] row.
+    ///
+    /// 🚨I-57 (10-14): the V row is kept while what it shows holds, so what
+    /// the panel is handed about where you stand reaches its bands as news,
+    /// never as a row built again — whatever carries it.
+    Future<Widget Function({
+      TimelineRowAddress? on,
+      ValueListenable<TimelineRowAddress?>? current,
+    })>
+    standingPanel(WidgetTester tester) async {
+      final under = ValueNotifier<CutId?>(const CutId('cut-1'));
+      addTearDown(under.dispose);
+      final project = _project(
+        storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
+        cutMark: _art,
+      );
+      await tester.binding.setSurfaceSize(const Size(1400, 700));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      return ({on, current}) => MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: project,
+            activeCutId: const CutId('cut-1'),
+            cutUnderPlayhead: under,
+            selectedRow: on,
+            currentRowHooks: current == null
+                ? null
+                : TimelineCurrentRowHooks(currentRow: current),
+            pixelsPerFrame: 12,
+          ),
+        ),
+      );
+    }
+
+    testWidgets('🚨stood on by the rail\'s own row while the row is kept: '
+        'its bands are told', (tester) async {
+      final panel = await standingPanel(tester);
+      await tester.pumpWidget(panel());
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-band-track'),
+      );
+      final kept = tester.widget(row);
+      expect(
+        painted(tester).bands.first,
+        layerMarkColor(_art).toARGB32(),
+        reason: 'premise: standing nowhere on this rail',
+      );
+
+      // The rows are built as the panel lays them out.
+      await tester.pumpWidget(
+        panel(on: const TrackRowAddress(_trackId)),
+        phase: EnginePhase.layout,
+      );
+
+      expect(tester.widget(row), same(kept), reason: 'premise: kept');
+      expect(
+        tester.renderObject(cutBlocksFinder()).debugNeedsPaint,
+        isTrue,
+        reason: 'the stand repaints the row',
+      );
+      await tester.pump();
+      final cut = layerMarkColor(_art);
+      expect(painted(tester).bands, [washed(cut), washed(cut)]);
+    });
+
+    testWidgets('🚨…and a current row handed anew is the one its bands '
+        'hear', (tester) async {
+      final nowhere = ValueNotifier<TimelineRowAddress?>(null);
+      final onTheRow = ValueNotifier<TimelineRowAddress?>(
+        const TrackRowAddress(_trackId),
+      );
+      addTearDown(nowhere.dispose);
+      addTearDown(onTheRow.dispose);
+      final panel = await standingPanel(tester);
+      await tester.pumpWidget(panel(current: nowhere));
+      await tester.pumpAndSettle();
+      final cut = layerMarkColor(_art);
+      expect(
+        painted(tester).bands.first,
+        cut.toARGB32(),
+        reason: 'premise: standing nowhere on this rail',
+      );
+
+      await tester.pumpWidget(panel(current: onTheRow));
+
+      expect(painted(tester).bands, [washed(cut), washed(cut)]);
     });
   });
 

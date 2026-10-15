@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../panels/panel_collapsed_scope.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
@@ -11,6 +13,8 @@ import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
+import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
+import 'lane_graph_seats.dart' show LaneGraphLine;
 import 'layer_timeline_display_adapter.dart';
 import 'layer_rail_window.dart'
     show
@@ -35,7 +39,8 @@ import '../widgets/app_icon_button.dart';
 import 'timeline_command_bar.dart';
 import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
-import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
+import 'timeline_legend_menus.dart'
+    show LayerLegendCallbacks, TimelineLegendMenus;
 import 'timeline_row_filter.dart';
 import 'memo_token.dart' show Kept, keptWhileSame;
 import 'timeline_view_cluster.dart';
@@ -83,6 +88,7 @@ class TimelinePanel extends StatefulWidget {
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
+    this.onOpenCameraPath,
     this.layerSourceIsShortOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
@@ -118,9 +124,15 @@ class TimelinePanel extends StatefulWidget {
     this.xsheetRailExtent,
     this.timelineFrameAxisOffset,
     this.xsheetFrameAxisOffset,
+    this.timelineLayerAxisOffset,
+    this.xsheetLayerAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.expandedLaneLayerIds = const {},
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
+    this.laneGraphsNow,
+    this.laneGraphLineOf,
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
@@ -134,6 +146,7 @@ class TimelinePanel extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
+    this.onLegendMenus,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
@@ -297,6 +310,9 @@ class TimelinePanel extends StatefulWidget {
   /// A linked row's badge, both orientations: the link window (I-25).
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
+
+  /// The camera row's path button, both orientations (I-89 ④).
+  final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
 
   /// Whether that row asks its file for more than the file can show.
   final bool Function(LayerId layerId)? layerSourceIsShortOf;
@@ -474,11 +490,25 @@ class TimelinePanel extends StatefulWidget {
   final ValueNotifier<double>? timelineFrameAxisOffset;
   final ValueNotifier<double>? xsheetFrameAxisOffset;
 
+  /// Where each grid's LAYER axis stands — the project's (F-267), one per
+  /// grid for the same reason the frame axes are.
+  final ValueNotifier<double>? timelineLayerAxisOffset;
+  final ValueNotifier<double>? xsheetLayerAxisOffset;
+
   final ProjectFrameRate projectFrameRate;
 
   /// AE-style property lanes (twirl-down rows under a layer): expansion
   /// state, toggle and the generic lane provider.
   final Set<LayerId> expandedLaneLayerIds;
+
+  /// Forwarded to the grids — see [TimelineGridHooks.laneGraphs] and its
+  /// live read [TimelineGridHooks.laneGraphsNow],
+  /// [TimelineGridHooks.laneGraphVerbs] and
+  /// [TimelineGridHooks.laneGraphLineOf].
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
+  final LaneGraphsView Function()? laneGraphsNow;
+  final LaneGraphLine? Function(String key)? laneGraphLineOf;
 
   /// Forwarded to the grids — a LIVE read of the twirl state. See
   /// [LayerTimelineGrid.laneOpenOf].
@@ -518,6 +548,9 @@ class TimelinePanel extends StatefulWidget {
 
   /// The rail legend's bulk commands (horizontal timeline only).
   final LayerLegendCallbacks? legend;
+
+  /// Told the menus the legend header opens, for a key (I-40) — the grid's.
+  final ValueChanged<TimelineLegendMenus?>? onLegendMenus;
 
   /// The rail's row filter and its editor (R2); shared by both orientations.
   final TimelineRowFilter rowFilter;
@@ -562,9 +595,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
         attachArrows[layer.id] = placement;
       }
     }
-    final nextOrientation = widget.orientation == TimelineOrientation.horizontal
-        ? TimelineOrientation.vertical
-        : TimelineOrientation.horizontal;
+    final nextOrientation = widget.orientation.toggled;
     final showToolbar = widget.timelineActionToolbar != null;
 
     // text-scale-rail-rows: the row is as tall as its words need where it
@@ -632,6 +663,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onOpenLayerMixer: widget.onOpenLayerMixer,
       onOpenLayerReference: widget.onOpenLayerReference,
       onOpenLayerLinks: widget.onOpenLayerLinks,
+      onOpenCameraPath: widget.onOpenCameraPath,
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
       isLayerSoloed: widget.isLayerSoloed,
@@ -657,6 +689,10 @@ class _TimelinePanelState extends State<TimelinePanel> {
       runEdit: widget.runEdit,
       readyRunsIn: widget.readyRunsIn,
       expandedLaneLayerIds: widget.expandedLaneLayerIds,
+      laneGraphs: widget.laneGraphs,
+      laneGraphVerbs: widget.laneGraphVerbs,
+      laneGraphsNow: widget.laneGraphsNow,
+      laneGraphLineOf: widget.laneGraphLineOf,
       laneOpenOf: widget.laneOpenOf,
       laneGroupOnOf: widget.laneGroupOnOf,
       onToggleLayerLanes: widget.onToggleLayerLanes,
@@ -723,10 +759,15 @@ class _TimelinePanelState extends State<TimelinePanel> {
                   // then got written down as the bar's measured height.
                   AppIconButton(
                     keyValue: 'timeline-orientation-toggle-button',
+                    // ↩️「Show X-sheet」 and 「Show timeline」 stood here in
+                    // English in every language until I-40 (10-09).
                     tooltip:
                         widget.orientation == TimelineOrientation.horizontal
-                        ? 'Show X-sheet'
-                        : 'Show timeline',
+                        ? AppText.strings.tlShowXSheet
+                        : AppText.strings.tlShowTimeline,
+                    shortcuts: const [
+                      EditorActionIds.timelineOrientationToggle,
+                    ],
                     onPressed: () =>
                         widget.onOrientationChanged(nextOrientation),
                     icon: const Icon(Icons.swap_horiz),
@@ -758,10 +799,12 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       layers: horizontalLayers,
                       railExtent: widget.timelineRailExtent,
                       frameAxisOffset: widget.timelineFrameAxisOffset,
+                      layerAxisOffset: widget.timelineLayerAxisOffset,
                       displayedOnionSkinOn: widget.displayedOnionSkinOn,
                       metrics: horizontalMetrics,
                       onToggleSection: widget.onToggleSection,
                       legend: widget.legend,
+                      onLegendMenus: widget.onLegendMenus,
                       visibilitySoloEnabled: widget.visibilitySoloEnabled,
                       masterOpacityValue: widget.masterOpacityValue,
                     )
@@ -770,6 +813,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       layers: xsheetLayerDisplayOrder(widget.layers),
                       railExtent: widget.xsheetRailExtent,
                       frameAxisOffset: widget.xsheetFrameAxisOffset,
+                      layerAxisOffset: widget.xsheetLayerAxisOffset,
                       metrics: xsheetMetrics,
                     ),
             ),

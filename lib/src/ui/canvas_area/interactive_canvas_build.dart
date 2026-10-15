@@ -24,6 +24,12 @@ class _InteractiveCanvasBuild {
   );
 
   late final bool _isPlaybackActive;
+
+  /// Whether the run that plays is drawn on THIS canvas
+  /// ([_EditorCanvasAreaState._playsOnTheCanvas]): the picture stays — the
+  /// rows' images, at the frame the run moved the playhead to — and the
+  /// editing goes, as it goes under any run.
+  late final bool _canvasPlays;
   late final bool _inGap;
   late final bool _cameraOverlayVisible;
   late final ({
@@ -70,6 +76,7 @@ class _InteractiveCanvasBuild {
     required bool showCameraOverlay,
   }) {
     _isPlaybackActive = session.playbackRig.playback.isActive;
+    _canvasPlays = _state._playsOnTheCanvas;
     // 🚨★★★ #26 (2026-08-15): A RULER SCRUB IS NOT A SECOND DISPLAY MODE.
     // 「그냥 액티브레이어급으로 그냥 원본 보여주게하고싶어 … 그냥 항상 full」
     //
@@ -98,6 +105,8 @@ class _InteractiveCanvasBuild {
             activeLayerOpacity: 1.0,
             activeSourceEffects: const <ResolvedLayerEffect>[],
           )
+        : _canvasPlays
+        ? session.editingCanvas.playingStack
         : session.editingCanvas.stack;
     // T12 field probe (no-op while the Input Inspector is hidden, and it
     // prints only when one of the four answers CHANGES — a line per build
@@ -257,12 +266,15 @@ class _InteractiveCanvasBuild {
     // computed above would answer the row you left. Same trap the
     // stroke gate two lines down was written to avoid.
     final standing = session.standing.currentRowListenable.value;
-    final manipulators =
+    final standingLane =
         canPoseActiveLayer &&
             standing is LaneRowAddress &&
             standing.layerId == activeLayer.id
-        ? canvasManipulatorsForLane(standing.laneId)
-        : const <CanvasManipulator>{};
+        ? standing.laneId
+        : null;
+    final manipulators = standingLane == null
+        ? const <CanvasManipulator>{}
+        : canvasManipulatorsForLane(standingLane);
     final boxGrabbable = manipulators.contains(CanvasManipulator.transformBox);
     // The box frames the layer's INK — or, on a blank cel, the canvas
     // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]).
@@ -281,7 +293,15 @@ class _InteractiveCanvasBuild {
       boxGrabbable: boxGrabbable,
       inkBounds: inkBounds,
       crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
+      referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
+      walksAPath: switch (standingLane) {
+        final lane? => switch (transformPropertyOfLaneId(lane)) {
+          final property? => walksAPath(property),
+          null => false,
+        },
+        null => false,
+      },
     );
     return MainCanvasBrushHost(
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
@@ -290,9 +310,10 @@ class _InteractiveCanvasBuild {
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
       // composite tree and a folder's group buffer can enclose
-      // the layer being drawn on. Playback swaps the whole viewport
-      // content, so merged mode stands down there (no underlay
-      // builder, no active painter).
+      // the layer being drawn on. A run draws on nothing, so
+      // merged mode stands down while one plays: the composite
+      // view has no underlay at all, and a run the canvas plays
+      // draws every row as an image (no active painter).
       activeStrokeOverlayModel: _isPlaybackActive
           ? null
           : _state._activeStrokeOverlay,
@@ -303,11 +324,15 @@ class _InteractiveCanvasBuild {
       //
       // 🗣️유저: 「몇 행에 걸쳐서 적용하던 동시적용은 가능하게 … 여러프레임
       // 확정가능하게」. ⚠️With no range live this answers 「the cel you stand
-      // on」, which is why nothing downstream has a case for 「many」.
-      transformTargetKeys: session.pixelVerbs.pixelVerbCellKeys,
+      // on」, which is why nothing downstream has a case for 「many」 — and
+      // a FOLDER stands for the drawing rows inside it (I-37-Q1 「변형만」).
+      transformTargetKeys: session.pixelVerbs.transformCellKeys,
       // …each through its OWN row's placement, the one the pixel verbs
       // restate an outline through (a-marquee-on-a-posed-row ④).
       cellPlacementOf: session.pixelVerbs.placementOf,
+      // I-37: stood on a folder, a transform takes up every drawing row
+      // inside it — the same ladder's answer at the playhead.
+      transformCelsUnderfoot: session.pixelVerbs.transformCelsUnderfoot,
       // F-293: the cut tool's stamp lands where 픽셀 붙여넣기 lands — the
       // ground is read by the one that reads it for the paste.
       pieceGround: session.pixelVerbs.pieceGround,
@@ -468,11 +493,11 @@ class _InteractiveCanvasBuild {
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
-      // P6 fill: the flood region as ONE mask dab; the panel commits it
+      // P6 fill: the flood region as stamp pieces; the panel commits them
       // through the stroke funnel onto the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
       transformOptions: _state.widget.transformOptions,
-      fillDabAt: (point, color, symmetry) => buildFillDab(
+      fillDabsAt: (point, color, symmetry) => buildFillDabs(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
@@ -501,12 +526,12 @@ class _InteractiveCanvasBuild {
           message: AppText.strings.noticeFillRegionOpen,
         ),
       ),
-      // The SHAPE fill's dab. No cut, no frame, no surfaces: a
+      // The SHAPE fill's pieces. No cut, no frame, no surfaces: a
       // drawn outline is filled whatever is under it, so it never
       // reads the picture — which is why this line is short and
       // the one above is not.
-      shapeFillDabFor: (shape, color) => buildShapeFillDab(
-        shape: shape,
+      shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+        region: area,
         color: color,
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
@@ -514,29 +539,30 @@ class _InteractiveCanvasBuild {
       // Layers below/above the active one composite around the
       // interactive view from the layer image cache — this is what makes
       // the other layers (and their visibility/opacity) visible while
-      // editing. During playback the composite covers everything. Under
-      // an active CUT pose (R9-B) the paper splits out of the wrap: the
-      // canvas is the static stage, only the content rides the pose.
-      viewportUnderlayBuilder: _isPlaybackActive
+      // editing. A run the canvas plays is drawn HERE too, every row an
+      // image; the whole film, on the track stack, covers everything. Under an
+      // active CUT pose (R9-B) the paper splits out of the wrap: the canvas
+      // is the static stage, only the content rides the pose.
+      viewportUnderlayBuilder: _isPlaybackActive && !_canvasPlays
           ? null
-          : (context, viewport, activeSurfacePainter, floatOverlay) =>
-                _underlay(
-                  context,
-                  viewport,
-                  activeSurfacePainter,
-                  floatOverlay,
-                  frame,
-                ),
+          : (context, viewport, activeSurfacePainter, floats) => _underlay(
+              context,
+              viewport,
+              activeSurfacePainter,
+              floats,
+              frame,
+            ),
       interactiveContentOpacity: _layerStack.activeLayerOpacity,
       // The CPU half of the row you are drawing on — see
       // [EditingCanvas.stack].
       activeSourceEffects: _layerStack.activeSourceEffects,
       interactiveContentPose: _interactivePose,
-      // The playback view renders the camera framing itself; the editing
+      // The track stack renders the camera framing itself; the editing
       // overlay would show a stale playhead pose on top of it. A scrub
-      // keeps the CAMERA overlay only — the preview is the current view
-      // moving through time, so the frame stays visible and rides the
-      // cursor.
+      // keeps the CAMERA overlay — the preview is the current view moving
+      // through time, so the frame stays visible and rides the cursor —
+      // and a run the canvas plays keeps what the picture has
+      // ([_overlayStack]).
       // The ABOVE-layers stack is gone from here: the merged
       // underlay paints the whole tree in one picture now, which is
       // the only way a group buffer can span the active layer. What
@@ -545,23 +571,39 @@ class _InteractiveCanvasBuild {
       // with a drag it hears for itself ([_overlay]), and a slot that came
       // and went with the SE tags or the fade would be the area's to rebuild
       // for every drag that moved them.
-      viewportOverlayBuilder: _isPlaybackActive
+      viewportOverlayBuilder: _isPlaybackActive && !_canvasPlays
           ? null
           : (context, viewport) => _overlay(context, viewport, frame),
       // F-222: the standing row's box, over every tool — always there while
-      // editing, whatever it holds, for the overlay's reason above.
+      // editing, whatever it holds, for the overlay's reason above. A RUN
+      // puts its layer here instead, whatever draws it: the clock's ticker,
+      // the press that stops it, the bar, and the streamer the ADR scribe
+      // rides on the picture (REC1-E) — over the picture's overlay, which a
+      // fade's wash must not cover ([_EditorCanvasAreaState._runLayer]).
       viewportControlsBuilder: _isPlaybackActive
-          ? null
+          ? (context, viewport) => _state._runLayer(session)
           : (context, viewport) => _controls(context, viewport, frame),
       // 🚨T28-c: while playback owns the content a press only stops it, so no
       // tool takes the press — the same flag swaps the content in below.
       toolInputEnabled: !_isPlaybackActive,
-      contentOverride: _isPlaybackActive
-          // The streamer rides ON the picture (REC1-E): the ADR
-          // scribe belongs over the projection, never in a side
-          // panel. Constant two-child Stack (the overlay shrinks
-          // itself) — the sibling-count rule.
-          ? (context, viewport) => _state._playbackContent(session, viewport)
+      // A run the canvas plays builds no interactive view: the picture is
+      // the underlay's, the press is the run's, and nothing is drawn on.
+      contentOverride: _canvasPlays
+          ? (context, viewport) => const SizedBox.expand()
+          // ALL-CUTS playback watches the whole stage: the frame is the
+          // track stack on the clock's global axis (R3a) — a selected-track
+          // gap shows what the OTHER tracks hold there instead of the void.
+          : _isPlaybackActive
+          ? (context, viewport) {
+              // The film is made at the level its cuts are drawn at — the
+              // canvas's own look, through the camera when it is on.
+              _sayTheLook(session, _look(context, session, viewport));
+              return _state._buildTrackStackView(
+                session,
+                viewport,
+                ofTheRun: true,
+              );
+            }
           // The parked state (no active cut): the multitrack
           // display path — every covered track's composite stacks
           // where the void used to be, in its own CANVAS space (the
@@ -576,56 +618,144 @@ class _InteractiveCanvasBuild {
 
   /// A part of the canvas that follows a drag on its own: [build] again,
   /// alone, for each step that changes a row it could show
-  /// ([_EditorCanvasAreaState._rowsShownBy]), inside its own [TickLayer].
+  /// ([_EditorCanvasAreaState._rowsShownBy]), inside its own [TickLayer] —
+  /// and for each frame a run the canvas plays steps the playhead to, which
+  /// the area leaves to it ([_FrameRetargetScope]).
   ///
   /// 🚨canvas-wakes-for-what-it-shows: the whole canvas AREA used to be
   /// rebuilt for a drag step, under the panel content's LayoutBuilder — so a
   /// step relaid out and repainted all of it (measured 09-29: layout was
   /// the largest share of a step, ahead of build and paint) for a picture
   /// and some chrome.
-  Widget _followingTheDrag(
+  ///
+  /// ⚠️The run's builder is there standing still too, answering nothing: a
+  /// builder that came and went with the run would remount what it holds at
+  /// the run's start and its end — the stack view's images with it.
+  Widget _followingDragAndRun(
     EditorSessionManager session,
     WidgetBuilder build,
   ) => TickLayer(
     child: SlicedValueListenableBuilder<TimelineDragPreview?, _DragAsShown>(
       valueListenable: session.dragPreview,
       slice: (preview) => _EditorCanvasAreaState._rowsShownBy(session, preview),
-      builder: (context, _) => build(context),
+      builder: (context, _) => SlicedValueListenableBuilder<int, int?>(
+        valueListenable: session.editingFrameCursor,
+        slice: (frame) => _canvasPlays ? frame : null,
+        builder: (context, _) => build(context),
+      ),
     ),
   );
 
   /// What is painted UNDER the interactive canvas: the paper and the
   /// composite tree with the active layer inside it (the parked stack in a
-  /// gap), with onion skins when the row shows them. It follows a drag
-  /// itself ([_followingTheDrag]), so the tree is asked afresh at each of
-  /// its builds.
+  /// gap), with onion skins when the row shows them — seen through the
+  /// camera while a run plays here with the camera view on ([CameraShot]).
+  /// It follows a drag, and a run the canvas plays, itself
+  /// ([_followingDragAndRun]), so the tree is asked afresh at each of its
+  /// builds.
   Widget _underlay(
     BuildContext context,
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
-    SelectionFloatOverlay floatOverlay,
+    CanvasFloats floats,
     _HostFrame frame,
-  ) => _followingTheDrag(
-    frame.session,
-    (context) => _stackView(viewport, activeSurfacePainter, floatOverlay, frame),
+  ) => _followingDragAndRun(frame.session, (context) {
+    final session = frame.session;
+    final look = _look(context, session, viewport);
+    _sayTheLook(session, look);
+    final shot = _shotAt(session, look, viewport);
+    final project = session.repository.requireProject();
+    return CameraShot(
+      view: viewport,
+      shot: shot,
+      canvasSize: _canvasSize,
+      background: session.projectSettings.projectBackground,
+      pasteboardColor: Color(project.pasteboardArgb),
+      pasteboardNone: project.pasteboardNone,
+      // The view the frame is drawn through — the one its rows were made
+      // for ([CanvasLook.qualityAt]).
+      child: _stackView(
+        shot?.frameView ?? viewport,
+        activeSurfacePainter,
+        floats,
+        frame,
+      ),
+    );
+  });
+
+  /// How this canvas shows a cut's frame through the panel's [viewport]
+  /// ([CanvasLook]) — through the camera while a run plays here, a cut's or
+  /// the film's, with the camera view on (the camera view is playback's crop
+  /// alone: a canvas that stands or is scrubbed shows the camera's frame
+  /// OVER it).
+  CanvasLook _look(
+    BuildContext context,
+    EditorSessionManager session,
+    CanvasViewport viewport,
+  ) => CanvasLook(
+    view: viewport,
+    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+    camera: _isPlaybackActive && _state.widget.cameraViewEnabled.value
+        ? (
+            poseOf: session.camera.cameraPoseForCut,
+            frameSize: session.camera.cameraFrameSize,
+          )
+        : null,
   );
+
+  /// The camera a run playing here is seen through, at the frame the canvas
+  /// shows — null for a canvas seen through none ([CanvasLook.camera]).
+  CameraShotAt? _shotAt(
+    EditorSessionManager session,
+    CanvasLook look,
+    CanvasViewport viewport,
+  ) {
+    final camera = look.camera;
+    final cut = session.activeCutOrNull;
+    if (camera == null || cut == null) {
+      return null;
+    }
+    final frameIndex = session.currentFrameIndex;
+    return (
+      pose: camera.poseOf(cut, frameIndex),
+      frameSize: camera.frameSize,
+      frameView: look.frameViewThrough(viewport, cut, frameIndex),
+    );
+  }
+
+  /// Tells the session [look] ([RenderCaches.canvasLook]) — after the
+  /// frame: whoever hears it may let a waiting run go on, and a run that
+  /// goes on builds this canvas again, never from inside its build.
+  void _sayTheLook(EditorSessionManager session, CanvasLook look) {
+    if (session.renderCaches.canvasLook.value == look) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_state.mounted) {
+        session.renderCaches.canvasLook.value = look;
+      }
+    });
+  }
 
   Widget _stackView(
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
-    SelectionFloatOverlay floatOverlay,
+    CanvasFloats floats,
     _HostFrame frame,
   ) {
     final below = CanvasLayerStackView(
       // MERGED: the whole tree, active layer included, so
       // a folder's group buffer encloses the layer being
       // drawn on. Onion ghosts (P2) sit above the other
-      // layers and directly UNDER the active drawing;
-      // playback and scrubs never reach here, so they
-      // auto-hide. A gap parking shows the VOID (R16-⑥):
-      // no ghosts either.
+      // layers and directly UNDER the active drawing, and
+      // a scrub shows them as it crosses frames — but a RUN
+      // shows the film, and a ghost is editing scaffolding
+      // as a guide is. A gap parking shows the VOID
+      // (R16-⑥): no ghosts either.
       nodes: _inGap
           ? const []
+          : _canvasPlays
+          ? frame.session.editingCanvas.playingStack.nodes
           : _EditorCanvasAreaState._stackNodesWithGhosts(
               frame.session.editingCanvas.stack.nodes,
               frame.session.onionSkin.onionSkinCanvasRequests(),
@@ -633,12 +763,22 @@ class _InteractiveCanvasBuild {
       activeSurfacePainter: activeSurfacePainter,
       // TS1: the _selection's float draws in the active
       // layer's slot, so the rows above it occlude the live
-      // preview the way they occlude the landed pixels.
-      floatOverlay: floatOverlay,
+      // preview the way they occlude the landed pixels —
+      // and a folder's lifted rows each in its own (I-37).
+      floatOverlay: floats.liveRow,
+      liftedRows: floats.liftedRows,
       imageCache: frame.session.renderCaches.layerFrameImageCache,
       // The census cannot reach a widget State; the session can be reached.
       onBufferBytes: (bytes) =>
-          frame.session.renderCaches.canvasBufferBytes = bytes,
+          frame.session.renderCaches.countStackBuffer('canvas', bytes),
+      // A run this canvas plays: its maker makes the rows, and the frame
+      // goes up whole.
+      run: _canvasPlays
+          ? (
+              landings: frame.session.playbackRig.prerenderScheduler.landings,
+              gaveUpOn: frame.session.playbackRig.canvasPictures.gaveUpOn,
+            )
+          : null,
       canvasSize: _canvasSize,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers
@@ -655,14 +795,14 @@ class _InteractiveCanvasBuild {
   /// What is stacked OVER the canvas inside the viewport: the guides and
   /// their edit layer, the SE name tags, the fade wash past the cut's end
   /// and the camera's frame. The row's box is not here — it sits over the
-  /// tools ([_controls]). It follows a drag itself ([_followingTheDrag]):
-  /// the tags, the fade and the frame are asked afresh at each of its
-  /// builds.
+  /// tools ([_controls]). It follows a drag, and a run the canvas plays,
+  /// itself ([_followingDragAndRun]): the tags, the fade and the frame are
+  /// asked afresh at each of its builds.
   Widget _overlay(
     BuildContext context,
     CanvasViewport viewport,
     _HostFrame frame,
-  ) => _followingTheDrag(
+  ) => _followingDragAndRun(
     frame.session,
     (context) => _overlayStack(context, viewport, frame),
   );
@@ -675,62 +815,114 @@ class _InteractiveCanvasBuild {
     final session = frame.session;
     final fade = _fadeShown(session);
     final seNameTags = _seNameTagsShown(session);
-    return Stack(
-      children: [
-        // Guides are EDITING scaffolding: they are drawn
-        // here and nowhere else — playback, thumbnails and
-        // export never see them, the way a ruler never
-        // prints. Under the camera frame and the gizmos,
-        // which are chrome about the shot rather than about
-        // the drawing.
-        if (frame.session.cutVerbs.activeCutGuides.isNotEmpty)
-          _state._guideOverlay(
-            frame.session,
-            viewport,
-            _canvasSize,
-            frame.tool,
-            context,
-          ),
-        // The handle layer mounts ONLY for the guide tool,
-        // so it never stands between the brush and the cel.
-        if (frame.tool == CanvasTool.guide)
-          _state._guideEditLayer(frame.session, viewport),
-        if (seNameTags.isNotEmpty)
-          _state._seNameTagOverlay(viewport, _canvasSize, seNameTags, context),
-        if (fade != null)
-          _state._cutFadeWash(
-            viewport,
-            _canvasSize,
-            frame.session,
-            fade.opacity,
-            fade.veils,
-            context,
-          ),
-        if (_cameraOverlayVisible)
-          _state._cameraOverlay(frame.session, viewport),
-      ],
+    // A RUN shows the film: what is over the picture is what the picture
+    // has — its SE tags and its fade — and none of the chrome about editing
+    // it, the way playback has never drawn a guide or the camera's frame.
+    final editing = !_isPlaybackActive;
+    final shot = _shotAt(session, _look(context, session, viewport), viewport);
+    return _inTheCamerasFrame(
+      context,
+      viewport,
+      shot,
+      Stack(
+        children: [
+          // Guides are EDITING scaffolding: they are drawn
+          // here and nowhere else — playback, thumbnails and
+          // export never see them, the way a ruler never
+          // prints. Under the camera frame and the gizmos,
+          // which are chrome about the shot rather than about
+          // the drawing.
+          if (editing && frame.session.cutVerbs.activeCutGuides.isNotEmpty)
+            _state._guideOverlay(
+              frame.session,
+              viewport,
+              _canvasSize,
+              frame.tool,
+              context,
+            ),
+          // The handle layer mounts ONLY for the guide tool,
+          // so it never stands between the brush and the cel.
+          if (editing && frame.tool == CanvasTool.guide)
+            _state._guideEditLayer(frame.session, viewport),
+          if (seNameTags.isNotEmpty)
+            _state._seNameTagOverlay(
+              shot?.frameView ?? viewport,
+              _canvasSize,
+              seNameTags,
+              context,
+            ),
+          if (fade != null)
+            _state._cutFadeWash(
+              viewport,
+              _canvasSize,
+              frame.session,
+              fade.opacity,
+              fade.veils,
+              context,
+              throughCamera: shot != null,
+            ),
+          if (editing && frame.walksAPath)
+            _state._positionPath(frame, viewport),
+          if (editing && _cameraOverlayVisible)
+            _state._cameraPath(frame, viewport),
+          if (editing && _cameraOverlayVisible)
+            _state._cameraOverlay(frame.session, viewport),
+        ],
+      ),
     );
   }
+
+  /// [over] — what is over the picture — in the camera's frame, seen
+  /// through the camera with it: the tags ride the projection, the fade
+  /// thins the frame, and nothing of either shows past it ([CameraShot]).
+  /// The clip is there either way, cutting nothing without a [shot], for
+  /// the reason the shot is.
+  Widget _inTheCamerasFrame(
+    BuildContext context,
+    CanvasViewport viewport,
+    CameraShotAt? shot,
+    Widget over,
+  ) => ShotClip(
+    // Cut as the picture under it is: a fade that thins the frame thins
+    // every pixel the picture shows.
+    outline: shot == null
+        ? null
+        : cameraFrameOnScreen(
+            viewport,
+            shot.frameSize,
+            EffectiveDevicePixelRatio.of(context),
+          ),
+    child: over,
+  );
 
   /// The standing row's box, over every tool
   /// ([BrushCanvasPanel.viewportControlsBuilder]): the camera's while the
   /// camera row is active, an SE row's name tag, or the active layer's while
   /// its standing lane declares one. It follows a drag itself
-  /// ([_followingTheDrag]), as the overlay does.
+  /// ([_followingDragAndRun]), as the overlay does.
   ///
   /// ⚠️What is adjusted on the canvas — its canvas (I-79) or the camera's
   /// frame (I-80) — stands in the row's box's place while it is open: its
   /// handles are the edges then, and a row's box under them would take the
   /// presses that are theirs.
+  ///
+  /// The camera path settings say which handles of a path a box wears
+  /// (`_EditorCanvasAreaState._pathTangents`), whichever row's box it is.
   Widget _controls(
     BuildContext context,
     CanvasViewport viewport,
     _HostFrame frame,
   ) => ListenableBuilder(
-    listenable: frame.session.canvasAdjust,
+    listenable: Listenable.merge([
+      frame.session.canvasAdjust,
+      CameraPathSettings.settings,
+    ]),
     builder: (context, _) =>
         _canvasAdjust(context, viewport, frame) ??
-        _followingTheDrag(frame.session, (context) => _rowBox(viewport, frame)),
+        _followingDragAndRun(
+          frame.session,
+          (context) => _rowBox(viewport, frame),
+        ),
   );
 
   /// What is adjusted on the canvas, when it is open on the cut this canvas
@@ -771,9 +963,41 @@ class _InteractiveCanvasBuild {
     };
   }
 
+  /// Whether [layer]'s REFERENCE FX box stands on the canvas (I-68): on a
+  /// row that shows a file whose pictures are made from it again, standing
+  /// on that group's lanes — or holding the move tool on the row anywhere
+  /// but its transform lanes, which declare the layer's own box (유저
+  /// 2026-10-10 「참조 행에서 이동(변형) 도구로 끌면 참조 fx 의 값이 바뀐다
+  /// … 레이어 트랜스폼은 따로 남는다」).
+  ///
+  /// ⛔Not the transform switch's: the reference fx has none, and stands
+  /// with it off (I-68-Q1 「레이어의 fx버튼 꺼도 그 자리 유지」).
+  bool _referenceBoxShown(
+    Layer? layer,
+    TimelineRowAddress? standing,
+    CanvasTool tool,
+  ) {
+    if (_isPlaybackActive ||
+        layer == null ||
+        referenceRedrawFor(layer) == null) {
+      return false;
+    }
+    final lane = standing is LaneRowAddress && standing.layerId == layer.id
+        ? standing.laneId
+        : null;
+    if (laneIsReference(lane)) {
+      return true;
+    }
+    return tool == CanvasTool.move &&
+        canvasManipulatorsForLane(lane).isEmpty;
+  }
+
   Widget _rowBox(CanvasViewport viewport, _HostFrame frame) {
     if (frame.isCameraLayerActive && _cameraOverlayVisible) {
       return _state._cameraBox(frame, viewport, _canvasSize);
+    }
+    if (frame.referenceBox) {
+      return _state._referenceBox(frame, viewport, _canvasSize);
     }
     final layer = frame.activeLayer;
     if (layer == null || !(frame.boxGrabbable || frame.crossGrabbable)) {
@@ -855,7 +1079,9 @@ class _HostFrame {
     required this.boxGrabbable,
     required this.inkBounds,
     required this.crossGrabbable,
+    required this.referenceBox,
     required this.isCameraLayerActive,
+    required this.walksAPath,
   });
 
   final EditorSessionManager session;
@@ -874,13 +1100,22 @@ class _HostFrame {
   final bool boxGrabbable;
   final bool crossGrabbable;
 
+  /// The active row's reference fx box stands on the canvas (I-68) — the
+  /// file it shows, where its reference says (`_referenceBoxShown`).
+  final bool referenceBox;
+
   /// The active layer's ink at the playhead, while [boxGrabbable].
   final ({int left, int top, int rightExclusive, int bottomExclusive})?
   inkBounds;
   final bool isCameraLayerActive;
 
+  /// One stands on the active layer's lane whose keys walk a path — its
+  /// position — where the box that moves its keys is: the path is drawn,
+  /// and its handles worked (I-89-Q9).
+  final bool walksAPath;
+
   /// Whether the row's box takes every press on the canvas, rather than its
-  /// cross and corners alone ([RowTransformBox.claimsCanvas]).
+  /// cross, corners and a path's knobs alone ([RowTransformBox.claimsCanvas]).
   ///
   /// 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」: standing on the
   /// row, the box takes the empty canvas under every tool but the two that

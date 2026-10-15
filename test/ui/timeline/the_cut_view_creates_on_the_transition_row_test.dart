@@ -51,23 +51,31 @@ void main() {
     s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.single;
     final boundary = track.cuts.first.duration;
-    // An O.L from four frames before the boundary to two after it: the
-    // incoming cut draws it from its local 0 at its full length of six.
+    // A fade IN that opens three frames before its cut does and runs five
+    // into it: it crosses its own cut's start, so it applies nowhere (D26)
+    // and owes no のりしろ, and the cut draws it from its frame 0 at its
+    // full length of eight — over three frames the global row has free.
+    //
+    // ↩️An O.L stood here, while a cut's frames were counted from its
+    // place on the track: its mark is drawn where it is now — the cut's
+    // own frames begin with its のりしろ (I-73-ol-index-space) — and only
+    // a span from further back than the cut is drawn for is pulled.
     s.transitions.updateTransitionInstructions({
-      boundary - 4: const InstructionEvent(instructionId: 'ol', length: 6),
+      boundary - 3: const InstructionEvent(instructionId: 'fi', length: 8),
     });
     s.selectCut(track.cuts[1].id);
     s.standOnRow(LayerRowAddress(track.transitionLayer.id));
-    s.selectFrameIndex(4);
+    s.selectFrameIndex(6);
+    expect(s.editingGlobalFrame, boundary + 6, reason: 'the premise');
     expect(
       s.transitions.transitionSpanAt(s.editingGlobalFrame),
       isNull,
       reason: 'the premise: the GLOBAL row is free here',
     );
     expect(
-      s.transitions.transitionShownInCutAt(4),
+      s.transitions.transitionShownInCutAt(6),
       isTrue,
-      reason: 'the premise: the cut row draws the O.L over this frame',
+      reason: 'the premise: the cut row draws the fade over this frame',
     );
 
     expect(s.cellInstances.canCreateInstance, isFalse);

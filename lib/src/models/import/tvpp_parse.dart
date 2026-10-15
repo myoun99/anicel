@@ -103,6 +103,15 @@ enum TvppLayerKind {
   /// `LRSH` — a CTG layer. Its images come as TWO streams split by a
   /// zero-length `LRSR` marker (line and colour sources).
   ctg,
+
+  /// None of the four: a layer whose header chunk this parser does not
+  /// know — a puppet layer, or a kind TVPaint adds later. Its timing, its
+  /// opacity and its folder are in that header, so it is kept for its
+  /// PLACE only (the image marks count layers by position) and the
+  /// converter leaves it out, named (보드
+  /// `tvpp-unknown-layer-kinds-come-in-unguarded-Q1`, 1번). ↩️It came in
+  /// as a raster layer with a default header, without a word.
+  unknown,
 }
 
 class TvppLayer {
@@ -120,7 +129,16 @@ class TvppLayer {
     required this.ctgSecondStream,
     required this.instanceNames,
     this.visible = true,
+    this.collapsed = false,
   });
+
+  /// LRHD[11]'s low half: the row is FOLDED in TVPaint's timeline (1) —
+  /// a folder showing none of its members, a layer showing no thumbnail
+  /// strip — or open (0). Pinned on SKH re-saved by the user with one
+  /// folder open (F-306, 10-09): every row of its first cut matched the
+  /// timeline's screenshot, seven folded and three open. ⚠️Only `1` reads
+  /// folded — the only two values measured.
+  final bool collapsed;
 
   /// LRHD[7] bit 0 says HIDDEN (bit 4 is the layer lock). Pinned 19/19
   /// against 288's own timeline screenshot and KLM's JSON (TAP·CON
@@ -541,7 +559,8 @@ TvppClip _parseClip(
         : 0;
     layers.add(
       TvppLayer(
-        kind: kind,
+        // Only the four known headers set one.
+        kind: header == null ? TvppLayerKind.unknown : kind,
         name: n,
         layerId: field(18),
         parentId: field(17),
@@ -551,6 +570,7 @@ TvppClip _parseClip(
         preBehavior: _edgeBehavior(field(13) >> 16),
         postBehavior: _edgeBehavior(field(11) >> 16),
         visible: header == null || field(7) & 1 == 0,
+        collapsed: header != null && field(11) & 0xFFFF == 1,
         slots: List.unmodifiable(slots),
         ctgSecondStream: List.unmodifiable(secondStream),
         instanceNames: Map.unmodifiable(instanceNames),

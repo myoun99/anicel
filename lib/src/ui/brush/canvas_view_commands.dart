@@ -11,6 +11,8 @@ class CanvasViewCommands {
   VoidCallback? _toggleFlipVertical;
   VoidCallback? _resetRotation;
   void Function({required bool zoomIn})? _zoomStep;
+  VoidCallback? _fit;
+  VoidCallback? _resetView;
   Object? _owner;
 
   /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
@@ -22,6 +24,8 @@ class CanvasViewCommands {
     VoidCallback? toggleFlipVertical,
     VoidCallback? resetRotation,
     void Function({required bool zoomIn})? zoomStep,
+    VoidCallback? fit,
+    VoidCallback? resetView,
   }) {
     _owner = owner;
     _rotateBy = rotateBy;
@@ -29,6 +33,8 @@ class CanvasViewCommands {
     _toggleFlipVertical = toggleFlipVertical;
     _resetRotation = resetRotation;
     _zoomStep = zoomStep;
+    _fit = fit;
+    _resetView = resetView;
   }
 
   void unbind(Object owner) {
@@ -41,6 +47,8 @@ class CanvasViewCommands {
     _toggleFlipVertical = null;
     _resetRotation = null;
     _zoomStep = null;
+    _fit = null;
+    _resetView = null;
   }
 
   /// One press of the canvas bar's zoom in / out — the same step the
@@ -61,4 +69,10 @@ class CanvasViewCommands {
   /// Straightens the view rotation back to 0° (UI-R18 #20), keeping
   /// zoom/pan/flips.
   void resetRotation() => _resetRotation?.call();
+
+  /// The pill's fit — the same framing its button lands (I-40).
+  void fit() => _fit?.call();
+
+  /// The pill's 1:1 (I-40).
+  void resetView() => _resetView?.call();
 }

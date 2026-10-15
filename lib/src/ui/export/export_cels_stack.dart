@@ -1,0 +1,187 @@
+import 'package:flutter/material.dart';
+
+import '../../models/layer.dart';
+import '../text/app_strings.dart';
+import '../timeline/layer_label_controls.dart';
+import '../widgets/app_scrollbar.dart';
+import '../widgets/settings_rows.dart';
+import 'export_cels_board.dart';
+
+/// One line of the attach column: a row of the stack the list stands on,
+/// and whether the files hold it.
+typedef ExportCelsStackLine = ({Layer layer, bool on});
+
+/// THE ATTACH COLUMN, between the rules and the rows: what the files of the
+/// row the Cels list stands on HOLD — its stack as the timeline draws it,
+/// the attach rows above, the base, the attach rows below
+/// ([ExportCelsListing.stackOf]) — each with the app's switch: in, or not.
+///
+/// 🗣️export-four-tabs (유저 2026-10-08 · 09): Q1 「안 A — 규칙 칸과 행
+/// 사이에 어태치 칸(184px)」 · Q3 「쌓이는 순서 그대로 — 위 어태치, 기준,
+/// 아래 어태치」 · the consult — the base wears a switch too (「어태치만」 is
+/// the base switched off here), and every line can be switched off: a stack
+/// that holds nothing is a row with no file, dimmed in the list like any
+/// row that is off (「보이더라도 다른거처럼 이름 흐리게 이런거 동일하게」).
+/// An attach row a filter leaves out is not offered (「필터전부」).
+///
+/// A switch is a row exception ([ExportCelsCutDelta.layerOverrides]): the
+/// label button reads 「커스텀」 while one answers by hand. A document's row
+/// holds no rows — its name heads the column alone.
+class ExportCelsStack extends StatefulWidget {
+  const ExportCelsStack({
+    super.key,
+    required this.row,
+    required this.lines,
+    required this.onSwitched,
+  });
+
+  /// The row the list stands on — its name heads the column; null in a
+  /// list with no row.
+  final ExportCelsBoardRow? row;
+
+  /// What its files can hold, top to bottom.
+  final List<ExportCelsStackLine> lines;
+
+  /// A line's switch, pressed: what the files should do with its row. Null
+  /// while an export runs.
+  final void Function(Layer layer, bool on)? onSwitched;
+
+  @override
+  State<ExportCelsStack> createState() => _ExportCelsStackState();
+}
+
+class _ExportCelsStackState extends State<ExportCelsStack> {
+  final ScrollController _down = ScrollController();
+
+  @override
+  void dispose() {
+    _down.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final line = BorderSide(color: Theme.of(context).dividerColor);
+    return Column(
+      key: const ValueKey<String>('export-cels-stack'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: ExportCelsBoard.bandHeight,
+          decoration: BoxDecoration(border: Border(bottom: line)),
+          child: _head(context),
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: AppScrollbarLane.wide,
+                child: AppControllerScrollbar(
+                  controller: _down,
+                  axis: Axis.vertical,
+                  laneKey: const ValueKey<String>(
+                    'export-cels-stack-vertical-lane',
+                  ),
+                  thumbKey: const ValueKey<String>(
+                    'export-cels-stack-vertical-thumb',
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ScrollConfiguration(
+                  // The lane IS the bar: the app's own scroll behaviour
+                  // would lay a second one over the lines.
+                  behavior: ScrollConfiguration.of(
+                    context,
+                  ).copyWith(scrollbars: false),
+                  child: SingleChildScrollView(
+                    controller: _down,
+                    child: Column(
+                      children: [
+                        for (final each in widget.lines) _line(context, each),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// The row stood on: its label and name — a document's icon and name.
+  Widget _head(BuildContext context) {
+    final row = widget.row;
+    if (row == null) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          switch (row) {
+            ExportCelsLayerRow(:final mark) => LayerMarkPlates(
+              mark: mark,
+              showTake: false,
+            ),
+            ExportCelsDocumentRow(:final kind) => Icon(
+              exportDocumentIcon(kind),
+              size: 14,
+            ),
+          },
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              row.name,
+              key: const ValueKey<String>('export-cels-stack-head'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: layerRowNameStyle(
+                context,
+              ).copyWith(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// One row of the stack: the app's labelled boolean — the whole line
+  /// presses, the ring on its right (`SettingsSwitchRow`, 유저 2026-09-24:
+  /// 「설정 줄 하나로」) — led by the base's word or an attach row's arrow,
+  /// the base on the wash of the row stood on.
+  Widget _line(BuildContext context, ExportCelsStackLine line) {
+    final (:layer, :on) = line;
+    final scheme = Theme.of(context).colorScheme;
+    final row = widget.row;
+    final isBase = row is ExportCelsLayerRow && layer.id == row.base;
+    final onSwitched = widget.onSwitched;
+    final idValue = layer.id.value;
+    return Container(
+      key: ValueKey<String>('export-cels-stack-line-$idValue'),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      color: isBase ? railSelectedRowColor(scheme) : null,
+      child: SettingsSwitchRow(
+        tileKey: ValueKey<String>('export-cels-stack-switch-$idValue'),
+        label: layer.name,
+        leading: isBase
+            ? Text(
+                AppText.strings.exSelBase,
+                style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+              )
+            : LayerAttachArrowCell(
+                keyPrefix: 'export-cels-stack',
+                idValue: idValue,
+                placement: layer.attachedPlacement,
+              ),
+        value: on,
+        onChanged: onSwitched == null
+            ? null
+            : (bool next) => onSwitched(layer, next),
+      ),
+    );
+  }
+}

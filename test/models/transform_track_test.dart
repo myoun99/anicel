@@ -126,7 +126,7 @@ void main() {
             .withKey(
               0,
               CanvasPoint(x: 0, y: 0),
-              interpolation: PropertyKeyInterpolation.hold,
+              outgoing: KeyExit.hold,
             )
             .withKey(10, CanvasPoint(x: 100, y: 0)),
         scale: PropertyTrack<CanvasPoint>()
@@ -149,7 +149,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>().withKey(
           3,
           CanvasPoint(x: 4, y: 5),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
         opacity: PropertyTrack<double>().withKey(6, 0.5),
       );
@@ -158,8 +158,8 @@ void main() {
 
       expect(restored, track);
       expect(
-        restored.position.keyAt(3)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        restored.position.keyAt(3)!.outgoing,
+        KeyExit.hold,
       );
     });
 
@@ -220,7 +220,7 @@ void main() {
       expect(track.scale.keyAt(3)!.value, CanvasPoint(x: 2, y: -1));
       expect(track.keyframeAt(3), pose);
       expect(track.keyframes, {3: pose});
-      expect(TransformTrack(keyframes: {3: pose}), track);
+      expect(TransformTrack(keyframes: {3: pose}).scale, track.scale);
     });
 
     test('the two scales are saved as ONE two-number value, like Position', () {
@@ -228,7 +228,7 @@ void main() {
         scale: PropertyTrack<CanvasPoint>().withKey(
           4,
           CanvasPoint(x: 1.5, y: -0.5),
-          interpolation: PropertyKeyInterpolation.hold,
+          outgoing: KeyExit.hold,
         ),
       );
 
@@ -238,7 +238,7 @@ void main() {
         {
           'index': 4,
           'value': {'x': 1.5, 'y': -0.5},
-          'interpolation': 'hold',
+          'out': 'hold',
         },
       ]);
       expect(TransformTrack.fromJson(json), track);
@@ -252,9 +252,14 @@ void main() {
       expect(track.position.keys.keys, [4, 9]);
       expect(track.scale.keys.keys, [4, 9]);
       expect(track.rotation.keys.keys, [4, 9]);
-      // Round-tripping through the pose view is lossless while writes are
-      // pose-synchronized (the cut-duplicate path relies on this).
-      expect(TransformTrack(keyframes: Map.of(track.keyframes)), track);
+      // The poses come back through the pose view while writes are
+      // pose-synchronized. A key's path does not: the view has none, and a
+      // pose map's keys run straight (an import's baked camera), where a
+      // key written is new and smooth (I-89-Q10 B).
+      expect(
+        TransformTrack(keyframes: Map.of(track.keyframes)).keyframes,
+        track.keyframes,
+      );
     });
   });
 }

@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
+import '../models/cut_id.dart';
 import '../models/storyboard_timeline_layout.dart';
 
 /// The SELECTED track's layout entries (every entry as fallback when that
@@ -65,10 +66,10 @@ void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
 /// tick (I-22). A frame belongs to the FIRST layout entry holding it, as
 /// it always has; the edges are the only places that can change.
 ///
-/// B1: a frame no cut owns is a GAP, and playback at a gap draws the
-/// background only — no picture, no fade ([CanvasPlaybackView]'s own
-/// contract) — so there is nothing to prepare and the gap is ready BY
-/// DEFINITION, the same two-kind law the in-cut answer follows. (The
+/// B1: a frame no cut owns is a GAP, and playback at a gap has no picture
+/// of its own — no cut, so no paper and no fade — so there is nothing to
+/// prepare and the gap is ready BY DEFINITION, the same two-kind law the
+/// in-cut answer follows. (The
 /// multitrack gap-PARKED preview showing other tracks is the EDITING
 /// path, not playback — this bar answers for playback.)
 List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
@@ -90,6 +91,9 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
     return const [];
   }
   final owners = _firstOwners(entries, edges);
+  // Where each cut's OWN frames stand on its track — the cache holds a
+  // cut's pictures by the cut's own frame.
+  final axis = session.projectSettings.projectAxis();
   final runs = <({int startIndex, int endIndexExclusive})>[];
   void ready(int from, int to) {
     final last = runs.isEmpty ? null : runs.last;
@@ -108,16 +112,16 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
       ready(from, to);
       continue;
     }
+    final ownFrom = axis.localIn(owner, from);
+    final onTrack = from - ownFrom;
+    // The FILM's bar: no canvas — the film plays on composites yet.
     for (final run
         in session.playbackRig.playbackCache.playbackReadyRunsForCut(
           owner.cut,
-          from - owner.startFrame,
-          to - owner.startFrame,
+          ownFrom,
+          ownFrom + (to - from),
         )) {
-      ready(
-        run.startIndex + owner.startFrame,
-        run.endIndexExclusive + owner.startFrame,
-      );
+      ready(run.startIndex + onTrack, run.endIndexExclusive + onTrack);
     }
   }
   return runs;
@@ -156,19 +160,49 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
       playback.seekToGlobalFrame(globalFrame);
       return;
     }
-    // Single-cut playback: its playlist is rebased to frame 0, and seeks
-    // outside the playing cut are a no-op.
+    // Single-cut playback: its playlist counts the cut's OWN frames from
+    // 0, and seeks outside the playing cut are a no-op.
     for (final entry in storyboardActiveTrackLayout(session)) {
       if (globalFrame >= entry.startFrame &&
           globalFrame < entry.endFrame &&
           entry.cutId == playback.position?.cutId) {
-        playback.seekToGlobalFrame(globalFrame - entry.startFrame);
+        playback.seekToGlobalFrame(
+          session.projectSettings.projectAxis().localIn(entry, globalFrame),
+        );
         return;
       }
     }
     return;
   }
   session.selectGlobalFrame(globalFrame);
+}
+
+/// A press that lands in a CUT at a frame of its OWN (I-73 ④) — the camera
+/// row's: over an O.L its two lines name the cut by the line pressed, where
+/// the track frame alone names the cut it stands under (an arriving cut's
+/// のりしろ is the cut in front's place on the track). Playback seeks the
+/// clock to where that frame plays ([seekStoryboardGlobalFrame]); editing
+/// takes the cut and its frame, the stand [selectGlobalFrame] makes when the
+/// track frame names that cut.
+void seekStoryboardCutFrame(
+  EditorSessionManager session,
+  CutId cutId,
+  int ownFrame,
+) {
+  if (session.playbackRig.playback.isActive) {
+    final globalFrame = session.projectSettings.projectAxis().globalOf(
+      cutId,
+      ownFrame,
+    );
+    if (globalFrame != null) {
+      seekStoryboardGlobalFrame(session, globalFrame);
+    }
+    return;
+  }
+  if (session.activeCutId != cutId) {
+    session.selectCut(cutId);
+  }
+  session.selectFrameIndex(ownFrame);
 }
 
 // `parkStoryboardGlobalFrame` is gone with the law it carried (⑭): a press
@@ -200,11 +234,10 @@ void commitStoryboardScrub(EditorSessionManager session) {
     return;
   }
   // Playback took the transport mid-drag: there is no editing seek to
-  // commit, but the preview FLAGS must not leak past the gesture — a
-  // stuck scrub flag would freeze the canvas in scrub-preview mode, and
-  // a stuck territory flag would swallow the NEXT drag's exit edge
-  // (the D6 stale picture, resurrected one drag per leak). One session
-  // verb clears the whole preview state.
+  // commit, but the scrub's FLAGS must not leak past the gesture — a
+  // stuck scrub flag would freeze the canvas in scrub mode, and a stuck
+  // gap flag would swallow the NEXT drag's gap edge (the D6 stale
+  // picture, resurrected one drag per leak). One verb clears them all.
   session.frameScrub.abandonFrameScrubPreview();
 }
 

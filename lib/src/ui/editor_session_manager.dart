@@ -8,12 +8,14 @@ import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
-import '../services/project_lookup.dart' show brushFrameKeyIn, cutPositionOf;
+import '../services/project_lookup.dart'
+    show brushFrameKeyIn, cutIdOfLayer, cutPositionOf;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
+import 'canvas/after_frame_once.dart';
 import 'session/attach_fx_confirm.dart';
 import 'session/canvas_adjust.dart';
 import 'session/editor_app_settings.dart';
@@ -25,7 +27,9 @@ import '../services/editing/run_id_mint.dart' as frame_ids;
 import '../services/editing/layer_standing_after_change.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
+import '../models/conte_group.dart' show conteHeadFamiliesOf;
 import '../models/cut.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
@@ -52,15 +56,17 @@ import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import '../models/track.dart';
+import '../models/track_camera_head.dart' show cameraHeadFamilyOf;
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
-import '../models/track_se_window.dart';
+import '../services/conte_step_scope.dart';
 import '../services/cut_frame_composite_plan.dart';
 import '../models/playback_mode.dart';
 import '../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../services/playback/frame_demand.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
+import '../core/identity_memo.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'session/active_cut_span.dart';
 import 'session/cut_placement.dart';
@@ -71,8 +77,9 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
-import '../services/commands/link_mirror.dart' show linkMirrorRows;
+import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
+import '../native/qa_audio_device.dart' show audioOutputUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'session/cache_budgets.dart';
@@ -155,6 +162,7 @@ import 'session/block_naming.dart';
 import 'session/cell_instances.dart';
 import 'session/cell_verbs.dart';
 import 'session/pixel_verbs.dart';
+import 'session/rail_legends.dart';
 import 'session/folders_and_attachments.dart';
 import 'session/project_settings.dart';
 import 'session/frame_verbs.dart';
@@ -164,6 +172,7 @@ import 'session/cut_move_drag.dart';
 import 'session/trimmed_pieces.dart';
 import 'session/layer_switch_verbs.dart';
 import 'session/editing_canvas.dart';
+import 'track_effect_paint_policy.dart' show trackEffectsAt;
 import 'package:flutter/painting.dart' show ImageCache;
 
 /// Owns the editable project session for [HomePage]: the repository, undo
@@ -204,7 +213,9 @@ class EditorSessionManager extends ChangeNotifier
        _ownsAppSettings = appSettings == null,
        appSettings = appSettings ?? (EditorAppSettings()..restore()),
        repository = ProjectRepository(initialProject: initialProject) {
-    historyManager = HistoryManager()..places.placeNow = () => standingPlace;
+    historyManager = HistoryManager()
+      ..scope = ConteStepScope(repository)
+      ..places.placeNow = () => standingPlace;
     cutCommandCoordinator = CutCommandCoordinator(
       repository: repository,
       editingSession: editingSession,
@@ -214,30 +225,7 @@ class EditorSessionManager extends ChangeNotifier
     activeCutControllers.rebuild();
     renderCaches.attach();
     playbackRig.attach();
-    playbackRig.playback.globalFrameIndexListenable.addListener(
-      followPlaybackCut,
-    );
-    // F-90: the cut under the playhead re-answers wherever the playhead or
-    // the cut can move; [CutUnderPlayhead.sync] publishes crossings only.
-    playbackRig.playback.globalFrameIndexListenable.addListener(
-      cutUnderPlayhead.sync,
-    );
-    editingSession.gapParkingListenable.addListener(cutUnderPlayhead.sync);
-    frameScrub.active.addListener(cutUnderPlayhead.sync);
-    addListener(cutUnderPlayhead.resync);
-    // …and answers now: the conte's plate reads its VALUE (F-248), where the
-    // sheet and the envelope only heard it — null until the first notify.
-    cutUnderPlayhead.resync();
-    // Where the playhead is drawn re-answers on every channel it moves on —
-    // after the cut follow above, so a tick that crosses into another cut
-    // is answered against the cut it landed in. A scrub move fires the
-    // editing cursor WITHOUT a session notify, so [playheadMoved], which
-    // carries it, is what keeps the playhead glued to the pointer.
-    playbackRig.playback.globalFrameIndexListenable.addListener(
-      playheadCursors.sync,
-    );
-    playheadMoved.addListener(playheadCursors.sync);
-    addListener(playheadCursors.sync);
+    _followThePlayhead();
     // The canvas shows a reference movie's picture at the frame it stands
     // on — asked on every seek and every change, a no-op once the store has
     // it.
@@ -256,11 +244,40 @@ class EditorSessionManager extends ChangeNotifier
     // PCM copy, and outside live playback the activation rebuild covers
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
+    historyManager.addListener(_railFollowsTheDocument);
+    // F-360: the rows' folds as the opened file holds them, before any
+    // history change asks again.
+    railView.readFolds(repository.currentProject);
     layerStack.attach();
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
     _applyCacheBudgets(enforce: false);
     AppMemory.settings.addListener(_applyCacheBudgets);
+  }
+
+  /// What follows the playhead — the cut a run plays, the cut under it and
+  /// where it is drawn — listening on every channel it moves on, in this
+  /// order.
+  void _followThePlayhead() {
+    final playhead = playbackRig.playback.globalFrameIndexListenable;
+    playhead.addListener(followPlaybackCut);
+    // F-90: the cut under the playhead re-answers wherever the playhead or
+    // the cut can move; [CutUnderPlayhead.sync] publishes crossings only.
+    playhead.addListener(cutUnderPlayhead.sync);
+    editingSession.gapParkingListenable.addListener(cutUnderPlayhead.sync);
+    frameScrub.active.addListener(cutUnderPlayhead.sync);
+    addListener(cutUnderPlayhead.resync);
+    // …and answers now: the conte's plate reads its VALUE (F-248), where the
+    // sheet and the envelope only heard it — null until the first notify.
+    cutUnderPlayhead.resync();
+    // Where the playhead is drawn re-answers on every channel it moves on —
+    // after the cut follow above, so a tick that crosses into another cut
+    // is answered against the cut it landed in. A scrub move fires the
+    // editing cursor WITHOUT a session notify, so [playheadMoved], which
+    // carries it, is what keeps the playhead glued to the pointer.
+    playhead.addListener(playheadCursors.sync);
+    playheadMoved.addListener(playheadCursors.sync);
+    addListener(playheadCursors.sync);
   }
 
   @override
@@ -497,6 +514,8 @@ class EditorSessionManager extends ChangeNotifier
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
+    canvasRowsOf: (cut, frameIndex) =>
+        editingCanvas.playedRowsAt(cut, frameIndex),
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -514,19 +533,11 @@ class EditorSessionManager extends ChangeNotifier
     if (voiceRecording.isVoiceRecording.value) {
       await voiceRecording.finishTakeThroughTheNotice();
     }
-    if (lastPosition.cutId != editingSession.activeCutId) {
-      selectCut(lastPosition.cutId);
-    }
-    selectFrameIndex(
-      activeCutControllers.clampedFrameIndex(lastPosition.localFrameIndex),
-    );
-    // F-169: the follow seats a cut's row without the standing law — it has
-    // to stay quiet mid-playback (R12-B) — so the stop is where it answers.
-    standing.keepStandingShown();
-    // The mid-playback cut follow is QUIET (R12-B) — this is the one
-    // session notify that catches every activeCut consumer up with where
-    // playback landed.
-    notifyListeners();
+    // ↩️F-169 asked the standing law here too, and the session notified
+    // once more: the quiet follow (R12-B) had seated each cut's row outside
+    // the law and told nobody. A crossing is a cut switch now (I-57 ②), and
+    // a cut switch asks the law and notifies for itself.
+    _landOn(lastPosition);
   }
 
   /// Stop landed on a playlist GAP frame (UI-R9 #3): match the editing
@@ -544,32 +555,63 @@ class EditorSessionManager extends ChangeNotifier
   /// Premiere-style follow: while playback crosses cut boundaries the
   /// ACTIVE cut tracks the playing cut and stays there when playback
   /// stops. Playback-only selection state — no command runs, the undo
-  /// stack never sees it. QUIET by design (R12-B): no session notify and
-  /// no warming — a boundary tick must not rebuild the visible panels
-  /// mid-playback (that stutter was audible as the cut-transition lag).
-  /// Live position display rides the playback listenables; activeCut
-  /// consumers catch up on the stop notify.
+  /// stack never sees it.
+  ///
+  /// 🗣️I-57 (유저 10-09, Q2: 「타임라인 행도 그 자리에서 — 행을 먼저 가볍게
+  /// 만든 뒤 켠다」): the crossing is the landing every cut switch makes
+  /// ([_landOn]), so the timeline's rows and everything else that reads the
+  /// active cut turn over at the boundary — the crossing a scrub makes too
+  /// ([FrameScrub.scrubGlobalFrame]). ↩️R12-B (07-13) kept it QUIET, with
+  /// no notify and no warm, because rebuilding the visible panels at a
+  /// boundary stuttered; whatever had to follow anyway was wired to the
+  /// playhead one surface at a time. The rail's rows were made light for
+  /// the crossing first (I-57 ①).
+  ///
+  /// 🚨THE CROSSING LANDS ONCE THE FRAME THAT SHOWS IT HAS BEEN HANDED OVER
+  /// (I-57, 10-13). The canvas draws a run from its position, never from
+  /// the active cut, so the crossing's first picture needs nothing the
+  /// landing does — and landing INSIDE that frame made the picture wait for
+  /// every panel's turn-over: 🔬23–32ms of UI at each boundary (profile,
+  /// AMMI OP) against a held frame's 8.6, the new cut's first picture
+  /// several refreshes late at every crossing (유저 10-13: 「재생시 컷 경계
+  /// 넘을때도 버벅여. 매번」). The panels turn over in the next frame, with
+  /// a film frame's time before the picture after it.
   void followPlaybackCut() {
+    if (_crossedInto() != null) {
+      _landingAfterThePicture.ask(() {
+        if (_crossedInto() case final position? when !disposed) {
+          _landOn(position);
+        }
+      });
+    }
+  }
+
+  final AfterFrameOnce _landingAfterThePicture = AfterFrameOnce();
+
+  /// Where a running playback stands when that is another cut than the
+  /// active one.
+  PlaybackPosition? _crossedInto() {
     if (playbackRig.playback.globalFrameIndexListenable.value == null) {
-      return;
+      return null;
     }
     final position = playbackRig.playback.position;
     if (position == null || position.cutId == editingSession.activeCutId) {
-      return;
+      return null;
     }
-    // The same landing as every other cut switch (storyboard-flip-crosses-
-    // cut, 유저 09-27 「따라간다」): the row left behind is remembered, and
-    // the row landed on is the one [Standing.layerACutSwitchSeats] names.
-    // ↩️It took the new cut's first row, whatever you were working in.
-    final before = activeLayerId;
-    standing.rememberActiveLayerForCut();
-    editingSession.setActiveCutId(position.cutId);
-    activeCutControllers.rebuild(
-      preferredActiveLayerId: standing.layerACutSwitchSeats(
-        position.cutId,
-        before: before,
+    return position;
+  }
+
+  /// Where a run stands — at a crossing while it plays, and where it stops:
+  /// its cut, with the row [Standing.layerACutSwitchSeats] names, then the
+  /// frame of that cut's own the run is on.
+  void _landOn(PlaybackPosition position) {
+    if (position.cutId != editingSession.activeCutId) {
+      selectCut(position.cutId);
+    }
+    selectFrameIndex(
+      activeCutControllers.clampedFrameIndex(
+        playheadCursors.ownFrameOf(position),
       ),
-      preferredFrameIndex: position.localFrameIndex,
     );
   }
 
@@ -693,7 +735,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
-  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
+  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs);
 
   /// What the boards above hold — the APP's, handed to every open project
   /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
@@ -707,7 +749,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/layer_verbs.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
-  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, renderCaches: renderCaches);
+  late final LayerVerbs layerVerbs = LayerVerbs(project: this, selection: this, changes: this, controllers: activeCutControllers, renderCaches: renderCaches, rowSelection: rowSelectionVerbs);
 
   // ── the cut's row stack: its own object ─────────────────────────────
   //
@@ -757,25 +799,45 @@ class EditorSessionManager extends ChangeNotifier
   /// What the rail leaves off the screen (sections, the row filter, folded
   /// attach groups) and what it twirls open — held here because the
   /// standing law reads it (F-169), and the rows it names are this
-  /// project's (I-7).
+  /// project's (I-7). The folds and twirls in it are read off the rows
+  /// (F-360).
   late final RailView railView = RailView();
 
-  /// Every use of [row] — the rows that twirl and fold as one with it: its
-  /// link group's, in whichever cuts they stand ([linkMirrorRows]), and
-  /// itself alone for a row that is not linked or that no cut holds (a
-  /// track's).
+  /// Every use of [row] — the rows that twirl and fold as one with it: the
+  /// rows that wear its head, in whichever cuts they stand
+  /// ([headMirrorRows] — its link group's, a track's conte rows that are
+  /// its row of the track's structure, and a track's cameras), and itself
+  /// alone for a row that is none of these or that no cut holds (a track's).
   ///
   /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
   /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
-  /// 상태 접힌 상태 공유하라는것. 법통일」.
+  /// 상태 접힌 상태 공유하라는것. 법통일」 — and the conte rows since I-73
+  /// (10-08), whose head is one: 「콘티행도 동일하게 하고싶으니까 어태치
+  /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 — and a
+  /// track's cameras since I-73 ④, whose head is one as well: 「그럼
+  /// 카메라행도 글로벌? 콘티행처럼 머리 같도록 할까하는데」. The storyboard
+  /// draws them as one row, whose twirl opens every cut's camera lanes.
+  ///
+  /// The row is found in its OWN cut, the active one or not: the
+  /// storyboard's rail presses the rows of every cut, a gap's included
+  /// (I-73 ④ⓔ). ↩️It asked the active cut, and in a gap answered the row
+  /// alone — a head shut there shut one row, and [RailView.followHeads] let
+  /// it back open beside the rest.
+  ///
+  /// ↩️The folds and the twirls are written on these rows by their own
+  /// commands since F-360 (`LinkMirroredLayerFieldCommand` walks the same
+  /// head); what still asks here is what the rail keeps of them — a graph
+  /// and a pin.
   List<LayerId> rowsFoldingWith(LayerId row) {
-    final cutId = activeCutId;
+    final project = repository.requireProject();
+    final cutId = cutIdOfLayer(project, row) ?? activeCutId;
     return cutId == null
         ? [row]
-        : linkMirrorRows(
-            repository.requireProject(),
+        : headMirrorRows(
+            project,
             cutId: cutId,
             layerId: row,
+            cameraHead: true,
           );
   }
 
@@ -860,11 +922,8 @@ class EditorSessionManager extends ChangeNotifier
   }
 
   void selectRow(TimelineRowAddress row) => standing.selectRow(row);
-  void handOffCurrentRowOnFold(
-    LayerId layerId, {
-    String? laneId,
-    WorkingPanel panel = WorkingPanel.timeline,
-  }) => standing.handOffCurrentRowOnFold(layerId, laneId: laneId, panel: panel);
+  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) =>
+      standing.handOffCurrentRowOnFold(layerId, laneId: laneId);
   void handOffCurrentRowOnAttachFold(LayerId baseId) =>
       standing.handOffCurrentRowOnAttachFold(baseId);
   void claimTimelineRow() => standing.claimTimelineRow();
@@ -879,8 +938,20 @@ class EditorSessionManager extends ChangeNotifier
   /// is active — the cut's own track wins — and falls back to the stored
   /// selection (then the first track) only when there is no active cut or
   /// the stored track is gone.
+  ///
+  /// Answered once per project, cut stood in and stored track
+  /// ([IdentityMemo]): the session's other derivations key on it, and it
+  /// walked every cut of the film per ask.
   @override
-  TrackId get selectedTrackId {
+  TrackId get selectedTrackId => _selectedTrack.resolve(
+    identity: repository.requireProject(),
+    key: (editingSession.activeCutId, editingSession.selectedTrackId),
+    build: _selectedTrackIdOf,
+  );
+
+  final _selectedTrack = IdentityMemo<TrackId>();
+
+  TrackId _selectedTrackIdOf() {
     final project = repository.requireProject();
     final cutTrackId = trackIdOfCut(project, editingSession.activeCutId);
     if (cutTrackId != null) {
@@ -963,7 +1034,7 @@ class EditorSessionManager extends ChangeNotifier
   // sits on the GLOBAL axis.
   late final RowSpans rowSpans = RowSpans(project: this, folderBands: folderBands, projectSettings: projectSettings, trackSe: trackSe, transitions: transitions);
 
-  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager);
+  late final RowSelection rowSelectionVerbs = RowSelection(rangeSelections: rangeSelections, history: historyManager, repository: repository, standingIn: () => activeCutId);
 
   /// ⚠️A ROLE member, not a forwarder: [SelectionAccess.clearRowSelection]
   /// is asked of the SESSION by collaborators that must not name this one
@@ -1051,9 +1122,6 @@ class EditorSessionManager extends ChangeNotifier
     bool frameIsGlobal = false,
   ]) =>
       rangeSelections.standingInsideSelection(row, frameIndex, frameIsGlobal);
-  bool get hasAnySelection => rangeSelections.hasAnySelection;
-  @override
-  void clearAllSelections() => rangeSelections.clearAllSelections();
   @override
   void clearTimelineSelections() => rangeSelections.clearTimelineSelections();
   void claimSelection(TimelineSelectionKind kind) =>
@@ -1147,6 +1215,9 @@ class EditorSessionManager extends ChangeNotifier
   // when I-55 doubled the family. Callers name it, as they name [cells].
   late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels);
 
+  // ── the rail legends: what each panel's header opens, for a key (I-40) ──
+  final RailLegends railLegends = RailLegends();
+
   // ── 자동 이름 지정: its own object, in its own file ─────────────────────
   //
   // A collaborator (session/block_naming.dart, I-18): which blocks a press
@@ -1219,6 +1290,26 @@ class EditorSessionManager extends ChangeNotifier
   int get activeCutGlobalStartFrame =>
       cutGlobalStartFrameIn(activeTrack, editingSession.activeCutId) ?? 0;
 
+  /// The track frame the active cut's OWN frame 0 shows — 🚨THE LENS
+  /// between the cut's frames (its rows' keys, the timeline's columns) and
+  /// the track's ([TrackFrameAxis.mediaStartOf]): the cut's place on the
+  /// track less the のりしろ an O.L arriving into it asks. In every other
+  /// cut it is [activeCutGlobalStartFrame], which stays the answer to WHERE
+  /// THE CUT STANDS — what a span is measured against to say whether it
+  /// crosses the cut, or began before it.
+  ///
+  /// ↩️The cut view's window on the track's rows counted from the cut's
+  /// place (I-73-ol-index-space, 🧪2026-10-08: in a cut a 12-frame O.L
+  /// arrives into, a sound at the track's frame 30 stood on the timeline's
+  /// column 6 — and the picture it is heard with on column 12).
+  @override
+  int get activeCutMediaStartFrame {
+    final cutId = editingSession.activeCutId;
+    return cutId == null
+        ? 0
+        : projectSettings.projectAxis().mediaStartOf(cutId) ?? 0;
+  }
+
   @override
   String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
     frameIndex: frameIndex,
@@ -1246,7 +1337,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/se_entries.dart). ⛔The forwarders are gone
   // (G3, 2026-09-07): callers say `session.seEntries.x`.
-  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs);
+  late final SeEntries seEntries = SeEntries(project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, camera: camera, frameVerbs: frameVerbs, projectSettings: projectSettings);
 
   // ── the sounds an SE row carries: their own object ───────────────────
   //
@@ -1273,6 +1364,36 @@ class EditorSessionManager extends ChangeNotifier
   // three one answer.
   late final FolderBands folderBands = FolderBands(project: this);
 
+  /// The rail reads the rows' folds and twirls off the document
+  /// ([RailView.readFolds], F-360), and a row a command made in a track's
+  /// conte family — or a camera its cut brought onto a track — wears the
+  /// family's graphs ([RailView.followHeads]) — asked after EVERY history
+  /// change: a command, an undo, a redo.
+  ///
+  /// ↩️Asked in [refreshAfterCutCommand], beside the links, until a pin
+  /// found the doors that make such a row never come through it
+  /// (2026-10-08): the ＋ that bears a conte and the one that adds a row to
+  /// it stand on their new row themselves. 🧪A conte born beside a folded
+  /// group was born open — folded on the storyboard's rail, whose head is
+  /// the first cut's, and open in its own cut's timeline.
+  ///
+  /// The families are read only while a graph is open or a lane pinned
+  /// (`expand` is lazy): a stroke is a history change too.
+  void _railFollowsTheDocument() {
+    final project = repository.currentProject;
+    railView.readFolds(project);
+    if (project != null) {
+      railView.followHeads(
+        project.tracks.expand(
+          (track) => [
+            ...conteHeadFamiliesOf(track.cuts),
+            cameraHeadFamilyOf(track.cuts),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
@@ -1291,8 +1412,10 @@ class EditorSessionManager extends ChangeNotifier
           preferredFrameIndex ??
           activeCutControllers.timelineController.currentFrameIndex,
     );
-    // F-302: a row the command linked wears its group's twirls and folds —
-    // BEFORE the standing law asks which rows the rail shows.
+    // F-302: a row the command linked wears its group's graphs. Its folds
+    // it wears already — they are its own (F-360), and the rail read them
+    // off the document as the command entered history, before the standing
+    // law below asks which rows the rail shows.
     railView.followLinks(repository.requireProject().linkRegistry);
     // F-169: wherever the command left you, it is a row on screen.
     standing.keepStandingShown(
@@ -1426,6 +1549,7 @@ class EditorSessionManager extends ChangeNotifier
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
+    () => historyManager.removeListener(_railFollowsTheDocument),
     voiceRecording.dispose,
     playbackRig.dispose,
     renderCaches.dispose,
@@ -1511,6 +1635,8 @@ class EditorSessionManager extends ChangeNotifier
               runner: Platform.environment['FLUTTER_TEST'] == 'true'
                   ? (request) => Future.value(runConformHere(request))
                   : null,
+              placeForPlayback: (floats) =>
+                  audioOutputUnlessTesting()?.newSamples(floats),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.
@@ -1651,6 +1777,12 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     opacityVerbs: opacityVerbs,
     trackSe: trackSe,
+    cutEffectsAt: (cutId, frameIndex) => trackEffectsAt(
+      effectsAndFx.trackEffectsForCut(cutId),
+      rowSpans.trackGlobalFrameOf(cutId, frameIndex),
+      enabled: effectsAndFx.isCutFxEnabled(cutId),
+    ),
+    movieLaidAt: (key) => movieCels.laidAt(key),
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────
@@ -1743,6 +1875,10 @@ class EditorSessionManager extends ChangeNotifier
     updateActiveCutCameraTrack: (track, {required description}) =>
         camera.updateActiveCutCameraTrack(track, description: description),
     previewFormsOf: (row) => trackSe.previewFormsOf(row),
+    // The door's one write of a reference fx (I-68) — it lays the file
+    // again, which the doors own.
+    reposeReference: (layerId, pose) =>
+        importDoors.reposeReference(layerId: layerId, pose: pose),
   );
 
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
@@ -1761,20 +1897,26 @@ class EditorSessionManager extends ChangeNotifier
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex) {
     return layer.transformTrack.resolveAt(
       frameIndex: frameIndex,
-      orElse: () => layerIdentityPose(requireActiveCut.canvasSize),
+      orElse: () => layerIdentityPose(_poseSpaceOf(layer)),
     );
   }
 
-  /// The layer's resolved anchor point at [frameIndex] (canvas center while
-  /// unkeyed) — the lane key-freeze source and the canvas gizmo's anchor.
+  /// The layer's resolved anchor point at [frameIndex] (the middle of its
+  /// pose space while unkeyed) — the lane key-freeze source and the canvas
+  /// gizmo's anchor.
   @override
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex) {
+    final space = _poseSpaceOf(layer);
     return resolveLayerAnchorPointAt(layer: layer, frameIndex: frameIndex) ??
-        CanvasPoint(
-          x: requireActiveCut.canvasSize.width / 2,
-          y: requireActiveCut.canvasSize.height / 2,
-        );
+        CanvasPoint(x: space.width / 2, y: space.height / 2);
   }
+
+  /// The space [layer] is posed in ([LayerKind.poseSpace]): the shot, or
+  /// the open cut's canvas.
+  CanvasSize _poseSpaceOf(Layer layer) => layer.kind.poseSpace(
+    shot: camera.cameraFrameSize,
+    canvas: requireActiveCut.canvasSize,
+  )!;
 
   // --- Visibility solo mode (session view state, not persisted) ------------
 
@@ -1813,7 +1955,11 @@ class EditorSessionManager extends ChangeNotifier
   /// its reason — that a hasty merge leaves one flag answering two
   /// questions — does not apply here: the difference becomes the ARGUMENT,
   /// so there is no flag and nothing to read twice.
-  void _stepHistory(void Function() move) {
+  ///
+  /// [found] is where the step's edit found the user, for an undo: a row
+  /// the undo takes away from under them hands them back there (F-350,
+  /// [HistoryPlaces.foundAt]).
+  void _stepHistory(void Function() move, {StandingPlace? found}) {
     final documentBefore = repository.currentProject;
     final beforeLayers = List<Layer>.of(
       activeCutOrNull?.layers ?? const <Layer>[],
@@ -1841,12 +1987,15 @@ class EditorSessionManager extends ChangeNotifier
     // same silence; it was the one direction that shouted.
     //
     // 🔬**THE WHOLE FAMILY, not the symptom.** Of the 53 command classes
-    // that enter history, exactly five never touch the repository:
+    // that enter history, exactly five never touched the repository:
     // `BrushStrokeHistoryCommand`, `BrushLiftMoveHistoryCommand`,
     // `CelPixelOverwriteCommand`, `ToggleIdInSetCommand` and
     // `RekeyBrushFramesCommand` — and the last is only ever composed INTO a
     // step that also moves layers, so its group does move the document and
-    // does get the tidy-up. One question answers all five.
+    // does get the tidy-up. One question answers all five. ↩️F-360 put the
+    // twirls and the attach fold that `ToggleIdInSetCommand` wrote on the
+    // rows and deleted it: undoing one moves the document now, and tidies
+    // up as undoing a folder's fold always did.
     //
     // ⚠️`identical` on the PROJECT is that question exactly, not a proxy
     // for it: `ProjectRepository` swaps the whole immutable project on
@@ -1870,6 +2019,7 @@ class EditorSessionManager extends ChangeNotifier
       beforeLayers: beforeLayers,
       afterLayers: activeCutOrNull?.layers ?? const <Layer>[],
       previousActiveLayerId: previousActiveLayerId,
+      handBackTo: found?.cut == activeCutId ? found?.layer : null,
     );
     // F-169, the standing law's two questions. A row the step brought BACK
     // is where you stood when it went (② 「언두시에 접혀있는 레이어로 이동하면
@@ -1919,7 +2069,10 @@ class EditorSessionManager extends ChangeNotifier
     }
     historyPictures.step(
       undo: true,
-      apply: () => _stepHistory(historyManager.undo),
+      apply: () => _stepHistory(
+        historyManager.undo,
+        found: historyManager.undoFound,
+      ),
     );
   }
 
@@ -2246,12 +2399,15 @@ class EditorSessionManager extends ChangeNotifier
 
   // The CLIP STUDIO door (session/clip_import_door.dart) — a .clip opens AS
   // A PROJECT the way a .tvpp does, and what it does here is the same: bake
-  // the pictures the plan made room for, into this session's stores.
+  // the pictures the plan made room for, into this session's stores, and
+  // carry the sounds the file holds into its pool.
   late final ClipImportDoor clipDoor = ClipImportDoor(
     project: this,
     changes: this,
     renderCaches: renderCaches,
     file: projectFile,
+    projectDoor: projectDoor,
+    mediaPool: mediaPool,
   );
 
   bool disposed = false;
@@ -2279,7 +2435,7 @@ class EditorSessionManager extends ChangeNotifier
     cutCommandCoordinator: () => cutCommandCoordinator,
     uiStrings: () => uiStrings,
     projectFrameRate: () => projectSettings.projectFrameRate,
-    activeCutGlobalStartFrame: () => activeCutGlobalStartFrame,
+    activeCutMediaStartFrame: () => activeCutMediaStartFrame,
     editingGlobalFrame: () => editingGlobalFrame,
     gapParkedGlobalFrame: () => editingSession.gapGlobalFrame,
     standingRow: () => currentRow,
@@ -2488,10 +2644,7 @@ class EditorSessionManager extends ChangeNotifier
               layerId,
               // The ONE converter between the cut's frames and the track's:
               // the timeline's rows show the active cut's window.
-              trackFrame: TrackSeWindow(
-                cutStartFrame: activeCutGlobalStartFrame,
-                cutDurationFrames: cut.duration,
-              ).toGlobalFrame(frameIndex),
+              trackFrame: trackSe.trackSeWindow.toGlobalFrame(frameIndex),
               shownCell: frameIndex,
               path: path,
             );
@@ -2765,7 +2918,6 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     retime: this,
     dragPreview: dragPreview,
-    renderCaches: renderCaches,
   );
 
   /// The door a collaborator announces through — `notifyListeners` is
@@ -2776,8 +2928,12 @@ class EditorSessionManager extends ChangeNotifier
   /// Every announcement first lets the verbs' row follow an active layer the
   /// program moved ([Standing.followActiveLayer], F-183 ③) — the one point
   /// every door that moves it passes, collaborators' and this class's own.
+  /// The conte rows the selection and the rail's stand hold follow their
+  /// rows' seats there too ([Standing.followConteSeats], F-322).
   @override
   void notifyListeners() {
+    rowSelectionVerbs.followConteSeats();
+    standing.followConteSeats();
     standing.followActiveLayer();
     super.notifyListeners();
   }
@@ -3171,17 +3327,16 @@ class EditorSessionManager extends ChangeNotifier
     // announces.
     selectTrackRow(trackId);
     final globalFrame = editingGlobalFrame;
-    final layout = buildStoryboardTimelineLayout(repository.requireProject());
-    for (final entry in layout) {
-      if (entry.trackId == trackId &&
-          globalFrame >= entry.startFrame &&
-          globalFrame < entry.endFrame) {
-        if (entry.cutId != activeCutId) {
-          selectCut(entry.cutId);
-        }
-        selectFrameIndex(globalFrame - entry.startFrame);
-        return;
+    // The tapped track's own axis — its cuts, and where each one's own
+    // frames stand on it.
+    final axis = projectSettings.axisForTrack(trackId);
+    final entry = axis.isGap(globalFrame) ? null : axis.ownerOf(globalFrame);
+    if (entry != null) {
+      if (entry.cutId != activeCutId) {
+        selectCut(entry.cutId);
       }
+      selectFrameIndex(axis.localIn(entry, globalFrame));
+      return;
     }
     // A GAP on the tapped track PARKS there (user 2026-07-29, superseding
     // UI-R18 #6's no-op): selecting a row makes its current index the
@@ -3191,11 +3346,6 @@ class EditorSessionManager extends ChangeNotifier
     parkGlobalFrame(globalFrame);
   }
 
-  /// THE canonical seek: a global frame in. Inside a cut it selects
-  /// cut + local frame; in a GAP it deselects the cut ENTIRELY (UI-R9 #3)
-  /// and PARKS there — the stored global addresses the gap exactly,
-  /// including the leading gap before the first cut, and the canvas shows
-  /// the no-cut void.
   /// Moves the playhead to [globalFrame] and takes NO cut active — the
   /// parked state, whatever sits at that frame.
   ///
@@ -3205,18 +3355,23 @@ class EditorSessionManager extends ChangeNotifier
   /// editing), on the reading that the active cut answers only to picking a
   /// cut on the row that HAS cuts. ⑭ retired that: one track means the
   /// index names one cut, so a row press seeks like any other and only a
-  /// GAP still parks. Callers that park a frame a cut covers are declaring
-  /// a preview, not a landing — the live scrub — or a cut whose picture is
-  /// hidden, so nothing shows there (the V-row eye, UI-R13 #2).
+  /// GAP still parks. A caller that parks a frame a cut covers declares
+  /// that cut's picture hidden, so nothing shows there (the V-row eye,
+  /// UI-R13 #2). ↩️The live scrub parked over other cuts' frames too, as a
+  /// preview, until it crossed into them (I-57 ②).
   ///
   /// ⛔THE park. A stop in a gap and the V-row eye wrote these steps out
   /// for themselves and missed the settle and the live-stroke hold this
   /// one keeps (2026-09-29); they come through here now.
+  ///
+  /// 🚨A track with no cut is ALL gap, and parks like one (F-341): the
+  /// storyboard's playhead, its rows and its run stand on the track's axis,
+  /// which a cut does not make. ↩️An empty axis refused the park — a guard
+  /// the first global seek needed for its `entries.first` (R15-1), outlived
+  /// by the gap parking that replaced that line: a run stopped on a track
+  /// with no cut left no playhead behind.
   void parkGlobalFrame(int globalFrame) {
     if (strokeInFlight) {
-      return;
-    }
-    if (trackFrameAxis().isEmpty) {
       return;
     }
     historyManager.places.settle();
@@ -3226,6 +3381,12 @@ class EditorSessionManager extends ChangeNotifier
     notifyListeners();
   }
 
+  /// THE canonical seek: a global frame in. Inside a cut it selects
+  /// cut + local frame; in a GAP it deselects the cut ENTIRELY (UI-R9 #3)
+  /// and PARKS there — the stored global addresses the gap exactly,
+  /// including the leading gap before the first cut, and the canvas shows
+  /// the no-cut void.
+  ///
   /// [onAxis] lands the frame on a SPECIFIC track's axis instead of the
   /// selected track's. A caller that computed its move on one axis must
   /// land it on the same one — resolving on a different track would put
@@ -3236,12 +3397,10 @@ class EditorSessionManager extends ChangeNotifier
       return;
     }
     final axis = onAxis ?? trackFrameAxis();
-    if (axis.isEmpty) {
-      return;
-    }
     final local = axis.localOf(globalFrame);
     if (local == null || axis.isGap(globalFrame)) {
-      // A GAP (leading or mid-track): no cut there — park + deselect.
+      // A GAP (leading, mid-track, or a track with no cut — F-341): no cut
+      // there — park + deselect.
       parkGlobalFrame(globalFrame);
       return;
     }
@@ -3358,6 +3517,7 @@ class EditorSessionManager extends ChangeNotifier
     playback: playbackRig,
     timelineZoom: timelineZoom,
     panelViews: panelViews,
+    laneGraphs: railView.laneGraphs,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not
@@ -3412,7 +3572,7 @@ class EditorSessionManager extends ChangeNotifier
   ///  * the ruler DRAG moves [editingFrameCursor] and commits nothing until
   ///    the release, so a bar listening only to [frameSeekCommitted] was
   ///    stale for the whole gesture (measured: 9 of 25 buttons);
-  ///  * a scrub that leaves the cut's territory parks instead, moving
+  ///  * a scrub that walks into a gap parks instead, moving
   ///    [EditingSessionState.gapParkingListenable] and NOT the cursor —
   ///    which is why the
   ///    storyboard's shift pair stayed lit past the film's end while the

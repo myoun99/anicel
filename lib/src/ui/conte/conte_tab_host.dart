@@ -30,10 +30,14 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/panel_keys.dart';
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
+import '../dialogs/conte_format_window.dart';
+import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/page_turn_strip.dart';
-import '../widgets/panel_flyout.dart' show PanelFlyoutEntry, PanelFlyoutItem;
 import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -421,47 +425,60 @@ class _ConteTabHostState extends State<ConteTabHost> {
 
   @override
   Widget build(BuildContext context) {
-    final (source, pages) = _resolveSheet();
+    final (_, pages) = _resolveSheet();
     final inkController = widget.inkController;
     if (inkController != null && pages.isNotEmpty) {
       // Every page shares one metrics.
       inkController.syncGeometry(pages.first.metrics);
     }
-    return KeyedSubtree(
-      key: const ValueKey<String>('conte-panel'),
-      child: _panel(source, pages),
+    // A key presses the format window — the conte sheet is one panel,
+    // whatever is in hand (I-40).
+    return PanelKeysBinding(
+      buttons: {EditorActionIds.conteFormat: _editFormat},
+      child: KeyedSubtree(
+        key: const ValueKey<String>('conte-panel'),
+        child: _panel(pages),
+      ),
     );
   }
 
-  /// The book's front in the panel's settings (I-59: 「콘티 용지패널의
-  /// 설정버튼안에」), kept with the work — and printed as shown, since the
-  /// export lays the same book.
-  List<PanelFlyoutEntry> _frontSettings(ConteSheetSource source) => [
-    PanelFlyoutItem(
-      keyValue: 'conte-cover-toggle',
-      label: AppText.strings.conteCoverPage,
-      checked: source.cover,
-      onSelected: () => _setFront(cover: !source.cover),
-    ),
-    PanelFlyoutItem(
-      keyValue: 'conte-blank-page-toggle',
-      label: AppText.strings.conteBlankPage,
-      checked: source.blankPage,
-      onSelected: () => _setFront(blankPage: !source.blankPage),
+  /// The book's front — its cover and the blank page behind it — in the
+  /// sheet's format window (I-59: 「콘티 용지패널의 설정버튼안에」, then
+  /// I-93: 「타임시트처럼 전용 설정창」), kept with the work as one undo step,
+  /// and printed as shown, since the export lays the same book.
+  Future<void> _editFormat() {
+    final info = _session.timesheetInfo;
+    return askThenCommit<ConteFormat>(
+      context,
+      dialog: (_) => ConteFormatWindow(
+        initial: (cover: info.conteCover, blankPage: info.conteBlankPage),
+      ),
+      commit: (format) => _session.updateTimesheetInfo(
+        _session.timesheetInfo.copyWith(
+          conteCover: format.cover,
+          conteBlankPage: format.blankPage,
+        ),
+      ),
+    );
+  }
+
+  /// The sheet's own command, at the head of the panel's pill — after the
+  /// brush switch, which the sheet shell puts first, as the timesheet's
+  /// format button stands.
+  List<Widget> _panelActions() => [
+    AppIconButton(
+      keyValue: 'conte-format-button',
+      tooltip: AppText.strings.conteFormatTitle,
+      shortcuts: const [EditorActionIds.conteFormat],
+      icon: const Icon(Icons.edit_note),
+      size: AppIconButtonSize.strip,
+      onPressed: _editFormat,
     ),
   ];
 
-  /// The book's front as the work keeps it — one undo step.
-  void _setFront({bool? cover, bool? blankPage}) {
-    final info = _session.timesheetInfo;
-    _session.updateTimesheetInfo(
-      info.copyWith(conteCover: cover, conteBlankPage: blankPage),
-    );
-  }
-
   /// The book on the canvas panel, every page one under another (F-201),
   /// the page strip reading and turning the page the view is on.
-  Widget _panel(ConteSheetSource source, List<ContePageLayout> pages) {
+  Widget _panel(List<ContePageLayout> pages) {
     final stack = _stackOf(pages);
     final book = CanvasBook(pages: stack, reading: _reading);
     final pageIndex = book.page;
@@ -491,13 +508,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
         page: viewerPage(pageIndex, pages.length),
         onTurnTo: book.turnTo,
       ),
-      bottomBarSettings: _frontSettings(source),
-      bottomBarHostToken: (
-        pageIndex,
-        pages.length,
-        source.cover,
-        source.blankPage,
-      ),
+      bottomBarLeading: _panelActions(),
+      bottomBarHostToken: (pageIndex, pages.length),
       unframedFit: pages.isEmpty ? null : stack.pageRect(pageIndex),
       // The book's paper: where the view stops (F-201).
       viewLimit: pages.isEmpty ? null : stack.paper,

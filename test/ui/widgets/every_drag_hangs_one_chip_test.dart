@@ -27,6 +27,9 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/drag_chip.dart';
 
+import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_twirls.dart';
+
 /// I-39 (유저 2026-09-17): 「무언가를 드래그할때 커서에 생기는 그립ui,
 /// 공용화가 안되있는거같음. 패널탭띠 … 풀에서 드래그하는거랑 ui가 미묘한게
 /// 다른게 보여서 … 우선 레이어 선택범위로 선택/드래그할때 사용 … 레이어는
@@ -95,7 +98,7 @@ void main() {
   /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a drag that
   /// starts on a control is the control's.
   Finder railRow(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-name-$id'));
+      find.named('timeline-layer-name-$id');
 
   List<String> chipLabels(WidgetTester tester) => [
     for (final item in tester.widget<DragChip>(find.byType(DragChip)).items)
@@ -374,7 +377,7 @@ void main() {
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.values.first);
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-lane-toggle-b')),
+      find.named('timeline-lane-toggle-b'),
     );
     await tester.pumpAndSettle();
     final effectId = session.requireActiveCut.layers
@@ -413,7 +416,7 @@ void main() {
     await tester.pumpAndSettle();
     final column = await pickUp(
       tester,
-      find.byKey(const ValueKey<String>('xsheet-layer-name-a')),
+      find.named('xsheet-layer-name-a'),
       // The sheet runs the other way, so its select nudge does too.
       select: const Offset(0, 30),
       nudge: const Offset(12, 0),
@@ -470,27 +473,24 @@ void main() {
       ),
     );
     addTearDown(session.dispose);
-    final expandedTracks = <String>{};
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) => StoryboardPanel(
+          body: withStoryboardTwirls(
+            session,
+            (twirls) => StoryboardPanel(
               project: session.repository.requireProject(),
               activeCutId: const CutId('cut-a'),
               pixelsPerFrame: 12,
               projectFrameRate: ProjectFrameRate.fps24,
               audioPeaksFor: (_) => null,
-              expandedSeAudioRows: const <String>{},
-              expandedTransformTracks: expandedTracks,
-              onToggleTrackLane: (track) => setState(() {
-                if (!expandedTracks.add(track.id.value)) {
-                  expandedTracks.remove(track.id.value);
-                }
-              }),
-              expandedTransformGroups: const <String>{},
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
+              layerLanesOpenOf: twirls.layerLanesOpenOf,
               poseDisplaySize: const CanvasSize(width: 640, height: 360),
               // The session's own hooks, as the host wires them — with no
               // row selection here, a press moves at once.
@@ -524,10 +524,10 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-track-label-row-track-a')),
       nudge: const Offset(0, 12),
     );
-    expect([for (final item in vRow) item.label], ['V1']);
+    expect([for (final item in vRow) item.label], [storyboardVideoRowName(0)]);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-track-lane-toggle-track-a')),
+      find.named('storyboard-track-lane-toggle-track-a'),
     );
     await tester.pumpAndSettle();
     final fxHeader = await pickUp(

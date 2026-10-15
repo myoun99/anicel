@@ -566,7 +566,7 @@ void main() {
           continue;
         }
         final mount = plan.attach.mounts.firstOrNull;
-        final side = plan.attach.sideChange;
+        final side = plan.attach.sideChanges.firstOrNull;
         if (mount != null) {
           out.write(mount.placement == AttachedPlacement.above ? 'A' : 'B');
         } else if (plan.attach.detachIds.isNotEmpty) {
@@ -1119,13 +1119,13 @@ void main() {
       if (plan == null) {
         return 'REFUSED';
       }
-      final side = plan.attach.sideChange;
       return [
         for (final mount in plan.attach.mounts)
           '${mount.layerId.value}>${mount.baseId.value}:'
               '${mount.placement.name}',
         for (final id in plan.attach.detachIds) '-${id.value}',
-        if (side != null) '${side.layerId.value}~${side.placement.name}',
+        for (final side in plan.attach.sideChanges)
+          '${side.layerId.value}~${side.placement.name}',
       ].join(' ');
     }
 

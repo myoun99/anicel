@@ -4,12 +4,14 @@ import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
+import '../models/camera_instruction.dart' show CameraInstructionDef;
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
+import 'camera/camera_path_settings_rows.dart' show showCameraPathSettings;
 import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
@@ -24,6 +26,7 @@ import 'timeline/timeline_tile_raster_source.dart'
     show timelineSubstrateGeneration;
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
+import 'timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
@@ -67,10 +70,14 @@ class TimelineTabHost extends StatefulWidget {
     this.xsheetRailExtent,
     this.timelineFrameAxisOffset,
     this.xsheetFrameAxisOffset,
+    this.timelineLayerAxisOffset,
+    this.xsheetLayerAxisOffset,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.hiddenSections = const {},
     this.onToggleSection,
     this.rowFilter = TimelineRowFilter.none,
@@ -115,10 +122,15 @@ class TimelineTabHost extends StatefulWidget {
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
 
-  /// Where each grid's frame axis stands (workspace-owned so it survives a
-  /// fold — F-143; session-only, see the workspace's field).
+  /// Where each grid's frame axis stands (held above the grids so it
+  /// survives a fold — F-143; the project's and saved with it, F-267 — see
+  /// the workspace's field).
   final ValueNotifier<double>? timelineFrameAxisOffset;
   final ValueNotifier<double>? xsheetFrameAxisOffset;
+
+  /// Where each grid's layer axis stands — the project's too (F-267).
+  final ValueNotifier<double>? timelineLayerAxisOffset;
+  final ValueNotifier<double>? xsheetLayerAxisOffset;
 
   /// AE-style property-lane twirl-down state (host-owned so it survives
   /// tab switches).
@@ -131,6 +143,12 @@ class TimelineTabHost extends StatefulWidget {
   /// R6 effect, so the key has to name the group, not just the row.
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// The HEADER GRAPHS standing in a group's lanes' place, and their
+  /// buttons (I-89 ③) — view state as the twirls are, kept by the session's
+  /// rail view. Null [laneGraphVerbs] mounts no graph button.
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// SE/camera section visibility (host-owned, survives tab switches):
   /// hidden sections render no rows; the toolbar buttons toggle them.
@@ -307,6 +325,20 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     session: _session,
     expandedGroupKeys: widget.expandedLaneGroupKeys,
   );
+
+  /// The CAMERA row's union summary (B4): the shared transform-header union
+  /// lane, re-derived per row rebuild from the session's preview-aware
+  /// camera track.
+  ///
+  /// A method, as the term lookup below is: a kept cells row holds its
+  /// resolvers by equality ([TimelineCellsRowFacts]), and a closure built
+  /// per pass would build every row again at every pass (I-57, 10-13).
+  PropertyLaneRow? _cameraUnionLane(Layer layer) =>
+      timelineCameraUnionLane(layer: layer, session: _session);
+
+  /// The term a CAM row's chip names, from the registry as it stands.
+  CameraInstructionDef? _instructionDefById(String instructionId) =>
+      _session.camera.cameraInstructionSet.defById(instructionId);
 
   // ⛔THE HOST'S LANE-EDIT BODIES ARE GONE (F-102, 2026-09-15). The key
   // toggle, the typed value and the effect eyeball are [LaneVerbs]' now, for
@@ -617,7 +649,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // be the start of a move — so something has to clear when the
             // press turns out to have been a tap. This is that something,
             // and it is the same verb for the cells and the rail rows.
-            onSettledPress: _session.clearAllSelections,
+            // ⛔The timeline's selections, not the marquee (F-86 — moving
+            // the playhead is not putting the selection tool down).
+            onSettledPress: _session.clearTimelineSelections,
             // Ruler drags: per-move seeks ride the cursor path (value-only —
             // the playhead and the canvas preview follow, nothing rebuilds);
             // the release commits the selection as ONE ordinary seek.
@@ -644,8 +678,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               instructionDefs: _session.camera.cameraInstructionSet,
             ),
             onActivateCell: _activateCellEditor,
-            instructionDefById: (instructionId) =>
-                _session.camera.cameraInstructionSet.defById(instructionId),
+            instructionDefById: _instructionDefById,
             // D26: the crossing-fade refusal marker — this surface shows
             // the cut-local display clone, so the session answers by the
             // clone's PROJECTED keys. Always-on (a refusal warning takes
@@ -709,6 +742,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               anchorContext,
               session: _session,
               layerId: layerId,
+            ),
+            onOpenCameraPath: (anchorContext) => showCameraPathSettings(
+              anchorContext,
+              _session.appSettings.setCameraPathSettings,
             ),
             // ONE law, two readers: the rail asks whether to go red, the
             // popover asks by how much, and both get the answer from
@@ -881,15 +918,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             xsheetRailExtent: widget.xsheetRailExtent,
             timelineFrameAxisOffset: widget.timelineFrameAxisOffset,
             xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
+            timelineLayerAxisOffset: widget.timelineLayerAxisOffset,
+            xsheetLayerAxisOffset: widget.xsheetLayerAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
+            laneGraphs: widget.laneGraphs,
+            laneGraphVerbs: widget.laneGraphVerbs,
+            // Live, for the reason the twirls' read below is.
+            laneGraphsNow: () => _session.railView.laneGraphs.value,
+            laneGraphLineOf: (key) =>
+                timelineLaneGraphLine(key, session: _session),
             // LIVE, as the hook asks: the widget's set is the one this build
-            // was handed, and a twirl replaces the session's set with a new
-            // one — so a sweep that toggles row after row inside one frame
-            // (the legend's 「all」, or a press spread across the selection)
-            // read every row it had already turned as still unturned.
-            laneOpenOf: (id) =>
-                _session.railView.expandedLaneLayerIds.value.contains(id),
+            // was handed — so a sweep that toggles row after row inside one
+            // frame (the legend's 「all」, or a press spread across the
+            // selection) read every row it had already turned as still
+            // unturned. ↩️It read the session's set, which a twirl replaced
+            // at once until the twirl was the row's (F-360): the set is read
+            // back off the document when a step lands, and the legend's
+            // 「all」 is one step.
+            laneOpenOf: _session.layerSwitches.isLayerLanesOpen,
             laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             onToggleLayerLanes: widget.onToggleLayerLanes,
@@ -920,6 +967,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.
+            // What its legend opens, for a key on this panel (I-40).
+            onLegendMenus: (menus) =>
+                _session.railLegends.publish(WorkingPanel.timeline, menus),
             legend: sessionLegendCallbacks(
               _session,
               rowFilter: widget.rowFilter,
@@ -930,11 +980,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onSetBlendModeForDisplayed: _session.layerSwitches.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,
-            // The CAMERA row's union summary (B4): the shared
-            // transform-header union lane, re-derived per row rebuild from
-            // the session's preview-aware camera track.
-            unionLaneForLayer: (layer) =>
-                timelineCameraUnionLane(layer: layer, session: _session),
+            unionLaneForLayer: _cameraUnionLane,
             laneEdit: _laneEdit,
             // A group header's twirl (AE collapse) — Transform or one of the
             // row's effects, told apart by the lane the tap carries.

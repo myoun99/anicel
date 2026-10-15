@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/app_shortcuts.dart';
 import '../helpers/frame_keys.dart';
 import '../helpers/home_page_probes.dart';
 import 'timeline/timeline_cell_probe.dart';
@@ -45,6 +46,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+    await useAnicelKeys(tester);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;

@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_point.dart';
@@ -12,6 +11,7 @@ import '../../models/transform_track.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/transform_box_law.dart';
 import '../input/finger_mode_devices.dart';
+import '../input/hit_gate.dart';
 import '../repaint_props.dart';
 import '../theme/app_theme.dart';
 import '../timeline/memo_token.dart';
@@ -79,11 +79,22 @@ final class RowBoxEdges extends RowBoxScale {
   final RowBoxLanding<Rect> landing;
 }
 
+/// A path's handle at one of a row's position keys, bent at hand (I-89 ④):
+/// the tangent's end the hand takes, standing [at] on the canvas, the end
+/// [behind] the key that follows it, and where the tangent's end is carried
+/// to lands ([landing]).
+typedef RowBoxTangent = ({
+  CanvasPoint at,
+  CanvasPoint behind,
+  RowBoxLanding<CanvasPoint> landing,
+});
+
 /// A ROW's transform box on the canvas — a layer's fx transform, the
 /// camera's frame, an SE name tag — under the one law every box keeps
-/// (F-222): a press takes the cross, a handle, the inside, or outside on
-/// stage the turn ([boxPressAt]), and the box wears the transform tool's
-/// chrome in the accent ([paintBoxChrome], F-222-box-Q5).
+/// (F-222): a press takes the cross, a handle, a path's tangent, the
+/// inside, or outside on stage the turn ([boxPressAt]), and the box wears
+/// the transform tool's chrome in the accent ([paintBoxChrome],
+/// F-222-box-Q5).
 ///
 /// 🗣️유저 2026-10-01: 「기본적으로 ui는 각 대응하는것으로 변환,삭제 등」 —
 /// each grab drives the ONE value it names: the inside the position, a
@@ -98,8 +109,8 @@ final class RowBoxEdges extends RowBoxScale {
 /// ⚠️[claimsCanvas] says whose the empty canvas is. Standing on the row, the
 /// box takes every press under every tool but the two that draw an area on
 /// the empty canvas (F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」):
-/// under those it takes its cross and its corners alone, and the rest falls
-/// to the tool beneath.
+/// under those it takes its cross, its corners and a path's knobs alone, and
+/// the rest falls to the tool beneath.
 class RowTransformBox extends StatefulWidget {
   const RowTransformBox({
     super.key,
@@ -115,6 +126,7 @@ class RowTransformBox extends StatefulWidget {
     this.turn,
     this.turnSpace,
     this.cross,
+    this.tangents = const [],
   });
 
   /// The box on the CANVAS, corner by corner (top-left, top-right,
@@ -178,17 +190,22 @@ class RowTransformBox extends StatefulWidget {
   })?
   cross;
 
+  /// The handles of the row's curved position keys, where the canvas draws
+  /// its path (I-89 ④): a press on one's tangent carries it.
+  final List<RowBoxTangent> tangents;
+
   @override
   State<RowTransformBox> createState() => _RowTransformBoxState();
 }
 
 class _RowTransformBoxState extends State<RowTransformBox> {
-  /// The grab in flight, and the pose and cross it started from — captured
-  /// once: [RowTransformBox.pose] is the grabbed value mid-drag, and
-  /// measuring against it would count every move twice.
+  /// The grab in flight, and the pose, the cross and the tangent it started
+  /// from — captured once: [RowTransformBox.pose] is the grabbed value
+  /// mid-drag, and measuring against it would count every move twice.
   BoxPress? _grab;
   TransformPose? _start;
   CanvasPoint? _crossStart;
+  RowBoxTangent? _tangentStart;
   Offset _press = Offset.zero;
 
   /// The handle a [BoxPress.handle] grab took ([_screenHandles]' index),
@@ -252,10 +269,19 @@ class _RowTransformBoxState extends State<RowTransformBox> {
         : widget.viewport.canvasToViewportOffset(cross.at);
   }
 
+  List<BoxTangentChrome> get _screenTangents => [
+    for (final tangent in widget.tangents)
+      (
+        ahead: widget.viewport.canvasToViewportOffset(tangent.at),
+        behind: widget.viewport.canvasToViewportOffset(tangent.behind),
+      ),
+  ];
+
   BoxPressHit? _pressAt(Offset local) => boxPressAt(
     local,
     anchor: _crossOnScreen,
     handles: _screenHandles,
+    tangents: [for (final tangent in _screenTangents) tangent.ahead],
     inside: (press) =>
         widget.move != null &&
         widget.corners.length >= 3 &&
@@ -276,7 +302,9 @@ class _RowTransformBoxState extends State<RowTransformBox> {
       return true;
     }
     final press = _pressAt(local)?.press;
-    return press == BoxPress.anchor || press == BoxPress.handle;
+    return press == BoxPress.anchor ||
+        press == BoxPress.handle ||
+        press == BoxPress.tangent;
   }
 
   void _begin(DragStartDetails details) {
@@ -296,6 +324,9 @@ class _RowTransformBoxState extends State<RowTransformBox> {
     _startCorners = widget.corners;
     _start = pose;
     _crossStart = widget.cross?.value;
+    _tangentStart = hit?.press == BoxPress.tangent
+        ? widget.tangents[hit!.handle]
+        : null;
     _press = local;
     _commit = null;
     _turned = 0;
@@ -365,14 +396,26 @@ class _RowTransformBoxState extends State<RowTransformBox> {
           from: start.rotationDegrees,
         );
       case BoxPress.anchor:
-        final from = _crossStart!;
-        final travel = _travel(local);
-        _show(
-          widget.cross!.landing,
-          CanvasPoint(x: from.x + travel.x, y: from.y + travel.y),
-          from: from,
-        );
+        _carry(widget.cross!.landing, _crossStart!, local);
+      case BoxPress.tangent:
+        final tangent = _tangentStart!;
+        _carry(tangent.landing, tangent.at, local);
     }
+  }
+
+  /// [from] carried as far as the hand has travelled since the press, shown
+  /// on [landing] — the cross, and a path's tangent.
+  void _carry(
+    RowBoxLanding<CanvasPoint> landing,
+    CanvasPoint from,
+    Offset local,
+  ) {
+    final travel = _travel(local);
+    _show(
+      landing,
+      CanvasPoint(x: from.x + travel.x, y: from.y + travel.y),
+      from: from,
+    );
   }
 
   /// A CORNER's factor: distance from the pivot scales linearly with the
@@ -537,8 +580,9 @@ class _RowTransformBoxState extends State<RowTransformBox> {
   @override
   Widget build(BuildContext context) {
     final corners = _screenCorners;
-    return _BoxPressArea(
-      claims: _claims,
+    // A press the box does not claim falls to the tool beneath.
+    return HitGate(
+      admits: _claims,
       // PEN-13: raw contact tracking for the touch gate — the pan callbacks
       // alone cannot see the finger count.
       child: Listener(
@@ -586,6 +630,7 @@ class _RowTransformBoxState extends State<RowTransformBox> {
                   handles: _screenHandles,
                   anchor: _crossOnScreen,
                 ),
+                tangents: _screenTangents,
                 color: AppColors.accent,
               ),
               // A bare CustomPaint sizes to zero under loose constraints;
@@ -656,46 +701,22 @@ class _BoxPanGestureRecognizer extends OwningPanGestureRecognizer {
   }
 }
 
-/// A hit test that answers only where [claims] says the press is the box's
-/// — so a press it does not claim falls to the tool beneath.
-class _BoxPressArea extends SingleChildRenderObjectWidget {
-  const _BoxPressArea({required this.claims, super.child});
-
-  final bool Function(Offset local) claims;
-
-  @override
-  _RenderBoxPressArea createRenderObject(BuildContext context) =>
-      _RenderBoxPressArea(claims);
-
-  @override
-  void updateRenderObject(
-    BuildContext context,
-    _RenderBoxPressArea renderObject,
-  ) {
-    renderObject.claims = claims;
-  }
-}
-
-class _RenderBoxPressArea extends RenderProxyBox {
-  _RenderBoxPressArea(this.claims);
-
-  bool Function(Offset local) claims;
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
-      size.contains(position) &&
-      claims(position) &&
-      super.hitTest(result, position: position);
-}
-
 class _RowBoxPainter extends CustomPainter with RepaintOnProps {
-  const _RowBoxPainter({required this.chrome, required this.color});
+  const _RowBoxPainter({
+    required this.chrome,
+    required this.tangents,
+    required this.color,
+  });
 
   final SelectionTransformChrome chrome;
+  final List<BoxTangentChrome> tangents;
   final Color color;
 
+  /// The paths' tangents under the box's own chrome — the order a press
+  /// takes them in ([boxPressAt]).
   @override
   void paint(Canvas canvas, Size size) {
+    paintBoxTangents(canvas, tangents, color: color);
     paintBoxChrome(canvas, chrome, color: color);
   }
 
@@ -705,5 +726,6 @@ class _RowBoxPainter extends CustomPainter with RepaintOnProps {
     chrome.anchor,
     ByList(chrome.box),
     ByList(chrome.handles),
+    ByList(tangents),
   );
 }

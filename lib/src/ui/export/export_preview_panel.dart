@@ -1,29 +1,21 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../models/app_input_settings.dart' show CanvasTouchDragAction;
-import '../../models/canvas_size.dart';
-import '../../models/canvas_viewport.dart';
-import '../../native/qa_native_engine.dart';
+import '../../models/project_frame_rate.dart';
 import '../../services/media/viewer_document.dart';
 import '../brush/brush_canvas_panel.dart';
-import '../brush/brush_edit_cache_invalidation_sink.dart';
-import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_pages_painter.dart';
 import '../editor_session_manager.dart';
-import '../effective_device_pixel_ratio.dart';
+import '../media/document_preview_panel.dart';
 import '../media/media_run.dart';
 import '../media/page_rasters.dart';
-import '../media/viewer_raster_budget.dart';
-import '../media/viewer_render_tier.dart';
+import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_sound.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/page_turn_strip.dart';
-import '../widgets/static_raster.dart';
 import '../widgets/transport_bar.dart';
 import 'export_preview_document.dart';
 
@@ -97,48 +89,26 @@ class ExportPreviewPanel extends StatefulWidget {
 }
 
 class ExportPreviewPanelState extends State<ExportPreviewPanel>
+    with TickerProviderStateMixin
     implements MediaRunSurface {
   /// Where this panel's pages are counted in the memory census
   /// (`RenderCaches.viewerRasterBytesByViewer`).
   static const String _censusKey = 'export-preview';
 
-  /// Commit sink required by the panel API; nothing here is ever edited.
-  final BrushEditCacheInvalidationSink _cacheInvalidationSink =
-      BrushEditCacheInvalidationSink();
-
   /// The renders out with the document, for [debugSettle].
   final List<Future<void>> _asks = [];
 
-  late final PageRasters _rasters = PageRasters(
-    budget: ViewerRasterBudget(
-      physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
-    ),
-    document: () => document,
-    distance: (page) => _run.distanceTo(page),
-    rebuild: setState,
-    mounted: () => mounted,
+  late final ViewerPagesAndRun _pagesAndRun = ViewerPagesAndRun(
+    surface: this,
+    sound: ViewerSound.ofSession(widget.session),
     report: (bytes) =>
         widget.session.renderCaches.viewerRasterBytesByViewer[_censusKey] =
             bytes,
   );
-
-  late final MediaRun _run = MediaRun(
-    surface: this,
-    rasters: _rasters,
-    sound: ViewerSound.ofSession(widget.session),
-  );
+  PageRasters get _rasters => _pagesAndRun.rasters;
+  MediaRun get _run => _pagesAndRun.run;
 
   late int _page = widget.page;
-
-  /// The page whose picture is up — the page stood on once its own has
-  /// landed, and until then the one that was up before it.
-  ///
-  /// A hand running along the track passes frames faster than they render;
-  /// the picture stays on the last one drawn rather than going blank
-  /// between them, and the transport says which frame is stood on. (A RUN
-  /// never shows it: the playhead does not reach a frame that is not
-  /// there — [MediaRun].)
-  int? _drawn;
 
   @override
   void initState() {
@@ -151,33 +121,26 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     super.didUpdateWidget(oldWidget);
     final was = oldWidget.document;
     final now = widget.document;
-    final sizeBefore = was?.pageSize(_pageIn(was, _page));
     _page = _pageIn(now, widget.page);
     if (was?.subject != now?.subject || was?.look != now?.look) {
-      _heardAnother(
-        sameSheet:
-            was?.subject == now?.subject &&
-            sizeBefore == now?.pageSize(_page),
-      );
+      _heardAnother();
     }
     if (!widget.enabled && _run.playing) {
       _run.stop();
     }
   }
 
-  /// The document is another one. The SAME SHEET drawn another way — one
-  /// subject, a setting changed or another row's drawing stood on, at the
-  /// size it was — keeps the picture that is up until the new one lands
-  /// ([PageRasters.changedLook]). Another subject, or a sheet of another
-  /// size, is another thing to look at, and nothing of the last is kept.
-  void _heardAnother({required bool sameSheet}) {
+  /// The document is another one — another subject, or the same one drawn
+  /// another way: nothing of the last is kept, and the panel says it is
+  /// loading until a page of this one lands ([_pictureUp]).
+  ///
+  /// ↩️The same sheet drawn another way kept the picture that was up until
+  /// the new one landed — F-315 (유저 2026-10-08) asked for the loading
+  /// widget in its place: 「준비안된상태면 지금 이전그림 보여주는데 그게아니라
+  /// … 로딩창같은거 해당패널중앙에 위젯 띄우도록」.
+  void _heardAnother() {
     _run.stop();
-    if (sameSheet) {
-      _rasters.changedLook(showing: _drawn);
-    } else {
-      _rasters.clear();
-    }
-    _drawn = null;
+    _rasters.clear();
   }
 
   @override
@@ -197,6 +160,13 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       : page.clamp(0, document.pageCount - 1);
 
   // --- The run's surface ([MediaRunSurface]) -------------------------------
+
+  @override
+  TickerProvider get vsync => this;
+
+  @override
+  ProjectFrameRate get frameRate =>
+      widget.session.projectSettings.projectFrameRate;
 
   /// The document as the page cache and the run ask it — each render asked
   /// of it remembered until it answers ([debugSettle]).
@@ -256,18 +226,14 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     checkered: widget.document?.opensAlpha ?? false,
   );
 
-  /// The picture that is up: the page's own; until it lands, the last one
-  /// drawn ([_drawn]); and across a change of look, the one held over.
-  ui.Image? _pictureUp() {
-    final own = _rasters.imageOf(_page);
-    if (own != null) {
-      _drawn = _page;
-      return own;
-    }
-    final drawn = _drawn;
-    return (drawn == null ? null : _rasters.imageOf(drawn)) ??
-        _rasters.heldOver;
-  }
+  /// The picture that is up: the page stood on, at whatever scale it
+  /// landed — and none until it lands, while the panel says it is loading
+  /// ([ViewerPageLoading]).
+  ///
+  /// ↩️Until it landed, the last page drawn stood in for it, so a hand
+  /// running along the track saw the last frame that had landed (F-315: a
+  /// press on 「다음」 showed the drawing before).
+  ui.Image? _pictureUp() => _rasters.imageOf(_page);
 
   // --- What the panel wears ------------------------------------------------
 
@@ -309,78 +275,22 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
     );
   }
 
-  /// The page stood on, asked for at the pixels the view shows it at —
-  /// never more than the file has (100% is a pixel of the file) — and the
-  /// picture that is up meanwhile ([_drawn]).
-  List<({Rect rect, ui.Image? image})> _pictures(
-    BuildContext context,
-    CanvasViewport viewport,
-    ExportPreviewDocument document,
-  ) {
-    final size = document.pageSize(_page);
-    final scale = math.min(
-      1.0,
-      viewerRenderScaleFor(
-        CanvasZoomScale.of(context).display(viewport.zoom),
-        size,
-      ),
-    );
-    _rasters.scale = scale;
-    final up = _pictureUp();
-    _rasters.shown = {_page, ?_drawn};
-    // ONE ask out at a time, and it is the latest: a hand running along
-    // the track passes frames nobody will look at, and every one of them
-    // rendered keeps the frame it stops on waiting.
-    if (!_rasters.rendering) {
-      _rasters.ensureRendered(_page, scale);
-    }
-    _run.fillBuffer();
-    return [(rect: Offset.zero & size, image: up)];
-  }
-
   @override
   Widget build(BuildContext context) {
     final document = widget.document;
-    final paper = document == null
-        ? null
-        : Offset.zero & document.pageSize(_page);
-    final canvas = paper?.size ?? const Size(640, 360);
-    return BrushCanvasPanel(
-      // The panel keeps the view, and a view nobody has framed is a fit of
-      // the page ([BrushCanvasPanel.unframedFit]): a page of another size
-      // is a panel that has not been framed yet.
-      key: ValueKey<Size?>(paper?.size),
-      coordinator: null,
-      availableFrameKeys: const [],
-      cacheInvalidationSink: _cacheInvalidationSink,
-      canvasSize: CanvasSize(
-        width: canvas.width.ceil().clamp(1, 1 << 14).toInt(),
-        height: canvas.height.ceil().clamp(1, 1 << 14).toInt(),
-      ),
-      unframedFit: paper,
-      fitFocusRect: paper,
-      viewLimit: paper,
-      // The paper rule: a document is not turned.
-      allowViewRotation: false,
-      // Nothing here is drawn on: a press moves the page.
-      toolCursorsEnabled: false,
-      runsTheSelectedTool: false,
-      oneFingerAction: CanvasTouchDragAction.navigate,
-      canvasBase: true,
-      hasContentToView: document != null,
+    return DocumentPreviewPanel(
+      keyPrefix: 'export-preview',
+      pagesAndRun: _pagesAndRun,
+      document: document,
+      page: _page,
+      nothing: _nothing(),
+      ground: document?.opensAlpha ?? false
+          ? ViewportPageGround.checker
+          : ViewportPageGround.none,
       pageStrip: _pageStrip(document),
       transport: _transport(context, document),
-      documentName: document == null ? null : widget.fileName,
+      documentName: widget.fileName,
       documentAbsent: widget.fileAbsent,
-      contentOverride: (context, viewport) => Stack(
-        children: [
-          Positioned.fill(
-            child: document == null
-                ? _nothing()
-                : _picture(context, viewport, document),
-          ),
-        ],
-      ),
     );
   }
 
@@ -391,28 +301,6 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       widget.nothingToShow,
       key: const ValueKey<String>('export-preview-empty'),
       place: EmptyStatePlace.stage,
-    ),
-  );
-
-  /// The page, drawn through the view — the viewer's shape: a picture that
-  /// changes when it is paged or panned and not otherwise.
-  Widget _picture(
-    BuildContext context,
-    CanvasViewport viewport,
-    ExportPreviewDocument document,
-  ) => StaticRaster(
-    debugLabel: 'export-preview-page',
-    child: CustomPaint(
-      key: const ValueKey<String>('export-preview-page'),
-      painter: ViewportPagesPainter(
-        pages: _pictures(context, viewport, document),
-        ground: document.opensAlpha
-            ? ViewportPageGround.checker
-            : ViewportPageGround.none,
-        viewport: viewport,
-        effectiveRatio: EffectiveDevicePixelRatio.of(context),
-      ),
-      child: const SizedBox.expand(),
     ),
   );
 }

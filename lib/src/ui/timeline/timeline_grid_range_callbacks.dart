@@ -2,8 +2,9 @@ import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_frame_range_gesture.dart';
 import '../../models/timeline_frame_range.dart';
-import 'timeline_row_cross_offset.dart';
+import 'timeline_row_edges.dart';
 import 'timeline_row_span_resolver.dart';
+import 'timeline_section_runs.dart' show timelineRowDeltaAt;
 
 /// 🚨★★★ONE LAW FOR BOTH GRIDS' RANGE GESTURES.
 ///
@@ -30,8 +31,8 @@ import 'timeline_row_span_resolver.dart';
 /// maps onto the display rows exactly like the move drags do.
 TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
   required TimelineFrameRangeHooks rangeHooks,
-  required double rowExtent,
   required List<TimelineDisplayRow> Function() dragRows,
+  required TimelineRowEdges Function() dragEdges,
   required TimelineRangeMoveRowResolver rangeMove,
   void Function(TimelineRowAddress row)? onGripTaken,
   void Function(TimelineRowAddress row)? onGripReleased,
@@ -48,13 +49,9 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
         return;
       }
       final rows = dragRows();
-      // R9 #25: the gesture hands raw pixels; the grid's rows are one
-      // height, so the uniform resolve is right — with the heights the
-      // grid paints, where they are known.
-      final headRowDelta = uniformRowDeltaForCrossOffset(
-        crossOffset: headCrossOffset,
-        rowExtent: rowExtent,
-      );
+      // R9 #25: raw pixels in, resolved where the grid paints its rows.
+      final headRowDelta =
+          timelineRowDeltaAt(rows, dragEdges(), row, headCrossOffset);
       final head = headRowDelta == 0
           ? null
           : resolveSelectionSpanHead(
@@ -106,8 +103,8 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
 TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
   required TimelineLaneRangeHooks hostLaneRange,
   required TimelineFrameRangeHooks? rangeHooks,
-  required double rowExtent,
   required List<TimelineDisplayRow> Function() dragRows,
+  required TimelineRowEdges Function() dragEdges,
   void Function(TimelineRowAddress row)? onGripTaken,
   void Function(TimelineRowAddress row)? onGripReleased,
 }) {
@@ -115,11 +112,12 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
     selection: hostLaneRange.selection,
     onSelectUpdate: (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
       final rows = dragRows();
-      // R9 #25 on the lane family: raw pixels in, resolved with THIS
-      // grid's uniform row pitch.
-      final headRowDelta = uniformRowDeltaForCrossOffset(
-        crossOffset: headCrossOffset,
-        rowExtent: rowExtent,
+      // R9 #25 on the lane family: raw pixels in, resolved the same way.
+      final headRowDelta = timelineRowDeltaAt(
+        rows,
+        dragEdges(),
+        LaneRowAddress(layerId, laneId),
+        headCrossOffset,
       );
       final escalation = rangeHooks == null
           ? null

@@ -4,6 +4,7 @@ import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
+import 'layer_pose_matrix.dart' show LayerPlacement;
 
 /// Canvas space → the camera's OUTPUT space: output center = pose center,
 /// one output pixel covers `1 / (pose.zoom · outputSize/cameraFrameSize)`
@@ -30,4 +31,44 @@ Matrix4 cameraProjectionMatrix(
     ..multiply(Matrix4.diagonal3Values(scale, scale, 1))
     ..multiply(Matrix4.rotationZ(-pose.rotationDegrees * math.pi / 180))
     ..multiply(Matrix4.translationValues(-pose.center.x, -pose.center.y, 0));
+}
+
+/// Whether [cameraProjectionMatrix] moves every canvas pixel onto an output
+/// pixel whole — a translation by whole pixels, and nothing else — so a
+/// render through it lays an image down texel for texel.
+bool cameraMovesPixelsWhole(
+  CameraPose pose,
+  CanvasSize cameraFrameSize, {
+  CanvasSize? outputSize,
+}) {
+  final projection = cameraProjectionMatrix(
+    pose,
+    cameraFrameSize,
+    outputSize: outputSize,
+  );
+  final x = projection.storage[12];
+  final y = projection.storage[13];
+  return x == x.roundToDouble() &&
+      y == y.roundToDouble() &&
+      projection == Matrix4.translationValues(x, y, 0);
+}
+
+/// The camera's SHOT → canvas: where a point of the frame the camera shows
+/// lies on the canvas — [cameraProjectionMatrix] run backwards, as the
+/// placement a row's artwork takes ([LayerPlacement]).
+///
+/// 🗣️I-67-Q1 (유저 2026-10-10: 「이름표를 카메라 화면 기준으로 읽는다」): what
+/// stands in the shot rather than on the canvas — an SE row's name tag —
+/// is drawn through it, so the camera's moves, zoom and turn leave it
+/// where it stands on screen.
+LayerPlacement shotPlacement(CameraPose pose, CanvasSize cameraFrameSize) {
+  final back = cameraProjectionMatrix(pose, cameraFrameSize)..invert();
+  return LayerPlacement(
+    back.entry(0, 0),
+    back.entry(1, 0),
+    back.entry(0, 1),
+    back.entry(1, 1),
+    back.entry(0, 3),
+    back.entry(1, 3),
+  );
 }

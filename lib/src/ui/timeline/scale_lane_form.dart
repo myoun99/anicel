@@ -5,7 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/transform_pose.dart' show uniformScale;
 import '../../models/transform_values.dart' show scaleCarriedBy;
-import '../text/trimmed_decimal.dart';
+import '../text/readout_text.dart';
 
 /// WHAT A ROW'S SCALE LANE HOLDS — and so how it is printed, typed and
 /// scrubbed. The three are one law, kept in one place: what the lane
@@ -18,8 +18,12 @@ import '../text/trimmed_decimal.dart';
 sealed class ScaleLaneForm {
   const ScaleLaneForm();
 
-  /// [scale] as the lane's value column prints it.
+  /// [scale] as the lane's value column prints it — its [numbers], each.
   String label(CanvasPoint scale);
+
+  /// The numbers [scale] is to the lane, in the units it prints them in:
+  /// what [label] writes, and what a header graph draws (I-89 ③).
+  List<double> numbers(CanvasPoint scale);
 
   /// What [input], typed where the lane showed [current], makes the scale —
   /// null when it is not a scale this form holds.
@@ -63,7 +67,11 @@ final class OneZoom extends ScaleLaneForm {
   const OneZoom();
 
   @override
-  String label(CanvasPoint scale) => '${formatTrimmedDecimal(scale.x * 100)}%';
+  String label(CanvasPoint scale) =>
+      '${columnValueText(numbers(scale).single)}%';
+
+  @override
+  List<double> numbers(CanvasPoint scale) => [scale.x * 100];
 
   @override
   CanvasPoint? typed(
@@ -82,7 +90,7 @@ final class OneZoom extends ScaleLaneForm {
     final percent = _percent(label);
     return percent == null
         ? null
-        : '${formatTrimmedDecimal(percent + dragDelta.dx * _percentPerPixel)}%';
+        : '${columnValueText(percent + dragDelta.dx * _percentPerPixel)}%';
   }
 
   @override
@@ -96,9 +104,13 @@ final class TwoScales extends ScaleLaneForm {
   const TwoScales();
 
   @override
-  String label(CanvasPoint scale) =>
-      '${formatTrimmedDecimal(scale.x * 100)}, '
-      '${formatTrimmedDecimal(scale.y * 100)}%';
+  String label(CanvasPoint scale) {
+    final [across, down] = numbers(scale);
+    return '${columnValueText(across)}, ${columnValueText(down)}%';
+  }
+
+  @override
+  List<double> numbers(CanvasPoint scale) => [scale.x * 100, scale.y * 100];
 
   /// ONE number is both axes (`150` — the layer at one and a half its
   /// size). TWO are across and down; [linked], the one the editor's two
@@ -107,8 +119,8 @@ final class TwoScales extends ScaleLaneForm {
   /// neither, there is no one step to follow: they are what was typed.
   ///
   /// ⚠️「As it was shown」 is asked of the PRINT, not of the number: the lane
-  /// prints 133.3 for a scale of 1.3333…, and the box that was not touched
-  /// hands 133.3 back. The carry is still taken from the scale itself.
+  /// prints 133.33 for a scale of 1.3333…, and the box that was not touched
+  /// hands 133.33 back. The carry is still taken from the scale itself.
   @override
   CanvasPoint? typed(
     String input, {
@@ -143,7 +155,7 @@ final class TwoScales extends ScaleLaneForm {
   }
 
   static bool _printsAs(double percent, double scale) =>
-      formatTrimmedDecimal(percent) == formatTrimmedDecimal(scale * 100);
+      columnValueText(percent) == columnValueText(scale * 100);
 
   /// ONE drag scrubs ONE number, as After Effects' two numbers are each
   /// scrubbed on their own: across drives the scale across, down the scale
@@ -164,8 +176,8 @@ final class TwoScales extends ScaleLaneForm {
     final alongAcross = dragDelta.dx.abs() >= dragDelta.dy.abs();
     final dx = alongAcross ? dragDelta.dx : 0.0;
     final dy = alongAcross ? 0.0 : dragDelta.dy;
-    return '${formatTrimmedDecimal(across + dx * _percentPerPixel)}, '
-        '${formatTrimmedDecimal(down + dy * _percentPerPixel)}%';
+    return '${columnValueText(across + dx * _percentPerPixel)}, '
+        '${columnValueText(down + dy * _percentPerPixel)}%';
   }
 
   @override

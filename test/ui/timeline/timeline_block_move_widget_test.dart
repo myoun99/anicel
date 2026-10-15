@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -17,17 +18,21 @@ import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformPropertyLanes;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+
+import '../../helpers/the_classic_rail.dart';
+import '../../helpers/named_finders.dart';
 
 /// UI-R8: the row-wide range gesture layer — a cell drag SELECTS a frame
 /// range, a drag starting inside the selection MOVES it (frame steps along
@@ -57,10 +62,12 @@ void main() {
     required ValueNotifier<int> cursor,
     required TimelineFrameRangeHooks rangeHooks,
     ValueChanged<int>? onSelectFrame,
-    // Classic geometry: this file's pan distances assume 48×52 cells.
+    // Classic geometry: this file's pan distances assume 48×52 cells,
+    // beside the rail they were measured by ([classicRailWidth]).
     TimelineGridMetrics metrics = const TimelineGridMetrics(
       frameCellWidth: 48,
       layerRowHeight: 52,
+      layerControlsWidth: classicRailWidth,
     ),
   }) {
     return MaterialApp(
@@ -152,7 +159,7 @@ metrics: metrics,
 
     for (final id in ['layer-a', 'se-1', 'cam-1', 'instr-1']) {
       expect(
-        find.byKey(ValueKey<String>('timeline-range-gesture-$id')),
+        find.named('timeline-range-gesture-$id'),
         findsOneWidget,
         reason: '$id must carry the gesture layer',
       );
@@ -162,9 +169,7 @@ metrics: metrics,
     // reported bug: selection could extend INTO SE but never start
     // there). Start on an EMPTY cell (past the block at [0,4) — the SE
     // writing overlays sit above the gesture layer over the block span).
-    final seLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-se-1'),
-    );
+    final seLayer = find.named('timeline-range-gesture-se-1');
     final gesture = await tester.startGesture(
       tester.getTopLeft(seLayer) + const Offset(24 + 5 * 48, 26),
       kind: PointerDeviceKind.mouse,
@@ -200,9 +205,7 @@ metrics: metrics,
       ),
     );
 
-    final row = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final row = find.named('timeline-range-gesture-layer-a');
     final gesture = await tester.startGesture(
       tester.getTopLeft(row) + const Offset(24 + 5 * 48, 26),
       kind: PointerDeviceKind.stylus,
@@ -248,9 +251,7 @@ metrics: metrics,
       ),
     );
 
-    final anchorRow = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final anchorRow = find.named('timeline-range-gesture-layer-a');
     final gesture = await tester.startGesture(
       tester.getTopLeft(anchorRow) + const Offset(24 + 5 * 48, 26),
       kind: PointerDeviceKind.mouse,
@@ -302,9 +303,7 @@ metrics: metrics,
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final gesture = await tester.startGesture(
       tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26),
       kind: PointerDeviceKind.touch,
@@ -353,9 +352,7 @@ metrics: metrics,
     // ~18px hit slop but UNDER the old ~36px pan slop — exactly the drag
     // the horizontal scroll used to steal (fast big drags selected, slow
     // small ones scrolled: the "random" split this pins away).
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final gesture = await tester.startGesture(
       tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26),
       kind: PointerDeviceKind.stylus,
@@ -410,7 +407,7 @@ lanesForLayer: (_) => [
               const PropertyLaneRow(
                 laneId: 'position',
                 label: 'Position',
-                keyedFrames: {2},
+                keyMarks: {2: KeyMark.linear},
               ),
             ],
 laneRange: TimelineLaneRangeHooks(
@@ -435,6 +432,7 @@ layers: [blockLayer('layer-a')],
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
@@ -462,25 +460,21 @@ metrics: const TimelineGridMetrics(
 
     // Selected key markers ring in ACCENT 1 (UI-R23 #4): the LANE
     // selection covering the key at frame 2 gives the mark its ONLY
-    // border — an unselected mark has none at all since 2026-09-12
-    // (유저: 「외곽선 회색 … 삭제. 그냥 심플하게 바탕색만 남겨서」).
-    Border? markerBorder() {
-      final container = tester.widget<Container>(
-        find
-            .descendant(
-              of: find.byKey(
-                const ValueKey<String>('timeline-lane-key-layer-a-position-2'),
-              ),
-              matching: find.byType(Container),
-            )
-            .first,
-      );
-      return (container.decoration! as BoxDecoration).border as Border?;
-    }
+    // ring — an unselected mark has none at all since 2026-09-12
+    // (유저: 「외곽선 회색 … 삭제. 그냥 심플하게 바탕색만 남겨서」). What a
+    // ring looks like is the marker's own pin
+    // (`union_mark_says_when_members_disagree_test`).
+    bool ringed() => tester
+        .widget<TimelineLaneKeyMarker>(
+          find.byKey(
+            const ValueKey<String>('timeline-lane-key-layer-a-position-2'),
+          ),
+        )
+        .selected;
 
     laneSelection.value = null;
     await tester.pump();
-    expect(markerBorder(), isNull, reason: 'no outline of its own');
+    expect(ringed(), isFalse, reason: 'no outline of its own');
     laneSelection.value = const TimelineLaneSelection(
       layerId: LayerId('layer-a'),
       laneId: 'position',
@@ -488,8 +482,7 @@ metrics: const TimelineGridMetrics(
       endIndexExclusive: 4,
     );
     await tester.pump();
-    expect(markerBorder()!.top.color, AppColors.accent);
-    expect(markerBorder()!.top.width, moreOrLessEquals(4 / 3));
+    expect(ringed(), isTrue);
     // R27 #14: the span BAND no longer lives inside the lane row — it is
     // the cell selection's band, drawn by the cursor overlay. This
     // harness mounts lane bands alone, so only the key ring is visible
@@ -560,15 +553,14 @@ layers: [se1, se2],
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-se-1'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-se-1');
     // Start a MOVE inside the selection, drag toward the sibling row.
     final gesture = await tester.startGesture(
       tester.getTopLeft(gestureLayer) + const Offset(24 + 48, 26),
@@ -621,15 +613,14 @@ layers: [blockLayer('se-1').copyWith(kind: LayerKind.se)],
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-se-1'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-se-1');
     // A TAP inside the selected span (cell 1) now picks it. UI-R22 #2 used
     // to refuse this so that a press inside a selection could start a MOVE
     // without the playhead jumping first — but 유저 08-12 asks the opposite
@@ -714,6 +705,7 @@ layers: [
 metrics: const TimelineGridMetrics(
               frameCellWidth: 48,
               layerRowHeight: 52,
+              layerControlsWidth: classicRailWidth,
             ),
 ),
         ),
@@ -722,7 +714,7 @@ metrics: const TimelineGridMetrics(
 
     Offset pressPoint(String layerId) =>
         tester.getTopLeft(
-          find.byKey(ValueKey<String>('timeline-range-gesture-$layerId')),
+          find.named('timeline-range-gesture-$layerId'),
         ) +
         const Offset(24 + 2 * 48, 26);
 
@@ -795,9 +787,7 @@ metrics: const TimelineGridMetrics(
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     expect(gestureLayer, findsOneWidget);
 
     // Drag from cell 0 two cells right (48px cells): head lands on 2.
@@ -845,9 +835,7 @@ metrics: const TimelineGridMetrics(
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     // Press inside the selected span (cell 1), two cells right.
     final start = tester.getTopLeft(gestureLayer) + const Offset(72, 26);
     final gesture = await tester.startGesture(
@@ -903,9 +891,7 @@ metrics: const TimelineGridMetrics(
     expect(frameOffset(), 0);
     final viewportRect = tester.getRect(frameViewport);
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final start = tester.getTopLeft(gestureLayer) + const Offset(24, 26);
     final gesture = await tester.startGesture(
       start,
@@ -990,9 +976,7 @@ metrics: const TimelineGridMetrics(
     expect(verticalOffset(), 0);
     final viewportRect = tester.getRect(verticalViewport);
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-00'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-00');
     // Press INSIDE the selection (cell 1 of the first row) — a MOVE.
     final start = tester.getTopLeft(gestureLayer) + const Offset(24 + 48, 26);
     final gesture = await tester.startGesture(
@@ -1013,7 +997,7 @@ metrics: const TimelineGridMetrics(
       reason: 'the auto-pan must have scrolled at least one row height',
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-range-gesture-layer-00')),
+      find.named('timeline-range-gesture-layer-00'),
       findsOneWidget,
       reason:
           'the held row is pinned against the window (A5/D42) — '
@@ -1071,9 +1055,7 @@ metrics: const TimelineGridMetrics(
         .pixels;
     final viewportRect = tester.getRect(verticalViewport);
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-00'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-00');
     // Press on an EMPTY cell of the first row (past its block) — a SELECT.
     final start =
         tester.getTopLeft(gestureLayer) + const Offset(24 + 5 * 48, 26);
@@ -1089,7 +1071,7 @@ metrics: const TimelineGridMetrics(
     }
     expect(verticalOffset(), greaterThan(52));
     expect(
-      find.byKey(const ValueKey<String>('timeline-range-gesture-layer-00')),
+      find.named('timeline-range-gesture-layer-00'),
       findsOneWidget,
       reason:
           'the anchor row is pinned — unpinned, its recognizer '
@@ -1129,9 +1111,7 @@ metrics: const TimelineGridMetrics(
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final stylus = await tester.startGesture(
       tester.getTopLeft(gestureLayer) + const Offset(24, 26),
       kind: PointerDeviceKind.stylus,
@@ -1231,9 +1211,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     expect(gestureLayer, findsOneWidget);
 
     // Two frame rows down: head = frame 2. Both distances come from the
@@ -1306,9 +1284,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final rowExtent = XSheetTimelineGrid.defaultMetrics.frameCellWidth;
     final columnExtent = XSheetTimelineGrid.defaultMetrics.layerRowHeight;
     final gesture = await tester.startGesture(
@@ -1367,9 +1343,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final rowY = tester.getTopLeft(gestureLayer).dy + 26;
 
     // A touch fling starts the horizontal coast…
@@ -1418,9 +1392,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final rowY = tester.getTopLeft(gestureLayer).dy + 26;
 
     await tester.flingFrom(Offset(500, rowY), const Offset(-250, 0), 1200);
@@ -1498,9 +1470,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final rowY = tester.getTopLeft(gestureLayer).dy + 26;
 
     // The pen was seen once (a hover pass) BEFORE any scroll existed —
@@ -1562,9 +1532,7 @@ layers: [blockLayer('layer-a'), blockLayer('layer-b', start: 10)],
       ),
     );
 
-    final gestureLayer = find.byKey(
-      const ValueKey<String>('timeline-range-gesture-layer-a'),
-    );
+    final gestureLayer = find.named('timeline-range-gesture-layer-a');
     final rowY = tester.getTopLeft(gestureLayer).dy + 26;
 
     await tester.tapAt(Offset(500, rowY));
@@ -1623,7 +1591,7 @@ lanesForLayer: (_) => [
                 const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: {2, 5},
+                  keyMarks: {2: KeyMark.linear, 5: KeyMark.linear},
                 ),
               ],
 laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
@@ -1642,6 +1610,7 @@ layers: [blockLayer('layer-a')],
 metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
+                layerControlsWidth: classicRailWidth,
               ),
 ),
           ),
@@ -1673,14 +1642,9 @@ metrics: const TimelineGridMetrics(
 
       // The ring proves the marker agrees it is inside the span — the same
       // predicate the stand-down reads.
-      final ringed = tester.widget<Container>(
-        find
-            .descendant(of: keyMarker(2), matching: find.byType(Container))
-            .first,
-      );
       expect(
-        ((ringed.decoration! as BoxDecoration).border! as Border).top.color,
-        AppColors.accent,
+        tester.widget<TimelineLaneKeyMarker>(keyMarker(2)).selected,
+        isTrue,
       );
 
       final laneGesture = find.byKey(
@@ -1797,7 +1761,7 @@ lanesForLayer: (_) => [
                 const PropertyLaneRow(
                   laneId: 'position',
                   label: 'Position',
-                  keyedFrames: {2},
+                  keyMarks: {2: KeyMark.linear},
                 ),
               ],
 laneRange: TimelineLaneRangeHooks(
@@ -1816,6 +1780,7 @@ layers: [blockLayer('layer-a')],
 metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
+                layerControlsWidth: classicRailWidth,
               ),
 ),
           ),
@@ -1891,6 +1856,7 @@ layers: [committed],
 metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
+                layerControlsWidth: classicRailWidth,
               ),
 ),
           ),

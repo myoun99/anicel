@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
@@ -37,10 +38,9 @@ void main() {
     );
     return resolveSeNameTagsAt(
       trackSeLayers: [row],
-      cutStartFrame: 0,
-      localFrameIndex: 3,
-      canvas: canvas,
+      globalFrame: 3,
       cameraFrame: camera,
+      shot: const LayerPlacement.identity(),
     ).single;
   }
 

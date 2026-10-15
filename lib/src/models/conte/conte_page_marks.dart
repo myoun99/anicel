@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect, Size;
 
 import '../../core/contain_rect.dart';
+import '../camera_work_marks.dart';
 import '../project_frame_rate.dart'
     show runningTimeLabel, secondsPlusFramesLabel;
 import '../sheet_marks.dart';
@@ -38,37 +39,20 @@ const int _paper = 0xFFFFFFFF;
 /// 텍스트를 연하게, 작게」).
 const int _blockLength = 0xFF8C8C8C;
 
-/// A camera's first key, frame and label — Storyboard Pro's IN green; its
-/// last key wears OUT's red (유저 2026-09-29: 「스토리보드 프로는 인을
-/// 초록색으로 실루엣이나 텍스트 그리고, 아웃을 빨간색이야」).
-const int _cameraIn = 0xFF3B6D11;
-const int _cameraOut = 0xFFA32D2D;
-
-/// A key between the first and the last: its name and the cross on its
-/// corner, in the sheet's own black (유저 2026-10-01, H55: 「작고
-/// 검정색으로? 그리고 그 색으로 키 색도 바꾸고」). ↩️The name was
-/// 0xFF5F5E5A, the grey the trails still wear.
-const int _cameraBetween = conteInkArgb;
-
-/// The trails a camera's corners draw: a grey at half its strength (유저
-/// 2026-09-30, H47: 「꼭짓점 궤도 좀 더 연하게.(불투명도 낮추는방식)」) —
-/// every printer keeps the alpha, the PDF's too. ⚠️Its own grey, no longer
-/// a key between's ink at half strength: that ink went black (H55), and
-/// the trails stay as light as H47 made them.
-const int _cameraTrail = 0x805F5E5A;
-
-const double _cameraFrameWidth = 1.2;
-const double _cameraTrailWidth = 0.8;
-const double _cameraLabelSize = 8;
-
-/// How far each arm of a key between's cross reaches from its corner, and
-/// how thick it is: small — it has one point to show (H55 「좀 작아도
-/// 알기쉬우니 작고」).
-const double _cameraCrossArm = 2.5;
-const double _cameraCrossWidth = 0.8;
-
-/// How far a key's label sits inside its frame's corner, along both sides.
-const double _cameraLabelInset = 2;
+/// How large the conte writes a camera's work, in points on its paper —
+/// its colours are every surface's ([cameraWorkMarks]).
+const CameraMarkSizes _cameraSizes = CameraMarkSizes(
+  frameWidth: 1.2,
+  trailWidth: 0.8,
+  // Smaller, nearer the canvas's against its frame (유저 2026-10-12: 「IN
+  // OUT 이런 글자 크니까 카메라 출력궤도랑 비슷하게 좀 더 작게」) — ↩️8.
+  labelSize: 6,
+  // A key's cross: small — it has one point to show (H55 「좀 작아도
+  // 알기쉬우니 작고」).
+  crossArm: 2.5,
+  crossWidth: 0.8,
+  labelInset: 2,
+);
 
 /// The length a cut is being dragged to, or null to print what the layout
 /// built (F-88: the conte's numbers follow a cut-length drag).
@@ -445,112 +429,47 @@ int contePictureRenderWidth(
 /// The camera's work written on [cell]'s picture (유저 2026-09-30) — printed
 /// over the picture, and over a live picture again, where it covers it.
 ///
-/// The trail each corner of the frame draws key to key (「궤도는
+/// The trail each corner of the frame draws, the canvas's own (「궤도는
 /// 중앙이아니라 각 꼭짓점 4개 전부야」); the first key's frame in IN's green
 /// and the last's in OUT's red, and no frame for a key between (「첫/끝 키
-/// 말고 중간키는 실루엣을 안그려」); every label at its frame's top-left
-/// corner, turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」) —
-/// a key between is labelled where its frame would be (「원래
-/// 위치해야할곳에 위치시키고 틀만 안보이게」), its corner crossed there in
-/// black (H55). Labels may overlap (「글자 겹치는거 어쩔수없는거니까」).
+/// 말고 중간키는 실루엣을 안그려」, kept 2026-10-12 — I-89-Q14 B); every key
+/// crossed at its frame's centre and labelled at its top-left corner,
+/// turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」), as the
+/// canvas and the export write a key (유저 2026-10-12: 「카메라
+/// 출력궤도랑 완전통일해서 … 중간키들도 표시하고」 · 「아까처럼 중앙에 두자 …
+/// 즉 법 통일」) — a key between where its frame would be (「원래
+/// 위치해야할곳에 위치시키고 틀만 안보이게」). Labels may overlap (「글자
+/// 겹치는거 어쩔수없는거니까」).
+///
+/// ↩️Only a named key between was crossed, at its corner (유저 2026-10-01,
+/// H55: 「s가 어딨는지 … 알기어렵잖아. 그래서 무언가 s의 꼭짓점에
+/// 표시하고싶어서. 해당 위치 꼭짓점에 십자가」) — its label now stands at
+/// that corner, by the trail the corner draws.
 Iterable<SheetMark> conteCameraMarksOf(
   ContePlacedCell cell,
   ConteSheetMetrics m,
-) sync* {
+) {
   final work = cell.source.camera;
-  if (work == null) return;
+  if (work == null) return const <SheetMark>[];
   final shown = contePictureOf(cell, m).frame;
   final scale = shown.width / work.field.width;
   List<Offset> onPaper(List<Offset> points) => [
     for (final point in points)
       shown.topLeft + (point - work.field.topLeft) * scale,
   ];
-  for (final trail in work.trails) {
-    yield SheetStroke(
-      SheetPaintLayer.picture,
-      points: onPaper(trail),
-      argb: _cameraTrail,
-      width: _cameraTrailWidth,
-    );
-  }
-  for (final key in work.keys) {
-    final corners = onPaper(key.corners);
-    final argb = switch (key.role) {
-      ConteCameraKeyRole.first => _cameraIn,
-      ConteCameraKeyRole.last => _cameraOut,
-      ConteCameraKeyRole.between => _cameraBetween,
-    };
-    if (key.role != ConteCameraKeyRole.between) {
-      yield SheetStroke(
-        SheetPaintLayer.picture,
-        points: corners,
-        argb: argb,
-        width: _cameraFrameWidth,
-        closed: true,
-      );
-    }
-    if (key.label case final label?) {
-      if (key.role == ConteCameraKeyRole.between) {
-        yield* _cameraCross(corners);
-      }
-      yield _cameraLabel(label, corners, argb);
-    }
-  }
-}
-
-/// The corner a key between's name stands at, crossed — where a trail runs
-/// straight through it, nothing else says where on the trail the name
-/// belongs (유저 2026-10-01, H55: 「s가 어딨는지 … 알기어렵잖아. 그래서
-/// 무언가 s의 꼭짓점에 표시하고싶어서. 해당 위치 꼭짓점에 십자가」). It
-/// goes with the name, and turns with the frame as the name does.
-Iterable<SheetStroke> _cameraCross(List<Offset> corners) sync* {
-  final (:right, :down, turn: _) = _frameAxes(corners);
-  for (final arm in [right, down]) {
-    yield SheetStroke(
-      SheetPaintLayer.picture,
-      points: [
-        corners[0] - arm * _cameraCrossArm,
-        corners[0] + arm * _cameraCrossArm,
-      ],
-      argb: _cameraBetween,
-      width: _cameraCrossWidth,
-    );
-  }
-}
-
-/// Which way the frame [corners] draw runs from its top-left corner —
-/// along its top side ([right]) and down its left ([down]), at [turn]
-/// radians — for what stands square to a turned frame.
-({Offset right, Offset down, double turn}) _frameAxes(List<Offset> corners) {
-  final along = corners[1] - corners[0];
-  final turn = math.atan2(along.dy, along.dx);
-  return (
-    right: Offset(math.cos(turn), math.sin(turn)),
-    down: Offset(-math.sin(turn), math.cos(turn)),
-    turn: turn,
-  );
-}
-
-/// [label] at the top-left corner of the frame [corners] draw, inside it
-/// and turned with it.
-SheetWords _cameraLabel(String label, List<Offset> corners, int argb) {
-  final along = corners[1] - corners[0];
-  final (:right, :down, :turn) = _frameAxes(corners);
-  final at = corners[0] + (right + down) * _cameraLabelInset;
-  return SheetWords(
-    SheetPaintLayer.picture,
-    text: label,
-    slot: Rect.fromLTWH(
-      at.dx,
-      at.dy,
-      math.max(0, along.distance - 2 * _cameraLabelInset),
-      _cameraLabelSize * 1.25,
-    ),
-    size: _cameraLabelSize,
-    argb: argb,
-    bold: true,
-    fit: SheetWordsFit.oneLine,
-    turn: turn,
+  return cameraWorkMarks(
+    trails: [for (final trail in work.trails) onPaper(trail)],
+    keys: [
+      for (final key in work.keys)
+        CameraMarkedKey(
+          corners: onPaper(key.corners),
+          role: key.role,
+          framed: key.role != CameraKeyRole.between,
+          label: key.label,
+        ),
+    ],
+    sizes: _cameraSizes,
+    layer: SheetPaintLayer.picture,
   );
 }
 

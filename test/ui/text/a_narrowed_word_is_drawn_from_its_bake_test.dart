@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/straight_rgba_image.dart';
+import 'package:anicel/src/ui/quiet_turns.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
@@ -43,13 +46,35 @@ class _WordPainter extends CustomPainter with RepaintOnWordBakes {
   final ValueNotifier<int> painted;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  void paintWords(Canvas canvas, Size size) {
     painted.value += 1;
     paintFittedText(canvas, word, Offset.zero, fit);
   }
 
   @override
   bool shouldRepaint(_WordPainter oldDelegate) => false;
+}
+
+/// Paints [word] once — the paint that asks for its bake — and nothing
+/// after it.
+class _PaintsOnce extends CustomPainter with RepaintOnWordBakes {
+  _PaintsOnce(this.word, this.fit);
+
+  final TextPainter word;
+  final WordFit fit;
+  bool _painted = false;
+
+  @override
+  void paintWords(Canvas canvas, Size size) {
+    if (_painted) {
+      return;
+    }
+    _painted = true;
+    paintFittedText(canvas, word, Offset.zero, fit);
+  }
+
+  @override
+  bool shouldRepaint(_PaintsOnce oldDelegate) => false;
 }
 
 /// The colour of the most inked pixel [paint] leaves on a [size] canvas.
@@ -78,6 +103,24 @@ Future<Color> _inkOf(void Function(Canvas) paint, Size size) async {
 }
 
 String _squash(String s) => s.replaceAll(RegExp(r'\s+'), '');
+
+/// The body of class [name] in [source], braces matched.
+String _classBody(String source, String name) {
+  final head = RegExp('class $name\\b').firstMatch(source)!;
+  final open = source.indexOf('{', head.end);
+  var depth = 0;
+  for (var i = open; i < source.length; i += 1) {
+    if (source[i] == '{') {
+      depth += 1;
+    } else if (source[i] == '}') {
+      depth -= 1;
+      if (depth == 0) {
+        return source.substring(open, i + 1);
+      }
+    }
+  }
+  return source.substring(open);
+}
 
 void main() {
   testWidgets('a word narrowed under the legible size is drawn from its '
@@ -186,6 +229,223 @@ void main() {
     });
   });
 
+  testWidgets('🚨a landing paints again the painter that drew that word '
+      'from a stand-in — and no other word painter', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const fit = (x: 0.25, y: 1.0);
+    final standing = ValueNotifier(0);
+    final waiting = ValueNotifier(0);
+    // One painter whose word has landed already…
+    final standingPainter = _WordPainter(
+      _word('たって', fontSize: 12),
+      fit,
+      standing,
+    );
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: standingPainter,
+        ),
+      ),
+    );
+    await pumpUntilAWordBakeLands(tester);
+    await tester.pump();
+    // …and one beside it whose word has not.
+    await tester.pumpWidget(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CustomPaint(size: const Size(40, 20), painter: standingPainter),
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(_word('まつ', fontSize: 12), fit, waiting),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    final stood = standing.value;
+    final waited = waiting.value;
+
+    await pumpUntilAWordBakeLands(tester);
+
+    expect(
+      waiting.value,
+      waited + 1,
+      reason: 'fixture: the painter that drew the word from a stand-in '
+          'paints it again from its bake',
+    );
+    expect(
+      standing.value,
+      stood,
+      reason: '↩️every word painter in the app painted again on every '
+          "landing — the playhead's number landing on each frame of a first "
+          'pass through a cut',
+    );
+  });
+
+  testWidgets('🚨a landing wakes the waiters of THAT word — a painter waiting '
+      'for another word stays as it is', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // The uploads are held, so which word lands first is the test's to say.
+    final held = <({int width, Completer<ui.Image> image, Uint8List rgba})>[];
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          final image = Completer<ui.Image>();
+          held.add((width: width, image: image, rgba: rgba));
+          return image.future;
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+    Future<void> release(int index, int height) async {
+      final upload = held[index];
+      debugRawRgbaUploader = null;
+      final image = uploadRawRgba(
+        upload.rgba,
+        width: upload.width,
+        height: (upload.rgba.length ~/ 4) ~/ upload.width,
+      );
+      upload.image.complete(await image);
+    }
+
+    const fit = (x: 0.25, y: 1.0);
+    final short = ValueNotifier(0);
+    final long = ValueNotifier(0);
+    await tester.pumpWidget(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(_word('あ', fontSize: 12), fit, short),
+              ),
+            ),
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(_word('かぜかぜ', fontSize: 12), fit, long),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    for (var i = 0; i < 400 && held.length < 2; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(held.length, 2, reason: 'fixture: both words reached the upload');
+    final narrow = held[0].width < held[1].width ? 0 : 1;
+    final shortBefore = short.value;
+    final longBefore = long.value;
+
+    await tester.runAsync(() => release(narrow, 0));
+    await pumpUntilAWordBakeLands(tester);
+
+    expect(
+      short.value,
+      shortBefore + 1,
+      reason: 'fixture: the short word landed, and its painter painted it',
+    );
+    expect(
+      long.value,
+      longBefore,
+      reason: 'the painter still waiting for the long word is not painted '
+          'again for another word\'s landing',
+    );
+    await tester.runAsync(() => release(1 - narrow, 0));
+    await pumpUntilAWordBakeLands(tester);
+    expect(long.value, longBefore + 1, reason: 'and is, for its own');
+  });
+
+  testWidgets('🚨a waiter for another narrowing of a word whose bake came to '
+      'nothing is woken, and asks for its own', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    // The first upload is refused; the rest go through.
+    var uploads = 0;
+    Future<ui.Image> refuseTheFirst(
+      Uint8List rgba, {
+      required int width,
+      required int height,
+      int? targetWidth,
+      int? targetHeight,
+    }) {
+      uploads += 1;
+      if (uploads == 1) {
+        return Future.error(StateError('refused'));
+      }
+      debugRawRgbaUploader = null;
+      final image = uploadRawRgba(rgba, width: width, height: height);
+      debugRawRgbaUploader = refuseTheFirst;
+      return image;
+    }
+
+    debugRawRgbaUploader = refuseTheFirst;
+    addTearDown(() => debugRawRgbaUploader = null);
+    final word = _word('しずく', fontSize: 12);
+    const first = (x: 0.25, y: 1.0);
+    const second = (x: 0.5, y: 1.0);
+    // Two painters of one word at two narrowings: the first's bake goes
+    // ahead, the second waits on the word.
+    await tester.pumpWidget(
+      Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RepaintBoundary(
+              child: CustomPaint(
+                size: const Size(40, 20),
+                painter: _WordPainter(word, first, ValueNotifier(0)),
+              ),
+            ),
+            RepaintBoundary(
+              child: CustomPaint(
+                key: const ValueKey<String>('second'),
+                size: const Size(40, 20),
+                painter: _WordPainter(word, second, ValueNotifier(0)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    for (var i = 0; i < 400 && uploads < 2; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(
+      uploads,
+      2,
+      reason: 'the first narrowing was refused, and the second painter, '
+          'woken, asked for its own',
+    );
+    await pumpUntilAWordBakeLands(tester);
+    expect(
+      find.byKey(const ValueKey<String>('second')),
+      paints..drawImageRect(
+        source: Rect.fromLTWH(
+          0,
+          0,
+          (word.width * second.x).ceil() + 2.0,
+          word.height.ceil() + 2.0,
+        ),
+      ),
+      reason: 'and draws the word from it',
+    );
+  });
+
   testWidgets('a word bakes one narrowing at a time — a zoom passes the '
       'rest on the bake it has', (tester) async {
     tester.view.devicePixelRatio = 1;
@@ -224,6 +484,107 @@ void main() {
     );
   });
 
+  testWidgets('🚨a word is recorded in the paint that asks for its bake, and '
+      'rastered, read back and uploaded in its turn in the quiet between a '
+      'run\'s held frames — the painter may be gone by then', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    ({int fromMicros, int untilMicros})? quiet = (
+      fromMicros: 0,
+      untilMicros: 0,
+    );
+    final moved = Completer<void>();
+    BakedWords.instance.quietTurns = QuietTurns(
+      clock: QuietClock(
+        quiet: () => quiet,
+        now: () => 0,
+        moved: () => moved.future,
+      ),
+    );
+    addTearDown(() => BakedWords.instance.quietTurns = QuietTurns.instance);
+    const fit = (x: 0.25, y: 1.0);
+    final word = _word('조용한 때', fontSize: 12);
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: _PaintsOnce(word, fit),
+        ),
+      ),
+    );
+    // What the paint laid out is let go: the bake holds its recording.
+    word.dispose();
+    final before = BakedWords.instance.debugLandingFrames;
+    for (var i = 0; i < 10; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 5)),
+      );
+      await tester.pump();
+    }
+    expect(
+      BakedWords.instance.debugLandingFrames,
+      before,
+      reason: 'the quiet has no room: the bake waits its turn',
+    );
+
+    // The run stood: nothing is held, and there is no quiet to keep.
+    quiet = null;
+    moved.complete();
+    await pumpUntilAWordBakeLands(tester);
+
+    final again = _word('조용한 때', fontSize: 12);
+    addTearDown(again.dispose);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(),
+      reason: 'it landed: the word is drawn from its bake',
+    );
+  });
+
+  testWidgets('🚨while frames are held a word is drawn from its bake as soon '
+      'as the bake lands — its turn waits for the GPU on its own', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gpu = Completer<void>();
+    addTearDown(() {
+      if (!gpu.isCompleted) {
+        gpu.complete();
+      }
+    });
+    BakedWords.instance.quietTurns = QuietTurns(
+      clock: QuietClock(
+        quiet: () => (fromMicros: 0, untilMicros: 1 << 40),
+        now: () => 0,
+        held: () => true,
+        gpuDone: () => gpu.future,
+      ),
+    );
+    addTearDown(() => BakedWords.instance.quietTurns = QuietTurns.instance);
+    const fit = (x: 0.25, y: 1.0);
+    final word = _word('붙잡은 때', fontSize: 12);
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: _PaintsOnce(word, fit),
+        ),
+      ),
+    );
+    word.dispose();
+
+    await pumpUntilAWordBakeLands(tester);
+
+    final again = _word('붙잡은 때', fontSize: 12);
+    addTearDown(again.dispose);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(),
+      reason: 'the GPU is not done with it, and the word is drawn from its bake',
+    );
+  });
+
   testWidgets('a bake the engine refuses leaves the word painted as it '
       'always was', (tester) async {
     var refused = 0;
@@ -248,6 +609,23 @@ void main() {
     expect(paintIt, paints..paragraph());
     expect(paintIt, paintsExactlyCountTimes(#drawImageRect, 0));
     expect(refused, 1, reason: 'a refused word is not asked for again');
+
+    // Painted again by a painter, it is not waited for: nothing will land.
+    final waitingBefore = BakedWords.instance.debugWaitingWords;
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: _WordPainter(word, (x: 0.25, y: 1.0), ValueNotifier(0)),
+        ),
+      ),
+    );
+    expect(
+      BakedWords.instance.debugWaitingWords,
+      waitingBefore,
+      reason: 'a painter is not put down as waiting for a word whose bake '
+          'came to nothing — it would wait for ever',
+    );
   });
 
   group('down a column', () {
@@ -359,7 +737,7 @@ void main() {
   });
 
   test('every painter that sets a narrowed word paints again when its '
-      'bake lands', () {
+      'bake lands — painting its words as the one waiting', () {
     // A CENSUS: the files that reach a narrowed word — set it themselves,
     // or hand it to the strips' placed words (`TimelineGlyphPlacement`,
     // `paintWindow`) or to the glyph on its ground. A file that starts to
@@ -402,18 +780,38 @@ void main() {
       final declared = RegExp(
         'class${painter}extendsCustomPainterwith[^{]*RepaintOnWordBakes',
       );
+      final source = File(path).readAsStringSync();
       expect(
-        _squash(File(path).readAsStringSync()),
+        _squash(source),
         matches(declared),
         reason: '$painter repaints when a bake lands',
       );
+      // ⛔The mixin's paint is what makes the painter the one waiting; a
+      // painter that paints itself draws its stand-ins for nobody.
+      final body = _classBody(source, painter);
+      expect(
+        body,
+        contains('void paintWords(Canvas canvas, Size size)'),
+        reason: '$painter paints its words',
+      );
+      expect(
+        body,
+        isNot(contains('void paint(Canvas canvas, Size size)')),
+        reason: '$painter leaves paint to the mixin',
+      );
     }
+    final built = _squash(
+      File('lib/src/ui/timeline/timeline_block_word.dart').readAsStringSync(),
+    );
     expect(
-      _squash(
-        File('lib/src/ui/timeline/timeline_block_word.dart').readAsStringSync(),
-      ),
-      contains('BakedWords.instance.landed.addListener(markNeedsPaint)'),
-      reason: 'the built word repaints when a bake lands',
+      built,
+      contains('RenderTimelineBuiltWordextendsRenderBoximplementsWordBakeWaiter'),
+      reason: 'the built word waits for its bakes',
+    );
+    expect(
+      built,
+      contains('BakedWords.instance.paintAs(this,'),
+      reason: 'and paints its word as the one waiting',
     );
   });
 }

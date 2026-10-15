@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../core/in_flight.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
@@ -20,6 +21,7 @@ import 'persistence/anicel_incremental_writer.dart' show AnicelRelocation;
 import 'persistence/anicel_project_archive.dart' show anicelCelEntryName;
 import 'persistence/scratch_cel_files.dart';
 import 'persistence/scratch_file.dart';
+import 'persistence/thaw_in_worker.dart';
 import 'undo_surface_snapshot.dart';
 
 /// The hot-tier default for THIS machine: a quarter of physical RAM,
@@ -564,17 +566,36 @@ class BrushFrameStore {
     return surface;
   }
 
-  /// The bytes a cel that is not hot is kept as — its parked blob, or its
-  /// stretch of the saved file — or null when it has neither.
-  AnicelCelBlob? _keptBlobOrNull(BrushFrameKey key) {
+  /// Where a cel that is not hot is kept — its parked blob in the room,
+  /// else its stretch of the saved file — or null when it has neither: the
+  /// ONE order every read of the kept bytes takes.
+  ({AnicelCelFileRef ref, bool parked})? _kept(BrushFrameKey key) {
     final parked = _coldCels[key];
-    if (parked == null) {
-      final fileRef = _fileCels[key];
+    if (parked != null) {
+      return (ref: parked, parked: true);
+    }
+    final fileRef = _fileCels[key];
+    return fileRef == null ? null : (ref: fileRef, parked: false);
+  }
+
+  /// [_kept]'s ref when it was kept at [canvasSize]: a read at another size
+  /// thaws nothing ([currentSurfaceWithoutReplay]).
+  AnicelCelFileRef? _keptAt(BrushFrameKey key, CanvasSize canvasSize) {
+    final kept = _kept(key)?.ref;
+    return kept?.canvasSize == canvasSize ? kept : null;
+  }
+
+  /// The bytes a cel that is not hot is kept as ([_kept]), or null when it
+  /// has none.
+  AnicelCelBlob? _keptBlobOrNull(BrushFrameKey key) {
+    final kept = _kept(key);
+    if (kept == null) {
+      return null;
+    }
+    if (!kept.parked) {
       // The ref stays: the file still holds these exact bytes, so a
       // later cooling of this (clean) cel is a free drop.
-      return fileRef == null
-          ? null
-          : AnicelCelBlob(_readFileRefBytes(fileRef));
+      return AnicelCelBlob(_readFileRefBytes(kept.ref));
     }
     // 🚨★★★**THE REF STAYS AND SO DOES THE FILE when this answers null.**
     // A cold cel is the only copy of that picture outside the hot tier, so
@@ -583,7 +604,7 @@ class BrushFrameStore {
     // which is what dropping the ref would say to every caller and to the
     // next save. The picture is UNAVAILABLE this moment; the next access
     // tries again.
-    return _readScratchBlob(parked);
+    return _readScratchBlob(kept.ref);
   }
 
   /// A thawed cel made the app's: hot, its display cache reseeded from the
@@ -598,6 +619,61 @@ class BrushFrameStore {
     storeRebuiltDisplayCache(key: key, previewSurface: surface);
     _scheduleCooling();
   }
+
+  /// [key]'s thaw made AHEAD, off the UI thread: what reading it at
+  /// [canvasSize] would thaw here ([currentSurfaceWithoutReplay]) is
+  /// inflated and laid into its tiles on a worker ([layCelInWorker]), and
+  /// only adopted and kept here — as a [CelRead.use] keeps it. The card
+  /// `cel-thaw-holds-the-ui-thread` holds its promises; in short:
+  ///
+  /// • it completes once reading the cel thaws nothing here — at once when
+  ///   nothing would (hot, empty, kept at another size), else when the cel
+  ///   is hot, its wait for a worker's turn included ([celThawTurns]);
+  /// • asked again while it runs, it answers the same future;
+  /// • a cel that moved on meanwhile — made hot, kept anew, gone — keeps
+  ///   what it has: the thaw is let go, never written over it;
+  /// • it never throws: a read or a decode that fails leaves the kept bytes
+  ///   as they are, and the next read tries again here, as it always did.
+  ///
+  /// ⚠️The bytes are still READ here — the saved file's through the
+  /// session's one handle ([_readFileRefBytes]) — so a thaw reads exactly
+  /// what [bakedSurfaceOrNull] would.
+  Future<void> thawAhead(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) {
+    key = _canonicalize(key);
+    if (_bakedSurfaces.containsKey(key) || _keptAt(key, canvasSize) == null) {
+      return Future<void>.value();
+    }
+    return _thawing.join(key, () => _thawOnAWorker(key, canvasSize));
+  }
+
+  final InFlight<BrushFrameKey, void> _thawing = InFlight();
+
+  Future<void> _thawOnAWorker(BrushFrameKey key, CanvasSize canvasSize) =>
+      celThawTurns.run(() async {
+        // Asked again in its turn: the cel may have moved on in the line.
+        final kept = _keptAt(key, canvasSize);
+        if (_bakedSurfaces.containsKey(key) || kept == null) {
+          return;
+        }
+        try {
+          final blob = _keptBlobOrNull(key);
+          if (blob == null) {
+            return;
+          }
+          final surface = laidCelSurface(
+            await layCelInWorker(blob, BitmapTile.blocks),
+          );
+          if (!_bakedSurfaces.containsKey(key) &&
+              identical(_kept(key)?.ref, kept)) {
+            _keepThawed(key, surface);
+          }
+        } on Object {
+          // The kept bytes stay as they are; the next read tries again.
+        }
+      });
 
   /// 🚨Through the SESSION'S handle, not a fresh open per cel.
   ///
@@ -1072,15 +1148,9 @@ class BrushFrameStore {
           ? bakedSurfaceOrNull(key, read: read)
           : null;
     }
-    final cold = _coldCels[key];
-    if (cold != null && cold.canvasSize == canvasSize) {
-      return bakedSurfaceOrNull(key, read: read);
-    }
-    final fileRef = _fileCels[key];
-    if (fileRef != null && fileRef.canvasSize == canvasSize) {
-      return bakedSurfaceOrNull(key, read: read);
-    }
-    return null;
+    return _keptAt(key, canvasSize) == null
+        ? null
+        : bakedSurfaceOrNull(key, read: read);
   }
 
   // --- Cooling (hot → cold) -------------------------------------------
@@ -1197,10 +1267,31 @@ class BrushFrameStore {
   /// written beside the project file.
   Future<void> drainTiering() => drainCooling();
 
+  /// Told the pairs [rekeyFrames] moved, once they are moved: every picture
+  /// made of a cel travels with its pixels, as the display cache does here.
+  ///
+  /// 🚨F-313 (유저 2026-10-08: 「… 싹 삭제하고 법 통일. 항상 보여야함」):
+  /// the image cache's pictures stayed under the key the move left, so a cel
+  /// carried onto another row went blank on the frame it landed and came
+  /// back with the asynchronous build — 🔬0 of 32 columns on that frame, at
+  /// 50% and at 100%, in
+  /// `a_cel_carried_onto_another_row_shows_on_the_frame_it_lands_test`.
+  final List<void Function(List<(BrushFrameKey from, BrushFrameKey to)>)>
+  _rekeyListeners = [];
+
+  void addRekeyListener(
+    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
+  ) => _rekeyListeners.add(listener);
+
+  void removeRekeyListener(
+    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
+  ) => _rekeyListeners.remove(listener);
+
   /// Re-homes stored drawings under new keys (a cross-layer block move,
   /// R10-④b): content is untouched, so the display cache travels along and
-  /// stays valid. Missing sources are skipped (an empty cel moved). The
-  /// inverse pair list undoes the move exactly.
+  /// stays valid — and so do the pictures made of it ([addRekeyListener]).
+  /// Missing sources are skipped (an empty cel moved). The inverse pair
+  /// list undoes the move exactly.
   void rekeyFrames(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
     for (final (from, to) in pairs) {
       final state = _frames.remove(from);
@@ -1241,6 +1332,9 @@ class BrushFrameStore {
       // kept answering for the old world. No-ops when nothing crossed.
       _noteCelContent(from);
       _noteCelContent(to);
+    }
+    for (final listener in List.of(_rekeyListeners)) {
+      listener(pairs);
     }
   }
 

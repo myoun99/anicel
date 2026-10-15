@@ -22,6 +22,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
+
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
 import '../../models/brush_frame_key.dart';
@@ -29,6 +31,7 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
+import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -37,7 +40,7 @@ import '../../services/cel_text_laying.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
-import '../playback/cut_frame_composite_cache.dart';
+import '../canvas/canvas_look.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'session_roles.dart';
 import 'cache_budgets.dart';
@@ -64,7 +67,7 @@ class RenderCaches {
 
   /// What an edit owes the warmer BEFORE anything is re-rendered: yield.
   /// A callback rather than the rig itself — the rig holds this object
-  /// (its scheduler composites out of [cutFrameCompositeCache]), and two
+  /// (its scheduler makes [layerFrameImageCache]'s images), and two
   /// objects that name each other cannot be built at all.
   final void Function() _onEditActivity;
 
@@ -118,24 +121,41 @@ class RenderCaches {
   /// gap would land in `untrackedBytes` and read as engine overhead.
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
-  /// What the editing canvas's display buffer holds — one canvas-resolution
-  /// image, 33MB on a 4K view, kept for as long as nothing changes.
-  /// 🆕2026-09-11: and the static-composite bake beside it — one visible-rect
-  /// raster (~9MB at 1928×1200) that nobody counted. The same view reports
-  /// both as this one number.
+  /// What each LAYER STACK VIEW's display buffer holds, by view — the
+  /// editing canvas's, each live conte picture's (유저 답
+  /// conte-picture-display-Q1 「실시간 합성」) and each cut the track stack
+  /// shows: a canvas-resolution image or a chain of them (a derived buffer
+  /// pins the one it was drawn from), 33MB on a 4K view, kept for as long as
+  /// nothing changes — and the static-composite bake beside it, one
+  /// visible-rect raster (~9MB at 1928×1200, 2026-09-11). Each view reports
+  /// both as one number ([countStackBuffer]).
   ///
-  /// 🚨PUSHED, for the reason above it: the buffer lives in a widget State
-  /// the session does not own. ⚠️A plain int rather than the viewers' map
-  /// because it is the EDITING CANVAS's alone; the second
-  /// `CanvasLayerStackView` site keeps its own map below
-  /// ([livePictureBufferBytes]) rather than overwriting this.
-  int canvasBufferBytes = 0;
+  /// 🚨PUSHED, for the reason above it: each buffer lives in a widget State
+  /// the session does not own. ↩️The canvas pushed a plain int of its own and
+  /// the conte's pictures a map beside it, until the track stack drew its
+  /// cuts on the same view (2026-10-10) and was about to be a third: one map.
+  final Map<Object, int> stackBufferBytes = {};
 
-  /// What each LIVE picture's display buffer holds — the conte's pictures,
-  /// composited live while its brush is on (유저 답 conte-picture-display-Q1
-  /// 「실시간 합성」), by picture: several are live at once. The same census
-  /// row as [canvasBufferBytes], pushed for the same reason.
-  final Map<String, int> livePictureBufferBytes = {};
+  /// [view]'s display buffer holds [bytes] now — 0 when it goes away.
+  void countStackBuffer(Object view, int bytes) {
+    if (bytes == 0) {
+      stackBufferBytes.remove(view);
+    } else {
+      stackBufferBytes[view] = bytes;
+    }
+  }
+
+  /// How the editing canvas shows a cut's frame ([CanvasLook]) — what a
+  /// frame is made of where the canvas shows it ([CanvasPictures]), so the
+  /// warmer makes the images the canvas will ask for and the ruler's bar
+  /// counts them. Full at every frame until the canvas first says.
+  ///
+  /// PUSHED, as [stackBufferBytes] is: the look is the canvas view's own
+  /// answer for its zoom, its screen and the camera a run is seen through,
+  /// and the session owns none of them.
+  final ValueNotifier<CanvasLook> canvasLook = ValueNotifier(
+    CanvasLook(view: CanvasViewport(), devicePixelRatio: 1),
+  );
 
   /// What the storyboard's and the conte's thumbnails hold — every panel
   /// picture still inside its budget (one viewer's share of this device).
@@ -282,13 +302,6 @@ class RenderCaches {
     frameStore: brushFrameStore,
   );
 
-  late final CutFrameCompositeCache cutFrameCompositeCache =
-      CutFrameCompositeCache(
-        layerImages: layerFrameImageCache,
-        frameStore: brushFrameStore,
-        frameKeyOf: _project.brushFrameKeyForCut,
-      );
-
   /// A5 — the trailing edge of an edit burst, so the warming queue
   /// restarts ONCE per burst instead of once per dab commit. Only the
   /// RESTART is deferred: the cache invalidations and the yield signal
@@ -310,10 +323,6 @@ class RenderCaches {
 
   void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
     layerFrameImageCache.invalidateFrame(invalidation.frameKey);
-    cutFrameCompositeCache.invalidateWhereLayerFrame(
-      layerId: invalidation.frameKey.layerId,
-      frameId: invalidation.frameKey.frameId,
-    );
     // Warming yields to the edit and then re-renders the dirty frames.
     _onEditActivity();
     _warmDebounce?.cancel();
@@ -342,7 +351,7 @@ class RenderCaches {
   void dispose() {
     _warmDebounce?.cancel();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
-    cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
+    canvasLook.dispose();
   }
 }

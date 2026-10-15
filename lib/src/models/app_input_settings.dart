@@ -51,6 +51,7 @@ class AppInputSettings {
     this.touchDragTwoFingers = CanvasTouchDragAction.navigate,
     this.touchDragThreeFingers = CanvasTouchDragAction.brushSize,
     this.extraFingerModifier = true,
+    this.strokeFingerModifier = false,
     this.flipHaptics = true,
     this.autoCreateFrameOnDraw = false,
     this.navigationRotationEnabled = true,
@@ -78,6 +79,21 @@ class AppInputSettings {
   /// The +1-finger modifier globally (PEN-7b): ON by default; OFF for
   /// users who dislike late fingers changing a locked gesture at all.
   final bool extraFingerModifier;
+
+  /// A finger resting on the glass while a stroke is drawn is the STROKE'S
+  /// Shift — its 45° lock (I-61), for as long as it rests there.
+  ///
+  /// 🗣️I-61-Q3 (유저 2026-10-14): 「손가락도 — 다른 손가락이 닿아 있는 동안
+  /// 잠긴다」, and with it 「해당 손가락 스트로크 수정자 기능 옵션으로 on off
+  /// 제공. 입구 확실하게 나눠서 쓸데없이 무거워지거나 렉걸리지 않게. off하면
+  /// 확실하게 제거. 기본값은 off」. ↩️Until then a late finger on a stroke
+  /// meant nothing at all — a palm rest (PEN-12 #4) — and with this off it
+  /// still means nothing.
+  ///
+  /// ⛔NOT [extraFingerModifier]: that one is ON by default and answers for
+  /// the navigation gestures; this one is OFF by default and answers for
+  /// strokes. One switch for both would answer two questions.
+  final bool strokeFingerModifier;
 
   /// The flip's per-drawing haptic tick. Devices without a motor ignore
   /// the call on their own (HapticFeedback is an optional platform
@@ -255,6 +271,7 @@ class AppInputSettings {
     CanvasTouchDragAction? touchDragTwoFingers,
     CanvasTouchDragAction? touchDragThreeFingers,
     bool? extraFingerModifier,
+    bool? strokeFingerModifier,
     bool? flipHaptics,
     bool? autoCreateFrameOnDraw,
     bool? navigationRotationEnabled,
@@ -276,6 +293,7 @@ class AppInputSettings {
     touchDragTwoFingers: touchDragTwoFingers ?? this.touchDragTwoFingers,
     touchDragThreeFingers: touchDragThreeFingers ?? this.touchDragThreeFingers,
     extraFingerModifier: extraFingerModifier ?? this.extraFingerModifier,
+    strokeFingerModifier: strokeFingerModifier ?? this.strokeFingerModifier,
     flipHaptics: flipHaptics ?? this.flipHaptics,
     autoCreateFrameOnDraw: autoCreateFrameOnDraw ?? this.autoCreateFrameOnDraw,
     navigationRotationEnabled:
@@ -300,6 +318,7 @@ class AppInputSettings {
     'touchDragTwoFingers': touchDragTwoFingers.name,
     'touchDragThreeFingers': touchDragThreeFingers.name,
     'extraFingerModifier': extraFingerModifier,
+    'strokeFingerModifier': strokeFingerModifier,
     'flipHaptics': flipHaptics,
     'autoCreateFrameOnDraw': autoCreateFrameOnDraw,
     'navigationRotationEnabled': navigationRotationEnabled,
@@ -380,6 +399,7 @@ class AppInputSettings {
             .asNameMap()[json['touchDragThreeFingers']] ??
         CanvasTouchDragAction.brushSize,
     extraFingerModifier: json['extraFingerModifier'] as bool? ?? true,
+    strokeFingerModifier: json['strokeFingerModifier'] as bool? ?? false,
     flipHaptics: json['flipHaptics'] as bool? ?? true,
     autoCreateFrameOnDraw: json['autoCreateFrameOnDraw'] as bool? ?? false,
     navigationRotationEnabled:
@@ -418,6 +438,7 @@ class AppInputSettings {
       other.touchDragTwoFingers == touchDragTwoFingers &&
       other.touchDragThreeFingers == touchDragThreeFingers &&
       other.extraFingerModifier == extraFingerModifier &&
+      other.strokeFingerModifier == strokeFingerModifier &&
       other.flipHaptics == flipHaptics &&
       other.autoCreateFrameOnDraw == autoCreateFrameOnDraw &&
       other.navigationRotationEnabled == navigationRotationEnabled &&
@@ -440,6 +461,7 @@ class AppInputSettings {
     touchDragTwoFingers,
     touchDragThreeFingers,
     extraFingerModifier,
+    strokeFingerModifier,
     flipHaptics,
     autoCreateFrameOnDraw,
     navigationRotationEnabled,

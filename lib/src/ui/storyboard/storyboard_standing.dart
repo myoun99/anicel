@@ -114,19 +114,85 @@ class _StoryboardStanding {
   /// The cut whose bands wear the standing wash on [track]'s V row — the cut
   /// under the playhead while that row is the one you stand on; null where
   /// the panel is handed no cut.
+  ///
+  /// 🚨ONE A TRACK, HELD (I-57, 10-14). The V row is kept while what it
+  /// shows holds, and a kept row's painter hears the cut it was built with —
+  /// so the cut is held from build to build, answers of the panel as it
+  /// stands when asked (the track by its id), and is heard to change only
+  /// when its answer does ([SlicedListenable]): through what it listens to,
+  /// and at every build, where what else it reads — the rail's own
+  /// [StoryboardPanel.selectedRow], the rows the track lays out — moves with
+  /// nothing to say so. ↩️Made anew at every build, it repainted every V
+  /// row at every build, and at every cut crossed whether or not the row
+  /// was the one stood on.
   ValueListenable<CutId?>? standingCutOn(Track track) {
     final cut = _state.widget.cutUnderPlayhead;
     if (cut == null) {
       return null;
     }
     final currentRow = _state.widget.currentRowHooks?.currentRow;
-    return StandingCut(
-      changes: Listenable.merge([cut, ?currentRow]),
-      standsOnRow: () =>
-          _standingOn(track, currentRow?.value)?.row ==
-          TrackRowAddress(track.id),
+    _heldCuts.removeWhere((trackId, held) {
+      final gone = !_state.widget.project.tracks.any(
+        (track) => track.id == trackId,
+      );
+      if (gone) {
+        held.heard.dispose();
+      }
+      return gone;
+    });
+    final held = _heldCuts[track.id];
+    if (held != null &&
+        identical(held.standing.cut, cut) &&
+        identical(held.currentRow, currentRow)) {
+      held.heard.recheck();
+      return held.standing;
+    }
+    held?.heard.dispose();
+    final trackId = track.id;
+    bool standsOnRow() {
+      final now = _state.widget.project.tracks
+          .where((track) => track.id == trackId)
+          .firstOrNull;
+      return now != null &&
+          _standingOn(now, currentRow?.value)?.row ==
+              TrackRowAddress(trackId);
+    }
+
+    final heard = SlicedListenable<CutId?>(
+      Listenable.merge([cut, ?currentRow]),
+      () => standsOnRow() ? cut.value : null,
+    );
+    final standing = StandingCut(
+      changes: heard,
+      standsOnRow: standsOnRow,
       cut: cut,
     );
+    _heldCuts[trackId] = (
+      standing: standing,
+      currentRow: currentRow,
+      heard: heard,
+    );
+    return standing;
+  }
+
+  /// [standingCutOn]'s cut of each track, with the current row it was made
+  /// to hear and what it is heard through.
+  final Map<
+    TrackId,
+    ({
+      StandingCut standing,
+      ValueListenable<TimelineRowAddress?>? currentRow,
+      SlicedListenable<CutId?> heard,
+    })
+  >
+  _heldCuts = {};
+
+  /// Lets go of [standingCutOn]'s cuts.
+  void dispose() {
+    for (final held in _heldCuts.values) {
+      held.heard.dispose();
+    }
+    _heldCuts.clear();
   }
 
   /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색
@@ -184,11 +250,16 @@ class _StoryboardStanding {
     LayerId layerId,
     int frame,
   ) {
-    if (trackIdOfConteRow(layerId) != null) {
+    final conteRow = trackConteRowOf(layerId);
+    if (conteRow != null) {
       return standingUnitAt(
         lanes: [
           trackRowMaterialBlocks(
-            trackConteRowShown(track.id, _cutsAsShownOn(track)),
+            trackConteRowShown(
+              track.id,
+              _cutsAsShownOn(track),
+              seat: conteRow.seat,
+            ),
             spans: false,
           ),
         ],

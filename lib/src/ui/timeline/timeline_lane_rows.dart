@@ -1,33 +1,52 @@
 import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
+import '../widgets/drag_value_label.dart';
+import '../widgets/field_slider.dart' show FieldSlider;
+import '../widgets/rail_glyph_button.dart';
+import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
 import '../input/control_press_claim.dart';
 import 'dart:math' as math;
+import 'dart:ui' show ClipOp;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
-import '../input/eager_pan_gesture_recognizer.dart';
-
+import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppShapes;
 import 'layer_label_controls.dart'
     show
+        LayerRailColumnWidths,
         LayerSectionBandCell,
         RailSwipeColumnPointer,
-        fxGlyph,
-        layerLaneValueSlotWidth,
+        fxGlyphStyle,
+        layerLaneChipsSlotWidth,
+        layerLanePinSlotWidth,
+        layerLaneValueBoxGap,
         layerMarkColor,
+        layerRailColumnWidthsIn,
         railSelectedRowColor;
 import 'timeline_current_row.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
+import '../text/readout_text.dart'
+    show ReadoutPart, joinReadoutParts, readoutParts;
 import 'layer_rail_columns.dart'
-    show layerRailTrailingCells, layerRailTwirlIcon;
+    show
+        LayerFoldTwirl,
+        LayerRailOptionalColumns,
+        layerRailTrailingCells,
+        noOptionalRailColumns;
+import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
+import 'lane_graph.dart'
+    show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
+import 'lane_graph_seats.dart'
+    show laneGraphDrawnLanes, laneGraphHeadedBy, lanePinOf;
+import 'lane_graph_toggle.dart';
 import 'property_lane_model.dart';
 import 'se_name_tag_lane_editing.dart' show parseArgbInput;
 import '../widgets/color_swatch_button.dart' show ColorSwatchButton;
@@ -47,7 +66,9 @@ import 'timeline_frame_range_gesture.dart'
 import 'timeline_frame_span_layout.dart'
     show TimelineFrameSpan, TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
+import 'timeline_span_name.dart' show TimelineSpanName;
 import 'axis_turn.dart';
+import 'memo_token.dart' show ByList;
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
 /// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
@@ -60,39 +81,40 @@ const double _selectedLaneKeyBorderWidth = 4 / 3;
 /// they must not do is pack into three pixels.
 const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 
-/// The stood-up navigator (three 20px buttons) and value readout, plus
-/// their leading gaps.
+/// The stood-up navigator (three 20px buttons), plus its leading gap.
 const double _laneNavigatorExtent = 3 * 20 + 4;
 
 /// The stood-up chain of a linkable lane — [AppIconButtonSize.micro]'s
 /// height.
 const double _laneValueLinkExtent = 18;
 
-/// The stood-up value readout's type, and the most LINES any lane makes of
-/// it. Three: a comma-separated pair stacks as `1170` / `,` / `827` (user,
-/// 2026-08-08), and nothing this rail formats has two commas in it.
-const double _laneValueFontSize = 11;
-const int _laneValueMaxLines = 3;
+/// Between a lane's value and what stands before it, on either axis.
+const double _laneValueGap = 4;
 
-/// WHOLE pixels, and each line gets a box of exactly this. A paragraph's
-/// height rounds UP to an integer, so reserving `fontSize * lineHeight`
-/// under-reserves by the rounding — 11×1.15 is 12.65 and lays out at 13,
-/// which overflowed a three-line column by the 1.05px nobody budgeted.
-/// A fixed box makes the arithmetic here the arithmetic that happens.
-const double _laneValueLineExtent = 13;
+/// Between a stood-up lane's navigator and what stands after it.
+const double _laneStoodNavigatorGap = 4;
 
-/// 20 → 28 → 76 → three lines (user, 2026-08-08).
-///
-/// The value used to SHRINK into whatever was left, so any budget "worked"
-/// and nobody had to ask what the readout actually costs. Then it read
-/// DOWN the column one glyph per cell, and the slot had to hold SIX of
-/// them — `0.0, 0.0` is eight cells, so anything smaller left a Position
-/// lane reading `0…`.
-///
-/// Stacked as whole numbers it costs three LINES instead of six cells, and
-/// the 36px that frees goes back to the lane's name — which is what the
-/// column is for.
-const double _laneValueExtent = _laneValueMaxLines * _laneValueLineExtent;
+/// A member cell's padding at its END along the rail, past the value.
+const double _laneMemberEndPadding = 8;
+
+/// A stood-up cell's padding at either end of its column.
+const double _laneColumnEndPadding = 4;
+
+/// A curve chip (I-89 ③) and the gap between two: the colours a lane's
+/// numbers are drawn in, at the mock's size (5판).
+const double _laneChipSize = 9;
+const double _laneChipGap = 2;
+
+/// How far a member lane's PIN stands from the END of its cell along
+/// [axis] (I-89 ③): the cell's end padding, the value's slot and the gap
+/// before it — the rail's value column, turned on the sheet. What a
+/// sweep's band is measured by, so the band is the column the row lays.
+double laneMemberPinInset(Axis axis, LayerRailColumnWidths columns) =>
+    (axis == Axis.horizontal
+        ? _laneMemberEndPadding
+        : _laneColumnEndPadding) +
+    columns.laneValue +
+    _laneValueGap;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -121,8 +143,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.height,
     this.leadingInset = 0,
     this.currentRowHooks,
-    this.hasOnionColumn = false,
-    this.hasBlendColumn = false,
+    this.optionalColumns = noOptionalRailColumns,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
+    this.seat,
+    this.folded = false,
   });
 
   final Layer layer;
@@ -163,10 +188,27 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// switch landed at a different x on every header — wherever that
   /// header's name happened to end. It rides
   /// [layerRailTrailingCells] now, which is the same skeleton the layer row
-  /// above it uses: matching the flags is what keeps the two in ONE column,
+  /// above it uses: matching the answer is what keeps the two in ONE column,
   /// and hand-placing it is exactly how it drifted before.
-  final bool hasOnionColumn;
-  final bool hasBlendColumn;
+  final LayerRailOptionalColumns optionalColumns;
+
+  /// The rail's header graphs (I-89 ③): which stand open, which lanes are
+  /// pinned — what a header's graph button and a member's pin show.
+  final LaneGraphsView laneGraphs;
+
+  /// What those buttons tell; null mounts none.
+  final LaneGraphVerbs? laneGraphVerbs;
+
+  /// The open header graph this lane is drawn in — its row's
+  /// [TimelineDisplayRow.graph] — or null. A seated lane wears its curve's
+  /// chips while the graph draws it, and its name fades while it does not.
+  final TimelineGraphSeat? seat;
+
+  /// Whether the enlarged graph folds this lane to a thin strip — its row's
+  /// [TimelineDisplayRow.folded]: its plate alone, still the lane's to
+  /// stand on (the mock's 5판 empties a thinned lane's rail and keeps it
+  /// pressable).
+  final bool folded;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -191,18 +233,6 @@ class TimelineLaneControlsRow extends StatefulWidget {
 }
 
 class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
-  bool _editingValue = false;
-
-  /// One controller per editable NUMBER (F-22 ②③): Position is two fields
-  /// rather than one box holding `120, 45`, and a unit is chrome beside the
-  /// box instead of text inside it.
-  final List<TextEditingController> _valueControllers = [];
-
-  /// The units those fields are wearing, parallel to [_valueControllers].
-  /// The commit puts them back, so the lane's own parser goes on reading
-  /// exactly the text form it always has.
-  List<String> _valueUnits = const [];
-
   Layer get layer => widget.layer;
   PropertyLaneRow get lane => widget.lane;
   String get _keyPrefix => widget.keyPrefix;
@@ -214,7 +244,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   @override
   void dispose() {
-    _disposeValueControllers();
     // A label taken away mid-scrub (its row folded under it) never sees the
     // release: what it was showing is dropped once the tree settles — a
     // notifier fired while the tree is being torn down would be too soon.
@@ -223,13 +252,6 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       WidgetsBinding.instance.addPostFrameCallback((_) => endPreview());
     }
     super.dispose();
-  }
-
-  void _disposeValueControllers() {
-    for (final controller in _valueControllers) {
-      controller.dispose();
-    }
-    _valueControllers.clear();
   }
 
   int? get _previousKeyFrame {
@@ -252,20 +274,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return best;
   }
 
-  void _startValueEdit(String currentValue) {
-    final parts = propertyLaneValueParts(currentValue);
-    _disposeValueControllers();
-    for (final part in parts) {
-      _valueControllers.add(TextEditingController(text: part.number));
-    }
-    _valueUnits = [for (final part in parts) part.unit];
-    setState(() => _editingValue = true);
-  }
-
-  // AE-style value scrubbing: the drag's TOTAL delta (positions against
-  // the pointer-down origin — slop never eats into the value) maps the
-  // label captured at the start, and the release commits ONCE through the
-  // normal onSetValue path — one undo.
+  // AE-style value scrubbing, ONE NUMBER AT A TIME: a number's own box
+  // moves it and no other ([_valueBoxes]) by the drag's
+  // whole travel, on the label captured where the drag began — and the
+  // release commits ONCE through the normal onSetValue path: one undo.
+  // ↩️One drag of the whole value moved its first number along x and its
+  // second along y, so a hand off its line moved both (유저 2026-10-10:
+  // 「x랑 y값 안그래도 같이움직여서 불편했고」).
   //
   // 🚨F-195 (유저 2026-09-27 「레이어에서 값편집이든 … 실시간으로 화면에
   // 보이도록」): each step is SHOWN through the host's preview, not here.
@@ -276,23 +291,33 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   // What stays is the gesture's own accounting — where it started, and the
   // last value it reached, for the release to write.
   String? _scrubBaseLabel;
-  Offset? _scrubOrigin;
+  double _scrubTravel = 0;
   String? _scrubbed;
 
-  void _startScrub(Offset globalPosition, String currentLabel) {
+  void _startScrub(String currentLabel) {
     _scrubBaseLabel = currentLabel;
-    _scrubOrigin = globalPosition;
+    _scrubTravel = 0;
     _scrubbed = null;
   }
 
-  void _updateScrub(Offset globalPosition) {
+  /// The number at [part] dragged [pixels] further. The lane's scrub reads
+  /// its first number along x and its second along y, so a number hands
+  /// its travel to its own axis alone.
+  void _scrubPart(int part, double pixels) {
     final base = _scrubBaseLabel;
-    final origin = _scrubOrigin;
     final scrub = lane.scrubValue;
-    if (base == null || origin == null || scrub == null) {
+    if (base == null || scrub == null) {
       return;
     }
-    final value = scrub(base, globalPosition - origin);
+    _scrubTravel += pixels;
+    final value = scrub(
+      base,
+      offsetAlong(
+        part == 0 ? Axis.horizontal : Axis.vertical,
+        along: _scrubTravel,
+        across: 0,
+      ),
+    );
     // A move inside one step of the value changes nothing to show.
     if (value == null || value == _scrubbed) {
       return;
@@ -304,7 +329,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   void _endScrub() {
     final value = _scrubbed;
     _scrubBaseLabel = null;
-    _scrubOrigin = null;
+    _scrubTravel = 0;
     _scrubbed = null;
     if (value != null) {
       widget.laneEdit?.onSetValue?.call(layer, lane, _frame, value);
@@ -313,31 +338,22 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     }
   }
 
-  void _cancelScrub() {
-    _scrubBaseLabel = null;
-    _scrubOrigin = null;
-    _scrubbed = null;
-    widget.laneEdit?.onEndPreview?.call();
-  }
-
-  void _commitValueEdit() {
-    // The units go back on: what leaves here is the text form the lane's
-    // parser has always read, so nothing downstream learns about fields.
-    final input = joinPropertyLaneValueParts([
-      for (var index = 0; index < _valueControllers.length; index += 1)
-        (
-          number: _valueControllers[index].text.trim(),
-          unit: index < _valueUnits.length ? _valueUnits[index] : '',
-        ),
-    ]);
-    setState(() => _editingValue = false);
-    widget.laneEdit?.onSetValue?.call(
-      layer,
-      lane,
-      _frame,
-      input,
-    );
-  }
+  /// [typed] in place of the number at [part], and the rest of the value as
+  /// it reads — put back in the text form the lane's parser has always
+  /// read, so nothing downstream learns about boxes.
+  void _typePart(List<ReadoutPart> parts, int part, String typed) =>
+      widget.laneEdit?.onSetValue?.call(
+        layer,
+        lane,
+        _frame,
+        joinReadoutParts([
+          for (final (index, each) in parts.indexed)
+            if (index == part)
+              (number: typed.trim(), unit: each.unit)
+            else
+              each,
+        ]),
+      );
 
   Widget _navigator(ColorScheme colorScheme) {
     final keyedNow = lane.keyedFrames.contains(_frame);
@@ -398,75 +414,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// The stood-up readout: whole NUMBERS on their own lines, written
-  /// across (user, 2026-08-08 — `1170` / `,` / `827`, and `100%` on one
-  /// line the way it already was).
-  ///
-  /// It used to go through the vertical-writing table like every other
-  /// label on the sheet, which set `1170, 827` as `1 1 7 0 , ␣ 827` — seven
-  /// cells, because a four-digit run is past the 縦中横 limit and falls
-  /// apart into single glyphs. A number is not prose; it wants to be read
-  /// as one token, and the only thing vertical about it is which token
-  /// comes next.
-  ///
-  /// Lines SHRINK to fit rather than ellipsise, which is this cell's
-  /// exception to the rail-window rule: a truncated coordinate is a wrong
-  /// coordinate, and the user allowed the smaller type here by name.
-  Widget _stackedValue(String label, ColorScheme colorScheme) {
-    final style = TextStyle(
-      fontSize: _laneValueFontSize,
-      color: colorScheme.primary,
-    );
-    final lines = _valueLines(label);
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        for (final line in lines)
-          SizedBox(
-            height: _laneValueLineExtent,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(line, maxLines: 1, softWrap: false, style: style),
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// [label] split into the lines it stacks as: each comma-separated
-  /// component, with the comma itself on a line between them so the pair
-  /// still reads as a pair. Uncommaed values are one line, unchanged.
-  ///
-  /// Capped at [_laneValueMaxLines], which is what the slot is sized for.
-  /// Nothing this rail formats reaches it — a coordinate pair is the
-  /// longest at three — but a slot sized by a constant and filled by a
-  /// stranger's string should say what happens when the two disagree, and
-  /// "overflow the column" is not the answer.
-  static List<String> _valueLines(String label) {
-    if (!label.contains(',')) {
-      return [label];
-    }
-    final lines = <String>[];
-    for (final component in label.split(',')) {
-      if (lines.isNotEmpty) {
-        lines.add(',');
-      }
-      final trimmed = component.trim();
-      if (trimmed.isNotEmpty) {
-        lines.add(trimmed);
-      }
-    }
-    if (lines.isEmpty) {
-      return [label];
-    }
-    return lines.length <= _laneValueMaxLines
-        ? lines
-        : lines.sublist(0, _laneValueMaxLines);
-  }
-
-  /// AE's blue value column: the property's value at the playhead; tap to
-  /// type (Enter commits and keys the value there), drag to scrub.
-  Widget _valueCell(ColorScheme colorScheme, String valueLabel) {
+  /// The VALUE column: the property's value at the playhead — a flag's
+  /// ring, a colour's swatch, or its numbers in boxes ([_valueBoxes]). A
+  /// drag scrubs a number, a step steps it, and its pencil types it
+  /// (Enter commits and keys the value there).
+  Widget _valueCell(String valueLabel) {
     final laneEdit = widget.laneEdit;
     // 🚨F-22 (유저 2026-08-24): 「fx의 멤버 편집, **타입에 따라 확실하게
     // 나누기. 지금 싹 다 텍스트임.** … **Bold같은 불리언 타입은 그냥 누르면
@@ -479,29 +431,34 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (lane.valueKind == PropertyLaneValueKind.boolean &&
         laneEdit?.onSetValue != null) {
       final on = valueLabel == 'on';
-      return ControlPressClaim(
-        onPressed: () => laneEdit!.onSetValue!.call(
-          layer,
-          lane,
-          _frame,
-          on ? 'off' : 'on',
-        ),
-        child: InkWell(
-          key: ValueKey<String>(
-            '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
+      return _atValueEnd(
+        ControlPressClaim(
+          onPressed: () => laneEdit!.onSetValue!.call(
+            layer,
+            lane,
+            _frame,
+            on ? 'off' : 'on',
           ),
-          onTap: silentPress(
-            () => laneEdit!.onSetValue!.call(
-              layer,
-              lane,
-              _frame,
-              on ? 'off' : 'on',
+          child: InkWell(
+            key: ValueKey<String>(
+              '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
+            ),
+            onTap: silentPress(
+              () => laneEdit!.onSetValue!.call(
+                layer,
+                lane,
+                _frame,
+                on ? 'off' : 'on',
+              ),
+            ),
+            // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very cell:
+            // 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check box, and a
+            // CHECK MARK is what 「선택 표시는 색상만」 names outright.
+            child: SizedBox.square(
+              dimension: FieldSlider.defaultHeight,
+              child: Center(child: BooleanDot(value: on, size: 14)),
             ),
           ),
-          // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very cell:
-          // 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check box, and a
-          // CHECK MARK is what 「선택 표시는 색상만」 names outright.
-          child: Center(child: BooleanDot(value: on, size: 14)),
         ),
       );
     }
@@ -522,8 +479,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         _frame,
         text,
       );
-      return Center(
-        child: ColorSwatchButton(
+      return _atValueEnd(
+        ColorSwatchButton(
           keyValue: '$_keyPrefix-lane-color-${layer.id}-${lane.laneId}',
           color: parseArgbInput(valueLabel),
           onChanged: (argb) => set(formatLaneColorValue(argb)),
@@ -531,160 +488,77 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         ),
       );
     }
-    if (_editingValue) {
-      return _valueEditor(colorScheme);
-    }
-
-    // Tap types a value; a drag SCRUBS it (AE-style — horizontal for the
-    // first component, vertical for Position's y; the drag-axis mapping is
-    // the lane's, identical in both orientations) and commits once on
-    // release. EAGER slop (UI-R22F #2): a slow scrub must never lose the
-    // arena to the grid scroll.
-    //
-    // ⛔EVERY DEVICE. The value field is a control — 「슬라이더위에서
-    // 조작하기 시작하면 슬라이더조작하는거고 그 외가 스크롤인거야」(유저
-    // 08-14), and 09-23 「버튼은 무조건 강한클레임」. ↩️It took the timeline's
-    // edit-pan devices, so while one finger scrolls the timeline a finger on
-    // a value scrolled the rail instead of scrubbing.
-    return RawGestureDetector(
-      gestures: laneEdit?.onSetValue == null
-          ? const <Type, GestureRecognizerFactory>{}
-          : <Type, GestureRecognizerFactory>{
-              EagerPanGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<
-                    EagerPanGestureRecognizer
-                  >(() => EagerPanGestureRecognizer(debugOwner: this), (
-                    recognizer,
-                  ) {
-                    // PEN-11: device gesture settings (RawGestureDetector
-                    // does not inject them — kTouchSlop 18 vs device ~8).
-                    recognizer.gestureSettings =
-                        MediaQuery.maybeGestureSettingsOf(context);
-                    // .down: positions measure from the pointer-down
-                    // origin, so the recognizer's slop never eats into
-                    // the scrubbed value.
-                    recognizer.dragStartBehavior = DragStartBehavior.down;
-                    recognizer.onStart = (details) =>
-                        _startScrub(details.globalPosition, valueLabel);
-                    recognizer.onUpdate = (details) =>
-                        _updateScrub(details.globalPosition);
-                    recognizer.onEnd = (_) => _endScrub();
-                    recognizer.onCancel = _cancelScrub;
-                  }),
-            },
-      child: MouseRegion(
-        cursor: laneEdit?.onSetValue == null
-            ? MouseCursor.defer
-            : SystemMouseCursors.resizeLeftRight,
-        child: InkWell(
-          key: ValueKey<String>(
-            '$_keyPrefix-lane-value-${layer.id}-${lane.laneId}',
-          ),
-          onTap: laneEdit?.onSetValue == null
-              ? null
-              : () => _startValueEdit(valueLabel),
-          // AE's blue value.
-          child: widget.axis == Axis.horizontal
-              ? Text(
-                  valueLabel,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: _laneValueFontSize,
-                    color: colorScheme.primary,
-                  ),
-                )
-              : _stackedValue(valueLabel, colorScheme),
-        ),
-      ),
-    );
+    return _valueBoxes(valueLabel);
   }
 
-  /// The value EDITOR: one box per number, and the fixed parts beside them.
+  /// The value as the tool settings' NUMBER BOXES ([DragValueLabel.box]),
+  /// one for each number, side by side, each with its hands after it — a
+  /// single number's box filling the column, so its hands stand where a
+  /// pair's second box has its own. The sheet writes the same row, turned
+  /// ([_memberColumn]). A drag on a box scrubs its number alone
+  /// ([_scrubPart]), a step steps it alone, and its pencil opens it alone
+  /// on its number — the whole box a field, no name and no unit.
   ///
   /// 🚨F-22 (유저 2026-08-24): 「**단위 같은 고정요소를 편집창에서 제거**」,
-  /// 「**포지션 등 2요소는 각각 편집**(온점 없이)」.
-  ///
-  /// It used to be one box over the whole readout, so changing Scale meant
-  /// typing the percent sign back and nudging Position's y meant retyping
-  /// `120, 45` — comma, space and all — around the one number that changed.
-  /// Neither is a value: they are the shape the value is printed in.
-  ///
-  /// ⛔The unit stays VISIBLE, just not typed. Hiding it would make the
-  /// editor say less than the readout it replaces, and a person mid-edit
-  /// would have to remember which of Scale and Rotation they were in.
-  ///
-  /// The separator does not survive: two fields ARE the pair, so a comma
-  /// between them would be a third thing to look at (「온점 없이」).
-  Widget _valueEditor(ColorScheme colorScheme) {
-    final horizontal = widget.axis == Axis.horizontal;
-    final fields = <Widget>[
-      for (var index = 0; index < _valueControllers.length; index += 1)
-        _valueField(colorScheme, index, horizontal: horizontal),
-    ];
-    if (fields.length == 1) {
-      return SizedBox(height: 20, child: fields.single);
-    }
-    // The slot is a FIXED 80px on the rail and three lines in the sheet, so
-    // the fields share it evenly rather than sizing to their contents — a
-    // box that grew with its digits would move its neighbour while typing.
-    return horizontal
-        ? Row(
-            children: [
-              for (var index = 0; index < fields.length; index += 1) ...[
-                if (index > 0) const SizedBox(width: 4),
-                Expanded(child: SizedBox(height: 20, child: fields[index])),
-              ],
-            ],
-          )
-        : Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (var index = 0; index < fields.length; index += 1) ...[
-                if (index > 0) const SizedBox(height: 2),
-                SizedBox(height: 18, child: fields[index]),
-              ],
-            ],
-          );
-  }
-
-  Widget _valueField(
-    ColorScheme colorScheme,
-    int index, {
-    required bool horizontal,
-  }) {
-    final unit = index < _valueUnits.length ? _valueUnits[index] : '';
-    return TextField(
-      key: ValueKey<String>(
-        // The first field keeps the key the single box had: it IS that box
-        // on every lane that holds one number, which is most of them.
-        index == 0
-            ? '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}'
-            : '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}-$index',
-      ),
-      controller: _valueControllers[index],
-      autofocus: index == 0,
-      style: const TextStyle(fontSize: 11),
-      textAlign: horizontal ? TextAlign.right : TextAlign.center,
-      decoration: InputDecoration(
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        border: const OutlineInputBorder(),
-        // The FIXED part, worn by the box instead of typed into it.
-        suffixText: unit.isEmpty ? null : unit.trim(),
-        suffixStyle: TextStyle(
-          fontSize: 10,
-          color: colorScheme.onSurfaceVariant,
-        ),
-      ),
-      onSubmitted: (_) => _commitValueEdit(),
-      onTapOutside: (_) {
-        // Tap-away cancels (Enter commits, AE-style).
-        setState(() => _editingValue = false);
-      },
+  /// 「**포지션 등 2요소는 각각 편집**(온점 없이)」 — and tool-settings-
+  /// panel-tidy (유저 2026-10-10): 「fx에도 텍스트편집하는거 있는데 거기도
+  /// 사용하는거 어떻지? x랑 y값 안그래도 같이움직여서 불편했고」 → 「A로하고」;
+  /// 「x시트랑 타임라인이랑 동일하게 박스두도록 가능한가? 작아도되니까」;
+  /// 「회전의 박스가 다른 박스랑 길이가 살짝 짧거든? … 행 열 느낌나게」.
+  /// ↩️The value was blue text shrunk into an 80px column and stacked in
+  /// lines down the sheet; a tap opened a field for each number in its
+  /// place, and one drag moved both numbers.
+  Widget _valueBoxes(String valueLabel) {
+    final parts = readoutParts(valueLabel);
+    // A pair prints its unit once, after its second number (`150, 80%` —
+    // After Effects' print); each box of the pair wears it.
+    final pairUnit = parts.last.unit;
+    return Row(
+      children: [
+        for (final (index, part) in parts.indexed) ...[
+          if (index > 0) const SizedBox(width: layerLaneValueBoxGap),
+          Flexible(
+            child: DragValueLabel.box(
+              keyValue: _valueKey(index),
+              inputKeyValue: _valueFieldKey(index),
+              name: parts.length == 2 ? _pairNames[index] : null,
+              text: '${part.number}${part.unit.isEmpty ? pairUnit : part.unit}',
+              turned: widget.axis == Axis.vertical,
+              enabled: widget.laneEdit?.onSetValue != null,
+              onOperationStart: () => _startScrub(valueLabel),
+              onDragDelta: (pixels) => _scrubPart(index, pixels),
+              onOperationEnd: _endScrub,
+              onEditSubmit: (typed) => _typePart(parts, index, typed),
+            ),
+          ),
+        ],
+      ],
     );
   }
+
+  /// Where a ring or a swatch stands in the column: at its END, where every
+  /// box of the column ends — short of the boxes' hands, as a settings ring
+  /// stands short of the grid's end column (`ToolSettingSurface`). ↩️In the
+  /// middle, which in a column made for two boxes left it floating; then
+  /// at the column's very end, past the boxes.
+  Widget _atValueEnd(Widget control) => Padding(
+    padding: const EdgeInsets.only(right: FieldSlider.handsReach),
+    child: Align(alignment: Alignment.centerRight, child: control),
+  );
+
+  /// What a pair's two boxes are called inside them — across, then down.
+  static const List<String> _pairNames = ['X', 'Y'];
+
+  /// The key a number's readout wears. The first keeps the key the whole
+  /// value had: it IS that value on every lane that holds one number.
+  String _valueKey(int part) => part == 0
+      ? '$_keyPrefix-lane-value-${layer.id}-${lane.laneId}'
+      : '$_keyPrefix-lane-value-${layer.id}-${lane.laneId}-$part';
+
+  /// The key its field wears while it is typed in.
+  String _valueFieldKey(int part) => part == 0
+      ? '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}'
+      : '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}-$part';
 
   /// Pressing anywhere on the label stands on this lane. OPAQUE so the
   /// padding and the gaps stand too; the navigator buttons, the group
@@ -765,7 +639,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     return _standable(
       lane.isGroupHeader
           ? _headerCell(context, colorScheme, plate)
-          : _memberCell(colorScheme, plate),
+          : _memberCell(colorScheme, plate, currentRow),
     );
   }
 
@@ -852,6 +726,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // start at the same place on every header, and shrink-wrapping
           // the name is what made it start wherever a name happened to end.
           Expanded(child: _headerLabel(colorScheme)),
+          ?_groupGraph(),
           ..._headerTrailing(context, colorScheme),
         ],
       ),
@@ -867,21 +742,18 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// reorder the chain; a label that toggles instead would have to be
   /// excluded from both, and that exclusion is exactly the kind of
   /// surface-local rule this rail keeps paying for.
+  ///
+  /// The app's one twirl, as small as the glyph it was.
   Widget _groupTwirl() {
     final onToggleGroup = widget.onToggleLaneGroup;
-    final toggle = onToggleGroup == null
-        ? null
-        : () => onToggleGroup(layer, lane);
-    return ControlPressClaim(
-      onPressed: toggle,
-      child: InkWell(
-        key: ValueKey<String>(
-          '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-        ),
-        onTap: silentPress(toggle),
-        customBorder: const CircleBorder(), // R26 #28
-        child: Icon(layerRailTwirlIcon(expanded: lane.groupExpanded), size: 16),
-      ),
+    return LayerFoldTwirl(
+      name: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+      axis: widget.axis,
+      expanded: lane.groupExpanded,
+      across: 16,
+      onToggle: onToggleGroup == null
+          ? null
+          : () => onToggleGroup(layer, lane),
     );
   }
 
@@ -907,10 +779,25 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         columns: widget.metrics.railColumns,
         fillReference: _groupReset(colorScheme),
         fx: _groupFx(context),
-        hasOnionColumn: widget.hasOnionColumn,
-        hasBlendColumn: widget.hasBlendColumn,
+        optionalColumns: widget.optionalColumns,
         trailingRegion: _groupPreview(),
       );
+
+  /// I-89 ③: the group's graph button — its lanes as one graph, in their
+  /// own place, and back — at the end of the header's name, out of its room
+  /// (I-89 Q1: 「이름공간을 줄여서 오른쪽정렬로」).
+  Widget? _groupGraph() {
+    final verbs = widget.laneGraphVerbs;
+    final key = laneGraphHeadedBy(layer, lane);
+    if (verbs == null || key == null) return null;
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.graph,
+      name: '$_keyPrefix-lane-group-graph-${layer.id}-${lane.laneId}',
+      axis: widget.axis,
+      on: widget.laneGraphs.open.containsKey(key),
+      onToggle: () => verbs.toggle(key),
+    );
+  }
 
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
   /// fill-reference toggle owns on layer rows, and the two never appear on
@@ -918,14 +805,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget? _groupReset(ColorScheme colorScheme) {
     final onReset = widget.onResetLaneGroup;
     if (onReset == null) return null;
-    return AppIconButton(
-      keyValue: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
+    return RailGlyphButton(
+      name: '$_keyPrefix-lane-group-reset-${layer.id}-${lane.laneId}',
       tooltip: AppText.strings.tlResetGroup,
       size: AppIconButtonSize.micro,
       onPressed: () => onReset(layer, lane),
-      icon: Icon(
+      glyph: RailIconGlyph(
         Icons.settings_backup_restore,
-        size: 14,
         color: colorScheme.onSurfaceVariant,
       ),
     );
@@ -936,15 +822,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (enabled == null) return null;
     final onToggle = widget.onToggleLaneGroupEnabled;
     return RailSwipeColumnPointer(
-      child: AppIconButton(
-        keyValue: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
+      child: RailGlyphButton(
+        name: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
         tooltip:
             (enabled
                     ? AppText.strings.tlBypassLaneTemplate
                     : AppText.strings.tlApplyLaneTemplate)
                 .replaceAll('{name}', lane.label),
         onPressed: onToggle == null ? null : () => onToggle(layer, lane),
-        icon: fxGlyph(context: context, active: enabled, fontSize: 11),
+        size: AppIconButtonSize.bar,
+        glyph: RailTextGlyph(
+          'fx',
+          style: fxGlyphStyle(context: context, active: enabled, fontSize: 11),
+        ),
       ),
     );
   }
@@ -976,18 +866,41 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   // ── a member lane ─────────────────────────────────────────────────────
 
-  Widget _memberCell(ColorScheme colorScheme, Color plate) {
+  Widget _memberCell(
+    ColorScheme colorScheme,
+    Color plate,
+    TimelineRowAddress? currentRow,
+  ) {
+    if (widget.folded) {
+      return _cellBox(
+        plate: plate,
+        colorScheme: colorScheme,
+        padding: EdgeInsets.zero,
+        child: const SizedBox.shrink(),
+      );
+    }
     final valueLabel = lane.valueLabel?.call(_frame);
+    final seat = widget.seat;
+    final drawn = seat == null
+        ? null
+        : laneGraphDrawnLanes(seat, currentRow).contains(lane.laneId);
+    final ink = colorScheme.onSurfaceVariant;
     // A lane's name reads down its column on the sheet, through the shared
-    // vertical-writing table ([readableText]).
+    // vertical-writing table ([readableText]). One its graph does not draw
+    // reads OFF, in the app's one off language (the mock's 0.45, 5판).
     final label = readableText(
       widget.axis,
       lane.label,
-      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+      style: TextStyle(
+        fontSize: 12,
+        color: drawn == false
+            ? ink.withValues(alpha: AppColors.offAlpha)
+            : ink,
+      ),
     );
     final content = widget.axis == Axis.horizontal
-        ? _memberRow(colorScheme, label, valueLabel)
-        : _memberColumn(colorScheme, label, valueLabel);
+        ? _memberRow(colorScheme, label, valueLabel, drawn)
+        : _memberColumn(colorScheme, label, valueLabel, drawn);
     final lead = _sectionLead(24);
     return _cellBox(
       plate: plate,
@@ -1011,14 +924,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// 8 → 2 on the sheet: a 28px column cannot spend 16 of it on side padding.
+  /// Along the cell only, never across it — on the sheet as on the rail.
+  /// The sheet's column holds the rail's value row turned on its side, so
+  /// it gives it the rail row's breadth: a settings bar's 24 between the
+  /// cell's two hairlines, with nothing spent beside it. ↩️8 → 2 a side
+  /// (R10 R6: a 28px column cannot spend 16 of it on side padding), and
+  /// then 2 left the turned bar 23 and it ran over by one (2026-10-11).
   EdgeInsets get _memberPadding {
     if (widget.axis != Axis.horizontal) {
-      return const EdgeInsets.symmetric(horizontal: 2, vertical: 4);
+      return const EdgeInsets.symmetric(vertical: _laneColumnEndPadding);
     }
     return widget.leadingInset > 0
-        ? const EdgeInsets.only(right: 8)
-        : const EdgeInsets.only(left: 24, right: 8);
+        ? const EdgeInsets.only(right: _laneMemberEndPadding)
+        : const EdgeInsets.only(left: 24, right: _laneMemberEndPadding);
   }
 
   /// Along the rail: navigator, name, value. The NAME takes the leftover and
@@ -1026,7 +944,25 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// children of equal weight is what put the numbers at a different x on
   /// every row — each was right-aligned inside HALF of whatever its name
   /// left over, and names are not the same length.
-  Widget _memberRow(ColorScheme colorScheme, Widget label, String? valueLabel) {
+  ///
+  /// I-89 ③: on a rail that carries the header graphs, the curve's chips
+  /// and the pin at the end of the name, before the value, each in a slot
+  /// every lane keeps — so the name starts right after the key buttons and
+  /// the chips and the pins stand in one column whichever lanes wear them
+  /// (I-89-Q17, 유저 2026-10-12: 「키쪽에 기준점같은 이름 텍스트 딱 붙여서
+  /// 공간만듬」). On both axes ([_memberColumn]).
+  ///
+  /// ↩️The chips stood before the name, between it and the key buttons,
+  /// and the rail paid the two slots, 44 wider, from 2026-10-11 to 10-12: a
+  /// row's own buttons come out of its name (I-89 Q1, 「이름공간을 줄여서
+  /// 오른쪽정렬로 … 즉 레이어 이름행이 2개분 줄어드는거지」).
+  Widget _memberRow(
+    ColorScheme colorScheme,
+    Widget label,
+    String? valueLabel,
+    bool? drawn,
+  ) {
+    final graphs = _drawsGraphs;
     return Row(
       children: [
         if (lane.showsKeyNavigator) ...[
@@ -1035,40 +971,31 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         ],
         Expanded(child: label),
         ?_valueLink(),
-        const SizedBox(width: 4),
+        if (graphs) ...[
+          SizedBox(width: layerLaneChipsSlotWidth, child: _curveChips(drawn)),
+          SizedBox(width: layerLanePinSlotWidth, child: _lanePin()),
+        ],
+        const SizedBox(width: _laneValueGap),
         SizedBox(
-          width: layerLaneValueSlotWidth,
+          // As wide as its boxes' widest number where the rail is shown: a
+          // truncated coordinate is a WRONG coordinate. ↩️The readout shrank
+          // into a fixed 80 instead.
+          width: layerRailColumnWidthsIn(context).laneValue,
           // Reserved even with nothing to show, so the column survives the
           // rows that carry no readout (the Excel-grid rule the control
           // slots already follow).
           child: valueLabel == null
               ? null
-              : _editingValue
-              ? _valueCell(colorScheme, valueLabel)
-              : Align(
-                  alignment: Alignment.centerRight,
-                  // A truncated coordinate is a WRONG coordinate — the
-                  // sheet's stood-up readout already made that call, and a
-                  // fixed column is where it starts to matter here too.
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerRight,
-                    child: _valueCell(colorScheme, valueLabel),
-                  ),
-                ),
+              : _valueCell(valueLabel),
         ),
       ],
     );
   }
 
-  /// THE CHAIN of a lane whose value is a linked pair — a layer's Scale,
-  /// After Effects' own mark beside the two numbers. One press flips the
-  /// switch the rail handed over, and on and off are told by colour alone
-  /// ([AppIconButton.isSelected]).
-  ///
-  /// 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —
-  /// 변형 도구의 「배율 연동」과 한 스위치」. Always on the row that has one:
-  /// what a press changes is its colour, never whether it is there.
+  /// THE CHAIN of a lane whose value is a linked pair — a layer's Scale
+  /// ([ScaleChainButton], the one the transform tool wears). One press flips
+  /// the switch the rail handed over. Always on the row that has one: what a
+  /// press changes is its colour, never whether it is there.
   ///
   /// Null on every lane that is not [PropertyLaneRow.linkable], and on a
   /// rail that was handed no chain.
@@ -1079,14 +1006,65 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     }
     return ListenableBuilder(
       listenable: link.changes,
-      builder: (context, _) => AppIconButton(
+      builder: (context, _) => ScaleChainButton(
         keyValue: '$_keyPrefix-lane-value-link-${layer.id}-${lane.laneId}',
-        tooltip: link.tooltip,
-        size: AppIconButtonSize.micro,
-        isSelected: link.isOn(),
+        isOn: link.isOn(),
         onPressed: link.toggle,
-        icon: const Icon(Icons.link),
       ),
+    );
+  }
+
+  /// I-89 ③: the colours this lane's numbers are drawn in, while its
+  /// group's graph [drawn] it — the graph's key, in the lane's own row
+  /// (시안 5판). Nothing while it is not drawn, its slot kept.
+  ///
+  /// The corner is [AppShapes]' control family, which scales with its size:
+  /// the mock's chip at 9px, where a container's absolute corner would
+  /// have rounded it into a dot.
+  Widget? _curveChips(bool? drawn) {
+    final curve = lane.curve;
+    if (drawn != true || curve == null) {
+      return null;
+    }
+    return Flex(
+      direction: widget.axis,
+      children: [
+        for (final (index, colour) in curve.parts.indexed) ...[
+          if (index > 0) const SizedBox.square(dimension: _laneChipGap),
+          DecoratedBox(
+            key: ValueKey<String>(
+              '$_keyPrefix-lane-chip-${layer.id}-${lane.laneId}-$index',
+            ),
+            decoration: ShapeDecoration(
+              color: colour,
+              shape: AppShapes.control(_laneChipSize),
+            ),
+            child: const SizedBox.square(dimension: _laneChipSize),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// Whether this rail draws header graphs at all (I-89 ③) — what keeps a
+  /// member's chips and pin slots, whichever lanes wear them.
+  bool get _drawsGraphs => widget.laneGraphVerbs != null;
+
+  /// I-89 ③: the lane PINNED to every open graph, or let go — AE's graph
+  /// editor set, the one way a lane reaches another group's graph. On a
+  /// lane that draws a curve ([lanePinOf]).
+  Widget? _lanePin() {
+    final verbs = widget.laneGraphVerbs;
+    final key = lanePinOf(layer, lane);
+    if (verbs == null || key == null) {
+      return null;
+    }
+    return LaneGraphToggle(
+      kind: LaneGraphToggleKind.pin,
+      name: '$_keyPrefix-lane-pin-${layer.id}-${lane.laneId}',
+      axis: widget.axis,
+      on: widget.laneGraphs.pinned.contains(key),
+      onToggle: () => verbs.togglePin(key),
     );
   }
 
@@ -1108,58 +1086,68 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// the frame axis). The gaps count too: without them the label's floor
   /// was 4px short of what the gate promised at every rung, and nothing
   /// noticed while the label could still pack.
+  ///
+  /// THE VALUE IS THE RAIL'S VALUE COLUMN, TURNED: its row as the rail
+  /// writes it, a quarter on its side, as Latin turns in vertical writing —
+  /// the same length the rail gives it (유저 2026-10-11: 「진짜로
+  /// 90도눕혀서 쓰는것처럼 하면 길이 다 타임라인이랑 똑같이 들어갈거같은데
+  /// 그렇게하자. 약간 워드에서도 세로쓰기 있는데 뭐 검증된 방식이잖아」).
+  /// The steps and the pencil turn with it, − reading as a bar: asked
+  /// whether to stand them upright, the user kept them turned (유저
+  /// 2026-10-11 「여쭐것 둘다 문제없음」).
+  /// ↩️Stood up: two small boxes one under the other, each with its pencil
+  /// under it, and no ± (2026-10-10).
+  ///
+  /// The name starts right under the key buttons, on one line across a
+  /// group's columns (I-89-Q17, 유저 2026-10-12: 「x시트만 뒤죽박죽인데
+  /// 일정하게 위쪽정렬되도록」): the chips stand at its end with the pin.
+  /// ↩️Above it, they pushed it down in the columns long enough to pay them
+  /// and not in the rest — a chained lane pays them later.
   Widget _memberColumn(
     ColorScheme colorScheme,
     Widget label,
     String? valueLabel,
+    bool? drawn,
   ) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final extent = constraints.maxHeight;
-        const gap = 4.0;
-        final showsValue =
-            valueLabel != null &&
-            extent >= _laneLabelFloor + gap + _laneValueExtent;
-        final valueExtent = showsValue ? gap + _laneValueExtent : 0.0;
-        final navigatorExtent = lane.showsKeyNavigator
-            ? gap + _laneNavigatorExtent
-            : 0.0;
-        final showsNavigator =
-            lane.showsKeyNavigator &&
-            extent >= _laneLabelFloor + navigatorExtent + valueExtent;
-        // The chain is paid LAST, once everything the column already showed
-        // has its room: it links the value, so it is never there without
-        // it, and no key button is shed to make it room. Asked of the
-        // navigator the LANE has, not of whether it is showing — or the
-        // chain would come and go and come again as the column grew.
-        final link = showsValue ? _valueLink() : null;
-        final showsLink =
-            link != null &&
-            extent >=
-                _laneLabelFloor +
-                    navigatorExtent +
-                    valueExtent +
-                    _laneValueLinkExtent;
+        final link = valueLabel == null ? null : _valueLink();
+        final shows = _stoodShows(
+          constraints.maxHeight,
+          hasValue: valueLabel != null,
+          hasLink: link != null,
+        );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (showsNavigator) ...[
+            if (shows.navigator) ...[
               _navigator(colorScheme),
-              const SizedBox(height: gap),
+              const SizedBox(height: _laneStoodNavigatorGap),
             ],
             Expanded(child: label),
-            if (showsLink)
+            if (shows.link)
               SizedBox(
                 height: _laneValueLinkExtent,
                 child: Center(child: link),
               ),
-            if (showsValue) ...[
-              const SizedBox(height: gap),
-              // A fixed slot, so a long readout ellipsises inside it instead
-              // of pushing the heading out of its own column.
+            if (shows.chips)
               SizedBox(
-                height: _laneValueExtent,
-                child: _valueCell(colorScheme, valueLabel),
+                height: layerLaneChipsSlotWidth,
+                child: _curveChips(drawn),
+              ),
+            if (shows.pin)
+              SizedBox(
+                height: layerLanePinSlotWidth,
+                child: Center(child: _lanePin()),
+              ),
+            if (shows.value && valueLabel != null) ...[
+              const SizedBox(height: _laneValueGap),
+              SizedBox(
+                height: layerRailColumnWidthsIn(context).laneValue,
+                child: RotatedBox(
+                  quarterTurns: 1,
+                  child: _valueCell(valueLabel),
+                ),
               ),
             ],
           ],
@@ -1167,7 +1155,65 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       },
     );
   }
+
+  /// What a stood-up member column [extent] long shows: the NAME is paid
+  /// first, then each control in turn, and what does not fit is shed.
+  ///
+  /// The chain is paid after the value and the navigator, once everything
+  /// the column already showed has its room: it links the value, so it is
+  /// never there without it, and no key button is shed to make it room.
+  /// Asked of the navigator the LANE has, not of whether it is showing — or
+  /// the chain would come and go and come again as the column grew.
+  ///
+  /// I-89 ③: the graph's pin and chips are paid after the chain, asked the
+  /// same way — of what the lane HAS, the value it will show among it — so
+  /// carrying them sheds nothing the column showed before they came.
+  /// ↩️Asked of what was showing, the pin stood in a column too short for
+  /// the value and went again as the column grew to take it — a window the
+  /// turned value column, as long as the rail's value cell is wide, opened
+  /// (2026-10-11).
+  _StoodShows _stoodShows(
+    double extent, {
+    required bool hasValue,
+    required bool hasLink,
+  }) {
+    final valueSlot =
+        _laneValueGap + layerRailColumnWidthsIn(context).laneValue;
+    final value = hasValue && extent >= _laneLabelFloor + valueSlot;
+    final valueExtent = value ? valueSlot : 0.0;
+    final navigatorExtent = lane.showsKeyNavigator
+        ? _laneStoodNavigatorGap + _laneNavigatorExtent
+        : 0.0;
+    final navigatorFloor = _laneLabelFloor + valueExtent;
+    final linkFloor = navigatorFloor + navigatorExtent;
+    final linked = value && hasLink;
+    final pinFloor =
+        _laneLabelFloor +
+        (hasValue ? valueSlot : 0.0) +
+        navigatorExtent +
+        (hasValue && hasLink ? _laneValueLinkExtent : 0.0);
+    final graphs = _drawsGraphs;
+    final chipsFloor = pinFloor + (graphs ? layerLanePinSlotWidth : 0.0);
+    return (
+      value: value,
+      navigator:
+          lane.showsKeyNavigator && extent >= navigatorFloor + navigatorExtent,
+      link: linked && extent >= linkFloor + _laneValueLinkExtent,
+      pin: graphs && extent >= pinFloor + layerLanePinSlotWidth,
+      chips: graphs && extent >= chipsFloor + layerLaneChipsSlotWidth,
+    );
+  }
 }
+
+/// What a stood-up member column shows of its controls
+/// ([_TimelineLaneControlsRowState._stoodShows]).
+typedef _StoodShows = ({
+  bool value,
+  bool navigator,
+  bool link,
+  bool pin,
+  bool chips,
+});
 
 class _NavigatorButton extends StatelessWidget {
   const _NavigatorButton({
@@ -1213,9 +1259,9 @@ class _NavigatorButton extends StatelessWidget {
 }
 
 /// The frame-axis band of one property lane: a quiet strip with key markers
-/// at keyed frames (AE-style: linear keys are diamonds, HOLD keys squares).
-/// Markers drag along the frame axis to move their key (snapping per frame)
-/// and open the hold/delete menu on right-click or long-press.
+/// at keyed frames (AE-style: a half for each side of the key —
+/// [paintKeyMark]). The markers are drawings; the band under them takes the
+/// press ([TimelineLaneKeyMarker]).
 ///
 /// Horizontal = a row under the layer's frame cells (the timeline);
 /// vertical = a column beside the layer's frame cells (the X-sheet).
@@ -1296,13 +1342,16 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// ONE metric law for every marker on this axis — see
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
   /// Build-time is correct HERE: the band rebuilds on zoom.
-  double get _markerSize => lane.isGroupHeader
-      ? timelineLaneUnionKeyMarkerSize(
-          _crossExtent,
-          frameCellExtent: _cellExtent,
-        )
-      : timelineLaneKeyMarkerSize(_crossExtent, frameCellExtent: _cellExtent);
-  double get _hitSize => (_markerSize + 8).clamp(14.0, _crossExtent).toDouble();
+  double get _markerSize => timelineLaneKeyMarkerSizeOf(
+    lane,
+    _crossExtent,
+    frameCellExtent: _cellExtent,
+  );
+  /// The floor yields to the room, as a mark's does ([_squareInCell]): a
+  /// lane the enlarged graph folds is thinner than it (I-89 ③D).
+  double get _hitSize => (_markerSize + 8)
+      .clamp(math.min(14.0, _crossExtent), _crossExtent)
+      .toDouble();
 
   bool _inWindow(int frame) =>
       frame >= frameStartIndex && frame < frameEndIndexExclusive;
@@ -1333,6 +1382,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
         color: layerMarkColor(layer.mark),
         startsAtKey: from == span.first,
         endsAtKey: past == span.last + 1,
+        // The marks the band draws ([_keyMarkers]).
+        rings: [
+          for (final frame in timelineHollowKeyFrames(lane))
+            if (_inWindow(frame)) (cell: frame - from, band: 1),
+        ],
       ),
     );
   }
@@ -1411,7 +1465,8 @@ class TimelineLaneFrameRow extends StatelessWidget {
         key: ValueKey<String>(
           '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
         ),
-        shape: lane.keyShapeAt(frame),
+        mark: lane.keyMarkAt(frame),
+        axis: axis,
         markerSize: _markerSize,
         color: layerMarkColor(layer.mark),
         selected:
@@ -1580,17 +1635,33 @@ double timelineLaneUnionKeyMarkerSize(
   frameCellExtent: frameCellExtent,
 );
 
+/// The size of [lane]'s key marks: a group header's union ([timelineLaneUnionKeyMarkerSize]),
+/// a member's key ([timelineLaneKeyMarkerSize]) — the band's one answer,
+/// wherever a lane's keys are drawn ([TimelineLaneFrameRow], and the
+/// storyboard's camera rows through [timelineLaneKeySpan]).
+double timelineLaneKeyMarkerSizeOf(
+  PropertyLaneRow lane,
+  double crossExtent, {
+  required double frameCellExtent,
+}) => lane.isGroupHeader
+    ? timelineLaneUnionKeyMarkerSize(
+        crossExtent,
+        frameCellExtent: frameCellExtent,
+      )
+    : timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent);
+
 /// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — **A KEY MARK IS A SQUARE, SO
 /// IT IS CAPPED BY THE TIGHTER AXIS OF ITS CELL.**
 ///
 /// > 「1-일반상태, 2-**다이아몬드가 종횡비가 이상해지기 시작**, 3-이상해짐.
 /// > 크기가 종횡비 유지한채로 작아지는게아니라 **한 변만 작아지는** 느낌」
 ///
-/// [TimelineLaneKeyMarker] draws one `Container` with an explicit width AND
-/// height and rotates it 45°. Ask for more than the cell is wide and the
-/// parent's constraint squeezes the WIDTH while the height holds — a
-/// rectangle, and a rotated rectangle is a lozenge, not a diamond. That is
-/// exactly the degradation the three screenshots step through.
+/// [TimelineLaneKeyMarker] asks for a box of an explicit width AND height.
+/// ↩️It was one `Container` rotated 45° (the halves came with I-89 ②): ask
+/// for more than the cell is wide and the parent's constraint squeezed the
+/// WIDTH while the height held — a rectangle, and a rotated rectangle is a
+/// lozenge, not a diamond. That is exactly the degradation the three
+/// screenshots step through.
 ///
 /// The member size already ran through [timelineFittedGlyphFontSize], which
 /// takes whichever axis is tighter — but two things escaped it: the fit's
@@ -1614,12 +1685,12 @@ double _squareInCell(
 /// floor [timelineFittedGlyphFontSize] holds every other mark to.
 const double _keyMarkerFloor = 4.0;
 
-/// The union key's WORD for one frame — null when the row names no key
+/// A lane key's WORD for one frame — null when the lane names no key
 /// there.
 ///
 /// The band's print ([_LaneKeyName]), so the camera row says what every
 /// other row says about a named key.
-Widget? _unionKeyName(PropertyLaneRow lane, {required int frame}) {
+Widget? _laneKeyWord(PropertyLaneRow lane, {required int frame}) {
   final name = lane.keyNames[frame];
   if (name == null) {
     return null;
@@ -1652,53 +1723,139 @@ List<Widget> timelineUnionKeyMarkerSpans({
       lane: lane,
       axis: axis,
     ),
+    for (final stretch in lane.stretchWords)
+      timelineStretchWordSpan(
+        keyPrefix: keyPrefix,
+        layer: layer,
+        stretch: stretch,
+        axis: axis,
+      ),
     for (final frame in lane.keyedFrames.toList()..sort())
-      TimelineFrameSpan(
-        key: ValueKey<String>(
-          '$keyPrefix-lane-key-span-${layer.id}-${lane.laneId}-$frame',
-        ),
-        // The FULL cell, resolved at layout time — the cells row keeps
-        // its memo through zoom steps (R28 #4), so the marker size must
-        // not be baked at build. The child reads the laid-out box and
-        // asks the SAME metric law (D39); Center inside the marker puts
-        // the diamond on the cell centre exactly as the carved-out box
-        // used to.
-        placement: TimelineFrameSpanPlacement(
-          startIndex: frame,
-          endIndexExclusive: frame + 1,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // The tighter box dimension is the cell's zoom-driven extent
-            // on either axis (the fit takes the min of both anyway).
-            final cellExtent = math.min(
-              constraints.maxWidth,
-              constraints.maxHeight,
-            );
-            final markerSize = timelineLaneUnionKeyMarkerSize(
-              crossExtent,
-              frameCellExtent: cellExtent,
-            );
-            final marker = TimelineLaneKeyMarker(
-              key: ValueKey<String>(
-                '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
-              ),
-              shape: lane.keyShapeAt(frame),
-              markerSize: markerSize,
-              color: layerMarkColor(layer.mark),
-            );
-            // The NAME rides the same span — 🗣️유저 2026-09-12:
-            // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row
-            // drew the mark and left the word to a band it does not have.
-            final word = _unionKeyName(lane, frame: frame);
-            return word == null
-                ? marker
-                : Stack(fit: StackFit.expand, children: [marker, word]);
-          },
-        ),
+      timelineLaneKeySpan(
+        keyPrefix: keyPrefix,
+        layer: layer,
+        lane: lane,
+        frame: frame,
+        crossExtent: crossExtent,
+        axis: axis,
       ),
   ];
 }
+
+/// ONE key of [lane] — its mark and its name — as the span it stands on:
+/// the cell of the key at [frame], or the cell [at] where a row draws the
+/// key somewhere other than its own frame (the storyboard's camera rows
+/// draw each cut's keys at the cut's place on the track, I-73 ④).
+///
+/// [crossExtent] is the band the mark stands in, across — the row's whole
+/// extent, or with [crossInset] the part of it from there (the camera row's
+/// upper and lower lines over an O.L). The mark's size reads it, as it
+/// reads the row's: one metric law ([timelineLaneKeyMarkerSizeOf] — a
+/// header's union, or a member's key, as the band draws them).
+///
+/// [named] false leaves the key's name off — the camera row's two lines
+/// have no room for it (the drawn proposal's 「키 이름은 한 줄일 때만」).
+/// [selected] rings the mark, as the band rings a key its lane selection
+/// holds.
+///
+/// ↩️`timelineUnionKeySpan` while the camera row's union was the one lane
+/// drawn this way; the storyboard's camera LANES are drawn so too (I-73
+/// ④ⓔ).
+TimelineFrameSpan timelineLaneKeySpan({
+  required String keyPrefix,
+  required Layer layer,
+  required PropertyLaneRow lane,
+  required int frame,
+  required double crossExtent,
+  required Axis axis,
+  int? at,
+  double? crossInset,
+  bool named = true,
+  bool selected = false,
+}) {
+  final cell = at ?? frame;
+  return TimelineFrameSpan(
+    key: ValueKey<String>(
+      '$keyPrefix-lane-key-span-${layer.id}-${lane.laneId}-$frame',
+    ),
+    // The FULL cell, resolved at layout time — the cells row keeps its memo
+    // through zoom steps (R28 #4), so the marker size must not be baked at
+    // build. The child reads the laid-out box and asks the SAME metric law
+    // (D39); Center inside the marker puts the diamond on the cell centre
+    // exactly as the carved-out box used to.
+    placement: TimelineFrameSpanPlacement(
+      startIndex: cell,
+      endIndexExclusive: cell + 1,
+      crossInset: crossInset ?? 0,
+      crossExtent: crossInset == null ? null : crossExtent,
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        // The tighter box dimension is the cell's zoom-driven extent on
+        // either axis (the fit takes the min of both anyway).
+        final cellExtent = math.min(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+        final markerSize = timelineLaneKeyMarkerSizeOf(
+          lane,
+          crossExtent,
+          frameCellExtent: cellExtent,
+        );
+        final marker = TimelineLaneKeyMarker(
+          key: ValueKey<String>(
+            '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
+          ),
+          mark: lane.keyMarkAt(frame),
+          axis: axis,
+          markerSize: markerSize,
+          color: layerMarkColor(layer.mark),
+          selected: selected,
+        );
+        // The NAME rides the same span — 🗣️유저 2026-09-12:
+        // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row drew
+        // the mark and left the word to a band it does not have.
+        final word = named ? _laneKeyWord(lane, frame: frame) : null;
+        return word == null
+            ? marker
+            : Stack(fit: StackFit.expand, children: [marker, word]);
+      },
+    ),
+  );
+}
+
+/// One word over the line between two of a row's keys ([LaneStretchWord])
+/// as the span it is laid out over — from the first key's cell through the
+/// next key's, the box an instruction span's name stands in
+/// ([TimelineSpanName]), so the word sits over the line's middle. A row
+/// that draws its keys somewhere other than their own frames hands the
+/// stretch over where it draws it (the storyboard's camera row, I-73 ④).
+///
+/// The word wears the row's key colour, as its keys' line does (유저
+/// 2026-10-12: 「카메라 키 사이 PAN 표시되는거, 보이는데 너무 연해서
+/// 있는지도몰랏어. 키 색(즉 색라벨 색)이랑 똑같이」) — ↩️it wore its term's
+/// ink from the vocabulary, as a direction row's span does.
+TimelineFrameSpan timelineStretchWordSpan({
+  required String keyPrefix,
+  required Layer layer,
+  required LaneStretchWord stretch,
+  required Axis axis,
+}) => TimelineFrameSpan(
+  key: ValueKey<String>(
+    '$keyPrefix-lane-stretch-word-${layer.id}-${stretch.from}',
+  ),
+  placement: TimelineFrameSpanPlacement(
+    startIndex: stretch.from,
+    endIndexExclusive: stretch.to + 1,
+  ),
+  child: IgnorePointer(
+    child: TimelineSpanName(
+      axis: axis,
+      text: stretch.word,
+      ink: layerMarkColor(layer.mark),
+    ),
+  ),
+);
 
 /// The line between a union row's keys, as the span it is laid out over —
 /// the band's own drawing ([TimelineLaneKeysLine]), from the first key's
@@ -1728,6 +1885,10 @@ TimelineFrameSpan? _unionKeysLineSpan({
       axis: axis,
       cells: span.last - span.first + 1,
       color: layerMarkColor(layer.mark),
+      rings: [
+        for (final frame in timelineHollowKeyFrames(lane))
+          (cell: frame - span.first, band: 1),
+      ],
     ),
   );
 }
@@ -1750,6 +1911,13 @@ TimelineFrameSpan? _unionKeysLineSpan({
       : (first: first, last: last);
 }
 
+/// The frames of [lane]'s keys whose marks are hollow ([keyMarkIsHollow]) —
+/// where the line between its keys stops ([TimelineLaneKeysLine.rings]).
+Iterable<int> timelineHollowKeyFrames(PropertyLaneRow lane) => [
+  for (final MapEntry(key: frame, value: mark) in lane.keyMarks.entries)
+    if (keyMarkIsHollow(mark)) frame,
+];
+
 /// THE LINE BETWEEN A ROW'S KEYS (I-73, 유저 2026-10-08). A DRAWING, and
 /// nothing else — the band beneath it owns every pointer.
 ///
@@ -1770,6 +1938,24 @@ TimelineFrameSpan? _unionKeysLineSpan({
 /// middle of the first to the middle of the last, where the two marks
 /// stand. A box that stops short of a key — a band's window does — has the
 /// line run to that edge instead ([startsAtKey], [endsAtKey]).
+///
+/// It runs across the box at [crossFraction], and where a row draws its
+/// keys at another height part of the way along — the storyboard's camera
+/// row, whose cut moves to the upper or the lower line where it shares its
+/// frames with a neighbour over an O.L (I-73 ④) — it STEPS there
+/// ([steps]): 유저 2026-10-08, 「ol쪽 만나면 선을 뭔가 꺾어서 위로 향하게
+/// 해서 직선 잇는다던가?」. A step is a slope across its cell edge, as wide
+/// as half a cell and never wider than [timelineKeysLineBendReach] on
+/// either side, so the line stays one line.
+///
+/// A HOLLOW mark — a union's ○, where its members disagree
+/// ([keyMarkIsHollow]) — is not run through: the line stops at the edge of
+/// its box and goes on past it ([rings]), so the ring stays empty, as the
+/// drawing the user picked has it (I-89 ②, option 나 — 유저 2026-10-10
+/// 「2. 추천대로」); a ring with the line through it is another mark.
+/// ⛔Every other mark stands ON the line, which shows wherever the mark
+/// leaves it room — an hourglass's sides, a chevron's notch — as that
+/// drawing has it too.
 class TimelineLaneKeysLine extends StatelessWidget {
   const TimelineLaneKeysLine({
     super.key,
@@ -1778,6 +1964,9 @@ class TimelineLaneKeysLine extends StatelessWidget {
     required this.color,
     this.startsAtKey = true,
     this.endsAtKey = true,
+    this.crossFraction = 0.5,
+    this.steps = const [],
+    this.rings = const [],
   });
 
   final Axis axis;
@@ -1792,58 +1981,192 @@ class TimelineLaneKeysLine extends StatelessWidget {
   final bool startsAtKey;
   final bool endsAtKey;
 
+  /// Where across the box the line starts: 0 at the leading side, 1 at the
+  /// trailing — the middle, where a key mark stands, unless the row says.
+  final double crossFraction;
+
+  /// Where the line moves across, in box order: at the leading edge of the
+  /// box's cell [TimelineKeysLineStep.edge] it goes to
+  /// [TimelineKeysLineStep.to].
+  final List<TimelineKeysLineStep> steps;
+
+  /// The hollow marks standing on the line, where it stops and goes on
+  /// past. A ring is a union's — only a union's members can disagree — so
+  /// its box is a union mark's ([timelineLaneUnionKeyMarkerSize]).
+  final List<TimelineKeysLineRing> rings;
+
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: CustomPaint(
-        painter: _KeysLinePainter(
-          axis: axis,
-          cells: cells,
-          color: color,
-          startsAtKey: startsAtKey,
-          endsAtKey: endsAtKey,
-        ),
-      ),
-    );
+    return IgnorePointer(child: CustomPaint(painter: _KeysLinePainter(this)));
   }
 }
 
-class _KeysLinePainter extends CustomPainter with RepaintOnProps {
-  _KeysLinePainter({
-    required this.axis,
-    required this.cells,
-    required this.color,
-    required this.startsAtKey,
-    required this.endsAtKey,
-  });
+/// One step of a [TimelineLaneKeysLine]: at the leading edge of the box's
+/// cell [edge] — counted from the box's first cell — the line moves across
+/// to [to] (0 the leading side, 1 the trailing).
+typedef TimelineKeysLineStep = ({int edge, double to});
 
-  final Axis axis;
-  final int cells;
-  final Color color;
-  final bool startsAtKey;
-  final bool endsAtKey;
+/// A hollow mark on a [TimelineLaneKeysLine]: the box's [cell] it stands
+/// in, counted from the box's first, and how much of the box across the
+/// [band] it stands in takes — all of it, but on the camera row's two
+/// lines over an O.L. The two a mark's size reads.
+typedef TimelineKeysLineRing = ({int cell, double band});
+
+/// How far along the line a step's slope may reach on either side of its
+/// edge, at most — half a cell when a cell is narrower than twice this.
+const double timelineKeysLineBendReach = 6;
+
+/// THE COURSE [line] strokes through, in a box [along] long and [across]
+/// wide: from the middle of the first of its cells (or the box's edge,
+/// where it does not start at a key) to the middle of the last (or the far
+/// edge), at its cross fraction, and at each of its steps a slope from
+/// where it was to where the step sends it — reaching half a cell either
+/// side of the step's edge, never more than [timelineKeysLineBendReach],
+/// never past the line's own ends. Empty where the box holds no line.
+///
+/// ★What the painter draws and what a pin reads are this one answer.
+List<({double along, double across})> timelineKeysLineCourse(
+  TimelineLaneKeysLine line, {
+  required double along,
+  required double across,
+}) {
+  final cell = _cellAlong(line, along);
+  final from = line.startsAtKey ? cell / 2 : 0.0;
+  final to = line.endsAtKey ? along - cell / 2 : along;
+  if (to <= from) {
+    return const [];
+  }
+  final reach = math.min(cell / 2, timelineKeysLineBendReach);
+  double held(double value) => value.clamp(from, to).toDouble();
+  var at = across * line.crossFraction;
+  final course = [(along: from, across: at)];
+  for (final step in line.steps) {
+    final edge = step.edge * cell;
+    final next = across * step.to;
+    course
+      ..add((along: held(edge - reach), across: at))
+      ..add((along: held(edge + reach), across: next));
+    at = next;
+  }
+  course.add((along: to, across: at));
+  return course;
+}
+
+/// How long one of [line]'s cells is, in a box [along] long.
+double _cellAlong(TimelineLaneKeysLine line, double along) =>
+    line.cells < 1 ? 0.0 : along / line.cells;
+
+/// Where [line] stops for its [TimelineLaneKeysLine.rings], in a box
+/// [along] long and [across] wide: each ring's box along the line —
+/// centred in its cell, as every mark is, and as long as a union mark in
+/// its band is wide.
+///
+/// ★What the painter keeps the line out of and what a pin reads are this
+/// one answer.
+List<({double from, double to})> timelineKeysLineGaps(
+  TimelineLaneKeysLine line, {
+  required double along,
+  required double across,
+}) {
+  final cell = _cellAlong(line, along);
+  ({double from, double to}) gapAt(TimelineKeysLineRing ring) {
+    final middle = (ring.cell + 0.5) * cell;
+    final size = timelineLaneUnionKeyMarkerSize(
+      across * ring.band,
+      frameCellExtent: cell,
+    );
+    return (from: middle - size / 2, to: middle + size / 2);
+  }
+
+  return [for (final ring in line.rings) gapAt(ring)];
+}
+
+/// [stroke]s the line between a row's keys kept out of [hollows] — the
+/// boxes of the hollow marks standing on it ([keyMarkIsHollow]) — so each
+/// ring stays empty ([TimelineLaneKeysLine]). Every painter of the line
+/// strokes through here: the panels' and the flip window's.
+void strokeKeysLineClearOf(
+  Canvas canvas,
+  List<Rect> hollows,
+  void Function() stroke,
+) {
+  if (hollows.isEmpty) {
+    stroke();
+    return;
+  }
+  canvas.save();
+  for (final box in hollows) {
+    canvas.clipRect(box, clipOp: ClipOp.difference);
+  }
+  stroke();
+  canvas.restore();
+}
+
+class _KeysLinePainter extends CustomPainter with RepaintOnProps {
+  _KeysLinePainter(this.line);
+
+  final TimelineLaneKeysLine line;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final axis = line.axis;
     final along = extentAlong(axis, size);
-    final halfCell = cells < 1 ? 0.0 : along / cells / 2;
-    final from = startsAtKey ? halfCell : 0.0;
-    final to = endsAtKey ? along - halfCell : along;
-    if (to <= from) {
+    final across = extentAcross(axis, size);
+    final course = timelineKeysLineCourse(line, along: along, across: across);
+    if (course.length < 2) {
       return;
     }
-    final across = extentAcross(axis, size) / 2;
-    canvas.drawLine(
-      offsetAlong(axis, along: from, across: across),
-      offsetAlong(axis, along: to, across: across),
-      Paint()
-        ..color = color
-        ..strokeWidth = timelineJoiningLineWidth,
+    final points = [
+      for (final point in course)
+        offsetAlong(axis, along: point.along, across: point.across),
+    ];
+    final paint = Paint()
+      ..color = line.color
+      ..strokeWidth = timelineJoiningLineWidth;
+    strokeKeysLineClearOf(
+      canvas,
+      [
+        // The whole box across: a ring on the camera row's upper line or
+        // its lower one is kept clear of where the line steps to it.
+        for (final gap in timelineKeysLineGaps(
+          line,
+          along: along,
+          across: across,
+        ))
+          Rect.fromPoints(
+            offsetAlong(axis, along: gap.from, across: 0),
+            offsetAlong(axis, along: gap.to, across: across),
+          ),
+      ],
+      () => _stroke(canvas, points, paint),
     );
   }
 
+  /// [points] stroked as one line: a straight one where there are two, a
+  /// path where it steps.
+  static void _stroke(Canvas canvas, List<Offset> points, Paint paint) {
+    if (points.length == 2) {
+      canvas.drawLine(points.first, points.last, paint);
+      return;
+    }
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      path.lineTo(point.dx, point.dy);
+    }
+    canvas.drawPath(path, paint..style = PaintingStyle.stroke);
+  }
+
   @override
-  Object get props => (axis, cells, color, startsAtKey, endsAtKey);
+  Object get props => (
+    line.axis,
+    line.cells,
+    line.color,
+    line.startsAtKey,
+    line.endsAtKey,
+    line.crossFraction,
+    ByList(line.steps),
+    ByList(line.rings),
+  );
 }
 
 /// One key marker. A DRAWING, and nothing else.
@@ -1858,29 +2181,33 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
 /// The camera row kept the old drag for one round, because its lanes had no
 /// band to defer to. They do now.
 ///
-/// [IgnorePointer] is load-bearing, not tidiness: `RenderDecoratedBox`
-/// answers hit tests TRUE anywhere inside its decoration, so a drawn
-/// diamond is a hit target in its own right and the Stack would stop at it
-/// with the band never seeing the pointer.
+/// [IgnorePointer] is load-bearing, not tidiness: a painted mark answers hit
+/// tests anywhere inside its box, so a drawn key is a hit target in its own
+/// right and the Stack would stop at it with the band never seeing the
+/// pointer.
 ///
 /// PUBLIC since B4 (2026-08-17): the camera row's union summary mounts this
-/// same drawing — one shape law (linear = diamond, hold = square, the frame
-/// block's own paper) for every key mark on the frame axis.
+/// same drawing — one mark law ([paintKeyMark]) for every key mark on the
+/// frame axis.
 class TimelineLaneKeyMarker extends StatelessWidget {
   const TimelineLaneKeyMarker({
     super.key,
-    required this.shape,
+    required this.mark,
+    required this.axis,
     required this.markerSize,
     required this.color,
     this.selected = false,
   });
 
-  /// 🚨F-17: a SHAPE, not a `hold` flag. The union needs a third answer —
-  /// 「멤버 타입이 서로 다르면 헤더에 동그라미」 — and a second boolean
-  /// beside `hold` would have made "hold and mixed at once" something a
-  /// caller could hand this widget. [PropertyLaneRow.keyShapeAt] resolves
-  /// it once, from sets that cannot overlap.
-  final PropertyLaneKeyShape shape;
+  /// 🚨F-17: what the key IS — its two sides' kinds, or a union's
+  /// disagreement — resolved once ([PropertyLaneRow.keyMarkAt]), never flags
+  /// a caller could combine into a key no lane has.
+  final KeyMark mark;
+
+  /// The frame axis the mark stands on — the X-sheet's stands it up, the
+  /// half arriving at the key toward the frames before it ([paintKeyMark]).
+  final Axis axis;
+
   final double markerSize;
 
   /// The row's COLOUR LABEL, exactly as its frame blocks take it (유저
@@ -1896,42 +2223,57 @@ class TimelineLaneKeyMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // EVERY key mark fills like the frame blocks (UI-R24 #9 — union
-    // headers, member lanes, camera lanes alike), which since 2026-09-12
-    // means the row's COLOUR LABEL: 「유니언 키 색은 프레임블록이랑
-    // 마찬가지로 색라벨 그대로. 로직 그대로 재사용해서」.
-    final plate = Container(
-      width: markerSize,
-      height: markerSize,
-      decoration: BoxDecoration(
-        color: color,
-        // The MIXED mark is the same plate, round — one drawing with one
-        // border rule, so a union's third shape cannot drift in colour or
-        // in ring weight from the two that were already here.
-        shape: shape == PropertyLaneKeyShape.mixed
-            ? BoxShape.circle
-            : BoxShape.rectangle,
-        // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
-        // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
-        // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
-        // colour alone, the selection rule.
-        border: selected
-            ? Border.all(
-                color: AppColors.accent,
-                width: _selectedLaneKeyBorderWidth,
-              )
-            : null,
-      ),
-    );
-    // AE convention: linear keys read as diamonds, hold keys as squares —
-    // and a union whose members disagree reads as a circle, which is
-    // neither of the two answers it would otherwise have to pick between.
     return IgnorePointer(
       child: Center(
-        child: shape == PropertyLaneKeyShape.smooth
-            ? Transform.rotate(angle: 0.785398, child: plate)
-            : plate,
+        child: CustomPaint(
+          size: Size.square(markerSize),
+          painter: _KeyMarkPainter(
+            mark: mark,
+            standing: axis == Axis.vertical,
+            // EVERY key mark fills like the frame blocks (UI-R24 #9 — union
+            // headers, member lanes, camera lanes alike), which since
+            // 2026-09-12 means the row's COLOUR LABEL: 「유니언 키 색은
+            // 프레임블록이랑 마찬가지로 색라벨 그대로. 로직 그대로
+            // 재사용해서」.
+            color: color,
+            // ⛔NO outline of its own (유저 2026-09-12: 「지금 실루엣에 외곽선
+            // 회색 존재하는거같은데 삭제. 그냥 심플하게 바탕색만 남겨서」). The
+            // one ring left is the SELECTION's, in ACCENT 1 (UI-R23 #4) —
+            // colour alone, the selection rule.
+            ring: selected
+                ? (color: AppColors.accent, width: _selectedLaneKeyBorderWidth)
+                : null,
+          ),
+        ),
       ),
     );
   }
+}
+
+class _KeyMarkPainter extends CustomPainter with RepaintOnProps {
+  const _KeyMarkPainter({
+    required this.mark,
+    required this.standing,
+    required this.color,
+    required this.ring,
+  });
+
+  final KeyMark mark;
+  final bool standing;
+  final Color color;
+  final ({Color color, double width})? ring;
+
+  @override
+  void paint(Canvas canvas, Size size) => paintKeyMark(
+    canvas,
+    mark,
+    center: size.center(Offset.zero),
+    size: size.shortestSide,
+    standing: standing,
+    color: color,
+    ring: ring,
+  );
+
+  @override
+  Object get props => (mark, standing, color, ring);
 }

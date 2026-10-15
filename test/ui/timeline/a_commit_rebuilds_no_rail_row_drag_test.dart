@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/frame_census.dart';
 import '../../helpers/home_page_probes.dart' show showStoryboardPanel;
+import '../../helpers/row_folds.dart';
 
 /// 🚨F-244 (유저 2026-09-30: 「타임라인 블록 관련 조작이 너무 느림」): AN EDIT'S
 /// COMMIT REBUILDS NO RAIL ROW'S DRAG.
@@ -269,7 +270,7 @@ void main() {
     ) async {
       final session = await openApp(tester);
       final kept = targetOf(tester, 'd');
-      session.railView.expandedLaneLayerIds.value = {const LayerId('c')};
+      setRowFolds(session, const LayerId('c'), lanesExpanded: true);
       await tester.pumpAndSettle();
       expect(
         identical(targetOf(tester, 'd'), kept),

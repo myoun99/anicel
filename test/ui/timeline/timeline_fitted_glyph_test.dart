@@ -1,7 +1,7 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
+import 'package:anicel/src/ui/text/laid_out_glyph.dart';
 
 /// #15: the fitted glyph size takes BOTH axes ("빡빡한 쪽으로" — whichever
 /// is tighter wins, floor 4.0 kept), and differently-inked glyph rasters
@@ -47,16 +47,16 @@ void main() {
     test('the resolved COLOR keys the cache: the black and white variants '
         'of one string never serve each other\'s raster', () {
       const style = TextStyle(fontSize: 11, color: Color(0xFF26282B));
-      final plain = timelineGlyphPainter('24', style);
-      final black = timelineGlyphPainter(
+      final plain = laidOutGlyph('24', style);
+      final black = laidOutGlyph(
         '24',
         style.copyWith(color: timelineTextOnLightGroundColor),
       );
-      final white = timelineGlyphPainter(
+      final white = laidOutGlyph(
         '24',
         style.copyWith(color: timelineTextOnDarkGroundColor),
       );
-      final whiteAgain = timelineGlyphPainter(
+      final whiteAgain = laidOutGlyph(
         '24',
         style.copyWith(color: timelineTextOnDarkGroundColor),
       );
@@ -65,7 +65,7 @@ void main() {
       expect(identical(black, white), isFalse);
       expect(identical(white, whiteAgain), isTrue, reason: 'cached');
       expect(
-        identical(plain, timelineGlyphPainter('24', style)),
+        identical(plain, laidOutGlyph('24', style)),
         isTrue,
         reason: 'the plain entry survives alongside',
       );

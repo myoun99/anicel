@@ -33,24 +33,49 @@ Uint8List? soundSpanAsWav(
   KeptSpan kept,
   ProjectClock clock,
 ) {
-  final decoded = decodeAudioSource(source);
-  if (decoded == null || decoded.channels <= 0) {
+  final frames = (first: kept.first, count: kept.count);
+  final pace = clock.rate.inSourceTime(clock.speed);
+  final decoded = decodeAudioOfFrames(source, frames, pace);
+  if (decoded == null) {
     return null;
   }
   return wav16Bytes(
-    int16PcmOfFrames(
-      decoded,
-      (first: kept.first, count: kept.count),
-      clock.rate.inSourceTime(clock.speed),
-    ),
+    int16PcmOfFrames(decoded, frames, pace, from: kept.first),
     sampleRate: decoded.sampleRate,
     channels: decoded.channels,
   );
 }
 
+/// [source]'s sound over project [frames] at [pace] — only those decoded
+/// samples held, the first of them [frames.first]'s first sample (user
+/// 2026-10-09, sound-lands-on-its-exact-sample-Q5: a piece cut from a long
+/// reel holds the piece, not the reel). Null when it cannot be decoded.
+///
+/// Which samples the frames are depends on the sound's rate, so the decoder
+/// is asked for nothing first — that answers the rate — and then for the
+/// samples [ProjectFrameRate.frameToSample] names.
+({Float32List samples, int channels, int sampleRate})? decodeAudioOfFrames(
+  MediaByteSource source,
+  ({int first, int count}) frames,
+  ProjectFrameRate pace,
+) {
+  final probe = decodeAudioSource(source, window: (start: 0, count: 0));
+  if (probe == null || probe.channels <= 0) {
+    return null;
+  }
+  final start = pace.frameToSample(frames.first, probe.sampleRate);
+  final end = pace.frameToSample(frames.first + frames.count, probe.sampleRate);
+  final decoded = decodeAudioSource(
+    source,
+    window: (start: start, count: end - start),
+  );
+  return decoded == null || decoded.channels <= 0 ? null : decoded;
+}
+
 /// What project [frames] play of [sound], as interleaved 16-bit PCM — what
 /// a WAV holds and what the encoder takes — and silence wherever they run
-/// past its end.
+/// past its end. [sound] begins on project frame [from]'s first sample:
+/// [decodeAudioOfFrames] decoded it from there.
 ///
 /// Each frame from the sample the mixer would start it at
 /// ([ProjectFrameRate.frameToSample], rounded up), counted in the sound's
@@ -60,12 +85,16 @@ Uint8List? soundSpanAsWav(
 Int16List int16PcmOfFrames(
   ({Float32List samples, int channels, int sampleRate}) sound,
   ({int first, int count}) frames,
-  ProjectFrameRate pace,
-) {
+  ProjectFrameRate pace, {
+  required int from,
+}) {
   final channels = sound.channels;
-  final start = pace.frameToSample(frames.first, sound.sampleRate) * channels;
+  final origin = pace.frameToSample(from, sound.sampleRate);
+  final start =
+      (pace.frameToSample(frames.first, sound.sampleRate) - origin) * channels;
   final end =
-      pace.frameToSample(frames.first + frames.count, sound.sampleRate) *
+      (pace.frameToSample(frames.first + frames.count, sound.sampleRate) -
+          origin) *
       channels;
   final pcm = Int16List(end - start);
   final held = (sound.samples.length - start).clamp(0, pcm.length);

@@ -40,14 +40,17 @@ class UpdateLayerTransformEnabledCommand implements Command {
     if (cutId == null) {
       return [layerId];
     }
-    return [
-      for (final target in linkMirrorTargets(
-        project,
-        cutId: cutId,
-        layerId: layerId,
-      ))
-        target.layerId,
-    ];
+    // The switch is part of the row's head — the link group's
+    // ([headMirrorRows]), a track's conte rows' (I-73, laid by the track's
+    // structure since F-343) — and so do a track's cameras: their fx switch
+    // is the camera work on or off, for the track's one camera row
+    // (I-73-camera-row-Q1).
+    return headMirrorRows(
+      project,
+      cutId: cutId,
+      layerId: layerId,
+      cameraHead: true,
+    );
   }
 
   @override

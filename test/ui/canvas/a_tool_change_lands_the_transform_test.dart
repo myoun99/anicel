@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -234,7 +235,7 @@ void main() {
 
   /// 🚨★★★**THE FLOAT GOES WITH THE LAYER THAT PUBLISHED IT.**
   ///
-  /// `_publishFloat` runs from BUILD, and a switch to a painting tool does
+  /// `_publishFloats` runs from BUILD, and a switch to a painting tool does
   /// not rebuild the selection layer — it disposes it. The last float it
   /// published stayed in the composite forever, drawing over the picture
   /// that had just landed. ⛔This is the half a cel reading can never see,
@@ -246,8 +247,10 @@ void main() {
     await strokeAt(tester, Offset.zero);
     await openAndTransform(tester);
 
+    // The slot the composite draws the active row's float from — the one
+    // the layer handed the float to ([LiftedFloat.showsOn]).
     final overlay = tester
-        .widget<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer).first)
+        .widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView).first)
         .floatOverlay!;
     expect(
       overlay.value,

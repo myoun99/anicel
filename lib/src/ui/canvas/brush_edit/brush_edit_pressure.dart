@@ -30,6 +30,13 @@ class _BrushEditPressure {
   /// [_travelled] being null marks.
   double? _pressedForce;
 
+  /// Whether a driver-side stream has said the pen is TOUCHING in this
+  /// contact — what makes its later untouching reading the pen LIFTING,
+  /// rather than a stream that never reached the contact (see
+  /// [pressureOf]). Forgotten at every contact's first sample, as
+  /// [_pressedForce] is taken.
+  bool _sidecarTouched = false;
+
   List<BrushDab> withPressureDynamics(List<BrushDab> dabs) {
     final settings =
         _state._activeStrokeInputSettings ?? _state.widget.inputSettings();
@@ -63,12 +70,20 @@ class _BrushEditPressure {
   /// * the STAND-IN a Pencil's first samples carry — the force the contact
   ///   pressed with, repeated until the Pencil measures, and wherever it
   ///   comes back ([_isUIKitForceEstimate]);
-  /// * a driver packet taken while the pen was still HOVERING, asked for
-  ///   the [opening] of a contact. Once the contact has read, the same
-  ///   packet means the pen has lifted, and 0 is the reading. Until then
-  ///   the pointer's own word stands in: a stylus's is itself a reading of
-  ///   this contact, and a mouse's or a finger's full pressure is only a
-  ///   reading when no sidecar is left to read the pen it might be.
+  /// * a driver packet that says the pen is HOVERING before the stream has
+  ///   said it touched in this contact. Once it has ([_sidecarTouched]),
+  ///   the same packet means the pen has lifted, and 0 is the reading.
+  ///   Until then the pointer's own word stands in: a stylus's is itself a
+  ///   reading of this contact, and a mouse's or a finger's full pressure
+  ///   is only a reading when no sidecar is left to read the pen it might
+  ///   be.
+  ///
+  /// 🚨A STREAM THAT NEVER TOUCHED IS NOT THE PEN LIFTING (F-331, 유저
+  /// 2026-10-10: 「필압이 인식이 안된다면 마우스랑 동일하게 필압1인채로
+  /// 그리거나 하는데 그게 안되있음」). ↩️It was 「once the CONTACT has
+  /// read」: a stylus that opened with its own reading took a stream that
+  /// had not reached the contact for the pen lifting, and laid the rest of
+  /// its stroke at 0 — however long the stream never reached it.
   ///
   /// The stroke waits for a reading instead of painting a stand-in (see
   /// `_BrushEditStroke.takeSample`).
@@ -87,10 +102,7 @@ class _BrushEditPressure {
   /// stroke, and after the patience painted the stand-ins as before. An
   /// estimate is UIKit's best value and is READ; the stand-in is the press's
   /// force repeated, whatever UIKit calls it.
-  ({double pressure, bool read}) pressureOf(
-    PointerEvent event, {
-    required bool opening,
-  }) {
+  ({double pressure, bool read}) pressureOf(PointerEvent event) {
     final recorded = QaPenLedger.forceAt(event.timeStamp);
     if (QaPenLedger.start()) {
       _ledgerAnswers[event.timeStamp] = recorded?.state;
@@ -117,7 +129,10 @@ class _BrushEditPressure {
     // The response curve (PEN-3) shapes REAL pressure from either source
     // — the full-pressure fallbacks stay 1.0 through any gamma.
     final sidecar = PenSidecars.freshReading();
-    if (sidecar != null && (sidecar.touching || !opening)) {
+    if (sidecar != null && sidecar.touching) {
+      _sidecarTouched = true;
+    }
+    if (sidecar != null && _sidecarTouched) {
       return (
         pressure: AppInput.applyPressureCurve(sidecar.pressure),
         read: true,
@@ -295,9 +310,10 @@ class _BrushEditPressure {
   }) {
     if (_travelled == null) {
       _pressedForce = event.pressure;
+      _sidecarTouched = false;
       _heldRepeats.clear();
     }
-    final pressure = pressureOf(event, opening: opening);
+    final pressure = pressureOf(event);
     if (pressure.read || opening) {
       _state._currentPressure = pressure.pressure;
     }

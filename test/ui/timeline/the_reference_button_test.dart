@@ -9,12 +9,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/reference_to.dart';
+import '../../helpers/named_finders.dart';
 
 void main() {
   Layer layerNamed(String id, {String? file}) {
@@ -26,7 +29,7 @@ void main() {
     );
     return file == null
         ? layer
-        : layer.copyWith(mediaReference: MediaReference(assetPath: file));
+        : layer.copyWith(mediaReference: referenceTo(file));
   }
 
   Widget row(
@@ -34,6 +37,7 @@ void main() {
     Future<void> Function(BuildContext, LayerId)? onOpen,
     PressFire fireOn = PressFire.upInside,
     bool isSourceShort = false,
+    List<String> linkPartners = const [],
   }) => MaterialApp(
     home: Material(
       child: PressFireScope(
@@ -49,13 +53,14 @@ void main() {
           onLayerMarkSelected: (_, _) {},
           onOpenLayerReference: onOpen,
           isReferenceSourceShort: isSourceShort,
+          linkPartners: linkPartners,
         ),
       ),
     ),
   );
 
   Finder button(String id) =>
-      find.byKey(ValueKey<String>('timeline-layer-reference-$id'));
+      find.named('timeline-layer-reference-$id');
 
   testWidgets('only a row that points at a FILE has the button — and only '
       'where the host can open its popover', (tester) async {
@@ -66,7 +71,7 @@ void main() {
     );
     expect(button('ref'), findsOneWidget);
     expect(
-      find.byTooltip('Reference'),
+      find.railTooltip('Reference'),
       findsOneWidget,
       reason: 'icon only — its name is the tooltip, the LAYER\'s word',
     );
@@ -90,11 +95,45 @@ void main() {
       row(layerNamed('ref', file: 'bg.png'), onOpen: (_, _) async {}),
     );
     final area = tester.getRect(
-      find.byKey(const ValueKey<String>('timeline-layer-name-ref')),
+      find.named('timeline-layer-name-ref'),
     );
     expect(
       tester.getRect(button('ref')).right,
       closeTo(area.right - layerLaneToggleSlotWidth, 0.01),
+    );
+  });
+
+  testWidgets('a linked row\'s badge stands there too, not after the '
+      'letters — and beside the button on a row that is both (I-89 Q1: '
+      '「참조/링크가 동시에 될수있는거 말되니까 … 중복되도록」)', (tester) async {
+    Rect area(String id) => tester.getRect(
+      find.named('timeline-layer-name-$id'),
+    );
+    Rect badge(String id) => tester.getRect(
+      find.named('timeline-layer-link-badge-$id'),
+    );
+
+    await tester.pumpWidget(row(layerNamed('a'), linkPartners: const ['b']));
+    expect(
+      badge('a').right,
+      closeTo(area('a').right - layerLaneToggleSlotWidth, 0.01),
+    );
+
+    await tester.pumpWidget(
+      row(
+        layerNamed('ref', file: 'bg.png'),
+        onOpen: (_, _) async {},
+        linkPartners: const ['b'],
+      ),
+    );
+    expect(
+      tester.getRect(button('ref')).right,
+      closeTo(area('ref').right - layerLaneToggleSlotWidth, 0.01),
+      reason: 'the reference keeps its place by the fold slot',
+    );
+    expect(
+      badge('ref').right,
+      closeTo(tester.getRect(button('ref')).left, 0.01),
     );
   });
 
@@ -131,11 +170,7 @@ void main() {
     await tester.pumpWidget(
       row(layerNamed('ref', file: 'bg.png'), onOpen: (_, _) => closed.future),
     );
-    Color glyph() => IconTheme.of(
-      tester.element(
-        find.descendant(of: button('ref'), matching: find.byType(Icon)),
-      ),
-    ).color!;
+    Color glyph() => tester.glyphInkOf(button('ref'))!;
 
     final rest = glyph();
     expect(rest, isNot(AppColors.accent), reason: 'the premise');
@@ -155,11 +190,7 @@ void main() {
     tester,
   ) async {
     final closed = Completer<void>();
-    Color glyph() => IconTheme.of(
-      tester.element(
-        find.descendant(of: button('ref'), matching: find.byType(Icon)),
-      ),
-    ).color!;
+    Color glyph() => tester.glyphInkOf(button('ref'))!;
 
     await tester.pumpWidget(
       row(layerNamed('ref', file: 'take.mov'), onOpen: (_, _) => closed.future),

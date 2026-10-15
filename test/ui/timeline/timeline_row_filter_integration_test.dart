@@ -14,6 +14,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/named_finders.dart';
+
 Layer _layer(String id, {LayerMark mark = LayerMark.none}) => Layer(
   id: LayerId(id),
   name: id,
@@ -49,7 +51,7 @@ Project _project() => Project(
 );
 
 Finder _row(String id) =>
-    find.byKey(ValueKey<String>('timeline-layer-row-$id'));
+    find.named('timeline-layer-row-$id');
 
 void main() {
   testWidgets('the legend mark solo drops non-matching rows and toggles '

@@ -90,6 +90,26 @@ InternetAddress doorListensOn(BoardDoor door) => switch (door) {
   LanDoor() => InternetAddress.anyIPv4,
 };
 
+/// The one value a header says — or, when it was sent more than once with
+/// different values, what no page and no tool says, so it is refused rather
+/// than guessed at.
+///
+/// 🚨`HttpHeaders.value` THROWS when a header arrives twice. The door read
+/// `Origin` and `Sec-Fetch-Site` with it before it looked at anything else,
+/// so a request that repeated one never reached a 401 or a 403: it fell into
+/// the loop's catch-all and the phone was told only 「500」 (유저 2026-10-09,
+/// from the phone, with the right secret typed). A proxy or a VPN on the way
+/// is enough to repeat a header, and none of them is the secret's fault.
+///
+/// The same value twice is one value. Different values are joined — a string
+/// that equals no address and no `same-origin`, so [asksFromTheBoardItself]
+/// says no to it and the door answers 403, which the page can name.
+String? oneValueOf(List<String>? values) {
+  if (values == null || values.isEmpty) return null;
+  final distinct = values.toSet();
+  return distinct.length == 1 ? distinct.single : values.join(', ');
+}
+
 /// Whether a write is asked by a tool or by the board's own page — and not
 /// by a page of some OTHER site, open in a browser that can reach the board.
 ///
@@ -152,7 +172,7 @@ bool sameSecret(String a, String b) {
 /// The secret a request shows: a tool sends it as a bearer, a browser as the
 /// cookie the server gave it.
 String? secretShown(HttpRequest request) {
-  final bearer = request.headers.value(HttpHeaders.authorizationHeader);
+  final bearer = oneValueOf(request.headers[HttpHeaders.authorizationHeader]);
   if (bearer != null && bearer.startsWith('Bearer ')) {
     return bearer.substring('Bearer '.length).trim();
   }
@@ -163,11 +183,35 @@ String? secretShown(HttpRequest request) {
 }
 
 /// The cookie that lets a browser back in for a year without typing again.
+///
+/// 🗣️`Lax`, not `Strict` (2026-10-09, from the phone — an iPhone's Chrome):
+/// the door was shown to a browser that held the key, and its next POST
+/// carried that key. That is what a `Strict` cookie does to a page opened from
+/// another app or a link: it stays home for that navigation and goes with the
+/// page's own requests after it. ⚠️This is the reading that fits, not one
+/// that was seen — the door now notes whether a cookie came with the request
+/// it turned away. What `Lax` gives up is small: a page of another site that
+/// sends the browser here by a link gets the board's READ-ONLY pages, as
+/// itself, and cannot read them; every write is a POST, and `Lax` withholds
+/// the cookie from a cross-site POST just as `Strict` did (and the server
+/// refuses it besides — [asksFromTheBoardItself]).
 Cookie doorCookie(String secret) => Cookie(kDoorCookie, secret)
   ..httpOnly = true
   ..path = '/'
-  ..sameSite = SameSite.strict
+  ..sameSite = SameSite.lax
   ..maxAge = 60 * 60 * 24 * 365;
+
+/// [text] with the door's secret taken out of it.
+///
+/// 🚨An exception's message carries the text it choked on: the failure log's
+/// first line on 2026-10-09 held the secret itself, because a JSON parser
+/// was handed the body of `/enter` and quoted it back. A log that exists to
+/// be read, and sent to whoever helps, must not be a second place the key
+/// lives.
+String withoutSecret(BoardDoor door, String text) => switch (door) {
+  LoopbackDoor() => text,
+  LanDoor(:final secret) => text.replaceAll(secret, '<secret>'),
+};
 
 // ─────────────────────────────────────────── the other side of the door
 

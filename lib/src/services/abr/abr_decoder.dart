@@ -10,6 +10,7 @@ import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
+import '../../models/import/import_warning.dart';
 import '../photoshop/photoshop_byte_reader.dart';
 import 'photoshop_descriptor.dart';
 import 'photoshop_pattern.dart';
@@ -26,13 +27,8 @@ class AbrImportResult {
 }
 
 /// Thrown when the file cannot be read as a supported ABR at all.
-class AbrDecodeException implements Exception {
-  const AbrDecodeException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => 'AbrDecodeException: $message';
+class AbrDecodeException extends ImportRefusal {
+  const AbrDecodeException(super.reason);
 }
 
 /// Decodes a Photoshop `.abr` brush file (version 6/7/10 — the format every
@@ -50,17 +46,29 @@ AbrImportResult decodeAbrBrushFile(
 }) {
   final reader = PhotoshopByteReader(bytes);
   if (bytes.length < 4) {
-    throw const AbrDecodeException('File is too short to be an ABR file.');
+    throw const AbrDecodeException(
+      ImportWarning('abrTooShort', 'File is too short to be an ABR file.'),
+    );
   }
   final version = reader.readInt16();
   if (version == 1 || version == 2) {
     throw AbrDecodeException(
-      'ABR version $version (Photoshop 6 era) is not supported yet; '
-      're-save the brushes with a modern Photoshop.',
+      ImportWarning(
+        'abrOldVersion',
+        'ABR version {version} (Photoshop 6 era) is not supported yet; '
+            're-save the brushes with a modern Photoshop.',
+        {'version': '$version'},
+      ),
     );
   }
   if (version != 6 && version != 7 && version != 10) {
-    throw AbrDecodeException('Not a supported ABR file (version $version).');
+    throw AbrDecodeException(
+      ImportWarning(
+        'abrUnknownVersion',
+        'Not a supported ABR file (version {version}).',
+        {'version': '$version'},
+      ),
+    );
   }
   final subversion = reader.readInt16();
 
@@ -75,7 +83,9 @@ AbrImportResult decodeAbrBrushFile(
     final sectionLength = reader.readInt32();
     final sectionEnd = reader.offset + sectionLength;
     if (sectionLength < 0 || sectionEnd > reader.length) {
-      throw const AbrDecodeException('Corrupt ABR section length.');
+      throw const AbrDecodeException(
+        ImportWarning('abrCorruptSection', 'Corrupt ABR section length.'),
+      );
     }
     switch (tag) {
       case 'samp':
@@ -111,7 +121,9 @@ AbrImportResult decodeAbrBrushFile(
   }
 
   if (tipsByKey.isEmpty && descriptor == null) {
-    throw const AbrDecodeException('No brushes found in the ABR file.');
+    throw const AbrDecodeException(
+      ImportWarning('abrNoBrushes', 'No brushes found in the ABR file.'),
+    );
   }
 
   final presets = <BrushPreset>[];
@@ -170,7 +182,10 @@ AbrImportResult decodeAbrBrushFile(
 
   if (presets.isEmpty) {
     throw const AbrDecodeException(
-      'The ABR file contained no importable brushes.',
+      ImportWarning(
+        'abrNothingImportable',
+        'The ABR file contained no importable brushes.',
+      ),
     );
   }
   return AbrImportResult(presets: presets, warnings: warnings);

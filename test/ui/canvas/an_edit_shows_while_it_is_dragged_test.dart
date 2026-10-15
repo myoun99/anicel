@@ -37,7 +37,9 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
+import '../../helpers/named_finders.dart';
 import '../../helpers/placement_reading.dart';
 
 /// F-195 — 유저 2026-09-27: 「카메라레이어든 트랜스폼이든 fx든 다 편집이
@@ -111,8 +113,8 @@ void main() {
     }
   }
 
-  Future<void> tapKey(WidgetTester tester, String key) async {
-    final target = find.byKey(ValueKey<String>(key));
+  Future<void> tapNamed(WidgetTester tester, String name) async {
+    final target = find.named(name);
     await tester.ensureVisible(target);
     await tester.pumpAndSettle();
     await tester.tap(target);
@@ -155,10 +157,10 @@ void main() {
     expect(landed, isNotNull, reason: 'LIVENESS — the ink landed');
     session.selectLayer(layer);
     await pumpFrames(tester);
-    await tapKey(tester, 'timeline-lane-toggle-${layer.value}');
+    await tapNamed(tester, 'timeline-lane-toggle-${layer.value}');
     for (final group
         in openGroups ?? [transformGroupHeaderLane.laneId]) {
-      await tapKey(
+      await tapNamed(
         tester,
         'timeline-lane-group-toggle-${layer.value}-$group',
       );
@@ -193,19 +195,23 @@ void main() {
   CanvasPoint shownCentre(EditorSessionManager session) =>
       activeRowIn(session).placement?.centreOf(canvasSize) ?? centre;
 
-  String valueLabel(WidgetTester tester, LayerId layer, String laneId) =>
-      tester
-          .widget<Text>(
-            find.descendant(
-              of: find.byKey(
-                ValueKey<String>(
-                  'timeline-lane-value-${layer.value}-$laneId',
+  /// What a lane's value reads now — its numbers, box by box (a pair is two
+  /// boxes, tool-settings-panel-tidy 2026-10-10).
+  String valueLabel(WidgetTester tester, LayerId layer, String laneId) {
+    final first = 'timeline-lane-value-${layer.value}-$laneId';
+    return [
+      for (final key in [first, '$first-1'])
+        if (find.byKey(ValueKey<String>(key)).evaluate().isNotEmpty)
+          tester
+              .widget<DragValueLabel>(
+                find.ancestor(
+                  of: find.byKey(ValueKey<String>(key)),
+                  matching: find.byType(DragValueLabel),
                 ),
-              ),
-              matching: find.byType(Text),
-            ),
-          )
-          .data!;
+              )
+              .text,
+    ].join(', ');
+  }
 
   /// The standing row's box (F-222) — the layer's, or the camera frame's.
   RowTransformBox boxOf(WidgetTester tester) =>
@@ -601,8 +607,8 @@ void main() {
     session.selectFrameIndex(0);
     session.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
     await pumpFrames(tester);
-    await tapKey(tester, 'timeline-lane-toggle-${se.id.value}');
-    await tapKey(
+    await tapNamed(tester, 'timeline-lane-toggle-${se.id.value}');
+    await tapNamed(
       tester,
       'timeline-lane-group-toggle-${se.id.value}-'
       '${transformGroupHeaderLane.laneId}',

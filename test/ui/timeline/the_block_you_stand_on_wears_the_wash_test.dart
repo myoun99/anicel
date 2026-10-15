@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
+    show timelineRowEdgesOf;
 
 /// 🗣️F-248 (유저 2026-09-30 「선택되있는 블럭 다시 표시하게하고싶음. 우선
 /// 외곽라인말고 블럭을 바탕색으로서 강조색 표시. 전처럼 연하게」, 10-01 「재생헤드가
@@ -60,7 +62,7 @@ void main() {
       const PropertyLaneRow(
         laneId: 'position',
         label: 'Position',
-        keyedFrames: {},
+        keyMarks: {},
       ),
       layerIndex: 0,
     ),
@@ -87,6 +89,7 @@ void main() {
                 TimelineCursorLayer(
                   frameCursor: ValueNotifier<int>(frame),
                   rows: shown ?? rows,
+                  edges: timelineRowEdgesOf(shown ?? rows, metrics),
                   activeLayerId: const LayerId('a'),
                   currentRow: ValueNotifier<TimelineRowAddress?>(standing),
                   dragPreview: ValueNotifier<TimelineDragPreview?>(preview),

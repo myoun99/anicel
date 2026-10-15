@@ -2,6 +2,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_layer_mount.dart';
 import '../../models/attached_placement.dart';
+import '../../models/conte_group.dart' show ridesTheConte;
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -207,9 +208,14 @@ class FoldersAndAttachments {
   //
   // The release keeps its menu entry: the drag must not be a one-way door.
 
+  /// …except a row riding the conte, which is never let go
+  /// ([ridesTheConte], I-73-one-head-Q1).
   bool get canDetachActiveLayer {
     final active = _selection.activeLayer;
-    return active != null && isAttachedLayer(active);
+    final cut = _project.activeCutOrNull;
+    return active != null &&
+        isAttachedLayer(active) &&
+        !(cut != null && ridesTheConte(active, cut.layers));
   }
 
   /// 어태치 해제: the active row stops riding its base.
@@ -221,7 +227,7 @@ class FoldersAndAttachments {
   void detachActiveLayer() {
     final cut = _project.activeCutOrNull;
     final row = _selection.activeLayer;
-    if (cut == null || row == null || !isAttachedLayer(row)) {
+    if (cut == null || row == null || !canDetachActiveLayer) {
       return;
     }
     final attach = LayerAttachDrop(detachIds: {row.id});
@@ -293,6 +299,15 @@ class FoldersAndAttachments {
     }
     _changes.notifyChanged();
   }
+
+  /// A base's ATTACH GROUP folded or opened: the base's own `collapsed`,
+  /// written as a folder's is — one control, one field (F-360). The fold's
+  /// hand-off is the caller's, made before the group shuts
+  /// (`Standing.handOffCurrentRowOnAttachFold`). ⚠️No session notify: the
+  /// rails read the fold off the document ([RailView.readFolds]), which
+  /// every history change re-reads.
+  void toggleAttachGroup(LayerId baseId) =>
+      _controllers.layerController.toggleLayerCollapsed(baseId);
 
   /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
   /// attach row: the synced-block UI makes those rows look like ordinary

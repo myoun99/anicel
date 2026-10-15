@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import '../../helpers/reference_to.dart';
 
 /// The pure import planner: sequence folding, cut-folder structure, and
 /// the invariants the models enforce downstream.
@@ -31,8 +32,6 @@ void main() {
       frameFingerprints: const ['A', 'A', 'B', 'C', 'C'],
       displayName: 'anim.gif',
       cutId: const CutId('cut-1'),
-      fit: MediaFitMode.contain,
-      rasterize: true,
       mint: mint(),
     );
 
@@ -57,8 +56,6 @@ void main() {
       frameFingerprints: const ['A', 'A', 'B'],
       displayName: 'A',
       cutId: const CutId('cut-1'),
-      fit: MediaFitMode.contain,
-      rasterize: true,
       mint: mint(),
       frameNames: const ['1', '2', '3a'],
     );
@@ -71,24 +68,23 @@ void main() {
     );
   });
 
-  test('🚨rasterize REGISTERS its file too — the material of every placement '
-      'is a pool entry (유저 2026-09-11: 「구워도 풀에 남음」)', () {
+  test('🚨a BAKED placement registers nothing — the pixels are the layer\'s '
+      'own (F-282-Q6, 유저 2026-10-09: 구우면 풀에 안 남긴다)', () {
+    // Baked = no reference handed in (I-68: the door makes one only for a
+    // row that is to SHOW its file).
     final sequence = planSequenceLayer(
-      sourceFiles: const ['a.gif', 'a.gif'],
+      sourceFiles: const ['C:/media/a.gif', 'C:/media/a.gif'],
       frameFingerprints: const ['A', 'B'],
       displayName: 'a.gif',
       cutId: const CutId('cut-1'),
-      fit: MediaFitMode.contain,
-      rasterize: true,
       mint: mint(),
-      referencePath: 'C:/media/a.gif',
     );
     expect(
       sequence.layer.mediaReference,
       isNull,
       reason: 'baked: nothing points at the file',
     );
-    expect(sequence.assets.single.path, 'C:/media/a.gif');
+    expect(sequence.assets, isEmpty);
 
     final still = planStillImageLayer(
       sourceFile: 'C:/media/b.png',
@@ -96,28 +92,85 @@ void main() {
       cutId: const CutId('cut-1'),
       duration: 24,
       fit: MediaFitMode.contain,
-      rasterize: true,
+      reference: null,
       mint: mint(),
     );
     expect(still.layer.mediaReference, isNull);
-    expect(still.assets.single.path, 'C:/media/b.png');
+    expect(still.assets, isEmpty);
+
+    // ↩️「구워도 풀에 남음」 (09-11): both registered their file.
+  });
+
+  test('the law: a placement registers when the layer draws from the file, '
+      'or when a sound placed beside a baked picture still reads it', () {
+    expect(placementRegisters(baked: false), isTrue);
+    expect(placementRegisters(baked: true), isFalse);
+    expect(placementRegisters(baked: true, soundReadsIt: true), isTrue);
+    expect(placementRegisters(baked: false, soundReadsIt: true), isTrue);
   });
 
   test('a sequence in REFERENCE mode registers one asset with the frame '
       'count and stamps the layer reference', () {
+    final reference = referenceTo('C:/media/a.gif');
     final plan = planSequenceLayer(
       sourceFiles: const ['a.gif', 'a.gif'],
       frameFingerprints: const ['A', 'B'],
       displayName: 'a.gif',
       cutId: const CutId('cut-1'),
-      fit: MediaFitMode.contain,
-      rasterize: false,
       mint: mint(),
-      referencePath: 'C:/media/a.gif',
+      reference: reference,
+      fit: MediaFitMode.none,
     );
-    expect(plan.layer.mediaReference!.assetPath, 'C:/media/a.gif');
+    expect(
+      plan.layer.mediaReference,
+      same(reference),
+      reason: 'the reference the door made — where it stands included',
+    );
+    expect(plan.assets.single.path, 'C:/media/a.gif');
     expect(plan.assets.single.frameCount, 2);
     expect(plan.assets.single.kind, MediaAssetKind.image);
+    expect(
+      plan.assets.single.fitMode,
+      MediaFitMode.none,
+      reason: 'the fit it was placed with, the entry\'s placement default',
+    );
+  });
+
+  // I-68 「가」 (유저 2026-10-10): a row that shows its file says by cel
+  // which picture of the FILE each is, so each can be laid again from it.
+  test('🎯a row that shows its file says by cel which picture of the FILE '
+      'each is — from the span\'s first, past a folded hold — and a baked '
+      'one says nothing', () {
+    List<int?> sequence({required bool shows}) => [
+      for (final frame in planSequenceLayer(
+        sourceFiles: List<String>.filled(5, 'C:/media/a.gif'),
+        // A, A, B, C, C — from the file's frame 3 on.
+        frameFingerprints: const ['A', 'A', 'B', 'C', 'C'],
+        displayName: 'a.gif',
+        cutId: const CutId('cut-1'),
+        mint: mint(),
+        reference: shows ? referenceTo('C:/media/a.gif') : null,
+        firstPicture: 3,
+      ).layer.frames)
+        frame.filePicture,
+    ];
+    expect(sequence(shows: true), [3, 5, 6]);
+    expect(sequence(shows: false), [null, null, null]);
+
+    int? still({required bool shows}) => planStillImageLayer(
+      sourceFile: 'C:/media/conte.pdf',
+      displayName: 'conte.pdf',
+      cutId: const CutId('cut-1'),
+      duration: 24,
+      fit: MediaFitMode.contain,
+      reference: shows ? referenceTo('C:/media/conte.pdf') : null,
+      mint: mint(),
+      assetKind: MediaAssetKind.pdf,
+      pageCount: 20,
+      picture: 12,
+    ).layer.frames.single.filePicture;
+    expect(still(shows: true), 12, reason: 'page 13 of the conte');
+    expect(still(shows: false), isNull);
   });
 
   test('a PDF plan (assetKind: pdf) registers pageCount instead of '
@@ -127,10 +180,8 @@ void main() {
       frameFingerprints: const [0, 1, 2],
       displayName: 'conte.pdf',
       cutId: const CutId('cut-1'),
-      fit: MediaFitMode.contain,
-      rasterize: false,
       mint: mint(),
-      referencePath: 'C:/media/conte.pdf',
+      reference: referenceTo('C:/media/conte.pdf'),
       assetKind: MediaAssetKind.pdf,
       pageCount: 3,
     );
@@ -145,7 +196,7 @@ void main() {
       cutId: const CutId('cut-1'),
       duration: 24,
       fit: MediaFitMode.contain,
-      rasterize: false,
+      reference: referenceTo('C:/media/page.pdf'),
       mint: mint(),
       assetKind: MediaAssetKind.pdf,
       pageCount: 1,
@@ -174,7 +225,6 @@ void main() {
       parsed: parsed,
       resolveFile: (relative) => 'C:/folder/$relative',
       canvasSize: const CanvasSize(width: 640, height: 360),
-      fit: MediaFitMode.contain,
       mint: mint(),
     );
 
@@ -214,7 +264,6 @@ void main() {
       parsed: parsed,
       resolveFile: (relative) => relative,
       canvasSize: const CanvasSize(width: 640, height: 360),
-      fit: MediaFitMode.contain,
       mint: mint(),
     );
     expect(
@@ -234,7 +283,6 @@ void main() {
       parsed: parsed,
       resolveFile: (relative) => relative,
       canvasSize: const CanvasSize(width: 640, height: 360),
-      fit: MediaFitMode.contain,
       mint: mint(),
     );
     expect(plan.cut.name, '069');

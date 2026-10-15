@@ -19,9 +19,9 @@ void main() {
         (track, entry) => track.withKey(
           entry.key,
           entry.value,
-          interpolation: hold
-              ? PropertyKeyInterpolation.hold
-              : PropertyKeyInterpolation.linear,
+          outgoing: hold
+              ? KeyExit.hold
+              : KeySide.linear,
         ),
       );
 
@@ -115,8 +115,8 @@ void main() {
       expect(back.track!.nameInk.keyAt(3)!.value, 0xFF123456);
       expect(back.track!.showLine.keyAt(3)!.value, isFalse);
       expect(
-        back.track!.showLine.keyAt(3)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        back.track!.showLine.keyAt(3)!.outgoing,
+        KeyExit.hold,
       );
       expect(back, tag, reason: 'equality carries the track');
     });
@@ -151,8 +151,8 @@ void main() {
         frameIndex: 0,
       )!;
       expect(
-        keyedTag.track!.showLine.keyAt(0)!.interpolation,
-        PropertyKeyInterpolation.hold,
+        keyedTag.track!.showLine.keyAt(0)!.outgoing,
+        KeyExit.hold,
       );
     });
 

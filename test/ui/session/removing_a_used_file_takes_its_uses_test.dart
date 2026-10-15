@@ -9,7 +9,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
-import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -24,6 +23,7 @@ import 'package:anicel/src/services/media/media_asset_uses.dart';
 import 'package:anicel/src/services/project_lookup.dart'
     show layerAnywhereOrNull;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/reference_to.dart';
 
 const _movie = 'C:/media/walk.mp4';
 const _clap = 'C:/media/clap.wav';
@@ -38,7 +38,7 @@ Layer _picture(String id, {String? reference, String? ridesOn}) => Layer(
   timeline: {0: TimelineExposure.drawing(FrameId('$id-cel'), length: 4)},
   mediaReference: reference == null
       ? null
-      : MediaReference(assetPath: reference),
+      : referenceTo(reference),
   attachedToLayerId: ridesOn == null ? null : LayerId(ridesOn),
 );
 

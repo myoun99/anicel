@@ -1,12 +1,18 @@
+import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
+import '../../models/transform_pose.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../../services/import/raster_cel_import.dart' show pictureMoved;
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../canvas/canvas_layer_stack_view.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, celPixelsRowOf;
 import 'opacity_verbs.dart';
 import 'session_roles.dart';
 
@@ -29,8 +35,11 @@ class EditingStackMap {
     required this.stackCut,
     required this.frameIndex,
     required this.activeLayerId,
+    required TransformPose? Function(BrushFrameKey key) movieLaidAt,
+    this.dragPreview,
   }) : _opacityVerbs = opacityVerbs,
-       _project = project;
+       _project = project,
+       _movieLaidAt = movieLaidAt;
 
   final OpacityVerbs _opacityVerbs;
   final ProjectAccess _project;
@@ -38,6 +47,15 @@ class EditingStackMap {
   final Cut stackCut;
   final int frameIndex;
   final LayerId? activeLayerId;
+
+  /// The drag [stackCut] shows, if any: a cel it carries onto another row
+  /// shows the pixels still under the row it came from ([celPixelsRowOf]).
+  final TimelineDragPreview? dragPreview;
+
+  /// Where a movie cel's picture was laid, while one is installed
+  /// (`MovieCelHydrator.laidAt`) — a moved reference fx shows the picture
+  /// it has until the move's own is decoded.
+  final TransformPose? Function(BrushFrameKey key) _movieLaidAt;
 
   double activeLayerOpacity = 1.0;
 
@@ -102,6 +120,37 @@ class EditingStackMap {
     );
   }
 
+  /// [entry]'s placement, with the picture of a file it shows moved from
+  /// where its cel was LAID to where the row's reference fx stands it now
+  /// (I-68) — a value in flight on a lane or a box, or a value written whose
+  /// picture is still being laid again. Otherwise the plan's own.
+  ///
+  /// Where a cel was laid: a still's at the committed row's pose — its
+  /// picture is made anew in the same step that writes one — and a movie's
+  /// wherever its installed picture was decoded.
+  LayerPlacement? _whereTheFileStands(
+    CutFrameCompositeEntry entry,
+    BrushFrameKey key,
+  ) {
+    final shown = entry.layer.mediaReference;
+    final laid = shown == null
+        ? null
+        : _movieLaidAt(key) ??
+              cut.layers.byId(entry.layer.id)?.mediaReference?.pose;
+    if (shown == null || laid == null || laid == shown.pose) {
+      return entry.placement;
+    }
+    final moved = pictureMoved(
+      from: laid,
+      to: shown.pose,
+      picture: shown.pictureSize,
+    );
+    if (moved == null) {
+      return entry.placement;
+    }
+    return entry.placement?.compose(moved) ?? moved;
+  }
+
   /// A cached row — or the ACTIVE one when the brush cannot draw on it, or
   /// while a drag shows another cel on it than the one the brush holds.
   ///
@@ -135,16 +184,17 @@ class EditingStackMap {
             );
       activeSourceEffects = splitSourceEffects(entry.effects).source;
     }
+    final key = _project.brushFrameKeyForCut(
+      cut,
+      celPixelsRowOf(dragPreview, entry.layer.id, entry.frame.id),
+      entry.frame.id,
+    );
     if (!active || entry.frame.id != _heldCel) {
       return CanvasLayerImageRequest(
-        frameKey: _project.brushFrameKeyForCut(
-          cut,
-          entry.layer.id,
-          entry.frame.id,
-        ),
+        frameKey: key,
         opacity: entry.opacity,
         blendMode: entry.blendMode,
-        placement: entry.placement,
+        placement: _whereTheFileStands(entry, key),
         effects: entry.effects,
       );
     }
@@ -154,12 +204,10 @@ class EditingStackMap {
       // asks with. The build in which this cel leaves the active slot, the
       // stack reads it off the widget it replaces and composes the cel's
       // image on the spot, so the row does not go blank for the frames an
-      // asynchronous build takes ([CanvasActiveLayerRow.frameKey]).
-      frameKey: _project.brushFrameKeyForCut(
-        cut,
-        entry.layer.id,
-        entry.frame.id,
-      ),
+      // asynchronous build takes ([CanvasActiveLayerRow.frameKey]). A drag
+      // that carries the cel onto another row keeps it: the image there is
+      // asked under the row the cel came from ([celPixelsRowOf]).
+      frameKey: key,
       // The SAME entry the image branch above reads it from. It was
       // dropped right here — five fields arrived and four were forwarded,
       // so standing on a multiply row silently made it normal on the

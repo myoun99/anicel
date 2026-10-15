@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
@@ -61,12 +63,16 @@ void main() {
       BrushFrameEditingCoordinator coordinator,
       CanvasSelectionCommands commands,
       CutPieceSlot slot,
+      BrushEditCacheInvalidationSink sink,
+      HistoryManager history,
       Future<void> Function(
         CanvasTool tool, {
         CanvasShapeKind? shape,
         BrushBlendMode? stampBlend,
         double? stampOpacity,
         bool rowTakesStrokes,
+        bool celUnderThePlayhead,
+        bool cutDeletesSource,
       })
       setTool,
     })
@@ -93,6 +99,7 @@ void main() {
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();
     final slot = CutPieceSlot();
+    final sink = BrushEditCacheInvalidationSink();
 
     Future<void> pumpWith(
       CanvasTool next, {
@@ -101,6 +108,10 @@ void main() {
       double? stampOpacity,
       // False = standing on a row that takes no strokes (a property lane).
       bool rowTakesStrokes = true,
+      // False = standing on a frame with no cel.
+      bool celUnderThePlayhead = true,
+      // The cut tool's 「원본 삭제」 (I-90).
+      bool cutDeletesSource = false,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -111,7 +122,7 @@ void main() {
             body: BrushCanvasPanel(
               coordinator: coordinator,
               availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              cacheInvalidationSink: sink,
               historyManager: history,
               brushToolState: ValueNotifier(BrushToolState.defaults.copyWith(
                 tool: next,
@@ -119,12 +130,14 @@ void main() {
                 cutShape: outline,
                 cutStampBlendMode: stampBlend,
                 cutStampOpacity: stampOpacity,
+                cutDeletesSource: cutDeletesSource,
               )),
               selectionCommands: commands,
               selectionMaskOptions: softness,
               pieceGround: pieceGround,
               cutPieceSlot: slot,
               rowAcceptsStrokes: rowTakesStrokes,
+              celEditable: celUnderThePlayhead,
               interactiveContentPose: placementOfSample(
                 placement,
                 BrushCanvasFixture.canvasSize,
@@ -150,6 +163,8 @@ void main() {
       coordinator: coordinator,
       commands: commands,
       slot: slot,
+      sink: sink,
+      history: history,
       setTool: pumpWith,
     );
   }
@@ -230,6 +245,23 @@ void main() {
     );
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     expect(env.slot.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
+  });
+
+  testWidgets('on a frame with no cel the outline finds nothing, and says '
+      'so too', (tester) async {
+    addTearDown(cursorNotices.clear);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await env.setTool(CanvasTool.cut, celUnderThePlayhead: false);
+
+    // Across where the bar is on the cel the coordinator holds — no cel
+    // stands under the playhead to read it from.
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
+
+    expect(env.slot.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   testWidgets('cutting leaves the selection completely alone', (tester) async {
@@ -274,6 +306,74 @@ void main() {
     await env.setTool(CanvasTool.brush);
     await env.setTool(CanvasTool.cutStamp);
     expect(env.slot.piece, same(piece));
+  });
+
+  // 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
+  // 도구설정으로서 원본 삭제 불리언버튼 추가. 잘라내기시 해당 그림 없애는것」.
+  testWidgets('with 「원본 삭제」 a cut takes what it cut off the cel — the '
+      'rest stays, the canvas hears it, and one undo puts it back', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    int inkAt(int x) =>
+        surfacePixelRgba(
+          env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+          x,
+          40,
+        ) ??
+        0;
+    List<BrushFrameKey> heard() => [
+      for (final change in env.sink.brushFrames) change.frameKey,
+    ];
+
+    // CONTROL: off, a cut copies and the cel keeps every pixel.
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+    expect(env.slot.isNotEmpty, isTrue);
+    expect(inkAt(20), isNot(0), reason: 'off, a cut copies');
+    expect(env.history.undoCount, 0, reason: 'and writes nothing');
+    expect(heard(), isEmpty, reason: 'so no cache has anything to hear');
+
+    await env.setTool(CanvasTool.cut, cutDeletesSource: true);
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+    final piece = env.slot.piece;
+    expect(piece, isNotNull);
+    expect(inkAt(20), 0, reason: 'inside the outline, the cut took it');
+    expect(inkAt(80), isNot(0), reason: 'outside it, the bar stays');
+    expect(env.history.undoCount, 1, reason: 'one undo');
+    expect(
+      heard(),
+      contains(env.coordinator.activeFrameKey),
+      reason: 'the caches hear it, or the canvas shows the old picture',
+    );
+
+    env.history.undo();
+    await tester.pump();
+    expect(inkAt(20), isNot(0), reason: 'the undo puts it back');
+    expect(env.slot.piece, same(piece), reason: 'the hand is not history');
+  });
+
+  testWidgets('on a row that takes no strokes, 「원본 삭제」 takes nothing — '
+      'the copy still lands in the hand (H19)', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await env.setTool(
+      CanvasTool.cut,
+      cutDeletesSource: true,
+      rowTakesStrokes: false,
+    );
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(50, 70));
+
+    expect(env.slot.isNotEmpty, isTrue, reason: 'the cut reads the cel');
+    expect(
+      surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            20,
+            40,
+          ) ??
+          0,
+      isNot(0),
+      reason: 'taking pixels off is a write, and the lane refuses it',
+    );
+    expect(env.history.undoCount, 0);
   });
 
   testWidgets('clicking with the stamp tile drops the piece, at once', (
@@ -1007,18 +1107,28 @@ void main() {
     expect(env.slot.isNotEmpty, isTrue);
   });
 
-  testWidgets('a cut over blank cel leaves the held piece alone', (
-    tester,
-  ) async {
+  // 🗣️F-254 (유저 2026-10-08): 「잘라내기도구로 빈 곳에 그렸을때도 동일하게
+  // 법 통일해서 적용」 — the whole cut's 「잘라낼 대상이 존재하지 않습니다」,
+  // for the outline too.
+  testWidgets('a cut over blank cel leaves the held piece alone — and says '
+      'there is nothing to cut, as the whole cut does', (tester) async {
+    addTearDown(cursorNotices.clear);
     // The slot is a long-term holder; one stray scrape must not empty it.
     final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     final piece = env.slot.piece;
     expect(piece, isNotNull);
+    expect(
+      cursorNotices.message,
+      isNull,
+      reason: 'a cut that took paint has nothing to explain',
+    );
 
     // Far below the painted bar.
     await dragOnLayer(tester, const Offset(10, 200), const Offset(60, 250));
     expect(env.slot.piece, same(piece));
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   testWidgets('🐛F-112: a cut after the canvas remounts is a new piece too', (

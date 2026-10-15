@@ -12,6 +12,7 @@ import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart';
 import '../widgets/app_window.dart';
 import 'open_file_flow.dart';
 import 'app_confirm_dialog.dart';
@@ -168,10 +169,12 @@ Future<List<FolderGrant>> pickFileGrantsForUser(
   required List<String> supportedExtensions,
   bool allowMultiple = false,
   bool acceptsDocuments = false,
+  String? initialDirectory,
 }) async {
   final grants = await _pickedFileGrants(
     context,
     allowMultiple: allowMultiple,
+    initialDirectory: initialDirectory,
   );
   if (grants == null || !context.mounted) {
     return const [];
@@ -711,7 +714,12 @@ Future<FolderGrant?> pickSaveFileForUser(
   final answer = await FolderPicker.pickSaveDestination(
     suggestedName: suggestedName,
     initialDirectory: initialDirectory,
-    acceptedTypeGroups: acceptedTypeGroups,
+    // The type's name is the app's word, so it speaks the app's language
+    // (F-273) — the window around it is the system's, and speaks its own.
+    acceptedTypeGroups: [
+      for (final group in acceptedTypeGroups)
+        group.labelledFor(AppText.language),
+    ],
   );
   if (!context.mounted) {
     return null;

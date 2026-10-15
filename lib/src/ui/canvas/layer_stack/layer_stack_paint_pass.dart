@@ -23,6 +23,69 @@ typedef _MissPlan = ({
   LiveSurfaceTokens? tokens,
 });
 
+/// A surface row's own paint: what its layer composites with.
+typedef _SurfaceRowPaint = ({
+  double opacity,
+  LayerBlendMode blendMode,
+  LayerPlacement? placement,
+  List<ResolvedLayerEffect> effects,
+});
+
+/// What one SURFACE row's paint reads — the live row's, or a row a folder's
+/// lift holds (I-37): its painter, the float drawn into it, and the way into
+/// its slot from the canvas that float is told in.
+///
+/// ⛔One body draws both ([_LayerStackPaintPass._paintSurfaceRow]): a lifted
+/// row is a surface with a float over it in its own row's slot, which is
+/// what the live row is while a box is open — two copies of that body are
+/// what would drift apart.
+class _SurfaceSlot {
+  _SurfaceSlot({
+    required this.painter,
+    required this.float,
+    required LayerPlacement? placement,
+  }) : canvasToSlot = _undoneWrap(placement);
+
+  final BitmapSurfacePainter painter;
+  final SelectionFloatOverlay? float;
+
+  /// What takes the float — CANVAS space, by its contract
+  /// ([SelectionFloatPaint]) — into the slot, which is drawn under its row's
+  /// pose wrap: that wrap, undone. Null for an unplaced row, whose slot IS
+  /// the canvas.
+  ///
+  /// 🚨a-marquee-on-a-posed-row (2026-09-25): the lift takes a posed row's
+  /// pixels out through its placement onto the canvas, where the box moves
+  /// them (`stampOnCanvas`). Drawn inside the wrap as they came, the float
+  /// of a row moved right by 100 showed 100 further right than its box.
+  final Matrix4? canvasToSlot;
+
+  static Matrix4? _undoneWrap(LayerPlacement? placement) {
+    if (placement == null) {
+      return null;
+    }
+    final wrap = placementMatrix(placement);
+    return wrap.invert() == 0 ? null : wrap;
+  }
+
+  /// What the slot draws, in its own space — the law is
+  /// [_LayerStackPaintPass._activeSurfaceExtent]'s (F-85).
+  late final Rect extent = () {
+    final drawn = painter.drawnWorldRect;
+    final onCanvas = float?.value?.drawnWorldRect;
+    if (onCanvas == null || onCanvas.isEmpty) {
+      return drawn;
+    }
+    final intoSlot = canvasToSlot;
+    final floated = intoSlot == null
+        ? onCanvas
+        : MatrixUtils.transformRect(intoSlot, onCanvas);
+    // A slot that draws nothing answers [Rect.zero], and a union with it
+    // would reach back to the origin.
+    return drawn.isEmpty ? floated : drawn.expandToInclude(floated);
+  }();
+}
+
 /// Who paints a node's children under a walk — the plain walk, or the split
 /// walk that descends the chain enclosing the active layer and replays a
 /// recording for the rest.
@@ -115,7 +178,6 @@ class _LayerStackPaintPass {
   late final Rect _visibleCanvasRect;
   late final Rect _contentExtent;
   late final Rect _bakeExtent;
-  Rect? _memoActiveExtent;
   Rect? _memoCommittedExtent;
 
   void paint(Canvas canvas, Size size) {
@@ -474,46 +536,39 @@ class _LayerStackPaintPass {
   /// a commit put tiles there. What the DISPLAY BUFFER covers; the bake
   /// measures by [_committedSurfaceExtent].
   ///
-  /// Read ONCE per paint: the node walk asks per group, and the answer walks
-  /// every tile and overlay tile the slot holds.
-  Rect _activeSurfaceExtent() =>
-      _memoActiveExtent ??= switch (_painter.activeSurfacePainter) {
-        null => Rect.zero,
-        final painter => _withTheFloat(painter.drawnWorldRect),
+  /// Read ONCE per paint ([_SurfaceSlot.extent]): the node walk asks per
+  /// group, and the answer walks every tile and overlay tile the slot holds.
+  Rect _activeSurfaceExtent() => _activeSlot?.extent ?? Rect.zero;
+
+  /// The live row's slot — its painter, its float and its pose — or null
+  /// when nothing is live.
+  late final _SurfaceSlot? _activeSlot =
+      switch (_painter.activeSurfacePainter) {
+        null => null,
+        final painter => _SurfaceSlot(
+          painter: painter,
+          float: _painter.floatOverlay,
+          placement: _activeRowIn(_painter.nodes)?.placement,
+        ),
       };
 
-  Rect _withTheFloat(Rect drawn) {
-    final onCanvas = _painter.floatOverlay?.value?.drawnWorldRect;
-    if (onCanvas == null || onCanvas.isEmpty) {
-      return drawn;
-    }
-    // The slot's own space — see [_slotFromCanvas].
-    final intoSlot = _slotFromCanvas;
-    final float = intoSlot == null
-        ? onCanvas
-        : MatrixUtils.transformRect(intoSlot, onCanvas);
-    // A slot that draws nothing answers [Rect.zero], and a union with it
-    // would reach back to the origin.
-    return drawn.isEmpty ? float : drawn.expandToInclude(float);
-  }
+  /// Each row a lift holds beside the live one, by its surface (I-37 ·
+  /// F-329) — read once per paint, as the live row's slot is.
+  final Map<BitmapSurfacePainter, _SurfaceSlot> _liftedSlots = Map.identity();
 
-  /// What takes the selection's float — CANVAS space, by its contract
-  /// ([SelectionFloatPaint]) — into the active slot, which is drawn under
-  /// its row's pose wrap: that wrap, undone. Null for an unplaced row,
-  /// whose slot IS the canvas.
-  ///
-  /// 🚨a-marquee-on-a-posed-row (2026-09-25): the lift takes a posed row's
-  /// pixels out through its placement onto the canvas, where the box moves
-  /// them (`stampOnCanvas`). Drawn inside the wrap as they came, the float
-  /// of a row moved right by 100 showed 100 further right than its box.
-  late final Matrix4? _slotFromCanvas = () {
-    final placement = _activeRowIn(_painter.nodes)?.placement;
-    if (placement == null) {
-      return null;
-    }
-    final wrap = placementMatrix(placement);
-    return wrap.invert() == 0 ? null : wrap;
-  }();
+  _SurfaceSlot _liftedSlotOf(_PaintLiftedSurface row) =>
+      _liftedSlots.putIfAbsent(
+        row.lifted.surface,
+        () => _SurfaceSlot(
+          painter: row.lifted.surface,
+          float: row.lifted.float,
+          placement: row.placement,
+        ),
+      );
+
+  /// What a lifted row draws: its surface and its float, as the live row's
+  /// extent is measured ([_activeSurfaceExtent]).
+  Rect _liftedExtent(_PaintLiftedSurface row) => _liftedSlotOf(row).extent;
 
   /// What the live slot's own raster covers, in the SLOT's space: the rect
   /// the same layer drawn as an image covers, where the view can see it.
@@ -532,21 +587,21 @@ class _LayerStackPaintPass {
   /// 🚨Not [_bufferBoundsFor], which answers in CANVAS space — the extent
   /// taken through the row's pose — for the buffers the walk opens around
   /// nodes. The slot's own route runs INSIDE the pose wrap, so the view is
-  /// brought into the slot instead ([_slotFromCanvas]). Read as slot
-  /// coordinates, a posed row's canvas rect rastered the wrong part of the
-  /// slot and cut its drawing away (found in F-243's review: every posed
+  /// brought into the slot instead ([_SurfaceSlot.canvasToSlot]). Read as
+  /// slot coordinates, a posed row's canvas rect rastered the wrong part of
+  /// the slot and cut its drawing away (found in F-243's review: every posed
   /// row in an advanced blend takes this route since).
-  Rect _activeSlotBufferBounds(_PaintActiveSurface row) {
-    final intoSlot = _slotFromCanvas;
+  Rect _slotBufferBounds(_SurfaceSlot slot, _SurfaceRowPaint paint) {
+    final intoSlot = slot.canvasToSlot;
     final view = intoSlot == null
         ? _visibleCanvasRect
         : MatrixUtils.transformRect(intoSlot, _visibleCanvasRect);
-    final drawn = _activeSurfaceExtent();
+    final drawn = slot.extent;
     final covered =
         inkCropDrawsTheSame(
-          placement: row.placement,
-          blendMode: row.blendMode,
-          effects: row.effects,
+          placement: paint.placement,
+          blendMode: paint.blendMode,
+          effects: paint.effects,
         )
         ? drawn
         : drawn.expandToInclude(_canvasRect);
@@ -621,11 +676,55 @@ class _LayerStackPaintPass {
         : extent.intersect(_visibleCanvasRect);
   }
 
+  /// The CANVAS-SPACE rect a buffer for [node] covers — what of it is on
+  /// screen ([subtreeBufferBounds], the one law the camera's walk keeps
+  /// too).
+  ///
+  /// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
+  ///
+  /// The buffers used to be bounded by `pasteboard ∩ visibleRect`. Zoom out
+  /// far enough and that rect spans the whole pasteboard — 5×5 canvases
+  /// then, 11700×8270 on a 2340×1654 page — which blew past [_maxBufferSide]
+  /// and dropped the paint onto the fallback past the cap (since H2's 3×3,
+  /// 2026-08-22, that page's pasteboard is 7020×4962 and fits; a page more
+  /// than 2730 on a side still does not). That fallback is how the editing
+  /// canvas stopped compositing the way playback, the camera and the export
+  /// do (유저 2026-08-15 accepted it at the time: 「무릎 아래는
+  /// 균일 필터, 겹침 색차 수용」 — accepted because bounding by the view was
+  /// the only tool on the table; the screen-resolution "knee" that served
+  /// the fallback from 2026-08-16 went with the level buffer on 2026-09-16,
+  /// and past the cap the direct walk is the net).
+  ///
+  /// ★Content is not the pasteboard. For a cached row it is
+  /// [surfaceContentWorldRect]'s answer — the canvas rect unioned with the
+  /// tiles that actually exist — so an ordinary page bounds to 2340×1654 and
+  /// never reaches the cap. The fallback stops being reachable, and one
+  /// resolution serves every zoom. For the ACTIVE row it is whatever the
+  /// caller measures it by ([activeSurfaceExtent]): everything the slot
+  /// draws for the display buffer — its committed surface alone cut every
+  /// live draw at the edge of the ink already landed (F-85) — and that
+  /// committed surface for the bake, which never records the live slot
+  /// (review 2026-09-15).
   Rect _bufferBoundsFor(
     CompositeNode<_PaintRow> node,
     Rect Function() activeSurfaceExtent,
-  ) => _visibleCanvasRect.intersect(
-    _paintNodeExtent(node, activeSurfaceExtent: activeSurfaceExtent),
+  ) => subtreeBufferBounds(
+    node,
+    // ⚠️The view at every depth, where the law asks for the buffer of the
+    // folder that holds [node]: a blurred folder holding a buffered one
+    // misses the inner folder's ink past the screen's edge, so the blur
+    // there changes as the view moves (card
+    // nested-folder-buffers-read-past-the-view).
+    within: _visibleCanvasRect,
+    extentOf: (row) => switch (row) {
+      _PaintImage(:final extent) => extent,
+      _PaintActiveSurface() => activeSurfaceExtent(),
+      final _PaintLiftedSurface lifted => _liftedExtent(lifted),
+    },
+    placementOf: (row) => switch (row) {
+      _PaintImage(:final placement) => placement,
+      final _SurfaceRow surface => surface.placement,
+    },
   );
 
   void _paintNodesWith(
@@ -642,6 +741,8 @@ class _LayerStackPaintPass {
       final nodePlacement = switch (node) {
         CompositeLeaf(payload: _PaintImage(:final placement)) => placement,
         CompositeLeaf(payload: _PaintActiveSurface(:final placement)) =>
+          placement,
+        CompositeLeaf(payload: _PaintLiftedSurface(:final placement)) =>
           placement,
         CompositeGroup() || CompositeAdjustment() => null,
       };
@@ -663,7 +764,14 @@ class _LayerStackPaintPass {
                 paintChildren,
               );
             case CompositeLeaf(payload: final _PaintActiveSurface active):
-              _paintActiveSurfaceNode(canvas, node, active, rasterScale);
+              _paintSurfaceRow(canvas, _activeSlot!, active.paint, rasterScale);
+            case CompositeLeaf(payload: final _PaintLiftedSurface lifted):
+              _paintSurfaceRow(
+                canvas,
+                _liftedSlotOf(lifted),
+                lifted.paint,
+                rasterScale,
+              );
             case CompositeLeaf(payload: final _PaintImage image):
               _paintImageNode(canvas, image, rasterScale);
           }
@@ -766,16 +874,17 @@ class _LayerStackPaintPass {
     );
   }
 
-  /// The live layer: drawn straight onto the canvas when its paint can
-  /// ride the draws, through one buffer when it cannot (an outset effect,
+  /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
+  /// F-329): drawn straight onto the canvas when its paint can ride the
+  /// draws, through one buffer when it cannot (an outset effect,
   /// overlapping coverage, a float overlay, or pre-steps).
-  void _paintActiveSurfaceNode(
+  void _paintSurfaceRow(
     Canvas canvas,
-    CompositeNode<_PaintRow> node,
-    _PaintActiveSurface row,
+    _SurfaceSlot slot,
+    _SurfaceRowPaint paint,
     double rasterScale,
   ) {
-    final _PaintActiveSurface(:opacity, :blendMode, :effects) = row;
+    final (:opacity, :blendMode, :effects, placement: _) = paint;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
     // viewport-transformed, so only the content body runs.
@@ -825,13 +934,13 @@ class _LayerStackPaintPass {
     // is per-pixel and rides along fine.
     final needsBuffer =
         activeEffects.outsetPixels > 0 ||
-        !_painter.activeSurfacePainter!.drawsDisjointCoverage ||
+        !slot.painter.drawsDisjointCoverage ||
         // The selection FLOAT is this layer's pixels lifted out
         // and drawn back on top of it — the one overlap the
         // painter cannot see, because it is not the painter's.
         // ⛔`isEmpty`, not `!= null`: an overlay mounted with
         // nothing in it draws nothing and overlaps nothing.
-        !(_painter.floatOverlay?.value?.isEmpty ?? true) ||
+        !(slot.float?.value?.isEmpty ?? true) ||
         // 🚨A SHADER CANNOT SAMPLE A saveLayer. A colour key
         // BELOW a painted effect keys what that effect made, so
         // the layer has to be assembled into an image first —
@@ -847,7 +956,10 @@ class _LayerStackPaintPass {
     // Null when the buffer carries it, so nothing applies twice.
     final ridingPaint = needsBuffer ? null : activePaint;
     assert(() {
-      debugLiveLayerRodeTheDraws = !needsBuffer;
+      // The probe is the LIVE row's — the row a stroke draws into.
+      if (identical(slot, _activeSlot)) {
+        debugLiveLayerRodeTheDraws = !needsBuffer;
+      }
       return true;
     }());
     // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
@@ -859,9 +971,9 @@ class _LayerStackPaintPass {
     // redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
-      into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
-      final float = _painter.floatOverlay?.value;
-        _painter.activeSurfacePainter!.paintContentInto(
+      into.clipRect(slot.painter.pasteboardRect);
+      final float = slot.float?.value;
+        slot.painter.paintContentInto(
           into,
           layerPaint: ridingPaint,
           // 4c: into a level buffer the committed tiles are drawn as level
@@ -879,9 +991,10 @@ class _LayerStackPaintPass {
           //
           // ⚠️Inside the POSE wrap as well (the whole switch is) — and the
           // float is CANVAS space, so for a posed row the wrap is undone
-          // for it ([_slotFromCanvas]). ↩️It used to ride the wrap, which
-          // was right only while the lift took canvas coordinates as the
-          // row's own and moved the wrong pixels (a-marquee-on-a-posed-row).
+          // for it ([_SurfaceSlot.canvasToSlot]). ↩️It used to ride the
+          // wrap, which was right only while the lift took canvas
+          // coordinates as the row's own and moved the wrong pixels
+          // (a-marquee-on-a-posed-row).
           //
           // ↩️F-240: it is handed to the surface's own paint rather than
           // drawn here after it — below 100% the surface draws level
@@ -889,7 +1002,7 @@ class _LayerStackPaintPass {
           // pixel in two, so it looked sharper than what it landed as.
           float: float == null
               ? null
-              : (preview: float, canvasToRow: _slotFromCanvas),
+              : (preview: float, canvasToRow: slot.canvasToSlot),
         );
       into.restore();
     }
@@ -920,7 +1033,7 @@ class _LayerStackPaintPass {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _activeSlotBufferBounds(row),
+          _slotBufferBounds(slot, paint),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,
@@ -932,7 +1045,7 @@ class _LayerStackPaintPass {
       if (needsBuffer) {
         canvas.saveLayer(
           effectBufferBounds(
-            _painter.activeSurfacePainter!.pasteboardRect,
+            slot.painter.pasteboardRect,
             activeEffects.outsetPixels,
           ),
           activePaint,
@@ -1058,21 +1171,12 @@ class _LayerStackPaintPass {
     if (!_painter.paintPaper) {
       return;
     }
-    // #15 — inside a LEVEL buffer the paper yields one buffer pixel to the
-    // reduced resample: paper and ink are rasterised at level resolution
-    // where the canvas's edge can fall inside a level pixel, and a paper
-    // that ended on that pixel's far side would show past ink that is a
-    // box-filtered half there — the 1px bright ring the device saw below
-    // ~30% under the knee's scaled recording (the same mechanism, the same
-    // one-buffer-pixel answer). At level 0 the canvas edge is whole and the
-    // paper is the exact canvas rect.
-    final inset = intoTheBuffer && _level > 0 ? _levelStep : null;
-    var rect = inset == null ? _canvasRect : _canvasRect.deflate(inset);
-    if (rect.isEmpty) {
-      // A canvas under two level pixels a side has nothing left to yield:
-      // the paper stays whole rather than vanishing.
-      rect = _canvasRect;
-    }
+    // #15: inside a LEVEL buffer the paper yields one buffer pixel to the
+    // reduced resample ([paperRectAtLevel]) — and so does a film's, which
+    // lays its paper with its rows as this buffer does.
+    final rect = intoTheBuffer
+        ? paperRectAtLevel(_canvasRect, _level)
+        : _canvasRect;
     if (rect.isEmpty) {
       return;
     }
@@ -1182,7 +1286,13 @@ class _LayerStackPaintPass {
     // ⛔No bake handed down (a host that does not own one, or a tree with
     // no live surface at all) keeps the original walk. The bake is an
     // optimisation, never a second way to be correct.
-    if (_painter.bake == null || _painter.activeSurfacePainter == null) {
+    //
+    // ⛔Nor while a lift holds rows beside the live one (I-37 · F-329): the
+    // bake records the rows a stroke cannot change, and a lifted row's
+    // float moves under the hand.
+    if (_painter.bake == null ||
+        _painter.activeSurfacePainter == null ||
+        _painter.liftedRows.isNotEmpty) {
       _paintPaperInto(into, intoTheBuffer: intoTheBuffer);
       _paintNodes(into, _painter.nodes, rasterScale);
       return;
@@ -1418,12 +1528,11 @@ class _LayerStackPaintPass {
                 effects: row.effects,
               ) &&
               drawsAsTexelCopy(row.image, row.worldRect),
-        CompositeLeaf(payload: final _PaintActiveSurface row) =>
-          inkCropDrawsTheSame(
-            placement: row.placement,
-            blendMode: row.blendMode,
-            effects: row.effects,
-          ),
+        CompositeLeaf(payload: final _SurfaceRow row) => inkCropDrawsTheSame(
+          placement: row.placement,
+          blendMode: row.blendMode,
+          effects: row.effects,
+        ),
         CompositeGroup(:final blendMode, :final effects, :final children) =>
           inkCropDrawsTheSame(
                 placement: null,
@@ -1466,6 +1575,7 @@ class _LayerStackPaintPass {
     final snapshot =
         cache != null &&
         key != null &&
+        _painter._drawsLive &&
         cache.wantsPromotionFor(patchedOverRealBase: patched && !derived);
     if (drawn) {
       // Only a patch over the cache's own real base is drawn, so the cache

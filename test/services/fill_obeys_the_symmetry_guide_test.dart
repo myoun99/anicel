@@ -103,22 +103,23 @@ void main() {
 
   test('fixture premise: without a guide the tap fills only its own box', () {
     final surface = twoBoxes();
-    final dab = buildFillDab(
+    final dab = buildFillDabs(
       cut: cutWithInk(),
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
       point: seed,
       color: 0xFF3366CC,
       options: exact,
-    )!;
+    ).single;
 
     expect((dab.stamp!.width, dab.stamp!.height), (2, 2));
     expect(dab.center, CanvasPoint(x: 4, y: 4));
   });
 
-  test('under a mirror the tap fills the mirrored box too, as ONE dab', () {
+  test('under a mirror the tap fills the mirrored box too, as ONE region '
+      '(one piece here: both boxes sit in one tile)', () {
     final surface = twoBoxes();
-    final dab = buildFillDab(
+    final dab = buildFillDabs(
       cut: cutWithInk(),
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
@@ -126,7 +127,7 @@ void main() {
       color: 0xFF3366CC,
       options: exact,
       symmetry: mirrorDownTheMiddle(),
-    )!;
+    ).single;
 
     final stamp = dab.stamp!;
     expect(
@@ -154,7 +155,7 @@ void main() {
 
   test('the mirrored copy carries the same colour, at full coverage', () {
     final surface = twoBoxes();
-    final stamp = buildFillDab(
+    final stamp = buildFillDabs(
       cut: cutWithInk(),
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
@@ -162,7 +163,7 @@ void main() {
       color: 0xFF3366CC,
       options: exact,
       symmetry: mirrorDownTheMiddle(),
-    )!.stamp!;
+    ).single.stamp!;
 
     const at = ((3 - 3) * 10 + (11 - 3)) * 4;
     expect(stamp.rgba.sublist(at, at + 4), [0x33, 0x66, 0xCC, 255]);
@@ -176,7 +177,7 @@ void main() {
     // would make the guide's own copies veto the stroke the user aimed.
     final surface = twoBoxes();
     var openReported = false;
-    final dab = buildFillDab(
+    final dab = buildFillDabs(
       cut: cutWithInk(),
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
@@ -194,9 +195,8 @@ void main() {
       onOpenRegion: () => openReported = true,
     );
 
-    expect(dab, isNotNull);
     expect(
-      (dab!.stamp!.width, dab.stamp!.height),
+      (dab.single.stamp!.width, dab.single.stamp!.height),
       (2, 2),
       reason: 'only the enclosed copy survives',
     );
@@ -210,7 +210,7 @@ void main() {
   test('and when EVERY copy is open, the leak is reported once', () {
     final surface = twoBoxes();
     var reports = 0;
-    final dab = buildFillDab(
+    final dab = buildFillDabs(
       cut: cutWithInk(),
       frameIndex: 0,
       surfaceResolver: (_, _) => surface,
@@ -226,7 +226,7 @@ void main() {
       onOpenRegion: () => reports += 1,
     );
 
-    expect(dab, isNull);
+    expect(dab, isEmpty);
     expect(reports, 1, reason: 'one tap, one notice — not one per copy');
   });
 }

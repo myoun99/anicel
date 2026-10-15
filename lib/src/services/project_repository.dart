@@ -5,6 +5,7 @@ import '../models/audio_clip.dart';
 import '../models/se_name_tag.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
+import '../models/conte_group.dart' show storyboardLayerForCut;
 import '../models/covering_image_normalize.dart';
 import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
@@ -35,6 +36,12 @@ import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
 import '../models/track.dart';
+import '../models/track_conte_laying.dart'
+    show
+        conteFillsGiven,
+        cutWithoutConteFills,
+        isConteFill,
+        projectWithItsContesLaid;
 import '../models/track_transitions.dart'
     show drawnFrameCountOf, transitionHandlesByCut;
 import '../models/transition_geometry.dart' show CutTransitionHandles;
@@ -94,12 +101,85 @@ class ProjectRepository {
   /// here remembered is about a different set of rows, whatever their ids.
   void replaceProject(Project project) {
     _settled = const {};
+    if (_conteStart != null) {
+      _conteStart = const {};
+    }
     _currentProject = _normalized(project);
   }
 
   void clearProject() {
     _settled = const {};
+    if (_conteStart != null) {
+      _conteStart = const {};
+    }
     _currentProject = null;
+  }
+
+  /// [body]'s writes as ONE write of the tracks' contes (F-343): the
+  /// structure is laid once, after the last of them, against the cuts as
+  /// they stood before the first — and the rows that laying gave the cuts
+  /// ([isConteFill]) are what comes back.
+  ///
+  /// 🚨A step that takes a row out of every cut's conte writes cut by cut
+  /// (`DeleteLayerCommand`), and its undo puts them back the same way. Laid
+  /// between those writes, the structure would read a row gone from one cut
+  /// that the others still hold, and give it back to that cut, empty — the
+  /// delete never finishing — and an undo putting back a row it had given
+  /// back already would put a second one there. One step is one write of
+  /// the structure: the history runs every step through this
+  /// (`ConteStepScope`).
+  ///
+  /// Inside another, it is that one's: the outer laying lays it.
+  Set<LayerId> asOneConteWrite(void Function() body) {
+    if (_conteStart != null) {
+      body();
+      return const {};
+    }
+    final before = _currentProject;
+    _conteStart = _settled;
+    try {
+      body();
+    } finally {
+      final against = _conteStart!;
+      _conteStart = null;
+      if (_currentProject case final project?) {
+        final pass = _settle(project, memo: _settled, laidAgainst: against);
+        _settled = pass.settled;
+        _currentProject = pass.project;
+      }
+    }
+    return conteFillsGiven(before, _currentProject);
+  }
+
+  /// The cuts as the write before the first of an [asOneConteWrite]'s left
+  /// them, while one is under way — null outside one.
+  Map<CutId, _Settled>? _conteStart;
+
+  /// Takes [rows] — rows the structure gave the cuts, by
+  /// [asOneConteWrite]'s answer — out of every cut that holds one, what a
+  /// row filed in one is filed in going to the folder that one was in
+  /// ([cutWithoutConteFills]).
+  ///
+  /// The undo of the step whose laying gave them owes it (`ConteStepScope`):
+  /// the step's own undo takes back the row it made in its cut, and the
+  /// empty ones the other cuts were given for it would keep it in the
+  /// structure. ⚠️Only that undo — it is what knows they are still empty.
+  void dropConteFills(Set<LayerId> rows) {
+    if (rows.isEmpty) {
+      return;
+    }
+    updateProject((project) {
+      final tracks = mappedOrSame(project.tracks, (track) {
+        final cuts = mappedOrSame(
+          track.cuts,
+          (cut) => cutWithoutConteFills(cut, rows),
+        );
+        return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
+      });
+      return identical(tracks, project.tracks)
+          ? project
+          : project.copyWith(tracks: tracks);
+    });
   }
 
   void updateProject(Project Function(Project project) update) {
@@ -192,7 +272,11 @@ class ProjectRepository {
     );
   }
 
-  /// The write-time invariants, applied to every cut on every write:
+  /// The write-time invariants. First, of every TRACK: its CONTE STRUCTURE
+  /// ([projectWithItsContesLaid], F-343) — what a write did to one cut's
+  /// conte made the track's, every cut's conte laid from it, and the rows
+  /// it gave a 겸용 pair one layer — so the six below read every conte as it
+  /// stands. Then, of every cut:
   /// 1. COVERING IMAGE rows ([cutWithCoveringImageRows]): an image
   ///    layer's stored timeline is ONE real 1-frame block at index 0 plus
   ///    a fixed end-side HOLD whose ghosts fill to the cut's drawn end
@@ -230,10 +314,25 @@ class ProjectRepository {
   ///    edit derived its own; the paths that brought a cut in from OUTSIDE
   ///    did not, and an imported hold printed `H` and covered nothing. A
   ///    write-time invariant covers the next importer by construction.
+  /// 6. THE CAMERA'S KEYS ON ITS FRAMES ([cameraFollowingItsEnd], I-73 ④):
+  ///    the key on a cut's last drawn frame stays on it whenever that frame
+  ///    moves, and a shrink brings in every key on the frames it took — the
+  ///    same drawn end as 5, moved by the same writes. Where the last frame
+  ///    was is the last write's, read off what it settled. A shrink the
+  ///    hand drives stops short of the other keys, so an undo that writes
+  ///    the length back carries the end key back; the commands that take a
+  ///    のりしろ away at once put their cameras back themselves
+  ///    (`CamerasFollowTheirEnds`), and an undo that restores the whole
+  ///    project starts the memo afresh and moves nothing.
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   Project _normalized(Project project) {
-    final pass = _settle(project, memo: _settled);
+    final pass = _settle(
+      project,
+      memo: _settled,
+      // Inside [asOneConteWrite] the structure waits for the last write.
+      laidAgainst: _conteStart == null ? _settled : null,
+    );
     _settled = pass.settled;
     return pass.project;
   }
@@ -247,15 +346,23 @@ class ProjectRepository {
   /// are derived by the WRITE, from the new layout; a preview that skipped
   /// the pass showed the holds gone and the receiving cut's panels where
   /// the old のりしろ put them, then jumped on release.
-  Project settledAsWritten(Project draft) =>
-      _settle(draft, memo: _settled).project;
+  Project settledAsWritten(Project draft) => _settle(
+    draft,
+    memo: _settled,
+    laidAgainst: _conteStart ?? _settled,
+  ).project;
 
-  /// The five invariants over every cut [memo] does not already hold
-  /// settled, and the memo the next write reads.
+  /// The tracks' contes laid against [laidAgainst] — not at all when it is
+  /// null — then the six invariants over every cut [memo] does not already
+  /// hold settled, and the memo the next write reads.
   static ({Project project, Map<CutId, _Settled> settled}) _settle(
-    Project project, {
+    Project written, {
     required Map<CutId, _Settled> memo,
+    required Map<CutId, _Settled>? laidAgainst,
   }) {
+    final project = laidAgainst == null
+        ? written
+        : _withContesLaid(written, against: laidAgainst);
     final handlesByCut = transitionHandlesByCut(project);
     final settled = <CutId, _Settled>{};
     final tracks = mappedOrSame(project.tracks, (track) {
@@ -263,7 +370,7 @@ class ProjectRepository {
         final handles = handlesByCut[cut.id]!;
         final last = memo[cut.id];
         // A cut this write did not touch, whose のりしろ did not move, is the
-        // very instance the last write settled: all five hold.
+        // very instance the last write settled: all six hold.
         final next =
             last != null && identical(last.cut, cut) && last.handles == handles
             ? cut
@@ -271,14 +378,7 @@ class ProjectRepository {
                 cut,
                 project: project,
                 handles: handles,
-                // The conte row the last write tiled, if this is still it:
-                // its blocks sit where that write put them, whatever an edit
-                // since did to its first panel. A row it never saw says
-                // where it was tiled from itself.
-                previousConteStart:
-                    last != null && last.conteRowId == _conteRowIdOf(cut)
-                    ? last.handles.head
-                    : null,
+                last: last,
               );
         settled[cut.id] = (
           cut: next,
@@ -297,31 +397,47 @@ class ProjectRepository {
     );
   }
 
+  /// [project] with each track's conte laid ([projectWithItsContesLaid]),
+  /// what a write changed read against the cuts as [against] holds them.
+  static Project _withContesLaid(
+    Project project, {
+    required Map<CutId, _Settled> against,
+  }) => projectWithItsContesLaid(
+    project,
+    settledCut: (cutId) => against[cutId]?.cut,
+  );
+
   /// Each cut as the last write left it, with the のりしろ its conte row and
   /// run edges were settled against — so a write settles only the cuts it
   /// changed or whose のりしろ it moved, not every cut of the project.
   Map<CutId, _Settled> _settled = const {};
 
-  static LayerId? _conteRowIdOf(Cut cut) {
-    for (final layer in cut.layers) {
-      if (layer.kind == LayerKind.storyboard) {
-        return layer.id;
-      }
-    }
-    return null;
-  }
+  static LayerId? _conteRowIdOf(Cut cut) => storyboardLayerForCut(cut)?.id;
 
-  /// The five invariants above, in their stated order, over one cut of
+  /// The six invariants above, in their stated order, over one cut of
   /// [project] — the project being settled, read for the two things a cut
   /// cannot say alone: the instruction a bare direction block takes, and a
-  /// linked attach row's group.
+  /// linked attach row's group — and over what the [last] write settled of
+  /// it, where there was one.
   static Cut _normalizedCut(
     Cut cut, {
     required Project project,
     required CutTransitionHandles handles,
-    required int? previousConteStart,
+    required _Settled? last,
   }) {
     final drawnFrameCount = drawnFrameCountOf(cut, handles);
+    // The conte row the last write tiled, if this is still it: its blocks
+    // sit where that write put them, whatever an edit since did to its
+    // first panel. A row it never saw says where it was tiled from itself.
+    final previousConteStart =
+        last != null && last.conteRowId == _conteRowIdOf(cut)
+        ? last.handles.head
+        : null;
+    // Where the cut's last frame was when the last write settled it — the
+    // one its camera's end key stood on.
+    final previousDrawnFrameCount = last == null
+        ? null
+        : drawnFrameCountOf(last.cut, last.handles);
     final shaped = cutWithSpansOnTheirBlocks(
       cutWithReconciledAttachedMirrors(
         cutWithCoveringStoryboardRow(
@@ -343,9 +459,19 @@ class ProjectRepository {
       shaped.layers,
       (layer) => rederiveRunBehaviors(layer, drawnFrameCount: drawnFrameCount),
     );
-    return identical(layers, shaped.layers)
+    final ruled = identical(layers, shaped.layers)
         ? shaped
         : shaped.copyWith(layers: layers);
+    final camera = previousDrawnFrameCount == null
+        ? ruled.camera
+        : cameraFollowingItsEnd(
+            ruled.camera,
+            lastFrame: drawnFrameCount - 1,
+            previousLastFrame: previousDrawnFrameCount - 1,
+          );
+    return identical(camera, ruled.camera)
+        ? ruled
+        : ruled.copyWith(camera: camera);
   }
 
   void updateTimesheetInfo(TimesheetInfo info) {
@@ -640,6 +766,24 @@ class ProjectRepository {
     _mutate(_track, trackId, (track) => track.copyWith(fxEnabled: fxEnabled));
   }
 
+  /// The V row's twirls (F-360): its lanes twirled down or not, and the
+  /// effect groups open inside them — the track's own, as a layer row's are
+  /// its own ([updateLayer]).
+  void updateTrackLanes({
+    required TrackId trackId,
+    required bool lanesExpanded,
+    required Set<String> expandedLaneGroups,
+  }) {
+    _mutate(
+      _track,
+      trackId,
+      (track) => track.copyWith(
+        lanesExpanded: lanesExpanded,
+        expandedLaneGroups: expandedLaneGroups,
+      ),
+    );
+  }
+
   void updateCutMetadata({
     required CutId cutId,
     required CutMetadata metadata,
@@ -912,7 +1056,7 @@ class ProjectRepository {
       final updatedCut = updateLayerInCut(cut, layerId, (layer) {
         if (kind == LayerKind.storyboard &&
             layer.kind != LayerKind.storyboard &&
-            cut.layers.any((other) => other.kind == LayerKind.storyboard)) {
+            storyboardLayerForCut(cut) != null) {
           throw StateError('Cut $cutId already has a storyboard layer.');
         }
         return layer.copyWith(kind: kind);

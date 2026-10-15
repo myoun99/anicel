@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart';
@@ -12,9 +13,10 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
+import '../layer_pose_matrix.dart' show LayerPlacement;
 import '../photoshop/psd_reader.dart';
 import 'media_import_planner.dart' show ImportIdMint;
-import 'raster_cel_import.dart' show placementRectFor;
+import 'raster_cel_import.dart' show fitPose, picturePlacement;
 import '../../models/import/import_warning.dart';
 
 /// EXPAND: a Photoshop stack becomes our stack.
@@ -116,18 +118,21 @@ PsdExpandPlan planPsdExpansion({
   final warnings = <ImportWarning>[...document.warnings];
   final held = duration < 1 ? 1 : duration;
 
-  // The document's own rectangle carries the fit; every layer sits inside
-  // it at its stored offset, scaled by the same factor. Fitting each layer
-  // to the canvas on its own would scatter a stack that lines up.
-  final documentRect = placementRectFor(
-    sourceWidth: document.width,
-    sourceHeight: document.height,
-    canvas: canvas,
-    fit: fit,
+  // The document's own fit carries every layer: each sits inside it at its
+  // stored offset, on the same scales. Fitting each layer to the canvas on
+  // its own would scatter a stack that lines up.
+  // ↩️The layers took the document's WIDTH ratio along both axes, which a
+  // stretch to another aspect is not: they stood off the composite by the
+  // difference, down the page. Each axis has its own scale now (I-68 — the
+  // fit is a pose).
+  final documentSize = CanvasSize(
+    width: document.width,
+    height: document.height,
   );
-  final scale = document.width == 0
-      ? 1.0
-      : documentRect.width / document.width;
+  final onCanvas = picturePlacement(
+    fitPose(picture: documentSize, canvas: canvas, fit: fit),
+    documentSize,
+  );
 
   final rootId = mint.nextLayerId();
   final layers = <Layer>[];
@@ -168,14 +173,9 @@ PsdExpandPlan planPsdExpansion({
           // An adjustment cannot be reproduced without Photoshop's colour
           // maths, and reproducing it would also flatten everything under
           // it. The composite already has it applied — which is why MERGE
-          // exists — so this says what was lost and where.
-          warnings.add(
-            ImportWarning(
-              'psdAdjustment',
-              '{name}: adjustment layer not applied.',
-              {'name': source.name},
-            ),
-          );
+          // exists — so this says what was lost and where, in every
+          // decoder's one word for a kind it does not carry.
+          warnings.add(unsupportedLayerKind(source.name));
           continue;
         }
         if (source.clipping) {
@@ -214,12 +214,7 @@ PsdExpandPlan planPsdExpansion({
               sourceIndex: index,
               layerId: layerId,
               frameId: frameId,
-              rect: ui.Rect.fromLTWH(
-                documentRect.left + (source.left + crop.left) * scale,
-                documentRect.top + (source.top + crop.top) * scale,
-                crop.width * scale,
-                crop.height * scale,
-              ),
+              rect: _onTheCanvas(onCanvas, source, crop),
               crop: crop,
             ),
           );
@@ -295,6 +290,23 @@ PsdLayerCrop? _insideTheDocument(PsdLayer source, PsdDocument document) {
     return null;
   }
   return (left: left, top: top, width: right - left, height: bottom - top);
+}
+
+/// The canvas rect [onCanvas] lays [source]'s [crop] over — the document's
+/// own pixels from the layer's offset. A fit never turns a picture, so its
+/// two corners say where the rest went.
+ui.Rect _onTheCanvas(
+  LayerPlacement onCanvas,
+  PsdLayer source,
+  PsdLayerCrop crop,
+) {
+  final left = (source.left + crop.left).toDouble();
+  final top = (source.top + crop.top).toDouble();
+  final topLeft = onCanvas.apply(CanvasPoint(x: left, y: top));
+  final bottomRight = onCanvas.apply(
+    CanvasPoint(x: left + crop.width, y: top + crop.height),
+  );
+  return ui.Rect.fromLTRB(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y);
 }
 
 LayerBlendMode _blendFor(PsdLayer source, List<ImportWarning> warnings) {

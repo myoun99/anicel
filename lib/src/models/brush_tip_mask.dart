@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/bounded_memo.dart';
+
 /// Longest mask side kept when an imported image becomes a mask; larger
 /// sources are downscaled so the tip library stays a reasonable size on
 /// disk. It lives with the mask rather than with any one decoder, so the
@@ -81,23 +83,17 @@ BrushTipMask brushTipMaskWithCachedLevels(
   if (!invert && brightness == 0.0 && contrast == 0.0) {
     return mask;
   }
-  final levels = (invert: invert, brightness: brightness, contrast: contrast);
-  final byLevels = _levelCache[mask] ??= {};
-  final hit = byLevels[levels];
-  if (hit != null) {
-    return hit;
-  }
   // A slider DRAG is a fresh value every frame and every one of them is a
   // real bake, so the only thing to bound here is what the drag leaves
   // behind afterwards.
-  if (byLevels.length >= _levelsPerMaskLimit) {
-    byLevels.clear();
-  }
-  return byLevels[levels] = brushTipMaskWithLevels(
-    mask,
-    invert: invert,
-    brightness: brightness,
-    contrast: contrast,
+  return (_levelCache[mask] ??= BoundedMemo(_levelsPerMaskLimit)).resolve(
+    (invert: invert, brightness: brightness, contrast: contrast),
+    () => brushTipMaskWithLevels(
+      mask,
+      invert: invert,
+      brightness: brightness,
+      contrast: contrast,
+    ),
   );
 }
 
@@ -105,7 +101,7 @@ const int _levelsPerMaskLimit = 4;
 
 typedef _MaskLevels = ({bool invert, double brightness, double contrast});
 
-final Expando<Map<_MaskLevels, BrushTipMask>> _levelCache = Expando(
+final Expando<BoundedMemo<_MaskLevels, BrushTipMask>> _levelCache = Expando(
   'brushTipMaskLevels',
 );
 

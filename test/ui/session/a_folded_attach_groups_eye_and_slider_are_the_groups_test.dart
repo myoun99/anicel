@@ -25,6 +25,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import '../../helpers/row_folds.dart';
 
 const _a = LayerId('a');
 const _b = LayerId('b');
@@ -90,7 +91,7 @@ void main() {
   };
 
   void fold(EditorSessionManager s) =>
-      s.railView.collapsedAttachBaseIds.value = {_b};
+      setRowFolds(s, _b, collapsed: true);
 
   test('folded, the base\'s eye is the group\'s — every rider goes where the '
       'base goes, off and back on, as ONE undo', () {

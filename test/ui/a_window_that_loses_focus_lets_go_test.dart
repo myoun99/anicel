@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
+import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
@@ -90,11 +90,11 @@ void main() {
   ) async {
     await boot(tester);
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-    expect(CanvasPanHold.held.value, isTrue, reason: 'fixture');
+    expect(CanvasViewHold.held.value, ViewHold.pan, reason: 'fixture');
 
     await awayAndBack(tester);
 
-    expect(CanvasPanHold.held.value, isFalse);
+    expect(CanvasViewHold.held.value, isNull);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
   }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
 }

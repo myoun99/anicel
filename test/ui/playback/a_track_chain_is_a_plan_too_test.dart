@@ -1,12 +1,19 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart';
+import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
-import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// 🚨★★★A TRACK'S CHAIN IS A PLAN, LIKE EVERY OTHER ROW'S.
@@ -22,8 +29,13 @@ import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 /// round to add that menu would have shipped an assert.
 ///
 /// 🧪ASKED OF THE PIXELS, not of the plan: a unit test that the plan has a
-/// step passes on a painter that ignores the step. This paints a white cut
-/// through a track chain that keys white away, and counts what survives.
+/// step passes on a route that ignores the step. This renders a white cut
+/// under a track chain that keys white away — in the group every route lays
+/// the cut in ([underTheCutsFx]) — and counts what survives.
+///
+/// ↩️It was asked of the playback painter, which filtered a film's finished
+/// picture with the chain, until the film drew its cut through the camera
+/// as the canvas does (card video-export-speed-Q2).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -43,47 +55,42 @@ void main() {
     },
   );
 
-  /// A finished cut picture: white, edge to edge.
-  ui.Image whiteCut() {
-    final recorder = ui.PictureRecorder();
-    Canvas(recorder).drawRect(
-      const Rect.fromLTWH(0, 0, 16, 16),
-      Paint()
-        ..color = const Color(0xFFFFFFFF)
-        ..isAntiAlias = false,
-    );
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(16, 16);
-    picture.dispose();
-    return image;
-  }
+  /// A cut of one row: white, edge to edge.
+  BitmapSurface whiteCut() => BitmapSurface(
+    canvasSize: canvasSize,
+    tileSize: 16,
+    tiles: {
+      TileCoord(x: 0, y: 0): BitmapTile(
+        size: 16,
+        pixels: Uint8List(16 * 16 * 4)..fillRange(0, 16 * 16 * 4, 255),
+      ),
+    },
+  );
 
   Future<int> opaquePixels(
     WidgetTester tester,
     List<LayerEffect> trackChain,
   ) async {
-    final composite = whiteCut();
-    addTearDown(composite.dispose);
-    final painter = PlaybackFramePainter(
-      image: composite,
-      canvasSize: canvasSize,
-      cutEffects: trackEffectsAt(trackChain, 0),
-      paintPaper: false,
-    );
-    const size = Size(16, 16);
-    final recorder = ui.PictureRecorder();
-    painter.paint(Canvas(recorder, Offset.zero & size), size);
-    final picture = recorder.endRecording();
-    final out = picture.toImageSync(16, 16);
-    picture.dispose();
-    final bytes = await tester.runAsync(
-      () => out.toByteData(format: ui.ImageByteFormat.rawRgba),
-    );
-    out.dispose();
-    final list = bytes!.buffer.asUint8List();
+    final bytes = (await tester.runAsync(() async {
+      final image =
+          await const CameraFrameRenderService(
+            background: ui.Color(0x00000000),
+          ).renderThroughCamera(
+            nodes: underTheCutsFx([
+              CompositeLeaf(
+                CutFrameCompositeLayer(surface: whiteCut(), opacity: 1),
+              ),
+            ], trackEffectsAt(trackChain, 0)),
+            pose: CameraPose(center: CanvasPoint(x: 8, y: 8)),
+            cameraFrameSize: canvasSize,
+          );
+      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      return data!.buffer.asUint8List();
+    }))!;
     var n = 0;
-    for (var i = 3; i < list.length; i += 4) {
-      if (list[i] != 0) {
+    for (var i = 3; i < bytes.length; i += 4) {
+      if (bytes[i] != 0) {
         n += 1;
       }
     }
@@ -103,12 +110,8 @@ void main() {
     );
   });
 
-  testWidgets('a track chain WITHOUT a key still draws in one pass', (
-    tester,
-  ) async {
-    // ⛔The control: the plan's fast path must stay fast. A chain with no key
-    // is one draw, exactly as it always was, and the cut's own image is what
-    // reaches the canvas — no raster, nothing to dispose.
+  testWidgets('a track chain WITHOUT a key still draws', (tester) async {
+    // ⛔The control: only a key removes pixels.
     final darkened = await opaquePixels(tester, [
       LayerEffect(
         id: const EffectId('fx-dark'),
@@ -123,54 +126,6 @@ void main() {
       darkened,
       greaterThan(0),
       reason: 'a darken keeps every pixel — only a key removes any',
-    );
-  });
-
-  testWidgets('the painter repaints when the chain changes, and only then', (
-    tester,
-  ) async {
-    // 🚨THE FIELD THE PAINTER DIFFS IS A LIST NOW, so the comparison had to
-    // change with it — `!=` on a list is identity, and a chain rebuilt every
-    // frame is a new list every frame. 🧪Caught by mutation: neutering this
-    // line left every other test green, and what it breaks is an ANIMATED
-    // track fx that never reaches the screen.
-    final composite = whiteCut();
-    addTearDown(composite.dispose);
-
-    PlaybackFramePainter withChain(List<LayerEffect> chain) =>
-        PlaybackFramePainter(
-          image: composite,
-          canvasSize: canvasSize,
-          cutEffects: trackEffectsAt(chain, 0),
-          paintPaper: false,
-        );
-
-    final none = withChain(const []);
-    final keyed = withChain([deleteWhite()]);
-    expect(
-      keyed.shouldRepaint(none),
-      isTrue,
-      reason: 'adding a colour key changes the picture',
-    );
-    expect(
-      none.shouldRepaint(keyed),
-      isTrue,
-      reason: 'and removing it changes it back',
-    );
-
-    // ⛔EQUAL BUT NOT IDENTICAL: the chain is resolved fresh on every build,
-    // so a static grade hands over a NEW list with the same values. Comparing
-    // by identity would repaint every frame forever.
-    final again = withChain([deleteWhite()]);
-    expect(
-      identical(again.cutEffects, keyed.cutEffects),
-      isFalse,
-      reason: 'fixture: two separate resolves',
-    );
-    expect(
-      again.shouldRepaint(keyed),
-      isFalse,
-      reason: 'a static chain is not a repaint',
     );
   });
 }

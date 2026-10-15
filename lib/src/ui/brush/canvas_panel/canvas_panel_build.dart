@@ -44,10 +44,7 @@ class _PanelBuild {
       // 🚨Its own SEMANTICS boundary, like every dock region (2026-09-26):
       // the panel lays itself out again at every pen-up, and each layout
       // re-walked the ROOT's share of the semantics tree for it.
-      child: Semantics(
-        container: true,
-        child: LayoutBuilder(builder: _panelBox),
-      ),
+      child: Semantics(container: true, child: _panelBox(context)),
     );
   }
 
@@ -102,26 +99,23 @@ class _PanelBuild {
   }
 
   /// The panel's box for the space it was given: the shell around the
-  /// viewport, sized to the constraints (the canvas size when unbounded).
-  Widget _panelBox(BuildContext context, BoxConstraints constraints) {
-    final fallbackSize = Size(
-      _state.widget.canvasSize.width.toDouble(),
-      _state.widget.canvasSize.height.toDouble(),
-    );
-    final boundedWidth = constraints.hasBoundedWidth
-        ? constraints.maxWidth
-        : fallbackSize.width;
-    final boundedHeight = constraints.hasBoundedHeight
-        ? constraints.maxHeight
-        : fallbackSize.height + _CanvasViewportBottomBar.heightIn(context);
-
-    return SizedBox(
-      width: boundedWidth,
-      height: boundedHeight,
+  /// viewport, filling the constraints — the canvas size, and the bar's
+  /// height under it, on an axis left unbounded.
+  ///
+  /// 🚨I-57 (10-13): a LIMIT, not a LayoutBuilder. The builder measured the
+  /// constraints to pick between the two, and a builder runs again whenever
+  /// the panel is built: its layout repainted the shell — the pill, its
+  /// swatches and readouts, the panbars — on every notify and every cut
+  /// crossed.
+  Widget _panelBox(BuildContext context) => LimitedBox(
+    maxWidth: _state.widget.canvasSize.width.toDouble(),
+    maxHeight:
+        _state.widget.canvasSize.height.toDouble() +
+        _CanvasViewportBottomBar.heightIn(context),
+    child: SizedBox.expand(
       child: _CanvasEditorPanelShell(
         rightStripBar: _state._shellBars.memoizedRightStripBar(),
-        horizontalStripBar: _state._shellBars
-            .memoizedHorizontalStripBar(),
+        horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
         bottomBar: _state._shellBars.memoizedBottomBar(),
         pageStrip: _state.widget.pageStrip,
         transport: _state.widget.transport,
@@ -130,24 +124,27 @@ class _PanelBuild {
         // The capsules float INSIDE what the panels left over.
         cover: _state.widget.floorCover,
         onFloor: _state._onFloor,
-        railBand: _state.widget.floorRailBand,
+        leftRailBand: _state.widget.floorLeftRailBand,
+        rightRailBand: _state.widget.floorRightRailBand,
+        onPageStripLaidOut: _state._rememberPageStripHeight,
         bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
         child: LayoutBuilder(builder: _viewport),
       ),
-    );
-  }
+    ),
+  );
 
   /// What sits on the artwork inside the pointer census — [_toolDeck],
-  /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
-  /// deck takes no pointer at all, so every tool stands down for the pan at
-  /// once, and the hand says what a press will do.
+  /// behind the view hold's gate (I-15 · I-88): while the 「이동」 or the
+  /// 「회전」 key is held the deck takes no pointer at all, so every tool
+  /// stands down for the view at once, and the hand says what a press will
+  /// do.
   ///
   /// The mapped buttons are read INSIDE the gate, with the tools: what one
-  /// holds is a tool, and it stands down for the pan with the rest.
+  /// holds is a tool, and it stands down for the view with the rest.
   /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
   /// layer took it — and after every control floating on the canvas has
   /// claimed its own (pointer-down is dispatched deepest-first).
-  Widget _cursorDeck(BuildContext context) => PanHoldGate(
+  Widget _cursorDeck(BuildContext context) => ViewHoldGate(
     child: Listener(
       behavior: HitTestBehavior.translucent,
       onPointerHover: _state._mappedButtons.hover,
@@ -168,13 +165,7 @@ class _PanelBuild {
   /// sheets, which pass no underlay or overlay), and crossing it re-created
   /// the whole content — a sheet's every stratum re-recorded when its brush
   /// switch was touched.
-  ///
-  /// Where every pill a tool raises may stand is given here, once, for
-  /// them all ([CanvasPillRoom]).
-  Widget _toolDeck(BuildContext context) =>
-      CanvasPillRoom(cover: _state._pillCover, child: _toolStack(context));
-
-  Widget _toolStack(BuildContext context) {
+  Widget _toolDeck(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
     final controlsBuilder = _controlsBuilder;
     final underlayBuilder = _underlayBuilder;
@@ -196,7 +187,10 @@ class _PanelBuild {
               // 트랜스폼에 서면 그림이 사라져」. The builder answers null
               // by itself when there is nothing to paint.
               _state._activeSurfacePainter(),
-              _state._selectionFloat,
+              (
+                liveRow: _state._selectionFloat,
+                liftedRows: _state._lift.liftedRows,
+              ),
             ),
           ),
         Positioned.fill(child: _canvasView),
@@ -232,7 +226,7 @@ class _PanelBuild {
         // while active (marquee/lasso/move) —
         // strokes cannot start below the layer.
         if (_selectionLayerActive)
-          _state._selectionLayer(underlayBuilder),
+          _state._selectionLayer(),
         // R9-rest: the text tool owns the pointer while it is in hand — a
         // press sets a text or takes hold of one, and no stroke starts
         // below.
@@ -264,6 +258,8 @@ class _PanelBuild {
       viewport: _state._viewportState._viewport,
       onViewportChanged: _state._viewportState.setViewport,
       rotationEnabled: _state.widget.allowViewRotation,
+      // I-88: the 「회전」 key turns about the middle the turn buttons use.
+      turnAnchor: () => _state._viewportState._viewportCenterAnchor,
       oneFingerAction: _state.widget.oneFingerAction,
       primaryPressPans: !_state.widget.runsTheSelectedTool,
       flipHud: hud,

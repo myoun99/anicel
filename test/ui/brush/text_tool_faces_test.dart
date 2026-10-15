@@ -256,7 +256,7 @@ void main() {
 
       expect(landedOn(hand.cel).spans.single.style.fontFamily, 'Probe Sans');
       expect(hand.host.ran, hasLength(1));
-      expect(hand.options.value.letters.fontFamily, 'Probe Sans');
+      expect(hand.options.value.letters(brushColour: null).fontFamily, 'Probe Sans');
       expect(faceInUse(tester), 'Probe Sans');
     });
 
@@ -275,7 +275,7 @@ void main() {
       await tester.tap(row('font-Probe Sans'));
       await tester.pumpAndSettle();
 
-      expect(hand.options.value.letters.fontFamily, 'Probe Sans');
+      expect(hand.options.value.letters(brushColour: null).fontFamily, 'Probe Sans');
       expect(hand.host.ran, isEmpty);
       expect(faceInUse(tester), 'Probe Sans');
       expect(library.read, hasLength(1));
@@ -305,7 +305,7 @@ void main() {
       expect([for (final family in fonts.families) family.name], ['Probe Sans']);
       expect(library.files.values, [sans]);
       expect(landedOn(hand.cel).spans.single.style.fontFamily, 'Probe Sans');
-      expect(hand.options.value.letters.fontFamily, 'Probe Sans');
+      expect(hand.options.value.letters(brushColour: null).fontFamily, 'Probe Sans');
       expect(faceInUse(tester), 'Probe Sans');
       expect(find.byKey(const ValueKey<String>('app-notice-close')), findsNothing);
       await openList(tester);
@@ -503,7 +503,7 @@ void main() {
       await tester.tap(row('project-font-Probe Carried'));
       await tester.pumpAndSettle();
 
-      expect(hand.options.value.letters.fontFamily, 'Probe Carried');
+      expect(hand.options.value.letters(brushColour: null).fontFamily, 'Probe Carried');
       expect(faceInUse(tester), 'Probe Carried');
     });
 

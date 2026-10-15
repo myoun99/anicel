@@ -58,6 +58,9 @@ enum CanvasTool {
   /// Drags out a region and COPIES the pixels under it into the held
   /// piece; the source is never removed (유저 확정: "잘라내기는 원본 남기는
   /// 복사"). Which outline it drags is [BrushToolState.cutShape].
+  /// ↩️I-90 (유저 2026-10-10): unless its 「원본 삭제」 is on
+  /// ([BrushToolState.cutDeletesSource]) — then the cut takes them off the
+  /// cel too, once the piece is in the hand.
   cut,
 
   /// The CUT tool's stamp variant: click to drop the held piece, drag to
@@ -355,6 +358,7 @@ class BrushToolState {
     BrushBlendMode shapeBlendMode = BrushBlendMode.color,
     ShapeToolOptions shapeOptions = const ShapeToolOptions(),
     double fillOpacity = 1.0,
+    bool cutDeletesSource = false,
     double cutStampOpacity = 1.0,
   }) {
     return BrushToolState.clamped(
@@ -403,6 +407,7 @@ class BrushToolState {
       shapeBlendMode: shapeBlendMode,
       shapeOptions: shapeOptions,
       fillOpacity: fillOpacity,
+      cutDeletesSource: cutDeletesSource,
       cutStampOpacity: cutStampOpacity,
     );
   }
@@ -421,6 +426,7 @@ class BrushToolState {
     this.shapeOptions = const ShapeToolOptions(),
     this.fillOpacity = 1.0,
     this.cutStampOpacity = 1.0,
+    this.cutDeletesSource = false,
     this.presetId,
   });
 
@@ -446,6 +452,7 @@ class BrushToolState {
     BrushBlendMode shapeBlendMode = BrushBlendMode.color,
     ShapeToolOptions shapeOptions = const ShapeToolOptions(),
     double fillOpacity = 1.0,
+    bool cutDeletesSource = false,
     double cutStampOpacity = 1.0,
   }) {
     return BrushToolState._raw(
@@ -461,6 +468,7 @@ class BrushToolState {
       shapeBlendMode: shapeBlendMode,
       shapeOptions: shapeOptions,
       fillOpacity: clampOpacity(fillOpacity),
+      cutDeletesSource: cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity),
     );
   }
@@ -515,6 +523,7 @@ class BrushToolState {
     BrushBlendMode? shapeBlendMode,
     ShapeToolOptions? shapeOptions,
     double? fillOpacity,
+    bool? cutDeletesSource,
     double? cutStampOpacity,
   }) {
     return BrushToolState.fromShape(
@@ -572,6 +581,7 @@ class BrushToolState {
       shapeBlendMode: shapeBlendMode ?? BrushBlendMode.color,
       shapeOptions: shapeOptions ?? const ShapeToolOptions(),
       fillOpacity: fillOpacity ?? 1.0,
+      cutDeletesSource: cutDeletesSource ?? false,
       cutStampOpacity: cutStampOpacity ?? 1.0,
     );
   }
@@ -751,6 +761,15 @@ class BrushToolState {
 
   /// The outline CUT drags out. See [selectShape].
   final CanvasShapeKind cutShape;
+
+  /// Whether a CUT takes what it cuts off the cel — 「원본 삭제」, the cut
+  /// tool's setting for every outline it cuts by and for 전체 잘라내기. Off,
+  /// a cut copies, as it always has.
+  ///
+  /// 🗣️I-90 (유저 2026-10-10): 「올가미잘라내기등 잘라내는 서브도구의
+  /// 도구설정으로서 원본 삭제 불리언버튼 추가. 잘라내기시 해당 그림
+  /// 없애는것」.
+  final bool cutDeletesSource;
 
   /// The outline SHAPE FILL drags out. See [selectShape].
   final CanvasShapeKind fillShape;
@@ -1157,6 +1176,7 @@ class BrushToolState {
     BrushBlendMode? shapeBlendMode,
     ShapeToolOptions? shapeOptions,
     double? fillOpacity,
+    bool? cutDeletesSource,
     double? cutStampOpacity,
   }) {
     // The base is the caller's shape when it gave one; the named arguments
@@ -1229,6 +1249,7 @@ class BrushToolState {
       shapeBlendMode: shapeBlendMode ?? this.shapeBlendMode,
       shapeOptions: shapeOptions ?? this.shapeOptions,
       fillOpacity: clampOpacity(fillOpacity ?? this.fillOpacity),
+      cutDeletesSource: cutDeletesSource ?? this.cutDeletesSource,
       cutStampOpacity: clampOpacity(cutStampOpacity ?? this.cutStampOpacity),
       presetId: presetId,
     );
@@ -1286,6 +1307,7 @@ class BrushToolState {
     shapeBlendMode: shapeBlendMode,
     shapeOptions: shapeOptions,
     fillOpacity: fillOpacity,
+    cutDeletesSource: cutDeletesSource,
     cutStampOpacity: cutStampOpacity,
     presetId: presetId,
   );
@@ -1424,6 +1446,7 @@ class BrushToolState {
           other.shapeOptions == shapeOptions &&
           other.fillOpacity == fillOpacity &&
           other.cutStampOpacity == cutStampOpacity &&
+          other.cutDeletesSource == cutDeletesSource &&
           // H25-again: which brush a state holds is part of the state — two
           // states wearing one shape under two names are not the same state.
           other.presetId == presetId;
@@ -1442,6 +1465,7 @@ class BrushToolState {
     shapeBlendMode,
     shapeOptions,
     fillOpacity,
+    cutDeletesSource,
     cutStampOpacity,
     presetId,
   );

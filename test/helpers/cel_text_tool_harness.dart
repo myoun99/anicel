@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:anicel/src/core/floor_math.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -10,6 +11,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -23,6 +25,7 @@ import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -68,7 +71,11 @@ const textToolSecondKey = BrushFrameKey(
 
 /// One cut, one layer, a drawing at the first frame — and with [drawings]
 /// two, another at the second. Every frame after them is EMPTY: no cel.
-Project textToolProject({int drawings = 1}) => Project(
+/// The layer wears [effects].
+Project textToolProject({
+  int drawings = 1,
+  List<LayerEffect> effects = const [],
+}) => Project(
   id: const ProjectId('text-tool-project'),
   name: 'Text Tool',
   createdAt: DateTime.utc(2026),
@@ -86,6 +93,7 @@ Project textToolProject({int drawings = 1}) => Project(
             Layer(
               id: textToolLayerId,
               name: 'Text Tool Layer',
+              effects: effects,
               frames: [
                 for (final (index, id) in _drawings.take(drawings).indexed)
                   Frame(
@@ -228,14 +236,70 @@ Finder textField() => find.byKey(
   skipOffstage: false,
 );
 
-/// The picture the canvas is DRAWING for the cel under the tool — what the
-/// person sees there, texts laid in, whether or not any of it has landed.
-BitmapSurface canvasShows(WidgetTester tester) => tester
+/// The picture the canvas draws IN THE PLACE of the cel under the tool,
+/// texts laid in: the cel itself, or with a text in hand the hole it left
+/// — what floats over that is [canvasPixel]'s (F-344).
+///
+/// ⚠️Laid in means none is left as a text: its [BitmapSurface.texts] are
+/// empty whatever the cel carries. What floats is [canvasFloat].
+BitmapSurface canvasShows(WidgetTester tester) =>
+    _canvasPainter(tester).surface;
+
+/// What floats over [canvasShows] while a text is in hand — its own pixels
+/// (`CelTextFloat`), or on a row that keys its colours what the cel will
+/// show where it lands (`CelTextLanding`) — null with none lifted.
+LandingPreview? canvasFloat(WidgetTester tester) =>
+    _canvasPainter(tester).landingPreview?.value;
+
+/// One pixel of what the canvas DRAWS for the cel under the tool, as
+/// straight RGBA — [canvasShows] and what floats over it, the text in hand,
+/// drawn by the canvas's own painter at full size.
+Future<List<int>> canvasPixel(WidgetTester tester, int x, int y) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)
+    ..translate(-x.toDouble(), -y.toDouble())
+    ..clipRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1));
+  _canvasPainter(tester).paintContentInto(canvas);
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(1, 1);
+  picture.dispose();
+  final bytes = await tester.runAsync(
+    () => image.toByteData(format: ui.ImageByteFormat.rawStraightRgba),
+  );
+  image.dispose();
+  return List<int>.from(bytes!.buffer.asUint8List());
+}
+
+/// What the canvas DRAWS for the cel under the tool over [region] of the
+/// canvas, at [level] — 100% at 0, half that at each level up — as raw
+/// RGBA: [canvasPixel]'s draw, of a whole region.
+Future<Uint8List> canvasRaster(
+  WidgetTester tester,
+  Rect region, {
+  int level = 0,
+}) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)
+    ..scale(1 / (1 << level))
+    ..translate(-region.left, -region.top)
+    ..clipRect(region);
+  _canvasPainter(tester).paintContentInto(canvas, level: level);
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(
+    region.width.toInt() >> level,
+    region.height.toInt() >> level,
+  );
+  picture.dispose();
+  final bytes = await tester.runAsync(image.toByteData);
+  image.dispose();
+  return bytes!.buffer.asUint8List();
+}
+
+BitmapSurfacePainter _canvasPainter(WidgetTester tester) => tester
     .widgetList<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
     .map((stack) => stack.activeSurfacePainter)
     .whereType<BitmapSurfacePainter>()
-    .single
-    .surface;
+    .single;
 
 /// The hand the canvas holds texts with.
 CelTextTool textToolOf(WidgetTester tester) =>

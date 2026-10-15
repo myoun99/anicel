@@ -10,6 +10,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -28,11 +29,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// `_PlaybackCacheBudget` (2026-09-02), the adversarial check made the
 /// session's call a no-op and every test stayed green. The product budget
 /// is 600 MB, which no unit test can fill, so the session grew a test seam
-/// for the number; this fills a 256-byte budget with two 8×8 composites
-/// and asks the session to enforce.
+/// for the number; this fills a 256-byte budget with two 8×8 pictures and
+/// asks the session to enforce.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  // 8×8 RGBA = 256 bytes per full-quality composite.
+  // 8×8 RGBA = 256 bytes per picture: each cel inked over all of it.
   const fullImageBytes = 8 * 8 * 4;
 
   Cut cut(String id, String frameId) => Cut(
@@ -75,8 +76,10 @@ void main() {
     return s;
   }
 
-  /// A dab into [cut]'s cel, so its composite holds pixels (an empty cel
-  /// composes to nothing, and nothing is cached).
+  /// A dab across all four of [cut]'s tiles and inside its canvas, so its
+  /// picture is the canvas's size (an empty cel asks for no picture at all).
+  /// ⚠️A dab past the edge puts the cel on the pasteboard's tiles, and its
+  /// picture is then theirs.
   void draw(EditorSessionManager s, Cut cut, String layerId, String frameId) {
     BrushFrameEditingCoordinator(
       initialFrameKey: s.brushFrameKeyForCut(
@@ -93,13 +96,13 @@ void main() {
     ).commitSourceStroke(
       sourceDabs: [
         BrushDab(
-          center: CanvasPoint(x: 1, y: 1),
+          center: CanvasPoint(x: 4, y: 4),
           color: 0xFF000000,
-          size: 2,
+          size: 6,
           opacity: 1,
           flow: 1,
           hardness: 1,
-          tipShape: BrushTipShape.round,
+          tipShape: BrushTipShape.square,
           pressure: 1,
           sequence: 0,
         ),
@@ -107,7 +110,7 @@ void main() {
     );
   }
 
-  testWidgets('the session trims the composites past its budget', (
+  testWidgets('the session trims the pictures past its budget', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -118,29 +121,29 @@ void main() {
         fullImageBytes,
         reason: 'the seam',
       );
-      // Two cuts, two cels, two DIFFERENT composites — two frames of one
-      // exposure share a signature and would share one image.
+      // Two cuts, two cels, two pictures — two frames of one exposure
+      // would share one image.
       for (final (id, frameId) in [
         ('cut-2', 'frame-b'),
         ('cut-3', 'frame-c'),
       ]) {
         final cut = s.cutById(CutId(id))!;
         draw(s, cut, '$id-layer', frameId);
-        await s.renderCaches.cutFrameCompositeCache.prepareComposite(
+        await s.playbackRig.canvasPictures.make((
           cut: cut,
           frameIndex: 0,
-        );
+        ), shouldAbort: () => false);
       }
       expect(
-        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+        s.renderCaches.layerFrameImageCache.estimatedBytes,
         2 * fullImageBytes,
-        reason: 'two composites of inactive cuts — twice the budget',
+        reason: 'two pictures of inactive cuts — twice the budget',
       );
 
       s.playbackRig.playbackCache.enforcePlaybackCacheBudget();
 
       expect(
-        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+        s.renderCaches.layerFrameImageCache.estimatedBytes,
         lessThanOrEqualTo(fullImageBytes),
         reason: 'the session handed the enforcer its budget',
       );
@@ -158,14 +161,11 @@ void main() {
       const lent = 600;
       final s = session(budget: budget);
       final line = s.playbackRig.playbackCache;
-      final composites = s.renderCaches.cutFrameCompositeCache;
-      int held() =>
-          composites.estimatedBytes +
-          s.renderCaches.layerFrameImageCache.estimatedBytes;
-      Future<void> prepare(String id) => composites.prepareComposite(
+      int held() => s.renderCaches.layerFrameImageCache.estimatedBytes;
+      Future<void> prepare(String id) => s.playbackRig.canvasPictures.make((
         cut: s.cutById(CutId(id))!,
         frameIndex: 0,
-      );
+      ), shouldAbort: () => false);
       for (final (id, frameId) in [
         ('cut-2', 'frame-b'),
         ('cut-3', 'frame-c'),
@@ -174,11 +174,17 @@ void main() {
         await prepare(id);
       }
       line.enforcePlaybackCacheBudget();
-      expect(composites.estimatedBytes, 2 * fullImageBytes, reason: 'premise');
+      expect(held(), 2 * fullImageBytes, reason: 'premise');
       expect(held(), lessThanOrEqualTo(budget), reason: 'all of it fits');
+      expect(line.bytes, budget, reason: '⛔premise: nothing lent yet');
 
       line.lend(lent);
       expect(line.lentBytes, lent);
+      expect(
+        line.bytes,
+        budget - lent,
+        reason: 'the warm\'s room is the line less what is lent',
+      );
       expect(held(), lessThanOrEqualTo(budget - lent), reason: 'at once');
 
       // The warm builds the evicted frame again and enforces, as it does
@@ -207,22 +213,30 @@ void main() {
       const budget = 1024;
       final s = session(budget: budget);
       final line = s.playbackRig.playbackCache;
-      final composites = s.renderCaches.cutFrameCompositeCache;
+      final images = s.renderCaches.layerFrameImageCache;
       expect(line.lendableBytes, budget, reason: 'LIVENESS: nothing shown');
 
       final open = s.activeCutOrNull!;
       draw(s, open, 'cut-1-layer', 'frame-a');
-      await composites.prepareComposite(cut: open, frameIndex: 0);
-      expect(composites.estimatedBytes, greaterThan(0), reason: 'premise');
+      await s.playbackRig.canvasPictures.make((
+        cut: open,
+        frameIndex: 0,
+      ), shouldAbort: () => false);
+      expect(images.estimatedBytes, greaterThan(0), reason: 'premise');
       expect(
         line.lendableBytes,
         budget,
         reason: 'the open cut\'s warm frame is not kept from the run',
       );
 
-      composites.retainPin((open.id, 0));
-      addTearDown(() => composites.releasePin((open.id, 0)));
-      expect(composites.pinnedBytes, fullImageBytes, reason: 'premise');
+      final cel = s.brushFrameKeyForCut(
+        open,
+        const LayerId('cut-1-layer'),
+        const FrameId('frame-a'),
+      );
+      images.retainPin(cel, PlaybackQuality.full);
+      addTearDown(() => images.releasePin(cel, PlaybackQuality.full));
+      expect(images.pinnedBytes, fullImageBytes, reason: 'premise');
       expect(
         line.lendableBytes,
         budget - fullImageBytes,

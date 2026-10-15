@@ -117,6 +117,7 @@ class Frame {
     this.name,
     this.seName,
     this.seType = SeLineType.on,
+    this.filePicture,
   }) : strokes = List.unmodifiable(strokes);
 
   final FrameId id;
@@ -145,6 +146,17 @@ class Frame {
   /// block never chose, which is also what a drawing carries and ignores.
   final SeLineType seType;
 
+  /// REFERENCE rows only: which picture of the row's file this cel is — a
+  /// still's one, a GIF's frame, a PDF's page — counted in the FILE, so the
+  /// cel can be made from it again where the row's reference fx stands it
+  /// (I-68 — 유저 2026-10-10 「가」: 칸마다 「파일의 몇 번째 그림」을
+  /// 기록한다). Null for a cel drawn by hand, and for a movie row's held cel,
+  /// whose pictures are decoded as they are shown.
+  ///
+  /// ⚠️It is the reference's: a row that lets go of its file (rasterized)
+  /// lets go of these with it.
+  final int? filePicture;
+
   Frame copyWith({
     FrameId? id,
     int? duration,
@@ -152,6 +164,7 @@ class Frame {
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
     SeLineType? seType,
+    Object? filePicture = copyWithSentinel,
   }) {
     return Frame(
       id: id ?? this.id,
@@ -162,6 +175,9 @@ class Frame {
           ? this.seName
           : seName as String?,
       seType: seType ?? this.seType,
+      filePicture: identical(filePicture, copyWithSentinel)
+          ? this.filePicture
+          : filePicture as int?,
     );
   }
 
@@ -174,6 +190,7 @@ class Frame {
     // ON is the absent field — every drawing, and every block that never
     // chose, reads back as ON.
     if (seType != SeLineType.on) 'seType': seType.name,
+    if (filePicture != null) 'filePicture': filePicture,
   };
 
   factory Frame.fromJson(Map<String, dynamic> json) {
@@ -186,6 +203,7 @@ class Frame {
       name: json['name'] as String?,
       seName: json['seName'] as String?,
       seType: SeLineType.fromJson(json['seType']),
+      filePicture: json['filePicture'] as int?,
     );
   }
 
@@ -198,6 +216,7 @@ class Frame {
           other.name == name &&
           other.seName == seName &&
           other.seType == seType &&
+          other.filePicture == filePicture &&
           listEquals(other.strokes, strokes);
 
   @override
@@ -207,6 +226,7 @@ class Frame {
     name,
     seName,
     seType,
+    filePicture,
     Object.hashAll(strokes),
   );
 

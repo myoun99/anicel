@@ -254,6 +254,39 @@ void main() {
       expect(answer.body, isNot(contains('the first card')));
     });
 
+    // 🗣️card board-door-shows-what-was-typed (유저 2026-10-09, from the
+    // phone: 「적어도 비밀번호 표시하는버튼있으면 틀린지아닌지 알수있을텐데」).
+    // The page answered only a door that opened; every failure looked like
+    // a press that did nothing. 🧪Its script was run by hand that day in the
+    // app's browser with the request stood in for: the button shows and
+    // hides what was typed, and 401, 403, another status and an unreachable
+    // board each wrote their own line — at a phone's width, nothing wider
+    // than the screen.
+    test('🚨what was typed at the door can be shown, a phone keyboard keeps '
+        'off it, and a door that stays shut says why — on a line whose place '
+        'is there before it says anything', () async {
+      final page = (await ask('GET', '/')).body;
+      expect(page, contains('id="show"'));
+      for (final attribute in const [
+        'autocapitalize="none"',
+        'autocorrect="off"',
+        'spellcheck="false"',
+      ]) {
+        expect(page, contains(attribute));
+      }
+      expect(page, contains('<p id="why" role="status"></p>'));
+      expect(page, contains('#why{min-height:'));
+      for (final sentence in const [
+        '비밀값이 맞지 않습니다.',
+        '이 페이지 밖에서 온 요청으로 보였습니다(403).',
+        ' 로 답했습니다.',
+        '보드 서버에 닿지 못했습니다.',
+        '비밀값은 맞았는데 브라우저가 열쇠(쿠키)를 남기지 않았습니다.',
+      ]) {
+        expect(page, contains(sentence));
+      }
+    });
+
     test('a wrong secret at the door gets no cookie', () async {
       final answer = await ask('POST', '/enter', body: 'not-the-secret');
       expect(answer.status, HttpStatus.unauthorized);
@@ -269,10 +302,40 @@ void main() {
       final cookie = entered.cookies.single;
       expect(cookie.name, kDoorCookie);
       expect(cookie.httpOnly, isTrue);
-      expect(cookie.sameSite, SameSite.strict);
+      expect(
+        cookie.sameSite,
+        SameSite.lax,
+        reason: 'a page opened from another app is still let in (an iPhone '
+            'held the key and was shown the door); a cross-site POST still '
+            'carries nothing',
+      );
 
       final back = await ask('GET', '/fresh', cookie: cookie.value);
       expect(back.status, HttpStatus.ok);
+    });
+
+    // 유저 2026-10-09, from an iPhone: the key was held (its POST carried a
+    // cookie of the secret's length) and the door still said 500.
+    test('🚨a browser that already holds the key and shows the secret again '
+        'is answered by the door — 200 and the cookie again, 401 for a wrong '
+        'one — and never by the routes (500)', () async {
+      final again = await ask(
+        'POST',
+        '/enter',
+        cookie: secret,
+        body: secret,
+      );
+      expect(again.status, HttpStatus.ok);
+      expect(again.cookies.single.sameSite, SameSite.lax);
+      // A body shaped like a number, which met a JSON reader on the phone.
+      final number = await ask(
+        'POST',
+        '/enter',
+        cookie: secret,
+        body: '1eae816f17f3bc5f04a868398173c6cb',
+      );
+      expect(number.status, HttpStatus.unauthorized);
+      expect(number.cookies, isEmpty);
     });
 
     test('🚨what a session says goes through the server onto the records — '
@@ -454,6 +517,8 @@ void main() {
         ('/say', line),
         ('/submit', '{"id":"T-1","memo":"from elsewhere"}'),
         ('/intake', '{"kind":"idea","text":"from elsewhere"}'),
+        ('/ack', '{"key":"T-1","why":"from elsewhere"}'),
+        ('/unack', '{"key":"T-1"}'),
         ('/enter', secret),
       ]) {
         for (final saying in const [
@@ -503,6 +568,259 @@ void main() {
       );
       expect(olderBrowser.status, HttpStatus.ok);
       expect(records.readAsLinesSync(), hasLength(before + 2));
+    });
+  });
+
+  // 유저 2026-10-09, from the phone: the right secret typed, and the door
+  // said 「500」 (before the page named a reason it was a press that did
+  // nothing). The server answered a request it could not make sense of with
+  // an exception, and `board_up.sh` throws the exception away.
+  group('a request the door cannot make sense of', () {
+    /// One request to `/enter`, written by hand. ⚠️A client library folds a
+    /// header sent twice into one line and encodes a body as text, so it
+    /// cannot send what a proxy or a keyboard can.
+    Future<({int status, bool handsAKey})> enter({
+      List<String> headers = const [],
+      List<int>? body,
+    }) async {
+      final bytes = body ?? utf8.encode(secret);
+      final socket = await Socket.connect(
+        InternetAddress.loopbackIPv4,
+        server.port,
+      );
+      try {
+        socket.add(
+          latin1.encode(
+            'POST /enter HTTP/1.1\r\n'
+            'Host: 127.0.0.1:${server.port}\r\n'
+            '${headers.map((h) => '$h\r\n').join()}'
+            'Content-Length: ${bytes.length}\r\n'
+            'Connection: close\r\n\r\n',
+          ),
+        );
+        socket.add(bytes);
+        await socket.flush();
+        final reply = await socket
+            .cast<List<int>>()
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .join();
+        return (
+          status: int.parse(reply.split(' ')[1]),
+          handsAKey: reply.toLowerCase().contains('set-cookie: $kDoorCookie='),
+        );
+      } finally {
+        socket.destroy();
+      }
+    }
+
+    test('a header said twice is one value, or no value anything says', () {
+      expect(oneValueOf(null), isNull);
+      expect(oneValueOf(const []), isNull);
+      expect(oneValueOf(const ['a']), 'a');
+      expect(oneValueOf(const ['a', 'a']), 'a');
+      expect(oneValueOf(const ['a', 'b']), 'a, b');
+    });
+
+    test('🚨an Origin or a Sec-Fetch-Site sent twice is answered at the door '
+        '— let in when it says one thing, 403 when it says two — and never '
+        'a 500', () async {
+      final own = 'Origin: http://127.0.0.1:${server.port}';
+      final same = await enter(headers: [own, own]);
+      expect(same.status, HttpStatus.ok);
+      expect(same.handsAKey, isTrue);
+      final other = await enter(headers: [own, 'Origin: https://example.com']);
+      expect(other.status, HttpStatus.forbidden);
+      expect(other.handsAKey, isFalse);
+      final site = await enter(
+        headers: const [
+          'Sec-Fetch-Site: same-origin',
+          'Sec-Fetch-Site: same-origin',
+        ],
+      );
+      expect(site.status, HttpStatus.ok);
+      final sites = await enter(
+        headers: const [
+          'Sec-Fetch-Site: same-origin',
+          'Sec-Fetch-Site: cross-site',
+        ],
+      );
+      expect(sites.status, HttpStatus.forbidden);
+    });
+
+    test('🚨a body that is not text is a secret that does not match — 401, '
+        'no key handed, never a 500', () async {
+      for (final body in [
+        [...utf8.encode(secret), 0xff, 0xfe],
+        [0xc0, 0x80],
+        [0xf0, 0x28, 0x8c, 0xbc],
+      ]) {
+        final answer = await enter(body: body);
+        expect(answer.status, HttpStatus.unauthorized, reason: '$body');
+        expect(answer.handsAKey, isFalse);
+      }
+    });
+
+    test('a bearer shown twice is read, and does not match', () async {
+      final socket = await Socket.connect(
+        InternetAddress.loopbackIPv4,
+        server.port,
+      );
+      try {
+        socket.add(
+          latin1.encode(
+            'GET /api/board HTTP/1.1\r\n'
+            'Host: 127.0.0.1:${server.port}\r\n'
+            'Authorization: Bearer $secret\r\n'
+            'Authorization: Bearer elsewhere\r\n'
+            'Connection: close\r\n\r\n',
+          ),
+        );
+        await socket.flush();
+        final reply = await socket
+            .cast<List<int>>()
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .join();
+        expect(reply, startsWith('HTTP/1.1 401'));
+      } finally {
+        socket.destroy();
+      }
+    });
+  });
+
+  group('what the door keeps of the secret, and of who it turned away', () {
+    test('the secret is taken out of a text, wherever it stands', () {
+      const door = LanDoor(secret);
+      expect(
+        withoutSecret(door, 'a $secret b $secret'),
+        'a <secret> b <secret>',
+      );
+      expect(withoutSecret(door, 'nothing here'), 'nothing here');
+      expect(
+        withoutSecret(const LoopbackDoor(), 'a $secret'),
+        'a $secret',
+        reason: 'a door with no secret has none to take out',
+      );
+    });
+
+    test('🚨a request the door turns away leaves a line — with whether a key '
+        'came, never the key — and the secret is out of every header it '
+        'names', () async {
+      final log = File('${dir.path}/$kRequestFailureLog');
+      if (log.existsSync()) log.deleteSync();
+      await ask('GET', '/', cookie: 'a-key-that-does-not-fit');
+      await ask(
+        'GET',
+        '/',
+        saying: {'Referer': 'http://elsewhere/$secret'},
+      );
+      await ask('POST', '/enter', body: 'not-the-secret');
+      final lines = log.readAsLinesSync();
+      expect(lines, hasLength(3));
+      expect(
+        lines.first,
+        allOf(
+          contains(' GET / '),
+          contains('turned away at the door (401)'),
+          contains('cookie×1=<'),
+        ),
+      );
+      expect(lines[1], contains('referer×1=http://elsewhere/<secret>'));
+      expect(lines.last, contains(' POST /enter '));
+      expect(log.readAsStringSync(), isNot(contains(secret)));
+    });
+  });
+
+  // 🚨The server's stderr is thrown away by the script that starts it, so a
+  // failed request said nothing about itself; it leaves one line instead.
+  group('a request that broke the server leaves a line', () {
+    String lineFor({
+      Map<String, List<String>> headers = const {},
+      Object error = 'FormatException: bad',
+    }) => requestFailureLine(
+      at: DateTime.utc(2026, 10, 9, 8, 30),
+      method: 'POST',
+      path: '/enter',
+      from: '192.168.1.50',
+      headers: headers,
+      error: error,
+    );
+
+    test('it names when, what, by whom and which error', () {
+      final line = lineFor();
+      expect(line, startsWith('2026-10-09T08:30:00.000Z POST /enter '));
+      expect(line, contains('from 192.168.1.50'));
+      expect(line, contains('FormatException: bad'));
+      expect(line, isNot(contains('\n')), reason: 'one line a failure');
+    });
+
+    test('🚨it says how many times each header came and what it said — a '
+        'header sent twice is what a 500 at the door hid', () {
+      final line = lineFor(
+        headers: {
+          'origin': ['http://a', 'http://b'],
+          'host': ['192.168.1.6:4321'],
+        },
+      );
+      expect(line, contains('origin×2=http://a ⏎ http://b'));
+      expect(line, contains('host×1=192.168.1.6:4321'));
+    });
+
+    test('🚨a key is never written: the cookie and the bearer give their '
+        'length, and the body is not in it at all', () {
+      final line = lineFor(
+        headers: {
+          'cookie': ['board=$secret'],
+          'Authorization': ['Bearer $secret'],
+        },
+      );
+      expect(line, isNot(contains(secret)));
+      expect(line, contains('cookie×1=<${'board=$secret'.length} chars>'));
+      expect(
+        line,
+        contains('Authorization×1=<${'Bearer $secret'.length} chars>'),
+      );
+    });
+
+    test('a long header is cut and a line break in one cannot make a second '
+        'line', () {
+      final line = lineFor(
+        headers: {
+          'user-agent': ['x' * 400],
+          'referer': ['http://a/\r\nInjected: line'],
+        },
+        error: 'multi\nline',
+      );
+      expect(line, isNot(contains('\n')));
+      expect(line, isNot(contains('x' * 200)));
+    });
+
+    test('it is appended, starts over past the ceiling, and never throws',
+        () {
+      final log = File('${dir.path}/failures.log');
+      noteRequestFailure(log, 'one');
+      noteRequestFailure(log, 'two');
+      expect(log.readAsLinesSync(), ['one', 'two']);
+      log.writeAsStringSync('x' * (300 * 1024));
+      noteRequestFailure(log, 'three');
+      expect(log.readAsLinesSync(), ['three']);
+      expect(
+        () => noteRequestFailure(File('${dir.path}/no/such/place.log'), 'x'),
+        returnsNormally,
+      );
+    });
+
+    test('🚨the request loop writes it before it answers 500', () {
+      final server = File('tool/board_server.dart').readAsStringSync();
+      expect(server, contains('_noteFailed(request, e);'));
+      expect(
+        RegExp(r'withoutSecret\(\s*_door,').hasMatch(server),
+        isTrue,
+        reason: 'and what it writes has the secret taken out',
+      );
+      expect(
+        server.indexOf('_noteFailed(request, e);'),
+        lessThan(server.indexOf('request.response.statusCode = 500;')),
+      );
     });
   });
 

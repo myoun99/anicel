@@ -134,7 +134,7 @@ void main() {
     addTearDown(tool.dispose);
     final transform = ValueNotifier(TransformToolOptions.defaults);
     addTearDown(transform.dispose);
-    var cuts = 0;
+    final cuts = <bool>[];
     var announcements = 0;
     tool.addListener(() => announcements++);
     await tester.pumpWidget(
@@ -146,7 +146,8 @@ void main() {
               press,
               tool: tool,
               transform: transform,
-              cutWhole: () => cuts++,
+              cutWhole: ({required takeWhatItCuts}) =>
+                  cuts.add(takeWhatItCuts),
             ),
             brushLibrary: const SizedBox.shrink(),
           ),
@@ -157,8 +158,56 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-whole')));
     await tester.pump();
 
-    expect(cuts, 1);
+    expect(cuts, [false], reason: '「원본 삭제」 off: the cut copies');
     expect(announcements, 0, reason: 'the stamp follows the SLOT, not this');
+
+    // 🗣️I-90 (유저 2026-10-10): 「원본 삭제」 is the cut tool's, for every
+    // cut it makes — read at the press.
+    tool.value = tool.value.copyWith(cutDeletesSource: true);
+    await tester.tap(find.byKey(const ValueKey<String>('sub-tool-cut-whole')));
+    await tester.pump();
+    expect(cuts, [false, true]);
+  });
+
+  // 🗣️I-90 (유저 2026-10-10): 「잘라내기시 해당 그림 없애는것」.
+  testWidgets('with 「원본 삭제」 the picture goes into the hand AND off the '
+      'cel — one undo puts it back, and the hand keeps it', (tester) async {
+    final session = await pump(tester);
+    inkTwoSquares(session);
+    final slot = CutPieceSlot();
+    addTearDown(slot.dispose);
+    session.pixelVerbs.cutToolHand = slot.hold;
+    final layer = session.layers.firstWhere((l) => l.frames.length == 2);
+    final key = session.brushFrameKeyForCut(
+      session.requireActiveCut,
+      layer.id,
+      const FrameId('c0'),
+    );
+    final store = session.renderCaches.brushFrameStore;
+
+    // CONTROL: off, the cel keeps its picture.
+    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
+    expect(slot.piece, isNotNull);
+    expect(store.celHasRenderableContent(key), isTrue, reason: 'a copy');
+
+    session.pixelVerbs.cutWhole(takeWhatItCuts: true);
+    await tester.pump();
+    final piece = slot.piece!;
+    expect(
+      piece.image.width,
+      greaterThanOrEqualTo(100),
+      reason: 'both squares in the hand',
+    );
+    expect(
+      store.celHasRenderableContent(key),
+      isFalse,
+      reason: 'and nothing of them left on the cel',
+    );
+
+    session.historyManager.undo();
+    await tester.pump();
+    expect(store.celHasRenderableContent(key), isTrue, reason: 'one undo');
+    expect(slot.piece, same(piece), reason: 'the hand is not history');
   });
 
   testWidgets('it takes the standing cel\'s WHOLE picture — the marquee is '
@@ -180,7 +229,7 @@ void main() {
     expect(published, isNotNull, reason: 'the workspace hands its slot in');
     session.pixelVerbs.cutToolHand = slot.hold;
 
-    session.pixelVerbs.cutWhole();
+    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
 
     final piece = slot.piece!;
     expect((piece.originLeft, piece.originTop), (10, 10));
@@ -192,7 +241,7 @@ void main() {
 
     // The real hand: the window's slot, which arms the stamp.
     session.pixelVerbs.cutToolHand = published;
-    session.pixelVerbs.cutWhole();
+    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
     await tester.pump();
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
@@ -211,7 +260,7 @@ void main() {
     final slot = CutPieceSlot();
     addTearDown(slot.dispose);
     session.pixelVerbs.cutToolHand = slot.hold;
-    session.pixelVerbs.cutWhole();
+    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
     final held = slot.piece;
     expect(held, isNotNull);
     expect(
@@ -222,7 +271,7 @@ void main() {
 
     session.selectFrameIndex(1);
     await tester.pump();
-    session.pixelVerbs.cutWhole();
+    session.pixelVerbs.cutWhole(takeWhatItCuts: false);
 
     expect(
       slot.piece,

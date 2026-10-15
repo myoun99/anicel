@@ -1,8 +1,6 @@
-import 'dart:io' show ZLibCodec;
 import 'dart:typed_data';
 
-import '../persistence/anicel_incremental_writer.dart'
-    show anicelCrc32Finish, anicelCrc32Start, anicelCrc32Update;
+import 'png_writing.dart';
 
 /// One picture of an animation: straight RGBA, top-down, row after row, and
 /// how long it stays up.
@@ -37,49 +35,45 @@ Uint8List encodeAnimatedPng({
   }
   final palette = _paletteOf(frames);
   final out = BytesBuilder(copy: false)
-    ..add(const [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    ..add(pngSignature)
     ..add(
-      _chunk('IHDR', [
-        ..._u32(width),
-        ..._u32(height),
-        8, // bit depth
-        if (palette == null) 6 else 3, // RGBA : indexed
-        0, 0, 0, // compression, filter, interlace
-      ]),
+      pngHeader(
+        width: width,
+        height: height,
+        colourType: palette == null ? pngRgba : pngIndexed,
+      ),
     )
-    ..add(_chunk('acTL', [..._u32(frames.length), ..._u32(0)]));
+    ..add(pngChunk('acTL', [...pngUint32(frames.length), ...pngUint32(0)]));
   if (palette != null) {
     out
-      ..add(_chunk('PLTE', palette.rgb))
-      ..add(_chunk('tRNS', palette.alpha));
+      ..add(pngChunk('PLTE', palette.rgb))
+      ..add(pngChunk('tRNS', palette.alpha));
   }
   var sequence = 0;
   for (var index = 0; index < frames.length; index += 1) {
     final frame = frames[index];
     out.add(
-      _chunk('fcTL', [
-        ..._u32(sequence++),
-        ..._u32(width),
-        ..._u32(height),
-        ..._u32(0), // x offset
-        ..._u32(0), // y offset
+      pngChunk('fcTL', [
+        ...pngUint32(sequence++),
+        ...pngUint32(width),
+        ...pngUint32(height),
+        ...pngUint32(0), // x offset
+        ...pngUint32(0), // y offset
         ..._delay(frame.duration),
         0, // dispose: none — the next frame covers the canvas whole
         0, // blend: source — no frame leans on the one before it
       ]),
     );
-    final pixels = ZLibCodec().encode(
-      palette == null
-          ? _filteredRgba(frame.rgba, width, height)
-          : _indexed(frame.rgba, width, height, palette.indexOf),
-    );
+    final pixels = palette == null
+        ? _rgbaData(frame.rgba, width, height)
+        : _indexedData(frame.rgba, width, height, palette.indexOf);
     out.add(
       index == 0
-          ? _chunk('IDAT', pixels)
-          : _chunk('fdAT', pixels, sequence: sequence++),
+          ? pngChunk('IDAT', pixels)
+          : pngChunk('fdAT', pixels, sequence: sequence++),
     );
   }
-  out.add(_chunk('IEND', const []));
+  out.add(pngChunk('IEND', const []));
   return out.takeBytes();
 }
 
@@ -114,77 +108,32 @@ Uint8List encodeAnimatedPng({
 }
 
 /// Palette rows, unfiltered — the PNG spec's own advice for indexed images.
-Uint8List _indexed(
+Uint8List _indexedData(
   Uint8List rgba,
   int width,
   int height,
   int Function(int rgba) indexOf,
 ) {
   final pixels = ByteData.sublistView(rgba);
-  final out = Uint8List(height * (width + 1));
-  var at = 0;
+  final data = PngImageData(width: width, bytesPerPixel: 1, filtered: false);
+  final row = Uint8List(width);
   for (var y = 0; y < height; y += 1) {
-    out[at++] = 0;
     for (var x = 0; x < width; x += 1) {
-      out[at++] = indexOf(pixels.getUint32((y * width + x) * 4));
+      row[x] = indexOf(pixels.getUint32((y * width + x) * 4));
     }
+    data.add(row);
   }
-  return out;
+  return data.finish();
 }
 
-/// RGBA rows, each under the filter that leaves it smallest (the usual
-/// minimum-sum-of-differences guess).
-Uint8List _filteredRgba(Uint8List rgba, int width, int height) {
-  const bpp = 4;
-  final stride = width * bpp;
-  final out = Uint8List(height * (stride + 1));
-  final candidate = Uint8List(stride);
-  final best = Uint8List(stride);
+/// RGBA rows, each under the filter that leaves it smallest.
+Uint8List _rgbaData(Uint8List rgba, int width, int height) {
+  final data = PngImageData(width: width, bytesPerPixel: 4);
+  final stride = width * 4;
   for (var y = 0; y < height; y += 1) {
-    final row = y * stride;
-    final above = row - stride;
-    var bestType = 0;
-    var bestCost = -1;
-    for (var type = 0; type < 5; type += 1) {
-      var cost = 0;
-      for (var i = 0; i < stride; i += 1) {
-        final value = rgba[row + i];
-        final left = i >= bpp ? rgba[row + i - bpp] : 0;
-        final up = y > 0 ? rgba[above + i] : 0;
-        final upLeft = y > 0 && i >= bpp ? rgba[above + i - bpp] : 0;
-        final predicted = switch (type) {
-          0 => 0,
-          1 => left,
-          2 => up,
-          3 => (left + up) >> 1,
-          _ => _paeth(left, up, upLeft),
-        };
-        final filtered = (value - predicted) & 0xFF;
-        candidate[i] = filtered;
-        cost += filtered < 128 ? filtered : 256 - filtered;
-      }
-      if (bestCost < 0 || cost < bestCost) {
-        bestCost = cost;
-        bestType = type;
-        best.setAll(0, candidate);
-      }
-    }
-    final at = y * (stride + 1);
-    out[at] = bestType;
-    out.setRange(at + 1, at + 1 + stride, best);
+    data.add(Uint8List.sublistView(rgba, y * stride, (y + 1) * stride));
   }
-  return out;
-}
-
-int _paeth(int a, int b, int c) {
-  final p = a + b - c;
-  final pa = (p - a).abs();
-  final pb = (p - b).abs();
-  final pc = (p - c).abs();
-  if (pa <= pb && pa <= pc) {
-    return a;
-  }
-  return pb <= pc ? b : c;
+  return data.finish();
 }
 
 /// A frame's delay as fcTL's fraction: milliseconds over a thousand, or —
@@ -197,36 +146,6 @@ List<int> _delay(Duration duration) {
   final hundredths = (milliseconds / 10).round();
   return [..._u16(hundredths > 0xFFFF ? 0xFFFF : hundredths), ..._u16(100)];
 }
-
-/// A PNG chunk: length, type, [data] — led by [sequence] when there is one
-/// (an fdAT's number) — and the CRC over all of it but the length.
-///
-/// ⚠️Folded piece by piece, never spread into one list: a frame's pixels
-/// are megabytes, and a literal that spread them would build a list of that
-/// many boxed integers to checksum it.
-Uint8List _chunk(String type, List<int> data, {int? sequence}) {
-  final parts = [
-    Uint8List.fromList(type.codeUnits),
-    if (sequence != null) _u32(sequence),
-    if (data is Uint8List) data else Uint8List.fromList(data),
-  ];
-  var crc = anicelCrc32Start;
-  var length = 0;
-  for (final part in parts.skip(1)) {
-    length += part.length;
-  }
-  for (final part in parts) {
-    crc = anicelCrc32Update(crc, part);
-  }
-  final out = BytesBuilder(copy: false)..add(_u32(length));
-  for (final part in parts) {
-    out.add(part);
-  }
-  return (out..add(_u32(anicelCrc32Finish(crc)))).takeBytes();
-}
-
-Uint8List _u32(int value) =>
-    (ByteData(4)..setUint32(0, value)).buffer.asUint8List();
 
 Uint8List _u16(int value) =>
     (ByteData(2)..setUint16(0, value)).buffer.asUint8List();

@@ -723,9 +723,9 @@ void main() {
     );
 
     // End to end: the whole fill tap (compose + flood + stamp build)
-    // must produce the identical dab through both paths.
+    // must produce the identical pieces through both paths.
     QaNativeEngine.debugForceDartFallback = true;
-    final dartDab = buildFillDab(
+    final dartDab = buildFillDabs(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id],
@@ -734,7 +734,7 @@ void main() {
       options: const FloodFillOptions(tolerance: 40),
     );
     QaNativeEngine.debugForceDartFallback = false;
-    final nativeDab = buildFillDab(
+    final nativeDab = buildFillDabs(
       cut: cut,
       frameIndex: 0,
       surfaceResolver: (layer, _) => surfaces[layer.id],
@@ -743,16 +743,52 @@ void main() {
       options: const FloodFillOptions(tolerance: 40),
     );
 
-    expect(nativeDab, isNotNull);
-    expect(dartDab, isNotNull);
-    expect(nativeDab!.center, dartDab!.center);
-    expect(nativeDab.stamp!.width, dartDab.stamp!.width);
-    expect(nativeDab.stamp!.height, dartDab.stamp!.height);
-    expect(
-      nativeDab.stamp!.rgba,
-      dartDab.stamp!.rgba,
-      reason: 'the whole fill tap must be byte-identical end to end',
-    );
+    expect(nativeDab, isNotEmpty);
+    expect(nativeDab.length, dartDab.length);
+    for (var i = 0; i < nativeDab.length; i += 1) {
+      expect(nativeDab[i].center, dartDab[i].center, reason: 'piece $i');
+      expect(nativeDab[i].stamp!.width, dartDab[i].stamp!.width);
+      expect(nativeDab[i].stamp!.height, dartDab[i].stamp!.height);
+      expect(
+        nativeDab[i].stamp!.rgba,
+        dartDab[i].stamp!.rgba,
+        reason: 'the whole fill tap must be byte-identical end to end',
+      );
+    }
+  });
+
+  test('native premultiply == Dart reference over EVERY colour at EVERY '
+      'alpha — four pixels a step and the scalar tail alike', () {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    // Pixel i holds colour i & 0xFF in red, its inverse in green, its
+    // half in blue, at alpha i >> 8: all 65,536 pairs the formula takes,
+    // in one 256px tile — and a 255px one, whose rows end three pixels
+    // into a step, so the tail meets them too.
+    for (final size in [256, 255]) {
+      final bytes = Uint8List(size * size * 4);
+      for (var i = 0; i < size * size; i += 1) {
+        final pair = i & 0xFFFF;
+        bytes[i * 4] = pair & 0xFF;
+        bytes[i * 4 + 1] = 255 - (pair & 0xFF);
+        bytes[i * 4 + 2] = (pair & 0xFF) >> 1;
+        bytes[i * 4 + 3] = pair >> 8;
+      }
+      final tile = BitmapTile(size: size, pixels: bytes);
+
+      QaNativeEngine.debugForceDartFallback = true;
+      final dartUpload = BitmapTileImageCache.premultipliedTileUpload(tile);
+      QaNativeEngine.debugForceDartFallback = false;
+      final nativeUpload = BitmapTileImageCache.premultipliedTileUpload(tile);
+      final dartResult = Uint8List.fromList(dartUpload.view);
+      final nativeResult = Uint8List.fromList(nativeUpload.view);
+      dartUpload.free();
+      nativeUpload.free();
+
+      expect(nativeResult, dartResult, reason: '${size}x$size');
+    }
   });
 
   test('native premultiply == Dart reference, byte for byte (randomized)', () {

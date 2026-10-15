@@ -165,9 +165,9 @@ void main() {
     });
 
     test('the CHAIN is a value, so a static grade is not a repaint', () {
-      // ⛔ASKED OF THE CHAIN, because the chain is what the painter now
-      // diffs (`listEquals`). Asking the paint would leave the field the
-      // painter actually compares untested.
+      // ⛔ASKED OF THE CHAIN, because the chain is what a film's held
+      // picture is keyed by (`ByList`, `listEquals`). Asking the paint would
+      // leave the value actually compared untested.
       final effects = [_brightness()];
       expect(
         listEquals(trackEffectsAt(effects, 3), trackEffectsAt(effects, 4)),

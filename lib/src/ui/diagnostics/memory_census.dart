@@ -216,17 +216,6 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     ),
     if (textures)
       MemoryCensusItem(
-        id: 'playbackFrames',
-        bytes: sum(
-          (session) =>
-              session.renderCaches.cutFrameCompositeCache.estimatedBytes,
-        ),
-        detail: sum(
-          (session) => session.renderCaches.cutFrameCompositeCache.pinnedBytes,
-        ),
-      ),
-    if (textures)
-      MemoryCensusItem(
         id: 'layerImages',
         bytes: sum(
           (session) =>
@@ -302,10 +291,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // A dock region's still image (2026-09-25) is the same kind of
             // holding: a panel region kept as a raster while nothing changes.
             StillRaster.censusBytes +
-            // ⛔The editing canvas's display buffer belongs on the same row:
-            // it is a panel holding a raster of itself, kept for as long as
-            // nothing changes. It lives in a widget State, so it is PUSHED
-            // here — 2026-09-10.
+            // ⛔A layer stack view's display buffer belongs on the same
+            // row — the editing canvas's, a live conte picture's, a cut's on
+            // the track stack: a panel holding a raster of itself, kept for
+            // as long as nothing changes. It lives in a widget State, so it
+            // is PUSHED here — 2026-09-10.
             //
             // ⚠️NOT one image. A derived buffer pins the one it was drawn
             // from, so this is the whole chain, up to
@@ -313,14 +303,10 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             // 2026-09-12, and the canvases it was not counting showed up in
             // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
             sum(
-              (session) =>
-                  session.renderCaches.canvasBufferBytes +
-                  // The conte's live pictures are the same painter, one
-                  // buffer each.
-                  session.renderCaches.livePictureBufferBytes.values.fold(
-                    0,
-                    (total, bytes) => total + bytes,
-                  ),
+              (session) => session.renderCaches.stackBufferBytes.values.fold(
+                0,
+                (total, bytes) => total + bytes,
+              ),
             ),
       ),
     // Pushed by the mounted viewers rather than read off a holder the

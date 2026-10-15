@@ -23,7 +23,7 @@ import '../project_repository.dart';
 /// ⛔THE SNAPSHOT IS TAKEN ONCE, on the first execute. Redo re-runs
 /// execute(), and re-reading the registry then would record the state the
 /// redo is about to overwrite — the same reasoning
-/// [ToggleIdInSetCommand] states about its captured membership.
+/// [UpdateLayerDisplayCommand] states about its captured display state.
 ///
 /// ⛔The three commands that fold the registry into ONE `updateProject`
 /// (LinkDuplicateLayerCommand, ConvertToLinkedCutCommand,

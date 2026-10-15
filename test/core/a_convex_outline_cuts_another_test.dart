@@ -99,6 +99,44 @@ void main() {
     expect(convexInset(square, 0), same(square));
   });
 
+  // playback-picture-is-not-the-canvas-picture: a turned shot's cut, out
+  // past the pixels its edge crosses.
+  test('an outline moved out by 2 holds what lies 2 past it, either way '
+      'round', () {
+    for (final polygon in [square, square.reversed.toList()]) {
+      final outset = convexOutset(polygon, 2);
+      expect(area(outset), closeTo(14 * 14, 1e-9));
+      expect(convexContains(outset, const Offset(-1.99, 5)), isTrue);
+      expect(convexContains(outset, const Offset(-2.01, 5)), isFalse);
+      expect(convexContains(outset, const Offset(5, 11.99)), isTrue);
+      expect(convexContains(outset, const Offset(5, 12.01)), isFalse);
+    }
+    // |x − 5| + |y − 5| ≤ 8, moved out by √2: ≤ 10.
+    final turned = convexOutset(const [
+      Offset(5, -3),
+      Offset(13, 5),
+      Offset(5, 13),
+      Offset(-3, 5),
+    ], 1.4142135623730951);
+    expect(area(turned), closeTo(2 * 10 * 10, 1e-6));
+    expect(convexOutset(square, 0), same(square));
+  });
+
+  test('a corner on a straight run, or doubled, is no corner to move out', () {
+    const ragged = [
+      Offset.zero,
+      Offset(5, 0),
+      Offset(10, 0),
+      Offset(10, 10),
+      Offset(10, 10),
+      Offset(0, 10),
+      Offset.zero,
+    ];
+
+    expect(convexOutset(ragged, 2), hasLength(4));
+    expect(area(convexOutset(ragged, 2)), closeTo(14 * 14, 1e-9));
+  });
+
   test('a point is in an outline on its edges, and not outside them', () {
     expect(convexContains(square, const Offset(5, 5)), isTrue);
     expect(convexContains(square, const Offset(10, 5)), isTrue);

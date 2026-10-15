@@ -222,7 +222,10 @@ void main() {
       reason: 'on top: nothing is selected on a cut the canvas is not on',
     );
     expect(row.frames, hasLength(1), reason: 'born covering the cut');
-    expect(row.name, 'Conte', reason: 'named as the layer panel names it');
+    // ↩️'Conte' until I-73 (2026-10-08): the track's conte has ONE head, and
+    // cut 38 holds it — a conte born on a track with none is still named
+    // Conte (a_conte_row_is_born_named_conte_test).
+    expect(row.name, 'SB', reason: 'born wearing the track\'s conte head');
     // The picture's middle is the camera's centre, the canvas's middle.
     expect(celInkAt(row, const Offset(320, 180)), isTrue);
     expect(

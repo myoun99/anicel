@@ -52,6 +52,7 @@ void main() {
       forTool: CanvasTool.fillShape,
     );
     tools.value = tools.value.copyWith(tool: CanvasTool.select);
+    tools.value = tools.value.copyWith(cutDeletesSource: true);
 
     final choice = toolChoiceOf(tools);
     expect(choice.tool, CanvasTool.select);
@@ -65,6 +66,7 @@ void main() {
       reason: 'the fill group was left on the shape fill',
     );
     expect(choice.fillShape, CanvasShapeKind.ellipse);
+    expect(choice.cutDeletesSource, isTrue, reason: 'I-90 「원본 삭제」');
   });
 
   test('🚨a choice resumed into fresh tools lands every part', () {
@@ -81,6 +83,7 @@ void main() {
         railTiles: {CanvasTool.fill: CanvasTool.fillShape},
         fillShape: CanvasShapeKind.ellipse,
         fillOpacity: 0.5,
+        cutDeletesSource: true,
       ),
       brushFor: brushFor,
     );
@@ -91,6 +94,7 @@ void main() {
     expect(tools.railEntry(CanvasTool.fill), CanvasTool.fillShape);
     expect(tools.value.fillShape, CanvasShapeKind.ellipse);
     expect(tools.value.fillOpacity, 0.5);
+    expect(tools.value.cutDeletesSource, isTrue);
 
     // The brush was banked holding its own brush, not the eraser's.
     tools.value = tools.value.copyWith(tool: CanvasTool.brush);

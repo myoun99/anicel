@@ -16,10 +16,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/playback_mode.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_settings_menu.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+
+import '../../helpers/ime_draft.dart';
 
 void main() {
   late EditorSessionManager session;
@@ -251,5 +254,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(session.projectAudio.projectAudioSampleRate, before);
+  });
+
+  // 🐛F-355: a 全角 IME's draft is not changed under it, so the rate reads
+  // its numerals half-width — the Apply pressed before the IME commits.
+  testWidgets('a rate of one\'s own typed as a 全角 draft applies', (
+    tester,
+  ) async {
+    await pumpMenu(tester);
+    await openRow(tester, 'project-settings-fps');
+
+    await composeDraft(
+      tester,
+      find.byKey(const ValueKey<String>('project-fps-field')),
+      '２５',
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('project-fps-apply')));
+    await tester.pumpAndSettle();
+
+    expect(
+      session.projectSettings.projectFrameRate,
+      const ProjectFrameRate.integer(25),
+    );
   });
 }

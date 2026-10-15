@@ -24,7 +24,9 @@ import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
+import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/named_finders.dart';
 
 const _cutId = CutId('se-cut');
 const _seLayerId = LayerId('se-voice');
@@ -107,7 +109,7 @@ Future<void> _pumpHome(
 
 Future<void> _ensureRowVisible(WidgetTester tester, LayerId layerId) async {
   await tester.ensureVisible(
-    find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
+    find.named('timeline-layer-row-$layerId'),
   );
   await tester.pumpAndSettle();
 }
@@ -421,6 +423,7 @@ void main() {
       ),
       onRepositoryCreated: (repo) => repository = repo,
     );
+    await standTheClassicRail(tester);
     await _ensureRowVisible(tester, _seLayerId);
 
     // Edit the second entry to the SAME text as the first: SE rows allow

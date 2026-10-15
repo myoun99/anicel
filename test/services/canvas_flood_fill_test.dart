@@ -29,6 +29,8 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
 
+import '../helpers/fill_pieces.dart';
+
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -117,7 +119,8 @@ void main() {
       expect(maskAt(region, 2, 2), 0);
     });
 
-    test('anti-alias softens the mask edge only', () {
+    test('anti-alias softens the mask edge only — and its ramp spreads one '
+        'pixel past it, on every side', () {
       final region = floodFillRegion(
         rgb: rasterWithInk(boxOutline()),
         width: 8,
@@ -127,12 +130,21 @@ void main() {
         options: const FloodFillOptions(expandPx: 0, antiAlias: true),
       )!;
 
-      for (final value in region.mask) {
-        expect(value, greaterThan(0));
-        expect(value, lessThan(256));
-      }
+      // The box holds the ramp past the fill (유저 답
+      // the-fill-ramp-is-cut-at-its-box-Q1): the 2×2 grown by one pixel.
+      expect(
+        (region.left, region.top, region.width, region.height),
+        (2, 2, 4, 4),
+      );
       // Every pixel of the 2×2 region borders the outside → all softened.
-      expect(region.mask, everyElement(lessThan(255)));
+      for (final (x, y) in [(3, 3), (4, 3), (3, 4), (4, 4)]) {
+        expect(maskAt(region, x, y), inExclusiveRange(0, 255));
+      }
+      // 4-neighbour spread: the edge midpoints catch the ramp, the corners
+      // do not.
+      expect(maskAt(region, 3, 2), greaterThan(0));
+      expect(maskAt(region, 5, 4), greaterThan(0));
+      expect(maskAt(region, 2, 2), 0);
     });
 
     test('an out-of-bounds seed fills nothing', () {
@@ -149,7 +161,7 @@ void main() {
     });
   });
 
-  group('buildFillDab', () {
+  group('buildFillDabs', () {
     Frame frame(String id) =>
         Frame(id: FrameId(id), duration: 1, strokes: const []);
 
@@ -192,17 +204,18 @@ void main() {
       );
     }
 
-    test('wraps the region as one COLOR STAMP dab centered on it (R15-⑥: '
-        'exact bytes, no tip-mask resampling)', () {
+    test('wraps the region as COLOR STAMP pieces — a region inside one tile '
+        'is one, centred on it (R15-⑥: exact bytes, no tip-mask '
+        'resampling)', () {
       final surface = outlineSurface();
-      final dab = buildFillDab(
+      final dab = buildFillDabs(
         cut: cutWith([inkLayer()]),
         frameIndex: 0,
         surfaceResolver: (_, _) => surface,
         point: CanvasPoint(x: 3, y: 3),
         color: 0xFF3366CC,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
+      ).single;
 
       expect(dab.size, 2);
       expect(dab.center, CanvasPoint(x: 4, y: 4));
@@ -221,14 +234,14 @@ void main() {
 
     test('a seed off the canvas fills nothing', () {
       expect(
-        buildFillDab(
+        buildFillDabs(
           cut: cutWith([]),
           frameIndex: 0,
           surfaceResolver: (_, _) => null,
           point: CanvasPoint(x: -1, y: 0),
           color: 0xFF000000,
         ),
-        isNull,
+        isEmpty,
       );
     });
 
@@ -276,7 +289,7 @@ void main() {
         required bool inkFlagged,
         required LayerId active,
       }) {
-        final dab = buildFillDab(
+        final dabs = buildFillDabs(
           cut: cutWith([
             inkLayer().copyWith(isFillReference: inkFlagged),
             paintLayer,
@@ -291,8 +304,9 @@ void main() {
             source: source,
           ),
           activeLayerId: active,
-        )!;
-        return (dab.stamp!.width, dab.stamp!.height);
+        );
+        final box = piecesBox(dabs);
+        return (box.width, box.height);
       }
 
       const ink = LayerId('ink');
@@ -382,7 +396,7 @@ void main() {
       test('a closed region crossing the canvas edge fills whole, off-canvas '
           'pixels included', () {
         final surface = outlineSurfaceAt(boxAcrossLeftEdge());
-        final dab = buildFillDab(
+        final dab = buildFillDabs(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
@@ -393,9 +407,10 @@ void main() {
             antiAlias: false,
             extendBeyondCanvas: true,
           ),
-        )!;
+        ).single;
 
-        // Interior 6×2 at world (-2, 3) → center (1, 4).
+        // Interior 6×2 at world (-2, 3) → center (1, 4). It crosses the
+        // cel grid at x = 0, and a run of neighbouring tiles is ONE piece.
         final stamp = dab.stamp!;
         expect((stamp.width, stamp.height), (6, 2));
         expect(dab.center, CanvasPoint(x: 1, y: 4));
@@ -405,14 +420,14 @@ void main() {
       test('the same region WITHOUT the option clips at the canvas edge '
           '(default boundary unchanged)', () {
         final surface = outlineSurfaceAt(boxAcrossLeftEdge());
-        final dab = buildFillDab(
+        final dab = buildFillDabs(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 0, y: 3),
           color: 0xFF3366CC,
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        )!;
+        ).single;
 
         // Canvas boundary is the wall: interior x in [0, 3] only.
         expect((dab.stamp!.width, dab.stamp!.height), (4, 2));
@@ -421,7 +436,7 @@ void main() {
 
       test('an OPEN region refuses to fill and reports the leak', () {
         var leaked = false;
-        final dab = buildFillDab(
+        final dab = buildFillDabs(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
@@ -435,20 +450,20 @@ void main() {
           onOpenRegion: () => leaked = true,
         );
 
-        expect(dab, isNull);
+        expect(dab, isEmpty);
         expect(leaked, isTrue);
       });
 
       test('the same open tap WITHOUT the option floods to the canvas wall '
           'as before', () {
-        final dab = buildFillDab(
+        final dab = buildFillDabs(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => outlineSurfaceAt(const {}),
           point: CanvasPoint(x: 3, y: 3),
           color: 0xFF3366CC,
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        )!;
+        ).single;
 
         expect((dab.stamp!.width, dab.stamp!.height), (8, 8));
       });
@@ -461,14 +476,14 @@ void main() {
         // size must reproduce the region EXACTLY on the committed surface —
         // no falloff, no resampling drift.
         final surface = outlineSurface();
-        final dab = buildFillDab(
+        final dabs = buildFillDabs(
           cut: cutWith([inkLayer()]),
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 3, y: 3),
           color: 0xFF3366CC,
           options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-        )!;
+        );
 
         final coordinator = BrushFrameEditingCoordinator(
           initialFrameKey: const BrushFrameKey(
@@ -485,7 +500,7 @@ void main() {
           ),
           historyPolicy: const BrushHistoryPolicy(),
         );
-        coordinator.commitSourceStroke(sourceDabs: [dab]);
+        coordinator.commitSourceStroke(sourceDabs: dabs);
 
         final committed = coordinator.frameStore.bakedSurfaceOrNull(
           coordinator.activeFrameKey,
@@ -505,22 +520,10 @@ void main() {
     );
   });
 
-  int alphaAt(BrushDab dab, int x, int y) {
-    final stamp = dab.stamp!;
-    final left = (dab.center.x - stamp.width / 2).round();
-    final top = (dab.center.y - stamp.height / 2).round();
-    final lx = x - left;
-    final ly = y - top;
-    if (lx < 0 || ly < 0 || lx >= stamp.width || ly >= stamp.height) {
-      return 0;
-    }
-    return stamp.rgba[(ly * stamp.width + lx) * 4 + 3];
-  }
-
   // What the shape tool lays without the brush (I-69): its fill is one
   // outline — the group below — and its plain line an area of many pieces
   // with a hole in the middle.
-  group('buildRegionFillDab', () {
+  group('buildRegionFillDabs', () {
     // A rectangle (10,10)–(40,30) drawn six wide: the band runs three
     // either side of the trace.
     CanvasSelectionRegion ring() => plainLineRegion(
@@ -537,58 +540,75 @@ void main() {
 
     test('an area of many pieces is laid as ONE: whole across where they '
         'meet, and its hole stays a hole', () {
-      final dab = buildRegionFillDab(
+      final dabs = buildRegionFillDabs(
         region: ring(),
         color: 0xFF3366CC,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
+      );
 
       // Along the top band, from the corner piece on one side across both
       // ends of the side's own box to the corner piece on the other.
       for (var x = 7; x <= 42; x += 1) {
-        expect(alphaAt(dab, x, 7), 255, reason: 'the outer row at $x');
-        expect(alphaAt(dab, x, 12), 255, reason: 'the inner row at $x');
+        expect(piecesAlphaAt(dabs, x, 7), 255, reason: 'the outer row at $x');
+        expect(piecesAlphaAt(dabs, x, 12), 255, reason: 'the inner row at $x');
       }
-      expect(alphaAt(dab, 6, 10), 0, reason: 'three wide and no more');
-      expect(alphaAt(dab, 25, 13), 0, reason: 'the hole begins');
-      expect(alphaAt(dab, 25, 20), 0, reason: 'the hole');
-      expect(dab.color, 0xFF3366CC);
+      expect(piecesAlphaAt(dabs, 6, 10), 0, reason: 'three wide and no more');
+      expect(piecesAlphaAt(dabs, 25, 13), 0, reason: 'the hole begins');
+      expect(piecesAlphaAt(dabs, 25, 20), 0, reason: 'the hole');
+      expect({for (final piece in dabs) piece.color}, {0xFF3366CC});
     });
 
     test('the edge is softened once, round the whole area — a join inside '
         'it is not an edge', () {
-      final dab = buildRegionFillDab(
+      final dabs = buildRegionFillDabs(
         region: ring(),
         color: 0xFF000000,
         options: const FloodFillOptions(expandPx: 0, antiAlias: true),
-      )!;
+      );
 
       for (var x = 8; x <= 41; x += 1) {
-        expect(alphaAt(dab, x, 9), 255, reason: 'inside the band at $x');
-        expect(alphaAt(dab, x, 10), 255, reason: 'inside the band at $x');
+        expect(piecesAlphaAt(dabs, x, 9), 255, reason: 'in the band at $x');
+        expect(piecesAlphaAt(dabs, x, 10), 255, reason: 'in the band at $x');
       }
-      expect(alphaAt(dab, 25, 7), inExclusiveRange(0, 255), reason: 'an edge');
-      expect(alphaAt(dab, 25, 12), inExclusiveRange(0, 255));
+      expect(
+        piecesAlphaAt(dabs, 25, 7),
+        inExclusiveRange(0, 255),
+        reason: 'an edge',
+      );
+      expect(piecesAlphaAt(dabs, 25, 12), inExclusiveRange(0, 255));
     });
 
     test('an area that covers no pixel lays nothing', () {
       // A sliver between two rows of pixel centres.
-      final dab = buildRegionFillDab(
+      final dabs = buildRegionFillDabs(
         region: CanvasSelectionRegion.shape(
           CanvasSelectionShape.rect(left: 0, top: 0.6, right: 10, bottom: 1.4),
         ),
         color: 0xFF000000,
       );
-      expect(dab, isNull);
+      expect(dabs, isEmpty);
     });
   });
 
-  group('buildShapeFillDab', () {
+  /// A shape fill: one outline, filled as the fill tool lays it.
+  List<BrushDab> shapeFill({
+    required CanvasSelectionShape shape,
+    required int color,
+    double opacity = 1.0,
+    FloodFillOptions options = const FloodFillOptions(),
+  }) => buildRegionFillDabs(
+    region: CanvasSelectionRegion.shape(shape),
+    color: color,
+    opacity: opacity,
+    options: options,
+  );
+
+  group('a shape fill', () {
     test('fills the outline with the colour, corners and all', () {
       // 유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다. There is no
       // picture in this test at all, which is the point: a shape fill has
       // no seed, no tolerance and nothing to read.
-      final dab = buildShapeFillDab(
+      final dabs = shapeFill(
         shape: CanvasSelectionShape.rect(
           left: 10,
           top: 10,
@@ -597,13 +617,17 @@ void main() {
         ),
         color: 0xFF3366CC,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
-      expect(alphaAt(dab, 25, 20), 255, reason: 'the middle');
-      expect(alphaAt(dab, 11, 11), 255, reason: 'a corner is inside a box');
-      expect(alphaAt(dab, 5, 20), 0, reason: 'outside stays out');
-      final stamp = dab.stamp!;
+      );
+      expect(piecesAlphaAt(dabs, 25, 20), 255, reason: 'the middle');
+      expect(
+        piecesAlphaAt(dabs, 11, 11),
+        255,
+        reason: 'a corner is inside a box',
+      );
+      expect(piecesAlphaAt(dabs, 5, 20), 0, reason: 'outside stays out');
+      final stamp = dabs.single.stamp!;
       expect(stamp.rgba[3 * 4 + 0], anyOf(0, 0x33));
-      expect(dab.color, 0xFF3366CC);
+      expect({for (final piece in dabs) piece.color}, {0xFF3366CC});
     });
 
     // TP1: 유저 — "필 툴도 불투명도 설정하면 그거대로 채워지게".
@@ -620,29 +644,30 @@ void main() {
         bottom: 10,
       );
       const options = FloodFillOptions(expandPx: 0, antiAlias: false);
-      final full = buildShapeFillDab(
+      final full = shapeFill(
         shape: shape,
         color: 0xFF000000,
         options: options,
-      )!;
-      expect(full.opacity, 1.0, reason: 'unasked is unchanged');
+      );
+      expect({for (final piece in full) piece.opacity}, {1.0},
+          reason: 'unasked is unchanged');
 
-      final half = buildShapeFillDab(
+      final half = shapeFill(
         shape: shape,
         color: 0xFF000000,
         opacity: 0.5,
         options: options,
-      )!;
-      expect(half.opacity, 0.5);
+      );
+      expect({for (final piece in half) piece.opacity}, {0.5});
       expect(
-        alphaAt(half, 5, 5),
-        alphaAt(full, 5, 5),
+        piecesAlphaAt(half, 5, 5),
+        piecesAlphaAt(full, 5, 5),
         reason: 'the mask is the shape, not the strength',
       );
     });
 
     test('the ellipse loses the box corners it was drawn in', () {
-      final dab = buildShapeFillDab(
+      final dabs = shapeFill(
         shape: CanvasSelectionShape.ellipse(
           left: 0,
           top: 0,
@@ -651,15 +676,15 @@ void main() {
         ),
         color: 0xFF000000,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
-      expect(alphaAt(dab, 30, 30), 255);
-      expect(alphaAt(dab, 2, 2), 0);
+      );
+      expect(piecesAlphaAt(dabs, 30, 30), 255);
+      expect(piecesAlphaAt(dabs, 2, 2), 0);
     });
 
     test('an outline enclosing nothing fills nothing', () {
       // Three collinear points have no area — the same rule that makes a
       // lasso dragged in a straight line cut nothing.
-      final dab = buildShapeFillDab(
+      final dabs = shapeFill(
         shape: CanvasSelectionShape([
           CanvasPoint(x: 0, y: 0),
           CanvasPoint(x: 10, y: 0),
@@ -667,7 +692,7 @@ void main() {
         ]),
         color: 0xFF000000,
       );
-      expect(dab, isNull);
+      expect(dabs, isEmpty);
     });
 
     test('anti-alias softens the edge and leaves the inside alone', () {
@@ -679,20 +704,20 @@ void main() {
         right: 40,
         bottom: 30,
       );
-      final hard = buildShapeFillDab(
+      final hard = shapeFill(
         shape: shape,
         color: 0xFF000000,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
-      )!;
-      final soft = buildShapeFillDab(
+      );
+      final soft = shapeFill(
         shape: shape,
         color: 0xFF000000,
         options: const FloodFillOptions(expandPx: 0, antiAlias: true),
-      )!;
-      expect(alphaAt(hard, 10, 20), 255);
-      expect(alphaAt(soft, 10, 20), lessThan(255));
-      expect(alphaAt(soft, 10, 20), greaterThan(0));
-      expect(alphaAt(soft, 25, 20), 255, reason: 'only the edge softens');
+      );
+      expect(piecesAlphaAt(hard, 10, 20), 255);
+      expect(piecesAlphaAt(soft, 10, 20), lessThan(255));
+      expect(piecesAlphaAt(soft, 10, 20), greaterThan(0));
+      expect(piecesAlphaAt(soft, 25, 20), 255, reason: 'only the edge softens');
     });
   });
 }

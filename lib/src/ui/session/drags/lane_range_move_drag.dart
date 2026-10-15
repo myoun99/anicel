@@ -184,12 +184,14 @@ class LaneRangeMoveDrag {
       rangeEndIndexExclusive: _selectionBefore.endIndexExclusive,
       frameDelta: frameDelta,
     );
-    if (shifted == null) {
-      // Blocked landing: the last valid preview and outline HOLD.
+    final shown = shifted == null ? null : _subject.previewTransform(shifted);
+    if (shown == null) {
+      // Blocked landing — or one its home will not take, a camera key put
+      // out of its cut: the last valid preview and outline HOLD.
       return;
     }
     _shifted = shifted;
-    _preview.value = _subject.previewTransform(shifted);
+    _preview.value = shown;
     _rideSelection(frameDelta);
   }
 

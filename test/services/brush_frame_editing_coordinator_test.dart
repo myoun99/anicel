@@ -1,6 +1,4 @@
-import 'package:anicel/src/models/frame_composite_cache_key.dart';
 import 'package:anicel/src/models/layer_tile_cache_key.dart';
-import 'package:anicel/src/models/playback_preview_cache_key.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
@@ -284,9 +282,5 @@ class _RecordingSink implements CacheInvalidationSink {
   }
 
   @override
-  void invalidateFrameComposite(FrameCompositeCacheKey key) {}
-  @override
   void invalidateLayerTile(LayerTileCacheKey key) {}
-  @override
-  void invalidatePlaybackPreview(PlaybackPreviewCacheKey key) {}
 }
