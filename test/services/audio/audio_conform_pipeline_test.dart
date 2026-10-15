@@ -678,24 +678,29 @@ void main() {
         ConformOutcome.built,
       );
 
-      // The same conform, as a decode before the recipe was recorded wrote
-      // it: an m4a's then still held its encoder's 1,024 frames.
-      final bytes = File(conform).readAsBytesSync()..fillRange(56, 60, 0);
-      File(conform).writeAsBytesSync(bytes);
+      // The same conform, as an older decode wrote it: one from before the
+      // recipe was recorded (an m4a's then still held its encoder's 1,024
+      // frames), and one by the recipe before this.
+      for (final older in [0, conformDecodeRecipe - 1]) {
+        final bytes = File(conform).readAsBytesSync();
+        ByteData.sublistView(bytes).setUint32(56, older, Endian.little);
+        File(conform).writeAsBytesSync(bytes);
 
-      final again = pipelineFor().ensureConform(
-        sourcePath: source,
-        conformPath: conform,
-      );
-      expect(
-        again.outcome,
-        ConformOutcome.built,
-        reason: 'what it holds is not what opening the file plays today',
-      );
-      expect(
-        decodeConform(File(conform).readAsBytesSync()).decodeRecipe,
-        conformDecodeRecipe,
-      );
+        final again = pipelineFor().ensureConform(
+          sourcePath: source,
+          conformPath: conform,
+        );
+        expect(
+          again.outcome,
+          ConformOutcome.built,
+          reason: 'recipe $older: what it holds is not what opening the file '
+              'plays today',
+        );
+        expect(
+          decodeConform(File(conform).readAsBytesSync()).decodeRecipe,
+          conformDecodeRecipe,
+        );
+      }
     });
 
     test('a matching conform is reused instead of rebuilt', () {

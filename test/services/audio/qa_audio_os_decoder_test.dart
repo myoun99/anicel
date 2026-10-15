@@ -315,6 +315,70 @@ void main() {
     }
   }, skip: skip);
 
+  test('🎯a movie that says it only in the note iTunes leaves starts where '
+      'the note says — Apple\'s 2,112, not the standard, and for as long as '
+      'it says (Q3: 「말하면 그 값」)', () {
+    // Against the same movie saying nothing, whose sound starts where the
+    // edit list says (the test above) and runs to its end.
+    final silent = _renamed(fixtureBytes(), ['moov', 'trak', 'edts'], 'free');
+    final standard = decodeAudioBytes(silent);
+    for (final (shape, bytes, length) in [
+      ('in ISO\'s meta', _withITunesNote(silent, _appleNote), 20962),
+      (
+        'in QuickTime\'s meta',
+        _withITunesNote(silent, _appleNote, fullBox: false),
+        20962,
+      ),
+      (
+        // A length of 0 says none: it runs to the end too.
+        'with no length in it',
+        _withITunesNote(
+          silent,
+          _appleNote.replaceFirst('00000000000051E2', '0' * 16),
+        ),
+        null,
+      ),
+    ]) {
+      final told = decodeAudioBytes(bytes);
+      if (Platform.isLinux) {
+        expect((standard, told), (null, null), reason: shape);
+        continue;
+      }
+      expect(standard, isNotNull);
+      expect(told, isNotNull, reason: '$shape: a note is no reason to refuse');
+      expect(
+        told!.length,
+        length ?? standard!.length - 1088,
+        reason: '$shape: it plays what it says',
+      );
+      final channels = standard!.channels;
+      for (var index = 0; index < told.length * channels; index += 1) {
+        if (told.samples[index] != standard.samples[index + 1088 * channels]) {
+          fail('$shape: sample $index is not the standard\'s '
+              '${index + 1088 * channels}');
+        }
+      }
+    }
+  }, skip: skip);
+
+  test('⚠️where the sound track has an edit list, the edit list says it — a '
+      'note beside it is not read', () {
+    final said = decodeAudioFile(fixturePath);
+    final both = decodeAudioBytes(_withITunesNote(fixtureBytes(), _appleNote));
+    if (Platform.isLinux) {
+      expect((said, both), (null, null));
+      return;
+    }
+    expect(said, isNotNull);
+    expect(both, isNotNull);
+    expect(both!.length, said!.length);
+    for (var index = 0; index < said.length * said.channels; index += 1) {
+      if (both.samples[index] != said.samples[index]) {
+        fail('sample $index is not the edit list\'s');
+      }
+    }
+  }, skip: skip);
+
   test('🎯unless Media Foundation wrote it: the mark its writer leaves keeps '
       'the standard off — the same movie without the mark starts one AAC '
       'frame later (user 10-09, Q7: 「윈도 기록기의 표지가 있으면 걷지 '
@@ -980,11 +1044,9 @@ Int16List _roomToneThenTone() {
   return samples;
 }
 
-/// [bytes] with the box at [path] — each the first box of that type inside
-/// the one before it, from the file's top level — renamed [to], its size
-/// kept: a `free` box, which every reader skips, takes what it said away
-/// and moves no other byte.
-Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
+/// Where the box at [path] starts in [bytes] — each the first box of that
+/// type inside the one before it, from the file's top level.
+int _boxAt(Uint8List bytes, List<String> path) {
   final data = ByteData.sublistView(bytes);
   var start = 0;
   var end = bytes.length;
@@ -1006,7 +1068,71 @@ Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
     start = at + 8;
     end = at + data.getUint32(at);
   }
+  return at;
+}
+
+/// [bytes] with the box at [path] ([_boxAt]) renamed [to], its size kept: a
+/// `free` box, which every reader skips, takes what it said away and moves
+/// no other byte.
+Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
+  final at = _boxAt(bytes, path);
   return Uint8List.fromList(bytes)..setRange(at + 4, at + 8, to.codeUnits);
+}
+
+/// The gapless note Apple's encoder would leave on the fixture's sound: 2,112
+/// frames before it (0x840) and 20,962 of it (0x51E2) — the fixture's own
+/// sound from its 1,088th frame on, since its encoder put 1,024 there.
+const _appleNote = ' 00000000 00000840 000001DE 00000000000051E2 00000000 '
+    '00000000 00000000 00000000 00000000 00000000 00000000 00000000';
+
+/// The loudness note iTunes leaves ahead of the gapless one — words of
+/// hexadecimal too: a reading that took it for the gapless note would start
+/// the sound 331 frames in (0x14B).
+const _appleLoudness = ' 0000014B 0000014B 00000C26 00000C26 00000000 '
+    '00000000 00007F2F 00007F2F 00000000 00000000';
+
+/// [bytes] — a movie whose movie box comes last, so that growing it moves no
+/// sample — with its user data set aside (`free`) and new user data at the
+/// movie box's end: a metadata list holding iTunes' loudness note and then
+/// its gapless note, [text], as iTunes writes them. Its `meta` is ISO's,
+/// with four bytes of version and flags, or QuickTime's, without
+/// ([fullBox]).
+Uint8List _withITunesNote(Uint8List bytes, String text, {bool fullBox = true}) {
+  final moov = _boxAt(bytes, ['moov']);
+  final moovEnd = moov + ByteData.sublistView(bytes).getUint32(moov);
+  expect(moovEnd, bytes.length, reason: 'fixture: the movie box is last');
+  List<int> box(String type, List<int> body) => [
+    ...(ByteData(4)..setUint32(0, 8 + body.length)).buffer.asUint8List(),
+    ...type.codeUnits,
+    ...body,
+  ];
+  const flags = [0, 0, 0, 0];
+  List<int> note(String name, String says) => box('----', [
+    ...box('mean', [...flags, ...'com.apple.iTunes'.codeUnits]),
+    ...box('name', [...flags, ...name.codeUnits]),
+    ...box('data', [0, 0, 0, 1, ...flags, ...says.codeUnits]),
+  ]);
+  final udta = box('udta', [
+    ...box('meta', [
+      if (fullBox) ...flags,
+      ...box('hdlr', [
+        ...flags,
+        ...flags,
+        ...'mdirappl'.codeUnits,
+        ...List.filled(9, 0),
+      ]),
+      ...box('ilst', [
+        ...note('iTunNORM', _appleLoudness),
+        ...note('iTunSMPB', text),
+      ]),
+    ]),
+  ]);
+  final grown = Uint8List.fromList([
+    ..._renamed(bytes, ['moov', 'udta'], 'free'),
+    ...udta,
+  ]);
+  ByteData.sublistView(grown).setUint32(moov, moovEnd - moov + udta.length);
+  return grown;
 }
 
 /// The lag, within [range] frames either way, at which [decoded]'s first

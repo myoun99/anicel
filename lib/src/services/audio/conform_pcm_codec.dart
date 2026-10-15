@@ -357,8 +357,13 @@ class ConformHeader {
 /// for the same file: what an old conform holds is then not what opening the
 /// file today would play. 0 = before 2026-10-09; 1 = a container's head says
 /// whether dr_mp3 may try it, and the frames an encoder put before the sound
-/// come off (board sound-lands-on-its-exact-sample).
-const int conformDecodeRecipe = 1;
+/// come off (board sound-lands-on-its-exact-sample); 2 = a movie that says
+/// it only in iTunes' note starts where the note says (2026-10-15, board
+/// itunes-gapless-note-is-what-an-m4a-says). ⚠️2 also covers two changes
+/// that should have moved it and did not: a movie that says nothing losing
+/// AAC's standard unless Windows wrote it (10-09, Q7), and AudioToolbox no
+/// longer trimming 2,112 off such a movie on a Mac (10-15).
+const int conformDecodeRecipe = 2;
 
 /// Whether [head] starts with the conform magic — the cheap half of「is this
 /// file ours」, and all the cache collector needs before it counts or deletes

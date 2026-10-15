@@ -312,22 +312,23 @@ static int qa_audio_mp3_may_try(qa_audio_cursor* cursor) {
 // An encoder puts frames of its own before the sound (priming), and a decoder
 // hands them back unless something takes them off: half a frame of animation
 // late at 48 kHz, more for Apple's encoder. What is taken off is decided
-// here, from the file — a movie's edit list, an MP3's LAME tag — and where
-// the format has no place to say it, from the format's standard delay (an
-// MP3 without the tag: 1,105, LAME's own; AAC's: 1,024, one frame). A
-// decoder that already took some off says how much, and only the rest is
-// taken: dr_mp3 by the LAME tag. AudioToolbox, which trims by a packet
-// table of its own, is told to trim nothing where this part reads the
-// start, and says what it took of anything else.
+// here, from the file — a movie's edit list or the note iTunes leaves in it,
+// an MP3's LAME tag — and where the format has no place to say it, from the
+// format's standard delay (an MP3 without the tag: 1,105, LAME's own; AAC's:
+// 1,024, one frame). A decoder that already took some off says how much,
+// and only the rest is taken: dr_mp3 by the LAME tag. AudioToolbox, which
+// trims by a packet table of its own, is told to trim nothing where this
+// part reads the start, and says what it took of anything else.
 //
-// A MOVIE THAT SAYS NOTHING — its sound track has no edit list — takes the
-// standard of its sound's format off too (user 2026-10-09, Q6: 「Q3 그대로 —
-// 말하지 않는 MP4 · MOV 도 1,024 를 걷는다」), unless Media Foundation wrote
-// it (Q7: 「윈도 기록기의 표지가 있으면 걷지 않는다」): its sink writer puts
-// no edit list in and its sound is already in place — this app's own
-// exports, 48 kHz and 44.1 kHz, and the test movie, measured 2026-10-09 —
-// and it marks every movie it writes ([qa_media_foundation_mark]). The mark
-// is the writer's own name for itself, not a guess from the sound.
+// A MOVIE THAT SAYS NOTHING — no edit list on its sound track, and no note
+// of iTunes' — takes the standard of its sound's format off too (user
+// 2026-10-09, Q6: 「Q3 그대로 — 말하지 않는 MP4 · MOV 도 1,024 를 걷는다」),
+// unless Media Foundation wrote it (Q7: 「윈도 기록기의 표지가 있으면 걷지
+// 않는다」): its sink writer puts no edit list in and its sound is already
+// in place — this app's own exports, 48 kHz and 44.1 kHz, and the test
+// movie, measured 2026-10-09 — and it marks every movie it writes
+// ([qa_media_foundation_mark]). The mark is the writer's own name for
+// itself, not a guess from the sound.
 
 /// Where a decoded sound starts and how long it runs, in frames of what the
 /// decoder handed back.
@@ -426,8 +427,10 @@ static int64_t qa_ticks_to_frames(int64_t value, uint32_t scale,
 }
 
 /// A movie's first sound track — the one that answers, whatever it says:
-/// its `trak` and `mdia` boxes, and the movie header's time scale.
+/// its `trak` and `mdia` boxes, the movie header's time scale, and the movie
+/// box they are in, whose user data iTunes leaves its note in.
 typedef struct {
+  qa_box moov;
   qa_box trak;
   qa_box mdia;
   uint32_t movie_scale;
@@ -454,6 +457,7 @@ static int qa_movie_first_sound(qa_media_span* span, int64_t size,
         qa_box_find(span, mdia.body, mdia.end, "hdlr", &hdlr) &&
         qa_media_span_read(span, hdlr.body, handler, 12) == 12 &&
         memcmp(handler + 8, "soun", 4) == 0) {
+      sound->moov = moov;
       sound->trak = trak;
       sound->mdia = mdia;
       sound->movie_scale = qa_box_time_scale(span, &mvhd);
@@ -508,6 +512,101 @@ static int qa_movie_sound_edit(qa_media_span* span,
     start->keep = duration > 0
                       ? qa_ticks_to_frames(duration, sound->movie_scale, rate)
                       : -1;
+    return 1;
+  }
+  return 0;
+}
+
+/// The next word of hexadecimal in the [length] characters of [text] from
+/// [*at], past the spaces before it — -1 when none is there.
+static int64_t qa_hex_word(const char* text, int length, int* at) {
+  while (*at < length && text[*at] == ' ') {
+    *at += 1;
+  }
+  uint64_t value = 0;
+  int digits = 0;
+  for (; *at < length; *at += 1, digits += 1) {
+    const char c = text[*at];
+    const int digit = c >= '0' && c <= '9'   ? c - '0'
+                      : c >= 'A' && c <= 'F' ? c - 'A' + 10
+                      : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                                             : -1;
+    if (digit < 0) {
+      break;
+    }
+    value = value * 16 + (uint64_t)digit;
+  }
+  return digits > 0 && digits <= 16 && value <= (uint64_t)INT64_MAX
+             ? (int64_t)value
+             : -1;
+}
+
+/// What the note iTunes leaves in [sound]'s movie says — [start]'s lead and
+/// keep — or 0 when it left none: an item of the movie's metadata (`udta` ·
+/// `meta` · `ilst`) named `iTunSMPB`, whose text is words of hexadecimal —
+/// 0, the frames before the sound, the frames padded after it, the sound's
+/// own length — counted in frames as decoded. iTunes and Apple Music write
+/// it, and qaac and fdkaac as they come (⚠️known, not measured here), with
+/// no edit list: such a movie took AAC's 1,024 off where Apple's encoder
+/// put 2,112 — 1,088 frames early, 25 ms at 44.1 kHz.
+///
+/// ⚠️Asked only of a sound track without an edit list: the edit list is the
+/// format's own place to say it, and the one every player plays by (this
+/// engine's choice, 2026-10-15 — board
+/// itunes-gapless-note-is-what-an-m4a-says).
+static int qa_movie_itunes_note(qa_media_span* span,
+                                const qa_movie_sound* sound,
+                                qa_audio_start* start) {
+  qa_box udta;
+  qa_box meta;
+  qa_box ilst;
+  uint8_t head[8];
+  if (!qa_box_find(span, sound->moov.body, sound->moov.end, "udta", &udta) ||
+      !qa_box_find(span, udta.body, udta.end, "meta", &meta) ||
+      qa_media_span_read(span, meta.body, head, 8) != 8) {
+    return 0;
+  }
+  // ISO's `meta` has four bytes of version and flags before its boxes and
+  // QuickTime's none; either begins with its handler (`hdlr`).
+  const int64_t boxes =
+      memcmp(head + 4, "hdlr", 4) == 0 ? meta.body : meta.body + 4;
+  if (!qa_box_find(span, boxes, meta.end, "ilst", &ilst)) {
+    return 0;
+  }
+  qa_box item;
+  for (int64_t at = ilst.body; qa_box_at(span, at, ilst.end, &item);
+       at = item.end) {
+    // An item of a writer's own (`----`) is the kind with a `name`: it holds
+    // that and its `data`, each with four bytes of version and flags first —
+    // and `data` four of locale after them, before its text.
+    qa_box name;
+    qa_box data;
+    char said[8];
+    if (!qa_box_find(span, item.body, item.end, "name", &name) ||
+        name.end - name.body != 4 + 8 ||
+        qa_media_span_read(span, name.body + 4, said, 8) != 8 ||
+        memcmp(said, "iTunSMPB", 8) != 0 ||
+        !qa_box_find(span, item.body, item.end, "data", &data)) {
+      continue;
+    }
+    // The four words take 44 characters of it.
+    char text[64];
+    const int64_t from = data.body + 8;
+    const int length = (int)(data.end - from < 64 ? data.end - from : 64);
+    if (length <= 0 || qa_media_span_read(span, from, text, length) != length) {
+      return 0;
+    }
+    int at_text = 0;
+    int64_t words[4];
+    for (int index = 0; index < 4; index += 1) {
+      words[index] = qa_hex_word(text, length, &at_text);
+      if (words[index] < 0) {
+        return 0;
+      }
+    }
+    start->lead = words[1];
+    // A length of 0 says none, as an edit's duration of 0 does.
+    start->keep = words[3] > 0 ? words[3] : -1;
     return 1;
   }
   return 0;
@@ -583,10 +682,12 @@ static void qa_audio_os_start(const qa_audio_cursor* cursor, int32_t rate,
   qa_media_span_read(cursor->span, 0, head, sizeof(head));
   qa_movie_sound sound;
   if (qa_audio_head_is_a_movie_box(head)) {
-    // A movie that says nothing takes its format's standard, unless Media
-    // Foundation wrote it (the law at the head of this part).
+    // A movie says it in its edit list, or else in iTunes' note; one that
+    // says nothing takes its format's standard, unless Media Foundation
+    // wrote it (the law at the head of this part).
     if (qa_movie_first_sound(cursor->span, cursor->size, &sound) &&
         !qa_movie_sound_edit(cursor->span, &sound, rate, start) &&
+        !qa_movie_itunes_note(cursor->span, &sound, start) &&
         !qa_movie_written_by_media_foundation(cursor->span, cursor->size) &&
         qa_movie_sound_is_aac(cursor->span, &sound)) {
       start->lead = QA_AAC_STANDARD_LEAD;
