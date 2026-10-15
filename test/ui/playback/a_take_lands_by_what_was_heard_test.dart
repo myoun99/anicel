@@ -33,8 +33,9 @@ import '../../helpers/native_engine_path.dart';
 /// (`audioOutputUnlessTesting`), so this hands the rig's transport a device
 /// it opened on miniaudio's null backend (`PlaybackRig.debugTransportOutput`)
 /// — a real callback on a real thread, no speaker. The microphone is made:
-/// it says what it had taken in at any moment, half a second ahead of the
-/// press, so the head it is placed by can only be the measured one.
+/// it says what it had taken in at any moment, five eighths of a second
+/// ahead of the press, so the head it is placed by can only be the measured
+/// one.
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final skip = libraryPath != null ? false : nativeEngineMissingSkipReason;
@@ -56,7 +57,7 @@ void main() {
 
   /// A session over [project] whose runs ride the null device, at four
   /// frames a second — a frame is 12000 samples — recording through a
-  /// microphone half a second ahead of the press.
+  /// microphone five eighths of a second ahead of the press.
   EditorSessionManager session(Project project) {
     final device = QaAudioDevice.instance!;
     expect(
@@ -77,9 +78,19 @@ void main() {
     addTearDown(manager.dispose);
     manager.playbackRig.debugTransportOutput = () => device;
     manager.projectSettings.setProjectFps(4);
+    // ⚠️THE ANCHOR IS HEARD WHEN THE ROLL'S DEVICE STARTS, AND A RUNNER
+    // STRETCHES THAT EITHER WAY (10-15, TestFlight #73). The head is what
+    // the microphone held at the press and what it took in until the
+    // anchor was heard — ms on a quiet machine, but a loaded one starts the
+    // device later (🔬Windows under load: a take of 5), and a starved null
+    // device draws its line ahead (the macOS runner, half a second ahead:
+    // 7). A frame here is a quarter second, narrower than that spread, so
+    // a take is five or six frames: an anchor heard anywhere from an eighth
+    // of a second before the press to three eighths after it. The estimate,
+    // and no head at all, leave eight.
     final microphone = _AheadMicrophone(
       _takeOfSeconds(2),
-      ahead: 24000,
+      ahead: 30000,
       clock: device,
     );
     manager.voiceRecording.debugVoiceRecorderFactory = () => microphone;
@@ -117,11 +128,11 @@ void main() {
 
     expect(
       drawingBlocks(manager.activeTrack.seLayers.first.timeline).single.length,
-      6,
+      inInclusiveRange(5, 6),
       reason: 'two seconds taken in, less what the microphone had in hand '
-          'when the anchor was heard — half a second and the moments to the '
-          'anchor: six frames. ↩️The estimate took off the output latency '
-          'alone and left eight',
+          'when the anchor was heard — five eighths of a second and the '
+          'moments to the anchor: five or six frames. ↩️The estimate took '
+          'off the output latency alone and left eight',
     );
   }, skip: skip);
 
@@ -176,7 +187,7 @@ void main() {
     expect(take.startIndex, 21, reason: 'fixture: b\'s frame 3');
     expect(
       take.length,
-      6,
+      inInclusiveRange(5, 6),
       reason: 'the anchor is b\'s frame 3 — on the run\'s frames, not the '
           'track\'s 21, which this run would not reach for four seconds and '
           'more: unmeasured, the estimate would have left eight',

@@ -661,13 +661,23 @@ void main() {
       expect(await _waitFor(() => device.clockPoint != null), isTrue);
 
       // The frames read in the moments after a wrap: the latest callback
-      // the first of a new lap, and less than 10ms old — what is HEARD is
-      // then 5ms or more short of the lap's end, however late that callback
-      // came. For as many laps as it takes.
+      // the first of a new lap, asked for on time, and less than 10ms old —
+      // what is HEARD is then 4ms or more short of the lap's end. For as
+      // many laps as it takes.
+      //
+      // ⚠️ON TIME, OR NOT AT ALL (10-15, TestFlight #73: `[9, 0, 0, 0]`). A
+      // callback asked for late lies under the line by its lateness, and
+      // the device has played on through what it carries meanwhile — what
+      // the line is for: when a wrap's first callback comes 20ms late, what
+      // is heard IS in the new lap, and frame 0 is the right answer. The
+      // null device is a thread, and a starved runner holds it back.
+      // ↩️「However late that callback came」 — true of none later than the
+      // latency less a step.
+      final lateness = _CallbackLateness(rate: 48000, lap: 48000);
       final justWrapped = <int>[];
       final watch = Stopwatch()..start();
       var nearTheEnd = false;
-      while (watch.elapsedMilliseconds < 8000 && justWrapped.length < 4) {
+      while (watch.elapsedMilliseconds < 12000 && justWrapped.length < 4) {
         final clock = device.readClock();
         final status = transport.clockStatus();
         final after = device.readClock();
@@ -675,6 +685,7 @@ void main() {
         if (point == null || status == null) {
           continue;
         }
+        final late = lateness.of(point);
         // ⚠️ONE MOMENT OR NONE. The status reads the clock itself, a moment
         // after this reading; a runner that stalls between the two lines
         // answers for a later moment than the one judged below — the mac
@@ -688,7 +699,9 @@ void main() {
           nearTheEnd = true;
         } else if (point.positionSamples > 480) {
           nearTheEnd = false;
-        } else if (nearTheEnd && clock.nowMicros - point.atMicros < 10000) {
+        } else if (nearTheEnd &&
+            clock.nowMicros - point.atMicros < 10000 &&
+            late < 192) {
           justWrapped.add(status.globalFrame);
         }
       }
@@ -1055,4 +1068,43 @@ void main() {
     transport.dispose();
     store.dispose();
   }, skip: skip);
+}
+
+/// How late a device's callbacks were asked for, in samples: how far each
+/// one's point stands under the line through the highest point of the last
+/// half second — the line's own measure (`DeviceClockLine`), kept apart
+/// from it here so a pin can tell a callback that came on time.
+class _CallbackLateness {
+  _CallbackLateness({required this.rate, required this.lap});
+
+  final int rate;
+  final int lap;
+
+  /// Each point by its stamp, as where its line stands: its count, kept on
+  /// through every lap, less what the device plays by the stamp — in
+  /// millionths of a sample, from the first stamp.
+  final Map<int, int> _heights = {};
+  int? _epoch;
+  int _laps = 0;
+  int _last = 0;
+
+  int of(({int positionSamples, int atMicros}) point) {
+    if (!_heights.containsKey(point.atMicros)) {
+      if (point.positionSamples < _last) {
+        _laps += 1;
+      }
+      _last = point.positionSamples;
+    }
+    final at = point.atMicros - (_epoch ??= point.atMicros);
+    final height =
+        (point.positionSamples + _laps * lap) * Duration.microsecondsPerSecond -
+        rate * at;
+    _heights[point.atMicros] = height;
+    _heights.removeWhere(
+      (stamped, _) =>
+          point.atMicros - stamped > 500 * Duration.microsecondsPerMillisecond,
+    );
+    final highest = _heights.values.reduce((a, b) => a > b ? a : b);
+    return (highest - height) ~/ Duration.microsecondsPerSecond;
+  }
 }
