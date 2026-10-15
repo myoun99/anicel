@@ -12,6 +12,10 @@
 // timeline reads on Windows, and so the clock the engine's frame times are
 // on. The compositor stamps its vblanks with the same counter.
 
+// NULL is <stddef.h>'s. <windows.h> brings it on Windows, so a build there
+// never missed it; gcc and Apple clang stopped at the first NULL outside the
+// Windows block (2026-10-15, the bundle PR's CI and the round's Apple builds).
+#include <stddef.h>
 #include <stdint.h>
 
 #if defined(_WIN32)
