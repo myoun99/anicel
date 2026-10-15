@@ -229,7 +229,11 @@ List<CelText> _textsMoved(
       id: text.id,
       content: celTextContentMoved(text.content, dx: dx, dy: dy),
       plate: translateBitmapSurface(
-        _plateOn(surface, text.plate),
+        celTextPlateSurface(
+          text.plate,
+          canvasSize: surface.canvasSize,
+          tileSize: surface.tileSize,
+        ),
         dx: dx,
         dy: dy,
         canvasSize: canvasSize,
@@ -237,14 +241,14 @@ List<CelText> _textsMoved(
     ),
 ];
 
-/// A text's [plate] as a surface of its own, on the grid of the picture it
-/// is laid over ([over]) — what lets its pixels take the drawing's pass.
-BitmapSurface _plateOn(BitmapSurface over, Map<TileCoord, BitmapTile> plate) =>
-    BitmapSurface(
-      canvasSize: over.canvasSize,
-      tileSize: over.tileSize,
-      tiles: plate,
-    );
+/// A text's [plate] as a surface of its own on the grid of its cel —
+/// [canvasSize], in tiles of [tileSize]: what lets its pixels take the
+/// passes a drawing's tiles take, and be read as theirs are.
+BitmapSurface celTextPlateSurface(
+  Map<TileCoord, BitmapTile> plate, {
+  required CanvasSize canvasSize,
+  required int tileSize,
+}) => BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: plate);
 
 /// [content] standing ([dx], [dy]) whole pixels from where it stood — the
 /// number its plate's pixels were set from, moved as they are
@@ -259,23 +263,22 @@ CelTextContent celTextContentMoved(
         anchor: CanvasPoint(x: content.anchor.x + dx, y: content.anchor.y + dy),
       );
 
-/// A text's [plate] moved by ([dx], [dy]) whole pixels on the grid of its
-/// cel — [canvasSize], in tiles of [tileSize]: the very pass a drawing's
-/// tiles take ([translateBitmapSurface]), run on the plate as a surface of
-/// its own, and cut at the same pasteboard wall.
+/// A text's [pixels] — its plate moved by whole pixels — cut onto the grid
+/// of its cel, [canvasSize] in tiles of [tileSize]: the very pass a
+/// drawing's tiles take ([translateBitmapSurface]), run on the plate as a
+/// surface of its own ([celTextPlateSurface]), and cut at the same
+/// pasteboard wall.
 ///
 /// The text tool moves a text by this (R9-rest) — a text dragged a whole
 /// number of pixels is its pixels dragged, with nothing set again.
 Map<TileCoord, BitmapTile> celTextPlateMoved(
-  Map<TileCoord, BitmapTile> plate, {
+  CelTextPixels pixels, {
   required CanvasSize canvasSize,
   required int tileSize,
-  required int dx,
-  required int dy,
 }) => translateBitmapSurface(
-  BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: plate),
-  dx: dx,
-  dy: dy,
+  celTextPlateSurface(pixels.plate, canvasSize: canvasSize, tileSize: tileSize),
+  dx: pixels.dx,
+  dy: pixels.dy,
   canvasSize: canvasSize,
 ).tiles;
 

@@ -25,28 +25,8 @@ import 'cel_text_editing_controller.dart';
 import 'cel_text_session.dart';
 
 part 'cel_text_tool_list.dart';
+part 'cel_text_tool_on_canvas.dart';
 part 'cel_text_tool_way_out.dart';
-
-/// What floats over the hole the text in hand left in its cel
-/// ([CelTextTool.floatingOn]): its pixels as they are drawn, the cel
-/// without it and without the texts above it, and those texts.
-typedef CelTextFloating = ({
-  CelTextPixels pixels,
-  BitmapSurface under,
-  List<CelText> above,
-});
-
-/// The text in hand lifted off a picture: the picture, which text, the
-/// picture without it and the texts above it, the picture without it
-/// alone — and the texts above it.
-typedef _Lift = ({
-  BitmapSurface picture,
-  CelTextSession session,
-  int? id,
-  BitmapSurface under,
-  BitmapSurface without,
-  List<CelText> above,
-});
 
 /// A cel a text can be set on: its key, what holds its picture, the canvas
 /// it is cut for, and who is told when it changes.
@@ -105,7 +85,7 @@ abstract interface class CelTextToolHost {
 
   /// What the canvas draws for a cel in place of its picture changed — a
   /// text taken or let go of, one let go of set or landed
-  /// ([CelTextTool.shownSurfaceFor]): it has to be drawn again. What the
+  /// ([CelTextOnCanvas.shownSurfaceFor]): it has to be drawn again. What the
   /// text in hand makes of itself floats, and is told on
   /// [CelTextTool.shownInHand] instead.
   void shownChanged();
@@ -266,105 +246,9 @@ class CelTextTool extends ChangeNotifier {
 
   // ── what the canvas shows ───────────────────────────────────────────
 
-  /// What the canvas draws for [key] in place of [cel] — [key]'s picture
-  /// as it stands — or null when that is [cel] itself: the texts let go of
-  /// that still owe a landing laid in as they are shown, and the text in
-  /// hand LIFTED OFF, with every text above it ([floatingOn] floats them).
-  ///
-  /// 🚨★★★F-344 — A TEXT IN HAND IS A FLOAT OVER ITS HOLE, as a lifted
-  /// selection is (유저 2026-10-12: 「변형로직같은거 참고/재사용하면서 라이브
-  /// 빠르게 움직이도록 구조개편」). ↩️It was laid into the cel here instead,
-  /// as it was shown, so every move of a hand on its box cut its plate
-  /// again, stamped and pictured every tile under it again, and built the
-  /// panel again for a painter of the surface that made. The hole is made
-  /// when the text is taken, and what the hand does to the text after that
-  /// changes only what floats.
-  BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) =>
-      _shownFor(key, cel, (lift) => lift.under);
-
-  /// [shownSurfaceFor] with the texts above the one in hand LAID IN, where
-  /// they stand — the picture without the text in hand, and nothing else
-  /// taken off it: what a canvas draws that floats, in the text's place,
-  /// what the cel will show where it lands, those texts included
-  /// (`CelTextLanding`, F-344-Q3).
-  BitmapSurface? shownWithoutFor(BrushFrameKey key, BitmapSurface cel) =>
-      _shownFor(key, cel, (lift) => lift.without);
-
-  BitmapSurface? _shownFor(
-    BrushFrameKey key,
-    BitmapSurface cel,
-    BitmapSurface Function(_Lift lift) part,
-  ) {
-    final picture = _withLeaving(key, cel);
-    final lift = _liftOff(key, picture);
-    final surface = lift == null ? picture : part(lift);
-    return identical(surface, cel) ? null : surface;
-  }
-
-  /// What floats over the hole [shownSurfaceFor] answers for [key]: the
-  /// text in hand as it is shown, and the texts [cel] carries above it, as
-  /// they stand — or null with none of [cel]'s texts in hand.
-  ///
-  /// ⛔THE TEXTS ABOVE FLOAT WITH IT. On the cel they are over it wherever
-  /// they meet (유저 2026-10-02: 「그림/텍스트/텍스트」), and a hole holding them
-  /// would put the text in hand over them while it is carried.
-  CelTextFloating? floatingOn(BrushFrameKey key, BitmapSurface cel) {
-    final lift = _liftOff(key, _withLeaving(key, cel));
-    return lift == null
-        ? null
-        : (
-            pixels: lift.session.shown.pixels,
-            under: lift.under,
-            above: lift.above,
-          );
-  }
-
-  /// [cel] with the texts let go of that still owe a landing laid in as
-  /// they are shown.
-  BitmapSurface _withLeaving(BrushFrameKey key, BitmapSurface cel) {
-    var surface = cel;
-    for (final leaving in _wayOut.leaving) {
-      if (leaving.session.key == key) {
-        surface = leaving.session.shownOver(surface);
-      }
-    }
-    return surface;
-  }
-
-  /// The text in hand lifted off [picture], [key]'s — null when the text in
-  /// hand is on another cel, or none is, or it is shown as the cel carries
-  /// it: then the cel itself is the picture ([_lifts]). A text new to the
-  /// cel is over all of them, so nothing is above it and either hole is
-  /// the picture itself.
-  ///
-  /// Made once for a picture and a text, so the painter of the hole is
-  /// made once too (`_activeSurfacePainterToken`).
-  _Lift? _liftOff(BrushFrameKey key, BitmapSurface picture) {
-    final session = _held?.session;
-    if (session == null || session.key != key || session.shownAsCarried) {
-      return _lift = null;
-    }
-    final id = session.textId;
-    final kept = _lift;
-    if (kept != null &&
-        identical(kept.picture, picture) &&
-        identical(kept.session, session) &&
-        kept.id == id) {
-      return kept;
-    }
-    final texts = picture.texts;
-    final at = texts.indexWhere((text) => text.id == id);
-    return _lift = (
-      picture: picture,
-      session: session,
-      id: id,
-      under: at < 0 ? picture : picture.withTexts(texts.sublist(0, at)),
-      without: at < 0 ? picture : picture.withTexts([...texts]..removeAt(at)),
-      above: at < 0 ? const <CelText>[] : texts.sublist(at + 1),
-    );
-  }
-
-  _Lift? _lift;
+  /// What the canvas shows for what the hand holds: the cel's place, what
+  /// floats over it and the boxes the texts wear ([CelTextOnCanvas]).
+  late final CelTextOnCanvas onCanvas = CelTextOnCanvas._(this);
 
   /// What of the text in hand is on screen, told whenever it is another — a
   /// bake made, a hand carried it, another text taken. Null with none.
@@ -377,45 +261,16 @@ class CelTextTool extends ChangeNotifier {
   ValueListenable<CelTextShown?> get shownInHand => _shownInHand;
   final ValueNotifier<CelTextShown?> _shownInHand = ValueNotifier(null);
 
-  /// Where the texts of [key]'s cel stand that are in NOBODY'S hand:
-  /// [cel]'s own, but for the ones this tool speaks for — and, of those,
-  /// the ones let go of that still owe a landing, as they are shown.
-  ///
-  /// 🗣️유저 2026-10-02: 「텍스트는 텍스트 툴을 선택했을때만 **텍스트별로
-  /// 박스가 떠서** 편집가능. 화면에 텍스트박스를 선택해서(선택된지 알수있도록
-  /// ui 필요.)」 — every text wears a box while the tool is in hand, and the
-  /// one in hand wears its own ([session]), which says it is the one.
-  List<CelTextBox> restingBoxesOn(BrushFrameKey key, BitmapSurface cel) {
-    final leaving = [
-      for (final holding in _wayOut.leaving)
-        if (holding.session.key == key) holding,
-    ];
-    final held = _held?.session;
-    final spokenFor = {
-      for (final holding in leaving) holding.session.textId,
-      if (held != null && held.key == key) held.textId,
-    };
-    return [
-      for (final text in celTextsInReach(cel))
-        if (!spokenFor.contains(text.id)) celTextBoxOf(text.content),
-      for (final _Holding(:session, :becomesDrawing) in leaving)
-        // A text with no letters is not there, shown or landed — and one
-        // on its way into the drawing is no text of the tool's any more
-        // ([takeableOn]).
-        if (!session.shown.content.isEmpty && !becomesDrawing)
-          session.shown.layout.onCanvas,
-    ];
-  }
-
   /// The texts of [cel] a hand can take hold of now, bottom to top: the
   /// ones in reach ([celTextsInReach]) but for those let go of to become
   /// drawing ([turnIntoDrawing]) whose last want is still being set.
   ///
   /// 🚨FOR THE TOOL SUCH A TEXT IS DRAWING ALREADY — it wears no box
-  /// ([restingBoxesOn]), a press finds nothing of it and the settings'
-  /// list has no row for it. Taken in hand again it would be a text under
-  /// the hand at the moment the drawing took it, and what the hand then
-  /// landed would set it on the cel a second time, over its own pixels.
+  /// ([CelTextOnCanvas.restingBoxesOn]), a press finds nothing of it and
+  /// the settings' list has no row for it. Taken in hand again it would be
+  /// a text under the hand at the moment the drawing took it, and what the
+  /// hand then landed would set it on the cel a second time, over its own
+  /// pixels.
   List<CelText> takeableOn(CelTextCel cel) {
     final turning = {
       for (final holding in _wayOut.leaving)
@@ -804,10 +659,10 @@ class CelTextTool extends ChangeNotifier {
   /// itself.
   ///
   /// 🚨F-344: THE PANEL IS BUILT AGAIN ONLY WHERE WHAT IT DRAWS IN THE
-  /// CEL'S PLACE CHANGED ([shownSurfaceFor]) — the text in hand lifted off
-  /// or put back ([_lifts]), or one let go of, laid in there, set again.
-  /// The text in hand floats over that ([floatingOn]) and is drawn again
-  /// from [shownInHand].
+  /// CEL'S PLACE CHANGED ([CelTextOnCanvas.shownSurfaceFor]) — the text in
+  /// hand lifted off or put back ([_lifts]), or one let go of, laid in
+  /// there, set again. The text in hand floats over that
+  /// ([CelTextOnCanvas.floatingOn]) and is drawn again from [shownInHand].
   void _sessionChanged() {
     if (_disposed) {
       return;
@@ -874,7 +729,7 @@ class CelTextTool extends ChangeNotifier {
 /// would do with it — draw its box, ask whether a press is inside it, take
 /// it in hand — is measured in its letters, and until its face is here
 /// those would be set in another. So for the tool it is not there yet, in
-/// every place alike: the boxes ([CelTextTool.restingBoxesOn]), a press
+/// every place alike: the boxes ([CelTextOnCanvas.restingBoxesOn]), a press
 /// (`cel_text_press`), the settings' list ([CelTextList]). Asking is what
 /// sends for the face, and its arrival is told (`CanvasLetterFaces.changes`).
 Iterable<CelText> celTextsInReach(BitmapSurface picture) =>

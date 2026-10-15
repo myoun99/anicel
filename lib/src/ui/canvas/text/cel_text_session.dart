@@ -58,11 +58,9 @@ final class CelTextShown {
       _grid == null || (pixels.dx == 0 && pixels.dy == 0)
       ? pixels.plate
       : celTextPlateMoved(
-          pixels.plate,
+          pixels,
           canvasSize: _grid.canvasSize,
           tileSize: _grid.tileSize,
-          dx: pixels.dx,
-          dy: pixels.dy,
         );
 }
 
@@ -385,7 +383,8 @@ class CelTextSession extends ChangeNotifier {
   /// Whether what is shown is what the cel carries: this text as it
   /// stands, or — for one not on the cel yet — nothing, a text with no
   /// letters not being there ([landing]). [shownOver] is then the cel
-  /// itself, and the canvas lifts nothing off it (`CelTextTool.floatingOn`).
+  /// itself, and the canvas lifts nothing off it
+  /// (`CelTextOnCanvas.floatingOn`).
   bool get shownAsCarried {
     final standing = _standing;
     return standing == null

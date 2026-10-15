@@ -62,7 +62,7 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
   final CelTextStage stage;
 
   /// The boxes of the cel's texts that are in nobody's hand, on the artwork
-  /// ([CelTextTool.restingBoxesOn]).
+  /// ([CelTextOnCanvas.restingBoxesOn]).
   final List<CelTextBox> restingBoxes;
 
   /// The box an empty drag is tracing, on the artwork.

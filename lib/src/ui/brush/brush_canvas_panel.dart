@@ -15,7 +15,7 @@ import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/bitmap_surface_geometry.dart'
-    show bitmapSurfaceContentBounds;
+    show bitmapSurfaceContentBounds, celTextPlateSurface;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/undo_surface_snapshot.dart';
 import '../../models/layer_effect.dart';

@@ -4,7 +4,8 @@ import '../models/bitmap_surface.dart';
 import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
 import '../models/layer_effect.dart';
-import 'bitmap_surface_geometry.dart' show bitmapSurfaceContentBounds;
+import 'bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds, celTextPlateSurface;
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'cel_source_effect_pass.dart';
 import 'cel_text_laying.dart';
@@ -44,7 +45,7 @@ BitmapSurface celSurfaceAsShown(
 /// key, where its landing keys it with the ink under it. This is the
 /// landing, asked where the text lies: [under] laid as [celSurfaceAsShown]
 /// lays it, the carried plate and then the texts above it stamped over that
-/// with the stamp a cel's texts are laid with ([layPlateOverRegion]), and
+/// with the stamp a cel's texts are laid with ([layPixelsOverRegion]), and
 /// the keys over all of it by the walk they take over a tile
 /// ([celSourceEffectsOverStraight]) — each a pixel's own answer, so the
 /// bytes are the landed cel's there. Outside the region the text holds no
@@ -63,16 +64,14 @@ BitmapSurface celSurfaceAsShown(
     celSurfaceWithTextsLaid(under),
     region,
   );
-  layPlateOverRegion(
-    straight,
-    region,
-    carried.plate,
-    on: under,
-    dx: carried.dx,
-    dy: carried.dy,
-  );
+  layPixelsOverRegion(straight, region, carried, on: under);
   for (final text in above) {
-    layPlateOverRegion(straight, region, text.plate, on: under);
+    layPixelsOverRegion(
+      straight,
+      region,
+      (plate: text.plate, dx: 0, dy: 0),
+      on: under,
+    );
   }
   celSourceEffectsOverStraight(straight, effects);
   return (region: region, straight: straight);
@@ -82,10 +81,10 @@ BitmapSurface celSurfaceAsShown(
 /// hand has it — on [on]'s grid. Null when it holds none.
 DirtyRegion? _landingRegion(BitmapSurface on, CelTextPixels carried) {
   final ink = bitmapSurfaceContentBounds(
-    BitmapSurface(
+    celTextPlateSurface(
+      carried.plate,
       canvasSize: on.canvasSize,
       tileSize: on.tileSize,
-      tiles: carried.plate,
     ),
   );
   if (ink == null) {

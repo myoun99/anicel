@@ -391,7 +391,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
                   stage: widget.stage,
                   restingBoxes: cel == null || picture == null
                       ? const []
-                      : _tool.restingBoxesOn(cel.key, picture),
+                      : _tool.onCanvas.restingBoxesOn(cel.key, picture),
                   tracedBox: _tracedBox,
                   caretLit: _caretLit,
                   color: AppColors.accent,

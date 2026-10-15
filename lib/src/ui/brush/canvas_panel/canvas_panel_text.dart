@@ -150,8 +150,8 @@ class _CanvasPanelText implements CelTextToolHost {
   /// the hole, as they are on the cel.
   BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) =>
       _floatsTheLanding
-      ? tool.shownWithoutFor(key, cel)
-      : tool.shownSurfaceFor(key, cel);
+      ? tool.onCanvas.shownWithoutFor(key, cel)
+      : tool.onCanvas.shownSurfaceFor(key, cel);
 
   /// Whether what floats over the hole is what the cel will SHOW where the
   /// text in hand lands ([CelTextLanding]) — on a row that keys its colours
@@ -169,7 +169,7 @@ class _CanvasPanelText implements CelTextToolHost {
   // ── the float ───────────────────────────────────────────────────────
 
   /// What floats over the hole the text in hand left (F-344,
-  /// [CelTextTool.floatingOn]) — read by the painter of that hole itself
+  /// [CelTextOnCanvas.floatingOn]) — read by the painter of that hole itself
   /// (`BitmapSurfacePainter.landingPreview`), so a hand carrying the text
   /// draws the canvas again and builds nothing.
   final ValueNotifier<LandingPreview?> float = ValueNotifier(null);
@@ -195,7 +195,9 @@ class _CanvasPanelText implements CelTextToolHost {
 
   void _float() {
     final on = _floatOn;
-    final floating = on == null ? null : tool.floatingOn(on.key, on.surface);
+    final floating = on == null
+        ? null
+        : tool.onCanvas.floatingOn(on.key, on.surface);
     if (on == null || floating == null) {
       _letTheLandingGo();
       float.value = null;
@@ -290,10 +292,10 @@ class _CanvasPanelText implements CelTextToolHost {
       return kept.painter;
     }
     final painter = _floatPainter(
-      BitmapSurface(
+      celTextPlateSurface(
+        plate,
         canvasSize: on.surface.canvasSize,
         tileSize: on.surface.tileSize,
-        tiles: plate,
       ),
     );
     _held = (of: plate, fx: on.fx, painter: painter);

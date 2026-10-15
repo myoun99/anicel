@@ -89,8 +89,8 @@ void main() {
   /// then the texts of the cel above it.
   BitmapSurface? shownFor(CelTextTool tool, CelTextCel cel) {
     final picture = pictureOf(cel);
-    final hole = tool.shownSurfaceFor(cel.key, picture);
-    final floating = tool.floatingOn(cel.key, picture);
+    final hole = tool.onCanvas.shownSurfaceFor(cel.key, picture);
+    final floating = tool.onCanvas.floatingOn(cel.key, picture);
     if (floating == null) {
       return hole;
     }
@@ -654,7 +654,7 @@ void main() {
       expect(tool.holdsAnything, isTrue, reason: 'a landing is still owed');
       expect(host.ran, isEmpty);
       expect(textsOn(cel), [(4, 'ab')], reason: 'still a text of the cel');
-      expect(tool.restingBoxesOn(cel.key, pictureOf(cel)), isEmpty);
+      expect(tool.onCanvas.restingBoxesOn(cel.key, pictureOf(cel)), isEmpty);
       expect(tool.takeableOn(cel), isEmpty);
       expect(tool.list.texts, isEmpty);
       tool.list.take(4);
@@ -682,7 +682,10 @@ void main() {
       tool.confirm();
 
       expect(tool.holdsAnything, isTrue, reason: '⛔fixture');
-      expect(tool.restingBoxesOn(cel.key, pictureOf(cel)), hasLength(1));
+      expect(
+        tool.onCanvas.restingBoxesOn(cel.key, pictureOf(cel)),
+        hasLength(1),
+      );
       expect(tool.takeableOn(cel), hasLength(1));
       expect(tool.list.texts, hasLength(1));
       await baker.pending.answer();
@@ -1175,14 +1178,14 @@ void main() {
       await baker.pending.answer();
 
       expect(shownFor(tool, cel), isNotNull, reason: '⛔fixture');
-      expect(tool.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
+      expect(tool.onCanvas.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
 
       // And the same of a text on its way out, still drawn until it lands.
       typeInto(tool, 'ab');
       tool.confirm();
 
       expect(shownFor(tool, cel), isNotNull, reason: '⛔fixture');
-      expect(tool.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
+      expect(tool.onCanvas.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
     });
 
     test('the canvas is told when what it shows changes — a text begun, a '
@@ -1217,8 +1220,8 @@ void main() {
       session.showMoved(session.moveOrigin, dx: 8, dy: 0);
 
       final picture = pictureOf(cel);
-      final hole = tool.shownSurfaceFor(cel.key, picture)!;
-      final floating = tool.floatingOn(cel.key, picture)!;
+      final hole = tool.onCanvas.shownSurfaceFor(cel.key, picture)!;
+      final floating = tool.onCanvas.floatingOn(cel.key, picture)!;
       expect([for (final text in hole.texts) text.id], [3]);
       expect(hole.tiles, picture.tiles, reason: 'the drawing stays');
       expect([for (final text in floating.above) text.id], [5]);
@@ -1238,7 +1241,7 @@ void main() {
       tool.takeText(cel, held);
       final session = tool.session!;
       expect(
-        tool.shownWithoutFor(cel.key, pictureOf(cel)),
+        tool.onCanvas.shownWithoutFor(cel.key, pictureOf(cel)),
         isNull,
         reason: 'taken and not yet carried, it is shown as the cel has it',
       );
@@ -1246,11 +1249,11 @@ void main() {
       session.showMoved(session.moveOrigin, dx: 8, dy: 0);
 
       final picture = pictureOf(cel);
-      final without = tool.shownWithoutFor(cel.key, picture)!;
+      final without = tool.onCanvas.shownWithoutFor(cel.key, picture)!;
       expect([for (final text in without.texts) text.id], [3, 5]);
       expect(without.tiles, picture.tiles, reason: 'the drawing stays');
       expect(
-        tool.shownWithoutFor(cel.key, picture),
+        tool.onCanvas.shownWithoutFor(cel.key, picture),
         same(without),
         reason: 'one picture for the whole carry',
       );
@@ -1265,7 +1268,8 @@ void main() {
       final session = tool.session!;
       final origin = session.moveOrigin;
       final taken = host.redrawn;
-      BitmapSurface? hole() => tool.shownSurfaceFor(cel.key, pictureOf(cel));
+      BitmapSurface? hole() =>
+          tool.onCanvas.shownSurfaceFor(cel.key, pictureOf(cel));
       var moves = 0;
       var settings = 0;
       tool
@@ -1310,7 +1314,7 @@ void main() {
 
       expect(host.redrawn, begun + 1, reason: 'still lifted');
       expect(shown, 2);
-      final floating = tool.floatingOn(cel.key, pictureOf(cel))!;
+      final floating = tool.onCanvas.floatingOn(cel.key, pictureOf(cel))!;
       expect(floating.pixels.plate, same(tool.session!.shown.plate));
     });
 
@@ -1364,7 +1368,7 @@ void main() {
       expect(tool.landShown(), isTrue);
 
       expect(host.redrawn, carrying + 1, reason: 'put back');
-      expect(tool.shownSurfaceFor(cel.key, pictureOf(cel)), isNull);
+      expect(tool.onCanvas.shownSurfaceFor(cel.key, pictureOf(cel)), isNull);
     });
 
     test('🚨F-344: the text in hand landed as it is shown tells the panel '
@@ -1403,8 +1407,8 @@ void main() {
       await baker.pending.answer();
 
       final picture = pictureOf(cel);
-      final floating = tool.floatingOn(cel.key, picture)!;
-      expect(tool.shownSurfaceFor(cel.key, picture), isNull);
+      final floating = tool.onCanvas.floatingOn(cel.key, picture)!;
+      expect(tool.onCanvas.shownSurfaceFor(cel.key, picture), isNull);
       expect(floating.above, isEmpty);
       expect(floating.pixels.plate, same(tool.session!.shown.plate));
     });
@@ -1419,7 +1423,7 @@ void main() {
     }
 
     List<List<Offset>> resting(CelTextTool tool, CelTextCel cel) => [
-      for (final box in tool.restingBoxesOn(cel.key, pictureOf(cel)))
+      for (final box in tool.onCanvas.restingBoxesOn(cel.key, pictureOf(cel)))
         box.corners,
     ];
 
@@ -1460,7 +1464,10 @@ void main() {
 
       expect(
         [
-          for (final box in tool.restingBoxesOn(elsewhere, pictureOf(cel)))
+          for (final box in tool.onCanvas.restingBoxesOn(
+            elsewhere,
+            pictureOf(cel),
+          ))
             box.corners,
         ],
         [boxOf(first), boxOf(second)],
@@ -1506,7 +1513,10 @@ void main() {
       final other = drawingOf(const {}).withTexts([carried(1, second)]);
 
       expect(
-        [for (final box in tool.restingBoxesOn(elsewhere, other)) box.corners],
+        [
+          for (final box in tool.onCanvas.restingBoxesOn(elsewhere, other))
+            box.corners,
+        ],
         [boxOf(second)],
       );
     });

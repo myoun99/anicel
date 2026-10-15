@@ -28,9 +28,11 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/cel_text.dart';
 import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
 import '../models/tiles_covering.dart';
+import 'bitmap_surface_geometry.dart' show celTextPlateSurface;
 import 'brush_stamp_span_kernel.dart';
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 
@@ -166,42 +168,39 @@ void layPlatesOverStraight(
   }
 }
 
-/// [plate] laid over [straight] — straight rgba of [region] of [on]'s grid,
-/// a row [region]'s width — standing ([dx], [dy]) whole pixels from where
-/// it was set, IN PLACE: the stamp a plate's tile is laid with
-/// ([celTileWithPlatesLaid]), over a region of the grid rather than a tile
-/// of it.
+/// A text's [pixels] laid over [straight] — straight rgba of [region] of
+/// [on]'s grid, a row [region]'s width — IN PLACE: the stamp a plate's tile
+/// is laid with ([celTileWithPlatesLaid]), over a region of the grid rather
+/// than a tile of it.
 ///
 /// 🚨What lands at a pixel is that pixel's own answer — one plate pixel
 /// over one pixel under it — so the bytes this makes over a region are the
 /// bytes the tiles there are laid with (F-344-Q3, 유저 2026-10-15: 「놓을
 /// 때와 같은 코드로 — 완전히 같게」). A plate none of whose tiles reach
 /// [region] costs a look at its coordinates.
-void layPlateOverRegion(
+void layPixelsOverRegion(
   Uint8List straight,
   DirtyRegion region,
-  Map<TileCoord, BitmapTile> plate, {
+  CelTextPixels pixels, {
   required BitmapSurface on,
-  int dx = 0,
-  int dy = 0,
 }) {
   final from = DirtyRegion(
-    left: region.left - dx,
-    top: region.top - dy,
-    rightExclusive: region.rightExclusive - dx,
-    bottomExclusive: region.bottomExclusive - dy,
+    left: region.left - pixels.dx,
+    top: region.top - pixels.dy,
+    rightExclusive: region.rightExclusive - pixels.dx,
+    bottomExclusive: region.bottomExclusive - pixels.dy,
   );
-  final onGrid = BitmapSurface(
+  final plate = celTextPlateSurface(
+    pixels.plate,
     canvasSize: on.canvasSize,
     tileSize: on.tileSize,
-    tiles: plate,
   );
-  if (tilesCovering(onGrid, from).isEmpty) {
+  if (tilesCovering(plate, from).isEmpty) {
     return;
   }
   _landed(
     straight,
-    bitmapSurfaceRegionPixels(onGrid, from),
+    bitmapSurfaceRegionPixels(plate, from),
     region.width * region.height,
   );
 }

@@ -155,7 +155,10 @@ void main() {
         inTheBroughtFace,
       ]);
       List<List<Offset>> resting() => [
-        for (final box in tool.restingBoxesOn(cel.key, pictureUnder(cel)))
+        for (final box in tool.onCanvas.restingBoxesOn(
+          cel.key,
+          pictureUnder(cel),
+        ))
           box.corners,
       ];
 

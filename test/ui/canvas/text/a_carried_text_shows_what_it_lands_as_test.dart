@@ -537,11 +537,9 @@ void main() {
           id: 1,
           content: content,
           plate: celTextPlateMoved(
-            plate,
+            (plate: plate, dx: 5, dy: 3),
             canvasSize: canvasSize,
             tileSize: tile,
-            dx: 5,
-            dy: 3,
           ),
         ),
       ]);
@@ -617,11 +615,9 @@ void main() {
         text(
           2,
           celTextPlateMoved(
-            plate,
+            (plate: plate, dx: 5, dy: 3),
             canvasSize: canvasSize,
             tileSize: tile,
-            dx: 5,
-            dy: 3,
           ),
         ),
         above,
