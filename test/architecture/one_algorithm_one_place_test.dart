@@ -340,8 +340,30 @@ import '../../tool/refactor/clone_scan.dart';
 /// takes folders out and keeps what they held merges the walk.
 /// 🔬Measured on the lane against F-360's lane (`9760c59bc`, at 86): this
 /// one added, none gone.
+///
+/// 87 → 88 (2026-10-15, F-363-Q2 — the legend's Show all · Hide all pass
+/// the camera). The new pair is named:
+///
+///     51 tokens
+///       lib/src/ui/session/layer_switch_verbs.dart
+///         LayerSwitchVerbs.setAllLayersVisibility
+///       lib/src/ui/session/opacity_verbs.dart
+///         OpacityVerbs.setAllLayersOpacity
+///
+/// The reading DISMISSES the run: it is the comprehension every legend bulk
+/// press spells — the active cut's rows its column reaches, less those
+/// already there, handed to the controller as one batch — and the eye's
+/// filter took the opacity's shape when it learned to pass the camera. The
+/// law in it is WHICH rows a press reaches, and that is one place already:
+/// the kind table's columns (`hasPictureEye` · `hasPictureOpacity` — two
+/// questions on purpose, the transition answers them apart). The SE mute
+/// and the bar's commit spell the same comprehension over their own rows.
+/// ⛔A shared helper would take the column and the field as hooks and only
+/// name the comprehension, reading worse with no law moved.
+/// 🔬Measured on the lane against master (`8929cc433`, at 87): this one
+/// added, none gone.
 void main() {
-  const ceiling = 87;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

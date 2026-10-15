@@ -79,6 +79,8 @@ class VisibilitySolo {
   /// Re-solos to the CURRENT active layer. Each row joins the snapshot with
   /// its eye from before the solo first flips it — the rows there when it
   /// began, and those born during it — so exiting restores them all.
+  /// ⛔Not the camera's: its eye is the camera VIEW, which the legend's bulk
+  /// switches leave alone ([LayerKind.hasPictureEye], F-363-Q2).
   void _applyVisibilitySolo() {
     final activeId = _selection.activeLayerId;
     final snapshot = _visibilitySoloSnapshot;
@@ -119,12 +121,7 @@ class VisibilitySolo {
     // count only goes down, because every extra place that re-derives
     // "is this row shown" is a place a hidden folder can be forgotten.
     final flips = <LayerId, bool>{};
-    for (final layer in stack) {
-      // ⛔Not the camera's: its eye is the camera VIEW, which the legend's
-      // bulk switches leave alone ([LayerKind.hasPictureEye], F-363-Q2).
-      if (!layer.kind.hasPictureEye) {
-        continue;
-      }
+    for (final layer in stack.where((row) => row.kind.hasPictureEye)) {
       final before = snapshot.putIfAbsent(layer.id, () => layer.isVisible);
       final shouldShow = heldByIt.contains(layer.id)
           ? before
