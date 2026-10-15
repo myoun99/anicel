@@ -768,13 +768,17 @@ void main() {
       // Read after it: what the clock says NOW is never stepped back from.
       final now = transport.clockStatus()!.globalFrame;
 
+      // How far on, round the lap: the run loops its ten frames, and a busy
+      // machine carries it past the end between two readings. ↩️Taken as
+      // read, a wrap between them read -6 (a loaded gate run, 저장 10-15).
+      int on(int from, int to) => (to - from) % 10;
       expect(
-        now - onTime,
+        on(onTime, now),
         greaterThanOrEqualTo(3),
         reason: '⛔premise: read when it ran, the late tick is frames on',
       );
       expect(
-        late - onTime,
+        on(onTime, late),
         lessThanOrEqualTo(1),
         reason: 'the same frame\'s time reads where it read — the gap moves '
             'a sixteenth of a lateness, not all of it',
