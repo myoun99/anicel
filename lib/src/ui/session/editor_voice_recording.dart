@@ -795,16 +795,12 @@ class EditorVoiceRecording {
     _voiceRecordLaneId = laneId;
     _voiceRecordAnchorFrame = punch.anchor;
     _voiceRecordPunchEndFrame = punch.end;
-    // What the microphone will have taken in when the anchor is heard, with
-    // the roll taken to start the instant the microphone does: the output
-    // latency, the run-up between the roll start and the punch-in (and the
-    // count-in, [_rollVoiceTransport]), and what the microphone holds of its
-    // own — the DAW's round-trip compensation. The roll measures it, below.
-    _voiceRecordHeadEstimate =
-        audioDeviceTransport.report.reportedLatencySamples +
-        projectFrameRate.frameToSample(punch.anchor - rollStart, opened.rate) +
-        opened.recorder.latencySamples;
-    _voiceRecordHeadMeasured = null;
+    _aimTheHead(
+      opened.recorder,
+      anchor: punch.anchor,
+      rollStart: rollStart,
+      rate: opened.rate,
+    );
     isVoiceRecording.value = true;
     // Capture-chain snapshot (REC1-D): gain and channel fold ride the
     // whole take; the clip light re-arms per take.
@@ -830,16 +826,39 @@ class EditorVoiceRecording {
       rate: opened.rate,
     );
     _armVoiceCues(anchor: punch.anchor, rollStart: rollStart);
-    // The clock that hears the anchor measures the head — once, and it
-    // stands; a take that stops first keeps the estimate.
-    audioDeviceTransport.measureTakeHead(
-      opened.recorder,
-      anchorFrame: punch.anchor - _transportAxisShift(),
-      measured: (head) => _voiceRecordHeadMeasured = head,
-    );
     _syncVoiceRecordPreview();
     notifyListeners(); // Armed-lane mute + cue clips join the schedules.
     return VoiceRecordStartResult.started;
+  }
+
+  /// Where the take's head comes off: the clock that hears the [anchor]
+  /// measures it — once, and it stands; a take that stops first keeps the
+  /// estimate.
+  ///
+  /// The estimate is what the microphone will have taken in when the anchor
+  /// is heard, with the roll taken to start the instant the microphone
+  /// does: the output latency, the run-up between the roll start and the
+  /// punch-in (and the count-in, [_rollVoiceTransport]), and what the
+  /// microphone holds of its own — the DAW's round-trip compensation.
+  void _aimTheHead(
+    AudioRecorder recorder, {
+    required int anchor,
+    required int rollStart,
+    required int rate,
+  }) {
+    _voiceRecordHeadEstimate =
+        audioDeviceTransport.report.reportedLatencySamples +
+        projectFrameRate.frameToSample(anchor - rollStart, rate) +
+        recorder.latencySamples;
+    _voiceRecordHeadMeasured = null;
+    // Read before the roll, the axis is already the one the roll stands on:
+    // a roll this take starts runs every cut, unshifted, and a run already
+    // playing keeps its own ([_rollVoiceTransport]).
+    audioDeviceTransport.measureTakeHead(
+      recorder,
+      anchorFrame: anchor - _transportAxisShift(),
+      measured: (head) => _voiceRecordHeadMeasured = head,
+    );
   }
 
   /// Opens the microphone, or null when the device refused to start.

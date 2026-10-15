@@ -498,11 +498,10 @@ class AudioDeviceTransport {
     _take = null;
     take.measured(
       samplesBeforeTheAnchor(
-        heard: heard,
-        anchor: anchor,
-        deviceRate: _deviceRate,
         captured: captured,
         captureRate: take.recorder.sampleRate,
+        sinceTheAnchor: heard - anchor,
+        deviceRate: _deviceRate,
       ),
     );
   }

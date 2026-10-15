@@ -10,11 +10,10 @@
 /// nothing, the anchor was heard before the microphone opened — a take
 /// begun mid-roll — and that much silence goes before the take instead.
 ///
-/// [heard] is the sample heard on the playback device at one moment, at
-/// [deviceRate]; [captured] is what the microphone had taken in at that
-/// same moment, at [captureRate]. The anchor was heard `heard - anchor` of
-/// the device's samples before that moment, and the microphone had taken in
-/// that much less of its own by then.
+/// [captured] is what the microphone had taken in at one moment, at
+/// [captureRate]; the anchor was heard [sinceTheAnchor] of the playback
+/// device's samples before that moment, at [deviceRate], and the microphone
+/// had taken in that much less of its own by then.
 ///
 /// ↩️The head was ESTIMATED — the device's output latency, plus the run-up
 /// to a punch and the count-in — as if the roll started the instant the
@@ -25,9 +24,8 @@
 /// later: every take landed late by all of it. One reading of two clocks
 /// on one clock replaces all four terms.
 int samplesBeforeTheAnchor({
-  required int heard,
-  required int anchor,
-  required int deviceRate,
   required int captured,
   required int captureRate,
-}) => captured - ((heard - anchor) * captureRate / deviceRate).round();
+  required int sinceTheAnchor,
+  required int deviceRate,
+}) => captured - (sinceTheAnchor * captureRate / deviceRate).round();

@@ -8,11 +8,10 @@ void main() {
       'microphone had taken in then', () {
     expect(
       samplesBeforeTheAnchor(
-        heard: 96000,
-        anchor: 96000,
-        deviceRate: 48000,
         captured: 30000,
         captureRate: 48000,
+        sinceTheAnchor: 0,
+        deviceRate: 48000,
       ),
       30000,
     );
@@ -24,11 +23,10 @@ void main() {
     // microphone takes in 48k.
     expect(
       samplesBeforeTheAnchor(
-        heard: 4410 + 4410,
-        anchor: 4410,
-        deviceRate: 44100,
         captured: 30000,
         captureRate: 48000,
+        sinceTheAnchor: 4410,
+        deviceRate: 44100,
       ),
       30000 - 4800,
     );
@@ -38,11 +36,10 @@ void main() {
       'nothing — the silence that goes before the take', () {
     expect(
       samplesBeforeTheAnchor(
-        heard: 48000 + 2400,
-        anchor: 48000,
-        deviceRate: 48000,
         captured: 1200,
         captureRate: 48000,
+        sinceTheAnchor: 2400,
+        deviceRate: 48000,
       ),
       -1200,
     );
