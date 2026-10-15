@@ -189,10 +189,7 @@ void main() {
       expect(decoded, isNull, reason: 'no OS stack to read it here');
       return;
     }
-    if (decoded == null && !Platform.isWindows) {
-      // Media Foundation was measured (10-06, 10-09); the other stacks have
-      // not met a movie's PCM yet.
-      markTestSkipped('this OS stack does not read a movie\'s PCM');
+    if (_movieUnreadHere(decoded)) {
       return;
     }
     expect(decoded, isNotNull, reason: 'Media Foundation reads it');
@@ -244,8 +241,7 @@ void main() {
         expect(decoded, isNull, reason: '$shape: no OS stack to read it here');
         continue;
       }
-      if (decoded == null && !Platform.isWindows) {
-        markTestSkipped('this OS stack does not read a movie\'s PCM');
+      if (_movieUnreadHere(decoded)) {
         return;
       }
       expect(decoded, isNotNull, reason: '$shape: Media Foundation reads it');
@@ -350,8 +346,7 @@ void main() {
       expect(decoded, isNull);
       return;
     }
-    if (decoded == null && !Platform.isWindows) {
-      markTestSkipped('this OS stack does not read a movie\'s PCM');
+    if (_movieUnreadHere(decoded)) {
       return;
     }
     expect(decoded!.length, samples.length ~/ 2);
@@ -443,11 +438,12 @@ void main() {
     expect(decoder, isNotNull);
     final directory = Directory.systemTemp.createTempSync('qa_window');
     deleteAfterSessionEnds(directory);
+    final movie = pcmMovie(
+      _roomToneThenTone(),
+      edits: [(from: 480, keep: 24000)],
+    );
     for (final (what, bytes) in [
-      (
-        'a movie\'s PCM',
-        pcmMovie(_roomToneThenTone(), edits: [(from: 480, keep: 24000)]),
-      ),
+      if (!_movieUnreadHere(decodeAudioBytes(movie))) ('a movie\'s PCM', movie),
       ('an m4a', fixtureBytes()),
       ('an ogg', File('test/fixtures/tone.ogg').readAsBytesSync()),
     ]) {
@@ -871,15 +867,14 @@ void main() {
       return (path: path, offset: 0, length: bytes.length, framed: false);
     }
 
+    final movie = pcmMovie(
+      _roomToneThenTone(),
+      edits: [(from: 480, keep: 24000)],
+    );
     final framed = framedMovie('test/fixtures/tone_with_video.mp4');
     for (final (what, span) in [
-      (
-        'a movie\'s PCM',
-        written(
-          'pcm.mov',
-          pcmMovie(_roomToneThenTone(), edits: [(from: 480, keep: 24000)]),
-        ),
-      ),
+      if (!_movieUnreadHere(decodeAudioBytes(movie)))
+        ('a movie\'s PCM', written('pcm.mov', movie)),
       ('an m4a', written('tone.m4a', fixtureBytes())),
       (
         'an ogg',
@@ -951,6 +946,18 @@ Uint8List wav16(Float32List samples, {int channels = 1, int rate = 48000}) {
     ),
     ...pcm,
   ]);
+}
+
+/// Whether [decoded] — a movie's PCM — went unread by the OS stack this runs
+/// on: said as a skip, never passed over. Media Foundation reads it (measured
+/// 10-06 · 10-09) and Linux has no stack to (its tests say so); AudioToolbox
+/// on the macOS CI runner does not (10-15).
+bool _movieUnreadHere(QaDecodedAudio? decoded) {
+  if (decoded != null || Platform.isWindows || Platform.isLinux) {
+    return false;
+  }
+  markTestSkipped('this OS stack does not read a movie\'s PCM');
+  return true;
 }
 
 /// One second of 48 kHz stereo: half a second of room tone — the few steps

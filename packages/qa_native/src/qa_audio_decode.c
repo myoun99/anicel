@@ -316,7 +316,9 @@ static int qa_audio_mp3_may_try(qa_audio_cursor* cursor) {
 // the format has no place to say it, from the format's standard delay (an
 // MP3 without the tag: 1,105, LAME's own; AAC's: 1,024, one frame). A
 // decoder that already took some off says how much, and only the rest is
-// taken: dr_mp3 by the LAME tag, AudioToolbox by its packet table.
+// taken: dr_mp3 by the LAME tag. AudioToolbox, which trims by a packet
+// table of its own, is told to trim nothing where this part reads the
+// start, and says what it took of anything else.
 //
 // A MOVIE THAT SAYS NOTHING — its sound track has no edit list — takes the
 // standard of its sound's format off too (user 2026-10-09, Q6: 「Q3 그대로 —
@@ -1222,6 +1224,15 @@ static void qa_os_close(qa_audio_stream* stream) {
 
 static const qa_audio_backend qa_os_backend = {qa_os_next, qa_os_close};
 
+/// Whether [qa_audio_os_start] reads where [cursor]'s sound starts — a
+/// movie's, or a bare ADTS stream's. Any other container's start is its
+/// decoder's to say.
+static int qa_audio_start_is_read_here(const qa_audio_cursor* cursor) {
+  uint8_t head[8] = {0};
+  qa_media_span_read(cursor->span, 0, head, sizeof(head));
+  return qa_audio_head_is_a_movie_box(head) || qa_audio_is_adts(cursor);
+}
+
 static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
   qa_os_decoder* os = &stream->decoder.os;
   memset(os, 0, sizeof(*os));
@@ -1234,20 +1245,22 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
     return 0;
   }
 
-  // ⚠️AudioToolbox takes a file's priming off ITSELF, by the packet table it
-  // read from the file (an edit list, iTunes' gapless note) — so it is asked
-  // how much, and the one place that counts a lead counts only the rest
-  // (user 2026-10-09, Q4: 「끌 수 없으면 걷은 만큼을 알아내 맞춘다」).
-  // ⚠️Not measured on a Mac: the CI's tone.m4a pin is the first to ask.
-  {
-    AudioFilePacketTableInfo table;
-    UInt32 table_size = sizeof(table);
-    memset(&table, 0, sizeof(table));
-    if (ExtAudioFileGetProperty(os->ext, kExtAudioFileProperty_PacketTable,
-                                &table_size, &table) == noErr &&
-        table.mPrimingFrames > 0) {
-      start->taken = table.mPrimingFrames;
-    }
+  // 🚨AudioToolbox trims a file's priming off ITSELF, by a packet table it
+  // keeps — for a movie that says nothing, Apple's own assumption, 2,112
+  // (the macOS CI runner, 2026-10-15: the m4a without its edit list began
+  // on its sine's 1,088th frame, and the movie Media Foundation wrote, 22
+  // packets, came back 22 × 1,024 − 2,112 with its mark or without). This
+  // app's law there is its format's standard, or nothing (Q6 · Q7), so where
+  // this file reads the start the trimming is turned off at both ends — 0
+  // overrides what the file stores (ExtendedAudioFile.h) — before the client
+  // format, so the decoder is made with it (user 2026-10-09, Q4: 「OS 가
+  // 스스로 걷는 플랫폼에서는 그 걷기를 끄거나, 끌 수 없으면 걷은 만큼을 알아내
+  // 맞춘다」).
+  if (qa_audio_start_is_read_here(&stream->cursor)) {
+    AudioFilePacketTableInfo none;
+    memset(&none, 0, sizeof(none));
+    ExtAudioFileSetProperty(os->ext, kExtAudioFileProperty_PacketTable,
+                            sizeof(none), &none);
   }
 
   AudioStreamBasicDescription source;
@@ -1274,6 +1287,20 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
                               sizeof(client), &client) != noErr) {
     qa_os_close(stream);
     return 0;
+  }
+
+  // What it still trims — a container whose start is its decoder's to say
+  // (a CAF's own packet table), or an override it would not take — it says,
+  // the value it reads with, and only the rest is counted.
+  {
+    AudioFilePacketTableInfo table;
+    UInt32 table_size = sizeof(table);
+    memset(&table, 0, sizeof(table));
+    if (ExtAudioFileGetProperty(os->ext, kExtAudioFileProperty_PacketTable,
+                                &table_size, &table) == noErr &&
+        table.mPrimingFrames > 0) {
+      start->taken = table.mPrimingFrames;
+    }
   }
   stream->backend = &qa_os_backend;
   stream->format = QA_AUDIO_FORMAT_OS;
