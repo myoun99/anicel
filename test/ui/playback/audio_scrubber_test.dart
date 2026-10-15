@@ -571,13 +571,23 @@ void main() {
 
     test('a scrub\'s window reaches a second behind and two ahead — and moves '
         'once a drag is past half its lead', () async {
-      openNullDevice();
+      final device = openNullDevice();
       final scrubber = await scrubbing();
       final window = scrubber.debugWindow;
 
       scrubber.onScrubFrame(1000);
       expect(window.reach, AudioStreamingWindow.scrubbing);
       expect(window.centerSample, 1000 * 4800);
+      expect(await _waitFor(() => !device.isPlaying), isTrue);
+      // Five seconds on, the device holds nothing to play.
+      device.play(startSample: 1050 * 4800, stopSample: 1051 * 4800);
+      expect(await _waitFor(() => !device.isPlaying), isTrue);
+      expect(
+        device.peakFor(0),
+        0,
+        reason: 'three seconds were read where the drag stood — ↩️the '
+            'playing reach read thirty-two',
+      );
       scrubber.onScrubFrame(1010); // a second on: half the lead
       expect(window.centerSample, 1000 * 4800);
       scrubber.onScrubFrame(1011);
