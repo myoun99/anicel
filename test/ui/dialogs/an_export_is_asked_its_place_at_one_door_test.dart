@@ -278,8 +278,8 @@ void main() {
     /// Hands `line.wav` over on [os], the save window answering [place]:
     /// the names the save window was asked, the paths the write was
     /// handed, what the picker that places a made file was handed, and
-    /// where the door says the file is. The write makes its file either
-    /// way, and says it did when [writes].
+    /// where the door says the file is. The write makes its file when
+    /// [makes], and says it did when [writes].
     Future<
       ({
         List<String> asked,
@@ -288,7 +288,12 @@ void main() {
         String? placed,
       })
     >
-    handOver(WidgetTester tester, String os, {bool writes = true}) async {
+    handOver(
+      WidgetTester tester,
+      String os, {
+      bool writes = true,
+      bool makes = true,
+    }) async {
       FolderPicker.debugOperatingSystem = os;
       final asked = <String>[];
       FolderPicker.debugSaveDestinationPicker =
@@ -308,7 +313,9 @@ void main() {
         suggestedName: 'line.wav',
         write: (path) async {
           written.add(path);
-          File(path).writeAsStringSync('the take');
+          if (makes) {
+            File(path).writeAsStringSync('the take');
+          }
           return writes;
         },
       );
@@ -382,6 +389,16 @@ void main() {
         isFalse,
         reason: 'the room goes with what it made',
       );
+    });
+
+    testWidgets('a write that says it made the file but made none hands '
+        'nothing over on the Mac\'s road — there is nothing to move, and '
+        'nothing is thrown', (tester) async {
+      final handed = await handOver(tester, 'macos', makes: false);
+
+      expect(handed.written, hasLength(1), reason: '⛔premise: it was asked');
+      expect(handed.placed, isNull);
+      expect(standing(), isEmpty);
     });
   });
 }
