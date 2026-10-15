@@ -901,15 +901,17 @@ void main() {
       }
       // The a11y surface moved from a per-cell Semantics widget to the row
       // painter's semanticsBuilder — still a real semantics tree, just not
-      // one `find.bySemanticsLabel` can see.
+      // one `find.bySemanticsLabel` can see — and says the row in one
+      // sentence (I-57-Q3 c): both keys, at their frames.
       final semantics = tester.ensureSemantics();
       await tester.pumpAndSettle();
       expect(
-        timelineCellSemanticsLabels(
-          tester,
-          'lane-cam-layer',
-        ).where((label) => label == 'camera keyframe'),
-        hasLength(2),
+        RegExp(r'camera keyframe, frame (\d+)')
+            .allMatches(
+              timelineCellSemanticsLabels(tester, 'lane-cam-layer').join('\n'),
+            )
+            .map((match) => match.group(1)),
+        ['1', '9'],
       );
       semantics.dispose();
     });

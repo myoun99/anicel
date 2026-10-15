@@ -145,9 +145,32 @@ void main() {
           'its block off both neighbours — for a sentence that reads its '
           'exposure: the largest cost of a cut crossing\'s frame (I-57)',
     );
+    // Blocks of 3, 7, 2, 12 and 5 from frame 1: each block's first cell
+    // and its hold, in ONE node (I-57-Q3 c).
+    String say(int frame) => painter.cellModelAt(frame).semanticsLabel!;
     expect(said, [
-      for (var frame = 0; frame < 40; frame += 1)
-        ?painter.cellModelAt(frame).semanticsLabel,
+      '${say(0)}, frame 1; ${say(1)}, frames 2 to 3; '
+          '${say(3)}, frame 4; ${say(4)}, frames 5 to 10; '
+          '${say(10)}, frame 11; ${say(11)}, frame 12; '
+          '${say(12)}, frame 13; ${say(13)}, frames 14 to 24; '
+          '${say(24)}, frame 25; ${say(25)}, frames 26 to 29',
+    ]);
+  });
+
+  test('blocks side by side that read alike are said as blocks — a block\'s '
+      'first cell never carries on the one before', () {
+    // Every block is named alike: three blocks of a frame, then one of two.
+    final (:painter, asked: _) = countedRow(
+      rowLayer(lengths: const [1, 1, 1, 2]),
+      cellExtent: 24,
+      frames: 6,
+    );
+    final said = painter.semanticsBuilder(const Size(144, 28));
+    String say(int frame) => painter.cellModelAt(frame).semanticsLabel!;
+    expect(say(0), say(1), reason: 'premise: the blocks read alike');
+    expect([for (final node in said) node.properties.label], [
+      '${say(0)}, frame 1; ${say(1)}, frame 2; ${say(2)}, frame 3; '
+          '${say(3)}, frame 4; ${say(4)}, frame 5',
     ]);
   });
 

@@ -1295,10 +1295,9 @@ class TimelineRowCellsPainter extends CustomPainter
     devicePixelRatio,
   );
 
-  // One semantics node per NON-EMPTY cell (labels only where content
-  // exists), windowed with the paint pass — the per-cell widget tree
-  // used to emit these; the painted rows keep the a11y surface without
-  // the widget cost.
+  // The row's window said in ONE node — what each non-empty cell says, in
+  // frame order ([frameWindowSentence], I-57-Q3 c), windowed with the paint
+  // pass.
   //
   // 🚨ONLY WHAT THE SENTENCE READS (I-57, 10-14). It asked each cell for
   // its whole model outside any pass — the block off both neighbours, the
@@ -1308,20 +1307,30 @@ class TimelineRowCellsPainter extends CustomPainter
   // asked once and no pass has anything to keep.
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
-      (size) => frameWindowSemantics(
+      (size) => frameWindowSentence(
         window: visibleFrameWindow(),
         rectFor: cellRectFor,
-        labelFor: _semanticsLabelAt,
+        cellAt: _semanticsCellAt,
       );
 
   /// What the cell at [frameIndex] says to a screen reader — its model's
   /// [TimelineRowCellModel.semanticsLabel], read off the two things the
-  /// sentence is made of.
-  String? _semanticsLabelAt(int frameIndex) => timelineCellSemanticsLabel(
-    layerKind: layer.kind,
-    exposureState: _stateAt(frameIndex),
-    frameName: frameNameForLayer?.call(layer, frameIndex),
-  );
+  /// sentence is made of — and whether it carries on the run before it: a
+  /// cell inside a block does, the block's first cell begins its own.
+  ({String label, bool runsOn})? _semanticsCellAt(int frameIndex) {
+    final state = _stateAt(frameIndex);
+    final label = timelineCellSemanticsLabel(
+      layerKind: layer.kind,
+      exposureState: state,
+      frameName: frameNameForLayer?.call(layer, frameIndex),
+    );
+    return label == null
+        ? null
+        : (
+            label: label,
+            runsOn: state != TimelineCellExposureState.drawingStart,
+          );
+  }
 }
 
 /// The painted cell strip + its row-level interaction, shared by the
