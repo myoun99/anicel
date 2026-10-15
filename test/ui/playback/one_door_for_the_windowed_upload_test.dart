@@ -4,8 +4,8 @@ import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
 /// The one door the transport and the scrubber both go through, so
-/// streamed playback and streamed scrubbing drive the device on identical
-/// geometry. Nothing named it (2026-09-05).
+/// streamed playback and streamed scrubbing drive the device by one upload,
+/// each over its own reach. Nothing named it (2026-09-05).
 ///
 /// 🚨FALSE means "nothing was uploaded", and the caller's contract hangs
 /// on it: no mix held, no device, an incomplete upload, or a device that
@@ -64,8 +64,9 @@ void main() {
     }
   });
 
-  test('the geometry has ONE home, and both surfaces read it there', () {
-    expect(AudioStreamingWindow.backSeconds, 2);
-    expect(AudioStreamingWindow.aheadSeconds, 30);
+  test('each reach has ONE home, and a window that says none plays', () {
+    expect(AudioStreamingWindow.playing, (backSeconds: 2, aheadSeconds: 30));
+    expect(AudioStreamingWindow.scrubbing, (backSeconds: 1, aheadSeconds: 2));
+    expect(AudioStreamingWindow().reach, AudioStreamingWindow.playing);
   });
 }

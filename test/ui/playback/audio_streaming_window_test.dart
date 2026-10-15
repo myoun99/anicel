@@ -32,8 +32,8 @@ windowedUpload({
   conformStore: conformStore,
   deviceRate: deviceRate,
   centerSample: centerSample,
-  backSeconds: AudioStreamingWindow.backSeconds,
-  aheadSeconds: AudioStreamingWindow.aheadSeconds,
+  backSeconds: AudioStreamingWindow.playing.backSeconds,
+  aheadSeconds: AudioStreamingWindow.playing.aheadSeconds,
 )?.readHere();
 
 void main() {

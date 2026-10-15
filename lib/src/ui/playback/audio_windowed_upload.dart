@@ -10,16 +10,24 @@ import '../../services/audio/audio_mixer_reference.dart'
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
 
+/// How far a streaming window reaches behind where it is centred and ahead
+/// of it ([AudioStreamingWindow.reach]).
+typedef StreamWindowReach = ({int backSeconds, int aheadSeconds});
+
 /// THE STREAMING WINDOW a device is currently playing out of: the mix it
 /// was built from, whether anything in it streams, and where the window is
 /// centred — plus the one upload that moves it.
 ///
-/// The transport and the scrubber both own one of these, so streamed
-/// playback and streamed scrubbing drive the device on identical geometry.
-/// Each used to keep the three fields and a byte-identical private upload
-/// of its own around one shared free function.
+/// The transport, the media viewer's sound and the scrubber each own one of
+/// these: one upload, and one law for when a window moves
+/// ([wantsRecentreAt]) — each over the reach its motion needs ([playing],
+/// [scrubbing]). Each used to keep the three fields and a byte-identical
+/// private upload of its own around one shared free function.
 class AudioStreamingWindow {
-  AudioStreamingWindow({this.readWindows = readStreamWindowsOnAWorker});
+  AudioStreamingWindow({
+    this.readWindows = readStreamWindowsOnAWorker,
+    this.reach = playing,
+  });
 
   /// How an advance reads its windows: on a worker, into buffers of the
   /// device's own ([readStreamWindowsOnAWorker]) — null when one did not
@@ -30,16 +38,27 @@ class AudioStreamingWindow {
   )
   readWindows;
 
-  /// Streaming window geometry (AUDIO-PRO R6). A window trails a little
-  /// (loop wraps and small seeks land just behind the playhead) and leads
-  /// a lot (the next advance must upload long before the mix reads past
-  /// the edge). ~5.5 MB per streaming stereo clip resident at a time.
+  /// A stream that PLAYS (AUDIO-PRO R6). A window trails a little (loop
+  /// wraps and small seeks land just behind the playhead) and leads a lot
+  /// (the next advance must upload long before the mix reads past the
+  /// edge). ~5.5 MB per streaming stereo clip resident at a time.
   ///
-  /// Reused so scrub and playback stream on the same geometry
-  /// (AUDIO-PRO R6) — the numbers were spelled four times across this
-  /// layer before they had a home.
-  static const int backSeconds = 2;
-  static const int aheadSeconds = 30;
+  /// The numbers were spelled four times across this layer before they had
+  /// a home.
+  static const StreamWindowReach playing = (backSeconds: 2, aheadSeconds: 30);
+
+  /// A SCRUB: a frame's slice at a time, backwards as often as forwards,
+  /// each window read where the drag stands (scrub-recentres-by-its-own-
+  /// rule, 10-15). A second behind and two ahead hold the longest slice — a
+  /// whole second, at one frame a second — past a move of half the lead.
+  /// ↩️A scrub read the playing reach: 32 seconds at the gesture's first
+  /// frame, and again every two seconds of a drag backwards, on the thread
+  /// that draws — 🔬15ms a read (30 seconds read in place, the AMMI OP
+  /// press, 10-15): two frames lost at 144Hz, each time.
+  static const StreamWindowReach scrubbing = (backSeconds: 1, aheadSeconds: 2);
+
+  /// How far this window reaches ([playing], [scrubbing]).
+  final StreamWindowReach reach;
 
   /// The mix this window streams, kept so a window advance can rebuild
   /// sources without re-deriving the timeline. Set it before [upload].
@@ -53,12 +72,19 @@ class AudioStreamingWindow {
   int centerSample = 0;
 
   /// Whether a stream that has got to [positionSamples] needs this window
-  /// centred on it again: past halfway to its leading edge — which leaves
-  /// ~15 s before the mix could read past it — or behind its trailing one.
+  /// centred on it again: past halfway to its leading edge — for one that
+  /// plays, ~15 s before the mix could read past it — or behind its
+  /// trailing one.
+  ///
+  /// 🚨ONE LAW for every surface that streams (scrub-recentres-by-its-own-
+  /// rule, 10-15). The scrubber asked its own — more than half the playing
+  /// lead away, either way — and a drag 2~15 s behind the centre, outside
+  /// the window, played silence.
   bool wantsRecentreAt(int positionSamples, int deviceRate) =>
       hasStreaming &&
-      (positionSamples > centerSample + (aheadSeconds * deviceRate) ~/ 2 ||
-          positionSamples < centerSample - backSeconds * deviceRate);
+      (positionSamples >
+              centerSample + (reach.aheadSeconds * deviceRate) ~/ 2 ||
+          positionSamples < centerSample - reach.backSeconds * deviceRate);
 
   /// An advance is out — polls cannot stack disk reads.
   bool _advancing = false;
@@ -132,8 +158,8 @@ class AudioStreamingWindow {
       conformStore: conformStore,
       deviceRate: now.deviceRate,
       centerSample: centerSample,
-      backSeconds: backSeconds,
-      aheadSeconds: aheadSeconds,
+      backSeconds: reach.backSeconds,
+      aheadSeconds: reach.aheadSeconds,
     );
     if (plan == null) {
       return;
@@ -177,8 +203,8 @@ class AudioStreamingWindow {
       conformStore: conformStore,
       deviceRate: deviceRate,
       centerSample: centerSample,
-      backSeconds: backSeconds,
-      aheadSeconds: aheadSeconds,
+      backSeconds: reach.backSeconds,
+      aheadSeconds: reach.aheadSeconds,
     )?.readHere(place: device.newSamples);
     return prepared != null && _put(device, prepared, centerSample);
   }

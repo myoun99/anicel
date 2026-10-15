@@ -122,8 +122,8 @@ void main() {
     conformStore: store,
     deviceRate: sampleRate,
     centerSample: centerSample,
-    backSeconds: AudioStreamingWindow.backSeconds,
-    aheadSeconds: AudioStreamingWindow.aheadSeconds,
+    backSeconds: AudioStreamingWindow.playing.backSeconds,
+    aheadSeconds: AudioStreamingWindow.playing.aheadSeconds,
   )!;
 
   void expectTheDecode(AudioMixSource window, Float32List decoded) {
