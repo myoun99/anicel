@@ -112,9 +112,19 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(device.isPlaying, isFalse, reason: 'the press only arms it');
 
+    // The look starts the device and then reads it: by the reading the
+    // device has played no more than the look took, past what it holds.
+    // ↩️Read as exactly 1, a look the machine was busy through failed
+    // (1.02 — 960 samples — in a loaded gate run, 저장 10-15).
+    final look = Stopwatch()..start();
+    final heard = sound.heardAt()!.seconds;
+    look.stop();
     expect(
-      sound.heardAt()!.seconds,
-      1,
+      heard,
+      inInclusiveRange(
+        1,
+        1 + look.elapsedMicroseconds / 1e6 + device.latencySamples / rate,
+      ),
       reason: '↩️started at the press, the first look read 1.3 seconds less '
           'the device\'s latency',
     );
