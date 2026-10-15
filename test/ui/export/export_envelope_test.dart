@@ -224,17 +224,19 @@ void main() {
           }
         }
 
-        final full = await printed(size: 1, perPixel: 2);
+        // Either side of the display law's line, one: a scale handed in a
+        // quarter wrong crosses it.
+        final full = await printed(size: 1, perPixel: 1.25);
         expect(full, containsAll([0, 255]), reason: 'LIVENESS: the file');
         expect(
           full.every(isPure),
           isTrue,
-          reason: 'two of the sheet\'s pixels to one of the file: hard-edged',
+          reason: 'a pixel of the file over one of the sheet\'s: hard-edged',
         );
         expect(
           (await printed(size: 0.5, perPixel: 0.75)).any(isGrey),
           isTrue,
-          reason: 'fewer than one: smoothed',
+          reason: 'under one: smoothed',
         );
       });
     });
