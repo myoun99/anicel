@@ -950,15 +950,17 @@ void main() {
       return (head: head, again: again);
     }
 
-    // ⚠️A SECOND APART, AND A QUARTER OF IT TO SPARE (10-15). The null
-    // devices are threads, not hardware: an OS that starves one holds its
-    // line back, or lets it run up to its whole latency past its last
-    // callback — on the macOS runner the two measures of one take stood
-    // 56ms apart (run 38724122175; 3ms on Windows). What these pin is WHICH
-    // moment a head is of, and a head of the wrong moment is off by the
-    // whole second — so a quarter of it is the line between the two.
-    // ↩️A third of a second with 50ms to spare, and a quarter second with
-    // 20ms: both sat inside what a starved thread can move.
+    // ⚠️FAR APART, AND A QUARTER OF IT TO SPARE (10-15). The null devices
+    // are threads, not hardware: an OS that starves one holds its line
+    // back, or lets it run up to its whole latency past its last callback —
+    // on the macOS runner the two measures of one take stood 56ms apart
+    // (run 38724122175; 3ms on Windows). What these pin is WHICH moment a
+    // head is of, and a head of the wrong moment is off by the whole
+    // interval — so a quarter of it is the line between the two. ↩️A third
+    // of a second with 50ms to spare, and a quarter second with 20ms: both
+    // sat inside what a starved thread can move. (The measure again stays
+    // inside the run's first pass — 0.8s from frame 2 — for a wrap arms the
+    // line afresh.)
     test('a roll that starts a second after the microphone puts a second '
         'more on the head', () async {
       final onTime = await takeWithItsRoll();
@@ -972,14 +974,14 @@ void main() {
       );
     }, skip: skip);
 
-    test('the head is of the moment the anchor was heard: measured a second '
+    test('the head is of the moment the anchor was heard: measured 0.4s '
         'later, it measures the same', () async {
       final take = await takeWithItsRoll(
-        readAgainAfter: const Duration(seconds: 1),
+        readAgainAfter: const Duration(milliseconds: 400),
       );
       expect(
         take.again,
-        closeTo(take.head, 12000),
+        closeTo(take.head, 4800),
         reason: 'what was taken in since comes off with the time since',
       );
     }, skip: skip);
