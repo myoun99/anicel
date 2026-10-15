@@ -123,6 +123,27 @@ List<SheetInkWindow> conteInkWindows(
   ];
 }
 
+/// Every window the pen is heard through over [pages] — each page's bands
+/// moved to where it lies in the book's stack ([conteInkWindows]), and
+/// [pictureWindows] above them all — bottom of the stack first. ONE list
+/// for the ink layer and the photo drop: a pool picture dropped on the
+/// sheet lands where a stroke started there writes (I-97).
+List<SheetWindow> conteSheetWindows(
+  List<ConteShownPage> pages, {
+  required List<SheetPictureWindow> pictureWindows,
+  String Function(ContePlacedCell cell)? unwrittenInkIdOf,
+  String? Function(ContePlacedCell cell)? refusalOf,
+}) => [
+  for (final (:page, :at) in pages)
+    for (final window in conteInkWindows(
+      page,
+      unwrittenInkIdOf: unwrittenInkIdOf,
+      refusalOf: refusalOf,
+    ))
+      window.shiftedBy(at),
+  ...pictureWindows,
+];
+
 /// The conte's ink input/display stack: every window hosts the SAME
 /// interactive brush view the drawing canvas uses, windowed onto its
 /// surface by a derived viewport ([SheetInkLayer]) — the sheet's own ink
@@ -197,16 +218,12 @@ class ConteInkLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
-      windows: [
-        for (final (:page, :at) in pages)
-          for (final window in conteInkWindows(
-            page,
-            unwrittenInkIdOf: unwrittenInkIdOf,
-            refusalOf: refusalOf,
-          ))
-            window.shiftedBy(at),
-        ...pictureWindows,
-      ],
+      windows: conteSheetWindows(
+        pages,
+        pictureWindows: pictureWindows,
+        unwrittenInkIdOf: unwrittenInkIdOf,
+        refusalOf: refusalOf,
+      ),
       keyPrefix: 'conte',
       viewport: viewport,
       brushToolState: brushToolState,

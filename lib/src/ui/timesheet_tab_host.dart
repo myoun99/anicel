@@ -29,6 +29,7 @@ import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
 import 'timesheet/timesheet_strata.dart';
 import 'sheet/sheet_image_cache.dart' show SheetImageLookup;
+import 'sheet/sheet_photo_drop.dart';
 
 /// The Timesheet tab's content: the active cut rendered as a paper
 /// timesheet DOCUMENT (not an editing grid) inside the canvas panel shell,
@@ -513,6 +514,21 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 cacheInvalidationSink: _cacheInvalidationSink,
                                 imageFor: widget.imageFor,
                                 imageRepaint: widget.imageRepaint,
+                              ),
+                            ),
+                          // A pool picture dropped on a page is its photo
+                          // (I-97).
+                          if (inkController != null)
+                            Positioned.fill(
+                              child: SheetPhotoDrop(
+                                session: session,
+                                ink: inkController,
+                                windows: () => timesheetInkWindows(
+                                  layout: layout,
+                                  cutId: _documentCut!.id,
+                                ),
+                                viewport: viewport,
+                                cacheInvalidationSink: _cacheInvalidationSink,
                               ),
                             ),
                           // The playhead row highlight repaints ALONE (R13-2):

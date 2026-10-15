@@ -137,23 +137,4 @@ class CutEnvelopeLayout {
   List<PlacedEnvelopeBox> get placedBoxes => [
     for (final box in form.boxes) place(box),
   ];
-
-  /// The ink box a point lands in.
-  ///
-  /// Boxes are searched in REVERSE order so a small cell drawn over a
-  /// larger one wins — the presets stack a length cell under its three
-  /// readings, and the reading boxes take no ink at all, so what is left
-  /// is the innermost box that actually wants strokes.
-  EnvelopeBox? inkBoxAt(double x, double y) {
-    for (var index = form.boxes.length - 1; index >= 0; index -= 1) {
-      final box = form.boxes[index];
-      if (!box.takesInk) {
-        continue;
-      }
-      if (place(box).contains(x, y)) {
-        return box;
-      }
-    }
-    return null;
-  }
 }

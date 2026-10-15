@@ -61,11 +61,6 @@ void main() {
     expect(spelling('buildCutPasteDab(').files, [
       'lib/src/services/cut_piece_stamp.dart',
       'lib/src/ui/brush/brush_canvas_panel.dart',
-      // ⛔Not a road onto CELS: a picture dropped on the envelope lands on
-      // the sheet's ink, through the window it was dropped on — the pen's
-      // funnel there, which has no ladder and no cel to name. It borrows
-      // the builder for 「this picture, with its corner here」.
-      'lib/src/ui/envelope/envelope_picture_drop.dart',
       'lib/src/ui/session/pixel_verbs.dart',
     ]);
   });

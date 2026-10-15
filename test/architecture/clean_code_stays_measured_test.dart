@@ -413,7 +413,16 @@ void main() {
   /// `paintSheetPhotos` takes, so an export samples a photo as the screen
   /// does. 🔬`clean_code_diff` against the lane's last commit before it
   /// (`93327c20a`, at 396) named that one added and nothing gone.
-  const wideSignatures = 397;
+  ///
+  /// ⚠️397 → 398 on 2026-10-15, named as the rule above asks (I-97, a pool
+  /// picture dropped on a sheet's band is a photo in it — 유저 2026-10-15:
+  /// 「원본 크기, 칸보다 크면 칸에 맞게」). `SheetInkController.putPhoto`
+  /// (five) is `commitStroke` (five) said of a photo: the plane and the cel
+  /// a window writes to, what goes on it, the history it is one step of and
+  /// the sink a stroke's commit tells — so a photo lands through the door a
+  /// stroke does. 🔬`clean_code_diff` against the lane's last commit before
+  /// it (`f99fdc4ff`, at 397) named that one added and nothing gone.
+  const wideSignatures = 398;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -776,7 +785,17 @@ void main() {
   /// beside its synchronous twin as a plain function (`_composed`, counted
   /// among the long bodies above). 🔬`clean_code_diff` against master
   /// (`01986af08`) named that one gone and none added.
-  const longClasses = 62;
+  ///
+  /// ⚠️62 → 63 on 2026-10-15, ONE name: `_ConteTabHostState` crossed
+  /// (569 → 624) in I-97 — a pool picture dropped on the pages on screen is
+  /// a photo in the band a stroke started there writes in, so the drop asks
+  /// the windows the ink layer draws (the same bands, picture slots and
+  /// refusals) and makes the block or the next cut the stroke would; the
+  /// growth is the drop's mount and the helpers the ink layer now shares
+  /// with it. 🔬`clean_code_diff` against `f99fdc4ff` names this one and no
+  /// other class. ⛔Not split to fit: the windows are the host's state, read
+  /// where the ink layer reads them.
+  const longClasses = 63;
 
   late CleanCodeScan scan;
   setUpAll(() {

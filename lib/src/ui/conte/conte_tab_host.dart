@@ -24,6 +24,7 @@ import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
+import '../sheet/sheet_photo_drop.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/canvas_book.dart';
@@ -374,10 +375,22 @@ class _ConteTabHostState extends State<ConteTabHost> {
     if (shown.isEmpty || !_drawing || controller == null || tool == null) {
       return null;
     }
-    final drawn = [for (final (:page, :at) in shown) (_brushPageOf(page), at)];
+    final brush = _brushPages(shown);
     return (
       controller: controller,
       tool: tool,
+      pages: brush.pages,
+      project: brush.project,
+    );
+  }
+
+  /// [shown] — not empty — as the brush draws on them ([_brushPageOf]),
+  /// and the project they are laid from.
+  ({List<ConteShownPage> pages, Project project}) _brushPages(
+    List<ConteShownPage> shown,
+  ) {
+    final drawn = [for (final (:page, :at) in shown) (_brushPageOf(page), at)];
+    return (
       pages: [for (final (brush, at) in drawn) (page: brush.page, at: at)],
       project: drawn.first.$1.project,
     );
@@ -579,10 +592,42 @@ class _ConteTabHostState extends State<ConteTabHost> {
             ),
           ),
         if (ink != null) _inkLayer(ink, viewport, pictures!),
+        if (widget.inkController case final controller?
+            when shown.isNotEmpty)
+          _photoDrop(controller, shown, viewport),
         if (awaited != null) _waitFor(awaited),
       ],
     );
   }
+
+  /// A pool picture dropped on the pages on screen is a photo in the band
+  /// a stroke started there writes in — the block, or the next cut, made
+  /// as the stroke makes them (I-97).
+  Positioned _photoDrop(
+    ConteInkController controller,
+    List<ConteShownPage> shown,
+    CanvasViewport viewport,
+  ) => Positioned.fill(
+    child: SheetPhotoDrop(
+      session: _session,
+      ink: controller,
+      windows: () {
+        final brush = _brushPages(shown);
+        return conteSheetWindows(
+          brush.pages,
+          pictureWindows: _pictureWindowsOf(
+            brush.pages,
+            _picturesOf(brush.pages, brush.project),
+          ),
+          unwrittenInkIdOf: _unwrittenInkIdOf,
+          refusalOf: _refusalOfCell,
+        );
+      },
+      viewport: viewport,
+      beforeLanding: _makeWhatTheStrokeLandsIn,
+      cacheInvalidationSink: _cacheInvalidationSink,
+    ),
+  );
 
   /// What stands the pictures down once [prints] owes none
   /// ([_awaitingPrints]).
@@ -671,6 +716,21 @@ class _ConteTabHostState extends State<ConteTabHost> {
   String _unwrittenInkIdOf(ContePlacedCell cell) => _session.storyboardCursor
       .conteInkIdFor(CutId(cell.cutId), cell.source.startFrame);
 
+  /// Why [cell]'s band takes no ink ([_refusalFor]).
+  String? _refusalOfCell(ContePlacedCell cell) =>
+      _refusalFor(CutId(cell.cutId));
+
+  /// [pictures]' windows — each of [pages]' own — moved to where their
+  /// page lies.
+  List<SheetPictureWindow> _pictureWindowsOf(
+    List<ConteShownPage> pages,
+    List<List<ContePicture>> pictures,
+  ) => [
+    for (var index = 0; index < pages.length; index += 1)
+      for (final picture in pictures[index])
+        picture.window.shiftedBy(pages[index].at),
+  ];
+
   /// The one ink layer over the pages on screen: their bands' windows and
   /// their pictures' windows, each moved to where its page lies.
   Positioned _inkLayer(
@@ -692,14 +752,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
         strokeActive: _strokeHold,
         cacheInvalidationSink: _cacheInvalidationSink,
         pictures: widget.pictures,
-        pictureWindows: [
-          for (var index = 0; index < ink.pages.length; index += 1)
-            for (final picture in pictures[index])
-              picture.window.shiftedBy(ink.pages[index].at),
-        ],
+        pictureWindows: _pictureWindowsOf(ink.pages, pictures),
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
         unwrittenInkIdOf: _unwrittenInkIdOf,
-        refusalOf: (cell) => _refusalFor(CutId(cell.cutId)),
+        refusalOf: _refusalOfCell,
         beforeLanding: _makeWhatTheStrokeLandsIn,
         imageFor: widget.imageFor,
         imageRepaint: widget.imageRepaint,

@@ -47,3 +47,17 @@ class CelPhoto {
   @override
   String toString() => 'CelPhoto($id, ${reference.assetPath})';
 }
+
+/// The id a photo added to [photos] takes: one past the largest there.
+///
+/// ⚠️THE SECOND OF ITS KIND: `nextCelTextId` mints a cel's text ids the
+/// same way. Not shared under the rule of three (CLAUDE.md 절대명령 1).
+int nextCelPhotoId(Iterable<CelPhoto> photos) {
+  var largest = 0;
+  for (final photo in photos) {
+    if (photo.id > largest) {
+      largest = photo.id;
+    }
+  }
+  return largest + 1;
+}

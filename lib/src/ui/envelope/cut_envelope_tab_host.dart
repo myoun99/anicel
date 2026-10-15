@@ -24,10 +24,10 @@ import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_strata.dart';
 import 'cut_envelope_builder.dart';
 import '../sheet/sheet_ink_layer.dart';
+import '../sheet/sheet_photo_drop.dart';
 import 'cut_envelope_ink.dart';
 import 'cut_envelope_overlay.dart';
 import 'cut_envelope_painter.dart';
-import 'envelope_picture_drop.dart';
 
 /// The cut-envelope PANEL: the 봉투 as paper inside the canvas panel shell
 /// — the timesheet's and conte's architecture with envelope content.
@@ -268,15 +268,13 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     imageRepaint: widget.imageRepaint,
                   ),
                 ),
-              // A pool picture dropped on a box stamps it, brush or no
-              // brush: a drop is no stray mark for the switch to guard.
+              // A pool picture dropped on a box is its photo (I-97).
               if (inkController != null && owner != null)
                 Positioned.fill(
-                  child: EnvelopePictureDrop(
+                  child: SheetPhotoDrop(
                     session: session,
-                    layout: layout,
-                    windows: windows,
                     ink: inkController,
+                    windows: () => windows,
                     viewport: viewport,
                     cacheInvalidationSink: _cacheInvalidationSink,
                   ),

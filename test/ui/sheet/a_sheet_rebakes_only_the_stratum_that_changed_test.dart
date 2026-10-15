@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -32,6 +33,7 @@ import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/sheet/sheet_ink_controller.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_strata.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
@@ -39,6 +41,8 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
+
+import '../../helpers/cel_photo_fixture.dart';
 
 /// 🚨A SHEET RE-RECORDS ONLY THE STRATUM WHOSE PRINT CHANGED.
 ///
@@ -75,14 +79,14 @@ void main() {
     ],
   );
 
-  // Each sheet's strata, its host with its ink, and a stroke onto one of
-  // its surfaces through the session's history.
+  // Each sheet's strata, its host with its ink, and one of its surfaces to
+  // write on through the session's history.
   final sheets =
       <
         ({
           String sheet,
           Set<SheetStratum> strata,
-          (Widget Function(), void Function()) Function() mount,
+          (Widget Function(), _Written) Function() mount,
         })
       >[
         (
@@ -100,11 +104,9 @@ void main() {
                 imageFor: (_, {width}) => null,
                 imageRepaint: images,
               ),
-              () => ink.commitStroke(
-                plane: null,
+              (
+                ink: ink,
                 key: timesheetInkPageKey(session.requireActiveCut.id, 0),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
               ),
             );
           },
@@ -131,12 +133,7 @@ void main() {
                 imageFor: (_, {width}) => null,
                 imageRepaint: images,
               ),
-              () => ink.commitStroke(
-                plane: null,
-                key: conteInkRowKey(const CutId('39'), 'ink-0'),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
-              ),
+              (ink: ink, key: conteInkRowKey(const CutId('39'), 'ink-0')),
             );
           },
         ),
@@ -155,11 +152,9 @@ void main() {
                 imageFor: (_, {width}) => null,
                 imageRepaint: images,
               ),
-              () => ink.commitStroke(
-                plane: null,
+              (
+                ink: ink,
                 key: envelopeInkBoxKey(session.requireActiveCut.id, 'box'),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
               ),
             );
           },
@@ -168,11 +163,11 @@ void main() {
 
   for (final sheet in sheets) {
     // Pumps the sheet's host, rebuilt on every signal, and answers how many
-    // times each of its strata bakes for a change — and its stroke.
+    // times each of its strata bakes for a change — and where it is written.
     Future<
       (
         Future<Map<SheetStratum, int>> Function(void Function() change),
-        void Function(),
+        _Written,
       )
     >
     mount(WidgetTester tester) async {
@@ -186,7 +181,7 @@ void main() {
       addTearDown(brushAllowed.dispose);
       brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
       addTearDown(brushTool.dispose);
-      final (host, stroke) = sheet.mount();
+      final (host, written) = sheet.mount();
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -235,7 +230,7 @@ void main() {
         };
       }
 
-      return (rebakes, stroke);
+      return (rebakes, written);
     }
 
     Map<SheetStratum, int> only(Set<SheetStratum> rebaked) => {
@@ -252,12 +247,34 @@ void main() {
       );
     });
 
-    testWidgets('${sheet.sheet}: a stroke, and its undo, re-record the ink '
-        'alone', (tester) async {
-      final (rebakes, stroke) = await mount(tester);
-      expect(await rebakes(stroke), only({SheetStratum.ink}));
-      expect(await rebakes(session.undo), only({SheetStratum.ink}));
-    });
+    // A photo put on the ink is ink's (I-97): its print is the ink's own.
+    for (final (what, write) in <(String, void Function(_Written written))>[
+      (
+        'a stroke',
+        (written) => written.ink.commitStroke(
+          plane: null,
+          key: written.key,
+          strokeData: oneDab(),
+          historyManager: session.historyManager,
+        ),
+      ),
+      (
+        'a photo put',
+        (written) => written.ink.putPhoto(
+          plane: null,
+          key: written.key,
+          reference: photoOf(1).reference,
+          historyManager: session.historyManager,
+        ),
+      ),
+    ]) {
+      testWidgets('${sheet.sheet}: $what, and its undo, re-record the ink '
+          'alone', (tester) async {
+        final (rebakes, written) = await mount(tester);
+        expect(await rebakes(() => write(written)), only({SheetStratum.ink}));
+        expect(await rebakes(session.undo), only({SheetStratum.ink}));
+      });
+    }
 
     testWidgets('${sheet.sheet}: the brush switched on and off re-records '
         'the ink alone', (tester) async {
@@ -543,3 +560,6 @@ Finder _rastersOf(String sheet) => sheet == 'conte'
 RenderStaticRaster _contentOf(WidgetTester tester, String sheet) => tester
     .renderObjectList<RenderStaticRaster>(_rastersOf(sheet))
     .singleWhere((raster) => raster.debugLabel == '$sheet-content');
+
+/// A sheet's ink, and the surface of it a test writes on.
+typedef _Written = ({SheetInkController<Null> ink, BrushFrameKey key});

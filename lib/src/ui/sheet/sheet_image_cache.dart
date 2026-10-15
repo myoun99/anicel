@@ -4,10 +4,12 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/canvas_size.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
+import '../../services/media/viewer_document.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../media/viewer_raster_budget.dart';
 
@@ -39,15 +41,40 @@ typedef _SheetImageKey = ({String path, int? width});
 ///
 /// 🚨★★★THE CARRIED COPY WINS — `openViewerDocument`'s law, 「품은 순간
 /// 데이터를 가지고있고 불변이었으면좋겠어서」 (유저 2026-08-30) — through the
-/// door the envelope's stamp reads by ([openHeldViewerDocument]). 🪦The
-/// sheets read the ORIGINAL file (`readImageFileOrNull`): an original
-/// edited or deleted after the import changed the logo and the photos the
-/// sheets printed, while the viewer went on showing the copy (found
-/// 2026-10-15, I-97).
+/// viewer's own door ([openHeldViewerDocument]). 🪦The sheets read the
+/// ORIGINAL file (`readImageFileOrNull`): an original edited or deleted
+/// after the import changed the logo and the photos the sheets printed,
+/// while the viewer went on showing the copy (found 2026-10-15, I-97).
 Future<ui.Image?> readSheetImage(
   HoldMediaBytes hold,
   String path,
   int? width,
+) => _readSheetPicture(hold, path, (document) {
+  final own = document.pageSize(0);
+  final ownWidth = math.max(1, own.width.round());
+  final read = math.max(1, math.min(width ?? ownWidth, ownWidth));
+  return document.renderPage(
+    0,
+    width: read,
+    height: math.max(1, (own.height * read / ownWidth).round()),
+  );
+});
+
+/// [path]'s picture's own size, in its own pixels, as [readSheetImage]
+/// reads the picture — what a photo dropped on a sheet stands at (I-97
+/// Q2 c) — or null where it cannot be read.
+Future<CanvasSize?> readSheetPictureSize(HoldMediaBytes hold, String path) =>
+    _readSheetPicture(hold, path, (document) async {
+      final own = document.pageSize(0);
+      return CanvasSize(width: own.width.round(), height: own.height.round());
+    });
+
+/// [read] on [path]'s picture as [hold] answers for it, the document
+/// closed after; null where it cannot be read ([readSheetImage]).
+Future<T?> _readSheetPicture<T extends Object>(
+  HoldMediaBytes hold,
+  String path,
+  Future<T> Function(ViewerDocument document) read,
 ) async {
   try {
     final document = await openHeldViewerDocument(
@@ -59,14 +86,7 @@ Future<ui.Image?> readSheetImage(
       return null;
     }
     try {
-      final own = document.pageSize(0);
-      final ownWidth = math.max(1, own.width.round());
-      final read = math.max(1, math.min(width ?? ownWidth, ownWidth));
-      return await document.renderPage(
-        0,
-        width: read,
-        height: math.max(1, (own.height * read / ownWidth).round()),
-      );
+      return await read(document);
     } finally {
       await document.dispose();
     }

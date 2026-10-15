@@ -5,12 +5,14 @@ import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
+import '../../models/media_reference.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
+import '../../services/commands/cel_photo_edit_command.dart';
 import '../../services/history_manager.dart';
 
 /// 🚨★★★WHAT EVERY SHEET'S INK CONTROLLER DOES, once.
@@ -112,6 +114,23 @@ abstract class SheetInkController<P> extends ChangeNotifier {
     );
     notifyListeners();
   }
+
+  /// Puts a pool photo on [key]'s ink where [reference] stands it (I-97) —
+  /// one undo step through the app history, as a stroke is.
+  void putPhoto({
+    required P plane,
+    required BrushFrameKey key,
+    required MediaReference reference,
+    required HistoryManager historyManager,
+    CacheInvalidationSink? cacheInvalidationSink,
+  }) => historyManager.execute(
+    CelPhotoEditCommand.put(
+      coordinator: coordinatorFor(plane),
+      frameKey: key,
+      reference: reference,
+      cacheInvalidationSink: cacheInvalidationSink,
+    ),
+  );
 
   /// Whether the window's cel holds any ink (display gate + test oracle).
   ///
