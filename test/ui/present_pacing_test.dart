@@ -700,6 +700,19 @@ void main() {
       expect(quietForBackgroundGpuWork(), quietAfter(last, gap: 6));
     });
 
+    testWidgets('🚨frames are held from a clock\'s look — before the quiet '
+        'they leave is known — until the clock stops', (tester) async {
+      final shown = await settle(tester);
+      expect(framesAreHeld(), isFalse, reason: 'nothing has looked yet');
+
+      await holdChanges(tester, shown, [41700]);
+      expect(quietForBackgroundGpuWork(), isNull, reason: '⛔premise');
+      expect(framesAreHeld(), isTrue);
+
+      clockStopped(clock);
+      expect(framesAreHeld(), isFalse);
+    });
+
     testWidgets('🚨one odd gap — a loop\'s wrap — does not shorten the '
         'quiets after it', (tester) async {
       final shown = await settle(tester);
