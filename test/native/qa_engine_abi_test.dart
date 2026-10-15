@@ -74,8 +74,12 @@ void main() {
       for (final file in loaders) {
         final name = file.uri.pathSegments.last;
         // qa_engine_abi.dart IS the loader; qa_tablet_bridge.dart opens a
-        // DIFFERENT binary (the Wintab sidecar, its own qat_abi_version).
-        if (name == 'qa_engine_abi.dart' || name == 'qa_tablet_bridge.dart') {
+        // DIFFERENT binary (the Wintab sidecar, its own qat_abi_version);
+        // windows_screen_reader.dart opens user32, which every Windows has
+        // — no candidate list to copy, no version to gate (I-57-Q3).
+        if (name == 'qa_engine_abi.dart' ||
+            name == 'qa_tablet_bridge.dart' ||
+            name == 'windows_screen_reader.dart') {
           continue;
         }
         final source = file.readAsStringSync();
