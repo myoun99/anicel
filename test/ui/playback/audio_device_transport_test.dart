@@ -950,29 +950,36 @@ void main() {
       return (head: head, again: again);
     }
 
-    test('a roll that starts a third of a second after the microphone puts '
-        'a third of a second more on the head', () async {
+    // ⚠️A SECOND APART, AND A QUARTER OF IT TO SPARE (10-15). The null
+    // devices are threads, not hardware: an OS that starves one holds its
+    // line back, or lets it run up to its whole latency past its last
+    // callback — on the macOS runner the two measures of one take stood
+    // 56ms apart (run 38724122175; 3ms on Windows). What these pin is WHICH
+    // moment a head is of, and a head of the wrong moment is off by the
+    // whole second — so a quarter of it is the line between the two.
+    // ↩️A third of a second with 50ms to spare, and a quarter second with
+    // 20ms: both sat inside what a starved thread can move.
+    test('a roll that starts a second after the microphone puts a second '
+        'more on the head', () async {
       final onTime = await takeWithItsRoll();
-      final late = await takeWithItsRoll(
-        late: const Duration(milliseconds: 333),
-      );
+      final late = await takeWithItsRoll(late: const Duration(seconds: 1));
       expect(
         late.head - onTime.head,
-        closeTo(16000, 2400),
+        closeTo(48000, 12000),
         reason: '↩️the head was estimated — the output latency, as if the '
             'roll started the instant the microphone did: these two read the '
             'same',
       );
     }, skip: skip);
 
-    test('the head is of the moment the anchor was heard: measured a quarter '
-        'second later, it measures the same', () async {
+    test('the head is of the moment the anchor was heard: measured a second '
+        'later, it measures the same', () async {
       final take = await takeWithItsRoll(
-        readAgainAfter: const Duration(milliseconds: 250),
+        readAgainAfter: const Duration(seconds: 1),
       );
       expect(
         take.again,
-        closeTo(take.head, 960),
+        closeTo(take.head, 12000),
         reason: 'what was taken in since comes off with the time since',
       );
     }, skip: skip);
