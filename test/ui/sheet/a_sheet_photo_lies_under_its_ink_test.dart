@@ -17,6 +17,7 @@ import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
+import 'package:anicel/src/ui/sheet/sheet_photos.dart';
 import 'package:flutter/material.dart' show Canvas, Color, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -191,6 +192,23 @@ void main() {
       expect(at(none, 4, 4), nothing);
       expect(at(waiting, 5, 5), red);
     });
+  });
+
+  test('a window\'s photos repaint when they change, and not when the same '
+      'photos come again in a new list — as every build hands them', () {
+    SheetPhotosPainter painterOf(List<CelPhoto> photos) => SheetPhotosPainter(
+      photos: photos,
+      viewport: CanvasViewport(),
+      devicePixelRatio: 1,
+      imageFor: (asked) => null,
+    );
+    CelPhoto at(double x) => photo(
+      TransformPose(center: CanvasPoint(x: x, y: 8)),
+      const CanvasSize(width: 4, height: 2),
+    );
+
+    expect(painterOf([at(9)]).shouldRepaint(painterOf([at(8)])), isTrue);
+    expect(painterOf([at(8)]).shouldRepaint(painterOf([at(8)])), isFalse);
   });
 
   // The display's law (`filterQualityForDisplayScale`), asked of the photo's
