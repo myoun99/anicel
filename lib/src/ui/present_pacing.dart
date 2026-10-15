@@ -156,7 +156,7 @@ mixin PresentPacing on WidgetsBinding {
 
   /// How long after a scene's raster ends the raster thread is seen past it
   /// ([rasterBehind]) — the fence's own raster and its way back to this
-  /// thread — as the frames' timings last said: the median of a batch.
+  /// thread — as the frames' timings last said ([seenLateOf]).
   int _seenLate = seenLateUnmeasuredMicros;
 
   /// Before the frames' timings have said: the median on the glass
@@ -412,8 +412,7 @@ mixin PresentPacing on WidgetsBinding {
       }
     }
     if (late.isNotEmpty) {
-      late.sort();
-      _seenLate = late[late.length ~/ 2];
+      _seenLate = seenLateOf(late);
     }
   }
 }

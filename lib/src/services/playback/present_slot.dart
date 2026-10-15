@@ -275,6 +275,16 @@ final class RasterSpread {
   }
 }
 
+/// How late the raster thread is seen past a paced scene, from what one
+/// batch of the frames' timings says of each of its scenes ([lates], at
+/// least one): the median — one fence held up behind a busy thread says
+/// nothing of the rest (🔬2026-10-15, the glass: a median of 0.54ms, the
+/// p99 2.9–6ms, the longest 9–12ms).
+int seenLateOf(List<int> lates) {
+  final sorted = [...lates]..sort();
+  return sorted[sorted.length ~/ 2];
+}
+
 /// 🚨BACKGROUND GPU WORK RUNS IN THE QUIET BETWEEN TWO HELD FRAMES (10-12,
 /// read off the screen's own first loop): a texture uploaded on the io
 /// thread while a held frame rasters slows that raster down — the two

@@ -306,6 +306,13 @@ void main() {
       );
     });
 
+    test('🚨how late the raster thread is seen past a scene is a batch\'s '
+        'median — one fence held up behind a busy thread says nothing of '
+        'the rest', () {
+      expect(seenLateOf([12000, 540, 520, 560, 530]), 540);
+      expect(seenLateOf([530, 540, 520, 560, 12000]), 540);
+    });
+
     test('follow the last frames only — an old spread is forgotten', () {
       expect(
         handOffOf([
