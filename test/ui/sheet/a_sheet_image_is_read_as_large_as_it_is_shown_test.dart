@@ -121,9 +121,11 @@ void main() {
       makeCache();
       addTearDown(cache.dispose);
 
+      // Two in one paint, then one more while the first is read.
       expect(cache.imageFor('a', width: 4), isNull);
-      await pumpEventQueue();
       expect(cache.imageFor('b', width: 4), isNull);
+      await pumpEventQueue();
+      expect(cache.imageFor('c', width: 4), isNull);
       await pumpEventQueue();
       expect(reads.asked, [(path: 'a', width: 4)], reason: 'one at a time');
 
@@ -136,12 +138,13 @@ void main() {
             'what they show NOW',
       );
 
-      cache.imageFor('c', width: 4);
+      cache.imageFor('d', width: 4);
       await pumpEventQueue();
       expect(
         reads.asked.last,
-        (path: 'c', width: 4),
-        reason: 'b, asked before the landing and not since, is not read',
+        (path: 'd', width: 4),
+        reason: 'b and c, asked before the landing and not since, are not '
+            'read',
       );
     });
 
@@ -197,6 +200,20 @@ void main() {
       expect(cache.decodedBytes, 4 * 64);
     });
 
+    test('a picture larger than the whole share is still held — the one '
+        'just read is never let go', () async {
+      ViewerRasterBudget.debugPageBytesOverride = 4 * 4 * 4;
+      makeCache();
+      addTearDown(cache.dispose);
+      final small = await hold('p0', 4);
+      final big = await hold('big', 16, side: 16);
+
+      expect(identical(cache.imageFor('big', width: 16), big), isTrue);
+      expect(small.debugDisposed, isTrue, reason: 'all else goes');
+      expect(cache.decodedBytes, 16 * 16 * 4);
+      expect(told.last, 16 * 16 * 4);
+    });
+
     test('the memory warning halves what is held', () async {
       ViewerRasterBudget.debugPageBytesOverride = 4 * 4 * 4;
       makeCache();
@@ -219,7 +236,7 @@ void main() {
     test('a cache let go of tells the census zero, and lets go of a read '
         'that lands after it', () async {
       makeCache();
-      await hold('a', 4);
+      final held = await hold('a', 4);
       cache.imageFor('b', width: 4);
       await pumpEventQueue();
 
@@ -228,7 +245,20 @@ void main() {
       await reads.land(tooLate);
 
       expect(told.last, 0);
+      expect(held.debugDisposed, isTrue);
       expect(tooLate.debugDisposed, isTrue);
+      expect(cache.imageFor('c', width: 4), isNull);
+      await pumpEventQueue();
+      expect(reads.asked.last.path, 'b', reason: 'nothing is read after');
+    });
+
+    test('a cache let go of before its read starts reads nothing', () async {
+      makeCache();
+      cache.imageFor('a', width: 4);
+      cache.dispose();
+      await pumpEventQueue();
+
+      expect(reads.asked, isEmpty);
     });
   });
 

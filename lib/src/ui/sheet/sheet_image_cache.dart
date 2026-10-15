@@ -129,8 +129,8 @@ class SheetImageCache extends ChangeNotifier {
   /// asked.
   final Set<_SheetImageKey> _wanted = {};
 
-  /// The one read out, if any. It is not asked for again while it runs.
-  _SheetImageKey? _reading;
+  /// Whether a read is out — no other starts until it lands.
+  bool _reading = false;
   bool _nextScheduled = false;
   bool _disposed = false;
 
@@ -158,7 +158,7 @@ class SheetImageCache extends ChangeNotifier {
       _images[key] = held;
       return held;
     }
-    if (!_unreadable.contains(assetPath) && key != _reading) {
+    if (!_unreadable.contains(assetPath)) {
       _wanted.add(key);
       _scheduleNext();
     }
@@ -182,7 +182,7 @@ class SheetImageCache extends ChangeNotifier {
   /// Starts the next read off the paint that asked — a microtask, so a
   /// picture can land within a frame or two.
   void _scheduleNext() {
-    if (_reading != null || _nextScheduled) {
+    if (_reading || _nextScheduled) {
       return;
     }
     _nextScheduled = true;
@@ -191,12 +191,13 @@ class SheetImageCache extends ChangeNotifier {
 
   void _readNext() {
     _nextScheduled = false;
-    if (_disposed || _reading != null || _wanted.isEmpty) {
+    // Empty only when the cache was let go of before this ran.
+    if (_wanted.isEmpty) {
       return;
     }
     final key = _wanted.first;
     _wanted.remove(key);
-    _reading = key;
+    _reading = true;
     unawaited(() async {
       ui.Image? image;
       try {
@@ -213,7 +214,7 @@ class SheetImageCache extends ChangeNotifier {
   /// unreadable), the list goes, and the notify makes every sheet that asks
   /// repaint and ask again for what it shows now — the next list.
   void _landed(_SheetImageKey key, ui.Image? image) {
-    _reading = null;
+    _reading = false;
     if (_disposed) {
       image?.dispose();
       return;

@@ -75,6 +75,11 @@ void main() {
     final starved = budgets.toAllowance(1);
     expect(starved.drawings, BrushFrameStore.hotCelFloorBytes);
     expect(starved.undo, HistoryManager.retainedByteBudgetUnderPressure);
+    expect(
+      starved.sheetImages,
+      starved.viewerPages,
+      reason: 'a viewer\'s floor too (I-97)',
+    );
     expect(starved.total, CacheBudgets.floors.total);
     expect(
       CacheBudgets.floors.total,

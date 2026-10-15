@@ -24,6 +24,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_asset.dart' show normalizedMediaPath;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
@@ -32,6 +33,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
@@ -649,27 +651,28 @@ void main() {
     );
   });
 
-  testWidgets('the page images carry the cover\'s picture and the logo the '
-      'panel prints — the pages name them, the export reads them', (
+  testWidgets('the page images and the PDF carry the cover\'s picture and '
+      'the logo the panel prints — the pages name them, the export reads '
+      'them through the project: carried, their originals gone', (
     tester,
   ) async {
-    Future<String> solidPng(String name, Color color) async {
+    Future<String> solidPng(String name, Color color, int side) async {
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder).drawPaint(Paint()..color = color);
       final picture = recorder.endRecording();
-      final image = await picture.toImage(8, 8);
+      final image = await picture.toImage(side, side);
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       picture.dispose();
       image.dispose();
       final file = File('${temp.path}${Platform.pathSeparator}$name');
       await file.writeAsBytes(data!.buffer.asUint8List());
-      return file.path;
+      return normalizedMediaPath(file.path);
     }
 
     final (cover, logo) = (await tester.runAsync(
       () async => (
-        await solidPng('cover.png', const Color(0xFF00FF00)),
-        await solidPng('logo.png', const Color(0xFF0000FF)),
+        await solidPng('cover.png', const Color(0xFF00FF00), 8),
+        await solidPng('logo.png', const Color(0xFF0000FF), 6),
       ),
     ))!;
     final session = EditorSessionManager(
@@ -679,8 +682,21 @@ void main() {
           logoAssetPath: () => logo,
         ),
       ),
+      mediaStagingStore: MediaStagingStore(
+        directoryPath: '${temp.path}/Staged',
+      ),
     );
     addTearDown(session.dispose);
+    // THE CARRIED COPY WINS: what prints is the project's copy, and the
+    // files the paths name are gone.
+    await tester.runAsync(
+      () => session.mediaPool.importMediaFiles([
+        cover,
+        logo,
+      ], copyIntoProject: true),
+    );
+    File(cover).deleteSync();
+    File(logo).deleteSync();
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -748,6 +764,18 @@ void main() {
       imageOn(2).center.dy,
     );
     expect(onBody, (0, 0, 255), reason: 'and so does the logo');
+
+    // The PDF carries each whole, at its own pixels.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
+    );
+    await tester.pump();
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final pdf = File(
+      '${temp.path}${Platform.pathSeparator}conte.pdf',
+    ).readAsBytesSync();
+    expect(pdfImageSizes(pdf), containsAll([(8, 8), (6, 6)]));
   });
 
   testWidgets('a page image is the page at its paper\'s own pixels, as PNG '
