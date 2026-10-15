@@ -61,12 +61,28 @@ void main() {
     },
   );
 
-  /// [surface] printed through a window over the whole paper, one surface
-  /// pixel to a screen pixel — its RGBA bytes, row by row.
+  /// A [side]×[side] file of one-pixel squares, black and white.
+  Future<ui.Image> checkerFile(int side) {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)
+      ..drawColor(const Color(0xFFFFFFFF), ui.BlendMode.src);
+    final black = ui.Paint()..color = const Color(0xFF000000);
+    for (var y = 0; y < side; y += 1) {
+      for (var x = y % 2; x < side; x += 2) {
+        canvas.drawRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1), black);
+      }
+    }
+    return recorder.endRecording().toImage(side, side);
+  }
+
+  /// [surface] printed through a window over the whole paper — one surface
+  /// pixel to a screen pixel, or [zoom] of them — its RGBA bytes, row by
+  /// row.
   Future<Uint8List> printed(
     BitmapSurface surface,
-    ui.Image? Function(String assetPath)? imageFor,
-  ) async {
+    ui.Image? Function(String assetPath)? imageFor, {
+    double zoom = 1,
+  }) async {
     final recorder = ui.PictureRecorder();
     printSheetInkAsLive(
       Canvas(recorder),
@@ -82,7 +98,7 @@ void main() {
       ],
       (_) => surface,
       (
-        viewport: CanvasViewport(),
+        viewport: CanvasViewport(zoom: zoom),
         devicePixelRatio: 1,
         size: const Size(16, 16),
         above: const [],
@@ -175,5 +191,72 @@ void main() {
       expect(at(none, 4, 4), nothing);
       expect(at(waiting, 5, 5), red);
     });
+  });
+
+  // The display's law (`filterQualityForDisplayScale`), asked of the photo's
+  // own pixels: how many screen pixels one of them is — the view's zoom and
+  // the photo's own scale both.
+  group('a photo is sampled as the canvas samples a picture', () {
+    BitmapSurface checkerOf(double scale) =>
+        BitmapSurface(canvasSize: canvas, tileSize: 8, tiles: const {})
+            .withPhotos([
+              photo(
+                TransformPose(
+                  center: CanvasPoint(x: 8, y: 8),
+                  scaleX: scale,
+                  scaleY: scale,
+                ),
+                const CanvasSize(width: 16, height: 16),
+              ),
+            ]);
+
+    bool grey(List<int> pixel) => pixel[0] > 100 && pixel[0] < 156;
+    bool pure(List<int> pixel) => pixel[0] == 0 || pixel[0] == 255;
+
+    for (final (name, zoom, scale, x, y) in const [
+      ('the view shows it at half', 0.5, 1.0, 2, 2),
+      ('it is laid at half', 1.0, 0.5, 5, 5),
+    ]) {
+      testWidgets('$name: smoothed, every pixel of it showing', (
+        tester,
+      ) async {
+        await tester.runAsync(() async {
+          final file = await checkerFile(16);
+          addTearDown(file.dispose);
+
+          final bytes = await printed(
+            checkerOf(scale),
+            (asked) => file,
+            zoom: zoom,
+          );
+
+          expect(at(bytes, x, y), predicate(grey), reason: 'two of each');
+        });
+      });
+    }
+
+    for (final (name, zoom, scale) in const [
+      ('the view shows it at twice', 2.0, 1.0),
+      ('it is laid at twice', 1.0, 2.0),
+    ]) {
+      testWidgets('$name: its pixels, hard-edged', (tester) async {
+        await tester.runAsync(() async {
+          final file = await checkerFile(16);
+          addTearDown(file.dispose);
+
+          final bytes = await printed(
+            checkerOf(scale),
+            (asked) => file,
+            zoom: zoom,
+          );
+
+          for (var y = 0; y < 16; y += 1) {
+            for (var x = 0; x < 16; x += 1) {
+              expect(at(bytes, x, y), predicate(pure), reason: '($x, $y)');
+            }
+          }
+        });
+      });
+    }
   });
 }

@@ -76,6 +76,10 @@ void main() {
   late ValueNotifier<bool> brushAllowed;
   late ValueNotifier<BrushToolState> brushTool;
 
+  /// Whether the photo's file has been decoded — what tells the sheet it
+  /// has (the workspace's sheet image cache).
+  late ValueNotifier<bool> photoLanded;
+
   /// One dab at ([at], [down]) — [down] is [at] unless it is said.
   BrushStrokeCommitData oneDab({double at = 20, double? down}) =>
       BrushStrokeCommitData(
@@ -124,6 +128,8 @@ void main() {
     });
     brushAllowed = ValueNotifier<bool>(brushOn);
     addTearDown(brushAllowed.dispose);
+    photoLanded = ValueNotifier<bool>(true);
+    addTearDown(photoLanded.dispose);
     brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(brushTool.dispose);
     return key;
@@ -152,7 +158,8 @@ void main() {
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: _photoFiles(photo),
+                imageFor: _photoFiles(photo, photoLanded),
+                imageRepaint: photoLanded,
               ),
               () {
                 // On the sheet's FIRST row, where the playhead stands — 20
@@ -220,7 +227,8 @@ void main() {
                 pictures: cels,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: _photoFiles(photo),
+                imageFor: _photoFiles(photo, photoLanded),
+                imageRepaint: photoLanded,
               ),
               () {
                 final key = conteInkRowKey(_drawn, 'ink-0');
@@ -249,7 +257,8 @@ void main() {
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: _photoFiles(photo),
+                imageFor: _photoFiles(photo, photoLanded),
+                imageRepaint: photoLanded,
               ),
               () {
                 // A box of the form, near its corner. ⚠️It was 'box', which
@@ -394,6 +403,26 @@ void main() {
         );
       });
     }
+
+    testWidgets('${sheet.sheet}: with the brush on, a photo shows on its '
+        'window the frame its file lands (I-97)', (tester) async {
+      await mount(tester);
+      photoLanded.value = false;
+      brushAllowed.value = true;
+      await _settle(tester);
+      expect(
+        (await shoot(tester)).count(_isMagenta),
+        0,
+        reason: 'fixture: no file, no photo',
+      );
+
+      // As the workspace's cache lands one: nothing is rebuilt for it, and
+      // what the window compares is the same as before.
+      photoLanded.value = true;
+      await tester.pump();
+
+      expect((await shoot(tester)).count(_isMagenta), greaterThan(20));
+    });
   }
 
   /// The conte with its brush on, drawing its prints from [prints] —
@@ -606,9 +635,12 @@ const String _photoPath = 'C:/pool/switch-photo.png';
 bool _isMagenta(Color color) =>
     color.r > 0.9 && color.b > 0.9 && color.g < 0.1 && color.a > 0.9;
 
-/// The pool's decode of the one photo the sheets hold, [photo].
-ui.Image? Function(String assetPath) _photoFiles(ui.Image photo) =>
-    (path) => path == _photoPath ? photo : null;
+/// The pool's decode of the one photo the sheets hold, [photo] — once it
+/// has [landed].
+ui.Image? Function(String assetPath) _photoFiles(
+  ui.Image photo,
+  ValueNotifier<bool> landed,
+) => (path) => path == _photoPath && landed.value ? photo : null;
 
 /// A photo laid on [key]'s ink in [store], centred [under] the dab: it lies
 /// under the handwriting, and the brush switch moves neither.
