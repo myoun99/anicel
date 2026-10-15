@@ -13,16 +13,29 @@ void main() {
   ({int fromMicros, int untilMicros})? quiet;
   late Completer<void> moved;
   late QuietTurns turns;
+  var now = 0;
+  var held = false;
+  late Completer<void> gpu;
+  var gpuAsked = 0;
 
   setUp(() {
     quiet = (fromMicros: 0, untilMicros: 1000000);
     moved = Completer<void>();
+    now = 0;
+    held = false;
+    gpu = Completer<void>();
+    gpuAsked = 0;
     turns = QuietTurns(
       clock: QuietClock(
         quiet: () => quiet,
-        now: () => 0,
+        now: () => now,
         wait: (_) async {},
         moved: () => moved.future,
+        held: () => held,
+        gpuDone: () {
+          gpuAsked += 1;
+          return gpu.future;
+        },
       ),
     );
   });
@@ -44,7 +57,7 @@ void main() {
     expect(second(), isFalse, reason: 'two that each fit, side by side, '
         'end past the quiet together');
 
-    first!.landed();
+    await first!.landed();
     await pumpEventQueue();
 
     expect(second(), isTrue);
@@ -55,13 +68,87 @@ void main() {
     final second = await asked(turns.inThisQuiet(QuietSpan(), gone: neverGone));
     expect(second(), isFalse, reason: '⛔premise');
 
-    first!.gaveUp();
+    await first!.gaveUp();
     await pumpEventQueue();
 
     expect(second(), isTrue);
   });
 
-  test('⛔where no quiet is kept, every job is given its turn at once, side '
+  test('🚨while frames are held, a job is done when the GPU is: the next is '
+      'given its turn once the GPU is done with the one before it', () async {
+    held = true;
+    final first = await turns.inAQuiet(QuietSpan(), gone: neverGone);
+    final second = await asked(turns.inAQuiet(QuietSpan(), gone: neverGone));
+
+    final landing = first!.landed();
+    await pumpEventQueue();
+    expect(second(), isFalse, reason: 'the raster thread is done with it, '
+        'the GPU is not');
+
+    gpu.complete();
+    await landing;
+    await pumpEventQueue();
+
+    expect(second(), isTrue);
+  });
+
+  test('🚨what a job held to the GPU took is learned to the GPU\'s end of it',
+      () async {
+    held = true;
+    final span = QuietSpan();
+    final turn = await turns.inAQuiet(span, gone: neverGone);
+
+    now = 1000;
+    final landing = turn!.landed();
+    now = 5000;
+    gpu.complete();
+    await landing;
+
+    expect(span.micros, 5000, reason: 'the raster thread came back at 1000');
+  });
+
+  test('a job held to the GPU that gives up gives its turn back once the GPU '
+      'is done with what it handed over', () async {
+    held = true;
+    final first = await turns.inAQuiet(QuietSpan(), gone: neverGone);
+    final second = await asked(turns.inAQuiet(QuietSpan(), gone: neverGone));
+
+    final giving = first!.gaveUp();
+    await pumpEventQueue();
+    expect(second(), isFalse);
+
+    gpu.complete();
+    await giving;
+    await pumpEventQueue();
+
+    expect(second(), isTrue);
+  });
+
+  test('⛔where nothing is held the GPU is not waited for — warming at rest '
+      'keeps its makings side by side', () async {
+    final first = await turns.inAQuiet(QuietSpan(), gone: neverGone);
+    final second = await asked(turns.inAQuiet(QuietSpan(), gone: neverGone));
+
+    await first!.landed();
+    await pumpEventQueue();
+
+    expect(second(), isTrue);
+    expect(gpuAsked, 0);
+  });
+
+  test('a fence the engine refused holds up nobody', () async {
+    held = true;
+    final first = await turns.inAQuiet(QuietSpan(), gone: neverGone);
+    final second = await asked(turns.inAQuiet(QuietSpan(), gone: neverGone));
+
+    gpu.completeError(StateError('refused'));
+    await first!.landed();
+    await pumpEventQueue();
+
+    expect(second(), isTrue);
+  });
+
+  test('⛔where nothing is held, every job is given its turn at once, side '
       'by side', () async {
     quiet = null;
     final first = await turns.inAQuiet(QuietSpan(), gone: neverGone);
@@ -70,6 +157,22 @@ void main() {
 
     expect(first, isNotNull);
     expect(second(), isTrue, reason: 'nobody queues where nothing is held');
+  });
+
+  test('🚨where frames are held but no quiet is known yet — a run\'s first '
+      'held frames — the jobs go one at a time all the same', () async {
+    quiet = null;
+    held = true;
+    final first = await turns.inThisQuiet(QuietSpan(), gone: neverGone);
+    final second = await asked(turns.inAQuiet(QuietSpan(), gone: neverGone));
+    expect(first, isNotNull);
+    expect(second(), isFalse);
+
+    gpu.complete();
+    await first!.landed();
+    await pumpEventQueue();
+
+    expect(second(), isTrue);
   });
 
   test('🚨what the next held frame shows is given its turn at once — past a '

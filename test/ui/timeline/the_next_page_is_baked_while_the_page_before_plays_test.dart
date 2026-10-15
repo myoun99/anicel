@@ -750,6 +750,41 @@ void main() {
       expect(uploads, 2);
       expect(waits, isEmpty);
     });
+
+    test('🚨while frames are held, a span waits for the GPU to be done with '
+        'the one before it — where a run has no quiet yet as well', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      await shownRow('gpu');
+      final gpu = Completer<void>();
+      addTearDown(() {
+        if (!gpu.isCompleted) {
+          gpu.complete();
+        }
+      });
+      store.quietTurns = QuietTurns(
+        clock: QuietClock(
+          quiet: () => null,
+          now: () => clock,
+          wait: (_) async {},
+          held: () => true,
+          gpuDone: () => gpu.future,
+        ),
+      );
+
+      store.warmTheNextPage(tiles: 2);
+      for (var i = 0; i < 200 && uploads == 0; i += 1) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(uploads, 1, reason: 'the GPU is not done with the first');
+
+      gpu.complete();
+      await idle();
+      expect(uploads, 2);
+    });
   });
 
   testWidgets('🚨the page law warms the next page after the frame it turns in '

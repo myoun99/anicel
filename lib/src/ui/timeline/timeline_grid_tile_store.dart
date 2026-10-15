@@ -671,7 +671,7 @@ class TimelineGridTileStore {
             return;
           }
         } finally {
-          landed ? turn.landed() : turn.gaveUp();
+          await (landed ? turn.landed() : turn.gaveUp());
         }
       }
     } finally {

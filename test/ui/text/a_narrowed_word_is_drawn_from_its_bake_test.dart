@@ -541,6 +541,50 @@ void main() {
     );
   });
 
+  testWidgets('🚨while frames are held a word is drawn from its bake as soon '
+      'as the bake lands — its turn waits for the GPU on its own', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gpu = Completer<void>();
+    addTearDown(() {
+      if (!gpu.isCompleted) {
+        gpu.complete();
+      }
+    });
+    BakedWords.instance.quietTurns = QuietTurns(
+      clock: QuietClock(
+        quiet: () => (fromMicros: 0, untilMicros: 1 << 40),
+        now: () => 0,
+        held: () => true,
+        gpuDone: () => gpu.future,
+      ),
+    );
+    addTearDown(() => BakedWords.instance.quietTurns = QuietTurns.instance);
+    const fit = (x: 0.25, y: 1.0);
+    final word = _word('붙잡은 때', fontSize: 12);
+    await tester.pumpWidget(
+      Center(
+        child: CustomPaint(
+          size: const Size(40, 20),
+          painter: _PaintsOnce(word, fit),
+        ),
+      ),
+    );
+    word.dispose();
+
+    await pumpUntilAWordBakeLands(tester);
+
+    final again = _word('붙잡은 때', fontSize: 12);
+    addTearDown(again.dispose);
+    expect(
+      (Canvas canvas) => paintFittedText(canvas, again, Offset.zero, fit),
+      paints..drawImageRect(),
+      reason: 'the GPU is not done with it, and the word is drawn from its bake',
+    );
+  });
+
   testWidgets('a bake the engine refuses leaves the word painted as it '
       'always was', (tester) async {
     var refused = 0;

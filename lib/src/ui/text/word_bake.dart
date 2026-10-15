@@ -651,7 +651,9 @@ final class BakedWords {
       // A bake the engine refused leaves the word painted as it always was.
       return null;
     } finally {
-      landed ? turn?.landed() : turn?.gaveUp();
+      // The word is shown as soon as it is baked: the turn given back waits
+      // for the GPU on its own ([QuietTurn.landed]).
+      unawaited(landed ? turn?.landed() : turn?.gaveUp());
       _baking.remove(key.word);
       final waiters = _waiting.remove(key.word);
       if (waiters != null) {

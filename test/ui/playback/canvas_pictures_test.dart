@@ -495,6 +495,47 @@ void main() {
         expect(held(images, 'b', PlaybackQuality.full), isTrue);
       });
     });
+
+    testWidgets('🚨while frames are held, a row is made once the GPU is done '
+        'with it — what walks the frames goes on from there', (tester) async {
+      await tester.runAsync(() async {
+        final images = LayerFrameImageCache(frameStore: storeOf(['a']));
+        addTearDown(images.dispose);
+        final gpu = Completer<void>();
+        final pictures = CanvasPictures(
+          layerImages: images,
+          rowsOf: (cut, frame) => [row('a')],
+          qualityAt: (_, _) => PlaybackQuality.full,
+          quietTurns: QuietTurns(
+            clock: QuietClock(
+              quiet: () => (fromMicros: 0, untilMicros: 1000000),
+              now: () => 0,
+              wait: (_) async {},
+              moved: () => Completer<void>().future,
+              held: () => true,
+              gpuDone: () => gpu.future,
+            ),
+          ),
+        );
+
+        var made = false;
+        final making = pictures
+            .make(at(0), shouldAbort: () => false)
+            .then((landed) => made = landed);
+        for (var i = 0; i < 200; i += 1) {
+          if (held(images, 'a', PlaybackQuality.full)) {
+            break;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+        await pumpEventQueue();
+        expect(held(images, 'a', PlaybackQuality.full), isTrue);
+        expect(made, isFalse, reason: 'banked, but the GPU is not done with it');
+
+        gpu.complete();
+        expect(await making, isTrue);
+      });
+    });
   });
 }
 

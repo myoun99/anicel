@@ -467,7 +467,7 @@ class LayerFrameImageCache {
       );
       made = stored == null ? null : _bank((key, quality), stored, source);
     } finally {
-      made == null ? taken?.gaveUp() : taken?.landed();
+      await (made == null ? taken?.gaveUp() : taken?.landed());
     }
     return made;
   }

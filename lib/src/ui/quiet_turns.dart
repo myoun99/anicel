@@ -5,13 +5,15 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../services/playback/present_slot.dart' show quietBetweenHeldFrames;
-import 'present_pacing.dart' show quietForBackgroundGpuWork, quietMayHaveMoved;
+import 'gpu_fences.dart';
+import 'present_pacing.dart'
+    show framesAreHeld, quietForBackgroundGpuWork, quietMayHaveMoved;
 
 /// What background GPU work reads the quiet between held frames through:
-/// the quiet itself, the clock it is on, the wait for it to begin, and the
-/// wait for it to move — the display's, on the frame clock
-/// ([quietForBackgroundGpuWork], [quietMayHaveMoved]); a test hands its
-/// own.
+/// the quiet itself, the clock it is on, the wait for it to begin, the wait
+/// for it to move, whether frames are held now, and the wait for the GPU to
+/// be done — the display's, on the frame clock ([quietForBackgroundGpuWork],
+/// [quietMayHaveMoved], [framesAreHeld], [gpuBehind]); a test hands its own.
 @immutable
 class QuietClock {
   const QuietClock({
@@ -19,12 +21,16 @@ class QuietClock {
     this.now = _frameClockNow,
     this.wait = _sleep,
     this.moved = quietMayHaveMoved,
+    this.held = framesAreHeld,
+    this.gpuDone = gpuBehind,
   });
 
   final ({int fromMicros, int untilMicros})? Function() quiet;
   final int Function() now;
   final Future<void> Function(Duration) wait;
   final Future<void> Function() moved;
+  final bool Function() held;
+  final Future<void> Function() gpuDone;
 
   static int _frameClockNow() => Timeline.now;
 
@@ -37,9 +43,10 @@ class QuietClock {
 bool notDue() => false;
 
 /// How long one kind of background GPU work has taken from its turn to its
-/// landing, at the most of late ([QuietTurn.landed]) — what one more has to
-/// fit in before the quiet ends. Each kind keeps its own: a timeline span,
-/// a playback row and a baked word are not one length.
+/// landing — to the GPU's end of it while frames are held — at the most of
+/// late ([QuietTurn.landed]): what one more has to fit in before the quiet
+/// ends. Each kind keeps its own: a timeline span, a playback row and a
+/// baked word are not one length.
 final class QuietSpan {
   int micros = 0;
 }
@@ -62,9 +69,12 @@ final class QuietSpan {
 /// One job at a time, so a quiet's room is counted once for every kind: two
 /// that each fit alone, posted side by side, end past it together.
 ///
-/// ⛔Where no quiet is kept — no clock running, a display that does not say
+/// ⛔Where nothing is held — no clock running, a display that does not say
 /// — a turn is given at once and nobody queues: warming at rest keeps its
 /// makings side by side (10-10: a whole cut made 7–30% sooner for them).
+/// Where frames are held but their quiet is not known yet — a run's first
+/// held frames — the jobs go one at a time all the same, each done when the
+/// GPU is ([QuietTurn.landed]).
 final class QuietTurns {
   QuietTurns({this.clock = const QuietClock()});
 
@@ -76,6 +86,9 @@ final class QuietTurns {
   /// The turn taken last — what the next waits for.
   Future<void> _taken = Future<void>.value();
 
+  /// Nothing held and no quiet kept: a turn is given at once.
+  bool _atRest() => clock.quiet() == null && !clock.held();
+
   /// A turn in the quiet that is now — waited for to begin — for a job
   /// [span] long: null when that quiet has no room for one, is over, or
   /// ends before one would land, or when [gone] after its wait. The job
@@ -84,7 +97,7 @@ final class QuietTurns {
     QuietSpan span, {
     required bool Function() gone,
   }) async {
-    if (clock.quiet() == null) {
+    if (_atRest()) {
       return QuietTurn._(this, span);
     }
     final release = await _queue();
@@ -109,7 +122,7 @@ final class QuietTurns {
     bool Function() due = notDue,
   }) async {
     while (!gone()) {
-      if (due() || clock.quiet() == null) {
+      if (due() || _atRest()) {
         return QuietTurn._(this, span);
       }
       final release = await _queue();
@@ -180,18 +193,49 @@ final class QuietTurn {
   void Function()? _release;
 
   /// The job landed: what it took is what its kind is next asked to fit
-  /// ([QuietSpan]), and the next job takes its turn.
-  void landed() {
+  /// ([QuietSpan]), and the next job takes its turn — once the GPU is done
+  /// with it while frames are held ([_gpuDone]).
+  Future<void> landed() async {
+    await _gpuDone();
     _span.micros = math.max(
       _span.micros * 3 ~/ 4,
       _turns.clock.now() - _started,
     );
-    gaveUp();
+    _giveBack();
   }
 
-  /// The job came to nothing: the next takes its turn, and nothing is
-  /// learned.
-  void gaveUp() {
+  /// The job came to nothing: the next takes its turn once the GPU is done
+  /// with whatever it handed over ([_gpuDone]), and nothing is learned.
+  Future<void> gaveUp() async {
+    await _gpuDone();
+    _giveBack();
+  }
+
+  /// 🚨WHILE FRAMES ARE HELD, A JOB IS DONE WHEN THE GPU IS (2026-10-15, the
+  /// glass, release, 144Hz, a cut played from nothing made): a playback
+  /// making the raster thread had called done kept the GPU busy 6.0ms more
+  /// at the median and up to 38ms — past the quiet, into the held frames
+  /// and the compositor's own work. Of five runs' film changes shown a
+  /// refresh off, 25 of 39 came in their first 0.7s, where the pictures are
+  /// made; with every picture made before the run, 1 of 25 over three.
+  /// Held until the GPU was done, those of the first 0.7s went 17 → 4 over
+  /// three runs each.
+  ///
+  /// ⛔Where nothing is held the GPU is not waited for: warming at rest keeps
+  /// its makings side by side ([QuietTurns]).
+  Future<void> _gpuDone() async {
+    if (!_turns.clock.held()) {
+      return;
+    }
+    try {
+      await _turns.clock.gpuDone();
+    } on Object {
+      // A fence the engine refused says nothing of the GPU, and holds up
+      // nobody.
+    }
+  }
+
+  void _giveBack() {
     final release = _release;
     _release = null;
     release?.call();

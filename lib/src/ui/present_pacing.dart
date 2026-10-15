@@ -1,14 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui
-    show
-        Canvas,
-        FramePhase,
-        FrameTiming,
-        Paint,
-        PictureRecorder,
-        Rect,
-        SceneBuilder;
+import 'dart:ui' as ui show FramePhase, FrameTiming, SceneBuilder;
 
 import 'package:flutter/foundation.dart' show protected, visibleForTesting;
 import 'package:flutter/scheduler.dart' show SchedulerBinding, TimingsCallback;
@@ -16,6 +8,7 @@ import 'package:flutter/widgets.dart' show WidgetsBinding;
 
 import '../native/qa_display_timing.dart';
 import '../services/playback/present_slot.dart';
+import 'gpu_fences.dart';
 
 /// 🚨THE MOMENT THE FRAME UNDER WAY IS SHOWN, ON THE FRAME CLOCK — the time
 /// a clock that looks in it is read at (유저 2026-10-08: 「소리 싱크나
@@ -60,11 +53,19 @@ void clockStopped(Object clock) {
   }
 }
 
+/// Whether a clock's frames are held for their vblanks now — a clock running
+/// and looking, on a display that says ([PresentPacing]): what background
+/// GPU work must then never run beside (`QuietTurn.landed`).
+bool framesAreHeld() {
+  final binding = SchedulerBinding.instance;
+  return binding is PresentPacing && binding._holding();
+}
+
 /// When background GPU work — an upload, a bake — can run without running
 /// beside a held frame's raster, on the frame clock
 /// ([quietBetweenHeldFrames] has why): EMPTY where a run leaves no room,
-/// and null only where nothing is held — no display that says, or no clock
-/// running.
+/// and null where nothing is held ([framesAreHeld]) or a run has not yet
+/// held the frames its quiet is read off.
 ({int fromMicros, int untilMicros})? quietForBackgroundGpuWork() {
   final binding = SchedulerBinding.instance;
   return binding is PresentPacing ? binding._quiet() : null;
@@ -329,37 +330,28 @@ mixin PresentPacing on WidgetsBinding {
   }
 
   /// Completes once the raster thread is past everything handed to it before
-  /// the call: an image of next to nothing, rastered behind it. A test hands
-  /// its own.
+  /// the call ([rasterThreadBehind]). A test hands its own.
   @protected
-  Future<void> rasterBehind() async {
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(
-      recorder,
-    ).drawRect(const ui.Rect.fromLTWH(0, 0, 1, 1), ui.Paint());
-    final picture = recorder.endRecording();
-    try {
-      (await picture.toImage(1, 1)).dispose();
-    } finally {
-      picture.dispose();
-    }
-  }
+  Future<void> rasterBehind() => rasterThreadBehind();
 
   double _periodOf(DisplayTiming timing) =>
       timing.vblankGrid()?.periodMicros ?? 1e6 / 60;
 
-  ({int fromMicros, int untilMicros})? _quiet() {
+  /// A clock running and looking, on a display that says: its frames are
+  /// held for their vblanks ([framesAreHeld]).
+  bool _holding() {
     final timing = displayTiming;
     final lookedAt = _lookedAt;
+    return timing != null &&
+        lookedAt != null &&
+        _clocks.isNotEmpty &&
+        timing.nowMicros - lookedAt <= _runGoneMicros;
+  }
+
+  ({int fromMicros, int untilMicros})? _quiet() {
+    final timing = displayTiming;
     final vblank = _heldVblank;
-    if (timing == null ||
-        lookedAt == null ||
-        vblank == null ||
-        _heldGaps.isEmpty ||
-        _clocks.isEmpty) {
-      return null;
-    }
-    if (timing.nowMicros - lookedAt > _runGoneMicros) {
+    if (timing == null || vblank == null || _heldGaps.isEmpty || !_holding()) {
       return null;
     }
     // The second fewest of the last gaps: one odd one — the loop's wrap, a
