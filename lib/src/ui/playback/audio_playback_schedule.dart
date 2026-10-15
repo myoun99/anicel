@@ -398,10 +398,19 @@ _residentSources({
   return (sources: sources, byMixIndex: byMixIndex, hasStreaming: hasStreaming);
 }
 
-/// The slice of a streamed source [clip] needs right now: trailing behind
+/// One streamed clip's window: [count] samples per channel from [start] of
+/// [reader]'s conform — what an upload reads for that clip, here or on a
+/// worker.
+typedef StreamWindowRead = ({
+  ConformPcmStreamReader reader,
+  int start,
+  int count,
+});
+
+/// The window a streamed source [clip] needs right now: trailing behind
 /// the playhead and leading in front of it, clamped into the clip's own
 /// span (and, by the reader, into the file).
-AudioMixSource _streamWindowSource(
+StreamWindowRead _streamWindowRead(
   AudioMixClip clip, {
   required ConformPcmStreamReader reader,
   required _StreamWindow at,
@@ -417,18 +426,67 @@ AudioMixSource _streamWindowSource(
     clip.sourceOffset + clipLength,
     sourceAt + at.aheadSamples,
   );
-  final window = reader.readWindow(windowStart, windowEnd - windowStart);
+  return (reader: reader, start: windowStart, count: windowEnd - windowStart);
+}
+
+/// [read]'s window, read here — into the list [place] makes for it when it
+/// makes one ([ConformPcmStreamReader.readWindow]).
+AudioMixSource streamWindowReadHere(
+  StreamWindowRead read, {
+  Float32List? Function(int floats)? place,
+}) {
+  final window = read.reader.readWindow(read.start, read.count, place: place);
   return AudioMixSource(
     samples: window.samples,
-    channels: reader.channels,
+    channels: read.reader.channels,
     sourceStart: window.startSample,
   );
 }
 
-/// Builds the device upload for [mix] — resident PCM for ordinary clips,
-/// a disk WINDOW around [centerSample] for streaming ones (AUDIO-PRO R6).
-/// One implementation for the transport AND the scrubber, so streamed
-/// playback and streamed scrubbing can never disagree.
+/// A device upload: the clips, pointed at their sources, and whether any of
+/// those streams ([AudioStreamingWindow.hasStreaming]).
+typedef WindowedUpload = ({
+  List<AudioMixClip> clips,
+  List<AudioMixSource> sources,
+  bool hasStreaming,
+});
+
+/// The device upload for a mix before its streamed clips' windows are read
+/// ([planWindowedMixUpload]): the clips, pointed at their sources — the
+/// [resident] ones first, then one window for each of [reads], in order.
+///
+/// 🚨PLANNED APART FROM THE READING, so an advance can read on a worker
+/// (streaming-advance-reads-on-the-ui-thread, 10-15): what to read is
+/// decided on the thread that holds the store, and only the reading goes
+/// elsewhere.
+final class WindowedUploadPlan {
+  const WindowedUploadPlan._({
+    required this.clips,
+    required this.resident,
+    required this.reads,
+    required this.hasStreaming,
+  });
+
+  final List<AudioMixClip> clips;
+  final List<AudioMixSource> resident;
+  final List<StreamWindowRead> reads;
+  final bool hasStreaming;
+
+  /// The upload, its streamed clips playing [windows] — [reads], read.
+  WindowedUpload withWindows(List<AudioMixSource> windows) {
+    assert(windows.length == reads.length, 'one window for each read');
+    return (
+      clips: clips,
+      sources: [...resident, ...windows],
+      hasStreaming: hasStreaming,
+    );
+  }
+}
+
+/// Plans the device upload for [mix] — resident PCM for ordinary clips, a
+/// disk WINDOW around [centerSample] for streaming ones (AUDIO-PRO R6).
+/// One plan for the transport AND the scrubber, so streamed playback and
+/// streamed scrubbing can never disagree.
 ///
 /// Each streaming clip gets a PRIVATE source: two placements of one long
 /// file read different parts of it, and a shared window would have to
@@ -444,8 +502,7 @@ AudioMixSource _streamWindowSource(
 /// meets a device off the project rate (the conform on disk IS
 /// project-rate PCM; resampling windows on the fly would buy that rare
 /// case with a permanent cost).
-({List<AudioMixClip> clips, List<AudioMixSource> sources, bool hasStreaming})?
-windowedMixUpload({
+WindowedUploadPlan? planWindowedMixUpload({
   required AudioMixSchedule mix,
   required AudioConformStore conformStore,
   required int deviceRate,
@@ -467,8 +524,8 @@ windowedMixUpload({
     return null;
   }
 
-  final sources = [...resident.sources];
   final clips = <AudioMixClip>[];
+  final reads = <StreamWindowRead>[];
   final at = (
     centerSample: centerSample,
     backSamples: backSeconds * deviceRate,
@@ -488,8 +545,38 @@ windowedMixUpload({
     if (reader == null) {
       return null;
     }
-    clips.add(clip.pointedAt(sources.length));
-    sources.add(_streamWindowSource(clip, reader: reader, at: at));
+    clips.add(clip.pointedAt(resident.sources.length + reads.length));
+    reads.add(_streamWindowRead(clip, reader: reader, at: at));
   }
-  return (clips: clips, sources: sources, hasStreaming: resident.hasStreaming);
+  return WindowedUploadPlan._(
+    clips: clips,
+    resident: resident.sources,
+    reads: reads,
+    hasStreaming: resident.hasStreaming,
+  );
+}
+
+/// The device upload for [mix] with every window read here
+/// ([planWindowedMixUpload], [streamWindowReadHere]) — into what [place]
+/// makes for each, when it makes one.
+WindowedUpload? windowedMixUpload({
+  required AudioMixSchedule mix,
+  required AudioConformStore conformStore,
+  required int deviceRate,
+  required int centerSample,
+  required int backSeconds,
+  required int aheadSeconds,
+  Float32List? Function(int floats)? place,
+}) {
+  final plan = planWindowedMixUpload(
+    mix: mix,
+    conformStore: conformStore,
+    deviceRate: deviceRate,
+    centerSample: centerSample,
+    backSeconds: backSeconds,
+    aheadSeconds: aheadSeconds,
+  );
+  return plan?.withWindows([
+    for (final read in plan.reads) streamWindowReadHere(read, place: place),
+  ]);
 }

@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:ffi' show Float, FloatPointer, Pointer;
+import 'dart:typed_data';
 
+import '../../core/on_a_worker.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
+import '../../services/audio/audio_mixer_reference.dart'
+    show AudioMixSource;
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
 
@@ -14,6 +19,17 @@ import 'audio_playback_schedule.dart';
 /// Each used to keep the three fields and a byte-identical private upload
 /// of its own around one shared free function.
 class AudioStreamingWindow {
+  AudioStreamingWindow({this.readWindows = readStreamWindowsOnAWorker});
+
+  /// How an advance reads its windows: on a worker, into buffers of the
+  /// device's own ([readStreamWindowsOnAWorker]) — null when one did not
+  /// land whole. A test holds the read to put something in meanwhile.
+  final Future<List<AudioMixSource>?> Function(
+    List<StreamWindowRead> reads,
+    QaAudioDevice device,
+  )
+  readWindows;
+
   /// Streaming window geometry (AUDIO-PRO R6). A window trails a little
   /// (loop wraps and small seeks land just behind the playhead) and leads
   /// a lot (the next advance must upload long before the mix reads past
@@ -47,18 +63,29 @@ class AudioStreamingWindow {
   /// An advance is out — polls cannot stack disk reads.
   bool _advancing = false;
 
+  /// Uploads so far — what tells an advance that lands late that the
+  /// window was put somewhere meanwhile.
+  int _uploads = 0;
+
   /// Moves this window along with a stream that is PLAYING (AUDIO-PRO R6):
   /// asked every tick, it re-centres on the device when [wantsRecentreAt]
   /// says so, off the caller's stack and one advance at a time. [current]
-  /// answers when the advance runs — the device still carrying this window
-  /// and its rate, or null once the player has stopped, which uploads
-  /// nothing.
+  /// answers when the advance sets out and again when its windows land —
+  /// the device still carrying this window and its rate, or null once the
+  /// player has stopped, which uploads nothing.
   ///
   /// 🚨ONE rule for every player that streams (import-preview-plays-silent,
   /// 2026-09-29). It lived inside the timeline's transport alone, and the
   /// media viewer's sound never moved its window at all: a file past two
   /// minutes streams from disk, so the viewer went silent half a minute
   /// after play was pressed.
+  ///
+  /// 🚨THE WINDOWS ARE READ ON A WORKER, straight into buffers of the
+  /// device's own ([readWindows]; streaming-advance-reads-on-the-ui-thread,
+  /// 10-15): the thread that draws plans the reads, takes over what landed
+  /// and swaps the schedule. ↩️It read them itself — 🔬47~50ms every
+  /// fifteen seconds of a long sound (18~21 the read, 23~30 the upload's
+  /// copies), and the picture skipped a frame.
   void followPlayback({
     required int positionSamples,
     required int deviceRate,
@@ -70,22 +97,62 @@ class AudioStreamingWindow {
     }
     _advancing = true;
     unawaited(
-      Future(() {
-        try {
-          final now = current();
-          if (now != null) {
-            upload(
-              device: now.device,
-              conformStore: conformStore,
-              deviceRate: now.deviceRate,
-              centerSample: now.device.positionSamples,
-            );
-          }
-        } finally {
-          _advancing = false;
-        }
-      }),
+      Future(
+        () => _advance(conformStore, current),
+      ).whenComplete(() => _advancing = false),
     );
+  }
+
+  /// One advance: planned and put here, its windows read by [readWindows]
+  /// in between.
+  ///
+  /// 🚨WINDOWS THAT LAND LATE UPLOAD NOTHING when the player has stopped,
+  /// when another mix was put in (they are not its windows), or when the
+  /// window was uploaded anew meanwhile — a seek or an edit put it where
+  /// the playhead is, and these would take it back.
+  ///
+  /// 🚨NOR DO WINDOWS THAT DID NOT LAND WHOLE — a file gone from under the
+  /// read (a save that moved the conform), or no memory for a buffer. An
+  /// advance REPLACES a window that still has fifteen seconds to play, so
+  /// the old one plays on and the next tick reads again; a broken window
+  /// put in its place would be silence until the advance after. (An arm
+  /// has no window at the new place to keep, and puts in what came back.)
+  Future<void> _advance(
+    AudioConformStore conformStore,
+    ({QaAudioDevice device, int deviceRate})? Function() current,
+  ) async {
+    final now = current();
+    final held = mix;
+    if (now == null || held == null) {
+      return;
+    }
+    final centerSample = now.device.positionSamples;
+    final plan = planWindowedMixUpload(
+      mix: held,
+      conformStore: conformStore,
+      deviceRate: now.deviceRate,
+      centerSample: centerSample,
+      backSeconds: backSeconds,
+      aheadSeconds: aheadSeconds,
+    );
+    if (plan == null) {
+      return;
+    }
+    final uploads = _uploads;
+    final List<AudioMixSource>? windows;
+    try {
+      windows = await readWindows(plan.reads, now.device);
+    } on StateError {
+      return;
+    }
+    final after = current();
+    if (windows == null ||
+        after == null ||
+        !identical(mix, held) ||
+        _uploads != uploads) {
+      return;
+    }
+    _put(after.device, plan.withWindows(windows), centerSample);
   }
 
   /// Uploads [mix] to [device] with streaming windows around
@@ -112,17 +179,120 @@ class AudioStreamingWindow {
       centerSample: centerSample,
       backSeconds: backSeconds,
       aheadSeconds: aheadSeconds,
+      place: device.newSamples,
     );
-    if (prepared == null) {
-      return false;
-    }
+    return prepared != null && _put(device, prepared, centerSample);
+  }
+
+  /// [prepared] on [device], and this window centred on [centerSample] —
+  /// or false, with nothing moved, when the device would not take it.
+  bool _put(
+    QaAudioDevice device,
+    WindowedUpload prepared,
+    int centerSample,
+  ) {
     if (!device.setSchedule(clips: prepared.clips, sources: prepared.sources)) {
       return false;
     }
     hasStreaming = prepared.hasStreaming;
     this.centerSample = centerSample;
+    _uploads += 1;
     return true;
   }
+}
+
+/// [reads] read on a worker into buffers of [device]'s own, which this
+/// isolate takes over — all an advance asks of the thread that draws
+/// (streaming-advance-reads-on-the-ui-thread, 10-15). Null when one did not
+/// land whole ([readStreamWindowsInto]).
+Future<List<AudioMixSource>?> readStreamWindowsOnAWorker(
+  List<StreamWindowRead> reads,
+  QaAudioDevice device,
+) async {
+  final landed = await _readOnAWorker(reads, device.buffers);
+  if (landed == null) {
+    return null;
+  }
+  return [
+    for (final (index, window) in landed.indexed)
+      AudioMixSource(
+        samples: window.floats == 0
+            ? Float32List(0)
+            : device.adoptSamples(window.address, window.floats),
+        channels: reads[index].reader.channels,
+        sourceStart: window.startSample,
+      ),
+  ];
+}
+
+/// The worker's job, in a function of its own: `Isolate.run` copies the
+/// closure's whole context, and this one holds [reads] and two addresses.
+Future<List<LandedStreamWindow>?> _readOnAWorker(
+  List<StreamWindowRead> reads,
+  AudioBuffers buffers,
+) => onAWorker(() => readStreamWindowsInto(reads, audioBuffersHere(buffers)));
+
+/// Where a window read on a worker landed: [floats] samples from
+/// [startSample] in the buffer at [address] — none, at 0, for a window
+/// with nothing in it.
+typedef LandedStreamWindow = ({int startSample, int address, int floats});
+
+/// [reads] read into buffers [hands] makes, handed over by address — or,
+/// when one does not land whole (its file gone from under it) or its buffer
+/// cannot be made (a throw), none at all: every buffer made goes back, for
+/// nothing else knows of them.
+List<LandedStreamWindow>? readStreamWindowsInto(
+  List<StreamWindowRead> reads,
+  AudioBufferHands hands,
+) {
+  final made = <Pointer<Float>>[];
+  void releaseAll() {
+    for (final buffer in made) {
+      hands.release(buffer);
+    }
+  }
+
+  try {
+    final landed = <LandedStreamWindow>[];
+    for (final read in reads) {
+      final window = _readInto(read, hands, made);
+      if (window == null) {
+        releaseAll();
+        return null;
+      }
+      landed.add(window);
+    }
+    return landed;
+  } on Object {
+    releaseAll();
+    rethrow;
+  }
+}
+
+/// [read] into a buffer [hands] makes for it — kept in [made] until it is
+/// handed over — and where it landed; null when it did not land whole.
+LandedStreamWindow? _readInto(
+  StreamWindowRead read,
+  AudioBufferHands hands,
+  List<Pointer<Float>> made,
+) {
+  final reader = read.reader;
+  final at = reader.windowAt(read.start, read.count);
+  final floats = at.count * reader.channels;
+  if (floats == 0) {
+    return (startSample: at.start, address: 0, floats: 0);
+  }
+  final buffer = hands.make(floats);
+  made.add(buffer);
+  final window = reader.readWindow(
+    at.start,
+    at.count,
+    place: (_) => buffer.asTypedList(floats),
+  );
+  if (window.samples.length != floats) {
+    return null;
+  }
+  return (startSample: at.start, address: buffer.address, floats: floats);
 }
 
 /// Opens the output if it is closed, converts [schedule] to samples and

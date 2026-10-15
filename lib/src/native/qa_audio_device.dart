@@ -8,6 +8,48 @@ import '../services/audio/audio_mixer_reference.dart';
 import 'qa_audio_native.dart';
 import 'qa_engine_abi.dart';
 
+/// Where the device's buffers come from, as one isolate tells another: its
+/// maker and its release, by their functions' addresses
+/// ([QaAudioDevice.buffers]). [audioBuffersHere] binds them.
+///
+/// 🚨A worker filling buffers for [QaAudioDevice.adoptSamples] takes them
+/// from the isolate that ADOPTS them: the release its lists' finalizer runs
+/// is that isolate's, and a worker's own probe can load another binary, or
+/// none — a test's path override is a static, and statics do not cross
+/// isolates (`TileBlocks`, the same shape for a tile's pixels).
+typedef AudioBuffers = ({int make, int release});
+
+/// What fills the device's buffers where [AudioBuffers] were sent: where a
+/// buffer comes from, and where it goes back when the work it was for
+/// fails.
+typedef AudioBufferHands = ({
+  Pointer<Float> Function(int floats) make,
+  void Function(Pointer<Float> samples) release,
+});
+
+/// [buffers] bound in the isolate they were sent to — whose [make] throws
+/// when the memory is not there, failing the work it was for whole.
+AudioBufferHands audioBuffersHere(AudioBuffers buffers) {
+  final make =
+      Pointer<NativeFunction<Pointer<Float> Function(Int64)>>.fromAddress(
+        buffers.make,
+      ).asFunction<Pointer<Float> Function(int)>();
+  final release =
+      Pointer<NativeFunction<Void Function(Pointer<Void>)>>.fromAddress(
+        buffers.release,
+      ).asFunction<void Function(Pointer<Void>)>();
+  return (
+    make: (floats) {
+      final samples = make(floats);
+      if (samples == nullptr) {
+        throw StateError('qa_audio_buffer_new failed for $floats floats');
+      }
+      return samples;
+    },
+    release: (samples) => release(samples.cast()),
+  );
+}
+
 /// The output device and the transport (audio program 2C).
 ///
 /// This is where "audio is the master clock" stops being a design note.
@@ -102,11 +144,12 @@ final class QaAudioDevice {
       int,
     )
   >('qa_audio_device_set_schedule');
-  late final _bufferNew = _library
-      .lookupFunction<
-        Pointer<Float> Function(Int64),
-        Pointer<Float> Function(int)
-      >('qa_audio_buffer_new');
+  late final _bufferNewNative = _library
+      .lookup<NativeFunction<Pointer<Float> Function(Int64)>>(
+        'qa_audio_buffer_new',
+      );
+  late final _bufferNew = _bufferNewNative
+      .asFunction<Pointer<Float> Function(int)>();
   late final _bufferReleaseNative = _library
       .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
         'qa_audio_buffer_release',
@@ -281,9 +324,25 @@ final class QaAudioDevice {
   /// when the memory is not there.
   Float32List? newSamples(int floats) {
     final pointer = _bufferNew(floats);
-    if (pointer == nullptr) {
-      return null;
-    }
+    return pointer == nullptr ? null : _listOver(pointer, floats);
+  }
+
+  /// [newSamples]' maker and the release its lists' finalizer runs, by
+  /// address — for a worker that fills buffers this isolate adopts
+  /// ([audioBuffersHere], [adoptSamples]).
+  AudioBuffers get buffers => (
+    make: _bufferNewNative.address,
+    release: _bufferReleaseNative.address,
+  );
+
+  /// The [floats] samples a worker made with [buffers] and filled, at
+  /// [address] — the list over them, holding them as if [newSamples] had
+  /// made them here: the worker's hold is the list's now.
+  Float32List adoptSamples(int address, int floats) =>
+      _listOver(Pointer<Float>.fromAddress(address), floats);
+
+  /// The list over the buffer at [pointer], holding it until the list goes.
+  Float32List _listOver(Pointer<Float> pointer, int floats) {
     final samples = pointer.asTypedList(
       floats,
       finalizer: _bufferReleaseNative,

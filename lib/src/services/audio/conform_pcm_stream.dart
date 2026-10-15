@@ -63,8 +63,9 @@ bool conformStaysOnDisk({
 /// megabytes, and there is nothing left to close.
 ///
 /// Reads are synchronous and run on the CONTROL side (the schedule
-/// refresh and the scrubber's re-centre), never the audio callback — the
-/// realtime thread only ever touches memory the C side already owns.
+/// refresh and the scrubber's re-centre, and a worker's for a playing
+/// stream's advance), never the audio callback — the realtime thread only
+/// ever touches memory the C side already owns.
 ///
 /// 🚨**WHICH IS WHAT MAKES COMPRESSION SAFE HERE** (유저 2026-08-30:
 /// 「재생시 압축해제때문에 오디오가 싱크 안맞으면 절대 안되니 그부분만
@@ -189,48 +190,59 @@ class ConformPcmStreamReader {
     }
   }
 
+  /// [startSample] and [sampleCount] CLAMPED into the file: where a window
+  /// asked for there starts, and how many samples per channel it holds when
+  /// it lands whole ([readWindow]).
+  ({int start, int count}) windowAt(int startSample, int sampleCount) {
+    final start = startSample.clamp(0, length);
+    return (start: start, count: sampleCount.clamp(0, length - start));
+  }
+
   /// Reads [sampleCount] samples per channel starting at [startSample],
-  /// interleaved float32. The window is CLAMPED into the file; asking past
-  /// either end yields the samples that exist (possibly empty) — the
-  /// schedule's source_start/length describe what came back.
+  /// interleaved float32 — into the list [place] makes for that many floats
+  /// when it makes one (a buffer of the output device's own, which plays
+  /// them where they lie), a new one otherwise. The window is CLAMPED into
+  /// the file; asking past either end yields the samples that exist
+  /// (possibly empty) — the schedule's source_start/length describe what
+  /// came back.
+  ///
+  /// 🚨IN PLACE: the 16-bit samples land in the upper half of the float
+  /// list's own bytes and widen there ([conformPcmToFloat32]), so a window
+  /// costs no memory but its own. ↩️They were read into a byte list of
+  /// their own and widened into a new float list — 18MB of garbage for a
+  /// 32-second stereo window, at every streaming advance
+  /// (streaming-advance-reads-on-the-ui-thread, 10-15).
   ({int startSample, Float32List samples}) readWindow(
     int startSample,
-    int sampleCount,
-  ) {
-    var start = startSample;
-    if (start < 0) {
-      start = 0;
-    }
-    if (start > length) {
-      start = length;
-    }
-    var count = sampleCount;
-    if (count < 0) {
-      count = 0;
-    }
-    if (start + count > length) {
-      count = length - start;
-    }
+    int sampleCount, {
+    Float32List? Function(int floats)? place,
+  }) {
+    final (:start, :count) = windowAt(startSample, sampleCount);
     if (count == 0) {
       return (startSample: start, samples: Float32List(0));
     }
+    final floats = count * channels;
+    final out = place?.call(floats) ?? Float32List(floats);
     try {
-      final wanted = count * 2 * channels;
-      final bytes = Uint8List(wanted);
+      final pcm = Uint8List.view(
+        out.buffer,
+        out.offsetInBytes + floats * 2,
+        floats * 2,
+      );
       final read = _source.readIntoSync(
-        bytes,
+        pcm,
         _dataOffset + start * 2 * channels,
-        wanted,
+        pcm.length,
       );
       final got = read ~/ (2 * channels);
+      // 🔑Through the codec's own converter, so the streamed path and the
+      // resident decode cannot land the same audio at two levels.
+      conformPcmToFloat32(pcm, got * channels, into: out);
       return (
         startSample: start,
-        // 🔑Through the codec's own converter, so the streamed path and the
-        // resident decode cannot land the same audio at two levels.
-        samples: conformPcmToFloat32(
-          Uint8List.sublistView(bytes, 0, got * 2 * channels),
-          got * channels,
-        ),
+        samples: got == count
+            ? out
+            : Float32List.sublistView(out, 0, got * channels),
       );
     } on Object {
       // A failed read (file replaced mid-run, drive gone) degrades to

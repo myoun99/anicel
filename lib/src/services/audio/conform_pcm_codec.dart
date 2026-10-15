@@ -411,7 +411,8 @@ Uint8List encodeConform({
   return out;
 }
 
-/// 16-bit PCM to float32, at the one scale this app uses.
+/// 16-bit PCM to float32, at the one scale this app uses — into a new list,
+/// or into [into] when one is given.
 ///
 /// 🚨**32768, not 32767** — the industry convention, and what dr_wav uses (it
 /// multiplies by the literal 0.000030517578125f). Matching it is not
@@ -432,8 +433,17 @@ Uint8List encodeConform({
 /// byte offset — [ConformHeader.length] is 64, so a buffer that starts even
 /// always qualifies — and the `ByteData` path stays for the ones that do not
 /// rather than as a claim that they cannot happen.
-Float32List conformPcmToFloat32(Uint8List pcm, int sampleCount) {
-  final out = Float32List(sampleCount);
+///
+/// 🚨[into] may hold [pcm] itself, from the middle of its own bytes on — a
+/// window read in place (`ConformPcmStreamReader.readWindow`). Front to
+/// back, each sample is read before its float lands, and no float lands on
+/// a sample still to be read.
+Float32List conformPcmToFloat32(
+  Uint8List pcm,
+  int sampleCount, {
+  Float32List? into,
+}) {
+  final out = into ?? Float32List(sampleCount);
   const scale = 1.0 / 32768.0;
   if (pcm.offsetInBytes.isEven) {
     final src = Int16List.view(pcm.buffer, pcm.offsetInBytes, sampleCount);
