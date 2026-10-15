@@ -1399,9 +1399,9 @@ class BrushFrameStore {
   /// 다시 연결 · 열 때 옮기기).
   ///
   /// Off the picture for a hot cel and off the ref for one whose bytes are
-  /// in a file, so asking decodes nothing. ⚠️The hot picture answers for
-  /// its key: a clean promoted cel is hot AND file-backed at once, and an
-  /// edit since may have taken its photos off.
+  /// in a file, so asking decodes nothing. A cel in two tiers at once — a
+  /// clean promoted cel, hot AND file-backed — is the same bytes in both:
+  /// an edit lets go of the ref ([storeBakedSurface]).
   Map<BrushFrameKey, List<String>> get celPhotoPathsByKey {
     final named = <BrushFrameKey, List<String>>{
       for (final MapEntry(:key, value: surface) in _bakedSurfaces.entries)
@@ -1409,7 +1409,7 @@ class BrushFrameStore {
     };
     for (final refs in [_coldCels, _fileCels]) {
       for (final MapEntry(:key, value: ref) in refs.entries) {
-        if (ref.photoPaths.isNotEmpty && !_bakedSurfaces.containsKey(key)) {
+        if (ref.photoPaths.isNotEmpty) {
           named.putIfAbsent(key, () => ref.photoPaths);
         }
       }

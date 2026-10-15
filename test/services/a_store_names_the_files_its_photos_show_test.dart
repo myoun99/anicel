@@ -92,14 +92,16 @@ void main() {
     });
   });
 
-  test('the hot picture answers for its key: an edit that took its photos '
-      'off is not outvoted by the file it was read from', () {
+  test('an edit that took a cel\'s photos off is not outvoted by the file '
+      'it was read from — the edit lets go of its ref', () {
     final store = BrushFrameStore()..restoreFromFile({key: inAFile()});
     final read = store.bakedSurfaceOrNull(key)!;
+    expect(store.isCelFileBacked(key), isTrue, reason: '⛔fixture: promoted');
 
     store.storeBakedSurface(key, read.withPhotos(const []));
 
     expect(store.celPhotoPathsByKey, isEmpty);
+    expect(store.isCelFileBacked(key), isFalse);
   });
 
   test('a ref moved to another file, or within one, keeps its index', () {

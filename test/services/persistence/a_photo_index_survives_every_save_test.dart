@@ -162,6 +162,48 @@ void main() {
         reason: 'the CONTROL — it moved',
       );
     });
+
+    test('🚨a cel saved ($road) names its files off the ref the save hands '
+        'back — once it cools, without a decode', () async {
+      final path = '${directory.path}/cooled.anicel';
+      final project = pooled();
+      final key = boxOf(project, 'memo');
+      final ink = BrushFrameStore();
+      await service.save(
+        project: project,
+        brushFrameStore: BrushFrameStore(),
+        auxCelStores: [ink],
+        filePath: path,
+      );
+      plantStranger(path);
+
+      ink.storeBakedSurface(key, inked([photoOf(1, path: sky)]));
+      await service.save(
+        project: project,
+        brushFrameStore: BrushFrameStore(),
+        auxCelStores: [ink],
+        filePath: path,
+        rewriteWhole: whole,
+      );
+      ink
+        ..hotCelByteBudget = 0
+        ..storeBakedSurface(boxOf(project, 'other'), inked(const []));
+      await ink.drainCooling();
+
+      expect(
+        parseAnicelZipLayoutFile(path).entryNamed(stranger) == null,
+        whole,
+        reason: '⛔fixture: the save was $road',
+      );
+      expect(
+        ink.hotBakedSurfaceOrNull(key),
+        isNull,
+        reason: '⛔fixture: it cooled onto its ref',
+      );
+      expect(ink.celPhotoPathsByKey, {
+        key: [sky],
+      });
+    });
   }
 
   test('🚨a head longer than the open\'s first read is read again, and '
