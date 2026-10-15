@@ -149,11 +149,11 @@ static int64_t qa_clock_now_us(void) {
 // and named by the address of its samples. A schedule copies none of them:
 // each source of the slot that plays a buffer HOLDS it, and a buffer goes
 // when its maker has let go of it and no slot holds it any more - so its
-// maker may let go at any time, even while it plays. ↩️Each schedule copied every source's
-// PCM into a block of its own - the resident sounds and the streaming
-// windows alike, at every press, seek and window advance - after its maker
-// had copied them once on the way in (🔬33ms on the AMMI OP press, and the
-// garbage the way in left).
+// maker may let go at any time, even while it plays. ↩️Each schedule
+// copied every source's PCM into a block of its own - the resident sounds
+// and the streaming windows alike, at every press, seek and window advance
+// - after its maker had copied them once on the way in (🔬33ms on the AMMI
+// OP press, and the garbage the way in left).
 //
 // The holds are counted atomically: a maker on any thread may let go. The
 // callback never holds or lets go - it reads a slot, and the slot's holds
@@ -173,8 +173,8 @@ static qa_audio_buffer_head* qa_audio_buffer_head_of(const float* samples) {
   if (samples == NULL) {
     return NULL;
   }
-  qa_audio_buffer_head* head =
-      (qa_audio_buffer_head*)((uintptr_t)samples - sizeof(qa_audio_buffer_head));
+  qa_audio_buffer_head* head = (qa_audio_buffer_head*)(
+      (uintptr_t)samples - sizeof(qa_audio_buffer_head));
   return head->magic == QA_AUDIO_BUFFER_MAGIC ? head : NULL;
 }
 

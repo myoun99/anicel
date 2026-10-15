@@ -103,9 +103,10 @@ final class QaAudioDevice {
     )
   >('qa_audio_device_set_schedule');
   late final _bufferNew = _library
-      .lookupFunction<Pointer<Float> Function(Int64), Pointer<Float> Function(int)>(
-        'qa_audio_buffer_new',
-      );
+      .lookupFunction<
+        Pointer<Float> Function(Int64),
+        Pointer<Float> Function(int)
+      >('qa_audio_buffer_new');
   late final _bufferReleaseNative = _library
       .lookup<NativeFunction<Void Function(Pointer<Void>)>>(
         'qa_audio_buffer_release',
