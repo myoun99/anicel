@@ -18,10 +18,6 @@ import '../../../services/commands/cel_text_edit_command.dart';
 import '../../text/cel_text_bake.dart';
 import '../../text/cel_text_layout.dart';
 
-/// A text's pixels as they are drawn: [plate] moved ([dx], [dy]) whole
-/// pixels — the plate itself while a hand carries the text (F-344).
-typedef CelTextPixels = ({Map<TileCoord, BitmapTile> plate, int dx, int dy});
-
 /// A text as it is SHOWN: what it says, that set, and that as pixels — one
 /// of each, made together, so the box, the caret and the letters on screen
 /// are always of the same text.

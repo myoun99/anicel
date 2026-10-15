@@ -281,13 +281,7 @@ BitmapSurface celSurfaceWithSourceEffects(
   if (effects.isEmpty) {
     return surface;
   }
-  final keys = <CelColorKey>[];
-  for (final effect in effects) {
-    final key = CelColorKey.fromResolved(effect);
-    if (key != null && !key.isNoOp) {
-      keys.add(key);
-    }
-  }
+  final keys = _keysOf(effects);
   if (keys.isEmpty) {
     return surface;
   }
@@ -307,6 +301,36 @@ BitmapSurface celSurfaceWithSourceEffects(
   _derived[surface] = _Signed(signature, result);
   return result;
 }
+
+/// [straight] — straight rgba, a cel's bytes as its texts make them — with
+/// every colour key in [effects] applied IN PLACE: the walk the tile pass
+/// takes over each tile ([_keyedPixels]), over bytes that are no tile.
+///
+/// What a text a hand carries will land as is asked over a REGION of its
+/// cel (`celTextLandingAsShown`, F-344-Q3), and the alpha a pixel keeps is
+/// that pixel's own answer, so this makes the tile pass's bytes there.
+/// ⛔Called by the seam alone, for [celSurfaceWithSourceEffects]'s reason
+/// (`a_cel_is_shown_through_one_seam_test`).
+void celSourceEffectsOverStraight(
+  Uint8List straight,
+  List<ResolvedLayerEffect> effects,
+) {
+  if (effects.isEmpty) {
+    return;
+  }
+  final keys = _keysOf(effects);
+  if (keys.isNotEmpty) {
+    _keyedPixels(straight, keys, () => straight);
+  }
+}
+
+/// The colour keys [effects] applies, in its order — a kind that keys
+/// nothing, and a key that does nothing, left out.
+List<CelColorKey> _keysOf(List<ResolvedLayerEffect> effects) => [
+  for (final effect in effects)
+    if (CelColorKey.fromResolved(effect) case final key? when !key.isNoOp)
+      key,
+];
 
 BitmapSurface _applyKeys(
   BitmapSurface surface,
@@ -343,37 +367,50 @@ BitmapTile _keyedTile(
   if (cached != null) {
     return cached;
   }
-  final pixelCount = tileSize * tileSize;
   final keyed =
-      rewriteTileLazily(tile, tileSize, (view) {
-        Uint8List? out;
-        for (var pixel = 0; pixel < pixelCount; pixel += 1) {
-          final offset = pixel * 4;
-          final alpha = view[offset + 3];
-          if (alpha == 0) {
-            continue;
-          }
-          final red = view[offset];
-          final green = view[offset + 1];
-          final blue = view[offset + 2];
-          var next = alpha;
-          for (final key in keys) {
-            next = key.alphaFor(red, green, blue, next);
-            if (next == 0) {
-              break;
-            }
-          }
-          if (next == alpha) {
-            continue;
-          }
-          out ??= Uint8List.fromList(view);
-          out[offset + 3] = next;
-        }
-        return out;
-      }) ??
+      rewriteTileLazily(
+        tile,
+        tileSize,
+        (view) => _keyedPixels(view, keys, () => Uint8List.fromList(view)),
+      ) ??
       tile;
   _keyedTiles[tile] = _Signed(signature, keyed);
   return keyed;
+}
+
+/// [keys] over the straight rgba [view]: every pixel's alpha what they
+/// leave it, written to the bytes [into] answers — asked once, at the
+/// first pixel that changes — and null when none does. THE walk, a tile's
+/// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike.
+Uint8List? _keyedPixels(
+  Uint8List view,
+  List<CelColorKey> keys,
+  Uint8List Function() into,
+) {
+  Uint8List? out;
+  final length = view.length;
+  for (var offset = 0; offset < length; offset += 4) {
+    final alpha = view[offset + 3];
+    if (alpha == 0) {
+      continue;
+    }
+    final red = view[offset];
+    final green = view[offset + 1];
+    final blue = view[offset + 2];
+    var next = alpha;
+    for (final key in keys) {
+      next = key.alphaFor(red, green, blue, next);
+      if (next == 0) {
+        break;
+      }
+    }
+    if (next == alpha) {
+      continue;
+    }
+    out ??= into();
+    out[offset + 3] = next;
+  }
+  return out;
 }
 
 /// A memo entry: what was derived, plus the VALUES it was derived from.

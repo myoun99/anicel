@@ -28,8 +28,11 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
+import '../models/tiles_covering.dart';
 import 'brush_stamp_span_kernel.dart';
+import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 
 /// [surface]'s drawing with every text it carries laid over it, bottom to
 /// top — a surface that carries no texts, whose tiles are the cel as shown.
@@ -163,16 +166,59 @@ void layPlatesOverStraight(
   }
 }
 
-/// [plate] stamped onto [pixels] at full strength, in place — THE landing,
-/// and the stamp tool's own ([BrushStampBlitter]). Whether a byte changed.
+/// [plate] laid over [straight] — straight rgba of [region] of [on]'s grid,
+/// a row [region]'s width — standing ([dx], [dy]) whole pixels from where
+/// it was set, IN PLACE: the stamp a plate's tile is laid with
+/// ([celTileWithPlatesLaid]), over a region of the grid rather than a tile
+/// of it.
+///
+/// 🚨What lands at a pixel is that pixel's own answer — one plate pixel
+/// over one pixel under it — so the bytes this makes over a region are the
+/// bytes the tiles there are laid with (F-344-Q3, 유저 2026-10-15: 「놓을
+/// 때와 같은 코드로 — 완전히 같게」). A plate none of whose tiles reach
+/// [region] costs a look at its coordinates.
+void layPlateOverRegion(
+  Uint8List straight,
+  DirtyRegion region,
+  Map<TileCoord, BitmapTile> plate, {
+  required BitmapSurface on,
+  int dx = 0,
+  int dy = 0,
+}) {
+  final from = DirtyRegion(
+    left: region.left - dx,
+    top: region.top - dy,
+    rightExclusive: region.rightExclusive - dx,
+    bottomExclusive: region.bottomExclusive - dy,
+  );
+  final onGrid = BitmapSurface(
+    canvasSize: on.canvasSize,
+    tileSize: on.tileSize,
+    tiles: plate,
+  );
+  if (tilesCovering(onGrid, from).isEmpty) {
+    return;
+  }
+  _landed(
+    straight,
+    bitmapSurfaceRegionPixels(onGrid, from),
+    region.width * region.height,
+  );
+}
+
+/// [plate]'s tile stamped onto [pixels], one tile of them ([_landed]).
 bool _stamp(Uint8List pixels, BitmapTile plate, int tileSize) =>
-    plate.readPixels(
-      (_, view) => BrushStampBlitter(
-        rgba: view,
-        dabOpacity: 1.0,
-        erase: false,
-      ).blendSpanInPlace(pixels, 0, 0, tileSize * tileSize),
-    );
+    plate.readPixels((_, view) => _landed(pixels, view, tileSize * tileSize));
+
+/// [plate] — straight rgba laid out as [pixels] is — stamped onto the first
+/// [count] pixels of [pixels] at full strength, in place: THE landing, and
+/// the stamp tool's own ([BrushStampBlitter]). Whether a byte changed.
+bool _landed(Uint8List pixels, Uint8List plate, int count) =>
+    BrushStampBlitter(
+      rgba: plate,
+      dabOpacity: 1.0,
+      erase: false,
+    ).blendSpanInPlace(pixels, 0, 0, count);
 
 /// [plate] laid over an empty coordinate — what the stamp makes there: it
 /// skips a pixel of alpha 0 and writes every other, as it is, over nothing.

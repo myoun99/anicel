@@ -352,6 +352,10 @@ class CelText {
   String toString() => 'CelText($id, ${content.text})';
 }
 
+/// A text's pixels as they are drawn: [plate] moved ([dx], [dy]) whole
+/// pixels — the plate itself while a hand carries the text (F-344).
+typedef CelTextPixels = ({Map<TileCoord, BitmapTile> plate, int dx, int dy});
+
 /// The id a text added to [texts] takes: one past the largest there.
 int nextCelTextId(Iterable<CelText> texts) {
   var largest = 0;

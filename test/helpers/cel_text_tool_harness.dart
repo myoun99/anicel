@@ -25,6 +25,7 @@ import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -238,8 +239,17 @@ Finder textField() => find.byKey(
 /// The picture the canvas draws IN THE PLACE of the cel under the tool,
 /// texts laid in: the cel itself, or with a text in hand the hole it left
 /// — what floats over that is [canvasPixel]'s (F-344).
+///
+/// ⚠️Laid in means none is left as a text: its [BitmapSurface.texts] are
+/// empty whatever the cel carries. What floats is [canvasFloat].
 BitmapSurface canvasShows(WidgetTester tester) =>
     _canvasPainter(tester).surface;
+
+/// What floats over [canvasShows] while a text is in hand — its own pixels
+/// (`CelTextFloat`), or on a row that keys its colours what the cel will
+/// show where it lands (`CelTextLanding`) — null with none lifted.
+LandingPreview? canvasFloat(WidgetTester tester) =>
+    _canvasPainter(tester).landingPreview?.value;
 
 /// One pixel of what the canvas DRAWS for the cel under the tool, as
 /// straight RGBA — [canvasShows] and what floats over it, the text in hand,

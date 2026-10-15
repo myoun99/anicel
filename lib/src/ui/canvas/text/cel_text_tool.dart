@@ -28,17 +28,23 @@ part 'cel_text_tool_list.dart';
 part 'cel_text_tool_way_out.dart';
 
 /// What floats over the hole the text in hand left in its cel
-/// ([CelTextTool.floatingOn]): its pixels as they are drawn, and the texts
-/// of the cel above it.
-typedef CelTextFloating = ({CelTextPixels pixels, List<CelText> above});
+/// ([CelTextTool.floatingOn]): its pixels as they are drawn, the cel
+/// without it and without the texts above it, and those texts.
+typedef CelTextFloating = ({
+  CelTextPixels pixels,
+  BitmapSurface under,
+  List<CelText> above,
+});
 
 /// The text in hand lifted off a picture: the picture, which text, the
-/// picture without it and the texts above it — and those texts.
+/// picture without it and the texts above it, the picture without it
+/// alone — and the texts above it.
 typedef _Lift = ({
   BitmapSurface picture,
   CelTextSession session,
   int? id,
-  BitmapSurface hole,
+  BitmapSurface under,
+  BitmapSurface without,
   List<CelText> above,
 });
 
@@ -273,9 +279,25 @@ class CelTextTool extends ChangeNotifier {
   /// panel again for a painter of the surface that made. The hole is made
   /// when the text is taken, and what the hand does to the text after that
   /// changes only what floats.
-  BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) {
+  BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) =>
+      _shownFor(key, cel, (lift) => lift.under);
+
+  /// [shownSurfaceFor] with the texts above the one in hand LAID IN, where
+  /// they stand — the picture without the text in hand, and nothing else
+  /// taken off it: what a canvas draws that floats, in the text's place,
+  /// what the cel will show where it lands, those texts included
+  /// (`CelTextLanding`, F-344-Q3).
+  BitmapSurface? shownWithoutFor(BrushFrameKey key, BitmapSurface cel) =>
+      _shownFor(key, cel, (lift) => lift.without);
+
+  BitmapSurface? _shownFor(
+    BrushFrameKey key,
+    BitmapSurface cel,
+    BitmapSurface Function(_Lift lift) part,
+  ) {
     final picture = _withLeaving(key, cel);
-    final surface = _liftOff(key, picture)?.hole ?? picture;
+    final lift = _liftOff(key, picture);
+    final surface = lift == null ? picture : part(lift);
     return identical(surface, cel) ? null : surface;
   }
 
@@ -290,7 +312,11 @@ class CelTextTool extends ChangeNotifier {
     final lift = _liftOff(key, _withLeaving(key, cel));
     return lift == null
         ? null
-        : (pixels: lift.session.shown.pixels, above: lift.above);
+        : (
+            pixels: lift.session.shown.pixels,
+            under: lift.under,
+            above: lift.above,
+          );
   }
 
   /// [cel] with the texts let go of that still owe a landing laid in as
@@ -308,8 +334,8 @@ class CelTextTool extends ChangeNotifier {
   /// The text in hand lifted off [picture], [key]'s — null when the text in
   /// hand is on another cel, or none is, or it is shown as the cel carries
   /// it: then the cel itself is the picture ([_lifts]). A text new to the
-  /// cel is over all of them, so nothing is above it and its hole is the
-  /// picture itself.
+  /// cel is over all of them, so nothing is above it and either hole is
+  /// the picture itself.
   ///
   /// Made once for a picture and a text, so the painter of the hole is
   /// made once too (`_activeSurfacePainterToken`).
@@ -332,7 +358,8 @@ class CelTextTool extends ChangeNotifier {
       picture: picture,
       session: session,
       id: id,
-      hole: at < 0 ? picture : picture.withTexts(texts.sublist(0, at)),
+      under: at < 0 ? picture : picture.withTexts(texts.sublist(0, at)),
+      without: at < 0 ? picture : picture.withTexts([...texts]..removeAt(at)),
       above: at < 0 ? const <CelText>[] : texts.sublist(at + 1),
     );
   }

@@ -21,26 +21,39 @@ import '../helpers/project_scratch_folder.dart';
 /// cel that carries one with its letters missing, on that route only. So
 /// the rule is read off the source: nothing under `lib/` calls the keys'
 /// pass but the seam.
+///
+/// The pass has a second door now: a text a hand carries on a row that
+/// keys is shown as the bytes it will land as, keyed over a region of its
+/// cel rather than over its tiles (`celSourceEffectsOverStraight`,
+/// F-344-Q3). It is the same pass and the same hazard, so it is held to the
+/// same seam.
 void main() {
   const seam = 'lib/src/services/cel_surface_as_shown.dart';
   const keysPass = 'lib/src/services/cel_source_effect_pass.dart';
-  const call = 'celSurfaceWithSourceEffects(';
 
-  /// The lines of [source] that CALL the keys' pass — a mention in a
-  /// comment is not a call, and the pass's own declaration is not one.
-  List<String> callsIn(String source) => [
+  /// The doors into the keys' pass, each with how it is declared.
+  const doors = {
+    'celSurfaceWithSourceEffects(':
+        'BitmapSurface celSurfaceWithSourceEffects(',
+    'celSourceEffectsOverStraight(': 'void celSourceEffectsOverStraight(',
+  };
+
+  /// The lines of [source] that CALL [door] — a mention in a comment is not
+  /// a call, and the door's own declaration is not one.
+  List<String> callsIn(String source, String door) => [
     for (final line in source.split('\n'))
-      if (line.contains(call) &&
+      if (line.contains(door) &&
           !line.trimLeft().startsWith('//') &&
-          !line.trimLeft().startsWith('BitmapSurface $call'))
+          !line.trimLeft().startsWith(doors[door]!))
         line.trim(),
   ];
 
   List<String> straysUnder(String root, {required Set<String> allowed}) => [
     for (final file in dartFilesUnder(root))
       if (!allowed.contains(file.path.replaceAll(r'\', '/')))
-        for (final line in callsIn(file.readAsStringSync()))
-          '${file.path.replaceAll(r'\', '/')}: $line',
+        for (final door in doors.keys)
+          for (final line in callsIn(file.readAsStringSync(), door))
+            '${file.path.replaceAll(r'\', '/')}: $line',
   ];
 
   test('nothing under lib/ keys a cel\'s tiles but the seam', () {
@@ -57,7 +70,9 @@ void main() {
   test('the seam lays the texts and keys what they made — once each', () {
     final source = File(seam).readAsStringSync();
 
-    expect(callsIn(source), hasLength(1));
+    for (final door in doors.keys) {
+      expect(callsIn(source, door), hasLength(1), reason: door);
+    }
     expect(
       source.contains(
         'celSurfaceWithSourceEffects(celSurfaceWithTextsLaid(surface), '
@@ -71,10 +86,10 @@ void main() {
   });
 
   test('fixture: the pass is declared where this test thinks it is', () {
-    expect(
-      File(keysPass).readAsStringSync(),
-      contains('BitmapSurface $call'),
-    );
+    final source = File(keysPass).readAsStringSync();
+    for (final declared in doors.values) {
+      expect(source, contains(declared));
+    }
   });
 
   test('🚨the scan sees a stray when there is one', () {
@@ -84,6 +99,7 @@ void main() {
       'void draw() {\n'
       '  // celSurfaceWithSourceEffects(surface, effects) is the old seam\n'
       '  final shown = celSurfaceWithSourceEffects(surface, effects);\n'
+      '  celSourceEffectsOverStraight(bytes, effects);\n'
       '}\n',
     );
     File('${planted.path}/a_good_route.dart').writeAsStringSync(
@@ -94,8 +110,9 @@ void main() {
 
     final found = straysUnder(planted.path, allowed: const {});
 
-    expect(found, hasLength(1), reason: 'one call, and a comment beside it');
-    expect(found.single, contains('a_route.dart'));
-    expect(found.single, contains('final shown = '));
+    expect(found, hasLength(2), reason: 'a call of each door, and a comment');
+    expect(found, everyElement(contains('a_route.dart')));
+    expect(found.first, contains('final shown = '));
+    expect(found.last, contains('celSourceEffectsOverStraight(bytes'));
   });
 }

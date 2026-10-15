@@ -1222,8 +1222,38 @@ void main() {
       expect([for (final text in hole.texts) text.id], [3]);
       expect(hole.tiles, picture.tiles, reason: 'the drawing stays');
       expect([for (final text in floating.above) text.id], [5]);
+      expect(floating.under, same(hole));
       expect(floating.pixels.plate, same(held.plate));
       expect((floating.pixels.dx, floating.pixels.dy), (8, 0));
+    });
+
+    test('🚨F-344-Q3: a canvas that floats the LANDING is given the cel '
+        'without the text in hand alone — the texts above it stay', () {
+      final below = carried(3, said([run('lo')]));
+      final held = carried(4, said([run('ab')], x: 12));
+      final over = carried(5, said([run('hi')], y: 14));
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [below, held, over],
+      );
+      tool.takeText(cel, held);
+      final session = tool.session!;
+      expect(
+        tool.shownWithoutFor(cel.key, pictureOf(cel)),
+        isNull,
+        reason: 'taken and not yet carried, it is shown as the cel has it',
+      );
+
+      session.showMoved(session.moveOrigin, dx: 8, dy: 0);
+
+      final picture = pictureOf(cel);
+      final without = tool.shownWithoutFor(cel.key, picture)!;
+      expect([for (final text in without.texts) text.id], [3, 5]);
+      expect(without.tiles, picture.tiles, reason: 'the drawing stays');
+      expect(
+        tool.shownWithoutFor(cel.key, picture),
+        same(without),
+        reason: 'one picture for the whole carry',
+      );
     });
 
     test('🚨F-344: a hand carrying the text tells the panel only as the '

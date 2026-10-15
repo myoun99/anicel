@@ -33,7 +33,9 @@ import '../../../helpers/cel_text_tool_harness.dart';
 /// move of the hand. The canvas's own painter is read over one region
 /// mid-drag and again once the drag has landed, and the two must be the
 /// same bytes — at 100%, and at 50%, where a float composites as its layer
-/// does (F-240).
+/// does (F-240). On a row that keys a colour away the same holds over ink
+/// too, to the byte: what floats there is the landing itself (F-344-Q3,
+/// 유저 2026-10-15: 「놓을 때와 같은 코드로 — 완전히 같게」).
 void main() {
   int differing(Uint8List a, Uint8List b) {
     var count = 0;
@@ -63,6 +65,66 @@ void main() {
     384,
   );
 
+  /// A tile of [seed]'s pattern, every [clear]th pixel clear, the rest
+  /// of alphas that step through partly clear ones.
+  BitmapTile patterned(int seed, int size, {required int clear}) {
+    final px = Uint8List(BitmapTile.bytesFor(size));
+    for (var i = 0; i < size * size; i += 1) {
+      final o = i * 4;
+      if (i % clear == 0) {
+        continue;
+      }
+      px[o] = (i * 37 + seed * 7) % 256;
+      px[o + 1] = (i * 53 + seed * 13) % 256;
+      px[o + 2] = (i * 29 + seed * 31) % 256;
+      px[o + 3] = 40 + (i * 11 + seed) % 216;
+    }
+    return BitmapTile(size: size, pixels: px);
+  }
+
+  /// A key that takes a colour away where partly clear letters over the
+  /// [patterned] ink mix into it, and nowhere else much.
+  LayerEffect inkKey() => LayerEffect(
+    id: const EffectId('text-tool-key'),
+    kind: EffectKind.deleteColor,
+    parameters: {
+      'keyRed': EffectParameter(value: 160),
+      'keyGreen': EffectParameter(value: 100),
+      'keyBlue': EffectParameter(value: 100),
+      'tolerance': EffectParameter(value: 80),
+      'amount': EffectParameter(value: 100),
+    },
+  );
+
+  /// [patterned] ink of [seed] over every tile [region] reaches, in place
+  /// of the drawing of the cel under the tool — its texts kept.
+  Future<void> inkUnder(
+    WidgetTester tester,
+    Rect region, {
+    int seed = 0,
+  }) async {
+    final cel = celOf(tester);
+    final size = cel.tileSize;
+    coordinatorOf(tester).restoreSurfaceSnapshot(
+      textToolKey,
+      BitmapSurface(
+        canvasSize: cel.canvasSize,
+        tileSize: size,
+        tiles: {
+          for (var y = region.top ~/ size; y * size < region.bottom; y++)
+            for (var x = region.left ~/ size; x * size < region.right; x++)
+              TileCoord(x: x, y: y): patterned(
+                seed + x + y * 7,
+                size,
+                clear: 3,
+              ),
+        },
+        texts: cel.texts,
+      ),
+    );
+    await pumpFrames(tester);
+  }
+
   for (final level in [0, 1]) {
     final zoom = '${100 >> level}%';
 
@@ -82,7 +144,7 @@ void main() {
       await tester.pump();
       await mouse.moveTo(onScreen(tester, c.dx + 87, c.dy + 71));
       await tester.pump();
-      expect(canvasShows(tester).texts, isEmpty, reason: '⛔fixture: lifted');
+      expect(canvasFloat(tester), isA<CelTextFloat>(), reason: '⛔fixture');
       final carried = await canvasRaster(tester, region, level: level);
       await mouse.up();
       await pumpFrames(tester);
@@ -134,8 +196,8 @@ void main() {
       await mouse.moveTo(onScreen(tester, c.dx + 40, c.dy + 120));
       await tester.pump();
       expect(
-        canvasShows(tester).texts,
-        isEmpty,
+        canvasFloat(tester),
+        isA<CelTextFloat>().having((float) => float.above, 'above', isNotNull),
         reason: '⛔fixture: lifted, 「yo」 with it',
       );
       final carried = await canvasRaster(tester, region, level: level);
@@ -148,6 +210,61 @@ void main() {
       final x = (c.dx - region.left + 60).toInt() >> level;
       final y = (c.dy - region.top + 135).toInt() >> level;
       expect(pixelOf(landed, width, x, y), [255, 0, 0, 255]);
+      expect(differing(carried, landed), 0);
+    });
+
+    testWidgets('🚨on a row that KEYS a colour away, a text carried over INK '
+        'and under another shows at $zoom the bytes it lands as — the '
+        'landing itself floats (F-344-Q3)', (tester) async {
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(effects: [inkKey()]),
+      );
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      final region = regionAround(c);
+      await inkUnder(tester, region);
+      // Partly clear letters, so a letter and the ink under it mix.
+      await clickAt(tester, c.dx, c.dy);
+      textToolOf(
+        tester,
+      ).changeLetters((style) => style.copyWith(color: 0x80FF0000));
+      await typeText(tester, 'hi');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+      await clickAt(tester, c.dx, c.dy + 120);
+      textToolOf(
+        tester,
+      ).changeLetters((style) => style.copyWith(color: 0xB00040FF));
+      await typeText(tester, 'yo');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+      expect(
+        [for (final text in celOf(tester).texts) text.content.text],
+        ['hi', 'yo'],
+        reason: '⛔fixture: 「yo」 is over 「hi」',
+      );
+      expect(canvasShows(tester).tiles, isNotEmpty, reason: '⛔fixture: ink');
+
+      // 「hi」 down by (30, 90): over the top half of 「yo」, and over ink.
+      final mouse = await pressAt(tester, c.dx + 10, c.dy + 30);
+      await mouse.moveTo(onScreen(tester, c.dx + 25, c.dy + 75));
+      await tester.pump();
+      await mouse.moveTo(onScreen(tester, c.dx + 40, c.dy + 120));
+      await tester.pump();
+      expect(
+        canvasFloat(tester),
+        isA<CelTextLanding>(),
+        reason: '⛔fixture: lifted — the landing floats',
+      );
+      final carried = await canvasRaster(tester, region, level: level);
+      await mouse.up();
+      await pumpFrames(tester);
+      final landed = await canvasRaster(tester, region, level: level);
+
+      expect(
+        celOf(tester).texts.first.content.anchor,
+        isNot(CanvasPoint(x: c.dx, y: c.dy)),
+        reason: '⛔fixture: it moved',
+      );
       expect(differing(carried, landed), 0);
     });
   }
@@ -207,7 +324,7 @@ void main() {
       await tester.pump();
       await mouse.moveTo(onScreen(tester, c.dx + 57, c.dy + 41));
       await tester.pump();
-      expect(canvasShows(tester).texts, isEmpty, reason: '⛔fixture: lifted');
+      expect(canvasFloat(tester), isA<CelTextLanding>(), reason: '⛔fixture');
       final carried = await canvasRaster(tester, region);
       await mouse.up();
       await pumpFrames(tester);
@@ -269,9 +386,9 @@ void main() {
         reason: '⛔fixture: nothing landed yet',
       );
       expect(
-        canvasShows(tester).texts,
-        isEmpty,
-        reason: '⛔fixture: lifted, 「yo」 with it',
+        canvasFloat(tester),
+        isA<CelTextLanding>(),
+        reason: '⛔fixture: lifted — the landing floats',
       );
       final keyed = await canvasRaster(tester, region);
       expect(
@@ -308,6 +425,46 @@ void main() {
       );
       expect(differing(rekeyed, landed), 0);
     });
+
+    testWidgets('🚨the picture changed under a carried text is what shows '
+        'under it — what floats is made again for the cel as it stands', (
+      tester,
+    ) async {
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(effects: [inkKey()]),
+      );
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      final region = regionAround(c);
+      await inkUnder(tester, region);
+      await clickAt(tester, c.dx, c.dy);
+      textToolOf(
+        tester,
+      ).changeLetters((style) => style.copyWith(color: 0x80FF0000));
+      await typeText(tester, 'hi');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+
+      final mouse = await pressAt(tester, c.dx + 10, c.dy + 30);
+      await mouse.moveTo(onScreen(tester, c.dx + 30, c.dy + 50));
+      await tester.pump();
+      expect(canvasFloat(tester), isA<CelTextLanding>(), reason: '⛔fixture');
+      final before = await canvasRaster(tester, region);
+      // Carried no further, over other ink.
+      await inkUnder(tester, region, seed: 5);
+      final carried = await canvasRaster(tester, region);
+      await mouse.up();
+      await pumpFrames(tester);
+      final landed = await canvasRaster(tester, region);
+
+      expect(
+        differing(before, carried),
+        greaterThan(0),
+        reason: '⛔premise: the ink under it changed',
+      );
+      expect(differing(carried, landed), 0);
+    });
   });
 
   group('over a drawing', () {
@@ -315,23 +472,6 @@ void main() {
 
     const tile = 16;
     const canvasSize = CanvasSize(width: 64, height: 48);
-
-    /// A tile of [seed]'s pattern, every [clear]th pixel clear, the rest
-    /// of alphas that step through partly clear ones.
-    BitmapTile patterned(int seed, {required int clear}) {
-      final px = Uint8List(BitmapTile.bytesFor(tile));
-      for (var i = 0; i < tile * tile; i += 1) {
-        final o = i * 4;
-        if (i % clear == 0) {
-          continue;
-        }
-        px[o] = (i * 37 + seed * 7) % 256;
-        px[o + 1] = (i * 53 + seed * 13) % 256;
-        px[o + 2] = (i * 29 + seed * 31) % 256;
-        px[o + 3] = 40 + (i * 11 + seed) % 216;
-      }
-      return BitmapTile(size: tile, pixels: px);
-    }
 
     var lineages = 0;
     BitmapSurfacePainter painterOf(
@@ -363,11 +503,11 @@ void main() {
       final drawing = {
         for (var y = 0; y < 3; y += 1)
           for (var x = 0; x < 4; x += 1)
-            TileCoord(x: x, y: y): patterned(x + y * 4, clear: 3),
+            TileCoord(x: x, y: y): patterned(x + y * 4, tile, clear: 3),
       };
       final plate = {
-        TileCoord(x: 1, y: 1): patterned(20, clear: 5),
-        TileCoord(x: 2, y: 1): patterned(21, clear: 7),
+        TileCoord(x: 1, y: 1): patterned(20, tile, clear: 5),
+        TileCoord(x: 2, y: 1): patterned(21, tile, clear: 7),
       };
       final content = CelTextContent(
         spans: const [
@@ -427,106 +567,126 @@ void main() {
       expect(most, lessThanOrEqualTo(1), reason: '$apart bytes apart');
     });
 
-    test('⚠️on a row with a colour KEY, a carried text shows other than it '
-        'lands only where it lies over INK — it is keyed by itself, and the '
-        'landing keys it with the ink under it (F-344-Q1)', () async {
+    test('🚨on a row with a colour KEY, a carried text over INK shows what '
+        'it lands as to the byte — the landing floats, the texts above it '
+        'in their place (F-344-Q3)', () async {
       final keys = [
         ResolvedLayerEffect(
           kind: EffectKind.deleteColor,
           values: const [128, 128, 128, 100, 100],
         ),
       ];
+      // Ink everywhere but (2, 2), where the text lands over nothing.
       final drawing = {
         for (var y = 0; y < 3; y += 1)
           for (var x = 0; x < 4; x += 1)
-            TileCoord(x: x, y: y): patterned(x + y * 4, clear: 3),
+            if (x != 2 || y != 2)
+              TileCoord(x: x, y: y): patterned(x + y * 4, tile, clear: 3),
       };
-      final plate = {
-        TileCoord(x: 1, y: 1): patterned(20, clear: 5),
-        TileCoord(x: 2, y: 1): patterned(21, clear: 7),
-      };
-      final moved = celTextPlateMoved(
-        plate,
-        canvasSize: canvasSize,
-        tileSize: tile,
-        dx: 5,
-        dy: 3,
+      CelText text(int id, Map<TileCoord, BitmapTile> plate) => CelText(
+        id: id,
+        content: CelTextContent(
+          spans: const [
+            CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
+          ],
+          anchor: CanvasPoint(x: 16.0 * id, y: 16),
+        ),
+        plate: plate,
       );
-      final hole = BitmapSurface(
+      final below = text(1, {
+        TileCoord(x: 0, y: 1): patterned(30, tile, clear: 4),
+        TileCoord(x: 1, y: 1): patterned(31, tile, clear: 6),
+      });
+      final plate = {
+        TileCoord(x: 1, y: 1): patterned(20, tile, clear: 5),
+        TileCoord(x: 2, y: 1): patterned(21, tile, clear: 7),
+        TileCoord(x: 1, y: 2): patterned(22, tile, clear: 2),
+      };
+      final above = text(3, {
+        TileCoord(x: 2, y: 1): patterned(40, tile, clear: 2),
+        TileCoord(x: 2, y: 2): patterned(41, tile, clear: 3),
+      });
+      final under = BitmapSurface(
         canvasSize: canvasSize,
         tileSize: tile,
         tiles: drawing,
+        texts: [below],
       );
-      final float = CelTextFloat(
-        held: SelectionFloatPaint(
-          surface: painterOf(
-            celSurfaceAsShown(
-              BitmapSurface(
-                canvasSize: canvasSize,
-                tileSize: tile,
-                tiles: plate,
-              ),
-              keys,
-            ),
-            landing: ValueNotifier(null),
+      final landed = under.withTexts([
+        below,
+        text(
+          2,
+          celTextPlateMoved(
+            plate,
+            canvasSize: canvasSize,
+            tileSize: tile,
+            dx: 5,
+            dy: 3,
           ),
-          surfaceOffset: CanvasPoint(x: 5, y: 3),
-          clip: canvasSize.pasteboardRect,
         ),
-        above: null,
-      );
-      final landed = hole.withTexts([
-        CelText(
-          id: 1,
-          content: CelTextContent(
-            spans: const [
-              CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
-            ],
-            anchor: CanvasPoint(x: 16, y: 16),
-          ),
-          plate: moved,
-        ),
+        above,
       ]);
-      int alphaOf(Map<TileCoord, BitmapTile> tiles, int x, int y) =>
-          tiles[TileCoord(x: x ~/ tile, y: y ~/ tile)]?.readPixels(
-            (_, view) => view[((y % tile) * tile + x % tile) * 4 + 3],
-          ) ??
-          0;
+      final made = celTextLandingAsShown(
+        under: under,
+        carried: (plate: plate, dx: 5, dy: 3),
+        above: [above],
+        effects: keys,
+      )!;
+      final landing = CelTextLanding.of(made.region, made.straight);
+      addTearDown(landing.picture.dispose);
+      BitmapSurfacePainter apart(BitmapSurface surface) => painterOf(
+        celSurfaceAsShown(surface, keys),
+        landing: ValueNotifier(null),
+      );
+      final wall = canvasSize.pasteboardRect;
 
       final carried = await paint(
-        painterOf(celSurfaceAsShown(hole, keys), landing: ValueNotifier(float)),
+        painterOf(
+          celSurfaceAsShown(under.withTexts([below, above]), keys),
+          landing: ValueNotifier(landing),
+        ),
       );
       final after = await paint(painterOf(celSurfaceAsShown(landed, keys)));
 
-      var apart = 0;
-      var offInk = 0;
-      for (var y = 0; y < canvasSize.height; y += 1) {
-        for (var x = 0; x < canvasSize.width; x += 1) {
-          final at = (y * canvasSize.width + x) * 4;
-          var most = 0;
-          for (var channel = 0; channel < 4; channel += 1) {
-            final by = (carried[at + channel] - after[at + channel]).abs();
-            most = by > most ? by : most;
-          }
-          if (most <= 1) {
-            continue;
-          }
-          apart += 1;
-          if (alphaOf(moved, x, y) == 0 || alphaOf(drawing, x, y) == 0) {
-            offInk += 1;
-          }
-        }
-      }
-      debugPrint('F-344 keyed over ink: $apart pixels apart');
       expect(
         differing(
-          await paint(painterOf(hole)),
-          await paint(painterOf(celSurfaceAsShown(hole, keys))),
+          await paint(
+            painterOf(
+              celSurfaceAsShown(under, keys),
+              landing: ValueNotifier(
+                CelTextFloat(
+                  held: SelectionFloatPaint(
+                    surface: apart(
+                      BitmapSurface(
+                        canvasSize: canvasSize,
+                        tileSize: tile,
+                        tiles: plate,
+                      ),
+                    ),
+                    surfaceOffset: CanvasPoint(x: 5, y: 3),
+                    clip: wall,
+                  ),
+                  above: SelectionFloatPaint(
+                    surface: apart(
+                      BitmapSurface(
+                        canvasSize: canvasSize,
+                        tileSize: tile,
+                        texts: [above],
+                      ),
+                    ),
+                    clip: wall,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          after,
         ),
         greaterThan(0),
-        reason: '⛔fixture: the key takes some of the ink',
+        reason: '⛔premise: floated as its own pixels, each keyed by itself, '
+            'the text shows other than it lands here',
       );
-      expect(offInk, 0, reason: '$apart pixels apart');
+      expect(differing(carried, after), 0);
     });
   });
 }
