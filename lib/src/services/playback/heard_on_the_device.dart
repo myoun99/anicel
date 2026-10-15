@@ -1,4 +1,5 @@
 import 'dart:developer' show Timeline;
+import 'dart:math' as math;
 
 import 'device_clock_line.dart';
 import 'frame_time_on_device.dart';
@@ -25,6 +26,22 @@ import 'frame_time_on_device.dart';
 /// ("never ahead of the sound" — its guard against a device whose
 /// callbacks have stopped). Read now, every guard of the line keeps its
 /// meaning, and what the device plays in between is its rate.
+///
+/// 🚨NEVER A STEP BACK — only the fold into the lap goes back (F-364, 유저
+/// 2026-10-15: 「재생중에, 아직 초록바가 안된 곳으로, 초록바가 차기
+/// 시작하는곳으로 재생헤드가 점프해버려서 거기서 재생되는 버그」). A
+/// playhead takes a reading that steps back for the lap wrapping
+/// (`playheadWay`): it walks on round the end, and where the clock waits for
+/// a picture it stands on the first frame not made yet — the green bar's
+/// edge. Every stage of this reading can step back: the line where its
+/// highest point grows old ([DeviceClockLine]), and the moment it is
+/// carried on to, which is estimated afresh at every look — when a run's
+/// scenes turn short after long ones the vblank claims start again on an
+/// earlier vblank (`PresentClaims`; 🔬one look in 120,716 on the glass went
+/// back a whole film frame, 41.7ms). So what is kept is the furthest sample
+/// heard under the arm, counted on through every lap, and the fold is the
+/// last thing done to it. ↩️The line kept the furthest count it read, and
+/// everything done to that count after was free to go back.
 final class HeardOnTheDevice {
   /// [frameClockNow] reads the frame clock — the clock the engine's frame
   /// times are on (Dart's timeline clock, which the engine takes them
@@ -39,13 +56,19 @@ final class HeardOnTheDevice {
   final FrameTimeOnDevice _frameTime = FrameTimeOnDevice();
   int _deviceRate = 0;
 
-  /// The device was started afresh ([DeviceClockLine.arm]).
+  /// The furthest sample heard under this arm, counted on through every
+  /// lap — null until the arm's first reading.
+  int? _furthest;
+
+  /// The device was started afresh ([DeviceClockLine.arm]): what was heard
+  /// before is of another run.
   void arm({
     required int deviceRate,
     required int carriesFor,
     int lapSamples = 0,
   }) {
     _deviceRate = deviceRate;
+    _furthest = null;
     _line.arm(
       deviceRate: deviceRate,
       carriesFor: carriesFor,
@@ -78,6 +101,8 @@ final class HeardOnTheDevice {
     // What is HEARD trails the count by the device's latency (the user's
     // own correction on top) — taken off BEFORE the count is folded into
     // the loop: the lap that is heard is not the lap that is handed.
-    return _line.foldedIntoTheLap(count - latencySamples + userOffsetSamples);
+    final heard = count - latencySamples + userOffsetSamples;
+    final furthest = _furthest = math.max(_furthest ?? heard, heard);
+    return _line.foldedIntoTheLap(furthest);
   }
 }

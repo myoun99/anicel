@@ -21,14 +21,21 @@ import '../present_pacing.dart';
 /// route that is not shown still silences it, and a test still drives it
 /// with a pump.
 class LookingTicker {
-  LookingTicker(this._onTick);
+  /// [shownAt] says when the frame under way is shown ([frameShownAt]); a
+  /// test hands its own.
+  LookingTicker(this._onTick, {Duration Function()? shownAt})
+    : _shownAt = shownAt ?? frameShownAt;
 
   final TickerCallback _onTick;
+  final Duration Function() _shownAt;
   Ticker? _ticker;
 
   /// When the first tick's frame is shown — what the elapsed time counts
   /// from.
   Duration? _firstShown;
+
+  /// The furthest elapsed time a tick has carried since the start.
+  Duration _furthest = Duration.zero;
 
   bool get isRunning => _ticker != null;
 
@@ -47,6 +54,7 @@ class LookingTicker {
   void start(TickerProvider vsync) {
     _ticker?.dispose();
     _firstShown = null;
+    _furthest = Duration.zero;
     final ticker = _ticker = vsync.createTicker(_tick);
     clockStarted(this);
     _onlyToLook(() => unawaited(ticker.start()));
@@ -69,8 +77,19 @@ class LookingTicker {
   void _tick(Duration elapsed) {
     // Counted from where the ticker's own count starts — the frame it was
     // started in — and on from there by the moments shown.
-    final shown = frameShownAt();
-    _onTick(shown - (_firstShown ??= shown - elapsed));
+    final shown = _shownAt();
+    final since = shown - (_firstShown ??= shown - elapsed);
+    // 🚨NEVER A STEP BACK (F-364, 유저 2026-10-15: 「초록바가 차기
+    // 시작하는곳으로 재생헤드가 점프」). The moment a frame is shown is
+    // estimated afresh at every look, and goes back when the vblank claims
+    // start again on an earlier vblank (`PresentClaims`) — and a clock that
+    // steps back is read as its lap wrapping (`playheadWay`). The time it
+    // has reached stands until the moments catch it up, as what is heard
+    // does on the device (`HeardOnTheDevice`).
+    if (since > _furthest) {
+      _furthest = since;
+    }
+    _onTick(_furthest);
     // The tick may have ended this clock: then there is nothing to look
     // again with. (It may have started it afresh, too; the ticker it then
     // has looks again like any other.)

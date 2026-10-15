@@ -77,8 +77,8 @@ class _Display implements DisplayTiming {
   }
 }
 
-/// The playback of a project of one cut, ten frames long, at 24fps.
-CanvasPlaybackController _playbackOfOneCut() {
+/// The playback of a project of one cut, [frames] long, at 24fps.
+CanvasPlaybackController _playbackOfOneCut({int frames = 10}) {
   final project = Project(
     id: const ProjectId('paced'),
     name: 'Paced',
@@ -91,7 +91,7 @@ CanvasPlaybackController _playbackOfOneCut() {
           Cut(
             id: const CutId('cut'),
             name: 'A',
-            duration: 10,
+            duration: frames,
             canvasSize: const CanvasSize(width: 64, height: 36),
             layers: const [],
           ),
@@ -570,6 +570,117 @@ void main() {
     await tester.pump(vsync);
 
     expect(display.waits, [claim!.handOffMicros]);
+  });
+
+  // 유저 2026-10-15 (F-364): 「재생중에, 아직 초록바가 안된 곳으로,
+  // 초록바가 차기 시작하는곳으로 재생헤드가 점프해버려서 거기서 재생되는
+  // 버그」. A clock that steps back is read as its lap wrapping.
+  group('🚨a clock never steps back', () {
+    testWidgets('a ticker whose moments go back carries no time back — the '
+        'time it reached stands until they catch it up', (tester) async {
+      await settle(tester);
+      final moments = [100, 107, 114, 60, 121, 128];
+      var look = 0;
+      final elapsed = <int>[];
+      final ticker = LookingTicker(
+        (since) => elapsed.add(since.inMilliseconds),
+        shownAt: () => Duration(milliseconds: moments[look++]),
+      );
+
+      ticker.start(const TestVSync());
+      for (var pump = 0; pump < 12 && look < moments.length; pump += 1) {
+        await tester.pump(const Duration(microseconds: 7000));
+      }
+      ticker.stop();
+
+      expect(elapsed, [0, 7, 14, 14, 21, 28]);
+    });
+
+    testWidgets('🚨when a run\'s scenes turn short after long ones the '
+        'claims start again on an earlier vblank — and a run that waits for '
+        'its pictures goes on from where it stands, rather than walk round to '
+        'the first one not made', (tester) async {
+      final shown = await settle(tester);
+      final read = <Duration>[];
+      final moves = <int>[];
+      final controller = _playbackOfOneCut(frames: 24)
+        // Its own clock runs the run; this watches when it is read.
+        ..resolveAudioClock = ({frameTime}) {
+          read.add(frameTime!);
+          return null;
+        }
+        // The pictures are made up to frame 15.
+        ..waitsOn = (frame, {required placed}) => frame >= 16;
+      addTearDown(controller.dispose);
+      // The film's frame on the screen, so a frame it changes in is drawn —
+      // and held.
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Column(
+            children: [
+              ValueListenableBuilder<int>(
+                valueListenable: shown,
+                builder: (context, value, child) => Text('$value'),
+              ),
+              ValueListenableBuilder<int?>(
+                valueListenable: controller.globalFrameIndexListenable,
+                builder: (context, value, child) => Text('film $value'),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump(vsync);
+      // Long scenes first, as a run's first making leaves them.
+      final learned = RasterSpread();
+      for (var round = 0; round < 8; round += 1) {
+        await heldFrame(tester, shown, learned);
+        await seenPast(
+          tester,
+          ranFor: 60000,
+          late: PresentPacing.seenLateUnmeasuredMicros,
+        );
+        learned.add(60000);
+      }
+      controller.globalFrameIndexListenable.addListener(() {
+        final frame = controller.globalFrameIndexListenable.value;
+        if (frame != null) {
+          moves.add(frame);
+        }
+      });
+      controller.attachTicker(const TestVSync());
+      controller.play(scope: PlaybackScope.activeCut);
+
+      // The scenes turn short: each held frame's raster ends at once.
+      for (var look = 0; look < 50; look += 1) {
+        await tester.pump(const Duration(microseconds: 7000));
+        while (binding.behind.isNotEmpty) {
+          await seenPast(
+            tester,
+            ranFor: 2000,
+            late: PresentPacing.seenLateUnmeasuredMicros,
+          );
+        }
+      }
+      controller.stop();
+
+      expect(
+        [
+          for (var i = 1; i < read.length; i += 1)
+            if (read[i] < read[i - 1]) i,
+        ],
+        isNotEmpty,
+        reason: '⛔premise: a look read at an earlier moment than the one '
+            'before it',
+      );
+      expect(moves, isNot(contains(16)));
+      expect(
+        [for (var i = 1; i < moves.length; i += 1) moves[i] - moves[i - 1]],
+        everyElement(1),
+        reason: 'a frame at a time, as the film plays',
+      );
+    });
   });
 
   group('🚨while a clock runs the compositor composes on every vblank', () {

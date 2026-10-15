@@ -5,7 +5,7 @@ import 'package:anicel/src/services/playback/device_clock_line.dart';
 /// 어떻게 안되나」 → 「소리 싱크나 영상이나 뭐 그런거 정확하기만하면되.」
 ///
 /// The device's count is a stair — one step an audio callback. The line
-/// through it is what the picture reads, and these are the four things it
+/// through it is what the picture reads, and these are the three things it
 /// holds to.
 void main() {
   // 48 kHz: a 10ms callback hands 480 samples, and the device carries 30ms
@@ -115,9 +115,10 @@ void main() {
       );
     });
 
-    test('🚨never a step back: when the point the line rested on grows old, '
-        'the line is the highest that is left — and the count waits for it '
-        'rather than dip', () {
+    // What is heard does not go back where this dips: that is held in one
+    // place (heard_on_the_device_test).
+    test('when the point the line rested on grows old, the line is the '
+        'highest that is left — a hair under the one before', () {
       // One callback on time, and then every one of them 2ms late: their
       // points lie on a line 96 samples under the first.
       read(stair: step, at: point(step, t), now: t);
@@ -142,11 +143,7 @@ void main() {
         at: late(50),
         now: late(50).atMicros,
       );
-      expect(
-        dropped,
-        step + 24091,
-        reason: 'the lower line says 24480 here; the count does not go back',
-      );
+      expect(dropped, 24480, reason: 'the lower line, 91 samples under');
       expect(
         read(
           stair: late(50).positionSamples,
@@ -171,24 +168,18 @@ void main() {
       );
     });
 
-    test('🚨a new arm is another run: the furthest count and the points of '
-        'the run before it are forgotten', () {
+    test('🚨a new arm is another run: the points of the run before it are '
+        'forgotten', () {
       // A run far along, its line a callback old.
       read(stair: 96000, at: point(96000, t), now: t + ms(5));
 
       // Started afresh from the top, 20ms later.
       line.arm(deviceRate: rate, carriesFor: carries);
       expect(
-        read(stair: 0, now: t + ms(20)),
-        0,
-        reason: 'the furthest count of the run before is not this one\'s',
-      );
-      expect(
         read(stair: step, at: point(step, t + ms(30)), now: t + ms(30)),
         step,
-        reason: 'nor are its points: the old run\'s line stands 96000 '
-            'samples over this one, and on it the count would run on by all '
-            'the device carries at once',
+        reason: 'the old run\'s line stands 96000 samples over this one, and '
+            'on it the count would run on by all the device carries at once',
       );
     });
   });

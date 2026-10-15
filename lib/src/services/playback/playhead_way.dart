@@ -20,7 +20,13 @@ import 'dart:math' as math;
 /// its sound for as long as it took.
 ///
 /// Either clock only ever moves on — a step back is the lap wrapping — so
-/// the way from [from] to [to] is forwards, round the end.
+/// the way from [from] to [to] is forwards, round the end. 🚨Each clock
+/// keeps that in one place: what is heard on the device
+/// (`HeardOnTheDevice`), and the time a run's own ticker has reached
+/// (`LookingTicker`). A reading that stepped back without wrapping walks
+/// the whole lap, and where a frame waits for its picture it stands on the
+/// first one not made — F-364, the playhead that jumped to the green bar's
+/// edge.
 ///
 /// 🚨COUNTED, not walked 「until it gets there」: a frame outside the run is
 /// never got to, and that walk never ended — found by a mutant that took
