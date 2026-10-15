@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import '../../models/brush_frame_key.dart';
+import '../../models/cel_photo.dart';
 import '../../models/canvas_size.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
@@ -42,7 +43,9 @@ Future<Map<String, ui.Image>> readContePageImages(
 /// Renders one conte page offscreen with the panel's own renderer
 /// ([ContePagePainter], fit-to-size path) — what the Conte tab shows is
 /// what exports, the timesheet render's rule. Sheet ink (R5) rides
-/// [inkImageFor] into the same painter, so the PNG carries it for free.
+/// [inkImageFor] into the same painter — the photos on it [inkPhotosFor],
+/// drawn from their files by [imageFor] (I-97) — so the PNG carries it for
+/// free.
 ///
 /// The page rasters at its PAPER'S PIXELS — the paper at its own
 /// resolution, the panel's 100% (`ConteSheetMetrics.paperPixelSize`, F-294;
@@ -54,6 +57,7 @@ Future<ui.Image> renderContePageImage({
   SheetPictureLookup? pictureFor,
   ui.Image? Function(String assetPath)? imageFor,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
+  List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor,
   List<SheetPictureOverInk> picturesOverInk = const [],
   CanvasSize? outputSize,
   required ConteWords words,
@@ -74,6 +78,7 @@ Future<ui.Image> renderContePageImage({
       pictureFor: pictureFor,
       imageFor: imageFor,
       inkImageFor: inkImageFor,
+      inkPhotosFor: inkPhotosFor,
       picturesOverInk: picturesOverInk,
       words: words,
     ).paint(canvas, ui.Size(width.toDouble(), height.toDouble())),

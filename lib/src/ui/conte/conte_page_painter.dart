@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cel_photo.dart';
 import '../../models/conte/conte_page_marks.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
@@ -66,6 +67,7 @@ class ContePagePainter extends CustomPainter
     this.effectiveRatio = 1.0,
     this.layers,
     this.inkImageFor,
+    this.inkPhotosFor,
     this.inkSurfaceFor,
     this.liveInkKeys = const {},
     this.picturesOverInk = const [],
@@ -120,6 +122,10 @@ class ContePagePainter extends CustomPainter
   /// the image) draws no ink.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
+  /// The photos laid on one window's ink (I-97), for an export, beside its
+  /// raster — each drawn from its file by [imageFor].
+  final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
+
   /// The sheet ink's surface for one window key, ON SCREEN: printed as the
   /// brush's live window paints it ([SheetInkOnScreen], F-215), so the
   /// brush switch changes no pixel of it.
@@ -156,6 +162,7 @@ class ContePagePainter extends CustomPainter
         pictureFor: pictureFor,
         imageFor: imageFor,
         inkImageFor: inkImageFor,
+        inkPhotosFor: inkPhotosFor,
         liveInkKeys: liveInkKeys,
       ),
       picturesOverInk: picturesOverInk,
@@ -191,10 +198,10 @@ class ContePagePainter extends CustomPainter
   }
 
   @override
-  // pictureFor/imageFor/inkImageFor are deliberately absent: fresh closures
-  // every build, and comparing them made every rebuild a full-page
-  // repaint. What they answer arrives through `repaint` — a landed
-  // thumbnail or logo, a stroke or its undo.
+  // pictureFor/imageFor/inkImageFor/inkPhotosFor are deliberately absent:
+  // fresh closures every build, and comparing them made every rebuild a
+  // full-page repaint. What they answer arrives through `repaint` — a
+  // landed thumbnail or logo, a stroke or its undo.
   //
   // ⛔Compared by what it PRINTS, not by what it was built from: the page
   // and the source are new objects after any change to the project, and

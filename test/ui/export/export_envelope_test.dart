@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -21,6 +22,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/sheet_paper.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
@@ -29,12 +31,16 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
+import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_envelope_render.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/awaited_uploads.dart';
+import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/checker_sampling.dart';
 import '../../helpers/export_scope_pick.dart';
+import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The cut envelope (컷 봉투) as the Cels tab writes it (F-289, 유저
@@ -162,6 +168,74 @@ void main() {
         expect((await pixelAt(tall, 8, 128)).$4, 255, reason: 'the paper');
         expect((await pixelAt(tall, 8, 352)).$4, 255, reason: 'the paper');
         expect((await pixelAt(tall, 160, 420)).$4, 0, reason: 'under it');
+      });
+    });
+
+    testWidgets('a photo on a box\'s ink prints from its file, sampled for '
+        'the pixels the sheet is rendered at — the screen\'s law (I-97)', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final paper = SheetPaper.envelope.extent;
+        final layout = analogOn(paper.width.round(), paper.height.round());
+        const owner = CutId('39');
+        final window = envelopeInkWindows(layout, owner).first;
+        final placement = window.placement;
+        final middle = placement.pixelOf(placement.window.center);
+        final file = await checkerImage(16);
+        addTearDown(file.dispose);
+
+        /// The reds about the photo, the sheet rendered at [size] of its
+        /// paper's pixels and a pixel of the file [perPixel] of them.
+        Future<List<int>> printed({
+          required double size,
+          required double perPixel,
+        }) async {
+          final photo = photoOf(
+            1,
+            center: CanvasPoint(x: middle.dx, y: middle.dy),
+            size: const CanvasSize(width: 16, height: 16),
+            // The ink's pixels are the form's, [inkSurfaceScale] of them to
+            // a pixel of the paper.
+            scale: perPixel * placement.scale / size,
+          );
+          final rendered = await renderCutEnvelopeImage(
+            face: const TextStyle(),
+            layout: layout,
+            source: const CutEnvelopeSource(),
+            imageFor: (path) =>
+                path == photo.reference.assetPath ? file : null,
+            inkOwner: owner,
+            inkPhotosFor: (asked) => [if (asked == window.key) photo],
+            outputSize: (
+              width: (layout.paperWidth * size).round(),
+              height: (layout.paperHeight * size).round(),
+            ),
+          );
+          try {
+            final shown = placement.window.center * size;
+            return await redsAround(
+              rendered,
+              shown.dx.round(),
+              shown.dy.round(),
+            );
+          } finally {
+            rendered.dispose();
+          }
+        }
+
+        final full = await printed(size: 1, perPixel: 2);
+        expect(full, containsAll([0, 255]), reason: 'LIVENESS: the file');
+        expect(
+          full.every(isPure),
+          isTrue,
+          reason: 'two of the sheet\'s pixels to one of the file: hard-edged',
+        );
+        expect(
+          (await printed(size: 0.5, perPixel: 0.75)).any(isGrey),
+          isTrue,
+          reason: 'fewer than one: smoothed',
+        );
       });
     });
 
@@ -302,6 +376,65 @@ void main() {
       );
       expect(inked!.$1, greaterThan(200), reason: 'red ink, from the store');
       expect(inked.$2, lessThan(80));
+    });
+
+    testWidgets('a photo laid on the sheet rides the export, drawn from its '
+        'file where it was laid (I-97)', (tester) async {
+      final session = EditorSessionManager(initialProject: project());
+      addTearDown(session.dispose);
+      final inkBox = CutEnvelopePresets.analog.inkBoxes.first;
+      final path = (await tester.runAsync(
+        () => writeSolidPng(
+          temp,
+          'pool/photo.png',
+          width: 4,
+          height: 4,
+          rgba: 0x00FFFFFF,
+        ),
+      ))!;
+      // No handwriting: the photo alone, 4×4 of its own at four times —
+      // the ink's first 16 pixels.
+      session.renderCaches.envelopeInkStore.storeBakedSurface(
+        envelopeInkBoxKey(const CutId('39'), inkBox.id),
+        BitmapSurface(
+          canvasSize: const CanvasSize(width: 16, height: 16),
+          tileSize: 8,
+          tiles: const {},
+        ).withPhotos([
+          photoOf(
+            1,
+            path: path,
+            center: CanvasPoint(x: 8, y: 8),
+            size: const CanvasSize(width: 4, height: 4),
+            scale: 4,
+          ),
+        ]),
+      );
+      final state = await pumpDialog(tester, session);
+      await tapSetting(tester, 'export-envelope-paper-sheet');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File(
+            '${temp.path}${Platform.pathSeparator}_CUT39_envelope.png',
+          ).readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final layout = analogOn(image.width, image.height);
+      final window = envelopeInkWindows(
+        layout,
+        const CutId('39'),
+      ).firstWhere((window) => window.id == inkBox.id);
+      final shown = window.placement.paperOf(const Offset(8, 8));
+      final photo = await tester.runAsync(
+        () => pixelAt(image, shown.dx.round(), shown.dy.round()),
+      );
+      expect(photo!.$1, lessThan(40), reason: 'cyan, from the file');
+      expect((photo.$2, photo.$3), (255, 255));
     });
 
     testWidgets('ink PARKED on a sheet nobody has open rides the export and '

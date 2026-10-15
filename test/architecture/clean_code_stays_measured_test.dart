@@ -402,7 +402,18 @@ void main() {
   /// release re-keys them by. Read back off the two cuts it would be a
   /// second answer to that question. 🔬`clean_code_diff` against master
   /// (`3ef2f8da7`, at 395) named that one added and nothing gone.
-  const wideSignatures = 396;
+  ///
+  /// ⚠️396 → 397 on 2026-10-15, named as the rule above asks (I-97, a photo
+  /// laid on a sheet stays a photo — 유저 2026-10-15: 「사진으로 남게(셀의
+  /// 텍스트처럼)」). `paintSheetInkWindow` (six) is the one way an export
+  /// lays a sheet's window, and a window is its raster and the photos
+  /// under it now: the canvas, the raster, where the window lays them, the
+  /// photos, the files they are drawn from and how many target pixels a
+  /// unit of the paper is — the last three what the screen's
+  /// `paintSheetPhotos` takes, so an export samples a photo as the screen
+  /// does. 🔬`clean_code_diff` against the lane's last commit before it
+  /// (`93327c20a`, at 396) named that one added and nothing gone.
+  const wideSignatures = 397;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

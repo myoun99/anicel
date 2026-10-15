@@ -1,9 +1,11 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart' show TextStyle;
 
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_photo.dart';
 import '../../models/cut.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
@@ -46,7 +48,8 @@ class ExportTimesheetPageTask {
 /// preview. The painter's strata are exactly what the panel shows — the
 /// export IS the panel's picture, no second sheet layout to disagree with
 /// it — the saved [ink] included: the windows it shows through (the
-/// panel's own walk) and each window's baked raster.
+/// panel's own walk), each window's baked raster and the photos laid under
+/// it (I-97), drawn from their files by [imageFor].
 ///
 /// ↩️A scale multiplied the page's size in the FORM'S UNITS, which was the
 /// paper while a unit was a pixel of it. F-294 gave the paper pixels of its
@@ -61,8 +64,13 @@ Future<ui.Image> renderTimesheetPageImage({
   required TimesheetWords words,
   required TextStyle face,
   CanvasSize? outputSize,
-  ({List<SheetInk> windows, ui.Image? Function(BrushFrameKey key) imageFor})?
+  ({
+    List<SheetInk> windows,
+    ui.Image? Function(BrushFrameKey key) rasterFor,
+    List<CelPhoto> Function(BrushFrameKey key) photosFor,
+  })?
   ink,
+  ui.Image? Function(String assetPath)? imageFor,
 }) {
   final page = layout.pageRect(pageIndex);
   final paper = layout.paperPixelSize;
@@ -81,7 +89,12 @@ Future<ui.Image> renderTimesheetPageImage({
         layers: stratum.layers,
         words: words,
         ink: ink?.windows ?? const [],
-        inkImageFor: ink?.imageFor,
+        inkImageFor: ink?.rasterFor,
+        inkPhotosFor: ink?.photosFor,
+        imageFor: imageFor,
+        // The image's pixels to a unit of the sheet, as it lays the page
+        // below — what the photos are sampled for.
+        effectiveRatio: math.min(width / page.width, height / page.height),
       );
   return rasterizeOffscreen(
     width: width,

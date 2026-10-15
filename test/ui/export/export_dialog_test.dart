@@ -8,6 +8,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -42,10 +43,12 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
+import '../../helpers/solid_png_fixture.dart';
 import 'fake_ffmpeg_process.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -893,6 +896,61 @@ void main() {
       // pixel of the ink is a pixel of the paper.
       expect(data.getUint8(0), greaterThan(200), reason: 'red, from the store');
       expect(data.getUint8(1), lessThan(80));
+    });
+
+    testWidgets('a photo laid on the sheet rides its PNG, drawn from its '
+        'file where it was laid (I-97)', (tester) async {
+      final session = exportSession();
+      addTearDown(session.dispose);
+      final path = (await tester.runAsync(
+        () => writeSolidPng(
+          temp,
+          'pool/photo.png',
+          width: 4,
+          height: 4,
+          rgba: 0x00FFFFFF,
+        ),
+      ))!;
+      // No handwriting: the photo alone, 4×4 of its own at four times —
+      // the ink's first 16 pixels.
+      session.renderCaches.timesheetInkStore.storeBakedSurface(
+        timesheetInkPageKey(const CutId('cut'), 0),
+        BitmapSurface(
+          canvasSize: const CanvasSize(width: 16, height: 16),
+          tileSize: 8,
+          tiles: const {},
+        ).withPhotos([
+          photoOf(
+            1,
+            path: path,
+            center: CanvasPoint(x: 8, y: 8),
+            size: const CanvasSize(width: 4, height: 4),
+            scale: 4,
+          ),
+        ]),
+      );
+      final state = await pumpDialog(
+        tester,
+        session,
+        exportDirectoryPicker: () async => temp.path,
+      );
+      await switchTab(tester, 'timesheet');
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File('${temp.path}/_TSCut.png').readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final data = (await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      ))!;
+      // A pixel of the ink is a pixel of the paper, from the page's corner.
+      final at = (8 * image.width + 8) * 4;
+      expect(data.getUint8(at), lessThan(40), reason: 'cyan, from the file');
+      expect((data.getUint8(at + 1), data.getUint8(at + 2)), (255, 255));
     });
 
     testWidgets('writes one xdts per cut under the project scope',

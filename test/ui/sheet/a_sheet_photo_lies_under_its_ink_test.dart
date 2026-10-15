@@ -18,8 +18,11 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_photos.dart';
+import 'package:anicel/src/ui/sheet_painting.dart' show paintSheetInkWindow;
 import 'package:flutter/material.dart' show Canvas, Color, Rect, Size;
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/checker_sampling.dart';
 
 /// I-97 (유저 2026-10-15, I-97-Q1 b): a photo laid on a sheet stays a photo
 /// — under the pen's ink, drawn from its own file where its reference
@@ -27,7 +30,8 @@ import 'package:flutter_test/flutter_test.dart';
 /// time, one surface pixel to a screen pixel; the brush switch's own pins
 /// hold the live window to the very same pixels
 /// (`the_brush_switch_repaints_nothing_test`,
-/// `a_picture_takes_the_pen_into_its_blocks_cel_test`).
+/// `a_picture_takes_the_pen_into_its_blocks_cel_test`), and the last group
+/// holds an export's window to the print's.
 void main() {
   const canvas = CanvasSize(width: 16, height: 16);
   const path = 'C:/pool/cyan.png';
@@ -62,28 +66,22 @@ void main() {
     },
   );
 
-  /// A [side]×[side] file of one-pixel squares, black and white.
-  Future<ui.Image> checkerFile(int side) {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder)
-      ..drawColor(const Color(0xFFFFFFFF), ui.BlendMode.src);
-    final black = ui.Paint()..color = const Color(0xFF000000);
-    for (var y = 0; y < side; y += 1) {
-      for (var x = y % 2; x < side; x += 2) {
-        canvas.drawRect(Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1), black);
-      }
-    }
-    return recorder.endRecording().toImage(side, side);
+  /// What [recorder] drew on 16×16 pixels: its RGBA bytes, row by row.
+  Future<Uint8List> bytesOf(ui.PictureRecorder recorder) async {
+    final image = await recorder.endRecording().toImage(16, 16);
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    return data!.buffer.asUint8List();
   }
 
-  /// [surface] printed through a window over the whole paper — one surface
-  /// pixel to a screen pixel, or [zoom] of them — its RGBA bytes, row by
-  /// row.
+  /// [surface] printed through a window over the whole paper — or through
+  /// [window] — one surface pixel to a screen pixel, or [zoom] of them.
   Future<Uint8List> printed(
     BitmapSurface surface,
     ui.Image? Function(String assetPath)? imageFor, {
     double zoom = 1,
-  }) async {
+    Rect window = const Rect.fromLTWH(0, 0, 16, 16),
+  }) {
     final recorder = ui.PictureRecorder();
     printSheetInkAsLive(
       Canvas(recorder),
@@ -91,10 +89,7 @@ void main() {
         SheetInk(
           SheetPaintLayer.ink,
           key: key,
-          placement: const SheetInkPlacement(
-            window: Rect.fromLTWH(0, 0, 16, 16),
-            scale: 1,
-          ),
+          placement: SheetInkPlacement(window: window, scale: 1),
         ),
       ],
       (_) => surface,
@@ -106,10 +101,29 @@ void main() {
         imageFor: imageFor,
       ),
     );
-    final image = await recorder.endRecording().toImage(16, 16);
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    return data!.buffer.asUint8List();
+    return bytesOf(recorder);
+  }
+
+  /// [photos] and the [raster] over them as an export draws the window
+  /// [printed] shows (`paintSheetInkWindow`): in the paper's own space, a
+  /// unit of it [zoom] pixels.
+  Future<Uint8List> exported(
+    List<CelPhoto> photos,
+    ui.Image? raster,
+    ui.Image? Function(String assetPath)? imageFor, {
+    double zoom = 1,
+    Rect window = const Rect.fromLTWH(0, 0, 16, 16),
+  }) {
+    final recorder = ui.PictureRecorder();
+    paintSheetInkWindow(
+      Canvas(recorder)..scale(zoom),
+      raster,
+      SheetInkPlacement(window: window, scale: 1),
+      photos: photos,
+      photoFiles: imageFor,
+      displayScale: zoom,
+    );
+    return bytesOf(recorder);
   }
 
   List<int> at(Uint8List bytes, int x, int y) {
@@ -211,26 +225,27 @@ void main() {
     expect(painterOf([at(8)]).shouldRepaint(painterOf([at(8)])), isFalse);
   });
 
+  /// A 16×16 checker file's photo over the whole surface, laid at [scale].
+  CelPhoto checkerOf(double scale) => photo(
+    TransformPose(
+      center: CanvasPoint(x: 8, y: 8),
+      scaleX: scale,
+      scaleY: scale,
+    ),
+    const CanvasSize(width: 16, height: 16),
+  );
+
+  /// A surface with no ink: [photos] alone.
+  BitmapSurface bare(List<CelPhoto> photos) =>
+      BitmapSurface(canvasSize: canvas, tileSize: 8, tiles: const {})
+          .withPhotos(photos);
+
+  bool grey(List<int> pixel) => pixel[0] > 100 && pixel[0] < 156;
+
   // The display's law (`filterQualityForDisplayScale`), asked of the photo's
   // own pixels: how many screen pixels one of them is — the view's zoom and
   // the photo's own scale both.
   group('a photo is sampled as the canvas samples a picture', () {
-    BitmapSurface checkerOf(double scale) =>
-        BitmapSurface(canvasSize: canvas, tileSize: 8, tiles: const {})
-            .withPhotos([
-              photo(
-                TransformPose(
-                  center: CanvasPoint(x: 8, y: 8),
-                  scaleX: scale,
-                  scaleY: scale,
-                ),
-                const CanvasSize(width: 16, height: 16),
-              ),
-            ]);
-
-    bool grey(List<int> pixel) => pixel[0] > 100 && pixel[0] < 156;
-    bool pure(List<int> pixel) => pixel[0] == 0 || pixel[0] == 255;
-
     for (final (name, zoom, scale, x, y) in const [
       ('the view shows it at half', 0.5, 1.0, 2, 2),
       ('it is laid at half', 1.0, 0.5, 5, 5),
@@ -239,11 +254,11 @@ void main() {
         tester,
       ) async {
         await tester.runAsync(() async {
-          final file = await checkerFile(16);
+          final file = await checkerImage(16);
           addTearDown(file.dispose);
 
           final bytes = await printed(
-            checkerOf(scale),
+            bare([checkerOf(scale)]),
             (asked) => file,
             zoom: zoom,
           );
@@ -259,20 +274,147 @@ void main() {
     ]) {
       testWidgets('$name: its pixels, hard-edged', (tester) async {
         await tester.runAsync(() async {
-          final file = await checkerFile(16);
+          final file = await checkerImage(16);
           addTearDown(file.dispose);
 
           final bytes = await printed(
-            checkerOf(scale),
+            bare([checkerOf(scale)]),
             (asked) => file,
             zoom: zoom,
           );
 
           for (var y = 0; y < 16; y += 1) {
             for (var x = 0; x < 16; x += 1) {
-              expect(at(bytes, x, y), predicate(pure), reason: '($x, $y)');
+              expect(at(bytes, x, y)[0], predicate(isPure), reason: '($x, $y)');
             }
           }
+        });
+      });
+    }
+  });
+
+  // An export has no view to draw a window through: it lays the photos in
+  // the paper's own space (`paintSheetInkWindow`) — and draws what the
+  // screen shows at the same scale (유저 2026-09-17: 「보이는 중이랑
+  // 결과랑 절대로 다르면 안 되」).
+  group('an export draws a window\'s photos as the screen shows them', () {
+    /// The raster an export composes of [ink]: one red pixel at (5, 5).
+    Future<ui.Image> inkRaster() {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        const Rect.fromLTWH(5, 5, 1, 1),
+        ui.Paint()..color = const Color(0xFFFF0000),
+      );
+      return recorder.endRecording().toImage(16, 16);
+    }
+
+    testWidgets('where its reference stands it, under the ink', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final file = await cyanFile(4, 2);
+        addTearDown(file.dispose);
+        final raster = await inkRaster();
+        addTearDown(raster.dispose);
+        final photos = [
+          photo(
+            TransformPose(
+              center: CanvasPoint(x: 8, y: 6),
+              scaleX: 2,
+              scaleY: 2,
+            ),
+            const CanvasSize(width: 4, height: 2),
+          ),
+        ];
+
+        final bytes = await exported(photos, raster, (asked) => file);
+
+        expect(at(bytes, 4, 4), cyan, reason: 'LIVENESS: it exported');
+        expect(at(bytes, 5, 5), red, reason: 'the ink over it');
+        expect(
+          bytes,
+          await printed(ink().withPhotos(photos), (asked) => file),
+        );
+      });
+    });
+
+    testWidgets('turned, and with no ink of its own', (tester) async {
+      await tester.runAsync(() async {
+        final file = await cyanFile(4, 2);
+        addTearDown(file.dispose);
+        final photos = [
+          photo(
+            TransformPose(
+              center: CanvasPoint(x: 8, y: 8),
+              rotationDegrees: 90,
+            ),
+            const CanvasSize(width: 4, height: 2),
+          ),
+        ];
+
+        final bytes = await exported(photos, null, (asked) => file);
+
+        expect(at(bytes, 7, 6), cyan, reason: 'LIVENESS: it exported');
+        expect(bytes, await printed(bare(photos), (asked) => file));
+      });
+    });
+
+    testWidgets('cut by its window', (tester) async {
+      await tester.runAsync(() async {
+        final file = await cyanFile(4, 2);
+        addTearDown(file.dispose);
+        // x 4–12, through a window 8 wide.
+        final photos = [
+          photo(
+            TransformPose(
+              center: CanvasPoint(x: 8, y: 6),
+              scaleX: 2,
+              scaleY: 2,
+            ),
+            const CanvasSize(width: 4, height: 2),
+          ),
+        ];
+        const window = Rect.fromLTWH(0, 0, 8, 16);
+
+        final bytes = await exported(
+          photos,
+          null,
+          (asked) => file,
+          window: window,
+        );
+
+        expect(at(bytes, 7, 4), cyan, reason: 'inside the window');
+        expect(at(bytes, 8, 4), nothing, reason: 'past it');
+        expect(
+          bytes,
+          await printed(bare(photos), (asked) => file, window: window),
+        );
+      });
+    });
+
+    for (final (name, zoom, scale, x, y) in const [
+      ('shown at half', 0.5, 1.0, 2, 2),
+      ('shown at twice', 2.0, 1.0, 8, 8),
+      ('laid at half', 1.0, 0.5, 5, 5),
+    ]) {
+      testWidgets('sampled as the screen samples it — $name', (tester) async {
+        await tester.runAsync(() async {
+          final file = await checkerImage(16);
+          addTearDown(file.dispose);
+          final photos = [checkerOf(scale)];
+
+          final bytes = await exported(
+            photos,
+            null,
+            (asked) => file,
+            zoom: zoom,
+          );
+
+          expect(at(bytes, x, y), isNot(nothing), reason: 'LIVENESS');
+          expect(
+            bytes,
+            await printed(bare(photos), (asked) => file, zoom: zoom),
+          );
         });
       });
     }

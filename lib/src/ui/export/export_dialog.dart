@@ -15,6 +15,7 @@ import '../../models/export_spec.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
+import '../../services/import/raster_cel_import.dart' show readImageFileOrNull;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -26,6 +27,7 @@ import '../../models/layer.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/cel_photo.dart';
 import '../../models/conte/conte_ink_windows.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/conte/conte_page_marks.dart'
@@ -965,22 +967,28 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// Every sheet's saved ink for [keys], each composed from the session
-  /// store its namespace names ([RenderCaches.sheetInkStoreFor]). Caller
-  /// disposes the images.
+  /// Every sheet's saved ink for [keys], each read from the session store
+  /// its namespace names ([RenderCaches.sheetInkStoreFor]): its raster
+  /// composed, and the photos laid on it (I-97) with their files decoded,
+  /// each file once — the decode the sheets show them from
+  /// (`SheetImageCache`). Caller disposes it ([_disposeSheetInk]).
   ///
   /// ⛔ONE for the three sheets: the conte and the envelope each composed
   /// their own, and the timesheet's would have been the third.
   ///
   /// The ink is read as a LOOK, like every render's cel ([CelRead.look]):
   /// a sheet nobody has open keeps its ink parked.
-  Future<Map<BrushFrameKey, ui.Image>> _renderSheetInk(
-    Iterable<BrushFrameKey> keys,
-  ) async {
+  Future<_SheetInkRun> _renderSheetInk(Iterable<BrushFrameKey> keys) async {
     final caches = _session.renderCaches;
-    final images = <BrushFrameKey, ui.Image>{};
+    final ink = (
+      rasters: <BrushFrameKey, ui.Image>{},
+      photos: <BrushFrameKey, List<CelPhoto>>{},
+      files: <String, ui.Image>{},
+    );
+    final read = <BrushFrameKey>{};
+    final asked = <String>{};
     for (final key in keys) {
-      if (images.containsKey(key)) {
+      if (!read.add(key)) {
         continue;
       }
       final surface = caches
@@ -996,10 +1004,21 @@ class ExportDialogState extends State<ExportDialog> {
         missing: MissingTilePictures.madeAtOnce,
       );
       if (image != null) {
-        images[key] = image;
+        ink.rasters[key] = image;
+      }
+      if (surface.photos.isNotEmpty) {
+        ink.photos[key] = surface.photos;
+      }
+      for (final photo in surface.photos) {
+        final path = photo.reference.assetPath;
+        if (asked.add(path)) {
+          if (await readImageFileOrNull(path) case final file?) {
+            ink.files[path] = file;
+          }
+        }
       }
     }
-    return images;
+    return ink;
   }
 
   /// One envelope image — every stratum of the sheet — with the ink
@@ -1022,14 +1041,14 @@ class ExportDialogState extends State<ExportDialog> {
         layout: task.layout,
         source: task.source,
         face: face,
+        imageFor: (path) => ink.files[path],
         inkOwner: task.owner.id,
-        inkImageFor: (key) => ink[key],
+        inkImageFor: (key) => ink.rasters[key],
+        inkPhotosFor: (key) => ink.photos[key] ?? const [],
         outputSize: outputSize,
       );
     } finally {
-      for (final image in ink.values) {
-        image.dispose();
-      }
+      _disposeSheetInk(ink);
     }
   }
 
@@ -1064,25 +1083,26 @@ class ExportDialogState extends State<ExportDialog> {
         words: _sheetWords,
         face: face,
         outputSize: outputSize,
-        ink: (windows: windows, imageFor: (key) => ink[key]),
+        ink: (
+          windows: windows,
+          rasterFor: (key) => ink.rasters[key],
+          photosFor: (key) => ink.photos[key] ?? const [],
+        ),
+        imageFor: (path) => ink.files[path],
       );
     } finally {
-      for (final image in ink.values) {
-        image.dispose();
-      }
+      _disposeSheetInk(ink);
     }
   }
 
-  /// The conte ink rasters for [pages] (R5): the page plane plus each
-  /// cell's row band — the windows the page prints them through
-  /// ([conteInkMarks]), which this used to walk once more for itself.
-  /// Caller disposes the images.
-  Future<Map<BrushFrameKey, ui.Image>> _renderConteInk(
-    List<ContePageLayout> pages,
-  ) => _renderSheetInk([
-    for (final page in pages)
-      for (final ink in conteInkMarks(page, page.metrics)) ink.key,
-  ]);
+  /// The conte ink for [pages] (R5): the page plane plus each cell's row
+  /// band — the windows the page prints them through ([conteInkMarks]),
+  /// which this used to walk once more for itself. Caller disposes it.
+  Future<_SheetInkRun> _renderConteInk(List<ContePageLayout> pages) =>
+      _renderSheetInk([
+        for (final page in pages)
+          for (final ink in conteInkMarks(page, page.metrics)) ink.key,
+      ]);
 
   Cut? _conteCutById(String cutId) {
     for (final track in _session.repository.requireProject().tracks) {
@@ -1160,20 +1180,18 @@ class ExportDialogState extends State<ExportDialog> {
         page: page,
         source: source,
         pictureFor: (picture, _) => pictures[picture.key],
-        imageFor: (path) => images[path],
-        inkImageFor: (key) => ink[key],
+        imageFor: (path) => images[path] ?? ink.files[path],
+        inkImageFor: (key) => ink.rasters[key],
+        inkPhotosFor: (key) => ink.photos[key] ?? const [],
         picturesOverInk: contePicturesOverInkIn(_session, page),
         outputSize: outputSize,
         words: words,
       );
     } finally {
-      for (final image in [
-        ...pictures.values,
-        ...ink.values,
-        ...images.values,
-      ]) {
+      for (final image in [...pictures.values, ...images.values]) {
         image.dispose();
       }
+      _disposeSheetInk(ink);
     }
   }
 
@@ -2320,24 +2338,31 @@ class ExportDialogState extends State<ExportDialog> {
     }
     // The sheet ink (R5): compose per window, convert to raw bytes, free
     // the ui.Images — the same lifecycle the cell pictures follow.
-    final inkImages = await _renderConteInk(pages);
+    final ink = await _renderConteInk(pages);
     final inkPictures = <BrushFrameKey, ContePdfPicture>{};
+    final pdfImages = <String, ContePdfPicture>{};
     try {
-      for (final entry in inkImages.entries) {
+      for (final entry in ink.rasters.entries) {
         final picture = await ContePdfPicture.fromImage(entry.value);
         if (picture != null) {
           inkPictures[entry.key] = picture;
         }
       }
-    } finally {
-      for (final image in inkImages.values) {
-        image.dispose();
+      // The files the ink's photos are drawn from (I-97), whole — the PDF
+      // is looked at closer than the page it prints — by asset path, beside
+      // the pages' own media images.
+      for (final entry in ink.files.entries) {
+        final picture = await ContePdfPicture.fromImage(entry.value);
+        if (picture != null) {
+          pdfImages[entry.key] = picture;
+        }
       }
+    } finally {
+      _disposeSheetInk(ink);
     }
     // The media images the pages print (the logo, the cover's picture) —
     // one raw copy each for the file, the same lifecycle again.
     final sheetImages = await readContePageImages(pages, source, words);
-    final pdfImages = <String, ContePdfPicture>{};
     try {
       for (final entry in sheetImages.entries) {
         final picture = await ContePdfPicture.fromImage(entry.value);
@@ -2359,6 +2384,7 @@ class ExportDialogState extends State<ExportDialog> {
       pictures: pdfPictures,
       images: pdfImages,
       inkPictures: inkPictures,
+      inkPhotos: ink.photos,
       picturesOverInkOf: (page) => contePicturesOverInkIn(_session, page),
       words: words,
     );
@@ -4187,3 +4213,19 @@ typedef _PictureFile = ({
   Future<ui.Image?> Function() render,
   ExportImageEncoder? encoder,
 });
+
+/// A render's sheet ink, alive for that render and freed after it
+/// ([_disposeSheetInk]): each window's raster, the photos laid on it
+/// (I-97), and the files they are drawn from by asset path.
+typedef _SheetInkRun = ({
+  Map<BrushFrameKey, ui.Image> rasters,
+  Map<BrushFrameKey, List<CelPhoto>> photos,
+  Map<String, ui.Image> files,
+});
+
+/// Frees the images [ink] holds.
+void _disposeSheetInk(_SheetInkRun ink) {
+  for (final image in [...ink.rasters.values, ...ink.files.values]) {
+    image.dispose();
+  }
+}

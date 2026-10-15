@@ -10,6 +10,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cel_photo.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/se_line_type.dart' show SeLineType;
@@ -26,6 +27,7 @@ import '../text/dialogue_fit_layout.dart' show dialogueGlyphCenters;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
+import '../canvas/display_resample.dart' show displayScaleOf;
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
 import '../text/word_condensation.dart' show paintScaledText;
@@ -542,6 +544,7 @@ class TimesheetDocumentPainter extends CustomPainter
     this.effectiveRatio = 1.0,
     this.ink = const [],
     this.inkImageFor,
+    this.inkPhotosFor,
     this.inkSurfaceFor,
     this.liveInkKeys = const {},
     this.imageFor,
@@ -560,6 +563,10 @@ class TimesheetDocumentPainter extends CustomPainter
   /// EXPORT, which has no view to draw it through.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
+  /// The photos laid on a window's ink (I-97), for an export, beside its
+  /// raster — each drawn from its file by [imageFor].
+  final List<CelPhoto> Function(BrushFrameKey key)? inkPhotosFor;
+
   /// A window's ink surface ON SCREEN, printed as the brush's live window
   /// paints it ([SheetInkOnScreen], F-215).
   @override
@@ -576,9 +583,10 @@ class TimesheetDocumentPainter extends CustomPainter
   final ui.Image? Function(String assetPath)? imageFor;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
-  /// viewport transform lands the paper on the device grid with it.
-  /// Defaulting to 1.0 keeps every focused test and the PSD export path
-  /// unchanged.
+  /// viewport transform lands the paper on the device grid with it. An
+  /// export, which has no viewport, says here how many of its pixels a
+  /// unit of the sheet is — what its photos are sampled for (I-97).
+  /// Defaulting to 1.0 keeps every focused test unchanged.
   @override
   final double effectiveRatio;
 
@@ -798,19 +806,27 @@ class TimesheetDocumentPainter extends CustomPainter
   /// the switch off (every sheet's default since 09-25) the timesheet's
   /// writing vanished while the conte's and the envelope's stayed (유저
   /// 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」).
+  ///
+  /// A window's photos (I-97) lie under its handwriting, sampled for the
+  /// device pixels a unit of the sheet is ([effectiveRatio]).
   void _paintInk(Canvas canvas) {
-    final imageFor = inkImageFor;
-    if (imageFor == null) {
+    final rasterFor = inkImageFor;
+    final photosFor = inkPhotosFor;
+    if (rasterFor == null && photosFor == null) {
       return;
     }
     for (final window in ink) {
       if (liveInkKeys.contains(window.key)) {
         continue;
       }
-      final image = imageFor(window.key);
-      if (image != null) {
-        paintSheetInkWindow(canvas, image, window.placement);
-      }
+      paintSheetInkWindow(
+        canvas,
+        rasterFor?.call(window.key),
+        window.placement,
+        photos: photosFor?.call(window.key) ?? const [],
+        photoFiles: imageFor,
+        displayScale: displayScaleOf(viewport?.zoom ?? 1, effectiveRatio),
+      );
     }
   }
 

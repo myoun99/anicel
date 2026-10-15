@@ -5,10 +5,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
+import 'package:anicel/src/models/conte/conte_ink_windows.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -40,8 +42,11 @@ import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/sheet_painting.dart' show pictureOutline;
+import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/checker_sampling.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/pdf_content.dart';
+import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The Conte export tab (work-order step 6): the picture conte as one
@@ -248,6 +253,81 @@ void main() {
       } finally {
         ink.dispose();
       }
+    });
+  });
+
+  testWidgets('a photo on a cell\'s ink prints from its file, sampled for '
+      'the pixels the page is rendered at — the screen\'s law (I-97)', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final source = buildConteSheetSource(project());
+      final page = layoutConteSheet(
+        source,
+        metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+      ).first;
+      final metrics = page.metrics;
+      final cell = page.cells.first;
+      final key = conteInkRowKey(CutId(cell.cutId), cell.source.inkId!);
+      final placement = conteInkMarks(
+        page,
+        metrics,
+      ).firstWhere((ink) => ink.key == key).placement;
+      final slot = contePictureSlot(cell, metrics);
+      // On the band, beside the cell's picture.
+      final beside = placement.pixelOf(Offset(slot.right + 30, slot.center.dy));
+      final file = await checkerImage(16);
+      addTearDown(file.dispose);
+
+      /// The reds about the photo, the page rendered at [size] of its
+      /// paper's pixels — a pixel of its ink one of them at 1x — and a
+      /// pixel of the file [perPixel] of them.
+      Future<List<int>> printed({
+        required double size,
+        required double perPixel,
+      }) async {
+        final photo = photoOf(
+          1,
+          center: CanvasPoint(x: beside.dx, y: beside.dy),
+          size: const CanvasSize(width: 16, height: 16),
+          scale: perPixel / size,
+        );
+        final rendered = await renderContePageImage(
+          page: page,
+          source: source,
+          words: conteWordsIn(AppLanguage.ja),
+          imageFor: (path) =>
+              path == photo.reference.assetPath ? file : null,
+          inkPhotosFor: (asked) => [if (asked == key) photo],
+          outputSize: CanvasSize(
+            width: (2480 * size).round(),
+            height: (3508 * size).round(),
+          ),
+        );
+        try {
+          final shown = placement.paperOf(beside) * metrics.paperScale * size;
+          return await redsAround(
+            rendered,
+            shown.dx.round(),
+            shown.dy.round(),
+          );
+        } finally {
+          rendered.dispose();
+        }
+      }
+
+      final full = await printed(size: 1, perPixel: 2);
+      expect(full, containsAll([0, 255]), reason: 'LIVENESS: the file');
+      expect(
+        full.every(isPure),
+        isTrue,
+        reason: 'two of the page\'s pixels to one of the file: hard-edged',
+      );
+      expect(
+        (await printed(size: 0.5, perPixel: 0.75)).any(isGrey),
+        isTrue,
+        reason: 'fewer than one: smoothed',
+      );
     });
   });
 
@@ -836,6 +916,124 @@ void main() {
         then: 'W*',
       ).where(isTheOutline),
       hasLength(1),
+    );
+  });
+
+  testWidgets('a photo laid on a cell\'s ink rides the page image and the '
+      'PDF, drawn from its file where it was laid (I-97)', (tester) async {
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    final book = layoutConteBook(
+      buildConteSheetSource(session.repository.requireProject()),
+      metrics: ConteSheetMetrics(
+        cameraAspect: session.camera.cameraFrameAspect,
+      ),
+    );
+    final body = book.indexWhere((page) => page.cells.isNotEmpty);
+    final page = book[body];
+    final m = page.metrics;
+    final cell = page.cells.first;
+    final key = conteInkRowKey(CutId(cell.cutId), cell.source.inkId!);
+    final placement = conteInkMarks(
+      page,
+      m,
+    ).firstWhere((ink) => ink.key == key).placement;
+    final slot = contePictureSlot(cell, m);
+    // On the band, beside the cell's picture.
+    final beside = placement.pixelOf(Offset(slot.right + 30, slot.center.dy));
+    final path = (await tester.runAsync(
+      () => writeSolidPng(
+        temp,
+        'pool/photo.png',
+        width: 4,
+        height: 4,
+        rgba: 0x00FFFFFF,
+      ),
+    ))!;
+    // No handwriting: the photo alone, 4×4 of its own at four times — 16
+    // of the ink's pixels about [beside].
+    session.renderCaches.conteInkRowStore.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: CanvasSize(
+          width: (m.bodyWidth * m.paperScale).ceil(),
+          height: (m.bodyHeight * m.paperScale).ceil(),
+        ),
+        tileSize: 8,
+        tiles: const {},
+      ).withPhotos([
+        photoOf(
+          1,
+          path: path,
+          center: CanvasPoint(x: beside.dx, y: beside.dy),
+          size: const CanvasSize(width: 4, height: 4),
+          scale: 4,
+        ),
+      ]),
+    );
+
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+
+    // The page image, at 1×: a pixel of the ink is one of the page's.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final image = (await tester.runAsync(
+      () => decodeImageFromList(
+        File(
+          '${temp.path}${Platform.pathSeparator}conte_p${body + 1}.png',
+        ).readAsBytesSync(),
+      ),
+    ))!;
+    addTearDown(image.dispose);
+    final shown = placement.paperOf(beside) * m.paperScale;
+    final (r, g, b) = (await tester.runAsync(
+      () => pixelAt(image, shown.dx.round(), shown.dy.round()),
+    ))!;
+    expect(r, lessThan(40), reason: 'cyan, from the file');
+    expect((g, b), (255, 255));
+
+    // The PDF: the file whole, its first row from the photo's corner.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-pdf')),
+    );
+    await tester.pump();
+    await tester.runAsync(state.export);
+    await tester.pump();
+    final pdf = File(
+      '${temp.path}${Platform.pathSeparator}conte.pdf',
+    ).readAsBytesSync();
+    expect(pdfImageSizes(pdf), contains((4, 4)));
+    final corner = placement.paperOf(beside - const Offset(8, 8));
+    expect(
+      pdfImageCorners(pdf).map((laid) => laid.topLeft),
+      contains(
+        predicate<Offset>(
+          (laid) =>
+              (laid - Offset(corner.dx, m.pageHeight - corner.dy)).distance <
+              0.01,
+        ),
+      ),
     );
   });
 
