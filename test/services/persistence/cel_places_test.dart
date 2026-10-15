@@ -14,6 +14,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/cel_places.dart';
@@ -115,6 +116,7 @@ void main() {
     ConteRowInkPlace(:final cutName, :final celName) =>
       'conte row $cutName/$celName',
     EnvelopeInkPlace(:final cutName) => 'envelope $cutName',
+    TimesheetInkPlace(:final cutName) => 'timesheet $cutName',
     GoneCelPlace() => 'gone',
   };
 
@@ -265,6 +267,19 @@ void main() {
     );
   });
 
+  test('timesheet ink: by its cut, once for every page — after the '
+      'envelopes, as the sheets stand', () {
+    expect(
+      placesOf([
+        timesheetInkPageKey(const CutId('c2'), 0),
+        timesheetInkPageKey(const CutId('c1'), 1),
+        envelopeInkBoxKey(const CutId('c2'), 'memo'),
+        timesheetInkPageKey(const CutId('c1'), 0),
+      ]),
+      ['envelope 2', 'timesheet 1', 'timesheet 1', 'timesheet 2'],
+    );
+  });
+
   test('🚨one place for every key: what the project holds no place for is '
       'said too — never dropped, never thrown on', () {
     expect(
@@ -274,9 +289,10 @@ void main() {
         drawn('deleted-cut', 'deleted-row', 'x'),
         conteInkRowKey(const CutId('c1'), 'long-dead-block'),
         envelopeInkBoxKey(const CutId('deleted-cut'), 'memo'),
+        timesheetInkPageKey(const CutId('deleted-cut'), 0),
         drawn('c1', 'a', 'a1'),
       ]),
-      ['drawing 1/A/1', 'gone', 'gone', 'gone', 'gone', 'gone'],
+      ['drawing 1/A/1', 'gone', 'gone', 'gone', 'gone', 'gone', 'gone'],
     );
   });
 }

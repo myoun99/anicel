@@ -93,6 +93,7 @@ void main() {
         length: blob.bytes.length,
         canvasSize: canvasSize,
         tileSize: blob.tileSize,
+        photoPaths: const [],
       );
     }
     store.restoreFromFile(refs);

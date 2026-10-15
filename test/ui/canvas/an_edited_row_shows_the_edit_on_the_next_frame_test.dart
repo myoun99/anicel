@@ -207,6 +207,7 @@ void main() {
         length: blob.bytes.length,
         canvasSize: canvasSize,
         tileSize: tileSize,
+        photoPaths: const [],
       ),
     });
     expect(store.celHasRenderableContent(key), isTrue);

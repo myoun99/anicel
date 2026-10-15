@@ -452,6 +452,7 @@ void main() {
         length: blob.bytes.length,
         canvasSize: celSize,
         tileSize: tileSize,
+        photoPaths: const [],
       ),
     });
     final imageCache = LayerFrameImageCache(frameStore: store);

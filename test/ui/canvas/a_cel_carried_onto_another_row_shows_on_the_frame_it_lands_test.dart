@@ -103,6 +103,7 @@ void main() {
         length: blob.bytes.length,
         canvasSize: canvasSize,
         tileSize: tileSize,
+        photoPaths: const [],
       );
     }
     return BrushFrameStore()..restoreFromFile(refs);

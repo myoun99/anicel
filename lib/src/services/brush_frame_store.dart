@@ -6,6 +6,7 @@ import '../core/in_flight.dart';
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_photo.dart' show celPhotoPaths;
 import '../models/brush_frame_display_cache.dart';
 import '../models/brush_frame_drawing_state.dart';
 import '../models/brush_frame_key.dart';
@@ -727,6 +728,7 @@ class BrushFrameStore {
       length: blob.bytes.length,
       canvasSize: blob.canvasSize,
       tileSize: blob.tileSize,
+      photoPaths: blob.photoPaths,
     );
     _coldBytes += blob.bytes.length;
     return true;
@@ -1012,13 +1014,7 @@ class BrushFrameStore {
     for (final entry in _fileCels.entries.toList()) {
       final ref = entry.value;
       if (ref.filePath == from) {
-        _fileCels[entry.key] = AnicelCelFileRef(
-          filePath: to,
-          dataOffset: ref.dataOffset,
-          length: ref.length,
-          canvasSize: ref.canvasSize,
-          tileSize: ref.tileSize,
-        );
+        _fileCels[entry.key] = ref.movedTo(filePath: to);
       }
     }
   }
@@ -1050,12 +1046,9 @@ class BrushFrameStore {
       if (to == null) {
         continue;
       }
-      _fileCels[entry.key] = AnicelCelFileRef(
-        filePath: ref.filePath,
+      _fileCels[entry.key] = ref.movedTo(
         dataOffset: to.dataOffset,
         length: to.length,
-        canvasSize: ref.canvasSize,
-        tileSize: ref.tileSize,
       );
     }
   }
@@ -1235,6 +1228,7 @@ class BrushFrameStore {
         key: key,
         canvasSize: surface.canvasSize,
         tileSize: surface.tileSize,
+        photoPaths: celPhotoPaths(surface.photos),
         codec: compressed.codec,
         body: compressed.bytes,
       );
@@ -1398,6 +1392,29 @@ class BrushFrameStore {
       celContentRevision.value += 1;
     }
     _scheduleCooling();
+  }
+
+  /// The pool files each cel's photos name, by cel — every cel that has
+  /// any (I-97): what the media pool asks of a sheet's ink (사용 중 · 제거 ·
+  /// 다시 연결 · 열 때 옮기기).
+  ///
+  /// Off the picture for a hot cel and off the ref for one whose bytes are
+  /// in a file, so asking decodes nothing. ⚠️The hot picture answers for
+  /// its key: a clean promoted cel is hot AND file-backed at once, and an
+  /// edit since may have taken its photos off.
+  Map<BrushFrameKey, List<String>> get celPhotoPathsByKey {
+    final named = <BrushFrameKey, List<String>>{
+      for (final MapEntry(:key, value: surface) in _bakedSurfaces.entries)
+        if (surface.photos.isNotEmpty) key: celPhotoPaths(surface.photos),
+    };
+    for (final refs in [_coldCels, _fileCels]) {
+      for (final MapEntry(:key, value: ref) in refs.entries) {
+        if (ref.photoPaths.isNotEmpty && !_bakedSurfaces.containsKey(key)) {
+          named.putIfAbsent(key, () => ref.photoPaths);
+        }
+      }
+    }
+    return named;
   }
 
   List<BrushFrameKey> _celKeysOfCut(CutId cutId) => <BrushFrameKey>{
@@ -1648,11 +1665,36 @@ class AnicelCelFileRef {
     required this.length,
     required this.canvasSize,
     required this.tileSize,
+    required this.photoPaths,
   });
+
+  /// The ref to the SAME bytes where they are now — moved to another file
+  /// or another offset, everything they say about themselves carried as it
+  /// was.
+  ///
+  /// 🚨★★★ONE door for every move of a ref (a rescue's repoint, a
+  /// compaction's relocation, the coordinated swap's new path). Each wrote
+  /// the fields out by hand, so a field added here dropped silently out of
+  /// all three — the photo index (I-97) would have, 저장 세션 2026-10-15
+  /// (`coordinated_project_swap.dart` was the one easy to miss).
+  AnicelCelFileRef movedTo({String? filePath, int? dataOffset, int? length}) =>
+      AnicelCelFileRef(
+        filePath: filePath ?? this.filePath,
+        dataOffset: dataOffset ?? this.dataOffset,
+        length: length ?? this.length,
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        photoPaths: photoPaths,
+      );
 
   final String filePath;
   final int dataOffset;
   final int length;
   final CanvasSize canvasSize;
   final int tileSize;
+
+  /// The pool files the cel's photos name, as its head indexes them
+  /// (`AnicelCelBlob.photoPaths`, I-97) — what the media pool asks of a cel
+  /// it does not decode.
+  final List<String> photoPaths;
 }

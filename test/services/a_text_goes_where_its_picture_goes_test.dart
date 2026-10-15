@@ -21,6 +21,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/cel_photo_fixture.dart' show celStreamHeadEnd;
 import '../helpers/cel_text_fixture.dart';
 
 /// R9-rest (the text tool, 유저 2026-10-06: 「주인은 셀임 … 셀의 그림이랑 정확히
@@ -217,10 +218,14 @@ void main() {
 
     test('a cel written before texts existed reads as it always did', () {
       // A v2 stream: the header, one tile, and nothing after it — today's
-      // with its texts' and its photos' zeros taken off.
+      // with its photos' zero after its head and its texts' at its end
+      // taken off.
       final today = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
-      final v2 = Uint8List.fromList(today.sublist(0, today.length - 8))
-        ..[0] = 2;
+      final headEnd = celStreamHeadEnd(key);
+      final v2 = Uint8List.fromList([
+        ...today.sublist(0, headEnd),
+        ...today.sublist(headEnd + 4, today.length - 4),
+      ])..[0] = 2;
 
       final read = decodeCelEntry(v2).toSurface();
 
@@ -232,11 +237,7 @@ void main() {
       final withNone = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
 
       expect(withNone.first, anicelCelBinaryVersion);
-      // The photos' count follows it (v4).
-      expect(
-        withNone.sublist(withNone.length - 8, withNone.length - 4),
-        [0, 0, 0, 0],
-      );
+      expect(withNone.sublist(withNone.length - 4), [0, 0, 0, 0]);
     });
 
     test('a parked cel — the same blob, compressed — comes back with them', () {
@@ -249,6 +250,7 @@ void main() {
         key: key,
         canvasSize: picture.canvasSize,
         tileSize: picture.tileSize,
+        photoPaths: const [],
         codec: compressed.codec,
         body: compressed.bytes,
       );

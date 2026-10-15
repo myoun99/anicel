@@ -117,6 +117,7 @@ void main() {
           length: blob.bytes.length,
           canvasSize: canvasSize,
           tileSize: tileSize,
+          photoPaths: const [],
         ),
       });
   }

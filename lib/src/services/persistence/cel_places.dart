@@ -4,6 +4,7 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
+import '../../models/timesheet_ink_keys.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -101,6 +102,14 @@ final class EnvelopeInkPlace extends CelPlace {
   final String cutName;
 }
 
+/// Ink on a page of one cut's timesheet — the third sheet, said as the
+/// envelope's is (I-97: a photo on a page is a use of its pool file).
+final class TimesheetInkPlace extends CelPlace {
+  const TimesheetInkPlace(this.cutName);
+
+  final String cutName;
+}
+
 /// A picture the project holds no place for any more: its drawing, its row
 /// or its cut is gone.
 final class GoneCelPlace extends CelPlace {
@@ -111,19 +120,27 @@ final class GoneCelPlace extends CelPlace {
 /// is exactly as long as the count a notice gives.
 ///
 /// In the order a person meets them: drawings as the project holds its rows
-/// ([projectLayersWithOwners]), then the ink over storyboard drawings and
-/// in envelopes by cut — and last, what holds no place.
-List<CelPlace> celPlacesOf(Project project, Iterable<BrushFrameKey> keys) {
+/// ([projectLayersWithOwners]), then the ink over storyboard drawings, in
+/// envelopes and on timesheets by cut — and last, what holds no place.
+List<CelPlace> celPlacesOf(Project project, Iterable<BrushFrameKey> keys) => [
+  for (final (_, place) in celPlacesByKey(project, keys)) place,
+];
+
+/// [celPlacesOf], each place beside the key it was asked for.
+List<(BrushFrameKey, CelPlace)> celPlacesByKey(
+  Project project,
+  Iterable<BrushFrameKey> keys,
+) {
   final index = _CelPlaceIndex(project);
-  final found = [for (final key in keys) index.placeOf(key)]
+  final found = [for (final key in keys) (key, index.placeOf(key))]
     ..sort((a, b) {
-      final byPlane = a.plane.index.compareTo(b.plane.index);
-      return byPlane != 0 ? byPlane : a.position.compareTo(b.position);
+      final byPlane = a.$2.plane.index.compareTo(b.$2.plane.index);
+      return byPlane != 0 ? byPlane : a.$2.position.compareTo(b.$2.position);
     });
-  return [for (final entry in found) entry.place];
+  return [for (final (key, entry) in found) (key, entry.place)];
 }
 
-enum _Plane { drawing, conteRow, envelope, gone }
+enum _Plane { drawing, conteRow, envelope, timesheet, gone }
 
 typedef _Found = ({_Plane plane, int position, CelPlace place});
 
@@ -138,6 +155,11 @@ class _CelPlaceIndex {
           plane: _Plane.envelope,
           position: _envelopes.length,
           place: EnvelopeInkPlace(cut.name),
+        );
+        _timesheets[cut.id] ??= (
+          plane: _Plane.timesheet,
+          position: _timesheets.length,
+          place: TimesheetInkPlace(cut.name),
         );
       }
       final drawings = <FrameId, DrawingCelPlace>{};
@@ -174,12 +196,15 @@ class _CelPlaceIndex {
   final _drawings = <(LayerId, FrameId), _Found>{};
   final _rows = <(CutId, String), _Found>{};
   final _envelopes = <CutId, _Found>{};
+  final _timesheets = <CutId, _Found>{};
 
   _Found placeOf(BrushFrameKey key) {
     final found = isConteInkRowKey(key)
         ? _rows[(key.cutId, conteInkRowIdOf(key)!)]
         : isEnvelopeInkKey(key)
         ? _envelopes[key.cutId]
+        : isTimesheetInkKey(key)
+        ? _timesheets[key.cutId]
         : _drawings[(key.layerId, key.frameId)];
     return found ??
         (plane: _Plane.gone, position: 0, place: const GoneCelPlace());

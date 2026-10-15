@@ -24,6 +24,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/media_moves.dart';
+import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/project_font_sources.dart'
     show
         ProjectFontsToStore,
@@ -1100,7 +1101,8 @@ class ProjectFileDoor {
       fontsInFile: projectFontEntryNames(read.project),
       // Dirty when the cels are being read out of a staged copy rather than
       // the project's own address — and when the load just HEALED
-      // mismatched cels, where memory no longer matches the file (R7q2).
+      // mismatched cels, where memory no longer matches the file (R7q2), or
+      // moved a sheet's photos onto a file it found moved (I-97).
       unsaved: read.bindTo != null || healed,
     );
     warmAudioConforms();
@@ -1114,7 +1116,8 @@ class ProjectFileDoor {
   }
 
   /// Every cel [read] holds, into the store that owns it — and whether any
-  /// had to be HEALED to its cut's size on the way (R7q2).
+  /// had to be HEALED to its cut's size on the way (R7q2), or had its photos
+  /// follow a file the open found moved (I-97).
   ///
   /// R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
   /// until a cel is first shown (near-zero RAM for 1500-cut projects).
@@ -1132,7 +1135,13 @@ class ProjectFileDoor {
     for (final store in _renderCaches.sheetInkStores) {
       store.restoreFromFile(cels.ink[store] ?? const {});
     }
-    return healed;
+    // The sheets' photos follow the files the open found moved, as the
+    // project's references just did — the relative-path remap first, then
+    // the bookmarks' — in the order [readProjectFile] applied them.
+    final photos = SheetPhotoEdits(() => _renderCaches.sheetInkStores);
+    final remapped = photos.followOpened(read._result.mediaMoved);
+    final rebound = photos.followOpened(read._grants.moved);
+    return healed || remapped || rebound;
   }
 
   /// Where the work stood when it was saved (F-123) — each part only if

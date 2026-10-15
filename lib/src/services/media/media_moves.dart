@@ -25,13 +25,7 @@ Project projectWithMediaMoved(Project project, Map<String, String> moved) {
   if (moved.isEmpty) {
     return project;
   }
-  // In the pool's one spelling, which every reference keeps: a load's moves
-  // arrive as its manifest spelled them, backslashes and all
-  // (`MediaFingerprints.moved` meets the same keys).
-  final moves = {
-    for (final MapEntry(:key, :value) in moved.entries)
-      normalizedMediaPath(key): normalizedMediaPath(value),
-  };
+  final moves = mediaMovesInPoolSpelling(moved);
   final tracks = [
     for (final track in project.tracks) _trackMoved(track, moves),
   ];
@@ -60,6 +54,15 @@ Project projectWithMediaMoved(Project project, Map<String, String> moved) {
     timesheetInfo: info,
   );
 }
+
+/// [moved] in the pool's one spelling, which every reference keeps — a
+/// row's, a clip's, a sheet photo's: a load's moves arrive as its manifest
+/// spelled them, backslashes and all (`MediaFingerprints.moved` meets the
+/// same keys).
+Map<String, String> mediaMovesInPoolSpelling(Map<String, String> moved) => {
+  for (final MapEntry(:key, :value) in moved.entries)
+    normalizedMediaPath(key): normalizedMediaPath(value),
+};
 
 Track _trackMoved(Track track, Map<String, String> moves) {
   final seLayers = _layersMoved(track.seLayers, moves);

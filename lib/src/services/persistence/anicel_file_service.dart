@@ -37,7 +37,14 @@ class AnicelOpenResult {
     required this.cels,
     this.mediaEntryNames = const {},
     this.session = AnicelOpenedSessionFields.none,
+    this.mediaMoved = const {},
   });
+
+  /// The files the open found where the project's folder took them — old
+  /// path to new — which [project]'s references already follow. What the
+  /// project does not hold follows them from here: the photos in the sheets'
+  /// ink, which [cels] keep (I-97, `SheetPhotoEdits.followOpened`).
+  final Map<String, String> mediaMoved;
 
   /// What the file carried beside the project — its fingerprints already
   /// remapped to wherever the references actually resolved.
@@ -1072,6 +1079,7 @@ class AnicelFileService {
         length: blob.bytes.length,
         canvasSize: blob.canvasSize,
         tileSize: blob.tileSize,
+        photoPaths: blob.photoPaths,
       ),
   };
 
@@ -1468,7 +1476,13 @@ class AnicelFileService {
         final geometry =
             <
               BrushFrameKey,
-              ({String name, CanvasSize canvasSize, int tileSize, int length})
+              ({
+                String name,
+                CanvasSize canvasSize,
+                int tileSize,
+                int length,
+                List<String> photoPaths,
+              })
             >{};
         final layout = writeAnicelArchiveFile(
           path: tempPath,
@@ -1497,6 +1511,7 @@ class AnicelFileService {
                 canvasSize: blob.canvasSize,
                 tileSize: blob.tileSize,
                 length: blob.bytes.length,
+                photoPaths: blob.photoPaths,
               );
               yield (name: work.name, bytes: blob.bytes);
               progress.step();
@@ -1526,6 +1541,7 @@ class AnicelFileService {
               length: entry.value.length,
               canvasSize: entry.value.canvasSize,
               tileSize: entry.value.tileSize,
+              photoPaths: entry.value.photoPaths,
             ),
         };
       }),
@@ -1569,9 +1585,16 @@ class AnicelFileService {
             continue;
           }
           raf.setPositionSync(entry.dataOffset);
-          final headerBytes = raf.readSync(
+          var headerBytes = raf.readSync(
             entry.length < 4096 ? entry.length : 4096,
           );
+          // A cel's photo index can outgrow the first read (I-97) — many
+          // photos, or long paths — and its head says how long it is.
+          final headerLength = AnicelCelBlob.headerLengthOf(headerBytes);
+          if (headerLength > headerBytes.length) {
+            raf.setPositionSync(entry.dataOffset);
+            headerBytes = raf.readSync(headerLength);
+          }
           final header = AnicelCelBlob(headerBytes); // Header-only parse.
           cels[header.key] = AnicelCelFileRef(
             filePath: filePath,
@@ -1579,6 +1602,7 @@ class AnicelFileService {
             length: entry.length,
             canvasSize: header.canvasSize,
             tileSize: header.tileSize,
+            photoPaths: header.photoPaths,
           );
         }
         return (projectJsonBytes: projectJsonBytes, cels: cels);
@@ -1616,6 +1640,7 @@ class AnicelFileService {
       project: remapped,
       cels: cels,
       mediaEntryNames: mediaEntryNames,
+      mediaMoved: remap,
       // Through the SAME remap the references just went through, and
       // narrowed to what the pool still holds. A fingerprint filed under a
       // path the project no longer uses describes nothing, and the one

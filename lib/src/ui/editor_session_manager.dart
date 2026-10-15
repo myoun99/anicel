@@ -8,6 +8,7 @@ import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
+import '../services/media/sheet_photo_edits.dart';
 import '../services/project_lookup.dart'
     show brushFrameKeyIn, cutIdOfLayer, cutPositionOf;
 import '../models/app_language.dart';
@@ -3504,6 +3505,7 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
+    sheetPhotos: SheetPhotoEdits(() => renderCaches.sheetInkStores),
   );
 
   // ── the fonts registered with the project: their own object ─────────

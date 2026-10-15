@@ -7,9 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/cel_text_fixture.dart';
 
-/// I-97: a pool photo put on a sheet's ink is ONE step of history — the
-/// picture before and after, its pixels untouched — so an undo takes the
-/// photo off and a redo puts the very picture back.
+/// I-97: a pool photo put on a sheet's ink — or the pool's edit of the
+/// photos there — is ONE step of history: the picture before and after, its
+/// pixels untouched, so an undo takes the edit back and a redo puts the
+/// very picture back.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -66,5 +67,35 @@ void main() {
 
     history.redo();
     expect(coordinator.currentSurfaceOf(key), after);
+  });
+
+  test('an edit of a picture\'s photos reads them as the step lands, and '
+      'one that changes none holds nothing', () {
+    final coordinator = editingStackOn(
+      drawingOf({a: ink}).withPhotos([photoOf(1), photoOf(2)]),
+    );
+    final history = HistoryManager();
+    final takeOff = CelPhotoEditCommand(
+      coordinator: coordinator,
+      frameKey: key,
+      description: 'Edit photos',
+      photos: (photos) => [
+        for (final photo in photos)
+          if (photo.id != 1) photo,
+      ],
+    );
+    final none = CelPhotoEditCommand(
+      coordinator: coordinator,
+      frameKey: key,
+      description: 'Edit photos',
+      photos: (photos) => photos,
+    );
+
+    history.execute(takeOff);
+    history.execute(none);
+
+    expect(coordinator.currentSurfaceOf(key).photos, [photoOf(2)]);
+    expect(takeOff.surfaces, isNotNull, reason: 'the CONTROL');
+    expect(none.surfaces, isNull);
   });
 }

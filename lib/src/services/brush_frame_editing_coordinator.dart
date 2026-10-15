@@ -45,6 +45,22 @@ class BrushFrameEditingCoordinator {
     sessionStore.setLinkResolver(frameStore.canonicalKeyOf);
   }
 
+  /// A coordinator over a sheet's ink [store] — the conte's, the
+  /// envelope's or the timesheet's — editing at [canvasSize], first
+  /// standing on [initialFrameKey]: what a sheet's panel writes through
+  /// (`inkCoordinatorSynced`), and what the media pool writes a sheet's
+  /// photos through when no panel may be open (`SheetPhotoEdits`, I-97).
+  BrushFrameEditingCoordinator.overInk({
+    required BrushFrameStore store,
+    required CanvasSize canvasSize,
+    required BrushFrameKey initialFrameKey,
+  }) : this(
+         initialFrameKey: initialFrameKey,
+         frameStore: store,
+         sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
+         historyPolicy: const BrushHistoryPolicy(),
+       );
+
   final BrushFrameStore frameStore;
   final BrushFrameEditSessionStore sessionStore;
   final BrushHistoryPolicy historyPolicy;

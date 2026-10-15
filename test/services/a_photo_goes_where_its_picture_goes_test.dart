@@ -84,13 +84,17 @@ void main() {
       );
     });
 
+    final headEnd = celStreamHeadEnd(key);
+
     test('a cel written before photos existed reads as it always did', () {
-      // A v3 stream: the header, its tiles, its texts, and nothing after
-      // them — today's with its photos' zero taken off.
+      // A v3 stream: the head, then its tiles and its texts — today's with
+      // its photos' zero taken out.
       final withText = drawingOf({a: ink}).withTexts([textOf(1)]);
       final today = encodeCelEntryFromSurface(key, withText);
-      final v3 = Uint8List.fromList(today.sublist(0, today.length - 4))
-        ..[0] = 3;
+      final v3 = Uint8List.fromList([
+        ...today.sublist(0, headEnd),
+        ...today.sublist(headEnd + 4),
+      ])..[0] = 3;
 
       final read = decodeCelEntry(v3).toSurface();
 
@@ -98,11 +102,12 @@ void main() {
       expect(read.photos, isEmpty);
     });
 
-    test('a cel with no photo writes a zero where its photos would be', () {
+    test('a cel with no photo writes a zero where its photos would be — '
+        'after its head, ahead of its tiles', () {
       final withNone = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
 
       expect(withNone.first, anicelCelBinaryVersion);
-      expect(withNone.sublist(withNone.length - 4), [0, 0, 0, 0]);
+      expect(withNone.sublist(headEnd, headEnd + 4), [0, 0, 0, 0]);
     });
   });
 

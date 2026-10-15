@@ -48,6 +48,34 @@ class CelPhoto {
   String toString() => 'CelPhoto($id, ${reference.assetPath})';
 }
 
+/// The pool files [photos] name — each once, in the order they first
+/// appear: what a picture's photos USE of the media pool (I-97), and the
+/// index a saved cel's head carries for the readers that read nothing else
+/// (`AnicelCelBlob.photoPaths`).
+List<String> celPhotoPaths(Iterable<CelPhoto> photos) => [
+  ...{for (final photo in photos) photo.reference.assetPath},
+];
+
+/// [photos] with each one whose file [moves] names standing on the file
+/// where it went — [moves] maps an old path to its new one, in the pool's
+/// spelling, as `projectWithMediaMoved` takes them; [photos] itself when
+/// none moved.
+List<CelPhoto> celPhotosMoved(
+  List<CelPhoto> photos,
+  Map<String, String> moves,
+) {
+  if (!photos.any((photo) => moves.containsKey(photo.reference.assetPath))) {
+    return photos;
+  }
+  return [
+    for (final photo in photos)
+      if (moves[photo.reference.assetPath] case final to?)
+        photo.withReference(photo.reference.copyWith(assetPath: to))
+      else
+        photo,
+  ];
+}
+
 /// The id a photo added to [photos] takes: one past the largest there.
 ///
 /// ⚠️THE SECOND OF ITS KIND: `nextCelTextId` mints a cel's text ids the

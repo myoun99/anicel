@@ -753,7 +753,12 @@ class _WorkspaceTabs {
           icon: Icons.library_music_outlined,
           locked: locked,
           builder: (context) => ListenableBuilder(
-            listenable: _state.widget.session,
+            // I-97: a sheet's photo is a use as well, and a sheet's ink is
+            // written without the session saying so.
+            listenable: Listenable.merge([
+              _state.widget.session,
+              _state.widget.session.mediaPool.sheetPhotoWrites,
+            ]),
             builder: (context, _) => MediaPoolPanel(
               assets: _state.widget.session.mediaPool.mediaAssets,
               // F-118: one list per file — the mark, its window and the

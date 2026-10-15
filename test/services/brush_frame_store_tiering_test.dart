@@ -244,6 +244,7 @@ void main() {
         length: blob.bytes.length,
         canvasSize: canvasSize,
         tileSize: blob.tileSize,
+        photoPaths: const [],
       ),
     });
 
@@ -301,6 +302,7 @@ void main() {
         length: 1,
         canvasSize: canvasSize,
         tileSize: 8,
+        photoPaths: [],
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
     expect(store.dirtyCelKeysSinceSave, isEmpty);
@@ -353,6 +355,7 @@ void main() {
       length: 1,
       canvasSize: canvasSize,
       tileSize: 8,
+      photoPaths: [],
     );
     store.adoptSavedFile({
       edited: ref(),
@@ -643,6 +646,7 @@ void main() {
         length: 1,
         canvasSize: CanvasSize(width: 32, height: 32),
         tileSize: 8,
+        photoPaths: [],
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
 
@@ -729,6 +733,7 @@ void main() {
         length: blob.bytes.length,
         canvasSize: canvasSize,
         tileSize: blob.tileSize,
+        photoPaths: const [],
       ),
     });
     expect(fileStore.isCelFileBacked(fk), isTrue, reason: 'fixture');

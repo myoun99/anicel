@@ -3,10 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/brush_history_policy.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_reference.dart';
-import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_stroke_commit_data.dart';
@@ -189,11 +187,10 @@ BrushFrameEditingCoordinator inkCoordinatorSynced(
     coordinator.resizeCanvasAllCuts(canvasSize);
     return coordinator;
   }
-  return BrushFrameEditingCoordinator(
+  return BrushFrameEditingCoordinator.overInk(
+    store: store,
+    canvasSize: canvasSize,
     initialFrameKey: initialFrameKey,
-    frameStore: store,
-    sessionStore: BrushFrameEditSessionStore(canvasSize: canvasSize),
-    historyPolicy: const BrushHistoryPolicy(),
   );
 }
 

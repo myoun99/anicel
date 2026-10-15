@@ -81,6 +81,7 @@ void main() {
       key: key,
       canvasSize: surface.canvasSize,
       tileSize: surface.tileSize,
+      photoPaths: const [],
       codec: compressed.codec,
       body: compressed.bytes,
     );

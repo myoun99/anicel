@@ -556,12 +556,14 @@ class UndoSurfaceSnapshot {
     // stream, so an owned plate tile goes out under its text and comes
     // back under it.
     _pinTextsAndPhotos();
-    final body = encodeCelEntryFromSurface(key, _pictureOf(owned));
+    final picture = _pictureOf(owned);
+    final body = encodeCelEntryFromSurface(key, picture);
     final compressed = await compressAnicelPayloadInWorker(body);
     final blob = AnicelCelBlob.fromCompressedBody(
       key: key,
       canvasSize: _canvasSize,
       tileSize: _tileSize,
+      photoPaths: celPhotoPaths(picture.photos),
       codec: compressed.codec,
       body: compressed.bytes,
     );

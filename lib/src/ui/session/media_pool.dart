@@ -33,6 +33,7 @@ import '../../services/import/media_identity_reader.dart';
 import '../../services/import/media_import_planner.dart'
     show importedMediaAsset;
 import '../../services/media/media_asset_uses.dart';
+import '../../services/media/sheet_photo_edits.dart';
 import '../../services/media/media_byte_source.dart';
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/project_lookup.dart' show requireLayerAnywhere;
@@ -55,12 +56,14 @@ class MediaPool {
     required MediaStagingStore staging,
     required AudioConformStore conforms,
     required MediaFingerprintLedger fingerprints,
+    required SheetPhotoEdits sheetPhotos,
   }) : _project = project,
        _changes = changes,
        _file = file,
        _staging = staging,
        _conforms = conforms,
-       _fingerprints = fingerprints;
+       _fingerprints = fingerprints,
+       _sheetPhotos = sheetPhotos;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
@@ -69,15 +72,29 @@ class MediaPool {
   final AudioConformStore _conforms;
   final MediaFingerprintLedger _fingerprints;
 
+  /// The photos the sheets keep of the pool's files (I-97): uses the project
+  /// does not hold, and the pool's edits of them.
+  final SheetPhotoEdits _sheetPhotos;
+
   /// The project's media pool, in pool order (the browser panel's list).
   List<MediaAsset> get mediaAssets =>
       _project.repository.requireProject().mediaAssets;
 
-  /// Every use the project has of the [path] asset — the rows placed from it
-  /// and the frames that carry it ([mediaAssetUsesOf]): what the pool row's
-  /// in-use mark lists, and what removing the asset takes with it (F-118).
-  Iterable<MediaAssetUse> mediaAssetUses(String path) =>
-      mediaAssetUsesOf(_project.repository.requireProject(), path);
+  /// Every use the project has of the [path] asset — the rows placed from
+  /// it, the frames that carry it and the sheets' photos of it
+  /// ([mediaAssetUsesOf]): what the pool row's in-use mark lists, and what
+  /// removing the asset takes with it (F-118).
+  Iterable<MediaAssetUse> mediaAssetUses(String path) => mediaAssetUsesOf(
+    _project.repository.requireProject(),
+    path,
+    sheetPhotos: _sheetPhotos.pathsByCel,
+  );
+
+  /// Ticks when a sheet's ink is written — what [mediaAssetUses] answers
+  /// off besides the project (I-97). A photo dropped on a sheet, or the
+  /// undo of one, says nothing to the session: an undo that moves no row
+  /// stays silent (`EditorSessionManager._stepHistory`).
+  Listenable get sheetPhotoWrites => _sheetPhotos.writes;
 
   /// Adds [paths] to the pool (skipping known ones) without linking them
   /// anywhere — import-to-browse, one undo step.
@@ -233,6 +250,12 @@ class MediaPool {
     _project.historyManager.runAsOneStep('Remove media', () {
       _removeUses(path, uses);
       _letGoOfWorkPictures(uses);
+      // A sheet's photo of it, off the ink that carries it (I-97).
+      _sheetPhotos.takeOff(
+        path,
+        {for (final use in uses.whereType<SheetPhotoMediaUse>()) use.key},
+        _project.historyManager,
+      );
       _project.cutCommandCoordinator.updateMediaAssets(
         next,
         description: 'Remove media',
@@ -364,12 +387,17 @@ class MediaPool {
       await _staging.stageCarriedBytes([carry]);
     }
     _conforms.invalidate(newPath);
-    final relinked = _project.cutCommandCoordinator.relinkMediaAsset(
-      oldPath: oldPath,
-      newPath: newPath,
-      carriedAs: carry?.token,
+    final made = _relinkedWithTheSheets(
+      () =>
+          _project.cutCommandCoordinator.relinkMediaAsset(
+            oldPath: oldPath,
+            newPath: newPath,
+            carriedAs: carry?.token,
+          )
+          ? {oldPath: newPath}
+          : const {},
     );
-    if (!relinked) {
+    if (made.isEmpty) {
       // Refused (the path is taken, the asset is gone): nothing moved, so
       // the facts stay where they were and the new copy has no carry.
       if (carry != null) {
@@ -377,7 +405,7 @@ class MediaPool {
       }
       return;
     }
-    _fingerprints.moveMediaFingerprints({oldPath: newPath});
+    _fingerprints.moveMediaFingerprints(made);
     refreshMediaExistence();
     _changes.notifyChanged();
   }
@@ -400,7 +428,9 @@ class MediaPool {
     for (final newPath in moves.values) {
       _conforms.invalidate(newPath);
     }
-    final made = _project.cutCommandCoordinator.relinkMediaAssets(moves);
+    final made = _relinkedWithTheSheets(
+      () => _project.cutCommandCoordinator.relinkMediaAssets(moves),
+    );
     // 🚨 The fingerprints follow, or the next save erases the very facts
     // this relink was decided by — the store is keyed by path and the save
     // keeps only keys the pool still holds. Left out, the feature works
@@ -416,6 +446,21 @@ class MediaPool {
     _fingerprints.moveMediaFingerprints(made);
     refreshMediaExistence();
     _changes.notifyChanged();
+  }
+
+  /// [relink] — the project's references moved, answering the moves it
+  /// made — with the sheets' photos following those moves (I-97), all ONE
+  /// undo step: a photo lives in its ink's picture, which the project's walk
+  /// (`projectWithMediaMoved`) never reaches.
+  Map<String, String> _relinkedWithTheSheets(
+    Map<String, String> Function() relink,
+  ) {
+    var made = const <String, String>{};
+    _project.historyManager.runAsOneStep('Relink media', () {
+      made = relink();
+      _sheetPhotos.follow(made, _project.historyManager);
+    });
+    return made;
   }
 
   /// RELINK-2: pool paths that were not on disk as of the last refresh.
