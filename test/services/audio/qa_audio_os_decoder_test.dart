@@ -422,6 +422,30 @@ void main() {
     }
   }, skip: skip);
 
+  test('🔬AAC in a QuickTime movie decodes as the m4a does — or says this '
+      'stack does not read a QuickTime movie\'s AAC either (board '
+      'mac-reads-no-movie-pcm: whether a Mac refuses a movie\'s PCM for the '
+      'sound or for the movie)', () {
+    final m4a = decodeAudioFile(fixturePath);
+    final movie = decodeAudioBytes(_quickTimeBranded(fixtureBytes()));
+    if (Platform.isLinux) {
+      expect((m4a, movie), (null, null));
+      return;
+    }
+    expect(m4a, isNotNull);
+    if (movie == null && !Platform.isWindows) {
+      markTestSkipped('this OS stack does not read a QuickTime movie\'s AAC');
+      return;
+    }
+    expect(movie, isNotNull, reason: 'Media Foundation reads a QuickTime one');
+    expect(movie!.length, m4a!.length);
+    for (var index = 0; index < m4a.length * m4a.channels; index += 1) {
+      if (movie.samples[index] != m4a.samples[index]) {
+        fail('sample $index is not the m4a\'s');
+      }
+    }
+  }, skip: skip);
+
   test('a movie this app exported comes back with its sound where it was '
       'written — whichever OS wrote it', () {
     // Media Foundation's encoder writes no edit list, and its sound is
@@ -1077,6 +1101,21 @@ int _boxAt(Uint8List bytes, List<String> path) {
 Uint8List _renamed(Uint8List bytes, List<String> path, String to) {
   final at = _boxAt(bytes, path);
   return Uint8List.fromList(bytes)..setRange(at + 4, at + 8, to.codeUnits);
+}
+
+/// The m4a [bytes] as a QuickTime movie — every brand of its `ftyp`
+/// QuickTime's (`qt  `), as an iPhone's or QuickTime's movie says — with its
+/// user data set aside (`free`), whose `meta` is ISO's shape. Every other
+/// byte is the m4a's: the boxes its sound is read by are the same in both.
+Uint8List _quickTimeBranded(Uint8List bytes) {
+  final ftyp = _boxAt(bytes, ['ftyp']);
+  final end = ftyp + ByteData.sublistView(bytes).getUint32(ftyp);
+  final branded = _renamed(bytes, ['moov', 'udta'], 'free');
+  // The major brand, then the compatible ones after the minor version.
+  for (final at in [ftyp + 8, for (var at = ftyp + 16; at < end; at += 4) at]) {
+    branded.setRange(at, at + 4, 'qt  '.codeUnits);
+  }
+  return branded;
 }
 
 /// The gapless note Apple's encoder would leave on the fixture's sound: 2,112
