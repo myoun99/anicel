@@ -10,7 +10,6 @@
 // press OUTSIDE the selection, which must leave the selected rows alone.
 // That the two hosts' rails reach this wiring at all is pinned on real
 // widgets in `test/ui/timeline/row_buttons_act_on_the_selection_rails_test.dart`.
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -241,50 +240,53 @@ void main() {
     });
   });
 
+  // 🗣️F-363 (유저 2026-10-15): 「카메라 불투명도는 레이어랑 통일. 레이어가
+  // 눈이랑 불투명도 바꾸면 언두 저장되니까. 기본적으로 레이어 버튼은 그게
+  // 기준」. ↩️Its eye and slider drove two notifiers the window held.
   group('the camera row', () {
-    test('its eye and its slider still drive the camera view', () {
+    test('its eye and its slider write its layer — one undo each — and the '
+        'camera view reads them', () {
       final r = _Rig();
-      final view = ValueNotifier<bool>(true);
-      final dim = ValueNotifier<double>(0.5);
-      addTearDown(view.dispose);
-      addTearDown(dim.dispose);
-      final presses = SessionRowButtonPresses(
-        r.s,
-        cameraView: view,
-        cameraDim: dim,
-      );
       final camera = r.row(r.camera);
 
-      presses.toggleVisibility(r.camera);
-      presses.commitOpacity(r.camera, 0.2);
+      r.presses.toggleVisibility(r.camera);
+      r.presses.commitOpacity(r.camera, 0.2);
 
-      expect(view.value, isFalse);
-      expect(dim.value, 0.2);
+      expect(
+        [r.row(r.camera).isVisible, r.row(r.camera).opacity],
+        [!camera.isVisible, 0.2],
+      );
+      expect(r.s.cameraViewMode.enabled.value, !camera.isVisible);
+      expect(r.s.cameraViewMode.dim.value, 0.2);
+
+      r.s.undo();
+      r.s.undo();
       expect(
         [r.row(r.camera).isVisible, r.row(r.camera).opacity],
         [camera.isVisible, camera.opacity],
-        reason: 'the view, not the layer\'s own flags',
       );
+      expect(r.s.cameraViewMode.enabled.value, camera.isVisible);
+      expect(r.s.cameraViewMode.dim.value, camera.opacity);
     });
 
-    test('a layer slider inside a selection that holds the camera leaves '
-        'its dim alone — the master bar\'s rule', () {
+    test('🚨a slider pressed inside a selection that holds the camera moves '
+        'the camera too — a selection is not sorted by kind', () {
       final r = _Rig();
-      final dim = ValueNotifier<double>(0.5);
-      addTearDown(dim.dispose);
-      final presses = SessionRowButtonPresses(r.s, cameraDim: dim);
-      final camera = r.row(r.camera).opacity;
       r.select([r.a, r.camera]);
 
-      presses.commitOpacity(r.a, 0.4);
-
-      expect(r.row(r.a).opacity, 0.4);
-      expect(dim.value, 0.5, reason: 'its slider is the view\'s dim');
+      r.presses.previewOpacity(r.a, 0.4);
       expect(
-        r.row(r.camera).opacity,
-        camera,
-        reason: 'nor the layer opacity its slider does not show',
+        r.s.opacityVerbs.dragPreview.value?.layerIds,
+        containsAll([r.a, r.camera]),
       );
+      expect(
+        r.s.cameraViewMode.dim.value,
+        0.4,
+        reason: 'the view follows the drag, as a picture follows its slider',
+      );
+      r.presses.commitOpacity(r.a, 0.4);
+
+      expect([r.row(r.a).opacity, r.row(r.camera).opacity], [0.4, 0.4]);
     });
   });
 

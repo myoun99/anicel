@@ -124,6 +124,7 @@ import 'session/folder_bands.dart';
 import 'session/visibility_solo.dart';
 import 'session/transitions.dart';
 import 'session/camera.dart';
+import 'session/camera_view_mode.dart';
 import 'session/cut_under_playhead.dart';
 import 'session/playhead_cursors.dart';
 import 'session/frame_scrub.dart';
@@ -248,6 +249,12 @@ class EditorSessionManager extends ChangeNotifier
     // F-360: the rows' folds as the opened file holds them, before any
     // history change asks again.
     railView.readFolds(repository.currentProject);
+    // F-363: the camera view is the camera row's eye and opacity — read
+    // again on every change, and on every move of a slider, which no change
+    // carries.
+    addListener(cameraViewMode.read);
+    opacityVerbs.dragPreview.addListener(cameraViewMode.read);
+    cameraViewMode.read();
     layerStack.attach();
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
@@ -1568,6 +1575,10 @@ class EditorSessionManager extends ChangeNotifier
     brushInputActive.dispose,
     dragPreview.dispose,
     canvasAdjust.dispose,
+    // F-363's two listeners come off before the slider's notifier goes.
+    () => opacityVerbs.dragPreview.removeListener(cameraViewMode.read),
+    () => removeListener(cameraViewMode.read),
+    cameraViewMode.dispose,
     opacityVerbs.dispose,
     onionSkin.dispose,
     cutVerbs.dispose,
@@ -1794,6 +1805,15 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     controllers: activeCutControllers,
     transitions: transitions,
+  );
+
+  /// The camera view — the camera row's eye and opacity as the canvas and
+  /// the bars read them (F-363; session/camera_view_mode.dart).
+  late final CameraViewMode cameraViewMode = CameraViewMode(
+    project: this,
+    selection: this,
+    opacity: opacityVerbs,
+    switches: layerSwitches,
   );
 
   // The frame verbs (Round 6): the playhead's frame and what stands there.

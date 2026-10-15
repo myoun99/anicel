@@ -1039,7 +1039,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.onionSkinToggle:
         _session.onionSkin.toggleOnionSkin();
       case EditorActionIds.cameraViewToggle:
-        _workspaceBar.toggleCameraView();
+        _session.cameraViewMode.toggle();
       case EditorActionIds.regionFold:
         _panelsMenu.toggleRegionFolded();
       // The film verbs, pressed by key — each through the button it names on

@@ -511,9 +511,11 @@ enum LayerKind {
   final bool composites;
 
   /// Whether this kind's [Layer.opacity] is the row's own picture opacity —
-  /// the thing the master-opacity bar and "set all layers" write. The camera
-  /// row's slider drives the camera-view DIM instead (a display notifier, not
-  /// layer state), so bulk opacity edits must not touch it.
+  /// the thing the master-opacity bar and "set all layers" write. The
+  /// camera's is the camera view's DIM instead — how dark the view lays the
+  /// outside of the frame — which the bulk opacity edits leave alone
+  /// (F-363-Q2). ↩️It was a display notifier the window held, not layer
+  /// state at all, until F-363 made it the camera row's own.
   final bool hasPictureOpacity;
 
   /// Whether this kind authors its transform through [Layer.transformTrack].

@@ -10,17 +10,21 @@ import 'layer_id.dart';
 ///
 /// [camera] wearing [head]'s head: its name and its fx switch — and its
 /// twirl, the row's since F-360, which the storyboard's one camera row
-/// opens on every camera (I-73 ④ⓔ). ⛔Not its label, and nothing it holds —
-/// its keys are its own cut's.
+/// opens on every camera (I-73 ④ⓔ) — and its eye and its opacity, the
+/// camera view's switch and its dim since F-363 (「카메라 불투명도는 레이어랑
+/// 통일」). ⛔Not its label, and nothing it holds — its keys are its own
+/// cut's.
 ///
 /// A camera is BORN wearing it when its cut joins a track
-/// (`projectWithCutInserted`); after that the name, the switch and the
-/// twirl are written to every camera of the track at once
+/// (`projectWithCutInserted`); after that the name, the switch, the twirl,
+/// the eye and the opacity are written to every camera of the track at once
 /// (`cameraHeadTargets`).
 Layer cameraWearingHeadOf(Layer head, Layer camera) => camera.copyWith(
   name: head.name,
   transformEnabled: head.transformEnabled,
   lanesExpanded: head.lanesExpanded,
+  isVisible: head.isVisible,
+  opacity: head.opacity,
 );
 
 /// The camera whose head a cut joining [cuts] wears: the first of their

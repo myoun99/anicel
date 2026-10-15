@@ -647,8 +647,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditCameraCell,
     this.cutFrameCursor,
     this.onSeekCutFrame,
-    this.cameraViewEnabled,
-    this.cameraDimOpacity,
     this.dragPreview,
     this.legend,
     this.onLegendMenus,
@@ -1384,13 +1382,6 @@ class StoryboardPanel extends StatefulWidget {
   /// projection row's lane label, which walks the keys of the cut the
   /// session stands in.
   final void Function(CutId cutId, int ownFrame)? onSeekCutFrame;
-
-  /// The camera row's head is the timeline's camera row: its eye is the
-  /// camera VIEW and its slider the view's DIM — the canvas's and the
-  /// camera panel's own notifiers, not flags of the layer (R27 #9). Null
-  /// shows the layer's own.
-  final ValueListenable<bool>? cameraViewEnabled;
-  final ValueListenable<double>? cameraDimOpacity;
 
   @override
   State<StoryboardPanel> createState() => _StoryboardPanelState();
@@ -3572,7 +3563,6 @@ class _StoryboardRailHead extends KeptPiece {
     this.onLayerBlendModeSelected,
     this.onLayerOpacityChangeEnd,
     this.onToggleLayerFx,
-    this.opacityOverride,
     this.opacityDragPreview,
     this.onOpenCameraPath,
     this.attachArrowPlacement,
@@ -3617,9 +3607,6 @@ class _StoryboardRailHead extends KeptPiece {
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
   final ValueChanged<LayerId>? onToggleLayerFx;
-
-  /// The camera row's slider: the view's dim, not the layer's opacity.
-  final ValueListenable<double>? opacityOverride;
   final ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview;
   final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
@@ -3651,7 +3638,6 @@ class _StoryboardRailHead extends KeptPiece {
     onLayerMarkSelected != null,
     onLayerBlendModeSelected != null,
     onToggleLayerFx != null,
-    ByIdentity(opacityOverride),
     ByIdentity(opacityDragPreview),
     onOpenCameraPath != null,
     attachArrowPlacement,
@@ -3685,7 +3671,6 @@ class _StoryboardRailHead extends KeptPiece {
       onLayerOpacityChangeEnd: endOpacity == null
           ? null
           : (_, opacity) => endOpacity(rowId, opacity),
-      opacityOverride: opacityOverride,
       opacityDragPreview: opacityDragPreview,
       onLayerMarkSelected: (_, edit) =>
           onLayerMarkSelected?.call(rowId, edit),

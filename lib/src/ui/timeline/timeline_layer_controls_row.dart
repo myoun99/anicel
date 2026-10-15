@@ -187,7 +187,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.opacityDragPreview,
     this.linkPartners = const [],
     this.onLayerBlendModeSelected,
-    this.opacityOverride,
     this.chromeless = false,
     this.laneGraphVerbs,
     this.headsGraph = false,
@@ -362,12 +361,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// it is why this is a flag here rather than a second row somewhere else
   /// re-listing the same twelve slots.
   final bool chromeless;
-
-  /// R27 #9: a live opacity source that OUTRANKS `layer.opacity` for this
-  /// row's slider. The camera row's opacity is a view notifier, not model
-  /// state — reading it here lets the drag repaint just this slider
-  /// instead of rebuilding the whole timeline host per move.
-  final ValueListenable<double>? opacityOverride;
 
   /// The header graphs' verbs (I-89 ③) — the HOST's, the same on every
   /// row: null mounts no graph button.
@@ -1035,7 +1028,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     layer: layer,
     keyPrefix: keyPrefix,
     axis: axis,
-    override: opacityOverride,
     dragPreview: opacityDragPreview,
     onChanged: onLayerOpacityChanged,
     onChangeEnd: onLayerOpacityChangeEnd,

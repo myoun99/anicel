@@ -78,8 +78,6 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleLaneGroupKey,
     this.rowsChannel,
     this.transformOptions,
-    this.cameraViewEnabled,
-    this.cameraDimOpacity,
   });
 
   /// The legend's row filter, shared with the timeline and the sheet
@@ -181,15 +179,6 @@ class StoryboardTabHost extends StatefulWidget {
   /// window should do.
   final void Function(String path, ImportLayerSpot spot)? onPlaceMediaAsset;
 
-  /// The camera row's head is the timeline's camera row (I-73 ④): its eye is
-  /// the camera VIEW and its slider the view's DIM — the canvas's and the
-  /// camera panel's own notifiers, the ones [TimelineTabHost] is handed for
-  /// its camera row. ↩️Not this host's business from R28 #1 (the toggle went
-  /// beside the transport, then to the 문턱) until the storyboard had a
-  /// camera row; the 문턱's toggle is still the workspace's.
-  final ValueNotifier<bool>? cameraViewEnabled;
-  final ValueNotifier<double>? cameraDimOpacity;
-
   @override
   State<StoryboardTabHost> createState() => _StoryboardTabHostState();
 }
@@ -198,14 +187,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
 
   /// The rows' buttons as a press asks them — the timeline rail's own
-  /// wiring, spread over the row selection when the pressed row is in it;
-  /// the camera row's eye and slider drive the camera view, as on the
-  /// timeline's rail.
-  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(
-    _session,
-    cameraView: widget.cameraViewEnabled,
-    cameraDim: widget.cameraDimOpacity,
-  );
+  /// wiring, spread over the row selection when the pressed row is in it.
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
 
   /// The view cluster, kept by what it shows across this host's rebuilds —
   /// the timeline panel's keep (F-244 ⑧).
@@ -655,13 +638,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               child: Offstage(
                 offstage: PanelCollapsedScope.of(context),
                 child: ListenableBuilder(
-                  // …and the camera VIEW, which the camera row's eye shows
-                  // and which is no session notify (the timeline host hears
-                  // it the same way).
-                  listenable: Listenable.merge([
-                    _session.voiceRecording.voiceRecordPreviewLane,
-                    ?widget.cameraViewEnabled,
-                  ]),
+                  listenable: _session.voiceRecording.voiceRecordPreviewLane,
                   builder: (context, _) => StoryboardPanel(
                     project: _session.repository.requireProject(),
                     rowFilter: widget.rowFilter,
@@ -1148,7 +1125,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onEditConteBlock: _editConteBlock,
                     // The CAMERA row (I-73 ④): a press stands in the cut it
                     // names, a double click is the timeline camera row's, and
-                    // its head is that row's — eye and slider on the view.
+                    // its head is that row's.
                     onCameraCutPress: _pressCameraCut,
                     onEditCameraCell: () => unawaited(_editCameraCell()),
                     // A projection row's lane labels read the cut stood in
@@ -1157,8 +1134,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     cutFrameCursor: _session.playheadCursors.cutFrame,
                     onSeekCutFrame: (cutId, ownFrame) =>
                         seekStoryboardCutFrame(_session, cutId, ownFrame),
-                    cameraViewEnabled: widget.cameraViewEnabled,
-                    cameraDimOpacity: widget.cameraDimOpacity,
                   ),
                 ),
               ),

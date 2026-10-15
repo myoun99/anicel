@@ -51,8 +51,9 @@ class LinkMirroredLayerFieldCommand<T>
   final bool ofTheHead;
 
   /// Whether the field is part of the head a track's CAMERAS wear as one
-  /// ([cameraHeadTargets], I-73 ④) as well — the name, and not the label
-  /// (🗣️I-73-camera-row-Q1: 「색라벨은 컷마다」).
+  /// ([cameraHeadTargets], I-73 ④) as well — the name, the twirl and the
+  /// static opacity (F-363), and not the label (🗣️I-73-camera-row-Q1:
+  /// 「색라벨은 컷마다」).
   final bool ofTheCameraHead;
 
   @override

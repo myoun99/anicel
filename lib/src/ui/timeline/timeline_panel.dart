@@ -160,7 +160,6 @@ class TimelinePanel extends StatefulWidget {
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
-    this.layerOpacityOverrideOf,
   });
 
   final List<Layer> layers;
@@ -169,10 +168,6 @@ class TimelinePanel extends StatefulWidget {
   /// R27 #6: the layer label's blend-mode column.
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-
-  /// R27 #9: live opacity source for view-state rows (the camera dim).
-  final ValueListenable<double>? Function(LayerId layerId)?
-  layerOpacityOverrideOf;
 
   /// The session's edit-drag preview channel (comma/trim drags), consumed
   /// by both grids' row gates and cursor overlays.
@@ -712,7 +707,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
       substrateGeneration: widget.substrateGeneration,
       memoAux: widget.memoAux,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
-      layerOpacityOverrideOf: widget.layerOpacityOverrideOf,
       layerEyeOnOf: widget.layerEyeOnOf,
     );
     return Material(

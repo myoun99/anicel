@@ -12,6 +12,7 @@ import '../models/track_row_twirls.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
+import '../services/commands/link_mirror.dart' show eyeMirrorRows;
 import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
@@ -252,11 +253,20 @@ class LayerController {
     required List<LayerId> layerIds,
     required bool visible,
   }) => _executeDisplayBatch(
-    layerIds: layerIds,
+    layerIds: _eyeRowsOf(layerIds),
     debugLabel: 'Set layer visibility',
     apply: (layer) =>
         layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible),
   );
+
+  /// The rows the eyes of [layerIds] are written to ([eyeMirrorRows]) —
+  /// each row, a camera with every camera of its track — once each.
+  List<LayerId> _eyeRowsOf(List<LayerId> layerIds) {
+    final project = _repository.requireProject();
+    return {
+      for (final layerId in layerIds) ...eyeMirrorRows(project, layerId),
+    }.toList();
+  }
 
   /// Sets static opacity on MANY layers as ONE undo step — the master bar —
   /// each one's link group with it ([setLayerOpacity]).
@@ -384,13 +394,17 @@ class LayerController {
     // row takes it, and the track's conte structure lays it on the rest
     // (F-343, `trackWithItsConteLaid`) — ↩️where every row at the seat was
     // written here.
-    _historyManager.execute(
-      UpdateLayerDisplayCommand(
-        repository: _repository,
-        layerId: layerId,
-        debugLabel: 'Toggle layer visibility',
-        apply: (layer) => layer.copyWith(isVisible: nextVisible),
-      ),
+    //
+    // 🚨AND A TRACK'S CAMERAS WEAR ONE EYE — the camera view's switch
+    // (F-363, 유저 2026-10-15: 「레이어가 눈이랑 불투명도 바꾸면 언두
+    // 저장되니까. 기본적으로 레이어 버튼은 그게 기준」): written here to every
+    // one of them ([eyeMirrorRows]), as their name is by its command.
+    _executeDisplayBatch(
+      layerIds: _eyeRowsOf([layerId]),
+      debugLabel: 'Toggle layer visibility',
+      apply: (layer) => layer.isVisible == nextVisible
+          ? layer
+          : layer.copyWith(isVisible: nextVisible),
     );
   }
 

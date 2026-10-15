@@ -565,8 +565,8 @@ class LayerBlendModeChip extends StatelessWidget {
 ///
 /// Almost every layer kind shows the opacity slider (unified layer controls
 /// — "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
-/// row's slider drives the camera-view DIM opacity, and instruction rows
-/// carry the same control for entrance parity.
+/// row's is its own opacity — the camera view's dim (F-363) — and
+/// instruction rows carry the same control for entrance parity.
 ///
 /// ⛔The TRANSITION row does not. It is the one row that carries no picture
 /// of its own — it says WHEN two cuts cross-dissolve — so there is nothing

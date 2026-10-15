@@ -177,7 +177,6 @@ import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
 import '../services/persistence/folder_grant.dart' show FolderGrant;
-import 'camera/camera_view_toggle_button.dart' show toggleCameraView;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -1230,7 +1229,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       this,
       zoomStep: _stepZoom,
       toggleOrientation: _toggleOrientation,
-      toggleCameraView: () => toggleCameraView(_views._cameraViewEnabled),
     );
     widget.doorCommands?.bind(
       this,

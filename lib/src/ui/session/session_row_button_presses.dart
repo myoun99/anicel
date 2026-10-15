@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -37,19 +35,15 @@ import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 /// Rows are found ANYWHERE: the storyboard's rail carries the tracks' own
 /// SE and transition rows, which no cut holds.
 ///
-/// [cameraView] and [cameraDim] are the timeline's camera row: its eye and
-/// its slider drive the camera view, not layer flags. The storyboard's rail
-/// has no camera row and passes neither.
+/// The CAMERA row's buttons are its layer's, as every row's are (F-363,
+/// 유저 2026-10-15: 「기본적으로 레이어 버튼은 그게 기준」): its eye and its
+/// slider — the camera view's switch and its dim (`CameraViewMode`) — write
+/// the layer, across the selection like the rest. ↩️They wrote two
+/// notifiers the window held, and only for the row pressed.
 class SessionRowButtonPresses {
-  const SessionRowButtonPresses(
-    this.session, {
-    this.cameraView,
-    this.cameraDim,
-  });
+  const SessionRowButtonPresses(this.session);
 
   final EditorSessionManager session;
-  final ValueNotifier<bool>? cameraView;
-  final ValueNotifier<double>? cameraDim;
 
   void toggleVisibility(LayerId pressed) =>
       session.rowSelectionVerbs.pressAcross(
@@ -395,19 +389,10 @@ class SessionRowButtonPresses {
     session.folders.toggleAttachGroup(baseId);
   }
 
-  void previewOpacity(LayerId pressed, double opacity) {
-    if (_isCamera(_actedOn(pressed)) && cameraDim != null) {
-      cameraDim!.value = opacity;
-      return;
-    }
-    session.opacityVerbs.previewLayersOpacity(_opacityRows(pressed), opacity);
-  }
+  void previewOpacity(LayerId pressed, double opacity) =>
+      session.opacityVerbs.previewLayersOpacity(_opacityRows(pressed), opacity);
 
   void commitOpacity(LayerId pressed, double opacity) {
-    if (_isCamera(_actedOn(pressed)) && cameraDim != null) {
-      cameraDim!.value = opacity;
-      return;
-    }
     session.rowSelectionVerbs.pickAcross(pressed, (id) {
       for (final row in _sliderRowsOf(id)) {
         session.opacityVerbs.commitLayerOpacity(row, opacity);
@@ -466,8 +451,8 @@ class SessionRowButtonPresses {
   };
 
   /// The rows the slider on [id] moves: [id] itself when it carries an
-  /// opacity slider of its own — the camera's is the view's dim, and stays
-  /// out — and the attach layers riding it while its group is folded.
+  /// opacity slider of its own, and the attach layers riding it while its
+  /// group is folded.
   ///
   /// 🚨F-266 (유저 2026-10-03): 「어태치 레이어가 있을떄, 기준레이어
   /// 접혀있을때 비지블 on off가 내부 어태치된 레이어들한테도 적용되는데, 이거
@@ -481,14 +466,9 @@ class SessionRowButtonPresses {
   ];
 
   static bool _hasOwnSlider(Layer? layer) =>
-      layer != null &&
-      layerKindShowsOpacityControl(layer.kind) &&
-      layer.kind != LayerKind.camera;
+      layer != null && layerKindShowsOpacityControl(layer.kind);
 
   bool? _eyeOf(LayerId id) {
-    if (_isCamera(id) && cameraView != null) {
-      return cameraView!.value;
-    }
     final layer = _row(id);
     return layer == null
         ? null
@@ -504,10 +484,6 @@ class SessionRowButtonPresses {
   /// group's organizer folders keep theirs: a folder's eye is its own value,
   /// which the composite hides by, and that is F-185's law, not this one.
   void _flipEye(LayerId id) {
-    if (_isCamera(id) && cameraView != null) {
-      cameraView!.value = !cameraView!.value;
-      return;
-    }
     final shown = _eyeOf(id);
     session.layerSwitches.toggleLayerVisibility(id);
     for (final rider in _foldedRidersOf(id)) {
@@ -526,13 +502,6 @@ class SessionRowButtonPresses {
     }
     return attachedLayersOf(base, layers);
   }
-
-  bool _isCamera(LayerId id) => _row(id)?.kind == LayerKind.camera;
-
-  /// The layer a press on [pressed] lands on — a storyboard projection
-  /// row's row in hand ([RowSelection.layerActedOn]).
-  LayerId _actedOn(LayerId pressed) =>
-      session.rowSelectionVerbs.layerActedOn(pressed);
 
   Layer? _row(LayerId id) =>
       layerAnywhereOrNull(session.repository.requireProject(), id);

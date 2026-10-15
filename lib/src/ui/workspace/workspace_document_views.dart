@@ -2,8 +2,8 @@ part of '../editor_workspace.dart';
 
 /// THE DOCUMENT VIEWS' STATE — what each document panel shows and how:
 /// the timesheet's page, continuity, viewport and ink; the conte's and
-/// the cut envelope's viewport, ink and images; the camera view; and the
-/// tool options the canvas reads (fill, selection mask, eyedropper source —
+/// the cut envelope's viewport, ink and images; and the tool options the
+/// canvas reads (fill, selection mask, eyedropper source —
 /// the transform's are the shell's, beside the tool, because a shortcut
 /// presses a transform mode). Notifiers, so the panels subscribe rather than
 /// the workspace rebuilding.
@@ -35,10 +35,10 @@ class _WorkspaceDocumentViews {
   final ValueNotifier<CanvasReadSource> _eyedropperSource =
       ValueNotifier(CanvasReadSource.display);
 
-  /// Camera view mode: overlay shown with the outside dimmed.
-  final ValueNotifier<bool> _cameraViewEnabled = ValueNotifier(false);
-
-  final ValueNotifier<double> _cameraDimOpacity = ValueNotifier(0.5);
+  // ↩️The camera view stood here — the overlay's switch and its dim, the
+  // window's — until they became the project's camera row's eye and opacity
+  // (F-363, `CameraViewMode`): a project opened in the window came up in the
+  // view the one before it was left in.
 
   /// Timesheet tab view state: the page read (F-201), the sheet viewport
   /// (zoom/pan) and the brush switch — owned here so they survive tab
@@ -124,8 +124,6 @@ class _WorkspaceDocumentViews {
     _selectionMaskOptions.dispose();
     _textToolOptions.dispose();
     _eyedropperSource.dispose();
-    _cameraViewEnabled.dispose();
-    _cameraDimOpacity.dispose();
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetBrushAllowed.dispose();

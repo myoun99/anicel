@@ -116,7 +116,6 @@ class _WorkspaceTabs {
     return FramePanelSillControls(
       session: session,
       scope: transport.scope,
-      cameraViewEnabled: _state._views._cameraViewEnabled,
       cameraViewKeyValue: cameraViewKeyValue,
       playbackStartFrame: transport.startFrame,
       onSkipToStart: transport.skipToStart,
@@ -338,8 +337,10 @@ class _WorkspaceTabs {
                   cutPieceSlot: _state._cutPieceSlot,
                   lastStroke: _state.widget.lastStroke,
                   toolHold: _state.widget.toolHold,
-                  cameraViewEnabled: _state._views._cameraViewEnabled,
-                  cameraDimOpacity: _state._views._cameraDimOpacity,
+                  // F-363: the project's camera row's eye and opacity.
+                  cameraViewEnabled:
+                      _state.widget.session.cameraViewMode.enabled,
+                  cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
                   expandedLaneLayerIds:
                       _state.widget.session.railView.expandedLaneLayerIds,
                   fillOptions: _state._views._fillOptions,
@@ -976,11 +977,6 @@ class _WorkspaceTabs {
               onToggleAttachGroup: SessionRowButtonPresses(
                 _state.widget.session,
               ).toggleGroupFold,
-              // Unified layer controls: the camera row's visibility/opacity
-              // drive the same camera-view state as the canvas overlay and
-              // the camera panel.
-              cameraViewEnabled: _state._views._cameraViewEnabled,
-              cameraDimOpacity: _state._views._cameraDimOpacity,
               // The legend's "open onion panel" (UI-R17 #5): already open
               // = the panel flashes in place (the common reveal logic).
               onRevealOnionSkinPanel: () =>
@@ -1100,13 +1096,6 @@ class _WorkspaceTabs {
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
               rowsChannel: _state._storyboardRows,
-              // The camera row's head is the timeline's camera row (I-73 ④):
-              // its eye and slider drive the same camera-view state as the
-              // timeline's, the canvas overlay and the camera panel. R28 #1's
-              // TOGGLE still rides the sill with the transport
-              // (`sillTrailing` above).
-              cameraViewEnabled: _state._views._cameraViewEnabled,
-              cameraDimOpacity: _state._views._cameraDimOpacity,
             ),
           ),
         );

@@ -1,12 +1,14 @@
-import 'package:flutter/foundation.dart';
-
 import '../../models/working_panel.dart';
 
 /// The verbs of the panel-bar buttons whose state the WORKSPACE holds
-/// (I-40): each panel's frame-axis zoom, the timeline's ⇄ and the camera
-/// view — what a key presses when it presses one of those buttons. The
-/// mounted `EditorWorkspace` binds them; the shell's key funnel calls in.
-/// Unbound calls are no-ops.
+/// (I-40): each panel's frame-axis zoom and the timeline's ⇄ — what a key
+/// presses when it presses one of those buttons. The mounted
+/// `EditorWorkspace` binds them; the shell's key funnel calls in. Unbound
+/// calls are no-ops.
+///
+/// ↩️The camera view's switch was here too, until it became the project's
+/// camera row's eye (F-363): its key presses the session's own
+/// (`CameraViewMode.toggle`), as the onion skin's does.
 ///
 /// A verb that takes a [WorkingPanel] is that panel's own button: the panel
 /// answers it, and a panel whose bar has no such button answers nothing —
@@ -14,7 +16,6 @@ import '../../models/working_panel.dart';
 class WorkspaceBarCommands {
   void Function(WorkingPanel panel, {required bool zoomIn})? _zoomStep;
   void Function(WorkingPanel panel)? _toggleOrientation;
-  VoidCallback? _toggleCameraView;
   Object? _owner;
 
   /// ⚠️Owner-scoped — see `TimelineLayerNavCommands.bind` for the failure
@@ -24,12 +25,10 @@ class WorkspaceBarCommands {
     required void Function(WorkingPanel panel, {required bool zoomIn})
     zoomStep,
     required void Function(WorkingPanel panel) toggleOrientation,
-    required VoidCallback toggleCameraView,
   }) {
     _owner = owner;
     _zoomStep = zoomStep;
     _toggleOrientation = toggleOrientation;
-    _toggleCameraView = toggleCameraView;
   }
 
   void unbind(Object owner) {
@@ -39,7 +38,6 @@ class WorkspaceBarCommands {
     _owner = null;
     _zoomStep = null;
     _toggleOrientation = null;
-    _toggleCameraView = null;
   }
 
   /// One press of [panel]'s zoom − or +.
@@ -49,7 +47,4 @@ class WorkspaceBarCommands {
   /// One press of [panel]'s timeline ⇄ X-sheet.
   void toggleOrientation(WorkingPanel panel) =>
       _toggleOrientation?.call(panel);
-
-  /// One press of the sill's camera view switch.
-  void toggleCameraView() => _toggleCameraView?.call();
 }

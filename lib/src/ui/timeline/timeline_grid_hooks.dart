@@ -147,7 +147,6 @@ class TimelineGridHooks {
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
-    this.layerOpacityOverrideOf,
   });
 
   final LayerId? activeLayerId;
@@ -548,12 +547,6 @@ class TimelineGridHooks {
   /// legend's bulk pick both commit through this.
   final void Function(LayerId layerId, LayerBlendMode mode)?
   onLayerBlendModeSelected;
-
-  /// R27 #9: rows whose opacity is a live VIEW notifier (the camera row's
-  /// dim) hand it over here — the slider subscribes and the drag never
-  /// touches the host.
-  final ValueListenable<double>? Function(LayerId layerId)?
-  layerOpacityOverrideOf;
 
   /// Whether ANY of [layerId]'s FX apply — [layerFxStateOf]'s answer read
   /// through the one rule ([fxEnabledFromState]); no resolver means on.

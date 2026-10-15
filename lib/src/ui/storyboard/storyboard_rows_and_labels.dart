@@ -588,15 +588,14 @@ class _StoryboardRowsAndLabels {
   /// 제일 위」 — the row the timeline shows at the top of its CAM section,
   /// shown here at the top of this one: the drawn proposal's 「머리는
   /// 타임라인의 카메라 행 머리 부품 그대로(칩 · 아이콘 · Camera · fx · 눈 ·
-  /// 값)」. Its eye is the camera VIEW and its slider the view's DIM, as the
-  /// timeline's are ([StoryboardPanel.cameraViewEnabled],
-  /// [StoryboardPanel.cameraDimOpacity]); its label and its fx switch are the
-  /// layer's own.
+  /// 값)」. Everything on it is the layer's own, as the timeline's is — its
+  /// eye and its slider too, the camera view's switch and its dim (F-363).
   ///
   /// The head is the cut stood in's camera, as the timeline's is. 🗣️유저
-  /// 2026-10-09 (I-73-camera-row-Q1): its name and its fx switch are ONE
-  /// for the track's cuts, its colour label each cut's own — the commands
-  /// carry the two to every camera of the track (`cameraHeadTargets`).
+  /// 2026-10-09 (I-73-camera-row-Q1): its name, its fx switch, its eye and
+  /// its opacity are ONE for the track's cuts, its colour label each cut's
+  /// own — the commands carry them to every camera of the track
+  /// (`cameraHeadTargets`).
   ///
   /// A press picks the ROW ([trackCameraRowId]) — never the head's layer —
   /// and the session lands it on the camera layer of the cut it stands in.
@@ -646,17 +645,13 @@ class _StoryboardRowsAndLabels {
     }
     final widget = _state.widget;
     final rowId = trackCameraRowId(track.id);
-    final view = widget.cameraViewEnabled;
-    final shown = view == null
-        ? head.layer
-        : head.layer.copyWith(isVisible: view.value);
     final trackId = track.id;
     return (
       piece: _StoryboardRailHead(
         key: ValueKey<String>('storyboard-camera-label-${trackId.value}'),
         rowId: rowId,
         chromeless: chromeless,
-        layer: shown,
+        layer: head.layer,
         active: widget.selectedRow == LayerRowAddress(rowId),
         // Its twirl — the timeline's camera row's — opens the row's lanes
         // under it (I-73 ④ⓔ): the camera's, which every camera has.
@@ -674,7 +669,7 @@ class _StoryboardRowsAndLabels {
         onToggleLayerVisibility: widget.onToggleLayerVisibility,
         onLayerOpacityChanged: widget.onLayerOpacityChanged,
         onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
-        opacityOverride: widget.cameraDimOpacity,
+        opacityDragPreview: widget.opacityDragPreview,
         onLayerMarkSelected: widget.onLayerMarkSelected,
         // This rail has the blend column, as the conte heads say: a camera
         // keeps its slot empty, so the columns stand over the rows' own.
@@ -683,7 +678,7 @@ class _StoryboardRowsAndLabels {
         onToggleLayerFx: widget.onToggleLayerFx,
         onOpenCameraPath: widget.onOpenCameraPath,
       ),
-      wears: (layer: shown, stack: head.cut.layers),
+      wears: (layer: head.layer, stack: head.cut.layers),
     );
   }
 

@@ -144,15 +144,14 @@ void main() {
   );
 
   /// The tab as the workspace mounts it, on [project]: built again on every
-  /// notify the session makes and every twirl its rows turn — and on the
-  /// camera VIEW [cameraView], which is none. [turned] hears every lane
-  /// twirl the rail turns, in place of the session's verb; [openLanes] are
-  /// the layers whose lanes stand open and [openGroups] the conte rows' lane
-  /// groups that do, in place of the session's; [rowFilter] is the legend's.
+  /// notify the session makes and every twirl its rows turn. [turned] hears
+  /// every lane twirl the rail turns, in place of the session's verb;
+  /// [openLanes] are the layers whose lanes stand open and [openGroups] the
+  /// conte rows' lane groups that do, in place of the session's; [rowFilter]
+  /// is the legend's.
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
-    ValueNotifier<bool>? cameraView,
     List<LayerId>? turned,
     Set<LayerId>? openLanes,
     Set<String>? openGroups,
@@ -175,7 +174,6 @@ void main() {
               onShowSecondsChanged: (_) {},
               thumbnails: null,
               rowFilter: rowFilter,
-              cameraViewEnabled: cameraView,
               expandedLaneLayerIds: openLanes ?? twirls.expandedLaneLayerIds,
               expandedLaneGroupKeys: openGroups ?? twirls.expandedLaneGroupKeys,
               onToggleLayerLanes: turned?.add ?? twirls.onToggleLayerLanes,
@@ -274,14 +272,13 @@ void main() {
     expectRowsAsThey(tester, before);
   });
 
-  testWidgets('🚨the camera head shows the VIEW as it flips — the view is no '
+  testWidgets('🚨the camera head shows its eye as it flips — the eye is no '
       'part of the face it is kept by', (tester) async {
-    final view = ValueNotifier<bool>(true);
-    addTearDown(view.dispose);
-    await pumpPanel(tester, film(), cameraView: view);
+    final session = await pumpPanel(tester, film());
     expect(eyeOn(tester, cameraLabel), isTrue, reason: 'premise');
 
-    view.value = false;
+    // The camera view's own switch (F-363): the camera row's eye.
+    session.cameraViewMode.toggle();
     await tester.pump();
 
     expect(eyeOn(tester, cameraLabel), isFalse);

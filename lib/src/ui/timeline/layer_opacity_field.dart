@@ -17,7 +17,6 @@ Widget layerOpacityField({
   required Layer layer,
   required String keyPrefix,
   Axis axis = Axis.horizontal,
-  ValueListenable<double>? override,
   ValueListenable<({Set<LayerId> layerIds, double opacity})?>? dragPreview,
   required void Function(LayerId layerId, double opacity) onChanged,
   void Function(LayerId layerId, double opacity)? onChangeEnd,
@@ -40,16 +39,8 @@ Widget layerOpacityField({
     ),
   );
 
-  // R27 #9: a row whose opacity IS a view notifier (the camera row)
-  // reads it here — the slider follows the drag by itself, no host
-  // rebuild in the loop.
-  if (override != null) {
-    return ValueListenableBuilder<double>(
-      valueListenable: override,
-      builder: (context, value, _) => slider(value.clamp(0.0, 1.0)),
-    );
-  }
-
+  // ↩️R27 #9 read the camera row's here, off the window's dim notifier,
+  // until the dim became the row's own opacity (F-363).
   final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
   if (dragPreview == null) {
     return slider(resting);
