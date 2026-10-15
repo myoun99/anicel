@@ -234,10 +234,15 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                       SheetStratum.content,
                       repaint: widget.imageRepaint,
                     ),
+                    // The ink, and a landed decode of a photo it holds
+                    // (I-97).
                     if (inkController != null)
                       SheetStratum.ink: painterOf(
                         SheetStratum.ink,
-                        repaint: inkController,
+                        repaint: Listenable.merge([
+                          inkController,
+                          widget.imageRepaint,
+                        ]),
                       ),
                   },
                   liveNow: (stratum) =>
@@ -260,6 +265,8 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
                     viewport: viewport,
                     strokeActive: _strokeHold,
                     cacheInvalidationSink: _cacheInvalidationSink,
+                    imageFor: widget.imageFor,
+                    imageRepaint: widget.imageRepaint,
                   ),
                 ),
               // A pool picture dropped on a box stamps it, brush or no

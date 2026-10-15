@@ -97,6 +97,8 @@ void main() {
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
+                imageFor: (_) => null,
+                imageRepaint: images,
               ),
               () => ink.commitStroke(
                 plane: null,
@@ -424,13 +426,18 @@ void main() {
       final (rebakes, _) = await mount(tester);
       expect(
         await rebakes(images.notifyListeners),
+        // Every sheet's ink prints the photos laid on it, from their pool
+        // files (I-97).
         only(switch (sheet.sheet) {
           // The logo is a value; the cover's picture is a picture.
-          'conte' => {SheetStratum.content, SheetStratum.picture},
-          // The timesheet prints no media image.
-          'timesheet' => const {},
+          'conte' => {
+            SheetStratum.content,
+            SheetStratum.picture,
+            SheetStratum.ink,
+          },
+          'timesheet' => {SheetStratum.ink},
           // The logo and the 도장 are values.
-          _ => {SheetStratum.content},
+          _ => {SheetStratum.content, SheetStratum.ink},
         }),
       );
     });

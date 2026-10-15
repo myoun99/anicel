@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -35,6 +37,7 @@ import '../sheet_painting.dart'
         pictureOutline,
         pictureShowsOnScreen;
 import '../widgets/cursor_notice.dart' show cursorNotices;
+import 'sheet_photos.dart' show SheetPhotosPainter;
 
 /// A window the sheet's brush draws through: where it sits on the paper,
 /// how the brush sees its surface, and which of that surface's pixels it
@@ -486,13 +489,15 @@ Path? sheetInkShownCut(Rect shows, List<Path> yieldsTo) {
 }
 
 /// What the print of a sheet's ink is laid through: the panel's
-/// [viewport] at [devicePixelRatio] over a box of [size], and what stands
-/// over all its windows ([above]).
+/// [viewport] at [devicePixelRatio] over a box of [size], what stands over
+/// all its windows ([above]), and the pool files its photos are drawn from
+/// ([imageFor] — null draws none).
 typedef SheetInkPrintView = ({
   CanvasViewport viewport,
   double devicePixelRatio,
   Size size,
   List<SheetInkAbove> above,
+  ui.Image? Function(String assetPath)? imageFor,
 });
 
 /// Prints [ink] on screen as the layer's live views paint it (F-215): each
@@ -540,9 +545,17 @@ void printSheetInkAsLive(
     if (window.viewLaidBy(view.viewport) case final laid?) {
       canvas.transform(laid.storage);
     }
+    final viewport = window.inkViewport(view.viewport);
+    // Its photos under it (I-97), by the painter the live window mounts.
+    SheetPhotosPainter(
+      photos: surface.photos,
+      viewport: viewport,
+      devicePixelRatio: view.devicePixelRatio,
+      imageFor: view.imageFor,
+    ).paint(canvas, view.size);
     BitmapSurfacePainter(
       surface: surface,
-      viewport: window.inkViewport(view.viewport),
+      viewport: viewport,
       showTransparentBackground: false,
       lineage: (window.key.layerId, window.key.frameId),
       devicePixelRatio: view.devicePixelRatio,
@@ -564,6 +577,9 @@ mixin SheetInkOnScreen {
   /// Keys a live window is showing: not printed again, so translucent ink
   /// never composites twice.
   Set<BrushFrameKey> get liveInkKeys;
+
+  /// The pool files the ink's photos are drawn from (I-97).
+  ui.Image? Function(String assetPath)? get imageFor;
 
   /// Prints [ink] as the live windows draw it, the pictures [above] taking
   /// their place over it — nothing without a view and surfaces (an
@@ -588,6 +604,7 @@ mixin SheetInkOnScreen {
         devicePixelRatio: effectiveRatio,
         size: size,
         above: above,
+        imageFor: imageFor,
       ),
     );
   }
@@ -696,6 +713,8 @@ class SheetInkLayer extends StatefulWidget {
     required this.history,
     required this.sessionStateFor,
     required this.onStrokeCommitted,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final List<SheetWindow> windows;
@@ -728,6 +747,12 @@ class SheetInkLayer extends StatefulWidget {
 
   final void Function(SheetWindow window, BrushStrokeCommitData strokeData)
   onStrokeCommitted;
+
+  /// The pool files a window's photos are drawn from (I-97) — null while
+  /// one is still being read, and no photo at all where this is null — and
+  /// what says one has landed.
+  final ui.Image? Function(String assetPath)? imageFor;
+  final Listenable? imageRepaint;
 
   @override
   State<SheetInkLayer> createState() => _SheetInkLayerState();
@@ -849,22 +874,42 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       onPointerDown: (event) => _refuseAt(event.localPosition),
       child: Stack(
         children: [
-          for (final (:index, :window, :region) in keeping)
-            Positioned.fill(
-              child: _InkWindowFrame(
-                shows: shown[index].shows,
-                // The press is its own where it is the window on top, and
-                // the stroke with it wherever the pen goes after (H49).
-                owns: (position) => identical(
-                  sheetInkOwnerAt(windows, _paperOf(position)),
-                  window,
-                ),
-                yieldsTo: shown[index].yieldsTo,
-                child: RepaintBoundary(
-                  child: _laid(window, _view(window, region)),
-                ),
-              ),
+          for (final (:index, window: _, :region) in keeping)
+            Positioned.fill(child: _framed(context, shown[index], region)),
+        ],
+      ),
+    );
+  }
+
+  /// [shown]'s window in its frame: showing its own where [shown] says,
+  /// hearing the presses it owns, its photos under its brush view.
+  Widget _framed(
+    BuildContext context,
+    SheetInkShown shown,
+    CanvasSelectionRegion region,
+  ) {
+    final window = shown.window;
+    return _InkWindowFrame(
+      shows: shown.shows,
+      // The press is its own where it is the window on top, and the stroke
+      // with it wherever the pen goes after (H49).
+      owns: (position) => identical(
+        sheetInkOwnerAt(widget.windows, _paperOf(position)),
+        window,
+      ),
+      yieldsTo: shown.yieldsTo,
+      // Its photos under its ink (I-97), each on a boundary of its own: a
+      // stroke repaints the view and not them. ⛔Both always — a child that
+      // came and went would remount the view.
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          RepaintBoundary(
+            child: IgnorePointer(
+              child: _laid(window, _photos(context, window)),
             ),
+          ),
+          RepaintBoundary(child: _laid(window, _view(window, region))),
         ],
       ),
     );
@@ -903,6 +948,18 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
           _land(window, keeps, strokeData),
     );
   }
+
+  /// [window]'s photos (I-97) on the surface it shows now, through its
+  /// view's viewport — what the print runs too ([printSheetInkAsLive]).
+  Widget _photos(BuildContext context, SheetWindow window) => CustomPaint(
+    painter: SheetPhotosPainter(
+      photos: widget.sessionStateFor(window).canvasState.currentSurface.photos,
+      viewport: window.inkViewport(widget.viewport),
+      devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+      imageFor: widget.imageFor,
+      repaint: widget.imageRepaint,
+    ),
+  );
 
   /// [view] — a window's — laid as the window says
   /// ([SheetWindow.viewLaidBy]): the sheet's ink wider than its surface's own

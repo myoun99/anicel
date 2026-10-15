@@ -700,6 +700,8 @@ class _ConteTabHostState extends State<ConteTabHost> {
         unwrittenInkIdOf: _unwrittenInkIdOf,
         refusalOf: (cell) => _refusalFor(CutId(cell.cutId)),
         beforeLanding: _makeWhatTheStrokeLandsIn,
+        imageFor: widget.imageFor,
+        imageRepaint: widget.imageRepaint,
       ),
     );
   }

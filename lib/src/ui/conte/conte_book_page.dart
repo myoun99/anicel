@@ -322,7 +322,8 @@ class ConteBookPage extends StatelessWidget {
                       ? {for (final window in conteInkWindows(page)) window.key}
                       : const {},
                   picturesOverInk: picturesOverInk,
-                  repaint: [ink],
+                  // And a landed decode of a photo it holds (I-97).
+                  repaint: [ink, imageRepaint],
                 ),
             },
             // ⚠️A stratum stands down while it changes on every step — the

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -749,6 +750,9 @@ void main() {
       BitmapSurface? cel,
       CanvasViewport? view,
       BitmapSurface Function(CanvasSize size)? band,
+
+      /// The pool files the band's photos are drawn from (I-97).
+      ui.Image? Function(String assetPath)? imageFor,
     }) async {
       session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
@@ -819,6 +823,7 @@ void main() {
                   pictures: cels,
                   brushToolState: brush,
                   brushAllowed: brushOn.value,
+                  imageFor: imageFor,
                 ),
               ),
             ),
@@ -964,6 +969,24 @@ void main() {
       bool hatch(Color color) =>
           color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;
       bool isBlue(Color color) => color == blue;
+      bool isMagenta(Color color) =>
+          color.r > 0.9 && color.b > 0.9 && color.g < 0.1 && color.a > 0.9;
+      // A photo under the handwriting, over the whole band (I-97): the
+      // brush switch moves it no more than the ink over it.
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawColor(const Color(0xFFFF00FF), BlendMode.src);
+      final photo = recorder.endRecording().toImageSync(64, 36);
+      addTearDown(photo.dispose);
+      const photoPath = 'C:/pool/band-photo.png';
+      BitmapSurface hatchedOverAPhoto(CanvasSize size) =>
+          hatched(size).withPhotos([
+            photoOf(
+              1,
+              path: photoPath,
+              center: CanvasPoint(x: size.width / 2, y: size.height / 2),
+              size: size,
+            ),
+          ]);
       // Swept, not sampled: a shift under a pixel moves a nearest sample
       // only where it carries one across a boundary, and one view can sit
       // where neither print does.
@@ -974,8 +997,9 @@ void main() {
             tester,
             framed(zoom: 4, inkId: 'band'),
             printedAt: printedAt,
-            band: hatched,
+            band: hatchedOverAPhoto,
             view: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
+            imageFor: (path) => path == photoPath ? photo : null,
           );
           final off = await shoot(tester);
           // The band beside the picture: no silhouette there to stand in
@@ -990,6 +1014,11 @@ void main() {
             off.countIn(band, hatch),
             greaterThan(200),
             reason: 'LIVENESS — the band\'s handwriting prints at $zoom',
+          );
+          expect(
+            off.countIn(band, isMagenta),
+            greaterThan(200),
+            reason: 'LIVENESS — the photo under it prints at $zoom',
           );
           expect(
             off.countIn(slot, isBlue),

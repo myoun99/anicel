@@ -1244,6 +1244,10 @@ class _WorkspaceTabs {
               onDataSheetChanged: (shown) {
                 _state._views._timesheetDataSheet.value = shown;
               },
+              // The files the ink's photos are drawn from (I-97), from the
+              // decode cache the conte and the envelope print from.
+              imageFor: _state._views._sheetImages.imageFor,
+              imageRepaint: _state._views._sheetImages,
             ),
           ),
         );

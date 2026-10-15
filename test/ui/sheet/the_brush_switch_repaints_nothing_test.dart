@@ -33,6 +33,7 @@ import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -46,6 +47,8 @@ import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+
+import '../../helpers/cel_photo_fixture.dart';
 
 /// 🗣️F-215 (유저 2026-09-28): 「콘티 프리뷰패널에서 브러시 허용 on시 그림들이
 /// 리 렌더됨. 그림이 사라졌다가 다시 렌더되서 보이기시작. on하든off하든
@@ -138,14 +141,18 @@ void main() {
         (
           sheet: 'timesheet',
           mount: () async {
-            final ink = TimesheetInkController();
+            final store = BrushFrameStore();
+            final ink = TimesheetInkController(store: store);
             addTearDown(ink.dispose);
+            final photo = await _filled(_magenta);
+            addTearDown(photo.dispose);
             return (
               () => TimesheetTabHost(
                 session: session,
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
+                imageFor: _photoFiles(photo),
               ),
               () {
                 // On the sheet's FIRST row, where the playhead stands — 20
@@ -168,17 +175,19 @@ void main() {
                 final corner =
                     Offset(layout.halfLeft(0, 0), layout.halfRowsTop(0)) -
                     layout.pageRect(0).topLeft;
+                final at = CanvasPoint(
+                  x: (corner.dx + 20) * scale,
+                  y: (corner.dy + TimesheetDocumentLayout.rowHeight / 2) *
+                      scale,
+                );
+                final key = timesheetInkPageKey(cut.id, 0);
                 ink.commitStroke(
                   plane: null,
-                  key: timesheetInkPageKey(cut.id, 0),
-                  strokeData: oneDab(
-                    at: (corner.dx + 20) * scale,
-                    down:
-                        (corner.dy + TimesheetDocumentLayout.rowHeight / 2) *
-                        scale,
-                  ),
+                  key: key,
+                  strokeData: oneDab(at: at.x, down: at.y),
                   historyManager: session.historyManager,
                 );
+                _layPhoto(store, key, under: at);
               },
             );
           },
@@ -186,8 +195,11 @@ void main() {
         (
           sheet: 'conte',
           mount: () async {
-            final ink = ConteInkController();
+            final store = BrushFrameStore();
+            final ink = ConteInkController(rowStore: store);
             addTearDown(ink.dispose);
+            final photo = await _filled(_magenta);
+            addTearDown(photo.dispose);
             final cels = ContePictureInkController(
               cels: session.renderCaches.brushFrameStore,
             );
@@ -208,36 +220,54 @@ void main() {
                 pictures: cels,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: (_) => null,
+                imageFor: _photoFiles(photo),
               ),
-              () => ink.commitStroke(
-                plane: null,
-                key: conteInkRowKey(_drawn, 'ink-0'),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
-              ),
+              () {
+                final key = conteInkRowKey(_drawn, 'ink-0');
+                ink.commitStroke(
+                  plane: null,
+                  key: key,
+                  strokeData: oneDab(),
+                  historyManager: session.historyManager,
+                );
+                _layPhoto(store, key, under: CanvasPoint(x: 20, y: 20));
+              },
             );
           },
         ),
         (
           sheet: 'envelope',
           mount: () async {
-            final ink = CutEnvelopeInkController();
+            final store = BrushFrameStore();
+            final ink = CutEnvelopeInkController(store: store);
             addTearDown(ink.dispose);
+            final photo = await _filled(_magenta);
+            addTearDown(photo.dispose);
             return (
               () => CutEnvelopeTabHost(
                 session: session,
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: (_) => null,
+                imageFor: _photoFiles(photo),
               ),
-              () => ink.commitStroke(
-                plane: null,
-                key: envelopeInkBoxKey(session.requireActiveCut.id, 'box'),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
-              ),
+              () {
+                // A box of the form, near its corner. ⚠️It was 'box', which
+                // no form has: the ink went where no window shows it, and
+                // the pin compared two pictures with no ink in them — the
+                // photo's LIVENESS check below caught it (I-97).
+                final key = envelopeInkBoxKey(
+                  session.requireActiveCut.id,
+                  'sheet-space',
+                );
+                ink.commitStroke(
+                  plane: null,
+                  key: key,
+                  strokeData: oneDab(),
+                  historyManager: session.historyManager,
+                );
+                _layPhoto(store, key, under: CanvasPoint(x: 20, y: 20));
+              },
             );
           },
         ),
@@ -351,6 +381,11 @@ void main() {
         brushAllowed.value = true;
         await _settle(tester);
         final on = await shoot(tester, pixelRatio: 1.25);
+        expect(
+          off.count(_isMagenta),
+          greaterThan(20),
+          reason: 'fixture: the photo under the handwriting shows (I-97)',
+        );
         expect(
           on.differingFrom(off),
           0,
@@ -563,6 +598,37 @@ Future<ui.Image> _filled(Color color) {
 
 const Color _green = Color(0xFF00FF00);
 const Color _blue = Color(0xFF0000FF);
+
+/// The photo every sheet's handwriting lies over (I-97).
+const Color _magenta = Color(0xFFFF00FF);
+const String _photoPath = 'C:/pool/switch-photo.png';
+
+bool _isMagenta(Color color) =>
+    color.r > 0.9 && color.b > 0.9 && color.g < 0.1 && color.a > 0.9;
+
+/// The pool's decode of the one photo the sheets hold, [photo].
+ui.Image? Function(String assetPath) _photoFiles(ui.Image photo) =>
+    (path) => path == _photoPath ? photo : null;
+
+/// A photo laid on [key]'s ink in [store], centred [under] the dab: it lies
+/// under the handwriting, and the brush switch moves neither.
+void _layPhoto(
+  BrushFrameStore store,
+  BrushFrameKey key, {
+  required CanvasPoint under,
+}) => store.storeBakedSurface(
+  key,
+  store
+      .bakedSurfaceOrNull(key)!
+      .withPhotos([
+        photoOf(
+          1,
+          path: _photoPath,
+          center: under,
+          size: const CanvasSize(width: 64, height: 36),
+        ),
+      ]),
+);
 
 bool _isRed(Color color) =>
     color.r > 0.9 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;

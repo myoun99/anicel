@@ -105,7 +105,9 @@ class ContePagePainter extends CustomPainter
   /// still a conte).
   final SheetPictureLookup? pictureFor;
 
-  /// A media image by its asset path — the company logo.
+  /// A media image by its asset path — the company logo, and the files the
+  /// ink's photos are drawn from (I-97).
+  @override
   final ui.Image? Function(String assetPath)? imageFor;
 
   /// Which strata to draw; null draws every one. [SheetPaintLayer] is the

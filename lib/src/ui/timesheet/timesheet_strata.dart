@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -36,6 +38,8 @@ class TimesheetStrata extends StatelessWidget {
     required this.cutId,
     required this.stroking,
     this.ink,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final TimesheetDocumentLayout layout;
@@ -61,6 +65,11 @@ class TimesheetStrata extends StatelessWidget {
   /// The saved ink, and whether the live brush layer is showing its
   /// windows; null prints none.
   final ({TimesheetInkController controller, bool live})? ink;
+
+  /// The pool files the ink's photos are drawn from (I-97), and what says
+  /// one has landed — the ink stratum's alone to hear.
+  final ui.Image? Function(String assetPath)? imageFor;
+  final Listenable? imageRepaint;
 
   /// What the content stratum PRINTS of a drag ([timesheetDragPrint]).
   Object _printOf(TimelineDragPreview? preview) => timesheetDragPrint(
@@ -113,6 +122,7 @@ class TimesheetStrata extends StatelessWidget {
       BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor,
       Set<BrushFrameKey> liveInkKeys = const {},
       Listenable? inkRepaint,
+      Listenable? imageRepaint,
     }) => TimesheetDocumentPainter(
       document: layout.document,
       layout: layout,
@@ -126,7 +136,9 @@ class TimesheetStrata extends StatelessWidget {
       ink: [for (final window in ink) window.mark],
       inkSurfaceFor: inkSurfaceFor,
       liveInkKeys: liveInkKeys,
+      imageFor: imageFor,
       inkRepaint: inkRepaint,
+      imageRepaint: imageRepaint,
     );
     final ink = this.ink;
     // The walk the live brush layer mounts its windows from.
@@ -148,6 +160,7 @@ class TimesheetStrata extends StatelessWidget {
               ? {for (final window in windows) window.key}
               : const {},
           inkRepaint: ink.controller,
+          imageRepaint: imageRepaint,
         ),
     };
   }

@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -29,6 +31,8 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
     required this.viewport,
     required this.strokeActive,
     this.cacheInvalidationSink,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final CutEnvelopeInkController controller;
@@ -47,6 +51,10 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
+  final ui.Image? Function(String assetPath)? imageFor;
+  final Listenable? imageRepaint;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +75,8 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
         historyManager: historyManager,
         cacheInvalidationSink: cacheInvalidationSink,
       ),
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
     );
   }
 }

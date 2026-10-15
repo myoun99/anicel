@@ -67,7 +67,9 @@ class CutEnvelopePainter extends CustomPainter
   @override
   final double effectiveRatio;
 
-  /// Resolves a media asset path to a decoded image (the logo).
+  /// Resolves a media asset path to a decoded image (the logo, and the
+  /// files the ink's photos are drawn from — I-97).
+  @override
   final ui.Image? Function(String assetPath)? imageFor;
 
   /// The ink raster for a box — for an EXPORT, which has no view to draw

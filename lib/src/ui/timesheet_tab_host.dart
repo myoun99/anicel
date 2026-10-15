@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'widgets/empty_state_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -49,6 +51,8 @@ class TimesheetTabHost extends StatefulWidget {
     this.onBrushAllowedChanged,
     this.dataSheet = false,
     this.onDataSheetChanged,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final EditorSessionManager session;
@@ -92,6 +96,12 @@ class TimesheetTabHost extends StatefulWidget {
   /// switch beside it.
   final bool dataSheet;
   final ValueChanged<bool>? onDataSheetChanged;
+
+  /// The pool files the ink's photos are drawn from (I-97), from the decode
+  /// cache the conte and the envelope print from — and what says one has
+  /// landed.
+  final ui.Image? Function(String assetPath)? imageFor;
+  final Listenable? imageRepaint;
 
   @override
   State<TimesheetTabHost> createState() => _TimesheetTabHostState();
@@ -464,6 +474,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                       controller: inkController,
                                       live: ink != null,
                                     ),
+                              imageFor: widget.imageFor,
+                              imageRepaint: widget.imageRepaint,
                             ),
                           ),
                           // Under the ink windows: reachable exactly when the
@@ -500,6 +512,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 viewport: viewport,
                                 strokeActive: _strokeHold,
                                 cacheInvalidationSink: _cacheInvalidationSink,
+                                imageFor: widget.imageFor,
+                                imageRepaint: widget.imageRepaint,
                               ),
                             ),
                           // The playhead row highlight repaints ALONE (R13-2):

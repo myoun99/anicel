@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -53,6 +55,8 @@ class TimesheetInkLayer extends StatelessWidget {
     required this.viewport,
     required this.strokeActive,
     this.cacheInvalidationSink,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final TimesheetInkController controller;
@@ -70,6 +74,10 @@ class TimesheetInkLayer extends StatelessWidget {
   final ValueNotifier<bool> strokeActive;
 
   final CacheInvalidationSink? cacheInvalidationSink;
+
+  /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
+  final ui.Image? Function(String assetPath)? imageFor;
+  final Listenable? imageRepaint;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -101,6 +109,8 @@ class TimesheetInkLayer extends StatelessWidget {
         historyManager: historyManager,
         cacheInvalidationSink: cacheInvalidationSink,
       ),
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
     );
   }
 }

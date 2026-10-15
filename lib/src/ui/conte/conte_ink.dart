@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -142,6 +144,8 @@ class ConteInkLayer extends StatelessWidget {
     this.unwrittenInkIdOf,
     this.refusalOf,
     this.beforeLanding,
+    this.imageFor,
+    this.imageRepaint,
   });
 
   final ConteInkController controller;
@@ -187,6 +191,10 @@ class ConteInkLayer extends StatelessWidget {
   /// step.
   final ValueChanged<SheetWindow>? beforeLanding;
 
+  /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
+  final ui.Image? Function(String assetPath)? imageFor;
+  final Listenable? imageRepaint;
+
   @override
   Widget build(BuildContext context) {
     return SheetInkLayer(
@@ -231,6 +239,8 @@ class ConteInkLayer extends StatelessWidget {
           cacheInvalidationSink: cacheInvalidationSink,
         );
       },
+      imageFor: imageFor,
+      imageRepaint: imageRepaint,
     );
   }
 }

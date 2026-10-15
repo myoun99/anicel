@@ -544,9 +544,13 @@ class TimesheetDocumentPainter extends CustomPainter
     this.inkImageFor,
     this.inkSurfaceFor,
     this.liveInkKeys = const {},
+    this.imageFor,
     Listenable? inkRepaint,
+    Listenable? imageRepaint,
   }) : accent = AppColors.accent,
-       super(repaint: Listenable.merge([dragPreview, inkRepaint]));
+       super(
+         repaint: Listenable.merge([dragPreview, inkRepaint, imageRepaint]),
+       );
 
   /// The windows the sheet's ink shows through — the walk the brush writes
   /// through too (`timesheetInkWindows`), handed in by whoever built it.
@@ -565,6 +569,11 @@ class TimesheetDocumentPainter extends CustomPainter
   /// translucent ink never composites twice.
   @override
   final Set<BrushFrameKey> liveInkKeys;
+
+  /// The pool files the ink's photos are drawn from (I-97); a landed decode
+  /// repaints through `imageRepaint`.
+  @override
+  final ui.Image? Function(String assetPath)? imageFor;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
   /// viewport transform lands the paper on the device grid with it.

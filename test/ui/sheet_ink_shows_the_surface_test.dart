@@ -97,6 +97,7 @@ void main() {
         devicePixelRatio: 1,
         size: const Size(16, 16),
         above: const [],
+        imageFor: null,
       ),
     );
     final image = await recorder.endRecording().toImage(16, 16);
