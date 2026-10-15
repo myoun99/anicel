@@ -671,6 +671,9 @@ class TimelineGridTileStore {
             return;
           }
         } finally {
+          // The next span is asked for once the GPU is done with this one:
+          // turns are first come, first served, and a job that asked
+          // meanwhile goes before it.
           await (landed ? turn.landed() : turn.gaveUp());
         }
       }
