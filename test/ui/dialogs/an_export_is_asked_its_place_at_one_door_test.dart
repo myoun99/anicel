@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/model_vocabulary.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/temp_dir.dart';
 
 /// THE DOOR EVERY EXPORT ASKS ITS PLACE AT (F-221, 유저 2026-10-06: 「한
 /// 장이면 파일 저장 창, 두 장부터 폴더 창」 · 「최대한 멀티플랫폼 통일하고
@@ -272,7 +273,7 @@ void main() {
     });
     tearDown(() {
       FolderPicker.debugFileExporter = null;
-      folder.deleteSync(recursive: true);
+      deleteTempQuietly(folder);
     });
 
     /// Hands `line.wav` over on [os], the save window answering [place]:
