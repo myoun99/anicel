@@ -260,16 +260,19 @@ void _atIdle() {
     return;
   }
   try {
-    Process.runSync('powershell.exe', [
-      '-NoProfile',
-      '-NonInteractive',
-      '-Command',
-      "(Get-Process -Id $pid).PriorityClass = 'Idle'",
-    ]);
+    Process.runSync('powershell.exe', idleArguments(pid));
   } on ProcessException {
     // No PowerShell to ask: the run goes on at the class it was given.
   }
 }
+
+/// What PowerShell is asked to run process [processId] at Idle with.
+List<String> idleArguments(int processId) => [
+  '-NoProfile',
+  '-NonInteractive',
+  '-Command',
+  "(Get-Process -Id $processId).PriorityClass = 'Idle'",
+];
 
 Directory? _repoRoot() {
   final result = Process.runSync('git', ['rev-parse', '--show-toplevel']);
