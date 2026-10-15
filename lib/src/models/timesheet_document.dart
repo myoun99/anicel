@@ -1,9 +1,11 @@
 import 'camera_instruction.dart';
 import 'camera_moves.dart';
+import 'camera_work_marks.dart' show cameraKeyLabel;
 import 'cut.dart';
 import 'frame.dart'
     show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
 import 'frame_id.dart';
+import 'key_range_move.dart' show transformKeyAgreedNames;
 import 'layer.dart';
 import 'layer_id.dart';
 import 'layer_mark.dart';
@@ -122,6 +124,7 @@ class TimesheetCell {
     this.valueB,
     this.seName,
     this.seType,
+    this.keyLabel,
   });
 
   static const TimesheetCell blank = TimesheetCell(TimesheetCellKind.empty);
@@ -139,6 +142,7 @@ class TimesheetCell {
     valueB: valueB,
     seName: seName,
     seType: seType,
+    keyLabel: keyLabel,
   );
 
   final TimesheetCellKind kind;
@@ -183,6 +187,15 @@ class TimesheetCell {
   /// prints it over the name when [SeLineType.printsOnSheets] says so.
   final SeLineType? seType;
 
+  /// What a [TimesheetCellKind.cameraKey] row writes for its key: the key's
+  /// name, else the frame it stands on — as every surface labels a camera
+  /// key ([cameraKeyLabel]; I-89 ⑤, 유저 2026-10-10: 「헤더이름따라서 이름
+  /// 적고, 없거나 하면 아까 정한대로 12f 이런식으로 프레임 번호」).
+  /// ↩️The row was a dot (유저 2026-10-13: 「아직도 타임시트 용지패널에
+  /// 카메라 키가 동그란 점을 찍거든?」). ⛔Not [label]: on a key row that is
+  /// the move the stretch from it makes.
+  final String? keyLabel;
+
   /// Equal cells print the same — what lets the sheet tell a drag that
   /// re-prints a column from one that only moves a value it does not print
   /// (sheet-prints-only-its-drags).
@@ -198,7 +211,8 @@ class TimesheetCell {
       other.valueA == valueA &&
       other.valueB == valueB &&
       other.seName == seName &&
-      other.seType == seType;
+      other.seType == seType &&
+      other.keyLabel == keyLabel;
 
   @override
   int get hashCode => Object.hash(
@@ -212,6 +226,7 @@ class TimesheetCell {
     valueB,
     seName,
     seType,
+    keyLabel,
   );
 }
 
@@ -741,7 +756,8 @@ class TimesheetDocument {
   /// their place in it, as an instruction column carries a span's name, to
   /// be written once on its middle row (「타임시트 CAM 첫 칸에도 같은
   /// 이름」). The key that ends a stretch begins the next, so it carries the
-  /// next one.
+  /// next one. A key's row writes the key as every surface does
+  /// ([TimesheetCell.keyLabel]).
   static List<TimesheetCell> _cameraCells({
     required Cut cut,
     required int rowCount,
@@ -752,9 +768,13 @@ class TimesheetDocument {
       for (final frame in cut.camera.keyframes.keys)
         if (frame < rowCount) frame,
     ];
+    final names = transformKeyAgreedNames(cut.camera.track);
     for (var index = 0; index < keyframeRows.length; index += 1) {
       final row = keyframeRows[index];
-      cells[row] = const TimesheetCell(TimesheetCellKind.cameraKey);
+      cells[row] = TimesheetCell(
+        TimesheetCellKind.cameraKey,
+        keyLabel: cameraKeyLabel(names[row], row),
+      );
       if (index + 1 < keyframeRows.length) {
         final nextRow = keyframeRows[index + 1];
         for (var span = row + 1; span < nextRow; span += 1) {
@@ -773,6 +793,7 @@ class TimesheetDocument {
           label: word,
           spanLength: move.to - move.from + 1,
           spanOffset: row - move.from,
+          keyLabel: cells[row].keyLabel,
         );
       }
     }

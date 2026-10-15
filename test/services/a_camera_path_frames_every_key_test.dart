@@ -15,6 +15,8 @@ import 'package:anicel/src/services/camera_path.dart';
 import 'package:anicel/src/services/camera_pose_resolver.dart'
     show resolveCameraPoseAtTime;
 
+import '../helpers/camera_key_names.dart';
+
 /// I-89 ④⑥ — a camera's path as the canvas and the export write it (유저
 /// 2026-10-11: 「캔버스랑 출력쪽은 키마다 전부 사각형 그리는거야. 사각형이랑
 /// 십자랑 한 세트로. 위치도 다 통일」 · 「24f도 사각형존재하게되니까
@@ -41,25 +43,6 @@ void main() {
 
   CameraPath pathOf(CutCamera camera) =>
       CameraPath.of(cutWith(camera), frameSize)!;
-
-  /// [camera] with the key at [frame] called [position] and [scale] on
-  /// those lanes, and [rotation] on its own.
-  CutCamera named(
-    CutCamera camera,
-    int frame, {
-    String? position,
-    String? scale,
-    String? rotation,
-  }) {
-    final track = camera.track;
-    return CutCamera.fromTrack(
-      track.copyWith(
-        position: track.position.withKeyName(frame, position),
-        scale: track.scale.withKeyName(frame, scale),
-        rotation: track.rotation.withKeyName(frame, rotation),
-      ),
-    );
-  }
 
   /// Right, then down: frame 0 → 12 → 24.
   final three = CutCamera(
@@ -169,8 +152,8 @@ void main() {
       '13f',
       '25f',
     ]);
-    final called = named(
-      named(three, 0, position: 'A', scale: 'A', rotation: 'A'),
+    final called = cameraKeyNamed(
+      cameraKeyNamed(three, 0, position: 'A', scale: 'A', rotation: 'A'),
       24,
       position: 'B',
       scale: 'C',

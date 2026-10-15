@@ -140,15 +140,29 @@ void main() {
     final column = cameraColumnOf(document);
     final left = layout.halfLeft(0, half) + layout.columnLeftInHalf(column);
     final columnWidth = layout.columnWidthFor(TimesheetColumnKind.camera);
-    // Clear of the line and its keys' dots (3.4 round the middle).
+    // Clear of the line — and of its keys' rows, each of which writes its
+    // key across the line (I-89 ⑤).
     final from = (left + columnWidth / 2 + 5).ceil();
     final to = (left + columnWidth - 1).floor();
-    final top =
-        layout.halfRowsTop(0) + rows.from * TimesheetDocumentLayout.rowHeight;
-    final bottom =
-        layout.halfRowsTop(0) + rows.to * TimesheetDocumentLayout.rowHeight;
+    const rowHeight = TimesheetDocumentLayout.rowHeight;
+    final rowsTop = layout.halfRowsTop(0);
+    final keyRows = {
+      for (final (frame, cell) in document.columns[column].cells.indexed)
+        if (cell.kind == TimesheetCellKind.cameraKey)
+          if (layout.positionOfFrame(frame) case (
+            page: 0,
+            half: final keyHalf,
+            :final row,
+          ) when keyHalf == half)
+            row,
+    };
+    final top = rowsTop + rows.from * rowHeight;
+    final bottom = rowsTop + rows.to * rowHeight;
     var inked = 0;
     for (var y = top.ceil(); y < bottom.floor() && y < height; y += 1) {
+      if (keyRows.contains((y - rowsTop) ~/ rowHeight)) {
+        continue;
+      }
       for (var x = from; x < to; x += 1) {
         if (rgba[(y * width + x) * 4 + 3] != 0) {
           inked += 1;

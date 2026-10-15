@@ -604,11 +604,9 @@ class _TimesheetCellsPass {
           centeredAtX: true,
         );
       case TimesheetCellKind.cameraKey:
-        canvas.drawCircle(
-          Offset(slot.centerX, slot.cellCenterY),
-          3.4,
-          Paint()..color = TimesheetDocumentPainter._ink,
-        );
+        if (slot.cell.keyLabel case final name?) {
+          _painter._instructions.paintEndpointName(canvas, slot, name);
+        }
         _painter._instructions.paintSpanNameOn(
           canvas,
           slot,
