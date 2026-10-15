@@ -244,7 +244,15 @@ void main() {
         find.named('storyboard-layer-opacity-b-cam'),
       );
       slider.onChanged!(0.7);
+      await tester.pump();
       expect(session.cameraViewMode.dim.value, 0.7);
+      expect(
+        tester
+            .widget<FieldSlider>(find.named('storyboard-layer-opacity-b-cam'))
+            .value,
+        0.7,
+        reason: 'the head follows the drag preview, as every head does',
+      );
       expect([for (final camera in cameras()) camera.opacity], [1, 1, 1]);
       slider.onChangeEnd!(0.3);
       await tester.pumpAndSettle();
