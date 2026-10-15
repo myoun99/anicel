@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
+import '../../services/playback/first_look_start.dart';
 import '../../services/playback/heard_on_the_device.dart';
 import '../audio/audio_conform_store.dart';
 import '../editor_session_manager.dart';
@@ -102,6 +103,10 @@ class ViewerSound {
   /// of the same device.
   final HeardOnTheDevice _heard = HeardOnTheDevice();
 
+  /// When a started sound's device starts: on the run's first look
+  /// ([FirstLookStart]) — the canvas's own law.
+  final FirstLookStart _start = FirstLookStart();
+
   /// The sample the latest start put the device on: what is heard stands
   /// there while the device's latency drains, so a playhead never steps
   /// back at a press.
@@ -180,19 +185,28 @@ class ViewerSound {
   /// the law this surface already has to the thing that was added to it.
   /// Written here so the next reader can disagree with the derivation
   /// rather than guess at the intent.
-  void hold() => _device?.stop();
+  void hold() => _silence();
 
   /// Starts (or picks back up) at [fromSeconds] on the schedule already
-  /// uploaded. ⛔Not a seek: the streaming window is where [play] centred
+  /// uploaded — on the run's first look ([FirstLookStart]: [keepStreaming],
+  /// [heardAt]). ⛔Not a seek: the streaming window is where [play] centred
   /// it, and a jump far from there would read past its edge.
   void resume(double fromSeconds) {
     final device = _device;
     if (device == null) {
       return;
     }
-    _startSample = (fromSeconds * _deviceRate).round();
-    device.play(startSample: _startSample, stopSample: _endSample);
-    _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
+    final startSample = _startSample = (fromSeconds * _deviceRate).round();
+    _start.arm(() {
+      device.play(startSample: startSample, stopSample: _endSample);
+      _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
+    });
+  }
+
+  /// Silence — and a sound started but not looked at yet never starts.
+  void _silence() {
+    _start.disarm();
+    _device?.stop();
   }
 
   /// Moves the streaming window along with the sound — asked every tick of
@@ -204,6 +218,8 @@ class ViewerSound {
     if (device == null) {
       return;
     }
+    // A look of the run: a sound started since the last one starts now.
+    _start.look();
     _window.followPlayback(
       positionSamples: device.positionSamples,
       deviceRate: _deviceRate,
@@ -239,6 +255,8 @@ class ViewerSound {
     if (device == null || _deviceRate <= 0) {
       return null;
     }
+    // A look of the run: a sound started since the last one starts now.
+    _start.look();
     final heard = math.max(
       _startSample,
       _heard.heard(
@@ -269,7 +287,7 @@ class ViewerSound {
   /// Silence, and nothing held. ⚠️Idempotent — the viewer stops on every
   /// path out (a new file, a closed tab, the actuation gate).
   void stop() {
-    _device?.stop();
+    _silence();
     _device = null;
     _deviceRate = 0;
     _endSample = 0;

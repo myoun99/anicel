@@ -74,6 +74,7 @@ void main() {
     int correction = 0,
     double fromSeconds = 0,
     int frames = 2 * rate,
+    bool look = true,
   }) async {
     final store = toneOf(frames);
     store.resultFor(tone);
@@ -94,8 +95,50 @@ void main() {
       resolveUserOffsetSamples: (_) => correction,
     );
     expect(sound.play(tone, fromSeconds: fromSeconds), isTrue);
+    if (look) {
+      sound.heardAt(); // the run's first look starts the device
+    }
     return (device, sound);
   }
+
+  /// play-press-first-frame-stall (10-15): the canvas's law, here too — a
+  /// device started at the press played on through everything before the
+  /// run's first look, and the picture met the sound frames in.
+  test('🚨the sound starts on the run\'s first look, not at the press — a '
+      'first look that comes late still reads where play was pressed',
+      () async {
+    final (device, sound) = await playing(fromSeconds: 1, look: false);
+    // What comes before the first look.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(device.isPlaying, isFalse, reason: 'the press only arms it');
+
+    expect(
+      sound.heardAt()!.seconds,
+      1,
+      reason: '↩️started at the press, the first look read 1.3 seconds less '
+          'the device\'s latency',
+    );
+    expect(device.isPlaying, isTrue, reason: 'the first look starts it');
+    sound.stop();
+  }, skip: skip);
+
+  /// A run that parks in the look it goes on in (`MediaRun`: resume, then
+  /// hold) holds a sound that has not started yet — and the parked run
+  /// goes on looking every tick.
+  test('🚨a sound held before its first look never starts — the looks of a '
+      'parked run find nothing to start', () async {
+    final (device, sound) = await playing(fromSeconds: 1, look: false);
+    sound.hold();
+
+    sound.keepStreaming(); // the parked run's next look
+    expect(sound.heardAt()!.seconds, 1, reason: 'held where it was pressed');
+    expect(device.isPlaying, isFalse, reason: 'held before it was looked at');
+
+    sound.resume(1);
+    sound.keepStreaming();
+    expect(device.isPlaying, isTrue, reason: 'going on, the next look starts');
+    sound.stop();
+  }, skip: skip);
 
   test('🚨what the viewer reads is HEARD: the device\'s latency off what it '
       'was handed, and the user\'s own correction on', () async {

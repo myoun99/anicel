@@ -249,6 +249,7 @@ void main() {
     expect(transport.carryingPlayback, isTrue);
     expect(log, isEmpty,
         reason: 'the device carries — platform players must stand down');
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => device.positionSamples > 0), isTrue,
         reason: 'the callback never ran');
 
@@ -285,6 +286,35 @@ void main() {
     store.dispose();
   }, skip: skip);
 
+  /// play-press-first-frame-stall (10-15): the device started at the press,
+  /// and the clock's first look — on the next frame that began, after the
+  /// press's own work and the frame it held up — met a sound frames in. On
+  /// the AMMI OP the playhead went 0 → 2, 0 → 3, 0 → 4.
+  test('🚨the sound starts on the clock\'s first look, not at the press — a '
+      'first look that comes late still stands on the frame play was '
+      'pressed on', () async {
+    final device = openNullDevice();
+    final store = _residentStore();
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final transport = buildTransport(store);
+
+    controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 2);
+    // What comes before the first look: three frames' time at 10 a second.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(device.isPlaying, isFalse, reason: 'the press only arms it');
+
+    expect(
+      transport.clockStatus()!.globalFrame,
+      2,
+      reason: '↩️started at the press, the first look read frame 4 or 5',
+    );
+    expect(device.isPlaying, isTrue, reason: 'the first look starts it');
+    controller.stop();
+    transport.dispose();
+    store.dispose();
+  }, skip: skip);
+
   test('a live seek re-arms the transport at the target frame', () async {
     final device = openNullDevice();
     final store = _residentStore();
@@ -293,11 +323,13 @@ void main() {
     final transport = buildTransport(store);
 
     controller.play(scope: PlaybackScope.activeCut);
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => device.positionSamples > 0), isTrue);
 
     controller.seekToGlobalFrame(7); // frame 7 at 10fps/48k = sample 33600
-    expect(await _waitFor(() => device.positionSamples >= 33600), isTrue);
+    // The seek's run starts on its own first look, at the target.
     expect(transport.clockStatus()!.globalFrame, greaterThanOrEqualTo(7));
+    expect(device.positionSamples, greaterThanOrEqualTo(33600));
     controller.stop();
     transport.dispose();
     store.dispose();
@@ -317,6 +349,7 @@ void main() {
         (frame, {required placed}) => missing.contains(frame);
 
     controller.play(scope: PlaybackScope.activeCut);
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => device.positionSamples > 0), isTrue);
 
     // The ruler is dragged onto a frame whose picture is not there.
@@ -342,6 +375,7 @@ void main() {
     missing.clear();
     controller.lookAgain();
     expect(controller.isWaiting, isFalse);
+    transport.clockStatus(); // the clock's first look starts the device
     // Frame 7 at 10fps/48k = sample 33600.
     expect(
       await _waitFor(() => device.isPlaying && device.positionSamples >= 33600),
@@ -371,6 +405,7 @@ void main() {
 
     missing.clear();
     controller.lookAgain();
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => device.positionSamples > 0), isTrue);
     controller.stop();
     transport.dispose();
@@ -388,6 +423,7 @@ void main() {
     controller.loopMode = PlaybackLoopMode.once;
     // Start near the end so the run is short (0.2 s + latency).
     controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 8);
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => !device.isPlaying), isTrue,
         reason: 'the stop point must end the run');
     final status = transport.clockStatus();
@@ -434,6 +470,7 @@ void main() {
 
       rig.controller.play(scope: PlaybackScope.allCuts);
       expect(rig.transport.carryingPlayback, isTrue);
+      rig.transport.clockStatus(); // the clock's first look starts the device
       expect(await _waitFor(() => device.peakFor(0) > 0.03), isTrue);
       rig.controller.stop();
       rig.transport.dispose();
@@ -450,6 +487,7 @@ void main() {
 
       rig.controller.loopMode = PlaybackLoopMode.once;
       rig.controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 18);
+      rig.transport.clockStatus(); // the clock's first look starts the device
       expect(await _waitFor(() => !device.isPlaying), isTrue);
       final status = rig.transport.clockStatus();
       expect(status!.ended, isTrue);
@@ -471,6 +509,7 @@ void main() {
 
     controller.loopMode = PlaybackLoopMode.loop;
     controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 8);
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => device.positionSamples > 0), isTrue);
 
     // First pass runs out (it was armed WITHOUT the C loop flag)...
@@ -515,6 +554,7 @@ void main() {
     liveController.loopMode = PlaybackLoopMode.loop;
     liveController.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isTrue);
+    transport.clockStatus(); // the clock's first look starts the device
     expect(await _waitFor(() => device.peakFor(0) > 0.03), isTrue,
         reason: 'the 0.05 source should be metering');
     final before = device.positionSamples;
@@ -564,6 +604,7 @@ void main() {
       final transport = buildTransport(store, offset: (_) => offset);
 
       controller.play(scope: PlaybackScope.activeCut);
+      transport.clockStatus(); // the clock's first look starts the device
       expect(
         await _waitFor(() => device.clockPoint != null),
         isTrue,
@@ -615,6 +656,7 @@ void main() {
       // Ten frames at 10 a second, looping from the top: the device wraps
       // its own count every 48000 samples.
       controller.play(scope: PlaybackScope.activeCut);
+      transport.clockStatus(); // the clock's first look starts the device
       expect(await _waitFor(() => device.clockPoint != null), isTrue);
 
       // The frames read in the moments after a wrap: the latest callback
@@ -695,6 +737,7 @@ void main() {
       final transport = buildTransport(store);
 
       controller.play(scope: PlaybackScope.activeCut);
+      transport.clockStatus(); // the clock's first look starts the device
       expect(await _waitFor(() => device.clockPoint != null), isTrue);
 
       // Ticks that each read the time of the frame they run in: the gap
@@ -738,6 +781,7 @@ void main() {
       final transport = buildTransport(store, offset: (_) => correction);
 
       controller.play(scope: PlaybackScope.activeCut);
+      transport.clockStatus(); // the clock's first look starts the device
       expect(await _waitFor(() => device.clockPoint != null), isTrue);
 
       final before = device.positionSamples;
@@ -781,8 +825,10 @@ void main() {
         reason: '⛔premise: the first run got somewhere',
       );
 
-      // Back to the top while it plays.
+      // Back to the top while it plays — the run started again starts on its
+      // own first look.
       controller.seekToGlobalFrame(0);
+      transport.clockStatus();
       expect(
         await _waitFor(() {
           final point = device.clockPoint;
@@ -819,6 +865,7 @@ void main() {
 
       controller.loopMode = PlaybackLoopMode.once;
       controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 7);
+      transport.clockStatus(); // the clock's first look starts the device
       final pastTheEnd = <int>[];
       final watch = Stopwatch()..start();
       while (watch.elapsedMilliseconds < 3000 && device.isPlaying) {

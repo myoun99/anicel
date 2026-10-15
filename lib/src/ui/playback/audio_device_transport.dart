@@ -23,6 +23,7 @@ import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
+import '../../services/playback/first_look_start.dart';
 import '../../services/playback/heard_on_the_device.dart';
 import '../audio/audio_conform_store.dart';
 import 'audio_playback_schedule.dart';
@@ -113,6 +114,10 @@ class AudioDeviceTransport {
   /// takes too.
   final HeardOnTheDevice _heard = HeardOnTheDevice();
 
+  /// When an armed run's device starts: on the clock's first look
+  /// ([FirstLookStart]) — not at the press that armed it.
+  final FirstLookStart _start = FirstLookStart();
+
   bool get carryingPlayback => _carrying;
 
   /// Listener order matters: attach BEFORE the platform-player sync so
@@ -138,7 +143,7 @@ class AudioDeviceTransport {
       }
       _attached = false;
     }
-    _device?.stop();
+    _stopDevice();
     _device?.close();
     _device = null;
   }
@@ -229,7 +234,7 @@ class AudioDeviceTransport {
       }
     } else if (!active && _wasActive) {
       _carrying = false;
-      _device?.stop();
+      _stopDevice();
     } else if (active && _carrying) {
       if (sounding && !_wasSounding) {
         // The picture came: the run goes on from the frame it stands on,
@@ -238,7 +243,7 @@ class AudioDeviceTransport {
       } else if (!sounding && _wasSounding) {
         // The transport stops where it stands. Its position is irrelevant
         // afterwards; going on re-arms from the controller's frame.
-        _device?.stop();
+        _stopDevice();
       }
     }
     _wasActive = active;
@@ -319,28 +324,37 @@ class AudioDeviceTransport {
     if (_window.hasStreaming) {
       _uploadWindow(startSample);
     }
-    _startDevice(device, startSample: startSample, looping: loop && frame == 0);
+    _armDevice(device, startSample: startSample, looping: loop && frame == 0);
   }
 
-  /// Starts the device at [startSample], and the line that reads it — in
-  /// ONE place, so the device is never started under a line still counting
-  /// the run before.
-  void _startDevice(
+  /// Arms the device at [startSample], and the line that reads it — started
+  /// together in ONE place, so the device is never started under a line
+  /// still counting the run before — on the clock's first look
+  /// ([FirstLookStart]).
+  void _armDevice(
     QaAudioDevice device, {
     required int startSample,
     required bool looping,
   }) {
-    device.play(
-      startSample: startSample,
-      stopSample: _stopSample,
-      looping: looping,
-    );
-    _heard.arm(
-      deviceRate: _deviceRate,
-      carriesFor: device.latencySamples,
-      // A device loops from the top or not at all ([_needsLoopRearm]).
-      lapSamples: looping ? _stopSample : 0,
-    );
+    _start.arm(() {
+      device.play(
+        startSample: startSample,
+        stopSample: _stopSample,
+        looping: looping,
+      );
+      _heard.arm(
+        deviceRate: _deviceRate,
+        carriesFor: device.latencySamples,
+        // A device loops from the top or not at all ([_needsLoopRearm]).
+        lapSamples: looping ? _stopSample : 0,
+      );
+    });
+  }
+
+  /// Silence — and a run armed but not looked at yet never starts.
+  void _stopDevice() {
+    _start.disarm();
+    _device?.stop();
   }
 
   /// The run's end on the device: the first sample past its last frame.
@@ -371,14 +385,19 @@ class AudioDeviceTransport {
     if (!controller.isPlaying || controller.isWaiting) {
       return null;
     }
+    // A run armed at the press starts here, at the clock's first look: its
+    // first frame and its first sound together ([FirstLookStart]).
+    _start.look();
     if (!device.isPlaying) {
       if (_needsLoopRearm) {
         // First pass of a mid-timeline loop ran out: every later pass is
         // the full timeline, so the C's wrap target (its start) is now
-        // the right one. One poll interval of seam, once.
+        // the right one. One poll interval of seam, once — this being a
+        // look, the pass starts at once.
         _needsLoopRearm = false;
         _armFrame = 0;
-        _startDevice(device, startSample: 0, looping: true);
+        _armDevice(device, startSample: 0, looping: true);
+        _start.look();
         return const ClockReading(globalFrame: 0);
       }
       return ClockReading(globalFrame: _totalFrames - 1, ended: true);

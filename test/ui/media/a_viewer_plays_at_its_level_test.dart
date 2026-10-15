@@ -83,6 +83,7 @@ void main() {
     /// The bus's peak once the device has mixed a good way into the tone.
     Future<double> peakAt(double gain) async {
       expect(sound.play(tone, gain: gain), isTrue);
+      sound.heardAt(); // the run's first look starts the device
       expect(
         await waitFor(() => device.positionSamples > 9600),
         isTrue,
