@@ -42,6 +42,9 @@ RenderCaches renderCachesOf(EditorSessionManager session) =>
     session.renderCaches;
 
 void main() {
+  // The warm it restarts makes playback's rows, and a row asks the binding
+  // for the quiet it takes its turn in ([QuietTurns]).
+  TestWidgetsFlutterBinding.ensureInitialized();
   const canvasSize = CanvasSize(width: 8, height: 8);
 
   test('a burst of invalidations restarts warming once — and still drops '
