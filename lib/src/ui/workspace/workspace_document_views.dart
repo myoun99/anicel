@@ -72,13 +72,15 @@ class _WorkspaceDocumentViews {
 
   final ValueNotifier<bool> _envelopeBrushAllowed = ValueNotifier(false);
 
-  /// The media images the sheets print (the logo, the cover picture),
-  /// decoded once each for the conte and the envelope alike.
+  /// The media images the sheets print — the logo, the cover picture, the
+  /// photos on their ink (I-97) — for the three sheets alike, read through
+  /// the project on screen ([bindSession]): the copies it carries are its
+  /// own.
   ///
-  /// A repaint is all a landed decode needs — the painters listen to it —
+  /// A repaint is all a landed read needs — the painters listen to it —
   /// but the cache lives HERE because the tabs are rebuilt on every panel
   /// switch and would drop their images each time.
-  final SheetImageCache _sheetImages = SheetImageCache();
+  late SheetImageCache _sheetImages;
 
   /// The three sheets' ink — each controller over the project on screen's
   /// stores, made again for each project that comes on screen
@@ -98,22 +100,38 @@ class _WorkspaceDocumentViews {
 
   late CutEnvelopeInkController _envelopeInk;
 
-  /// Makes the ink controllers over [session]'s stores — the workspace's
-  /// door for the project coming on screen.
+  /// Makes the ink controllers over [session]'s stores, and the sheets'
+  /// images over its media — the workspace's door for the project coming
+  /// on screen.
   void bindSession(EditorSessionManager session) {
     final caches = session.renderCaches;
     _timesheetInk = TimesheetInkController(store: caches.timesheetInkStore);
     _conteInk = ConteInkController(rowStore: caches.conteInkRowStore);
     _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
     _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);
+    final hold = session.projectFile.holdMediaBytes;
+    _sheetImages = SheetImageCache(
+      read: (path, width) => readSheetImage(hold, path, width),
+      // The census cannot reach the workspace; the session can be reached.
+      onHeldBytesChanged: (bytes) => caches.sheetImageBytes = bytes,
+    );
+    session.memoryPressureTicks.addListener(
+      _sheetImages.respondToMemoryPressure,
+    );
   }
 
-  /// Lets the ink controllers go — the stores stay with their project.
-  void unbindSession() {
+  /// Lets the ink controllers and [session]'s images go — the stores stay
+  /// with their project.
+  void unbindSession(EditorSessionManager session) {
     _timesheetInk.dispose();
     _conteInk.dispose();
     _contePictures.dispose();
     _envelopeInk.dispose();
+    session.memoryPressureTicks.removeListener(
+      _sheetImages.respondToMemoryPressure,
+    );
+    // The cache reports the zero to [session].
+    _sheetImages.dispose();
   }
 
   /// Disposes every notifier the views own; the workspace's `dispose` calls
@@ -132,6 +150,5 @@ class _WorkspaceDocumentViews {
     _conteBrushAllowed.dispose();
     _envelopeViewport.dispose();
     _envelopeBrushAllowed.dispose();
-    _sheetImages.dispose();
   }
 }

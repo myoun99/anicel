@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -7,6 +5,7 @@ import '../../models/canvas_viewport.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import 'cut_envelope_ink.dart';
 
@@ -53,7 +52,7 @@ class CutEnvelopeInkOverlay extends StatelessWidget {
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
   @override

@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'widgets/empty_state_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +28,7 @@ import 'timesheet/timesheet_words_in.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
 import 'timesheet/timesheet_strata.dart';
+import 'sheet/sheet_image_cache.dart' show SheetImageLookup;
 
 /// The Timesheet tab's content: the active cut rendered as a paper
 /// timesheet DOCUMENT (not an editing grid) inside the canvas panel shell,
@@ -100,7 +99,7 @@ class TimesheetTabHost extends StatefulWidget {
   /// The pool files the ink's photos are drawn from (I-97), from the decode
   /// cache the conte and the envelope print from — and what says one has
   /// landed.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
   @override

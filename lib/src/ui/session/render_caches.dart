@@ -166,6 +166,13 @@ class RenderCaches {
   /// at once stayed resident until the workspace closed.
   int storyboardThumbnailBytes = 0;
 
+  /// What the sheets' media images hold — the logos, the cover pictures,
+  /// the photos on the sheets' ink (I-97) — within one viewer's share of
+  /// this device (`SheetImageCache`).
+  ///
+  /// PUSHED, as the thumbnails are: the cache lives in the workspace.
+  int sheetImageBytes = 0;
+
   /// What the media viewers hold between them.
   int get viewerRasterBytes {
     var total = 0;

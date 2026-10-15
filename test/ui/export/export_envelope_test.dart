@@ -40,6 +40,7 @@ import '../../helpers/awaited_uploads.dart';
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/checker_sampling.dart';
 import '../../helpers/export_scope_pick.dart';
+import '../../helpers/sheet_image_runs.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -199,12 +200,13 @@ void main() {
             // a pixel of the paper.
             scale: perPixel * placement.scale / size,
           );
+          final images = sheetImageRunOf({photo.reference.assetPath: file});
+          addTearDown(images.dispose);
           final rendered = await renderCutEnvelopeImage(
             face: const TextStyle(),
             layout: layout,
             source: const CutEnvelopeSource(),
-            imageFor: (path) =>
-                path == photo.reference.assetPath ? file : null,
+            images: images,
             inkOwner: owner,
             inkPhotosFor: (asked) => [if (asked == window.key) photo],
             outputSize: (
@@ -437,6 +439,49 @@ void main() {
       );
       expect(photo!.$1, lessThan(40), reason: 'cyan, from the file');
       expect((photo.$2, photo.$3), (255, 255));
+    });
+
+    testWidgets('the logo the work names prints in its box — the export '
+        'reads the pictures the sheet asks for (card '
+        'envelope-export-lacks-images)', (tester) async {
+      final logo = (await tester.runAsync(
+        () => writeSolidPng(temp, 'logo.png', rgba: 0x00FFFFFF),
+      ))!;
+      final session = EditorSessionManager(
+        initialProject: project().copyWith(
+          timesheetInfo: TimesheetInfo.empty.copyWith(
+            logoAssetPath: () => logo,
+          ),
+        ),
+      );
+      addTearDown(session.dispose);
+      final state = await pumpDialog(tester, session);
+      await tapSetting(tester, 'export-envelope-paper-sheet');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final image = (await tester.runAsync(
+        () => decodeImageFromList(
+          File(
+            '${temp.path}${Platform.pathSeparator}_CUT39_envelope.png',
+          ).readAsBytesSync(),
+        ),
+      ))!;
+      addTearDown(image.dispose);
+      final box = analogOn(
+        image.width,
+        image.height,
+      ).placedBoxes.firstWhere((placed) => placed.box.id == 'logo');
+      final middle = (await tester.runAsync(
+        () => pixelAt(
+          image,
+          (box.x + box.width / 2).round(),
+          (box.y + box.height / 2).round(),
+        ),
+      ))!;
+      expect(middle.$1, lessThan(40), reason: 'cyan, from the logo\'s file');
+      expect((middle.$2, middle.$3), (255, 255));
     });
 
     testWidgets('ink PARKED on a sheet nobody has open rides the export and '

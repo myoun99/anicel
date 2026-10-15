@@ -11,6 +11,8 @@ import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_words.dart';
+import '../sheet/sheet_image_cache.dart'
+    show SheetImageRun, paintWithSheetImages;
 import '../timesheet/timesheet_document_painter.dart';
 import 'offscreen_raster.dart';
 
@@ -49,7 +51,7 @@ class ExportTimesheetPageTask {
 /// export IS the panel's picture, no second sheet layout to disagree with
 /// it — the saved [ink] included: the windows it shows through (the
 /// panel's own walk), each window's baked raster and the photos laid under
-/// it (I-97), drawn from their files by [imageFor].
+/// it (I-97), whose files are the ones it asks [images] for.
 ///
 /// ↩️A scale multiplied the page's size in the FORM'S UNITS, which was the
 /// paper while a unit was a pixel of it. F-294 gave the paper pixels of its
@@ -70,7 +72,7 @@ Future<ui.Image> renderTimesheetPageImage({
     List<CelPhoto> Function(BrushFrameKey key) photosFor,
   })?
   ink,
-  ui.Image? Function(String assetPath)? imageFor,
+  SheetImageRun? images,
 }) {
   final page = layout.pageRect(pageIndex);
   final paper = layout.paperPixelSize;
@@ -91,21 +93,23 @@ Future<ui.Image> renderTimesheetPageImage({
         ink: ink?.windows ?? const [],
         inkImageFor: ink?.rasterFor,
         inkPhotosFor: ink?.photosFor,
-        imageFor: imageFor,
+        imageFor: images?.imageFor,
         // The image's pixels to a unit of the sheet, as it lays the page
         // below — what the photos are sampled for.
         effectiveRatio: math.min(width / page.width, height / page.height),
       );
+  void paintPage(ui.Canvas canvas) {
+    canvas.scale(width / page.width, height / page.height);
+    canvas.translate(-page.left, -page.top);
+    canvas.clipRect(page);
+    for (final stratum in SheetStratum.values) {
+      painterOf(stratum).paint(canvas, layout.documentSize);
+    }
+  }
+
   return rasterizeOffscreen(
     width: width,
     height: height,
-    paint: (canvas) {
-      canvas.scale(width / page.width, height / page.height);
-      canvas.translate(-page.left, -page.top);
-      canvas.clipRect(page);
-      for (final stratum in SheetStratum.values) {
-        painterOf(stratum).paint(canvas, layout.documentSize);
-      }
-    },
+    paint: (canvas) => paintWithSheetImages(canvas, images, paintPage),
   );
 }

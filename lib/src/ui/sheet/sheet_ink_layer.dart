@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -37,6 +35,7 @@ import '../sheet_painting.dart'
         pictureOutline,
         pictureShowsOnScreen;
 import '../widgets/cursor_notice.dart' show cursorNotices;
+import 'sheet_image_cache.dart' show SheetImageLookup;
 import 'sheet_photos.dart' show SheetPhotosPainter;
 
 /// A window the sheet's brush draws through: where it sits on the paper,
@@ -497,7 +496,7 @@ typedef SheetInkPrintView = ({
   double devicePixelRatio,
   Size size,
   List<SheetInkAbove> above,
-  ui.Image? Function(String assetPath)? imageFor,
+  SheetImageLookup? imageFor,
 });
 
 /// Prints [ink] on screen as the layer's live views paint it (F-215): each
@@ -579,7 +578,7 @@ mixin SheetInkOnScreen {
   Set<BrushFrameKey> get liveInkKeys;
 
   /// The pool files the ink's photos are drawn from (I-97).
-  ui.Image? Function(String assetPath)? get imageFor;
+  SheetImageLookup? get imageFor;
 
   /// Prints [ink] as the live windows draw it, the pictures [above] taking
   /// their place over it — nothing without a view and surfaces (an
@@ -751,7 +750,7 @@ class SheetInkLayer extends StatefulWidget {
   /// The pool files a window's photos are drawn from (I-97) — null while
   /// one is still being read, and no photo at all where this is null — and
   /// what says one has landed.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
   @override

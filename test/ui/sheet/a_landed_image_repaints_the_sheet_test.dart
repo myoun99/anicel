@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -7,6 +5,8 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show SheetImageLookup;
 
 /// 🚨A PICTURE THAT LANDS REPAINTS THE SHEET. A sheet painter asks for the
 /// logo, the cover picture or a 도장 SYNCHRONOUSLY; the first ask answers
@@ -45,7 +45,7 @@ void main() {
     String,
     Widget Function(
       EditorSessionManager session,
-      ui.Image? Function(String) imageFor,
+      SheetImageLookup imageFor,
       Listenable landed,
     ),
   )>[
@@ -76,7 +76,7 @@ void main() {
       var asked = 0;
       await pumpHost(
         tester,
-        build(session, (path) {
+        build(session, (path, {width}) {
           if (path == logo) {
             asked += 1;
           }

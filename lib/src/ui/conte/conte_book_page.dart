@@ -16,6 +16,7 @@ import '../brush/sheet_canvas_panel.dart' show SheetStrokeHold;
 import '../editor_session_manager.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_strata.dart';
 import '../sheet/sheet_text_edit_layer.dart';
 import '../sheet_painting.dart' show SheetPictureLookup, SheetPictureOverInk;
@@ -79,7 +80,7 @@ class ConteBookPage extends StatelessWidget {
   final SheetStrokeHold strokeHold;
 
   /// A media image by its asset path — the logo, the cover's picture.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Says a media image [imageFor] had no answer for has landed.
   final Listenable? imageRepaint;

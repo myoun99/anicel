@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -65,38 +64,6 @@ Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
   } finally {
     codec.dispose();
   }
-}
-
-/// The picture a media FILE holds — a still, a GIF's first frame, a PSD's
-/// composite — through [decodeImageFrames], or null when it cannot be read
-/// (a file that went away, or not an image at all). A sheet prints an empty
-/// box for null, which is what it printed before anyone chose one.
-///
-/// ⛔ONE READER for the images a sheet prints (the logo, a 도장, a cover
-/// picture). The envelope's cache decoded its own first frame beside this
-/// recipe and never learned the PSD detour.
-Future<ui.Image?> readImageFileOrNull(String path) async {
-  try {
-    return await firstPictureOf(await File(path).readAsBytes());
-  } on Object {
-    return null;
-  }
-}
-
-/// The picture [bytes] hold as ONE image — a still, a GIF's first frame, a
-/// PSD's composite ([decodeImageFrames]) — or null when they hold none. The
-/// frames after the first are let go of here. Throws what the decoder
-/// throws.
-///
-/// Its own function because a caller that already holds the bytes — a
-/// carried medium read through the project (`readHeldMediaBytes`) — has
-/// no file for [readImageFileOrNull] to open.
-Future<ui.Image?> firstPictureOf(Uint8List bytes) async {
-  final frames = await decodeImageFrames(bytes);
-  for (final frame in frames.skip(1)) {
-    frame.image.dispose();
-  }
-  return frames.isEmpty ? null : frames.first.image;
 }
 
 /// Where [fit] stands a picture of [picture]'s size on [canvas] (§6-q: fit

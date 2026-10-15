@@ -325,6 +325,12 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           (session) => session.renderCaches.storyboardThumbnailBytes,
         ),
       ),
+    // Pushed by the workspace too — see [RenderCaches.sheetImageBytes].
+    if (textures)
+      MemoryCensusItem(
+        id: 'sheetImages',
+        bytes: sum((session) => session.renderCaches.sheetImageBytes),
+      ),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
     // but they are not the user's artwork, so not that row: a take warmed

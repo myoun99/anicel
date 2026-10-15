@@ -16,6 +16,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show SheetImageLookup;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_photos.dart';
 import 'package:anicel/src/ui/sheet_painting.dart' show paintSheetInkWindow;
@@ -78,7 +80,7 @@ void main() {
   /// [window] — one surface pixel to a screen pixel, or [zoom] of them.
   Future<Uint8List> printed(
     BitmapSurface surface,
-    ui.Image? Function(String assetPath)? imageFor, {
+    SheetImageLookup? imageFor, {
     double zoom = 1,
     Rect window = const Rect.fromLTWH(0, 0, 16, 16),
   }) {
@@ -110,7 +112,7 @@ void main() {
   Future<Uint8List> exported(
     List<CelPhoto> photos,
     ui.Image? raster,
-    ui.Image? Function(String assetPath)? imageFor, {
+    SheetImageLookup? imageFor, {
     double zoom = 1,
     Rect window = const Rect.fromLTWH(0, 0, 16, 16),
   }) {
@@ -154,7 +156,7 @@ void main() {
         ),
       ]);
 
-      final bytes = await printed(surface, (asked) => file);
+      final bytes = await printed(surface, (asked, {width}) => file);
 
       expect(at(bytes, 4, 4), cyan, reason: 'its top-left pixel');
       expect(at(bytes, 11, 7), cyan, reason: 'its bottom-right pixel');
@@ -178,7 +180,7 @@ void main() {
         ),
       ]);
 
-      final bytes = await printed(surface, (asked) => file);
+      final bytes = await printed(surface, (asked, {width}) => file);
 
       expect(at(bytes, 7, 6), cyan);
       expect(at(bytes, 8, 9), cyan);
@@ -199,7 +201,7 @@ void main() {
         ),
       ]);
 
-      final waiting = await printed(surface, (asked) => null);
+      final waiting = await printed(surface, (asked, {width}) => null);
       final none = await printed(surface, null);
 
       expect(at(waiting, 4, 4), nothing);
@@ -214,7 +216,7 @@ void main() {
       photos: photos,
       viewport: CanvasViewport(),
       devicePixelRatio: 1,
-      imageFor: (asked) => null,
+      imageFor: (asked, {width}) => null,
     );
     CelPhoto at(double x) => photo(
       TransformPose(center: CanvasPoint(x: x, y: 8)),
@@ -259,7 +261,7 @@ void main() {
 
           final bytes = await printed(
             bare([checkerOf(scale)]),
-            (asked) => file,
+            (asked, {width}) => file,
             zoom: zoom,
           );
 
@@ -279,7 +281,7 @@ void main() {
 
           final bytes = await printed(
             bare([checkerOf(scale)]),
-            (asked) => file,
+            (asked, {width}) => file,
             zoom: zoom,
           );
 
@@ -327,13 +329,13 @@ void main() {
           ),
         ];
 
-        final bytes = await exported(photos, raster, (asked) => file);
+        final bytes = await exported(photos, raster, (asked, {width}) => file);
 
         expect(at(bytes, 4, 4), cyan, reason: 'LIVENESS: it exported');
         expect(at(bytes, 5, 5), red, reason: 'the ink over it');
         expect(
           bytes,
-          await printed(ink().withPhotos(photos), (asked) => file),
+          await printed(ink().withPhotos(photos), (asked, {width}) => file),
         );
       });
     });
@@ -352,10 +354,10 @@ void main() {
           ),
         ];
 
-        final bytes = await exported(photos, null, (asked) => file);
+        final bytes = await exported(photos, null, (asked, {width}) => file);
 
         expect(at(bytes, 7, 6), cyan, reason: 'LIVENESS: it exported');
-        expect(bytes, await printed(bare(photos), (asked) => file));
+        expect(bytes, await printed(bare(photos), (asked, {width}) => file));
       });
     });
 
@@ -379,7 +381,7 @@ void main() {
         final bytes = await exported(
           photos,
           null,
-          (asked) => file,
+          (asked, {width}) => file,
           window: window,
         );
 
@@ -387,7 +389,7 @@ void main() {
         expect(at(bytes, 8, 4), nothing, reason: 'past it');
         expect(
           bytes,
-          await printed(bare(photos), (asked) => file, window: window),
+          await printed(bare(photos), (asked, {width}) => file, window: window),
         );
       });
     });
@@ -406,14 +408,14 @@ void main() {
           final bytes = await exported(
             photos,
             null,
-            (asked) => file,
+            (asked, {width}) => file,
             zoom: zoom,
           );
 
           expect(at(bytes, x, y), isNot(nothing), reason: 'LIVENESS');
           expect(
             bytes,
-            await printed(bare(photos), (asked) => file, zoom: zoom),
+            await printed(bare(photos), (asked, {width}) => file, zoom: zoom),
           );
         });
       });

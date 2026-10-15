@@ -14,6 +14,7 @@ import '../../models/sheet_paint_layer.dart';
 import '../canvas/display_resample.dart' show displayScaleOf;
 import '../canvas/viewport_canvas_transform.dart';
 import 'cut_envelope_ink.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
@@ -73,7 +74,7 @@ class CutEnvelopePainter extends CustomPainter
   /// Resolves a media asset path to a decoded image (the logo, and the
   /// files the ink's photos are drawn from — I-97).
   @override
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// The ink raster for a box — for an EXPORT, which has no view to draw
   /// it through.

@@ -104,6 +104,7 @@ void main() {
       'viewerPages',
       'imageCache',
       'storyboardThumbnails',
+      'sheetImages',
       'moviePictures',
       'tileImages',
       'enginePool',
@@ -194,6 +195,17 @@ void main() {
       [session],
     ).items.singleWhere((item) => item.id == 'storyboardThumbnails');
     expect(row.bytes, 12345);
+  });
+
+  test('the sheets\' media images are a census row — pushed by the '
+      'workspace, read here (I-97)', () {
+    final session = newSession();
+    addTearDown(session.dispose);
+    session.renderCaches.sheetImageBytes = 6789;
+    final row = collectMemoryCensusWhereTexturesAreRam(
+      [session],
+    ).items.singleWhere((item) => item.id == 'sheetImages');
+    expect(row.bytes, 6789);
   });
   group('three tiers (유저 2026-09-11)', () {
     tearDown(() => AppMemory.settings.value = const AppMemorySettings());

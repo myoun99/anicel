@@ -17,6 +17,11 @@ void main() {
     expect(budgets.undo, HistoryManager.retainedByteBudget);
     expect(budgets.playback, 600 * mb);
     expect(budgets.viewerPages, 1536 * mb ~/ 6);
+    expect(
+      budgets.sheetImages,
+      budgets.viewerPages,
+      reason: 'the sheets\' media images take one viewer\'s share (I-97)',
+    );
     expect(budgets.nativeUploads, 640 * mb);
     expect(budgets.tileImages, 512 * mb);
   });

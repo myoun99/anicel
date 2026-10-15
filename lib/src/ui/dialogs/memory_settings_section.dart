@@ -105,6 +105,7 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       'viewerPages' => strings.memoryItemViewerPages,
       'imageCache' => strings.memoryItemImageCache,
       'storyboardThumbnails' => strings.memoryItemStoryboardThumbnails,
+      'sheetImages' => strings.memoryItemSheetImages,
       'moviePictures' => strings.memoryItemMoviePictures,
       'tileImages' => strings.memoryItemTileImages,
       'enginePool' => strings.memoryItemEnginePool,

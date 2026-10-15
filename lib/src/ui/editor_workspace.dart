@@ -1417,7 +1417,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // Its pictures go with it; the store reports the zero to [session].
     _storyboardThumbnails.dispose();
-    _views.unbindSession();
+    _views.unbindSession(session);
     _foldedStoryboard.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);

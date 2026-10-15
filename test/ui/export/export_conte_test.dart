@@ -46,6 +46,7 @@ import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/checker_sampling.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/pdf_content.dart';
+import '../../helpers/sheet_image_runs.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -285,6 +286,7 @@ void main() {
       Future<List<int>> printed({
         required double size,
         required double perPixel,
+        List<({String path, int? width})>? asks,
       }) async {
         final photo = photoOf(
           1,
@@ -292,12 +294,15 @@ void main() {
           size: const CanvasSize(width: 16, height: 16),
           scale: perPixel / size,
         );
+        final images = sheetImageRunOf({
+          photo.reference.assetPath: file,
+        }, asks: asks);
+        addTearDown(images.dispose);
         final rendered = await renderContePageImage(
           page: page,
           source: source,
           words: conteWordsIn(AppLanguage.ja),
-          imageFor: (path) =>
-              path == photo.reference.assetPath ? file : null,
+          images: images,
           inkPhotosFor: (asked) => [if (asked == key) photo],
           outputSize: CanvasSize(
             width: (2480 * size).round(),
@@ -330,6 +335,12 @@ void main() {
         isTrue,
         reason: 'under one: smoothed',
       );
+      // And READ for those pixels: a file drawn at a fifth of its own is
+      // asked for at the ladder's quarter of its width — the width the
+      // screen asks at the same size — never whole.
+      final asks = <({String path, int? width})>[];
+      await printed(size: 1, perPixel: 0.2, asks: asks);
+      expect(asks, [(path: photoOf(1).reference.assetPath, width: 4)]);
     });
   });
 

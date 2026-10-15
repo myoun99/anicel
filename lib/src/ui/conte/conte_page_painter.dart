@@ -14,6 +14,7 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../repaint_props.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart'
     show SheetInkOnScreen, sheetInkAbovePicture;
 import '../sheet_painting.dart';
@@ -110,7 +111,7 @@ class ContePagePainter extends CustomPainter
   /// A media image by its asset path — the company logo, and the files the
   /// ink's photos are drawn from (I-97).
   @override
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Which strata to draw; null draws every one. [SheetPaintLayer] is the
   /// three sheets' shared vocabulary.

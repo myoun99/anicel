@@ -50,6 +50,8 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart'
     show exportFrameGround;
 import 'package:anicel/src/ui/media/viewer_render_tier.dart'
     show pictureRenderWidthFor;
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show SheetImageLookup;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
 
@@ -752,7 +754,7 @@ void main() {
       BitmapSurface Function(CanvasSize size)? band,
 
       /// The pool files the band's photos are drawn from (I-97).
-      ui.Image? Function(String assetPath)? imageFor,
+      SheetImageLookup? imageFor,
     }) async {
       session = EditorSessionManager(initialProject: project);
       addTearDown(session.dispose);
@@ -999,7 +1001,7 @@ void main() {
             printedAt: printedAt,
             band: hatchedOverAPhoto,
             view: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
-            imageFor: (path) => path == photoPath ? photo : null,
+            imageFor: (path, {width}) => path == photoPath ? photo : null,
           );
           final off = await shoot(tester);
           // The band beside the picture: no silhouette there to stand in

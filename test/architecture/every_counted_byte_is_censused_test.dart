@@ -204,6 +204,9 @@ const _notCensused = <String, String>{
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
       'RenderCaches, the way the canvas buffer and the viewers are',
+  'lib/src/ui/sheet/sheet_image_cache.dart → decodedBytes':
+      'via:sheetImageBytes — the sheets\' image cache lives in the '
+      'workspace too, and pushes onto RenderCaches as the thumbnails do',
   'lib/src/services/cut_piece_slot.dart → pieceBytes':
       'via:allPieceBytes — the slot is the APP\'s, one for every open '
       'project (I-7), so the census reads the class-level total once '
@@ -251,9 +254,11 @@ const _imageHolders = <String, String>{
       'still pins until its next compose, so nothing is held through them '
       'that the buffer does not hold anyway',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
-      'a handful of decoded logos, cover pictures and stamps, decoded once '
-      'for the life of the workspace; its own doc says it needs an eviction '
-      'the day it holds cels',
+      'counted:decodedBytes',
+  'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':
+      'one export render\'s media images (SheetImageRun), read for that '
+      'render and let go when it ends — the working set of a render, as '
+      'the ink rasters and cell pictures composed beside it are',
   'lib/src/ui/canvas/active_stroke_overlay.dart → _tileImages':
       'the tiles of the stroke in progress, each freed as it settles into '
       'the surface',

@@ -97,7 +97,7 @@ void main() {
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: (_) => null,
+                imageFor: (_, {width}) => null,
                 imageRepaint: images,
               ),
               () => ink.commitStroke(
@@ -128,7 +128,7 @@ void main() {
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: (_) => null,
+                imageFor: (_, {width}) => null,
                 imageRepaint: images,
               ),
               () => ink.commitStroke(
@@ -152,7 +152,7 @@ void main() {
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: (_) => null,
+                imageFor: (_, {width}) => null,
                 imageRepaint: images,
               ),
               () => ink.commitStroke(

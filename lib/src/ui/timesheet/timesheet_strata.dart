@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -9,6 +7,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/timesheet_words.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkWindow;
 import '../sheet/sheet_strata.dart';
 import '../text/app_face.dart';
@@ -68,7 +67,7 @@ class TimesheetStrata extends StatelessWidget {
 
   /// The pool files the ink's photos are drawn from (I-97), and what says
   /// one has landed — the ink stratum's alone to hear.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
   /// What the content stratum PRINTS of a drag ([timesheetDragPrint]).

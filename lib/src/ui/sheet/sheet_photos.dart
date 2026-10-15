@@ -12,11 +12,13 @@ import '../canvas/display_resample.dart'
     show displayScaleOf, filterQualityForDisplayScale;
 import '../canvas/layer_image_draw.dart' show drawPosedLayerImage;
 import '../canvas/viewport_canvas_transform.dart' show applyViewportTransform;
+import '../media/viewer_render_tier.dart' show pictureRenderWidthFor;
+import 'sheet_image_cache.dart' show SheetImageLookup;
 
 /// Draws [photos] — a sheet ink picture's (I-97) — on [canvas], whose space
-/// is that picture's SURFACE PIXELS: each the pool file [imageFor] decodes,
+/// is that picture's SURFACE PIXELS: each the pool file [imageFor] reads,
 /// where its reference stands it ([picturePlacement], a reference row's own
-/// law), bottom → top. One whose file is not decoded yet is left out; the
+/// law), bottom → top. One whose file is not read yet is left out; the
 /// caller's repaint brings it when it lands.
 ///
 /// 🗣️I-97-Q1 (b, 유저 2026-10-15): drawn from the original — 「키워도 원본
@@ -25,20 +27,33 @@ import '../canvas/viewport_canvas_transform.dart' show applyViewportTransform;
 /// they hand in, and in [displayScale] — how many target pixels one surface
 /// pixel is — which the sampling is chosen by, with the photo's own scale
 /// ([filterQualityForDisplayScale]).
+///
+/// Each file is asked for as wide as it is drawn, on its more magnified
+/// axis — the viewer's ladder over its own pixels ([pictureRenderWidthFor],
+/// 「화면이 필요한 만큼(최대 원본)」): up to the original as the sheet is
+/// zoomed, and no more than a cell's worth while it is not.
 void paintSheetPhotos(
   ui.Canvas canvas,
   List<CelPhoto> photos, {
-  required ui.Image? Function(String assetPath) imageFor,
+  required SheetImageLookup imageFor,
   required double displayScale,
 }) {
   for (final photo in photos) {
     final reference = photo.reference;
-    final image = imageFor(reference.assetPath);
+    final pose = reference.pose;
+    final picture = reference.pictureSize;
+    final image = imageFor(
+      reference.assetPath,
+      width: pictureRenderWidthFor(
+        picture.height *
+            math.max(pose.scaleX.abs(), pose.scaleY.abs()) *
+            displayScale,
+        ui.Size(picture.width.toDouble(), picture.height.toDouble()),
+      ),
+    );
     if (image == null) {
       continue;
     }
-    final pose = reference.pose;
-    final picture = reference.pictureSize;
     final own = ui.Rect.fromLTWH(
       0,
       0,
@@ -83,7 +98,7 @@ class SheetPhotosPainter extends CustomPainter {
   final double devicePixelRatio;
 
   /// Null where nothing decodes pool files — a sheet with no photo to show.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   @override
   void paint(Canvas canvas, Size size) {

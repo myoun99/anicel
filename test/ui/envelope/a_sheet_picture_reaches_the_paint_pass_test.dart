@@ -4,6 +4,12 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/the_file_itself.dart';
+
+/// The cache the workspace makes, over files that are only themselves.
+SheetImageCache readingFiles() => SheetImageCache(
+  read: (path, width) => readSheetImage(theFileItself, path, width),
+);
 
 /// 🚨★★★A SHEET'S PICTURE HAS TO REACH THE PAINT PASS — the logo on the
 /// envelope and the conte, the conte's cover picture.
@@ -58,7 +64,7 @@ void main() {
     await tester.runAsync(() async {
       final path = await writePng('logo.png');
       var loaded = 0;
-      final cache = SheetImageCache()..addListener(() => loaded += 1);
+      final cache = readingFiles()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
 
       expect(
@@ -88,7 +94,7 @@ void main() {
       // Otherwise every paint reads the disk again for a picture whose file
       // went away — a decode per frame that can never succeed.
       var loaded = 0;
-      final cache = SheetImageCache()..addListener(() => loaded += 1);
+      final cache = readingFiles()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
       final missing = '${dir.path}/gone.png';
 
@@ -115,7 +121,7 @@ void main() {
     await tester.runAsync(() async {
       final path = await writePng('logo.png');
       var loaded = 0;
-      final cache = SheetImageCache()..addListener(() => loaded += 1);
+      final cache = readingFiles()..addListener(() => loaded += 1);
       addTearDown(cache.dispose);
 
       // The same frame can paint a box twice; a second decode would be work

@@ -22,6 +22,7 @@ import '../../services/project_lookup.dart'
 import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetPictureWindow, SheetWindow;
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
@@ -77,7 +78,7 @@ class ConteTabHost extends StatefulWidget {
   /// A media image by its asset path — the company logo each body page
   /// prints top-right, the cover's picture. The workspace's decode cache,
   /// the one the envelope prints its logo from.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Notifies when an image [imageFor] answered null for has landed — the
   /// page's inputs do not change for it, so this is what repaints it.

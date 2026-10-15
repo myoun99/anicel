@@ -40,6 +40,7 @@ import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_frame_ruler_painter.dart'
     show timelineRulerSecondsLabel;
 import '../repaint_props.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
@@ -580,7 +581,7 @@ class TimesheetDocumentPainter extends CustomPainter
   /// The pool files the ink's photos are drawn from (I-97); a landed decode
   /// repaints through `imageRepaint`.
   @override
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
   /// viewport transform lands the paper on the device grid with it. An

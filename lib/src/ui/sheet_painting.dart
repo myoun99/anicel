@@ -13,6 +13,7 @@ import '../models/sheet_paint_layer.dart';
 import 'canvas/display_resample.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'media/viewer_render_tier.dart' show pictureRenderWidthFor;
+import 'sheet/sheet_image_cache.dart' show SheetImageLookup;
 import 'sheet/sheet_photos.dart' show paintSheetPhotos;
 
 /// Draws one baked ink window, for an export, which has no view to draw it
@@ -36,7 +37,7 @@ void paintSheetInkWindow(
   ui.Image? image,
   SheetInkPlacement placement, {
   required List<CelPhoto> photos,
-  required ui.Image? Function(String assetPath)? photoFiles,
+  required SheetImageLookup? photoFiles,
   required double displayScale,
 }) {
   final files = photoFiles;
@@ -495,7 +496,7 @@ class SheetMarkImages {
 
   /// A media image by its asset path — the logo, and the files the ink's
   /// photos are drawn from (I-97).
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
 
   /// The photos laid on a window's ink (I-97), for an export — beside its

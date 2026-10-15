@@ -28,7 +28,7 @@ void main() {
     SheetCanvasPrinter(
       style: (size, {required bold, required color}) =>
           TextStyle(fontSize: size, color: color),
-      images: SheetMarkImages(imageFor: (path) => wide),
+      images: SheetMarkImages(imageFor: (path, {width}) => wide),
     ).paint(
       ui.Canvas(recorder),
       const Size(40, 40),

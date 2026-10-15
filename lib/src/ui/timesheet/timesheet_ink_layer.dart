@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -11,6 +9,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../brush/brush_tool_state.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import 'timesheet_document_painter.dart';
 import 'timesheet_ink_controller.dart';
@@ -76,7 +75,7 @@ class TimesheetInkLayer extends StatelessWidget {
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// Forwarded to [SheetInkLayer.imageFor] and [SheetInkLayer.imageRepaint].
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
   final Listenable? imageRepaint;
 
   @override

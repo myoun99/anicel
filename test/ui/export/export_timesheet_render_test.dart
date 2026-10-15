@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_words_in.dart';
 
 import '../../helpers/cel_photo_fixture.dart';
 import '../../helpers/checker_sampling.dart';
+import '../../helpers/sheet_image_runs.dart';
 
 void main() {
   Frame frame(String id) =>
@@ -144,6 +145,8 @@ void main() {
           size: const CanvasSize(width: 16, height: 16),
           scale: perPixel * placement.scale / perUnit,
         );
+        final images = sheetImageRunOf({photo.reference.assetPath: file});
+        addTearDown(images.dispose);
         final rendered = await renderTimesheetPageImage(
           face: const TextStyle(),
           document: document,
@@ -159,7 +162,7 @@ void main() {
             rasterFor: (asked) => null,
             photosFor: (asked) => [if (asked == key) photo],
           ),
-          imageFor: (path) => path == photo.reference.assetPath ? file : null,
+          images: images,
         );
         try {
           final shown = (page.center - page.topLeft) * perUnit;

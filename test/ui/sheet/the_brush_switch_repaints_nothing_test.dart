@@ -43,6 +43,8 @@ import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
+import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
+    show SheetImageLookup;
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
@@ -453,7 +455,7 @@ void main() {
                 pictures: cels,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
-                imageFor: (_) => null,
+                imageFor: (_, {width}) => null,
               ),
             ),
           ),
@@ -637,10 +639,10 @@ bool _isMagenta(Color color) =>
 
 /// The pool's decode of the one photo the sheets hold, [photo] — once it
 /// has [landed].
-ui.Image? Function(String assetPath) _photoFiles(
+SheetImageLookup _photoFiles(
   ui.Image photo,
   ValueNotifier<bool> landed,
-) => (path) => path == _photoPath && landed.value ? photo : null;
+) => (path, {width}) => path == _photoPath && landed.value ? photo : null;
 
 /// A photo laid on [key]'s ink in [store], centred [under] the dab: it lies
 /// under the handwriting, and the brush switch moves neither.

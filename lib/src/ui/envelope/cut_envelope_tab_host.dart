@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -22,6 +20,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_strata.dart';
 import 'cut_envelope_builder.dart';
 import '../sheet/sheet_ink_layer.dart';
@@ -84,7 +83,7 @@ class CutEnvelopeTabHost extends StatefulWidget {
   final ValueChanged<bool>? onBrushAllowedChanged;
 
   /// Resolves a media asset path (the logo) to a decoded image.
-  final ui.Image? Function(String assetPath)? imageFor;
+  final SheetImageLookup? imageFor;
 
   /// Notifies when an image [imageFor] answered null for has landed — the
   /// page's inputs do not change for it, so this is what repaints it.

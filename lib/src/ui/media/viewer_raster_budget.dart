@@ -43,8 +43,10 @@ const int viewerPageBytesAtCap =
 /// 🆕2026-09-11 — **and one more for the storyboard's thumbnails**
 /// (`StoryboardCutThumbnailStore`): the same kind of holding, a view of the
 /// drawings that re-renders on demand, so it takes this law rather than a
-/// number of its own. With both viewers open the three can hold three
-/// times the number below; the warning halves all three.
+/// number of its own. 🆕2026-10-15 — **and one for the sheets' media
+/// images** (`SheetImageCache`, I-97): a view of the pool's files, read
+/// again on demand. With both viewers open the four can hold four times
+/// the number below; the warning halves all four.
 class ViewerRasterBudget {
   /// Test seam, the same shape as `PdfRenderService.debugOpenerOverride`:
   /// what to pretend ONE page costs. Both the budget and its floor are
