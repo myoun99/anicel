@@ -24,6 +24,13 @@ const String cameraRowBornName = 'Camera';
 /// The cut's camera timeline row. It carries no drawing frames; its cells
 /// reflect the cut's camera keyframes and selecting it switches the canvas
 /// into camera manipulation mode.
+///
+/// 🗣️Born with the camera view ON and the outside of the frame HALF dark —
+/// its eye and its opacity are the view's switch and its dim (F-363), and
+/// F-363-Q1 (유저 2026-10-15) chose 「켬 · 50%」 for a new project's and a new
+/// cut's, not a picture row's 「켬 · 100%」 (the frame's outside wholly black)
+/// nor the window's old 「끔 · 50%」. A cut joining a track wears its
+/// cameras' instead (`cameraWearingHeadOf`).
 Layer createCameraLayer({required CutId cutId}) {
   return Layer(
     id: cameraLayerIdForCut(cutId),
@@ -31,6 +38,7 @@ Layer createCameraLayer({required CutId cutId}) {
     frames: const [],
     timeline: const {},
     kind: LayerKind.camera,
+    opacity: 0.5,
   );
 }
 

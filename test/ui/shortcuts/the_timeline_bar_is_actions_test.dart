@@ -152,10 +152,11 @@ void main() {
       button(tester, 'timeline-orientation-toggle-button').tooltip,
       ko.tlShowXSheet,
     );
+    // A new project's camera is born with its view on (F-363-Q1).
     String camera() => button(tester, 'timeline-camera-view-button').tooltip;
-    expect(camera(), ko.cameraViewOff);
-    await pressKeyOf(tester, EditorActionIds.cameraViewToggle);
     expect(camera(), ko.cameraViewOn);
+    await pressKeyOf(tester, EditorActionIds.cameraViewToggle);
+    expect(camera(), ko.cameraViewOff);
     expect(ko.tlShowXSheet, isNot('Show X-sheet'), reason: 'premise');
     expect(ko.cameraViewOn, isNot('Camera view (on)'), reason: 'premise');
   });

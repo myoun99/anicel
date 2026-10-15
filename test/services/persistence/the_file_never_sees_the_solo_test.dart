@@ -36,7 +36,9 @@ void main() {
 
   /// ⛔**THE INSTRUMENT WALKS THE TREE ITSELF.** Asking the product where
   /// the rows live would go blind in exactly the place the product was
-  /// wrong. Cut layers AND the tracks' SE rows, by hand.
+  /// wrong. Cut layers AND the tracks' SE rows, by hand — but not the
+  /// cameras, whose eye is the camera view, which the solo leaves alone
+  /// (F-363-Q2).
   Map<LayerId, bool> eyesIn(Project project) {
     final eyes = <LayerId, bool>{};
     for (final track in project.tracks) {
@@ -45,7 +47,9 @@ void main() {
       }
       for (final cut in track.cuts) {
         for (final layer in cut.layers) {
-          eyes[layer.id] = layer.isVisible;
+          if (layer.kind.hasPictureEye) {
+            eyes[layer.id] = layer.isVisible;
+          }
         }
       }
     }

@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -119,6 +121,55 @@ void main() {
       !was,
     ]);
     expect(viewOf(session).enabled, !was);
+  });
+
+  test('🗣️a new project\'s camera is born with its view ON and the outside of '
+      'the frame half dark (F-363-Q1: 「켬 · 50%」)', () {
+    final session = sessionOn(createDefaultProject());
+    final camera = stoodCamera(session);
+
+    expect((camera.isVisible, camera.opacity), (true, 0.5));
+    expect(viewOf(session), (enabled: true, dim: 0.5));
+  });
+
+  test('🗣️the legend\'s bulk switches leave the camera view alone — Show all '
+      '· Hide all, the solo, the master bar and 「모두 100%」 (F-363-Q2: '
+      '「카메라는 빼고 — 그림 행만」)', () {
+    final session = sessionOn(createDefaultProject());
+    Layer row(LayerId id) =>
+        session.activeCutOrNull!.layers.firstWhere((layer) => layer.id == id);
+    final picture = session.activeCutOrNull!.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    final switches = session.layerSwitches;
+
+    switches.setAllLayersVisibility(false);
+    expect(row(picture).isVisible, isFalse, reason: '⛔전제: it hid the rows');
+    expect(viewOf(session).enabled, isTrue, reason: 'Hide all');
+    session.cameraViewMode.toggle();
+    switches.setAllLayersVisibility(true);
+    expect(row(picture).isVisible, isTrue, reason: '⛔전제: it showed them');
+    expect(viewOf(session).enabled, isFalse, reason: 'Show all');
+    session.cameraViewMode.toggle();
+
+    session.selectLayer(picture);
+    session.visibilitySolo.toggleLayerVisibilitySolo();
+    expect(viewOf(session).enabled, isTrue, reason: 'the solo');
+    session.cameraViewMode.toggle();
+    session.visibilitySolo.toggleLayerVisibilitySolo();
+    expect(
+      viewOf(session).enabled,
+      isFalse,
+      reason: 'leaving the solo puts back no eye of the camera\'s',
+    );
+
+    final opacity = session.opacityVerbs;
+    opacity.commitLayersOpacity({picture, stoodCamera(session).id}, 0.4);
+    expect(row(picture).opacity, 0.4, reason: '⛔전제: the bar set the rows');
+    opacity.setAllLayersOpacity(0.2);
+    opacity.resetAllLayersOpacity();
+    expect(row(picture).opacity, 1.0, reason: '⛔전제: 모두 100% set them');
+    expect(viewOf(session).dim, 0.5, reason: 'the bar, its number, 모두 100%');
   });
 
   test('🚨a project opened comes up in ITS camera view — the one its file '

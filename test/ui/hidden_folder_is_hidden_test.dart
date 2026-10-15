@@ -336,10 +336,12 @@ const _mayAnswerVisibilityItself = <String, String>{
 /// store's cache key, the timeline grid, a dead export function, the camera
 /// backdrop, `activeLayerOpacity`'s pair (being deleted), and the visibility
 /// solo's SNAPSHOT — that last one reads the raw flag on purpose, because
-/// what it saves and restores IS the raw flag.
+/// what it saves and restores IS the raw flag. ↩️It read it twice until
+/// 2026-10-15 (F-363-Q2) — a snapshot taken on entering, then its pass —
+/// and the pass alone fills it now.
 ///
 /// ⚠️Only ever lower this. Raising it is the change this test exists to stop.
-const _knownOffenders = 11;
+const _knownOffenders = 10;
 
 /// The collaborator that owns the laws above, under its OWN name.
 ///

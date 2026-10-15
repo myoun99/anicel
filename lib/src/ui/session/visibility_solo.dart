@@ -33,10 +33,11 @@ class VisibilitySolo {
   void dispose() => soloedSeLayerIds.dispose();
 
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
-  /// engaging it snapshots every row's eye (cut layers + track SE), turns
-  /// every non-active eye OFF and the active one ON — the rows show it and
-  /// playback/fill follow naturally, exactly like clicking the eyes by
-  /// hand (view-ish controller writes, not undoable). Switching the active
+  /// engaging it snapshots every row's eye (cut layers + track SE) but the
+  /// camera's, the camera view (F-363-Q2), turns every other non-active eye
+  /// OFF and the active one ON — the rows show it and playback/fill follow
+  /// naturally, exactly like clicking the eyes by hand (view-ish controller
+  /// writes, not undoable). Switching the active
   /// layer re-solos; disengaging restores each eye from the snapshot.
   /// Leaving the cut exits the mode (restoring first) — the snapshot is
   /// cut-scoped.
@@ -68,16 +69,16 @@ class VisibilitySolo {
     } else {
       _layerVisibilitySoloEnabled = true;
       _visibilitySoloCutId = _timeline.editingSession.activeCutId;
-      _visibilitySoloSnapshot = {
-        for (final layer in _project.layers) layer.id: layer.isVisible,
-      };
+      // Filled by the solo's own pass ([_applyVisibilitySolo]).
+      _visibilitySoloSnapshot = {};
       _applyVisibilitySolo();
     }
     _changes.notifyChanged();
   }
 
-  /// Re-solos to the CURRENT active layer. Rows born during the solo join
-  /// the snapshot with their pre-flip eye so exiting restores them too.
+  /// Re-solos to the CURRENT active layer. Each row joins the snapshot with
+  /// its eye from before the solo first flips it — the rows there when it
+  /// began, and those born during it — so exiting restores them all.
   void _applyVisibilitySolo() {
     final activeId = _selection.activeLayerId;
     final snapshot = _visibilitySoloSnapshot;
@@ -119,6 +120,11 @@ class VisibilitySolo {
     // "is this row shown" is a place a hidden folder can be forgotten.
     final flips = <LayerId, bool>{};
     for (final layer in stack) {
+      // ⛔Not the camera's: its eye is the camera VIEW, which the legend's
+      // bulk switches leave alone ([LayerKind.hasPictureEye], F-363-Q2).
+      if (!layer.kind.hasPictureEye) {
+        continue;
+      }
       final before = snapshot.putIfAbsent(layer.id, () => layer.isVisible);
       final shouldShow = heldByIt.contains(layer.id)
           ? before

@@ -125,7 +125,8 @@ class LayerSwitchVerbs {
     }
   }
 
-  /// Shows or hides every layer of the active cut.
+  /// Shows or hides every layer of the active cut — but the camera, whose
+  /// eye is the camera view ([LayerKind.hasPictureEye], F-363-Q2).
   void setAllLayersVisibility(bool visible) {
     // ⛔ONE undo step for one legend press — the loop used to make one per
     // row, which is 유저's 「일괄로 버튼 조작하고 언두하면 바꼈던 레이어들
@@ -133,7 +134,7 @@ class LayerSwitchVerbs {
     _controllers.layerController.setLayersVisible(
       layerIds: [
         for (final layer in _project.layers)
-          if (layer.isVisible != visible) layer.id,
+          if (layer.kind.hasPictureEye && layer.isVisible != visible) layer.id,
       ],
       visible: visible,
     );
