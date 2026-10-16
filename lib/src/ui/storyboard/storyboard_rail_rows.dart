@@ -2820,9 +2820,10 @@ class _StoryboardRailRows {
       projection: projection.rowId,
     );
     return _laneFrameSide(projection.rowId, lanes, (
-      // The edits its labels key by: the cut stood in's (I-73 ④ⓔ). ⚠️A
-      // handle on the line of a cut not stood in writes nothing — what it
-      // should do is I-89-Q23's to say.
+      // The edits its labels key by: the cut stood in's (I-73 ④ⓔ). A
+      // handle on the line of a cut not stood in writes that cut, where it
+      // is: the lane verbs read and write the cut holding the row
+      // (I-89-Q23, 유저: 「강제로 서있게해서 고치는건 … 불편함」).
       laneEdit: _state.widget.cutLaneEdit,
       linesOf: (row) =>
           _projectionLines(projection, strip.reaches, row.lane!.laneId),

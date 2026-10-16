@@ -55,7 +55,8 @@ void main() {
     for (final MapEntry(key: frame, value: name) in names.entries) {
       position = position.withKeyName(frame, name);
     }
-    session.camera.updateActiveCutCameraTrack(
+    session.camera.updateCameraTrack(
+      cameraOf(cutId).id,
       TransformTrack.empty().copyWith(position: position),
     );
   }
@@ -129,7 +130,8 @@ void main() {
 
     session.selectCut(pair.source);
     final track = cutById(pair.source).camera.track;
-    session.camera.updateActiveCutCameraTrack(
+    session.camera.updateCameraTrack(
+      cameraOf(pair.source).id,
       track.copyWith(
         position: track.position
             .withKey(0, CanvasPoint(x: 5, y: 5))

@@ -1,6 +1,7 @@
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
-import '../../services/project_lookup.dart' show cutIdOfLayer, requireCut;
+import '../../services/project_lookup.dart'
+    show cutWritingRow, requireCut, rowPoseSpace;
 import '../editor_session_manager.dart';
 import 'lane_graph_seats.dart' show LaneGraphLine, laneGraphLineAmong;
 import 'property_lane_model.dart';
@@ -47,9 +48,10 @@ List<PropertyLaneRow> timelineLanesForLayer({
         session.laneVerbs.laneValueSourceAt(layer, frameIndex),
     // An S row is posed in the shot (I-67-Q1), as the storyboard's rail
     // already read it.
-    poseCentre: layer.kind.poseSpace(
-      shot: session.camera.cameraFrameSize,
-      canvas: session.activeCutOrNull?.canvasSize,
+    poseCentre: rowPoseSpace(
+      session.repository.requireProject(),
+      layer,
+      standing: session.activeCutId,
     ),
   );
 }
@@ -61,7 +63,7 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
   // gap's included (I-73 ④ⓔ). ↩️It read the active cut, required: in a gap
   // the storyboard's twirl-all threw here.
   final project = session.repository.requireProject();
-  final cutId = cutIdOfLayer(project, row.id) ?? session.activeCutId;
+  final cutId = cutWritingRow(project, row.id, standing: session.activeCutId);
   if (cutId == null) {
     return const [];
   }

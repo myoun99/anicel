@@ -29,8 +29,14 @@ import 'package:anicel/src/ui/timeline/lane_graph_toggle.dart'
     show LaneGraphToggle;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneRow, laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show LaneEditPreview;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
-    show LaneGraphPicture, TimelineLaneGraph, TimelineLaneGraphPainter;
+    show
+        LaneGraphHandle,
+        LaneGraphPicture,
+        TimelineLaneGraph,
+        TimelineLaneGraphPainter;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -221,6 +227,53 @@ void main() {
   LaneGraphsView graphs(EditorSessionManager session) =>
       session.railView.laneGraphs.value;
 
+  /// The one handle [key]'s graph draws on [layer]'s [laneId] line, and
+  /// where it stands on the screen.
+  (LaneGraphHandle, Offset) handleOn(
+    WidgetTester tester,
+    String key,
+    LayerId layer,
+    String laneId,
+  ) {
+    final paint = find.descendant(
+      of: find.descendant(
+        of: graphOf(key),
+        matching: find.byType(LaneGraphPicture),
+      ),
+      matching: find.byType(CustomPaint),
+    );
+    final painter =
+        tester.widget<CustomPaint>(paint).painter! as TimelineLaneGraphPainter;
+    final box = tester.renderObject<RenderBox>(paint);
+    final handle = painter
+        .handlesIn(box.size)
+        .singleWhere(
+          (handle) =>
+              handle.line.layer.id == layer &&
+              handle.line.lane.laneId == laneId,
+        );
+    return (handle, box.localToGlobal(handle.at));
+  }
+
+  /// Pulls the handle at [at] up and right by a little, a mouse's pull —
+  /// [mid] asked while it is held.
+  Future<void> pull(
+    WidgetTester tester,
+    Offset at, {
+    void Function()? mid,
+  }) async {
+    final gesture = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(20, -20));
+    await tester.pump();
+    mid?.call();
+    await gesture.up();
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('the timeline\'s verb on the camera in hand opens the camera '
       'row\'s graph over its lanes — a line a cut, each over the cut\'s own '
       'frames', (tester) async {
@@ -251,6 +304,7 @@ void main() {
   ) async {
     final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
     const button = 'storyboard-layer-graph-a-cam';
+    expect(find.named(button), findsOneWidget);
     expect(lit(tester, button), isFalse);
 
     await tester.tap(find.named(button));
@@ -336,34 +390,10 @@ void main() {
     SessionRowButtonPresses(session).toggleLaneGraph(inHand);
     await tester.pumpAndSettle();
     expect(session.activeCutId, const CutId('a'), reason: '⛔전제');
-    final paint = find.descendant(
-      of: find.descendant(
-        of: graphOf(cameraGraph),
-        matching: find.byType(LaneGraphPicture),
-      ),
-      matching: find.byType(CustomPaint),
-    );
-    final painter =
-        tester.widget<CustomPaint>(paint).painter! as TimelineLaneGraphPainter;
-    final box = tester.renderObject<RenderBox>(paint);
-    final handle = painter
-        .handlesIn(box.size)
-        .singleWhere(
-          (handle) =>
-              handle.line.layer.id == aCam &&
-              handle.line.lane.laneId == 'rotation',
-        );
+    final (handle, at) = handleOn(tester, cameraGraph, aCam, 'rotation');
     expect((handle.frame, handle.leaving), (0, true), reason: '⛔전제');
 
-    final gesture = await tester.startGesture(
-      box.localToGlobal(handle.at),
-      kind: PointerDeviceKind.mouse,
-    );
-    await tester.pump();
-    await gesture.moveBy(const Offset(20, -20));
-    await tester.pump();
-    await gesture.up();
-    await tester.pumpAndSettle();
+    await pull(tester, at);
 
     final cuts = session.repository.requireProject().tracks.single.cuts;
     expect(
@@ -377,20 +407,95 @@ void main() {
     );
   });
 
+  testWidgets('a handle on the line of a cut NOT stood in writes that cut\'s '
+      'key where it is — its line bends as it goes, one undo, and the '
+      'session stays where it stood (I-89-Q23)', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+    expect(session.activeCutId, const CutId('a'), reason: '⛔전제');
+    final (handle, at) = handleOn(
+      tester,
+      cameraGraph,
+      const LayerId('b-cam'),
+      'rotation',
+    );
+    expect((handle.frame, handle.leaving), (2, true), reason: '⛔전제');
+    double bAt4() => lanesOf(tester, cameraGraph, 'rotation')[1].curve!
+        .at(4)
+        .single;
+    final still = bAt4();
+    Cut b() => session.repository.requireProject().tracks.single.cuts[1];
+
+    await pull(
+      tester,
+      at,
+      mid: () {
+        expect(
+          session.dragPreview.value,
+          isA<LaneEditPreview>().having(
+            (preview) => preview.cameraCutId,
+            'cameraCutId',
+            const CutId('b'),
+          ),
+        );
+        expect(bAt4(), isNot(still), reason: 'b\'s line, in flight');
+      },
+    );
+
+    expect(
+      b().camera.track.rotation.keyAt(2)!.outgoing,
+      isNot(const EaseSide()),
+    );
+    expect(
+      session.repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts
+          .first
+          .camera
+          .track
+          .rotation
+          .keyAt(0)!
+          .outgoing,
+      const EaseSide(),
+      reason: 'a\'s, untouched',
+    );
+    expect(session.activeCutId, const CutId('a'), reason: 'not stood in');
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(b().camera.track.rotation.keyAt(2)!.outgoing, const EaseSide());
+  });
+
   group('the conte row', () {
     final conteRow = trackConteRowId(trackId);
     final conteGraph = laneGroupKey(conteRow, transform);
 
-    Layer conte(String cut, List<int> keys) {
+    /// [cut]'s conte, its Position keyed at [keys] — and, when [eased], its
+    /// Rotation as well, eased out of the first.
+    Layer conte(String cut, List<int> keys, {bool eased = false}) {
       var position = PropertyTrack<CanvasPoint>.empty();
-      for (final frame in keys) {
+      var rotation = PropertyTrack<double>();
+      for (final (index, frame) in keys.indexed) {
         position = position.withKey(frame, CanvasPoint(x: 10.0 * frame, y: 0));
+        if (eased) {
+          rotation = rotation.withKey(
+            frame,
+            3.0 * frame,
+            outgoing: index == 0 ? const EaseSide() : null,
+          );
+        }
       }
       return Layer(
         id: LayerId('$cut-conte'),
         name: 'Conte',
         kind: LayerKind.storyboard,
-        transformTrack: TransformTrack.empty().copyWith(position: position),
+        transformTrack: TransformTrack.empty().copyWith(
+          position: position,
+          rotation: rotation,
+        ),
         frames: [
           Frame(id: FrameId('$cut-panel'), duration: 12, strokes: const []),
         ],
@@ -413,8 +518,9 @@ void main() {
     );
 
     /// Cuts a [0, 12) and b [12, 24), each with a conte — a's Position
-    /// keyed at its own 2 and 8, b's at 3 — then c [28, 40), which has none.
-    Project contes() => Project(
+    /// keyed at its own 2 and 8, b's at [b] ([eased] out of its first) —
+    /// then c [28, 40), which has none.
+    Project contes({List<int> b = const [3], bool eased = false}) => Project(
       id: const ProjectId('conte-graphs'),
       name: 'Conte graphs',
       createdAt: DateTime.utc(2026, 10, 16),
@@ -427,7 +533,7 @@ void main() {
               conte('a', [2, 8]),
             ]),
             conteCut('b', [
-              conte('b', [3]),
+              conte('b', b, eased: eased),
             ]),
             conteCut('c', const [], gap: 4),
           ],
@@ -466,6 +572,47 @@ void main() {
         [for (final lane in positions) lane.curve],
         everyElement(isNotNull),
       );
+    });
+
+    testWidgets('a handle on the line of a cut not stood in writes that '
+        'cut\'s conte where it is (I-89-Q23)', (tester) async {
+      final session = await pumpHost(
+        tester,
+        contes(b: [3, 9], eased: true),
+        twirl: 'a-conte',
+      );
+      await tester.tap(
+        find.named('storyboard-lane-group-graph-${conteRow.value}-$transform'),
+      );
+      await tester.pumpAndSettle();
+      expect(session.activeCutId, const CutId('a'), reason: '⛔전제');
+      final (handle, at) = handleOn(
+        tester,
+        conteGraph,
+        const LayerId('b-conte'),
+        'rotation',
+      );
+      expect((handle.frame, handle.leaving), (3, true), reason: '⛔전제');
+
+      await pull(tester, at);
+
+      Layer conteOf(int cut) => session.repository
+          .requireProject()
+          .tracks
+          .single
+          .cuts[cut]
+          .layers
+          .firstWhere((layer) => layer.kind == LayerKind.storyboard);
+      expect(
+        conteOf(1).transformTrack.rotation.keyAt(3)!.outgoing,
+        isNot(const EaseSide()),
+      );
+      expect(
+        conteOf(0).transformTrack.rotation.keys,
+        isEmpty,
+        reason: 'a\'s, untouched',
+      );
+      expect(session.activeCutId, const CutId('a'), reason: 'not stood in');
     });
   });
 }

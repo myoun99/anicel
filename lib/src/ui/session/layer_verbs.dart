@@ -13,7 +13,7 @@ import '../../models/new_row_placement.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/project_lookup.dart'
-    show cutIdOfLayer, projectLayersAnywhere;
+    show cutWritingRow, projectLayersAnywhere;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
@@ -259,11 +259,13 @@ class LayerVerbs {
     _changes.notifyChanged();
   }
 
-  /// The cut a row verb writes [layerId] in: the one HOLDING it, the active
-  /// one for a track's own row ([ActiveCutEdits.onCutOfRowQuietly]).
-  CutId? _cutWriting(LayerId layerId) =>
-      cutIdOfLayer(_project.repository.requireProject(), layerId) ??
-      _project.activeCutOrNull?.id;
+  /// The cut a row verb writes [layerId] in ([cutWritingRow]): the one
+  /// HOLDING it, the active one for a track's own row.
+  CutId? _cutWriting(LayerId layerId) => cutWritingRow(
+    _project.repository.requireProject(),
+    layerId,
+    standing: _project.activeCutId,
+  );
 
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin —
   /// standing on the last copy.
@@ -578,10 +580,12 @@ class LayerVerbs {
 
   /// Renames any row by id — folders included, because a folder is a row.
   void renameLayer(LayerId layerId, String name) {
+    final cutId = _cutWriting(layerId);
+    if (cutId == null) {
+      return;
+    }
     _project.cutCommandCoordinator.renameLayer(
-      cutId:
-          cutIdOfLayer(_project.repository.requireProject(), layerId) ??
-          _project.requireActiveCut.id,
+      cutId: cutId,
       layerId: layerId,
       name: name,
     );

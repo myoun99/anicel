@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
+import '../../models/cut.dart';
 import '../../models/cut_camera.dart'
     show cameraKeyFits, cameraWriteKeepsKeysIn;
 import '../../models/transform_track.dart';
@@ -17,8 +18,10 @@ import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_camera_row.dart' show isTrackCameraRow;
 import '../../models/track_projection_row.dart' show projectionRowUnder;
+import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
+import '../../services/project_lookup.dart' show rowPoseSpace;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../../services/cut_frame_composite_plan.dart';
 import '../timeline/effect_lane_editing.dart'
@@ -57,7 +60,9 @@ import '../timeline/timeline_drag_preview.dart'
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor;
 import 'active_cut_controllers.dart';
+import 'active_cut_edits.dart';
 import 'lane_edit_subject.dart';
+import 'row_written_by_id.dart';
 import 'session_roles.dart';
 import 'effects_and_fx.dart';
 
@@ -89,8 +94,13 @@ class LaneVerbs {
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required EffectsAndFx effectsAndFx,
     required ChangeSink changes,
-    required void Function(TransformTrack track, {required String description})
-    updateActiveCutCameraTrack,
+    required ActiveCutEdits activeCut,
+    required void Function(
+      LayerId cameraRow,
+      TransformTrack track, {
+      required String description,
+    })
+    updateCameraTrack,
     required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
     required Future<ReferenceRedraw> Function(
       LayerId layerId,
@@ -106,7 +116,8 @@ class LaneVerbs {
        _dragPreview = dragPreview,
        _effectsAndFx = effectsAndFx,
        _changes = changes,
-       _updateActiveCutCameraTrack = updateActiveCutCameraTrack,
+       _activeCut = activeCut,
+       _updateCameraTrack = updateCameraTrack,
        _previewFormsOf = previewFormsOf,
        _reposeReference = reposeReference;
 
@@ -132,8 +143,12 @@ class LaneVerbs {
   final bool Function() _sessionDisposed;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
-  /// `Camera.updateActiveCutCameraTrack` — the camera row's lanes go home to
-  /// the CUT, not to a layer.
+  /// The cut a lane verb reads and writes a row in ([ActiveCutEdits.cutOfRow])
+  /// — the one holding it, stood in or not (I-89-Q23).
+  final ActiveCutEdits _activeCut;
+
+  /// `Camera.updateCameraTrack` — the camera row's lanes go home to the
+  /// CUT holding it, not to a layer.
   ///
   /// ⚠️A closure, not the `Camera`: the camera holds the lane move, which
   /// holds these verbs, so naming it here would close a construction cycle
@@ -143,8 +158,12 @@ class LaneVerbs {
   /// rides the preview channel, which the camera is handed as the notifier
   /// itself — so that cycle is gone. The closure stays: the verbs need the
   /// camera's one write, not the camera.
-  final void Function(TransformTrack track, {required String description})
-  _updateActiveCutCameraTrack;
+  final void Function(
+    LayerId cameraRow,
+    TransformTrack track, {
+    required String description,
+  })
+  _updateCameraTrack;
 
   /// What the open cut shows of a row in flight — the preview's two forms,
   /// the pair `TrackSeDisplay.previewFormsOf` decides.
@@ -181,7 +200,7 @@ class LaneVerbs {
     )) {
       return track;
     }
-    final cutId = _timeline.editingSession.activeCutId;
+    final cutId = _activeCut.cutOfRow(layer.id);
     if (cutId == null || trackIdOfTransformLaneCarrier(layer.id) != null) {
       return null;
     }
@@ -313,9 +332,10 @@ class LaneVerbs {
   /// the CAMERA's lanes none its cut is not drawn for — 🗣️I-73-camera-row-Q2
   /// (유저 2026-10-09: 「콘티처럼 컷밖으로 못나가게 클리핑」 → `own-frames`).
   List<int> _keyableFrames(Layer layer, TimelineLaneSelection lane) {
-    final drawn = _transformHomeOf(layer) == _TransformHome.cutCamera
-        ? _project.activeCutDrawnFrameCount
+    final cut = _transformHomeOf(layer) == _TransformHome.cutCamera
+        ? _cutWriting(layer)
         : null;
+    final drawn = cut == null ? null : _drawnFramesOf(cut);
     return [
       for (
         var frame = lane.startIndex;
@@ -329,19 +349,31 @@ class LaneVerbs {
     ];
   }
 
-  /// Whether the open cut's camera can be written as [track]: it puts no
-  /// key out of the frames the cut is drawn for ([cameraWriteKeepsKeysIn],
+  /// Whether [cut]'s camera can be written as [track]: it puts no key out
+  /// of the frames the cut is drawn for ([cameraWriteKeepsKeysIn],
   /// 🗣️I-73-camera-row-Q2). Both camera arms below ask it, so what a drag
   /// shows is what its release keeps.
-  bool _cameraTakes(TransformTrack track) {
-    final camera = _project.activeCutOrNull?.camera.track;
-    return camera != null &&
-        cameraWriteKeepsKeysIn(
-          camera,
-          track,
-          drawnFrameCount: _project.activeCutDrawnFrameCount,
-        );
+  bool _cameraTakes(Cut cut, TransformTrack track) => cameraWriteKeepsKeysIn(
+    cut.camera.track,
+    track,
+    drawnFrameCount: _drawnFramesOf(cut),
+  );
+
+  /// The cut [layer] is read and written in ([ActiveCutEdits.cutOfRow]):
+  /// the one holding it, stood in or not — a header graph draws a line for
+  /// every cut, and a cut's line is edited where it is (I-89-Q23). ↩️The
+  /// cut stood in, whichever cut's row the verb was handed.
+  Cut? _cutWriting(Layer layer) {
+    final cutId = _activeCut.cutOfRow(layer.id);
+    return cutId == null ? null : _project.cutById(cutId);
   }
+
+  /// How many frames [cut] is DRAWN for ([cutDrawnFrameCount]): its own and
+  /// the のりしろ the transitions crossing it ask — none for a cut no track
+  /// holds.
+  int _drawnFramesOf(Cut cut) =>
+      cutDrawnFrameCount(_project.repository.requireProject(), cut.id) ??
+      cut.duration;
 
   /// A LANE of a storyboard projection row (I-73 ④ⓔ) stood on: that lane of
   /// the layer the row has in hand ([projectedLayerInHand]) — or of nothing.
@@ -375,7 +407,7 @@ class LaneVerbs {
       laneVerbLayerFor(layerId)?.kind == LayerKind.camera;
 
   /// The transform track a LANE row edits: the CAMERA row's lanes live on
-  /// the cut's camera, every other row's on the layer itself.
+  /// its cut's camera ([_cutWriting]), every other row's on the layer itself.
   ///
   /// R10 R3: the lane-verb family read `layer.transformTrack` flat, so Add
   /// and Delete silently missed the camera row — which only showed once
@@ -383,7 +415,7 @@ class LaneVerbs {
   /// the lane the marker's context menu used to.
   TransformTrack _laneTransformTrackOf(Layer layer) =>
       layer.kind == LayerKind.camera
-      ? (_project.activeCutOrNull?.camera.track ?? layer.transformTrack)
+      ? (_cutWriting(layer)?.camera.track ?? layer.transformTrack)
       : layer.transformTrack;
 
   /// The layer a LANE verb READS and WRITES.
@@ -407,6 +439,10 @@ class LaneVerbs {
   /// reported "no keys here": Delete then fell through to the CEL path and
   /// removed the active layer's drawing instead. The commit funnels below
   /// send it home to the track.
+  /// ★And a row of a cut not stood in answers as itself
+  /// ([RowWrittenById.rowWrittenById]), its verbs reading and writing in
+  /// that cut ([_cutWriting]): a header graph's line of that cut is edited
+  /// where it is (I-89-Q23).
   Layer? laneVerbLayerFor(LayerId layerId) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     if (carrierTrackId != null) {
@@ -422,7 +458,7 @@ class LaneVerbs {
               effects: track.effects,
             );
     }
-    return _project.commitLayerById(layerId);
+    return _project.rowWrittenById(layerId);
   }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
@@ -929,8 +965,9 @@ class LaneVerbs {
   }) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        if (_cameraTakes(track)) {
-          _updateActiveCutCameraTrack(track, description: description);
+        final cut = _cutWriting(layer);
+        if (cut != null && _cameraTakes(cut, track)) {
+          _updateCameraTrack(layer.id, track, description: description);
         }
       case _TransformHome.nowhere:
         return;
@@ -952,13 +989,13 @@ class LaneVerbs {
   ) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
-        final cut = _project.activeCutOrNull;
-        return cut == null || !_cameraTakes(track)
+        final cut = _cutWriting(layer);
+        return cut == null || !_cameraTakes(cut, track)
             ? null
             : LaneEditPreview.camera(
                 cameraCutId: cut.id,
                 cameraTrack: track,
-                cameraMarkerLayer: _project.layerById(layer.id)?.copyWith(),
+                cameraMarkerLayer: layer.copyWith(),
               );
       case _TransformHome.nowhere:
         return null;
@@ -968,28 +1005,26 @@ class LaneVerbs {
   }
 
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
-  /// drawing layer — applied at composite time, never baked); one undo
-  /// step, no-op when unchanged.
+  /// drawing layer — applied at composite time, never baked) in the cut
+  /// writing it, stood in or not ([ActiveCutEdits.onCutOfRowQuietly]); one
+  /// undo step, no-op when unchanged.
   ///
   /// ↩️The session's until the fifteenth family: these verbs were the one
   /// collaborator that asked for it, so it lives beside its funnel.
+  /// ↩️Addressed in the cut stood in until I-89-Q23.
   void updateLayerTransformTrack(
     LayerId layerId,
     TransformTrack track, {
     String description = 'Edit layer transform',
-  }) {
-    final cutId = _project.activeCutId;
-    if (cutId == null) {
-      return;
-    }
-    _project.cutCommandCoordinator.updateLayerTransformTrack(
+  }) => _activeCut.onCutOfRowQuietly(
+    layerId,
+    (cutId) => _project.cutCommandCoordinator.updateLayerTransformTrack(
       cutId: cutId,
       layerId: layerId,
       transformTrack: track,
       description: description,
-    );
-    _changes.notifyChanged();
-  }
+    ),
+  );
 
   /// The lane path's EFFECT commit — the twin of [_commitTransformTrack].
   ///
@@ -1085,7 +1120,7 @@ class LaneVerbs {
     if (layer.kind != LayerKind.camera) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
-    final cut = _project.activeCutOrNull;
+    final cut = _cutWriting(layer);
     if (cut == null) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
@@ -1382,7 +1417,7 @@ class LaneVerbs {
       return (taken: false, edit: null);
     }
     final layer = scope.layer;
-    final cutId = _timeline.editingSession.activeCutId;
+    final cutId = _activeCut.cutOfRow(layer.id);
     final asked = naming?.name;
     final adopt = naming?.adopt ?? false;
     final named = naming == null
@@ -1588,18 +1623,20 @@ class LaneVerbs {
   }
 
   /// [layer]'s transform group back to its defaults at [frames]: the middle
-  /// of the space the row is posed in ([LayerKind.poseSpace]). A cut's row
-  /// in a gap has no canvas, so there is nothing to reset TO; an S row is
-  /// posed in the shot (I-67-Q1), which a gap has too — the storyboard's S
-  /// rows reach this with no cut open since F-101.
+  /// of the space the row is posed in ([rowPoseSpace]) — its cut's canvas,
+  /// stood in or not (I-89-Q23), or the shot an S row is posed in
+  /// (I-67-Q1), which a gap has too: the storyboard's S rows reach this
+  /// with no cut open since F-101. ↩️A cut's row read the canvas of the cut
+  /// stood in, and in a gap had nothing to reset TO.
   bool _resetTransformGroup(
     Layer layer,
     List<int> frames, {
     required bool scoped,
   }) {
-    final space = layer.kind.poseSpace(
-      shot: _project.repository.requireProject().cameraSize,
-      canvas: _project.activeCutOrNull?.canvasSize,
+    final space = rowPoseSpace(
+      _project.repository.requireProject(),
+      layer,
+      standing: _project.activeCutId,
     );
     if (space == null) {
       return false;

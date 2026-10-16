@@ -10,7 +10,7 @@ import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
 import '../services/media/sheet_photo_edits.dart';
 import '../services/project_lookup.dart'
-    show brushFrameKeyIn, cutIdOfLayer, cutPositionOf;
+    show brushFrameKeyIn, cutPositionOf, cutWritingRow, rowPoseSpace;
 import '../models/app_language.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_memory_settings.dart';
@@ -839,7 +839,7 @@ class EditorSessionManager extends ChangeNotifier
   /// and a pin.
   List<LayerId> rowsFoldingWith(LayerId row) {
     final project = repository.requireProject();
-    final cutId = cutIdOfLayer(project, row) ?? activeCutId;
+    final cutId = cutWritingRow(project, row, standing: activeCutId);
     return cutId == null
         ? [row]
         : headMirrorRows(
@@ -1699,6 +1699,7 @@ class EditorSessionManager extends ChangeNotifier
   // handed to each of them; a collaborator that builds its own is a
   // second envelope waiting to drift.
   late final ActiveCutEdits _activeCutEdits = ActiveCutEdits(
+    project: this,
     selection: this,
     timeline: this,
     changes: this,
@@ -1906,10 +1907,11 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     currentRow: () => standing.currentRow,
     sessionDisposed: () => disposed,
+    activeCut: _activeCutEdits,
     // The camera's one write, not the camera — see
-    // `LaneVerbs._updateActiveCutCameraTrack`.
-    updateActiveCutCameraTrack: (track, {required description}) =>
-        camera.updateActiveCutCameraTrack(track, description: description),
+    // `LaneVerbs._updateCameraTrack`.
+    updateCameraTrack: (cameraRow, track, {required description}) =>
+        camera.updateCameraTrack(cameraRow, track, description: description),
     previewFormsOf: (row) => trackSe.previewFormsOf(row),
     // The door's one write of a reference fx (I-68) — it lays the file
     // again, which the doors own.
@@ -1947,11 +1949,12 @@ class EditorSessionManager extends ChangeNotifier
         CanvasPoint(x: space.width / 2, y: space.height / 2);
   }
 
-  /// The space [layer] is posed in ([LayerKind.poseSpace]): the shot, or
-  /// the open cut's canvas.
-  CanvasSize _poseSpaceOf(Layer layer) => layer.kind.poseSpace(
-    shot: camera.cameraFrameSize,
-    canvas: requireActiveCut.canvasSize,
+  /// The space [layer] is posed in ([rowPoseSpace]): the shot, or the
+  /// canvas of the cut writing it.
+  CanvasSize _poseSpaceOf(Layer layer) => rowPoseSpace(
+    repository.requireProject(),
+    layer,
+    standing: activeCutId,
   )!;
 
   // --- Visibility solo mode (session view state, not persisted) ------------

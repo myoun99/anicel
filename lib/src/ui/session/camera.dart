@@ -7,6 +7,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/transform_track.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../services/camera_path.dart';
@@ -187,14 +188,22 @@ class Camera {
     (cutId) => _project.cutCommandCoordinator.clearCutCamera(cutId: cutId),
   );
 
-  /// Replaces the active cut's camera track (one undo step) — the property
-  /// lanes' per-property key edits route through here. "Same name, same
-  /// value" is the coordinator's one camera write, the transform law across
-  /// the 겸용 group (F-84) — no longer a copy here that stopped at the cut.
-  void updateActiveCutCameraTrack(
+  /// Replaces the camera track of the cut holding [cameraRow], stood in or
+  /// not (one undo step) — the property lanes' per-property key edits
+  /// route through here. "Same name, same value" is the coordinator's one
+  /// camera write, the transform law across the 겸용 group (F-84) — no
+  /// longer a copy here that stopped at the cut.
+  ///
+  /// ↩️It wrote the ACTIVE cut's camera, whichever cut's camera row the
+  /// edit was made on: a header graph's line of another cut wrote nothing
+  /// (I-89-Q23 — that cut is edited where it is:
+  /// [ActiveCutEdits.onCutOfRow]).
+  void updateCameraTrack(
+    LayerId cameraRow,
     TransformTrack track, {
     String description = 'Edit camera keyframes',
-  }) => _activeCut.onActiveCut(
+  }) => _activeCut.onCutOfRow(
+    cameraRow,
     (cutId) => _project.cutCommandCoordinator.updateCutCamera(
       cutId: cutId,
       camera: CutCamera.fromTrack(track),

@@ -24,7 +24,7 @@ import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
-import '../services/project_lookup.dart' show celBankLanesOf, cutIdOfLayer;
+import '../services/project_lookup.dart' show celBankLanesOf, cutWritingRow;
 import '../services/project_repository.dart';
 
 part 'timeline/timeline_marks.dart';
@@ -755,8 +755,8 @@ class TimelineController {
   /// fill ghosts to the cut's DRAWN end — the conte 尺 plus its のりしろ
   /// (F-227). Zero (no cut) renders no end-side ghosts.
   ///
-  /// The cut is the one the ROW is in — the write's own reading, which
-  /// settles each cut's rows against that cut
+  /// The cut is the one the ROW is in ([cutWritingRow]) — the write's own
+  /// reading, which settles each cut's rows against that cut
   /// (`ProjectRepository._normalizedCut`). A track-owned row is in none,
   /// and is counted against the open cut.
   ///
@@ -771,7 +771,7 @@ class TimelineController {
     if (project == null) {
       return 0;
     }
-    final cutId = cutIdOfLayer(project, layerId) ?? _cutId;
+    final cutId = cutWritingRow(project, layerId, standing: _cutId);
     return cutId == null ? 0 : cutDrawnFrameCount(project, cutId) ?? 0;
   }
 

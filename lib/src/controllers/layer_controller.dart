@@ -320,16 +320,17 @@ class LayerController {
     }
   }
 
-  /// The cut a row's command is addressed in: the cut that HOLDS it, else
-  /// this controller's — a track's own row is held by none, and takes the
-  /// active cut as it always did (null in a gap: nothing to address it in).
+  /// The cut a row's command is addressed in ([cutWritingRow]): the cut
+  /// that HOLDS it, else this controller's — a track's own row is held by
+  /// none, and takes the active cut as it always did (null in a gap:
+  /// nothing to address it in).
   ///
   /// ↩️It was this controller's cut for every row, 「nothing in the gap
   /// state」. The storyboard draws ONE head for a track's conte rows (I-73)
   /// and presses it under whichever cut is active, or in a gap: the row is
   /// some cut's, and that cut is where its link group and its seat are.
   CutId? _cutOfRow(LayerId layerId) =>
-      cutIdOfLayer(_repository.requireProject(), layerId) ?? _cutId;
+      cutWritingRow(_repository.requireProject(), layerId, standing: _cutId);
 
   /// [command] for one row, addressed in its own cut ([_cutOfRow]) so it
   /// reaches the row's head — nothing for a track's own row in a gap, which

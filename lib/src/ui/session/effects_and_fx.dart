@@ -1,5 +1,3 @@
-import '../../services/project_lookup.dart'
-    show cutIdOfLayer, layerAnywhereOrNull;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -13,6 +11,7 @@ import '../../services/commands/update_layer_transform_enabled_command.dart';
 import '../timeline/effect_lane_editing.dart'
     show effectsWithAdded, effectsWithEnabledToggled, effectsWithGroupReset;
 import 'active_cut_edits.dart';
+import 'row_written_by_id.dart';
 import 'session_roles.dart';
 
 /// The EFFECTS AND THE FX SWITCHES — the effect chains a layer or a track
@@ -52,7 +51,7 @@ class EffectsAndFx {
     List<LayerEffect> effects, {
     String description = 'Edit layer effects',
   }) => _activeCut.onCutOfRowQuietly(
-    cutIdOfLayer(_project.repository.requireProject(), layerId),
+    layerId,
     (cutId) => _project.cutCommandCoordinator.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,
@@ -129,7 +128,7 @@ class EffectsAndFx {
   /// independent bypass: some groups on, some off, and tapping resolves the
   /// whole row one way.
   LayerFxState layerFxState(LayerId layerId) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     if (layer == null) {
       return LayerFxState.on;
     }
@@ -160,12 +159,12 @@ class EffectsAndFx {
   /// can have its transform bypassed while a colour effect still runs —
   /// the master's [LayerFxState.mixed] answer cannot decide the pose.
   bool isLayerTransformFxEnabled(LayerId layerId) =>
-      _fxRow(layerId)?.transformEnabled ?? true;
+      _project.rowWrittenById(layerId)?.transformEnabled ?? true;
 
   /// The MASTER toggle: off unless the row is already fully off, in which
   /// case it turns everything back on. ONE undo step for the whole row.
   void toggleLayerFx(LayerId layerId) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     if (layer == null) {
       return;
     }
@@ -175,7 +174,7 @@ class EffectsAndFx {
 
   /// The TRANSFORM group header's own switch (R8).
   void toggleLayerTransformFx(LayerId layerId) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     if (layer == null) {
       return;
     }
@@ -195,7 +194,7 @@ class EffectsAndFx {
     required bool enabled,
     String description = 'Toggle transform FX',
   }) {
-    final layer = _fxRow(layerId);
+    final layer = _project.rowWrittenById(layerId);
     final command = layer == null
         ? null
         : _transformSwitch(layer, enabled: enabled, description: description);
@@ -206,24 +205,6 @@ class EffectsAndFx {
     // Not a structural cut edit — see [_setLayerFxSwitches].
     _changes.notifyChanged();
   }
-
-  // ⛔The row an FX edit addresses is [ProjectAccess.commitLayerById] — the
-  // row every layer op commits against, a track-owned SE row's GLOBAL form
-  // and not its cut's projection. A private `fxSwitchLayerById` restated it
-  // as 「cut layer, else the SE row」 and asked the cut FIRST, which hands
-  // back the projection: a chain built from it lands on the track at the
-  // cut's frames (se-row-fx-write-path's third pin).
-  //
-  // 🚨AND WHERE THAT KNOWS NOTHING, THE ROW WHEREVER IT LIVES
-  // (other-track-s-row-fx-and-mixer, measured 2026-09-25): the storyboard
-  // rail carries every track's S rows, and `commitLayerById` answers a
-  // track row from the ACTIVE track alone — another track's fx read
-  // 「on」 forever and its press did nothing. The model walk returns the
-  // global form too, never a projection. `commitLayerById` itself stays
-  // as it is: its timing callers work inside the active cut's window.
-  Layer? _fxRow(LayerId layerId) =>
-      _project.commitLayerById(layerId) ??
-      layerAnywhereOrNull(_project.repository.requireProject(), layerId);
 
   /// The command that sets [layer]'s transform switch, or null when the
   /// row has none or it already reads [enabled].
@@ -259,9 +240,7 @@ class EffectsAndFx {
       // A track-owned SE row lives in no cut: its chain is addressed from
       // the cut the user stands in, as every other FX edit of it is
       // ([updateLayerEffects]).
-      final cutId =
-          cutIdOfLayer(_project.repository.requireProject(), layer.id) ??
-          _project.activeCutId;
+      final cutId = _activeCut.cutOfRow(layer.id);
       if (cutId == null) {
         continue;
       }

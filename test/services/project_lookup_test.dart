@@ -164,6 +164,64 @@ void main() {
       expect(cutIdOfLayer(project, const LayerId('missing')), isNull);
     });
 
+    test('cutWritingRow is the cut holding the row, stood in or not — the '
+        'one stood in for a row no cut holds (I-89-Q23)', () {
+      final project = _project(
+        cuts: [
+          _cut('a', layers: [_layer('la')]),
+          _cut('b', layers: [_layer('lb')]),
+        ],
+        seLayers: [_layer('se')],
+      );
+      const a = CutId('a');
+      const b = CutId('b');
+
+      expect(cutWritingRow(project, const LayerId('lb'), standing: a), b);
+      expect(cutWritingRow(project, const LayerId('lb'), standing: null), b);
+      expect(cutWritingRow(project, const LayerId('se'), standing: a), a);
+      // A gap: nothing is stood in, and no cut holds a track's own row.
+      expect(
+        cutWritingRow(project, const LayerId('se'), standing: null),
+        isNull,
+      );
+    });
+
+    test('rowPoseSpace is the canvas of the cut writing the row — stood in '
+        'or not — and the shot for a row posed in it', () {
+      final wide = Cut(
+        id: const CutId('b'),
+        name: 'b',
+        duration: 1,
+        canvasSize: const CanvasSize(width: 16, height: 10),
+        layers: [_layer('lb')],
+      );
+      final project = _project(
+        cuts: [
+          _cut('a', layers: [_layer('la')]),
+          wide,
+        ],
+        seLayers: [_seLayer('se', const [])],
+      );
+      const a = CutId('a');
+      final se = project.tracks.single.seLayers.single;
+
+      expect(
+        rowPoseSpace(project, wide.layers.single, standing: a),
+        const CanvasSize(width: 16, height: 10),
+        reason: 'b\'s canvas, not the one stood in',
+      );
+      expect(
+        rowPoseSpace(project, se, standing: null),
+        project.cameraSize,
+        reason: 'an S row is posed in the shot, which a gap has too',
+      );
+      expect(
+        rowPoseSpace(project, _layer('nowhere'), standing: null),
+        isNull,
+        reason: 'a cut\'s kind of row with no cut to be posed in',
+      );
+    });
+
     test('requireLayerAnywhere reaches cut layers AND track-owned SE rows', () {
       final project = _project(
         cuts: [

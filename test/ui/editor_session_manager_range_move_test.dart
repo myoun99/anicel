@@ -381,7 +381,7 @@ void main() {
       addTearDown(s.dispose);
       final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
       s.selectLayer(camera.id);
-      s.camera.updateActiveCutCameraTrack(track, description: 'fixture');
+      s.camera.updateCameraTrack(camera.id, track, description: 'fixture');
       return (s, camera);
     }
 
@@ -533,7 +533,7 @@ void main() {
           ),
         );
         if (onTheCamera) {
-          s.camera.updateActiveCutCameraTrack(keyed, description: 'fixture');
+          s.camera.updateCameraTrack(row.id, keyed, description: 'fixture');
         } else {
           s.laneVerbs.updateLayerTransformTrack(row.id, keyed);
         }
@@ -566,7 +566,7 @@ void main() {
       final before = landed(s).copyWith(
         position: landed(s).position.withKey(5, CanvasPoint(x: 1, y: 1)),
       );
-      s.camera.updateActiveCutCameraTrack(before, description: 'fixture');
+      s.camera.updateCameraTrack(camera.id, before, description: 'fixture');
       slide(s, camera, from: 2, by: 3);
       rangeMove(s).endFrameRangeMoveDrag();
 

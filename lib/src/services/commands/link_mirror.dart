@@ -230,7 +230,11 @@ List<({CutId cutId, LayerId layerId})> headMirrorTargets(
   // registry keys a row's group by its own cut, and would call a row
   // addressed under another one unlinked.
   final reached = [
-    (cutId: cutIdOfLayer(project, layerId) ?? cutId, layerId: layerId),
+    (
+      // Never null: [cutId] is stood in.
+      cutId: cutWritingRow(project, layerId, standing: cutId)!,
+      layerId: layerId,
+    ),
   ];
   final seen = {reached.first};
   for (var index = 0; index < reached.length; index += 1) {

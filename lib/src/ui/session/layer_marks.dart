@@ -2,7 +2,6 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
-import '../../services/project_lookup.dart' show cutIdOfLayer;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'session_roles.dart';
@@ -34,7 +33,7 @@ class LayerMarks {
   /// Sets [layerId]'s organizational color mark. One undo step.
   void setLayerMark(LayerId layerId, LayerMark mark) =>
       _activeCut.onCutOfRowQuietly(
-        cutIdOfLayer(_project.repository.requireProject(), layerId),
+        layerId,
         (cutId) => _project.cutCommandCoordinator.setLayerMark(
           cutId: cutId,
           layerId: layerId,

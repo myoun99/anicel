@@ -6,7 +6,7 @@ import '../../models/layer_kind.dart';
 import '../../models/track_row_twirls.dart';
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/project_lookup.dart'
-    show cutIdOfLayer, layerAnywhereOrNull, requireCut, rowTwirlsOf;
+    show cutPositionOf, cutWritingRow, layerAnywhereOrNull, rowTwirlsOf;
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
@@ -518,10 +518,8 @@ class SessionRowButtonPresses {
   /// and answered that it carries no attach group.
   List<Layer>? _stackOf(LayerId id) {
     final project = session.repository.requireProject();
-    final cutId = cutIdOfLayer(project, id);
-    return cutId == null
-        ? session.activeCutOrNull?.layers
-        : requireCut(project, cutId).layers;
+    final cutId = cutWritingRow(project, id, standing: session.activeCutId);
+    return cutId == null ? null : cutPositionOf(project, cutId)?.cut.layers;
   }
 
   /// [read] for a row that has the button ([has]); null for one that has

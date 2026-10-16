@@ -32,6 +32,11 @@ void main() {
   late CanvasPoint c5;
   late CanvasPoint c10;
 
+  /// The camera row of the cut [s] stands in.
+  LayerId cameraRowOf(EditorSessionManager s) => s.requireActiveCut.layers
+      .firstWhere((layer) => layer.kind == LayerKind.camera)
+      .id;
+
   /// A cut whose camera turns a corner at frame 5, smooth there, stood on
   /// at frame 0 on its camera row. Its keys are smooth as they are made
   /// (I-89-Q10 B) — the ends are made corners again, so the key at 5 alone
@@ -50,15 +55,14 @@ void main() {
       camera.setCameraKeyframeAtCurrentFrame(start.copyWith(center: center));
     }
     final track = camera.activeCutCameraTrack!;
-    camera.updateActiveCutCameraTrack(
+    final row = cameraRowOf(s);
+    camera.updateCameraTrack(
+      row,
       track.copyWith(
         position: track.position.withKeyPaths(frames: {0, 10}, curved: false),
       ),
     );
     s.selectFrameIndex(0);
-    final row = s.requireActiveCut.layers
-        .firstWhere((layer) => layer.kind == LayerKind.camera)
-        .id;
     s.standOnRow(LayerRowAddress(row));
     return (s, row);
   }
@@ -131,7 +135,8 @@ void main() {
   /// The camera's keys at [frames] made smooth as well.
   void curve(EditorSessionManager s, Set<int> frames) {
     final track = s.camera.activeCutCameraTrack!;
-    s.camera.updateActiveCutCameraTrack(
+    s.camera.updateCameraTrack(
+      cameraRowOf(s),
       track.copyWith(
         position: track.position.withKeyPaths(frames: frames, curved: true),
       ),
@@ -364,7 +369,7 @@ void main() {
     for (final frame in [5, 10]) {
       still = still.withKey(frame, c0);
     }
-    s.camera.updateActiveCutCameraTrack(track.copyWith(position: still));
+    s.camera.updateCameraTrack(row, track.copyWith(position: still));
     await tester.pump();
     expect(pathAt5(s), KeyPath.auto, reason: '⛔전제: still smooth');
     expect(tangents(tester), isEmpty, reason: 'no path drawn');
