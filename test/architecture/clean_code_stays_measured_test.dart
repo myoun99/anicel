@@ -1119,7 +1119,22 @@ void main() {
   /// base (`d890f68b0`) names this one and no other class. ⛔Not split to
   /// fit: the rows are the panel's, written from the one state it shows,
   /// and the categories are read in the one place the panel lists them.
-  const longClasses = 70;
+  ///
+  /// ⚠️70 → 71 on 2026-10-21 (65 → 66 on 2026-10-17, where the lane was
+  /// cut), ONE name:
+  /// `MediaRun` crossed (588 → 632) in playback-waits-for-its-sound — the
+  /// media viewer's run waits for its sound by the canvas's law (유저
+  /// 2026-10-16: 「소리가 준비될 때까지 기다린다」): a press stands where it
+  /// was put while the sound is on its way (`_start`), each look asks for it
+  /// again, and the run goes on from there once it has come
+  /// (`_soundHasCome`). 🔬`clean_code_diff` against master (`4c0fed1e3`)
+  /// names this one and no other class; stood on the brush panel's 70 above
+  /// when the lane was rebased onto it (10-21). ⛔Not split to fit: going on
+  /// restarts the run's own film clock, its clock's lateness and its parked
+  /// state — what the class is — so a collaborator for the wait would be
+  /// handed all three. (The canvas's transport, which only hears the sound
+  /// land, gave that hearing to one: `_SoundOnItsWay`.)
+  const longClasses = 71;
 
   late CleanCodeScan scan;
   setUpAll(() {
