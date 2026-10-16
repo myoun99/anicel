@@ -282,8 +282,9 @@ void main() {
       expectPoints([line.first, line.last], crosses);
     }
 
-    /// The widths of the strokes painted in [color], painted now — read back
-    /// as 8-bit: a paint keeps its colour in floats.
+    /// The widths of the strokes painted in [color], painted now. A paint
+    /// keeps its colour and its width in floats: the colour is read back as
+    /// 8-bit, a width to a float's precision.
     List<double> strokesIn(Color color) {
       final canvas = TestRecordingCanvas();
       painter().paint(canvas, tester.getSize(picture));
@@ -304,7 +305,10 @@ void main() {
     fromKeyToKey('in space');
     final dashes = strokesIn(AppColors.accent);
     expect(dashes.length, greaterThan(1), reason: 'in dashes');
-    expect(dashes.toSet(), {CameraPathOverlay.centreTrailWidth});
+    expect(
+      dashes,
+      everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
+    );
 
     final standing = (painter: painter(), marks: overlay().marks);
     final drawing = s.requireActiveCut.layers
