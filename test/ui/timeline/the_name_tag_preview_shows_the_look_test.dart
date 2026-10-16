@@ -231,6 +231,39 @@ void main() {
       );
     });
   });
+
+  testWidgets('on the RAIL the preview stands at the end of the slots it '
+      'fills, centred across the row (R5 #7)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: _sRowProject())),
+    );
+    await tester.pumpAndSettle();
+    final toggle = find.named('timeline-lane-toggle-${_seId.value}').first;
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+
+    final preview = find.byKey(
+      ValueKey<String>(
+        'timeline-lane-group-preview-${_seId.value}-name-tag-group',
+      ),
+    );
+    expect(preview, findsOneWidget, reason: 'premise: the header is up');
+    final slots = tester.getRect(
+      find.ancestor(of: preview, matching: find.byType(Align)).first,
+    );
+    final box = tester.getRect(preview);
+    expect(
+      box.width,
+      lessThan(slots.width),
+      reason: '⛔premise: the preview leaves room to stand in',
+    );
+    expect(box.right, moreOrLessEquals(slots.right, epsilon: 0.5));
+    expect(box.center.dy, moreOrLessEquals(slots.center.dy, epsilon: 0.5));
+  });
 }
 
 const _seId = LayerId('tag-se');

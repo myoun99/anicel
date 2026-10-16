@@ -620,10 +620,21 @@ void main() {
     await gesture.moveBy(const Offset(0, -28));
     await tester.pump();
 
-    expect(
-      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
-      findsOneWidget,
+    final swallow = find.byKey(
+      const ValueKey<String>('timeline-row-swallow-b'),
     );
+    expect(swallow, findsOneWidget);
+    // What the drop does is said at the row's FAR end, centred across it.
+    final box = tester.getRect(swallow);
+    final badge = tester.getRect(
+      find.descendant(of: swallow, matching: find.byType(Text)),
+    );
+    expect(
+      box.right - badge.right,
+      lessThan(badge.left - box.left),
+      reason: 'the badge stands at the end the row runs to',
+    );
+    expect(badge.center.dy, moreOrLessEquals(box.center.dy, epsilon: 0.5));
 
     await gesture.up();
     await tester.pumpAndSettle();

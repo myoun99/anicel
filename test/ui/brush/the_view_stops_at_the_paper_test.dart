@@ -107,17 +107,41 @@ void main() {
         reason: 'its left edge on the window\'s',
       );
     });
+
+    test('each axis holds the paper by its own edges — a paper and a window '
+        'set off by different amounts across and down', () {
+      const paperOff = Rect.fromLTWH(24, 60, 600, 800);
+      const windowOff = Rect.fromLTWH(10, 40, 400, 300);
+      final early = viewHeldTo(
+        CanvasViewport(panX: 900, panY: 900),
+        limit: paperOff,
+        window: windowOff,
+      );
+      // 10 − 24 · 40 − 60
+      expect((early.panX, early.panY), (-14.0, -20.0));
+      final late = viewHeldTo(
+        CanvasViewport(panX: -900, panY: -900),
+        limit: paperOff,
+        window: windowOff,
+      );
+      // 410 − (24 + 600) · 340 − (60 + 800)
+      expect((late.panX, late.panY), (-214.0, -520.0));
+    });
   });
 
   group('the pan bars span the paper and nothing past it', () {
-    CanvasViewportPanMetrics bar(Axis axis, CanvasViewport viewport) =>
-        CanvasViewportPanMetrics(
-          axis: axis,
-          viewport: viewport,
-          editorViewportSize: window.size,
-          canvasSize: const CanvasSize(width: 648, height: 848),
-          limit: (rect: paper, window: window),
-        );
+    CanvasViewportPanMetrics bar(
+      Axis axis,
+      CanvasViewport viewport, {
+      Rect limit = paper,
+      Rect over = window,
+    }) => CanvasViewportPanMetrics(
+      axis: axis,
+      viewport: viewport,
+      editorViewportSize: over.size,
+      canvasSize: const CanvasSize(width: 648, height: 848),
+      limit: (rect: limit, window: over),
+    );
 
     test('their two ends are the two places the view stops', () {
       final top = bar(Axis.vertical, CanvasViewport(panY: -24));
@@ -132,6 +156,28 @@ void main() {
     test('a paper shorter than the window leaves nothing to scroll', () {
       final metrics = bar(Axis.vertical, CanvasViewport(zoom: 0.25));
       expect(metrics.maxScroll, 0);
+    });
+
+    test('each bar reads its ends off the window\'s own edges — a window '
+        'set off across and down by different amounts', () {
+      const paperOff = Rect.fromLTWH(24, 60, 600, 800);
+      const windowOff = Rect.fromLTWH(10, 40, 400, 300);
+      final top = bar(
+        Axis.vertical,
+        CanvasViewport(panY: -20),
+        limit: paperOff,
+        over: windowOff,
+      );
+      expect(top.scrollOffset, 0, reason: 'the paper\'s top on the window\'s');
+      expect(top.viewportForScroll(500).panY, -520);
+      final side = bar(
+        Axis.horizontal,
+        CanvasViewport(panX: -14),
+        limit: paperOff,
+        over: windowOff,
+      );
+      expect(side.scrollOffset, 0, reason: 'its left on the window\'s');
+      expect(side.viewportForScroll(200).panX, -214);
     });
   });
 
