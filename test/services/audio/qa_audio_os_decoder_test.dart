@@ -25,6 +25,10 @@ import '../../helpers/project_scratch_folder.dart';
 /// hand-waving: the rate and channel count must come back exactly, the
 /// length within AAC's priming/padding slack, the mid-file peak near the
 /// encoded amplitude.
+///
+/// Beside it, a movie's uncompressed sound, which the engine reads itself on
+/// every platform (board mac-reads-no-movie-pcm): where a movie's sound
+/// starts is one law whichever of the two read it.
 void main() {
   final libraryPath = nativeEngineLibraryPathOrNull();
   final available = libraryPath != null;
@@ -169,50 +173,37 @@ void main() {
     );
   }, skip: skip);
 
-  test('a movie\'s uncompressed sound is never dr_mp3\'s — and where the OS '
-      'stack reads it, it lands sample for sample', () {
+  test('a movie\'s uncompressed sound is never dr_mp3\'s — the engine reads '
+      'it itself, on every platform', () {
     // 🚨The head decides who may try (user 10-09, board
     // sound-lands-on-its-exact-sample-Q2). This movie's quiet half is what
-    // dr_mp3 synced on before it did: 1,920 frames of noise at 44.1 kHz,
-    // and the OS stack — which reads it exactly — was never asked.
+    // dr_mp3 synced on before it did: 1,920 frames of noise at 44.1 kHz.
+    // 🚨And no OS stack is asked (board mac-reads-no-movie-pcm): AudioToolbox
+    // read nothing of this movie on the macOS CI runner (10-15), where Media
+    // Foundation read it exactly — the C range test pins each way a writer
+    // stores such a sound, and the control below what this one holds.
     final decoder = QaAudioDecoder.instance;
     expect(decoder, isNotNull);
-    final samples = _roomToneThenTone();
-    final decoded = decodeAudioBytes(pcmMovie(samples));
+    final decoded = decodeAudioBytes(pcmMovie(_roomToneThenTone()));
 
     expect(
       decoded?.format,
       isNot(QaAudioFormat.mp3),
       reason: 'a QuickTime head must keep dr_mp3 away from the movie',
     );
-    if (Platform.isLinux) {
-      expect(decoded, isNull, reason: 'no OS stack to read it here');
-      return;
-    }
-    if (_movieUnreadHere(decoded)) {
-      return;
-    }
-    expect(decoded, isNotNull, reason: 'Media Foundation reads it');
-    expect(decoded!.format, QaAudioFormat.os);
+    expect(decoded, isNotNull, reason: 'the engine reads it on every platform');
+    expect(decoded!.format, QaAudioFormat.moviePcm);
     expect(decoded.sampleRate, 48000);
     expect(decoded.channels, 2);
-    expect(decoded.length, samples.length ~/ 2, reason: 'not a frame more');
-    // Uncompressed: every sample is the one written, so the first lands on
-    // frame 0 and the tone on its own frame.
-    for (var index = 0; index < samples.length; index += 1) {
-      final got = (decoded.samples[index] * 32768).round();
-      if (got != samples[index]) {
-        fail('sample $index is $got, written ${samples[index]}');
-      }
-    }
   }, skip: skip);
 
   // -------------------------------------------------------------------------
   // 🚨★★★WHERE A SOUND STARTS (user 10-09, board
   // sound-lands-on-its-exact-sample-Q3 · Q4). An encoder puts frames of its
   // own before the sound; the file says how many, and the engine takes
-  // exactly those off — whichever OS stack decoded it. The C range test
-  // pins the MP3 half (a LAME tag, and the standard 1,105 without one).
+  // exactly those off — whichever decoder read it, an OS stack or the
+  // engine's own movie reader. The C range test pins the MP3 half (a LAME
+  // tag, and the standard 1,105 without one).
 
   test('a movie\'s edit list says where its sound starts — taken to the '
       'frame, uncompressed so nothing smears, however the movie is laid '
@@ -237,14 +228,7 @@ void main() {
       ),
     ]) {
       final decoded = decodeAudioBytes(movie);
-      if (Platform.isLinux) {
-        expect(decoded, isNull, reason: '$shape: no OS stack to read it here');
-        continue;
-      }
-      if (_movieUnreadHere(decoded)) {
-        return;
-      }
-      expect(decoded, isNotNull, reason: '$shape: Media Foundation reads it');
+      expect(decoded, isNotNull, reason: '$shape: the engine reads it');
       expect(decoded!.length, 24000, reason: '$shape: it plays 24,000 frames');
       for (var index = 0; index < 24000 * 2; index += 1) {
         final got = (decoded.samples[index] * 32768).round();
@@ -406,14 +390,9 @@ void main() {
       'nothing — its format has no delay to take', () {
     final samples = _roomToneThenTone();
     final decoded = decodeAudioBytes(pcmMovie(samples));
-    if (Platform.isLinux) {
-      expect(decoded, isNull);
-      return;
-    }
-    if (_movieUnreadHere(decoded)) {
-      return;
-    }
-    expect(decoded!.length, samples.length ~/ 2);
+    expect(decoded!.length, samples.length ~/ 2, reason: 'not a frame more');
+    // Every sample is the one written, so the first lands on frame 0 and the
+    // tone on its own frame.
     for (var index = 0; index < samples.length; index += 1) {
       final got = (decoded.samples[index] * 32768).round();
       if (got != samples[index]) {
@@ -531,7 +510,7 @@ void main() {
       edits: [(from: 480, keep: 24000)],
     );
     for (final (what, bytes) in [
-      if (!_movieUnreadHere(decodeAudioBytes(movie))) ('a movie\'s PCM', movie),
+      ('a movie\'s PCM', movie),
       ('an m4a', fixtureBytes()),
       ('an ogg', File('test/fixtures/tone.ogg').readAsBytesSync()),
     ]) {
@@ -961,8 +940,7 @@ void main() {
     );
     final framed = framedMovie('test/fixtures/tone_with_video.mp4');
     for (final (what, span) in [
-      if (!_movieUnreadHere(decodeAudioBytes(movie)))
-        ('a movie\'s PCM', written('pcm.mov', movie)),
+      ('a movie\'s PCM', written('pcm.mov', movie)),
       ('an m4a', written('tone.m4a', fixtureBytes())),
       (
         'an ogg',
@@ -1034,18 +1012,6 @@ Uint8List wav16(Float32List samples, {int channels = 1, int rate = 48000}) {
     ),
     ...pcm,
   ]);
-}
-
-/// Whether [decoded] — a movie's PCM — went unread by the OS stack this runs
-/// on: said as a skip, never passed over. Media Foundation reads it (measured
-/// 10-06 · 10-09) and Linux has no stack to (its tests say so); AudioToolbox
-/// on the macOS CI runner does not (10-15).
-bool _movieUnreadHere(QaDecodedAudio? decoded) {
-  if (decoded != null || Platform.isWindows || Platform.isLinux) {
-    return false;
-  }
-  markTestSkipped('this OS stack does not read a movie\'s PCM');
-  return true;
 }
 
 /// One second of 48 kHz stereo: half a second of room tone — the few steps

@@ -362,8 +362,13 @@ class ConformHeader {
 /// itunes-gapless-note-is-what-an-m4a-says). ⚠️2 also covers two changes
 /// that should have moved it and did not: a movie that says nothing losing
 /// AAC's standard unless Windows wrote it (10-09, Q7), and AudioToolbox no
-/// longer trimming 2,112 off such a movie on a Mac (10-15).
-const int conformDecodeRecipe = 2;
+/// longer trimming 2,112 off such a movie on a Mac (10-15). 3 = a movie's
+/// uncompressed sound is read by the engine itself, as a WAV of it is
+/// (2026-10-16, board mac-reads-no-movie-pcm): Media Foundation read 8-bit
+/// sound up to 1/128 off that and 32-bit integers a last bit off, and
+/// Android's path takes what MediaCodec hands back as 16 bits unless it is
+/// float (`qa_os_take_output`).
+const int conformDecodeRecipe = 3;
 
 /// Whether [head] starts with the conform magic — the cheap half of「is this
 /// file ours」, and all the cache collector needs before it counts or deletes
