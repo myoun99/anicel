@@ -1890,7 +1890,7 @@ void main() {
       expect(
         find.descendant(
           of: importWarningsButton,
-          matching: find.text(AppText.strings.imWarningCount(2)),
+          matching: find.text('2 warnings'),
         ),
         findsOneWidget,
       );
@@ -1921,11 +1921,13 @@ void main() {
     /// Runs the window on [paths] and answers the notice its warnings open,
     /// once the run has left them on the status line — a picture the window
     /// [previews] shown first: a Photoshop file is read whole for it, and
-    /// held while it is (the file table's PSD pins).
+    /// held while it is (the file table's PSD pins) — and what the rows are
+    /// [asked] answered before Import is pressed.
     Future<Finder> warningsAfterImporting(
       WidgetTester tester,
       List<String> paths, {
       bool previews = false,
+      Future<void> Function()? asked,
     }) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -1945,6 +1947,7 @@ void main() {
           isTrue,
         );
       }
+      await asked?.call();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
       for (
@@ -2055,6 +2058,63 @@ void main() {
       expect(inNotice('flat.psd'), findsWidgets);
     });
 
+    testWidgets('F-370-Q1: a PDF whose pages did not all render is named '
+        'under how many did not', (tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+        pageSizes: List.filled(3, const ui.Size(595, 842)),
+        unrenderable: const {1, 2},
+      );
+      final pdf = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [pdf!],
+        asked: () =>
+            pickCell(tester, column: 'into', path: pdf, option: 'newCut'),
+      );
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(
+        inNotice('2 page(s) failed to render — their cels stay empty. (1)'),
+        findsOneWidget,
+      );
+      expect(inNotice('conte.pdf'), findsOneWidget);
+    });
+
+    testWidgets('F-370-Q1: a cut folder gone before Import is said as a line '
+        'of the notice\'s own sentence', (tester) async {
+      final folder = await tester.runAsync(() async {
+        final sep = Platform.pathSeparator;
+        await writePng('gone_01_002_lo${sep}A1.png');
+        return '${tempDir.path}${sep}gone_01_002_lo';
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [folder!],
+        asked: () => tester.runAsync(
+          () => Directory(folder).delete(recursive: true),
+        ),
+      );
+
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.text(
+            [
+              AppText.strings.imLeftBehind,
+              'Could not read that folder.',
+            ].join('\n'),
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('F-370-Q1: the status line keeps its place — as tall before '
         'anything is said as the button it turns into', (tester) async {
       final bad = await tester.runAsync(() => writeBrokenPng('breaks.png'));
@@ -2094,7 +2154,13 @@ void main() {
       }
       session.playbackRig.prerenderScheduler.cancel();
 
-      expect(importWarningsButton, findsOneWidget);
+      expect(
+        find.descendant(
+          of: importWarningsButton,
+          matching: find.text('1 warning'),
+        ),
+        findsOneWidget,
+      );
       expect(tester.getRect(line), lineBefore);
       expect(tester.getRect(run), runBefore, reason: 'nothing under it moved');
     });

@@ -15,12 +15,16 @@ class FakePdfDocument implements ViewerDocument {
     this.cancelsWhenDisposed = false,
     this.clear = false,
     this.drawnAtAnySize = true,
+    this.unrenderable = const {},
   });
 
   /// The fake stands in for a PDF, drawn at any size. A test of a document
   /// made of its file's pixels — a picture, a movie — sets this false.
   @override
   final bool drawnAtAnySize;
+
+  /// Pages whose render fails — a damaged page of a file that opens.
+  final Set<int> unrenderable;
 
   /// Every pixel a region read hands back is clear — a picture with nothing
   /// on it where the outline lies (a transparent image's empty stretch).
@@ -89,6 +93,9 @@ class FakePdfDocument implements ViewerDocument {
     }
     if (disposed && cancelsWhenDisposed) {
       throw StateError('PDF page render was cancelled.');
+    }
+    if (unrenderable.contains(pageIndex)) {
+      throw StateError('PDF page $pageIndex does not render.');
     }
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
