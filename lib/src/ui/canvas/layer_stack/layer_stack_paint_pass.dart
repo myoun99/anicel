@@ -43,11 +43,16 @@ class _SurfaceSlot {
   _SurfaceSlot({
     required this.painter,
     required this.float,
+    required this.keys,
     required LayerPlacement? placement,
   }) : canvasToSlot = _undoneWrap(placement);
 
   final BitmapSurfacePainter painter;
   final SelectionFloatOverlay? float;
+
+  /// The row's leading colour keys — the half its surface already went
+  /// through, which a float over it is shown through as well ([shown]).
+  final List<ResolvedLayerEffect> keys;
 
   /// What takes the float — CANVAS space, by its contract
   /// ([SelectionFloatPaint]) — into the slot, which is drawn under its row's
@@ -68,18 +73,28 @@ class _SurfaceSlot {
     return wrap.invert() == 0 ? null : wrap;
   }
 
+  /// The float as this row shows it ([SelectionFloatPaint.shownOn]), or
+  /// null when nothing floats — read ONCE per paint, as [extent] is: on a
+  /// keyed row the answer can be a landing.
+  late final RowFloat? shown = switch (float?.value) {
+    null => null,
+    final value when value.isEmpty => null,
+    final value => value.shownOn(keys, canvasToRow: canvasToSlot),
+  };
+
   /// What the slot draws, in its own space — the law is
   /// [_LayerStackPaintPass._activeSurfaceExtent]'s (F-85).
   late final Rect extent = () {
     final drawn = painter.drawnWorldRect;
-    final onCanvas = float?.value?.drawnWorldRect;
-    if (onCanvas == null || onCanvas.isEmpty) {
+    final shown = this.shown;
+    final told = shown?.preview.drawnWorldRect;
+    if (shown == null || told == null || told.isEmpty) {
       return drawn;
     }
-    final intoSlot = canvasToSlot;
+    final intoSlot = shown.canvasToRow;
     final floated = intoSlot == null
-        ? onCanvas
-        : MatrixUtils.transformRect(intoSlot, onCanvas);
+        ? told
+        : MatrixUtils.transformRect(intoSlot, told);
     // A slot that draws nothing answers [Rect.zero], and a union with it
     // would reach back to the origin.
     return drawn.isEmpty ? floated : drawn.expandToInclude(floated);
@@ -545,11 +560,15 @@ class _LayerStackPaintPass {
   late final _SurfaceSlot? _activeSlot =
       switch (_painter.activeSurfacePainter) {
         null => null,
-        final painter => _SurfaceSlot(
-          painter: painter,
-          float: _painter.floatOverlay,
-          placement: _activeRowIn(_painter.nodes)?.placement,
-        ),
+        final painter => () {
+          final row = _activeRowIn(_painter.nodes);
+          return _SurfaceSlot(
+            painter: painter,
+            float: _painter.floatOverlay,
+            keys: row?.keys ?? const [],
+            placement: row?.placement,
+          );
+        }(),
       };
 
   /// Each row a lift holds beside the live one, by its surface (I-37 ·
@@ -562,6 +581,7 @@ class _LayerStackPaintPass {
         () => _SurfaceSlot(
           painter: row.lifted.surface,
           float: row.lifted.float,
+          keys: row.keys,
           placement: row.placement,
         ),
       );
@@ -972,7 +992,6 @@ class _LayerStackPaintPass {
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(slot.painter.pasteboardRect);
-      final float = slot.float?.value;
         slot.painter.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -1000,9 +1019,11 @@ class _LayerStackPaintPass {
           // drawn here after it — below 100% the surface draws level
           // tiles, and a float laid over them 1:1 at `none` was sampled one
           // pixel in two, so it looked sharper than what it landed as.
-          float: float == null
-              ? null
-              : (preview: float, canvasToRow: slot.canvasToSlot),
+          //
+          // 🚨transform-float-skips-colour-key: on a keyed row the float is
+          // shown through the row's keys, as what it lands as
+          // ([_SurfaceSlot.shown]) — not as the unkeyed pixels it holds.
+          float: slot.shown,
         );
       into.restore();
     }

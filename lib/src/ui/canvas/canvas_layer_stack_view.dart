@@ -122,6 +122,12 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   /// idempotent at Amount 100, which is exactly why it hid; at any lower
   /// Amount the two applications compound.
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
+
+  /// The CPU half — the leading colour keys, which the session puts on the
+  /// surface this row draws ([CanvasLayerImageRequest.sourceEffects]'s
+  /// split, for the row a pen is on).
+  List<ResolvedLayerEffect> get sourceEffects =>
+      splitSourceEffects(effects).source;
 }
 
 /// A [LiftedCel] as the view draws it: the painter its surface is shown by,
@@ -1174,6 +1180,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // The PAINT half only, as the live row's: the lifted surface's
           // painter carries the row's leading keys.
           effects: request.paintEffects,
+          keys: request.sourceEffects,
         );
       case final CanvasLayerImageRequest request:
         final held = _images[request.frameKey];
@@ -1205,6 +1212,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // The PAINT half only — like the cached row above. A leading
           // key is already on the surface this node draws.
           effects: active.paintEffects,
+          keys: active.sourceEffects,
         );
     }
   }
@@ -1631,6 +1639,11 @@ sealed class _SurfaceRow extends _PaintRow {
   LayerPlacement? get placement;
   List<ResolvedLayerEffect> get effects;
 
+  /// The CPU half of the row's chain — the leading colour keys its cel is
+  /// shown through — which a float over it asks after
+  /// ([SelectionFloatPaint.shownOn]).
+  List<ResolvedLayerEffect> get keys;
+
   _SurfaceRowPaint get paint => (
     opacity: opacity,
     blendMode: blendMode,
@@ -1654,6 +1667,7 @@ final class _PaintActiveSurface extends _SurfaceRow {
     required this.blendMode,
     required this.placement,
     required this.effects,
+    required this.keys,
   });
 
   /// ㊱: the active row's display opacity. It reached the node all along and
@@ -1672,6 +1686,8 @@ final class _PaintActiveSurface extends _SurfaceRow {
   final LayerPlacement? placement;
   @override
   final List<ResolvedLayerEffect> effects;
+  @override
+  final List<ResolvedLayerEffect> keys;
 
   // ㊱: the alpha belongs in the repaint gate too — a slider drag changes
   // NOTHING else about this node, so leaving it out would paint the new
@@ -1683,11 +1699,17 @@ final class _PaintActiveSurface extends _SurfaceRow {
       opacity == other.opacity &&
       blendMode == other.blendMode &&
       placement == other.placement &&
-      listEquals(effects, other.effects);
+      listEquals(effects, other.effects) &&
+      listEquals(keys, other.keys);
 
   @override
-  int get signature =>
-      Object.hash(opacity, blendMode, placement, Object.hashAll(effects));
+  int get signature => Object.hash(
+    opacity,
+    blendMode,
+    placement,
+    Object.hashAll(effects),
+    Object.hashAll(keys),
+  );
 }
 
 /// A row a folder's move session holds lifted ([LiftedCel]): drawn by
@@ -1700,6 +1722,7 @@ final class _PaintLiftedSurface extends _SurfaceRow {
     required this.blendMode,
     required this.placement,
     required this.effects,
+    required this.keys,
   });
 
   final _LiftedRowPaint lifted;
@@ -1711,6 +1734,8 @@ final class _PaintLiftedSurface extends _SurfaceRow {
   final LayerPlacement? placement;
   @override
   final List<ResolvedLayerEffect> effects;
+  @override
+  final List<ResolvedLayerEffect> keys;
 
   // The surface and the float by IDENTITY, as an image is: the float's
   // value moves under the hand without this node changing, which is why a
@@ -1724,7 +1749,8 @@ final class _PaintLiftedSurface extends _SurfaceRow {
       opacity == other.opacity &&
       blendMode == other.blendMode &&
       placement == other.placement &&
-      listEquals(effects, other.effects);
+      listEquals(effects, other.effects) &&
+      listEquals(keys, other.keys);
 
   @override
   int get signature => Object.hash(
@@ -1734,6 +1760,7 @@ final class _PaintLiftedSurface extends _SurfaceRow {
     blendMode,
     placement,
     Object.hashAll(effects),
+    Object.hashAll(keys),
   );
 }
 

@@ -40,8 +40,6 @@ import 'selection_ants_painter.dart';
 import 'selection_drag.dart';
 import 'transform_box.dart';
 import 'selection_float_overlay.dart';
-import 'bitmap_surface_painter.dart';
-import 'tile_pyramid.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/value_control_pointers.dart';
 import 'canvas_press.dart';
@@ -61,7 +59,14 @@ import 'canvas_viewport_offset.dart';
 /// 🗣️유저 2026-10-02 (I-37): 「폴더 전체를 하나로 들도록」 — a folder's lift
 /// takes one up from each row it holds, each shown in its own row, and so
 /// does a frame range's across rows (F-329); a cel's lift takes one.
-typedef LiftedFloat = ({BrushDab stampDab, SelectionFloatOverlay? showsOn});
+///
+/// [landsOn] is the cel it lands on, for the row that shows it
+/// ([SelectionFloatPaint.shownOn]) — null where nothing shows it in a row.
+typedef LiftedFloat = ({
+  BrushDab stampDab,
+  SelectionFloatOverlay? showsOn,
+  FloatLandsOn? landsOn,
+});
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -419,8 +424,12 @@ class _MoveSession {
 /// (`a-box-walked-onto-an-empty-cel-floats-the-old-picture`, measured
 /// 2026-10-09).
 class _Float {
-  _Float({required this.stamp, required this.showsOn, required this.preview})
-    : _lifted = stamp;
+  _Float({
+    required this.stamp,
+    required this.showsOn,
+    required this.landsOn,
+    required this.preview,
+  }) : _lifted = stamp;
 
   /// The stamp dab currently FLOATING — removed from the command so the
   /// base never shows it (no double image).
@@ -434,6 +443,9 @@ class _Float {
 
   /// Where it shows ([LiftedFloat.showsOn]).
   final SelectionFloatOverlay? showsOn;
+
+  /// The cel it lands on ([LiftedFloat.landsOn]).
+  final FloatLandsOn? landsOn;
 
   /// It through the open warp, resampled and decoded for the screen — see
   /// [FloatResamplePreview]. Empty outside a warp.
@@ -2128,6 +2140,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return float = _Float(
       stamp: lifted.stampDab,
       showsOn: lifted.showsOn,
+      landsOn: lifted.landsOn,
       preview: FloatResamplePreview(this, () => _floatWarpOf(float)),
     );
   }
@@ -2162,6 +2175,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // edge loses those pixels on Enter, and a preview that kept showing
         // them would be promising something the commit will not deliver.
         clip: pasteboard,
+        lands: _landsAs(float, resampledDab),
       );
     }
     // ↩️`_drag is MoveDrag` stood here too, from when a move was its own
@@ -2169,21 +2183,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // float is asked only inside, so neither term could ever be false.
     final floatSurface = float.surface;
     if (floatSurface != null) {
+      final offset = _floatDrawCanvasOffset(float);
+      final centre = float.surfaceCentre ?? float.stamp.center;
       return SelectionFloatPaint(
-        surface: BitmapSurfacePainter(
-          surface: floatSurface,
-          viewport: widget.viewport,
-          showTransparentBackground: false,
-          // The float is nobody's cel: its level tiles live in the
-          // pyramid's one scope for floats. Not a scope of its own — the
-          // pyramid keeps eight, and a session of transforms would push
-          // out the `(layerId, frameId)` scopes the brush depends on.
-          lineage: TilePyramid.noLineage,
+        // Its own pixels, through no keys: the row it floats in shows it
+        // through that row's own ([SelectionFloatPaint.shownOn]), and its
+        // own clear pixels are what a landing leaves alone.
+        surface: floatPainter(floatSurface, const []),
+        surfaceOffset: offset,
+        // The surface's own picture where it is drawn: materialized from
+        // that stamp at that centre, and carried by the offset.
+        lands: _landsAs(
+          float,
+          float.stamp.copyWith(
+            stamp: float.surfaceStamp,
+            center: CanvasPoint(x: centre.x + offset.x, y: centre.y + offset.y),
+          ),
         ),
-        surfaceOffset: _floatDrawCanvasOffset(float),
       );
     }
     return SelectionFloatPaint();
+  }
+
+  /// What [float] lands as while it shows [stamp] — null where nothing
+  /// lands it in a row ([LiftedFloat.landsOn]).
+  FloatLanding? _landsAs(_Float float, BrushDab stamp) {
+    final on = float.landsOn;
+    return on == null ? null : (stamp: stamp, on: on);
   }
 
   /// The composite slots this layer has handed a float to

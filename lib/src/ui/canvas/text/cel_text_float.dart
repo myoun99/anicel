@@ -92,6 +92,10 @@ class CelTextFloat implements LandingPreview {
 /// being drawn on lays no paper in it: the stack lays the paper under
 /// every row.
 ///
+/// A selection's float lands as the same thing, on such a row, wherever its
+/// own pixels are not what its landing shows (`FloatLandsOn.landingShown`,
+/// transform-float-skips-colour-key).
+///
 /// ⚠️[picture] is let go of by whoever shows this, once it shows it no
 /// more ([letGo]).
 @immutable

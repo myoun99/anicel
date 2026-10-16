@@ -129,6 +129,9 @@ class _CanvasPanelLift {
     }
     _session = null;
     _state.widget.coordinator?.frameStore.releaseReclaimableView(liftToken);
+    for (final cel in session.cels) {
+      cel.letTheLandingGo();
+    }
     return session;
   }
 
@@ -151,6 +154,77 @@ class _CanvasPanelLift {
   /// (a-marquee-on-a-posed-row).
   List<BrushDab> _landingOf(_LiftedCel cel, BrushDab stampDab) =>
       _landingDabs(cel.eraseDab, stampInArtwork(stampDab, cel.placement));
+
+  /// What [key]'s cel will SHOW where [stampDab] — on the canvas — lands,
+  /// through its row's leading [keys] ([FloatLandsOn.landingShown]): made
+  /// once for each place a hand carries the float to, as the text in hand's
+  /// landing is (`_CanvasPanelText._landingOf`, F-344-Q3), and let go of
+  /// once another takes its place or the session ends.
+  LandingPreview? landingShownOn(
+    BrushFrameKey key,
+    BrushDab stampDab,
+    List<ResolvedLayerEffect> keys,
+  ) {
+    final cel = _session?.celOf(key);
+    if (cel == null) {
+      return null;
+    }
+    final signature = celSourceEffectSignature(keys);
+    final kept = cel.landing;
+    if (kept != null &&
+        identical(kept.stamp.stamp, stampDab.stamp) &&
+        kept.stamp.center == stampDab.center &&
+        listEquals(kept.keys, signature)) {
+      return kept.shown;
+    }
+    cel.letTheLandingGo();
+    final landed = _landedOn(cel, stampDab);
+    final shown = landed == null
+        ? null
+        : CelTextLanding.of(
+            landed.region,
+            bitmapSurfaceRegionPixels(
+              celSurfaceAsShown(landed.surface, keys),
+              landed.region,
+            ),
+          );
+    cel.landing = (stamp: stampDab, keys: signature, shown: shown);
+    return shown;
+  }
+
+  /// [cel] as it will stand once [stampDab] — on the canvas — lands on it,
+  /// and the region of the cel's grid it lands in: what its confirm lands
+  /// ([_landingOf]). Null when the stamp lands past the pasteboard, or the
+  /// hole cannot be cut.
+  ///
+  /// ⛔THE CONFIRM'S OWN LANDING, made on the hole the session already holds
+  /// rather than cutting it again at every move of the hand: the erase is
+  /// what [holedSurfaceFor] is, and a stamp is blended on what the dabs
+  /// before it left (`materializeBrushDabSequenceOnBitmapSurface`, which
+  /// the commit runs both through).
+  ({BitmapSurface surface, DirtyRegion region})? _landedOn(
+    _LiftedCel cel,
+    BrushDab stampDab,
+  ) {
+    final holed = holedSurfaceFor(cel.key);
+    if (holed == null) {
+      return null;
+    }
+    final stamp = _landingOf(cel, stampDab).last;
+    final region = stamp.stamp
+        ?.landingRect(stamp.center)
+        .intersection(holed.canvasSize.pasteboardRegion);
+    if (region == null) {
+      return null;
+    }
+    return (
+      surface: materializeBrushDabSequenceOnBitmapSurface(
+        surface: holed,
+        sequence: BrushDabSequence([stamp]),
+      ).surface,
+      region: region,
+    );
+  }
 
   /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
   /// whole block (F-116-b / F-164).
@@ -517,4 +591,38 @@ class _LiftedCel {
   /// Null after a memory warning took it — never a lost edit, only a lost
   /// computation.
   BitmapSurface? holed;
+
+  /// What the cel will show where its float was last asked to land
+  /// ([_CanvasPanelLift.landingShownOn]): the stamp it was made for, the
+  /// keys it was made through, and the landing — null where it lands
+  /// nowhere.
+  ({BrushDab stamp, List<double> keys, CelTextLanding? shown})? landing;
+
+  /// The landing last made is shown no more.
+  void letTheLandingGo() {
+    landing?.shown?.letGo();
+    landing = null;
+  }
+}
+
+/// A lifted cel as the float taken up from it asks after it
+/// ([FloatLandsOn]) — through the session, so a cel the session holds no
+/// more answers nothing, and a hole a memory warning took is cut again.
+class _CelUnderFloat implements FloatLandsOn {
+  _CelUnderFloat(this._lift, this._key);
+
+  final _CanvasPanelLift _lift;
+  final BrushFrameKey _key;
+
+  @override
+  BitmapSurface? get holed => _lift.holedSurfaceFor(_key);
+
+  @override
+  bool get onCanvasGrid => _lift._session?.celOf(_key)?.placement == null;
+
+  @override
+  LandingPreview? landingShown(
+    BrushDab stamp,
+    List<ResolvedLayerEffect> keys,
+  ) => _lift.landingShownOn(_key, stamp, keys);
 }

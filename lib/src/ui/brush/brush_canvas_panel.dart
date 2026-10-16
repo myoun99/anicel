@@ -16,6 +16,10 @@ import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds, celTextPlateSurface;
+import '../../services/bitmap_surface_brush_commit.dart'
+    show materializeBrushDabSequenceOnBitmapSurface;
+import '../../services/brush_stroke_blend.dart'
+    show bitmapSurfaceRegionPixels;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../services/undo_surface_snapshot.dart';
 import '../../models/layer_effect.dart';
@@ -25,8 +29,10 @@ import '../../models/cel_text.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_piece.dart' show CutPiece;
 import '../../models/brush_dab.dart';
+import '../../models/brush_dab_sequence.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/dirty_region.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
@@ -59,7 +65,6 @@ import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/landing_preview.dart';
 import '../canvas/selection_float_overlay.dart';
-import '../canvas/tile_pyramid.dart' show TilePyramid;
 import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart';
 import '../canvas/canvas_tool_holds.dart';

@@ -291,12 +291,13 @@ class _CanvasPanelText implements CelTextToolHost {
     if (kept != null && identical(kept.of, plate) && kept.fx == on.fx) {
       return kept.painter;
     }
-    final painter = _floatPainter(
+    final painter = floatPainter(
       celTextPlateSurface(
         plate,
         canvasSize: on.surface.canvasSize,
         tileSize: on.surface.tileSize,
       ),
+      _state.widget.activeSourceEffects,
     );
     _held = (of: plate, fx: on.fx, painter: painter);
     return painter;
@@ -313,27 +314,19 @@ class _CanvasPanelText implements CelTextToolHost {
     if (kept != null && identical(kept.of, above) && kept.fx == on.fx) {
       return kept.painter;
     }
-    final painter = _floatPainter(
+    final painter = floatPainter(
       BitmapSurface(
         canvasSize: on.surface.canvasSize,
         tileSize: on.surface.tileSize,
         texts: above,
       ),
+      _state.widget.activeSourceEffects,
     );
     _above = (of: above, fx: on.fx, painter: painter);
     return painter;
   }
 
   ({Object of, String fx, BitmapSurfacePainter painter})? _above;
-
-  /// A painter of what floats: drawn in its row's own space by the painter
-  /// it floats over, so it brings no paper and is nobody's cel.
-  BitmapSurfacePainter _floatPainter(BitmapSurface surface) =>
-      BitmapSurfacePainter(
-        surface: celSurfaceAsShown(surface, _state.widget.activeSourceEffects),
-        showTransparentBackground: false,
-        lineage: TilePyramid.noLineage,
-      );
 
   Widget layer() => Positioned.fill(
     child: CelTextToolLayer(
