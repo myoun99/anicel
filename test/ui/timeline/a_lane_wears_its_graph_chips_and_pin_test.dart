@@ -345,13 +345,11 @@ void main() {
     /// The room it got in the tallest column, with graphs and without.
     final tallestName = <bool, double>{};
 
-    /// Each control that showed in a column and was gone from a taller one —
-    /// all but the navigator. ⚠️The navigator is asked of the value SHOWING
-    /// (the gate pays the value first, 2026-08-08): since the value turned,
-    /// as long as the rail's value cell is wide (10-11), it stands in a
-    /// column too short for the value and makes way when the value comes —
-    /// reported on the card of the round that turned it (board:
-    /// tool-settings-panel-tidy).
+    /// Each control that showed in a column and was gone from a taller one.
+    /// ↩️The navigator was left out of this from 10-11 to 10-16: it was
+    /// asked of the value SHOWING, so it stood in a column too short for the
+    /// value and made way when the value came (board:
+    /// xsheet-stood-navigator-comes-and-goes).
     final wentAgain = <String>[];
 
     /// The shortest column, from 60 up, that shows each of [keys].
@@ -390,7 +388,7 @@ void main() {
           final shown = handle(key).evaluate();
           if (first[key] == null && shown.isNotEmpty) {
             first[key] = height;
-          } else if (key != navigator && first[key] != null && shown.isEmpty) {
+          } else if (first[key] != null && shown.isEmpty) {
             wentAgain.add('$key at $height${graphs ? ', graphs' : ''}');
           }
         }
@@ -427,6 +425,12 @@ void main() {
     for (final key in [value, navigator, link]) {
       expect(carried[key], without[key], reason: key);
     }
+    expect(
+      carried[navigator],
+      greaterThan(carried[value]!),
+      reason: 'the gate pays the value first (2026-08-08): a column too '
+          'short for it stands no navigator either',
+    );
     expect(carried[link], greaterThan(carried[navigator]!));
     expect(carried[pin], greaterThan(carried[link]!));
     expect(carried[chip], greaterThan(carried[pin]!));

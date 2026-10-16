@@ -1159,6 +1159,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// What a stood-up member column [extent] long shows: the NAME is paid
   /// first, then each control in turn, and what does not fit is shed.
   ///
+  /// 🚨ONE LAW FOR EVERY CONTROL, written once: each is paid after every
+  /// control before it that the LANE HAS — not after the ones this column
+  /// is showing — so what a column grew to show stays as it grows on. The
+  /// order is the gate's (2026-08-08): the value, the navigator, the
+  /// chain, the pin, the chips.
+  ///
   /// The chain is paid after the value and the navigator, once everything
   /// the column already showed has its room: it links the value, so it is
   /// never there without it, and no key button is shed to make it room.
@@ -1172,35 +1178,43 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// the value and went again as the column grew to take it — a window the
   /// turned value column, as long as the rail's value cell is wide, opened
   /// (2026-10-11).
+  /// ↩️The navigator was the last one asked of the value SHOWING: it stood
+  /// in a column too short for the value, made way when the value came and
+  /// stood again further up (10-11 to 10-16, board:
+  /// xsheet-stood-navigator-comes-and-goes). Each control spelled its own
+  /// floor then, and the one that drifted is why they are one walk now.
   _StoodShows _stoodShows(
     double extent, {
     required bool hasValue,
     required bool hasLink,
   }) {
-    final valueSlot =
-        _laneValueGap + layerRailColumnWidthsIn(context).laneValue;
-    final value = hasValue && extent >= _laneLabelFloor + valueSlot;
-    final valueExtent = value ? valueSlot : 0.0;
-    final navigatorExtent = lane.showsKeyNavigator
-        ? _laneStoodNavigatorGap + _laneNavigatorExtent
-        : 0.0;
-    final navigatorFloor = _laneLabelFloor + valueExtent;
-    final linkFloor = navigatorFloor + navigatorExtent;
-    final linked = value && hasLink;
-    final pinFloor =
-        _laneLabelFloor +
-        (hasValue ? valueSlot : 0.0) +
-        navigatorExtent +
-        (hasValue && hasLink ? _laneValueLinkExtent : 0.0);
+    var floor = _laneLabelFloor;
+    bool paid(bool has, double slot) {
+      final fits = has && extent >= floor + slot;
+      if (has) {
+        floor += slot;
+      }
+      return fits;
+    }
+
+    final value = paid(
+      hasValue,
+      _laneValueGap + layerRailColumnWidthsIn(context).laneValue,
+    );
+    final navigator = paid(
+      lane.showsKeyNavigator,
+      _laneStoodNavigatorGap + _laneNavigatorExtent,
+    );
+    final link = paid(hasValue && hasLink, _laneValueLinkExtent);
     final graphs = _drawsGraphs;
-    final chipsFloor = pinFloor + (graphs ? layerLanePinSlotWidth : 0.0);
+    final pin = paid(graphs, layerLanePinSlotWidth);
+    final chips = paid(graphs, layerLaneChipsSlotWidth);
     return (
       value: value,
-      navigator:
-          lane.showsKeyNavigator && extent >= navigatorFloor + navigatorExtent,
-      link: linked && extent >= linkFloor + _laneValueLinkExtent,
-      pin: graphs && extent >= pinFloor + layerLanePinSlotWidth,
-      chips: graphs && extent >= chipsFloor + layerLaneChipsSlotWidth,
+      navigator: navigator,
+      link: link,
+      pin: pin,
+      chips: chips,
     );
   }
 }
