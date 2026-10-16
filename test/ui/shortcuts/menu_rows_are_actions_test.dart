@@ -407,6 +407,9 @@ void main() {
       expect(row()?.checked, isFalse, reason: 'asked; the window has not gone');
       await windowSays(true);
       expect(row()?.checked, isTrue);
+      await tester.sendKeyEvent(k);
+      await tester.pumpAndSettle();
+      expect(asked, [true, false], reason: 'from full screen, back');
       await windowSays(false);
 
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;

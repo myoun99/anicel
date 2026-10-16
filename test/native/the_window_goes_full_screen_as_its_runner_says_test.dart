@@ -159,6 +159,19 @@ void main() {
     }
   });
 
+  test('⛔a word the channel does not speak moves nothing', () async {
+    await WindowFullScreen.restore(store);
+    await messenger.handlePlatformMessage(
+      WindowFullScreen.channel.name,
+      WindowFullScreen.channel.codec.encodeMethodCall(
+        const MethodCall('somethingElse', true),
+      ),
+      (_) {},
+    );
+    expect(WindowFullScreen.on.value, isFalse);
+    expect(written, isEmpty);
+  });
+
   test('⛔a desktop whose runner has no switch keeps its window and its '
       'mark', () async {
     await WindowFullScreen.restore(store);

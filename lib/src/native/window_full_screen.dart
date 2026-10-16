@@ -72,9 +72,9 @@ abstract final class WindowFullScreen {
   }
 
   static Future<Object?> _heard(MethodCall call) async {
-    if (call.method == changedMethod && call.arguments is bool) {
-      _on.value = call.arguments as bool;
-      unawaited(_store.saveFullScreen(_on.value));
+    if (call case MethodCall(method: changedMethod, arguments: final bool on)) {
+      _on.value = on;
+      unawaited(_store.saveFullScreen(on));
     }
     return null;
   }
