@@ -1364,6 +1364,10 @@ enum AppStrings {
   /// converted project's notice.
   String get imNotTvpp => _s('imNotTvpp');
   String get imNotClip => _s('imNotClip');
+
+  /// What a converted project's notice opens with, over the lists of what
+  /// did not come over (F-370).
+  String get imLeftBehind => _s('imLeftBehind');
   String get imFileUnreadable => _s('imFileUnreadable');
   String imNotFound(String path) =>
       _s('imNotFoundTemplate').replaceAll('{path}', path);
@@ -2451,6 +2455,7 @@ enum AppStrings {
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
     'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
+    'imLeftBehind': 'Some of this file could not be imported.',
     'imFileUnreadable':
         'The file could not be read — if it is in the cloud, try again in a '
         'moment.',
@@ -3792,6 +3797,7 @@ enum AppStrings {
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
     'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
+    'imLeftBehind': 'このファイルの一部は取り込めませんでした。',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
     'imNotFoundTemplate': '見つかりません: {path}',
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
@@ -5318,6 +5324,7 @@ enum AppStrings {
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
     'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
+    'imLeftBehind': '이 파일에서 가져오지 못한 것이 있습니다.',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
     'imNotFoundTemplate': '찾을 수 없습니다: {path}',
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
@@ -6892,6 +6899,7 @@ enum AppStrings {
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
     'imNotClip':
         'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
+    'imLeftBehind': 'Une partie de ce fichier n\'a pas pu être importée.',
     'imFileUnreadable':
         'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
         'dans un instant.',
@@ -8441,6 +8449,7 @@ enum AppStrings {
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
     'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
+    'imLeftBehind': '此文件的部分内容未能导入。',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
     'imNotFoundTemplate': '未找到：{path}',
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',

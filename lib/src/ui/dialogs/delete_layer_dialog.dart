@@ -34,9 +34,9 @@ class DeleteLayerDialog extends StatelessWidget {
       title: strings.deleteLayerTitle,
       titleIcon: Icons.delete_outline,
       message: strings.deleteLayersMessage,
-      details: rows,
-      detailsHeading: strings.deleteLayersHeading,
-      detailsOpen: true,
+      details: [
+        NoticeDetails(rows, heading: strings.deleteLayersHeading, open: true),
+      ],
       actions: confirmActions(
         context,
         keys: keys,

@@ -130,6 +130,55 @@ void main() {
     expect(braced.english, 'x {file}.wav');
   });
 
+  test('F-370: a warning that opens with ONE THING parts into that thing and '
+      'what it says of it, a sentence of its own, at every language\'s '
+      'colon — and one that opens with none is said whole', () {
+    // A name with a colon of its own: the sentence parts where ITS colon is.
+    final named = unsupportedLayerKind('cel: 2');
+    expect(
+      named.partsFor(AppLanguage.en),
+      (about: 'cel: 2', says: 'This kind of layer is not supported.'),
+    );
+    expect(
+      named.partsFor(AppLanguage.fr),
+      (about: 'cel: 2', says: "Ce type de calque n'est pas pris en charge."),
+    );
+    expect(
+      named.partsFor(AppLanguage.zhHans),
+      (about: 'cel: 2', says: '不支持此图层类型。'),
+    );
+    const whole = ImportWarning(
+      'folderNoCutNumber',
+      'No cut number found in the folder name.',
+    );
+    expect(
+      whole.partsFor(AppLanguage.en),
+      (about: null, says: 'No cut number found in the folder name.'),
+    );
+  });
+
+  test('F-370: what opens with one thing in one language opens with it in '
+      'every one — so a notice lists it the same whatever the reader '
+      'speaks', () {
+    bool opensWithOne(String key, AppLanguage language) {
+      final words = AppStrings.of(language).importWarning(key, untabled);
+      final warning = ImportWarning(key, untabled, {
+        for (final placeholder in RegExp(r'\{(\w+)\}').allMatches(words))
+          placeholder.group(1)!: 'x',
+      });
+      return warning.partsFor(language).about != null;
+    }
+
+    expect([
+      for (final key in keys)
+        if ({
+              for (final language in translated) opensWithOne(key, language),
+            }.length >
+            1)
+          key,
+    ], isEmpty);
+  });
+
   test('a reason says its own language, and English where the key is the '
       'fallback', () {
     expect(

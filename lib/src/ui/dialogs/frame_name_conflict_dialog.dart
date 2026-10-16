@@ -13,7 +13,7 @@ import 'dialog_verb.dart';
 /// 리스트로서 보여주도록」. One frame renamed or a whole 자동 이름 지정 press,
 /// it is the same window: the sentence reads for one or many, and the frames
 /// the link takes are listed under it — OPEN, because which ones is what the
-/// window asks about (F-118's rule, [AppConfirmDialog.detailsOpen]).
+/// window asks about (F-118's rule, [NoticeDetails.open]).
 class FrameNameConflictDialog extends StatelessWidget {
   const FrameNameConflictDialog({
     super.key,
@@ -46,9 +46,13 @@ class FrameNameConflictDialog extends StatelessWidget {
       title: strings.frameNameConflictTitle,
       titleIcon: Icons.link_outlined,
       message: message ?? strings.frameNameConflictBody,
-      details: targets,
-      detailsHeading: strings.frameNameConflictListHeading,
-      detailsOpen: true,
+      details: [
+        NoticeDetails(
+          targets,
+          heading: strings.frameNameConflictListHeading,
+          open: true,
+        ),
+      ],
       actions: confirmActions(
         context,
         keys: keys,

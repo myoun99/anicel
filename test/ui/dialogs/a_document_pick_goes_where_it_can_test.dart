@@ -98,7 +98,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.widget<AppConfirmDialog>(find.byType(AppConfirmDialog)).details,
+      tester
+          .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
+          .details
+          .single
+          .lines,
       ['notes.txt'],
       reason: 'the refusal names the file the person picked, not its URI',
     );

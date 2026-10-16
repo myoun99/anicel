@@ -54,7 +54,7 @@ Future<void> noticeUnsupportedFiles(
     '{kinds}',
     supportedExtensions.map((extension) => '.$extension').join(', '),
   ),
-  details: refused,
+  details: [NoticeDetails(refused)],
   windowKey: const ValueKey<String>('unsupported-file-notice'),
 );
 

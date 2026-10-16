@@ -118,7 +118,34 @@ extension SelectionCombineModeWords on SelectionCombineMode {
 extension ImportWarningWords on ImportWarning {
   String textFor(AppLanguage language) =>
       fill(AppStrings.of(language).importWarning(key, template));
+
+  /// The warning in a language as a list says it: what it is [about] — the
+  /// value its sentence opens with (`{name}: …`, in every language's own
+  /// colon) — and what it [says] of that, a sentence of its own; [about] is
+  /// null for a warning that opens with no one thing.
+  ///
+  /// 🗣️F-370 (유저 2026-10-16: 「줄이 너무 한줄로되있어서 알기힘듬 … 줄
+  /// 나누거나 해서 항목화하도록」): a notice lists each thing said once, with
+  /// what it was said of under it — a layer named by a whole paragraph had
+  /// buried what was said of it.
+  ({String? about, String says}) partsFor(AppLanguage language) {
+    final words = AppStrings.of(language).importWarning(key, template);
+    final opening = _opensWithOne.firstMatch(words);
+    final about = opening == null ? null : values[opening.group(1)];
+    if (about == null) {
+      return (about: null, says: fill(words));
+    }
+    final says = fill(words.substring(opening!.end));
+    return (
+      about: about,
+      says: says.isEmpty ? says : says[0].toUpperCase() + says.substring(1),
+    );
+  }
 }
+
+/// A sentence that opens with one placeholder and a colon — `{name}: `,
+/// `{name} : `, `{name}：`.
+final _opensWithOne = RegExp(r'^\{(\w+)\}\s*[:：]\s*');
 
 /// Why a cut folder's parse dropped a file, in a language.
 extension ExclusionReasonWords on ExclusionReason {

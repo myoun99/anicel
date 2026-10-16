@@ -24,8 +24,6 @@ class AppConfirmDialog extends StatelessWidget {
     this.windowKey,
     this.width,
     this.details = const [],
-    this.detailsHeading,
-    this.detailsOpen = false,
   });
 
   final String title;
@@ -39,15 +37,11 @@ class AppConfirmDialog extends StatelessWidget {
   /// 가능하게 그 안에 파일주소,이름들 표시」. ⛔They do not go in [message]:
   /// a sentence that grows with the list pushes the buttons off a small
   /// window, and the count is not what the reader is there for.
-  final List<String> details;
-
-  /// What [details] are, on the fold's heading — the affected FILES unless
-  /// the caller's lines are something else (the drawings a save lost).
-  final String? detailsHeading;
-
-  /// Whether the fold over [details] starts OPEN — for a window whose answer
-  /// IS the list (see [DetailsDisclosure] for why the others start closed).
-  final bool detailsOpen;
+  ///
+  /// 🗣️A list per thing they are about, when they are about more than one —
+  /// what an opened file could not bring over, by reason (F-370, 유저
+  /// 2026-10-16: 「좀 더 알기쉽게 줄 나누거나 해서 항목화하도록」).
+  final List<NoticeDetails> details;
 
   /// Left to right; the one that answers 'yes' goes last and carries
   /// [AppWindowActionEmphasis.primary].
@@ -70,18 +64,48 @@ class AppConfirmDialog extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(message, style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 8),
-                DetailsDisclosure(
-                  heading:
-                      detailsHeading ?? AppText.strings.commonAffectedFiles,
-                  lines: details,
-                  startsOpen: detailsOpen,
-                ),
+                for (final list in details) ...[
+                  const SizedBox(height: 8),
+                  DetailsDisclosure(
+                    heading:
+                        list.heading ?? AppText.strings.commonAffectedFiles,
+                    lines: list.lines,
+                    startsOpen: list.open,
+                    oneLineEach: list.oneLineEach,
+                  ),
+                ],
               ],
             ),
       actions: actions,
     );
   }
+}
+
+/// One list a window's sentence is about ([AppConfirmDialog.details]): its
+/// lines, and how they show.
+class NoticeDetails {
+  const NoticeDetails(
+    this.lines, {
+    this.heading,
+    this.open = false,
+    this.oneLineEach = false,
+  });
+
+  final List<String> lines;
+
+  /// What [lines] are, on the fold's heading — the affected FILES unless
+  /// the caller's lines are something else (the drawings a save lost).
+  final String? heading;
+
+  /// Whether the fold starts OPEN — for a window whose answer IS the list
+  /// (see [DetailsDisclosure] for why the others start closed).
+  final bool open;
+
+  /// Whether each line keeps to one line — its first, cut short where it
+  /// runs out ([_firstLineOf]): a name whose end says nothing a reader
+  /// needs, a text layer's whole text (F-370). ⛔Not a path: one cut short
+  /// names no file.
+  final bool oneLineEach;
 }
 
 /// The 「해당 파일들」 section: a heading that folds, and the lines under it.
@@ -94,7 +118,7 @@ class AppConfirmDialog extends StatelessWidget {
 /// 누르면 공용창 띄워서 어디서 쓰는지 리스트로 표시하도록」). The media
 /// pool's in-use mark opens a window to show where a file is used: there the
 /// list is what was asked for, and a fold to open first would put it behind
-/// one more press. That window says so with [AppConfirmDialog.detailsOpen].
+/// one more press. That window says so with [NoticeDetails.open].
 ///
 /// Public for the one window that is not an [AppConfirmDialog] and lists
 /// all the same: the 겸용 conversion's 안내문, whose replaced drawings are a
@@ -106,11 +130,15 @@ class DetailsDisclosure extends StatefulWidget {
     required this.heading,
     required this.lines,
     required this.startsOpen,
+    this.oneLineEach = false,
   });
 
   final String heading;
   final List<String> lines;
   final bool startsOpen;
+
+  /// See [NoticeDetails.oneLineEach].
+  final bool oneLineEach;
 
   @override
   State<DetailsDisclosure> createState() => _DetailsDisclosureState();
@@ -175,8 +203,12 @@ class _DetailsDisclosureState extends State<DetailsDisclosure> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 1),
                       child: Text(
-                        line,
+                        widget.oneLineEach ? _firstLineOf(line) : line,
                         style: theme.textTheme.bodySmall,
+                        maxLines: widget.oneLineEach ? 1 : null,
+                        overflow: widget.oneLineEach
+                            ? TextOverflow.ellipsis
+                            : null,
                       ),
                     ),
                 ],
@@ -187,6 +219,23 @@ class _DetailsDisclosureState extends State<DetailsDisclosure> {
     );
   }
 }
+
+/// What [NoticeDetails.oneLineEach] shows of [text]: its first line that
+/// says anything, and an ellipsis when more follow — the width cuts the
+/// rest. A text layer's name is its whole text, blank lines and all.
+String _firstLineOf(String text) {
+  final said = [
+    for (final line in text.split(_lineBreak))
+      if (line.trim().isNotEmpty) line.trim(),
+  ];
+  return switch (said) {
+    [] => text,
+    [final only] => only,
+    [final first, ...] => '$first…',
+  };
+}
+
+final _lineBreak = RegExp(r'\r\n|\r|\n');
 
 /// THE way a refusal or a warning reaches the user (F-10, 유저 2026-08-24).
 ///
@@ -208,11 +257,7 @@ Future<void> showAppNotice(
   required String title,
   required String message,
   /// The lines this notice is ABOUT — see [AppConfirmDialog.details].
-  List<String> details = const [],
-  /// What those lines are — see [AppConfirmDialog.detailsHeading].
-  String? detailsHeading,
-  /// Whether they open with the window — see [AppConfirmDialog.detailsOpen].
-  bool detailsOpen = false,
+  List<NoticeDetails> details = const [],
   Key? windowKey,
 }) {
   return showDialog<void>(
@@ -222,8 +267,6 @@ Future<void> showAppNotice(
       title: title,
       message: message,
       details: details,
-      detailsHeading: detailsHeading,
-      detailsOpen: detailsOpen,
       actions: [
         AppWindowAction(
           label: AppText.strings.commonClose,
@@ -305,7 +348,6 @@ class ConfirmQuestion {
     required this.message,
     this.titleIcon,
     this.details = const [],
-    this.detailsHeading,
   });
 
   /// ⛔THE THREE KEYS ARE ONE NAME (see [confirmDialogKeys]), so they ride
@@ -319,10 +361,7 @@ class ConfirmQuestion {
 
   /// See [AppConfirmDialog.details] — the uses a media pool remove would
   /// take with it, for one (F-118).
-  final List<String> details;
-
-  /// See [AppConfirmDialog.detailsHeading].
-  final String? detailsHeading;
+  final List<NoticeDetails> details;
 }
 
 /// Asks a yes/no question in the app's own window and answers what the
@@ -399,7 +438,6 @@ Widget confirmWindow(
   titleIcon: question.titleIcon,
   message: question.message,
   details: question.details,
-  detailsHeading: question.detailsHeading,
   actions: confirmActions(
     context,
     keys: question.keys,

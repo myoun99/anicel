@@ -2151,10 +2151,11 @@ Future<void> showSaveFailure(
       titleIcon: Icons.error_outline,
       message: saveFailureMessage(failure),
       details: [
-        if (copy != null) strings.saveFailedCopyLine(copy),
-        strings.saveFailedErrorLine('${failure.error}'),
+        NoticeDetails([
+          if (copy != null) strings.saveFailedCopyLine(copy),
+          strings.saveFailedErrorLine('${failure.error}'),
+        ], heading: strings.saveFailedDetailsHeading),
       ],
-      detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
         AppWindowAction(
           label: editorActionLabel(EditorActionIds.fileBackUpFailedCopy),
@@ -2330,10 +2331,11 @@ Future<FailedSaveCopy?> _pickFailedCopy(
       titleIcon: Icons.backup_outlined,
       message: strings.failedCopyVanishOnClose,
       details: [
-        for (final copy in copies)
-          '${copy.projectPath} — ${clock(copy.savedAt)}',
+        NoticeDetails([
+          for (final copy in copies)
+            '${copy.projectPath} — ${clock(copy.savedAt)}',
+        ], heading: strings.saveFailedDetailsHeading),
       ],
-      detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
         AppWindowAction(
           label: strings.commonCancel,
@@ -2387,13 +2389,14 @@ void _tellWhatTheSaveCouldNotCarry(
       // 「사라진 그림이 뭔지 이름 리스트로 표시하는게 필요해보임」) — in the
       // fold every notice has for what its sentence is about.
       details: [
-        for (final place in celPlacesOf(
-          session.repository.requireProject(),
-          lost,
-        ))
-          celPlaceLine(place, framePlace: session.framePlaceLabel),
+        NoticeDetails([
+          for (final place in celPlacesOf(
+            session.repository.requireProject(),
+            lost,
+          ))
+            celPlaceLine(place, framePlace: session.framePlaceLabel),
+        ], heading: strings.saveCelsLostHeading),
       ],
-      detailsHeading: strings.saveCelsLostHeading,
       windowKey: const ValueKey<String>('save-cels-lost-notice'),
     ),
   );

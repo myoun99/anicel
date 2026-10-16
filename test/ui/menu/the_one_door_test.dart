@@ -150,7 +150,9 @@ void main() {
       [fileNamed('notes.txt'), fileNamed('A1.png')],
       onNotice: () => named ??= tester
           .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
-          .details,
+          .details
+          .single
+          .lines,
     );
 
     expect(

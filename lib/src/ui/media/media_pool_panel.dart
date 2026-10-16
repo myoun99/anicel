@@ -12,6 +12,7 @@ import '../dialogs/app_confirm_dialog.dart'
     show
         ConfirmChoice,
         ConfirmQuestion,
+        NoticeDetails,
         askConfirm,
         confirmDialogKeys,
         showAppNotice;
@@ -335,8 +336,7 @@ class MediaPoolPanel extends StatelessWidget {
           keys: confirmDialogKeys('media-remove-in-use'),
           title: strings.mpInUseOnTimeline,
           message: strings.mediaRemoveInUse,
-          details: uses,
-          detailsHeading: strings.mediaUsesHeading,
+          details: [NoticeDetails(uses, heading: strings.mediaUsesHeading)],
         ),
         accept: ConfirmChoice(
           strings.mediaRemove,
@@ -356,9 +356,13 @@ class MediaPoolPanel extends StatelessWidget {
       context,
       title: AppText.strings.mpInUseOnTimeline,
       message: asset.name,
-      details: usesOf(asset.path).toList(),
-      detailsHeading: AppText.strings.mediaUsesHeading,
-      detailsOpen: true,
+      details: [
+        NoticeDetails(
+          usesOf(asset.path).toList(),
+          heading: AppText.strings.mediaUsesHeading,
+          open: true,
+        ),
+      ],
       windowKey: const ValueKey<String>('media-asset-uses-notice'),
     ),
   );

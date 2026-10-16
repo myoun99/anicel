@@ -94,7 +94,12 @@ import '../services/persistence/file_type_groups.dart';
 import 'dialogs/app_prompt_dialog.dart';
 import 'dialogs/folder_pick_flow.dart';
 import 'dialogs/app_confirm_dialog.dart'
-    show ConfirmChoice, ConfirmQuestion, askConfirm, showAppNotice;
+    show
+        ConfirmChoice,
+        ConfirmQuestion,
+        NoticeDetails,
+        askConfirm,
+        showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -1671,8 +1676,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         message: strings.tlAttachDropsFxBody,
         // F-303: WHICH rows — the request has always carried their names,
         // and the window never showed them.
-        details: request.rowNames,
-        detailsHeading: strings.tlAttachDropsFxRows,
+        details: [
+          NoticeDetails(request.rowNames, heading: strings.tlAttachDropsFxRows),
+        ],
       ),
       accept: ConfirmChoice(strings.commonApply),
     );

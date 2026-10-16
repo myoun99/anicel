@@ -194,8 +194,12 @@ void main() {
                     keys: keys,
                     title: 'Remove it?',
                     message: 'It is in use.',
-                    details: ['C1 · walk', 'Video · S1 · walk.mp4'],
-                    detailsHeading: 'Where it is used',
+                    details: [
+                      NoticeDetails([
+                        'C1 · walk',
+                        'Video · S1 · walk.mp4',
+                      ], heading: 'Where it is used'),
+                    ],
                   ),
                   accept: const ConfirmChoice('Remove'),
                 );
