@@ -352,7 +352,8 @@ class PlaybackPrerenderScheduler {
       }
       // Where the walk starts: the playhead, or — where the clock will not
       // wait — as far ahead of it as a picture takes to make.
-      final lead = math.min(demand.leadFor(_composeTime), length - 1);
+      final ahead = demand.leadFor(_composeTime);
+      final lead = math.min(ahead ?? 0, length - 1);
       List<DemandedPicture>? at(int index) =>
           index < length ? demand.picturesAt((lead + index) % length) : null;
       final pass = (at: at, stepAt: (int index) => (lead + index) % length);
@@ -429,14 +430,24 @@ class PlaybackPrerenderScheduler {
       final step = (lead + reached) % length;
       final madeRoom =
           room?.makeRoomFor(bytes: pictureBytes, step: step) ?? true;
-      // 🚨THE PICTURE THE WALK STARTS ON IS MADE WHATEVER THE ROOM. It is the
-      // one a screen is about to show and the one a run that waits is
-      // waiting for: an allowance with no room for it — every picture held
-      // is on a screen — would stand that run for good. It is one picture.
-      // ↩️It was the picture under the playhead, and a walk that starts
-      // ahead of it — where the clock will not wait — never made it: under
-      // a line that small such a run showed nothing new at all (F-365).
-      if (!madeRoom && reached != 0) {
+      // 🚨WHAT A RUN WAITS FOR IS MADE WHATEVER THE ROOM: an allowance with
+      // no room for it — every picture held is on a screen — would stand
+      // that run for good. Where the clock waits, the run stands BEFORE a
+      // frame that is not there (`playheadWay`, 유저 2026-10-15 F-365-Q1): it
+      // waits for the frame after the one under the playhead, or for that
+      // one while it is not there (a run put on it). Where the clock does
+      // not wait, the picture the walk starts on is the one a screen is
+      // about to show. The media viewer's walk asks for the page after the
+      // one on screen whatever the room for the same reason
+      // (`_ReadAhead.walk`).
+      // ↩️Only the picture the walk starts on was: under the playhead, which
+      // a run standing before the next frame already shows — and a picture
+      // bigger than half the room never got room beside it while the run
+      // waited for it for good (🔬10-15: cut 4's head weighs 47MB, under a
+      // 64MB line). Before that it was the picture under the playhead alone,
+      // which a walk that starts ahead of it never made: under a line that
+      // small a run that skips showed nothing new at all (F-365).
+      if (!madeRoom && reached > (ahead == null ? 1 : 0)) {
         // No more fits: what is held is the window.
         _progress.value = PrerenderProgress(cached: reached, total: reached);
         await _rest(generation);

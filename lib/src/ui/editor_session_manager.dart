@@ -682,12 +682,12 @@ class EditorSessionManager extends ChangeNotifier
                         frameIndex
                   : null,
         // Where the clock does not wait for a picture, one is started
-        // where the playhead will be when it lands. Where it waits, the
-        // frame under the playhead is the one to make.
+        // where the playhead will be when it lands. Where it waits there is
+        // no lead: what the run waits for is the warmer's to make.
         lead: (composeTime) =>
             playbackRig.playbackMode == PlaybackMode.skipFrames
             ? projectSettings.projectFrameRate.frameAtElapsed(composeTime)
-            : 0,
+            : null,
       ),
     );
   }

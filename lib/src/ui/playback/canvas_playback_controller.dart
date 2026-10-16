@@ -46,7 +46,7 @@ class ClockReading {
 /// [onStopped].
 ///
 /// A frame whose PICTURE is not made yet is another matter, and the owner's
-/// to say ([waitsOn]): the clock stands on it until it is.
+/// to say ([waitsOn]): the clock stands before it until it is.
 class CanvasPlaybackController extends ChangeNotifier
     implements PlaybackTransport {
   CanvasPlaybackController({
@@ -107,8 +107,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// 유저 2026-10-08: 「거슬리는건 재생했는데 재생바는 지나가고있는데 그림이
   /// 없어서 비어있다던가」 · 「안구워진곳에 닿으면 그 자리에서 만들어서
   /// 보여주기때문에 그 자리에서 멈췃다가 구워지면 이어서 재생」. The playhead
-  /// stops ON the frame that is not there — it does not pass it — and
-  /// [lookAgain] is how it hears the picture has come.
+  /// does not pass a frame that is not there: it stands BEFORE it, on the
+  /// last frame it showed ([playheadWay] — 유저 2026-10-15, F-365-Q1), and
+  /// [lookAgain] is how it hears the picture has come. A run PUT on such a
+  /// frame has shown nothing to stand on, and waits on the frame itself.
+  /// ↩️It stood ON the frame it waited for, over a picture that was not
+  /// that frame's: white paper, at every cut's head on the iPad (F-365).
   bool Function(int playlistFrame, {required bool placed})? waitsOn;
 
   /// Fired on every explicit seek with the clamped target frame, so a
@@ -154,16 +158,18 @@ class CanvasPlaybackController extends ChangeNotifier
   @override
   ValueListenable<bool> get isActiveListenable => _isActiveNotifier;
 
-  bool _waiting = false;
+  /// The playlist frame whose picture the run waits for: the one after the
+  /// frame it stands on, or that frame itself where the run was put on it.
+  /// Null while it does not wait.
+  int? _waitingFor;
 
-  /// Whether the run's clock stands on its frame, waiting for the picture
-  /// ([waitsOn]).
+  /// Whether the run's clock stands, waiting for a picture ([waitsOn]).
   ///
   /// 🚨WAITING IS NOT PAUSED, and T28 stands: playing, or not. Nobody can
   /// put a run into this state or take it out — there is no button for it —
   /// and it ends by itself the moment the picture lands. [isPlaying] stays
   /// true through it; what stands is the clock, and with it the sound.
-  bool get isWaiting => _waiting;
+  bool get isWaiting => _waitingFor != null;
 
   /// The run, while one plays: the cuts it shows, and the stretch of its
   /// track it plays ([PlaybackWindow]) — one field, so a run never has the
@@ -178,8 +184,8 @@ class CanvasPlaybackController extends ChangeNotifier
 
   /// Frames skipped to keep real time during the CURRENT loop pass
   /// (DaVinci-style dropped frame indicator); resets on every wrap-around
-  /// and on play/seek. Counted where the playhead moves ([_goTo]): a frame
-  /// the run WAITS before is not one it skipped.
+  /// and on play/seek. Counted where the playhead moves ([_countTheWay]):
+  /// a frame the run WAITS before is not one it skipped.
   int get droppedFrames => _droppedFrames;
 
   /// 🚨★★★ T28 — PLAYING, OR NOT. There is no third state.
@@ -250,7 +256,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// once both are ready).
   void attachTicker(TickerProvider vsync) {
     _vsync = vsync;
-    if (isPlaying && !_waiting && !_clock.isRunning) {
+    if (isPlaying && !isWaiting && !_clock.isRunning) {
       _startTicker();
     }
   }
@@ -289,8 +295,9 @@ class CanvasPlaybackController extends ChangeNotifier
   /// there, the ruler was dragged there: its clock starts from this frame,
   /// or waits on it for its picture.
   void _standHere() {
-    _waiting = waitsOn?.call(_currentGlobalFrame, placed: true) ?? false;
-    if (_waiting) {
+    final waits = waitsOn?.call(_currentGlobalFrame, placed: true) ?? false;
+    _waitingFor = waits ? _currentGlobalFrame : null;
+    if (waits) {
       _stopTicker();
     } else {
       // A fresh ticker, so its elapsed epoch rebases on this frame.
@@ -299,18 +306,27 @@ class CanvasPlaybackController extends ChangeNotifier
   }
 
   /// A picture landed, or the warmer came to rest: a run that waits looks
-  /// again, and goes on from the frame it stands on if it need wait no
-  /// longer — a whole frame's time from here, as if the clock had been
-  /// stopped and started.
+  /// again, and if it need wait no longer it goes on — onto the frame it
+  /// waited for, which has a whole frame's time from here, as if the clock
+  /// had been stopped and started (the media viewer's `_goesOn`).
+  ///
+  /// ⚠️The frame changes HERE, before anyone is told: the device is armed
+  /// again from the frame the run stands on when it hears the wait end
+  /// (`AudioDeviceTransport`), and that is the frame whose sound goes with
+  /// the picture that came.
   void lookAgain() {
-    if (!_waiting || _run == null) {
+    final waitingFor = _waitingFor;
+    if (waitingFor == null) {
       return;
     }
-    if (waitsOn?.call(_currentGlobalFrame, placed: false) ?? false) {
+    if (waitsOn?.call(waitingFor, placed: false) ?? false) {
       return;
     }
-    _waiting = false;
+    _waitingFor = null;
+    _countTheWay(to: waitingFor, passed: 0);
+    _currentGlobalFrame = waitingFor;
     _startTicker();
+    _syncFrameNotifiers();
     notifyListeners();
   }
 
@@ -363,7 +379,7 @@ class CanvasPlaybackController extends ChangeNotifier
     final lastGlobal = _run == null ? null : _currentGlobalFrame;
     _stopTicker();
     _run = null;
-    _waiting = false;
+    _waitingFor = null;
     _syncFrameNotifiers();
     _isActiveNotifier.value = false;
     notifyListeners();
@@ -523,47 +539,53 @@ class CanvasPlaybackController extends ChangeNotifier
   /// that frame has been shown.
   void _endAt(int total) {
     _goTo(total - 1, total);
-    if (!_waiting) {
+    if (!isWaiting) {
       stop();
     }
   }
 
   /// The clock says [frame]. The run goes there — unless a frame on the way
-  /// has no picture yet, and then it stands on THAT frame ([waitsOn],
+  /// has no picture yet, and then it stands before THAT frame ([waitsOn],
   /// [playheadWay]).
-  ///
-  /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT: the
-  /// frames it passed without standing on them. A move that wraps starts
-  /// the new pass's count, and counts nothing. ↩️Each clock kept its own
-  /// count off its own raw readings — the wall clock by lap, the device by
-  /// a step back — and with a run that can wait both were wrong the same
-  /// way: they counted the frames a run then WAITED before, which it went
-  /// on to show. Each also left a last reading behind, which a run going on
-  /// from a wait had to remember to forget.
   void _goTo(int frame, int total) {
-    final from = _currentGlobalFrame;
-    final (:landing, :passed, :waits) = playheadWay(
-      from: from,
+    final (:stands, :passed, :waitsFor) = playheadWay(
+      from: _currentGlobalFrame,
       to: frame,
       total: total,
       waitsOn: (next) => waitsOn?.call(next, placed: false) ?? false,
     );
-    if (landing < from) {
-      _droppedFrames = 0;
-    } else if (passed > 0) {
-      _droppedFrames += passed;
-    }
-    if (waits) {
-      _waitOn(landing);
+    _countTheWay(to: stands, passed: passed);
+    if (waitsFor != null) {
+      _waitFor(waitsFor, standing: stands);
     } else {
-      _setFrame(landing);
+      _setFrame(stands);
     }
   }
 
-  void _waitOn(int frame) {
-    _waiting = true;
+  /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT —
+  /// from where it stands [to] where it goes, its clock's way ([_goTo]) or
+  /// onto the frame it waited for ([lookAgain]): the [passed] frames gone
+  /// over without standing on them. A move that wraps starts the new pass's
+  /// count, and counts nothing. ↩️Each clock kept its own count off its own
+  /// raw readings — the wall clock by lap, the device by a step back — and
+  /// with a run that can wait both were wrong the same way: they counted
+  /// the frames a run then WAITED before, which it went on to show. Each
+  /// also left a last reading behind, which a run going on from a wait had
+  /// to remember to forget.
+  void _countTheWay({required int to, required int passed}) {
+    if (to < _currentGlobalFrame) {
+      _droppedFrames = 0;
+    } else {
+      _droppedFrames += passed;
+    }
+  }
+
+  /// The run stands on [standing], where its way stopped, and its clock
+  /// with it until [frame]'s picture comes ([lookAgain]).
+  void _waitFor(int frame, {required int standing}) {
+    _waitingFor = frame;
     _stopTicker();
-    _currentGlobalFrame = frame;
+    _currentGlobalFrame = standing;
     _syncFrameNotifiers();
     notifyListeners();
   }

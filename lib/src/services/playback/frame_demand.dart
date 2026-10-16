@@ -45,8 +45,10 @@ abstract interface class FrameDemand {
 
   /// How many steps ahead of the playhead a picture is STARTED, when making
   /// one takes [composeTime]: where the playhead will be when it lands. 0
-  /// wherever the clock waits for its picture, and wherever nothing plays.
-  int leadFor(Duration composeTime);
+  /// wherever nothing plays — and none (null) wherever the clock waits for
+  /// its picture: the walk starts under the playhead, and what the run
+  /// waits for is made whatever the room (`PlaybackPrerenderScheduler`).
+  int? leadFor(Duration composeTime);
 }
 
 /// The frame a run that STANDS on [center] wants at step [step] of its
@@ -194,7 +196,7 @@ class StandingDemand implements FrameDemand {
   bool get yieldsToEditing => true;
 
   @override
-  int leadFor(Duration composeTime) => 0;
+  int? leadFor(Duration composeTime) => 0;
 }
 
 /// What a run that is PLAYING wants: its frames in the order it plays them,
@@ -230,8 +232,9 @@ class PlayingDemand implements FrameDemand {
   /// null when the run does not show that cut.
   final int? Function(CutId cutId, int frameIndex) playlistFrameOf;
 
-  /// [leadFor]'s answer; null where the clock waits for its picture.
-  final int Function(Duration composeTime)? lead;
+  /// [leadFor]'s answer — null where the clock waits for its picture, as
+  /// where no [lead] is given.
+  final int? Function(Duration composeTime)? lead;
 
   int _askedAt;
 
@@ -276,5 +279,5 @@ class PlayingDemand implements FrameDemand {
   bool get yieldsToEditing => false;
 
   @override
-  int leadFor(Duration composeTime) => lead?.call(composeTime) ?? 0;
+  int? leadFor(Duration composeTime) => lead?.call(composeTime);
 }

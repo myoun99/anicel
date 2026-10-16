@@ -1122,8 +1122,12 @@ void main() {
       });
     });
 
-    testWidgets('the picture under the playhead is made whatever the room '
-        '— a run that waits for it must not wait for good', (tester) async {
+    /// 유저 2026-10-15, F-365-Q1 「직전 프레임에 서서 기다린다」: a run whose
+    /// clock waits stands BEFORE a frame that is not there, and waits for
+    /// that one — the frame after the one under its playhead.
+    testWidgets('🚨what a run that waits waits for is made whatever the room: '
+        'the picture under the playhead, and the one after it — a run that '
+        'waits for either must not wait for good', (tester) async {
       await tester.runAsync(() async {
         final f = inked();
         final room = _Room(f.pictures, 0);
@@ -1139,11 +1143,17 @@ void main() {
         scheduler.follow(run());
         await rested(scheduler);
 
-        expect(there(f.pictures), [false, true, false, false]);
+        expect(
+          there(f.pictures),
+          [false, true, true, false],
+          reason: '↩️only frame 1\'s was made, and a run standing on it '
+              'waited for frame 2 for good (F-365, a 47MB cut head under a '
+              '64MB line)',
+        );
         expect(
           scheduler.progress.value,
-          const PrerenderProgress(cached: 1, total: 1),
-          reason: 'and no other: for the next one there is no room',
+          const PrerenderProgress(cached: 2, total: 2),
+          reason: 'and no other: for the one after there is no room',
         );
         scheduler.dispose();
         f.layerImages.dispose();

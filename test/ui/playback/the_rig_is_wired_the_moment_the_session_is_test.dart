@@ -320,7 +320,12 @@ void main() {
                     'waited for, nor the rest',
               );
               expect(playbackRigOf(s).playback.isWaiting, isFalse);
-              expect(playbackRigOf(s).demand!.leadFor(const Duration(seconds: 1)), 0);
+              expect(
+                playbackRigOf(s).demand!.leadFor(const Duration(seconds: 1)),
+                isNull,
+                reason: 'the clock waits: the walk starts where the run would '
+                    'wait, not where a picture would land',
+              );
               expect(
                 playbackRigOf(s).playbackCache.playbackReadyRuns(0, 4),
                 [(startIndex: 0, endIndexExclusive: 4)],
@@ -415,6 +420,41 @@ void main() {
               playbackRigOf(s).playback.stop();
             });
           });
+
+          /// 유저 2026-10-15, F-365-Q1 「직전 프레임에 서서 기다린다」: the run
+          /// stands before a frame that is not there and waits for it — so
+          /// that picture is made whatever the room, or a picture bigger
+          /// than half the line stands the run for good (F-365: a 47MB cut
+          /// head under a 64MB line).
+          for (final mode in [
+            PlaybackMode.everyPicture,
+            PlaybackMode.renderFirst,
+          ]) {
+            testWidgets('🚨${mode.name}: under a line of one picture, a run on '
+                'the last frame of one picture has the next one made too — '
+                'it is what the run will stand before and wait for', (
+              tester,
+            ) async {
+              await tester.runAsync(() async {
+                final s = twoPictures();
+                addTearDown(s.dispose);
+                final rig = playbackRigOf(s)..setPlaybackMode(mode);
+                rig.playbackCache.debugSetPlaybackCacheBudgetBytes(picture);
+
+                rig.playback.play(scope: scope, startGlobalFrame: 1);
+                await rested(rig);
+
+                expect(
+                  [held(s, 1), held(s, 2)],
+                  [true, true],
+                  reason: 'frame 2 is a picture over the line, and the one '
+                      'the run waits for when its clock reaches it',
+                );
+                expect(rig.playback.isWaiting, isFalse);
+                rig.playback.stop();
+              });
+            });
+          }
 
           testWidgets('skipping frames: the run never waits, and starts each '
               'picture where the playhead will be when it lands', (tester) async {

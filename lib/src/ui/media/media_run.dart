@@ -535,13 +535,12 @@ class MediaRun {
   /// the sound while it is heard, the run's own span otherwise
   /// ([_filmSecondsAtThisLook]). A clock that got ahead — a busy frame — is
   /// followed to its page, and the pages on the way that are there drop:
-  /// time never stretches, as the canvas's never does. The way stops at a
-  /// page that is not there, and the run parks on the page before it.
-  /// ↩️This said the CANVAS did the opposite, holding real time and
-  /// dropping frames while this buffered. The canvas waits for a picture
-  /// that is not made too now ([PlaybackPictureWait]); the two part only on
-  /// where a waiting run stands — the canvas on the frame, this panel
-  /// before it, on a page it has.
+  /// time never stretches, as the canvas's never does. The way stops before
+  /// a page that is not there, and the run parks on the page it stands on —
+  /// the canvas's too ([playheadWay], F-365-Q1). ↩️This said the CANVAS did
+  /// the opposite, holding real time and dropping frames while this
+  /// buffered; then that the two parted on where a waiting run stands, the
+  /// canvas on the frame it waited for.
   void _turnThePage() {
     final fps = _surface.document!.framesPerSecond!;
     if (buffering && !_goesOn(fps)) {
@@ -556,16 +555,17 @@ class MediaRun {
       _surface.setState(stop);
       return;
     }
-    final (:landing, passed: _, :waits) = playheadWay(
+    final (:stands, passed: _, :waitsFor) = playheadWay(
       from: _page,
       to: math.min(due, _pageCount - 1),
       total: _pageCount,
       waitsOn: (page) => _wait.holds(page, placed: false),
     );
-    if (waits) {
-      _parkBefore(landing);
-    } else {
-      _surface.turnToPage(landing);
+    if (stands != _page) {
+      _surface.turnToPage(stands);
+    }
+    if (waitsFor != null) {
+      _park();
     }
   }
 
@@ -588,13 +588,9 @@ class MediaRun {
     return true;
   }
 
-  /// The way stopped at [page], which is not there: the playhead parks on
-  /// the page before it — the last on the way that is — and the sound is
-  /// held with it.
-  void _parkBefore(int page) {
-    if (page - 1 > _page) {
-      _surface.turnToPage(page - 1);
-    }
+  /// The way stopped before a page that is not there: the playhead parks
+  /// where it stands, and the sound is held with it.
+  void _park() {
     // Remember where the sound was HANDED to: that is where it picks up,
     // so nothing it played before the hold is played again.
     soundSeconds = sound.handedSeconds ?? soundSeconds;
@@ -698,7 +694,7 @@ final class _ReadAhead {
   /// its own.
   ///
   /// 🚨THE PAGE THE CLOCK WAITS ON IS ASKED FOR WHATEVER THE ROOM — as the
-  /// canvas's warmer makes the picture under its playhead. The playhead
+  /// canvas's warmer makes what its run waits for. The playhead
   /// parks BEFORE a page that is not there (`MediaRun._turnThePage`), so
   /// nothing else asks for that page: a page bigger than half the budget
   /// leaves no room beside the one on screen, and a run that asked for
