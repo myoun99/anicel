@@ -126,8 +126,10 @@ void main() {
   }
 
   /// Presses Import and waits for the window to close — it closes once
-  /// every file has landed.
-  Future<void> runImport(WidgetTester tester) async {
+  /// every file has landed. It waits out the wait window, so it ends by
+  /// stopping [s]'s playback warmer (`pumpPastTheWaitWindow`) — for every
+  /// test that imports through it.
+  Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     final window = find.byKey(const ValueKey<String>('import-dialog'));
@@ -141,6 +143,7 @@ void main() {
       await tester.pump();
     }
     await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
   }
 
   Finder fileCell(String path) =>
@@ -189,7 +192,7 @@ void main() {
           'next time — the answer is locked, not offered',
     );
 
-    await runImport(tester);
+    await runImport(tester, s);
 
     final asset = s.mediaPool.mediaAssets.single;
     expect(asset.carried, isTrue);
@@ -207,7 +210,6 @@ void main() {
           '(「사본 남으면 진짜 용서안할게」)',
     );
     expect(ProviderDocuments.workingCopyOf(uri), isNull);
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a file picked BESIDE a Drive file is still the person\'s to '
@@ -259,14 +261,13 @@ void main() {
       reason: 'the answer the document cannot give does not stick to it',
     );
 
-    await runImport(tester);
+    await runImport(tester, s);
 
     final carried = {
       for (final asset in s.mediaPool.mediaAssets)
         fileNameOfPath(asset.path): asset.carried,
     };
     expect(carried, {'A1.png': true, 'local.png': false});
-    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨Stop while the copy comes: nothing is listed, the file is '

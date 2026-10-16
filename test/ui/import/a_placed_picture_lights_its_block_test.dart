@@ -52,7 +52,9 @@ void main() {
 
   /// The app with a picture in its pool, that picture dragged from the pool
   /// onto [cell] of the first animation row and placed through the window.
-  /// Returns once the picture is baked into the cel.
+  /// Returns once the picture is baked into the cel. It waits out the wait
+  /// window, so it ends by stopping playback's warmer
+  /// (`pumpPastTheWaitWindow`) — for every test that places through it.
   Future<(EditorSessionManager, Layer)> placeByDrag(WidgetTester tester) async {
     // In the pool's spelling: the pool row is keyed by it.
     final png = normalizedMediaPath(
@@ -141,24 +143,24 @@ void main() {
       isTrue,
       reason: 'premise: the picture is there — 「그림 존재하는데」',
     );
+    session.playbackRig.prerenderScheduler.cancel();
     return (session, row);
   }
 
   testWidgets('the placed block paints as drawn — not as the empty cel the '
       'drag was showing', (tester) async {
-    final (session, row) = await placeByDrag(tester);
+    final (_, row) = await placeByDrag(tester);
 
     expect(
       painterOf(tester, row.id).resolvedCellStyleFor(cell).background,
       timelineDrawingStartColor,
       reason: '「블록이 회색임」 — the block paints the cel the row holds',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('the placed block wears no outline of the block that was '
       'still to come', (tester) async {
-    final (session, _) = await placeByDrag(tester);
+    await placeByDrag(tester);
 
     expect(
       find.byWidgetPredicate(
@@ -170,7 +172,6 @@ void main() {
       reason: '「움직이진 않는 개미행렬 실루엣 선」 — the dashes marked what a '
           'drop WOULD make; it has been made',
     );
-    session.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('one undo takes the block off the screen with the picture — no '
@@ -191,6 +192,7 @@ void main() {
       reason: '「유령블록이 ui로 남아있는듯」 — the row on screen is the row '
           'the project holds',
     );
+    // The undo pumped on after the placing stopped the warmer: once more.
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

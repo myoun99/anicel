@@ -412,6 +412,9 @@ void main() {
       return (s, path!);
     }
 
+    /// Imports what the window holds. It waits out the wait window, so it
+    /// ends by stopping playback's warmer (`pumpPastTheWaitWindow`) — for
+    /// every test that imports through it.
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
@@ -425,6 +428,7 @@ void main() {
         await tester.pump();
       }
       await tester.pumpAndSettle();
+      s.playbackRig.prerenderScheduler.cancel();
     }
 
     testWidgets('it starts on Keep inside, on every platform', (tester) async {
@@ -1768,6 +1772,9 @@ void main() {
       return file.path;
     }
 
+    /// Imports [paths] into a fresh session, and answers it. It waits out
+    /// the wait window, so it ends by stopping playback's warmer
+    /// (`pumpPastTheWaitWindow`) — for every test that imports through it.
     Future<EditorSessionManager> runImport(
       WidgetTester tester,
       List<String> paths,
@@ -1796,6 +1803,7 @@ void main() {
         }
       }
       await tester.pumpAndSettle();
+      session.playbackRig.prerenderScheduler.cancel();
       return session;
     }
 
