@@ -458,6 +458,17 @@ void main() {
     );
   });
 
+  test('F-370-Q2: a file with no paper opens with none — its sheet open, '
+      'as CLIP STUDIO shows it', () async {
+    final opened = await openedClip(writeClip());
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    final paper = session.repository.requireProject().background;
+    expect(paper.none, isTrue);
+    expect(paper.paintedArgb, 0x00000000, reason: 'nothing paints for it');
+  });
+
   test('🎯a vector layer is drawn from its strokes, where its offset puts '
       'them — the render it keeps without blocks is not refused for it '
       '(6-1 item 8: 「벡터 레이어는 래스터로 그려 넣는다」)', () async {

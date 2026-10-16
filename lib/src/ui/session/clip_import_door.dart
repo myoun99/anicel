@@ -223,7 +223,16 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
     frameRate: fps == null
         ? ProjectFrameRate.fps24
         : ProjectFrameRate.integer(fps),
-    background: plan.paper ?? ProjectBackground.defaultBackground,
+    // 🗣️F-370-Q2 (유저 2026-10-17: 「용지 「없음」으로 — 클립 스튜디오에서
+    // 보이던 그대로」): a file with no paper of its own shows its sheet
+    // open in CLIP STUDIO, and opens so — white was this app's default,
+    // never what the file said. White stays the colour the paper keeps.
+    background:
+        plan.paper ??
+        const ProjectBackground.color(
+          ProjectBackground.defaultPaperArgb,
+          none: true,
+        ),
     tracks: [
       Track(
         id: _track,

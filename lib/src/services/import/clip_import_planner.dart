@@ -190,7 +190,7 @@ final class ClipImportPlan {
 
   /// The project's paper: the file's paper layer with nothing that comes
   /// in under it, by its colour, its eye and its opacity — null for a file
-  /// with none.
+  /// with none, and the project it opens as has none (F-370-Q2).
   ///
   /// 🗣️F-370 (유저 2026-10-16, opening a .clip: 「못읽어오는게 너무 많고」)
   /// — and the paper was one the import could read: CLIP STUDIO's paper is
