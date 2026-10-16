@@ -216,6 +216,12 @@ void main() {
         reason: 'an S row is posed in the shot, which a gap has too',
       );
       expect(
+        rowPoseSpace(project, se, standing: const CutId('b')),
+        project.cameraSize,
+        reason: 'and in the shot whichever cut is stood in — not that '
+            'cut\'s canvas',
+      );
+      expect(
         rowPoseSpace(project, _layer('nowhere'), standing: null),
         isNull,
         reason: 'a cut\'s kind of row with no cut to be posed in',
