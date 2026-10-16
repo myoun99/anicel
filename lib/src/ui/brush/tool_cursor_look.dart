@@ -89,6 +89,16 @@ ToolCursorLook fillCursorLook() => const ToolCursorLook(
   hotspot: Offset(3, 20),
 );
 
+/// I-54: the pen the drawing tools wear when the user chose it — 「펜 모양
+/// 아이콘」, one size; its point is the hot spot. Windows wears it as the
+/// system's cursor (`PenMouseCursor`), every other platform as a sprite.
+ToolCursorLook penCursorLook() => const ToolCursorLook(
+  key: 'pen',
+  painter: ToolIconCursorPainter(icon: Icons.edit),
+  extent: Size(ToolIconCursorPainter.boxSide, ToolIconCursorPainter.boxSide),
+  hotspot: Offset(3, 19),
+);
+
 /// R26 #22: the eyedropper wears its own icon; its tip is the hot spot, so
 /// the glyph hangs up-left of the point being sampled.
 ToolCursorLook eyedropperCursorLook() => const ToolCursorLook(

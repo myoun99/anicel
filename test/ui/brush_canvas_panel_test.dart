@@ -2569,16 +2569,34 @@ void main() {
     testWidgets('the non-painting tools keep their own cursors', (
       tester,
     ) async {
-      for (final tool in [
-        CanvasTool.fill,
-        CanvasTool.select,
-        CanvasTool.move,
+      // One mouse for every tool: a second one added while the first is
+      // still there is a device added twice.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      for (final (tool, system) in [
+        // The bucket is the app's, so the system's steps aside.
+        (CanvasTool.fill, SystemMouseCursors.none),
+        (CanvasTool.select, MouseCursor.defer),
+        (CanvasTool.move, MouseCursor.defer),
       ]) {
         await pumpWithTool(tester, tool);
+        await mouse.moveTo(Offset.zero);
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+        await tester.pump();
         expect(
-          find.byKey(const ValueKey<String>('brush-cursor-region')),
+          find.byKey(const ValueKey<String>('brush-cursor-overlay')),
           findsNothing,
           reason: '$tool must not wear the brush outline',
+        );
+        expect(
+          tester
+              .widget<MouseRegion>(
+                find.byKey(const ValueKey<String>('canvas-tool-cursor-region')),
+              )
+              .cursor,
+          system,
+          reason: '$tool',
         );
       }
     });

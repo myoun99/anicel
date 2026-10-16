@@ -60,6 +60,8 @@ class AppInputSettings {
     this.zoomSnapPercents = defaultZoomSnapPercents,
     this.zoomCeilingOn = false,
     this.zoomCeilingPercent = defaultZoomCeilingPercent,
+    // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
+    this.drawingCursor = DrawingCursor.crosshair,
   });
 
   /// The finger-count drag slots (PEN-7b), all user-assignable. PEN-12
@@ -197,8 +199,12 @@ class AppInputSettings {
   /// suites asserting those opt in explicitly. Every test that mutates
   /// [AppInput.settings] must tearDown-reset to THIS, never to
   /// `AppInputSettings()`.
+  ///
+  /// The corpus was written, too, while the drawing tools wore the tip's
+  /// outline and nothing else (I-54 came later), so it starts from that.
   static const AppInputSettings testCorpusBaseline = AppInputSettings(
     touchDragOneFinger: CanvasTouchDragAction.draw,
+    drawingCursor: DrawingCursor.brush,
   );
 
   /// The canvas mapping for the RIGHT-CLICK bit (PEN-7a): pen side/
@@ -257,6 +263,9 @@ class AppInputSettings {
   ///   escape hatch for drivers whose OS path misreports the pen.
   final TabletService tabletService;
 
+  /// The cursor the drawing tools wear on the canvas.
+  final DrawingCursor drawingCursor;
+
   AppInputSettings copyWith({
     TabletService? tabletService,
     double? pressureCurveGamma,
@@ -277,6 +286,7 @@ class AppInputSettings {
     List<double>? zoomSnapPercents,
     bool? zoomCeilingOn,
     double? zoomCeilingPercent,
+    DrawingCursor? drawingCursor,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
@@ -300,6 +310,7 @@ class AppInputSettings {
     zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
     zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
     zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
+    drawingCursor: drawingCursor ?? this.drawingCursor,
   );
 
   Map<String, dynamic> toJson() => {
@@ -322,6 +333,7 @@ class AppInputSettings {
     'zoomSnapPercents': zoomSnapPercents,
     'zoomCeilingOn': zoomCeilingOn,
     'zoomCeilingPercent': zoomCeilingPercent,
+    'drawingCursor': drawingCursor.name,
   };
 
   /// [json] as a number above zero, or [fallback] — a lock at nothing, or
@@ -412,6 +424,9 @@ class AppInputSettings {
       json['zoomCeilingPercent'],
       defaultZoomCeilingPercent,
     ),
+    drawingCursor:
+        DrawingCursor.values.asNameMap()[json['drawingCursor']] ??
+        DrawingCursor.crosshair,
   );
 
   @override
@@ -435,7 +450,8 @@ class AppInputSettings {
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
       other.zoomCeilingOn == zoomCeilingOn &&
-      other.zoomCeilingPercent == zoomCeilingPercent;
+      other.zoomCeilingPercent == zoomCeilingPercent &&
+      other.drawingCursor == drawingCursor;
 
   @override
   int get hashCode => Object.hash(
@@ -458,6 +474,7 @@ class AppInputSettings {
     Object.hashAll(zoomSnapPercents),
     zoomCeilingOn,
     zoomCeilingPercent,
+    drawingCursor,
   );
 }
 
@@ -465,6 +482,25 @@ class AppInputSettings {
 /// analogue: standard = the OS pointer path ('Tablet PC'), wintab = the
 /// driver-direct sidecar.
 enum TabletService { standard, wintab }
+
+/// The cursor the drawing tools wear on the canvas (I-54).
+///
+/// 🗣️유저 2026-09-30 (I-54): 「브러시 커서, 여러 커서 옵션으로 고를수있게.
+/// 지금처럼 브러시커서, 펜 커서(크기고정, 펜 모양 아이콘, os커서를 바꿈으로서
+/// 앱이랑 관계없이 빠르게), 십자커서(크기고정, 동일하게 os커서 바꿈) 이렇게
+/// 세개」 — one for every drawing tool, in Preferences (I-54-Q1: 「환경설정 ›
+/// 표시 — 하나로」). In the order the user named them, which is the row's.
+enum DrawingCursor {
+  /// The outline of the tip, drawn by the app: its size, roundness and angle
+  /// as the stroke will lay them.
+  brush,
+
+  /// A pen of one size, its point where the stroke starts.
+  pen,
+
+  /// A crosshair of one size, the system's own.
+  crosshair,
+}
 
 /// What a STANDARD secondary input does on the CANVAS (PEN-7a) — the
 /// app's one in-house mapping layer. Everywhere else follows the

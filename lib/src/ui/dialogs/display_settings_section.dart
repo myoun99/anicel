@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_frame_grid_settings.dart';
+import '../../models/app_input_settings.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../ui_scale.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/settings_rows.dart';
 
-/// Preferences ▸ Display: the interface scale (R11), and whether the frame
-/// lines cross a block's paper (유저 2026-09-24).
+/// Preferences ▸ Display: the interface scale (R11), the cursor the drawing
+/// tools wear (I-54), and whether the frame lines cross a block's paper
+/// (유저 2026-09-24).
 ///
 /// A LADDER, not a slider (유저 확정 2026-08-21: "배율을 사다리로"). Six
 /// stops around 100%, which is where a hand actually lands — and a
@@ -54,6 +56,25 @@ class DisplaySettingsSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        Text(AppText.strings.drawingCursorLabel, style: textTheme.titleSmall),
+        const SizedBox(height: 8),
+        ValueListenableBuilder<AppInputSettings>(
+          valueListenable: AppInput.settings,
+          builder: (context, input, _) => PillStrip(
+            items: [
+              for (final cursor in DrawingCursor.values)
+                PillItem(
+                  keyValue: 'drawing-cursor-${cursor.name}',
+                  label: _labelOf(cursor),
+                  selected: cursor == input.drawingCursor,
+                  onTap: () => session.setInputSettings(
+                    input.copyWith(drawingCursor: cursor),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         ValueListenableBuilder<AppFrameGridSettings>(
           valueListenable: AppFrameGridSettings.settings,
           builder: (context, grid, _) => SettingsSwitchRow(
@@ -68,4 +89,10 @@ class DisplaySettingsSection extends StatelessWidget {
       ],
     );
   }
+
+  static String _labelOf(DrawingCursor cursor) => switch (cursor) {
+    DrawingCursor.brush => AppText.strings.drawingCursorBrush,
+    DrawingCursor.pen => AppText.strings.drawingCursorPen,
+    DrawingCursor.crosshair => AppText.strings.drawingCursorCrosshair,
+  };
 }

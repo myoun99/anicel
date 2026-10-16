@@ -345,6 +345,10 @@ void main() {
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'blockFrameLinesLabel': (s) => s.blockFrameLinesLabel,
+    'drawingCursorLabel': (s) => s.drawingCursorLabel,
+    'drawingCursorBrush': (s) => s.drawingCursorBrush,
+    'drawingCursorPen': (s) => s.drawingCursorPen,
+    'drawingCursorCrosshair': (s) => s.drawingCursorCrosshair,
     'accent1Label': (s) => s.accent1Label,
     'accent1Help': (s) => s.accent1Help,
     'sheetFormatTitle': (s) => s.sheetFormatTitle,

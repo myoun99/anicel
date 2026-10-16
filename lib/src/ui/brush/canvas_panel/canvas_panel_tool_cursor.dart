@@ -63,6 +63,66 @@ class _CanvasPanelToolCursor {
       _state._brush.tool == CanvasTool.eyedropper &&
       _state.widget.onEyedropperPick != null;
 
+  /// Whether a cursor the APP draws rides the aim — what makes a pointer
+  /// move cost a frame. ⛔Not the drawing tools by themselves: a cursor the
+  /// system wears (I-54) moves without one.
+  bool get drawsAtTheAim =>
+      fillCursorActive ||
+      brushCursorActive &&
+          appDrawsDrawingCursor(AppInput.settings.value.drawingCursor);
+
+  /// The ONE region the canvas says its system cursor in, around the whole
+  /// deck: the tool's while the tool has one, and whatever lies deeper
+  /// everywhere else.
+  ///
+  /// ↩️It was three regions — the brush's, the fill's and the eyedropper's —
+  /// siblings of the tools inside the deck, one algorithm under three keys.
+  /// And a sibling lies beneath whatever floats over the tools: on the camera
+  /// row the standing row's box takes the whole canvas's presses, so the
+  /// region that hid the system cursor was never hit there and the system's
+  /// arrow showed beside the tool's own (F-285 — 「카메라레이어에서 도구커서랑
+  /// 추가로 os커서도 보임. 다른 레이어랑 법 통일해서 도구커서만 보이게」). An
+  /// ANCESTOR is hit wherever the deck is: a layer with no cursor of its own
+  /// (the row's box) wears the tool's, and one with its own lies deeper and
+  /// wins (the text tool's beam, the view hold's hand).
+  ///
+  /// ⛔It says nothing about the pointer LEAVING. The three said that as
+  /// well, unconditionally, and so overruled the census's own law — a
+  /// departing device releases its own hold only — whenever a tool cursor
+  /// was up. The census says it alone now.
+  Widget region(Widget deck) =>
+      SlicedValueListenableBuilder<AppInputSettings, DrawingCursor>(
+        valueListenable: AppInput.settings,
+        slice: (settings) => settings.drawingCursor,
+        builder: (context, settings) => MouseRegion(
+          key: const ValueKey<String>('canvas-tool-cursor-region'),
+          cursor: _systemCursor(
+            settings.drawingCursor,
+            devicePixelRatio: View.of(context).devicePixelRatio,
+          ),
+          opaque: false,
+          hitTestBehavior: HitTestBehavior.translucent,
+          child: deck,
+        ),
+      );
+
+  /// The system cursor over the canvas for the tool in hand.
+  MouseCursor _systemCursor(
+    DrawingCursor drawing, {
+    required double devicePixelRatio,
+  }) {
+    // R26 #22 · #23: the eyedropper and the fill wear their OWN icons, not
+    // a crosshair — the system cursor hides and the icon rides the aim (유저,
+    // F-130: 「앱 커서만 최대한 가볍게」).
+    if (eyedropperCursorActive || fillCursorActive) {
+      return SystemMouseCursors.none;
+    }
+    if (brushCursorActive) {
+      return drawingSystemCursor(drawing, devicePixelRatio: devicePixelRatio);
+    }
+    return MouseCursor.defer;
+  }
+
   /// R27 #17: the last pointer position seen on the canvas — hovers AND
   /// button-held moves alike.
   ///
@@ -208,6 +268,10 @@ class _CanvasPanelToolCursor {
   /// Their TRACKERS stay down there on purpose (see the deck's comment):
   /// those are full-bleed `MouseRegion`s that decide hit-testing and which
   /// system cursor wins, and moving them would reorder both for no gain.
+  /// ↩️There are no trackers now: the census tracks, and ONE region around
+  /// the deck says the system cursor ([region]) — the order the three
+  /// siblings kept was the very thing that lost the cursor under the row's
+  /// box (F-285).
   ///
   /// ⚠️CONTRACT for every widget returned here: it either paints nothing or
   /// carries its own `RepaintBoundary`. A sprite IS its own boundary, and
@@ -307,11 +371,34 @@ class _CanvasPanelToolCursor {
             );
           },
         ),
-      // The painting tools wear their own footprint: an outline of the tip
-      // that follows the pointer, so a stroke can be aimed before it starts.
-      if (brushCursorActive) tick(_brushCursor(aim)),
+      // The painting tools wear the cursor the user chose (I-54): an outline
+      // of the tip that follows the pointer, so a stroke can be aimed before
+      // it starts — or a pen or a crosshair of one size, which the app draws
+      // only where the system cannot wear it.
+      if (brushCursorActive) tick(_drawingCursor(aim)),
     ];
   }
+
+  Widget _drawingCursor(ValueListenable<Offset?> aim) =>
+      SlicedValueListenableBuilder<AppInputSettings, DrawingCursor>(
+        valueListenable: AppInput.settings,
+        slice: (settings) => settings.drawingCursor,
+        builder: (context, settings) => switch (settings.drawingCursor) {
+          final cursor when !appDrawsDrawingCursor(cursor) =>
+            const SizedBox.shrink(),
+          DrawingCursor.brush => _brushCursor(aim),
+          DrawingCursor.pen => ToolCursorSprite(
+            key: const ValueKey<String>('pen-cursor-overlay'),
+            position: aim,
+            look: penCursorLook(),
+          ),
+          DrawingCursor.crosshair => ToolCursorSprite(
+            key: const ValueKey<String>('crosshair-cursor-overlay'),
+            position: aim,
+            look: crosshairCursorLook(),
+          ),
+        },
+      );
 
   /// The brush cursor. The tip's footprint — size, roundness, angle, as the
   /// pen at the aim is held ([poisedTip], F-176-Q7) — is the one part of

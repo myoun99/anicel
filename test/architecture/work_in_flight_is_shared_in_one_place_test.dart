@@ -71,6 +71,11 @@ const _notAnotherInFlight = <String, String>{
   'lib/src/ui/session/movie_cel_hydrator.dart: _opened':
       'no run in flight: a movie\'s open is KEPT, a failed one with it, so a '
       'movie that would not open is not asked again at every frame',
+  'lib/src/ui/brush/drawing_cursor.dart: _penCursorNames':
+      'no run in flight: a size\'s pen cursor is KEPT, as Windows keeps every '
+      'cursor it is handed for the life of the window, and a refused one '
+      'with it, so a pen it would not take is not handed again at every '
+      'hover (I-54)',
 };
 
 /// Each map of futures [source] declares, by `path: field`, comments apart.

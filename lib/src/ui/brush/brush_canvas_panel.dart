@@ -97,7 +97,8 @@ import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import '../../services/brush_poised_tip.dart';
 import 'brush_cursor_geometry.dart' show brushCursorShape;
-import 'brush_cursor_painter.dart' show brushCursorLook;
+import 'brush_cursor_painter.dart' show brushCursorLook, crosshairCursorLook;
+import 'drawing_cursor.dart';
 import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
 import 'tool_cursor_look.dart';
 import 'tool_cursor_sprite.dart';
@@ -1788,8 +1789,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // How the pen at the aim is held, off the same event — what the brush
     // outline turns and stretches by (F-176-Q7).
     _penPose.value = penPoseOf(event);
-    if (_toolCursor.brushCursorActive ||
-        _toolCursor.fillCursorActive ||
+    if (_toolCursor.drawsAtTheAim ||
         // The stamp's piece preview reads the same census — one writer,
         // every cursor a reader.
         canvasToolStamps(_brush.tool)) {
@@ -2146,126 +2146,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       child: layer,
     ),
   );
-
-  /// The three regions below each do two things and nothing else: hide
-  /// the system cursor while the tool's own cursor is up (the app draws
-  /// every tool cursor — 유저, F-130: 「앱 커서만 최대한 가볍게」), and say
-  /// when the pointer has gone.
-  List<Widget> _brushCursorLayers() {
-    return [
-      Positioned.fill(
-        child: MouseRegion(
-          key: const ValueKey<String>(
-            'brush-cursor-region',
-          ),
-          // The outline IS the cursor, so
-          // the system one steps aside.
-          // Its POSITION comes from the
-          // always-mounted census (R28
-          // #8): a tracker mounted here
-          // would sit outside an
-          // in-flight stroke's route and
-          // freeze the moment the pen
-          // touched down.
-          cursor: SystemMouseCursors.none,
-          opaque: false,
-          hitTestBehavior:
-              HitTestBehavior
-                  .translucent,
-          // 🚨D34: through the ONE
-          // writer, which clears the
-          // POSITION too. Nulling the
-          // notifier alone left
-          // `_lastCanvasPointer` holding
-          // the departed pointer, and the
-          // build-time seed republished
-          // it on the next rebuild — so
-          // the ring came back where
-          // nobody was pointing.
-          onExit: (_) =>
-              _forgetCanvasPointer(),
-          child:
-              const SizedBox.expand(),
-        ),
-      ),
-    ];
-  }
-
-  List<Widget> _fillCursorLayers() {
-    return [
-      Positioned.fill(
-        child: MouseRegion(
-          cursor: SystemMouseCursors.none,
-          opaque: false,
-          hitTestBehavior:
-              HitTestBehavior
-                  .translucent,
-          // 🚨D34: through the ONE
-          // writer, which clears the
-          // POSITION too. Nulling the
-          // notifier alone left
-          // `_lastCanvasPointer` holding
-          // the departed pointer, and the
-          // build-time seed republished
-          // it on the next rebuild — so
-          // the ring came back where
-          // nobody was pointing.
-          onExit: (_) =>
-              _forgetCanvasPointer(),
-          // ⛔No tracker of its own: the
-          // census writes this notifier
-          // for the fill tool now. This
-          // region is left with the two
-          // jobs only it can do — hiding
-          // the system cursor, and
-          // saying when the pointer has
-          // gone.
-          child: const SizedBox.expand(
-            key: ValueKey<String>(
-              'fill-cursor-tracker',
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
-
-  List<Widget> _eyedropperCursorLayers() {
-    return [
-      Positioned.fill(
-        child: MouseRegion(
-          // R26 #22: the eyedropper wears its
-          // OWN icon, not a crosshair — the
-          // system cursor hides and the icon
-          // rides the aim.
-          cursor: SystemMouseCursors.none,
-          opaque: false,
-          hitTestBehavior:
-              HitTestBehavior
-                  .translucent,
-          // One aim for the icon and the
-          // swatch since F-130, so an exit
-          // forgets it the way the other two
-          // regions do.
-          onExit: (_) =>
-              _forgetCanvasPointer(),
-          // R28 #8: the swatch/icon is fed by
-          // the panel's always-mounted pointer
-          // census, not by a tracker mounted
-          // here — one mounted at arming time
-          // is outside an in-flight pointer's
-          // route and hears nothing. This
-          // region only hides the system
-          // cursor and clears on exit.
-          child: const SizedBox.expand(
-            key: ValueKey<String>(
-              'eyedropper-hover-tracker',
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
 
   Widget _buildViewportContent(BuildContext context) {
     final override = widget.contentOverride;

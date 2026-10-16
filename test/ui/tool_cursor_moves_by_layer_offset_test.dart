@@ -64,15 +64,11 @@ void main() {
   testWidgets('the system cursor hides while a tool cursor is up, and the '
       'app draws the ring where the pointer is', (tester) async {
     await pumpPanel(tester);
+    await hover(tester, const Offset(40, 40));
     expect(
-      tester
-          .widget<MouseRegion>(
-            find.byKey(const ValueKey<String>('brush-cursor-region')),
-          )
-          .cursor,
+      RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
       SystemMouseCursors.none,
     );
-    await hover(tester, const Offset(40, 40));
     expect(toolCursorShownAt(tester, find.byKey(outlineKey)), isNotNull);
   });
 

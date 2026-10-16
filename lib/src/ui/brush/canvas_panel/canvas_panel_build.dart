@@ -212,22 +212,6 @@ class _PanelBuild {
         // absorbs the pointer so no stroke starts.
         if (_state._tap.toolTapHandler() != null)
           _state._tap.toolTapLayer(),
-        // Eyedropper cursor (R11-②): crosshair +
-        // a hover swatch of the color under the
-        // pointer — for the tool AND the Alt-held
-        // temporary pick. Translucent: picks fall
-        // through to the tap layer / canvas below.
-        if (_state._toolCursor.eyedropperCursorActive)
-          ..._state._eyedropperCursorLayers(),
-        // R26 #23: the fill tool wears the bucket.
-        if (_state._toolCursor.fillCursorActive)
-          ..._state._fillCursorLayers(),
-        // The painting tools wear their own
-        // footprint: an outline of the tip that
-        // follows the pointer, so a stroke can be
-        // aimed before it starts.
-        if (_state._toolCursor.brushCursorActive)
-          ..._state._brushCursorLayers(),
         // The P9 selection tools own the pointer
         // while active (marquee/lasso/move) —
         // strokes cannot start below the layer.
@@ -490,7 +474,7 @@ class _PanelBuild {
                         _state._line.letGo(event);
                         _state._tap.endCanvasPointer(event);
                       },
-                      child: _cursorDeck(context),
+                      child: _state._toolCursor.region(_cursorDeck(context)),
                     ),
                   ),
                 ),

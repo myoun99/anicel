@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show ContainerLayer, Layer, PictureLayer;
+import 'package:flutter/rendering.dart'
+    show ContainerLayer, Layer, PictureLayer, RendererBinding;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
@@ -461,9 +462,9 @@ void main() {
     await tester.pump();
 
     expect(
-      find.byKey(const ValueKey<String>('fill-cursor-tracker')),
-      findsOneWidget,
-      reason: 'the region that says when the pointer has gone',
+      RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+      SystemMouseCursors.none,
+      reason: 'the system cursor steps aside under the pointer',
     );
     expect(
       toolCursorShownAt(

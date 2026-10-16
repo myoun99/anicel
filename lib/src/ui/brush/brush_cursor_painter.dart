@@ -83,6 +83,11 @@ class BrushCursorPainter extends CustomPainter with RepaintOnProps {
 /// Room around the outline for the halo stroke and the crosshair arms.
 const double _brushCursorPad = 6;
 
+/// I-54: the crosshair the drawing tools wear where the system cannot show
+/// one (iPadOS) — the crosshair the outline already stands in with below a
+/// readable tip, at the one size it always has.
+ToolCursorLook crosshairCursorLook() => brushCursorLook(null);
+
 /// The brush cursor's look for [shape]: the outline painter in a box that
 /// certainly holds it, the pointer at the box's centre.
 ///

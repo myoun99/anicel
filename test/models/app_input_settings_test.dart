@@ -38,6 +38,32 @@ void main() {
     expect(AppInput.timelineEditPanDevices, contains(PointerDeviceKind.stylus));
   });
 
+  // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」 — and a file written
+  // before the choice was there, or naming one this build has not got, reads
+  // the crosshair too.
+  test('the drawing tools wear the crosshair until the user picks another', () {
+    expect(const AppInputSettings().drawingCursor, DrawingCursor.crosshair);
+    final before = const AppInputSettings(
+      drawingCursor: DrawingCursor.pen,
+    ).toJson()..remove('drawingCursor');
+    expect(
+      AppInputSettings.fromJson(before).drawingCursor,
+      DrawingCursor.crosshair,
+    );
+    expect(
+      AppInputSettings.fromJson({
+        ...before,
+        'drawingCursor': 'laser',
+      }).drawingCursor,
+      DrawingCursor.crosshair,
+    );
+    // The corpus was written while the outline was the only cursor.
+    expect(
+      AppInputSettings.testCorpusBaseline.drawingCursor,
+      DrawingCursor.brush,
+    );
+  });
+
   // 🗣️I-61-Q3 (유저 2026-10-14): 「기본값은 off」 — and a file written before
   // the switch was there reads it off too.
   test('a finger resting is no stroke\'s Shift until the switch says so', () {
@@ -298,6 +324,10 @@ void main() {
       'zoomCeilingPercent': base.copyWith(
         zoomCeilingPercent: base.zoomCeilingPercent + 50,
       ),
+      // I-54: every choice, each one a field value of its own.
+      for (final cursor in DrawingCursor.values)
+        if (cursor != base.drawingCursor)
+          'drawingCursor:${cursor.name}': base.copyWith(drawingCursor: cursor),
     };
     flipped.forEach((field, other) {
       expect(
