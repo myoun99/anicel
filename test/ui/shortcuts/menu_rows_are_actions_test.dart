@@ -7,8 +7,6 @@
 // one does what the row does — only where the row can be pressed.
 import 'dart:io';
 
-import 'package:flutter/foundation.dart'
-    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +57,13 @@ Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
   await tester.sendKeyEvent(k);
   await tester.pumpAndSettle();
 }
+
+/// The workspace drawer's full-screen row as the strip has it now, or null
+/// where the strip has none (I-103-Q2).
+PanelFlyoutItem? fullScreenRow(WidgetTester tester) => strip(tester)
+    .menuRows(stripContext(tester))
+    .where((row) => row.shortcuts.contains(EditorActionIds.fullScreen))
+    .singleOrNull;
 
 /// Whether [definition] is one of the STRIP's — the shelves its two menus
 /// fill. The rest of the registry's menu rows are the timeline bar's, which
@@ -359,9 +364,9 @@ void main() {
       );
     });
 
-    testWidgets('🗣️I-103-Q2: the window\'s full screen is a row and an '
-        'action on the desktops — its key asks the window, its mark is what '
-        'the window said — and neither on the tablets', (tester) async {
+    testWidgets('🗣️I-103-Q2: on a desktop the window\'s full screen is a row '
+        'and an action — its key asks the window, its mark is what the '
+        'window said', (tester) async {
       final messenger = tester.binding.defaultBinaryMessenger;
       final asked = <Object?>[];
       messenger.setMockMethodCallHandler(WindowFullScreen.channel, (
@@ -385,12 +390,13 @@ void main() {
         ),
         (_) {},
       );
-      PanelFlyoutItem? row() => strip(tester)
-          .menuRows(stripContext(tester))
-          .where((row) => row.shortcuts.contains(EditorActionIds.fullScreen))
-          .singleOrNull;
+      // The window as a run starts it, for whatever runs next.
+      addTearDown(() async {
+        if (WindowFullScreen.on.value) {
+          await windowSays(false);
+        }
+      });
 
-      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
       await tester.runAsync(
         () => WindowFullScreen.restore(
           AppWindowStore(filePath: '${folder.path}/window.json'),
@@ -401,27 +407,30 @@ void main() {
         appShortcuts(tester).definitions.map((action) => action.id),
         contains(EditorActionIds.fullScreen),
       );
-      expect(row()?.checked, isFalse);
+      expect(fullScreenRow(tester)?.checked, isFalse);
       await pressKeyOf(tester, EditorActionIds.fullScreen);
       expect(asked, [true]);
-      expect(row()?.checked, isFalse, reason: 'asked; the window has not gone');
+      expect(
+        fullScreenRow(tester)?.checked,
+        isFalse,
+        reason: 'asked; the window has not gone',
+      );
       await windowSays(true);
-      expect(row()?.checked, isTrue);
+      expect(fullScreenRow(tester)?.checked, isTrue);
       await tester.sendKeyEvent(k);
       await tester.pumpAndSettle();
       expect(asked, [true, false], reason: 'from full screen, back');
-      await windowSays(false);
+    }, variant: TargetPlatformVariant.desktop());
 
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      await tester.pumpWidget(const SizedBox());
+    testWidgets('⛔on a tablet the window\'s full screen is neither a row nor '
+        'an action', (tester) async {
       await pumpApp(tester);
-      expect(row(), isNull);
+      expect(fullScreenRow(tester), isNull);
       expect(
         appShortcuts(tester).definitions.map((action) => action.id),
         isNot(contains(EditorActionIds.fullScreen)),
       );
-      debugDefaultTargetPlatformOverride = null;
-    });
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
 
     testWidgets('a row wears its action\'s name and key', (tester) async {
       await pumpApp(tester);
