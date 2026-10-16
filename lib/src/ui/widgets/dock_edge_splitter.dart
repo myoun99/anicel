@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart' show partAlong;
 import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 import 'owning_axis_grip.dart';
 
@@ -154,9 +155,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     if (!_dragging) {
       return;
     }
-    _applyDelta(
-      _dragAxis == Axis.horizontal ? details.delta.dx : details.delta.dy,
-    );
+    _applyDelta(partAlong(_dragAxis, details.delta));
     // An edge inside the content it sizes stands in a scroll of its own
     // axis — a header graph's (I-89 ③), the storyboard's V rows' — and a
     // pull that reaches the view's edge pans it, the pan folded into the

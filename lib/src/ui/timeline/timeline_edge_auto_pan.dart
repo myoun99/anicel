@@ -4,6 +4,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../panels/panel_collapsed_scope.dart';
+import 'axis_turn.dart' show extentAlong, partAlong;
 import 'timeline_grid_tile_store.dart';
 import 'timeline_row_edges.dart';
 
@@ -353,10 +354,9 @@ double edgeAutoPanApply({
     return 0;
   }
   final local = viewport.globalToLocal(globalPosition);
-  final horizontal = axis == Axis.horizontal;
   final delta = edgeAutoPanDelta(
-    horizontal ? local.dx : local.dy,
-    horizontal ? viewport.size.width : viewport.size.height,
+    partAlong(axis, local),
+    extentAlong(axis, viewport.size),
   );
   if (delta == 0) {
     return 0;

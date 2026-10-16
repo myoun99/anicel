@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
+import '../timeline/axis_turn.dart' show extentAlong;
 
 /// Where [rect] (canvas space) lies along [axis] on screen, with the pan
 /// taken out: where it starts and how long it is. Under a rotation or a
@@ -19,7 +20,7 @@ import '../../models/canvas_viewport.dart';
   final horizontal = axis == Axis.horizontal;
   if (!viewport.hasRotationOrFlip) {
     final start = horizontal ? rect.left : rect.top;
-    final extent = horizontal ? rect.width : rect.height;
+    final extent = extentAlong(axis, rect.size);
     return (start: start * viewport.zoom, extent: extent * viewport.zoom);
   }
   final unpanned = viewport.copyWith(panX: 0, panY: 0);

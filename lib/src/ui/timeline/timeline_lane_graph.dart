@@ -27,7 +27,13 @@ import '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
 import '../widgets/owning_axis_grip.dart' show OwningAxisGrip;
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'axis_turn.dart'
-    show acrossBox, extentAcross, extentAlong, offsetAlong;
+    show
+        acrossBox,
+        extentAcross,
+        extentAlong,
+        offsetAlong,
+        partAcross,
+        partAlong;
 import 'key_mark_glyph.dart' show paintKeyMark;
 import 'lane_graph.dart';
 import 'lane_graph_seats.dart'
@@ -1211,9 +1217,8 @@ KeySidesEdit laneGraphPull(
   required TimelineFrameGeometry frames,
   required Axis axis,
 }) {
-  final (along, across) = axis == Axis.horizontal
-      ? (position.dx, position.dy)
-      : (position.dy, position.dx);
+  final along = partAlong(axis, position);
+  final across = partAcross(axis, position);
   final span = handle.frames;
   final x =
       (laneGraphTimeAt(along, frames) - span.from) / (span.to - span.from);

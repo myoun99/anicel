@@ -15,7 +15,7 @@ import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/named.dart';
-import 'axis_turn.dart' show extentAlong, offsetAlong;
+import 'axis_turn.dart' show extentAlong, offsetAlong, partAcross, partAlong;
 import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_double_tap.dart';
@@ -974,7 +974,7 @@ class TimelineRowCellsPainter extends CustomPainter
       return null;
     }
     const half = timelineJoiningLineWidth / 2;
-    final across = horizontal ? head.center.dy : head.center.dx;
+    final across = partAcross(axis, head.center);
     return (
       box: horizontal
           ? Rect.fromLTRB(lo, across - half, hi, across + half)
@@ -1244,13 +1244,13 @@ class TimelineRowCellsPainter extends CustomPainter
       offsetAlong(
         axis,
         along: (horizontal ? box.left : box.top) + (line.startsHere ? half : 0),
-        across: horizontal ? box.center.dy : box.center.dx,
+        across: partAcross(axis, box.center),
       ),
       offsetAlong(
         axis,
         along:
             (horizontal ? box.right : box.bottom) - (line.endsHere ? half : 0),
-        across: horizontal ? box.center.dy : box.center.dx,
+        across: partAcross(axis, box.center),
       ),
       Paint()
         ..color = line.ink
@@ -1380,7 +1380,7 @@ Widget timelineRowCellsPaintArea({
   // Read LIVE: the row that built this closure survives zoom steps now.
   bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);
   int frameAt(Offset localPosition) => geometry.value.cellAt(
-    axis == Axis.horizontal ? localPosition.dx : localPosition.dy,
+    partAlong(axis, localPosition),
   );
   // The row the press is on — asked at the press, the row being kept
   // through a cut switch.

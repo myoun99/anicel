@@ -11,6 +11,7 @@ import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
         OwningVerticalDragGestureRecognizer;
+import 'axis_turn.dart' show partAlong;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -903,7 +904,7 @@ class _TimelineRowEditChromeLayerState
     _gripDrag.dragStartBehavior = DragStartBehavior.down;
     _gripDrag.onStart = (_) => _startGripDrag();
     _gripDrag.onUpdate = (details) => _updateGripDrag(
-      (_horizontal ? details.delta.dx : details.delta.dy) +
+      partAlong(widget.axis, details.delta) +
           _autoPanEdge(details.globalPosition),
     );
     _gripDrag.onEnd = (_) => _endGripDrag();
@@ -918,7 +919,7 @@ class _TimelineRowEditChromeLayerState
       final target = _pressed;
       final travel = now - down;
       return target is TimelineRowRunAddTarget &&
-          _addCountFor(target, _horizontal ? travel.dx : travel.dy) != 0;
+          _addCountFor(target, partAlong(widget.axis, travel)) != 0;
     };
     _addPan.onStart = (_) => _startAdd();
     _addPan.onUpdate = (details) {
@@ -1065,7 +1066,7 @@ class _TimelineRowEditChromeLayerState
     if (!_addDragging || target == null) {
       return;
     }
-    _addAccumulated += _horizontal ? delta.dx : delta.dy;
+    _addAccumulated += partAlong(widget.axis, delta);
     widget.runEdit?.onAddUpdate(_addCountFor(target, _addAccumulated));
   }
 

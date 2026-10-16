@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../widgets/tick_layer.dart';
+import 'axis_turn.dart' show extentAlong;
 import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
@@ -97,8 +98,7 @@ timelineRulerPlayheadWriting({
       window.endIndexExclusive <= window.startIndex) {
     return window;
   }
-  double along(Rect rect) =>
-      scale.axis == Axis.horizontal ? rect.width : rect.height;
+  double along(Rect rect) => extentAlong(scale.axis, rect.size);
   double widestOf(Iterable<TimelineGlyphPlacement> glyphs) {
     var widest = 0.0;
     for (final glyph in glyphs) {

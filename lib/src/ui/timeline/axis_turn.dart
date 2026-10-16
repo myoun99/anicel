@@ -138,10 +138,19 @@ double extentAlong(Axis axis, Size size) =>
 double extentAcross(Axis axis, Size size) =>
     axis == Axis.horizontal ? size.height : size.width;
 
-/// The part of a movement that runs ALONG [axis] — what moves a scroller
-/// on that axis.
+/// The part of a movement — or of a point — that runs ALONG [axis]: what
+/// moves a scroller on that axis, where a press stands on the strip. The
+/// offset twin of [extentAlong]: every gesture and painter that serves both
+/// orientations used to spell `horizontal ? delta.dx : delta.dy` by hand
+/// (card one-axis-part-of-an-offset-is-one-function — thirty lines on
+/// 2026-10-17; `one_axis_turn_test` holds them at none).
 double partAlong(Axis axis, Offset offset) =>
     axis == Axis.horizontal ? offset.dx : offset.dy;
+
+/// The part of a movement — or of a point — that runs ACROSS [axis]: which
+/// row a press stands on, how far a drag has left its strip.
+double partAcross(Axis axis, Offset offset) =>
+    axis == Axis.horizontal ? offset.dy : offset.dx;
 
 /// A canvas point [along] the axis and [across] it — the painter twin of
 /// [placedAlong]. Called per bucket in the waveform loop, so it is a

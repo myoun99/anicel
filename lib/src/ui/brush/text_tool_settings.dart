@@ -14,6 +14,7 @@ import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
 import '../text/readout_text.dart' show columnValueText;
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart' show partAlong;
 import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart';
 import '../widgets/drag_value_label.dart';
@@ -770,11 +771,19 @@ class _BoxRows extends StatelessWidget {
     return [
       ToolSettingRow.bar(
         label: strings.trPosition,
-        bar: _valueBox(keyValue: 'text-tool-x', name: 'X', across: true),
+        bar: _valueBox(
+          keyValue: 'text-tool-x',
+          name: 'X',
+          axis: Axis.horizontal,
+        ),
       ),
       ToolSettingRow.bar(
         label: '',
-        bar: _valueBox(keyValue: 'text-tool-y', name: 'Y', across: false),
+        bar: _valueBox(
+          keyValue: 'text-tool-y',
+          name: 'Y',
+          axis: Axis.vertical,
+        ),
       ),
       reading.follow(
         (values) => values.boxCentre != null,
@@ -799,26 +808,24 @@ class _BoxRows extends StatelessWidget {
     ];
   }
 
-  /// One of the place's numbers, X [across] or Y, as it reads — none with
-  /// nothing in hand. A box of its own, as each of the transform tool's is
-  /// (`_valueBox` there).
+  /// One of the place's numbers — X on [Axis.horizontal], Y on
+  /// [Axis.vertical] — as it reads, none with nothing in hand. A box of its
+  /// own, as each of the transform tool's is (`_valueBox` there).
   Widget _valueBox({
     required String keyValue,
     required String name,
-    required bool across,
+    required Axis axis,
   }) => reading.follow(
     (values) {
       final centre = values.boxCentre;
-      return centre == null
-          ? null
-          : columnValueText(across ? centre.dx : centre.dy);
+      return centre == null ? null : columnValueText(partAlong(axis, centre));
     },
     (number) => DragValueLabel.box(
       keyValue: keyValue,
       name: name,
       text: number ?? '',
       enabled: number != null,
-      onDragDelta: (units) => across
+      onDragDelta: (units) => axis == Axis.horizontal
           ? reading.now.carryBy(dx: units.round())
           : reading.now.carryBy(dy: units.round()),
       onOperationEnd: () => reading.now.settle(),
@@ -827,7 +834,7 @@ class _BoxRows extends StatelessWidget {
         if (typed == null) {
           return;
         }
-        if (across) {
+        if (axis == Axis.horizontal) {
           reading.now.setBoxCentre(x: typed);
         } else {
           reading.now.setBoxCentre(y: typed);

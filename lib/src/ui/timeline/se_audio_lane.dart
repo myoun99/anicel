@@ -400,9 +400,8 @@ class _SeAudioLaneSpanState extends State<_SeAudioLaneSpan> {
     if (box == null) {
       return _SpanDragMode.slide;
     }
-    final horizontal = widget.axis == Axis.horizontal;
-    final main = horizontal ? localPosition.dx : localPosition.dy;
-    final extent = horizontal ? box.size.width : box.size.height;
+    final main = partAlong(widget.axis, localPosition);
+    final extent = extentAlong(widget.axis, box.size);
     // Tiny spans stay slide-only — three zones need room to coexist.
     if (extent <= _fadeHandleExtent * 3) {
       return _SpanDragMode.slide;

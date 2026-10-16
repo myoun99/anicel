@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
 import '../media/media_asset_drop_target.dart';
+import 'axis_turn.dart' show partAlong;
 import 'layer_drop_policy.dart' show layerRowsOf, nearestLayerGap;
 import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_row_edges.dart';
@@ -82,11 +83,7 @@ class LayerPlacementEntrance extends StatelessWidget {
         : Offset.zero;
     return (
       layers: [for (final row in layerRowsOf(drawn.rows)) row.layer],
-      slot: nearestLayerGap(
-        drawn.rows,
-        rowAxis == Axis.vertical ? local.dy : local.dx,
-        drawn.edges,
-      ),
+      slot: nearestLayerGap(drawn.rows, partAlong(rowAxis, local), drawn.edges),
     );
   }
 }

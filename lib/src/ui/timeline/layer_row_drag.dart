@@ -27,6 +27,7 @@ import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
+import 'axis_turn.dart' show partAcross;
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'memo_token.dart' show ByIdentity;
@@ -719,9 +720,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _travelled = 0;
     final extent = widget.rowExtent;
-    final main = widget.axis == Axis.horizontal
-        ? localPosition.dy
-        : localPosition.dx;
+    final main = partAcross(widget.axis, localPosition);
     _pressOffset = main;
     // Measured in the RUN, not in the grabbed widget — see
     // [LayerRowDragTarget.grabOffsetWithinRun]. The two are the same box
@@ -895,7 +894,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _chips?.moveTo(details.globalPosition);
     final delta = details.delta;
-    _travelled += widget.axis == Axis.horizontal ? delta.dy : delta.dx;
+    _travelled += partAcross(widget.axis, delta);
     _travelled += _autoPanEdge(details.globalPosition);
     if (widget.rowExtent <= 0) {
       return;

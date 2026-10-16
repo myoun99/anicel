@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
+import '../timeline/axis_turn.dart' show extentAlong;
 import '../widgets/app_scrollbar_lane.dart';
 import 'canvas_view_limit.dart';
 
@@ -99,10 +100,6 @@ class CanvasViewportPanMetrics {
       ? (start: rect.left, extent: rect.width)
       : (start: rect.top, extent: rect.height);
 
-  static double _visibleExtent(Axis axis, Size editorViewportSize) {
-    final source = axis == Axis.horizontal
-        ? editorViewportSize.width
-        : editorViewportSize.height;
-    return finiteNonNegativeExtent(source);
-  }
+  static double _visibleExtent(Axis axis, Size editorViewportSize) =>
+      finiteNonNegativeExtent(extentAlong(axis, editorViewportSize));
 }

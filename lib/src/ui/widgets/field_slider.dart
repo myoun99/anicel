@@ -897,7 +897,7 @@ class _FieldSliderState extends State<FieldSlider> {
     );
 
     Widget bar = _TrackExtentProbe(
-      vertical: _vertical,
+      axis: widget.axis,
       onExtent: _takeTrackExtent,
       child: DecoratedBox(
         decoration: FieldSlider.frameOf(widget.height, enabled: _enabled),
@@ -1184,17 +1184,17 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
 /// for nothing when the bar is only repainted.
 class _TrackExtentProbe extends SingleChildRenderObjectWidget {
   const _TrackExtentProbe({
-    required this.vertical,
+    required this.axis,
     required this.onExtent,
     required super.child,
   });
 
-  final bool vertical;
+  final Axis axis;
   final ValueChanged<double> onExtent;
 
   @override
   _RenderTrackExtentProbe createRenderObject(BuildContext context) =>
-      _RenderTrackExtentProbe(vertical: vertical, onExtent: onExtent);
+      _RenderTrackExtentProbe(axis: axis, onExtent: onExtent);
 
   @override
   void updateRenderObject(
@@ -1202,32 +1202,30 @@ class _TrackExtentProbe extends SingleChildRenderObjectWidget {
     _RenderTrackExtentProbe renderObject,
   ) {
     renderObject
-      ..vertical = vertical
+      ..axis = axis
       ..onExtent = onExtent;
   }
 }
 
 class _RenderTrackExtentProbe extends RenderProxyBox {
-  _RenderTrackExtentProbe({
-    required bool vertical,
-    required this.onExtent,
-  }) : _vertical = vertical;
+  _RenderTrackExtentProbe({required Axis axis, required this.onExtent})
+    : _axis = axis;
 
   ValueChanged<double> onExtent;
 
-  bool get vertical => _vertical;
-  bool _vertical;
-  set vertical(bool value) {
-    if (_vertical == value) {
+  Axis get axis => _axis;
+  Axis _axis;
+  set axis(Axis value) {
+    if (_axis == value) {
       return;
     }
-    _vertical = value;
+    _axis = value;
     markNeedsLayout();
   }
 
   @override
   void performLayout() {
     super.performLayout();
-    onExtent(_vertical ? constraints.maxHeight : constraints.maxWidth);
+    onExtent(extentAlong(_axis, constraints.biggest));
   }
 }

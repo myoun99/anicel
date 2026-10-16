@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../timeline/axis_turn.dart' show extentAlong, partAlong;
 import 'app_scrollbar_lane.dart';
 import 'owning_axis_grip.dart';
 import 'tick_layer.dart';
@@ -189,9 +190,7 @@ class _AppScrollbarState extends State<AppScrollbar> {
     final horizontal = widget.axis == Axis.horizontal;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final trackExtent = horizontal
-            ? constraints.maxWidth
-            : constraints.maxHeight;
+        final trackExtent = extentAlong(widget.axis, constraints.biggest);
         final geometry = _geometry(trackExtent);
         // Colour is the whole state machine (see the class doc). White
         // rather than a palette grey because a 4px thumb has to win
@@ -290,7 +289,7 @@ class _AppScrollbarState extends State<AppScrollbar> {
   }
 
   double _axisPosition(Offset localPosition) =>
-      widget.axis == Axis.horizontal ? localPosition.dx : localPosition.dy;
+      partAlong(widget.axis, localPosition);
 
   void _lanePressed(double position, AppScrollbarGeometry geometry) {
     if (!widget.enabled ||

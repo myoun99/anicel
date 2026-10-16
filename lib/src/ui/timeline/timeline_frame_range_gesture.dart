@@ -12,6 +12,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import 'axis_turn.dart' show partAcross, partAlong;
 import 'berth_row.dart' show rowAddressNow;
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
@@ -351,7 +352,7 @@ class _TimelineFrameRangeGestureLayerState
 
   @override
   int _frameAt(Offset localPosition) => widget.geometry.value.cellAt(
-    widget.axis == Axis.horizontal ? localPosition.dx : localPosition.dy,
+    partAlong(widget.axis, localPosition),
   );
 
   @override
@@ -410,7 +411,7 @@ class _TimelineFrameRangeGestureLayerState
   /// Raw pixels, not a row count: dividing by this row's height would
   /// assume every other row matches it (R9 #25).
   double _crossOffsetAt(Offset localPosition) {
-    return widget.axis == Axis.horizontal ? localPosition.dy : localPosition.dx;
+    return partAcross(widget.axis, localPosition);
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -455,8 +456,8 @@ class _TimelineFrameRangeGestureLayerState
         // details.delta is stated in the global frame and never sees the
         // content move. `_scrolledMain` was just incremented by exactly
         // this step's main-axis application.
-        _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
-        _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
+        _mainDelta += partAlong(widget.axis, details.delta);
+        _crossDelta += partAcross(widget.axis, details.delta);
         final frames = commaDragFrameDelta(
           accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.geometry.value.frameCellExtent,
@@ -810,9 +811,7 @@ class _TimelineLaneRangeGestureLayerState
   // nothing where the widget rebuilds anyway.
   @override
   int _frameAt(Offset localPosition) => frameAtVisibleX(
-    visibleX: widget.axis == Axis.horizontal
-        ? localPosition.dx
-        : localPosition.dy,
+    visibleX: partAlong(widget.axis, localPosition),
     frameStartIndex: widget.frameStartIndex,
     frameCellWidth: widget.frameCellExtent,
     leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
@@ -878,7 +877,7 @@ class _TimelineLaneRangeGestureLayerState
   /// row's height would assume every other row matches it (R9 #25, and
   /// the storyboard rail is exactly where that fails).
   double _crossOffsetAt(Offset localPosition) {
-    return widget.axis == Axis.horizontal ? localPosition.dy : localPosition.dx;
+    return partAcross(widget.axis, localPosition);
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -916,7 +915,7 @@ class _TimelineLaneRangeGestureLayerState
           _crossOffsetAt(local),
         );
       case _RangeDragMode.move:
-        _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
+        _mainDelta += partAlong(widget.axis, details.delta);
         final frames = commaDragFrameDelta(
           accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.frameCellExtent,
@@ -1138,17 +1137,16 @@ mixin _RangeDragFirstStep {
   /// row ([timelineRowStepDelta]), which on any row 24px or taller lies past
   /// the 18px hit slop — the slop comes first there.
   bool _firstStepAt(Offset down, Offset now) {
-    final horizontal = _dragAxis == Axis.horizontal;
     final pressed = _frameAt(down);
     if (_pressedInSelection(pressed)) {
       final travel = now - down;
       return commaDragFrameDelta(
-            accumulatedDelta: horizontal ? travel.dx : travel.dy,
+            accumulatedDelta: partAlong(_dragAxis, travel),
             frameCellExtent: _dragCellExtent,
           ) !=
           0;
     }
-    final crossNow = horizontal ? now.dy : now.dx;
+    final crossNow = partAcross(_dragAxis, now);
     return _frameAt(now) != pressed ||
         crossNow < 0 ||
         crossNow >= _dragRowExtent;

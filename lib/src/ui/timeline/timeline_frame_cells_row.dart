@@ -14,6 +14,7 @@ import '../../models/transition_geometry.dart'
     show transitionEditableInCut, transitionMarkOf;
 import '../media/media_asset_drop_target.dart';
 import '../widgets/named.dart';
+import 'axis_turn.dart' show partAlong;
 import 'berth_row.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'memo_token.dart';
@@ -944,9 +945,7 @@ class _LayerAssetDropTarget extends StatelessWidget {
       return start;
     }
     final local = box.globalToLocal(globalPosition);
-    return frames.frameIndexAt(
-      frames.edgeAt(start) + (axis == Axis.horizontal ? local.dx : local.dy),
-    );
+    return frames.frameIndexAt(frames.edgeAt(start) + partAlong(axis, local));
   }
 
   @override

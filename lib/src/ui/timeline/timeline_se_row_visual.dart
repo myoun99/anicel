@@ -429,9 +429,7 @@ class _AudioClipStrip extends StatelessWidget {
     final waveform = ClipRect(
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final main = axis == Axis.horizontal
-              ? constraints.maxWidth
-              : constraints.maxHeight;
+          final main = extentAlong(axis, constraints.biggest);
           return CustomPaint(
             painter: WaveformPainter(
               peaks: peaks,
