@@ -199,6 +199,7 @@ void main() {
     eye.value = false;
     await tester.pump();
     expect(find.byType(CameraFrameOverlay), findsNothing, reason: '⛔전제');
+    expect(path(), findsOneWidget, reason: 'the frame gone, the path stays');
     asExported();
 
     CameraPathSettings.settings.value = const CameraPathSettings(
