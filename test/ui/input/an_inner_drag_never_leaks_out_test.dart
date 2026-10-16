@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/input/pan_slide.dart';
 import 'package:anicel/src/ui/input/two_axis_drag.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
@@ -469,33 +470,41 @@ void main() {
     });
 
     /// A sheet whose frames fit it — it cannot scroll sideways — inside a
-    /// scroller that can: a panel's squeezed floor.
-    Future<void> pumpSheet(WidgetTester tester, {required double rowsTall}) =>
-        tester.pumpWidget(
-          MaterialApp(
-            scrollBehavior: const AppScrollBehavior(),
-            home: Scaffold(
-              body: SingleChildScrollView(
-                controller: around,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: 1600,
-                  height: 300,
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: SizedBox(
-                      key: const ValueKey<String>('sheet'),
-                      width: 400,
-                      height: 300,
-                      child: TwoAxisDrag(
-                        axes: [rows, frames],
+    /// scroller that can: a panel's squeezed floor. All of it is a part that
+    /// slides sideways by itself when [slide] is given, as a layer area's
+    /// window does ([PanSlide]).
+    Future<void> pumpSheet(
+      WidgetTester tester, {
+      required double rowsTall,
+      PanSlide? slide,
+    }) {
+      final content = SizedBox(width: 400, height: rowsTall);
+      return tester.pumpWidget(
+        MaterialApp(
+          scrollBehavior: const AppScrollBehavior(),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              controller: around,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: 1600,
+                height: 300,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    key: const ValueKey<String>('sheet'),
+                    width: 400,
+                    height: 300,
+                    child: TwoAxisDrag(
+                      axes: [rows, frames],
+                      child: SingleChildScrollView(
+                        controller: rows,
                         child: SingleChildScrollView(
-                          controller: rows,
-                          child: SingleChildScrollView(
-                            controller: frames,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(width: 400, height: rowsTall),
-                          ),
+                          controller: frames,
+                          scrollDirection: Axis.horizontal,
+                          child: slide == null
+                              ? content
+                              : PanSlideRegion(slide: slide, child: content),
                         ),
                       ),
                     ),
@@ -504,7 +513,9 @@ void main() {
               ),
             ),
           ),
-        );
+        ),
+      );
+    }
 
     for (final kind in devices) {
       testWidgets('pulled with a ${kind.name} along the way it cannot '
@@ -539,6 +550,56 @@ void main() {
 
         expect(around.offset, greaterThan(0));
       });
+
+      testWidgets('…nor a ${kind.name} pull on a part of it that slides, '
+          'while that has nowhere to slide', (tester) async {
+        await pumpSheet(tester, rowsTall: 300, slide: _Slide(room: 0));
+
+        await tester.dragFrom(
+          tester.getCenter(find.byKey(const ValueKey<String>('sheet'))),
+          const Offset(-200, 0),
+          kind: kind,
+        );
+        await tester.pumpAndSettle();
+
+        expect(around.offset, greaterThan(0));
+      });
+
+      testWidgets('…but a part of it that slides keeps a ${kind.name} pull '
+          'while it has somewhere to slide, and slides with the hand '
+          '(F-351)', (tester) async {
+        final slide = _Slide(room: 100);
+        await pumpSheet(tester, rowsTall: 300, slide: slide);
+
+        await tester.dragFrom(
+          tester.getCenter(find.byKey(const ValueKey<String>('sheet'))),
+          const Offset(-200, 0),
+          kind: kind,
+        );
+        await tester.pumpAndSettle();
+
+        expect(around.offset, 0);
+        expect(slide.offset, greaterThan(0));
+      });
     }
   });
+}
+
+/// A part of a sheet that slides sideways by itself, as a layer area's
+/// window does, with [room] to slide in.
+class _Slide implements PanSlide {
+  _Slide({required this.room});
+
+  final double room;
+  double offset = 0;
+
+  @override
+  Axis get axis => Axis.horizontal;
+
+  @override
+  bool get canSlide => room > 0;
+
+  @override
+  void slideWithHand(Offset delta) =>
+      offset = (offset - delta.dx).clamp(0.0, room);
 }
