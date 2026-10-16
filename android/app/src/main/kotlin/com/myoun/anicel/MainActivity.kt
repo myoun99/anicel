@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +14,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -34,6 +36,17 @@ class MainActivity : FlutterActivity() {
     // AUDIO-PRO R5: the mic grant is a system dialog whose answer arrives
     // in a callback; the channel result waits here for it.
     private var pendingMicResult: MethodChannel.Result? = null
+
+    // I-104 (user 2026-10-15: 「아이패드같은거 조작안하면 화면 꺼지는데 …
+    // 안꺼지도록」; I-104-Q1, 2026-10-16: on the iPad and Android, always
+    // while the app is in front). The flag is the WINDOW's, and Android
+    // honours it only while that window is shown, so leaving the app hands
+    // the screen back to the system's own timeout with nothing to undo here.
+    // The desktops keep their OS's display settings - the same answer.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

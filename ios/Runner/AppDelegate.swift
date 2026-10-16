@@ -45,7 +45,28 @@ import UniformTypeIdentifiers
     let result = super.application(
       application, didFinishLaunchingWithOptions: launchOptions)
     installPencilInteractionIfPossible()
+    keepTheScreenOn(application)
     return result
+  }
+
+  /// I-104 (user 2026-10-15: 「아이패드같은거 조작안하면 화면 꺼지는데 …
+  /// 안꺼지도록」; I-104-Q1, 2026-10-16: on the iPad and Android, always
+  /// while the app is in front). iOS honours the switch only for the app in
+  /// front, so leaving the app hands the screen back to Auto-Lock with
+  /// nothing to undo here. It is said again every time the app becomes
+  /// active, so nothing that turned it off while the app was away — a
+  /// system screen the app presented, say — outlasts the return.
+  ///
+  /// UNVERIFIED-ON-DEVICE like the rest of this file.
+  private func keepTheScreenOn(_ application: UIApplication) {
+    application.isIdleTimerDisabled = true
+    _ = NotificationCenter.default.addObserver(
+      forName: UIApplication.didBecomeActiveNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      UIApplication.shared.isIdleTimerDisabled = true
+    }
   }
 
   override func applicationDidBecomeActive(_ application: UIApplication) {
