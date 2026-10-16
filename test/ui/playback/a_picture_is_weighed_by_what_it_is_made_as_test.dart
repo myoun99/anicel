@@ -18,6 +18,7 @@ import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -96,11 +97,32 @@ void main() {
       effects: [
         ResolvedLayerEffect(
           kind: EffectKind.deleteColor,
-          values: const [255, 0, 0, 0],
+          values: const [255, 0, 0, 0, 100],
         ),
       ],
     ),
   };
+
+  test('⛔fixture: the keyed row keys every inked pixel away, and the cel '
+      'keeps its tiles', () {
+    for (final surfaceOf in shapes.values) {
+      final cel = surfaceOf();
+      final shown = celSurfaceAsShown(
+        cel,
+        rows['keyed out to nothing — its tiles stay']!().sourceEffects,
+      );
+
+      expect(shown.tiles.keys, unorderedEquals(cel.tiles.keys));
+      for (final tile in shown.tiles.values) {
+        expect(
+          tile.readPixels(
+            (_, view) => [for (var i = 3; i < view.length; i += 4) view[i]],
+          ),
+          everyElement(0),
+        );
+      }
+    }
+  });
 
   for (final MapEntry(key: shape, value: surfaceOf) in shapes.entries) {
     for (final MapEntry(key: kind, value: rowOf) in rows.entries) {

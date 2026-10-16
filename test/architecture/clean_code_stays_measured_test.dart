@@ -835,7 +835,17 @@ void main() {
   /// 🔬`clean_code_diff` against master (`34c6233f6`) names this one and
   /// no other class. ⛔Not split to fit: a row is inserted in one place,
   /// and a door that inserted its own would be the second.
-  const longClasses = 64;
+  ///
+  /// ⚠️64 → 65 on 2026-10-17, ONE name: `LayerFrameImageCache` crossed
+  /// again (588 → 642) in playback-picture-weight-estimates — the warmer
+  /// asks for room by what a picture will be made as: the plan `prepare`
+  /// makes its image by (`plannedBytes`, read off the same `_levelPlan`),
+  /// once what `prepare` reads first is read (`readIn`), and both roads that
+  /// make an image hold it to that plan (`_isAsPlanned`). 🔬`clean_code_diff`
+  /// between master (`76fbb39e8`) and the lane names this one and no other
+  /// class. ⛔Not split to fit: the weight is the plan the image is made by,
+  /// and it stands beside the making so the two cannot part.
+  const longClasses = 65;
 
   late CleanCodeScan scan;
   setUpAll(() {
