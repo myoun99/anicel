@@ -37,6 +37,19 @@ void main() {
     });
   }
 
+  test('🗣️I-103-Q2: the list holds the registry as this platform offers it, '
+      'before anything else is told — no full screen on a tablet', () {
+    final bindings = EditorShortcutBindings();
+    addTearDown(bindings.dispose);
+    expect(bindings.definitions, editorActionsHere());
+    expect(
+      editorActionsHere().map((action) => action.id),
+      isNot(contains(EditorActionIds.fullScreen)),
+      reason: '⛔premise: the suite runs as Android',
+    );
+    expect(bindings.definitionFor(EditorActionIds.fullScreen), isNull);
+  });
+
   test('🗣️I-15: 「이동」 is HELD on Space — never an intent in the map — '
       'and playback lets Space go (its four-finger tap stays)', () {
     final bindings = EditorShortcutBindings();
