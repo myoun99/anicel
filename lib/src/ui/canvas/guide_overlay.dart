@@ -714,68 +714,82 @@ CutGuides dragGuideHandle(
 ) {
   final guide = guides.guideFor(handle.guideId);
   if (guide == null) return guides;
-  final shape = guide.shape;
-  GuideShape? next;
-  switch (shape) {
-    case SymmetryShape():
-      next = switch (handle.kind) {
-        GuideHandleKind.origin => shape.copyWith(
-          axis: shape.axis.copyWith(origin: to),
-        ),
-        GuideHandleKind.axisAngle => shape.copyWith(
-          axis: shape.axis.copyWith(
-            angleDegrees: _angleTowards(shape.axis.origin, to),
-          ),
-        ),
-        _ => null,
-      };
-    case PerspectiveShape():
-      switch (handle.kind) {
-        // Both eye-level handles go through [movedEyeLevel], which is where
-        // the constraint decides whether the vanishing points come along —
-        // 유저: 「로직부터 통일」. Sliding and tilting are two ways to move ONE
-        // line, so they must not each hold an opinion about it.
-        case GuideHandleKind.origin:
-          next = movedEyeLevel(shape, shape.eyeLevel.copyWith(origin: to));
-        case GuideHandleKind.eyeLevelAngle:
-          next = movedEyeLevel(
-            shape,
-            shape.eyeLevel.copyWith(
-              angleDegrees: _angleTowards(shape.eyeLevel.origin, to),
-            ),
-          );
-        case GuideHandleKind.vanishingPoint:
-          // The eye-level constraint acts HERE, on the drag, rather than as
-          // a sweep over stored geometry — see
-          // [constrainedVanishingPointTarget].
-          next = _withPointAt(
-            shape,
-            handle.vanishingPointIndex,
-            VanishingPointAt(constrainedVanishingPointTarget(shape, to)),
-          );
-        case GuideHandleKind.parallelDirection:
-          // The way from the eye level's handle to the hand. ⛔Not held to
-          // the eye level: that binds where a point STANDS, and a family
-          // held to it could never be the vertical one
-          // (vanishing-point-types-Q3: 「세로 퍼스는 항상 수직」 is a 90 in
-          // the angle cell this handle writes too).
-          final way = HomogeneousPoint.at(
-            to.x,
-            to.y,
-          ).directionFrom(shape.eyeLevel.origin);
-          next = way == null
-              ? null
-              : _withPointAt(
-                  shape,
-                  handle.vanishingPointIndex,
-                  VanishingPointTowards(dx: way.dx, dy: way.dy),
-                );
-        case GuideHandleKind.axisAngle:
-          next = null;
-      }
-  }
+  final next = switch (guide.shape) {
+    final SymmetryShape shape => _symmetryDragged(shape, handle, to),
+    final PerspectiveShape shape => _perspectiveDragged(shape, handle, to),
+  };
   if (next == null) return guides;
   return guides.replacing(guide.copyWith(shape: next));
+}
+
+/// [shape] with [handle] dragged to [to] — null for a handle a symmetry
+/// does not have.
+SymmetryShape? _symmetryDragged(
+  SymmetryShape shape,
+  GuideHandle handle,
+  CanvasPoint to,
+) => switch (handle.kind) {
+  GuideHandleKind.origin => shape.copyWith(
+    axis: shape.axis.copyWith(origin: to),
+  ),
+  GuideHandleKind.axisAngle => shape.copyWith(
+    axis: shape.axis.copyWith(
+      angleDegrees: _angleTowards(shape.axis.origin, to),
+    ),
+  ),
+  _ => null,
+};
+
+/// [shape] with [handle] dragged to [to] — null for a handle a perspective
+/// does not have, or a point it does not hold.
+PerspectiveShape? _perspectiveDragged(
+  PerspectiveShape shape,
+  GuideHandle handle,
+  CanvasPoint to,
+) {
+  switch (handle.kind) {
+    // Both eye-level handles go through [movedEyeLevel], which is where
+    // the constraint decides whether the vanishing points come along —
+    // 유저: 「로직부터 통일」. Sliding and tilting are two ways to move ONE
+    // line, so they must not each hold an opinion about it.
+    case GuideHandleKind.origin:
+      return movedEyeLevel(shape, shape.eyeLevel.copyWith(origin: to));
+    case GuideHandleKind.eyeLevelAngle:
+      return movedEyeLevel(
+        shape,
+        shape.eyeLevel.copyWith(
+          angleDegrees: _angleTowards(shape.eyeLevel.origin, to),
+        ),
+      );
+    case GuideHandleKind.vanishingPoint:
+      // The eye-level constraint acts HERE, on the drag, rather than as
+      // a sweep over stored geometry — see
+      // [constrainedVanishingPointTarget].
+      return _withPointAt(
+        shape,
+        handle.vanishingPointIndex,
+        VanishingPointAt(constrainedVanishingPointTarget(shape, to)),
+      );
+    case GuideHandleKind.parallelDirection:
+      // The way from the eye level's handle to the hand. ⛔Not held to
+      // the eye level: that binds where a point STANDS, and a family
+      // held to it could never be the vertical one
+      // (vanishing-point-types-Q3: 「세로 퍼스는 항상 수직」 is a 90 in
+      // the angle cell this handle writes too).
+      final way = HomogeneousPoint.at(
+        to.x,
+        to.y,
+      ).directionFrom(shape.eyeLevel.origin);
+      return way == null
+          ? null
+          : _withPointAt(
+              shape,
+              handle.vanishingPointIndex,
+              VanishingPointTowards(dx: way.dx, dy: way.dy),
+            );
+    case GuideHandleKind.axisAngle:
+      return null;
+  }
 }
 
 /// [shape] with its point at [index] standing as [point] — null for an

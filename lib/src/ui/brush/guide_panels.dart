@@ -737,27 +737,41 @@ class _VanishingPointRow extends StatelessWidget {
     return ToolSettingRow.pair(
       key: ValueKey<String>('guide-vanishing-point-$index'),
       label: '${index + 1}',
-      first: switch (point) {
-        // 🗣️vanishing-point-types-Q3 (유저 2026-10-16): 「각도 칸으로
-        // 정확히」 — 90 is the vertical family, stated exactly.
-        final VanishingPointTowards towards => FieldSlider.cell(
-          key: ValueKey<String>('guide-vanishing-point-$index-angle'),
-          label: strings.guideParallelAngle,
-          value: towards.degrees,
-          min: -180,
-          max: 180,
-          unit: '°',
-          onChanged: onTurned,
-          onChangeEnd: onTurnEnded,
-        ),
-        _ => _reads(
-          context,
-          position == null
-              ? strings.guideVanishingPointAtInfinity
-              : '${position.x.round()}, ${position.y.round()}',
-        ),
-      },
-      second: Row(
+      first: _whereItStands(context, strings, position),
+      second: _parallelAndRemove(strings, atInfinity: atInfinity),
+    );
+  }
+
+  /// The first cell: where the point stands — or, a family at infinity, the
+  /// angle it runs at, typed here.
+  Widget _whereItStands(
+    BuildContext context,
+    AppStrings strings,
+    CanvasPoint? position,
+  ) => switch (point) {
+    // 🗣️vanishing-point-types-Q3 (유저 2026-10-16): 「각도 칸으로
+    // 정확히」 — 90 is the vertical family, stated exactly.
+    final VanishingPointTowards towards => FieldSlider.cell(
+      key: ValueKey<String>('guide-vanishing-point-$index-angle'),
+      label: strings.guideParallelAngle,
+      value: towards.degrees,
+      min: -180,
+      max: 180,
+      unit: '°',
+      onChanged: onTurned,
+      onChangeEnd: onTurnEnded,
+    ),
+    _ => _reads(
+      context,
+      position == null
+          ? strings.guideVanishingPointAtInfinity
+          : '${position.x.round()}, ${position.y.round()}',
+    ),
+  };
+
+  /// The second cell: the 「평행」 pill and the delete, side by side.
+  Widget _parallelAndRemove(AppStrings strings, {required bool atInfinity}) =>
+      Row(
         children: [
           // 🗣️vanishing-point-types-Q1 (유저 2026-10-16): ONE pill, lit
           // while the point is at infinity, each press the other way.
@@ -784,9 +798,7 @@ class _VanishingPointRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
+      );
 
   /// Where the point stands, read and not edited here — the canvas handle
   /// moves it.
