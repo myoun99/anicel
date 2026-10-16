@@ -865,7 +865,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // back off the document when a step lands, and the legend's
             // 「all」 is one step.
             laneOpenOf: _session.layerSwitches.isLayerLanesOpen,
-            laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
+            laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             onToggleLayerLanes: widget.onToggleLayerLanes,
             hiddenSections: widget.hiddenSections,

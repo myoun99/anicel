@@ -897,6 +897,32 @@ class LaneVerbs {
     }
   }
 
+  /// Whether the switch [toggleLaneGroupEnabled] flips for [headerLaneId]
+  /// is on RIGHT NOW, dispatched as that flip dispatches; null where the
+  /// header names no switch.
+  ///
+  /// 🚨A LIVE READ: a lane row built at the last frame carries a stale
+  /// `groupEnabled`, and the rail's bulk-drag has to spread what the press
+  /// just set. ↩️The rail read the layer's TRANSFORM flag for every lane
+  /// row, so a sweep begun on an effect header spread the transform's
+  /// state instead of the effect's (I-89 ①ⓒ).
+  bool? isLaneGroupOn(LayerId layerId, String headerLaneId) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return null;
+    }
+    if (headerLaneId == transformGroupHeaderLane.laneId) {
+      return layer.transformEnabled;
+    }
+    final effectId = parseEffectLaneId(headerLaneId)?.effectId;
+    for (final effect in layer.effects) {
+      if (effect.id == effectId) {
+        return effect.enabled;
+      }
+    }
+    return null;
+  }
+
   /// [track] with [laneId]'s key at [frame] toggled — a new one frozen at
   /// the value [layer] resolves there: where its reference fx stands the
   /// picture, when [reference] says the lane is that fx's (F-374). What the

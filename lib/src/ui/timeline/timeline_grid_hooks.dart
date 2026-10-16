@@ -449,9 +449,13 @@ class TimelineGridHooks {
   final bool Function(LayerId layerId)? laneOpenOf;
 
   /// A LIVE read of a lane GROUP’s switch, when the host can give one — the
-  /// transform group’s flag is the layer’s own field, and a lane row built
-  /// last frame carries a stale copy.
-  final bool Function(LayerId layerId)? laneGroupOnOf;
+  /// one [onToggleLaneGroupEnabled] flips, named by the group’s header (the
+  /// Transform group’s flag, an effect’s eyeball); null where the header
+  /// names none. A lane row built last frame carries a stale copy.
+  ///
+  /// ↩️It was asked by the layer alone and answered the TRANSFORM flag for
+  /// every group (I-89 ①ⓒ).
+  final bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf;
 
   /// A LIVE read of a layer’s own eye — the rail’s bulk-drag needs the value
   /// the press just set, and a captured [Layer] still reports the last

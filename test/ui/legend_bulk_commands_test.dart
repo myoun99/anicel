@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/session/opacity_verbs.dart';
 import 'package:anicel/src/ui/session/standing.dart';
 import 'package:anicel/src/ui/session/visibility_solo.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
 /// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps
@@ -172,7 +174,10 @@ void main() {
       drawing,
       enabled: !captured.transformEnabled,
     );
-    expect(switches(s).isLayerTransformOn(drawing), !captured.transformEnabled);
+    expect(
+      s.laneVerbs.isLaneGroupOn(drawing, transformGroupHeaderLane.laneId),
+      !captured.transformEnabled,
+    );
   });
 
   test('visibility sweeps: hide all, show all — every row but the camera, '

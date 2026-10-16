@@ -510,7 +510,7 @@ class TimelinePanel extends StatefulWidget {
   final bool Function(LayerId layerId)? laneOpenOf;
 
   /// Forwarded to the grids — see [LayerTimelineGrid.laneGroupOnOf].
-  final bool Function(LayerId layerId)? laneGroupOnOf;
+  final bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf;
 
   /// Forwarded to the grids — see [LayerTimelineGrid.layerEyeOnOf].
   final bool Function(LayerId layerId)? layerEyeOnOf;

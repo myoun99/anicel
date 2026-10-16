@@ -148,14 +148,23 @@ bool? _fxValue(TimelineGridHooks hooks, TimelineDisplayRow row) {
       : _laneFxValue(hooks, row, lane);
 }
 
-/// A lane row's switch is its group's bypass — live when the host reads it.
+/// A lane row's switch is its GROUP's bypass, worn by the group's header
+/// alone ([PropertyLaneRow.groupEnabled], what the rail mounts its fx
+/// button by) — read live when the host reads it.
+///
+/// 🚨A MEMBER WEARS NO SWITCH: it reads null, and the sweep holds it without
+/// a press. ↩️Every lane row read the host's one live switch, the TRANSFORM
+/// flag: an effect header spread the transform's state, and a member was
+/// pressed — its lane id names its effect, so each member crossed flipped
+/// that effect once more (I-89 ①ⓒ).
 bool? _laneFxValue(
   TimelineGridHooks hooks,
   TimelineDisplayRow row,
   PropertyLaneRow lane,
 ) {
-  if (hooks.onToggleLaneGroupEnabled == null) return null;
-  return hooks.laneGroupOnOf?.call(row.layer.id) ?? lane.groupEnabled;
+  final drawn = lane.groupEnabled;
+  if (hooks.onToggleLaneGroupEnabled == null || drawn == null) return null;
+  return hooks.laneGroupOnOf?.call(row.layer.id, lane.laneId) ?? drawn;
 }
 
 /// A layer row's fx is tri-state, read as the tap flips it: a MIXED row

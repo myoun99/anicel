@@ -172,14 +172,6 @@ class LayerSwitchVerbs {
           ?.lanesExpanded ??
       false;
 
-  /// Whether [layerId]'s TRANSFORM group is applied right now.
-  ///
-  /// 🚨A LIVE READ, like [isLayerEyeOn] and [isLayerOnTimesheet]: a lane row
-  /// built at the last frame carries a stale `groupEnabled`, and the rail's
-  /// bulk-drag has to spread what the press just set.
-  bool isLayerTransformOn(LayerId layerId) =>
-      _rowAnywhere(layerId).transformEnabled;
-
   /// Whether [layerId]'s own eye is on RIGHT NOW.
   ///
   /// 🚨A LIVE READ, for the same reason as [isLayerOnTimesheet]: a caller
