@@ -353,8 +353,13 @@ void main() {
     );
   });
 
-  testWidgets('an S row\'s layer edited is its label built again — the eye '
-      'it shows', (tester) async {
+  /// ↩️It was pinned the other way — 「an S row's layer edited is its label
+  /// built again — the eye it shows」 — while the S row was a label of this
+  /// rail's own, kept while its layer's eye held. It is the timeline's row
+  /// now (I-89 ①), kept by its FACE as every head is: the eye rides past
+  /// the keep ([RailEyes]), so a flip builds the eye alone (I-19).
+  testWidgets('🚨an S row shows its eye as it flips — the eye is no part of '
+      'the face it is kept by, as on the timeline', (tester) async {
     final session = await pumpPanel(tester, film());
     final before = rowsNow(tester);
     expect(eyeOn(tester, seLabel), isTrue, reason: 'premise');
@@ -364,7 +369,7 @@ void main() {
     ).toggleVisibility(const LayerId('t1-s1'));
     await tester.pump();
 
-    expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
+    expectRowsAsThey(tester, before);
     expect(eyeOn(tester, seLabel), isFalse);
   });
 
@@ -373,6 +378,31 @@ void main() {
       project.copyWith(
         tracks: [for (final track in project.tracks) edit(track)],
       );
+
+  testWidgets('an S row\'s layer given another face is its row built again '
+      '— the name it shows', (tester) async {
+    final session = await pumpPanel(tester, film());
+    final before = rowsNow(tester);
+
+    session.repository.updateProject(
+      (project) => editTracks(
+        project,
+        (track) => track.copyWith(
+          seLayers: [
+            for (final row in track.seLayers) row.copyWith(name: 'Rain'),
+          ],
+        ),
+      ),
+    );
+    session.notifyChanged();
+    await tester.pump();
+
+    expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
+    expect(
+      find.descendant(of: seLabel, matching: find.text('Rain')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('🚨an S row added over S1 builds S1\'s wrapper again, its caret '
       'at the slot it stands at now', (tester) async {
@@ -745,20 +775,24 @@ void main() {
         widget.name.endsWith('-transform-group'),
   );
 
+  /// ↩️It read the S row's label itself, kept whole while its wrapper was
+  /// built again. The label is the timeline's row now (I-89 ①), made anew
+  /// with the wrapper and keeping what it built while its face holds — the
+  /// head, as the conte row's twin below reads it.
   testWidgets('🚨an S row\'s wrapper takes its group\'s height as a group of '
-      'its lanes twirls open — its label as it was', (tester) async {
+      'its lanes twirls open — its head as it was', (tester) async {
     await pumpPanel(tester, film());
     await tester.tap(
       find.descendant(of: seLabel, matching: find.byType(LayerFoldTwirl)),
     );
     await tester.pump();
-    final label = tester.widget(seLabel);
+    final head = tester.widget(headIn(seLabel));
     final open = wrapper(tester, seLabel).rowExtent;
 
     await tester.tap(transformGroupTwirl.first);
     await tester.pump();
 
-    expect(tester.widget(seLabel), same(label), reason: 'premise: kept');
+    expect(tester.widget(headIn(seLabel)), same(head), reason: 'kept');
     expect(wrapper(tester, seLabel).rowExtent, greaterThan(open));
   });
 

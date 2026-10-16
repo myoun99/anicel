@@ -192,6 +192,21 @@ class _StoryboardRowsAndLabels {
     };
   }
 
+  /// [label] made to select ([selectOnly]) as [subject]'s row, [rowExtent]
+  /// tall, and kept ([_keptRow]) as the rail's row of [subject] — the one
+  /// row it names; its [grip] is asked at the press.
+  Widget _keptSelectOnly(
+    _RailLabel label,
+    LayerRowDragSubject subject,
+    double rowExtent, {
+    required List<DragChipItem> Function() grip,
+  }) => _keptRow(
+    subject,
+    label,
+    _selectOnlyInputs(subject, rowExtent),
+    (label) => selectOnly(subject, rowExtent, label, grip: grip),
+  );
+
   /// [label] standing alone, as the folded overlay shows it — wearing, as
   /// a head, the layer its row has in hand ([_wearing]).
   Widget _labelAlone(_RailLabel label) => switch (label.wears) {
@@ -384,22 +399,15 @@ class _StoryboardRowsAndLabels {
   /// transition layer ([_transitionLabelOf]), made to select.
   Widget transitionLabelRow(Track track) {
     final trackId = track.id;
-    final subject = LayerRowSubject(track.transitionLayer.id);
-    final extent = _state._rowHeights.transition;
-    return _keptRow(
-      ('transition', trackId),
+    return _keptSelectOnly(
       _transitionLabelOf(track),
-      _selectOnlyInputs(subject, extent),
-      (label) => selectOnly(
-        subject,
-        extent,
-        label,
-        grip: () => [
-          if (_state._railRows._trackNamed(trackId)?.transitionLayer
-              case final layer?)
-            (icon: layerKindIcon(layer.kind), label: layer.name),
-        ],
-      ),
+      LayerRowSubject(track.transitionLayer.id),
+      _state._rowHeights.transition,
+      grip: () => [
+        if (_state._railRows._trackNamed(trackId)?.transitionLayer
+            case final layer?)
+          (icon: layerKindIcon(layer.kind), label: layer.name),
+      ],
     );
   }
 
@@ -510,12 +518,7 @@ class _StoryboardRowsAndLabels {
     final index = seats.indexOf(seat);
     if (hooks == null || index < 0 || conteHeadAt(track.cuts, seat) == null) {
       final height = _state._rowHeights.conte;
-      return _keptRow(
-        ('conte', trackId, seat),
-        label,
-        _selectOnlyInputs(subject, height),
-        (label) => selectOnly(subject, height, label, grip: grip),
-      );
+      return _keptSelectOnly(label, subject, height, grip: grip);
     }
     final extent = _state._railRows._conteRowGroupExtent(track, seat);
     return _keptRow(
@@ -627,29 +630,22 @@ class _StoryboardRowsAndLabels {
   /// empty ([_StoryboardHeadlessLabel]).
   Widget cameraLabelRow(Track track) {
     final trackId = track.id;
-    final subject = LayerRowSubject(trackCameraRowId(trackId));
-    final height = _state._rowHeights.camera;
-    return _keptRow(
-      ('camera', trackId),
+    return _keptSelectOnly(
       _cameraLabelOf(track),
-      _selectOnlyInputs(subject, height),
-      (label) => selectOnly(
-        subject,
-        height,
-        label,
-        // Asked at the press, of the track as it stands then: the row is
-        // kept while what it shows holds.
-        grip: () => [
-          if (_state._railRows._trackNamed(trackId) case final now?)
-            (
-              icon: layerKindIcon(LayerKind.camera),
-              label: trackCameraRowName(
-                now.cuts,
-                standingIn: _state.widget.activeCutId,
-              ),
+      LayerRowSubject(trackCameraRowId(trackId)),
+      _state._rowHeights.camera,
+      // Asked at the press, of the track as it stands then: the row is kept
+      // while what it shows holds.
+      grip: () => [
+        if (_state._railRows._trackNamed(trackId) case final now?)
+          (
+            icon: layerKindIcon(LayerKind.camera),
+            label: trackCameraRowName(
+              now.cuts,
+              standingIn: _state.widget.activeCutId,
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 

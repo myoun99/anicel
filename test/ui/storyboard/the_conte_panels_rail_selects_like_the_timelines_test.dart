@@ -19,6 +19,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/widgets/instant_tap_region.dart'
+    show InstantTapRegion;
 
 /// 🗣️F-322 (유저 2026-10-09): 「콘티패널 지금 옛날부터 몇번말해도 계속
 /// 레이어의 선택범위 작동안하고 바로 드래그방식인데 작동하도록.
@@ -255,9 +257,15 @@ void main() {
   testWidgets('🚨an S row carried raises its caret among the S rows alone — '
       'a conte row\'s drag is another list, its own', (tester) async {
     await _pump(tester);
-    // The first drag selects S2; the next one, inside it, moves it.
-    final s2 = tester.getCenter(_name('S2'));
-    await _carry(tester, 'S2', s2 + const Offset(0, 3), held: () {});
+    // The first drag selects S2 — past the slop along its row, or it is a
+    // tap, and a tap clears (the timeline's row, I-89 ①); the next one,
+    // inside it, moves it.
+    await tester.dragFrom(
+      tester.getCenter(_name('S2')),
+      const Offset(InstantTapRegion.travelSlop + 2, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
 
     await _carry(
       tester,

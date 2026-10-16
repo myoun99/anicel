@@ -122,11 +122,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expectInkless(
-      labelBodies(
-        (key) =>
-            key.startsWith('storyboard-track-select-') ||
-            key.startsWith('storyboard-se-label-'),
-      ),
+      labelBodies((key) => key.startsWith('storyboard-track-select-')),
     );
+    // ↩️The S rows were labels of this rail's own, read by their keys. They
+    // wear the timeline's row now (I-89 ①), and its body goes by the row's
+    // name, as on the timeline.
+    final seRows = [
+      for (final track in session.repository.requireProject().tracks)
+        for (final row in track.seLayers)
+          'storyboard-layer-row-${row.id.value}',
+    ];
+    expect(seRows, isNotEmpty, reason: 'fixture: the track has S rows');
+    expectInkless(find.namedWhere(seRows.contains));
   });
 }
