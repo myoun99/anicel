@@ -119,6 +119,21 @@ const int _passThrough = 30;
 /// `LayerOpacity` at 100%.
 const double _fullOpacity = 256;
 
+/// The project's paper [layer] stands for ([ClipImportPlan.paper]): its
+/// colour at its opacity, absent while it is hidden — null for a layer
+/// that is no paper, or a paper whose colour the file does not name.
+ProjectBackground? _projectPaperOf(ClipLayer layer) {
+  final colour = layer.mainColour;
+  if (layer.kind != ClipLayerKind.paper || colour == null) {
+    return null;
+  }
+  final alpha = (0xFF * layer.opacity / _fullOpacity).round().clamp(0, 0xFF);
+  return ProjectBackground.color(
+    (alpha << 24) | (colour & 0xFFFFFF),
+    none: !layer.isShown,
+  );
+}
+
 /// One picture of the file to bake into a cel.
 final class ClipCelBake {
   const ClipCelBake({
@@ -839,9 +854,13 @@ final class _Planner {
       sounds.add(layer, folders);
       return;
     }
-    // Nor the paper under every row: it is the project's.
-    if (_paperOfTheProject(layer, parent) case final paper?) {
-      this.paper = paper;
+    // Nor the paper under every row — the first, at the top of the tree:
+    // it is the project's.
+    final sheet = parent == null && rows.isEmpty && paper == null
+        ? _projectPaperOf(layer)
+        : null;
+    if (sheet != null) {
+      paper = sheet;
       return;
     }
     if (!_comesIn(layer, layer.name)) {
@@ -1211,25 +1230,6 @@ final class _Planner {
         ImportWarning(key, template, {'name': name, 'count': '$count'}),
       );
     }
-  }
-
-  /// [layer] as the project's paper ([ClipImportPlan.paper]) — null unless
-  /// it is a paper the file names the colour of, at the top of the tree with
-  /// no row under it, and the first one.
-  ProjectBackground? _paperOfTheProject(ClipLayer layer, _FolderRow? parent) {
-    final colour = layer.mainColour;
-    if (layer.kind != ClipLayerKind.paper ||
-        colour == null ||
-        parent != null ||
-        rows.isNotEmpty ||
-        paper != null) {
-      return null;
-    }
-    final alpha = (0xFF * layer.opacity / _fullOpacity).round().clamp(0, 0xFF);
-    return ProjectBackground.color(
-      (alpha << 24) | (colour & 0xFFFFFF),
-      none: !layer.isShown,
-    );
   }
 
   /// Whether [layer] comes in — said by [name] when it comes in short, or
