@@ -93,36 +93,11 @@ void main() {
   // for every point. Fifteen sites in eight files spelled it; the home says
   // it once as [extentAlong], [extentAcross] and [offsetAlong]. The size's
   // half is read with the other parts now, below — its scan named only a
-  // `size`, and a rect's or a layout's room went past it.
+  // `size`, and a rect's or a layout's room went past it. The point's half
+  // is built with the other values, at the end — its scan saw a point only
+  // when its arms swapped two bare names, and `Offset(at, rect.top)` went
+  // past it.
   const painterTurns = ['extentAlong(', 'extentAcross(', 'offsetAlong('];
-
-  /// `? Offset(a, b) … : Offset(b, a)` — the point turned by hand, the
-  /// `:` arm on the same line or the next.
-  final turnedOffset = RegExp(
-    r'\?\s*\(?Offset\((\w+), (\w+)\)\s*(?:\r?\n\s*)?:\s*\(?Offset\(\2, \1\)',
-  );
-
-  /// Files that still turn a point by hand. Only shrinks.
-  const pointsStillByHand = <String>{
-    // Drags whose VERTICAL scrolled offset has no pin yet
-    // (every_frame_drag_follows_the_edge_test scans the wiring, not the
-    // direction), and a law moves only behind a test that pins it.
-    'lib/src/ui/timeline/timeline_frame_range_gesture.dart',
-    'lib/src/ui/timeline/timeline_row_edit_chrome.dart',
-    // Turned by an AxisDirection, not an Axis: `down` is the vertical arm
-    // and every other direction — `up` included — the horizontal one.
-    // Reading it through `axisDirectionToAxis` would move `up`, which is a
-    // behaviour question for the scroll lane, not a spelling.
-    'lib/src/ui/layout/device_grid_scroll_controller.dart',
-  };
-
-  /// Lines where a painter turns a point by hand.
-  List<int> handPainterTurnsIn(File file) {
-    final text = file.readAsStringSync();
-    int lineOf(int index) =>
-        '\n'.allMatches(text.substring(0, index)).length + 1;
-    return [for (final m in turnedOffset.allMatches(text)) lineOf(m.start)];
-  }
 
   test('premise: the home has the three painter twins', () {
     final text = File(home).readAsStringSync();
@@ -131,43 +106,18 @@ void main() {
     }
   });
 
-  test('premise: the painter scan sees a hand turn', () {
-    // The ledger's own files are the proof the regex matches something.
-    for (final path in pointsStillByHand) {
-      expect(handPainterTurnsIn(File(path)), isNotEmpty, reason: path);
-    }
-  });
-
-  test('no file outside the ledger turns a point by hand', () {
-    final offenders = <String>[];
-    for (final file in dartFilesUnder('lib')) {
-      final path = libPath(file);
-      if (path == home || pointsStillByHand.contains(path)) continue;
-      for (final line in handPainterTurnsIn(file)) {
-        offenders.add('$path:$line');
-      }
-    }
-    expect(offenders, isEmpty, reason: 'reach for offsetAlong');
-  });
-
-  test('the point ledger holds no file that has stopped', () {
-    final paid = <String>[
-      for (final path in pointsStillByHand)
-        if (handPainterTurnsIn(File(path)).isEmpty) path,
-    ];
-    expect(paid, isEmpty, reason: 'delete these lines from pointsStillByHand');
-    expect(pointsStillByHand, hasLength(3));
-  });
-
   // ── The parts (card one-axis-part-of-an-offset-is-one-function) ────────
   //
   // READING one part of a pair by the axis — `horizontal ? delta.dx :
   // delta.dy` of a movement or a point, `horizontal ? rect.width :
   // rect.height` of a box — was written by hand on thirty-eight lines in
   // twenty files (2026-10-17): thirty of an offset, which nothing in the
-  // home said, and eight of an extent that [extentAlong] already did. The
-  // home says each once — [partAlong], [partAcross], [extentAlong],
-  // [extentAcross] — and this is a ban, with no ledger.
+  // home said, and eight of an extent that [extentAlong] already did. An
+  // EDGE of a rect — `horizontal ? rect.left : rect.top` — on twenty-four
+  // more in nine (card values-built-by-the-axis-are-one-function, the same
+  // day). The home says each once — [partAlong], [partAcross],
+  // [extentAlong], [extentAcross], [startAlong], [endAlong], [startAcross],
+  // [endAcross] — and this is a ban, with no ledger.
 
   /// The axis asked by name just before the `?`: `horizontal`, `_vertical`,
   /// `axis == Axis.horizontal`, `across`. ⚠️By name, because a pick of a
@@ -187,23 +137,31 @@ void main() {
       r'([\w.()!]+?)\.(?:width\s*:\s*\1\.height|height\s*:\s*\1\.width'
       r'|maxWidth\s*:\s*\1\.maxHeight|maxHeight\s*:\s*\1\.maxWidth)\b',
     ),
+    // An edge of a rect: `? r.left : r.top`, and the other three.
+    byTheAxis(
+      r'([\w.()!]+?)\.(?:left\s*:\s*\1\.top|top\s*:\s*\1\.left'
+      r'|right\s*:\s*\1\.bottom|bottom\s*:\s*\1\.right)\b',
+    ),
   ];
 
-  /// Lines of [source] that read a part by hand — its comments aside, so a
+  /// Lines of [source] that [scans] match — its comments aside, so a
   /// decision that quotes the old spelling is not one.
-  List<int> handReadsIn(String source) {
+  List<int> linesMatching(List<RegExp> scans, String source) {
     final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
     int lineOf(int index) =>
         '\n'.allMatches(code.substring(0, index)).length + 1;
     return [
-      for (final read in readByHand)
-        for (final m in read.allMatches(code)) lineOf(m.start),
+      for (final scan in scans)
+        for (final m in scan.allMatches(code)) lineOf(m.start),
     ]..sort();
   }
 
+  List<int> handReadsIn(String source) => linesMatching(readByHand, source);
+
   test('premise: the scan sees the home read each part once', () {
-    // partAlong, partAcross, extentAlong, extentAcross — and nothing else.
-    expect(handReadsIn(File(home).readAsStringSync()), hasLength(4));
+    // partAlong, partAcross, extentAlong, extentAcross and the four edges —
+    // and nothing else.
+    expect(handReadsIn(File(home).readAsStringSync()), hasLength(8));
   });
 
   test('premise: the scan sees every spelling the card took out', () {
@@ -220,6 +178,10 @@ void main() {
           '    : (position.dy, position.dx);',
       'final extent = horizontal ? rect.width : rect.height;',
       'onExtent(_vertical ? constraints.maxHeight : constraints.maxWidth);',
+      'final a0 = horizontal ? box.left : box.top;',
+      'final a1 = horizontal ? box.right : box.bottom;',
+      'final c0 = horizontal ? box.top : box.left;',
+      'final c1 = horizontal ? box.bottom : box.right;',
     ];
     for (final line in spelled) {
       expect(handReadsIn(line), hasLength(1), reason: line);
@@ -242,7 +204,132 @@ void main() {
     expect(
       offenders,
       isEmpty,
-      reason: 'reach for partAlong / partAcross / extentAlong / extentAcross',
+      reason:
+          'reach for partAlong / partAcross / extentAlong / extentAcross / '
+          'startAlong / endAlong / startAcross / endAcross',
     );
+  });
+
+  // ── The builds (card values-built-by-the-axis-are-one-function) ────────
+  //
+  // BUILDING a value by the axis — `horizontal ? Offset(a, b) : Offset(b,
+  // a)`, a size, a rect, a box moved each way, the alignment a strip's run
+  // sets off from — was written by hand on thirty-nine lines in sixteen
+  // files (2026-10-17). The home builds each once: [offsetAlong],
+  // [sizeAlong], [rectAlong], [centerStartAlong], [centerEndAlong].
+  //
+  // ⛔A margin (`EdgeInsets`) and a `BoxConstraints` are not here: two
+  // each, in shapes that differ, and a third has to show they are one
+  // algorithm before they are made one (the card's own ⛔).
+
+  /// One build in each arm of a pick by the axis, the `:` arm's on the same
+  /// line or a later one — its arguments as deep as one call.
+  const arguments = r'\((?:[^()]|\([^()]*\))*\)';
+  RegExp builtEachWay(String build) => byTheAxis(
+    '(?:const\\s+)?$build$arguments\\s*:\\s*(?:const\\s+)?$build\\(',
+  );
+  final builtByHand = [
+    builtEachWay(r'\bOffset'),
+    builtEachWay(r'\bSize'),
+    builtEachWay(r'\bRect\.fromLT(?:RB|WH)'),
+    // One point or box moved each way: `? p.translate(a, 0) :
+    // p.translate(0, a)`, `? r.shift(Offset(…)) : r.shift(…)`.
+    byTheAxis(
+      '([\\w.()!]+?)\\.(translate|shift)$arguments\\s*:\\s*\\1\\.\\2\\(',
+    ),
+    // Where a run sets off, or ends: `? Alignment.centerLeft :
+    // Alignment.topCenter`, and back.
+    byTheAxis(
+      r'Alignment\.(?:centerLeft\s*:\s*Alignment\.topCenter'
+      r'|topCenter\s*:\s*Alignment\.centerLeft'
+      r'|centerRight\s*:\s*Alignment\.bottomCenter'
+      r'|bottomCenter\s*:\s*Alignment\.centerRight)\b',
+    ),
+  ];
+
+  List<int> handBuildsIn(String source) => linesMatching(builtByHand, source);
+
+  /// Files that still build a value by hand, with how many. Only shrinks.
+  const stillBuiltByHand = <String, int>{
+    // Drags whose VERTICAL scrolled offset has no pin yet
+    // (every_frame_drag_follows_the_edge_test scans the wiring, not the
+    // direction), and a law moves only behind a test that pins it.
+    'lib/src/ui/timeline/timeline_frame_range_gesture.dart': 2,
+    'lib/src/ui/timeline/timeline_row_edit_chrome.dart': 1,
+  };
+
+  test('premise: the scan sees the home build each value once', () {
+    // offsetAlong, sizeAlong, rectAlong, centerStartAlong, centerEndAlong.
+    expect(handBuildsIn(File(home).readAsStringSync()), hasLength(5));
+  });
+
+  test('premise: the scan sees every build the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const built = [
+      'horizontal ? Offset(at, rect.top) : Offset(rect.left, at),',
+      'return cells.axis == Axis.horizontal\n'
+          '    ? Offset(localPosition.dx.floorToDouble() + 0.5, '
+          'localPosition.dy)\n'
+          '    : Offset(localPosition.dx, '
+          'localPosition.dy.floorToDouble() + 0.5);',
+      '_horizontal ? Size(_windowExtent, 0) : Size(0, _windowExtent),',
+      'horizontal\n'
+          '    ? Rect.fromLTWH(\n'
+          '        start,\n'
+          '        size.height - readyBarThickness,\n'
+          '        extent,\n'
+          '        readyBarThickness,\n'
+          '      )\n'
+          '    : Rect.fromLTWH(',
+      'horizontal\n'
+          '    ? Rect.fromLTRB(start, 0, end, size.height)\n'
+          '    : Rect.fromLTRB(0, start, size.width, end),',
+      'final center = horizontal\n'
+          '    ? place.center.translate(-originMain, 0)\n'
+          '    : place.center.translate(0, -originMain);',
+      'final box = horizontal\n'
+          '    ? line.box.shift(Offset(-originMain, 0))\n'
+          '    : line.box.shift(Offset(0, -originMain));',
+      'begin: horizontal ? Alignment.centerLeft : Alignment.topCenter,',
+      'alignment: widget.axis == Axis.horizontal\n'
+          '    ? Alignment.centerRight\n'
+          '    : Alignment.bottomCenter,',
+    ];
+    for (final line in built) {
+      expect(handBuildsIn(line), hasLength(1), reason: line);
+    }
+    expect(
+      handBuildsIn('pressed ? Offset(0, step) : Offset(0, -step)'),
+      isEmpty,
+      reason: 'a pick that is not by the axis builds two values, not one',
+    );
+  });
+
+  test('no file builds a value by hand past what the ledger holds', () {
+    final offenders = <String>[];
+    for (final file in dartFilesUnder('lib')) {
+      final path = libPath(file);
+      if (path == home) continue;
+      final lines = handBuildsIn(file.readAsStringSync());
+      if (lines.length > (stillBuiltByHand[path] ?? 0)) {
+        offenders.add('$path:${lines.join(',')}');
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for offsetAlong / sizeAlong / rectAlong / centerStartAlong '
+          '/ centerEndAlong',
+    );
+  });
+
+  test('the build ledger holds no more than is left', () {
+    final paid = <String>[
+      for (final MapEntry(key: path, value: count) in stillBuiltByHand.entries)
+        if (handBuildsIn(File(path).readAsStringSync()).length < count) path,
+    ];
+    expect(paid, isEmpty, reason: 'lower these in stillBuiltByHand');
+    expect(stillBuiltByHand, hasLength(2));
   });
 }
