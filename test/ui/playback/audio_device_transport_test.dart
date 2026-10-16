@@ -1216,6 +1216,19 @@ void main() {
       expect(device.isOpen, isFalse);
     }, skip: skip);
 
+    test('🚨a transport going while its output is being opened ahead closes '
+        'it once the open lands — a project closed as it opens leaves no '
+        'output open that nobody keeps', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      transport.openAhead();
+      expect(device.isOpening, isTrue, reason: 'fixture');
+
+      transport.dispose();
+      await pumpEventQueue();
+      expect(device.isOpen, isFalse);
+    }, skip: skip);
+
     test('🚨a transport going silences the run it carries — the output stays '
         'open where another keeps it', () async {
       final device = aBenchDevice();
