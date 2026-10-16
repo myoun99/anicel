@@ -441,7 +441,19 @@ void main() {
   /// three — what an entry costs, the limit, the letting go — and keeps the
   /// order in its own map. 🔬`clean_code_diff` against master (`8d4b7c1fa`,
   /// at 398): nothing added, nothing gone.
-  const wideSignatures = 398;
+  ///
+  /// ⚠️398 → 400 on 2026-10-16, named as the rule above asks (F-371, every
+  /// picture Save As writes stands on the paper — 유저 2026-10-16: 「바탕
+  /// 앱에서 설정한 캔버스 색 따라감. 캔버스색이 없으면 투명인거고 그런식」 ·
+  /// 「jpg도 바탕 흰색고정말고 용지색으로 가자」). `writeFrameImage` (five)
+  /// is the image tab's picture and Save As's, one call, and what the two
+  /// hand it differs in the spec and now the paper: Save As's stands on the
+  /// project's, the tab's on its own ground. `renderComposite` (five) lays
+  /// that paper under the rows as the canvas lays it — the parameter the
+  /// video stage's `_composite` already takes, handed on. 🔬`clean_code_diff`
+  /// against master (`6ceb2a7ac`, at 398) named those two added and nothing
+  /// gone.
+  const wideSignatures = 400;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

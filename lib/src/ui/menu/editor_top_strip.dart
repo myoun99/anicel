@@ -2554,9 +2554,60 @@ Future<void> _saySavedOncePlaced(BuildContext context) =>
       task: (report) async => report(1),
     );
 
-/// 「다른 이름으로 저장」's picture: the frame under the playhead as ONE
-/// [format] file at the canvas's size, where the person says — and the
-/// project stays the file it was. A copy, never where it saves from now on.
+/// 「다른 이름으로 저장」's picture: [_pictureSaveAsWrites] as ONE [format]
+/// file, where the person says — and the project stays the file it was. A
+/// copy, never where it saves from now on.
+Future<void> saveFrameAsImage(
+  BuildContext context,
+  EditorSessionManager session,
+  ExportStillFormat format,
+) async {
+  final writePicture = _pictureSaveAsWrites(session, format);
+  if (writePicture == null) {
+    return;
+  }
+  final name = sanitizeExportFileComponent(
+    session.repository.requireProject().name,
+  );
+  final strings = AppText.strings;
+  // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
+  // into the app for a picker to place, the write ends 「Ready」, and
+  // 「Saved」 waits for the picker.
+  final staged = writtenFileIsStagedFirst;
+  try {
+    final placed = await handWrittenFileToUser(
+      context,
+      suggestedName: '$name.${format.fileExtension}',
+      write: (path) => runWithAppProgress<bool>(
+        context: context,
+        title: strings.commonSave,
+        titleIcon: Icons.save_outlined,
+        runningLabel: staged
+            ? strings.savePrepareRunning
+            : strings.saveProgressRunning,
+        doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
+        windowKey: const ValueKey<String>('save-progress-dialog'),
+        task: (report) async {
+          final written = await writePicture(path);
+          // ⛔Never 「Saved」 over no file: the throw takes the window down
+          // before it says so, and the notice below says why.
+          return written ? true : throw const _NothingWritten();
+        },
+      ),
+    );
+    if (placed != null && staged && context.mounted) {
+      await _saySavedOncePlaced(context);
+    }
+  } on Object catch (error) {
+    if (context.mounted) {
+      showFileError(context, error);
+    }
+  }
+}
+
+/// What [saveFrameAsImage] writes as [format] — the frame under the
+/// playhead at the canvas's size — as a writer of it to a path: null where
+/// there is no cut to take it of.
 ///
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
 /// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
@@ -2581,14 +2632,13 @@ Future<void> _saySavedOncePlaced(BuildContext context) =>
 /// 기본으로」.
 /// ↩️F-335 (유저 10-10) had made the PNG RGB on white, as the JPG was:
 /// 「다른이름저장의 png, 형식 기본값 RGB의 배경흰색으로」.
-Future<void> saveFrameAsImage(
-  BuildContext context,
+Future<bool> Function(String path)? _pictureSaveAsWrites(
   EditorSessionManager session,
   ExportStillFormat format,
-) async {
+) {
   final task = frameUnderThePlayhead(session);
   if (task == null) {
-    return;
+    return null;
   }
   final spec = ImageExportSpec(
     format: ExportFormatSelection(
@@ -2606,54 +2656,18 @@ Future<void> saveFrameAsImage(
     sizeMode: ExportSizeMode.canvas,
   );
   final paper = session.projectSettings.projectBackground;
-  final name = sanitizeExportFileComponent(
-    session.repository.requireProject().name,
+  return (path) => writeFrameImage(
+    session,
+    task,
+    spec,
+    (
+      directory: File(path).parent.path,
+      name: fileNameOfPath(path),
+      isCancelled: null,
+      onProgress: null,
+    ),
+    paper: paper,
   );
-  final strings = AppText.strings;
-  // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
-  // into the app for a picker to place, the write ends 「Ready」, and
-  // 「Saved」 waits for the picker.
-  final staged = writtenFileIsStagedFirst;
-  try {
-    final placed = await handWrittenFileToUser(
-      context,
-      suggestedName: '$name.${format.fileExtension}',
-      write: (path) => runWithAppProgress<bool>(
-        context: context,
-        title: strings.commonSave,
-        titleIcon: Icons.save_outlined,
-        runningLabel: staged
-            ? strings.savePrepareRunning
-            : strings.saveProgressRunning,
-        doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
-        windowKey: const ValueKey<String>('save-progress-dialog'),
-        task: (report) async {
-          final written = await writeFrameImage(
-            session,
-            task,
-            spec,
-            (
-              directory: File(path).parent.path,
-              name: fileNameOfPath(path),
-              isCancelled: null,
-              onProgress: null,
-            ),
-            paper: paper,
-          );
-          // ⛔Never 「Saved」 over no file: the throw takes the window down
-          // before it says so, and the notice below says why.
-          return written ? true : throw const _NothingWritten();
-        },
-      ),
-    );
-    if (placed != null && staged && context.mounted) {
-      await _saySavedOncePlaced(context);
-    }
-  } on Object catch (error) {
-    if (context.mounted) {
-      showFileError(context, error);
-    }
-  }
 }
 
 /// What a picture save that made no file says: the image tab's own sentence
