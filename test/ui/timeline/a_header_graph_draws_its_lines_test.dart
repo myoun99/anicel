@@ -40,6 +40,8 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
+import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
+    show TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
@@ -146,6 +148,52 @@ void main() {
     final mark = layerMarkColor(_layer.mark).toARGB32();
     expect(marks, List.filled(2 * 2 + 2, mark), reason: 'Position\'s two '
         'keys on each of its numbers, and the Blur\'s two');
+  });
+
+  // 🗣️F-367-Q3 (유저 2026-10-17): 「레인 멤버 키와 같은 크기」 — every line
+  // a graph draws is a member lane.
+  testWidgets('a key\'s mark is as big as its member lane marks it — at every '
+      'zoom', (tester) async {
+    final s = await _pump(tester);
+    await _openTransform(tester);
+    await _tapNamed(tester, 'timeline-lane-group-toggle-draw-$_blur');
+    await _tapNamed(tester, 'timeline-lane-group-graph-draw-$_transform');
+    s.standOnRow(const LaneRowAddress(_drawId, 'position'));
+    await tester.pumpAndSettle();
+
+    // The Blur's width, its group's graph shut: a member lane marking its
+    // key at 0 itself.
+    double memberMark() => tester
+        .widget<TimelineLaneKeyMarker>(
+          find.byKey(ValueKey<String>('timeline-lane-key-draw-$_blurWidth-0')),
+        )
+        .markerSize;
+    // How wide each key's mark is drawn — the whole of its box across the
+    // frames, whatever its shape.
+    List<double> graphMarks() {
+      final canvas = TestRecordingCanvas();
+      _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
+      return [
+        for (final call in canvas.invocations)
+          if (call.invocation.memberName == #drawPath &&
+              (call.invocation.positionalArguments[1] as Paint).style ==
+                  PaintingStyle.fill)
+            (call.invocation.positionalArguments[0] as Path).getBounds().width,
+      ];
+    }
+
+    final seen = <double>{};
+    for (var step = 0; step < 3; step += 1) {
+      final member = memberMark();
+      seen.add(member);
+      final marks = graphMarks();
+      expect(marks, hasLength(2 * 2), reason: '⛔전제: Position\'s keys');
+      for (final width in marks) {
+        expect(width, closeTo(member, 1e-6), reason: 'zoom step $step');
+      }
+      await _tap(tester, 'timeline-zoom-out-button');
+    }
+    expect(seen, hasLength(3), reason: '⛔전제: the zoom moved the marks');
   });
 
   testWidgets('an edit in flight shows in it as its rows show it — its own '

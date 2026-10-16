@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show timelineLayerRowHeight;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
@@ -76,6 +78,7 @@ void main() {
       windowBucket: null,
       viewportMainExtent: size.width,
       axis: Axis.horizontal,
+      laneExtent: timelineLayerRowHeight,
     ),
   );
 

@@ -46,6 +46,7 @@ import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
 import 'timeline_grid_hooks.dart' show TimelineGridHooks;
+import 'timeline_lane_rows.dart' show timelineLaneKeyMarkerSize;
 import 'timeline_row_edges.dart';
 
 /// Rows as a grid lays them: [rows] are its rows from [first] on, and
@@ -122,12 +123,15 @@ List<Widget> laneGraphFrameSide(
 /// The frames a header graph is drawn over (I-89 ③), as the grid's rows of
 /// cells lay them: the grid's live geometry, the window over it, the
 /// view's extent along them and which way they run — what its picture and
-/// its handles read.
+/// its handles read — and how far a lane's row of them reaches across: the
+/// room its keys are marked in, which a graph's are marked in too
+/// (F-367-Q3).
 typedef LaneGraphFrames = ({
   ValueNotifier<TimelineFrameGeometry> geometry,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent,
   Axis axis,
+  double laneExtent,
 });
 
 /// What a header graph reads of the grid it is drawn in (I-89 ③): its
@@ -154,6 +158,7 @@ LaneGraphGrid laneGraphGridOf(TimelineCellsRowGrid grid) => (
     windowBucket: grid.windowBucket,
     viewportMainExtent: grid.viewportMainExtent,
     axis: grid.axis,
+    laneExtent: grid.metrics.layerRowHeight,
   ),
   frameAxisController: grid.frameAxisController,
   keyPrefix: grid.keyPrefix,
@@ -926,11 +931,6 @@ const double _laneGraphSpare = 0.12;
 const double _laneGraphStroke = 2;
 const DashPattern _laneGraphGuestDashes = DashPattern(on: 6, off: 4);
 
-/// A key's mark in a graph — the mock's (5판), drawn larger than a lane's
-/// were then. ⚠️F-367 made a lane's fill its cell, so a graph's is now the
-/// smaller; whether it follows is F-367-Q3's to answer.
-const double _laneGraphKeySize = 11;
-
 /// A handle's circle and its ink, and its stem's width (the mock's, 5판).
 const double _laneGraphHandleRadius = 4.5;
 const double _laneGraphHandleStroke = 1.6;
@@ -1390,12 +1390,20 @@ class TimelineLaneGraphPainter extends CustomPainter {
     for (final handle in handles) {
       canvas.drawLine(handle.key, handle.at, stem);
     }
+    // A key's mark is its member lane's — every line is one, a cell and a
+    // lane's row wide at this zoom (🗣️F-367-Q3, 유저 2026-10-17: 「레인 멤버
+    // 키와 같은 크기」). ↩️The mock's 11px (5판), drawn larger than a lane's
+    // were then, and the smaller once a lane's filled its cell (F-367).
+    final keySize = timelineLaneKeyMarkerSize(
+      frameAxis.laneExtent,
+      frameCellExtent: frames.frameCellExtent,
+    );
     for (final (:at, :mark, :color) in marks) {
       paintKeyMark(
         canvas,
         mark,
         center: at,
-        size: _laneGraphKeySize,
+        size: keySize,
         standing: axis == Axis.vertical,
         color: color,
       );

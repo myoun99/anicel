@@ -2425,6 +2425,7 @@ class _StoryboardRailRows {
         windowBucket: _state._horizontalWindowBucket,
         viewportMainExtent: _state._stripViewportWidth,
         axis: Axis.horizontal,
+        laneExtent: metrics.layerRowHeight,
       ),
       frameAxisController: _state._horizontalController,
       keyPrefix: 'storyboard',

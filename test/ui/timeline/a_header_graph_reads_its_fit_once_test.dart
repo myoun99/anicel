@@ -8,6 +8,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show timelineLayerRowHeight;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 
 /// **I-89 ③ — a header graph reads what its lines are fitted to once.**
@@ -60,6 +62,7 @@ void main() {
           windowBucket: bucket,
           viewportMainExtent: 240.0,
           axis: Axis.horizontal,
+          laneExtent: timelineLayerRowHeight,
         ),
       );
       int readsOfAPaint() {
