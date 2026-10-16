@@ -17,6 +17,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../dialogs/cloud_wait.dart';
 import '../editor_session_manager.dart';
+import '../import/import_warnings_notice.dart';
 import '../open_projects.dart';
 import '../session/project_file_door.dart' show readProjectFile;
 import '../session/clip_import_door.dart' show readClipProject;
@@ -126,36 +127,6 @@ final _conversions = <String, _Conversion>{
     noticeKey: 'clip-import-warnings-notice',
   ),
 };
-
-/// What a converted file could not bring over, as its notice says it: each
-/// thing said once, over every name it was said of — open, one line each —
-/// and what was said of no one thing as lines of the sentence's own.
-///
-/// 🗣️F-370 (유저 2026-10-16: 「줄이 너무 한줄로되있어서 알기힘듬. 좀 더
-/// 알기쉽게 줄 나누거나 해서 항목화하도록」): the notice was the warnings
-/// one after another, the first six of them, and a layer named by a whole
-/// paragraph buried what was said of it.
-({List<String> alone, List<NoticeDetails> lists}) _noticeOf(
-  List<ImportWarning> warnings,
-) {
-  final alone = <String>[];
-  final named = <String, List<String>>{};
-  for (final warning in warnings) {
-    final (:about, :says) = warning.partsFor(AppText.language);
-    if (about == null) {
-      alone.add(says);
-    } else {
-      (named[says] ??= []).add(about);
-    }
-  }
-  return (
-    alone: alone,
-    lists: [
-      for (final MapEntry(key: says, value: names) in named.entries)
-        NoticeDetails(names, heading: says, open: true, oneLineEach: true),
-    ],
-  );
-}
 
 /// THE OPEN DOOR — the one way a picked project file becomes a tab, with
 /// every guard on the way. Every entrance comes through it: the Project
@@ -352,13 +323,13 @@ final class ProjectOpenDoor {
     }
     projects.adopt(converted.session);
     if (converted.warnings.isNotEmpty) {
-      final said = _noticeOf(converted.warnings);
-      await showAppNotice(
+      await showImportWarnings(
         context,
         windowKey: ValueKey<String>(conversion.noticeKey),
-        title: AppText.strings.commonNotice,
-        message: [AppText.strings.imLeftBehind, ...said.alone].join('\n'),
-        details: said.lists,
+        warnings: [
+          for (final warning in converted.warnings)
+            warning.partsFor(AppText.language),
+        ],
       );
     }
   }

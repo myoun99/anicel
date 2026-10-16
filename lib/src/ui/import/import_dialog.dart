@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
+import '../../models/import/import_warning.dart';
 import '../../services/import/cut_folder_listing.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show movieClockFor;
@@ -27,6 +28,7 @@ import '../export/export_settings_modules.dart';
 import 'import_file_settings.dart';
 import 'import_file_table.dart';
 import 'import_preview.dart';
+import 'import_warnings_notice.dart';
 import 'movie_rate_dialog.dart';
 import '../text/byte_size_label.dart';
 import '../widgets/app_window.dart';
@@ -104,8 +106,41 @@ class ImportDialog extends StatefulWidget {
 /// pressing Import again never re-imports a file that succeeded.
 class _ImportTally {
   int imported = 0;
-  final List<String> warnings = [];
+
+  /// What the run could not do, each as its notice lists it.
+  final List<WarningLine> warnings = [];
   final List<String> done = [];
+
+  /// [sentence], said of the file [name].
+  void warnOf(String name, String sentence) =>
+      warnings.add(partsOf(sentence, about: name));
+
+  /// [sentence], said of no one file.
+  void warn(String sentence) => warnings.add((about: null, says: sentence));
+
+  /// The warnings a door raised, in the reader's language.
+  void warnAll(Iterable<ImportWarning> raised) => warnings.addAll(
+    raised.map((warning) => warning.partsFor(AppText.language)),
+  );
+}
+
+/// What the window last had to say on its status line: a sentence, or the
+/// warnings a run or a pick left — said as the button their notice opens
+/// from (F-370-Q1) — and never both.
+sealed class _Said {
+  const _Said();
+}
+
+final class _Sentence extends _Said {
+  const _Sentence(this.words);
+
+  final String words;
+}
+
+final class _Warnings extends _Said {
+  const _Warnings(this.lines);
+
+  final List<WarningLine> lines;
 }
 
 /// [done] of [total] as the share the wait window counts — all of it when
@@ -427,7 +462,7 @@ class _ImportDialogState extends State<ImportDialog> {
   CutFolderParseConfig _parseConfig = const CutFolderParseConfig();
   CutFolderParseResult? _parsed;
   bool _running = false;
-  String _status = '';
+  _Said _status = const _Sentence('');
 
   /// Sources the drop carried but this window cannot act on (the folder
   /// path wins when a folder is among them) — listed so nothing exits
@@ -524,7 +559,7 @@ class _ImportDialogState extends State<ImportDialog> {
   /// no filesystem path (PICK-7) — a copy brought into this run's room
   /// ([_intakeCopies]) under the wait, the clock and the Stop a cloud file's
   /// placement waits with ([_readableForImport]). A document that does not
-  /// come is left out and named on the status line.
+  /// come is left out and named in the warnings the status line opens.
   Future<List<String>> _readablePathsOf(List<FolderGrant> picked) async {
     final paths = <String>[];
     final missed = <String>[];
@@ -550,7 +585,10 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     if (picked.any((grant) => grant.document != null)) {
       setState(
-        () => _status = missed.map(AppText.strings.imUnreadable).join(' · '),
+        () => _status = _Warnings([
+          for (final name in missed)
+            partsOf(AppText.strings.imUnreadable(name), about: name),
+        ]),
       );
     }
     return paths;
@@ -572,7 +610,7 @@ class _ImportDialogState extends State<ImportDialog> {
       if (!directory.existsSync()) {
         _parsed = null;
         _folderEntries = null;
-        _status = AppText.strings.imFolderGone;
+        _status = _Sentence(AppText.strings.imFolderGone);
         return;
       }
       try {
@@ -587,7 +625,7 @@ class _ImportDialogState extends State<ImportDialog> {
       } on FileSystemException catch (error) {
         _parsed = null;
         _folderEntries = null;
-        _status = AppText.strings.imFolderUnreadable(error.message);
+        _status = _Sentence(AppText.strings.imFolderUnreadable(error.message));
         return;
       }
     }
@@ -620,8 +658,9 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// The window's status line: a wait's own while there is one, else what
   /// the window last had to say.
-  String get _statusLine =>
-      _wait.status.value.isNotEmpty ? _wait.status.value : _status;
+  _Said get _statusLine => _wait.status.value.isNotEmpty
+      ? _Sentence(_wait.status.value)
+      : _status;
 
   /// The ONE law, applied where a picked file is about to be READ.
   ///
@@ -678,7 +717,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     setState(() {
       _running = true;
-      _status = AppText.strings.imStatusImporting;
+      _status = _Sentence(AppText.strings.imStatusImporting);
     });
     // Before anything registers: the session has to be holding the tokens
     // by the time a save writes them down, and this is the only moment
@@ -718,8 +757,8 @@ class _ImportDialogState extends State<ImportDialog> {
       // fixing a problem must never duplicate what already landed.
       _files.removeWhere(tally.done.contains);
       _status = tally.warnings.isEmpty
-          ? AppText.strings.imStatusNothing
-          : tally.warnings.take(3).join(' · ');
+          ? _Sentence(AppText.strings.imStatusNothing)
+          : _Warnings(tally.warnings);
     });
   }
 
@@ -913,7 +952,7 @@ class _ImportDialogState extends State<ImportDialog> {
         );
       }
     } on Object catch (error) {
-      tally.warnings.add('$error');
+      tally.warn('$error');
     }
     return true;
   }
@@ -931,13 +970,12 @@ class _ImportDialogState extends State<ImportDialog> {
       onProgress: (baked, total) => report(_share(baked, total)),
     );
     if (folderWarnings == null) {
-      tally.warnings.add(AppText.strings.imCutFolderUnreadable);
+      tally.warn(AppText.strings.imCutFolderUnreadable);
       return;
     }
-    tally.imported += 1;
-    tally.warnings.addAll(
-      folderWarnings.map((warning) => warning.textFor(AppText.language)),
-    );
+    tally
+      ..imported += 1
+      ..warnAll(folderWarnings);
   }
 
   /// Places every picked file — a picture where the window says, a sound on
@@ -980,9 +1018,8 @@ class _ImportDialogState extends State<ImportDialog> {
       // carried file's original may be gone.
       if (!widget.session.projectFile.projectHoldsMediaBytes(path) &&
           await _readableForImport(path) == null) {
-        tally.warnings.add(
-          AppText.strings.imUnreadable(mediaFileName(path)),
-        );
+        final name = mediaFileName(path);
+        tally.warnOf(name, AppText.strings.imUnreadable(name));
         continue;
       }
       if (!mounted) {
@@ -1007,20 +1044,19 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) within,
   ) async {
     final fileReport = _FileReport(within);
+    final name = mediaFileName(path);
     final bool ok;
     try {
       ok = await _placeCarryingOnlyTheSpan(path, kind, tally, fileReport);
     } on Object {
-      tally.warnings.add(
-        AppText.strings.imCorrupt(mediaFileName(path)),
-      );
+      tally.warnOf(name, AppText.strings.imCorrupt(name));
       return;
     }
     final failed = fileReport.failed.length;
     if (failed > 0) {
-      final name = mediaFileName(path);
       // A PDF's are pages; a movie's — and a numbered run's — are frames.
-      tally.warnings.add(
+      tally.warnOf(
+        name,
         kind == MediaAssetKind.pdf
             ? AppText.strings.imPagesFailed(name, failed)
             : AppText.strings.imFramesFailed(name, failed),
@@ -1031,7 +1067,7 @@ class _ImportDialogState extends State<ImportDialog> {
       tally.done.add(path);
       return;
     }
-    tally.warnings.add(_placementFailure(path, kind, _settingsFor(path)));
+    tally.warnOf(name, _placementFailure(name, kind));
   }
 
   /// Whether [path] comes in as its PIECE ([TrimmedPieces]) — trimmed, and
@@ -1143,7 +1179,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return _placeMovie(path, settings, fileReport, sourcePath: sourcePath);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
-      return _expandPsd(widget.session, path, settings, tally.warnings);
+      return _expandPsd(widget.session, path, settings, tally);
     }
     if (_runKeptOf(path) case final kept?) {
       return _placeRun(path, kept, tally, fileReport);
@@ -1211,7 +1247,8 @@ class _ImportDialogState extends State<ImportDialog> {
       if (mediaFileName(file) != mediaFileName(path) &&
           !widget.session.projectFile.projectHoldsMediaBytes(file) &&
           await _readableForImport(file) == null) {
-        tally.warnings.add(AppText.strings.imUnreadable(mediaFileName(file)));
+        final name = mediaFileName(file);
+        tally.warnOf(name, AppText.strings.imUnreadable(name));
         continue;
       }
       files.add((path: file, label: cel.label));
@@ -1253,17 +1290,14 @@ class _ImportDialogState extends State<ImportDialog> {
     sourcePath: sourcePath,
   );
 
-  /// Why a placement that ran and answered `false` did not land: a build
-  /// with no PDF renderer says so, anything else could not be imported.
-  String _placementFailure(
-    String path,
-    MediaAssetKind? kind,
-    ImportFileSettings settings,
-  ) {
+  /// Why a placement of the file [name] that ran and answered `false` did
+  /// not land: a build with no PDF renderer says so, anything else could
+  /// not be imported.
+  String _placementFailure(String name, MediaAssetKind? kind) {
     if (kind == MediaAssetKind.pdf && PdfRenderService.availability != true) {
-      return AppText.strings.imNoPdfRenderer(mediaFileName(path));
+      return AppText.strings.imNoPdfRenderer(name);
     }
-    return AppText.strings.imCouldNotImport(mediaFileName(path));
+    return AppText.strings.imCouldNotImport(name);
   }
 
   /// Registers every picked file in as few undo steps as their answers
@@ -1301,7 +1335,8 @@ class _ImportDialogState extends State<ImportDialog> {
           outFrame: settings.outFrame,
         );
         if (piece == null) {
-          tally.warnings.add(_placementFailure(path, kind, settings));
+          final name = mediaFileName(path);
+          tally.warnOf(name, _placementFailure(name, kind));
         } else {
           carried[piece.path] = path;
         }
@@ -1346,7 +1381,7 @@ class _ImportDialogState extends State<ImportDialog> {
     EditorSessionManager session,
     String path,
     ImportFileSettings settings,
-    List<String> warnings,
+    _ImportTally tally,
   ) async {
     final expanded = await session.importDoors.importPsdExpanded(
       path: path,
@@ -1355,12 +1390,11 @@ class _ImportDialogState extends State<ImportDialog> {
       spot: widget.spot,
     );
     if (expanded == null) {
-      warnings.add(AppText.strings.imPsdNoLayers(mediaFileName(path)));
+      final name = mediaFileName(path);
+      tally.warnOf(name, AppText.strings.imPsdNoLayers(name));
       return false;
     }
-    warnings.addAll(
-      expanded.map((warning) => warning.textFor(AppText.language)),
-    );
+    tally.warnAll(expanded);
     return true;
   }
 
@@ -1377,6 +1411,54 @@ class _ImportDialogState extends State<ImportDialog> {
         _window(context, AppWindow.screenShare(screen)),
   );
 
+  /// The status line — a sentence, or the warnings a run or a pick left as
+  /// the button their notice opens from, the Open door's
+  /// ([showImportWarnings]).
+  ///
+  /// 🗣️F-370-Q1 (유저 2026-10-17: 「끝 줄을 「경고 N가지」 버튼으로 — 누르면
+  /// 같은 묶음 알림」). ↩️The line said the first three warnings joined by
+  /// 「 · 」, and the rest were never seen.
+  ///
+  /// ⛔Its PLACE is always the button's (「없다가 생기는 UI 금지」): laid out
+  /// whether or not there are warnings, so the line that turns into it — or
+  /// back — moves nothing. ↩️It was mounted when there was something to say.
+  Widget _statusLineOf(BuildContext context) {
+    final said = _statusLine;
+    final warnings = said is _Warnings ? said.lines : const <WarningLine>[];
+    return Stack(
+      key: const ValueKey<String>('import-status-line'),
+      alignment: AlignmentDirectional.centerStart,
+      children: [
+        Visibility(
+          visible: warnings.isNotEmpty,
+          maintainState: true,
+          maintainAnimation: true,
+          maintainSize: true,
+          child: AppWindowActionButton(
+            AppWindowAction(
+              label: AppText.strings.imWarningCount(warnings.length),
+              actionKey: const ValueKey<String>('import-warnings-button'),
+              onPressed: () => unawaited(
+                showImportWarnings(
+                  context,
+                  windowKey: const ValueKey<String>('import-warnings-notice'),
+                  warnings: warnings,
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (said case _Sentence(:final words))
+          Text(
+            words,
+            key: const ValueKey<String>('import-status'),
+            style: Theme.of(context).textTheme.labelSmall,
+            overflow: TextOverflow.ellipsis,
+          ),
+      ],
+    );
+  }
+
   Widget _window(BuildContext context, Size room) {
     return AppWindow(
       windowKey: const ValueKey<String>('import-dialog'),
@@ -1392,14 +1474,7 @@ class _ImportDialogState extends State<ImportDialog> {
       scrollBody: false,
       bodyPadding: EdgeInsets.zero,
       onClose: _running ? null : () => Navigator.of(context).pop(),
-      footerNote: _statusLine.isEmpty
-          ? null
-          : Text(
-              _statusLine,
-              key: const ValueKey<String>('import-status'),
-              style: Theme.of(context).textTheme.labelSmall,
-              overflow: TextOverflow.ellipsis,
-            ),
+      footerNote: _statusLineOf(context),
       actions: [
         AppWindowAction(
           label: AppText.strings.commonCancel,

@@ -15,11 +15,11 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/widgets/app_window.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/import_preview_probe.dart';
+import '../../helpers/import_warnings.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
@@ -673,25 +673,30 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      final status = tester.widgetList<Text>(
-        find.byKey(const ValueKey<String>('import-status')),
-      );
-      if (status.isNotEmpty &&
-          (status.first.data ?? '').contains('no PDF renderer')) {
-        break;
-      }
+    for (
+      var tries = 0;
+      tries < 100 && importWarningsButton.evaluate().isEmpty;
+      tries += 1
+    ) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
       await tester.pump();
     }
     await tester.pumpAndSettle();
+    final notice = await openImportWarnings(tester);
 
     expect(
-      find.textContaining('no PDF renderer'),
+      find.descendant(
+        of: notice,
+        matching: find.text('No PDF renderer in this build. (1)'),
+      ),
       findsOneWidget,
       reason: 'the absence is a stated condition, not a decode failure',
+    );
+    expect(
+      find.descendant(of: notice, matching: find.text('none.pdf')),
+      findsOneWidget,
     );
     expect(s.mediaPool.mediaAssets, isEmpty);
     s.playbackRig.prerenderScheduler.cancel();
@@ -721,10 +726,13 @@ void main() {
     await tester.pump();
 
     expect(
-      tester.widget<AppWindow>(find.byType(AppWindow)).footerNote,
-      isNull,
+      tester
+          .widget<Text>(find.byKey(const ValueKey<String>('import-status')))
+          .data,
+      isEmpty,
       reason: 'the footer is the status line, and nothing is running',
     );
+    expect(importWarningsButton, findsNothing);
   });
 
   /// The table itself: one row per file, one column per question, and a
@@ -1654,8 +1662,9 @@ void main() {
     await pumpPastTheWaitWindow(tester);
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
+    final notice = await openImportWarnings(tester);
     expect(
-      find.text(AppText.strings.imUnreadable('cloud-a.png')),
+      find.descendant(of: notice, matching: find.text('cloud-a.png')),
       findsOneWidget,
       reason: 'the one given up is named',
     );
@@ -1747,10 +1756,11 @@ void main() {
       layersBefore,
       reason: 'nothing was placed from a file that never arrived',
     );
+    final notice = await openImportWarnings(tester);
     expect(
-      find.text(AppText.strings.imUnreadable('cloudy.png')),
+      find.descendant(of: notice, matching: find.text('cloudy.png')),
       findsOneWidget,
-      reason: 'the file given up is named on the import window',
+      reason: 'the file given up is named in the import window\'s warnings',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });
@@ -1867,6 +1877,226 @@ void main() {
         ),
         isTrue,
       );
+    });
+
+    testWidgets('🎯F-370-Q1: what the run could not do is the status line\'s '
+        '「N warnings」, and it opens the Open door\'s notice — each reason '
+        'once, over every file it was said of', (tester) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final first = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      final second = await tester.runAsync(() => writeBrokenPng('snaps.png'));
+      await runImport(tester, [good!, first!, second!]);
+
+      expect(
+        find.descendant(
+          of: importWarningsButton,
+          matching: find.text(AppText.strings.imWarningCount(2)),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('import-status')),
+        findsNothing,
+        reason: 'the line is the button, not the warnings one after another',
+      );
+      final notice = await openImportWarnings(tester);
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+      expect(inNotice(AppText.strings.imLeftBehind), findsOneWidget);
+      expect(
+        inNotice('Could not be imported. (2)'),
+        findsOneWidget,
+        reason: 'the reason said once, not once a file',
+      );
+      expect(
+        [
+          for (final name in ['breaks.png', 'snaps.png'])
+            if (inNotice(name).evaluate().length != 1) name,
+        ],
+        isEmpty,
+        reason: 'every file, a line of its own',
+      );
+    });
+
+    /// Runs the window on [paths] and answers the notice its warnings open,
+    /// once the run has left them on the status line — a picture the window
+    /// [previews] shown first: a Photoshop file is read whole for it, and
+    /// held while it is (the file table's PSD pins).
+    Future<Finder> warningsAfterImporting(
+      WidgetTester tester,
+      List<String> paths, {
+      bool previews = false,
+    }) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: paths),
+          ),
+        ),
+      );
+      await tester.pump();
+      if (previews) {
+        expect(
+          await settleAsync(tester, () => tester.importPreviewImage != null),
+          isTrue,
+        );
+      }
+      await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
+      for (
+        var tries = 0;
+        tries < 100 && importWarningsButton.evaluate().isEmpty;
+        tries += 1
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+      session.playbackRig.prerenderScheduler.cancel();
+      return openImportWarnings(tester);
+    }
+
+    testWidgets('F-370-Q1: what a door says of a layer is listed under it in '
+        'the same notice — a Photoshop file\'s, as the Open door lists a '
+        'converted file\'s', (tester) async {
+      final psd = await tester.runAsync(() async {
+        final file = File(
+          '${tempDir.path}${Platform.pathSeparator}clipped.psd',
+        );
+        await file.writeAsBytes(
+          buildPsd(
+            width: 4,
+            height: 4,
+            layers: [
+              for (final name in ['ink', 'shade'])
+                PsdTestLayer(
+                  name: name,
+                  left: 0,
+                  top: 0,
+                  right: 4,
+                  bottom: 4,
+                  planes: psdSolidPlanes(4, 4, [10, 20, 30]),
+                  clipping: true,
+                ),
+            ],
+            compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
+          ),
+        );
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(tester, [
+        psd!,
+      ], previews: true);
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(inNotice('Clipping mask not applied. (2)'), findsOneWidget);
+      expect(
+        [
+          for (final layer in ['ink', 'shade'])
+            if (inNotice(layer).evaluate().length != 1) layer,
+        ],
+        isEmpty,
+        reason: 'each layer a line of its own, under what was said of it',
+      );
+    });
+
+    testWidgets('F-370-Q1: what a cut folder\'s import said of no one file is '
+        'a line of the notice\'s own sentence', (tester) async {
+      final folder = await tester.runAsync(() async {
+        final sep = Platform.pathSeparator;
+        await writePng('scans${sep}A1.png');
+        return '${tempDir.path}${sep}scans';
+      });
+      final notice = await warningsAfterImporting(tester, [folder!]);
+
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.text(
+            [
+              AppText.strings.imLeftBehind,
+              'No cut number found in the folder name.',
+            ].join('\n'),
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('F-370-Q1: a Photoshop file with no layers to keep is named '
+        'under what was said of it', (tester) async {
+      final flat = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}flat.psd');
+        await file.writeAsBytes(
+          buildPsd(
+            width: 4,
+            height: 4,
+            compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
+          ),
+        );
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(tester, [
+        flat!,
+      ], previews: true);
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(
+        inNotice('No layers to expand — import it merged instead. (1)'),
+        findsOneWidget,
+      );
+      expect(inNotice('flat.psd'), findsWidgets);
+    });
+
+    testWidgets('F-370-Q1: the status line keeps its place — as tall before '
+        'anything is said as the button it turns into', (tester) async {
+      final bad = await tester.runAsync(() => writeBrokenPng('breaks.png'));
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImportDialog(session: session, initialPaths: [bad!]),
+          ),
+        ),
+      );
+      await tester.pump();
+      final line = find.byKey(const ValueKey<String>('import-status-line'));
+      final run = find.byKey(const ValueKey<String>('import-run-button'));
+      final lineBefore = tester.getRect(line);
+      final runBefore = tester.getRect(run);
+      expect(
+        importWarningsButton,
+        findsNothing,
+        reason: 'with nothing to warn of, there is no button to press',
+      );
+
+      await tester.tap(run);
+      await pumpPastTheWaitWindow(tester);
+      for (
+        var tries = 0;
+        tries < 100 && importWarningsButton.evaluate().isEmpty;
+        tries += 1
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump();
+      }
+      session.playbackRig.prerenderScheduler.cancel();
+
+      expect(importWarningsButton, findsOneWidget);
+      expect(tester.getRect(line), lineBefore);
+      expect(tester.getRect(run), runBefore, reason: 'nothing under it moved');
     });
   });
 

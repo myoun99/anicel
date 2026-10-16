@@ -119,33 +119,52 @@ extension ImportWarningWords on ImportWarning {
   String textFor(AppLanguage language) =>
       fill(AppStrings.of(language).importWarning(key, template));
 
-  /// The warning in a language as a list says it: what it is [about] — the
-  /// value its sentence opens with (`{name}: …`, in every language's own
-  /// colon) — and what it [says] of that, a sentence of its own; [about] is
-  /// null for a warning that opens with no one thing.
-  ///
-  /// 🗣️F-370 (유저 2026-10-16: 「줄이 너무 한줄로되있어서 알기힘듬 … 줄
-  /// 나누거나 해서 항목화하도록」): a notice lists each thing said once, with
-  /// what it was said of under it — a layer named by a whole paragraph had
-  /// buried what was said of it.
-  ({String? about, String says}) partsFor(AppLanguage language) {
+  /// The warning in a language as a list says it ([partsOf]) — about the
+  /// value its sentence opens with (`{name}: …`), if it opens with one.
+  WarningLine partsFor(AppLanguage language) {
     final words = AppStrings.of(language).importWarning(key, template);
     final opening = _opensWithOne.firstMatch(words);
-    final about = opening == null ? null : values[opening.group(1)];
-    if (about == null) {
-      return (about: null, says: fill(words));
-    }
-    final says = fill(words.substring(opening!.end));
-    return (
-      about: about,
-      says: says.isEmpty ? says : says[0].toUpperCase() + says.substring(1),
+    return partsOf(
+      fill(words),
+      about: opening == null ? null : values[opening.group(1)],
     );
   }
 }
 
-/// A sentence that opens with one placeholder and a colon — `{name}: `,
-/// `{name} : `, `{name}：`.
-final _opensWithOne = RegExp(r'^\{(\w+)\}\s*[:：]\s*');
+/// A warning as a list says it: what it is [about], and what it [says] of
+/// that — a sentence of its own.
+typedef WarningLine = ({String? about, String says});
+
+/// [sentence] as a list says it: when it opens with [about] and its
+/// language's colon (`a.png: …`, `a.png : …`, `a.png：…`), what it says
+/// after them, said of [about]; otherwise the whole sentence, about no one
+/// thing.
+///
+/// 🗣️F-370 (유저 2026-10-16: 「줄이 너무 한줄로되있어서 알기힘듬 … 줄
+/// 나누거나 해서 항목화하도록」): a notice lists each thing said once, with
+/// what it was said of under it — a layer named by a whole paragraph had
+/// buried what was said of it.
+WarningLine partsOf(String sentence, {String? about}) {
+  final colon = about == null || !sentence.startsWith(about)
+      ? null
+      : _colon.matchAsPrefix(sentence, about.length);
+  if (colon == null) {
+    return (about: null, says: sentence);
+  }
+  final says = sentence.substring(colon.end);
+  return (
+    about: about,
+    says: says.isEmpty ? says : says[0].toUpperCase() + says.substring(1),
+  );
+}
+
+/// A language's colon, and the space around it — ` : ` in French, `：` in
+/// Chinese.
+final _colon = RegExp(r'\s*[:：]\s*');
+
+/// A sentence that opens with one placeholder — `{name}…`; whether its
+/// colon follows is [partsOf]'s to say.
+final _opensWithOne = RegExp(r'^\{(\w+)\}');
 
 /// Why a cut folder's parse dropped a file, in a language.
 extension ExclusionReasonWords on ExclusionReason {

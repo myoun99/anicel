@@ -1368,14 +1368,18 @@ enum AppStrings {
   String get imNotTvpp => _s('imNotTvpp');
   String get imNotClip => _s('imNotClip');
 
-  /// What a converted project's notice opens with, over the lists of what
-  /// did not come over (F-370).
+  /// What an import's warnings notice opens with, over the lists of what
+  /// did not come in (F-370) — a converted project's on the Open door, the
+  /// import window's run or pick alike (F-370-Q1).
   String get imLeftBehind => _s('imLeftBehind');
   String get imFileUnreadable => _s('imFileUnreadable');
   String imNotFound(String path) =>
       _s('imNotFoundTemplate').replaceAll('{path}', path);
 
-  /// The folder a CLIP STUDIO cel's hidden layers stand in, its eye off.
+  /// The import window's last line when a run or a pick left warnings: the
+  /// button their notice opens from (F-370-Q1, 유저 2026-10-17: 「끝 줄을
+  /// 「경고 N가지」 버튼으로」), counting every warning.
+  String imWarningCount(int count) => _count('imWarningCount', count);
 
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
@@ -2461,7 +2465,9 @@ enum AppStrings {
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
     'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
-    'imLeftBehind': 'Some of this file could not be imported.',
+    'imLeftBehind': 'Not everything could be imported.',
+    'imWarningCount': '{n} warnings',
+    'imWarningCountOne': '{n} warning',
     'imFileUnreadable':
         'The file could not be read — if it is in the cloud, try again in a '
         'moment.',
@@ -2571,13 +2577,13 @@ enum AppStrings {
     'imUnreadableTemplate': '{name}: could not read the file.',
     'imLacksPictureTemplate': '{name}: the file has no picture {number}.',
     'imCorruptTemplate':
-        '{name} could not be opened — corrupt or password-locked.',
+        '{name}: could not be opened — corrupt or password-locked.',
     'imPagesFailedTemplate':
         '{name}: {n} page(s) failed to render — their cels stay empty.',
     'imFramesFailedTemplate':
         '{name}: {n} frame(s) failed to decode — their cels stay empty.',
     'imNoPdfRendererTemplate': '{name}: no PDF renderer in this build.',
-    'imCouldNotImportTemplate': 'Could not import {name}.',
+    'imCouldNotImportTemplate': '{name}: could not be imported.',
     'imPsdNoLayersTemplate':
         '{name}: no layers to expand — import it merged instead.',
     'imKeepExplain':
@@ -3806,7 +3812,9 @@ enum AppStrings {
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
     'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
-    'imLeftBehind': 'このファイルの一部は取り込めませんでした。',
+    'imLeftBehind': '一部を取り込めませんでした。',
+    'imWarningCount': '警告 {n} 件',
+    'imWarningCountOne': '警告 {n} 件',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
     'imNotFoundTemplate': '見つかりません: {path}',
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
@@ -3992,13 +4000,13 @@ enum AppStrings {
     'imUnreadableTemplate': '{name}: ファイルを読めませんでした。',
     'imLacksPictureTemplate': '{name}: このファイルには{number}番目の画像がありません。',
     'imCorruptTemplate':
-        '{name} を開けませんでした — 破損しているか、パスワードで保護されています。',
+        '{name}: 開けませんでした — 破損しているか、パスワードで保護されています。',
     'imPagesFailedTemplate':
         '{name}: {n}ページを描画できませんでした — そのセルは空のままです。',
     'imFramesFailedTemplate':
         '{name}: {n}フレームをデコードできませんでした — そのセルは空のままです。',
     'imNoPdfRendererTemplate': '{name}: このビルドには PDF レンダラーがありません。',
-    'imCouldNotImportTemplate': '{name} をインポートできませんでした。',
+    'imCouldNotImportTemplate': '{name}: インポートできませんでした。',
     'imPsdNoLayersTemplate':
         '{name}: 展開するレイヤーがありません — 統合で読み込んでください。',
     'imKeepExplain': 'プロジェクトファイルが圧縮して持ちます。元のファイルはそのままです。',
@@ -5336,7 +5344,9 @@ enum AppStrings {
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
     'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
-    'imLeftBehind': '이 파일에서 가져오지 못한 것이 있습니다.',
+    'imLeftBehind': '가져오지 못한 것이 있습니다.',
+    'imWarningCount': '경고 {n}가지',
+    'imWarningCountOne': '경고 {n}가지',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
     'imNotFoundTemplate': '찾을 수 없습니다: {path}',
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
@@ -6914,7 +6924,9 @@ enum AppStrings {
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
     'imNotClip':
         'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
-    'imLeftBehind': 'Une partie de ce fichier n\'a pas pu être importée.',
+    'imLeftBehind': 'Tout n’a pas pu être importé.',
+    'imWarningCount': '{n} avertissements',
+    'imWarningCountOne': '{n} avertissement',
     'imFileUnreadable':
         'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
         'dans un instant.',
@@ -7170,13 +7182,13 @@ enum AppStrings {
     'imUnreadableTemplate': '{name} : impossible de lire le fichier.',
     'imLacksPictureTemplate': '{name} : le fichier n’a pas d’image n° {number}.',
     'imCorruptTemplate':
-        '{name} n’a pas pu être ouvert — fichier corrompu ou protégé par mot de passe.',
+        '{name} : impossible à ouvrir — fichier corrompu ou protégé par mot de passe.',
     'imPagesFailedTemplate':
         '{name} : {n} page(s) non rendue(s) — elles restent vides.',
     'imFramesFailedTemplate':
         '{name} : {n} image(s) non décodée(s) — elles restent vides.',
     'imNoPdfRendererTemplate': '{name} : pas de moteur PDF dans cette version.',
-    'imCouldNotImportTemplate': 'Impossible d’importer {name}.',
+    'imCouldNotImportTemplate': '{name} : impossible à importer.',
     'imPsdNoLayersTemplate':
         '{name} : aucun calque à développer — importez-le fusionné.',
     'imKeepExplain':
@@ -8467,7 +8479,9 @@ enum AppStrings {
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
     'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
-    'imLeftBehind': '此文件的部分内容未能导入。',
+    'imLeftBehind': '部分内容未能导入。',
+    'imWarningCount': '{n} 条警告',
+    'imWarningCountOne': '{n} 条警告',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
     'imNotFoundTemplate': '未找到：{path}',
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
@@ -8642,11 +8656,11 @@ enum AppStrings {
     'imCutFolderUnreadable': '无法读取该文件夹。',
     'imUnreadableTemplate': '{name}：无法读取文件。',
     'imLacksPictureTemplate': '{name}：该文件没有第 {number} 张图片。',
-    'imCorruptTemplate': '无法打开 {name} — 文件已损坏或受密码保护。',
+    'imCorruptTemplate': '{name}：无法打开 — 文件已损坏或受密码保护。',
     'imPagesFailedTemplate': '{name}：{n} 页渲染失败 — 这些页保持空白。',
     'imFramesFailedTemplate': '{name}：{n} 帧解码失败 — 这些格保持空白。',
     'imNoPdfRendererTemplate': '{name}：此版本没有 PDF 渲染器。',
-    'imCouldNotImportTemplate': '无法导入 {name}。',
+    'imCouldNotImportTemplate': '{name}：无法导入。',
     'imPsdNoLayersTemplate': '{name}：没有可展开的图层 — 请以合并方式导入。',
     'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
     'imReferenceExplain': '文件保留在原处，项目指向它们。',

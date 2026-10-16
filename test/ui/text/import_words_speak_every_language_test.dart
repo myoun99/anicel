@@ -155,6 +155,17 @@ void main() {
       whole.partsFor(AppLanguage.en),
       (about: null, says: 'No cut number found in the folder name.'),
     );
+    // One that opens with a value but no colon after it is said whole too.
+    const counted = ImportWarning('untabled', '{n} layers were merged.', {
+      'n': '3',
+    });
+    expect(
+      counted.partsFor(AppLanguage.en),
+      (about: null, says: '3 layers were merged.'),
+    );
+    // And a sentence that does not open with the thing is not about it,
+    // wherever its own colon falls.
+    expect(partsOf('b: c', about: 'a'), (about: null, says: 'b: c'));
   });
 
   test('F-370: what opens with one thing in one language opens with it in '
@@ -176,6 +187,32 @@ void main() {
             }.length >
             1)
           key,
+    ], isEmpty);
+  });
+
+  test('F-370-Q1: what the import window says of a file opens with that file '
+      'in every language — so its notice lists the file under what was '
+      'said, the Open door\'s way', () {
+    // ★A NEW SENTENCE THE WINDOW SAYS OF A FILE ADDS ITSELF HERE.
+    final ofAFile = <String, String Function(AppStrings, String)>{
+      'imUnreadable': (s, name) => s.imUnreadable(name),
+      'imCorrupt': (s, name) => s.imCorrupt(name),
+      'imPagesFailed': (s, name) => s.imPagesFailed(name, 2),
+      'imFramesFailed': (s, name) => s.imFramesFailed(name, 2),
+      'imNoPdfRenderer': (s, name) => s.imNoPdfRenderer(name),
+      'imCouldNotImport': (s, name) => s.imCouldNotImport(name),
+      'imPsdNoLayers': (s, name) => s.imPsdNoLayers(name),
+    };
+    const name = 'a.png';
+    expect([
+      for (final language in AppLanguage.values)
+        for (final MapEntry(key: sentence, value: said) in ofAFile.entries)
+          if (partsOf(
+                said(AppStrings.of(language), name),
+                about: name,
+              ).about !=
+              name)
+            '${language.name} $sentence',
     ], isEmpty);
   });
 

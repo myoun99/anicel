@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/import_warnings.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
@@ -271,7 +272,8 @@ void main() {
   });
 
   testWidgets('🚨Stop while the copy comes: nothing is listed, the file is '
-      'named on the status line, and no folder is left in the room', (
+      'named in the warnings the status line opens, and no folder is left in '
+      'the room', (
     tester,
   ) async {
     holdCopy = Completer<bool>();
@@ -298,10 +300,14 @@ void main() {
       findsOneWidget,
       reason: 'Cancel stopped the WAIT, not the window',
     );
-    expect(find.textContaining('A1.png'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('import-file-table')),
       findsNothing,
+    );
+    final notice = await openImportWarnings(tester);
+    expect(
+      find.descendant(of: notice, matching: find.text('A1.png')),
+      findsOneWidget,
     );
     expect(Directory(File(copiedTo.single).parent.path).existsSync(), isFalse);
     expect(ProviderDocuments.workingCopyOf(uri), isNull);
