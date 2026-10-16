@@ -99,8 +99,13 @@ void main() {
       isTrue,
     );
     // vanishing-point-types-Q5: 래스터라이즈 lays its picture as a paste does.
+    // ⚠️The whole parameter list: the body is read from the first `{` on.
     expect(
-      sourceBodyOf(verbs, 'void landCanvasPicture(').contains('_land('),
+      sourceBodyOf(
+        verbs,
+        'void landCanvasPicture(CutPiece picture, '
+        '{required String description})',
+      ).contains('_land('),
       isTrue,
     );
   });
