@@ -148,6 +148,24 @@ void main() {
   });
 
   group('while a text\'s face is on its way', () {
+    test('🚨a box set while its face was on its way is set again once the '
+        'face is here — and kept until then', () async {
+      final before = celTextBoxOf(inTheBroughtFace);
+      expect(
+        identical(celTextBoxOf(inTheBroughtFace), before),
+        isTrue,
+        reason: 'no face moved: the box is the one kept',
+      );
+
+      await theFaceArrives();
+
+      expect(
+        identical(celTextBoxOf(inTheBroughtFace), before),
+        isFalse,
+        reason: 'it was measured in other letters',
+      );
+    });
+
     test('🚨its box is not drawn — the others\' are — and it is when the '
         'face is here', () async {
       final (:tool, host: _, :cel, baker: _) = handOver([
