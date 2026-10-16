@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
@@ -17,6 +18,7 @@ import 'package:anicel/src/models/track_camera_row.dart'
     show trackCameraRowId;
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -31,17 +33,20 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
+import 'package:anicel/src/ui/timeline/session_lane_callbacks.dart'
+    show sessionLaneEditCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheet;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show LaneEditPreview, TimelineDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
-    show TimelineLaneGraph;
+    show LaneGraphPicture, TimelineLaneGraph, TimelineLaneGraphPainter;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -120,14 +125,16 @@ void main() {
   /// The panel over a session holding [project], wired as the workspace
   /// wires it: the rows' twirls ([withStoryboardTwirls]) and the header
   /// graphs, the timeline's state turned by the timeline's verbs — and,
-  /// with [dragRows], the session's own row drags; an edit in flight on
-  /// [dragPreview].
+  /// with [dragRows], the session's own row drags; with [laneEdits], the
+  /// session's own lane edits, as the host hands the S and V rows theirs;
+  /// an edit in flight on [dragPreview].
   Future<EditorSessionManager> pump(
     WidgetTester tester,
     Project project, {
     LaneGraphsView graphs = LaneGraphsView.none,
     ValueListenable<List<TimelineRowAddress>>? rowSelection,
     bool dragRows = false,
+    bool laneEdits = false,
     ValueListenable<TimelineDragPreview?>? dragPreview,
   }) async {
     final session = EditorSessionManager(initialProject: project);
@@ -135,6 +142,13 @@ void main() {
     session.railView.laneGraphs.value = graphs;
     final presses = SessionRowButtonPresses(session);
     final drags = session.layerRowDragVerbs;
+    final edits = laneEdits
+        ? sessionLaneEditCallbacks(
+            session,
+            frameIsGlobal: true,
+            transformOptions: null,
+          )
+        : null;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -157,6 +171,8 @@ void main() {
                 dragPreview: dragPreview,
                 laneGraphs: graphs,
                 laneGraphVerbs: presses.laneGraphVerbs,
+                layerLaneEdit: edits,
+                trackLaneEditFor: edits == null ? null : (_) => edits,
                 rowDragHooks: dragRows
                     ? TimelineRowDragHooks(
                         drag: drags.inFlight,
@@ -542,6 +558,89 @@ void main() {
     await tester.pump();
     expect(drawnKeys(fxKey, blurX), {3});
     expect(stripKeys(saturation), {5});
+  });
+
+  testWidgets('a handle pulled in a graph writes its key as the timeline\'s '
+      'does — an S row\'s and the V row\'s fx alike, by the edits their '
+      'strips key by', (tester) async {
+    final seKey = laneGroupKey(s1, transform);
+    final fxKey = laneGroupKey(carrier, effectGroupLaneId(blur));
+    final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
+    final blurX = blurred.parameters['blurX']!;
+    final session = await pump(
+      tester,
+      project(
+        seLayers: [
+          seLayer(s1).copyWith(
+            transformTrack: TransformTrack.empty().copyWith(
+              rotation: PropertyTrack<double>()
+                  .withKey(0, 0, outgoing: const EaseSide())
+                  .withKey(8, 45),
+            ),
+          ),
+        ],
+        effects: [
+          blurred.withParameter(
+            'blurX',
+            blurX.copyWith(
+              track: blurX.track
+                  .withKey(0, 0, outgoing: const EaseSide())
+                  .withKey(8, 10),
+            ),
+          ),
+        ],
+        lanesExpanded: true,
+        expandedLaneGroups: {effectGroupLaneId(blur)},
+      ),
+      graphs: LaneGraphsView(
+        open: {seKey: const LaneGraph(), fxKey: const LaneGraph()},
+      ),
+      laneEdits: true,
+    );
+    Track track() => session.repository.requireProject().tracks.single;
+    // The one handle [key]'s graph shows — its key on 0, leaving — pulled.
+    Future<void> pull(String key) async {
+      await tester.ensureVisible(graphOf(key));
+      await tester.pumpAndSettle();
+      final paint = find.descendant(
+        of: find.descendant(
+          of: graphOf(key),
+          matching: find.byType(LaneGraphPicture),
+        ),
+        matching: find.byType(CustomPaint),
+      );
+      final painter =
+          tester.widget<CustomPaint>(paint).painter!
+              as TimelineLaneGraphPainter;
+      final box = tester.renderObject<RenderBox>(paint);
+      final handle = painter.handlesIn(box.size).single;
+      expect((handle.frame, handle.leaving), (0, true), reason: '⛔전제');
+      final gesture = await tester.startGesture(
+        box.localToGlobal(handle.at),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(20, -20));
+      await tester.pump();
+      expect(
+        session.dragPreview.value,
+        isA<LaneEditPreview>(),
+        reason: '⛔전제: in hand, and shown',
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    await pull(seKey);
+    expect(
+      track().seLayers.single.transformTrack.rotation.keyAt(0)!.outgoing,
+      isNot(const EaseSide()),
+    );
+    await pull(fxKey);
+    expect(
+      track().effects.single.parameters['blurX']!.track.keyAt(0)!.outgoing,
+      isNot(const EaseSide()),
+    );
   });
 
   testWidgets('an fx header dragged into an open graph\'s room stays where '
