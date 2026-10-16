@@ -337,7 +337,7 @@ void main() {
               );
               expect(
                 playbackRigOf(s).playbackCache.playbackReadyRuns(0, 4),
-                [(startIndex: 0, endIndexExclusive: 4)],
+                [(startIndex: 0, endIndexExclusive: 4, unreadable: false)],
                 reason: 'the ruler\'s bar counts what the screen shows',
               );
               playbackRigOf(s).playback.stop();

@@ -14,6 +14,7 @@ import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/brush_frame_store.dart';
+import '../../services/cel_content_notes.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
@@ -209,6 +210,11 @@ class LayerFrameImageCache {
   }
 
   final BrushFrameStore frameStore;
+
+  /// The cels whose image could not be made ([UnreadableCels]) — noted by
+  /// every making of this cache, the one record every maker and reader asks.
+  late final UnreadableCels unreadable = UnreadableCels(frameStore);
+
   final Map<(BrushFrameKey, PlaybackQuality), _LayerFrameImageEntry> _entries =
       {};
   int _useCounter = 0;
@@ -371,14 +377,17 @@ class LayerFrameImageCache {
       inkSuffices: inkSuffices,
     ),
     shouldAbort: shouldAbort,
-    make: () => _prepareNow(
-      key: key,
-      canvasSize: canvasSize,
-      quality: quality,
-      sourceEffects: sourceEffects,
-      shouldAbort: shouldAbort,
-      inkSuffices: inkSuffices,
-      turn: turn,
+    make: () => unreadable.noting(
+      key,
+      () => _prepareNow(
+        key: key,
+        canvasSize: canvasSize,
+        quality: quality,
+        sourceEffects: sourceEffects,
+        shouldAbort: shouldAbort,
+        inkSuffices: inkSuffices,
+        turn: turn,
+      ),
     ),
   );
 
@@ -598,7 +607,7 @@ class LayerFrameImageCache {
     required List<ResolvedLayerEffect> sourceEffects,
     required bool makePictures,
     bool inkSuffices = false,
-  }) {
+  }) => unreadable.notingNow(key, () {
     final cached = _drawable(
       validImageOrNull(
         key,
@@ -661,7 +670,7 @@ class LayerFrameImageCache {
     ));
     _settleWhenTheSnapshotLands(at, composed.kept);
     return banked;
-  }
+  });
 
   /// The entry at [at] holds a deferred image; [real] is the plain snapshot
   /// of the same picture, piece for piece. When it lands it takes the
@@ -840,6 +849,7 @@ class LayerFrameImageCache {
     for (final key in _entries.keys.toList()) {
       _dropEntry(key);
     }
+    unreadable.dispose();
   }
 
   int _currentRevision(BrushFrameKey key) =>

@@ -4,6 +4,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
 import '../../models/rgba_image_bytes.dart';
+import '../../services/cel_content_notes.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
 import '../canvas/image_pieces.dart';
@@ -50,24 +51,20 @@ class CanvasPictures implements PlaybackPictures {
   /// a cut draws its frames at more than one.
   final PlaybackQuality Function(Cut cut, int frameIndex) qualityAt;
 
-  /// Rows whose image could not be made, and the store generation and cel
-  /// revision they failed at — the canvas's own `_failedRevisions`, kept by
-  /// the maker: one unreachable cel is not opened again on every walk, and a
-  /// run is not held for a row that will not come. The next change of the
-  /// cel's content, or a project opened again, is looked at afresh.
-  final Map<BrushFrameKey, (int, int?)> _failed = {};
-
-  (int, int?) _failureKeyOf(BrushFrameKey key) => (
-    layerImages.frameStore.celContentRevision.value,
-    layerImages.frameStore.frameOrNull(key)?.sourceRevision,
-  );
+  /// Rows that gave nothing to make at the content they hold now — a cel
+  /// with pixels that cannot be drawn at this canvas size, or a row of a
+  /// frame whose making stopped before its rows (the movie its cels show
+  /// could not be read) — noted so a walk does not make them again, and a
+  /// run is not held for a row that will not come. A cel that could not be
+  /// read is the cache's ([LayerFrameImageCache.unreadable]).
+  late final CelContentNotes _gaveNothing =
+      CelContentNotes.orTheStoresContent(layerImages.frameStore);
 
   /// Whether [row]'s image could not be made at the content it has now — a
   /// frame showing it waits for nothing more of it.
-  bool gaveUpOn(CanvasLayerImageRequest row) {
-    final failed = _failed[row.frameKey];
-    return failed != null && failed == _failureKeyOf(row.frameKey);
-  }
+  bool gaveUpOn(CanvasLayerImageRequest row) =>
+      layerImages.unreadable.has(row.frameKey) ||
+      _gaveNothing.has(row.frameKey);
 
   LayerFrameImage? _held(
     CanvasLayerImageRequest row,
@@ -127,6 +124,14 @@ class CanvasPictures implements PlaybackPictures {
     qualityAt(picture.cut, picture.frameIndex),
   ).isEmpty;
 
+  /// Whether a cel [picture] shows could not be read at the content it has
+  /// now ([LayerFrameImageCache.unreadable]) — the ruler's bar paints the
+  /// frame red once nothing more of it is to come ([failed]).
+  bool cannotRead(DemandedPicture picture) => rowsOf(
+    picture.cut,
+    picture.frameIndex,
+  ).any((row) => layerImages.unreadable.has(row.frameKey));
+
   /// Every row of [picture] still to come is given up on. A row that threw
   /// in [make] is recorded there, and its siblings made past it — so what
   /// this records is a frame whose making stopped before its rows: the
@@ -139,7 +144,7 @@ class CanvasPictures implements PlaybackPictures {
       picture.cut,
       level,
     )) {
-      _failed[row.frameKey] = _failureKeyOf(row.frameKey);
+      _gaveNothing.note(row.frameKey);
     }
   }
 
@@ -252,7 +257,6 @@ class CanvasPictures implements PlaybackPictures {
           ),
         );
       } on Object catch (error, stack) {
-        _failed[row.frameKey] = _failureKeyOf(row.frameKey);
         thrown ??= (error, stack);
         continue;
       }
@@ -263,7 +267,7 @@ class CanvasPictures implements PlaybackPictures {
         // A cel with pixels that cannot be drawn at this canvas size — the
         // canvas's own miss of the same name, which it leaves to the next
         // pass. A maker that left it would make it again on every walk.
-        _failed[row.frameKey] = _failureKeyOf(row.frameKey);
+        _gaveNothing.note(row.frameKey);
       }
     }
     if (thrown case (final error, final stack)) {

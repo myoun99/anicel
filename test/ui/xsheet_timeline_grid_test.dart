@@ -148,7 +148,11 @@ void main() {
       _grid(
         frameCount: 3,
         readyRunsIn: (start, end) => [
-          (startIndex: start, endIndexExclusive: end < 2 ? end : 2),
+          (
+            startIndex: start,
+            endIndexExclusive: end < 2 ? end : 2,
+            unreadable: false,
+          ),
         ],
       ),
     );
@@ -169,7 +173,9 @@ void main() {
 
     // Frames 0-1 ready, 2 not: the strip draws what the rail's cache
     // answers across the window it asks about.
-    expect(overlay.readyRuns(), [(startIndex: 0, endIndexExclusive: 2)]);
+    expect(overlay.readyRuns(), [
+      (startIndex: 0, endIndexExclusive: 2, unreadable: false),
+    ]);
   });
 
   testWidgets('renders frame rows and cells', (tester) async {

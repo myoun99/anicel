@@ -66,6 +66,7 @@ void main() {
   /// The unworked-cel source: every block reads as "no picture yet".
   TimelineCelContentSource emptyCels() => TimelineCelContentSource(
     hasContent: (_, _) => false,
+    cannotRead: (_, _) => false,
     revision: ValueNotifier<int>(0),
   );
 

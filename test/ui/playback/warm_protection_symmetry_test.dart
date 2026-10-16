@@ -261,8 +261,8 @@ void main() {
       expect(
         budget.playbackReadyRunsForCut(activeCut, 0, 12),
         [
-          (startIndex: 2, endIndexExclusive: 5),
-          (startIndex: 7, endIndexExclusive: 12),
+          (startIndex: 2, endIndexExclusive: 5, unreadable: false),
+          (startIndex: 7, endIndexExclusive: 12, unreadable: false),
         ],
         reason: 'the body cel waits for its bake too; everything that '
             'composes to nothing is one stretch each',
@@ -275,7 +275,7 @@ void main() {
       expect(ready(5), isTrue);
       expect(
         budget.playbackReadyRunsForCut(activeCut, 0, 12),
-        [(startIndex: 2, endIndexExclusive: 12)],
+        [(startIndex: 2, endIndexExclusive: 12, unreadable: false)],
         reason: 'one image answers the whole held span — frame 6 shows the '
             'same cel, so it is the same picture',
       );
@@ -289,7 +289,7 @@ void main() {
 
     expect(
       storyboardReadyRuns(s, 999, 1000, layout: const []),
-      [(startIndex: 999, endIndexExclusive: 1000)],
+      [(startIndex: 999, endIndexExclusive: 1000, unreadable: false)],
       reason: 'no cut owns the frame, so there is nothing to prepare — '
           'the same two-kind law the in-cut answer follows',
     );

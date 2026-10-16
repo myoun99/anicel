@@ -138,11 +138,9 @@ int? xsheetRailWrittenFrame(WidgetTester tester) =>
     _writingPainter(tester, 'xsheet-rail-playhead-writing').writtenFrame();
 
 /// The cached RUNS the timeline ruler's overlay would draw.
-List<({int startIndex, int endIndexExclusive})> timelineRulerCachedRuns(
-  WidgetTester tester,
-) => _overlayPainter(tester, 'timeline-ruler-cursor-overlay').readyRuns();
+List<ReadyRun> timelineRulerCachedRuns(WidgetTester tester) =>
+    _overlayPainter(tester, 'timeline-ruler-cursor-overlay').readyRuns();
 
 /// The cached RUNS the X-sheet rail's overlay would draw.
-List<({int startIndex, int endIndexExclusive})> xsheetRailCachedRuns(
-  WidgetTester tester,
-) => _overlayPainter(tester, 'xsheet-rail-cursor-overlay').readyRuns();
+List<ReadyRun> xsheetRailCachedRuns(WidgetTester tester) =>
+    _overlayPainter(tester, 'xsheet-rail-cursor-overlay').readyRuns();

@@ -201,6 +201,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// pass and defeat their repaint gating.
   late final TimelineCelContentSource _celContent = TimelineCelContentSource(
     hasContent: _session.layerStack.celHasContentForLayer,
+    cannotRead: _session.layerStack.celCannotBeReadForLayer,
     revision: _session.layerStack.celTintRevision,
   );
 

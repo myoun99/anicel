@@ -85,6 +85,7 @@ void main() {
     axis: axis,
     celContent: TimelineCelContentSource(
       hasContent: (_, _) => worked,
+      cannotRead: (_, _) => false,
       revision: ValueNotifier<int>(0),
     ),
     paperGround: paperGround ?? host,
@@ -199,6 +200,7 @@ void main() {
         baseTextStyle: const TextStyle(fontSize: 11),
         celContent: TimelineCelContentSource(
           hasContent: (_, _) => false,
+          cannotRead: (_, _) => false,
           revision: ValueNotifier<int>(0),
         ),
         blockFrameLines: true,

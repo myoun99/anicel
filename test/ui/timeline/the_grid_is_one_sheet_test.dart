@@ -316,6 +316,7 @@ void main() {
       baseTextStyle: const TextStyle(fontSize: 11),
       celContent: TimelineCelContentSource(
         hasContent: (_, _) => celHasContent,
+        cannotRead: (_, _) => false,
         revision: ValueNotifier<int>(0),
       ),
       paperGround: paperGround,

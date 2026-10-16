@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 
 import '../../helpers/row_berths_in_order.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -68,6 +69,8 @@ void main() {
   TimelineRowCellsPainter painterFor(
     Layer layer, {
     bool Function(Layer layer, int frameIndex)? celHasContentForLayer,
+    bool Function(Layer layer, int frameIndex) celCannotBeReadForLayer =
+        _readsEveryCel,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -81,6 +84,7 @@ void main() {
           ? null
           : TimelineCelContentSource(
               hasContent: celHasContentForLayer,
+              cannotRead: celCannotBeReadForLayer,
               revision: ValueNotifier<int>(0),
             ),
       colorScheme: const ColorScheme.dark(),
@@ -124,6 +128,49 @@ void main() {
       expect(
         painter.resolvedCellStyleFor(0).background,
         timelineDrawingStartColor,
+      );
+    });
+
+    // 유저 2026-10-16 (frame-picture-indicator-Q1 b): 「a + 그 셀이 있는
+    // 타임라인 칸에도 빨간 표시」.
+    test('🚨a block whose cel cannot be read is red — its WHOLE run, the '
+        'empty-cel grey included; the block beside it keeps its paper', () {
+      final painter = painterFor(
+        twoBlockLayer(),
+        // f1's block (cells 0-1) cannot be read — and says it holds nothing,
+        // so red has to win over grey. Cell 5 is asked too, and is no block.
+        celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
+        celCannotBeReadForLayer: (layer, frameIndex) =>
+            frameIndex < 2 || frameIndex == 5,
+      );
+
+      expect(
+        painter.resolvedCellStyleFor(0).background,
+        timelineUnreadableCelPaperColor,
+        reason: 'the unreadable block\'s start cell is red',
+      );
+      expect(
+        painter.resolvedCellStyleFor(1).background,
+        timelineUnreadableCelPaperColor,
+        reason: 'the held cell follows its block',
+      );
+      expect(
+        painter.resolvedCellStyleFor(2).background,
+        timelineDrawingStartColor,
+        reason: 'a block whose cel reads keeps the plain paper',
+      );
+      expect(
+        painter.resolvedCellStyleFor(5).background,
+        Colors.transparent,
+        reason: 'uncovered cells carry no substrate at all',
+      );
+    });
+
+    test('the block\'s red is the ruler bar\'s — one red for a cel that '
+        'cannot be read, on both', () {
+      expect(
+        timelineUnreadableCelPaperColor,
+        TimelineRulerCursorOverlayPainter.unreadableBarColor,
       );
     });
   });
@@ -493,6 +540,7 @@ void main() {
       bool celHasContent(Layer l, int frameIndex) => hasContent;
       final celContent = TimelineCelContentSource(
         hasContent: celHasContent,
+        cannotRead: (_, _) => false,
         revision: revision,
       );
       void onSelectLayer(LayerId id) {}
@@ -582,3 +630,6 @@ void main() {
     });
   });
 }
+
+/// No cel that cannot be read — a source with no cel store behind it.
+bool _readsEveryCel(Layer layer, int frameIndex) => false;

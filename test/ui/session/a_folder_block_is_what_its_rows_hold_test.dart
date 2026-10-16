@@ -168,6 +168,18 @@ void _draw(EditorSessionManager s, String layer, String frame) {
   );
 }
 
+/// The cel [frame] of [layer] as one whose picture data could not be read —
+/// the record its making keeps (`a_cel_the_file_does_not_hold_is_red_test`
+/// has the making).
+void _cannotRead(EditorSessionManager s, String layer, String frame) =>
+    s.renderCaches.layerFrameImageCache.unreadable.note(
+      s.brushFrameKeyForCut(
+        s.requireActiveCut,
+        LayerId(layer),
+        FrameId(frame),
+      ),
+    );
+
 void _setEdge(
   EditorSessionManager s,
   String layer,
@@ -194,6 +206,7 @@ TimelineRowCellsPainter _painter(EditorSessionManager s, Layer layer) =>
       exposureStateForLayer: s.exposureStateForLayer,
       celContent: TimelineCelContentSource(
         hasContent: stackOf(s).celHasContentForLayer,
+        cannotRead: stackOf(s).celCannotBeReadForLayer,
         revision: stackOf(s).celTintRevision,
       ),
       colorScheme: const ColorScheme.dark(),
@@ -439,6 +452,46 @@ void main() {
       );
       _draw(s, 'c', 'c1');
       expect([drawn(1), drawn(2)], [true, true]);
+    });
+  });
+
+  // 유저 2026-10-16 (frame-picture-indicator-Q1 b): 「a + 그 셀이 있는
+  // 타임라인 칸에도 빨간 표시」 — and the band shows what its rows hold.
+  group('red is where a row shows a cel that cannot be read', () {
+    test('🚨the folder\'s frame is red where a row in it shows one, and '
+        'nowhere else; the row itself is red over its block', () {
+      final s = _session(_stack());
+      _cannotRead(s, 'a', 'a0');
+      List<int> redOf(Layer layer) => [
+        for (var frame = 0; frame < 12; frame += 1)
+          if (stackOf(s).celCannotBeReadForLayer(layer, frame)) frame,
+      ];
+
+      expect(
+        redOf(_band(s)),
+        [0, 1, 2, 3],
+        reason: 'a0 stands 0..4 — under b\'s block too, which reads; past it '
+            'b alone, and a8 reads',
+      );
+      expect(redOf(_layer(s, 'a')), [0, 1, 2, 3]);
+      expect(redOf(_layer(s, 'b')), isEmpty);
+    });
+
+    test('the painter paints the folder\'s block red by that answer', () {
+      final s = _session(_stack());
+      _draw(s, 'b', 'b2');
+      _cannotRead(s, 'a', 'a0');
+      final painter = _painter(s, _band(s));
+
+      expect(
+        painter.resolvedCellStyleFor(1).background,
+        timelineUnreadableCelPaperColor,
+      );
+      expect(
+        painter.resolvedCellStyleFor(5).background,
+        isNot(timelineUnreadableCelPaperColor),
+        reason: 'the same block past a0 shows b alone, and b reads',
+      );
     });
   });
 

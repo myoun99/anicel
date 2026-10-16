@@ -451,8 +451,25 @@ import '../../tool/refactor/clone_scan.dart';
 ///
 /// 🔬Measured on the lane against master (`942ad5e5c`, at 88): none added,
 /// that one gone.
+///
+/// 87 → 88 (2026-10-17, frame-picture-indicator — the storyboard's bar
+/// joins its runs, red or not, in a function of its own; 88 → 89 where the
+/// lane was cut, and 89 → 90 over the masks' pair once it stood on master,
+/// before master took two pairs away). The new pair is named:
+///
+///     40 tokens
+///       lib/src/core/convex_clip.dart  _keptBy
+///       lib/src/ui/storyboard_playhead_mapping.dart  storyboardReadyRuns
+///
+/// The reading DISMISSES it: an empty list, then an index walk that reads
+/// the list at the index — a polygon clipped against one edge, and the
+/// storyboard's stretches walked to their owners' ready runs. Nothing the
+/// two compute is the same; the run showed when the local function that
+/// stood between the list and the walk went out of it (`_append`).
+/// 🔬Measured on the lane against its base (`ebefaea8b`, at 88): this one
+/// added, none gone.
 void main() {
-  const ceiling = 87;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -24,11 +25,16 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// with the walk order. The failure is skipped now, and REMEMBERED:
 /// retrying it on every rebuild is a blocking open + throw per layer per
 /// sweep, which is a hot loop on the old tablets this project supports.
+///
+/// ⚠️THE THROW COMES FROM THE STORE ([_UnreachableCels]), where an
+/// unreachable cel's bytes fail to come: what is remembered is the cache's
+/// record ([LayerFrameImageCache.unreadable]), kept by its making, so a
+/// stand-in for the making would stand in for the record as well.
 class _ThrowingCache extends LayerFrameImageCache {
-  _ThrowingCache({required super.frameStore, required this.failing});
+  _ThrowingCache({required _UnreachableCels super.frameStore});
 
-  /// Cels whose build throws — everything else behaves normally.
-  final Set<FrameId> failing;
+  /// Cels whose bytes cannot be read — everything else behaves normally.
+  Set<FrameId> get failing => (frameStore as _UnreachableCels).failing;
   final List<FrameId> syncAttempts = [];
 
   @override
@@ -41,10 +47,14 @@ class _ThrowingCache extends LayerFrameImageCache {
     bool inkSuffices = false,
   }) {
     syncAttempts.add(key.frameId);
-    if (failing.contains(key.frameId)) {
-      throw StateError('cel bytes unreachable: ${key.frameId.value}');
-    }
-    return null;
+    return super.prepareSyncOrNull(
+      key: key,
+      canvasSize: canvasSize,
+      quality: quality,
+      sourceEffects: sourceEffects,
+      makePictures: makePictures,
+      inkSuffices: inkSuffices,
+    );
   }
 
   /// The async pass is not what this pins, and letting it reach the real
@@ -59,6 +69,35 @@ class _ThrowingCache extends LayerFrameImageCache {
     bool inkSuffices = false,
     Future<QuietTurn?> Function()? turn,
   }) async => null;
+}
+
+/// A store whose [failing] cels hold a picture, as a file cel is said to,
+/// and throw where their pixels are asked for — bytes the file no longer
+/// holds.
+class _UnreachableCels extends BrushFrameStore {
+  _UnreachableCels(this.failing);
+
+  final Set<FrameId> failing;
+
+  @override
+  bool celHasRenderableContent(BrushFrameKey key) =>
+      failing.contains(key.frameId) || super.celHasRenderableContent(key);
+
+  @override
+  BitmapSurface? currentSurfaceWithoutReplay(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+    CelRead read = CelRead.use,
+  }) {
+    if (failing.contains(key.frameId)) {
+      throw StateError('cel bytes unreachable: ${key.frameId.value}');
+    }
+    return super.currentSurfaceWithoutReplay(
+      key,
+      canvasSize: canvasSize,
+      read: read,
+    );
+  }
 }
 
 BrushFrameKey _key(String frame) => BrushFrameKey(
@@ -81,8 +120,7 @@ void main() {
     FlutterError.onError = (details) => captured.add(details.exception);
 
     final cache = _ThrowingCache(
-      frameStore: BrushFrameStore(),
-      failing: {const FrameId('bad')},
+      frameStore: _UnreachableCels({const FrameId('bad')}),
     );
 
     Widget host() => MaterialApp(
@@ -146,8 +184,7 @@ void main() {
     FlutterError.onError = (details) => captured.add(details.exception);
 
     final cache = _ThrowingCache(
-      frameStore: BrushFrameStore(),
-      failing: {const FrameId('flaky')},
+      frameStore: _UnreachableCels({const FrameId('flaky')}),
     );
 
     Widget host() => MaterialApp(
@@ -208,5 +245,34 @@ void main() {
           'revision 1 makes the old failure matchable again and the row '
           'is skipped for a reason that no longer exists',
     );
+  });
+
+  testWidgets('🚨and so does a run\'s making — the record is one for every '
+      'maker, kept the same by each', (tester) async {
+    await tester.runAsync(() async {
+      final store = _UnreachableCels({const FrameId('flaky')});
+      final cache = LayerFrameImageCache(frameStore: store);
+      addTearDown(cache.dispose);
+      final key = _key('flaky');
+      store.getOrCreateFrame(key);
+      Future<void> make() => cache.prepare(
+        key: key,
+        canvasSize: canvasSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const <ResolvedLayerEffect>[],
+      );
+      await expectLater(make(), throwsA(isA<StateError>()));
+      expect(
+        cache.unreadable.has(key),
+        isTrue,
+        reason: '⛔CONTROL: the throw is noted',
+      );
+
+      // The same content, read now.
+      store.failing.clear();
+      await make();
+
+      expect(cache.unreadable.has(key), isFalse);
+    });
   });
 }

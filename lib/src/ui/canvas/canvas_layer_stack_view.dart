@@ -410,21 +410,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// ([CanvasLayerStackView.run]): its images stay held until then.
   late List<CompositeNode<CanvasStackRow>> _shownNodes = widget.nodes;
 
-  /// Cels whose image could not be built, and the revision it failed at.
-  ///
-  /// Skipping the failure but FORGETTING it re-kicked the same broken
-  /// build on every rebuild — for a file-backed cel whose bytes are
-  /// unreachable that is a blocking open + throw per layer per sweep,
-  /// which is a hot loop on an old tablet where master paid it once and
-  /// then stopped drawing. The next CONTENT change (a new revision)
-  /// retries; the failure itself is reported rather than swallowed. Same
-  /// shape as the storyboard thumbnail store's, for the same reason.
-  /// ⚠️A NULLABLE value on purpose. A cel can fail before it has any
-  /// frame state at all, and recording nothing then would leave the retry
-  /// exactly as hot as it was: `null == null` keeps it skipped, and the
-  /// moment a revision appears the mismatch retries it.
-  final Map<BrushFrameKey, (int, int?)> _failedRevisions = {};
-
   /// The cel revision a held image was captured at.
   ///
   /// ⛔It rides INSIDE the held record rather than in a map beside it. A
@@ -434,31 +419,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   int? _revisionOf(BrushFrameKey key) =>
       widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision;
 
-  /// What a failure is recorded AGAINST: the store's whole-content
-  /// generation, then the cel's own revision.
-  ///
-  /// ⚠️The generation is not decoration. A cel the FILESYSTEM refused
-  /// does not change when the file comes back, so keying a non-content
-  /// failure on a content revision alone would have left that row blank
-  /// for ever with nothing the user could do. The generation bumps on a
-  /// project OPEN — the one moment such a cel can plausibly have become
-  /// readable — so reopening is a real recovery instead of a ritual.
-  (int, int?) _failureKeyFor(BrushFrameKey key) => (
-    widget.imageCache.frameStore.celContentRevision.value,
-    widget.imageCache.frameStore.frameOrNull(key)?.sourceRevision,
-  );
+  /// Whether [key]'s cel could not be read at the content it holds now
+  /// ([LayerFrameImageCache.unreadable]) — a row skipped, not opened again.
+  bool _unreadable(BrushFrameKey key) => widget.imageCache.unreadable.has(key);
 
-  bool _shouldSkipFailed(BrushFrameKey key) =>
-      _failedRevisions.containsKey(key) &&
-      _failedRevisions[key] == _failureKeyFor(key);
-
-  void _noteFailure(
+  /// A row whose image could not be built, reported — the cache has noted
+  /// its cel ([LayerFrameImageCache.unreadable]).
+  void _reportFailure(
     BrushFrameKey key,
     Object error,
     StackTrace stack,
     String where,
   ) {
-    _failedRevisions[key] = _failureKeyFor(key);
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -912,10 +884,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         _dropImage(key, held);
       }
     }
-    // A row that left the stack takes its failure record with it — the
-    // note exists to stop a per-rebuild retry, not to remember cels this
-    // stack no longer shows.
-    _failedRevisions.removeWhere((key, _) => !kept.contains(key));
   }
 
   /// The cels whose images this view holds on to: the rows asked for, and
@@ -947,7 +915,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         !widget.imageCache.frameStore.celHasRenderableContent(
           layer.frameKey,
         ) ||
-        _shouldSkipFailed(layer.frameKey) ||
+        _unreadable(layer.frameKey) ||
         (widget.run?.gaveUpOn(layer) ?? false),
   );
 
@@ -964,7 +932,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       // lands here instead, out of a build/layout callback, and every
       // later layer in THIS sweep is skipped with it. One row's
       // unreachable cel is one row's.
-      if (_shouldSkipFailed(layer.frameKey)) {
+      if (_unreadable(layer.frameKey)) {
         continue;
       }
       // 🚨READ BEFORE THE PREPARE. The stamp has to name the revision the
@@ -986,14 +954,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           inkSuffices: layer.inkSuffices,
         );
       } on Object catch (error, stack) {
-        _noteFailure(layer.frameKey, error, stack, 'sync sweep');
+        _reportFailure(layer.frameKey, error, stack, 'sync sweep');
         continue;
       }
-      // The note means "the LAST attempt failed", not "one once did".
-      // Left standing it outlives the failure, and a project open reseeds
-      // every frame back to revision 1 — which makes an old note match
-      // again and skips a cel that builds perfectly well.
-      _failedRevisions.remove(layer.frameKey);
       if (image == null) {
         // 🚨★★★A COLD MISS IS NOT A LICENCE TO PAINT THE OLD PICTURE.
         //
@@ -1048,7 +1011,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// Null when the view unmounted mid-await; else whether the held
   /// image for [layer] changed.
   Future<bool?> _refreshLayerImage(CanvasLayerImageRequest layer) async {
-    if (_shouldSkipFailed(layer.frameKey)) {
+    if (_unreadable(layer.frameKey)) {
       return false;
     }
     // Read BEFORE the await — see the sync twin for why the order is
@@ -1068,11 +1031,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       if (!mounted) {
         return null;
       }
-      _noteFailure(layer.frameKey, error, stack, 'async pass');
+      _reportFailure(layer.frameKey, error, stack, 'async pass');
       return false;
     }
-    // Same as the sync twin: a success retires the note.
-    _failedRevisions.remove(layer.frameKey);
     if (!mounted) {
       return null;
     }

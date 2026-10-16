@@ -220,6 +220,7 @@ void main() {
                 frameIndex,
               )?.value.endsWith('+') ??
               false,
+          cannotRead: (_, _) => false,
           revision: worked,
         ),
         colorScheme: const ColorScheme.dark(),

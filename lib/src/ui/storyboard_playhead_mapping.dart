@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
+import 'timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
 import '../models/cut_id.dart';
 import '../models/storyboard_timeline_layout.dart';
 
@@ -72,7 +73,7 @@ void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
 /// in-cut answer follows. (The
 /// multitrack gap-PARKED preview showing other tracks is the EDITING
 /// path, not playback — this bar answers for playback.)
-List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
+List<ReadyRun> storyboardReadyRuns(
   EditorSessionManager session,
   int start,
   int end, {
@@ -94,22 +95,17 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
   // Where each cut's OWN frames stand on its track — the cache holds a
   // cut's pictures by the cut's own frame.
   final axis = session.projectSettings.projectAxis();
-  final runs = <({int startIndex, int endIndexExclusive})>[];
-  void ready(int from, int to) {
-    final last = runs.isEmpty ? null : runs.last;
-    if (last != null && last.endIndexExclusive == from) {
-      runs.last = (startIndex: last.startIndex, endIndexExclusive: to);
-    } else {
-      runs.add((startIndex: from, endIndexExclusive: to));
-    }
-  }
-
+  final runs = <ReadyRun>[];
   for (var stretch = 0; stretch < owners.length; stretch += 1) {
     final from = edges[stretch];
     final to = edges[stretch + 1];
     final owner = owners[stretch];
     if (owner == null) {
-      ready(from, to);
+      _append(runs, (
+        startIndex: from,
+        endIndexExclusive: to,
+        unreadable: false,
+      ));
       continue;
     }
     final ownFrom = axis.localIn(owner, from);
@@ -121,10 +117,35 @@ List<({int startIndex, int endIndexExclusive})> storyboardReadyRuns(
           ownFrom,
           ownFrom + (to - from),
         )) {
-      ready(run.startIndex + onTrack, run.endIndexExclusive + onTrack);
+      _append(runs, (
+        startIndex: run.startIndex + onTrack,
+        endIndexExclusive: run.endIndexExclusive + onTrack,
+        unreadable: run.unreadable,
+      ));
     }
   }
   return runs;
+}
+
+/// [run] at the end of [runs] — joined onto the last one where it starts as
+/// that one ends and is as readable.
+///
+/// ⛔Not shared with the cut's own bar, which joins its spans the same way
+/// (`PlaybackCacheBudget.playbackReadyRunsForCut`): the SECOND, and the
+/// rule of three holds.
+void _append(List<ReadyRun> runs, ReadyRun run) {
+  final last = runs.isEmpty ? null : runs.last;
+  if (last != null &&
+      last.endIndexExclusive == run.startIndex &&
+      last.unreadable == run.unreadable) {
+    runs.last = (
+      startIndex: last.startIndex,
+      endIndexExclusive: run.endIndexExclusive,
+      unreadable: run.unreadable,
+    );
+  } else {
+    runs.add(run);
+  }
 }
 
 /// Each stretch between two [edges] with the FIRST of [entries] covering

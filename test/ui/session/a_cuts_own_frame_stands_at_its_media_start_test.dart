@@ -761,9 +761,9 @@ void main() {
     );
 
     expect(storyboardReadyRuns(session, 0, 48), [
-      (startIndex: 0, endIndexExclusive: 26),
-      (startIndex: 28, endIndexExclusive: 44),
-      (startIndex: 46, endIndexExclusive: 48),
+      (startIndex: 0, endIndexExclusive: 26, unreadable: false),
+      (startIndex: 28, endIndexExclusive: 44, unreadable: false),
+      (startIndex: 46, endIndexExclusive: 48, unreadable: false),
     ]);
   });
 }

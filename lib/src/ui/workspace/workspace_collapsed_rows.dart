@@ -418,6 +418,7 @@ class _WorkspaceCollapsedRows {
     ]);
     _collapsedCelContent = TimelineCelContentSource(
       hasContent: session.layerStack.celHasContentForLayer,
+      cannotRead: session.layerStack.celCannotBeReadForLayer,
       revision: session.layerStack.celTintRevision,
     );
   }

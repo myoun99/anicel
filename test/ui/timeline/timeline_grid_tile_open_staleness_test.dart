@@ -147,6 +147,7 @@ void main() {
         }
         return hasContent;
       },
+      cannotRead: (_, _) => false,
       revision: revision,
     );
 

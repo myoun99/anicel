@@ -183,6 +183,14 @@ class TimelineRowCellsPainter extends CustomPainter
   bool Function(Layer layer, int frameIndex)? get celHasContentForLayer =>
       celContent?.hasContent;
 
+  /// Whether a block's cel could not be read — the block goes red.
+  ///
+  /// ⚠️Not in a baked tile's identity of its own: it comes from the source
+  /// [celHasContentForLayer] comes from, which is, and
+  /// [celContentRevision] moves whenever it can have changed.
+  bool Function(Layer layer, int frameIndex)? get celCannotBeReadForLayer =>
+      celContent?.cannotRead;
+
   /// Read LIVE, never captured: the whole point is that the row does NOT
   /// rebuild when a cel gains pixels — it repaints — so a value frozen at
   /// construction would hand the tile store yesterday's answer forever and
@@ -511,16 +519,22 @@ class TimelineRowCellsPainter extends CustomPainter
     // resolver stands down elsewhere). Ghosts stay plain (they carry no
     // block chrome at all). I-44: onto [paperGround], so the grid sheet
     // under the row cannot show through it.
-    final baseBackground =
-        !model.ghost &&
-            !_cameraSummaryRow &&
-            model.exposureState.isCovered &&
-            !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
-        ? timelineGridGroundOver(
-            under: paperGround,
-            painted: timelineEmptyCelPaperColor(paper),
-          )!
-        : cellPaper;
+    final block =
+        !model.ghost && !_cameraSummaryRow && model.exposureState.isCovered;
+    final Color baseBackground;
+    if (block && (celCannotBeReadForLayer?.call(layer, frameIndex) ?? false)) {
+      // A cel whose picture data could not be read is red, as the ruler's
+      // bar is over its frames (frame-picture-indicator-Q1 b).
+      baseBackground = timelineUnreadableCelPaperColor;
+    } else if (block &&
+        !(celHasContentForLayer?.call(layer, frameIndex) ?? true)) {
+      baseBackground = timelineGridGroundOver(
+        under: paperGround,
+        painted: timelineEmptyCelPaperColor(paper),
+      )!;
+    } else {
+      baseBackground = cellPaper;
+    }
     // D32/D38 (2026-08-18): the per-cell BORDER is gone. It existed to be
     // the seams ("the paper blocks' seams all sit on the shared faint
     // alpha" — UI-R20 #7 already killed the strong start edge), and as a
@@ -1295,6 +1309,7 @@ class TimelineRowCellsPainter extends CustomPainter
     exposureStateForLayer,
     frameNameForLayer,
     celHasContentForLayer,
+    celCannotBeReadForLayer,
     celContentRevision,
     substrateGeneration,
     ByIdentity(tileStore),

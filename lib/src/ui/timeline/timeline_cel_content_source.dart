@@ -25,6 +25,7 @@ import '../../models/layer.dart';
 class TimelineCelContentSource {
   const TimelineCelContentSource({
     required this.hasContent,
+    required this.cannotRead,
     required this.revision,
   });
 
@@ -32,6 +33,12 @@ class TimelineCelContentSource {
   /// True everywhere the tint does not apply (non-drawing sections).
   final bool Function(Layer layer, int frameIndex) hasContent;
 
-  /// Bumps whenever [hasContent] can have changed anywhere.
+  /// Whether the drawing block covering [frameIndex] shows a cel whose
+  /// picture data could not be read — the block goes red
+  /// (frame-picture-indicator-Q1 b). A file cel answers [hasContent] by
+  /// what it is said to hold, so such a block reads as drawn without this.
+  final bool Function(Layer layer, int frameIndex) cannotRead;
+
+  /// Bumps whenever [hasContent] or [cannotRead] can have changed anywhere.
   final ValueListenable<int> revision;
 }

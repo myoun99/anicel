@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -692,17 +693,44 @@ void main() {
         pictures.has((cut: four(), frameIndex: frame)),
     ];
 
+    /// A cel inked across [four]'s canvas, and [past] tiles past every edge.
+    BitmapSurface inkedOut(int past) => BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: 4,
+      tiles: {
+        for (var y = -past; y <= 1 + past; y += 1)
+          for (var x = -past; x <= 1 + past; x += 1)
+            TileCoord(x: x, y: y): BitmapTile(
+              size: 4,
+              pixels: Uint8List.fromList([
+                for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+              ]),
+            ),
+      },
+    );
+
     /// Every one of [four]'s cels drawn on — across all four of its tiles
     /// and inside its canvas, so each frame has a picture of the canvas's
-    /// size ([pictureBytes]) to make.
+    /// size ([pictureBytes]) to make — but [gone]'s, kept as an opened
+    /// project keeps a cel, in a stretch of a file that is no longer there:
+    /// its bytes cannot be read.
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
       CanvasPictures pictures,
     })
-    inked() {
+    inked({FrameId? gone}) {
       final store = BrushFrameStore();
+      if (gone != null) {
+        final kept = keepInAFile(store, {
+          frameKey(four(), const LayerId('layer'), gone): inkedOut(0),
+        });
+        File(kept.values.single.filePath).deleteSync();
+      }
       for (var index = 0; index < 4; index += 1) {
+        if (FrameId('f$index') == gone) {
+          continue;
+        }
         BrushFrameEditingCoordinator(
           initialFrameKey: frameKey(
             four(),
@@ -749,20 +777,6 @@ void main() {
       CanvasPictures pictures,
     })
     keptInked({required int heavy}) {
-      BitmapSurface inkedOut(int past) => BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 4,
-        tiles: {
-          for (var y = -past; y <= 1 + past; y += 1)
-            for (var x = -past; x <= 1 + past; x += 1)
-              TileCoord(x: x, y: y): BitmapTile(
-                size: 4,
-                pixels: Uint8List.fromList([
-                  for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
-                ]),
-              ),
-        },
-      );
       final store = BrushFrameStore();
       keepInAFile(store, {
         for (var index = 0; index < 4; index += 1)
@@ -1357,8 +1371,8 @@ void main() {
     testWidgets('a picture whose compose throws is not waited for, and is '
         'not paid for twice', (tester) async {
       await tester.runAsync(() async {
-        final f = inked();
-        final layerImages = _ThrowsAt(
+        final f = inked(gone: const FrameId('f1'));
+        final layerImages = _CountsMakings(
           const FrameId('f1'),
           frameStore: f.store,
         );
@@ -1414,7 +1428,7 @@ void main() {
 
         scheduler.wake(fromTheStart: true);
         await patiently(scheduler.idle);
-        expect(layerImages.thrown, 1, reason: 'the same content is not retried');
+        expect(layerImages.asked, 1, reason: 'the same content is not retried');
         scheduler.dispose();
         layerImages.dispose();
       });
@@ -1497,12 +1511,17 @@ class _Gated extends LayerFrameImageCache {
   }
 }
 
-/// An image cache whose cel [frameId] cannot be read.
-class _ThrowsAt extends LayerFrameImageCache {
-  _ThrowsAt(this.frameId, {required super.frameStore});
+/// An image cache that counts the makings asked of the cel [frameId].
+///
+/// ⚠️IT MAKES THEM AS ANY CACHE DOES: what a cel that could not be read is
+/// remembered by is the cache's record ([LayerFrameImageCache.unreadable]),
+/// kept by its making — a stand-in for the making would stand in for the
+/// record as well.
+class _CountsMakings extends LayerFrameImageCache {
+  _CountsMakings(this.frameId, {required super.frameStore});
 
   final FrameId frameId;
-  int thrown = 0;
+  int asked = 0;
 
   @override
   Future<LayerFrameImage?> prepare({
@@ -1515,8 +1534,7 @@ class _ThrowsAt extends LayerFrameImageCache {
     Future<QuietTurn?> Function()? turn,
   }) {
     if (key.frameId == frameId) {
-      thrown += 1;
-      throw StateError('the cel ${frameId.value} cannot be read');
+      asked += 1;
     }
     return super.prepare(
       key: key,

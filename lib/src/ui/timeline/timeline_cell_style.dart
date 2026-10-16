@@ -350,6 +350,16 @@ const double timelineEmptyCelAlpha = 0x6E / 0xFF;
 Color timelineEmptyCelPaperColor(Color paper) =>
     paper.withValues(alpha: timelineEmptyCelAlpha);
 
+/// The paper of a block whose cel's picture data could not be read — the red
+/// the ruler's bar paints that cel's frames with (유저 2026-10-16,
+/// frame-picture-indicator-Q1 b: 「a + 그 셀이 있는 타임라인 칸에도 빨간
+/// 표시」).
+///
+/// ⚠️Whole, not derived from the paper like the empty cel's: it is no state
+/// of the drawing but a fault, and the colour labels are pastels it must
+/// not be taken for.
+const Color timelineUnreadableCelPaperColor = AppColors.danger;
+
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE
 /// faint value for every surface — the painterized drawing rows, the
 /// sparse widget rows (SE/camera/instruction), the frame ruler cells and

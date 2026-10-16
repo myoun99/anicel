@@ -11,22 +11,34 @@ import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 /// every frame. The overlay repaints for a tick only when the runs it would
 /// draw differ from the runs it drew.
 /// [ready]'s frames in `[start, end)` as stretches — the answer a cache
-/// gives the overlay.
-List<({int startIndex, int endIndexExclusive})> runsOf(
+/// gives the overlay — red where a frame is [unreadable] too.
+List<ReadyRun> runsOf(
   Set<int> ready,
   int start,
-  int end,
-) {
-  final runs = <({int startIndex, int endIndexExclusive})>[];
+  int end, {
+  Set<int> unreadable = const {},
+}) {
+  final runs = <ReadyRun>[];
   for (var frame = start; frame < end; frame += 1) {
     if (!ready.contains(frame)) {
       continue;
     }
+    final red = unreadable.contains(frame);
     final last = runs.isEmpty ? null : runs.last;
-    if (last != null && last.endIndexExclusive == frame) {
-      runs.last = (startIndex: last.startIndex, endIndexExclusive: frame + 1);
+    if (last != null &&
+        last.endIndexExclusive == frame &&
+        last.unreadable == red) {
+      runs.last = (
+        startIndex: last.startIndex,
+        endIndexExclusive: frame + 1,
+        unreadable: red,
+      );
     } else {
-      runs.add((startIndex: frame, endIndexExclusive: frame + 1));
+      runs.add((
+        startIndex: frame,
+        endIndexExclusive: frame + 1,
+        unreadable: red,
+      ));
     }
   }
   return runs;
@@ -37,6 +49,7 @@ void main() {
     WidgetTester tester, {
     required Listenable signal,
     required Set<int> ready,
+    Set<int> unreadable = const {},
   }) async {
     await tester.pumpWidget(
       Directionality(
@@ -53,7 +66,8 @@ void main() {
               viewportMainExtent: 0,
               renderedFrames: 10,
               cellWidth: 8,
-              readyRunsIn: (start, end) => runsOf(ready, start, end),
+              readyRunsIn: (start, end) =>
+                  runsOf(ready, start, end, unreadable: unreadable),
             ),
           ),
         ),
@@ -64,9 +78,8 @@ void main() {
     );
   }
 
-  List<({int startIndex, int endIndexExclusive})> drawnRuns(
-    RenderCustomPaint strip,
-  ) => (strip.painter! as TimelineRulerCursorOverlayPainter).readyRuns();
+  List<ReadyRun> drawnRuns(RenderCustomPaint strip) =>
+      (strip.painter! as TimelineRulerCursorOverlayPainter).readyRuns();
 
   testWidgets('a tick that turns nothing green asks for no paint', (
     tester,
@@ -98,7 +111,9 @@ void main() {
 
     expect(strip.debugNeedsPaint, isTrue);
     await tester.pump();
-    expect(drawnRuns(strip), [(startIndex: 0, endIndexExclusive: 4)]);
+    expect(drawnRuns(strip), [
+      (startIndex: 0, endIndexExclusive: 4, unreadable: false),
+    ]);
   });
 
   testWidgets('and one that takes a frame away (a cel edit) repaints it '
@@ -113,8 +128,57 @@ void main() {
     expect(strip.debugNeedsPaint, isTrue);
     await tester.pump();
     expect(drawnRuns(strip), [
-      (startIndex: 0, endIndexExclusive: 1),
-      (startIndex: 2, endIndexExclusive: 3),
+      (startIndex: 0, endIndexExclusive: 1, unreadable: false),
+      (startIndex: 2, endIndexExclusive: 3, unreadable: false),
     ]);
+  });
+
+  // 유저 2026-10-16 (frame-picture-indicator-Q1 b): a cel whose picture data
+  // cannot be read paints its frames' stretch of the bar red.
+  testWidgets('🚨a tick that turns a green frame red repaints the strip — '
+      'the same stretch, another colour', (tester) async {
+    final signal = ValueNotifier<int>(0);
+    final ready = {0, 1, 2};
+    final unreadable = <int>{};
+    final strip = await mount(
+      tester,
+      signal: signal,
+      ready: ready,
+      unreadable: unreadable,
+    );
+
+    unreadable.add(1);
+    signal.value += 1;
+
+    expect(
+      strip.debugNeedsPaint,
+      isTrue,
+      reason: 'a gate that compared only where the runs are would keep the '
+          'green on screen over a cel that cannot be read',
+    );
+    await tester.pump();
+    expect(drawnRuns(strip), [
+      (startIndex: 0, endIndexExclusive: 1, unreadable: false),
+      (startIndex: 1, endIndexExclusive: 2, unreadable: true),
+      (startIndex: 2, endIndexExclusive: 3, unreadable: false),
+    ]);
+  });
+
+  testWidgets('🚨a red run is painted red, and the green ones beside it '
+      'green', (tester) async {
+    final strip = await mount(
+      tester,
+      signal: ValueNotifier<int>(0),
+      ready: {0, 1, 2},
+      unreadable: {1},
+    );
+
+    expect(
+      strip,
+      paints
+        ..rect(color: TimelineRulerCursorOverlayPainter.readyBarColor)
+        ..rect(color: TimelineRulerCursorOverlayPainter.unreadableBarColor)
+        ..rect(color: TimelineRulerCursorOverlayPainter.readyBarColor),
+    );
   });
 }
