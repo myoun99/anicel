@@ -803,23 +803,33 @@ static size_t build_wav_of(const movie_sound* sound, int64_t frames,
   return 44 + (size_t)data_bytes;
 }
 
+/// [length] bytes of [bytes] written as a whole file — its path, or NULL
+/// when it could not be written.
+static const char* write_movie_fixture(const uint8_t* bytes, size_t length) {
+  const char* path = "qa_audio_movie_fixture.bin";
+  FILE* file = fopen(path, "wb");
+  if (file == NULL) {
+    printf("FAIL fixture: could not write %s\n", path);
+    g_failures += 1;
+    return NULL;
+  }
+  fwrite(bytes, 1, length, file);
+  fclose(file);
+  return path;
+}
+
 /// [length] bytes of [bytes] written as a whole file and decoded — which
 /// decoder read them, the samples into [*samples] (freed by the caller with
 /// qa_audio_decode_free), and the frames, channels and rate.
 static int32_t decode_whole(const uint8_t* bytes, size_t length,
                             float** samples, int64_t* frames,
                             int32_t* channels, int32_t* rate) {
-  const char* path = "qa_audio_movie_fixture.bin";
-  FILE* file = fopen(path, "wb");
   *samples = NULL;
   *frames = 0;
-  if (file == NULL) {
-    printf("FAIL fixture: could not write %s\n", path);
-    g_failures += 1;
+  const char* path = write_movie_fixture(bytes, length);
+  if (path == NULL) {
     return -1;
   }
-  fwrite(bytes, 1, length, file);
-  fclose(file);
   const int32_t format = qa_audio_decode_span(path, 0, (int64_t)length, 0,
                                               samples, frames, channels, rate);
   remove(path);
@@ -879,8 +889,12 @@ static void expect_reads_as_its_wav(const char* what, const uint8_t* movie,
   qa_audio_decode_free(got);
 }
 
-/// Which decoder read [layout]'s movie — for the movies that must not be
+/// Which decoder opens [layout]'s movie — for the movies that must not be
 /// read as PCM by the engine.
+///
+/// ⚠️Asked of the stream as it opens, not of a whole decode: a decode can
+/// fail for its own reasons (a sound too wide to hold whole), and a decode
+/// that fails reads like a movie refused.
 static int32_t movie_format(const movie_layout* layout) {
   static uint8_t movie[MOVIE_CAPACITY];
   const size_t bytes = build_movie(layout, movie, sizeof(movie), NULL);
@@ -890,13 +904,17 @@ static int32_t movie_format(const movie_layout* layout) {
     g_failures += 1;
     return -1;
   }
-  float* samples = NULL;
-  int64_t frames = 0;
+  const char* path = write_movie_fixture(movie, bytes);
+  if (path == NULL) {
+    return -1;
+  }
+  int32_t format = QA_AUDIO_FORMAT_UNKNOWN;
   int32_t channels = 0;
   int32_t rate = 0;
-  const int32_t format =
-      decode_whole(movie, bytes, &samples, &frames, &channels, &rate);
-  qa_audio_decode_free(samples);
+  qa_audio_stream* stream = qa_audio_stream_open(path, 0, (int64_t)bytes, 0,
+                                                 &format, &channels, &rate);
+  qa_audio_stream_close(stream);
+  remove(path);
   return format;
 }
 
@@ -1524,9 +1542,11 @@ int main(void) {
         {"a description naming a reference the list does not have",
          {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
           .reference = 2}},
+        // Ahead of its sound, as the table that ends a file would end any
+        // read past it.
         {"a chunk table that counts more chunks than it holds",
          {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
-          .chunks_said = 6}},
+          .movie_first = 1, .chunks_said = 6}},
         {"a sound whose samples last two ticks of a clock at its rate",
          {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
           .tick = 2}},
