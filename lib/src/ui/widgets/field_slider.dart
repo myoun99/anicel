@@ -3,8 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 
+import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
@@ -655,13 +655,6 @@ class _FieldSliderState extends State<FieldSlider> {
 
   bool get _enabled => widget.onChanged != null;
 
-  bool get _shiftHeld {
-    final keys = HardwareKeyboard.instance.logicalKeysPressed;
-    return keys.contains(LogicalKeyboardKey.shiftLeft) ||
-        keys.contains(LogicalKeyboardKey.shiftRight) ||
-        keys.contains(LogicalKeyboardKey.shift);
-  }
-
   void _emit(double value) => widget.onChanged?.call(value);
 
   void _handleDown(DragDownDetails details) {
@@ -686,7 +679,7 @@ class _FieldSliderState extends State<FieldSlider> {
     }
     final current = _gestureT ?? widget._tFor(widget.value);
     setState(() {
-      if (_shiftHeld) {
+      if (ModifierKeys.isShiftPressed) {
         _gestureT = (current + _deltaT(details.delta) / 10).clamp(0.0, 1.0);
       } else {
         _gestureT = _trackT(details.localPosition);
@@ -796,7 +789,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final value = widget._stepFrom(
       widget.value,
       direction,
-      fine: _shiftHeld,
+      fine: ModifierKeys.isShiftPressed,
     );
     if (value == null) {
       return;

@@ -5,6 +5,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -356,6 +358,97 @@ void main() {
         drawn.any((dab) => dab.center.x > 100 && dab.center.y > 121),
         isTrue,
         reason: 'free after it',
+      );
+    });
+
+    // 🗣️유저 2026-10-16: 「마우스로는 작동하는거 확인했는데 왜 펜으로는
+    // 작동안하는지? 마우스던 펜이던 터치묘화던 그림 그리는 동작이라면
+    // 해야하는건데」 — on Windows the engine lets go of Shift in its record
+    // at a pen's or a finger's first move, with the key still down
+    // (`ModifierKeys`). Windows still holds it: the stroke must too.
+    for (final kind in const [
+      PointerDeviceKind.mouse,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.touch,
+    ]) {
+      testWidgets('🚨a ${kind.name}\'s stroke stays locked when the engine '
+          'lets go of Shift under it and Windows holds it', (tester) async {
+        ModifierKeys.debugWindowsKeyDown = (key) => key == vkShift;
+        addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+        await tester.pumpWidget(app(CutGuides.empty));
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        final pointer = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(20, 20)),
+          kind: kind,
+        );
+        await tester.pump();
+        // What the engine sends ahead of the first move.
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        for (final at in const [
+          Offset(60, 66),
+          Offset(100, 94),
+          Offset(150, 154),
+        ]) {
+          await pointer.moveTo(canvasGlobalOffset(tester, at));
+          await tester.pump();
+        }
+        await pointer.up();
+        await tester.pump();
+        await tester.pump();
+
+        final drawn = dabs();
+        expect(drawn.length, greaterThan(3));
+        for (final dab in drawn) {
+          expect(dab.center.y - 20, closeTo(dab.center.x - 20, 1e-6));
+        }
+      });
+    }
+
+    testWidgets('🚨pressed in the middle of a pen\'s stroke, it locks it '
+        'from there though the engine lets go of it at the next move', (
+      tester,
+    ) async {
+      var windowsHoldsShift = false;
+      ModifierKeys.debugWindowsKeyDown = (key) =>
+          key == vkShift && windowsHoldsShift;
+      addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+      await tester.pumpWidget(app(CutGuides.empty));
+      final pen = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(20, 100)),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pump();
+      Future<void> to(double x, double y) async {
+        await pen.moveTo(canvasGlobalOffset(tester, Offset(x, y)));
+        await tester.pump();
+      }
+
+      await to(40, 120);
+      windowsHoldsShift = true;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await to(60, 124);
+      await to(80, 116);
+      await to(100, 124);
+      windowsHoldsShift = false;
+      await to(130, 160);
+      await pen.up();
+      await tester.pump();
+      await tester.pump();
+
+      final drawn = dabs();
+      final held = [
+        for (final dab in drawn)
+          if (dab.center.x > 41 && dab.center.x < 99) dab,
+      ];
+      expect(held, isNotEmpty);
+      for (final dab in held) {
+        expect(dab.center.y, closeTo(120, 1e-6), reason: 'held across');
+      }
+      expect(
+        drawn.any((dab) => dab.center.x > 100 && dab.center.y > 121),
+        isTrue,
+        reason: 'free once Windows lets go, with no key event to say so',
       );
     });
   });

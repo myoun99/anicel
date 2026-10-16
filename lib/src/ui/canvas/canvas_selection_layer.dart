@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase;
-import 'package:flutter/services.dart';
 
 import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
@@ -25,6 +24,7 @@ import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart';
+import '../../services/input/modifier_keys.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../services/stamp_carry.dart';
 import '../../services/transform_box_law.dart';
@@ -859,7 +859,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// 두개의 동작을 지원」: held before the press and pressed during the drag
   /// are the same question asked at the same place.
   bool get _scaleModifierHeld =>
-      HardwareKeyboard.instance.isAltPressed || _modifierTouch != null;
+      ModifierKeys.isAltPressed || _modifierTouch != null;
 
   /// Whether the drag in hand reads a finger laid down beside it as the
   /// MODIFIER, rather than as the navigate signal that cancels it: a
@@ -894,7 +894,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool get _shapeKeepsRatioNow =>
       widget.tool == CanvasSelectionTool.drawShape &&
       widget.shapeKeepsRatio !=
-          (HardwareKeyboard.instance.isShiftPressed || _modifierTouch != null);
+          (ModifierKeys.isShiftPressed || _modifierTouch != null);
 
   /// A selection the USER made.
   ///
@@ -3066,9 +3066,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// (`canvasToolReadsAlt` — this one and the transform), and Shift/Alt
   /// only steer an OPEN transform box, never a marquee.)
   SelectionCombineMode _marqueeMode() {
-    final keyboard = HardwareKeyboard.instance;
-    final shift = keyboard.isShiftPressed;
-    final alt = keyboard.isAltPressed;
+    final shift = ModifierKeys.isShiftPressed;
+    final alt = ModifierKeys.isAltPressed;
     if (shift && alt) {
       return SelectionCombineMode.intersect;
     }

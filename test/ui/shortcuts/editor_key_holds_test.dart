@@ -1,8 +1,12 @@
+import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/native/windows_key_state.dart' show vkShift;
+import 'package:anicel/src/services/input/modifier_keys.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/temporary_tool.dart';
+import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_key_holds.dart';
@@ -119,6 +123,46 @@ void main() {
       reason: 'Shift with no view key held holds nothing',
     );
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  });
+
+  // 🗣️I-61 (유저 2026-10-16): 「마우스던 펜이던 … 그림 그리는 동작이라면
+  // 해야하는건데」 — on Windows a pen's or a finger's move lets go of Shift
+  // in the engine's record with the key still down, and the real release
+  // that comes after is dropped: no event says so (`ModifierKeys`).
+  testWidgets('🚨Shift+Space stays the turn when the engine lets go of Shift '
+      'under a pen — and let go with no key event, the next press pans', (
+    tester,
+  ) async {
+    var windowsHoldsShift = false;
+    ModifierKeys.debugWindowsKeyDown = (key) =>
+        key == vkShift && windowsHoldsShift;
+    addTearDown(() => ModifierKeys.debugWindowsKeyDown = null);
+    await pumpRoad(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    expect(canvasPressPans(kPrimaryButton), isTrue);
+
+    // Shift pressed under the held Space, then the engine lets go of it at
+    // the pen's next move — and then the hand does, unheard.
+    Future<void> shiftUnderAPen() async {
+      windowsHoldsShift = true;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      expect(CanvasViewHold.held.value, ViewHold.turn);
+      expect(canvasPressTurns(kPrimaryButton), isTrue);
+      expect(canvasPressPans(kPrimaryButton), isFalse);
+      windowsHoldsShift = false;
+      expect(CanvasViewHold.held.value, ViewHold.turn, reason: 'premise');
+    }
+
+    // Each press reader asks first once, so neither leans on the other's
+    // asking.
+    await shiftUnderAPen();
+    expect(canvasPressTurns(kPrimaryButton), isFalse);
+    await shiftUnderAPen();
+    expect(canvasPressPans(kPrimaryButton), isTrue);
+
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    expect(canvasPressMovesTheView(kPrimaryButton), isFalse);
   });
 
   testWidgets('a focused text field keeps its space bar — no pan', (

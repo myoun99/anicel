@@ -5,10 +5,10 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
+import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_lean.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';

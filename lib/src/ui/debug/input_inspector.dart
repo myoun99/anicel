@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
 import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
+import '../../services/input/modifier_keys.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/input/platform_pen_channel_service.dart';
 import '../../services/input/raw_pen_input_service.dart';
@@ -49,11 +50,10 @@ abstract final class InputInspector {
   /// The table and the gate write theirs through [KeyTrace], which this
   /// plugs in while shown.
   static void _watchKeys() {
-    final keyboard = HardwareKeyboard.instance;
-    keyboard.removeHandler(_noteKey);
+    HardwareKeyboard.instance.removeHandler(_noteKey);
     KeyTrace.sink = null;
     if (visible.value) {
-      keyboard.addHandler(_noteKey);
+      HardwareKeyboard.instance.addHandler(_noteKey);
       KeyTrace.sink = note;
     }
   }
@@ -62,7 +62,7 @@ abstract final class InputInspector {
     if (event is! KeyUpEvent) {
       final focus = FocusManager.instance.primaryFocus;
       final held = [
-        for (final key in HardwareKeyboard.instance.logicalKeysPressed)
+        for (final key in ModifierKeys.keyboard.logicalKeysPressed)
           key.debugName ?? key.keyLabel,
       ];
       note(

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/input/modifier_keys.dart';
 import '../../text/canvas_letter_style.dart';
 import '../../text/cel_text_layout.dart';
 import 'cel_text_editing_controller.dart';
@@ -185,8 +186,7 @@ class CelTextField extends StatelessWidget {
   /// 만들지말고 법 통일해서 작동하도록」), and two tools alone keep theirs
   /// (`canvasToolReadsAlt`).
   bool _arrow(KeyEvent event) {
-    final keys = HardwareKeyboard.instance;
-    if (keys.isControlPressed || keys.isMetaPressed) {
+    if (ModifierKeys.isControlPressed || ModifierKeys.isMetaPressed) {
       return false;
     }
     final from = letters.selection.extentOffset;
@@ -210,7 +210,7 @@ class CelTextField extends StatelessWidget {
     if (to == null) {
       return false;
     }
-    letters.selection = keys.isShiftPressed
+    letters.selection = ModifierKeys.isShiftPressed
         ? letters.selection.copyWith(extentOffset: to)
         : TextSelection.collapsed(offset: to);
     return true;

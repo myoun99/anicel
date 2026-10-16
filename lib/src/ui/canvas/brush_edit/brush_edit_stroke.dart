@@ -313,6 +313,11 @@ class _BrushEditStroke {
   /// HERE, and nowhere else on the stroke's way: of the keyboard, and of a
   /// finger resting on the glass where the switch says so (I-61-Q3,
   /// [_BrushEditPress.aFingerHoldsShift]).
+  ///
+  /// 🚨The keyboard through [ModifierKeys], whatever draws: a pen's stroke
+  /// on Windows never locked while the engine's own record said Shift was
+  /// let go at its first move (유저 2026-10-16: 「마우스로는 작동하는거
+  /// 확인했는데 왜 펜으로는 작동안하는지?」).
   void advanceStrokeThroughGuides(CanvasPoint canvasPosition) {
     final lock = _state._strokeLock;
     if (lock == null) {
@@ -321,9 +326,7 @@ class _BrushEditStroke {
     }
     for (final locked in lock.follow(
       canvasPosition,
-      shift:
-          HardwareKeyboard.instance.isShiftPressed ||
-          _state._press.aFingerHoldsShift,
+      shift: ModifierKeys.isShiftPressed || _state._press.aFingerHoldsShift,
     )) {
       advanceStrokeTo(locked);
     }

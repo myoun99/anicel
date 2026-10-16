@@ -172,7 +172,7 @@ bool canvasMappedActionDraws(CanvasPointerAction action) =>
 /// held (I-15). The pen tip's contact bit rides along on stylus presses,
 /// so the check is per bit, not equality.
 bool canvasPressPans(int buttons) {
-  if (CanvasViewHold.held.value == ViewHold.pan &&
+  if (CanvasViewHold.atThePress == ViewHold.pan &&
       canvasPrimaryDown(buttons)) {
     return true;
   }
@@ -191,7 +191,7 @@ bool canvasPressPans(int buttons) {
 /// Whether a press with [buttons] TURNS the view: the primary bit while the
 /// 「회전」 key is held (I-88).
 bool canvasPressTurns(int buttons) =>
-    CanvasViewHold.held.value == ViewHold.turn && canvasPrimaryDown(buttons);
+    CanvasViewHold.atThePress == ViewHold.turn && canvasPrimaryDown(buttons);
 
 /// Whether a press with [buttons] is the VIEW's — it pans or turns it — and
 /// so no tool's.

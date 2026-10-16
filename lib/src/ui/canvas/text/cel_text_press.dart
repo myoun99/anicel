@@ -3,11 +3,12 @@ import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerDownEvent, computeHitSlop;
-import 'package:flutter/services.dart' show HardwareKeyboard, TextSelection;
+import 'package:flutter/services.dart' show TextSelection;
 
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/cel_text_box_edits.dart';
+import '../../../services/input/modifier_keys.dart';
 import '../../../services/input/pen_sidecars.dart';
 import '../../../services/transform_box_law.dart';
 import '../../text/cel_text_layout.dart';
@@ -151,9 +152,8 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
 /// ⚠️Its cost was named with the answer: a palm on the glass while the pen
 /// picks letters carries the box instead.
 bool _carriesTheBox(PointerDownEvent event) {
-  final keys = HardwareKeyboard.instance;
-  return keys.isControlPressed ||
-      keys.isMetaPressed ||
+  return ModifierKeys.isControlPressed ||
+      ModifierKeys.isMetaPressed ||
       CanvasTouchContacts.aFingerDownBesides(event.pointer);
 }
 

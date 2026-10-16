@@ -38,6 +38,7 @@ final class EditorKeyHolds {
     required ValueListenable<bool> strokeLive,
   }) : _strokeLive = strokeLive {
     HardwareKeyboard.instance.addHandler(_onKey);
+    CanvasViewHold.reask = _reaskTheView;
     strokeLive.addListener(_onStrokeLive);
   }
 
@@ -166,15 +167,25 @@ final class EditorKeyHolds {
         _end(hold);
       }
     }
-    if (_viewPresses.isNotEmpty && isModifierKey(event.logicalKey)) {
-      // A modifier that turns the press into neither keeps the hold as it
-      // is: Alt under Space is not a reason to let the view go.
-      final view = _viewHoldOf(_viewPresses.values.last);
-      if (view != null) {
-        CanvasViewHold.held.value = view;
-      }
+    if (isModifierKey(event.logicalKey)) {
+      _reaskTheView();
     }
     return false;
+  }
+
+  /// The held view press asked again, with the modifiers as they are held
+  /// now: when one goes down or up, and when a press reads the hold
+  /// ([CanvasViewHold.atThePress]). A modifier that turns the press into
+  /// neither keeps the hold as it is: Alt under Space is not a reason to
+  /// let the view go.
+  void _reaskTheView() {
+    if (_viewPresses.isEmpty) {
+      return;
+    }
+    final view = _viewHoldOf(_viewPresses.values.last);
+    if (view != null) {
+      CanvasViewHold.held.value = view;
+    }
   }
 
   /// Ends [hold] — unless another key still holds it.
@@ -206,6 +217,9 @@ final class EditorKeyHolds {
   /// it back would rebuild a tree that is being taken down.
   void dispose() {
     HardwareKeyboard.instance.removeHandler(_onKey);
+    if (CanvasViewHold.reask == _reaskTheView) {
+      CanvasViewHold.reask = null;
+    }
     _strokeLive.removeListener(_onStrokeLive);
     _waiting.clear();
     _viewPresses.clear();
