@@ -38,6 +38,9 @@ final class _HeldPictures implements PlaybackPictures {
   int bytesToMake(DemandedPicture picture) => 0;
 
   @override
+  Future<void> readIn(DemandedPicture picture) async {}
+
+  @override
   int weighNew(DemandedPicture picture, Set<Object> seen) => 0;
 
   @override

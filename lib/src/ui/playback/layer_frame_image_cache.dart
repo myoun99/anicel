@@ -260,6 +260,59 @@ class LayerFrameImageCache {
     inkSuffices: inkSuffices,
   );
 
+  /// The bytes the image [prepare] makes of [key]'s cel at [quality] weighs,
+  /// read off the plan it is made by ([_levelPlan]) — or null while the
+  /// cel's preview is not prepared: what [readIn] does first.
+  ///
+  /// ★The plan of the cel AS DRAWN is the plan of the cel AS SHOWN: a colour
+  /// key rebuilds a tile and never moves one ([celSurfaceWithSourceEffects]),
+  /// and the texts are laid inside the plan either way
+  /// ([surfaceContentWorldRect]) — so a picture is weighed without the keys'
+  /// pass over its pixels.
+  int? plannedBytes(
+    BrushFrameKey key,
+    PlaybackQuality quality, {
+    required CanvasSize canvasSize,
+    required bool inkSuffices,
+  }) {
+    final preview = _previews(
+      canvasSize,
+    ).preparedFramePreviewOrNull(key)?.previewSurface;
+    if (preview == null) {
+      return null;
+    }
+    final size = _imageSizeOf(
+      _levelPlan(preview, quality, storesInk: _storesInk(inkSuffices)),
+      quality.level,
+    );
+    return estimatedImageBytes(size.width, size.height);
+  }
+
+  /// Brings [key]'s cel to where [plannedBytes] weighs it, as [prepare]
+  /// begins: thawed off the UI thread ([BrushFrameStore.thawAhead]), then
+  /// its preview prepared.
+  ///
+  /// ⛔ONLY A HOT CEL'S PREVIEW IS PREPARED HERE: any other is read from
+  /// storage on this thread by the preparing — a cel whose thaw failed is
+  /// read by [prepare], which says why it will not.
+  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) async {
+    await frameStore.thawAhead(key, canvasSize: canvasSize);
+    if (frameStore.hotBakedSurfaceOrNull(key) != null) {
+      _previews(canvasSize).prepareFramePreview(key);
+    }
+  }
+
+  BrushFrameDisplayCacheService _previews(CanvasSize canvasSize) =>
+      BrushFrameDisplayCacheService(
+        frameStore: frameStore,
+        canvasSize: canvasSize,
+      );
+
+  /// Whether a row's image is kept as its ink alone ([inkSuffices]) — ask by
+  /// ask, for every road that plans one.
+  bool _storesInk(bool inkSuffices) =>
+      inkSuffices && !debugStoresWholeContent;
+
   _LayerFrameImageEntry? _validEntry(
     BrushFrameKey key,
     PlaybackQuality quality,
@@ -408,10 +461,7 @@ class LayerFrameImageCache {
     if (shouldAbort?.call() ?? false) {
       return null;
     }
-    final previewCache = BrushFrameDisplayCacheService(
-      frameStore: frameStore,
-      canvasSize: canvasSize,
-    ).prepareFramePreview(key);
+    final previewCache = _previews(canvasSize).prepareFramePreview(key);
     if (!previewCache.isValid) {
       // A cel that HAS pixels, recorded at another canvas size. Composing
       // the blank stand-in and banking it here under [revision] is what
@@ -443,7 +493,7 @@ class LayerFrameImageCache {
     final plan = _levelPlan(
       preview,
       quality,
-      storesInk: inkSuffices && !debugStoresWholeContent,
+      storesInk: _storesInk(inkSuffices),
     );
     // 🚨WHAT IS PUT ON THE GPU WAITS ITS TURN ([turn]): everything above is
     // the CPU's and the workers', so the turn is taken here, and given back
@@ -465,6 +515,7 @@ class LayerFrameImageCache {
         quality,
         shouldAbort: shouldAbort,
       );
+      assert(stored == null || _isAsPlanned(stored.image, plan, quality));
       made = stored == null ? null : _bank((key, quality), stored, source);
     } finally {
       await (made == null ? taken?.gaveUp() : taken?.landed());
@@ -569,10 +620,7 @@ class LayerFrameImageCache {
 
     final previewCache = labProbe(
       'prepareFramePreview(${key.frameId.value} rev$revision)',
-      () => BrushFrameDisplayCacheService(
-        frameStore: frameStore,
-        canvasSize: canvasSize,
-      ).prepareFramePreview(key),
+      () => _previews(canvasSize).prepareFramePreview(key),
     );
     if (!previewCache.isValid) {
       // The size miss again — see the async twin. Banking the blank under
@@ -586,15 +634,21 @@ class LayerFrameImageCache {
       previewCache.previewSurface,
       sourceEffects,
     );
-    final composed = _composedNow(
+    final plan = _levelPlan(
       preview,
       quality,
+      storesInk: _storesInk(inkSuffices),
+    );
+    final composed = _composedNow(
+      preview,
+      plan,
+      quality,
       makePictures: makePictures,
-      storesInk: inkSuffices && !debugStoresWholeContent,
     );
     if (composed == null) {
       return null;
     }
+    assert(_isAsPlanned(composed.now.image, plan, quality));
     final at = (key, quality);
     final banked = _bank(at, composed.now, (
       revision: revision,
@@ -876,22 +930,22 @@ Future<({ui.Image image, ui.Rect worldRect, ui.Rect extent})?> _composed(
   );
 }
 
-/// [preview] composed inside the call at [quality] — the cel's first step
-/// ([_firstStep]), halved down to the level, and, when [storesInk] below the
-/// first level, its ink cut out of that — beside the plain snapshot of the
-/// picture that is KEPT: the last of those steps. Null only on the free
-/// road ([makePictures] false and a tile without its picture).
+/// [preview] composed inside the call at [quality] under [plan] — the cel's
+/// first step ([_firstStep]), halved down to the level, and, when [plan]
+/// keeps the ink below the first level, its ink cut out of that — beside
+/// the plain snapshot of the picture that is KEPT: the last of those steps.
+/// Null only on the free road ([makePictures] false and a tile without its
+/// picture).
 ({
   ({ui.Image image, ui.Rect worldRect, ui.Rect extent}) now,
   Future<ui.Image> kept,
 })?
 _composedNow(
   BitmapSurface preview,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
   PlaybackQuality quality, {
   required bool makePictures,
-  required bool storesInk,
 }) {
-  final plan = _levelPlan(preview, quality, storesInk: storesInk);
   final (:whole, :texels) = plan;
   final first = _firstStep(preview, plan, quality.level);
   final firstIsKept = quality.level <= 1;
@@ -1062,6 +1116,34 @@ LayerFrameImage? _drawable(
 bool _isLevelOf(ui.Image image, ui.Rect whole, int level) =>
     image.width << level == whole.width.round() &&
     image.height << level == whole.height.round();
+
+/// The size of the image a level-[level] [plan] makes: its ink's texels
+/// where it keeps the ink alone, else the whole content at the level.
+({int width, int height}) _imageSizeOf(
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  int level,
+) => switch (plan.texels) {
+  final texels? => (
+    width: texels.width.round(),
+    height: texels.height.round(),
+  ),
+  null => (
+    width: plan.whole.width.round() >> level,
+    height: plan.whole.height.round() >> level,
+  ),
+};
+
+/// Whether [image] is what [plan] said it would be at [quality] — the size
+/// a picture is weighed by before it is made
+/// ([LayerFrameImageCache.plannedBytes]).
+bool _isAsPlanned(
+  ui.Image image,
+  ({ui.Rect whole, ui.Rect? texels}) plan,
+  PlaybackQuality quality,
+) {
+  final size = _imageSizeOf(plan, quality.level);
+  return image.width == size.width && image.height == size.height;
+}
 
 /// The rect the ink alone is composed over at the full level, straight from
 /// its tiles — each tile lands texel for texel, and those are the whole

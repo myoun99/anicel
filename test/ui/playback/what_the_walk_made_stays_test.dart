@@ -1,11 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
-import 'package:anicel/src/models/brush_history_policy.dart';
-import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -18,25 +17,27 @@ import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_image_bytes.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
-import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// 🚨WHAT THE WALK MADE, THE BUDGET KEEPS (F-365, 유저 2026-10-15, iPad ·
 /// AMMI OP: 「재생전 렌더링은 3번컷 처음부분에서 막혀서 그이후로 재생해도
 /// 재생안되고」 — gone with the allowance raised from 2500 to 5000).
 ///
 /// The warmer asks for room before it makes a picture, by what the picture
-/// is estimated to weigh — a canvas's worth a row — and the budget trimmed
-/// after it landed by what it did weigh. A row inked out onto the
-/// pasteboard weighs more than its canvas: the trim let go of the picture
-/// just made — the one wanted latest — the walk found it missing, the room
-/// let it in again by its estimate, and so on for good. A walk that never
-/// rests is a run that renders first standing for good.
+/// is weighed as — a row whose cel is not read yet, as its canvas: a
+/// picture asked for ahead (playback-picture-weight-estimates) — and the
+/// budget trimmed after it landed by what it did weigh. A row inked out
+/// onto the pasteboard weighs more than its canvas: the trim let go of the
+/// picture just made — the one wanted latest — the walk found it missing,
+/// made it again, and so on for good. A walk that never rests is a run that
+/// renders first standing for good.
 void main() {
   const canvasSize = CanvasSize(width: 6, height: 6);
 
@@ -84,32 +85,27 @@ void main() {
     FrameId('${cut.id.value}-cel'),
   );
 
-  /// A dab past every edge of [cut]'s canvas: its ink, and so its picture,
-  /// is bigger than the canvas a row's room is asked by.
-  void draw(EditorSessionManager s, Cut cut) {
-    BrushFrameEditingCoordinator(
-      initialFrameKey: celOf(s, cut),
-      frameStore: s.renderCaches.brushFrameStore,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: canvasSize,
-        tileSize: 4,
-      ),
-      historyPolicy: const BrushHistoryPolicy(),
-    ).commitSourceStroke(
-      sourceDabs: [
-        BrushDab(
-          center: CanvasPoint(x: 3, y: 3),
-          color: 0xFF000000,
-          size: 10,
-          opacity: 1,
-          flow: 1,
-          hardness: 1,
-          tipShape: BrushTipShape.square,
-          pressure: 1,
-          sequence: 0,
-        ),
-      ],
+  /// [cuts]' cels kept as an opened project keeps them — in its file, not
+  /// read yet — each inked past every edge of its canvas: its picture is
+  /// bigger than the canvas a row is weighed as before it is read.
+  void keepInkedPastEveryEdge(EditorSessionManager s, List<Cut> cuts) {
+    BitmapTile inked() => BitmapTile(
+      size: 4,
+      pixels: Uint8List.fromList([
+        for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+      ]),
     );
+    keepInAFile(s.renderCaches.brushFrameStore, {
+      for (final cut in cuts)
+        celOf(s, cut): BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 4,
+          tiles: {
+            for (var y = -1; y <= 1; y += 1)
+              for (var x = -1; x <= 1; x += 1) TileCoord(x: x, y: y): inked(),
+          },
+        ),
+    });
   }
 
   testWidgets('🚨a picture bigger than the room it was made in stays: the '
@@ -123,9 +119,7 @@ void main() {
       final cuts = [
         for (final id in ['cut-1', 'cut-2', 'cut-3']) s.cutById(CutId(id))!,
       ];
-      for (final cut in cuts) {
-        draw(s, cut);
-      }
+      keepInkedPastEveryEdge(s, cuts);
       await rig.prerenderScheduler.idle;
       // Nothing made but the first cut's picture, the one the run is put on.
       rig.prerenderScheduler.cancel();
@@ -142,16 +136,19 @@ void main() {
       )!;
       final made = estimatedImageBytes(first.image.width, first.image.height);
       final estimated = rig.canvasPictures.bytesToMake((
-        cut: cuts[1],
+        cut: cuts[2],
         frameIndex: 0,
       ));
       expect(
         made,
         greaterThan(estimated),
-        reason: 'premise: ink past the canvas weighs more than the canvas',
+        reason: 'premise: a cel not read yet is weighed as its canvas, and '
+            'its ink past the canvas weighs more',
       );
-      // Room for the second picture by its estimate, none by its weight.
-      final line = made + estimated + (made - estimated) ~/ 2;
+      // Room for the second picture by its weight — the walk reads it first
+      // — and for the third, asked for ahead, by its estimate: none for the
+      // third by its weight.
+      final line = 2 * made + estimated + (made - estimated) ~/ 2;
       rig.playbackCache.playbackCacheByteBudget = line;
       expect(images.estimatedBytes, made, reason: 'premise');
 

@@ -165,8 +165,8 @@ void main() {
     expect(pictures.bytesToMake(at(0)), 0);
   });
 
-  testWidgets('what making a frame would add counts the rows not there — the '
-      'canvas at the level each — and a walk weighs a held cel once', (
+  testWidgets('what making a frame would add counts the rows not there, each '
+      'by the image it is made as — and a walk weighs a held cel once', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -212,6 +212,24 @@ void main() {
       // ⛔Not made again at the same content.
       await pictures.make(at(3), shouldAbort: () => false);
       expect(images.thrown, 1);
+    });
+  });
+
+  testWidgets('a row given up on is neither named nor weighed — what will not '
+      'be made adds nothing to the room asked for', (tester) async {
+    await tester.runAsync(() async {
+      final images = _ThrowsFor(keyOf('a'), frameStore: storeOf(['a']));
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      expect(pictures.bytesToMake(at(0)), imageBytes, reason: '⛔premise');
+
+      await expectLater(
+        pictures.make(at(0), shouldAbort: () => false),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(pictures.partsToMake(at(0)), isEmpty);
+      expect(pictures.bytesToMake(at(0)), 0);
     });
   });
 

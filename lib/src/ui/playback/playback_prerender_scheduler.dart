@@ -426,6 +426,17 @@ class PlaybackPrerenderScheduler {
         await _wait(Duration.zero);
         continue;
       }
+      // 🚨THE ROOM IS ASKED FOR WHAT THE PICTURE WILL BE MADE AS (card
+      // playback-picture-weight-estimates): what its making reads first is
+      // read first, and each row is weighed by the plan its image is made
+      // by. 🔬Weighed as the canvas a row, a cut's head asked 1.5–2× what it
+      // weighs and one inked onto the pasteboard less (10-15, PC, a copy of
+      // the user's project, full level: 29.5MB asked for 15.9, 29.5 for
+      // 47.0) — and a room asked for more than it needs lets go of more.
+      await pictures.readIn(missing);
+      if (_isStale(generation)) {
+        return;
+      }
       final pictureBytes = pictures.bytesToMake(missing);
       final step = (lead + reached) % length;
       final madeRoom =
@@ -566,10 +577,10 @@ class PlaybackPrerenderScheduler {
   /// 🚨WHAT THE WALK MADE, THE BUDGET KEEPS (F-365, 유저 2026-10-15 · iPad
   /// · AMMI OP: 「재생전 렌더링은 3번컷 처음부분에서 막혀서 그이후로
   /// 재생해도 재생안되고」). The room was made by what the picture was
-  /// estimated to weigh — a canvas's worth a row — and a row weighs its
-  /// content: rounded up to its tiles, or inked out onto the pasteboard, it
-  /// weighs more. Asked again, the room lets go, as it did before the
-  /// picture was made, only of pictures wanted after it: the line is
+  /// weighed as before it was made — a row whose cel was not read yet, as
+  /// the canvas ([PlaybackPictures.bytesToMake]) — and a row inked out onto
+  /// the pasteboard weighs more. Asked again, the room lets go, as it did
+  /// before the picture was made, only of pictures wanted after it: the line is
   /// overrun by what the estimates missed, no more, and the walk's next ask
   /// finds no room and rests. ↩️A trim of everything but the frame under
   /// the playhead ran here, and the picture just made — the one wanted
@@ -699,6 +710,10 @@ final class _AskedAhead {
       if (_onTheirWay.containsKey(key) || spoken.containsAll(parts)) {
         continue;
       }
+      // ⚠️Weighed by what is in hand, without reading first as the walk's
+      // own is: an ask ahead is made so as not to wait. A row whose cel is
+      // not read yet is weighed as the canvas, and the room is asked again
+      // by what it lands as ([PlaybackPrerenderScheduler._landed]).
       final bytes = scheduler.pictures.bytesToMake(picture);
       final step = pass.stepAt(look);
       if (!(scheduler.room?.makeRoomFor(bytes: pending + bytes, step: step) ??

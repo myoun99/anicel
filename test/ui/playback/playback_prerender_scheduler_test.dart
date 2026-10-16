@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
+import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 
 void main() {
@@ -696,15 +697,13 @@ void main() {
 
     /// Every one of [four]'s cels drawn on — across all four of its tiles
     /// and inside its canvas, so each frame has a picture of the canvas's
-    /// size ([pictureBytes]) to make. ⚠️A dab past the edge puts the cel on
-    /// the pasteboard's tiles, and its picture is then theirs: [heavy]'s is
-    /// inked past every edge, and weighs more than the room it is asked by.
+    /// size ([pictureBytes]) to make.
     ({
       BrushFrameStore store,
       LayerFrameImageCache layerImages,
       CanvasPictures pictures,
     })
-    inked({int? heavy}) {
+    inked() {
       final store = BrushFrameStore();
       for (var index = 0; index < 4; index += 1) {
         BrushFrameEditingCoordinator(
@@ -724,7 +723,7 @@ void main() {
             BrushDab(
               center: CanvasPoint(x: 4, y: 4),
               color: 0xFF000000,
-              size: index == heavy ? 14 : 6,
+              size: 6,
               opacity: 1,
               flow: 1,
               hardness: 1,
@@ -735,6 +734,44 @@ void main() {
           ],
         );
       }
+      final layerImages = LayerFrameImageCache(frameStore: store);
+      return (
+        store: store,
+        layerImages: layerImages,
+        pictures: picturesOver(layerImages),
+      );
+    }
+
+    /// [four]'s cels kept as an opened project keeps them — in its file, not
+    /// read yet — each inked across its canvas, and [heavy]'s past every
+    /// edge as well: before it is read it is weighed as its canvas, and it
+    /// weighs four times that.
+    ({
+      BrushFrameStore store,
+      LayerFrameImageCache layerImages,
+      CanvasPictures pictures,
+    })
+    keptInked({required int heavy}) {
+      BitmapSurface inkedOut(int past) => BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 4,
+        tiles: {
+          for (var y = -past; y <= 1 + past; y += 1)
+            for (var x = -past; x <= 1 + past; x += 1)
+              TileCoord(x: x, y: y): BitmapTile(
+                size: 4,
+                pixels: Uint8List.fromList([
+                  for (var i = 0; i < 4 * 4; i += 1) ...[0, 0, 0, 255],
+                ]),
+              ),
+        },
+      );
+      final store = BrushFrameStore();
+      keepInAFile(store, {
+        for (var index = 0; index < 4; index += 1)
+          frameKey(four(), const LayerId('layer'), FrameId('f$index')):
+              inkedOut(index == heavy ? 1 : 0),
+      });
       final layerImages = LayerFrameImageCache(frameStore: store);
       return (
         store: store,
@@ -1164,7 +1201,7 @@ void main() {
         'it lands — out of the pictures wanted after it, never itself '
         '(F-365)', (tester) async {
       await tester.runAsync(() async {
-        final f = inked(heavy: 1);
+        final f = keptInked(heavy: 1);
         await f.pictures.make((
           cut: four(),
           frameIndex: 2,
