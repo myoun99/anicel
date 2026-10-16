@@ -595,6 +595,22 @@ bool layerKindShowsOpacityControl(LayerKind kind) =>
 /// playback or do not).
 bool layerKindShowsFxToggle(LayerKind kind) => kind != LayerKind.transition;
 
+/// Whether a row WEARS its own fx switch: its kind shows one
+/// ([layerKindShowsFxToggle]) and it authors its own composite. An attach
+/// row and its 공정 organizer folder wear their BASE's
+/// (`attachRowWearsBaseComposite`, R9), whose switch governs what they
+/// show.
+///
+/// 🚨ONE ANSWER for the row's switch, the column sweep and a press spread
+/// across the row selection — a row the one passes by, all three pass by.
+/// ↩️The sweep and the spread asked the kind alone, and flipped an attach
+/// row's own switch: a flag nothing reads, on a row with no switch to show
+/// it.
+bool layerRowWearsFxSwitch(
+  LayerKind kind, {
+  required bool wearsBaseComposite,
+}) => layerKindShowsFxToggle(kind) && !wearsBaseComposite;
+
 /// The ONE style a row's NAME is written in — the timeline rail's row, the
 /// x-sheet's column, and the storyboard's V and S rows.
 ///

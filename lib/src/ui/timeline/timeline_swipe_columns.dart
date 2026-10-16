@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show ValueChanged;
 import 'package:flutter/painting.dart' show Axis;
 
+import '../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -86,6 +88,9 @@ typedef RailSwipeHooks = ({
   bool Function(LayerId layerId)? layerOnionSkinEnabledOf,
   ValueChanged<LayerId>? onToggleLayerFx,
   LayerFxState Function(LayerId layerId)? layerFxStateOf,
+  // Whether a row wears its base's composite, as its row is told
+  // ([layerRowWearsFxSwitch]).
+  bool Function(Layer layer) wearsBaseComposite,
   void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroupEnabled,
   bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
@@ -96,7 +101,9 @@ typedef RailSwipeHooks = ({
   LaneGraphsView Function() laneGraphsNow,
 });
 
-/// What a grid's [hooks] hand its sweep.
+/// What a grid's [hooks] hand its sweep over its [layers] — the stack an
+/// attach row's base is found in, as the grid's rows are told
+/// (`layerControlsRowFacts`).
 ///
 /// 🚨The twirl's state is the LIVE read when the grid has one
 /// ([TimelineGridHooks.laneOpenOf]): the set is a widget property, a frame
@@ -105,7 +112,10 @@ typedef RailSwipeHooks = ({
 /// The rail read the stale set while the sheet read the live one; one list
 /// reads one thing. The header graphs likewise
 /// ([TimelineGridHooks.laneGraphsNow]).
-RailSwipeHooks timelineRailSwipeHooks(TimelineGridHooks hooks) => (
+RailSwipeHooks timelineRailSwipeHooks(
+  TimelineGridHooks hooks,
+  List<Layer> layers,
+) => (
   optionalColumns: hooks.optionalRailColumns,
   onToggleLayerVisibility: hooks.onToggleLayerVisibility,
   layerEyeOnOf: hooks.layerEyeOnOf,
@@ -113,6 +123,7 @@ RailSwipeHooks timelineRailSwipeHooks(TimelineGridHooks hooks) => (
   layerOnionSkinEnabledOf: hooks.layerOnionSkinEnabledOf,
   onToggleLayerFx: hooks.onToggleLayerFx,
   layerFxStateOf: hooks.layerFxStateOf,
+  wearsBaseComposite: (layer) => attachRowWearsBaseComposite(layer, layers),
   onToggleLaneGroupEnabled: hooks.onToggleLaneGroupEnabled,
   laneGroupOnOf: hooks.laneGroupOnOf,
   onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
@@ -232,11 +243,16 @@ bool? _laneFxValue(
 /// is on. It was read "on, or not on" — so a sweep turning rows on met a
 /// mixed row, called it off, and toggled it, which the tap resolves OFF;
 /// and a press spread across a row selection reads it this way too.
+///
+/// A row wearing its base's switch reads null ([layerRowWearsFxSwitch]).
 bool? _layerFxValue(RailSwipeHooks hooks, TimelineDisplayRow row) {
   final fxStateOf = hooks.layerFxStateOf;
   if (hooks.onToggleLayerFx == null ||
       fxStateOf == null ||
-      !layerKindShowsFxToggle(row.layer.kind)) {
+      !layerRowWearsFxSwitch(
+        row.layer.kind,
+        wearsBaseComposite: hooks.wearsBaseComposite(row.layer),
+      )) {
     return null;
   }
   return fxEnabledFromState(fxStateOf(row.layer.id));

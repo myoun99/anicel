@@ -1,4 +1,5 @@
-import '../../models/attached_layer_resolve.dart' show attachedLayersOf;
+import '../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite, attachedLayersOf;
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
@@ -9,7 +10,7 @@ import '../../services/project_lookup.dart'
     show cutPositionOf, cutWritingRow, layerAnywhereOrNull, rowTwirlsOf;
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
-    show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
+    show LayerMarkEdit, layerKindShowsOpacityControl, layerRowWearsFxSwitch;
 import '../timeline/lane_graph.dart'
     show LaneGraph, LaneGraphMode, LaneGraphVerbs;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
@@ -78,12 +79,19 @@ class SessionRowButtonPresses {
       );
 
   /// The fx master reads as the tap flips it: a mixed row is ON — a tap
-  /// turns it off (`EffectsAndFx.toggleLayerFx`).
+  /// turns it off (`EffectsAndFx.toggleLayerFx`). A row wearing its base's
+  /// switch has none of its own ([layerRowWearsFxSwitch]).
   void toggleFx(LayerId pressed) => session.rowSelectionVerbs.pressAcross(
     pressed,
     valueOf: (id) => _ifRow(
       id,
-      (layer) => layerKindShowsFxToggle(layer.kind),
+      (layer) => layerRowWearsFxSwitch(
+        layer.kind,
+        wearsBaseComposite: attachRowWearsBaseComposite(
+          layer,
+          _stackOf(layer.id) ?? const [],
+        ),
+      ),
       (id) => fxEnabledFromState(session.effectsAndFx.layerFxState(id)),
     ),
     flip: session.effectsAndFx.toggleLayerFx,

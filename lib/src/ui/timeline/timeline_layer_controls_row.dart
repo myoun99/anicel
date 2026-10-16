@@ -891,7 +891,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
 
   /// Attach rows and their 공정 organizer folder hide the fx switch — the
   /// BASE's switch governs what they show, in BOTH orientations: a flip here
-  /// would burn an undo step writing a flag nothing reads.
+  /// would burn an undo step writing a flag nothing reads
+  /// ([layerRowWearsFxSwitch], which the sweep and the spread read too).
   ///
   /// I-1: the three toggle COLUMNS own drags that start on them, so a
   /// press-and-drag paints the column down the rows instead of moving the
@@ -900,8 +901,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _fxSwitch(BuildContext context) {
     final onToggle = onToggleLayerFx;
     if (onToggle == null ||
-        !layerKindShowsFxToggle(layer.kind) ||
-        wearsBaseComposite) {
+        !layerRowWearsFxSwitch(
+          layer.kind,
+          wearsBaseComposite: wearsBaseComposite,
+        )) {
       return null;
     }
     return RailSwipeColumnPointer(

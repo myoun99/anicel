@@ -254,7 +254,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// laid on this rail's own width.
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
       timelineSwipeColumns(
-        hooks: timelineRailSwipeHooks(widget.hooks),
+        hooks: timelineRailSwipeHooks(widget.hooks, widget.layers),
         axis: Axis.horizontal,
         crossExtent:
             _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
