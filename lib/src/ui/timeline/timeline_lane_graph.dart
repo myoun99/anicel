@@ -174,9 +174,10 @@ LaneGraphLines timelineLaneGraphLines(
                   lanesForLayer: (layer) =>
                       lanesForLayer?.call(layer) ?? const [],
                 ),
+                reach: null,
               )
             else
-              (layer: row.layer, lane: row.lane!),
+              (layer: row.layer, lane: row.lane!, reach: null),
       ];
     },
     guests: () => [
@@ -785,7 +786,7 @@ class LaneGraphGuestTags extends StatelessWidget {
   );
 
   Widget _tag(LaneGraphLine guest) {
-    final (:layer, :lane) = guest;
+    final (:layer, :lane, reach: _) = guest;
     return Row(
       mainAxisSize: MainAxisSize.min,
       spacing: _guestTagGap,
@@ -1123,12 +1124,14 @@ typedef LaneGraphFit = ({List<int> keyed, List<LaneGraphRange> ranges});
 typedef _LaneGraphPlot = ({LaneGraphLine line, bool dashed, LaneGraphFit? fit});
 
 /// A HANDLE a header graph draws (I-89 ③): the [side] of [line]'s key on
-/// [frame] it pulls — [leaving] the key, or arriving at it — drawn [at],
-/// its stem from where the key stands at [key]; and the segment it bends,
-/// from the key on [frames]' `from` to the next that keeps its time, as
-/// [mode] plots it: where its 0 and its 1 stand [across] the graph — the
-/// two keys' values in a value graph, still and the segment's average
-/// speed in a speed graph (I-89-Q5 B).
+/// [frame] — the line's own, where the pull is written — it pulls —
+/// [leaving] the key, or arriving at it — drawn [at], its stem from where
+/// the key stands at [key]; and the segment it bends, from the key on
+/// [frames]' `from` to the next that keeps its time, on the frames the
+/// graph is laid along ([LaneGraphLine.reach]), as [mode] plots it: where
+/// its 0 and its 1 stand [across] the graph — the two keys' values in a
+/// value graph, still and the segment's average speed in a speed graph
+/// (I-89-Q5 B).
 typedef LaneGraphHandle = ({
   LaneGraphLine line,
   LaneGraphMode mode,
@@ -1247,6 +1250,19 @@ class TimelineLaneGraphPainter extends CustomPainter {
   })?
   _handled;
 
+  /// How far [line]'s own frames stand from the frames its graph is laid
+  /// along: a cut's lane's on its track's ([LaneGraphReach]), none for a
+  /// lane on the axis its own frames are counted on.
+  static int _shiftOf(LaneGraphLine line) => line.reach?.start ?? 0;
+
+  /// Whether [line] is drawn at [time], one of its own: everywhere on the
+  /// axis its own frames are counted on — on a track's, a cut's lane from
+  /// its first frame of its own to its last, and nowhere past them.
+  static bool _reaches(LaneGraphLine line, num time) => switch (line.reach) {
+    null => true,
+    (:final start, :final end) => time >= 0 && time <= end - start - 1,
+  };
+
   LaneGraphFit? _fitOf(LaneGraphLine line) {
     if (held[_lineKey(line)] case final fit?) {
       return fit;
@@ -1256,14 +1272,29 @@ class TimelineLaneGraphPainter extends CustomPainter {
     if (curve == null || keyed.isEmpty) {
       return null;
     }
+    final drawn = _fittedFramesOf(line, keyed);
     return (
       keyed: keyed,
       ranges: switch (mode) {
-        LaneGraphMode.value => laneGraphRanges(curve, keyed),
-        LaneGraphMode.speed => [laneGraphSpeedRange(curve, keyed)],
+        LaneGraphMode.value => laneGraphRanges(curve, drawn),
+        LaneGraphMode.speed => [laneGraphSpeedRange(curve, drawn)],
       },
     );
   }
+
+  /// The frames [line]'s fit is read between ([laneGraphRanges]): its
+  /// [keyed] frames — a cut's lane's, those among its own frames, and the
+  /// last of them where a key past it still bends the line up to there:
+  /// fitted to what is drawn of it (「컷 클램핑만 되도록」).
+  static List<int> _fittedFramesOf(LaneGraphLine line, List<int> keyed) =>
+      switch (line.reach) {
+        null => keyed,
+        (:final start, :final end) => {
+          for (final frame in keyed)
+            if (_reaches(line, frame)) frame,
+          if (keyed.last > end - start - 1) end - start - 1,
+        }.toList(),
+      };
 
   /// The frames [paint] draws — the probe surface for the window's tests,
   /// as the cells painter's is.
@@ -1380,11 +1411,12 @@ class TimelineLaneGraphPainter extends CustomPainter {
       return;
     }
     final (:keyed, :ranges) = fit;
+    final shift = _shiftOf(line);
     double across(double value) =>
         laneGraphAcross(value, ranges.single, extent, axis);
     for (final span in _segmentsOf(curve, keyed)) {
-      if (span.to < window.startIndex ||
-          span.from >= window.endIndexExclusive) {
+      if (span.to + shift < window.startIndex ||
+          span.from + shift >= window.endIndexExclusive) {
         continue;
       }
       final eases = _easesToward(curve, span);
@@ -1398,9 +1430,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
         ),
         LaneGraphMode.speed => (from: 0.0, to: _averageSpeed(curve, span)),
       };
+      final laid = (from: span.from + shift, to: span.to + shift);
       Offset place(double x, double y) => offsetAlong(
         axis,
-        along: laneGraphAlong(span.from + x * (span.to - span.from), frames),
+        along: laneGraphAlong(laid.from + x * (laid.to - laid.from), frames),
         across: across(unit.from + y * (unit.to - unit.from)),
       );
       for (final (:side, :leaving) in eases) {
@@ -1408,6 +1441,14 @@ class TimelineLaneGraphPainter extends CustomPainter {
           (influence: side.influence, speed: side.speed),
           leaving: leaving,
         );
+        // ⚠️Mine (I-89 ①), read off 「컷 클램핑만 되도록」: a cut's lane
+        // takes a handle where its key is drawn — a handle is its key's —
+        // and where it stands on the cut's own frames, past which nothing
+        // of the cut is drawn.
+        if (!_reaches(line, leaving ? span.from : span.to) ||
+            !_reaches(line, span.from + point.x * (span.to - span.from))) {
+          continue;
+        }
         final end = leaving ? 0.0 : 1.0;
         final (handle, key) = switch (mode) {
           LaneGraphMode.value => (point.y, end),
@@ -1421,7 +1462,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
           leaving: leaving,
           at: place(point.x, handle),
           key: place(end, key),
-          frames: span,
+          frames: laid,
           across: (from: across(unit.from), to: across(unit.to)),
         );
       }
@@ -1489,18 +1530,25 @@ class TimelineLaneGraphPainter extends CustomPainter {
     }
     final (:keyed, :ranges) = fit;
     final (:canvas, :frames, :window, :times, :extent) = pass;
+    final shift = _shiftOf(line);
+    // [time] is the line's own: laid where the graph's frames put it.
     Offset at(double time, double number, int part) => offsetAlong(
       axis,
-      along: laneGraphAlong(time, frames),
+      along: laneGraphAlong(time + shift, frames),
       across: laneGraphAcross(number, ranges[part], extent, axis),
     );
+    // The times it is drawn at, its own.
+    final own = [
+      for (final time in times)
+        if (_reaches(line, time - shift)) time - shift,
+    ];
     // Each time read once, for all its numbers.
     final readings = switch (mode) {
       LaneGraphMode.value => [
-        for (final time in times) (time: time, numbers: curve.at(time)),
+        for (final time in own) (time: time, numbers: curve.at(time)),
       ],
       LaneGraphMode.speed => [
-        for (final (:time, :speed) in laneGraphSpeeds(curve, keyed, times))
+        for (final (:time, :speed) in laneGraphSpeeds(curve, keyed, own))
           (time: time, numbers: [speed]),
       ],
     };
@@ -1524,7 +1572,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
     final color = layerMarkColor(line.layer.mark);
     return [
       for (final frame in keyed)
-        if (frameWindowContains(window, frame))
+        if (_reaches(line, frame) &&
+            frameWindowContains(window, frame + shift))
           for (final (part, number) in curve.at(frame.toDouble()).indexed)
             (
               at: at(frame.toDouble(), number, part),

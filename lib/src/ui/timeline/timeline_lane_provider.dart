@@ -162,7 +162,7 @@ LaneGraphLine? timelineLaneGraphLine(
     );
     for (final lane in lanes) {
       if (lane.laneId == pinned.laneId && lane.curve != null) {
-        return (layer: layer, lane: lane);
+        return (layer: layer, lane: lane, reach: null);
       }
     }
   }

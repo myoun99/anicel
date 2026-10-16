@@ -50,6 +50,7 @@ void main() {
           (
             layer: Layer(id: const LayerId('a'), name: 'A', frames: const []),
             lane: lane,
+            reach: null,
           ),
         ],
         guests: const [],

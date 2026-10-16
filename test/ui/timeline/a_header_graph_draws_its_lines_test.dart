@@ -90,7 +90,7 @@ void main() {
     await tester.pumpAndSettle();
 
     List<(LayerId, String)> guests() => [
-      for (final (:layer, :lane) in _painter(tester).guests)
+      for (final (:layer, :lane, reach: _) in _painter(tester).guests)
         (layer.id, lane.laneId),
     ];
     expect(guests(), [(_drawId, _blurWidth), (_camId, 'position')]);
@@ -639,7 +639,7 @@ bool _plots(WidgetTester tester, LaneGraphMode mode) => tester
     .selected;
 
 List<String> _ids(List<LaneGraphLine> lines) => [
-  for (final (:lane, layer: _) in lines) lane.laneId,
+  for (final (:lane, layer: _, reach: _) in lines) lane.laneId,
 ];
 
 CameraPose _pose(double x) =>

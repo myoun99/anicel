@@ -123,8 +123,21 @@ String? _graphKeyOf(TimelineDisplayRow row) {
 }
 
 /// A lane as a header graph draws it (I-89 ③): its row's layer, whose
-/// colour label its keys wear, and the lane.
-typedef LaneGraphLine = ({Layer layer, PropertyLaneRow lane});
+/// colour label its keys wear, the lane — and, for a lane of a CUT drawn
+/// on a track's axis, where it reaches ([LaneGraphReach]); null for a lane
+/// drawn on the axis its own frames are counted on, the whole way.
+typedef LaneGraphLine = ({
+  Layer layer,
+  PropertyLaneRow lane,
+  LaneGraphReach? reach,
+});
+
+/// Where a lane of one cut is drawn on its track's axis (I-89 ①): its own
+/// frame 0 at the track frame `start`, and nothing of it from the track
+/// frame `end` on — the cut's own frames, as the storyboard's projection
+/// rows hold each cut's keys to them (유저 2026-10-08: 「컷 클램핑만
+/// 되도록」).
+typedef LaneGraphReach = ({int start, int end});
 
 /// The pins [seat]'s graph draws as GUESTS (I-89 ③), dashed: every pinned
 /// lane that is no member of its group — another group's, another row's —

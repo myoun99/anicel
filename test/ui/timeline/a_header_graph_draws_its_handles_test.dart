@@ -64,6 +64,7 @@ void main() {
     return (
       layer: row,
       lane: lanes.firstWhere((lane) => lane.laneId == laneId),
+      reach: null,
     );
   }
 
