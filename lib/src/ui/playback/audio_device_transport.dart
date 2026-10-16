@@ -151,7 +151,13 @@ class AudioDeviceTransport {
       }
       _attached = false;
     }
-    _stopDevice();
+    // Only the run it carries: the output is one per process, and another
+    // open project's sound plays on it too. ↩️It stopped the output
+    // whatever played, and a tab closed behind the one on screen silenced
+    // the run there.
+    if (_carrying) {
+      _stopDevice();
+    }
     _device?.letGo(this);
     _device = null;
   }
@@ -159,8 +165,9 @@ class AudioDeviceTransport {
   /// Opens the output ahead of a run, off the UI thread, for the setting
   /// as it is — and reopens it there for a changed one
   /// (play-press-first-frame-stall-Q1, 유저 10-15: 「프로젝트를 열면 미리
-  /// 연다(UI 스레드 밖에서)」 — a project with sound opening, and the output
-  /// setting changing). This transport keeps it open from here.
+  /// 연다(UI 스레드 밖에서)」 — a project opening, with sound or without
+  /// (Q2 a, `OpenProjects`), and the output setting changing). This
+  /// transport keeps it open from here.
   ///
   /// ⛔Never under a run this transport carries: the run plays on the
   /// device it activated on, and its end opens it ahead again for the

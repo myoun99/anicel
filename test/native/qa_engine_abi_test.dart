@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/native/qa_audio_native.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
@@ -140,6 +141,22 @@ void main() {
         );
       }
     });
+  });
+
+  test('🚨a worker with this engine reads the binary this isolate reads — a '
+      'worker isolate starts with none of this one\'s statics', () async {
+    final workersRanHere = debugWorkersRunHere;
+    debugWorkersRunHere = false;
+    debugQaEngineLibraryPathOverride = 'the/binary/this/isolate/reads';
+    addTearDown(() {
+      debugWorkersRunHere = workersRanHere;
+      debugQaEngineLibraryPathOverride = null;
+    });
+
+    expect(
+      await onAWorkerWithThisEngine(() => debugQaEngineLibraryPathOverride),
+      'the/binary/this/isolate/reads',
+    );
   });
 
   group('with a built engine', () {

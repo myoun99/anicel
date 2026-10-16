@@ -144,6 +144,16 @@ class OpenProjects extends ChangeNotifier {
   final Map<EditorSessionManager, int> _untitledNumbers = {};
   int _untitledMinted = 0;
 
+  /// A session joining the tabs — every project opened, the first, a new one
+  /// and one read out of a file alike.
+  ///
+  /// Its output is opened ahead, off the UI thread, and its transport keeps
+  /// it open from here (`AudioDeviceTransport.openAhead`). 🗣️유저 2026-10-16
+  /// (play-press-first-frame-stall-Q2 a): 「모든 프로젝트를 열 때 미리
+  /// 연다」 — with sound or without, so any project's first play starts on
+  /// the device clock at the press. ↩️Only a project with sound did, as its
+  /// sound was warmed (Q1).
+  ///
   /// An untitled tab's project is called what its tab is, until a file
   /// names it (유저 10-09, project-name-is-its-file-name-Q1: 「안의 이름도
   /// 탭과 같게 — 「제목 없음 2」」) — so what is exported before the first
@@ -151,6 +161,7 @@ class OpenProjects extends ChangeNotifier {
   /// (`ProjectFile._nameAfter`): nothing to undo, nothing unsaved.
   void _admit(EditorSessionManager session, {required bool untitled}) {
     _sessions.add(session);
+    session.playbackRig.audioDeviceTransport.openAhead();
     if (untitled) {
       final number = _untitledMinted += 1;
       _untitledNumbers[session] = number;

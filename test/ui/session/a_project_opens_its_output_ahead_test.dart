@@ -8,13 +8,15 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/native_engine_path.dart';
 
 /// play-press-first-frame-stall-Q1 (유저 10-15: 「프로젝트를 열면 미리 연다(UI
-/// 스레드 밖에서)」 — 「소리가 있는 프로젝트가 열리면 백그라운드에서 장치를
-/// 엽니다」), through the session: the project's sound warmed, its output
+/// 스레드 밖에서)」) and Q2 (유저 10-16: 「모든 프로젝트를 열 때 미리 연다」 —
+/// 「어느 프로젝트든 첫 재생이 누르는 즉시 장치 시계로 시작합니다」), through
+/// the session: a project opened in a tab ([OpenProjects]), its output
 /// opened ahead — and the cues that ring that output.
 ///
 /// The bench never hears what a session plays (`audioOutputUnlessTesting`),
@@ -89,32 +91,40 @@ void main() {
     return (session: session, device: device);
   }
 
-  /// [session]'s sound warmed as an open warms it, and the output's open
-  /// under way let finish.
-  Future<void> warmed(EditorSessionManager session) async {
-    session.projectDoor.warmAudioConforms();
+  /// [session] in a tab of its own, as every project opens.
+  void inATab(EditorSessionManager session) {
+    final projects = OpenProjects(
+      first: session.repository.requireProject(),
+      openSession: (_) => session,
+      letGo: (_) {},
+    );
+    addTearDown(projects.dispose);
+  }
+
+  /// [session] opened in a tab, and the output's open under way let finish.
+  Future<void> opened(EditorSessionManager session) async {
+    inATab(session);
     await pumpEventQueue();
   }
 
-  test('🚨a project with sound opens its output ahead as its sound is '
-      'warmed — before any run', () async {
+  test('🚨a project opens its output ahead as it opens — before any run, off '
+      'the UI thread', () async {
     final (:session, :device) = sessionOver(withSound());
 
-    session.projectDoor.warmAudioConforms();
+    inATab(session);
     expect(device.isOpening, isTrue, reason: 'off the UI thread');
     await pumpEventQueue();
 
     expect(device.isOpen, isTrue);
   }, skip: skip);
 
-  test('a project with no sound opens nothing ahead', () async {
+  test('🚨a project with no sound opens it too — ↩️only one with sound did, '
+      'and its first play opened the output inside the press', () async {
     final (:session, :device) = sessionOver(createDefaultProject());
 
-    session.projectDoor.warmAudioConforms();
+    await opened(session);
 
-    expect(device.isOpening, isFalse);
-    await pumpEventQueue();
-    expect(device.isOpen, isFalse);
+    expect(device.isOpen, isTrue);
   }, skip: skip);
 
   group('the cues ring the output a run plays on', () {
@@ -122,7 +132,7 @@ void main() {
         'whether the output was open, so from a first play on it never rang',
         () async {
       final (:session, :device) = sessionOver(withSound());
-      await warmed(session);
+      await opened(session);
       expect(device.isOpen, isTrue, reason: 'fixture');
 
       expect(session.voiceRecording.playOutputTestTone(), isTrue);
@@ -130,7 +140,7 @@ void main() {
 
     test('the test tone refuses while a run holds the output', () async {
       final (:session, device: _) = sessionOver(withSound());
-      await warmed(session);
+      await opened(session);
       session.playbackRig.playback.play(scope: PlaybackScope.activeCut);
       addTearDown(session.playbackRig.playback.stop);
 
@@ -140,7 +150,7 @@ void main() {
     test('the test tone refuses while the output is being opened ahead — it '
         'would open it here as well, and wait out the worker', () async {
       final (:session, device: _) = sessionOver(withSound());
-      session.projectDoor.warmAudioConforms();
+      inATab(session);
 
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
       await pumpEventQueue();
@@ -149,7 +159,7 @@ void main() {
     test('🚨the test tone refuses while anything sounds on the output — a '
         'viewer\'s sound, which the tone\'s schedule would cut', () async {
       final (:session, :device) = sessionOver(withSound());
-      await warmed(session);
+      await opened(session);
       expect(device.play(startSample: 0), isTrue, reason: 'fixture');
 
       expect(session.voiceRecording.playOutputTestTone(), isFalse);
@@ -160,7 +170,7 @@ void main() {
     test('the test tone refuses an output open for another setting than the '
         'chosen one — it rings the CHOSEN output', () async {
       final (:session, device: _) = sessionOver(withSound());
-      await warmed(session);
+      await opened(session);
       session.appSettings.setAudioSyncSettings(
         session.appSettings.audioSyncSettings.value.copyWith(
           outputDeviceName: 'another',
@@ -176,7 +186,7 @@ void main() {
     test('🚨a cue lets the output go as it ends, and it stays open where the '
         'project keeps it', () async {
       final (:session, :device) = sessionOver(withSound());
-      await warmed(session);
+      await opened(session);
       expect(session.voiceRecording.playOutputTestTone(), isTrue);
 
       await Future<void>.delayed(pastTheTone);
@@ -184,7 +194,7 @@ void main() {
     }, skip: skip);
 
     test('a cue that opened the output closes it as it ends, where nothing '
-        'else keeps it', () async {
+        'else keeps it — a session in no tab', () async {
       final (:session, :device) = sessionOver(createDefaultProject());
       expect(session.voiceRecording.playOutputTestTone(), isTrue);
       expect(device.isOpen, isTrue, reason: 'the tone opened it');
@@ -212,7 +222,7 @@ void main() {
     }, skip: skip);
 
     test('a session going lets its cue go — the output the cue opened '
-        'closes', () async {
+        'closes, in no tab', () async {
       final (:session, :device) = sessionOver(
         createDefaultProject(),
         disposedAtTheEnd: false,

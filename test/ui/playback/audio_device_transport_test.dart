@@ -1215,6 +1215,39 @@ void main() {
       device.letGo(another);
       expect(device.isOpen, isFalse);
     }, skip: skip);
+
+    test('🚨a transport going silences the run it carries — the output stays '
+        'open where another keeps it', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      final another = Object();
+      device.keep(another);
+      addTearDown(() => device.letGo(another));
+      controller.play(scope: PlaybackScope.activeCut);
+      transport.clockStatus(); // the clock's first look starts the device
+      expect(device.isPlaying, isTrue, reason: 'fixture');
+
+      transport.dispose();
+      expect(device.isPlaying, isFalse);
+      expect(device.isOpen, isTrue, reason: 'another keeps it');
+      controller.stop();
+    }, skip: skip);
+
+    test('🚨a transport going leaves alone a sound it does not carry — ↩️it '
+        'stopped the output whatever played, and a project closed behind the '
+        'one on screen silenced the run there', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      final another = Object();
+      device.keep(another);
+      addTearDown(() => device.letGo(another));
+      transport.openAhead();
+      await pumpEventQueue();
+      expect(device.play(startSample: 0), isTrue, reason: 'another\'s sound');
+
+      transport.dispose();
+      expect(device.isPlaying, isTrue);
+    }, skip: skip);
   });
 }
 

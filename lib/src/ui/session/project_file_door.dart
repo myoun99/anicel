@@ -1031,19 +1031,12 @@ class ProjectFileDoor {
 
   /// Every audio path the project references (SE clips + the SOUND entries
   /// of the media pool) — what a project open warms so waveforms and
-  /// playback PCM are ready before the first play — and, where there are
-  /// any, the output they will play through, opened ahead off the UI
-  /// thread (play-press-first-frame-stall-Q1, 유저 10-15: 「프로젝트를 열면
-  /// 미리 연다(UI 스레드 밖에서)」 — a project with sound, opened or given
-  /// its first).
+  /// playback PCM are ready before the first play.
+  ///
   void warmAudioConforms() {
-    final paths = projectAudioSourcePaths(
-      _project.repository.requireProject(),
+    _audioConformStore.warmPaths(
+      projectAudioSourcePaths(_project.repository.requireProject()),
     );
-    _audioConformStore.warmPaths(paths);
-    if (paths.isNotEmpty) {
-      _playback.audioDeviceTransport.openAhead();
-    }
   }
 
   /// Lands in THIS session everything [read] says besides its project —

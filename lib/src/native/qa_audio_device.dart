@@ -337,9 +337,10 @@ final class QaAudioDevice {
   bool get isOpening => _opening != null;
   Future<void>? _opening;
 
-  /// Who keeps the output open: a session's transport once it has opened or
-  /// used it, a cue while it sounds. ↩️Each transport closed it as it went,
-  /// under every other open project's next play.
+  /// Who keeps the output open: a session's transport from when it opens it
+  /// ahead — as its project opens (play-press-first-frame-stall-Q2 a) — or
+  /// first plays on it, and a cue while it sounds. ↩️Each transport closed
+  /// it as it went, under every other open project's next play.
   final Set<Object> _keepers = {};
 
   void keep(Object keeper) => _keepers.add(keeper);
@@ -347,9 +348,7 @@ final class QaAudioDevice {
   /// [keeper] lets go, and the output closes once nobody keeps it — after
   /// an open under way, which would otherwise leave it open and unkept.
   void letGo(Object keeper) {
-    if (!_keepers.remove(keeper) || _keepers.isNotEmpty) {
-      return;
-    }
+    _keepers.remove(keeper);
     final opening = _opening;
     if (opening == null) {
       _closeUnkept();
