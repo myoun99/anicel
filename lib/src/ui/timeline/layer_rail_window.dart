@@ -568,7 +568,7 @@ class LayerRailSplitter extends KeptPiece {
   @override
   Widget buildKept(BuildContext context) {
     return DockEdgeSplitter(
-      axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
+      axis: flipAxis(axis),
       onDragDelta: (delta) => extent.resizeBy(
         delta,
         naturalExtent: naturalExtent,

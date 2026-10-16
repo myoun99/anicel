@@ -1597,7 +1597,7 @@ class _LabelPlate extends StatelessWidget {
         // 「x시트는 가로쓰기 가로표기로 **위에 LO 아래에 작감**」, and on the
         // rail 「평범하게 **왼쪽에 LO 오른쪽에 작감**」. Same list, laid the
         // way each surface is read.
-        direction: axis == Axis.horizontal ? Axis.horizontal : Axis.vertical,
+        direction: axis,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (final text in shown)

@@ -882,7 +882,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   double _autoPanEdge(Offset globalPosition) => edgeAutoPanApply(
     context: context,
     globalPosition: globalPosition,
-    axis: widget.axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
+    axis: flipAxis(widget.axis),
   );
 
   void _update(DragUpdateDetails details) {

@@ -146,8 +146,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   /// deepest-first, so it has accepted before any scrollable reaches its own
   /// threshold — which fixes ⑧ (no diagonal can lose a race that is over) and
   /// T30 together (there is no rival left to resign to).
-  Axis get _dragAxis =>
-      widget.axis == Axis.vertical ? Axis.horizontal : Axis.vertical;
+  Axis get _dragAxis => flipAxis(widget.axis);
 
   void _handleDragDown(DragDownDetails details) => _setDragging(true);
 

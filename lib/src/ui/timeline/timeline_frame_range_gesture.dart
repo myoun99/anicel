@@ -12,7 +12,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
-import 'axis_turn.dart' show partAcross, partAlong;
+import 'axis_turn.dart' show offsetAlong, partAcross, partAlong;
 import 'berth_row.dart' show rowAddressNow;
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
@@ -423,7 +423,6 @@ class _TimelineFrameRangeGestureLayerState
     // one row-level gesture all four surfaces share. What was scrolled
     // joins the travel below, or the drag freezes the moment the view
     // starts moving under the pointer.
-    final horizontal = widget.axis == Axis.horizontal;
     _scrolledMain += edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
@@ -432,7 +431,7 @@ class _TimelineFrameRangeGestureLayerState
     final appliedCross = edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
-      axis: horizontal ? Axis.vertical : Axis.horizontal,
+      axis: flipAxis(widget.axis),
     );
     _scrolledCross += appliedCross;
     switch (_mode) {
@@ -441,9 +440,11 @@ class _TimelineFrameRangeGestureLayerState
       case _RangeDragMode.select:
         final local =
             details.localPosition +
-            (horizontal
-                ? Offset(_scrolledMain, _scrolledCross)
-                : Offset(_scrolledCross, _scrolledMain));
+            offsetAlong(
+              widget.axis,
+              along: _scrolledMain,
+              across: _scrolledCross,
+            );
         _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
           _dragRow,
@@ -886,7 +887,6 @@ class _TimelineLaneRangeGestureLayerState
     }
     // D42: the same edge auto-pan fold as the cells layer — the lane
     // family closes the matrix.
-    final horizontal = widget.axis == Axis.horizontal;
     _scrolledMain += edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
@@ -895,7 +895,7 @@ class _TimelineLaneRangeGestureLayerState
     _scrolledCross += edgeAutoPanApply(
       context: context,
       globalPosition: details.globalPosition,
-      axis: horizontal ? Axis.vertical : Axis.horizontal,
+      axis: flipAxis(widget.axis),
     );
     switch (_mode) {
       case _RangeDragMode.none:
@@ -903,9 +903,11 @@ class _TimelineLaneRangeGestureLayerState
       case _RangeDragMode.select:
         final local =
             details.localPosition +
-            (horizontal
-                ? Offset(_scrolledMain, _scrolledCross)
-                : Offset(_scrolledCross, _scrolledMain));
+            offsetAlong(
+              widget.axis,
+              along: _scrolledMain,
+              across: _scrolledCross,
+            );
         _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
           widget.layer.id,

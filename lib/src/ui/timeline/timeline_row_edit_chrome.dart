@@ -11,7 +11,7 @@ import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
         OwningVerticalDragGestureRecognizer;
-import 'axis_turn.dart' show partAlong, rectAlong;
+import 'axis_turn.dart' show offsetAlong, partAlong, rectAlong;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -926,7 +926,7 @@ class _TimelineRowEditChromeLayerState
     _addPan.onUpdate = (details) {
       final panned = _autoPanEdge(details.globalPosition);
       _updateAdd(
-        details.delta + (_horizontal ? Offset(panned, 0) : Offset(0, panned)),
+        details.delta + offsetAlong(widget.axis, along: panned, across: 0),
       );
     };
     _addPan.onEnd = (_) => _endAdd();

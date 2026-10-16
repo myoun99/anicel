@@ -216,7 +216,13 @@ void main() {
   // a)`, a size, a rect, a box moved each way, the alignment a strip's run
   // sets off from — was written by hand on thirty-nine lines in sixteen
   // files (2026-10-17). The home builds each once: [offsetAlong],
-  // [sizeAlong], [rectAlong], [centerStartAlong], [centerEndAlong].
+  // [sizeAlong], [rectAlong], [centerStartAlong], [centerEndAlong] — and
+  // this is a ban, with no ledger.
+  //
+  // The three drags that fold the edge pan into the hand's travel came
+  // last, the same day: a law moves only behind a test that pins it, and
+  // nothing pinned the sheet's half of their pan until the edge-pan tests
+  // ran on both surfaces.
   //
   // ⛔A margin (`EdgeInsets`) and a `BoxConstraints` are not here: two
   // each, in shapes that differ, and a third has to show they are one
@@ -248,15 +254,6 @@ void main() {
   ];
 
   List<int> handBuildsIn(String source) => linesMatching(builtByHand, source);
-
-  /// Files that still build a value by hand, with how many. Only shrinks.
-  const stillBuiltByHand = <String, int>{
-    // Drags whose VERTICAL scrolled offset has no pin yet
-    // (every_frame_drag_follows_the_edge_test scans the wiring, not the
-    // direction), and a law moves only behind a test that pins it.
-    'lib/src/ui/timeline/timeline_frame_range_gesture.dart': 2,
-    'lib/src/ui/timeline/timeline_row_edit_chrome.dart': 1,
-  };
 
   test('premise: the scan sees the home build each value once', () {
     // offsetAlong, sizeAlong, rectAlong, centerStartAlong, centerEndAlong.
@@ -305,16 +302,13 @@ void main() {
     );
   });
 
-  test('no file builds a value by hand past what the ledger holds', () {
-    final offenders = <String>[];
-    for (final file in dartFilesUnder('lib')) {
-      final path = libPath(file);
-      if (path == home) continue;
-      final lines = handBuildsIn(file.readAsStringSync());
-      if (lines.length > (stillBuiltByHand[path] ?? 0)) {
-        offenders.add('$path:${lines.join(',')}');
-      }
-    }
+  test('no file but the home builds a value by hand', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('lib'))
+        if (libPath(file) != home)
+          for (final line in handBuildsIn(file.readAsStringSync()))
+            '${libPath(file)}:$line',
+    ];
     expect(
       offenders,
       isEmpty,
@@ -324,12 +318,62 @@ void main() {
     );
   });
 
-  test('the build ledger holds no more than is left', () {
-    final paid = <String>[
-      for (final MapEntry(key: path, value: count) in stillBuiltByHand.entries)
-        if (handBuildsIn(File(path).readAsStringSync()).length < count) path,
+  // ── The axis itself (card values-built-by-the-axis-are-one-function) ───
+  //
+  // The axis ACROSS a strip — `horizontal ? Axis.vertical :
+  // Axis.horizontal` — was picked by hand on five lines in four files, and
+  // one more picked the very axis it asked of (2026-10-17). Flutter says
+  // the first once ([flipAxis]); the second is the axis. A ban.
+  final pickedByHand = [
+    // Asked of an axis, answered with one: the other, or the same.
+    RegExp(
+      r'Axis\.(?:horizontal|vertical)\s*\?\s*'
+      r'Axis\.(?:horizontal|vertical)\s*:\s*Axis\.(?:horizontal|vertical)\b',
+    ),
+    // Asked of a flag named for the axis, answered with the OTHER one. The
+    // same one is a flag turned into an axis, which is not a turn.
+    RegExp(
+      r'(?<![\w.])(?:\w*[Hh]orizontal\s*\?\s*Axis\.vertical\s*:\s*'
+      r'Axis\.horizontal|\w*[Vv]ertical\s*\?\s*Axis\.horizontal\s*:\s*'
+      r'Axis\.vertical)\b',
+    ),
+  ];
+
+  List<int> axesPickedIn(String source) => linesMatching(pickedByHand, source);
+
+  test('premise: the scan sees every axis the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const picked = [
+      'axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,',
+      'widget.axis == Axis.vertical ? Axis.horizontal : Axis.vertical;',
+      'direction: axis == Axis.horizontal ? Axis.horizontal : Axis.vertical,',
+      'axis: horizontal ? Axis.vertical : Axis.horizontal,',
     ];
-    expect(paid, isEmpty, reason: 'lower these in stillBuiltByHand');
-    expect(stillBuiltByHand, hasLength(2));
+    for (final line in picked) {
+      expect(axesPickedIn(line), hasLength(1), reason: line);
+    }
+    const turnedInto = [
+      // A flag, or an orientation, made the axis it names — not a turn.
+      'vertical ? Axis.vertical : Axis.horizontal;',
+      'widget.orientation == TimelineOrientation.horizontal\n'
+          '    ? Axis.horizontal\n'
+          '    : Axis.vertical;',
+    ];
+    for (final line in turnedInto) {
+      expect(axesPickedIn(line), isEmpty, reason: line);
+    }
+  });
+
+  test('no file picks an axis by hand', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('lib'))
+        for (final line in axesPickedIn(file.readAsStringSync()))
+          '${libPath(file)}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'reach for flipAxis, or for the axis itself',
+    );
   });
 }
