@@ -453,4 +453,84 @@ void main() {
       expect(entry.tile.size, tileSize);
     }
   });
+
+  group('the budget lets the least recently SHOWN result go — one shown '
+      'again is the newest', () {
+    /// Room for two results. One dab a coordinate along the top row, each
+    /// shown as it lands, and the first shown again before the third — so
+    /// the third lets the second go. [released] is what the third's showing
+    /// handed back to the engine.
+    ({BrushLiveStrokeRasterizer rasterizer, int released}) frontierOfTwo() {
+      BrushLiveStrokeRasterizer.residentResultByteBudget =
+          2 * tileSize * tileSize * 4;
+      final base = paintedBase();
+      final rasterizer = BrushLiveStrokeRasterizer(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+      );
+      final dabs = <BrushDab>[];
+      void land(int tileX) {
+        dabs.add(dab(x: tileX * 64 + 32.5, y: 32.5, sequence: dabs.length));
+        rasterizer.blendFrom(dabs, from: dabs.length - 1);
+      }
+
+      void show(int tileX) => rasterizer
+          .preBlendedOverlayTile(
+            tileX: tileX,
+            tileY: 0,
+            base: base,
+            mode: BrushBlendMode.color,
+            erase: false,
+          )
+          ?.free();
+
+      land(0);
+      show(0);
+      land(1);
+      show(1);
+      show(0);
+      land(2);
+      final before = QaNativeEngine.debugReleasedTileBuffers;
+      show(2);
+      return (
+        rasterizer: rasterizer,
+        released: QaNativeEngine.debugReleasedTileBuffers - before,
+      );
+    }
+
+    void expectTheSecondWent(BrushLiveStrokeRasterizer rasterizer) {
+      expect(rasterizer.holdsResultAt(0, 0), isTrue, reason: 'shown again');
+      expect(
+        rasterizer.holdsResultAt(1, 0),
+        isFalse,
+        reason: 'the least recently shown',
+      );
+      expect(rasterizer.holdsResultAt(2, 0), isTrue, reason: 'the newest');
+    }
+
+    test('Dart engine', () {
+      QaNativeEngine.debugResetForTests();
+      QaNativeEngine.debugForceDartFallback = true;
+      final (:rasterizer, released: _) = frontierOfTwo();
+
+      expectTheSecondWent(rasterizer);
+      rasterizer.clear();
+    });
+
+    test('NATIVE engine — and the result let go of hands its block back', () {
+      if (dllPath == null) {
+        markTestSkipped(nativeEngineMissingSkipReason);
+        return;
+      }
+      QaNativeEngine.debugResetForTests();
+      debugQaEngineLibraryPathOverride = dllPath;
+      QaNativeEngine.debugForceDartFallback = false;
+      expect(QaNativeEngine.instance, isNotNull);
+      final (:rasterizer, :released) = frontierOfTwo();
+
+      expectTheSecondWent(rasterizer);
+      expect(released, 1, reason: 'the second result\'s buffer');
+      rasterizer.clear();
+    });
+  });
 }

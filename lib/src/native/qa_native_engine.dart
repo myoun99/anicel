@@ -1979,7 +1979,17 @@ class QaNativeEngine {
     return QaNativeTileBuffer._(pointer, view);
   }
 
+  /// Buffers handed back through [releaseTileBuffer], counted in debug
+  /// builds only — the pin that a result the budget lets go of gives its
+  /// block back.
+  @visibleForTesting
+  static int debugReleasedTileBuffers = 0;
+
   void releaseTileBuffer(QaNativeTileBuffer buffer) {
+    assert(() {
+      debugReleasedTileBuffers += 1;
+      return true;
+    }());
     tileFree(buffer.pointer);
   }
 

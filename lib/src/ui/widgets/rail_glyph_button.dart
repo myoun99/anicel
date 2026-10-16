@@ -896,3 +896,14 @@ abstract final class _GlyphCache {
     return made;
   }
 }
+
+/// The rail glyphs' painter for [text] in [style] — the cache a pin asks to
+/// see keep and let go ([_GlyphCache]).
+@visibleForTesting
+TextPainter debugRailTextGlyph(String text, TextStyle style) =>
+    _GlyphCache.text(
+      text,
+      style: style,
+      textDirection: TextDirection.ltr,
+      maxWidth: double.infinity,
+    );

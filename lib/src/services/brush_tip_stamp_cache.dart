@@ -128,8 +128,6 @@ class BrushTipStampCache {
     return [for (final dab in dabs) resolveDab(dab)];
   }
 
-  void clear() => _masks.clear();
-
   static int _maskCost(BrushTipMask mask) => mask.size * mask.size * 9;
 
   /// Size quantizer: 1/4 px steps up to 64 px, then ~1.1% relative log

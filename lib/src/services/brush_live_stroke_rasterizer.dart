@@ -410,6 +410,12 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   @visibleForTesting
   int get residentResultTileCount => _results.length;
 
+  /// Whether the result at the coordinate is resident (test oracle for the
+  /// order the budget lets results go in).
+  @visibleForTesting
+  bool holdsResultAt(int tileX, int tileY) =>
+      _results.containsKey(_tileKey(tileX, tileY));
+
   /// R25: the overlay's FUSED display path. Overlay tiles are the same
   /// 128px grid as the stroke tiles, so a full tile's snapshot +
   /// premultiply collapses into ONE C call over the native buffer (the

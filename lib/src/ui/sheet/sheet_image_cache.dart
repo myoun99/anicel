@@ -248,7 +248,9 @@ class SheetImageCache extends ChangeNotifier {
     if (image == null) {
       _unreadable.add(key.path);
     } else {
-      _images.keep(key, image)?.dispose();
+      // Nothing is replaced: a key is read only while none is held, one
+      // read at a time.
+      _images.keep(key, image);
       onHeldBytesChanged?.call(_images.held);
     }
     _wanted.clear();

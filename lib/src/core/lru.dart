@@ -4,9 +4,9 @@ import 'dart:collection';
 /// first, never what was used last, until what it holds is within its
 /// limit.
 ///
-/// 🚨ONE SPELLING (card every-bounded-cache-is-one-lru, 2026-10-16). Twelve
-/// stores wrote it out by hand — a map kept in use order, taken out and put
-/// back on every use, and a loop letting go of its first key past a bound —
+/// 🚨ONE SPELLING (card every-bounded-cache-is-one-lru, 2026-10-16). Stores
+/// wrote it out by hand — a map kept in use order, taken out and put back
+/// on every use, and a loop letting go of its first key past a bound —
 /// some counting entries, some bytes. Same algorithm, so copies by
 /// connascence (CLAUDE.md absolute command 1), whatever each one called it.
 ///
@@ -19,7 +19,10 @@ import 'dart:collection';
 /// ⛔Not a memo: a value that owns nothing and is cheap to build again goes
 /// in `BoundedMemo`, which starts over rather than reshuffle on every hit.
 /// ⛔Not a cache a playhead reads, where what it wants latest goes first
-/// (`letGoWantedLatest`).
+/// (`letGoWantedLatest`). ⛔Nor one that pays once for a value several keys
+/// share, or that must wait before it lets go — the brush frame store's
+/// movie pictures and its cooling (🗣️저장, 2026-10-16): [costOf] is read
+/// when an entry comes and when it goes, and [letGo] runs at once.
 final class Lru<K, V> {
   Lru({required this.limit, int Function(V value)? costOf, this.letGo})
     : _costOf = costOf ?? _one;
