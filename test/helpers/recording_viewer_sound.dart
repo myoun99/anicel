@@ -139,7 +139,4 @@ class RecordingViewerSound extends ViewerSound {
     askedAt.add(frameTime);
     return _carrying ? (seconds: at - lag, ended: hasEnded) : null;
   }
-
-  @override
-  double? get handedSeconds => _carrying ? at : null;
 }

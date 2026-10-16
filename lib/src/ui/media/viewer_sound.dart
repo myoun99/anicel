@@ -308,18 +308,6 @@ class ViewerSound {
     );
   }
 
-  /// How far the device has been handed the file, in seconds — where a
-  /// held sound picks up ([hold], [resume]), so what it played before the
-  /// hold is not played again; null while nothing is carrying. ⛔Not the
-  /// clock: what is heard trails it by the device's latency ([heardAt]).
-  double? get handedSeconds {
-    final device = _device;
-    if (device == null || _deviceRate <= 0) {
-      return null;
-    }
-    return device.positionSamples / _deviceRate;
-  }
-
   /// Silence, and nothing held. ⚠️Idempotent — the viewer stops on every
   /// path out (a new file, a closed tab, the actuation gate).
   void stop() {

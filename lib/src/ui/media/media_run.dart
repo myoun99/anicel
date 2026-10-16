@@ -635,11 +635,11 @@ class MediaRun {
     }
   }
 
-  /// The run went on onto a page short of where its clock got to
-  /// ([BehindItsClock]), and its clock is put back to it at [seconds]: the
-  /// span counts on from there, and the sound picks up there — as a parked
-  /// run goes on ([_goesOn]), and as the canvas's transport is moved by the
-  /// seek its run fires (`CanvasPlaybackController.onSeeked`).
+  /// The run goes on onto the page at [seconds] — short of where its clock
+  /// got to ([BehindItsClock]), or the page after the one it parked on
+  /// ([_goesOn]) — and its clock is put back to it: the span counts on from
+  /// there, and the sound picks up there, as the canvas's transport is moved
+  /// by the seek its run fires (`CanvasPlaybackController.onSeeked`).
   void _putTheClockBackTo(double seconds) {
     soundSeconds = seconds;
     sound.resume(seconds);
@@ -647,22 +647,26 @@ class MediaRun {
     _behind.clockStarts();
   }
 
-  /// Whether a parked run goes on at this look — and when it does, the
-  /// sound picks up where it was held, and the clock from the page ahead.
+  /// Whether a parked run goes on at this look — and when it does, its
+  /// clock and its sound go on together from the page ahead.
   ///
   /// ⛔Not「one frame is ready, go」: that plays a frame, runs dry and parks
   /// again, which is a stutter rather than playback — the wait goes on when
   /// the cushion has filled (유저 2026-08-31: 「로드가 안되고있으면 5초분만큼?
   /// 로드될떄까지 멈추는?」), the read-ahead at rest ([fillBuffer]).
+  ///
+  /// 🚨THE SOUND PICKS UP WHERE THE PICTURE GOES ON, as the canvas's does
+  /// (유저 2026-10-16, F-364-every-picture-even-when-late-Q2 a: 「캔버스처럼
+  /// 보이는 그림에서 다시 튼다」): the page it turns to has a whole frame's
+  /// time, as if the clock had been stopped and started. ↩️It picked up where
+  /// the device had been handed to (10-11, derived — nobody's word): ahead
+  /// of what was heard by the output's latency, which it skipped, and a page
+  /// with it where that latency was longer than a frame.
   bool _goesOn(double fps) {
     if (_wait.holds(_page + 1, placed: false)) {
       return false;
     }
-    sound.resume(soundSeconds);
-    // Goes on from here: the page it turns to has a whole frame's time, as
-    // if the clock had been stopped and started.
-    _film.spanFrom((_page + 1) / fps);
-    _behind.clockStarts();
+    _putTheClockBackTo((_page + 1) / fps);
     _surface.setState(() => buffering = false);
     return true;
   }
@@ -670,9 +674,6 @@ class MediaRun {
   /// The way stopped before a page that is not there: the playhead parks
   /// where it stands, and the sound is held with it.
   void _park() {
-    // Remember where the sound was HANDED to: that is where it picks up,
-    // so nothing it played before the hold is played again.
-    soundSeconds = sound.handedSeconds ?? soundSeconds;
     sound.hold();
     _surface.setState(() => buffering = true);
   }

@@ -489,10 +489,10 @@ void main() {
     await pressPlay(tester);
   });
 
-  testWidgets('🚨a held sound picks up where it was HANDED to — not where it '
-      'was heard, a latency back, which would play it again (④-b)', (
-    tester,
-  ) async {
+  testWidgets('🚨a held sound picks up at the page the run goes on onto, as '
+      'the canvas\'s does (F-364-every-picture-even-when-late-Q2 a) — '
+      '↩️it picked up where the device had been handed to, a latency ahead '
+      'of what was heard', (tester) async {
     final fake = await openMovie(tester, holdFrom: 1);
     // What is heard trails what the device was handed by a tenth of a
     // second, as a device's latency does.
@@ -505,7 +505,12 @@ void main() {
       everyFrame: () => sound.playOn(tick),
     );
     expect(sound.holds, greaterThan(0), reason: 'fixture: it parked');
-    final handed = sound.at;
+    expect(slot.position.value, 0, reason: 'fixture: before page 1');
+    expect(
+      sound.at,
+      greaterThan(1 / 24 + 0.05),
+      reason: 'fixture: the device was handed well past page 1',
+    );
 
     fake.held.clear();
     await settleAsync(
@@ -516,9 +521,9 @@ void main() {
 
     expect(
       sound.resumedFrom.last,
-      handed,
-      reason: 'where the device had been handed to — what it played before '
-          'the hold, the listener heard',
+      closeTo(1 / 24, 1e-12),
+      reason: '유저 2026-10-16: 「캔버스처럼 보이는 그림에서 다시 튼다」 — page 1, '
+          'where the picture goes on: nothing heard is skipped',
     );
     await pressPlay(tester);
   });
