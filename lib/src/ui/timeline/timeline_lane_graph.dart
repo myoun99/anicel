@@ -174,9 +174,7 @@ LaneGraphLines timelineLaneGraphLines(
   final preview = hooks.dragPreview;
   final lanesForLayer = hooks.lanesForLayer;
   final lineOf = hooks.laneGraphLineOf;
-  return laneGraphLines(
-    seat,
-    lanes,
+  return laneGraphLines(seat, lanes, (
     standing: hooks.currentRowHooks?.currentRow,
     moves: preview,
     linesOf: (row) => [
@@ -196,37 +194,49 @@ LaneGraphLines timelineLaneGraphLines(
     ],
     pinned: hooks.laneGraphs.pinned,
     guestsOf: (key) => [?lineOf?.call(key)],
-  );
+  ));
 }
+
+/// Where a grid's header graphs read their lines (I-89 ①): the row its
+/// rail stands on and what says a drag moved — when to read again — each
+/// lane's lines as its row reads now, and the pins with the lines each
+/// names. The timeline's hooks hand theirs ([timelineLaneGraphLines]); the
+/// storyboard's rail its own.
+typedef LaneGraphSources = ({
+  ValueListenable<TimelineRowAddress?>? standing,
+  Listenable? moves,
+  Iterable<LaneGraphLine> Function(TimelineDisplayRow row) linesOf,
+  Set<String> pinned,
+  Iterable<LaneGraphLine> Function(String key) guestsOf,
+});
 
 /// What [seat]'s graph draws (I-89 ③): of [lanes] — the group's lanes as
 /// the rail draws them, in its order — the ones it draws as its own
 /// ([laneGraphDrawnLanes]), read off where the rail stands, each as
-/// [linesOf] reads its row now; and every pin of another group's of
-/// [pinned] as a guest ([laneGraphGuests]), as [guestsOf] finds it. A lane
-/// a storyboard's projection row draws is a line a cut. Read again
-/// whenever the rail stands elsewhere or [moves] says a drag moved.
+/// [sources] reads its row now; and every pin of another group's as a
+/// guest ([laneGraphGuests]), as [sources] finds it. A lane a storyboard's
+/// projection row draws is a line a cut. Read again whenever the rail
+/// stands elsewhere or a drag moves.
 LaneGraphLines laneGraphLines(
   TimelineGraphSeat seat,
-  List<TimelineDisplayRow> lanes, {
-  required ValueListenable<TimelineRowAddress?>? standing,
-  required Listenable? moves,
-  required Iterable<LaneGraphLine> Function(TimelineDisplayRow row) linesOf,
-  required Set<String> pinned,
-  required Iterable<LaneGraphLine> Function(String key) guestsOf,
-}) => (
-  changes: Listenable.merge([standing, moves]),
-  own: () {
-    final drawn = laneGraphDrawnLanes(seat, standing?.value);
-    return [
-      for (final row in lanes)
-        if (drawn.contains(row.lane!.laneId)) ...linesOf(row),
-    ];
-  },
-  guests: () => [
-    for (final key in laneGraphGuests(seat, pinned)) ...guestsOf(key),
-  ],
-);
+  List<TimelineDisplayRow> lanes,
+  LaneGraphSources sources,
+) {
+  final (:standing, :moves, :linesOf, :pinned, :guestsOf) = sources;
+  return (
+    changes: Listenable.merge([standing, moves]),
+    own: () {
+      final drawn = laneGraphDrawnLanes(seat, standing?.value);
+      return [
+        for (final row in lanes)
+          if (drawn.contains(row.lane!.laneId)) ...linesOf(row),
+      ];
+    },
+    guests: () => [
+      for (final key in laneGraphGuests(seat, pinned)) ...guestsOf(key),
+    ],
+  );
+}
 
 /// An open graph on the frame side: ONE picture over its group's lanes and
 /// the room after them, where their rows of cells would be (I-89 ③) — the
