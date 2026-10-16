@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'dart:ui' show AppExitResponse;
 
@@ -11,6 +12,7 @@ import 'dialogs/app_confirm_dialog.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
+import '../native/device_battery.dart';
 import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
@@ -117,6 +119,7 @@ class HomePage extends StatefulWidget {
     this.tipLibraryService,
     this.fontLibraryService,
     this.languageSettingsStore,
+    this.battery,
   });
 
   final Project? initialProject;
@@ -147,6 +150,11 @@ class HomePage extends StatefulWidget {
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
   final AppLanguageSettingsStore? languageSettingsStore;
+
+  /// The device's battery for the top strip's end ([DeviceBattery.shown],
+  /// which the app hands in) — null on a device without one, and in a test
+  /// that does not hand one in.
+  final ValueListenable<BatteryReading>? battery;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -374,6 +382,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     colorBackground: _colorWheelBackground,
     colorPalette: _colorPalette,
     onColorPaletteChanged: _setColorPalette,
+    battery: widget.battery,
   );
 
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's

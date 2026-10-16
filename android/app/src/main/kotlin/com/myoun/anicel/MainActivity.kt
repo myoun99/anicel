@@ -2,7 +2,9 @@ package com.myoun.anicel
 
 import android.content.ContentUris
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -104,6 +106,41 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        // I-103-Q1: the battery the top strip shows - the one question
+        // DeviceBattery asks every platform.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "anicel/battery",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "read" -> result.success(batteryReading())
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    // The battery as DeviceBattery.readingOf reads it - "percent", and
+    // "charging" for ON POWER (plugged in, charging or already full) - or
+    // null where there is none. The battery broadcast is sticky: asked for
+    // with no receiver, it hands back the last one and registers nothing.
+    private fun batteryReading(): Map<String, Any>? {
+        val battery = registerReceiver(
+            null,
+            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+        ) ?: return null
+        if (!battery.getBooleanExtra(BatteryManager.EXTRA_PRESENT, true)) {
+            return null
+        }
+        val level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        if (level < 0 || scale <= 0) {
+            return null
+        }
+        return mapOf(
+            "percent" to level * 100 / scale,
+            "charging" to
+                (battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0),
+        )
     }
 
     // F-193 (user 2026-09-27, Android): a pen hovering over a tool button

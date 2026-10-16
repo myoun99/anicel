@@ -151,6 +151,38 @@ import UniformTypeIdentifiers
         result(FlutterMethodNotImplemented)
       }
     }
+    // I-103-Q1: the battery the top strip shows — the one question
+    // DeviceBattery asks every platform.
+    let batteryRegistrar = engineBridge.pluginRegistry.registrar(forPlugin: "AnicelBattery")
+    let batteryChannel = FlutterMethodChannel(
+      name: "anicel/battery", binaryMessenger: batteryRegistrar!.messenger())
+    batteryChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "read":
+        result(AppDelegate.batteryReading())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  /// The battery as `DeviceBattery.readingOf` reads it — "percent", and
+  /// "charging" for ON POWER (charging or already full: the bolt the status
+  /// bar draws) — or nil where UIKit cannot say (the simulator).
+  ///
+  /// UNVERIFIED-ON-DEVICE like the rest of this file.
+  static func batteryReading() -> [String: Any]? {
+    let device = UIDevice.current
+    device.isBatteryMonitoringEnabled = true
+    let level = device.batteryLevel
+    let state = device.batteryState
+    if level < 0 || state == .unknown {
+      return nil
+    }
+    return [
+      "percent": Int((level * 100).rounded()),
+      "charging": state == .charging || state == .full,
+    ]
   }
 
   /// F-178: the record permission, answered AFTER the user has spoken — the

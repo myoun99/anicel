@@ -2,6 +2,7 @@ import AVFoundation
 import Cocoa
 import FileProvider
 import FlutterMacOS
+import IOKit.ps
 import UniformTypeIdentifiers
 
 /// Anicel pen sidecar (pen program, PEN-4 — macOS).
@@ -614,8 +615,51 @@ class MainFlutterWindow: NSWindow {
       handler.handle(call, host: self, result)
     }
 
+    // I-103-Q1: the battery the top strip shows — the one question
+    // DeviceBattery asks every platform. A Mac without one answers nil, and
+    // the strip keeps no place for it.
+    let batteryChannel = FlutterMethodChannel(
+      name: "anicel/battery",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    batteryChannel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "read":
+        result(MainFlutterWindow.batteryReading())
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()
+  }
+
+  /// The internal battery as `DeviceBattery.readingOf` reads it —
+  /// "percent", and "charging" for ON POWER (on the adapter, charging or
+  /// already full) — or nil on a Mac that has none.
+  ///
+  /// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+  static func batteryReading() -> [String: Any]? {
+    let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+    let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
+    for source in sources {
+      guard
+        let description = IOPSGetPowerSourceDescription(snapshot, source)?
+          .takeUnretainedValue() as? [String: Any],
+        description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
+        let current = description[kIOPSCurrentCapacityKey] as? Int,
+        let most = description[kIOPSMaxCapacityKey] as? Int,
+        most > 0
+      else {
+        continue
+      }
+      let state = description[kIOPSPowerSourceStateKey] as? String
+      return [
+        "percent": min(100, current * 100 / most),
+        "charging": state == kIOPSACPowerValue,
+      ]
+    }
+    return nil
   }
 }

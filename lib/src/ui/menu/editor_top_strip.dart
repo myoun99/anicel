@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show File;
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../controllers/default_project_helpers.dart'
@@ -20,6 +21,7 @@ import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../native/device_battery.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
 import '../../services/color_palette_file_service.dart';
@@ -33,6 +35,7 @@ import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
 import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
+import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
 import '../open_projects.dart';
 import '../widgets/app_icon_button.dart';
@@ -95,6 +98,7 @@ class EditorTopStrip extends StatelessWidget {
     this.colorBackground,
     this.colorPalette,
     this.onColorPaletteChanged,
+    this.battery,
   });
 
   /// The projects open in the window — the strip's tabs (I-7).
@@ -134,6 +138,10 @@ class EditorTopStrip extends StatelessWidget {
   /// Palette writes go back through the host because they PERSIST — the
   /// strip must not learn where a palette file lives.
   final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
+
+  /// The device's battery, at the strip's very end (I-103-Q1) — null on a
+  /// device without one, which keeps no place for it ([DeviceBattery]).
+  final ValueListenable<BatteryReading>? battery;
 
   /// 🪦Two picker seams stood here — `anicelOpenFilePicker` and
   /// `anicelSaveFilePicker`, both「injectable for tests」. **Nothing ever
@@ -762,6 +770,7 @@ class EditorTopStrip extends StatelessWidget {
           child: _TabsAndBrushGroup(
             tabs: _ProjectTabRow(projects: projects, onClose: onCloseProject),
             brushTool: brushTool,
+            battery: battery,
           ),
         ),
         const SizedBox(width: 3),
@@ -812,16 +821,39 @@ class EditorTopStrip extends StatelessWidget {
 /// English 「Size … 2000.0 px」 at 127.6 — the pair would ask for 255.2 of
 /// those 254.
 class _TabsAndBrushGroup extends StatelessWidget {
-  const _TabsAndBrushGroup({required this.tabs, required this.brushTool});
+  const _TabsAndBrushGroup({
+    required this.tabs,
+    required this.brushTool,
+    required this.battery,
+  });
 
   final Widget tabs;
   final ValueNotifier<BrushToolState>? brushTool;
+  final ValueListenable<BatteryReading>? battery;
 
   @override
   Widget build(BuildContext context) {
+    // 🗣️I-103-Q1 (유저 2026-10-16): the battery stands after the brush's
+    // group, at the very end, and is KEPT with it as the list button's place
+    // is — the group gives way to its button that much sooner (the cost the
+    // answer named), and a strip too narrow for even that shows both,
+    // smaller.
+    final gauge = switch (battery) {
+      final battery? => _BatteryGauge(
+        battery: battery,
+        width: _BatteryGauge.widthIn(context),
+      ),
+      null => null,
+    };
     final tool = brushTool;
     if (tool == null) {
-      return tabs;
+      return gauge == null
+          ? tabs
+          : KeptTailRow(
+              headKeeps: _ProjectTabRow._minTabWidth,
+              head: tabs,
+              tail: gauge,
+            );
     }
     final narrowest = _BrushValueBars.narrowestIn(context);
     return LayoutBuilder(
@@ -829,20 +861,105 @@ class _TabsAndBrushGroup extends StatelessWidget {
         final bars = _BrushValueBars.widthsIn(
           // What the two bars may take between them once the tabs hold
           // only their list button's place and the group's fixed parts
-          // stand.
+          // and the battery stand.
           constraints.maxWidth -
               _ProjectTabRow._minTabWidth -
-              _BrushGroup.fixedWidth,
+              _BrushGroup.fixedWidth -
+              (gauge == null ? 0 : _BatteryGauge.gap + gauge.width),
           narrowest,
         );
+        final group = bars != null
+            ? _BrushGroup(brushTool: tool, bars: bars)
+            : _BrushGroupButton(brushTool: tool);
         return KeptTailRow(
           headKeeps: _ProjectTabRow._minTabWidth,
           head: tabs,
-          tail: bars != null
-              ? _BrushGroup(brushTool: tool, bars: bars)
-              : _BrushGroupButton(brushTool: tool),
+          tail: gauge == null
+              ? group
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    group,
+                    const SizedBox(width: _BatteryGauge.gap),
+                    gauge,
+                  ],
+                ),
         );
       },
+    );
+  }
+}
+
+/// The device's battery at the strip's very end (I-103-Q1): an icon that
+/// fills with the charge — the bolt while on power — and the percent.
+///
+/// ONE width whatever it says ([widthIn]), so a charge that loses a digit
+/// moves nothing beside it.
+class _BatteryGauge extends StatelessWidget {
+  const _BatteryGauge({required this.battery, required this.width});
+
+  final ValueListenable<BatteryReading> battery;
+  final double width;
+
+  /// Between the brush's group and the gauge.
+  static const double gap = 8;
+
+  static const double _iconSize = 16;
+  static const double _iconGap = 2;
+
+  /// The charge as the icons draw it: none to six bars, then full.
+  static const List<IconData> _levels = [
+    Icons.battery_0_bar,
+    Icons.battery_1_bar,
+    Icons.battery_2_bar,
+    Icons.battery_3_bar,
+    Icons.battery_4_bar,
+    Icons.battery_5_bar,
+    Icons.battery_6_bar,
+    Icons.battery_full,
+  ];
+
+  /// The size the project tabs write their names in.
+  static TextStyle _styleIn(BuildContext context) =>
+      DefaultTextStyle.of(context).style.merge(const TextStyle(fontSize: 12));
+
+  /// The icon and the widest percent the gauge can write — measured, as the
+  /// bars' floors are, so another face or OS text size still fits.
+  static double widthIn(BuildContext context) =>
+      _iconSize +
+      _iconGap +
+      TextMeasure(context, _styleIn(context)).widest([
+        '100%',
+        for (var digit = 0; digit < 10; digit += 1) '$digit$digit%',
+      ]).ceilToDouble();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return ValueListenableBuilder<BatteryReading>(
+      valueListenable: battery,
+      builder: (context, reading, _) => SizedBox(
+        key: const ValueKey<String>('top-strip-battery'),
+        width: width,
+        child: Row(
+          children: [
+            Icon(
+              reading.charging
+                  ? Icons.battery_charging_full
+                  : _levels[(reading.percent * (_levels.length - 1) / 100)
+                        .round()],
+              size: _iconSize,
+              color: color,
+            ),
+            const SizedBox(width: _iconGap),
+            Text(
+              '${reading.percent}%',
+              maxLines: 1,
+              style: _styleIn(context).copyWith(color: color),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

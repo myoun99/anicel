@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
+import 'src/native/device_battery.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
@@ -76,6 +77,11 @@ Future<void> main() async {
   // the file. Loading it here is what lets the paint-time guard stay a
   // guard rather than a case.
   await ColourKeyShader.load();
+  // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
+  // a place for the battery on a device that has one and never on one that
+  // has not — a place that came a frame later would be UI popping into
+  // existence. One question to the OS.
+  await DeviceBattery.watch();
   // The bundled fonts are OFL: their license must SHIP with the binary that
   // redistributes them, not just sit in the repo — the About dialog's license
   // page surfaces these entries (THIRD_PARTY.md).
@@ -214,7 +220,7 @@ class AnicelApp extends StatelessWidget {
             child: child ?? const SizedBox.shrink(),
           ),
         ),
-        home: const HomePage(),
+        home: HomePage(battery: DeviceBattery.shown),
       ),
     );
   }
