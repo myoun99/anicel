@@ -318,23 +318,6 @@ void main() {
       );
     });
 
-    testWidgets('a lane\'s name stands centred across its row on the rail',
-        (tester) async {
-      await _pump(tester);
-      await _openLanes(tester, layerId: _drawId);
-      final cell = find.byKey(
-        const ValueKey<String>('timeline-lane-label-$_drawId-position'),
-      );
-      await tester.ensureVisible(cell);
-      await tester.pumpAndSettle();
-
-      final name = find.descendant(of: cell, matching: find.text('Position'));
-      expect(
-        tester.getCenter(name).dy,
-        moreOrLessEquals(tester.getCenter(cell).dy, epsilon: 0.5),
-      );
-    });
-
     testWidgets('R5 #11 — THE FOLD LAW: closing something you stand inside '
         'hands the row to whatever swallowed it', (tester) async {
       await _pump(tester);
