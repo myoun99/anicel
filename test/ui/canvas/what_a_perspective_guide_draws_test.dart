@@ -154,7 +154,12 @@ void main() {
 
       final stems = lines.where(isStem).toList();
       expect(stems, hasLength(1));
-      expect(stems.single.paint.strokeWidth, 1.6 * 2, reason: 'picked: 1.6');
+      // A paint keeps its width in 32 bits.
+      expect(
+        stems.single.paint.strokeWidth,
+        closeTo(1.6 * 2, 1e-6),
+        reason: 'picked: 1.6',
+      );
       const rays = defaultGuideLineDensity;
       const lanes = defaultGuideLineDensity * 2 + 1;
       expect(
