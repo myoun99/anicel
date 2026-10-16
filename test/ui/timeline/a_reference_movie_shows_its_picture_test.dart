@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/import/import_file_settings.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// A hydrate that never answers must FAIL here, not hang the suite — the
@@ -229,12 +230,13 @@ void main() {
         cutId: s.requireActiveCut.id,
         aroundFrameIndex: 10,
       );
-      final deadline = DateTime.now().add(_answersWithin);
-      while (pictureAt(s, layer, 10) == null) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('the warmer composed frame 10 without its movie picture');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 20));
+      final pictured = await pollUntil(
+        () => pictureAt(s, layer, 10) != null,
+        patience: _answersWithin,
+        beat: const Duration(milliseconds: 20),
+      );
+      if (!pictured) {
+        fail('the warmer composed frame 10 without its movie picture');
       }
     });
 

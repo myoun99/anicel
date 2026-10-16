@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A SAVE ITS FILE REFUSED SAYS SO THEN — WHY, AND WHERE THE WORK
@@ -228,12 +229,17 @@ void main() {
       unawaited(
         backUpFailedCopy(context, session, copy: copy).then((_) => done = true),
       );
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (!done && DateTime.now().isBefore(deadline)) {
-        await tester.pump(const Duration(milliseconds: 16));
-        said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(
+        () async {
+          if (done) {
+            return true;
+          }
+          await tester.pump(const Duration(milliseconds: 16));
+          said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
+          return false;
+        },
+        beat: const Duration(milliseconds: 5),
+      );
     });
 
     expect(done, isTrue, reason: 'the backup never came back');
@@ -272,12 +278,17 @@ void main() {
       unawaited(
         backUpFailedCopy(context, session, copy: copy).then((_) => done = true),
       );
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (!done && DateTime.now().isBefore(deadline)) {
-        await tester.pump(const Duration(milliseconds: 16));
-        said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(
+        () async {
+          if (done) {
+            return true;
+          }
+          await tester.pump(const Duration(milliseconds: 16));
+          said = said || find.byKey(saidBackedUp).evaluate().isNotEmpty;
+          return false;
+        },
+        beat: const Duration(milliseconds: 5),
+      );
     });
 
     expect(done, isTrue, reason: 'the backup never came back');
@@ -351,13 +362,15 @@ void main() {
     await tester.pump(const Duration(minutes: 1));
     final notice = find.byKey(const ValueKey<String>('save-failure-notice'));
     // A real save crosses into an isolate, which needs real time.
-    await tester.runAsync(() async {
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (notice.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
-    });
+    await tester.runAsync(
+      () => pollUntil(
+        () async {
+          await tester.pump();
+          return notice.evaluate().isNotEmpty;
+        },
+        beat: const Duration(milliseconds: 5),
+      ),
+    );
 
     expect(notice, findsOneWidget);
     expect(session.projectFile.failedCopy, isNotNull);

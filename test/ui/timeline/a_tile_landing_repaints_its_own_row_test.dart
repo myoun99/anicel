@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨I-22 ③: A LANDED TILE REPAINTS ITS OWN ROW.
@@ -92,9 +93,11 @@ void main() {
   }
 
   Future<void> idle() async {
-    while (store.debugBusy) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    expect(
+      await pollUntil(() => !store.debugBusy),
+      isTrue,
+      reason: 'the store never went idle',
+    );
   }
 
   setUp(() {
@@ -224,9 +227,7 @@ void main() {
     show(a, () => paintRow(a, 4));
 
     paintRow(a, 4);
-    while (out.isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    await pollUntil(() => out.isNotEmpty);
     paintRow(a, 4);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(out, hasLength(1), reason: 'its one tile is out once, not twice');
@@ -319,14 +320,10 @@ void main() {
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     final b = painterFor(rowLayer('b', frames: 4), frames: 4);
     paintRow(a, 4);
-    while (out.isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    await pollUntil(() => out.isNotEmpty);
     // Asked for while the first drain is out: a second drain takes it.
     paintRow(b, 4);
-    while (out.length < 2) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    expect(await pollUntil(() => out.length >= 2), isTrue);
     land(0);
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(store.debugBusy, isTrue, reason: "b's raster is still out");
@@ -362,17 +359,11 @@ void main() {
       landing.complete(recorder.endRecording().toImageSync(width, height));
     }
 
-    Future<void> until(bool Function() done) async {
-      for (var wait = 0; wait < 500 && !done(); wait += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    }
-
     final a = painterFor(rowLayer('a', frames: 4), frames: 4);
     var landings = 0;
     show(a, () => landings += 1);
     paintRow(a, 4);
-    await until(() => out.isNotEmpty);
+    await pollUntil(() => out.isNotEmpty);
     expect(out, hasLength(1), reason: 'premise: its one tile is out');
 
     // What a test's tear-down does — a widget test's clock never lets that
@@ -380,7 +371,7 @@ void main() {
     store.clear();
     expect(store.debugBusy, isFalse, reason: 'the raster out is not counted');
     paintRow(a, 4);
-    await until(() => out.length > 1);
+    await pollUntil(() => out.length > 1);
     expect(out, hasLength(2), reason: 'its key is asked for again at once');
 
     land(0);

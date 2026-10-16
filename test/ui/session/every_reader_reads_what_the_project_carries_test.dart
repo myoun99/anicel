@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/import_preview_probe.dart';
 import '../../helpers/psd_fixture.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// Card `carried-bytes-every-reader` — the SAME question the viewer asks
@@ -205,12 +206,7 @@ void main() {
             ),
           ),
         );
-        for (var i = 0; i < 60 && tester.importPreviewImage == null; i += 1) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)),
-          );
-          await tester.pump();
-        }
+        await settleAsync(tester, () => tester.importPreviewImage != null);
         expect(tester.importPreviewImage, isNotNull);
 
         await tester.pumpWidget(const SizedBox());

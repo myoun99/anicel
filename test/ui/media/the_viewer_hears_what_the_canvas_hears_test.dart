@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 
 /// 🚨★★★**THE VIEWER HEARS WHAT THE CANVAS HEARS**
 /// (viewer-plays-by-the-one-playback-law ④-b).
@@ -58,17 +59,6 @@ void main() {
     ),
     log: (_) {},
   );
-
-  Future<bool> waitFor(bool Function() check) async {
-    final deadline = DateTime.now().add(const Duration(seconds: 3));
-    while (DateTime.now().isBefore(deadline)) {
-      if (check()) {
-        return true;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
-    return check();
-  }
 
   Future<(QaAudioDevice, ViewerSound)> playing({
     int correction = 0,
@@ -156,7 +146,7 @@ void main() {
     const correction = rate ~/ 10;
     final (device, sound) = await playing(correction: correction);
     expect(
-      await waitFor(
+      await pollUntil(
         () => device.clockPoint != null && device.positionSamples > rate ~/ 5,
       ),
       isTrue,
@@ -190,7 +180,7 @@ void main() {
     final (device, sound) = await playing(frames: frames);
 
     expect(
-      await waitFor(() => sound.heardAt()?.ended ?? false),
+      await pollUntil(() => sound.heardAt()?.ended ?? false),
       isTrue,
       reason: 'a sound played to its end is over',
     );

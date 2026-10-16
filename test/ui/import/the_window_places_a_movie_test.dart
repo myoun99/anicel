@@ -78,17 +78,6 @@ void main() {
     return s;
   }
 
-  /// Real IO and the conform run in `runAsync`; their answers land on the
-  /// pumps after.
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 100 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
-  }
-
   /// What a cell reads — a button's word, or the dash of a question that
   /// does not apply.
   String cellText(WidgetTester tester, String column, String path) {
@@ -272,7 +261,7 @@ void main() {
   ) async {
     final movie = await writeMovie(tester, 'take.mp4');
     await open(tester, [movie]);
-    await settle(
+    await settleAsync(
       tester,
       () =>
           cellText(tester, 'option', movie) ==
@@ -324,7 +313,7 @@ void main() {
   ) async {
     final movie = await writeMovie(tester, 'talk.mp4');
     await open(tester, [movie]);
-    await settle(
+    await settleAsync(
       tester,
       () => tester.any(
         find.byKey(ValueKey<String>('import-cell-option-$movie')),
@@ -358,7 +347,7 @@ void main() {
     );
     await tester.pump();
 
-    await settle(
+    await settleAsync(
       tester,
       () => tester.any(
         find.byKey(ValueKey<String>('import-cell-option-$movie')),
@@ -430,7 +419,7 @@ void main() {
     int? frames() => tester.any(find.byType(TransportBar))
         ? tester.widget<TransportBar>(find.byType(TransportBar)).frameCount
         : null;
-    await settle(tester, () => frames() == 24);
+    await settleAsync(tester, () => frames() == 24);
 
     expect(frames(), 24);
   });
@@ -447,7 +436,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     // The run STARTS on a later pump — wait for what the run leaves behind,
     // then for the wait window it stands behind to go.
-    await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+    await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
@@ -480,7 +469,7 @@ void main() {
       [movie],
       backend: FakeVideoBackend(frameCount: 24),
     );
-    await settle(
+    await settleAsync(
       tester,
       () => tester.any(find.byKey(ValueKey<String>('import-cell-option-$movie'))),
     );
@@ -500,7 +489,7 @@ void main() {
       reason: 'the column stands by the file\'s kind — only its cell went '
           'blank, so nothing pops out when the answer changes',
     );
-    await settle(
+    await settleAsync(
       tester,
       () => tester.any(
         find.byKey(const ValueKey<String>('import-preview-marks')),
@@ -513,7 +502,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+    await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
@@ -558,7 +547,7 @@ void main() {
       },
     );
     final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
-    await settle(tester, () => tester.any(cell));
+    await settleAsync(tester, () => tester.any(cell));
 
     expect(cellText(tester, 'option', movie), 'Sound only');
     expect(
@@ -569,7 +558,7 @@ void main() {
     expect(cellText(tester, 'bake', movie), '—', reason: 'no picture comes');
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+    await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
@@ -603,7 +592,7 @@ void main() {
       ),
     );
     final cell = find.byKey(ValueKey<String>('import-cell-option-$movie'));
-    await settle(tester, () => tester.any(cell));
+    await settleAsync(tester, () => tester.any(cell));
     expect(cellText(tester, 'option', movie), 'Picture only', reason: 'its seed');
 
     await tester.ensureVisible(cell);

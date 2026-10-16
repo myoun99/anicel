@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/canvas/float_warp.dart'
     show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 
+import '../../helpers/settle_async.dart';
+
 /// I-37 — ONE BOX CARRIES EVERY FLOAT.
 ///
 /// 유저 2026-10-02: 「폴더 전체를 하나로 들도록」. A folder's lift floats one
@@ -203,15 +205,12 @@ void main() {
     env.commands.editTransformValues((now) => now.copyWith(sx: 2, sy: 2));
     await tester.pump();
     // The decodes are real: let them land.
-    final watch = Stopwatch()..start();
-    while ((env.slotA.value?.image == null ||
-            env.slotB.value?.image == null) &&
-        watch.elapsed < const Duration(seconds: 15)) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          env.slotA.value?.image != null && env.slotB.value?.image != null,
+      beat: const Duration(milliseconds: 10),
+    );
 
     final shownA = env.slotA.value;
     final shownB = env.slotB.value;

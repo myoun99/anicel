@@ -38,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'panel_finders.dart';
+import 'settle_async.dart';
 
 /// THE TEXT TOOL, DRIVEN ON THE REAL APP (R9-rest): the project it works
 /// on, the baker that stands in for the engine, and the few verbs a test
@@ -197,17 +198,14 @@ Future<void> pumpFrames(WidgetTester tester, [int frames = 6]) async {
 /// is let pass, and what it answered is then let run, until the text on
 /// screen is the text wanted.
 Future<void> settleWithTheEngine(WidgetTester tester) async {
-  for (var turn = 0; turn < 100; turn += 1) {
+  bool settled() {
     final session = textToolOf(tester).session;
-    if (session == null || session.settled) {
-      return;
-    }
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
-    await tester.pump();
+    return session == null || session.settled;
   }
-  fail('the engine did not set the text');
+
+  if (!await settleAsync(tester, settled)) {
+    fail('the engine did not set the text');
+  }
 }
 
 EditorSessionManager sessionOf(WidgetTester tester) =>

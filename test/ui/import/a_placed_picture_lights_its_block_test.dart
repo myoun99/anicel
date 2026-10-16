@@ -126,17 +126,11 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
+    await settleAsync(tester, () {
       final landed = session.layerById(row.id)!;
-      if (landed.timeline[cell] != null &&
-          session.layerStack.celHasContentForLayer(landed, cell)) {
-        break;
-      }
-    }
+      return landed.timeline[cell] != null &&
+          session.layerStack.celHasContentForLayer(landed, cell);
+    });
     await tester.pumpAndSettle();
     expect(
       session.layerStack.celHasContentForLayer(session.layerById(row.id)!, cell),

@@ -57,6 +57,8 @@ import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
+import '../helpers/poll_until.dart';
+import '../helpers/settle_async.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -412,25 +414,25 @@ void main() {
   ///
   /// Fails loudly on timeout rather than falling through to an assertion
   /// that would blame the code.
+  ///
+  /// ↩️It ran its own stopwatch, 15 s, until 2026-10-16 — the wait is
+  /// [settleAsync]'s now, and so is its ceiling ([waitPatience]).
   Future<void> pumpUntil(
     WidgetTester tester,
     bool Function() ready, {
     required String reason,
-    Duration timeout = const Duration(seconds: 15),
   }) async {
-    final watch = Stopwatch()..start();
-    while (!ready()) {
-      if (watch.elapsed > timeout) {
-        fail(
-          'timed out after ${timeout.inSeconds}s waiting for $reason — the '
-          'pipeline never got there, which is a real failure and not a '
-          'slow machine',
-        );
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    final came = await settleAsync(
+      tester,
+      ready,
+      beat: const Duration(milliseconds: 10),
+    );
+    if (!came) {
+      fail(
+        'timed out after ${waitPatience.inSeconds}s waiting for $reason — '
+        'the pipeline never got there, which is a real failure and not a '
+        'slow machine',
       );
-      await tester.pump();
     }
   }
 

@@ -133,7 +133,6 @@ void main() {
         await settleAsync(
           tester,
           () => bar(tester).currentFrame > 0,
-          attempts: 150,
           step: tick,
           // A movie's pictures follow its sound (`MediaRun`): the device
           // plays on as time passes, or the picture stands with it.
@@ -190,7 +189,7 @@ void main() {
       await settleAsync(tester, () => asksForFive() > 0);
       fake.held.remove(5);
       // Nothing asks again by itself: nothing is playing, so no tick forgets.
-      await settleAsync(tester, () => asksForFive() > 1, attempts: 10);
+      await lendBothClocks(tester, rounds: 10);
       expect(asksForFive(), 1, reason: 'fixture: the refusal is remembered');
 
       bar(tester).onSeek(5);
@@ -347,7 +346,6 @@ void main() {
       await settleAsync(
         tester,
         () => bar(tester).currentFrame > 0,
-        attempts: 150,
         step: tick,
       ),
       isTrue,

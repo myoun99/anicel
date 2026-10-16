@@ -113,12 +113,7 @@ void main() {
     ];
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100 && added().isEmpty; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => added().isNotEmpty);
     await tester.pumpAndSettle();
     s.playbackRig.prerenderScheduler.cancel();
     return added();
@@ -537,12 +532,7 @@ void main() {
         for (final id in runLayers())
           if (!before.contains(id)) id,
       ];
-      for (var tries = 0; tries < 100 && brought().length < 2; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump();
-      }
+      await settleAsync(tester, () => brought().length >= 2);
       await tester.pumpAndSettle();
 
       expect(brought(), hasLength(2), reason: 'each row brings its own');

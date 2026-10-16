@@ -37,6 +37,7 @@ import '../helpers/census_where_textures_are_ram.dart';
 import '../helpers/draw_on_current_frame.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/settle_async.dart';
 import '../models/import/tvpp_test_builder.dart';
 
 /// I-7 through the window (유저 2026-09-26): 「여러 프로젝트 열수있게할거야 …
@@ -381,15 +382,11 @@ void main() {
     await mouse.moveTo(tester.getCenter(recents));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-    for (var attempt = 0; attempt < 200; attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      if (find.text(AppText.strings.commonNotice).evaluate().isNotEmpty) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    await settleAsync(
+      tester,
+      () => find.text(AppText.strings.commonNotice).evaluate().isNotEmpty,
+      step: const Duration(milliseconds: 50),
+    );
     expect(
       find.text(AppText.strings.commonNotice),
       findsOneWidget,
@@ -438,22 +435,17 @@ void main() {
     ];
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-open')));
-    for (var attempt = 0; attempt < 200; attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      if (projects.active.projectFile.path == path) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    await settleAsync(
+      tester,
+      () => projects.active.projectFile.path == path,
+      step: const Duration(milliseconds: 50),
+    );
     expect(projects.active.projectFile.path, path, reason: 'CONTROL: opened');
-    for (var frame = 0; frame < 20; frame += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-    }
+    await settleAsync(
+      tester,
+      () => tool.value.tool == CanvasTool.eraser,
+      step: const Duration(milliseconds: 100),
+    );
     expect(tool.value.tool, CanvasTool.eraser);
   });
 
@@ -476,15 +468,11 @@ void main() {
     final before = projects.sessions.length;
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-open')));
-    for (var attempt = 0; attempt < 200; attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      if (projects.sessions.length > before) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    await settleAsync(
+      tester,
+      () => projects.sessions.length > before,
+      step: const Duration(milliseconds: 50),
+    );
   }
 
   testWidgets('a .tvpp opened from the menu opens in a tab of its own — a NEW '

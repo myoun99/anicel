@@ -19,6 +19,7 @@ import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/font_file_fixture.dart';
 import '../../../helpers/font_library_in_memory.dart';
 import '../../../helpers/project_scratch_folder.dart';
+import '../../../helpers/settle_async.dart';
 
 /// R9-rest (the text tool's faces): THE REAL APP KEEPS THE DEVICE'S FONTS
 /// — the workspace reads their index, stands them as the run's faces, and
@@ -60,13 +61,11 @@ void main() {
     WidgetTester tester,
     bool Function() done,
   ) async {
-    for (var turn = 0; turn < 100 && !done(); turn += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
-    expect(done(), isTrue, reason: 'the engine did not answer');
+    expect(
+      await settleAsync(tester, done),
+      isTrue,
+      reason: 'the engine did not answer',
+    );
   }
 
   testWidgets('🚨the fonts this device was brought are the run\'s faces '

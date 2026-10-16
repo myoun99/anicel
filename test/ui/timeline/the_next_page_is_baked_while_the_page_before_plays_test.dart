@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨A RUN'S NEXT PAGE IS BAKED WHILE IT PLAYS THE PAGE BEFORE (유저
@@ -123,9 +124,11 @@ void main() {
   }
 
   Future<void> idle() async {
-    while (store.debugBusy) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    expect(
+      await pollUntil(() => !store.debugBusy),
+      isTrue,
+      reason: 'the store never went idle',
+    );
   }
 
   /// Every span [painter] asks for on the page its axis turns to next.
@@ -598,9 +601,7 @@ void main() {
       quiet = (fromMicros: 5000, untilMicros: 1000000);
 
       paintRow(painter);
-      for (var turn = 0; turn < 200 && waits.isEmpty; turn += 1) {
-        await pumpEventQueue();
-      }
+      await pollUntil(() => waits.isNotEmpty);
 
       final (:shown, :ahead) = painter.tileSpans;
       expect(uploads, shown.length, reason: 'the shown spans, at once');
@@ -628,9 +629,7 @@ void main() {
       show(painter);
       quiet = (fromMicros: 5000, untilMicros: 1000000);
       paintRow(painter);
-      for (var turn = 0; turn < 200 && waits.isEmpty; turn += 1) {
-        await pumpEventQueue();
-      }
+      await pollUntil(() => waits.isNotEmpty);
       final shownBefore = painter.tileSpans.shown.length;
       final waiting = painter.tileSpans.ahead.single;
       expect(uploads, shownBefore, reason: '⛔premise: it waits for the quiet');
@@ -639,9 +638,7 @@ void main() {
       bucket.value = 1;
       expect(painter.tileSpans.shown, contains(waiting), reason: '⛔premise');
       paintRow(painter);
-      for (var turn = 0; turn < 200 && uploads == shownBefore; turn += 1) {
-        await pumpEventQueue();
-      }
+      await pollUntil(() => uploads != shownBefore);
       expect(uploads, shownBefore + 1, reason: 'shown now: at once');
       clock = 5000;
       waits.single.$2.complete();
@@ -775,9 +772,7 @@ void main() {
       );
 
       store.warmTheNextPage(tiles: 2);
-      for (var i = 0; i < 200 && uploads == 0; i += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(() => uploads > 0);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(uploads, 1, reason: 'the GPU is not done with the first');
 
@@ -812,9 +807,7 @@ void main() {
       store.quietTurns = turns;
 
       store.warmTheNextPage(tiles: 2);
-      for (var i = 0; i < 200 && uploads == 0; i += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(() => uploads > 0);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final other = turns.inThisQuiet(QuietSpan(), gone: () => false);
       gpu.complete();

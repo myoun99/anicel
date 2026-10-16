@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/text/word_condensation.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/dart_sources.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/word_bakes.dart';
 
 /// F-224 — a narrowed word is drawn from its bake.
@@ -354,12 +355,7 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 400 && held.length < 2; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => held.length >= 2);
     expect(held.length, 2, reason: 'fixture: both words reached the upload');
     final narrow = held[0].width < held[1].width ? 0 : 1;
     final shortBefore = short.value;
@@ -436,12 +432,7 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 400 && uploads < 2; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => uploads >= 2);
     expect(
       uploads,
       2,
@@ -532,12 +523,11 @@ void main() {
     // What the paint laid out is let go: the bake holds its recording.
     word.dispose();
     final before = BakedWords.instance.debugLandingFrames;
-    for (var i = 0; i < 10; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 5),
+    );
     expect(
       BakedWords.instance.debugLandingFrames,
       before,
@@ -615,12 +605,7 @@ void main() {
     void paintIt(Canvas canvas) =>
         paintFittedText(canvas, word, Offset.zero, (x: 0.25, y: 1.0));
     expect(paintIt, paints..paragraph());
-    for (var i = 0; i < 400 && refused == 0; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 5)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => refused > 0);
     expect(refused, 1, reason: 'fixture: the bake reached the upload');
     await tester.pump();
     expect(paintIt, paints..paragraph());

@@ -39,6 +39,7 @@ import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -211,14 +212,8 @@ void main() {
 
   /// The decode runs in `runAsync`; its answers land on the pumps after —
   /// which carry the clock too, so the window's own timers run out.
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 300 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 20));
-    }
-  }
+  Future<void> settle(WidgetTester tester, bool Function() done) =>
+      settleAsync(tester, done, step: const Duration(milliseconds: 20));
 
   testWidgets('one row: its file beside its POOL state, and the one cel it '
       'bakes (「bg_street.png · 참조」 · 「래스터라이즈 · 1장」)', (tester) async {

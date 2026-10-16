@@ -135,15 +135,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     final window = find.byKey(const ValueKey<String>('import-dialog'));
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (window.evaluate().isEmpty) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => window.evaluate().isEmpty);
     await tester.pumpAndSettle();
     s.playbackRig.prerenderScheduler.cancel();
   }

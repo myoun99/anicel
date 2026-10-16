@@ -66,6 +66,7 @@ import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 void main() {
   const side = 32;
@@ -171,21 +172,20 @@ void main() {
   /// and the real base describes the picture on screen. A move measured
   /// before that would see the decode's own dirty tile in its rect.
   Future<void> settle(WidgetTester tester, DisplayBufferCache cache) async {
+    // Two rounds running in which nothing was stored or promoted.
     var quiet = 0;
-    for (var round = 0; round < 20 && quiet < 2; round += 1) {
-      final stores = cache.fullCount + cache.patchedCount;
-      final promoted = cache.promotedCount;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 30)),
-      );
-      await tester.pump();
+    int? stores;
+    int? promoted;
+    final settled = await settleAsync(tester, () async {
       await bytesNow(tester);
-      quiet = cache.fullCount + cache.patchedCount == stores &&
-              cache.promotedCount == promoted
-          ? quiet + 1
-          : 0;
-    }
-    expect(quiet, 2, reason: 'fixture: the buffer never settled');
+      final storesNow = cache.fullCount + cache.patchedCount;
+      final promotedNow = cache.promotedCount;
+      quiet = storesNow == stores && promotedNow == promoted ? quiet + 1 : 0;
+      stores = storesNow;
+      promoted = promotedNow;
+      return quiet >= 2;
+    });
+    expect(settled, isTrue, reason: 'fixture: the buffer never settled');
   }
 
   /// The cold composite of [painter] as it stands: a fresh view, a fresh

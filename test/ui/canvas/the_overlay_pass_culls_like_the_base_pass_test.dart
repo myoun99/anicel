@@ -13,6 +13,8 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 
+import '../../helpers/poll_until.dart';
+
 /// 🚨★★★**THE OVERLAY PASS DREW EVERY COORDINATE THE STROKE EVER
 /// TOUCHED.** The committed pass walks `tilesUnderRect(surface,
 /// visibleRect)` and has since the walk went visible-only; the overlay
@@ -85,12 +87,7 @@ void main() {
       );
     }
 
-    for (var attempt = 0; attempt < 100; attempt += 1) {
-      if (model.tileImages.length >= 2) {
-        break;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-    }
+    await pollUntil(() => model.tileImages.length >= 2);
     expect(
       model.tileImages.length,
       2,

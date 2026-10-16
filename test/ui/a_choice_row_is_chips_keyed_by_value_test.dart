@@ -61,13 +61,12 @@ void main() {
           ),
         ),
       );
-      // A loose file is probed (identity, size) before the window can say
-      // what it is offering; real IO runs in runAsync and its awaits are
-      // fake-zone microtasks that only pump() drains.
-      for (var i = 0; i < 8; i += 1) {
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
-      }
+      // ↩️Eight rounds of real IO stood here, for 「a loose file is probed
+      // (identity, size) before the window can say what it is offering」.
+      // Every caller hands a FOLDER, which the window reads in its first
+      // frame (`_reparseFolder`, synchronous) and previews nothing of — the
+      // rounds waited for nothing (a-poll-that-counts-rounds-runs-out-under-
+      // load, 2026-10-16).
     }
 
     /// A delivery folder — the settings column is the FOLDER column (a

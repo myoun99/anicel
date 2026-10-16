@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'poll_until.dart';
+
 /// Removes [directory] and lets the OS keep it if it will not let go.
 ///
 /// 🚨**CLEANING UP IS NOT A TEST'S RESULT (2026-09-16).** Windows holds a
@@ -127,17 +129,19 @@ Future<List<String>> whatTheRunLeftIn(
 
 /// Deletes [entity], asking again while something holds it and [until] has
 /// not passed.
-Future<bool> _goneBefore(FileSystemEntity entity, DateTime until) async {
-  while (true) {
-    try {
-      entity.deleteSync(recursive: true);
-      return true;
-    } on FileSystemException {
-      if (DateTime.now().isAfter(until)) {
-        return false;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-    }
+Future<bool> _goneBefore(FileSystemEntity entity, DateTime until) =>
+    pollUntil(
+      () => _deleted(entity),
+      patience: until.difference(DateTime.now()),
+      beat: const Duration(milliseconds: 100),
+    );
+
+bool _deleted(FileSystemEntity entity) {
+  try {
+    entity.deleteSync(recursive: true);
+    return true;
+  } on FileSystemException {
+    return false;
   }
 }
 

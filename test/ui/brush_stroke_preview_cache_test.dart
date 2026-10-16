@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
 import '../helpers/census_where_textures_are_ram.dart';
+import '../helpers/poll_until.dart';
 
 /// UI-R18 R18-B: the stroke-preview raster moved into an app-wide LRU
 /// image cache filled off the UI isolate — a preset rasterizes ONCE per
@@ -131,13 +132,10 @@ void main() {
       expect(find.byType(RawImage), findsNothing);
 
       // Let the isolate raster + upload land, then rebuild.
-      for (var attempt = 0; attempt < 200; attempt += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+      await pollUntil(() async {
         await tester.pump();
-        if (find.byType(RawImage).evaluate().isNotEmpty) {
-          break;
-        }
-      }
+        return find.byType(RawImage).evaluate().isNotEmpty;
+      });
     });
     expect(find.byType(RawImage), findsOneWidget);
   });

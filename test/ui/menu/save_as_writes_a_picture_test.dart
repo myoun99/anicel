@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/png_chunks.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재 보이는대로
 /// png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로 클립하는건
@@ -101,21 +102,24 @@ void main() {
     ];
     final labels = <String>[];
     var placedWindow = false;
-    for (var turn = 0; turn < 600 && !done(); turn += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-      for (final word in words) {
-        if (!labels.contains(word) && find.text(word).evaluate().isNotEmpty) {
-          labels.add(word);
+    await settleAsync(
+      tester,
+      done,
+      beat: const Duration(milliseconds: 10),
+      step: const Duration(milliseconds: 16),
+      everyFrame: () {
+        for (final word in words) {
+          if (!labels.contains(word) &&
+              find.text(word).evaluate().isNotEmpty) {
+            labels.add(word);
+          }
         }
-      }
-      placedWindow |= find
-          .byKey(const ValueKey<String>('save-placed-dialog'))
-          .evaluate()
-          .isNotEmpty;
-    }
+        placedWindow |= find
+            .byKey(const ValueKey<String>('save-placed-dialog'))
+            .evaluate()
+            .isNotEmpty;
+      },
+    );
     return (labels: labels, placedWindow: placedWindow);
   }
 

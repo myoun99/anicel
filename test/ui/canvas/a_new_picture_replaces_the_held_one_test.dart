@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../../helpers/settle_async.dart';
+
 void main() {
   const tileSize = 16;
   const key = BrushFrameKey(
@@ -185,14 +187,11 @@ void main() {
     // Nothing warmed: the sync sweep misses and the ASYNC pass adopts, so
     // the repaint it asks for is what puts the new cel on screen.
     await pumpStack(tester, cache);
-    var pixel = await centrePixel(tester);
-    for (var i = 0; i < 30 && pixel[0] < 128; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
+    late List<int> pixel;
+    await settleAsync(tester, () async {
       pixel = await centrePixel(tester);
-    }
+      return pixel[0] >= 128;
+    });
     expect(
       pixel[0],
       greaterThan(128),

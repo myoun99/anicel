@@ -176,10 +176,10 @@ void main() {
           ),
         ),
       );
-      for (var i = 0; i < 8; i += 1) {
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
-      }
+      // ↩️Rounds of real IO stood here and after the press: a folder is read
+      // in the window's first frame and its switch re-reads it in the same
+      // `setState` (`_reparseFolder`, synchronous), so they waited for
+      // nothing (a-poll-that-counts-rounds-runs-out-under-load, 2026-10-16).
       const tile = ValueKey<String>('import-subfolders-toggle');
       final before = tester.booleanDotIn(find.byKey(tile)).value;
       final label = find.descendant(
@@ -189,10 +189,7 @@ void main() {
 
       await tester.ensureVisible(label);
       await tester.tap(label);
-      for (var i = 0; i < 4; i += 1) {
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
-      }
+      await tester.pump();
 
       expect(
         tester.booleanDotIn(find.byKey(tile)).value,

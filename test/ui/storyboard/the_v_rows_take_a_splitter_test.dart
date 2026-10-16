@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
+import '../../helpers/settle_async.dart';
 
 const _default = StoryboardPanel.defaultTrackLaneHeight;
 const _key = 'storyboardTrackLaneHeight';
@@ -70,17 +71,6 @@ Set<double> _laneHeights(WidgetTester tester) {
   };
 }
 
-/// Real IO steps complete in real time and continue on the fake clock:
-/// alternate the two until [done] holds.
-Future<void> _settleIo(WidgetTester tester, bool Function() done) async {
-  for (var tries = 0; tries < 40 && !done(); tries += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
-  }
-}
-
 /// The layout file once the debounced save has written what [wanted]
 /// looks for — or, if it never does, the last file read.
 Future<Map<String, Object?>?> _saved(
@@ -91,14 +81,11 @@ Future<Map<String, Object?>?> _saved(
   // The save is debounced 800 ms behind the last change.
   await tester.pump(const Duration(milliseconds: 900));
   Map<String, Object?>? payload;
-  bool written() => payload != null && wanted(payload);
-  for (var tries = 0; tries < 40 && !written(); tries += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
-    payload = await tester.runAsync<Map<String, Object?>?>(store.load);
-  }
+  await settleAsync(tester, () async {
+    final read = await tester.runAsync<Map<String, Object?>?>(store.load);
+    payload = read;
+    return read != null && wanted(read);
+  });
   return payload;
 }
 
@@ -209,10 +196,10 @@ void main() {
     unawaited(
       store.save({...written!, _key: kept}).then((_) => landed = true),
     );
-    await _settleIo(tester, () => landed);
+    await settleAsync(tester, () => landed);
     expect(landed, isTrue, reason: '⛔전제: the kept height is on the file');
     await _openStoryboard(tester, store, window: const Size(1600, 1800));
-    await _settleIo(tester, () => _laneHeights(tester).first != _default);
+    await settleAsync(tester, () => _laneHeights(tester).first != _default);
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
       const Offset(0, -420),
@@ -258,7 +245,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
     await _openStoryboard(tester, store);
-    await _settleIo(tester, () => _laneHeights(tester).first != _default);
+    await settleAsync(tester, () => _laneHeights(tester).first != _default);
     expect(_laneHeights(tester), {_default + 40});
 
     await tapPanelsDrawerRow(tester, 'menu-window-reset-layout');

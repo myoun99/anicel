@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 
 /// playback-plays-the-screen-material ② (10-09): where the canvas shows a
 /// cut, a frame's picture is the canvas's own — each row an image of its
@@ -540,12 +541,7 @@ void main() {
         final making = pictures
             .make(at(0), shouldAbort: () => false)
             .then((landed) => made = landed);
-        for (var i = 0; i < 200; i += 1) {
-          if (held(images, 'a', PlaybackQuality.full)) {
-            break;
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 5));
-        }
+        await pollUntil(() => held(images, 'a', PlaybackQuality.full));
         await pumpEventQueue();
         expect(held(images, 'a', PlaybackQuality.full), isTrue);
         expect(made, isFalse, reason: 'banked, but the GPU is not done with it');

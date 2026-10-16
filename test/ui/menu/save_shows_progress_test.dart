@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🔑 THE WIRING — the part the user actually presses.
@@ -70,17 +71,22 @@ void main() {
       // Polled rather than sampled once: a small project saves fast, and a
       // single look after a fixed number of pumps would be a race about
       // machine speed rather than about the window.
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (!done && DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        if (find
-            .byKey(const ValueKey<String>('save-progress-dialog'))
-            .evaluate()
-            .isNotEmpty) {
-          sawWindow = true;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(
+        () async {
+          if (done) {
+            return true;
+          }
+          await tester.pump();
+          if (find
+              .byKey(const ValueKey<String>('save-progress-dialog'))
+              .evaluate()
+              .isNotEmpty) {
+            sawWindow = true;
+          }
+          return false;
+        },
+        beat: const Duration(milliseconds: 5),
+      );
     });
     await tester.pump();
     await tester.pump();
@@ -148,30 +154,35 @@ void main() {
 
     await tester.runAsync(() async {
       await tester.tap(find.text('go'));
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (!done && DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        final window = find.byType(AppProgressDialog);
-        if (window.evaluate().isNotEmpty) {
-          if (!listening) {
-            // Every change of the window's line, frames or none.
-            listening = true;
-            final line = tester
-                .widget<AppProgressDialog>(window)
-                .runningStatus!;
-            line.addListener(() => lines.add(line.value));
+      await pollUntil(
+        () async {
+          if (done) {
+            return true;
           }
-          final label = tester
-              .widget<Text>(
-                find.byKey(const ValueKey<String>('app-progress-label')),
-              )
-              .data!;
-          if (labels.isEmpty || labels.last != label) {
-            labels.add(label);
+          await tester.pump();
+          final window = find.byType(AppProgressDialog);
+          if (window.evaluate().isNotEmpty) {
+            if (!listening) {
+              // Every change of the window's line, frames or none.
+              listening = true;
+              final line = tester
+                  .widget<AppProgressDialog>(window)
+                  .runningStatus!;
+              line.addListener(() => lines.add(line.value));
+            }
+            final label = tester
+                .widget<Text>(
+                  find.byKey(const ValueKey<String>('app-progress-label')),
+                )
+                .data!;
+            if (labels.isEmpty || labels.last != label) {
+              labels.add(label);
+            }
           }
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+          return false;
+        },
+        beat: const Duration(milliseconds: 5),
+      );
     });
     await tester.pump();
     await tester.pump();

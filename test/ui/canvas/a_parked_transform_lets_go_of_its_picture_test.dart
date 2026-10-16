@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/collect_garbage.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★A CONFIRMED TRANSFORM WHOSE UNDO ENTRY WAS PARKED HOLDS NONE OF
 /// THE PICTURE IT WOULD UNDO TO (C-ipad-crash ①, 2026-09-15).
@@ -201,12 +202,7 @@ void main() {
     // a future that nothing could complete, and a run sat idle for six
     // minutes (2026-09-15). Real time lets the parking isolate answer, the
     // pump lets the zone take the answer.
-    for (var i = 0; i < 50 && history.retainedBytes >= held; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => history.retainedBytes < held);
     expect(
       history.retainedBytes,
       lessThan(held),

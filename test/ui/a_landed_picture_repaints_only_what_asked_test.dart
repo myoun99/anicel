@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/solid_png_fixture.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/poll_until.dart';
 
 /// A picture that LANDS repaints the painters that asked for it and
 /// rebuilds nothing — in the workspace as it is wired, with its own store.
@@ -132,9 +133,7 @@ void main() {
           width: 4,
           height: 4,
         );
-        for (var t = 0; t < 200 && cache.imageFor(path) == null; t += 1) {
-          await Future<void>.delayed(const Duration(milliseconds: 5));
-        }
+        await pollUntil(() => cache.imageFor(path) != null);
         if (cache.decodedBytes < read * 64) {
           return cache.decodedBytes;
         }

@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨F-244 (유저 2026-09-30: 「타임라인 블록 관련 조작이 너무 느림 … 무거운
@@ -409,13 +410,13 @@ void main() {
       var landings = 0;
       store.revision.addListener(() => landings += 1);
       Future<void> waitIdle() async {
-        final deadline = DateTime.now().add(const Duration(seconds: 30));
         await Future<void>.delayed(Duration.zero);
-        while (store.debugBusy) {
-          if (DateTime.now().isAfter(deadline)) {
-            fail('timed out waiting for the drain ($landings landings)');
-          }
-          await Future<void>.delayed(const Duration(milliseconds: 5));
+        final idle = await pollUntil(
+          () => !store.debugBusy,
+          beat: const Duration(milliseconds: 5),
+        );
+        if (!idle) {
+          fail('timed out waiting for the drain ($landings landings)');
         }
       }
 

@@ -221,15 +221,11 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     // Real IO completes inside runAsync, but the await CONTINUATIONS are
     // fake-zone microtasks that only pump() drains — interleave the two.
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          s.repository.requireProject().tracks.first.cuts.length > cutsBefore,
+    );
     await tester.pumpAndSettle();
 
     final track = s.repository.requireProject().tracks.first;
@@ -267,15 +263,10 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.requireActiveCut.layers.length > layersBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () => s.requireActiveCut.layers.length > layersBefore,
+    );
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
@@ -434,15 +425,7 @@ void main() {
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (var tries = 0; tries < 100; tries += 1) {
-        if (s.mediaPool.mediaAssets.isNotEmpty) {
-          break;
-        }
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump();
-      }
+      await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
       await tester.pumpAndSettle();
       s.playbackRig.prerenderScheduler.cancel();
     }
@@ -602,15 +585,11 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          s.repository.requireProject().tracks.first.cuts.length > cutsBefore,
+    );
     await tester.pumpAndSettle();
 
     final track = s.repository.requireProject().tracks.first;
@@ -689,16 +668,10 @@ void main() {
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (
-      var tries = 0;
-      tries < 100 && importWarningsButton.evaluate().isEmpty;
-      tries += 1
-    ) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () => importWarningsButton.evaluate().isNotEmpty,
+    );
     await tester.pumpAndSettle();
     final notice = await openImportWarnings(tester);
 
@@ -913,15 +886,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (var tries = 0; tries < 100; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (!tester.any(find.text('Importing…'))) {
-          break;
-        }
-      }
+      await settleAsync(tester, () => !tester.any(find.text('Importing…')));
       await tester.pumpAndSettle();
 
       expect(
@@ -1203,16 +1168,12 @@ void main() {
     // The CUT lands before its pages are drawn — the structure is
     // committed first and the bakes follow — so waiting for the cut alone
     // would read the render log half-written.
-    for (var tries = 0; tries < 200; tries += 1) {
-      if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore &&
-          piece.renderRequests.length >= 2) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () =>
+          s.repository.requireProject().tracks.first.cuts.length > cutsBefore &&
+          piece.renderRequests.length >= 2,
+    );
     await tester.pumpAndSettle();
 
     final cut = s.repository.requireProject().tracks.first.cuts.firstWhere(
@@ -1307,12 +1268,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     int cutCount() => s.repository.requireProject().tracks.first.cuts.length;
-    for (var tries = 0; tries < 200 && cutCount() == cutsBefore; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => cutCount() != cutsBefore);
     await tester.pumpAndSettle();
 
     // Named for the file: no piece was cut to lend it a span's name.
@@ -1375,12 +1331,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     List<MediaAsset> pool() => s.repository.requireProject().mediaAssets;
-    for (var tries = 0; tries < 200 && pool().isEmpty; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => pool().isNotEmpty);
     await tester.pumpAndSettle();
 
     expect(cutFrom, [(pdfPath, 1, 2)], reason: 'cut out of the original');
@@ -1469,15 +1420,10 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.requireActiveCut.layers.length > layersBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(
+      tester,
+      () => s.requireActiveCut.layers.length > layersBefore,
+    );
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);
@@ -1529,17 +1475,14 @@ void main() {
     );
     expect(cancel, findsOneWidget, reason: 'the stop stands throughout');
 
-    var checked = false;
-    for (var tries = 0; tries < 400 && !checked; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-      await tester.pump(const Duration(milliseconds: 20));
-      checked = find
+    final checked = await settleAsync(
+      tester,
+      () => find
           .byKey(const ValueKey<String>('app-progress-done'))
           .evaluate()
-          .isNotEmpty;
-    }
+          .isNotEmpty,
+      step: const Duration(milliseconds: 20),
+    );
     expect(checked, isTrue, reason: 'it says it is over');
     expect(cancel, findsOneWidget, reason: 'still standing — not gone');
     expect(
@@ -1589,15 +1532,8 @@ void main() {
       of: waitWindow,
       matching: find.textContaining(cloudLine),
     );
-    Future<bool> pumpUntil(bool Function() done) async {
-      for (var tries = 0; tries < 60 && !done(); tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump(const Duration(milliseconds: 300));
-      }
-      return done();
-    }
+    Future<bool> pumpUntil(bool Function() done) =>
+        settleAsync(tester, done, step: const Duration(milliseconds: 300));
 
     expect(
       await pumpUntil(() => lineThere.evaluate().isNotEmpty),
@@ -1690,17 +1626,14 @@ void main() {
       of: waitWindow,
       matching: find.textContaining(cloudLine),
     );
-    var waited = false;
-    for (var tries = 0; tries < 40 && !waited; tries += 1) {
-      // Real time for the file probes, and the FAKE clock moved forward
-      // for the wait's own pacing — a bare pump leaves it where it was,
-      // the 250ms step never elapses, and the test measures nothing.
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      waited = lineThere.evaluate().isNotEmpty;
-    }
+    // Real time for the file probes, and the FAKE clock moved forward for
+    // the wait's own pacing — a bare pump leaves it where it was, the 250ms
+    // step never elapses, and the test measures nothing.
+    final waited = await settleAsync(
+      tester,
+      () => lineThere.evaluate().isNotEmpty,
+      step: const Duration(milliseconds: 300),
+    );
     expect(
       waited,
       isTrue,
@@ -1774,15 +1707,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (var tries = 0; tries < 100; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-        if (!tester.any(find.text('Importing…'))) {
-          break;
-        }
-      }
+      await settleAsync(tester, () => !tester.any(find.text('Importing…')));
       await tester.pumpAndSettle();
       session.playbackRig.prerenderScheduler.cancel();
       return session;

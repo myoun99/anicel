@@ -8,6 +8,8 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 
+import '../../helpers/settle_async.dart';
+
 /// 🗣️F-271 (유저 2026-10-08, 정정): 「흰색말고 투명인채로 하는데, 격자무늬가
 /// 아니라 브러시 프리뷰에서 쓰는것마냥 뒤 패널색이 되는것? 즉 뒤가 비치도록.」
 ///
@@ -37,7 +39,8 @@ void main() {
   }
 
   /// The preview of [piece] over a panel of [panel], as ARGB pixels in rows,
-  /// once its image has been decoded and drawn — or after five seconds.
+  /// once its image has been decoded and drawn — or once [settleAsync]'s
+  /// patience has run out.
   Future<List<int>> pixelsOver(
     WidgetTester tester,
     CutPiece piece,
@@ -62,14 +65,9 @@ void main() {
         ),
       ),
     );
-    final until = DateTime.now().add(const Duration(seconds: 5));
     late List<int> pixels;
-    do {
-      // The piece decodes off the fake clock.
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
+    // The piece decodes off the fake clock.
+    await settleAsync(tester, () async {
       final image = tester
           .renderObject<RenderRepaintBoundary>(find.byKey(capture))
           .toImageSync();
@@ -85,7 +83,8 @@ void main() {
         ];
       });
       image.dispose();
-    } while (!pixels.contains(red) && DateTime.now().isBefore(until));
+      return pixels.contains(red);
+    });
     return pixels;
   }
 

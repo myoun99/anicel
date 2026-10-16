@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import '../helpers/poll_until.dart';
 import 'storyboard_cut_block_probe.dart';
 
 /// R4-⑩ regression probe: storyboard cut blocks must show their rendered
@@ -25,13 +26,10 @@ void main() {
 
       // Let the async thumbnail render land (real ui.Image work needs
       // runAsync), then rebuild.
-      for (var attempt = 0; attempt < 20; attempt += 1) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      await pollUntil(() async {
         await tester.pump();
-        if (cutBlocks(tester).first.thumbnails.first != null) {
-          break;
-        }
-      }
+        return cutBlocks(tester).first.thumbnails.first != null;
+      });
 
       expect(
         cutBlocks(tester).first.thumbnails.first,

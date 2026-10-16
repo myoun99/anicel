@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// UI-R18 O7 T2: the substrate tile store — engine-gated stand-down,
@@ -312,9 +313,7 @@ void main() {
       ),
       isNull,
     );
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
     final image = store.tileFor(
       painter: painter,
       spanStartIndex: 0,
@@ -390,9 +389,7 @@ void main() {
       ),
       isNull,
     );
-    while (landings == 0) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings > 0);
 
     final image = store.tileFor(
       painter: painter,
@@ -436,9 +433,7 @@ void main() {
       same(image),
       reason: 'stale-while-revalidate for look-only changes',
     );
-    while (landings == hits) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings != hits);
     final fresh = store.tileFor(
       painter: stylePainter,
       spanStartIndex: 0,
@@ -465,9 +460,7 @@ void main() {
       same(fresh),
       reason: 'R26 #27: stale-while-revalidate covers content edits too',
     );
-    while (landings == beforeEdit) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => landings != beforeEdit);
     final reRastered = store.tileFor(
       painter: editedPainter,
       spanStartIndex: 0,
@@ -546,11 +539,8 @@ void main() {
     // test left in flight can bump the revision first.
     final plain = painterFor(layer, store: store);
     expect(tile(plain), isNull, reason: 'cold');
-    var first = tile(plain);
-    while (first == null) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      first = tile(plain);
-    }
+    await pollUntil(() => tile(plain) != null);
+    final first = tile(plain);
 
     final grounded = painterFor(
       layer,
@@ -562,9 +552,7 @@ void main() {
       same(first),
       reason: 'stale-while-revalidate for a new paper ground too',
     );
-    while (identical(tile(grounded), first)) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
+    await pollUntil(() => !identical(tile(grounded), first));
     expect(
       tile(grounded),
       isNotNull,
@@ -649,16 +637,15 @@ void main() {
       TimelineRowCellsPainter painter,
       ui.Image? stale,
     ) async {
-      final deadline = DateTime.now().add(const Duration(seconds: 20));
-      var image = tile(painter);
-      while (image == null || identical(image, stale)) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('no fresh tile landed — the key does not see the change');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-        image = tile(painter);
+      bool fresh() {
+        final image = tile(painter);
+        return image != null && !identical(image, stale);
       }
-      return image;
+
+      if (!await pollUntil(fresh)) {
+        fail('no fresh tile landed — the key does not see the change');
+      }
+      return tile(painter)!;
     }
 
     // ONE fact moves per step: the switch alone, then the fps alone — a key

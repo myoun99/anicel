@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/export/png_sequence_export_service.dart'
     show ExportWriteSummary;
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// A video run that goes as far as the test says: it holds the window's own
@@ -142,9 +143,7 @@ void main() {
     run.report = null;
     await tester.runAsync(() async {
       whole = start();
-      while (run.report == null) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
+      await pollUntil(() => run.report != null);
     });
     await tester.pump();
     return (whole: whole);

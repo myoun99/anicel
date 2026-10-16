@@ -177,7 +177,6 @@ void main() {
     await settleAsync(
       tester,
       () => sound.holds > 0,
-      attempts: 150,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
@@ -218,7 +217,6 @@ void main() {
     await settleAsync(
       tester,
       () => sound.resumes > 0,
-      attempts: 150,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
@@ -261,7 +259,6 @@ void main() {
     await settleAsync(
       tester,
       () => fake.asked.contains(1),
-      attempts: 150,
       step: tick,
     );
     expect(
@@ -309,8 +306,8 @@ void main() {
     await pressPlay(tester);
     // Every frame lands while no time passes, so what follows is the clock
     // and never a wait for a frame.
-    await settleAsync(tester, () => fake.asked.contains(11), attempts: 150);
-    await settleAsync(tester, () => false, attempts: 5);
+    await settleAsync(tester, () => fake.asked.contains(11));
+    await lendBothClocks(tester, rounds: 5);
 
     const look = Duration(microseconds: 16667);
     var looked = 0;
@@ -366,7 +363,6 @@ void main() {
     await settleAsync(
       tester,
       () => sound.holds > 0,
-      attempts: 150,
       step: tick,
       everyFrame: () => sound.playOn(tick),
     );
@@ -377,7 +373,6 @@ void main() {
     await settleAsync(
       tester,
       () => sound.resumes > 0,
-      attempts: 150,
       step: tick,
     );
 

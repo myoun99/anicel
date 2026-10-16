@@ -27,6 +27,7 @@ import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/poll_until.dart';
 
 /// 🗣️I-14 (유저 2026-09-11): 「뷰어패널은 기본적으로 드로잉모드 존재안하니
 /// 한손가락 핑거시 팬 … 그리고 뷰어패널의 잘라내기툴 사용 가능하도록.
@@ -416,11 +417,9 @@ void main() {
     expect(was.renderRequests.last.$1, 1, reason: 'page 2 is being drawn');
 
     await saveProject(tester, carried, directory);
-    for (var i = 0; i < 20 && !was.disposed; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-    }
+    // Real time ALONE — no frame: the next build would ask for the page
+    // before the answer below is given.
+    await tester.runAsync(() => pollUntil(() => was.disposed));
     expect(was.disposed, isTrue, reason: 'the premise: the viewer followed');
     // Failed BEFORE the next build asks for the page: an answer from the
     // document let go of must not stand for the one on screen now.

@@ -9,6 +9,7 @@ import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// PICK-4: the Recent projects rows in the Project popover.
@@ -101,16 +102,15 @@ void main() {
     var seen = false;
     await tester.runAsync(() async {
       await tester.tap(find.byKey(ValueKey<String>('menu-recent-$path')));
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        final up = window.evaluate().isNotEmpty;
-        seen = seen || up;
-        if (seen && !up) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(
+        () async {
+          await tester.pump();
+          final up = window.evaluate().isNotEmpty;
+          seen = seen || up;
+          return seen && !up;
+        },
+        beat: const Duration(milliseconds: 5),
+      );
     });
     await tester.pumpAndSettle();
     return seen;

@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/session/project_file.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/staged_carry.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 🚨★★★**A READER THAT KEEPS READING FOLLOWS WHAT THE SAVE ABSORBED.**
@@ -49,15 +50,6 @@ void main() {
   /// The file under test, held BY ITS OWN TYPE — `tool/mutation_run.dart`
   /// picks a file's witnesses by what its tests import.
   ProjectFile fileOf(EditorSessionManager session) => session.projectFile;
-
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var i = 0; i < 60 && !done(); i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
-  }
 
   group('the hold says when its bytes moved', () {
     testWidgets('a staged copy the save absorbs — moved', (tester) async {
@@ -245,7 +237,7 @@ void main() {
     movies.events.clear();
 
     await saveProject(tester, session, directory);
-    await settle(tester, () => !File(staged).existsSync());
+    await settleAsync(tester, () => !File(staged).existsSync());
 
     expect(
       File(staged).existsSync(),
@@ -274,7 +266,7 @@ void main() {
       tester,
     );
     await saveProject(tester, session, directory);
-    await settle(tester, () => !File(staged).existsSync());
+    await settleAsync(tester, () => !File(staged).existsSync());
     final first = fileOf(session).path!;
     expect(movies.openedAt.last.path, first, reason: 'the premise');
 
@@ -285,7 +277,7 @@ void main() {
         asked: SaveAsked.byAPerson,
       ),
     );
-    await settle(tester, () => movies.openedAt.last.path == elsewhere);
+    await settleAsync(tester, () => movies.openedAt.last.path == elsewhere);
 
     expect(movies.openedAt.last.path, elsewhere);
     expect(
@@ -308,11 +300,14 @@ void main() {
     await saveProject(tester, session, directory);
     // The new answer is held the moment it is asked for, before the decoder
     // is: one entry held means the follow is waiting at the decoder.
-    await settle(tester, () => fileOf(session).heldArchiveEntries.isNotEmpty);
+    await settleAsync(
+      tester,
+      () => fileOf(session).heldArchiveEntries.isNotEmpty,
+    );
     expect(fileOf(session).heldArchiveEntries, hasLength(1));
     await tester.runAsync(() => session.movieCels.dispose());
     opening.complete();
-    await settle(tester, () => fileOf(session).heldArchiveEntries.isEmpty);
+    await settleAsync(tester, () => fileOf(session).heldArchiveEntries.isEmpty);
 
     expect(
       fileOf(session).heldArchiveEntries,
@@ -338,7 +333,7 @@ void main() {
     );
 
     await saveProject(tester, session, directory);
-    await settle(tester, () => refused > 0);
+    await settleAsync(tester, () => refused > 0);
     await tester.pump();
 
     expect(refused, greaterThan(0), reason: 'the premise: it tried');
@@ -429,7 +424,7 @@ void main() {
         tester,
       );
       await saveProject(tester, session, directory);
-      await settle(tester, () => !File(staged).existsSync());
+      await settleAsync(tester, () => !File(staged).existsSync());
       final first = carryIn(session, path)!;
       // The row goes with the asset; the canvas keeps its movie open — for
       // an undo that brings both back.
@@ -447,7 +442,7 @@ void main() {
           asked: SaveAsked.byAPerson,
         ),
       );
-      await settle(tester, () => movies.openedAt.last.path == elsewhere);
+      await settleAsync(tester, () => movies.openedAt.last.path == elsewhere);
 
       final entry = parseAnicelZipLayoutFile(
         elsewhere,
@@ -546,13 +541,13 @@ void main() {
         tester,
       );
       await saveProject(tester, session, directory);
-      await settle(tester, () => !File(staged).existsSync());
+      await settleAsync(tester, () => !File(staged).existsSync());
       final file = fileOf(session).path!;
       tearTheTail(file);
       movies.events.clear();
 
       await saveProject(tester, session, directory);
-      await settle(tester, () => movies.events.length >= 2);
+      await settleAsync(tester, () => movies.events.length >= 2);
 
       expect(movies.events, [
         'close $file',

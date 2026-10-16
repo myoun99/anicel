@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/sheet/sheet_image_cache.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/the_file_itself.dart';
 
@@ -51,13 +52,6 @@ void main() {
     return file.path;
   }
 
-  /// Real time, not pumped time: the decode is off in the engine.
-  Future<void> settle(bool Function() done) async {
-    for (var i = 0; i < 200 && !done(); i += 1) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-  }
-
   testWidgets('the first ask MISSES, and the image is there when it says so', (
     tester,
   ) async {
@@ -76,7 +70,7 @@ void main() {
       );
       expect(loaded, 0, reason: 'nothing has landed yet');
 
-      await settle(() => loaded > 0);
+      await pollUntil(() => loaded > 0);
 
       expect(loaded, 1, reason: 'the host has to be told exactly once');
       expect(
@@ -99,7 +93,7 @@ void main() {
       final missing = '${dir.path}/gone.png';
 
       expect(cache.imageFor(missing), isNull);
-      await settle(() => loaded > 0);
+      await pollUntil(() => loaded > 0);
 
       expect(
         cache.imageFor(missing),
@@ -128,7 +122,7 @@ void main() {
       // for nothing and would hand back a second image nobody disposes.
       cache.imageFor(path);
       cache.imageFor(path);
-      await settle(() => loaded > 0);
+      await pollUntil(() => loaded > 0);
 
       expect(loaded, 1, reason: 'one decode, one notification');
     });

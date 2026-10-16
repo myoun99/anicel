@@ -10,6 +10,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
+import '../helpers/poll_until.dart';
+
 BitmapTile _gradientTile({required TileCoord coord, int size = 4}) {
   final pixels = Uint8List(size * size * BitmapTile.bytesPerPixel);
   for (var y = 0; y < size; y += 1) {
@@ -33,12 +35,10 @@ Future<ui.Image> _awaitDecode(
   BitmapTile tile,
 ) async {
   cache.pictureFor(tile);
-  for (var attempt = 0; attempt < 100; attempt += 1) {
-    final image = cache.imageFor(tile);
-    if (image != null) return image;
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+  if (!await pollUntil(() => cache.imageFor(tile) != null)) {
+    fail('Tile image decode did not complete.');
   }
-  fail('Tile image decode did not complete.');
+  return cache.imageFor(tile)!;
 }
 
 Future<Uint8List> _paintPixels(

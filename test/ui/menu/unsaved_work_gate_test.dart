@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/poll_until.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The one question both doors ask before a session is torn down:
@@ -182,11 +184,13 @@ void main() {
       });
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(ValueKey<String>(buttonKey)));
-      final deadline = DateTime.now().add(const Duration(seconds: 30));
-      while (!done && DateTime.now().isBefore(deadline)) {
-        await tester.pump();
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await pollUntil(
+        () async {
+          await tester.pump();
+          return done;
+        },
+        beat: const Duration(milliseconds: 5),
+      );
       await future;
     });
     await tester.pump();
@@ -365,18 +369,16 @@ void main() {
     await tester.pump();
     // The open hops to a background isolate, which the fake clock never
     // advances — lend the real loop until the tab on screen holds it.
-    for (var attempt = 0; attempt < 200; attempt += 1) {
-      await tester.pump();
-      final shown = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
-      if (shown.projectFile.path == path) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    await settleAsync(
+      tester,
+      () =>
+          tester
+              .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+              .session
+              .projectFile
+              .path ==
+          path,
+    );
     // The window lingers with its check for `appProgressDoneLinger`, and a
     // window still up would swallow the next tap. Both clocks are advanced
     // until it is gone.

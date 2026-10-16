@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/three_frame_gif.dart';
 import '../../helpers/named_finders.dart';
 
@@ -210,12 +211,7 @@ void main() {
 
   /// Lets the swap's read and bake land.
   Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 100 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, done);
     await tester.pumpAndSettle();
   }
 

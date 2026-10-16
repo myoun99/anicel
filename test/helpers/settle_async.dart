@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:anicel/src/ui/media/viewer_page_loading.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Interleaves REAL time with pumped time until [ready], and answers whether
-/// it came.
+import 'poll_until.dart';
+
+/// Interleaves REAL time with pumped time until [ready], or until
+/// [patience] has gone by, and answers whether it came.
 ///
 /// 🚨★★★**A PUMPED CLOCK DOES NOT DECODE AN IMAGE, NOR FINISH REAL IO.** A
 /// page render ends in an engine decode on a real thread, and a file read
@@ -16,29 +20,65 @@ import 'package:flutter_test/flutter_test.dart';
 /// of these, one per file that met it, each spelled a little differently.
 ///
 /// [step] is the pumped time per round — a run's tick, where the run has
-/// to move on between them. [everyFrame] watches each frame drawn on the
-/// way.
+/// to move on between them — and [beat] the real time before it. [everyFrame]
+/// watches each frame drawn on the way, or answers what the frame put up (a
+/// notice to close). [ready] may read the disk itself — inside `runAsync`,
+/// as any real IO in a widget test.
 ///
-/// ⚠️[attempts] is generous where a test waits for something to LAND. Real
-/// time means real load: at 60×10ms one file passed alone and failed inside
-/// a 317-test run, which is a flake, and a flaky nail is not a nail. Where a
-/// test waits for something NOT to happen, a shorter window is honest and
-/// keeps the suite quick.
+/// ↩️It counted `attempts` until 2026-10-16 — 「generous where a test waits
+/// for something to LAND … where a test waits for something NOT to happen,
+/// a shorter window is honest」. That one number answered two questions;
+/// the second is [lendBothClocks] now, and this one waits by [waitPatience].
 Future<bool> settleAsync(
   WidgetTester tester,
-  bool Function() ready, {
-  int attempts = 60,
+  FutureOr<bool> Function() ready, {
+  Duration patience = waitPatience,
+  Duration beat = _beat,
   Duration step = Duration.zero,
-  void Function()? everyFrame,
+  FutureOr<void> Function()? everyFrame,
 }) async {
-  for (var i = 0; i < attempts && !ready(); i += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
-    await tester.pump(step);
-    everyFrame?.call();
+  final deadline = DateTime.now().add(patience);
+  while (!await ready()) {
+    if (!DateTime.now().isBefore(deadline)) {
+      return false;
+    }
+    await _lendBoth(tester, beat, step, everyFrame);
   }
-  return ready();
+  return true;
+}
+
+/// Lends both clocks [rounds] times, each round [beat] of real time and
+/// then a frame [step] on: the window a test watches for something NOT to
+/// happen in.
+///
+/// ⛔**A NUMBER OF ROUNDS, NOT A TIME** — the other way round from
+/// [settleAsync], because it answers the other question. Under load fewer
+/// rounds fit in a time, and a window that sees less passes what it is
+/// there to catch: a clock here would turn a real failure into a pass on a
+/// busy machine.
+Future<void> lendBothClocks(
+  WidgetTester tester, {
+  required int rounds,
+  Duration beat = _beat,
+  Duration step = Duration.zero,
+  FutureOr<void> Function()? everyFrame,
+}) async {
+  for (var round = 0; round < rounds; round += 1) {
+    await _lendBoth(tester, beat, step, everyFrame);
+  }
+}
+
+const _beat = Duration(milliseconds: 20);
+
+Future<void> _lendBoth(
+  WidgetTester tester,
+  Duration beat,
+  Duration step,
+  FutureOr<void> Function()? everyFrame,
+) async {
+  await tester.runAsync(() => Future<void>.delayed(beat));
+  await tester.pump(step);
+  await everyFrame?.call();
 }
 
 /// Lands what the surfaces showing a document's pages asked for — in real
