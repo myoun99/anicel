@@ -7,6 +7,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart'
     show cutDrawnFrameCount, cutMediaStartFrame;
+import '../../services/playback/behind_its_clock.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/playback/playhead_way.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -132,10 +133,12 @@ class CanvasPlaybackController extends ChangeNotifier
   /// goes on onto the next frame, however far its clock is ahead, and puts
   /// its clock back to it — the sound with it ([onSeeked]). Null = it keeps
   /// time, dropping the frames it is late for ([playheadWay]). The first
-  /// look after its clock starts is not behind it ([_clockLooked]).
+  /// look after its clock starts is not behind it ([_behind]).
   ///
   /// 🗣️유저 2026-10-15 (F-364-Q1 b): 「하나도 안 건너뛴다 — 소리를 그림에 다시
-  /// 맞춘다」 — the run that waits for its pictures, the default.
+  /// 맞춘다」 — the run that waits for its pictures, the default; and
+  /// 10-16 (F-364-every-picture-even-when-late-Q1 a), the run that renders
+  /// first too (`PlaybackPictureWait.showsEveryPicture`).
   bool Function()? showsEveryPicture;
 
   /// Fired on every explicit seek with the clamped target frame — and where
@@ -204,21 +207,12 @@ class CanvasPlaybackController extends ChangeNotifier
   PlaybackLoopMode _loopMode = PlaybackLoopMode.loop;
   int _baseGlobalFrame = 0;
 
-  /// Whether the run's clock has been looked at since it was started
-  /// ([_startTicker]): its first look is its start, and says nothing of how
-  /// late the app is ([showsEveryPicture]).
-  ///
-  /// 🚨THE FIRST LOOK AFTER A START IS NEVER LATENESS (F-364-Q1 b). The
-  /// device starts AT that look (`FirstLookStart`) and the wall clock counts
-  /// from it, so no tick the app was long in is in it — only how far the
-  /// sound is heard ahead of the picture by then: a frame is shown
-  /// refreshes after its tick, and the user's correction is on top
-  /// (`HeardOnTheDevice`). Two frames ahead, a run that showed every picture
-  /// by that look would put its clock back, find it two frames ahead at the
-  /// next first look, and put it back again — a frame a look, the sound
-  /// started afresh at every one. (Why the sound is ahead at a start at
-  /// all: board a-start-is-heard-ahead-of-its-first-picture.)
-  bool _clockLooked = false;
+  /// Whether the run is behind its clock at a look and shows every picture
+  /// ([showsEveryPicture]) — never at the first look after its clock starts
+  /// ([_startTicker]).
+  late final BehindItsClock _behind = BehindItsClock(
+    () => showsEveryPicture?.call() ?? false,
+  );
   int _currentGlobalFrame = 0;
   int _droppedFrames = 0;
 
@@ -527,7 +521,7 @@ class CanvasPlaybackController extends ChangeNotifier
       return;
     }
     _baseGlobalFrame = _currentGlobalFrame;
-    _clockLooked = false;
+    _behind.clockStarts();
     _clock.start(vsync);
   }
 
@@ -560,9 +554,7 @@ class CanvasPlaybackController extends ChangeNotifier
         resolveAudioClock?.call(frameTime: frameShownAt()) ??
         _wallClock(elapsed, total);
     final shown = _currentGlobalFrame;
-    final everyPicture =
-        _clockLooked && (showsEveryPicture?.call() ?? false);
-    _clockLooked = true;
+    final everyPicture = _behind.look();
     if (says.ended && _loopMode == PlaybackLoopMode.once) {
       _endAt(total, everyPicture: everyPicture);
     } else {
@@ -600,7 +592,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// The clock says [frame]. The run goes there — unless a frame on the way
   /// has no picture yet, and then it stands before THAT frame ([waitsOn],
   /// [playheadWay]) — or it shows [everyPicture] and goes on one frame
-  /// ([showsEveryPicture], [_clockLooked]).
+  /// ([showsEveryPicture], [_behind]).
   void _goTo(int frame, int total, {required bool everyPicture}) {
     final (:stands, :passed, :waitsFor) = playheadWay(
       from: _currentGlobalFrame,

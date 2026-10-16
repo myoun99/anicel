@@ -189,14 +189,22 @@ class ViewerSound {
 
   /// Starts (or picks back up) at [fromSeconds] on the schedule already
   /// uploaded — on the run's first look ([FirstLookStart]: [keepStreaming],
-  /// [heardAt]). ⛔Not a seek: the streaming window is where [play] centred
-  /// it, and a jump far from there would read past its edge.
+  /// [heardAt]) — with the streaming window centred there first where it
+  /// does not hold it ([AudioStreamingWindow.cover]): a run behind its clock
+  /// puts its sound back as far as the app was late (`MediaRun`).
+  /// ↩️It was 「not a seek」, picking up only where the window already was.
   void resume(double fromSeconds) {
     final device = _device;
     if (device == null) {
       return;
     }
     final startSample = _startSample = (fromSeconds * _deviceRate).round();
+    _window.cover(
+      startSample,
+      device: device,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+    );
     _start.arm(() {
       device.play(startSample: startSample, stopSample: _endSample);
       _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);

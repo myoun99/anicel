@@ -7,6 +7,7 @@ import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
+import '../../services/playback/behind_its_clock.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_picture_wait.dart';
 import '../../services/playback/playhead_way.dart';
@@ -138,6 +139,12 @@ class MediaRun {
     },
     aheadIsFilled: () => _readAhead.restingAt == _page,
   );
+
+  /// Whether the run is behind its clock at a look and shows every picture
+  /// — as its setting does ([PlaybackPictureWait.showsEveryPicture]), never
+  /// at the first look after its clock starts: a press, a parked run going
+  /// on, a clock put back ([_putTheClockBackTo]).
+  late final BehindItsClock _behind = BehindItsClock(_wait.showsEveryPicture);
 
   /// Where the sound has got to, in seconds — the playhead's position on
   /// the waveform.
@@ -466,6 +473,7 @@ class MediaRun {
       _film.startAt(
         turnsItsOwnPages ? _page / _surface.document!.framesPerSecond! : 0,
       );
+      _behind.clockStarts();
       _runs(true);
     });
   }
@@ -534,19 +542,24 @@ class MediaRun {
   /// ([playheadWay], viewer-plays-by-the-one-playback-law ④). The clock is
   /// the sound while it is heard, the run's own span otherwise
   /// ([_filmSecondsAtThisLook]). A clock that got ahead — a busy frame — is
-  /// followed to its page, and the pages on the way that are there drop:
-  /// time never stretches, as the canvas's never does. The way stops before
+  /// not followed over a page: the run goes on onto the next one and its
+  /// clock is put back to it, the sound with it ([BehindItsClock],
+  /// [_putTheClockBackTo]; 유저 2026-10-16, F-364-every-picture-even-when-
+  /// late-Q1 a: 「재생 전 굽기도 안 건너뛴다(뷰어도)」). The way stops before
   /// a page that is not there, and the run parks on the page it stands on —
-  /// the canvas's too ([playheadWay], F-365-Q1). ↩️This said the CANVAS did
-  /// the opposite, holding real time and dropping frames while this
-  /// buffered; then that the two parted on where a waiting run stands, the
-  /// canvas on the frame it waited for.
+  /// the canvas's too ([playheadWay], F-365-Q1). ↩️A clock that got ahead
+  /// was followed to its page and the pages on the way dropped, as the
+  /// canvas's did while its run kept time; before that this said the
+  /// CANVAS did the opposite, holding real time and dropping frames while
+  /// this buffered; then that the two parted on where a waiting run stands,
+  /// the canvas on the frame it waited for.
   void _turnThePage() {
     final fps = _surface.document!.framesPerSecond!;
     if (buffering && !_goesOn(fps)) {
       return;
     }
     final due = (_filmSecondsAtThisLook() * fps + _sliver).floor();
+    final everyPicture = _behind.look();
     // Its time not come: the page on screen stays.
     if (due <= _page) {
       return;
@@ -555,16 +568,32 @@ class MediaRun {
       _surface.setState(stop);
       return;
     }
+    final to = math.min(due, _pageCount - 1);
     final (:stands, passed: _, :waitsFor) = playheadWay(
       from: _page,
-      to: math.min(due, _pageCount - 1),
+      to: to,
       total: _pageCount,
       waitsOn: (page) => _wait.holds(page, placed: false),
+      everyPicture: everyPicture,
     );
     _surface.turnToPage(stands);
     if (waitsFor != null) {
       _park();
+    } else if (stands != to) {
+      _putTheClockBackTo(stands / fps);
     }
+  }
+
+  /// The run went on onto a page short of where its clock got to
+  /// ([BehindItsClock]), and its clock is put back to it at [seconds]: the
+  /// span counts on from there, and the sound picks up there — as a parked
+  /// run goes on ([_goesOn]), and as the canvas's transport is moved by the
+  /// seek its run fires (`CanvasPlaybackController.onSeeked`).
+  void _putTheClockBackTo(double seconds) {
+    soundSeconds = seconds;
+    sound.resume(seconds);
+    _film.spanFrom(seconds);
+    _behind.clockStarts();
   }
 
   /// Whether a parked run goes on at this look — and when it does, the
@@ -582,6 +611,7 @@ class MediaRun {
     // Goes on from here: the page it turns to has a whole frame's time, as
     // if the clock had been stopped and started.
     _film.spanFrom((_page + 1) / fps);
+    _behind.clockStarts();
     _surface.setState(() => buffering = false);
     return true;
   }

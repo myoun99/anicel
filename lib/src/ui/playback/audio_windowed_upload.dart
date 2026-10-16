@@ -86,6 +86,35 @@ class AudioStreamingWindow {
               centerSample + (reach.aheadSeconds * deviceRate) ~/ 2 ||
           positionSamples < centerSample - reach.backSeconds * deviceRate);
 
+  /// Before a device plays from [startSample] — a seek's arm, a drag's
+  /// slice, a run put back to its picture: this window centred on it again
+  /// where it wants to be ([wantsRecentreAt]), a small read where the start
+  /// is. Where that upload fails nothing moved ([upload]), and the start
+  /// plays out of the window as it stands.
+  ///
+  /// 🚨ONE LAW for every surface that starts a device somewhere — the
+  /// transport, the scrubber and the media viewer's sound. ↩️The transport
+  /// and the scrubber each asked [wantsRecentreAt] and uploaded themselves,
+  /// and the viewer's sound did not: it picked up only where its window
+  /// already was, until a run behind its clock had its sound put back
+  /// (F-364-every-picture-even-when-late-Q1 a) — as far back as the app
+  /// was late.
+  void cover(
+    int startSample, {
+    required QaAudioDevice? device,
+    required AudioConformStore conformStore,
+    required int deviceRate,
+  }) {
+    if (wantsRecentreAt(startSample, deviceRate)) {
+      upload(
+        device: device,
+        conformStore: conformStore,
+        deviceRate: deviceRate,
+        centerSample: startSample,
+      );
+    }
+  }
+
   /// An advance is out — polls cannot stack disk reads.
   bool _advancing = false;
 

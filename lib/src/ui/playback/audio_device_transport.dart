@@ -373,9 +373,12 @@ class AudioDeviceTransport {
     // re-centred, and a run going on from where its activation had just
     // centred the window read and copied it twice: 🔬66ms and a GC on the
     // AMMI OP press (play-press-first-frame-stall, 10-15).
-    if (_window.wantsRecentreAt(startSample, _deviceRate)) {
-      _uploadWindow(startSample);
-    }
+    _window.cover(
+      startSample,
+      device: device,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+    );
     _armDevice(device, startSample: startSample, looping: loop && frame == 0);
   }
 

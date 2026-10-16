@@ -127,6 +127,17 @@ void main() {
     await tester.pump();
   }
 
+  /// Opens a movie, presses play and lets every page land while no time
+  /// passes, so what follows is the clock and never a wait for a page —
+  /// the sound has not moved, and the run stands on its first page.
+  Future<void> playEveryPageLanded(WidgetTester tester) async {
+    final fake = await openMovie(tester);
+    await pressPlay(tester);
+    await settleAsync(tester, () => fake.asked.contains(11));
+    await lendBothClocks(tester, rounds: 5);
+    expect(slot.position.value, 0, reason: 'fixture: no sound played yet');
+  }
+
   /// The door itself. ⛔Without this the tests below can pass for the wrong
   /// reason: the play button appears for anything that CARRIES sound, so a
   /// movie that never opened still gets one.
@@ -304,14 +315,9 @@ void main() {
   testWidgets('🚨a movie\'s pictures keep its SOUND\'s time — and a sound '
       'that ends before them hands the film on to the clock, from where it '
       'ended', (tester) async {
-    final fake = await openMovie(tester);
     // The track is half the movie: the device ends six frames in.
     sound.length = 0.25;
-    await pressPlay(tester);
-    // Every frame lands while no time passes, so what follows is the clock
-    // and never a wait for a frame.
-    await settleAsync(tester, () => fake.asked.contains(11));
-    await lendBothClocks(tester, rounds: 5);
+    await playEveryPageLanded(tester);
 
     const look = Duration(microseconds: 16667);
     var looked = 0;
@@ -353,6 +359,104 @@ void main() {
           'quarter second, fifteen looks — a clock that kept the time the '
           'device was late would jump to the end',
     );
+  });
+
+  testWidgets('🚨a movie whose sound got ahead of its picture — a busy frame '
+      '— shows the next page all the same, and its sound is put back to it '
+      '(F-364-every-picture-even-when-late-Q1 a)', (tester) async {
+    await playEveryPageLanded(tester);
+    final resumes = sound.resumes;
+    const look = Duration(microseconds: 16667);
+
+    // The device played on through a look the app was half a second late.
+    sound.playOn(const Duration(milliseconds: 500));
+    await tester.pump(look);
+
+    expect(
+      slot.position.value,
+      1,
+      reason: '유저 2026-10-16: 「재생 전 굽기도 안 건너뛴다(뷰어도)」 — the page '
+          'after 0, where the sound is heard at 12',
+    );
+    expect(sound.resumes, resumes + 1);
+    expect(
+      sound.resumedFrom.last,
+      closeTo(1 / 24, 1e-12),
+      reason: '「소리를 그림에 다시 맞춘다」 — the sound put back to the page it '
+          'went on onto',
+    );
+
+    for (var i = 0; i < 3; i += 1) {
+      sound.playOn(look);
+      await tester.pump(look);
+    }
+    expect(slot.position.value, 2, reason: 'and the picture plays on with it');
+    expect(sound.resumes, resumes + 1, reason: 'on time: nothing put back');
+    await pressPlay(tester);
+  });
+
+  testWidgets('🚨a movie whose sound is heard pages ahead of its picture at '
+      'every start is not put back at every look: the first look after its '
+      'clock starts — a press, a clock put back — is the start, not '
+      'lateness', (tester) async {
+    await playEveryPageLanded(tester);
+    await pressPlay(tester);
+    // Heard three pages on from wherever the device is put — a frame is
+    // shown refreshes after its tick, and the user's correction is on top
+    // (`BehindItsClock`).
+    sound.lag = -3 / 24;
+    final resumes = sound.resumes;
+    const look = Duration(microseconds: 16667);
+
+    await pressPlay(tester);
+    expect(slot.position.value, 3, reason: 'its first heard page');
+    expect(sound.resumes, resumes, reason: 'its start: nothing put back');
+
+    // The app was long: the sound is two pages past the picture.
+    sound.playOn(const Duration(microseconds: 83334));
+    await tester.pump(look);
+    expect(slot.position.value, 4);
+    expect(sound.resumes, resumes + 1, reason: 'put back to the page after');
+
+    await tester.pump(look);
+    expect(
+      sound.resumes,
+      resumes + 1,
+      reason: 'put back, it is heard pages ahead again at once — and would '
+          'be put back at every look',
+    );
+    expect(slot.position.value, 7, reason: 'its first heard page from there');
+    await pressPlay(tester);
+  });
+
+  testWidgets('🚨a parked run going on is its clock\'s start, not lateness: '
+      'nothing is put back at it, however far the device was handed on', (
+    tester,
+  ) async {
+    final fake = await openMovie(tester, holdFrom: 1);
+    await pressPlay(tester);
+    await settleAsync(tester, () => fake.asked.contains(1));
+
+    // The device played on a quarter second at once, and the page after 0
+    // is not there: the run parks.
+    sound.playOn(const Duration(milliseconds: 250));
+    await tester.pump(const Duration(microseconds: 16667));
+    expect(sound.holds, greaterThan(0), reason: 'fixture: it parked');
+    final resumes = sound.resumes;
+
+    fake.held.clear();
+    await settleAsync(
+      tester,
+      () => sound.resumes > resumes,
+      step: tick,
+    );
+
+    expect(
+      sound.resumes,
+      resumes + 1,
+      reason: 'it went on — and was not put back at the look it went on at',
+    );
+    await pressPlay(tester);
   });
 
   testWidgets('🚨a held sound picks up where it was HANDED to — not where it '

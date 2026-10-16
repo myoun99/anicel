@@ -181,13 +181,17 @@ void main() {
   });
 
   test('🚨a run behind its clock shows every picture as the mode says — '
-      'every picture does, skipping frames keeps time (F-364-Q1 b)', () {
+      'every picture and render first do, skipping frames keeps time '
+      '(F-364-Q1 b, F-364-every-picture-even-when-late-Q1 a)', () {
     final rig = playbackRigOf(session);
     final shows = rig.playback.showsEveryPicture!;
     expect(shows(), isTrue, reason: 'the default, every picture');
 
     rig.setPlaybackMode(PlaybackMode.skipFrames);
     expect(shows(), isFalse);
+
+    rig.setPlaybackMode(PlaybackMode.renderFirst);
+    expect(shows(), isTrue);
   });
 
   /// 유저 2026-10-08, the playback rework: the warmer follows what a run

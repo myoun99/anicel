@@ -124,9 +124,12 @@ class AudioScrubber {
     final startSample = _rate.frameToSample(frame, _deviceRate);
     // A drag the window wants centred on again — by its own law — moves it
     // there before the slice plays: a small read where the drag stands.
-    if (_window.wantsRecentreAt(startSample, _deviceRate)) {
-      _uploadWindow(startSample);
-    }
+    _window.cover(
+      startSample,
+      device: _device,
+      conformStore: conformStore,
+      deviceRate: _deviceRate,
+    );
     _device!.play(
       startSample: startSample,
       stopSample: _rate.frameToSample(frame + 1, _deviceRate),
@@ -192,14 +195,6 @@ class AudioScrubber {
     _armed = true;
     _stoodDown = false;
   }
-
-  /// Moves the streaming window to [centerSample]. False uploads nothing.
-  bool _uploadWindow(int centerSample) => _window.upload(
-    device: _device,
-    conformStore: conformStore,
-    deviceRate: _deviceRate,
-    centerSample: centerSample,
-  );
 
   void dispose() => _letGo();
 }
