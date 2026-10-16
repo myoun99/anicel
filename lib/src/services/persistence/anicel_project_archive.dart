@@ -65,6 +65,20 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v20 (2026-10-16, vanishing-point-types — 유저 09-17 「소실점 몇개든
+/// 추가할수있게」, Q4 「가이드마다 막대 하나」): a perspective guide holds
+/// any number of vanishing points, and says how densely they draw
+/// (`lineDensity` on its shape, `PerspectiveShape.toJson`). A v19 build
+/// refuses a guide of four points with an error that names nothing a person
+/// could act on, and reads no density — its next save writes the guide back
+/// drawing twelve. The bump turns both into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a guide that says no density draws
+/// twelve at THIS version too (`PerspectiveShape.toJson` leaves the word out
+/// there), so a v19 file is such a document.
+///
 /// v19 (2026-10-15, I-97 — a sheet's photos; 유저 I-97-Q1 「사진으로
 /// 남게(셀의 텍스트처럼)」): a cel's entry carries the PHOTOS laid on its
 /// picture after its texts (cel stream v4, `anicelCelBinaryVersion`) — a
@@ -302,7 +316,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 19;
+const int anicelFormatVersion = 20;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

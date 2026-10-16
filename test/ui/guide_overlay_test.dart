@@ -68,16 +68,44 @@ void main() {
       expect(guideHandles(hidden), isEmpty);
     });
 
-    test('a vanishing point at INFINITY has no handle', () {
-      // A direction is not somewhere you can grab; it is set from the tool
-      // settings, which is also the only place it can be stated exactly.
+    test('🚨a family at infinity\'s handle is its WAY\'s — 220 along it from '
+        'the eye level\'s handle — and two parallel drawn lines get none', () {
+      // ↩️It had none until 2026-10-16: 「a direction is not somewhere you
+      // can grab」 (vanishing-point-types-Q3: 「둘 다 — 손잡이로 대충, 각도
+      // 칸으로 정확히」).
       final handles = guideHandles(_perspective());
 
-      final vanishing = handles
-          .where((handle) => handle.kind == GuideHandleKind.vanishingPoint)
-          .toList();
-      expect(vanishing, hasLength(1));
-      expect(vanishing.single.vanishingPointIndex, 0);
+      final way = handles.singleWhere(
+        (handle) => handle.kind == GuideHandleKind.parallelDirection,
+      );
+      expect(way.vanishingPointIndex, 1);
+      expect(way.position, _point(100, 320));
+      final standing = handles.singleWhere(
+        (handle) => handle.kind == GuideHandleKind.vanishingPoint,
+      );
+      expect(standing.vanishingPointIndex, 0);
+
+      final drawn = CutGuides(
+        guides: [
+          _perspective().guides.single.copyWith(
+            shape: _perspectiveOf(_perspective()).copyWith(
+              vanishingPoints: [
+                VanishingPointFromLines(
+                  GuideLine(a: _point(0, 0), b: _point(10, 0)),
+                  GuideLine(a: _point(0, 5), b: _point(10, 5)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+      expect(
+        guideHandles(drawn).where(
+          (handle) => handle.vanishingPointIndex != null,
+        ),
+        isEmpty,
+        reason: 'its lines say its way',
+      );
     });
 
     test('the nearest handle within reach wins, and none outside it', () {
@@ -158,6 +186,39 @@ void main() {
       final second = _perspectiveOf(dragged).vanishingPoints[1];
       expect(second, isA<VanishingPointTowards>());
       expect(second.resolve().isInfinite, isTrue);
+    });
+
+    test('🚨dragging a family\'s handle turns it to run from the eye '
+        'level\'s handle to the hand — NOT pulled onto the eye level, and '
+        'the point on the plane stays', () {
+      final guides = _perspective();
+      expect(
+        _perspectiveOf(guides).constrainToEyeLevel,
+        isTrue,
+        reason: '⛔fixture: the points are held to the eye level',
+      );
+      final handle = guideHandles(guides).firstWhere(
+        (h) => h.kind == GuideHandleKind.parallelDirection,
+      );
+
+      // (300, 400) from the eye level's handle at (100, 100).
+      final turned = dragGuideHandle(guides, handle, _point(400, 500));
+
+      final points = _perspectiveOf(turned).vanishingPoints;
+      final family = points[1] as VanishingPointTowards;
+      expect(family.dx, closeTo(0.6, 1e-12));
+      expect(family.dy, closeTo(0.8, 1e-12));
+      expect(points.first, VanishingPointAt(_point(400, 100)));
+    });
+
+    test('a family\'s handle dropped on the eye level\'s handle turns it '
+        'nowhere', () {
+      final guides = _perspective();
+      final handle = guideHandles(guides).firstWhere(
+        (h) => h.kind == GuideHandleKind.parallelDirection,
+      );
+
+      expect(dragGuideHandle(guides, handle, _point(100, 100)), same(guides));
     });
 
     test('tilting the eye level keeps its origin', () {

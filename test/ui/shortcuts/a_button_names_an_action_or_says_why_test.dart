@@ -42,7 +42,6 @@ enum Why { aRow, aSetting, aSecondLevel, inAWindow, declined }
 const ledger = <String, Why>{
   // ── ON A ROW ────────────────────────────────────────────────────────
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
-  "brush/guide_panels.dart | 'guide-make-vertical'": Why.aRow,
   "brush/guide_panels.dart | 'guide-remove'": Why.aRow,
   "brush/guide_panels.dart | 'guide-rename-\${guide.id.value}'": Why.aRow,
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":

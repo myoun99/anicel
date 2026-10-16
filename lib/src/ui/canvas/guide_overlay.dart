@@ -1,10 +1,13 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui show ImageByteFormat, PictureRecorder;
 
 import 'package:flutter/material.dart';
 
+import '../../models/brush_stamp_image.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cut_piece.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart';
 import '../../models/app_input_settings.dart';
@@ -20,11 +23,6 @@ const double _nameGap = 12;
 
 /// Handle radius in screen pixels.
 const double _handleRadius = 5;
-
-/// Rays drawn per vanishing point. Enough to read the convergence at a
-/// glance, few enough that three vanishing points do not turn the canvas
-/// into a solid fan.
-const int _raysPerVanishingPoint = 12;
 
 /// What a press on the guide overlay grabbed.
 enum GuideHandleKind {
@@ -45,6 +43,10 @@ enum GuideHandleKind {
 
   /// The eye level's far end — dragging tilts the horizon.
   eyeLevelAngle,
+
+  /// A family at infinity's way, on a stem from the eye level's handle —
+  /// dragging turns the family about it (vanishing-point-types-Q3).
+  parallelDirection,
 }
 
 /// One grabbable point of one guide.
@@ -62,7 +64,8 @@ class GuideHandle {
   /// Canvas-space position.
   final CanvasPoint position;
 
-  /// Which vanishing point, for [GuideHandleKind.vanishingPoint].
+  /// Which vanishing point, for [GuideHandleKind.vanishingPoint] and
+  /// [GuideHandleKind.parallelDirection].
   final int? vanishingPointIndex;
 
   @override
@@ -73,9 +76,13 @@ class GuideHandle {
 /// The handles [guides] offers for editing, in the order they should be
 /// hit-tested — later entries win, so the small precise ones come last.
 ///
-/// A vanishing point at INFINITY has no position and therefore no handle:
-/// a direction is not somewhere you can grab. It is edited from the tool
-/// settings, which is also the only place it can be stated exactly.
+/// A family at infinity has no position: its handle is its WAY's, on a stem
+/// from the eye level's handle ([GuideHandleKind.parallelDirection]) — the
+/// same value the panel's angle cell writes. 🗣️vanishing-point-types-Q3
+/// (유저 2026-10-16): 「둘 다 — 손잡이로 대충, 각도 칸으로 정확히」.
+/// ↩️It had none until then: 「a direction is not somewhere you can grab」
+/// was my call when the tool was built (08-12), with no word of the user's
+/// behind it, while the settings held only 「정확히 수직으로」 to state one.
 List<GuideHandle> guideHandles(CutGuides guides) {
   final handles = <GuideHandle>[];
   for (final guide in guides.guides) {
@@ -94,7 +101,7 @@ List<GuideHandle> guideHandles(CutGuides guides) {
           GuideHandle(
             guideId: guide.id,
             kind: GuideHandleKind.axisAngle,
-            position: _alongAxis(shape.axis, _axisHandleReach),
+            position: alongAxis(shape.axis, _axisHandleReach),
           ),
         );
       case PerspectiveShape():
@@ -109,24 +116,51 @@ List<GuideHandle> guideHandles(CutGuides guides) {
           GuideHandle(
             guideId: guide.id,
             kind: GuideHandleKind.eyeLevelAngle,
-            position: _alongAxis(shape.eyeLevel, _axisHandleReach),
+            position: alongAxis(shape.eyeLevel, _axisHandleReach),
           ),
         );
-        for (var index = 0; index < shape.vanishingPoints.length; index += 1) {
-          final position = shape.vanishingPoints[index].resolve().position;
-          if (position == null) continue;
-          handles.add(
-            GuideHandle(
-              guideId: guide.id,
-              kind: GuideHandleKind.vanishingPoint,
-              position: position,
-              vanishingPointIndex: index,
-            ),
-          );
-        }
+        handles.addAll(_pointHandles(guide.id, shape));
     }
   }
   return handles;
+}
+
+/// A perspective's handle for each of its points: where a point stands, and
+/// a family at infinity's way ([_parallelHandleAt]). A family two drawn
+/// lines name has neither — its lines say its way.
+Iterable<GuideHandle> _pointHandles(
+  GuideId guideId,
+  PerspectiveShape shape,
+) sync* {
+  for (var index = 0; index < shape.vanishingPoints.length; index += 1) {
+    final point = shape.vanishingPoints[index];
+    final (kind, position) = switch (point) {
+      VanishingPointTowards() => (
+        GuideHandleKind.parallelDirection,
+        _parallelHandleAt(shape.eyeLevel, point),
+      ),
+      _ => (GuideHandleKind.vanishingPoint, point.resolve().position),
+    };
+    if (position == null) continue;
+    yield GuideHandle(
+      guideId: guideId,
+      kind: kind,
+      position: position,
+      vanishingPointIndex: index,
+    );
+  }
+}
+
+/// Where a family at infinity's handle stands: [_parallelHandleReach] along
+/// its way from the eye level's handle, which it turns about.
+CanvasPoint? _parallelHandleAt(GuideAxis eyeLevel, VanishingPoint point) {
+  final origin = eyeLevel.origin;
+  final way = point.resolve().directionFrom(origin);
+  if (way == null) return null;
+  return CanvasPoint(
+    x: origin.x + way.dx * _parallelHandleReach,
+    y: origin.y + way.dy * _parallelHandleReach,
+  );
 }
 
 /// The handle nearest [point] within [grabRadius] CANVAS units, or null.
@@ -156,13 +190,11 @@ GuideHandle? guideHandleAt(
 /// canvas units.
 const double _axisHandleReach = 120;
 
-CanvasPoint _alongAxis(GuideAxis axis, double distance) {
-  final radians = axis.angleDegrees * math.pi / 180;
-  return CanvasPoint(
-    x: axis.origin.x + math.cos(radians) * distance,
-    y: axis.origin.y + math.sin(radians) * distance,
-  );
-}
+/// How far from the eye level's handle a family at infinity's handle
+/// stands, in canvas units — past the eye level's own turning handle, so a
+/// level family's two never sit on one another. The approved picture's
+/// (vanishing-point-types-Q3).
+const double _parallelHandleReach = 220;
 
 /// Draws the cut's guides over the editing canvas.
 ///
@@ -223,20 +255,8 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     final bounds = Offset.zero & size;
     for (final guide in guides.guides) {
       if (!guide.visible) continue;
-      final selected = guide.id == selectedGuideId;
-      final opacity = emphasized ? (selected ? 0.95 : 0.6) : 0.28;
-      final paint = Paint()
-        ..color = color.withValues(alpha: opacity)
-        ..strokeWidth = selected && emphasized ? 1.6 : 1.0
-        ..style = PaintingStyle.stroke
-        ..isAntiAlias = true;
-      final shape = guide.shape;
-      switch (shape) {
-        case SymmetryShape():
-          _paintSymmetry(canvas, bounds, shape, paint);
-        case PerspectiveShape():
-          _paintPerspective(canvas, bounds, shape, paint, opacity);
-      }
+      final opacity = _opacityOf(guide);
+      _paintLines(canvas, bounds, guide, opacity);
       if (emphasized) {
         _paintHandles(canvas, guide, opacity);
         // 🚨THE NAMES, and only while the guide tool is out (유저: 「이름표시는
@@ -245,6 +265,37 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
         // loop, so both conditions are the loop's own.
         _paintNames(canvas, bounds, guide, opacity);
       }
+    }
+  }
+
+  /// [guide]'s LINES over [size], as [paint] draws them — no handle, no
+  /// name: what 래스터라이즈 bakes ([guideLinesOnPaper]).
+  void paintLines(Canvas canvas, Size size, DrawingGuide guide) =>
+      _paintLines(canvas, Offset.zero & size, guide, _opacityOf(guide));
+
+  double _opacityOf(DrawingGuide guide) =>
+      emphasized ? (guide.id == selectedGuideId ? 0.95 : 0.6) : 0.28;
+
+  double _weightOf(DrawingGuide guide) =>
+      emphasized && guide.id == selectedGuideId ? 1.6 : 1.0;
+
+  void _paintLines(
+    Canvas canvas,
+    Rect bounds,
+    DrawingGuide guide,
+    double opacity,
+  ) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: opacity)
+      ..strokeWidth = _weightOf(guide)
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
+    final shape = guide.shape;
+    switch (shape) {
+      case SymmetryShape():
+        _paintSymmetry(canvas, bounds, shape, paint);
+      case PerspectiveShape():
+        _paintPerspective(canvas, bounds, shape, paint, opacity);
     }
   }
 
@@ -385,11 +436,18 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
       ..style = PaintingStyle.stroke
       ..isAntiAlias = true;
     for (final vanishingPoint in shape.vanishingPoints) {
-      _paintVanishingFan(canvas, bounds, vanishingPoint, rays);
+      _paintVanishingFan(
+        canvas,
+        bounds,
+        vanishingPoint,
+        rays,
+        shape.lineDensity,
+      );
     }
   }
 
-  /// The fan of lines converging on one vanishing point.
+  /// The fan of [lines] lines converging on one vanishing point — the
+  /// guide's [PerspectiveShape.lineDensity].
   ///
   /// A finite point gets rays radiating from it; a point at infinity gets
   /// PARALLEL lines, which is exactly what it means. Both cases are read
@@ -400,18 +458,19 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     Rect bounds,
     VanishingPoint vanishingPoint,
     Paint paint,
+    int lines,
   ) {
     final resolved = vanishingPoint.resolve();
     if (resolved.isInfinite) {
-      _paintParallelFamily(canvas, bounds, resolved, paint);
+      _paintParallelFamily(canvas, bounds, resolved, paint, lines);
       return;
     }
     final position = resolved.position;
     if (position == null) return;
     final diagonal = bounds.longestSide * 2;
     final apex = _toScreen(position);
-    for (var index = 0; index < _raysPerVanishingPoint; index += 1) {
-      final angle = math.pi * 2 * index / _raysPerVanishingPoint;
+    for (var index = 0; index < lines; index += 1) {
+      final angle = math.pi * 2 * index / lines;
       canvas.drawLine(
         apex,
         Offset(
@@ -424,12 +483,16 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
   }
 
   /// A point at infinity's family: one line through the middle of the view
-  /// and a lane of them either side, all running [resolved]'s way.
+  /// and [lines] either side of it, a 1/[lines] of twice the view's long
+  /// side apart, all running [resolved]'s way — the density a finite
+  /// point's rays are drawn at sets how close its parallels stand
+  /// (vanishing-point-types-Q4).
   void _paintParallelFamily(
     Canvas canvas,
     Rect bounds,
     HomogeneousPoint resolved,
     Paint paint,
+    int lines,
   ) {
     final middle = CanvasPoint(
       x: canvasSize.width / 2,
@@ -456,10 +519,8 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     final center = bounds.center;
     final diagonal = bounds.longestSide * 2;
     // Step ACROSS the family and draw one line per lane.
-    final spacing = diagonal / _raysPerVanishingPoint;
-    for (var index = -_raysPerVanishingPoint;
-        index <= _raysPerVanishingPoint;
-        index += 1) {
+    final spacing = diagonal / lines;
+    for (var index = -lines; index <= lines; index += 1) {
       final offset = spacing * index;
       final anchor = center + Offset(-ahead.dy, ahead.dx) * offset;
       // 🚨A LINE, BOTH WAYS FROM ITS ANCHOR (same card, same day). The
@@ -531,10 +592,37 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke
       ..isAntiAlias = true;
-    for (final handle in guideHandles(CutGuides(guides: [guide]))) {
+    final handles = guideHandles(CutGuides(guides: [guide]));
+    _paintParallelStems(canvas, guide, handles, opacity);
+    for (final handle in handles) {
       final center = _toScreen(handle.position);
       canvas.drawCircle(center, _handleRadius, fill);
       canvas.drawCircle(center, _handleRadius, ring);
+    }
+  }
+
+  /// The stem each family at infinity's handle hangs on, from the eye
+  /// level's handle it turns about — part of the handle, so drawn with the
+  /// handles, never baked (the approved picture of
+  /// vanishing-point-types-Q3: twice the line's weight).
+  void _paintParallelStems(
+    Canvas canvas,
+    DrawingGuide guide,
+    List<GuideHandle> handles,
+    double opacity,
+  ) {
+    final shape = guide.shape;
+    if (shape is! PerspectiveShape) return;
+    final stem = Paint()
+      ..color = color.withValues(alpha: opacity)
+      ..strokeWidth = _weightOf(guide) * 2
+      ..style = PaintingStyle.stroke
+      ..isAntiAlias = true;
+    final origin = _toScreen(shape.eyeLevel.origin);
+    for (final handle in handles) {
+      if (handle.kind == GuideHandleKind.parallelDirection) {
+        canvas.drawLine(origin, _toScreen(handle.position), stem);
+      }
     }
   }
 
@@ -549,6 +637,66 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     vanishingPointLabel,
     selectedGuideId,
   );
+}
+
+/// The colour the guides are drawn in — what the canvas's overlay paints
+/// with, and what 래스터라이즈 bakes with, read in one place.
+Color guideColorOf(BuildContext context) =>
+    Theme.of(context).colorScheme.primary;
+
+/// [guide]'s lines on [canvasSize]'s paper, a canvas pixel to a pixel, as
+/// the canvas draws them while the guide tool holds it picked: its colour,
+/// its weight, its density, its eye level — no handle, no name. The
+/// picture 래스터라이즈 lands. Null when the picture cannot be read back.
+///
+/// 🗣️vanishing-point-types-Q6 (유저 2026-10-16): 「화면에 보이는 그대로」 —
+/// 「가이드와 같은 색 · 굵기 · 밀도, 아이레벨 선도 포함 — 용지 안만」.
+/// ⚠️At 100%, unturned: the paper is the view it is drawn in, so a family at
+/// infinity stands its lanes across the paper as the canvas would at 100%
+/// — my reading of 「보이는 그대로」, not a word of the user's.
+Future<CutPiece?> guideLinesOnPaper(
+  DrawingGuide guide, {
+  required CanvasSize canvasSize,
+  required Color color,
+}) async {
+  final paper = Size(
+    canvasSize.width.toDouble(),
+    canvasSize.height.toDouble(),
+  );
+  final recorder = ui.PictureRecorder();
+  GuideOverlayPainter(
+    guides: CutGuides(guides: [guide]),
+    viewport: CanvasViewport(),
+    canvasSize: canvasSize,
+    emphasized: true,
+    color: color,
+    face: const TextStyle(),
+    vanishingPointLabel: '',
+    selectedGuideId: guide.id,
+  ).paintLines(Canvas(recorder, Offset.zero & paper), paper, guide);
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(canvasSize.width, canvasSize.height);
+  picture.dispose();
+  try {
+    final rgba = await image.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
+    if (rgba == null) {
+      return null;
+    }
+    return CutPiece(
+      image: BrushStampImage(
+        id: 'guide-${guide.id.value}-${DateTime.now().microsecondsSinceEpoch}',
+        width: canvasSize.width,
+        height: canvasSize.height,
+        rgba: rgba.buffer.asUint8List(rgba.offsetInBytes, rgba.lengthInBytes),
+      ),
+      originLeft: 0,
+      originTop: 0,
+    );
+  } finally {
+    image.dispose();
+  }
 }
 
 /// Applies a handle drag to [guides], returning the edited set.
@@ -593,18 +741,31 @@ CutGuides dragGuideHandle(
             ),
           );
         case GuideHandleKind.vanishingPoint:
-          final index = handle.vanishingPointIndex;
-          if (index == null || index >= shape.vanishingPoints.length) {
-            next = null;
-            break;
-          }
           // The eye-level constraint acts HERE, on the drag, rather than as
           // a sweep over stored geometry — see
           // [constrainedVanishingPointTarget].
-          final landing = constrainedVanishingPointTarget(shape, to);
-          final points = [...shape.vanishingPoints];
-          points[index] = VanishingPointAt(landing);
-          next = shape.copyWith(vanishingPoints: points);
+          next = _withPointAt(
+            shape,
+            handle.vanishingPointIndex,
+            VanishingPointAt(constrainedVanishingPointTarget(shape, to)),
+          );
+        case GuideHandleKind.parallelDirection:
+          // The way from the eye level's handle to the hand. ⛔Not held to
+          // the eye level: that binds where a point STANDS, and a family
+          // held to it could never be the vertical one
+          // (vanishing-point-types-Q3: 「세로 퍼스는 항상 수직」 is a 90 in
+          // the angle cell this handle writes too).
+          final way = HomogeneousPoint.at(
+            to.x,
+            to.y,
+          ).directionFrom(shape.eyeLevel.origin);
+          next = way == null
+              ? null
+              : _withPointAt(
+                  shape,
+                  handle.vanishingPointIndex,
+                  VanishingPointTowards(dx: way.dx, dy: way.dy),
+                );
         case GuideHandleKind.axisAngle:
           next = null;
       }
@@ -612,6 +773,16 @@ CutGuides dragGuideHandle(
   if (next == null) return guides;
   return guides.replacing(guide.copyWith(shape: next));
 }
+
+/// [shape] with its point at [index] standing as [point] — null for an
+/// index the shape holds no point at.
+PerspectiveShape? _withPointAt(
+  PerspectiveShape shape,
+  int? index,
+  VanishingPoint point,
+) => index == null || index >= shape.vanishingPoints.length
+    ? null
+    : shape.withVanishingPoint(index, point);
 
 /// The pointer layer that edits guides — mounted ONLY while the guide tool
 /// is active, and while it is, IT OWNS THE CANVAS.

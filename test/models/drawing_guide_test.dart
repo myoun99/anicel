@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -138,6 +140,43 @@ void main() {
       expect(direction.dy, 1);
     });
 
+    test('🚨a family typed in degrees: a whole quarter turn EXACTLY, '
+        'clockwise from +x — and it reads back the degrees it runs at', () {
+      // 🗣️vanishing-point-types-Q3: 「세로 퍼스는 항상 수직」 is a 90 typed
+      // in the row's angle cell.
+      expect(
+        VanishingPointTowards.atDegrees(90),
+        VanishingPointTowards(dx: 0, dy: 1),
+      );
+      expect(
+        VanishingPointTowards.atDegrees(0),
+        VanishingPointTowards(dx: 1, dy: 0),
+      );
+      expect(
+        VanishingPointTowards.atDegrees(180),
+        VanishingPointTowards(dx: -1, dy: 0),
+      );
+      expect(
+        VanishingPointTowards.atDegrees(-180),
+        VanishingPointTowards(dx: -1, dy: 0),
+      );
+      expect(
+        VanishingPointTowards.atDegrees(-90),
+        VanishingPointTowards(dx: 0, dy: -1),
+      );
+      expect(
+        VanishingPointTowards.atDegrees(270),
+        VanishingPointTowards(dx: 0, dy: -1),
+      );
+      final slant = VanishingPointTowards.atDegrees(30);
+      expect(slant.dx, closeTo(math.sqrt(3) / 2, 1e-12));
+      expect(slant.dy, closeTo(0.5, 1e-12));
+
+      expect(VanishingPointTowards(dx: 0, dy: 1).degrees, 90);
+      expect(VanishingPointTowards(dx: 2, dy: -2).degrees, closeTo(-45, 1e-12));
+      expect(VanishingPointTowards(dx: -1, dy: 0).degrees, 180);
+    });
+
     test('round-trips through JSON in every variant', () {
       final variants = <VanishingPoint>[
         VanishingPointAt(_point(1, 2)),
@@ -227,25 +266,60 @@ void main() {
   });
 
   group('PerspectiveShape', () {
-    test('carries one to three vanishing points', () {
-      GuideAxis eyeLevel() => GuideAxis(origin: _point(0, 0), angleDegrees: 0);
+    GuideAxis eyeLevel() => GuideAxis(origin: _point(0, 0), angleDegrees: 0);
 
+    test('🚨carries at least one vanishing point — and however many more', () {
+      // 🗣️유저 2026-09-17: 「소실점 몇개든 추가할수있게」. ↩️It held one to
+      // three until 2026-10-16.
       expect(
         () => PerspectiveShape(vanishingPoints: [], eyeLevel: eyeLevel()),
         throwsArgumentError,
       );
-      expect(
-        () => PerspectiveShape(
-          vanishingPoints: [
-            VanishingPointAt(_point(1, 1)),
-            VanishingPointAt(_point(2, 2)),
-            VanishingPointAt(_point(3, 3)),
-            VanishingPointAt(_point(4, 4)),
-          ],
-          eyeLevel: eyeLevel(),
-        ),
-        throwsArgumentError,
+      final many = PerspectiveShape(
+        vanishingPoints: [
+          for (var index = 0; index < 7; index += 1)
+            VanishingPointAt(_point(index * 100.0, 0)),
+        ],
+        eyeLevel: eyeLevel(),
       );
+      expect(many.vanishingPoints, hasLength(7));
+    });
+
+    test('🚨its line density is held to 4…48, and draws twelve until it is '
+        'moved', () {
+      PerspectiveShape withDensity(int density) => PerspectiveShape(
+        vanishingPoints: [VanishingPointAt(_point(1, 1))],
+        eyeLevel: eyeLevel(),
+        lineDensity: density,
+      );
+
+      expect(() => withDensity(3), throwsArgumentError);
+      expect(() => withDensity(49), throwsArgumentError);
+      expect(withDensity(4).lineDensity, 4);
+      expect(withDensity(48).lineDensity, 48);
+      expect(
+        PerspectiveShape(
+          vanishingPoints: [VanishingPointAt(_point(1, 1))],
+          eyeLevel: eyeLevel(),
+        ).lineDensity,
+        12,
+      );
+    });
+
+    test('🚨the density is written only where it is not twelve — and a '
+        'guide that says none draws twelve', () {
+      final plain = PerspectiveShape(
+        vanishingPoints: [VanishingPointAt(_point(1, 1))],
+        eyeLevel: eyeLevel(),
+      );
+      expect(plain.toJson(), isNot(contains('lineDensity')));
+      expect((GuideShape.fromJson(plain.toJson()) as PerspectiveShape)
+          .lineDensity, 12);
+
+      final dense = plain.copyWith(lineDensity: 30);
+      expect(dense.toJson()['lineDensity'], 30);
+      expect(GuideShape.fromJson(dense.toJson()), dense);
+      expect(dense, isNot(plain), reason: 'the density is part of it');
     });
 
     test('round-trips through JSON', () {

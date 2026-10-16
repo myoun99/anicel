@@ -1759,7 +1759,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               canvasSize: canvasSize,
               emphasized: tool == CanvasTool.guide,
               vanishingPointLabel: AppText.strings.guideVanishingPoint,
-              color: Theme.of(context).colorScheme.primary,
+              color: guideColorOf(context),
               face: appFaceOf(DefaultTextStyle.of(context).style),
               selectedGuideId: session.cutVerbs.selectedGuideId,
             ),

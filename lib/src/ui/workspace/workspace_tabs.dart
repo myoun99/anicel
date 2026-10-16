@@ -51,6 +51,30 @@ class _WorkspaceTabs {
     return () => session.layerSwitches.toggleLayerFillReference(layer.id);
   }
 
+  /// 래스터라이즈 (vanishing-point-types-Q5 · Q6): the picked guide's lines baked
+  /// onto [paper] off the frame's clock, then laid on the cels through the
+  /// paste's door as one undo. Null with no paper to bake onto.
+  ValueChanged<DrawingGuide>? _guideRasterizer(
+    BuildContext context,
+    CanvasSize? paper,
+  ) {
+    if (paper == null) {
+      return null;
+    }
+    final pixels = _state.widget.session.pixelVerbs;
+    return (guide) => unawaited(
+      guideLinesOnPaper(
+        guide,
+        canvasSize: paper,
+        color: guideColorOf(context),
+      ).then((picture) {
+        if (picture != null) {
+          pixels.landCanvasPicture(picture, description: 'Rasterize guide');
+        }
+      }),
+    );
+  }
+
   /// What the tool settings show of the session — the slice their panel
   /// rebuilds by, with [fillSource] and [eyedropperSource] the two sources
   /// it names the read layers of.
@@ -617,6 +641,10 @@ class _WorkspaceTabs {
                                               .session
                                               .cutVerbs
                                               .previewActiveCutGuides,
+                                          onGuideRasterized: _guideRasterizer(
+                                            context,
+                                            cut.canvasSize,
+                                          ),
                                           tips: cut.tips,
                                           onTipImportRequested: () {
                                             unawaited(

@@ -77,6 +77,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.selectedGuideId,
     this.onGuidesCommitted,
     this.onGuidesPreview,
+    this.onGuideRasterized,
     this.cutPieceSlot,
     this.onCutPasteAtOrigin,
     this.onRegisterCutPieceAsTip,
@@ -90,6 +91,9 @@ class ToolSettingsPanel extends StatelessWidget {
 
   /// The guide drag in flight — see [GuideSettings.onGuidesPreview].
   final ValueChanged<CutGuides>? onGuidesPreview;
+
+  /// 래스터라이즈 — see [GuideSettings.onGuideRasterized].
+  final ValueChanged<DrawingGuide>? onGuideRasterized;
 
   /// The shared tip library, forwarded to the brush settings' tip pickers.
   final List<BrushTipEntry> tips;
@@ -315,8 +319,10 @@ class ToolSettingsPanel extends StatelessWidget {
     CanvasTool.guide => GuideSettings(
       guides: guides ?? CutGuides.empty,
       selectedGuideId: selectedGuideId,
+      canvasSize: canvasSize,
       onGuidesCommitted: onGuidesCommitted ?? (_) {},
       onGuidesPreview: onGuidesPreview ?? (_) {},
+      onGuideRasterized: onGuideRasterized,
     ),
   };
 }

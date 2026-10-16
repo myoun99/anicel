@@ -37,7 +37,7 @@ import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/app_language.dart' show AppLanguage;
 import '../models/brush_tip_entry.dart';
 import '../models/canvas_size.dart';
-import '../models/drawing_guide.dart' show CutGuides, GuideId;
+import '../models/drawing_guide.dart' show CutGuides, DrawingGuide, GuideId;
 import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
@@ -158,6 +158,7 @@ import 'timeline/layer_rail_window.dart';
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
+import 'canvas/guide_overlay.dart' show guideColorOf, guideLinesOnPaper;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'

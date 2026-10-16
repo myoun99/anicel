@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../../services/guide_geometry.dart' show alongAxis, toggledParallel;
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
@@ -16,6 +17,7 @@ import '../widgets/settings_rows.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/empty_state_text.dart';
+import '../widgets/pill_strip.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import 'brush_tool_state.dart' show CanvasTool;
@@ -53,23 +55,39 @@ DrawingGuide newPerspectiveGuide(
   CanvasSize canvasSize,
   String name,
 ) {
-  final midY = canvasSize.height / 2.0;
-  final width = canvasSize.width.toDouble();
+  final eyeLevel = GuideAxis(
+    origin: CanvasPoint(x: canvasSize.width / 2, y: canvasSize.height / 2),
+    angleDegrees: 0,
+  );
+  final reach = _vanishingPointReach(canvasSize);
   return DrawingGuide(
     id: id,
     name: name,
     shape: PerspectiveShape(
       vanishingPoints: [
-        VanishingPointAt(CanvasPoint(x: -width, y: midY)),
-        VanishingPointAt(CanvasPoint(x: width * 2, y: midY)),
+        VanishingPointAt(alongAxis(eyeLevel, -reach)),
+        VanishingPointAt(alongAxis(eyeLevel, reach)),
       ],
-      eyeLevel: GuideAxis(
-        origin: CanvasPoint(x: width / 2, y: midY),
-        angleDegrees: 0,
-      ),
+      eyeLevel: eyeLevel,
     ),
   );
 }
+
+/// How far from the eye level's handle a vanishing point the app stands
+/// out of the frame is: a fresh perspective's two, and a family at
+/// infinity whose 「평행」 is pressed off.
+///
+/// 🗣️vanishing-point-types-Q2 (유저 2026-10-16, 「점이 있던 쪽 그대로」): the
+/// family comes back 「같은 방향의 그림 밖 먼 자리(새 퍼스 가이드의 두 점과
+/// 같은 거리)」 — ONE distance, so the two cannot come apart.
+double _vanishingPointReach(CanvasSize canvasSize) => canvasSize.width * 1.5;
+
+/// How far along the eye level a vanishing point the ＋ adds stands from the
+/// eye level's handle — beside it, where the hand can take it at once.
+///
+/// 🗣️vanishing-point-types-Q7 (유저 2026-10-16): 「아이레벨 위, 아이레벨
+/// 손잡이 옆」 — the place the approved picture put 「소실점 4」.
+const double _addedVanishingPointAlong = 420;
 
 /// The guide TOOL's library content: the cut's guides, grouped by kind.
 ///
@@ -401,12 +419,20 @@ class GuideSettings extends StatelessWidget {
     super.key,
     required this.guides,
     required this.selectedGuideId,
+    required this.canvasSize,
     required this.onGuidesCommitted,
     required this.onGuidesPreview,
+    required this.onGuideRasterized,
   });
 
   final CutGuides guides;
   final GuideId? selectedGuideId;
+
+  /// The paper the guides stand over — how far out a family at infinity
+  /// comes back as a point ([_vanishingPointReach]). Null in a host that
+  /// holds no cut, which holds no guide to pick either.
+  final CanvasSize? canvasSize;
+
   final ValueChanged<CutGuides> onGuidesCommitted;
 
   /// A drag in flight: shown, not written — the release goes to
@@ -416,6 +442,11 @@ class GuideSettings extends StatelessWidget {
   /// ⛔Required, not a fallback to committing: a host with nowhere to show a
   /// preview would be back to one entry per sample.
   final ValueChanged<CutGuides> onGuidesPreview;
+
+  /// 래스터라이즈: the guide's lines, as the canvas shows them, drawn into the
+  /// cels (vanishing-point-types-Q5 · Q6). Null where nothing can take
+  /// them — the button keeps its place and goes dead.
+  final ValueChanged<DrawingGuide>? onGuideRasterized;
 
   CutGuides _withShape(DrawingGuide guide, GuideShape shape) =>
       guides.replacing(guide.copyWith(shape: shape));
@@ -452,14 +483,18 @@ class GuideSettings extends StatelessWidget {
         PerspectiveShape() => _perspectiveFields(guide, shape),
       },
     );
-    // A key presses the perspective's ＋ as the guide tool's settings
-    // (I-40), while a perspective guide is the one picked.
+    // A key presses the perspective's ＋ and 래스터라이즈 as the guide tool's
+    // settings (I-40), while a perspective guide is the one picked.
     return PanelKeysBinding(
       tool: CanvasTool.guide,
       buttons: {
         EditorActionIds.guideAddVanishingPoint: switch (shape) {
           SymmetryShape() => null,
           PerspectiveShape() => _vanishingPointAdded(guide, shape),
+        },
+        EditorActionIds.guideRasterize: switch (shape) {
+          SymmetryShape() => null,
+          PerspectiveShape() => _rasterizing(guide),
         },
       },
       child: section,
@@ -533,18 +568,42 @@ class GuideSettings extends StatelessWidget {
         onChanged: (value) =>
             _replaceShape(guide, shape.copyWith(constrainToEyeLevel: value)),
       ),
+      // 🗣️vanishing-point-types-Q4 (유저 2026-10-16): ONE bar for the
+      // guide, every point of it drawing the count.
+      ToolSettingRow.bar(
+        label: strings.guideLineDensity,
+        bar: FieldSlider.cell(
+          key: const ValueKey<String>('guide-line-density'),
+          label: strings.guideLineDensity,
+          value: shape.lineDensity.toDouble(),
+          min: minGuideLineDensity.toDouble(),
+          max: maxGuideLineDensity.toDouble(),
+          divisions: maxGuideLineDensity - minGuideLineDensity,
+          // ⛔PREVIEW while the bar moves, COMMIT on release — the count
+          // bar's one drag, one undo.
+          onChanged: (value) => onGuidesPreview(
+            _withShape(guide, shape.copyWith(lineDensity: value.round())),
+          ),
+          onChangeEnd: (value) => _replaceShape(
+            guide,
+            shape.copyWith(lineDensity: value.round()),
+          ),
+        ),
+      ),
       ToolSettingsGroupHeader(strings.guideVanishingPoint),
       for (var index = 0; index < points.length; index += 1)
         _VanishingPointRow(
           index: index,
           point: points[index],
-          onMadeVertical: () {
-            final next = [...points];
-            // Exactly vertical, stated as a DIRECTION — the one form that
-            // does not depend on two lines being parallel to the last bit.
-            next[index] = VanishingPointTowards(dx: 0, dy: 1);
-            _replaceShape(guide, shape.copyWith(vanishingPoints: next));
-          },
+          onParallelToggled: _parallelToggled(guide, shape, index),
+          // The angle cell and the canvas's direction handle write the one
+          // value (vanishing-point-types-Q3): shown while it moves,
+          // committed once it is let go.
+          onTurned: (degrees) => onGuidesPreview(
+            _withShape(guide, _turned(shape, index, degrees)),
+          ),
+          onTurnEnded: (degrees) =>
+              _replaceShape(guide, _turned(shape, index, degrees)),
           onRemoved: points.length > 1
               ? () => _replaceShape(
                   guide,
@@ -554,8 +613,6 @@ class GuideSettings extends StatelessWidget {
                 )
               : null,
         ),
-      // A perspective holds three points at most: the button keeps its
-      // place and goes dead (없다가 생기는 UI 금지).
       ToolSettingActions(
         lines: [
           [
@@ -565,56 +622,110 @@ class GuideSettings extends StatelessWidget {
               shortcuts: const [EditorActionIds.guideAddVanishingPoint],
               onPressed: _vanishingPointAdded(guide, shape),
             ),
+            ToolSettingAction(
+              keyValue: 'guide-rasterize',
+              label: strings.guideRasterize,
+              shortcuts: const [EditorActionIds.guideRasterize],
+              onPressed: _rasterizing(guide),
+            ),
           ],
         ],
       ),
     ];
   }
 
-  /// What the perspective's ＋ presses: one more vanishing point while there
-  /// is room for one — nothing at three.
-  VoidCallback? _vanishingPointAdded(
+  /// What 래스터라이즈 presses: [guide] handed over to be baked — dead where
+  /// nothing takes it.
+  VoidCallback? _rasterizing(DrawingGuide guide) =>
+      switch (onGuideRasterized) {
+        null => null,
+        final rasterize => () => rasterize(guide),
+      };
+
+  /// What the perspective's ＋ presses: one more vanishing point, on the eye
+  /// level beside its handle.
+  ///
+  /// 🗣️유저 2026-09-17 (vanishing-point-types): 「소실점 몇개든
+  /// 추가할수있게하고, 기본값은 일반타입」 · Q7 (10-16) for where it stands
+  /// ([_addedVanishingPointAlong]). ↩️A guide held three at most, and the
+  /// ＋ added the vertical family.
+  VoidCallback _vanishingPointAdded(
     DrawingGuide guide,
     PerspectiveShape shape,
+  ) => () => _replaceShape(
+    guide,
+    shape.copyWith(
+      vanishingPoints: [
+        ...shape.vanishingPoints,
+        VanishingPointAt(
+          alongAxis(shape.eyeLevel, _addedVanishingPointAlong),
+        ),
+      ],
+    ),
+  );
+
+  /// What the point at [index]'s 「평행」 pill presses ([toggledParallel]),
+  /// or null where it has nothing to turn the point into.
+  VoidCallback? _parallelToggled(
+    DrawingGuide guide,
+    PerspectiveShape shape,
+    int index,
   ) {
-    final points = shape.vanishingPoints;
-    if (points.length >= 3) {
+    final paper = canvasSize;
+    final toggled = paper == null
+        ? null
+        : toggledParallel(
+            shape,
+            shape.vanishingPoints[index],
+            reach: _vanishingPointReach(paper),
+          );
+    if (toggled == null) {
       return null;
     }
-    return () => _replaceShape(
-      guide,
-      shape.copyWith(
-        vanishingPoints: [
-          ...points,
-          // The third point is the vertical family far more often than not,
-          // so that is what a new one starts as.
-          VanishingPointTowards(dx: 0, dy: 1),
-        ],
-      ),
-    );
+    return () =>
+        _replaceShape(guide, shape.withVanishingPoint(index, toggled));
   }
+
+  /// [shape] with its point at [index] the family running at [degrees].
+  static PerspectiveShape _turned(
+    PerspectiveShape shape,
+    int index,
+    double degrees,
+  ) => shape.withVanishingPoint(
+    index,
+    VanishingPointTowards.atDegrees(degrees),
+  );
 }
 
-/// One vanishing point as a row of the grid: its number in the name column,
-/// where it stands in the first cell, and its two buttons sharing the
-/// second — the rotation row's shape (an angle, then the two flips).
+/// One vanishing point as a row of the grid: its number in the name column;
+/// in the first cell where it stands — or, a family at infinity, the way it
+/// runs as an angle; its 「평행」 pill and its delete sharing the second.
 class _VanishingPointRow extends StatelessWidget {
   const _VanishingPointRow({
     required this.index,
     required this.point,
-    required this.onMadeVertical,
+    required this.onParallelToggled,
+    required this.onTurned,
+    required this.onTurnEnded,
     required this.onRemoved,
   });
 
   final int index;
   final VanishingPoint point;
-  final VoidCallback onMadeVertical;
+
+  /// The 「평행」 pill's press — null where it is refused, and the pill keeps
+  /// its place.
+  final VoidCallback? onParallelToggled;
+
+  /// A family at infinity's angle cell, while it moves and once let go.
+  final ValueChanged<double> onTurned;
+  final ValueChanged<double> onTurnEnded;
+
   final VoidCallback? onRemoved;
 
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final theme = Theme.of(context);
     final resolved = point.resolve();
     final position = resolved.position;
     // ⚠️EQUIVALENT MUTANT, and the arm stays on purpose (2026-09-08):
@@ -622,29 +733,45 @@ class _VanishingPointRow extends StatelessWidget {
     // `resolved.isInfinite` changes no answer. It NAMES the case a reader
     // came looking for, while the second arm also catches a cross product
     // that overflowed to NaN — which nobody would read out of it alone.
-    final reads = resolved.isInfinite || position == null
-        ? strings.guideVanishingPointAtInfinity
-        : '${position.x.round()}, ${position.y.round()}';
+    final atInfinity = resolved.isInfinite || position == null;
     return ToolSettingRow.pair(
       key: ValueKey<String>('guide-vanishing-point-$index'),
       label: '${index + 1}',
-      first: Text(
-        reads,
-        key: ValueKey<String>('guide-vanishing-point-$index-reads'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
+      first: switch (point) {
+        // 🗣️vanishing-point-types-Q3 (유저 2026-10-16): 「각도 칸으로
+        // 정확히」 — 90 is the vertical family, stated exactly.
+        final VanishingPointTowards towards => FieldSlider.cell(
+          key: ValueKey<String>('guide-vanishing-point-$index-angle'),
+          label: strings.guideParallelAngle,
+          value: towards.degrees,
+          min: -180,
+          max: 180,
+          unit: '°',
+          onChanged: onTurned,
+          onChangeEnd: onTurnEnded,
         ),
-      ),
+        _ => _reads(
+          context,
+          position == null
+              ? strings.guideVanishingPointAtInfinity
+              : '${position.x.round()}, ${position.y.round()}',
+        ),
+      },
       second: Row(
         children: [
+          // 🗣️vanishing-point-types-Q1 (유저 2026-10-16): ONE pill, lit
+          // while the point is at infinity, each press the other way.
+          // ↩️「정확히 수직으로」 stood here, and only ever made a family.
           Expanded(
-            child: ToolSettingAction.glyph(
-              keyValue: 'guide-make-vertical',
-              label: strings.guideMakeVertical,
-              glyph: const Icon(Icons.vertical_align_center),
-              onPressed: onMadeVertical,
+            child: PillStrip.even(
+              items: [
+                PillItem(
+                  keyValue: 'guide-parallel',
+                  label: strings.guideParallel,
+                  selected: atInfinity,
+                  onTap: onParallelToggled,
+                ),
+              ],
             ),
           ),
           const SizedBox(width: ToolSettingColumns.gap),
@@ -657,6 +784,21 @@ class _VanishingPointRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Where the point stands, read and not edited here — the canvas handle
+  /// moves it.
+  Widget _reads(BuildContext context, String text) {
+    final theme = Theme.of(context);
+    return Text(
+      text,
+      key: ValueKey<String>('guide-vanishing-point-$index-reads'),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

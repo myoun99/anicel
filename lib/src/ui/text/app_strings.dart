@@ -439,7 +439,10 @@ enum AppStrings {
   String get guideVanishingPointAtInfinity =>
       _s('guideVanishingPointAtInfinity');
   String get guideAddVanishingPoint => _s('guideAddVanishingPoint');
-  String get guideMakeVertical => _s('guideMakeVertical');
+  String get guideParallel => _s('guideParallel');
+  String get guideParallelAngle => _s('guideParallelAngle');
+  String get guideLineDensity => _s('guideLineDensity');
+  String get guideRasterize => _s('guideRasterize');
 
   // --- Project lifecycle confirmations ---
   String get closeProjectTitle => _s('closeProjectTitle');
@@ -1980,7 +1983,10 @@ enum AppStrings {
     'guideVanishingPoint': 'Vanishing point',
     'guideVanishingPointAtInfinity': 'Parallel (at infinity)',
     'guideAddVanishingPoint': 'Add vanishing point',
-    'guideMakeVertical': 'Make exactly vertical',
+    'guideParallel': 'Parallel',
+    'guideParallelAngle': 'Angle',
+    'guideLineDensity': 'Line density',
+    'guideRasterize': 'Rasterize',
     'closeProjectTitle': 'Close project?',
     'untitledProjectTab': 'Untitled {n}',
     'fileOpenInAnotherTab': 'That file is already open in another tab.',
@@ -3147,7 +3153,10 @@ enum AppStrings {
     'guideVanishingPoint': '消失点',
     'guideVanishingPointAtInfinity': '平行（無限遠）',
     'guideAddVanishingPoint': '消失点を追加',
-    'guideMakeVertical': '完全な垂直にする',
+    'guideParallel': '平行',
+    'guideParallelAngle': '角度',
+    'guideLineDensity': '線の密度',
+    'guideRasterize': 'ラスタライズ',
     'closeProjectTitle': 'プロジェクトを閉じますか？',
     'shortcutAction.file-new': '新規プロジェクト',
     'untitledProjectTab': '無題 {n}',
@@ -4676,7 +4685,10 @@ enum AppStrings {
     'guideVanishingPoint': '소실점',
     'guideVanishingPointAtInfinity': '평행(무한대)',
     'guideAddVanishingPoint': '소실점 추가',
-    'guideMakeVertical': '정확히 수직으로',
+    'guideParallel': '평행',
+    'guideParallelAngle': '각도',
+    'guideLineDensity': '선 밀도',
+    'guideRasterize': '래스터라이즈',
     'closeProjectTitle': '프로젝트를 닫을까요?',
     'shortcutAction.file-new': '새 프로젝트',
     'untitledProjectTab': '제목 없음 {n}',
@@ -6208,7 +6220,10 @@ enum AppStrings {
     'guideVanishingPoint': 'Point de fuite',
     'guideVanishingPointAtInfinity': 'Parallèle (à l\'infini)',
     'guideAddVanishingPoint': 'Ajouter un point de fuite',
-    'guideMakeVertical': 'Rendre exactement vertical',
+    'guideParallel': 'Parallèle',
+    'guideParallelAngle': 'Angle',
+    'guideLineDensity': 'Densité des lignes',
+    'guideRasterize': 'Pixelliser',
     'closeProjectTitle': 'Fermer le projet ?',
     'shortcutAction.file-new': 'Nouveau projet',
     'untitledProjectTab': 'Sans titre {n}',
@@ -7834,7 +7849,10 @@ enum AppStrings {
     'guideVanishingPoint': '消失点',
     'guideVanishingPointAtInfinity': '平行（无穷远）',
     'guideAddVanishingPoint': '添加消失点',
-    'guideMakeVertical': '设为完全垂直',
+    'guideParallel': '平行',
+    'guideParallelAngle': '角度',
+    'guideLineDensity': '线条密度',
+    'guideRasterize': '栅格化',
     'closeProjectTitle': '关闭项目？',
     'shortcutAction.file-new': '新建项目',
     'untitledProjectTab': '未命名 {n}',

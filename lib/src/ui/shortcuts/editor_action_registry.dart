@@ -787,6 +787,7 @@ abstract final class EditorActionIds {
   static const cutStampReset = 'cut-stamp-reset';
   static const cutStampRegisterTip = 'cut-stamp-register-tip';
   static const guideAddVanishingPoint = 'guide-add-vanishing-point';
+  static const guideRasterize = 'guide-rasterize';
   static const textCentreAcross = 'text-centre-across';
   static const textCentreDown = 'text-centre-down';
   static const textIntoDrawing = 'text-into-drawing';
@@ -1479,6 +1480,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   EditorActionDefinition.composed(
     id: EditorActionIds.guideAddVanishingPoint,
     name: (language) => AppStrings.of(language).guideAddVanishingPoint,
+    shelf: ShortcutShelf.guides,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  // …and its 래스터라이즈 (vanishing-point-types-Q5).
+  EditorActionDefinition.composed(
+    id: EditorActionIds.guideRasterize,
+    name: (language) => AppStrings.of(language).guideRasterize,
     shelf: ShortcutShelf.guides,
     defaultActivators: const [],
     panelButton: true,

@@ -20,6 +20,7 @@ import '../../services/cut_piece_lift.dart'
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/piece_landing.dart';
+import '../../services/selection_placement.dart' show stampInArtwork;
 import '../brush/cut_into_the_hand.dart';
 import 'active_cut_controllers.dart';
 import 'pixel_board.dart';
@@ -583,27 +584,59 @@ class PixelVerbs {
   /// tool's stamp lands through too (F-293): one cel or a whole range, the
   /// same code answers (절대명령 2) — one undo.
   void _pastePixels(BrushBlendMode blend) {
-    final coordinator = _pixelEditing.coordinator;
     final piece = _pixelBoard.piece;
-    if (coordinator == null || piece == null) {
+    if (piece == null) {
       return;
     }
     // ONE dab for every row: the board goes back where it was read from,
     // whichever row takes it.
     final dab = buildCutPasteDab(piece);
-    final landed = pieceLandings(
-      coordinator: coordinator,
-      ground: pieceGround(),
-      stamp: PieceStamp(
+    _land(
+      PieceStamp(
         onTheRow: (_) => dab,
         blend: blend,
         description: 'Paste pixels',
       ),
+    );
+  }
+
+  /// A picture drawn ON THE CANVAS — [picture] at canvas coordinates —
+  /// laid over every cel the ladder names, each where its row shows it, as
+  /// one undo: 래스터라이즈's landing (vanishing-point-types-Q5, 유저 2026-10-16:
+  /// 「지금 레이어의 지금 셀에」 — no new row).
+  ///
+  /// ★The paste's door ([_land]): a range, a selection and its softness
+  /// answer here as they answer there (절대명령 2). Unlike the board, which
+  /// holds CEL coordinates, the picture is the canvas's, so a posed row
+  /// takes it through its placement ([stampInArtwork]) — the crossing a
+  /// transform's landing makes.
+  void landCanvasPicture(CutPiece picture, {required String description}) {
+    final dab = buildCutPasteDab(picture);
+    _land(
+      PieceStamp(
+        onTheRow: (placement) => stampInArtwork(dab, placement),
+        blend: BrushBlendMode.color,
+        description: description,
+      ),
+    );
+  }
+
+  /// [stamp] through the piece door onto the ground a press reads
+  /// ([pieceGround]), as one undo.
+  void _land(PieceStamp stamp) {
+    final coordinator = _pixelEditing.coordinator;
+    if (coordinator == null) {
+      return;
+    }
+    final landed = pieceLandings(
+      coordinator: coordinator,
+      ground: pieceGround(),
+      stamp: stamp,
       // Without the hub the canvas keeps the old composite until you leave
       // the frame (see [runPixelVerb]).
       cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
     );
-    _project.historyManager.executeAsOneStep('Paste pixels', [
+    _project.historyManager.executeAsOneStep(stamp.description, [
       for (final cel in landed.values) cel.landing,
     ]);
   }
