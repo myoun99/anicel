@@ -339,6 +339,34 @@ void main() {
     expect([for (final item in held) item.label], ['Camera']);
   });
 
+  testWidgets('the storyboard\'s rows that cannot move lift too — the camera '
+      'row and the transition row, held inside the selection, show what '
+      'they hold (F-16-Q1, I-89 ①)', (tester) async {
+    final session = await pumpApp(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    final transition =
+        session.repository.requireProject().tracks.single.transitionLayer;
+
+    final camera = await pickUp(
+      tester,
+      find.named('storyboard-layer-name-cam'),
+      select: const Offset(30, 0),
+      nudge: const Offset(0, 12),
+    );
+    expect([for (final item in camera) item.label], ['Camera']);
+
+    final held = await pickUp(
+      tester,
+      find.named('storyboard-layer-name-${transition.id.value}'),
+      select: const Offset(30, 0),
+      nudge: const Offset(0, 12),
+    );
+    expect([for (final item in held) item.label], [transition.name]);
+  });
+
   testWidgets('a row taken away mid-drag takes its chip with it', (
     tester,
   ) async {
