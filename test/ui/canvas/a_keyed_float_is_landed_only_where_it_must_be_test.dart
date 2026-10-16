@@ -193,6 +193,20 @@ void main() {
     expect(cel.asked, 0);
   });
 
+  test('a key that takes nothing away (amount 0) keys nothing — a float on '
+      'its row is itself', () {
+    final (:float, :cel) = floatOver(tileOf(255), alpha: 128);
+    final idle = [
+      ResolvedLayerEffect(
+        kind: EffectKind.deleteColor,
+        values: [64, 192, 96, 10, 0],
+      ),
+    ];
+
+    expect(float.shownOn(idle).preview, same(float));
+    expect(cel.asked, 0);
+  });
+
   test('⛔CONTROL: a float the session holds no hole for is itself', () {
     final (:float, :cel) = floatOver(empty);
     cel.holed = null;

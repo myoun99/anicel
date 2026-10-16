@@ -339,9 +339,10 @@ void main() {
 
   /// A box on [region], stood as [rows] says, carrying what it lifts: by a
   /// hand that takes hold inside it ([holdIn]) and drags it by (40, 30),
-  /// which floats the lifted pixels themselves; or by [warp]'s numbers in
-  /// Ctrl+T's box, which floats the picture it resamples them to. The
-  /// composite while it is carried, and once its confirm has landed it.
+  /// which floats the lifted pixels themselves; or by [warps]' numbers in
+  /// Ctrl+T's box, one after another, which floats the picture each
+  /// resamples them to. The composite while it is carried, and once its
+  /// confirm has landed it.
   ///
   /// ⚠️The hand takes hold while no box is open, so its press opens one as
   /// the move: in a box already open the same drag is the box's own, which
@@ -353,7 +354,7 @@ void main() {
     WidgetTester tester,
     _Rows rows, {
     required Rect region,
-    TransformValues Function(TransformValues now)? warp,
+    List<TransformValues Function(TransformValues now)> warps = const [],
   }) async {
     final hold = holdIn(tester, region);
     final drop = hold + handFor(tester, 40, 30);
@@ -364,11 +365,13 @@ void main() {
       if (rows != _Rows.live) celOf(tester, keyB),
     ];
     final before = cels();
-    if (warp != null) {
+    if (warps.isNotEmpty) {
       await pressCtrl(tester, LogicalKeyboardKey.keyT);
       commands.beginTransform();
-      await settle(tester);
-      commands.editTransformValues(warp);
+      for (final warp in warps) {
+        await settle(tester);
+        commands.editTransformValues(warp);
+      }
     } else {
       final hand = await tester.startGesture(
         hold,
@@ -409,7 +412,7 @@ void main() {
       ],
       [
         for (final _ in before)
-          if (warp != null) 'an image' else 'its surface',
+          if (warps.isNotEmpty) 'an image' else 'its surface',
       ],
       reason: '⛔fixture: every row floats — a warp as the image it '
           'resamples to, a drag as its own surface',
@@ -502,7 +505,7 @@ void main() {
             tester,
             rows,
             region: region,
-            warp: warped ? movedAndScaled : null,
+            warps: [if (warped) movedAndScaled],
           ),
           drawn,
         );
@@ -592,20 +595,24 @@ void main() {
     );
   });
 
-  testWidgets('a keyed sheet scaled where it stands shows what it lands as '
-      '— every picture the warp resamples to, at the same place', (
-    tester,
-  ) async {
+  testWidgets('a keyed sheet scaled where it stands, and scaled again, shows '
+      'what it lands as — every picture the warp resamples to, at the same '
+      'place', (tester) async {
     final c = await open(tester, projectOf(_Rows.live, keyed: true));
     final region = await sheets(tester, c, _Rows.live);
     final drawn = await composite(tester);
 
+    // Two scales about the one middle: one place, two pictures — the landing
+    // shown for the first is no landing of the second.
     expectLandsAsCarried(
       await carry(
         tester,
         _Rows.live,
         region: region,
-        warp: (now) => now.copyWith(sx: 1.25, sy: 1.25),
+        warps: [
+          (now) => now.copyWith(sx: 1.25, sy: 1.25),
+          (now) => now.copyWith(sx: 1.5, sy: 1.5),
+        ],
       ),
       drawn,
     );
@@ -633,6 +640,44 @@ void main() {
 
     expectLandsAsCarried(
       await carry(tester, _Rows.live, region: region),
+      drawn,
+    );
+  });
+
+  testWidgets('a keyed sheet on a posed row in a folder shows what it lands '
+      'as — the folder buffers the landing where the pose put it', (
+    tester,
+  ) async {
+    final c = await open(
+      tester,
+      projectOf(
+        _Rows.folder,
+        keyed: true,
+        // A moved down by 30: its anchor is the canvas's middle.
+        pose: TransformPose(
+          center: CanvasPoint(
+            x: defaultCutCanvasSize.width / 2,
+            y: defaultCutCanvasSize.height / 2 + 30,
+          ),
+        ),
+      ),
+    );
+    // B ABOVE A, so B's own room in the folder's buffer is nowhere near
+    // where A's landing stands: what the buffer gives A's landing is A's
+    // to give.
+    final a = Rect.fromLTWH(c.dx - 160, c.dy - 64, 120, 120);
+    final b = Rect.fromLTWH(c.dx - 160, c.dy - 224, 120, 120);
+    await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
+    await lay(tester, keyB, b, (x, y) => sheet(b, x, y));
+    await settle(tester);
+    final drawn = await composite(tester);
+
+    expectLandsAsCarried(
+      await carry(
+        tester,
+        _Rows.folder,
+        region: a.expandToInclude(b).inflate(60),
+      ),
       drawn,
     );
   });
