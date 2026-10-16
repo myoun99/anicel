@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/device_battery.dart';
 
+import '../helpers/temp_dir.dart';
+
 /// 🗣️I-103-Q1 (유저 2026-10-16): the device's battery at the top strip's
 /// end — what each OS says, read as one reading, and kept up to date while
 /// the app is on screen.
@@ -43,7 +45,7 @@ void main() {
   group("Linux's power supplies", () {
     late Directory supplies;
     setUp(() => supplies = Directory.systemTemp.createTempSync('supplies'));
-    tearDown(() => supplies.deleteSync(recursive: true));
+    tearDown(() => deleteTempQuietly(supplies));
 
     void supply(String name, Map<String, String> fields) {
       final folder = Directory('${supplies.path}/$name')..createSync();
@@ -110,6 +112,20 @@ void main() {
         DeviceBattery.linuxReadingIn(supplies),
         (percent: 33, charging: false),
       );
+    });
+
+    test('a capacity past full reads full, and one under empty is none', () {
+      supply('BAT0', {
+        'type': 'Battery',
+        'capacity': '104',
+        'status': 'Discharging',
+      });
+      expect(
+        DeviceBattery.linuxReadingIn(supplies),
+        (percent: 100, charging: false),
+      );
+      File('${supplies.path}/BAT0/capacity').writeAsStringSync('-1\n');
+      expect(DeviceBattery.linuxReadingIn(supplies), isNull);
     });
 
     test('no battery listed, or none present, is no battery', () {

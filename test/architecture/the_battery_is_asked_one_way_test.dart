@@ -39,4 +39,20 @@ void main() {
       expect(body, contains('"charging"'));
     });
   }
+
+  // `main()` runs once, at startup, and a test that pumps a widget has
+  // already missed it — the colour key program's reason for its own source
+  // check (`the_shader_is_loaded_before_the_first_frame_test`).
+  test('main() asks before the first frame, and hands the strip what it '
+      'heard', () {
+    final source = File('lib/main.dart').readAsStringSync();
+    final askedAt = source.indexOf('await DeviceBattery.watch()');
+    expect(askedAt, greaterThanOrEqualTo(0));
+    expect(
+      askedAt,
+      lessThan(source.indexOf('runApp(')),
+      reason: 'a place the strip made a frame later would pop into being',
+    );
+    expect(source, contains('HomePage(battery: DeviceBattery.shown)'));
+  });
 }

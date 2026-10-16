@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -84,6 +85,12 @@ abstract final class DeviceBattery {
   /// the one the strip means is the system's. And a battery's own `Full`
   /// is not power: some report it off the mains at 100%, where the mains
   /// supply already says whether it is plugged in.
+  ///
+  /// ⚠️And a capacity can say more than full — the kernel divides what the
+  /// battery holds by what it last held full, and a worn one overshoots —
+  /// so it reads full: a reading refused there would cost a full battery
+  /// its gauge for the run, and the strip keeps that place for the device
+  /// (I-103-Q1). The Mac's runner caps its own the same way.
   static BatteryReading? linuxReadingIn(Directory supplies) {
     final named = supplies.listSync().toList()
       ..sort((a, b) => a.path.compareTo(b.path));
@@ -110,8 +117,8 @@ abstract final class DeviceBattery {
       }
     }
     return switch (percent) {
-      final int percent when percent >= 0 && percent <= 100 => (
-        percent: percent,
+      final int percent when percent >= 0 => (
+        percent: math.min(percent, 100),
         charging: charging,
       ),
       _ => null,
