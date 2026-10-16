@@ -113,6 +113,7 @@ const _builtOnlyOutsideTests = <String, String>{
   'save_settings.json': 'HomePage, _unlessTesting',
   'shortcut_overrides.json': 'HomePage, _unlessTesting',
   'ui_scale.json': 'HomePage, _unlessTesting — and the two main()s',
+  'window.json': 'main(), WindowFullScreen.restore — a test names its file',
   'workspace_colors.json': 'HomePage, _unlessTesting',
   'workspace_layout.json': 'EditorWorkspace, its own FLUTTER_TEST check',
 };
