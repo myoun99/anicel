@@ -88,6 +88,14 @@ final class Lru<K, V> {
   /// [key]'s value made the most recently used — or, with none, the one
   /// [build] builds, kept as it: what `BoundedMemo.resolve` is to a memo.
   /// ⚠️As [use]: a store that keeps nulls builds them again.
+  ///
+  /// 🔬INLINED, SO A HIT MAKES NO CLOSURE (2026-10-17 — AOT on the Surface
+  /// Pro 11, the tip masks' key run, 30 rotated rounds). A caller's [build]
+  /// holds what a miss needs — seven values for a tip mask — and a call
+  /// made it on every dab, hit or not: 1.156 of the landed use-then-keep
+  /// with every mask kept, 1.032 letting go all along. Inlined, it is made
+  /// only where a miss calls it: 1.016 and 1.000.
+  @pragma('vm:prefer-inline')
   V resolve(K key, V Function() build) {
     final held = use(key);
     if (held != null) {
