@@ -148,7 +148,7 @@ class CelColorKey {
   }
 
   /// What erasing leaves of [alpha] — [alphaFor]'s arithmetic, and the
-  /// walk's alpha table ([_KeyTables]).
+  /// walk's alpha table ([_keyTables]).
   int _erased(int alpha) => (_asFloat32(alpha * _keptFraction) + 0.5).floor();
 
   /// Whether this key NAMES the pixel for erasure — PURELY a colour
@@ -408,16 +408,16 @@ BitmapTile _keyedTile(
 /// leave it, written to the bytes [into] answers — asked once, at the
 /// first pixel that changes — and null when none does. THE walk, a tile's
 /// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike,
-/// [_KeyTables.most] keys at a time in the chain's order.
+/// [keyRgbaKeysAtOnce] keys at a time in the chain's order.
 Uint8List? _keyedPixels(
   Uint8List view,
   List<CelColorKey> keys,
   Uint8List Function() into,
 ) {
   Uint8List? out;
-  for (var from = 0; from < keys.length; from += _KeyTables.most) {
-    final tables = _KeyTables(
-      keys.sublist(from, math.min(from + _KeyTables.most, keys.length)),
+  for (var from = 0; from < keys.length; from += keyRgbaKeysAtOnce) {
+    final tables = _keyTables(
+      keys.sublist(from, math.min(from + keyRgbaKeysAtOnce, keys.length)),
     );
     final source = out;
     out = source == null
@@ -439,26 +439,15 @@ Uint8List? _keyedPixels(
 /// brush's tiles in ~21 ms (`ActiveStrokeOverlayModel`).
 Uint8List? _walk(
   Uint8List view,
-  _KeyTables tables,
+  KeyRgbaTables tables,
   Uint8List Function() into,
 ) {
   final engine = QaNativeEngine.instance;
   if (engine != null) {
-    final keyed = engine.keyRgba(
-      view,
-      red: tables.red,
-      green: tables.green,
-      blue: tables.blue,
-      keeps: tables.keeps,
-      alphaMaps: tables.alphaMaps,
-    );
+    final keyed = engine.keyRgba(view, tables);
     return keyed == null ? null : (into()..setAll(0, keyed));
   }
-  final red = tables.red;
-  final green = tables.green;
-  final blue = tables.blue;
-  final keeps = tables.keeps;
-  final maps = tables.alphaMaps;
+  final (:red, :green, :blue, :keeps, alphaMaps: maps) = tables;
   Uint8List? out;
   final length = view.length;
   for (var offset = 0; offset < length; offset += 4) {
@@ -485,51 +474,45 @@ Uint8List? _walk(
   return out;
 }
 
-/// Up to [most] colour keys as the walk reads them, here and in C — a
-/// table lookup a channel where the keys asked a question a key: bit k of
-/// [red]`[r]`, [green]`[g]` and [blue]`[b]` says key k is within its
-/// tolerance of a pixel in that channel, bit k of [keeps] that key k keeps
-/// what it names, and `alphaMaps[k * 256 + a]` is what key k leaves of an
-/// alpha `a` it erases.
+/// Up to [keyRgbaKeysAtOnce] colour keys as the walk reads them, here and
+/// in C ([KeyRgbaTables]).
 ///
 /// ⛔MADE FROM THE KEYS' OWN ANSWERS, never a second spelling of them: a
 /// channel's bit is [CelColorKey.matches] asked with the other two channels
 /// at the key's own values, and an alpha's is [CelColorKey._erased] — so the
 /// walk, in either language, cannot drift from the definition the
 /// destructive verb and the shader are held to.
-final class _KeyTables {
-  _KeyTables(List<CelColorKey> keys)
-    : assert(keys.length <= most),
-      alphaMaps = Uint8List(keys.length * 256),
-      keeps = keys.indexed.fold(
-        0,
-        (bits, entry) => entry.$2.keepsMatches ? bits | 1 << entry.$1 : bits,
-      ) {
-    for (final (k, key) in keys.indexed) {
-      final bit = 1 << k;
-      for (var value = 0; value < 256; value += 1) {
-        if (key.matches(value, key.green, key.blue)) {
-          red[value] |= bit;
-        }
-        if (key.matches(key.red, value, key.blue)) {
-          green[value] |= bit;
-        }
-        if (key.matches(key.red, key.green, value)) {
-          blue[value] |= bit;
-        }
-        alphaMaps[k * 256 + value] = key._erased(value);
+KeyRgbaTables _keyTables(List<CelColorKey> keys) {
+  assert(keys.length <= keyRgbaKeysAtOnce);
+  final red = Uint32List(256);
+  final green = Uint32List(256);
+  final blue = Uint32List(256);
+  final alphaMaps = Uint8List(keys.length * 256);
+  for (final (k, key) in keys.indexed) {
+    final bit = 1 << k;
+    for (var value = 0; value < 256; value += 1) {
+      if (key.matches(value, key.green, key.blue)) {
+        red[value] |= bit;
       }
+      if (key.matches(key.red, value, key.blue)) {
+        green[value] |= bit;
+      }
+      if (key.matches(key.red, key.green, value)) {
+        blue[value] |= bit;
+      }
+      alphaMaps[k * 256 + value] = key._erased(value);
     }
   }
-
-  /// The keys one set of tables holds: a bit each in a 32-bit word, the C's.
-  static const int most = 32;
-
-  final Uint32List red = Uint32List(256);
-  final Uint32List green = Uint32List(256);
-  final Uint32List blue = Uint32List(256);
-  final Uint8List alphaMaps;
-  final int keeps;
+  return (
+    red: red,
+    green: green,
+    blue: blue,
+    keeps: keys.indexed.fold(
+      0,
+      (bits, entry) => entry.$2.keepsMatches ? bits | 1 << entry.$1 : bits,
+    ),
+    alphaMaps: alphaMaps,
+  );
 }
 
 /// A memo entry: what was derived, plus the VALUES it was derived from.

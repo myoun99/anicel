@@ -241,7 +241,7 @@ class QaNativeEngine {
   );
   final _keyAlphaMaps = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
-  /// [straight] rgba through a row's colour keys, given as the tables
+  /// [straight] rgba through a row's colour keys, given as the [tables]
   /// their one definition makes (`CelColorKey`, the keys' pass) — the
   /// keyed bytes, or null when the keys leave every alpha as it was
   /// (`qa_key_rgba`, ABI 49).
@@ -249,14 +249,8 @@ class QaNativeEngine {
   /// The bytes go through the engine's own buffer, so [straight] may live
   /// anywhere, and the answer is a view of that buffer: good until the
   /// next call.
-  Uint8List? keyRgba(
-    Uint8List straight, {
-    required Uint32List red,
-    required Uint32List green,
-    required Uint32List blue,
-    required int keeps,
-    required Uint8List alphaMaps,
-  }) {
+  Uint8List? keyRgba(Uint8List straight, KeyRgbaTables tables) {
+    final (:red, :green, :blue, :keeps, :alphaMaps) = tables;
     final length = straight.length;
     final pixels = _keyPixels.ensure(length);
     final keyed = pixels.asTypedList(length)..setAll(0, straight);
@@ -2483,6 +2477,24 @@ class QaNativeEngine {
 /// bytes on the next one does. A stride belongs to its rows — handed apart,
 /// one plane's stride could walk the other's rows.
 typedef NativeRows = ({Pointer<Uint8> start, int stride});
+
+/// Up to [keyRgbaKeysAtOnce] colour keys as `qa_key_rgba` reads them — a
+/// table lookup a channel where the keys asked a question a key: bit k of
+/// `red[r]`, `green[g]` and `blue[b]` says key k is within its tolerance of
+/// a pixel in that channel, bit k of `keeps` that key k keeps what it
+/// names, and `alphaMaps[k * 256 + a]` is what key k leaves of an alpha `a`
+/// it erases ([QaNativeEngine.keyRgba]; the keys' pass makes them).
+typedef KeyRgbaTables = ({
+  Uint32List red,
+  Uint32List green,
+  Uint32List blue,
+  int keeps,
+  Uint8List alphaMaps,
+});
+
+/// The keys one set of [KeyRgbaTables] holds: a bit each in a 32-bit word,
+/// the C's.
+const int keyRgbaKeysAtOnce = 32;
 
 /// A pooled native tile buffer: the raw pointer for the kernel and a
 /// typed-data view over the SAME memory for Dart-side reads/writes.
