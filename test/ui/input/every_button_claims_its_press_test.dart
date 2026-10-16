@@ -80,18 +80,18 @@ void main() {
     // reads the claim. Wrapping it would make the value decline its own
     // drag, which is the shape of H19: one flag answering two questions.
     '-lane-value-': 'its drag is its own verb (a scrub)',
-    // The row BODY, not a control. The drag that starts here is the row
-    // reorder — `storyboard-track-select-` is where the V row's move begins
-    // (#1349), so a claim here would undo that round.
-    'storyboard-se-label-': 'row body',
-    'storyboard-transition-label-': 'row body',
-    'storyboard-track-select-': 'row body',
+    // ↩️The storyboard rail's row bodies stood here — the S, transition and
+    // V rows' — until their tap became a raw pointer region over an arena
+    // hold, which this scan reads no more than it reads the timeline
+    // rows'. Why no claim goes on the V row's body is said where it is
+    // built (`_StoryboardLabelShell._surface`).
+    //
     // 🚨THE ROW'S DRAG IS ITS REORDER, and the reorder listener sits ABOVE
     // it. `ReorderableListView` puts a `ReorderableDragStartListener` around
     // the whole row, so the claim's absorbers — mounted INSIDE — take the
     // arena first and the library could no longer be reordered at all
     // (measured: three `brush_preset_panel_test` cases went red the moment
-    // this row was wrapped). Same shape as the storyboard rows above.
+    // this row was wrapped).
     'brush-preset-chip-': 'its drag is its own verb (a reorder)',
     // 🚨AND THE PEG STRIP OWNS ITS VERTICAL DRAG, one level up: 「the strip
     // owns the vertical drag; each column owns its tap」 says so in the

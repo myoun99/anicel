@@ -1,12 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_camera_row.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
+    show TimelineLayerControlsRow;
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
@@ -27,11 +41,14 @@ void main() {
   setUp(debugClearValueControlPointers);
   tearDown(debugClearValueControlPointers);
 
-  Future<EditorSessionManager> pumpRail(WidgetTester tester) async {
+  Future<EditorSessionManager> pumpRail(
+    WidgetTester tester, {
+    Project? project,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+      initialProject: project ?? createDefaultProject(),
     );
     addTearDown(session.dispose);
     await tester.pumpWidget(
@@ -111,35 +128,50 @@ void main() {
     }
   });
 
-  testWidgets('a tap inside the selection lets it go — on an S row and on '
-      'the V row', (tester) async {
-    final session = await pumpRail(tester);
-    final track = trackOf(session);
-    final s1 = track.seLayers.first;
-    final selection = <TimelineRowAddress>[
-      for (final se in track.seLayers) LayerRowAddress(se.id),
-      TrackRowAddress(track.id),
-    ];
-
-    // Its NAME — the row's own ground, no control on it.
+  /// Taps [name] on the row keyed [label] with [selection] — the row among
+  /// it — selected, and says whether the selection went.
+  Future<void> tapInside(
+    WidgetTester tester,
+    EditorSessionManager session, {
+    required List<TimelineRowAddress> selection,
+    required String label,
+    required String name,
+  }) async {
     session.rowSelection.value = selection;
     await tester.pump();
     await tester.tap(
       find.descendant(
-        of: find.byKey(
-          ValueKey<String>('storyboard-se-label-${track.id.value}-1'),
-        ),
-        matching: find.text(s1.name),
+        of: find.byKey(ValueKey<String>(label)),
+        matching: find.text(name),
       ),
     );
     await tester.pumpAndSettle();
     expect(
       session.rowSelection.value,
       isEmpty,
-      reason: '「클릭하고 떼면 뭐든 비우게」 — the S row held it on the press, '
-          'and nothing let it go on the release',
+      reason: '「클릭하고 떼면 뭐든 비우게」 — $label held it on the press, and '
+          'nothing let it go on the release',
     );
+  }
 
+  testWidgets('a tap inside the selection lets it go — on an S row and on '
+      'the V row', (tester) async {
+    final session = await pumpRail(tester);
+    final track = trackOf(session);
+    final selection = <TimelineRowAddress>[
+      for (final se in track.seLayers) LayerRowAddress(se.id),
+      TrackRowAddress(track.id),
+    ];
+
+    // Its NAME — the row's own ground, no control on it.
+    await tapInside(
+      tester,
+      session,
+      selection: selection,
+      label: 'storyboard-se-label-${track.id.value}-1',
+      name: track.seLayers.first.name,
+    );
+    // And the V row, which wears no layer, the same.
     session.rowSelection.value = selection;
     await tester.pump();
     await tester.tap(
@@ -149,7 +181,106 @@ void main() {
     expect(
       session.rowSelection.value,
       isEmpty,
-      reason: 'and the V row, which wears no layer, the same',
+      reason: 'the V row held it on the press, and nothing let it go',
+    );
+  });
+
+  testWidgets('…and on the camera row, the conte row and the transition '
+      'row — and on a row with no head to wear, in a gap', (tester) async {
+    const trackId = TrackId('t1');
+    // Cut a [0, 24), four frames of gap, then b [28, 52) — each with a
+    // conte layer and a camera.
+    Cut cutOf(String id, {int gap = 0}) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 24,
+      leadingGapFrames: gap,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: [
+        Layer(
+          id: LayerId('$id-conte'),
+          name: 'Conte',
+          kind: LayerKind.storyboard,
+          frames: const [],
+        ),
+        Layer(
+          id: LayerId('$id-cam'),
+          name: 'Camera',
+          kind: LayerKind.camera,
+          frames: const [],
+        ),
+      ],
+    );
+    final session = await pumpRail(
+      tester,
+      project: Project(
+        id: const ProjectId('rail-rows'),
+        name: 'Rail rows',
+        createdAt: DateTime.utc(2026, 10, 16),
+        tracks: [
+          Track(
+            id: trackId,
+            name: 'V1',
+            cuts: [cutOf('a'), cutOf('b', gap: 4)],
+          ),
+        ],
+      ),
+    );
+    final track = trackOf(session);
+    final camera = LayerRowAddress(trackCameraRowId(trackId));
+    final selection = <TimelineRowAddress>[
+      camera,
+      LayerRowAddress(trackConteRowId(trackId)),
+      LayerRowAddress(track.transitionLayer.id),
+    ];
+    final cameraLabel = find.byKey(
+      const ValueKey<String>('storyboard-camera-label-t1'),
+    );
+    expect(
+      find.descendant(
+        of: cameraLabel,
+        matching: find.byType(TimelineLayerControlsRow),
+      ),
+      findsOneWidget,
+      reason: '⛔전제: stood in a cut, the camera row wears its camera',
+    );
+
+    for (final (label, name) in [
+      ('storyboard-camera-label-t1', 'Camera'),
+      ('storyboard-conte-label-t1', 'Conte'),
+      ('storyboard-transition-label-t1', track.transitionLayer.name),
+    ]) {
+      await tapInside(
+        tester,
+        session,
+        selection: selection,
+        label: label,
+        name: name,
+      );
+    }
+
+    // In the gap there is no camera to wear: the row keeps its slots, and
+    // its name — and lets go the same.
+    session.standOnRow(
+      camera,
+      panel: WorkingPanel.storyboard,
+      globalFrameIndex: 26,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: cameraLabel,
+        matching: find.byType(TimelineLayerControlsRow),
+      ),
+      findsNothing,
+      reason: '⛔전제: in the gap, no head',
+    );
+    await tapInside(
+      tester,
+      session,
+      selection: selection,
+      label: 'storyboard-camera-label-t1',
+      name: 'Camera',
     );
   });
 }

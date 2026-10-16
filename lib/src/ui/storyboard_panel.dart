@@ -2945,9 +2945,9 @@ class _StoryboardLabelShell extends StatelessWidget {
   Widget _surface(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return ArenaTapHold(
-      // The row BODY, not a control: 'storyboard-track-select-' is decided
-      // in every_button_claims_its_press_test (a drag from here is the
-      // row's reorder, not a scroll).
+      // The row BODY, not a control: a drag that starts here is the V row's
+      // move (#1349 the V row's reorder), not a scroll — so no press claim
+      // goes on it, which would undo that round.
       key: selectKey,
       // ⛔The timeline row's own: the pick is the region's above, and this
       // holds a tap in the arena so scroll slop over a row behaves the way
