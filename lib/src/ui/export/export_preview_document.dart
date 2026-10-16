@@ -84,6 +84,11 @@ class ExportPreviewDocument implements ViewerDocument {
     return ui.Size(size.width.toDouble(), size.height.toDouble());
   }
 
+  /// The file's pixels: a page past the size it is written at shows no
+  /// more than the file would.
+  @override
+  bool get drawnAtAnySize => false;
+
   /// A page with nothing on it lands as a clear picture: it is a page that
   /// was drawn, and what stands under it shows.
   @override

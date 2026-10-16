@@ -94,6 +94,15 @@ void main() {
     final document = onTheClock(twelve, framesPerSecond: 12);
 
     expect(document.pageSize(3), const ui.Size(64, 36));
+    final frames = FakePdfDocument(
+      pageSizes: List.filled(5, const ui.Size(64, 36)),
+      drawnAtAnySize: false,
+    );
+    expect(
+      onTheClock(frames, framesPerSecond: 12).drawnAtAnySize,
+      isFalse,
+      reason: 'a movie\'s frames are its pixels, whoever counts them',
+    );
     await document.dispose();
     expect(twelve.disposed, isTrue);
   });

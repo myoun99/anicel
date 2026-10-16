@@ -299,7 +299,14 @@ void main() {
 
       final (_, asked) = asks.single;
       final scale = asked.width / large.width;
-      expect(scale, viewerRenderScaleFor(coverage, const Size(4000, 3000)));
+      expect(
+        scale,
+        viewerRenderScaleFor(
+          coverage,
+          const Size(4000, 3000),
+          drawnAtAnySize: false,
+        ),
+      );
       expect(scale, greaterThanOrEqualTo(coverage));
       expect(scale, lessThan(1));
       expect(asked.height, (large.height * scale).round());

@@ -45,6 +45,11 @@ void main() {
 
     expect(doc.pageCount, 1);
     expect(doc.pageSize(0), const ui.Size(400, 300));
+    expect(
+      doc.drawnAtAnySize,
+      isFalse,
+      reason: 'its file\'s pixels: past them it has none more to give',
+    );
   });
 
   test('🚨it renders at the size ASKED FOR, not at the file\'s — the large '
@@ -112,6 +117,7 @@ void main() {
     Future<void> expectTheComposite(ViewerDocument doc) async {
       expect(doc.pageCount, 1);
       expect(doc.pageSize(0), const ui.Size(8, 6));
+      expect(doc.drawnAtAnySize, isFalse, reason: 'its composite\'s pixels');
       final small = await doc.renderPage(0, width: 4, height: 2);
       addTearDown(small.dispose);
       expect(

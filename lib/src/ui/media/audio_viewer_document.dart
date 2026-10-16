@@ -84,6 +84,11 @@ class AudioViewerDocument implements ViewerDocument {
     height,
   );
 
+  /// Drawn at the size asked, as a PDF's page is: its lines are as sharp as
+  /// the pixels they are drawn on.
+  @override
+  bool get drawnAtAnySize => true;
+
   @override
   Future<ui.Image> renderPage(
     int pageIndex, {

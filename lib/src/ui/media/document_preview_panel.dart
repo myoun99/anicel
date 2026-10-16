@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -96,7 +95,8 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
   String _key(String suffix) => '${widget.keyPrefix}-$suffix';
 
   /// The page stood on, asked for at the pixels the view shows it at —
-  /// never more than the file has (100% is a pixel of the file).
+  /// never more than the file has (100% is a pixel of the file) unless it
+  /// is drawn at any size ([ViewerDocument.drawnAtAnySize]).
   List<({Rect rect, ui.Image? image})> _pictures(
     BuildContext context,
     CanvasViewport viewport,
@@ -105,12 +105,10 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
     final rasters = widget.pagesAndRun.rasters;
     final page = widget.page;
     final size = document.pageSize(page);
-    final scale = math.min(
-      1.0,
-      viewerRenderScaleFor(
-        CanvasZoomScale.of(context).display(viewport.zoom),
-        size,
-      ),
+    final scale = viewerRenderScaleFor(
+      CanvasZoomScale.of(context).display(viewport.zoom),
+      size,
+      drawnAtAnySize: document.drawnAtAnySize,
     );
     rasters.scale = scale;
     final up = rasters.imageOf(page);

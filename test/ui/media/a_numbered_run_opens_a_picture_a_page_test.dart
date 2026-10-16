@@ -89,6 +89,11 @@ void main() {
 
     expect(doc.pageCount, 3);
     expect(doc.framesPerSecond, isNull, reason: 'paged by hand, as a book');
+    expect(
+      doc.drawnAtAnySize,
+      isFalse,
+      reason: 'its pages are pictures: past their pixels, none more',
+    );
     expect(run.asked, [0]);
 
     await _draw(doc, 2);

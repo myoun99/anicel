@@ -85,8 +85,15 @@ void main() {
       3,
       (left: 3, top: 2, width: 5, height: 4),
     );
+    final drawnAtAnySize = document.drawnAtAnySize;
     await document.dispose();
     expect(read, box(3, 2, 5, 4));
     expect(backend.asked, [3], reason: 'the frame the page names');
+    expect(
+      drawnAtAnySize,
+      isFalse,
+      reason: 'its frames are its pixels, as its own size is the one read '
+          'here: past it, none more',
+    );
   });
 }

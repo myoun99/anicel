@@ -31,9 +31,21 @@ const int viewerMaxRenderPixels = 16 * 1024 * 1024;
 /// inside the widget's State where only a pumped panel could reach it —
 /// and a pumped panel re-frames its own viewport, so the one input that
 /// decides could not be driven from a test at all.
-double viewerRenderScaleFor(double zoom, ui.Size pageSize) {
+///
+/// 🚨IT STOPS AT THE PAGE'S OWN SIZE unless the page is [drawnAtAnySize]
+/// (`ViewerDocument.drawnAtAnySize`, 유저 2026-09-11): past 100% a page made
+/// of its file's pixels has none more to give. ONE law, for every render
+/// of a page — the viewer's, a preview's, a composed picture's
+/// ([pictureRenderWidthFor]); ↩️two of them stopped it each in its own
+/// line, and the viewer did not.
+double viewerRenderScaleFor(
+  double zoom,
+  ui.Size pageSize, {
+  required bool drawnAtAnySize,
+}) {
+  final most = drawnAtAnySize ? 8.0 : 1.0;
   var scale = 1.0;
-  while (scale < zoom && scale < 8) {
+  while (scale < zoom && scale < most) {
     scale *= 2;
   }
   while (scale / 2 >= zoom && scale > viewerMinRenderScale) {
@@ -59,9 +71,10 @@ int pictureRenderWidthFor(double shownHeight, ui.Size original) {
   if (original.width <= 0 || original.height <= 0) {
     return 1;
   }
-  final scale = math.min(
-    1.0,
-    viewerRenderScaleFor(shownHeight / original.height, original),
+  final scale = viewerRenderScaleFor(
+    shownHeight / original.height,
+    original,
+    drawnAtAnySize: false,
   );
   return math.max(1, (original.width * scale).round());
 }

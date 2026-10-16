@@ -145,6 +145,9 @@ final class ImageViewerDocument implements ViewerDocument {
   );
 
   @override
+  bool get drawnAtAnySize => false;
+
+  @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,

@@ -93,6 +93,20 @@ abstract class ViewerDocument {
   /// One page's natural size; pages of one document may differ.
   ui.Size pageSize(int pageIndex);
 
+  /// Whether a page rendered past its own size ([pageSize]) shows more than
+  /// that size holds: true of one DRAWN at the size asked — a PDF's vectors
+  /// and text, a waveform — false of one made of its file's own pixels — a
+  /// picture, a movie's frame, a composite — which has none more to give
+  /// past 100%, a pixel of the file, and is never rendered larger
+  /// (`viewerRenderScaleFor`).
+  ///
+  /// 🗣️유저 2026-09-11 (viewer-tier-ignores-zoom): 「pdf는 확대하면
+  /// 선명해지는게 맞긴하네. 벡터인 텍스트정보가 있으니까. 이미지나 비디오는
+  /// 아닐지라도」. ↩️Every page climbed to eight times its size: a photo
+  /// zoomed in was decoded at up to eight times its own width, every pixel
+  /// past its own made up.
+  bool get drawnAtAnySize;
+
   /// Renders page [pageIndex] to exactly [width]×[height] pixels.
   Future<ui.Image> renderPage(
     int pageIndex, {

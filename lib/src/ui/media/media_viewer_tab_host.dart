@@ -318,6 +318,7 @@ final class _LetGoOf implements ViewerDocument {
   _LetGoOf(ViewerDocument document, {required int page})
     : pageCount = document.pageCount,
       framesPerSecond = document.framesPerSecond,
+      drawnAtAnySize = document.drawnAtAnySize,
       _size = document.pageCount == 0
           ? ui.Size.zero
           : document.pageSize(page.clamp(0, document.pageCount - 1));
@@ -327,6 +328,9 @@ final class _LetGoOf implements ViewerDocument {
 
   @override
   final double? framesPerSecond;
+
+  @override
+  final bool drawnAtAnySize;
 
   final ui.Size _size;
 
@@ -1193,6 +1197,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
         final scale = viewerRenderScaleFor(
           coverage,
           document.pageSize(entry.page),
+          drawnAtAnySize: document.drawnAtAnySize,
         );
         if (entry.page == page) {
           _rasters.scale = scale;

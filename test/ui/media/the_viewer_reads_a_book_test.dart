@@ -24,6 +24,7 @@ import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -76,10 +77,12 @@ void main() {
     double? framesPerSecond,
     required CanvasViewport view,
     bool firstOpen = false,
+    bool drawnAtAnySize = true,
   }) async {
     final fake = FakePdfDocument(
       pageSizes: List<ui.Size>.filled(pages, pageSize),
       framesPerSecond: framesPerSecond,
+      drawnAtAnySize: drawnAtAnySize,
     );
     PdfRenderService.debugOpenerOverride = (_) async => fake;
     slot.framedFor.value = firstOpen ? null : path;
@@ -225,6 +228,35 @@ void main() {
       fake.renderRequests.last.$2,
       greaterThan(wide),
       reason: 'zoomed in fourfold, the page is asked for sharper',
+    );
+  });
+
+  testWidgets('🚨a page made of its file\'s pixels is never asked for past '
+      'them, however far the view zooms in (유저 2026-09-11 「pdf는 확대하면 '
+      '선명해지는게 맞긴하네 … 이미지나 비디오는 아닐지라도」)', (tester) async {
+    final quarter = CanvasZoomScale(tester.view.devicePixelRatio).render(0.25);
+    final fake = await open(
+      tester,
+      pages: 2,
+      view: CanvasViewport(zoom: quarter),
+      drawnAtAnySize: false,
+    );
+    expect(
+      fake.renderRequests.last.$2,
+      lessThan(pageSize.width),
+      reason: '⛔premise: zoomed out, under its own pixels',
+    );
+
+    slot.viewport.value = seedFromRender(
+      tester,
+      CanvasViewport(zoom: 2),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      fake.renderRequests.last,
+      (fake.renderRequests.last.$1, 600, 800),
+      reason: 'zoomed in eightfold, at its own pixels and no more',
     );
   });
 

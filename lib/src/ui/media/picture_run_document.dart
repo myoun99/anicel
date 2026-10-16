@@ -98,6 +98,10 @@ final class PictureRunDocument implements ViewerDocument {
   @override
   ui.Size pageSize(int pageIndex) => _sizes[pageIndex] ?? _sizes[0]!;
 
+  /// Its pages are pictures.
+  @override
+  bool get drawnAtAnySize => false;
+
   @override
   Future<ui.Image> renderPage(
     int pageIndex, {

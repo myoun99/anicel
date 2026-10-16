@@ -203,6 +203,9 @@ class _PdfrxDocumentHandle implements ViewerDocument {
   }
 
   @override
+  bool get drawnAtAnySize => true;
+
+  @override
   Future<ui.Image> renderPage(
     int pageIndex, {
     required int width,

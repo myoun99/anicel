@@ -14,7 +14,13 @@ class FakePdfDocument implements ViewerDocument {
     this.framesPerSecond,
     this.cancelsWhenDisposed = false,
     this.clear = false,
+    this.drawnAtAnySize = true,
   });
+
+  /// The fake stands in for a PDF, drawn at any size. A test of a document
+  /// made of its file's pixels — a picture, a movie — sets this false.
+  @override
+  final bool drawnAtAnySize;
 
   /// Every pixel a region read hands back is clear — a picture with nothing
   /// on it where the outline lies (a transparent image's empty stretch).
