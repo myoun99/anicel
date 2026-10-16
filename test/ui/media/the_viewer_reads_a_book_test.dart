@@ -231,9 +231,10 @@ void main() {
     );
   });
 
-  testWidgets('🚨a page made of its file\'s pixels is never asked for past '
-      'them, however far the view zooms in (유저 2026-09-11 「pdf는 확대하면 '
-      '선명해지는게 맞긴하네 … 이미지나 비디오는 아닐지라도」)', (tester) async {
+  testWidgets('🚨a page made of its file\'s pixels is asked for at them '
+      'however the view zooms — never past them (유저 2026-09-11 「pdf는 '
+      '확대하면 선명해지는게 맞긴하네 … 이미지나 비디오는 아닐지라도」), never '
+      'under (10-16 「늘 원본(캔버스처럼)」)', (tester) async {
     final quarter = CanvasZoomScale(tester.view.devicePixelRatio).render(0.25);
     final fake = await open(
       tester,
@@ -242,9 +243,10 @@ void main() {
       drawnAtAnySize: false,
     );
     expect(
-      fake.renderRequests.last.$2,
-      lessThan(pageSize.width),
-      reason: '⛔premise: zoomed out, under its own pixels',
+      fake.renderRequests.map((ask) => (ask.$2, ask.$3)).toSet(),
+      {(600, 800)},
+      reason: 'zoomed out fourfold, at its own pixels — ↩️at a quarter of '
+          'them',
     );
 
     slot.viewport.value = seedFromRender(
@@ -254,8 +256,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      fake.renderRequests.last,
-      (fake.renderRequests.last.$1, 600, 800),
+      fake.renderRequests.map((ask) => (ask.$2, ask.$3)).toSet(),
+      {(600, 800)},
       reason: 'zoomed in eightfold, at its own pixels and no more',
     );
   });

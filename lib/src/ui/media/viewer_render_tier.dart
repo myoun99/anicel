@@ -58,6 +58,29 @@ double viewerRenderScaleFor(
   return scale;
 }
 
+/// The scale the MEDIA VIEWER asks a page at, for a view showing it at
+/// [zoom]: a page drawn at any size by the ladder ([viewerRenderScaleFor]),
+/// and a page made of its file's pixels — a photo, a movie's frame — at its
+/// own size whatever the zoom, as the canvas holds its cels whole: halved
+/// only for [viewerMaxRenderPixels].
+///
+/// 🗣️유저 2026-10-16 (viewer-tier-ignores-zoom-Q1 b): 「늘 원본(캔버스처럼)」
+/// — the media viewer alone. A document's preview and a composed picture
+/// go down the ladder with the view ([viewerRenderScaleFor],
+/// [pictureRenderWidthFor]). ↩️The viewer's photos and movies went down it
+/// too, a quarter of their pixels shown at a quarter of their size (유저
+/// 2026-08-29: 「100%로 fit인 상태로 축소해도 전 최대 디코드 크기보다
+/// 압도적으로 작아진단거 맞지?」).
+double mediaViewerRenderScaleFor(
+  double zoom,
+  ui.Size pageSize, {
+  required bool drawnAtAnySize,
+}) => viewerRenderScaleFor(
+  drawnAtAnySize ? zoom : 1,
+  pageSize,
+  drawnAtAnySize: drawnAtAnySize,
+);
+
 /// The width to render a composed picture at — a conte cell's, a strip
 /// block's — when it is drawn [shownHeight] device pixels tall and its
 /// original (the camera frame) is [original].

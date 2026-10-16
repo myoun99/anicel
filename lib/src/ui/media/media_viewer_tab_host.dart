@@ -1140,8 +1140,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   /// The pages the view shows now and where each lies — every page on
   /// screen in the book ([_book]), the page on show ([_pageShown])
-  /// otherwise — each asked for at the zoom the view has — none while
-  /// [asking] is false (a fit is about to replace the view).
+  /// otherwise — each asked for at the zoom the view has, or at its own
+  /// pixels when it is made of them ([mediaViewerRenderScaleFor]) — none
+  /// while [asking] is false (a fit is about to replace the view).
   ///
   /// 🚨★★★THE ZOOM THE VIEW HAS, read HERE, from the view the panel hands
   /// this builder. It was read in `build` from `widget.viewport` — a seed
@@ -1194,7 +1195,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (asking) {
       final coverage = CanvasZoomScale.of(context).display(viewport.zoom);
       for (final entry in shown) {
-        final scale = viewerRenderScaleFor(
+        final scale = mediaViewerRenderScaleFor(
           coverage,
           document.pageSize(entry.page),
           drawnAtAnySize: document.drawnAtAnySize,

@@ -145,6 +145,36 @@ void main() {
     });
   });
 
+  group('🚨the media viewer asks a page made of its file\'s pixels at its '
+      'own size whatever the zoom; one drawn at any size by the ladder — '
+      '유저 2026-10-16 「늘 원본(캔버스처럼)」', () {
+    const picture = ui.Size(2000, 1500);
+
+    double inTheViewer(double zoom, ui.Size size, {required bool drawn}) =>
+        mediaViewerRenderScaleFor(zoom, size, drawnAtAnySize: drawn);
+
+    test('a picture, out or in, is its own pixels', () {
+      for (final zoom in [0.05, 0.25, 0.5, 1.0, 2.0, 8.0]) {
+        expect(inTheViewer(zoom, picture, drawn: false), 1.0, reason: '$zoom');
+      }
+    });
+
+    test('a page drawn at any size goes down the ladder and up it, as a '
+        'preview\'s does', () {
+      for (final zoom in [0.05, 0.25, 0.5, 1.0, 2.0, 8.0]) {
+        expect(
+          inTheViewer(zoom, page, drawn: true),
+          ofDrawn(zoom, page),
+          reason: '$zoom',
+        );
+      }
+    });
+
+    test('and a picture past the cap is held to the cap', () {
+      expect(inTheViewer(0.05, photo, drawn: false), 0.5);
+    });
+  });
+
   group('a composed picture (a conte cell, a strip block) climbs the same '
       'ladder, and stops at its original — 유저 2026-09-25 「화면이 필요한 '
       '만큼(최대 원본)」', () {
