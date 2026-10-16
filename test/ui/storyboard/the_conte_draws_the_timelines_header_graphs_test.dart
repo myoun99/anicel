@@ -13,6 +13,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_camera_row.dart'
+    show trackCameraRowId;
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -31,10 +33,12 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheet;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show LaneEditPreview, TimelineDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
     show TimelineLaneGraph;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
-    show TimelineLaneControlsRow;
+    show TimelineLaneControlsRow, TimelineLaneFrameRow;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -79,11 +83,15 @@ void main() {
     expandedLaneGroups: {if (!shut) transform},
   );
 
+  /// One track of one cut, its [cutLayers] — S rows [seLayers], the V row
+  /// carrying [effects], twirled as [lanesExpanded] and
+  /// [expandedLaneGroups] say.
   Project project({
     List<Layer>? seLayers,
     List<LayerEffect> effects = const [],
     bool lanesExpanded = false,
     Set<String> expandedLaneGroups = const {},
+    List<Layer> cutLayers = const [],
   }) => Project(
     id: const ProjectId('project'),
     name: 'Graphs',
@@ -98,7 +106,7 @@ void main() {
             name: 'Cut',
             duration: 24,
             canvasSize: const CanvasSize(width: 640, height: 360),
-            layers: const [],
+            layers: cutLayers,
           ),
         ],
         seLayers: seLayers ?? [seLayer(s1)],
@@ -112,13 +120,15 @@ void main() {
   /// The panel over a session holding [project], wired as the workspace
   /// wires it: the rows' twirls ([withStoryboardTwirls]) and the header
   /// graphs, the timeline's state turned by the timeline's verbs — and,
-  /// with [dragRows], the session's own row drags.
+  /// with [dragRows], the session's own row drags; an edit in flight on
+  /// [dragPreview].
   Future<EditorSessionManager> pump(
     WidgetTester tester,
     Project project, {
     LaneGraphsView graphs = LaneGraphsView.none,
     ValueListenable<List<TimelineRowAddress>>? rowSelection,
     bool dragRows = false,
+    ValueListenable<TimelineDragPreview?>? dragPreview,
   }) async {
     final session = EditorSessionManager(initialProject: project);
     addTearDown(session.dispose);
@@ -144,6 +154,7 @@ void main() {
                 layerLanesOpenOf: twirls.layerLanesOpenOf,
                 poseDisplaySize: const CanvasSize(width: 640, height: 360),
                 rowSelection: rowSelection,
+                dragPreview: dragPreview,
                 laneGraphs: graphs,
                 laneGraphVerbs: presses.laneGraphVerbs,
                 rowDragHooks: dragRows
@@ -313,6 +324,14 @@ void main() {
     );
     // Its header stands whole, as every header does.
     expect(tester.getSize(labelOf(s2, transform)).height, laneHeight);
+    // The sheet rules a thin lane as thin as it stands: one table.
+    final sheet = tester.widget<TimelineGridSheet>(
+      find.byKey(const ValueKey<String>('storyboard-grid-sheet')),
+    );
+    expect(
+      [for (final row in sheet.rows.rows) row.extent],
+      contains(laneGraphFoldedExtent),
+    );
     // The enlarged graph and its header fill the rows' view.
     final view = tester
         .getSize(
@@ -322,6 +341,48 @@ void main() {
     expect(
       tester.getSize(graphOf(key)).height,
       laneGraphMostExtent(view, laneHeight),
+    );
+  });
+
+  testWidgets('an enlarged graph folds a projection row\'s lanes as well — '
+      'the camera row\'s, rail and strips alike', (tester) async {
+    final key = laneGroupKey(s1, transform);
+    await pump(
+      tester,
+      project(
+        cutLayers: [
+          Layer(
+            id: const LayerId('camera'),
+            name: 'Camera',
+            kind: LayerKind.camera,
+            frames: const [],
+            lanesExpanded: true,
+          ),
+        ],
+      ),
+      graphs: LaneGraphsView(open: {key: const LaneGraph(enlarged: true)}),
+    );
+
+    final row = trackCameraRowId(trackId);
+    expect(
+      tester.getSize(labelOf(row, 'position')).height,
+      laneGraphFoldedExtent,
+    );
+    expect(
+      tester.widget<TimelineLaneControlsRow>(labelOf(row, 'position')).folded,
+      isTrue,
+    );
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              ValueKey<String>(
+                'storyboard-camera-lane-position-row-${trackId.value}',
+              ),
+            ),
+          )
+          .height,
+      laneGraphFoldedExtent,
     );
   });
 
@@ -406,6 +467,83 @@ void main() {
     );
   });
 
+  testWidgets('a graph follows a key in flight as the strips do — an S '
+      'row\'s and the V row\'s fx alike (F-195)', (tester) async {
+    final preview = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(preview.dispose);
+    final seKey = laneGroupKey(s1, transform);
+    final fxKey = laneGroupKey(carrier, effectGroupLaneId(blur));
+    final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
+    final hued = LayerEffect.defaults(
+      id: hue,
+      kind: EffectKind.hueSaturation,
+    );
+    final session = await pump(
+      tester,
+      project(
+        effects: [blurred, hued],
+        lanesExpanded: true,
+        expandedLaneGroups: {effectGroupLaneId(blur), effectGroupLaneId(hue)},
+      ),
+      graphs: LaneGraphsView(
+        open: {seKey: const LaneGraph(), fxKey: const LaneGraph()},
+      ),
+      dragPreview: preview,
+    );
+    final blurX = effectLaneId(blur, 'blurX');
+    final saturation = effectLaneId(hue, 'saturation');
+    Set<int> drawnKeys(String key, String laneId) => {
+      for (final line
+          in tester.widget<TimelineLaneGraph>(graphOf(key)).lines.own())
+        if (line.lane.laneId == laneId) ...line.lane.keyedFrames,
+    };
+    Set<int> stripKeys(String laneId) => tester
+        .widget<TimelineLaneFrameRow>(
+          find.descendant(
+            of: find.byKey(
+              ValueKey<String>('storyboard-track-lane-row-0-$laneId'),
+            ),
+            matching: find.byType(TimelineLaneFrameRow),
+          ),
+        )
+        .lane
+        .keyedFrames;
+    LayerEffect keyed(LayerEffect effect, String parameter, int frame) {
+      final held = effect.parameters[parameter]!;
+      return effect.withParameter(
+        parameter,
+        held.copyWith(track: held.track.withKey(frame, 10)),
+      );
+    }
+
+    expect(drawnKeys(seKey, 'rotation'), isEmpty, reason: 'premise');
+    expect(drawnKeys(fxKey, blurX), isEmpty, reason: 'premise');
+    expect(stripKeys(saturation), isEmpty, reason: 'premise');
+
+    // A key on the S row's rotation, in flight.
+    final se = session.repository.requireProject().tracks.single.seLayers;
+    preview.value = LaneEditPreview.row(
+      row: se.single,
+      globalRow: se.single.copyWith(
+        transformTrack: se.single.transformTrack.copyWith(
+          rotation: se.single.transformTrack.rotation.withKey(4, 30),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(drawnKeys(seKey, 'rotation'), {4});
+
+    // And keys on the V row's fx chain: in its graph, and on a strip of a
+    // group no graph is open over.
+    preview.value = LaneEditPreview.track(
+      trackId: trackId,
+      trackEffects: [keyed(blurred, 'blurX', 3), keyed(hued, 'saturation', 5)],
+    );
+    await tester.pump();
+    expect(drawnKeys(fxKey, blurX), {3});
+    expect(stripKeys(saturation), {5});
+  });
+
   testWidgets('an fx header dragged into an open graph\'s room stays where '
       'it is: the room is no row (I-89 ③)', (tester) async {
     final header = effectGroupLaneId(blur);
@@ -479,5 +617,11 @@ void main() {
     presses.toggleLaneGraph(key);
     await tester.pumpAndSettle();
     expect(graphOf(key), findsOneWidget);
+
+    // Shut by the same verb, its group stays open: only the graphs' own
+    // state moves, which the conte panel's tab hears as the timeline's does.
+    presses.toggleLaneGraph(key);
+    await tester.pumpAndSettle();
+    expect(graphOf(key), findsNothing);
   });
 }
