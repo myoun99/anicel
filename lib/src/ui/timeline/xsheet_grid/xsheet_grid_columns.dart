@@ -46,7 +46,7 @@ class _XSheetGridColumns {
   /// slot's WIDTH is its height here).
   List<RailToggleColumn<TimelineDisplayRow>> swipeColumns() =>
       timelineSwipeColumns(
-        hooks: _state.widget.hooks,
+        hooks: timelineRailSwipeHooks(_state.widget.hooks),
         axis: Axis.vertical,
         crossExtent: _state._headers.naturalHeaderExtent,
         leadingOrigin: 0,
