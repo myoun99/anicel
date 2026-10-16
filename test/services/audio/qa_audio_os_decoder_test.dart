@@ -226,6 +226,12 @@ void main() {
         'after a timecode track with an edit list of its own',
         pcmMovie(samples, edits: [plays], timecodeFirst: true),
       ),
+      (
+        // Where it starts is the sound's clock, how long it plays the
+        // movie's.
+        'on QuickTime\'s movie clock of 600',
+        pcmMovie(samples, edits: [plays], movieScale: 600),
+      ),
     ]) {
       final decoded = decodeAudioBytes(movie);
       expect(decoded, isNotNull, reason: '$shape: the engine reads it');

@@ -14,7 +14,9 @@ import 'dart:typed_data';
 /// sound. [long] writes the shape a long movie takes: version-1 headers and
 /// edits, and the sound box with a 64-bit size. [timecodeFirst] puts a
 /// timecode track with an edit list of its own before the sound track, as
-/// editors' reels have.
+/// editors' reels have. The movie's clock ticks [movieScale] a second (the
+/// rate unless said — QuickTime's own is 600); an edit's `keep` is written
+/// in it, its `from` in the sound's own clock, the rate.
 Uint8List pcmMovie(
   Int16List samples, {
   int channels = 2,
@@ -23,8 +25,11 @@ Uint8List pcmMovie(
   List<({int from, int keep})>? edits,
   bool long = false,
   bool timecodeFirst = false,
+  int? movieScale,
 }) {
   final frames = samples.length ~/ channels;
+  final movieClock = movieScale ?? rate;
+  int onTheMovieClock(int count) => count * movieClock ~/ rate;
   final pcm = ByteData(samples.length * 2);
   for (var index = 0; index < samples.length; index += 1) {
     pcm.setInt16(
@@ -54,8 +59,11 @@ Uint8List pcmMovie(
           ..._u32(list.length),
           for (final edit in list) ...[
             // The length in the movie's time scale, the start in the
-            // media's — both [rate] here.
-            if (long) ..._u64(edit.keep) else ..._u32(edit.keep),
+            // media's.
+            if (long)
+              ..._u64(onTheMovieClock(edit.keep))
+            else
+              ..._u32(onTheMovieClock(edit.keep)),
             if (long) ..._u64(edit.from) else ..._u32(edit.from),
             ..._u32(0x10000), // played at 1.0
           ],
@@ -66,7 +74,7 @@ Uint8List pcmMovie(
         ..._u32(0), ..._u32(0), // created, modified
         ..._u32(id),
         ..._u32(0),
-        ..._u32(frames), // duration
+        ..._u32(onTheMovieClock(frames)), // duration
         ...List.filled(8, 0),
         ..._u16(0), ..._u16(0), // layer, alternate group
         ..._u16(0x100), ..._u16(0), // volume
@@ -147,7 +155,7 @@ Uint8List pcmMovie(
   final movieBody = [
     ..._box('mvhd', [
       ..._u32(version),
-      ...times(rate, frames),
+      ...times(movieClock, onTheMovieClock(frames)),
       ..._u32(0x10000), // rate 1.0
       ..._u16(0x100), // volume 1.0
       ...List.filled(10, 0),
