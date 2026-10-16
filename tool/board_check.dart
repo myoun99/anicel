@@ -66,7 +66,7 @@ String boardCheckComplaints(
     ..._pointersToNothing(cards, acks),
     ..._stampsTheFileContradicts(file, cards, acks),
     ..._cardsOffTheBoard(cards, acks, since),
-    ..._sectionsTheStoryCannotName(file, acks, since, now, linesSince),
+    ..._sectionsTheStoryCannotName(file, cards, acks, now, linesSince),
     ..._workThatShipped(cards, acks, since),
     ..._questionsNobodyCanAnswer(cards, acks, since),
     ..._answersNobodyRead(cards, acks, since, now),
@@ -404,14 +404,16 @@ Iterable<String> _cardsOffTheBoard(
 /// so the offending word is in a line, and naming the line is what lets it be
 /// found. ⛔But only lines written since this rule existed — a gate that
 /// complains about corrected history forever is a gate nobody reads.
+/// ⛔Nor a line the card's story has already moved past ([_refiledAfter]).
 Iterable<String> _sectionsTheStoryCannotName(
   File file,
+  List<BoardCard> cards,
   Set<String> acks,
-  String since,
   DateTime? now,
   String linesSince,
 ) sync* {
   const knownEndings = {'archived', 'deleted'};
+  final byId = {for (final c in cards) c.id: c};
   final unknownStage = <String>[];
   final future = <String>[];
   final handWrittenState = <String>[];
@@ -451,7 +453,10 @@ Iterable<String> _sectionsTheStoryCannotName(
     }
     if ('${json['ts'] ?? ''}'.compareTo(linesSince) < 0) continue;
     final at = '${json['at'] ?? ''}'.trim();
-    if (at.isNotEmpty && !kSection.containsKey(at) && !_kSubStage.contains(at)) {
+    if (at.isNotEmpty &&
+        !kSection.containsKey(at) &&
+        !_kSubStage.contains(at) &&
+        !_refiledAfter(byId[id], when)) {
       unknownStage.add('$n:$id($at)');
     }
     final state = '${json['state'] ?? ''}'.trim();
@@ -463,6 +468,7 @@ Iterable<String> _sectionsTheStoryCannotName(
     yield '모르는 항목 이름: ${unknownStage.join(', ')}\n'
         '보드는 아는 이름만 칸으로 읽습니다 — 모르는 이름은 칸을 바꾸지 '
         '못하고, 그 카드는 **조용히 「바로 가능」에 남습니다.**\n'
+        '⇒ 그 카드에 바른 대분류로 한 줄 더 적으면 풀립니다.\n'
         '⇒ 대분류: ${kSection.keys.join(' · ')}\n'
         '⇒ 소분류: ${_kSubStage.join(' · ')}';
   }
@@ -480,6 +486,24 @@ Iterable<String> _sectionsTheStoryCannotName(
         '⇒ 카드를 옮기려면 `at` 에 대분류를 적으세요. '
         '⚠️예외는 끝을 뜻하는 archived · deleted 둘뿐입니다.';
   }
+}
+
+/// Whether [card]'s story names a 대분류 after [when] — asked of the model's
+/// own story, in its own order.
+///
+/// 🧪2026-10-14, F-343: a session wrote `"at":"결정 필요"` and, seconds
+/// later, `"at":"하는 중"` on the same card. The card sat where the second
+/// line put it, and the gate went on naming the first for ever. The file
+/// cannot be edited, so the only way out was to ack the whole card id — which
+/// silenced every other check on that card too.
+bool _refiledAfter(BoardCard? card, DateTime? when) {
+  if (card == null || when == null) return false;
+  for (var i = 0; i < card.log.length; i++) {
+    if (!kSection.containsKey(stageName(card, i))) continue;
+    final t = DateTime.tryParse(card.log[i].ts);
+    if (t != null && t.isAfter(when)) return true;
+  }
+  return false;
 }
 
 /// Stage names that are entries but NOT sections. ⚠️Kept here rather than in

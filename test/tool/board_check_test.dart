@@ -150,6 +150,48 @@ void main() {
       expect(complaintsFor([card('A', at_: '나중에', rest: '')]), isEmpty);
     });
 
+    // 2026-10-14, F-343: 「결정 필요」 and, seconds later, 「하는 중」 on the
+    // same card. The file is append-only, so the gate named the first line
+    // for ever and only a whole-card ack could quiet it.
+    String unknownAt(String id, String hhmm) =>
+        '{"kind":"item","id":"$id","at":"결정 필요","note":"x",'
+        '"ts":"${at(hhmm)}","title":"$id","tags":["구조"]}';
+    String filed(String id, String hhmm, {String stage = '나중에'}) =>
+        '{"id":"$id","at":"$stage","note":"고쳐 적음","ts":"${at(hhmm)}"}';
+
+    test('⛔a 대분류 written after the unknown name re-files the card, '
+        'and the name is history', () {
+      expect(complaintsFor([unknownAt('A', '09:00'), filed('A', '09:10')]),
+          isEmpty);
+    });
+
+    test('🚨a 대분류 written BEFORE it does not', () {
+      expect(complaintsFor([filed('A', '09:00'), unknownAt('A', '09:10')]),
+          contains('모르는 항목 이름'));
+    });
+
+    test('🚨nor does a 소분류 after it, which moves nothing', () {
+      expect(
+        complaintsFor([
+          filed('A', '09:00'),
+          unknownAt('A', '09:10'),
+          filed('A', '09:20', stage: '작업 기록'),
+        ]),
+        contains('모르는 항목 이름'),
+      );
+    });
+
+    test('🚨nor a 대분류 on another card', () {
+      expect(
+        complaintsFor([
+          unknownAt('A', '09:00'),
+          card('B'),
+          filed('B', '09:10'),
+        ]),
+        contains('모르는 항목 이름'),
+      );
+    });
+
     // 2026-10-07: the letters landed with their fold, their server and
     // their hook tested, and nothing had asked the GATE. The first mark a
     // hook wrote was an unknown word to it, and every session's turn end
