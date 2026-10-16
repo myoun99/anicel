@@ -23,12 +23,10 @@ import '../../native/qa_audio_device.dart'
     show QaAudioDevice, audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
 import '../playback/audio_device_transport.dart';
-import '../playback/audio_playback_sync.dart';
 import '../playback/audio_scrubber.dart';
-import '../playback/audioplayers_clip_player.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
-import '../../services/playback/playback_picture_wait.dart';
+import '../../services/playback/playback_wait.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
 import '../playback/canvas_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
@@ -202,19 +200,20 @@ class PlaybackRig implements PlaybackRun {
     _changes.notifyChanged();
   }
 
-  /// Whether a run's clock waits for its picture, and whether a run behind
-  /// its clock shows every picture: the mode, read against what the warmer
-  /// has made of the run it follows.
-  late final PlaybackPictureWait _pictureWait = PlaybackPictureWait(
+  /// Whether a run's clock waits — for its picture, the mode read against
+  /// what the warmer has made of the run it follows, or for its sound — and
+  /// whether a run behind its clock shows every picture.
+  late final PlaybackWait _wait = PlaybackWait(
     mode: () => playbackMode,
     pictureIsThere: pictureIsThere,
     aheadIsFilled: () => prerenderScheduler.isResting,
+    soundIsComing: () => audioDeviceTransport.soundIsComing,
   );
 
   /// Whether the run's picture at [playlistFrame] is there to show — or can
   /// never be — or null while the warmer follows no run, and so nothing
   /// would ever say one had come. What the run's clock asks of a frame
-  /// before it goes on ([_pictureWait]), and what a frame is shown by
+  /// before it goes on ([_wait]), and what a frame is shown by
   /// ([frameIsThere]).
   bool? pictureIsThere(int playlistFrame) {
     final wanted = prerenderScheduler.demand;
@@ -242,7 +241,7 @@ class PlaybackRig implements PlaybackRun {
       // nothing.
       prerenderScheduler.wake();
     }
-    return _pictureWait.holds(playlistFrame, placed: placed);
+    return _wait.holds(playlistFrame, placed: placed);
   }
 
   /// Canvas playback state machine; only the playback view and transport
@@ -259,7 +258,7 @@ class PlaybackRig implements PlaybackRun {
   )
     ..waitsOn = _waitsOn
     ..frameIsThere = frameIsThere
-    ..showsEveryPicture = _pictureWait.showsEveryPicture;
+    ..showsEveryPicture = _wait.showsEveryPicture;
 
   /// Everything in the app that plays, so the actuation gate can ask ONE
   /// object 「누가 재생 중인가」 and stop it.
@@ -297,8 +296,14 @@ class PlaybackRig implements PlaybackRun {
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
   /// samples handed to the device, and cumulative drift is structurally
-  /// zero. Stands down per run (no binary/device, PCM not resident) onto
-  /// [audioPlaybackSync].
+  /// zero. A run whose sound is on its way waits for it ([_wait]); one with
+  /// no output plays without sound.
+  ///
+  /// 🗣️유저 2026-10-16 (se-fallback-opens-the-original-path-Q2): 「대체
+  /// 재생을 안 쓰고, 소리가 준비될 때까지 기다린다」. ↩️A run the device did
+  /// not carry stood down onto the platform players (`AudioPlaybackSync`),
+  /// on the wall clock — the stack is the 저장 lane's to delete
+  /// (playback-waits-for-its-sound).
   late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
     controller: playback,
     resolveFrameRate: () => _settings.projectFrameRate,
@@ -338,28 +343,8 @@ class PlaybackRig implements PlaybackRun {
         _appSettings.audioSyncSettings.value.outputDeviceName,
   );
 
-  /// Frame-synced SE audio riding [playback]'s frame signals; clip lengths
-  /// come from the conform store (exact sample counts, with the ffmpeg
-  /// peaks approximation as its own fallback). Fallback path — stands down
-  /// for runs the device transport carries.
-  late final AudioPlaybackSync audioPlaybackSync = AudioPlaybackSync(
-    controller: playback,
-    resolveFrameRate: () => _settings.projectFrameRate,
-    durationSecondsFor: _audioConformStore.durationSecondsFor,
-    playerFactory: AudioplayersClipPlayer.new,
-    // Track-owned SE rows schedule from the tracks' global axes.
-    resolveProject: () => _project.repository.currentProject,
-    deviceCarriesPlayback: () => audioDeviceTransport.carryingPlayback,
-    resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
-    resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
-    resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
-  );
-
-  /// Transport FIRST: listener order is its contract with the fallback —
-  /// carryingPlayback must be decided before the sync consults it.
   void attach() {
     audioDeviceTransport.attach();
-    audioPlaybackSync.attach();
     // The warmer rests once what is wanted is made, or no more fits; a
     // playhead that moves on is what it looks again for.
     playback.globalFrameIndexListenable.addListener(prerenderScheduler.wake);
@@ -384,9 +369,9 @@ class PlaybackRig implements PlaybackRun {
   }
 
   /// ⚠️The ORDER is the same one the session's `dispose` used to spell:
-  /// the two fallback listeners come off the transport before the
-  /// transport and the controller they ride go down. [transports] joins
-  /// the front of that rule for the same reason — it holds a listener on
+  /// the scrubber comes off the transport before the transport and the
+  /// controller they ride go down. [transports] joins the front of that
+  /// rule for the same reason — it holds a listener on
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
@@ -397,7 +382,6 @@ class PlaybackRig implements PlaybackRun {
       prerenderScheduler.wake,
     );
     transports.dispose();
-    audioPlaybackSync.dispose();
     audioScrubber.dispose();
     audioDeviceTransport.dispose();
     playback.dispose();

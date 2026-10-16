@@ -2,7 +2,7 @@
 /// than a frame — and shows the next picture all the same: it goes on one
 /// frame however far its clock is ahead, and its clock is put back to that
 /// frame, the sound with it (`playheadWay`'s `everyPicture`). Its mode says
-/// whether it does ([showsEveryPicture]: `PlaybackPictureWait`).
+/// whether it does ([showsEveryPicture]: `PlaybackWait`).
 ///
 /// 🚨THE FIRST LOOK AFTER A START IS NEVER LATENESS (F-364-Q1 b). The
 /// device starts AT that look (`FirstLookStart`) and a clock of the run's

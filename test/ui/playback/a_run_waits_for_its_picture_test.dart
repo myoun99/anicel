@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 /// frame it showed, and goes on onto that frame when it is
 /// ([CanvasPlaybackController.lookAgain]). A run PUT on such a frame waits
 /// on it. WHICH frames those are is the playback mode's to say
-/// (`playback_picture_wait_test`), and what the sound does meanwhile is the
+/// (`playback_wait_test`), and what the sound does meanwhile is the
 /// transports'.
 void main() {
   Cut cut(String id, int duration) => Cut(
@@ -465,6 +465,35 @@ void main() {
     expect(asked, [(3, false)], reason: 'it is the frame it waits for that it '
         'asks about again, not the one it stands on');
 
+    c.stop();
+    c.detachTicker();
+  });
+
+  testWidgets('🚨a run says where it starts BEFORE it asks whether it waits '
+      'there — its sound is made ready first, so a run whose sound is on its '
+      'way waits for it where it was put (playback-waits-for-its-sound)', (
+    tester,
+  ) async {
+    final said = <String>[];
+    final c = controller()
+      ..onStartsAt = ((frame) => said.add('starts at $frame'))
+      ..waitsOn = (frame, {required placed}) {
+        said.add('waits on $frame');
+        return false;
+      };
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+
+    c.play(scope: PlaybackScope.activeCut, startGlobalFrame: 9);
+    expect(
+      said,
+      ['starts at 3', 'waits on 3'],
+      reason: 'where it stands: cut A\'s last frame',
+    );
+
+    said.clear();
+    c.seekToGlobalFrame(1);
+    expect(said, ['waits on 1'], reason: 'a run put elsewhere has started');
     c.stop();
     c.detachTicker();
   });

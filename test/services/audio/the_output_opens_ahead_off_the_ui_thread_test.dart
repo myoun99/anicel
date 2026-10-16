@@ -97,6 +97,44 @@ void main() {
             'the first and left it — then the open for the second landed');
   }, skip: skip);
 
+  // playback-waits-for-its-sound: a run plays its sound at the rate it was
+  // conformed at, and the output is opened again at it ahead of the run —
+  // ↩️such a run played every source through a rate conversion, or stood
+  // down while one was made.
+  test('🚨an open says the rate it was asked for — and one of a device '
+      'already open says nothing, as it opens nothing', () {
+    final device = QaAudioDevice.instance!;
+    expect(
+      device.open(sampleRate: 44100, useNullBackend: true),
+      greaterThan(0),
+    );
+    expect(device.openedAtRate, 44100);
+
+    device.open(sampleRate: 48000, useNullBackend: true);
+    expect(device.openedAtRate, 44100, reason: 'it opened nothing');
+  }, skip: skip);
+
+  test('🚨open at another rate, an open ahead of a run leaves it — and one '
+      'asked AT a rate (an arm\'s) opens it again there', () async {
+    debugWorkersRunHere = false;
+    final device = aBenchDevice();
+    await openAudioOutputAhead(device, sampleRate: 44100, preferredName: null);
+    expect(device.openedAtRate, 44100, reason: 'fixture');
+    expect(device.play(startSample: 0), isTrue, reason: 'fixture');
+
+    await ahead(device, null);
+    expect(device.isPlaying, isTrue, reason: 'any rate, ahead of a run');
+
+    await openAudioOutputAhead(
+      device,
+      sampleRate: 48000,
+      preferredName: null,
+      atThatRate: true,
+    );
+    expect(device.openedAtRate, 48000);
+    expect(device.isPlaying, isFalse, reason: 'opened again');
+  }, skip: skip);
+
   group('kept open', () {
     test('🚨the output closes when the last who keeps it lets go — ↩️each '
         'transport closed it as it went, under every other project', () {

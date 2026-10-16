@@ -83,6 +83,12 @@ class CanvasPlaybackController extends ChangeNotifier
   )?
   onPlaylistWarmRequested;
 
+  /// Fired on [play] once the run is set and BEFORE it asks [waitsOn]
+  /// whether it waits: the frame it starts from — so its sound is made
+  /// ready there first (`AudioDeviceTransport`), and a run whose sound is on
+  /// its way waits for it where it was put (playback-waits-for-its-sound).
+  void Function(int startGlobalFrame)? onStartsAt;
+
   /// The audio-master clock, set by the owner when a device transport
   /// carries playback. Read EVERY tick: non-null readings drive the
   /// picture from samples handed to the audio device ("the picture
@@ -135,7 +141,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// 🗣️유저 2026-10-15 (F-364-Q1 b): 「하나도 안 건너뛴다 — 소리를 그림에 다시
   /// 맞춘다」 — the run that waits for its pictures, the default; and
   /// 10-16 (F-364-every-picture-even-when-late-Q1 a), the run that renders
-  /// first too (`PlaybackPictureWait.showsEveryPicture`).
+  /// first too (`PlaybackWait.showsEveryPicture`).
   bool Function()? showsEveryPicture;
 
   /// Fired on every explicit seek with the clamped target frame — and where
@@ -319,6 +325,7 @@ class CanvasPlaybackController extends ChangeNotifier
       run.window.frames - 1,
     );
     onPlaylistWarmRequested?.call(run.playlist, scope, _currentGlobalFrame);
+    onStartsAt?.call(_currentGlobalFrame);
 
     _standHere();
     _syncFrameNotifiers();

@@ -1,5 +1,6 @@
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
 /// A [ViewerSound] that records what a run asked of it, and whose device
 /// clock the test moves by hand — for every surface that runs one: the
@@ -51,19 +52,53 @@ class RecordingViewerSound extends ViewerSound {
     }
   }
 
+  /// On the device.
+  static const OutputArm armed = OutputArmed(deviceRate: 48000, cannotPlay: {});
+
+  /// What a press, or a run asking again for its sound ([prepare]), is
+  /// answered: [armed], unless a test says the sound is on its way
+  /// ([OutputComing]) or will never come ([OutputRefused]).
+  OutputArm answers = armed;
+
+  /// Each time a run that waits for its sound asked for it again.
+  int prepares = 0;
+
   @override
   bool get isCarrying => _carrying;
 
   @override
-  bool play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
+  OutputArm play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
     played.add(sourcePath);
     from.add(fromSeconds);
     gains.add(gain);
+    if (answers is! OutputArmed) {
+      _carrying = false;
+      return answers;
+    }
     _carrying = true;
     _held = false;
     at = fromSeconds;
     hasEnded = false;
-    return true;
+    return answers;
+  }
+
+  /// Armed where [fromSeconds] says, and not started: a [resume] starts it.
+  @override
+  OutputArm prepare(
+    String sourcePath, {
+    required double fromSeconds,
+    required double gain,
+  }) {
+    prepares += 1;
+    if (answers is! OutputArmed) {
+      _carrying = false;
+      return answers;
+    }
+    _carrying = true;
+    _held = true;
+    at = fromSeconds;
+    hasEnded = false;
+    return answers;
   }
 
   @override

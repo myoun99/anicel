@@ -26,6 +26,7 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/ui/playback/audio_device_transport.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/native_engine_path.dart';
@@ -150,7 +151,11 @@ void main() {
     );
     addTearDown(sound.stop);
 
-    expect(sound.play('long.wav', fromSeconds: 60), isTrue, reason: 'fixture');
+    expect(
+      sound.play('long.wav', fromSeconds: 60),
+      isA<OutputArmed>(),
+      reason: 'fixture',
+    );
     expect(store.windowsRead, 1, reason: 'the press centres it, once');
 
     sound.resume(59); // a second back — a run going on, a short put-back

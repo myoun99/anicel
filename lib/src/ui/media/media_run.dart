@@ -9,8 +9,9 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/playback/behind_its_clock.dart';
 import '../../services/playback/frame_demand.dart';
-import '../../services/playback/playback_picture_wait.dart';
+import '../../services/playback/playback_wait.dart';
 import '../../services/playback/playhead_way.dart';
+import '../playback/audio_windowed_upload.dart' show OutputComing;
 import '../playback/looking_ticker.dart';
 import '../present_pacing.dart';
 import '../widgets/transport_bar.dart' show TransportSound;
@@ -114,7 +115,7 @@ class MediaRun {
   bool buffering = false;
 
   /// Whether the clock stands before the page ahead: the canvas's law
-  /// ([PlaybackPictureWait]) at the setting this run plays by — render
+  /// ([PlaybackWait]) at the setting this run plays by — render
   /// first, with the cushion as what lies ahead ([fillBuffer]). A page that
   /// is not there parks the playhead before it, and a parked playhead goes
   /// on once the read-ahead has come to rest where it stands.
@@ -131,17 +132,24 @@ class MediaRun {
   /// press — what render-first does for a canvas run put somewhere — held
   /// every press for the whole cushion, up to five seconds of pages, however
   /// fast they came (tried 10-10; the transport pins said so).
-  late final PlaybackPictureWait _wait = PlaybackPictureWait(
+  late final PlaybackWait _wait = PlaybackWait(
     mode: () => PlaybackMode.renderFirst,
     pictureIsThere: (page) {
       final at = _rasters.scale;
       return at != null && _rasters.readyAt(page, at);
     },
     aheadIsFilled: () => _readAhead.restingAt == _page,
+    soundIsComing: () => _soundComing,
   );
 
+  /// Whether the sound beside the pages is on its way ([OutputComing]):
+  /// the run stands where it was put ([_wait]) and asks for it again at
+  /// every look ([_soundHasCome]) — the canvas's law (playback-waits-for-
+  /// its-sound, 유저 2026-10-16: 「소리가 준비될 때까지 기다린다」).
+  bool _soundComing = false;
+
   /// Whether the run is behind its clock at a look and shows every picture
-  /// — as its setting does ([PlaybackPictureWait.showsEveryPicture]), never
+  /// — as its setting does ([PlaybackWait.showsEveryPicture]), never
   /// at the first look after its clock starts: a press, a parked run going
   /// on, a clock put back ([_putTheClockBackTo]).
   late final BehindItsClock _behind = BehindItsClock(_wait.showsEveryPicture);
@@ -312,6 +320,7 @@ class MediaRun {
   void stop() {
     _runs(false);
     buffering = false;
+    _soundComing = false;
     // ⚠️Unconditional: [ViewerSound.stop] is idempotent, and every path out
     // of a run — the button, the actuation gate, a new file, a closed tab —
     // comes through here. A sound left playing under a stopped viewer is
@@ -453,29 +462,63 @@ class MediaRun {
       if (fromTheTopAtTheEnd && _page >= _pageCount - 1) {
         _surface.turnToPage(0);
       }
+      _soundComing = false;
       if (soundPath != null) {
         soundSeconds = _resumeSeconds();
-        sound.play(
-          soundPath,
-          fromSeconds: soundSeconds,
-          gain: _surface.loudness.gain,
-        );
+        _soundComing =
+            sound.play(
+              soundPath,
+              fromSeconds: soundSeconds,
+              gain: _surface.loudness.gain,
+            )
+            is OutputComing;
       }
-      // ⛔A run with neither pages to turn nor sound coming out is a clock
-      // saying 「재생 중」 to the actuation gate while nothing happens — and
-      // the gate would then eat the next press for it. Standing down is
-      // silent BY DESIGN (no audio device, a conform still landing), so
-      // this is the shape that keeps a stand-down from becoming a lie.
-      if (!turnsItsOwnPages && !sound.isCarrying) {
+      // ⛔A run with neither pages to turn nor sound coming out — or on its
+      // way — is a clock saying 「재생 중」 to the actuation gate while
+      // nothing happens, and the gate would then eat the next press for it.
+      // Standing down is silent BY DESIGN (no audio device, a file that will
+      // never be ready), so this is the shape that keeps a stand-down from
+      // becoming a lie.
+      if (!turnsItsOwnPages && !sound.isCarrying && !_soundComing) {
         return;
       }
       _retriedAt = null;
-      _film.startAt(
-        turnsItsOwnPages ? _page / _surface.document!.framesPerSecond! : 0,
-      );
+      _film.startAt(_startSeconds());
       _behind.clockStarts();
       _runs(true);
+      // Its sound on its way: the run stands where it was put until it has
+      // come ([_soundHasCome]).
+      buffering = _soundComing;
     });
+  }
+
+  /// Where a run's own span starts — the page it stands on, in a document
+  /// that turns its own.
+  double _startSeconds() =>
+      turnsItsOwnPages ? _page / _surface.document!.framesPerSecond! : 0;
+
+  /// A run that waits for its sound asks for it again
+  /// ([ViewerSound.prepare]): once it has come — or never will — the run
+  /// goes on from where it was put, as a press there goes: the sound
+  /// started there ([ViewerSound.resume]), the clock from there. A sound
+  /// alone that never comes ends the run ([_followTheSound]).
+  bool _soundHasCome() {
+    final soundPath = _surface.soundPath;
+    if (soundPath != null &&
+        sound.prepare(
+              soundPath,
+              fromSeconds: soundSeconds,
+              gain: _surface.loudness.gain,
+            )
+            is OutputComing) {
+      return false;
+    }
+    _soundComing = false;
+    sound.resume(soundSeconds);
+    _film.spanFrom(_startSeconds());
+    _behind.clockStarts();
+    _surface.setState(() => buffering = false);
+    return true;
   }
 
   /// One look of a run's clock — every vsync.
@@ -513,7 +556,9 @@ class MediaRun {
     // budget every frame from the fifth on was decoded twice (measured
     // 2026-09-30). The turn's own rebuild asks from the new page.
     fillBuffer();
-    if (turnsItsOwnPages) {
+    if (_soundComing && !_soundHasCome()) {
+      // Stands where it was put: its sound is on its way ([_wait]).
+    } else if (turnsItsOwnPages) {
       _turnThePage();
     } else {
       _followTheSound();

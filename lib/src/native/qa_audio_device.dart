@@ -268,7 +268,18 @@ final class QaAudioDevice {
     int deviceIndex = -1,
   }) {
     _onNullBackend |= useNullBackend;
-    return _open(sampleRate, channels, useNullBackend ? 1 : 0, deviceIndex);
+    // An open device answers its rate and opens nothing.
+    final opens = !isOpen;
+    final opened = _open(
+      sampleRate,
+      channels,
+      useNullBackend ? 1 : 0,
+      deviceIndex,
+    );
+    if (opens && opened > 0) {
+      _openedAtRate = sampleRate;
+    }
+    return opened;
   }
 
   /// Whether this device has been opened on the null backend — a bench's,
@@ -331,10 +342,22 @@ final class QaAudioDevice {
   String? get openedFor => _openedFor;
   String? _openedFor;
 
+  /// The rate this device was asked to open at ([open]), while [isOpen] —
+  /// the rate a run's sound was conformed at, which an arm opens it at again
+  /// when it is another (`armAudioOutput`). Asked, not got: a backend that
+  /// gave another would otherwise be opened again at every arm.
+  int? get openedAtRate => _openedAtRate;
+  int? _openedAtRate;
+
   /// Whether the output is being opened off this thread
-  /// ([openAudioOutputAhead]) — what an arm stands down on, rather than
-  /// open it here again and wait for the worker's open to let go of the C.
+  /// ([openAudioOutputAhead]) — what an arm answers 「coming」 for
+  /// (`OutputComing`), rather than open it here again and wait for the
+  /// worker's open to let go of the C.
   bool get isOpening => _opening != null;
+
+  /// The open under way off this thread, while [isOpening] — what a run
+  /// that waits for its output hears it come by.
+  Future<void>? get opening => _opening;
   Future<void>? _opening;
 
   /// Who keeps the output open: a session's transport from when it opens it
@@ -738,17 +761,25 @@ bool openAudioOutput(
 /// is the one this isolate's [device] finds open.
 ///
 /// One at a time: an open asked for while one is under way follows it, and
-/// an output already open for [preferredName] is left as it is.
+/// an output already open for [preferredName] is left as it is — at any
+/// rate, unless [atThatRate]: an arm's, for a run whose sound was conformed
+/// at [sampleRate] (`armAudioOutput`). Ahead of a run the output is opened
+/// for the setting; only the run says what rate it plays at, and a tab
+/// opened at another rate would otherwise open it again for nothing.
 Future<void> openAudioOutputAhead(
   QaAudioDevice device, {
   required int sampleRate,
   required String? preferredName,
+  bool atThatRate = false,
 }) {
-  final opening = _openAhead(
-    device,
-    after: device._opening,
-    sampleRate: sampleRate,
-    preferredName: preferredName,
+  final underWay = device._opening ?? Future<void>.value();
+  final opening = underWay.then(
+    (_) => _openAhead(
+      device,
+      sampleRate: sampleRate,
+      preferredName: preferredName,
+      atThatRate: atThatRate,
+    ),
   );
   device._opening = opening;
   return opening.whenComplete(() {
@@ -760,12 +791,13 @@ Future<void> openAudioOutputAhead(
 
 Future<void> _openAhead(
   QaAudioDevice device, {
-  required Future<void>? after,
   required int sampleRate,
   required String? preferredName,
+  required bool atThatRate,
 }) async {
-  await after;
-  if (device.isOpen && device._openedFor == preferredName) {
+  if (device.isOpen &&
+      device._openedFor == preferredName &&
+      (!atThatRate || device._openedAtRate == sampleRate)) {
     return;
   }
   final reopen = device.isOpen;
@@ -797,6 +829,8 @@ Future<void> _openAhead(
     opened = false;
   }
   if (opened) {
-    device._openedFor = preferredName;
+    device
+      .._openedFor = preferredName
+      .._openedAtRate = sampleRate;
   }
 }

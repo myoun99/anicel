@@ -1,19 +1,37 @@
 import '../../models/playback_mode.dart';
 
-/// Whether a run's clock waits for a frame — and whether a run behind its
-/// clock shows every picture all the same: [PlaybackMode]'s three settings,
-/// read against what the warmer has made.
+/// Whether a run's clock waits for a frame — for its picture, by
+/// [PlaybackMode]'s three settings read against what the warmer has made,
+/// or for its sound ([soundIsComing]) under every one — and whether a run
+/// behind its clock shows every picture all the same.
 ///
 /// The one place the modes part. Everything else — which pictures are made,
 /// in what order, how many are kept — is the same under each.
-class PlaybackPictureWait {
-  PlaybackPictureWait({
+///
+/// 🚨ONE LAW, ONE CODE for every surface that runs — the canvas's run and
+/// the media viewer's (viewer-plays-by-the-one-playback-law), its sound
+/// with it (playback-waits-for-its-sound). ↩️It was the picture's wait
+/// alone (`PlaybackPictureWait`), and a run whose sound was not ready
+/// played on without it.
+class PlaybackWait {
+  PlaybackWait({
     required this.mode,
     required this.pictureIsThere,
     required this.aheadIsFilled,
+    required this.soundIsComing,
   });
 
   final PlaybackMode Function() mode;
+
+  /// Whether the run's sound is on its way — its output being opened, a
+  /// source being made ready (`OutputComing`) — and the run waits for it
+  /// where it stands.
+  ///
+  /// 🗣️유저 2026-10-16 (se-fallback-opens-the-original-path-Q2): 「대체
+  /// 재생을 안 쓰고, 소리가 준비될 때까지 기다린다」 — under every mode:
+  /// skipping frames keeps time with the sound, and has none to keep before
+  /// it comes.
+  final bool Function() soundIsComing;
 
   /// Whether playlist frame [playlistFrame]'s picture is there to show — or
   /// null when nothing is making the run's pictures, and so nothing would
@@ -28,11 +46,16 @@ class PlaybackPictureWait {
   /// that is not there — until [aheadIsFilled].
   bool _filling = false;
 
-  /// Whether the clock must wait for [playlistFrame]. [placed] when someone
-  /// PUT the run on the frame — play was pressed there, the ruler was
-  /// dragged there — rather than its clock reaching it: rendering first, a
-  /// run fills before it goes from wherever it was put.
-  bool holds(int playlistFrame, {required bool placed}) {
+  /// Whether the clock must wait for [playlistFrame]: its picture, or the
+  /// run's sound ([soundIsComing]). [placed] when someone PUT the run on the
+  /// frame — play was pressed there, the ruler was dragged there — rather
+  /// than its clock reaching it: rendering first, a run fills before it goes
+  /// from wherever it was put.
+  bool holds(int playlistFrame, {required bool placed}) =>
+      // The picture first, always: its fill counts every ask.
+      _pictureHolds(playlistFrame, placed: placed) || soundIsComing();
+
+  bool _pictureHolds(int playlistFrame, {required bool placed}) {
     final mode = this.mode();
     final there = mode == PlaybackMode.skipFrames
         ? null

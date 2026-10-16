@@ -6,6 +6,7 @@ import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
@@ -72,7 +73,7 @@ void main() {
 
     /// The bus's peak once the device has mixed a good way into the tone.
     Future<double> peakAt(double gain) async {
-      expect(sound.play(tone, gain: gain), isTrue);
+      expect(sound.play(tone, gain: gain), isA<OutputArmed>());
       sound.heardAt(); // the run's first look starts the device
       expect(
         await pollUntil(() => device.positionSamples > 9600),

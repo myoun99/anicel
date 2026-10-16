@@ -357,13 +357,19 @@ AudioMixSchedule audioMixScheduleFrom({
 typedef _StreamWindow = ({int centerSample, int backSamples, int aheadSamples});
 
 /// The sources that are already conformed and resident, in upload order,
-/// with the mix's source index mapped onto that order.
+/// with the mix's source index mapped onto that order — and the paths
+/// nothing is making ready ([AudioConformStore.isLanding]), which the
+/// upload leaves out ([WindowedUploadPlan.cannotPlay]).
 ///
 /// Null when one of them is still landing — the caller uploads nothing
 /// and any old schedule keeps playing. ⛔Every lookup runs even after a
 /// miss: each one KICKS its conform or rate conversion, and the next
 /// attempt wants them all landed.
-({List<AudioMixSource> sources, Map<int, int> byMixIndex, bool hasStreaming})?
+({
+  List<AudioMixSource> sources,
+  Map<int, int> byMixIndex,
+  Set<String> cannotPlay,
+})?
 _residentSources({
   required AudioMixSchedule mix,
   required AudioConformStore conformStore,
@@ -371,31 +377,32 @@ _residentSources({
 }) {
   final sources = <AudioMixSource>[];
   final byMixIndex = <int, int>{};
-  var complete = true;
-  var hasStreaming = false;
+  final cannotPlay = <String>{};
+  var landing = false;
   for (var index = 0; index < mix.sourcePaths.length; index += 1) {
     final path = mix.sourcePaths[index];
     if (conformStore.isStreaming(path)) {
-      hasStreaming = true;
       continue; // windowed per clip by the caller
     }
     final samples = conformStore.samplesAtRate(path, deviceRate);
     final entry = conformStore.resultFor(path);
-    if (samples == null || entry == null || !entry.isUsable) {
-      complete = false;
-      continue;
+    if (samples != null && entry != null && entry.isUsable) {
+      byMixIndex[index] = sources.length;
+      sources.add(AudioMixSource(samples: samples, channels: entry.channels));
+    } else if (conformStore.isLanding(path, deviceRate)) {
+      landing = true;
+    } else {
+      cannotPlay.add(path);
     }
-    byMixIndex[index] = sources.length;
-    sources.add(AudioMixSource(samples: samples, channels: entry.channels));
   }
   // ⛔Do NOT delete this as redundant because the caller refuses again on
   // a missing map entry: this returns BEFORE the clip loop, so a tick
   // that cannot upload anyway does not pay for a streamed clip's disk
   // read — and while a conform is landing, every tick takes this path.
-  if (!complete) {
+  if (landing) {
     return null;
   }
-  return (sources: sources, byMixIndex: byMixIndex, hasStreaming: hasStreaming);
+  return (sources: sources, byMixIndex: byMixIndex, cannotPlay: cannotPlay);
 }
 
 /// One streamed clip's window: [count] samples per channel from [start] of
@@ -464,13 +471,24 @@ final class WindowedUploadPlan {
     required this.clips,
     required this.resident,
     required this.reads,
-    required this.hasStreaming,
+    required this.cannotPlay,
   });
 
   final List<AudioMixClip> clips;
   final List<AudioMixSource> resident;
   final List<StreamWindowRead> reads;
-  final bool hasStreaming;
+
+  /// The mix's sources whose clips this upload leaves out: nothing is making
+  /// them ready to play — undecodable, failed, not readable yet, a stream
+  /// that will not open — so the rest plays without them.
+  ///
+  /// 🗣️유저 2026-10-16 (se-fallback-opens-the-original-path-Q2): 「대체
+  /// 재생을 안 쓰고」 · 「재생못하거나 하는 상황에선 제대로 메시지라던가 뭔가
+  /// 표시」 (playback-waits-for-its-sound ③). ↩️One such source held the
+  /// whole upload back, and the platform players carried the run.
+  final Set<String> cannotPlay;
+
+  bool get hasStreaming => reads.isNotEmpty;
 
   /// The upload, its streamed clips playing [windows] — [reads], read.
   WindowedUpload withWindows(List<AudioMixSource> windows) {
@@ -504,11 +522,13 @@ final class WindowedUploadPlan {
 /// the file.
 ///
 /// Null — so the caller uploads NOTHING and any old schedule keeps
-/// playing — when a resident source is missing (each lookup kicks its
-/// conform or rate conversion), a stream will not open, or streaming
-/// meets a device off the project rate (the conform on disk IS
-/// project-rate PCM; resampling windows on the fly would buy that rare
-/// case with a permanent cost).
+/// playing — while a resident source is landing (each lookup kicks its
+/// conform or rate conversion). A source nothing will make ready is left
+/// out instead ([WindowedUploadPlan.cannotPlay]) — and so is a stream on a
+/// device off the project rate: the conform on disk IS project-rate PCM,
+/// resampling windows on the fly would buy that rare case with a permanent
+/// cost, and an arm opens such a device again at the project's rate before
+/// it plans (`armAudioOutput`).
 WindowedUploadPlan? planWindowedMixUpload({
   required AudioMixSchedule mix,
   required AudioConformStore conformStore,
@@ -527,10 +547,8 @@ WindowedUploadPlan? planWindowedMixUpload({
   if (resident == null) {
     return null;
   }
-  if (resident.hasStreaming && deviceRate != conformStore.projectSampleRate) {
-    return null;
-  }
 
+  final cannotPlay = {...resident.cannotPlay};
   final clips = <AudioMixClip>[];
   final reads = <StreamWindowRead>[];
   final at = (
@@ -538,19 +556,20 @@ WindowedUploadPlan? planWindowedMixUpload({
     backSamples: backSeconds * deviceRate,
     aheadSamples: aheadSeconds * deviceRate,
   );
+  final streams = deviceRate == conformStore.projectSampleRate;
   for (final clip in mix.clips) {
     final path = mix.sourcePaths[clip.sourceIndex];
     if (!conformStore.isStreaming(path)) {
       final mapped = resident.byMixIndex[clip.sourceIndex];
-      if (mapped == null) {
-        return null;
+      if (mapped != null) {
+        clips.add(clip.pointedAt(mapped));
       }
-      clips.add(clip.pointedAt(mapped));
       continue;
     }
-    final reader = conformStore.streamReaderFor(path);
+    final reader = streams ? conformStore.streamReaderFor(path) : null;
     if (reader == null) {
-      return null;
+      cannotPlay.add(path);
+      continue;
     }
     clips.add(clip.pointedAt(resident.sources.length + reads.length));
     reads.add(_streamWindowRead(clip, reader: reader, at: at));
@@ -559,6 +578,6 @@ WindowedUploadPlan? planWindowedMixUpload({
     clips: clips,
     resident: resident.sources,
     reads: reads,
-    hasStreaming: resident.hasStreaming,
+    cannotPlay: cannotPlay,
   );
 }

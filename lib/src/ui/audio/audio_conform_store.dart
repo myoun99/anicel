@@ -33,9 +33,11 @@ class _ConformFailure {
 ///
 /// A format the decoder chain does not read (dr_libs + stb_vorbis + the
 /// OS codec stack) is a DEFINITIVE `undecodable` answer, not a failure:
-/// the entry stays, the waveform stays blank, and playback of that file
-/// rides the platform players. There is no ffmpeg anywhere behind this —
-/// the EXPORT-AUDIO round removed it from every audio path.
+/// the entry stays, the waveform stays blank, and a run plays without that
+/// file, saying so (`OutputArmed.cannotPlay`). ↩️Its playback rode the
+/// platform players (playback-waits-for-its-sound, 유저 2026-10-16: 「대체
+/// 재생을 안 쓰고」). There is no ffmpeg anywhere behind this — the
+/// EXPORT-AUDIO round removed it from every audio path.
 class AudioConformStore extends ChangeNotifier {
   AudioConformStore({
     required this.resolveConformPath,
@@ -179,7 +181,8 @@ class AudioConformStore extends ChangeNotifier {
 
   /// The windowed reader over [sourcePath]'s conform, cached across reads;
   /// null when the entry is not streaming or the bytes will not parse (the
-  /// caller stands down exactly as for missing PCM).
+  /// upload leaves its clips out, as for a source that will never be ready —
+  /// `WindowedUploadPlan.cannotPlay`).
   ///
   /// ⚠️「The conform」 is wherever its bytes are — a file in the run's
   /// scratch before the project has been saved, a range inside the
@@ -265,12 +268,21 @@ class AudioConformStore extends ChangeNotifier {
   final Map<String, Map<int, Float32List>> _resampledByRate = {};
   final Set<String> _resamplePending = {};
 
+  /// The rates [_resampleTo] could not convert a path to — not kicked again
+  /// for the session, as a conform that spent its attempts is not: a run
+  /// that waits for its sound ([isLanding]) would otherwise wait on a
+  /// conversion failing again at every landing. [invalidate] forgets them.
+  final Map<String, Set<int>> _conversionsThatFailed = {};
+
+  String _resampleKey(String sourcePath, int sampleRate) =>
+      '$sampleRate|$sourcePath';
+
   /// The conformed PCM at [sampleRate] — [samplesFor] when the device runs
   /// at the project rate (the common case, bit-exact, no filter), a cached
   /// rate conversion otherwise (WASAPI shared mode owns its own rate and
   /// may refuse the one asked for). A missing conversion is kicked async
-  /// and lands with a notify, exactly like a conform: the transport stands
-  /// down for THIS run and carries the next one.
+  /// and lands with a notify, exactly like a conform — what a run that
+  /// waits for its sound waits on ([isLanding]).
   Float32List? samplesAtRate(String sourcePath, int sampleRate) {
     if (sampleRate == projectSampleRate) {
       return samplesFor(sourcePath);
@@ -284,12 +296,28 @@ class AudioConformStore extends ChangeNotifier {
     if (cached != null) {
       return cached;
     }
-    final key = '$sampleRate|$sourcePath';
+    if (_conversionsThatFailed[sourcePath]?.contains(sampleRate) ?? false) {
+      return null;
+    }
+    final key = _resampleKey(sourcePath, sampleRate);
     if (_resamplePending.add(key)) {
       unawaited(_resampleTo(sourcePath, entry!, sampleRate, key));
     }
     return null;
   }
+
+  /// Whether [sourcePath] is on its way to being played at [sampleRate]:
+  /// its conform, or its conversion to that rate, under way — and it will
+  /// say so when it lands (a notify).
+  ///
+  /// 🚨What a run that waits for its sound waits on
+  /// (playback-waits-for-its-sound, 유저 2026-10-16: 「소리가 준비될 때까지
+  /// 기다린다」). A path with nothing under way is not coming — a failure,
+  /// an undecodable file, a source not readable yet inside its retry delay
+  /// — and the run plays without it.
+  bool isLanding(String sourcePath, int sampleRate) =>
+      _pending.contains(sourcePath) ||
+      _resamplePending.contains(_resampleKey(sourcePath, sampleRate));
 
   Future<void> _resampleTo(
     String sourcePath,
@@ -320,6 +348,7 @@ class AudioConformStore extends ChangeNotifier {
       if (_disposed) {
         return;
       }
+      (_conversionsThatFailed[sourcePath] ??= {}).add(sampleRate);
       _log(
         '[AudioConformStore] device-rate conversion failed for '
         '$sourcePath → ${sampleRate}Hz: $error',
@@ -418,9 +447,9 @@ class AudioConformStore extends ChangeNotifier {
     // the pool has moved off since is dropped at the next lookup.
     _conformedAs[sourcePath] = carry;
     if (result.isUsable || result.outcome == ConformOutcome.undecodable) {
-      // Undecodable is an ANSWER (route this format to the fallback), not
-      // a retry candidate — the same bytes will not decode differently
-      // next time.
+      // Undecodable is an ANSWER (a run plays without it; ↩️it routed this
+      // format to the fallback), not a retry candidate — the same bytes
+      // will not decode differently next time.
       _failures.remove(sourcePath);
       // A conform past the streaming threshold comes with NO PCM (AUDIO-PRO
       // R6): the conform on disk is the copy of record and playback reads
@@ -472,6 +501,7 @@ class AudioConformStore extends ChangeNotifier {
     _failures.remove(sourcePath);
     _conformedAs.remove(sourcePath);
     _resampledByRate.remove(sourcePath);
+    _conversionsThatFailed.remove(sourcePath);
     _closeStreamReader(sourcePath);
   }
 

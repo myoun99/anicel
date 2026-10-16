@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
+import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
@@ -298,6 +299,81 @@ void main() {
       );
       expect(bar(tester).playing, isTrue);
       await press(tester, 'play');
+    });
+  });
+
+  // playback-waits-for-its-sound (유저 2026-10-16, se-fallback Q2: 「소리가
+  // 준비될 때까지 기다린다」) — the viewer by the canvas's law (`PlaybackWait`).
+  // ↩️A sound not conformed yet stood down: a movie played without it, and a
+  // sound alone did not play until the next press.
+  group('a run whose sound is on its way', () {
+    const look = Duration(milliseconds: 42);
+
+    testWidgets('🚨a movie stands where it was put until its sound comes, and '
+        'goes on with it — the sound started there', (tester) async {
+      await openMovie(tester);
+      slot.position.value = 3;
+      await tester.pump();
+      sound!.answers = const OutputComing();
+
+      await press(tester, 'play');
+      for (var each = 0; each < 6; each += 1) {
+        await tester.pump(look);
+      }
+      expect(bar(tester).playing, isTrue, reason: 'a run that waits plays');
+      expect(slot.position.value, 3, reason: 'it stands where it was put');
+      expect(sound!.prepares, greaterThan(1), reason: 'asked at every look');
+      expect(sound!.resumes, 0);
+
+      sound!.answers = RecordingViewerSound.armed;
+      await tester.pump(look);
+      expect(sound!.resumedFrom, [3 / 24]);
+      expect(slot.position.value, 3);
+      await press(tester, 'play');
+    });
+
+    testWidgets('🚨a movie whose sound will never come plays its pictures '
+        'without it', (tester) async {
+      await openMovie(tester);
+      sound!.answers = const OutputComing();
+      await press(tester, 'play');
+
+      sound!.answers = const OutputRefused();
+      await tester.pump(look);
+      await tester.pump(look);
+      expect(bar(tester).playing, isTrue);
+      expect(sound!.isCarrying, isFalse);
+      await press(tester, 'play');
+    });
+
+    testWidgets('🚨a sound waits for itself where it was put, and plays from '
+        'there once it comes', (tester) async {
+      await openSound(tester);
+      sound!.answers = const OutputComing();
+
+      await press(tester, 'play');
+      await tester.pump(look);
+      expect(bar(tester).playing, isTrue, reason: 'it waits');
+      expect(sound!.resumes, 0);
+
+      sound!.answers = RecordingViewerSound.armed;
+      await tester.pump(look);
+      expect(sound!.resumedFrom, [0]);
+      expect(bar(tester).playing, isTrue);
+      await press(tester, 'play');
+    });
+
+    testWidgets('🚨a sound that will never come ends the run — nothing says '
+        '「재생 중」 to the gate for silence', (tester) async {
+      await openSound(tester);
+      sound!.answers = const OutputComing();
+      await press(tester, 'play');
+      expect(bar(tester).playing, isTrue, reason: 'fixture: it waits');
+
+      sound!.answers = const OutputRefused();
+      await tester.pump(look);
+      expect(bar(tester).playing, isFalse);
+      expect(session!.playbackRig.transports.value, isFalse);
     });
   });
 

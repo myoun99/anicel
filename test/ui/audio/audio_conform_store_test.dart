@@ -55,7 +55,8 @@ void main() {
   });
 
   test('undecodable is a definitive answer: no retry, blank waveform, '
-      'no length — the platform players still carry playback', () async {
+      'no length — a run plays without it (↩️the platform players carried '
+      'it)', () async {
     var runs = 0;
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
@@ -148,13 +149,87 @@ void main() {
     expect(store.samplesAtRate('a.wav', 48000), hasLength(4));
     expect(resampled, isEmpty);
 
-    // Device rate mismatch: null now (the transport stands down this run),
-    // conversion kicked once, served after it lands.
+    // Device rate mismatch: null now (the run waits for it), conversion
+    // kicked once, served after it lands.
     expect(store.samplesAtRate('a.wav', 44100), isNull);
     expect(store.samplesAtRate('a.wav', 44100), isNull);
     await pumpEventQueue();
     expect(resampled, [(48000, 44100)]);
     expect(store.samplesAtRate('a.wav', 44100), hasLength(1));
+    store.dispose();
+  });
+
+  // playback-waits-for-its-sound (유저 2026-10-16: 「소리가 준비될 때까지
+  // 기다린다」): what a run that waits for its sound waits on.
+  test('🚨a conform under way is landing until it lands', () async {
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => _usableResult(),
+      log: (_) {},
+    );
+    expect(store.isLanding('a.wav', 48000), isFalse, reason: 'never asked');
+    store.resultFor('a.wav');
+    expect(store.isLanding('a.wav', 48000), isTrue);
+    await pumpEventQueue();
+    expect(store.isLanding('a.wav', 48000), isFalse, reason: 'it landed');
+    store.dispose();
+  });
+
+  test('🚨a rate conversion under way is landing at that rate alone, until '
+      'it lands', () async {
+    final resampled = Completer<Float32List>();
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => _usableResult(),
+      resampleRunner: (request) => resampled.future,
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(store.samplesAtRate('a.wav', 44100), isNull, reason: 'kicked');
+    expect(store.isLanding('a.wav', 44100), isTrue);
+    expect(
+      store.isLanding('a.wav', 48000),
+      isFalse,
+      reason: 'at its own rate it is there',
+    );
+
+    resampled.complete(Float32List.fromList([0.9]));
+    await pumpEventQueue();
+    expect(store.isLanding('a.wav', 44100), isFalse);
+    store.dispose();
+  });
+
+  test('🚨a rate conversion that failed is not kicked again, and is not '
+      'landing — a run waiting on it would wait on it failing at every '
+      'landing; invalidating the path forgets it', () async {
+    var conversions = 0;
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => _usableResult(),
+      resampleRunner: (request) async {
+        conversions += 1;
+        throw StateError('fixture');
+      },
+      log: (_) {},
+    );
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    expect(store.samplesAtRate('a.wav', 44100), isNull);
+    await pumpEventQueue();
+    expect(conversions, 1, reason: 'fixture');
+
+    expect(store.samplesAtRate('a.wav', 44100), isNull);
+    await pumpEventQueue();
+    expect(conversions, 1, reason: 'not kicked again');
+    expect(store.isLanding('a.wav', 44100), isFalse);
+
+    store.invalidate('a.wav');
+    store.resultFor('a.wav');
+    await pumpEventQueue();
+    store.samplesAtRate('a.wav', 44100);
+    await pumpEventQueue();
+    expect(conversions, 2, reason: 'forgotten with the path');
     store.dispose();
   });
 

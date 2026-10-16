@@ -21,43 +21,16 @@ import 'package:anicel/src/native/qa_audio_device.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/playback/audio_device_transport.dart';
-import 'package:anicel/src/ui/playback/audio_playback_sync.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
 
-/// The transport driven for real: miniaudio's null backend runs the actual
-/// callback on an actual thread, so arming, the clock, pause/resume, seeks
-/// and the loop re-arm are all genuinely exercised — everything short of a
-/// speaker.
-class _SilentClipPlayer implements AudioClipPlayer {
-  _SilentClipPlayer(this.log);
-
-  final List<String> log;
-
-  @override
-  Future<void> prepare(String filePath) async => log.add('prepare $filePath');
-
-  @override
-  Future<void> startAt(Duration position) async => log.add('start');
-
-  @override
-  Future<void> setVolume(double volume) async {}
-
-  @override
-  Future<void> pause() async {}
-
-  @override
-  Future<void> resume() async {}
-
-  @override
-  Future<void> stop() async {}
-
-  @override
-  Future<void> dispose() async {}
-}
+// The transport driven for real: miniaudio's null backend runs the actual
+// callback on an actual thread, so arming, the clock, the wait for the
+// sound, seeks and the loop re-arm are all genuinely exercised — everything
+// short of a speaker.
 
 /// fps 10, ONE cut of 10 frames (exactly 1 s), one SE sound spanning it.
 final Project _project = Project(
@@ -167,13 +140,21 @@ void main() {
     resolveOutputDeviceName: outputName,
   )..attach();
 
-  test('no device → the transport stands down and the platform players '
-      'carry the run', () async {
+  /// The run's clock asks the transport whether it waits, as the rig's
+  /// `PlaybackWait` does ([AudioDeviceTransport.soundIsComing]).
+  void waitForTheSound(AudioDeviceTransport transport) =>
+      controller.waitsOn = (_, {required placed}) => transport.soundIsComing;
+
+  // playback-waits-for-its-sound (유저 2026-10-16, se-fallback Q2: 「대체
+  // 재생을 안 쓰고, 소리가 준비될 때까지 기다린다」 · 「다만 그런식으로
+  // 재생못하거나 하는 상황에선 제대로 메시지라던가 뭔가 표시 하도록」).
+  // ↩️Each of these stood down onto the platform players, and the next run
+  // rode the device.
+  test('🚨no device → the run plays without its sound, says so, and does not '
+      'wait for what will never come', () async {
     final store = _residentStore();
     store.resultFor('tone.wav');
     await pumpEventQueue();
-
-    final log = <String>[];
     final transport = AudioDeviceTransport(
       controller: controller,
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
@@ -181,67 +162,98 @@ void main() {
       conformStore: store,
       resolveDevice: () => null,
     )..attach();
-    final sync = AudioPlaybackSync(
-      controller: controller,
-      resolveFrameRate: () => const ProjectFrameRate.integer(10),
-      durationSecondsFor: store.durationSecondsFor,
-      playerFactory: () => _SilentClipPlayer(log),
-      resolveProject: () => _project,
-      deviceCarriesPlayback: () => transport.carryingPlayback,
-    )..attach();
+    waitForTheSound(transport);
 
     controller.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isFalse);
+    expect(transport.outputRefused, isTrue);
+    expect(transport.soundIsComing, isFalse);
+    expect(controller.isWaiting, isFalse);
     expect(transport.clockStatus(), isNull);
-    expect(log, contains('prepare tone.wav'),
-        reason: 'the fallback must carry the run — silence is never OK');
     controller.stop();
-    sync.dispose();
     transport.dispose();
     store.dispose();
   });
 
-  test('PCM not resident yet → this run stands down and the NEXT one rides '
-      'the device', () async {
+  test('🚨PCM not resident yet → the run waits where it was put, and rides '
+      'the device once the conform lands', () async {
     openNullDevice();
     final store = _residentStore();
     final transport = buildTransport(store);
+    waitForTheSound(transport);
 
-    controller.play(scope: PlaybackScope.activeCut);
-    expect(transport.carryingPlayback, isFalse,
-        reason: 'nothing resident at activation — the fallback carries');
-    controller.stop();
+    controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 3);
+    expect(transport.soundIsComing, isTrue);
+    expect(controller.isWaiting, isTrue, reason: 'it stands for its sound');
+    expect(transport.carryingPlayback, isFalse);
 
     await pumpEventQueue(); // the kicked conform lands
-    controller.play(scope: PlaybackScope.activeCut);
+    expect(transport.soundIsComing, isFalse);
+    expect(controller.isWaiting, isFalse, reason: 'it goes on');
     expect(transport.carryingPlayback, isTrue);
+    expect(controller.playlistFrame, 3, reason: 'from where it was put');
+    expect(transport.outputRefused, isFalse);
+    expect(transport.cannotPlay, isEmpty);
     controller.stop();
     transport.dispose();
     store.dispose();
   }, skip: skip);
 
-  test('carrying a run: the device plays, the clock reads frames, pause '
-      'stops the transport, resume re-arms', () async {
+  test('🚨a run whose sound will never come plays without it, and names '
+      'it — one undecodable source does not silence the rest', () async {
+    openNullDevice();
+    final store = AudioConformStore(
+      resolveConformPath: (_) => null,
+      runner: (request) async => const ConformResult(
+        outcome: ConformOutcome.undecodable,
+        error: 'fixture',
+      ),
+      log: (_) {},
+    );
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final transport = buildTransport(store);
+    waitForTheSound(transport);
+
+    controller.play(scope: PlaybackScope.activeCut);
+    expect(transport.soundIsComing, isFalse);
+    expect(controller.isWaiting, isFalse);
+    expect(transport.cannotPlay, {'tone.wav'});
+    controller.stop();
+    transport.dispose();
+    store.dispose();
+  }, skip: skip);
+
+  test('🚨a run stopped while it waits for its sound waits no more — the '
+      'landing does not start it again', () async {
+    openNullDevice();
+    final store = _residentStore();
+    final transport = buildTransport(store);
+    waitForTheSound(transport);
+
+    controller.play(scope: PlaybackScope.activeCut);
+    expect(transport.soundIsComing, isTrue, reason: 'fixture');
+    controller.stop();
+    expect(transport.soundIsComing, isFalse);
+
+    await pumpEventQueue();
+    expect(controller.isActive, isFalse);
+    expect(transport.carryingPlayback, isFalse);
+    transport.dispose();
+    store.dispose();
+  }, skip: skip);
+
+  test('carrying a run: the device plays, the clock reads frames, stop '
+      'stops the device', () async {
     final device = openNullDevice();
     final store = _residentStore();
     store.resultFor('tone.wav');
     await pumpEventQueue();
 
-    final log = <String>[];
     final transport = buildTransport(store);
-    final sync = AudioPlaybackSync(
-      controller: controller,
-      resolveFrameRate: () => const ProjectFrameRate.integer(10),
-      durationSecondsFor: store.durationSecondsFor,
-      playerFactory: () => _SilentClipPlayer(log),
-      resolveProject: () => _project,
-      deviceCarriesPlayback: () => transport.carryingPlayback,
-    )..attach();
 
     controller.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isTrue);
-    expect(log, isEmpty,
-        reason: 'the device carries — platform players must stand down');
     transport.clockStatus(); // the clock's first look starts the device
     expect(await pollUntil(() => device.positionSamples > 0), isTrue,
         reason: 'the callback never ran');
@@ -256,7 +268,26 @@ void main() {
     // out of playback — is the play/stop pair, which this still covers.
     controller.stop();
     expect(await pollUntil(() => !device.isPlaying), isTrue);
-    sync.dispose();
+    transport.dispose();
+    store.dispose();
+  }, skip: skip);
+
+  test('a play over a run that plays is no start: the run keeps the sound it '
+      'was made ready with', () async {
+    final device = openNullDevice();
+    final store = _residentStore();
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final transport = buildTransport(store);
+
+    controller.play(scope: PlaybackScope.activeCut);
+    transport.clockStatus(); // the clock's first look starts the device
+    expect(device.isPlaying, isTrue, reason: 'fixture');
+
+    controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 5);
+    expect(device.isPlaying, isTrue, reason: 'not made ready again');
+    expect(transport.carryingPlayback, isTrue);
+    controller.stop();
     transport.dispose();
     store.dispose();
   }, skip: skip);
@@ -1123,20 +1154,23 @@ void main() {
       await pumpEventQueue();
     }, skip: skip);
 
-    test('🚨a run never waits on the open under way: it stands down onto the '
-        'fallback, and the next rides the output', () async {
+    test('🚨a run pressed while its output opens waits for the open, and goes '
+        'on on it — ↩️it stood down onto the fallback, and the next run rode '
+        'the output', () async {
       final device = aBenchDevice();
       final transport = buildTransport(await resident());
       addTearDown(transport.dispose);
+      waitForTheSound(transport);
 
       transport.openAhead();
       controller.play(scope: PlaybackScope.activeCut);
       expect(device.isOpening, isTrue, reason: 'fixture: pressed mid-open');
+      expect(transport.soundIsComing, isTrue);
+      expect(controller.isWaiting, isTrue);
       expect(transport.carryingPlayback, isFalse);
-      controller.stop();
 
       await pumpEventQueue();
-      controller.play(scope: PlaybackScope.activeCut);
+      expect(controller.isWaiting, isFalse);
       expect(transport.carryingPlayback, isTrue);
       controller.stop();
     }, skip: skip);
@@ -1167,8 +1201,9 @@ void main() {
       expect(device.openedFor, 'another');
     }, skip: skip);
 
-    test('🚨a run that finds the output open for another setting stands down '
-        'and opens it again ahead — ↩️it reopened at the press', () async {
+    test('🚨a run that finds the output open for another setting opens it '
+        'again ahead and waits for it — ↩️it reopened at the press, and then '
+        'stood down onto the fallback', () async {
       final device = aBenchDevice();
       var name = 'one';
       final transport = buildTransport(
@@ -1176,6 +1211,7 @@ void main() {
         outputName: () => name,
       );
       addTearDown(transport.dispose);
+      waitForTheSound(transport);
       transport.openAhead();
       await pumpEventQueue();
 
@@ -1183,11 +1219,36 @@ void main() {
       controller.play(scope: PlaybackScope.activeCut);
       expect(transport.carryingPlayback, isFalse);
       expect(device.isOpening, isTrue, reason: 'opened again off the press');
-      controller.stop();
+      expect(controller.isWaiting, isTrue);
 
       await pumpEventQueue();
       expect(device.openedFor, 'another');
+      expect(controller.isWaiting, isFalse);
+      expect(transport.carryingPlayback, isTrue);
+      controller.stop();
+    }, skip: skip);
+
+    test('🚨a run that finds the output open at another rate than its sound '
+        'opens it again ahead at that rate, and waits for it — ↩️it played '
+        'every source through a rate conversion, or stood down while one '
+        'was made', () async {
+      final device = QaAudioDevice.instance!;
+      expect(
+        device.open(sampleRate: 44100, channels: 2, useNullBackend: true),
+        greaterThan(0),
+      );
+      final transport = buildTransport(await resident());
+      addTearDown(transport.dispose);
+      waitForTheSound(transport);
+
       controller.play(scope: PlaybackScope.activeCut);
+      expect(device.openedAtRate, 44100, reason: 'fixture');
+      expect(transport.soundIsComing, isTrue);
+      expect(device.isOpening, isTrue);
+
+      await pumpEventQueue();
+      expect(device.openedAtRate, 48000);
+      expect(controller.isWaiting, isFalse);
       expect(transport.carryingPlayback, isTrue);
       controller.stop();
     }, skip: skip);

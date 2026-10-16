@@ -1,12 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/playback_mode.dart';
-import 'package:anicel/src/services/playback/playback_picture_wait.dart';
+import 'package:anicel/src/services/playback/playback_wait.dart';
 
 /// THE THREE SETTINGS OF ONE MECHANISM (유저 2026-10-08: 「세개 두면
 /// 좋을거같긴하고」 · 「좋아 통일할거 통일하면서 권장대로가자. 기본값
 /// 모든그림.」): how long a run's clock stands when the playhead reaches a
 /// frame whose picture is not made — not at all, until that picture is, or
-/// until everything ahead of it is.
+/// until everything ahead of it is. And the run's sound under every one
+/// (playback-waits-for-its-sound, 유저 2026-10-16: 「소리가 준비될 때까지
+/// 기다린다」).
 void main() {
   var mode = PlaybackMode.everyPicture;
 
@@ -19,24 +21,29 @@ void main() {
   /// Whether everything ahead of the playhead is made, or no more fits.
   var filled = false;
 
+  /// Whether the run's sound is on its way.
+  var coming = false;
+
   setUp(() {
     mode = PlaybackMode.everyPicture;
     there.clear();
     followed = true;
     filled = false;
+    coming = false;
   });
 
-  PlaybackPictureWait wait() => PlaybackPictureWait(
+  PlaybackWait wait() => PlaybackWait(
     mode: () => mode,
     pictureIsThere: (frame) => followed ? there.contains(frame) : null,
     aheadIsFilled: () => filled,
+    soundIsComing: () => coming,
   );
 
   /// The run was PUT on [frame]: play pressed there, the ruler dragged there.
-  bool put(PlaybackPictureWait w, int frame) => w.holds(frame, placed: true);
+  bool put(PlaybackWait w, int frame) => w.holds(frame, placed: true);
 
   /// The run's clock reached [frame], or looks again at the frame it is on.
-  bool reached(PlaybackPictureWait w, int frame) =>
+  bool reached(PlaybackWait w, int frame) =>
       w.holds(frame, placed: false);
 
   test('the default is every picture', () {
@@ -187,5 +194,49 @@ void main() {
     );
     mode = PlaybackMode.skipFrames;
     expect(w.showsEveryPicture(), isFalse);
+  });
+
+  test('🚨a run whose sound is on its way waits for it under every mode — '
+      'skipping frames too: it keeps time with its sound, and has none to '
+      'keep before it comes', () {
+    there.addAll([0, 1]);
+    filled = true;
+    coming = true;
+    for (final each in PlaybackMode.values) {
+      mode = each;
+      final w = wait();
+      expect(put(w, 0), isTrue, reason: each.name);
+      expect(reached(w, 1), isTrue, reason: each.name);
+    }
+    coming = false;
+    for (final each in PlaybackMode.values) {
+      mode = each;
+      expect(reached(wait(), 1), isFalse, reason: '${each.name}: it came');
+    }
+  });
+
+  test('🚨a run nobody makes pictures for still waits for its sound — a '
+      'sound alone waits as a film does', () {
+    followed = false;
+    coming = true;
+    for (final each in PlaybackMode.values) {
+      mode = each;
+      expect(put(wait(), 0), isTrue, reason: each.name);
+    }
+  });
+
+  test('🚨the picture is asked first, always — a fill that ended while the '
+      'run waited for its sound is not found still filling', () {
+    mode = PlaybackMode.renderFirst;
+    there.add(0);
+    coming = true;
+    final w = wait();
+    expect(put(w, 0), isTrue, reason: '⛔premise: it fills');
+    filled = true;
+    expect(reached(w, 0), isTrue, reason: 'filled, and its sound not come');
+
+    coming = false;
+    filled = false; // the window slid on, and fills again behind the scenes
+    expect(reached(w, 0), isFalse, reason: 'it was filled while it waited');
   });
 }

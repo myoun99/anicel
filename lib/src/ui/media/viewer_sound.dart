@@ -49,11 +49,16 @@ class ViewerLoudness {
 /// scrubber ride it too. This class is only the part that is the viewer's —
 /// which file, from what second, and where the device has got to.
 ///
-/// Standing down is silent and total, exactly as the other two paths stand
-/// down: no binary, no device, or a conform not resident yet leaves
-/// [isCarrying] false and the viewer plays its pictures without sound. ⛔A
-/// viewer that refused to play because there was no audio device would be
-/// worse than a silent one.
+/// A sound on its way — a conform not resident yet, an output being opened
+/// ([OutputComing]) — is waited for: the run stands where it was put and
+/// asks again ([prepare]) until it comes (`MediaRun`, playback-waits-for-
+/// its-sound: 「소리가 준비될 때까지 기다린다」). No binary, no device, or a
+/// file that will never be ready leaves [isCarrying] false and the viewer
+/// plays its pictures without sound ([OutputRefused]). ⛔A viewer that
+/// refused to play because there was no audio device would be worse than a
+/// silent one. ↩️A conform not resident yet stood down as silently: the
+/// movie played without its sound, and a sound alone did not play at all
+/// until the next press.
 class ViewerSound {
   ViewerSound({
     required this.conformStore,
@@ -116,7 +121,8 @@ class ViewerSound {
   bool get isCarrying => _device != null;
 
   /// Starts [sourcePath] at [fromSeconds], as loud as [gain]
-  /// ([ViewerLoudness.gain]); false stands down silently.
+  /// ([ViewerLoudness.gain]) — once it is armed there ([prepare]), which
+  /// it says.
   ///
   /// ⚠️It asks the conform store rather than a decoder: the sound of a
   /// media asset — a `.wav` on its own or the track inside a movie — is
@@ -128,16 +134,39 @@ class ViewerSound {
   /// ⚠️The gain is the one clip's, mixed into what is uploaded: the device
   /// has no fader of its own, so a sound already going hears a new level by
   /// being started again where it stands (`MediaRun.soundCell`).
-  bool play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
+  OutputArm play(String sourcePath, {double fromSeconds = 0, double gain = 1}) {
+    final armed = prepare(sourcePath, fromSeconds: fromSeconds, gain: gain);
+    if (armed is OutputArmed) {
+      // ⚠️The START is in SAMPLES, not in whole seconds: the window only has
+      // to be centred near the playhead, but the sound has to begin exactly
+      // where the picture says it does.
+      resume(fromSeconds);
+    }
+    return armed;
+  }
+
+  /// Arms [sourcePath] around [fromSeconds], as loud as [gain], without
+  /// starting it: [OutputArmed] and [isCarrying] once it is on the device,
+  /// [OutputComing] while its conform or its output is on its way — what a
+  /// run that waits for its sound asks again until it has come (`MediaRun`)
+  /// — and [OutputRefused] where it never will be: no output, or a file
+  /// nothing will make ready.
+  OutputArm prepare(
+    String sourcePath, {
+    required double fromSeconds,
+    required double gain,
+  }) {
     stop();
     final seconds = conformStore.durationSecondsFor(sourcePath);
     if (seconds == null || seconds <= 0) {
-      // Not conformed yet — the lookup KICKED it, so the next press has it.
-      return false;
+      // Not conformed: the lookup KICKED it, and it lands — or it never will.
+      return conformStore.isLanding(sourcePath, conformStore.projectSampleRate)
+          ? const OutputComing()
+          : const OutputRefused();
     }
     final device = _resolveDevice();
     if (device == null) {
-      return false;
+      return const OutputRefused();
     }
     final armed = armAudioOutput(
       device: device,
@@ -155,17 +184,16 @@ class ViewerSound {
       centerFrame: fromSeconds.floor(),
       preferredDeviceName: resolveOutputDeviceName?.call(),
     );
-    if (armed == null || !armed.uploaded) {
-      return false;
+    if (armed case OutputArmed(:final deviceRate, :final cannotPlay)) {
+      if (cannotPlay.isNotEmpty) {
+        // The one file the viewer plays is the one left out.
+        return const OutputRefused();
+      }
+      _device = device;
+      _deviceRate = deviceRate;
+      _endSample = (seconds * _deviceRate).round();
     }
-    _device = device;
-    _deviceRate = armed.deviceRate;
-    _endSample = (seconds * _deviceRate).round();
-    // ⚠️The START is in SAMPLES, not in whole seconds: the window only has
-    // to be centred near the playhead, but the sound has to begin exactly
-    // where the picture says it does.
-    resume(fromSeconds);
-    return true;
+    return armed;
   }
 
   /// Stops the sound WITHOUT letting go of what was uploaded, so [resume]

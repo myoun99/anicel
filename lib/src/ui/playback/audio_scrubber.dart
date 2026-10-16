@@ -175,7 +175,10 @@ class AudioScrubber {
     if (device == null) {
       return;
     }
-    final armed = armAudioOutput(
+    // Not armed — its sound on its way, kicked by the lookups or an open,
+    // or no output at all — this gesture stays visual: a drag is the hand's,
+    // and a scrub does not wait for its sound as a run does.
+    if (armAudioOutput(
       device: device,
       conformStore: conformStore,
       window: _window,
@@ -183,17 +186,12 @@ class AudioScrubber {
       rate: _rate,
       centerFrame: frame,
       preferredDeviceName: resolveOutputDeviceName?.call(),
-    );
-    if (armed == null) {
-      return;
+    ) case OutputArmed(:final deviceRate)) {
+      _deviceRate = deviceRate;
+      _device = device;
+      _armed = true;
+      _stoodDown = false;
     }
-    _deviceRate = armed.deviceRate;
-    if (!armed.uploaded) {
-      return; // kicked by the lookups; this gesture stays visual
-    }
-    _device = device;
-    _armed = true;
-    _stoodDown = false;
   }
 
   void dispose() => _letGo();

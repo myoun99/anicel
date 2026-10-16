@@ -330,7 +330,7 @@ void main() {
           deviceRate: sampleRate,
           centerSample: 0,
         ),
-        isTrue,
+        isA<OutputArmed>(),
       );
       carrying = (device: device, deviceRate: sampleRate);
     });
@@ -387,7 +387,7 @@ void main() {
           deviceRate: sampleRate,
           centerSample: 9000,
         ),
-        isTrue,
+        isA<OutputArmed>(),
       );
       await land();
       expect(window.centerSample, 9000);

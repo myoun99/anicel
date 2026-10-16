@@ -211,13 +211,16 @@ class AudioStreamingWindow {
   }
 
   /// Uploads [mix] to [device] with streaming windows around
-  /// [centerSample], and moves this window there on success.
+  /// [centerSample], and moves this window there on success — every clip
+  /// but those of the sources nothing will make ready
+  /// ([OutputArmed.cannotPlay]).
   ///
-  /// 🚨FALSE means NOTHING WAS UPLOADED — no mix held, no device, an
-  /// incomplete upload, or a device that rejected the schedule — so the
-  /// caller LEAVES ANY OLD SCHEDULE PLAYING rather than cutting the sound
-  /// to silence. Nothing about this window moves in that case either.
-  bool upload({
+  /// 🚨ANYTHING BUT [OutputArmed] means NOTHING WAS UPLOADED — a source
+  /// still landing ([OutputComing]), or no mix held, no device, or a device
+  /// that rejected the schedule ([OutputRefused]) — so the caller LEAVES
+  /// ANY OLD SCHEDULE PLAYING rather than cutting the sound to silence.
+  /// Nothing about this window moves in that case either.
+  OutputArm upload({
     required QaAudioDevice? device,
     required AudioConformStore conformStore,
     required int deviceRate,
@@ -225,17 +228,22 @@ class AudioStreamingWindow {
   }) {
     final held = mix;
     if (held == null || device == null) {
-      return false;
+      return const OutputRefused();
     }
-    final prepared = planWindowedMixUpload(
+    final plan = planWindowedMixUpload(
       mix: held,
       conformStore: conformStore,
       deviceRate: deviceRate,
       centerSample: centerSample,
       backSeconds: reach.backSeconds,
       aheadSeconds: reach.aheadSeconds,
-    )?.readHere(place: device.newSamples);
-    return prepared != null && _put(device, prepared, centerSample);
+    );
+    if (plan == null) {
+      return const OutputComing();
+    }
+    return _put(device, plan.readHere(place: device.newSamples), centerSample)
+        ? OutputArmed(deviceRate: deviceRate, cannotPlay: plan.cannotPlay)
+        : const OutputRefused();
   }
 
   /// [prepared] on [device], and this window centred on [centerSample] —
@@ -349,6 +357,44 @@ LandedStreamWindow? _readInto(
   return (startSample: at.start, address: buffer.address, floats: floats);
 }
 
+/// What an output was given — by an arm ([armAudioOutput]) or an upload
+/// ([AudioStreamingWindow.upload]).
+///
+/// 🚨THREE ANSWERS, because a run does three things with them
+/// (playback-waits-for-its-sound — 유저 2026-10-16: 「대체 재생을 안 쓰고,
+/// 소리가 준비될 때까지 기다린다」 · 「재생못하거나 하는 상황에선 제대로
+/// 메시지라던가 뭔가 표시」): it plays ([OutputArmed]), it waits for its
+/// sound ([OutputComing]), or it goes on without it ([OutputRefused], and
+/// [OutputArmed.cannotPlay] for single sources). ↩️An arm answered null or
+/// `uploaded: false` for all of it, the run stood down, and the platform
+/// players carried whatever the device did not.
+sealed class OutputArm {
+  const OutputArm();
+}
+
+/// On the output, at [deviceRate]: every clip but those of [cannotPlay].
+final class OutputArmed extends OutputArm {
+  const OutputArmed({required this.deviceRate, required this.cannotPlay});
+
+  final int deviceRate;
+
+  /// The sources the run plays without ([WindowedUploadPlan.cannotPlay]).
+  final Set<String> cannotPlay;
+}
+
+/// Not yet: the output being opened ([QaAudioDevice.opening]) or a source
+/// being made ready ([AudioConformStore.isLanding]) — each says so when it
+/// lands. Nothing was uploaded.
+final class OutputComing extends OutputArm {
+  const OutputComing();
+}
+
+/// The output would not open, or would not take the schedule: nothing
+/// plays out of it.
+final class OutputRefused extends OutputArm {
+  const OutputRefused();
+}
+
 /// Opens the output if it is closed, converts [schedule] to samples and
 /// uploads it centred on [centerFrame].
 ///
@@ -370,16 +416,24 @@ LandedStreamWindow? _readInto(
 /// explicitly defers to it, so a reopen decided in here would be a second
 /// answer. A caller that wants one closes the device first and calls this.
 ///
-/// Null = the output would not open, or is being opened off this thread
-/// ([QaAudioDevice.isOpening]), and nothing was touched. `uploaded: false` =
-/// it is open at [deviceRate] but the sources are not resident yet — the
-/// lookups have KICKED their conforms. Either way the caller stands this
-/// attempt down and the next one converges.
+/// ⚠️What IS: an output open at another RATE than the sound was conformed
+/// at is opened again at it, off this thread, and the arm says
+/// [OutputComing]. That is no setting but the run's own sound, which only
+/// an arm knows — the device stays open for the first project's rate when
+/// a second opens at another, or when the project's rate is changed — and
+/// a long sound streams only at the rate its conform is
+/// ([planWindowedMixUpload]). ↩️Such a sound never uploaded, and the
+/// platform players carried the run.
+///
+/// [OutputComing] = the output is being opened off this thread
+/// ([QaAudioDevice.opening]), or a source is being made ready — the
+/// lookups have KICKED their conforms. [OutputRefused] = it would not open,
+/// and nothing was touched.
 ///
 /// ⛔An output being opened ahead is not opened here as well: the C makes
 /// a device one call at a time, so this thread would wait out the worker's
 /// open — the stall the open ahead is there to take off it.
-({int deviceRate, bool uploaded})? armAudioOutput({
+OutputArm armAudioOutput({
   required QaAudioDevice device,
   required AudioConformStore conformStore,
   required AudioStreamingWindow window,
@@ -388,16 +442,28 @@ LandedStreamWindow? _readInto(
   required int centerFrame,
   required String? preferredDeviceName,
 }) {
+  final soundRate = conformStore.projectSampleRate;
   if (device.isOpening) {
-    return null;
+    return const OutputComing();
   }
   if (!device.isOpen &&
       !openAudioOutput(
         device,
-        sampleRate: conformStore.projectSampleRate,
+        sampleRate: soundRate,
         preferredName: preferredDeviceName,
       )) {
-    return null;
+    return const OutputRefused();
+  }
+  if (device.openedAtRate != soundRate) {
+    unawaited(
+      openAudioOutputAhead(
+        device,
+        sampleRate: soundRate,
+        preferredName: device.openedFor,
+        atThatRate: true,
+      ),
+    );
+    return const OutputComing();
   }
   final deviceRate = device.sampleRate;
   window.mix = audioMixScheduleFrom(
@@ -406,13 +472,10 @@ LandedStreamWindow? _readInto(
     sampleRate: deviceRate,
   );
   device.stop();
-  return (
+  return window.upload(
+    device: device,
+    conformStore: conformStore,
     deviceRate: deviceRate,
-    uploaded: window.upload(
-      device: device,
-      conformStore: conformStore,
-      deviceRate: deviceRate,
-      centerSample: rate.frameToSample(centerFrame, deviceRate),
-    ),
+    centerSample: rate.frameToSample(centerFrame, deviceRate),
   );
 }

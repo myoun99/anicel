@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 /// it, as a run that waited for a picture goes on with it.
 ///
 /// The controller's half ([CanvasPlaybackController.showsEveryPicture]):
-/// which mode shows every picture is `playback_picture_wait_test`'s, and how
+/// which mode shows every picture is `playback_wait_test`'s, and how
 /// far the playhead goes `playhead_way_test`'s. Where the sound is put back
 /// is the seek a transport hears ([CanvasPlaybackController.onSeeked]).
 void main() {
