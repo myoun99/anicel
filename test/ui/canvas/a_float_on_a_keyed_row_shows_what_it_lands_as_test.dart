@@ -646,7 +646,7 @@ void main() {
 
   testWidgets('a keyed sheet on a posed row in a folder shows what it lands '
       'as — past the page too, where the pose put it', (tester) async {
-    final page = defaultCutCanvasSize;
+    const page = defaultCutCanvasSize;
     final c = await open(
       tester,
       projectOf(
