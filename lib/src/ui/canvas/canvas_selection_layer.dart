@@ -2704,13 +2704,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           }
         });
         _publishTransformValues();
-        // ⛔A PURE TRANSLATION DOES NOT RESAMPLE. `transformStampDab`
+        // ↩️「⛔A PURE TRANSLATION DOES NOT RESAMPLE. `transformStampDab`
         // carries it by moving the stamp's centre, so scheduling here
         // would decode the same megabyte image once per pointer move for
-        // a picture that has not changed a pixel.
-        if (_transform?.isPureTranslation == false) {
-          _scheduleResamples();
-        }
+        // a picture that has not changed a pixel」 — said HERE alone, so a
+        // drag inside a box already open, and a typed X/Y, uploaded it
+        // anyway. The preview says it for every road a move takes now
+        // (`FloatResamplePreview`, a-drag-in-an-open-box-resamples-a-move).
+        _scheduleResamples();
       case TransformDrag():
         _updateTransformDrag(drag, _toCanvas(event.localPosition));
     }
@@ -3382,12 +3383,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         : CanvasPoint(x: affine.appliedTx, y: affine.appliedTy);
     final from = float.surfaceCentre;
     final to = float.stamp.center;
-    if (from == null) {
+    final picture = float.surfaceStamp;
+    if (from == null || picture == null) {
       return dragged;
     }
+    // 🚨WHERE IT LANDS, NOT WHERE THE NUMBERS SAY (a-drag-in-an-open-box-
+    // resamples-a-move, 2026-10-16). A stamp lands at its centre rounded to
+    // a whole top-left — the blend's own rounding ([BrushStampImage
+    // .landingRect]) — and a typed X/Y may be a fraction. The surface was
+    // built at that rounding of [from]; it is drawn at that rounding of
+    // where the move takes the stamp, which is where the confirm lands it.
+    final lands = picture.landingRect(
+      CanvasPoint(x: to.x + dragged.x, y: to.y + dragged.y),
+    );
+    final built = picture.landingRect(from);
     return CanvasPoint(
-      x: dragged.x + (to.x - from.x),
-      y: dragged.y + (to.y - from.y),
+      x: (lands.left - built.left).toDouble(),
+      y: (lands.top - built.top).toDouble(),
     );
   }
 

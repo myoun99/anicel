@@ -23,6 +23,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/transform_values.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
@@ -6413,6 +6415,96 @@ void main() {
         reason:
             'the second drag rebuilt the float: new tile objects for the '
             'same pixels',
+      );
+    });
+
+    testWidgets('🚨a second drag, inside the box the first one opened, '
+        'carries the float\'s own pixels — no picture of them is uploaded, '
+        'as none was for the first (a-drag-in-an-open-box-resamples-a-move)', (
+      tester,
+    ) async {
+      await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      await dragOnLayer(tester, const Offset(340, 225), const Offset(380, 250));
+      // A decode is real work on a real thread: lend it the time to land,
+      // were one asked for.
+      for (var i = 0; i < 50; i += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+
+      final floats = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .expand((painter) => painter.floats)
+          .toList();
+      expect(floats, hasLength(1), reason: '⛔fixture: one float');
+      expect(
+        (floats.single.surfaceOffset.x, floats.single.surfaceOffset.y),
+        (80.0, 50.0),
+        reason: '⛔fixture: the second drag moved it on, inside the box',
+      );
+      expect(floats.single.image, isNull);
+    });
+
+    testWidgets('🚨a move typed in halves shows the float where it lands — '
+        'no pixel stands at a half, and the landing rounds '
+        '(a-drag-in-an-open-box-resamples-a-move)', (tester) async {
+      // Read off the cel and the float, not off the screen: the screen
+      // carries the box's chrome while the float is held, and not after.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      final before = bitmapSurfaceContentBounds(
+        currentSurface(env.coordinator),
+      )!;
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.editTransformValues(
+        (now) => now.copyWith(tx: 40.5, ty: 25.5),
+      );
+      await settle(tester);
+      final float = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<SelectionFloatPainter>()
+          .expand((painter) => painter.floats)
+          .single;
+      expect(
+        float.image,
+        isNull,
+        reason: 'a typed move uploads no picture either',
+      );
+      final held = bitmapSurfaceContentBounds(float.surface!.surface)!;
+      final carried = (
+        held.left + float.surfaceOffset.x,
+        held.top + float.surfaceOffset.y,
+      );
+
+      env.commands.applyTransform();
+      await settle(tester);
+      final landed = bitmapSurfaceContentBounds(
+        currentSurface(env.coordinator),
+      )!;
+
+      expect(
+        (landed.left, landed.top),
+        isNot((before.left, before.top)),
+        reason: '⛔CONTROL: the confirm moved the picture',
+      );
+      expect(
+        carried,
+        (landed.left.toDouble(), landed.top.toDouble()),
+        reason: 'what floats is where it lands',
       );
     });
 

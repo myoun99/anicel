@@ -492,6 +492,20 @@ class FloatResamplePreview {
     }
     _resampled = (key: key, dab: dab);
     assert(_recordResampledFloat(dab));
+    // 🚨A MOVE IS NOT UPLOADED (a-drag-in-an-open-box-resamples-a-move,
+    // 2026-10-16). A warp that only moves the float — a translation, or a
+    // quad or grid dragged whole — hands back the float's own picture at
+    // another centre (`transformStampDab`, `stampDabMovedWholesale`), and
+    // the float's own pixels already draw that, at that place. Uploading
+    // it again cost a decode of the whole picture per move of the hand, and
+    // on a row that keys a colour away it made every move a new landing.
+    // ↩️Only the drag that OPENS a box knew this (`MoveDrag` skipped the
+    // schedule); a drag inside an open box, and a typed X/Y, uploaded.
+    // The resample is kept: it is what the confirm lands ([warped]).
+    if (identical(stamp, warp.float?.stamp)) {
+      _letGoOfTheImage();
+      return;
+    }
 
     // decodeImageFromPixels wants premultiplied bytes; the resampler
     // produces straight alpha, which is the app's storage convention and
@@ -557,17 +571,23 @@ class FloatResamplePreview {
   /// decode's claim on the result. Every session end, and the layer's
   /// dispose — the image is a GPU allocation the size of the selection.
   void discard() {
-    _imageRequest += 1; // Invalidate an in-flight decode.
     _dirty = false;
     _resampled = null;
-    _imageDab = null;
-    _image?.dispose();
-    _image = null;
+    _letGoOfTheImage();
     // The hook holds a whole resampled cel. Letting it outlive the session
     // that made it would keep that buffer resident for as long as the app
     // runs, which is the same defect in a debug build that the assert
     // guard prevents in a release one.
     assert(_recordResampledFloat(null));
+  }
+
+  /// Lets go of the picture shown, and takes the claim of a decode in
+  /// flight away from it. The gate stays as it is — see [_runIfIdle].
+  void _letGoOfTheImage() {
+    _imageRequest += 1; // Invalidate an in-flight decode.
+    _imageDab = null;
+    _image?.dispose();
+    _image = null;
   }
 
   /// The cached resample, or a fresh one — what every COMMIT path calls.
