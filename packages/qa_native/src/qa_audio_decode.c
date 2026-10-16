@@ -1187,12 +1187,15 @@ static int qa_mp3_open(qa_audio_stream* stream, qa_audio_start* start) {
 //   - a sound to the end of its chunks, past what the size table counts,
 //     and a chunk cut short not at all, where this reads it to its last
 //     whole frame as dr_wav reads a WAV cut short;
+//   - what this reads, it does not: an `in24` in a version-2 description,
+//     and a sound the second of two data references names, this file's;
 //   - what this does not read, it does: samples two frames long, a sound
 //     described two ways, an `lpcm` whose flags say its channels come one
 //     after another (read as interleaved), or 24 bits in 32-bit words, or
-//     two frames a packet, and a `raw ` of 16 bits (read little-endian —
-//     ffmpeg reads it big-endian, and Apple's format says 8 bits). Those
-//     still ride it on Windows: the OS stack is asked after this.
+//     two frames a packet, or unsigned 16 bits, and a `raw ` of 16 bits
+//     (read little-endian — ffmpeg reads it big-endian, and Apple's format
+//     says 8 bits). Those still ride it on Windows: the OS stack is asked
+//     after this.
 
 /// Entry [index] of [table]: its bytes, or NULL when it is not there or
 /// would not read.
@@ -2502,17 +2505,4 @@ QA_EXPORT void qa_audio_decode_free(float* samples) {
   if (samples != NULL) {
     drwav_free(samples, NULL);
   }
-}
-
-// The decoders the build actually carries — the loader can report what a
-// given binary supports instead of failing mysteriously on a format that
-// was compiled out.
-QA_EXPORT int32_t qa_audio_decode_formats(void) {
-  int32_t formats = (1 << QA_AUDIO_FORMAT_WAV) | (1 << QA_AUDIO_FORMAT_FLAC) |
-                    (1 << QA_AUDIO_FORMAT_MP3) | (1 << QA_AUDIO_FORMAT_VORBIS) |
-                    (1 << QA_AUDIO_FORMAT_MOVIE_PCM);
-#if defined(_WIN32) || defined(__APPLE__) || defined(__ANDROID__)
-  formats |= 1 << QA_AUDIO_FORMAT_OS;
-#endif
-  return formats;
 }
