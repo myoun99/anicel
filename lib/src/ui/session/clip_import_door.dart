@@ -17,6 +17,7 @@ import '../../models/cut.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../../models/project.dart';
+import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/project_id.dart';
 import '../../models/track.dart';
@@ -222,6 +223,7 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
     frameRate: fps == null
         ? ProjectFrameRate.fps24
         : ProjectFrameRate.integer(fps),
+    background: plan.paper ?? ProjectBackground.defaultBackground,
     tracks: [
       Track(
         id: _track,

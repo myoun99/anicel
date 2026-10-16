@@ -10,6 +10,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/clip_import_door.dart';
 
@@ -67,7 +68,13 @@ void main() {
   /// the one sample with vectors keeps. Its strokes ([_Strokes.held]): one 0
   /// … 40 across at its row 10, six across, and one record of a kind not
   /// drawn.
-  String writeClip({bool troubled = false, _Strokes? strokes}) {
+  ///
+  /// [papered] puts a paper 0x204060 under BG.
+  String writeClip({
+    bool troubled = false,
+    _Strokes? strokes,
+    bool papered = false,
+  }) {
     final attribute = offscreenAttributeBytes(
       width: 64,
       height: 64,
@@ -143,8 +150,11 @@ void main() {
           : 0;
       // id, name, type, folder, composite, uuid, x, y, child, next,
       // render, animation.
+      // The root's bottom layer.
+      final bottom = papered ? 12 : 2;
       for (final row in <List<Object?>>[
-        [1, '', 256, 1, 0, '', 0, 0, 2, 0, 0, 0],
+        [1, '', 256, 1, 0, '', 0, 0, bottom, 0, 0, 0],
+        if (papered) [12, 'paper', 1584, 0, 0, '', 0, 0, 0, 2, 0, 0],
         [2, 'BG', 1, 0, 0, uuidBg, 120, 50, 0, 3, 100, 0],
         [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, onTopOfA, 0, 1],
         [4, '1', 0, 1, 0, '', 0, 0, 5, 7, 0, 0],
@@ -160,6 +170,13 @@ void main() {
         layer.execute(row);
       }
       layer.close();
+      if (papered) {
+        db.execute(
+          'UPDATE Layer SET DrawColorMainRed = ?, DrawColorMainGreen = ?, '
+          'DrawColorMainBlue = ? WHERE MainId = 12',
+          [0x20202020, 0x40404040, 0x60606060],
+        );
+      }
       if (strokes != null) {
         db.execute('''
           INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (107, 207);
@@ -426,6 +443,18 @@ void main() {
       inked(session, cut, scan.id, scan.frames.single.id),
       2 * 2,
       reason: 'the doubled picture still lands, at its move',
+    );
+  });
+
+  test('F-370: the paper under every row opens as the project\'s '
+      'paper', () async {
+    final opened = await openedClip(writeClip(papered: true));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      session.repository.requireProject().background,
+      const ProjectBackground.color(0xFF204060),
     );
   });
 

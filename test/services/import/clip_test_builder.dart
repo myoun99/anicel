@@ -377,7 +377,9 @@ const clipSchema = '''
     LayerRenderOffscrOffsetY INTEGER, LayerFirstChildIndex INTEGER,
     LayerNextIndex INTEGER, LayerRenderMipmap INTEGER,
     ResizableOriginalMipmap INTEGER, ResizableImageInfo BLOB,
-    DrawToRenderOffscreenType INTEGER, AnimationFolder INTEGER);
+    DrawToRenderOffscreenType INTEGER, AnimationFolder INTEGER,
+    DrawColorMainRed INTEGER, DrawColorMainGreen INTEGER,
+    DrawColorMainBlue INTEGER);
   CREATE TABLE Mipmap(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
     BaseMipmapInfo INTEGER);
   CREATE TABLE MipmapInfo(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,

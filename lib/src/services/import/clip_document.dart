@@ -89,6 +89,7 @@ final class ClipLayer {
     this.vectorData = const [],
     this.sounds = const [],
     this.camera,
+    this.mainColour,
     required this.children,
   });
 
@@ -152,6 +153,15 @@ final class ClipLayer {
   /// moves it: its picture is the shooting frame, placed by this. Null on
   /// every other layer.
   final ClipPlacement? camera;
+
+  /// `DrawColorMainRed` · `Green` · `Blue` as one opaque ARGB — a paper
+  /// layer's colour; null where the file names none.
+  ///
+  /// ⚠️Each channel is 32 bits, read by its top byte: every sample's paper
+  /// is white, every bit set (F-370, 10-17), so no sample tells a byte
+  /// copied four times from a value scaled to 32 bits — and the top byte is
+  /// the 8-bit value either way.
+  final int? mainColour;
 
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
@@ -447,6 +457,13 @@ final class _DocumentReader {
     'TextLayerType',
     'FirstLayerObject',
     'Camera2DResizableImageInfo',
+    ..._mainColourColumns,
+  ];
+
+  static const _mainColourColumns = [
+    'DrawColorMainRed',
+    'DrawColorMainGreen',
+    'DrawColorMainBlue',
   ];
 
   /// A mipmap's 100% picture, by the mipmap's id.
@@ -588,8 +605,21 @@ final class _DocumentReader {
       vectorData: _vectorData[id] ?? const [],
       sounds: kind == ClipLayerKind.sound ? _soundsOf(row) : const [],
       camera: camera is Uint8List ? clipPlacementOf(camera) : null,
+      mainColour: _mainColourOf(row),
       children: children,
     );
+  }
+
+  /// [row]'s [ClipLayer.mainColour].
+  static int? _mainColourOf(Map<String, Object?> row) {
+    final [red, green, blue] = [
+      for (final column in _mainColourColumns) row[column],
+    ];
+    if (red is! int || green is! int || blue is! int) {
+      return null;
+    }
+    int top(int channel) => (channel >> 24) & 0xFF;
+    return 0xFF000000 | (top(red) << 16) | (top(green) << 8) | top(blue);
   }
 
   static ClipLayerKind _kindOf(Map<String, Object?> row, bool hasVectors) {

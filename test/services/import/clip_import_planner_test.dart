@@ -16,6 +16,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -46,6 +47,7 @@ void main() {
     bool drawn = true,
     ClipLayerKind kind = ClipLayerKind.raster,
     List<String> vectorData = const [],
+    int? mainColour,
   }) {
     nextId += 1;
     return ClipLayer(
@@ -66,6 +68,7 @@ void main() {
       original: null,
       originalTransform: null,
       vectorData: vectorData,
+      mainColour: mainColour,
       children: const [],
     );
   }
@@ -1106,6 +1109,91 @@ void main() {
     expect(names(cut), ['v', 'odd']);
     expect(row(cut, 'odd').blendMode, LayerBlendMode.normal);
     expect(result.bakes.single.source.name, 'odd');
+  });
+
+  group('F-370: the paper with no row under it is the PROJECT\'s paper', () {
+    const colour = 0xFF204060;
+    ClipLayer paper(String name, {bool shown = true, int opacity = 256}) =>
+        layer(
+          name,
+          kind: ClipLayerKind.paper,
+          shown: shown,
+          opacity: opacity,
+          mainColour: colour,
+        );
+
+    List<(String, String?)> said(ClipImportPlan result) => [
+      for (final warning in result.warnings)
+        (warning.key, warning.values['name']),
+    ];
+
+    test('🎯its colour at its opacity, and said nowhere — what is left out '
+        'stands under nothing, and a second paper is a kind not carried', () {
+      final result = plan(
+        root([
+          // A text layer names a colour too, and is no paper.
+          layer(
+            'words',
+            kind: ClipLayerKind.lettering,
+            mainColour: 0xFF000000,
+          ),
+          paper('sheet', opacity: 100),
+          paper('second'),
+          layer('BG'),
+        ]),
+        [timeline(const [])],
+      );
+
+      expect(result.paper, const ProjectBackground.color(0x64204060));
+      expect(said(result), [
+        ('unsupportedLayerKind', 'words'),
+        ('unsupportedLayerKind', 'second'),
+      ]);
+      expect(names(result.cuts.single), ['BG']);
+    });
+
+    test('a hidden one is an ABSENT paper, its colour kept', () {
+      final result = plan(
+        root([paper('sheet', shown: false, opacity: 200), layer('BG')]),
+        [timeline(const [])],
+      );
+
+      expect(
+        result.paper,
+        const ProjectBackground.color(0xC7204060, none: true),
+      );
+      expect(result.warnings, isEmpty);
+    });
+
+    test('⛔one with a row under it covers that row, and one in a folder '
+        'takes its folder\'s look — neither is the project\'s, and both are '
+        'said', () {
+      final result = plan(
+        root([
+          folder('LO', [paper('inside')]),
+          layer('BG'),
+          paper('over'),
+        ]),
+        [timeline(const [])],
+      );
+
+      expect(result.paper, isNull);
+      expect(said(result), [
+        ('unsupportedLayerKind', 'inside'),
+        ('unsupportedLayerKind', 'over'),
+      ]);
+    });
+
+    test('a paper the file names no colour for is said, and leaves the '
+        'project none', () {
+      final result = plan(
+        root([layer('p', kind: ClipLayerKind.paper), layer('BG')]),
+        [timeline(const [])],
+      );
+
+      expect(result.paper, isNull);
+      expect(said(result), [('unsupportedLayerKind', 'p')]);
+    });
   });
 
   test('a kind not carried inside a cel is left out before it takes a place '

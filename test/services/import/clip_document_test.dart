@@ -372,6 +372,43 @@ void main() {
     );
   });
 
+  test('F-370: a layer\'s colour is its DrawColorMain… — each channel by its '
+      'top byte — and a layer the file names none for has none', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          'LayerNextIndex, DrawColorMainRed, DrawColorMainGreen, '
+          "DrawColorMainBlue) VALUES (2, 'paper', 1584, 0, 3, ?, ?, ?)",
+          // The bytes under the top one are not the colour's.
+          [0x20202020, 0x40FFFFFF, 0x60000000],
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+          "VALUES (3, 'plain', 1, 0)",
+        );
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect(
+      [for (final layer in document.root.children) layer.mainColour],
+      [0xFF204060, null],
+    );
+  });
+
   test('🎯a sound layer holds its sound — the chunk its file is in, its name '
       'and extension — and its track\'s clip says what plays from which '
       'second on which frame (memory `csp-clip-format-notes` §3)', () {

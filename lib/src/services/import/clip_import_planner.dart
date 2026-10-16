@@ -79,6 +79,7 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
+import '../../models/project_background.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/track_id.dart';
@@ -158,6 +159,7 @@ final class ClipImportPlan {
     required this.bakes,
     required this.fps,
     required this.warnings,
+    this.paper,
   });
 
   /// One per timeline, in the file's order; one for a file with none.
@@ -170,6 +172,18 @@ final class ClipImportPlan {
   /// The first timeline's rate; null for a file with no timeline.
   final int? fps;
   final List<ImportWarning> warnings;
+
+  /// The project's paper: the file's paper layer with nothing that comes
+  /// in under it, by its colour, its eye and its opacity — null for a file
+  /// with none.
+  ///
+  /// 🗣️F-370 (유저 2026-10-16, opening a .clip: 「못읽어오는게 너무 많고」)
+  /// — and the paper was one the import could read: CLIP STUDIO's paper is
+  /// the colour of the sheet, which is what the project's paper is, the
+  /// plane under every row. ⛔A paper with a row under it, or in a folder,
+  /// is not that plane: it covers what is under it, or takes its folder's
+  /// look, and it is said as a kind not carried.
+  final ProjectBackground? paper;
 }
 
 /// Plans the project [document] opens as.
@@ -237,6 +251,7 @@ ClipImportPlan planClipImport({
     ],
     fps: _fpsOf(document, warnings),
     warnings: warnings,
+    paper: planner.paper,
   );
 }
 
@@ -701,6 +716,9 @@ final class _Planner {
   /// Layers whose blend was already said to have no equivalent.
   final _blendsSaid = <int>{};
 
+  /// See [ClipImportPlan.paper].
+  ProjectBackground? paper;
+
   List<LayerId> _ids() => [for (final _ in views) mint.nextLayerId()];
 
   /// Cut [i] as the file shows it, on its [canvas]: every row's layer in
@@ -819,6 +837,11 @@ final class _Planner {
     // pictures.
     if (layer.kind == ClipLayerKind.sound) {
       sounds.add(layer, folders);
+      return;
+    }
+    // Nor the paper under every row: it is the project's.
+    if (_paperOfTheProject(layer, parent) case final paper?) {
+      this.paper = paper;
       return;
     }
     if (!_comesIn(layer, layer.name)) {
@@ -1188,6 +1211,25 @@ final class _Planner {
         ImportWarning(key, template, {'name': name, 'count': '$count'}),
       );
     }
+  }
+
+  /// [layer] as the project's paper ([ClipImportPlan.paper]) — null unless
+  /// it is a paper the file names the colour of, at the top of the tree with
+  /// no row under it, and the first one.
+  ProjectBackground? _paperOfTheProject(ClipLayer layer, _FolderRow? parent) {
+    final colour = layer.mainColour;
+    if (layer.kind != ClipLayerKind.paper ||
+        colour == null ||
+        parent != null ||
+        rows.isNotEmpty ||
+        paper != null) {
+      return null;
+    }
+    final alpha = (0xFF * layer.opacity / _fullOpacity).round().clamp(0, 0xFF);
+    return ProjectBackground.color(
+      (alpha << 24) | (colour & 0xFFFFFF),
+      none: !layer.isShown,
+    );
   }
 
   /// Whether [layer] comes in — said by [name] when it comes in short, or
