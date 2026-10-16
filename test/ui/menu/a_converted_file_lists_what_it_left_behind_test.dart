@@ -26,9 +26,10 @@ void main() {
     deleteAfterSessionEnds(folder);
   });
 
-  /// A .clip whose root holds a text layer for each of [names], bottom to
-  /// top — and whose chain then names a layer the file does not hold.
-  String clipOf(List<String> names) {
+  /// A .clip whose root holds [layers] — a name, a `LayerType` and a
+  /// `LayerComposite` each, bottom to top — and whose chain then names a
+  /// layer the file does not hold.
+  String clipOf(List<(String, int, int)> layers) {
     final database = clipDatabaseBytes(folder, (db) {
       db
         ..execute(clipSchema)
@@ -40,11 +41,12 @@ void main() {
           'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
           "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
         );
-      for (var i = 0; i < names.length; i += 1) {
+      for (var i = 0; i < layers.length; i += 1) {
+        final (name, type, composite) = layers[i];
         db.execute(
           'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
-          'LayerNextIndex) VALUES (?, ?, 800, 0, ?)',
-          [2 + i, names[i], 3 + i],
+          'LayerComposite, LayerNextIndex) VALUES (?, ?, ?, 0, ?, ?)',
+          [2 + i, name, type, composite, 3 + i],
         );
       }
     });
@@ -55,10 +57,13 @@ void main() {
 
   testWidgets('🎯each reason once, over every name it was said of — and what '
       'was said of no one thing under the sentence', (tester) async {
+    const text = 800;
     final path = clipOf([
-      for (var i = 1; i <= 7; i += 1) 'words $i',
-      // A text layer is named by its text.
-      'first line\n\nsecond line',
+      for (var i = 1; i <= 7; i += 1) ('words $i', text, 0),
+      // A text layer is named by its text, blank lines and all.
+      ('\n  first line\n\nsecond line', text, 0),
+      // A raster layer whose blend has no equivalent.
+      ('odd', 1, 5),
     ]);
     final projects = OpenProjects(
       first: createDefaultProject(),
@@ -97,7 +102,7 @@ void main() {
         [
           AppText.strings.imLeftBehind,
           'Part of the file could not be followed: a layer chain names '
-              'layer 10, which is not there',
+              'layer 11, which is not there',
         ].join('\n'),
       ),
       findsOneWidget,
@@ -114,7 +119,14 @@ void main() {
       isEmpty,
       reason: 'every name, open, each on a line of its own',
     );
-    expect(inNotice('first line…'), findsOneWidget);
+    final cut = tester.widget<Text>(inNotice('first line…'));
+    expect((cut.maxLines, cut.overflow), (1, TextOverflow.ellipsis));
+    expect(
+      inNotice('Blend mode 5 has no equivalent — set to normal. (1)'),
+      findsOneWidget,
+      reason: 'a second reason, a fold of its own',
+    );
+    expect(inNotice('odd'), findsOneWidget);
     expect(
       find.descendant(
         of: notice,
