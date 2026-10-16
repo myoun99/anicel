@@ -173,12 +173,12 @@ void main() {
     expect(
       heard,
       inInclusiveRange(
-        before - device.latencySamples + correction,
-        after + correction,
+        before - device.latencySamples - correction,
+        after - correction,
       ),
       reason: 'handed $before..$after, latency ${device.latencySamples}, '
           'correction $correction — without the correction it would be a '
-          'tenth of a second back',
+          'tenth of a second on',
     );
     sound.stop();
   }, skip: skip);

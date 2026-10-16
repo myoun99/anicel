@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/services/playback/device_clock_line.dart';
 import 'package:anicel/src/services/playback/heard_on_the_device.dart';
 
@@ -33,6 +34,31 @@ void main() {
       userOffsetSamples: 0,
     );
     expect(shown - now, 960, reason: 'twenty milliseconds on, at 48k');
+  });
+
+  test('🚨a positive correction shows the picture LATER, as the settings say: '
+      'sound that reaches the ear late is an earlier sample heard (board '
+      'av-offset-sign-is-backwards)', () {
+    const wireless = AudioSyncSettings(offset: 100);
+    int heardWith(int userOffsetSamples) =>
+        (HeardOnTheDevice(frameClockNow: () => 1010000)
+              ..arm(deviceRate: rate, carriesFor: 4800))
+            .heard(
+              readAt(1010000),
+              latencySamples: 0,
+              userOffsetSamples: userOffsetSamples,
+            );
+    final offset = wireless.offsetSamples(
+      sampleRate: rate,
+      frameRateNumerator: 24,
+      frameRateDenominator: 1,
+    );
+    expect(
+      heardWith(offset),
+      heardWith(0) - rate ~/ 10,
+      reason: 'a tenth of a second back is heard: the frame shown at this '
+          'moment is the one a tenth of a second back',
+    );
   });
 
   test('🚨the moment is moved onto the device\'s clock by the two clocks\' '
@@ -150,7 +176,8 @@ void main() {
   // take-head-trims-at-the-playback-start (10-15): a take is placed by the
   // moment its anchor was heard.
   group('🚨one who LISTENS reads now — not held to how far a picture got', () {
-    test('the line now, less the latency, with the user\'s correction on', () {
+    test('the line now, less the latency, and less the user\'s '
+        'correction', () {
       final heard = HeardOnTheDevice(frameClockNow: () => 1010000)
         ..arm(deviceRate: rate, carriesFor: 4800);
       expect(
@@ -159,7 +186,7 @@ void main() {
           latencySamples: 1440,
           userOffsetSamples: 480,
         ),
-        48480 - 1440 + 480,
+        48480 - 1440 - 480,
         reason: 'handed 48000 at 1s, ten milliseconds on',
       );
     });

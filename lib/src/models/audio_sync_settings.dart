@@ -325,8 +325,10 @@ class AudioSyncReport {
   int get userOffsetMillis => _toMillis(userOffsetSamples);
 
   /// The total shift applied to the picture, in samples and in
-  /// milliseconds — automatic correction plus the user's residual.
-  int get appliedOffsetSamples => -reportedLatencySamples + userOffsetSamples;
+  /// milliseconds — automatic correction plus the user's residual, both
+  /// sound that is heard later than it is handed (`HeardOnTheDevice`):
+  /// negative, the picture held back for it.
+  int get appliedOffsetSamples => -reportedLatencySamples - userOffsetSamples;
   int get appliedOffsetMillis => _toMillis(appliedOffsetSamples);
 
   /// The same shift as a fraction of a frame, which is the unit that

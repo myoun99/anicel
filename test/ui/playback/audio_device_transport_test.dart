@@ -601,7 +601,7 @@ void main() {
       // Heard a little off what the device says, so that a frame's first
       // sample falls halfway up a step of the stair: no callback hands it.
       const step = 480;
-      final offset = device.latencySamples % step - step ~/ 2;
+      final offset = step ~/ 2 - device.latencySamples % step;
       final transport = buildTransport(store, offset: (_) => offset);
 
       controller.play(scope: PlaybackScope.activeCut);
@@ -733,8 +733,8 @@ void main() {
       store.dispose();
     }, skip: skip);
 
-    // What is HEARD is what the device has handed, less its latency, plus
-    // the user's own correction. The line stands at the stair or past it,
+    // What is HEARD is what the device has handed, less its latency and
+    // less the user's own correction. The line stands at the stair or past it,
     // and no further past what was handed than the device carries — so one
     // reading, with the stair read before it and after it, is held between
     // the two, however slow the machine is.
@@ -795,7 +795,9 @@ void main() {
       final store = _residentStore();
       store.resultFor('tone.wav');
       await pumpEventQueue();
-      const correction = 3 * frameSamples;
+      // The picture three frames EARLIER (a negative correction, as the
+      // settings read it): what is heard is three frames further on.
+      const correction = -3 * frameSamples;
       final transport = buildTransport(store, offset: (_) => correction);
 
       controller.play(scope: PlaybackScope.activeCut);
@@ -806,7 +808,7 @@ void main() {
       final frame = transport.clockStatus()!.globalFrame;
       final after = device.positionSamples;
       int frameHeardAt(int handed) =>
-          (handed - device.latencySamples + correction) ~/ frameSamples;
+          (handed - device.latencySamples - correction) ~/ frameSamples;
       expect(
         after,
         lessThan(6 * frameSamples),
@@ -876,9 +878,10 @@ void main() {
       final store = _residentStore();
       store.resultFor('tone.wav');
       await pumpEventQueue();
-      // Heard two frames early: while the device hands the run's last
-      // frames, what is heard is already past the end of it.
-      const correction = 2 * frameSamples;
+      // Heard two frames early (the picture two frames earlier — a negative
+      // correction): while the device hands the run's last frames, what is
+      // heard is already past the end of it.
+      const correction = -2 * frameSamples;
       final transport = buildTransport(store, offset: (_) => correction);
 
       controller.loopMode = PlaybackLoopMode.once;
@@ -891,7 +894,7 @@ void main() {
         final status = transport.clockStatus();
         if (status != null &&
             !status.ended &&
-            before - device.latencySamples + correction >= 10 * frameSamples) {
+            before - device.latencySamples - correction >= 10 * frameSamples) {
           pastTheEnd.add(status.globalFrame);
         }
       }

@@ -8,8 +8,8 @@ import 'frame_time_on_device.dart';
 /// moment a frame is shown: the line through the device's stair
 /// ([DeviceClockLine]) where it stands now, carried on at the device's
 /// rate to that moment on the device's clock ([FrameTimeOnDevice]), less
-/// what the device still holds to play — its latency — and with the user's
-/// own correction on top, folded into the lap last
+/// what the device still holds to play — its latency — and less the user's
+/// own correction, folded into the lap last
 /// ([DeviceClockLine.foldedIntoTheLap]).
 ///
 /// 🚨ONE READING for everything that puts a picture beside a device's
@@ -117,7 +117,16 @@ final class HeardOnTheDevice {
   }) => _heardOf(_line.read(clock), latencySamples, userOffsetSamples);
 
   /// What is HEARD of a [count] handed: it trails the count by the device's
-  /// latency, and the user's own correction is on top.
+  /// latency, and by the user's own correction on top of it — sound that
+  /// reaches the ear later still, where no device says so.
+  ///
+  /// 🚨THE CORRECTION IS TAKEN OFF, AS THE LATENCY IS (board
+  /// av-offset-sign-is-backwards, 10-16). The settings say a positive one
+  /// shows the picture LATER, for sound that arrives late — a wireless hop,
+  /// a receiver — and sound that arrives late is an earlier sample heard.
+  /// ↩️It was added, from the first clock on (`audioClockFrame`, 07-21): a
+  /// positive setting showed the picture EARLIER, and wireless headphones
+  /// set as the settings say were twice as far out.
   static int _heardOf(int count, int latencySamples, int userOffsetSamples) =>
-      count - latencySamples + userOffsetSamples;
+      count - latencySamples - userOffsetSamples;
 }

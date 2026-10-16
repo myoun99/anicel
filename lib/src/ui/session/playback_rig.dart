@@ -273,8 +273,9 @@ class PlaybackRig implements PlaybackRun {
 
   /// The user's own A/V correction in samples at [sampleRate] — the residual
   /// no device report accounts for (screen pipeline, Bluetooth, an AV
-  /// receiver), added by every clock that reads what the device has played:
-  /// the canvas's transport, and the media viewer's sound.
+  /// receiver), taken off by every clock that reads what the device has
+  /// played (`HeardOnTheDevice`): the canvas's transport, and the media
+  /// viewer's sound.
   int userOffsetSamples(int sampleRate) =>
       _appSettings.audioSyncSettings.value.offsetSamples(
         sampleRate: sampleRate,

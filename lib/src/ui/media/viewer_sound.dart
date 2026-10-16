@@ -240,8 +240,8 @@ class ViewerSound {
   /// 🚨★★★**THIS IS THE CLOCK — the canvas's, in its code**
   /// ([HeardOnTheDevice], viewer-plays-by-the-one-playback-law ④-b): the
   /// line through what the device was handed, at the frame's own time, less
-  /// what the device still holds to play, with the user's own correction
-  /// on top. A picture that follows it cannot drift from the sound, and
+  /// what the device still holds to play, and less the user's own
+  /// correction. A picture that follows it cannot drift from the sound, and
   /// stands where the canvas's would. ↩️It read what had been HANDED, the
   /// stair, as the tick ran: a picture ahead of what was heard by the
   /// device's latency, and a correction set in the settings that never

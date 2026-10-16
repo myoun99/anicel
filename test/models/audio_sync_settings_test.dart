@@ -197,8 +197,14 @@ void main() {
       );
       expect(report.reportedLatencyMillis, 30);
       expect(report.userOffsetMillis, 100);
-      expect(report.appliedOffsetSamples, 4800 - 1440);
-      expect(report.appliedOffsetMillis, 70);
+      expect(
+        report.appliedOffsetSamples,
+        -1440 - 4800,
+        reason: 'both are sound heard later than it is handed: the picture is '
+            'held back for the two together (board '
+            'av-offset-sign-is-backwards)',
+      );
+      expect(report.appliedOffsetMillis, -130);
     });
 
     test('the shift is also reported in frames — the visible unit', () {
