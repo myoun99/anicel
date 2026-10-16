@@ -215,7 +215,8 @@ class AudioPlaybackSync {
     }
     if (controller.isWaiting || _wasWaiting) {
       // The clock stands on this frame, or stood until this very change —
-      // a seek off the frame it waited on, which the controller says next.
+      // going on onto the frame it waited for, or a seek off where it
+      // waited, which the controller says next.
       // No clip starts here: going on restarts whatever overlaps the frame,
       // ONCE, and that is [_onControllerChanged]'s to do. Answering the
       // jump here as well started every clip twice in one turn.

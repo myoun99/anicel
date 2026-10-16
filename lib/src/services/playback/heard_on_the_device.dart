@@ -32,8 +32,8 @@ import 'frame_time_on_device.dart';
 /// 시작하는곳으로 재생헤드가 점프해버려서 거기서 재생되는 버그」). A
 /// playhead takes a reading that steps back for the lap wrapping
 /// (`playheadWay`): it walks on round the end, and where the clock waits for
-/// a picture it stands on the first frame not made yet — the green bar's
-/// edge. Every stage of this reading can step back: the line where its
+/// a picture it stands before the first frame not made yet — on the green
+/// bar's last. Every stage of this reading can step back: the line where its
 /// highest point grows old ([DeviceClockLine]), and the moment it is
 /// carried on to, which is estimated afresh at every look — when a run's
 /// scenes turn short after long ones the vblank claims start again on an

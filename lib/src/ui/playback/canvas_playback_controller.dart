@@ -98,8 +98,8 @@ class CanvasPlaybackController extends ChangeNotifier
   /// picture is seen. Null reads it now.
   ClockReading? Function({Duration? frameTime})? resolveAudioClock;
 
-  /// Asked of every frame the run would stand on: whether its clock must
-  /// WAIT there — the frame's picture is not made yet, or (rendering first)
+  /// Asked of every frame the run would go onto: whether its clock must
+  /// WAIT for it — the frame's picture is not made yet, or (rendering first)
   /// what lies ahead of it is not. `placed` when someone PUT the run on the
   /// frame — play was pressed there, the ruler was dragged there — rather
   /// than its clock reaching it. Null = the clock never waits.

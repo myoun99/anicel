@@ -72,51 +72,57 @@ void main() {
   // every scenario pumps once right after the clock starts before advancing
   // time.
 
+  /// Where (cut, frame) the run stands.
+  (CutId, int) at(CanvasPlaybackController c) =>
+      (c.position!.cut.id, c.position!.localFrameIndex);
+
   testWidgets('🚨the playhead stops BEFORE the frame whose picture is not '
-      'there — on the last it showed — and goes on onto that frame when it '
-      'is, a whole frame from then', (tester) async {
+      'there — on the last it showed, the cut before\'s last where it is a '
+      'cut\'s head — and goes on onto that frame when it is, a whole frame '
+      'from then', (tester) async {
     final c = controller();
     c.attachTicker(const TestVSync());
     addTearDown(c.dispose);
-    missing.add(2);
+    // Cut B's head, the film's frame 4 — the head F-365 saw come in white.
+    missing.add(4);
 
-    c.play(scope: PlaybackScope.activeCut);
+    c.play(scope: PlaybackScope.allCuts, startGlobalFrame: 2);
     expect(c.isWaiting, isFalse);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     expect(
-      c.position!.localFrameIndex,
-      1,
-      reason: 'the frame before 2 — a playhead on 2 would be over a picture '
-          'that is not frame 2\'s',
+      at(c),
+      (const CutId('cut-a'), 3),
+      reason: 'cut A\'s last frame — a playhead on cut B\'s head would be over '
+          'a picture that is not there: its bare paper',
     );
     expect(c.isWaiting, isTrue);
     expect(c.isPlaying, isTrue, reason: 'waiting is not paused, nor stopped');
 
     await tester.pump(const Duration(seconds: 3));
-    expect(c.position!.localFrameIndex, 1, reason: 'the clock stands');
+    expect(at(c), (const CutId('cut-a'), 3), reason: 'the clock stands');
 
-    arrive(c, 2);
+    arrive(c, 4);
     expect(c.isWaiting, isFalse);
     expect(
-      c.position!.localFrameIndex,
-      2,
+      at(c),
+      (const CutId('cut-b'), 0),
       reason: 'it goes onto the frame it waited for the moment it comes',
     );
     expect(
       (c.globalFrameIndexListenable.value, c.localFrameIndexListenable.value),
-      (2, 2),
+      (4, 0),
       reason: 'and the screen, the ruler and the warmer hear it then',
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 90));
     expect(
-      c.position!.localFrameIndex,
-      2,
+      at(c),
+      (const CutId('cut-b'), 0),
       reason: 'the frame is shown its whole time, counted from when it came',
     );
     await tester.pump(const Duration(milliseconds: 20));
-    expect(c.position!.localFrameIndex, 3);
+    expect(at(c), (const CutId('cut-b'), 1));
 
     c.stop();
     c.detachTicker();

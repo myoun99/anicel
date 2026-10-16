@@ -1,6 +1,6 @@
 import '../../models/playback_mode.dart';
 
-/// Whether a run's clock stands on a frame: [PlaybackMode]'s three settings,
+/// Whether a run's clock waits for a frame: [PlaybackMode]'s three settings,
 /// read against what the warmer has made.
 ///
 /// The one place the modes part. Everything else — which pictures are made,
@@ -27,7 +27,7 @@ class PlaybackPictureWait {
   /// that is not there — until [aheadIsFilled].
   bool _filling = false;
 
-  /// Whether the clock must wait on [playlistFrame]. [placed] when someone
+  /// Whether the clock must wait for [playlistFrame]. [placed] when someone
   /// PUT the run on the frame — play was pressed there, the ruler was
   /// dragged there — rather than its clock reaching it: rendering first, a
   /// run fills before it goes from wherever it was put.
