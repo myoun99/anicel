@@ -81,8 +81,13 @@ const double _selectedLaneKeyBorderWidth = 4 / 3;
 /// they must not do is pack into three pixels.
 const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 
-/// The stood-up navigator (three 20px buttons), plus its leading gap.
-const double _laneNavigatorExtent = 3 * 20 + 4;
+/// The stood-up navigator: three 20px buttons.
+///
+/// ↩️It carried a leading gap of 4 from when the navigator stood under the
+/// name (R10 R6). Above the name since I-89-Q17, its gap is the one after
+/// it ([_laneStoodNavigatorGap]) — and the column paid that 4 twice, so the
+/// navigator stood 4px later than it fit (found by a mutant, 2026-10-16).
+const double _laneNavigatorExtent = 3 * 20;
 
 /// The stood-up chain of a linkable lane — [AppIconButtonSize.micro]'s
 /// height.

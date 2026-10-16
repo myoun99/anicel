@@ -442,6 +442,77 @@ void main() {
     );
   });
 
+  testWidgets('a stood-up column pays only for what its lane has, and a '
+      'control stands the moment it fits', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final layer = Layer(id: _drawId, name: 'Drawing', frames: const []);
+    PropertyLaneRow scale({required bool value}) => PropertyLaneRow(
+      laneId: 'scale',
+      label: 'Scale',
+      keyMarks: const {0: KeyMark.linear},
+      valueLabel: value ? (_) => '100.0, 100.0' : null,
+    );
+    const value = 'xsheet-lane-value-draw-scale';
+    const navigator = 'xsheet-lane-key-toggle-draw-scale';
+
+    /// The shortest column, from 60 up, that stands [key] for [lane] — and
+    /// the room its name has there.
+    Future<({double at, double name})> firstStanding(
+      PropertyLaneRow lane,
+      String key,
+    ) async {
+      for (var height = 60.0; height <= 480; height += 1) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: TimelineLaneControlsRow(
+                  axis: Axis.vertical,
+                  keyPrefix: 'xsheet',
+                  layer: layer,
+                  lane: lane,
+                  laneEdit: PropertyLaneEditCallbacks(
+                    onToggleKeyAt: (_, _, _) {},
+                  ),
+                  metrics: XSheetTimelineGrid.defaultMetrics,
+                  width: XSheetTimelineGrid.defaultMetrics.layerRowHeight,
+                  height: height,
+                ),
+              ),
+            ),
+          ),
+        );
+        if (find.byKey(ValueKey<String>(key)).evaluate().isNotEmpty) {
+          final name = tester.getSize(
+            find.descendant(
+              of: _cell('xsheet', 'scale'),
+              matching: find.byType(VerticalWritingText),
+            ),
+          );
+          return (at: height, name: name.height);
+        }
+      }
+      fail('$key stood in no column up to 480');
+    }
+
+    final bare = await firstStanding(scale(value: false), navigator);
+    final valued = await firstStanding(scale(value: true), value);
+    expect(
+      bare.at,
+      lessThan(valued.at),
+      reason: 'a lane with no value pays nothing for one: its navigator '
+          'stands in a column too short for a value',
+    );
+    expect(
+      bare.name,
+      2 * timelineFrameCellWidth,
+      reason: 'the navigator stands in the first column it fits — the name '
+          'left exactly its floor of two frame rows, and not a pixel of it '
+          'spent',
+    );
+  });
+
   testWidgets('a lane\'s name starts right after its key buttons, the '
       'graph\'s chips at its end — on both axes', (tester) async {
     // I-89-Q17 (유저 2026-10-12): 「키쪽에 기준점같은 이름 텍스트 딱
