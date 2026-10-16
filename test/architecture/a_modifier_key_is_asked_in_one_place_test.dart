@@ -58,8 +58,13 @@ void main() {
 final keys = HardwareKeyboard.instance;
 if (HardwareKeyboard.instance.isShiftPressed) {}
 final pressed = ServicesBinding.instance.keyboard.logicalKeysPressed;
+shift: WidgetsBinding.instance.keyboard.isShiftPressed ||
+final keyboard = WidgetsBinding.instance.keyboard;
+if (binding.keyboard.isControlPressed) {}
 HardwareKeyboard.instance.addHandler(_onKey);
 HardwareKeyboard.instance.removeHandler(_onKey);
+for (final key in ModifierKeys.keyboard.logicalKeysPressed) {}
+if (ModifierKeys.keyboard.isShiftPressed) {}
 /// Reads [HardwareKeyboard.instance] the way it used to.
 // ↩️It was HardwareKeyboard.instance.isShiftPressed.
 ''';
@@ -67,6 +72,9 @@ HardwareKeyboard.instance.removeHandler(_onKey);
       'final keys = HardwareKeyboard.instance;',
       'if (HardwareKeyboard.instance.isShiftPressed) {}',
       'final pressed = ServicesBinding.instance.keyboard.logicalKeysPressed;',
+      'shift: WidgetsBinding.instance.keyboard.isShiftPressed ||',
+      'final keyboard = WidgetsBinding.instance.keyboard;',
+      'if (binding.keyboard.isControlPressed) {}',
     ]);
   });
 }
@@ -81,9 +89,15 @@ List<String> _recordReads(String source) => [
       line.trim(),
 ];
 
+/// The record by its own name, through any binding's `keyboard` (every
+/// binding is the services one — `WidgetsBinding.instance.keyboard`
+/// compiles where `HardwareKeyboard` is not imported), or read off a
+/// keyboard that is not `ModifierKeys`'s.
 final _record = RegExp(
   r'HardwareKeyboard\.instance(?!\.(?:addHandler|removeHandler)\()'
-  r'|ServicesBinding\.instance\.keyboard',
+  r'|\w*Binding\.instance\.keyboard\b'
+  r'|(?<!ModifierKeys)\.keyboard\.'
+  r'(?:is\w+Pressed|logicalKeysPressed|physicalKeysPressed)\b',
 );
 
 /// The lines that say what Flutter's own shortcut managers do — they read
