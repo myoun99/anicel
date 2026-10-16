@@ -156,8 +156,10 @@ void main() {
     String unknownAt(String id, String hhmm) =>
         '{"kind":"item","id":"$id","at":"결정 필요","note":"x",'
         '"ts":"${at(hhmm)}","title":"$id","tags":["구조"]}';
+    // ⚠️Each note its own words: the story drops a repeated sentence, and a
+    // 소분류 line that repeats the one before it is no entry at all.
     String filed(String id, String hhmm, {String stage = '나중에'}) =>
-        '{"id":"$id","at":"$stage","note":"고쳐 적음","ts":"${at(hhmm)}"}';
+        '{"id":"$id","at":"$stage","note":"$stage $hhmm","ts":"${at(hhmm)}"}';
 
     test('⛔a 대분류 written after the unknown name re-files the card, '
         'and the name is history', () {
