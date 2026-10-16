@@ -683,16 +683,15 @@ QaAudioDevice? audioOutputUnlessTesting() =>
 /// recording cue and the open ahead ([openAudioOutputAhead]) — which differ
 /// only in the rate, the channel count and where the name comes from.
 ///
-/// On the null backend where [device] has been on it — or, for a worker's
-/// device, where [useNullBackend] says the device it opens for has been.
+/// On the null backend where [device] has been on it — a worker's device
+/// told so by the open that hands it the work ([openAudioOutputAhead]).
 bool openAudioOutput(
   QaAudioDevice device, {
   required int sampleRate,
   required String? preferredName,
   int channels = 2,
-  bool useNullBackend = false,
 }) {
-  final onTheNullBackend = useNullBackend || device._onNullBackend;
+  final onTheNullBackend = device._onNullBackend;
   final index = audioDeviceIndexByName(
     device,
     // 🧪MUTATION: flipping this to `capture: true` SURVIVES the suite —
@@ -780,6 +779,7 @@ Future<void> _openAhead(
       if (here == null) {
         return false;
       }
+      here._onNullBackend = onTheNullBackend;
       if (reopen) {
         here
           ..stop()
@@ -789,7 +789,6 @@ Future<void> _openAhead(
         here,
         sampleRate: sampleRate,
         preferredName: preferredName,
-        useNullBackend: onTheNullBackend,
       );
     });
   } on Object {
