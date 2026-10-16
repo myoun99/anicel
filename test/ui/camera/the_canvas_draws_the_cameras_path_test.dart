@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
@@ -259,17 +260,36 @@ void main() {
       'key\'s cross, in the handles\' dashes — and elsewhere none', (
     tester,
   ) async {
-    final (s, _) = panning();
+    addTearDown(
+      () => AppColors.accentSettings.value = const AppAccentSettings(),
+    );
+    final (s, row) = panning();
     addTearDown(s.dispose);
     await pumpArea(tester, s);
-    List<Offset> line() => tester.widget<CameraPathOverlay>(path()).centreTrail;
+    CameraPathOverlay overlay() => tester.widget<CameraPathOverlay>(path());
+    final picture = find.byKey(const ValueKey<String>('camera-path-overlay'));
+    CustomPainter painter() => tester.widget<CustomPaint>(picture).painter!;
 
     void fromKeyToKey(String when) {
+      final line = overlay().centreTrail;
       final crosses = [
         for (final frame in keyFrames(tester)) (frame[0] + frame[2]) / 2,
       ];
-      expect(line(), hasLength(2 * 5 + 1), reason: '$when: every half frame');
-      expectPoints([line().first, line().last], crosses);
+      expect(line, hasLength(2 * 5 + 1), reason: '$when: every half frame');
+      expectPoints([line.first, line.last], crosses);
+    }
+
+    /// The widths of the strokes painted in [color], painted now.
+    List<double> strokesIn(Color color) {
+      final canvas = TestRecordingCanvas();
+      painter().paint(canvas, tester.getSize(picture));
+      return [
+        for (final call in canvas.invocations)
+          if (call.invocation.memberName == #drawPath)
+            if (call.invocation.positionalArguments[1] case final Paint ink
+                when ink.color == color)
+              ink.strokeWidth,
+      ];
     }
 
     fromKeyToKey('in space and time');
@@ -278,30 +298,39 @@ void main() {
     );
     await tester.pump();
     fromKeyToKey('in space');
-
-    final canvas = TestRecordingCanvas();
-    final picture = find.byKey(const ValueKey<String>('camera-path-overlay'));
-    tester
-        .widget<CustomPaint>(picture)
-        .painter!
-        .paint(canvas, tester.getSize(picture));
-    final dashes = [
-      for (final call in canvas.invocations)
-        if (call.invocation.memberName == #drawPath)
-          if (call.invocation.positionalArguments[1] case final Paint ink
-              when ink.color == AppColors.accent)
-            ink.strokeWidth,
-    ];
+    final dashes = strokesIn(AppColors.accent);
     expect(dashes.length, greaterThan(1), reason: 'in dashes');
     expect(dashes.toSet(), {CameraPathOverlay.centreTrailWidth});
 
+    final standing = (painter: painter(), marks: overlay().marks);
     final drawing = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind != LayerKind.camera)
         .id;
     s.standOnRow(LayerRowAddress(drawing));
     await tester.pump();
     expect(path(), findsOneWidget, reason: '⛔전제: the path is drawn');
-    expect(line(), isEmpty, reason: 'as the export writes it');
+    expect(overlay().centreTrail, isEmpty, reason: 'as the export writes it');
+    expect(
+      overlay().marks,
+      standing.marks,
+      reason: '⛔전제: in space, standing moves nothing else',
+    );
+    expect(
+      painter().shouldRepaint(standing.painter),
+      isTrue,
+      reason: 'the line alone going repaints the picture',
+    );
+
+    s.standOnRow(LayerRowAddress(row));
+    await tester.pump();
+    final before = painter();
+    const recolored = Color(0xFF2244CC);
+    AppColors.accentSettings.value = const AppAccentSettings(
+      accent: recolored,
+    );
+    await pumpArea(tester, s);
+    expect(strokesIn(recolored), dashes, reason: 'the accent as it is now');
+    expect(painter().shouldRepaint(before), isTrue);
 
     await drain(tester);
   });
