@@ -402,54 +402,13 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
     Paint paint,
   ) {
     final resolved = vanishingPoint.resolve();
-    final diagonal = bounds.longestSide * 2;
     if (resolved.isInfinite) {
-      final middle = CanvasPoint(
-        x: canvasSize.width / 2,
-        y: canvasSize.height / 2,
-      );
-      final direction = resolved.directionFrom(middle);
-      if (direction == null) return;
-      // 🚨THE DIRECTION IS THE CANVAS'S, THE LINES ARE THE SCREEN'S
-      // (vanishing-point-types, 2026-10-16). It is taken to the screen
-      // through two mapped points, so a turned or mirrored view turns the
-      // family with the paper — this comment said so from 08-12 while the
-      // canvas direction was drawn on the screen as it was, and a turned
-      // view left the family standing still.
-      final along =
-          _toScreen(
-            CanvasPoint(
-              x: middle.x + direction.dx,
-              y: middle.y + direction.dy,
-            ),
-          ) -
-          _toScreen(middle);
-      if (along.distance == 0) return;
-      final ahead = along / along.distance;
-      final center = bounds.center;
-      // Step ACROSS the family and draw one line per lane.
-      final spacing = diagonal / _raysPerVanishingPoint;
-      for (var index = -_raysPerVanishingPoint;
-          index <= _raysPerVanishingPoint;
-          index += 1) {
-        final offset = spacing * index;
-        final anchor = center + Offset(-ahead.dy, ahead.dx) * offset;
-        // 🚨A LINE, BOTH WAYS FROM ITS ANCHOR (same card, same day). The
-        // anchors stand on the line through the view's middle, and each
-        // line used to leave its anchor one way only — 「정확히 수직으로」
-        // drew its verticals below the middle of the view alone, most of
-        // them under the timeline. A point at infinity is parallel LINES;
-        // only a finite point's are rays.
-        canvas.drawLine(
-          anchor - ahead * diagonal,
-          anchor + ahead * diagonal,
-          paint,
-        );
-      }
+      _paintParallelFamily(canvas, bounds, resolved, paint);
       return;
     }
     final position = resolved.position;
     if (position == null) return;
+    final diagonal = bounds.longestSide * 2;
     final apex = _toScreen(position);
     for (var index = 0; index < _raysPerVanishingPoint; index += 1) {
       final angle = math.pi * 2 * index / _raysPerVanishingPoint;
@@ -459,6 +418,59 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
           apex.dx + math.cos(angle) * diagonal,
           apex.dy + math.sin(angle) * diagonal,
         ),
+        paint,
+      );
+    }
+  }
+
+  /// A point at infinity's family: one line through the middle of the view
+  /// and a lane of them either side, all running [resolved]'s way.
+  void _paintParallelFamily(
+    Canvas canvas,
+    Rect bounds,
+    HomogeneousPoint resolved,
+    Paint paint,
+  ) {
+    final middle = CanvasPoint(
+      x: canvasSize.width / 2,
+      y: canvasSize.height / 2,
+    );
+    final direction = resolved.directionFrom(middle);
+    if (direction == null) return;
+    // 🚨THE DIRECTION IS THE CANVAS'S, THE LINES ARE THE SCREEN'S
+    // (vanishing-point-types, 2026-10-16). It is taken to the screen
+    // through two mapped points, so a turned or mirrored view turns the
+    // family with the paper — this comment said so from 08-12 while the
+    // canvas direction was drawn on the screen as it was, and a turned
+    // view left the family standing still.
+    final along =
+        _toScreen(
+          CanvasPoint(
+            x: middle.x + direction.dx,
+            y: middle.y + direction.dy,
+          ),
+        ) -
+        _toScreen(middle);
+    if (along.distance == 0) return;
+    final ahead = along / along.distance;
+    final center = bounds.center;
+    final diagonal = bounds.longestSide * 2;
+    // Step ACROSS the family and draw one line per lane.
+    final spacing = diagonal / _raysPerVanishingPoint;
+    for (var index = -_raysPerVanishingPoint;
+        index <= _raysPerVanishingPoint;
+        index += 1) {
+      final offset = spacing * index;
+      final anchor = center + Offset(-ahead.dy, ahead.dx) * offset;
+      // 🚨A LINE, BOTH WAYS FROM ITS ANCHOR (same card, same day). The
+      // anchors stand on the line through the view's middle, and each line
+      // used to leave its anchor one way only — 「정확히 수직으로」 drew its
+      // verticals below the middle of the view alone, most of them under
+      // the timeline. A point at infinity is parallel LINES; only a finite
+      // point's are rays.
+      canvas.drawLine(
+        anchor - ahead * diagonal,
+        anchor + ahead * diagonal,
         paint,
       );
     }
