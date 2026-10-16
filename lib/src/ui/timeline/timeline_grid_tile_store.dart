@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
+import '../../core/signed_memo.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
@@ -1404,18 +1405,15 @@ class _TileEntry {
 
 /// [firstCellThatMayDiffer] of the pair a row's tiles ask about together —
 /// every span of the row asks it of the same two instances.
-int? _agreementOf(Layer baked, Layer next) {
-  final known = _agreements[baked];
-  if (known != null && identical(known.next, next)) {
-    return known.differs;
-  }
-  final differs = firstCellThatMayDiffer(baked, next);
-  _agreements[baked] = (next: next, differs: differs);
-  return differs;
-}
+int? _agreementOf(Layer baked, Layer next) => _agreements.resolve(
+  baked,
+  next,
+  () => firstCellThatMayDiffer(baked, next),
+);
 
-final Expando<({Layer next, int? differs})> _agreements = Expando(
+final SignedMemo<Layer, int?> _agreements = SignedMemo(
   'tile agreement',
+  same: identical,
 );
 
 /// The per-raster transient atlas (a vertical stack of the span's

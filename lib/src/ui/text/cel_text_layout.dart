@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
 import '../../core/lru.dart';
+import '../../core/signed_memo.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart'
@@ -307,18 +308,13 @@ class CelTextBox {
 /// ⚠️It is the box the letters have ON THIS MACHINE, in the faces it has
 /// NOW: a box kept from before a face arrived, or left, was measured in
 /// other letters, and is set again ([CanvasLetterFaces.generation]).
-CelTextBox celTextBoxOf(CelTextContent content) {
-  final faces = CanvasLetterFaces.current.generation;
-  final kept = _boxes[content];
-  if (kept != null && kept.faces == faces) {
-    return kept.box;
-  }
-  final box = _boxSetFor(content);
-  _boxes[content] = (faces: faces, box: box);
-  return box;
-}
+CelTextBox celTextBoxOf(CelTextContent content) => _boxes.resolve(
+  content,
+  CanvasLetterFaces.current.generation,
+  () => _boxSetFor(content),
+);
 
-final Expando<({int faces, CelTextBox box})> _boxes = Expando('cel text box');
+final SignedMemo<int, CelTextBox> _boxes = SignedMemo('cel text box');
 
 /// Whether a face [content]'s letters are written in is still ON ITS WAY to
 /// the engine ([CanvasLetterFaces]) — and it is sent for, if nobody had.

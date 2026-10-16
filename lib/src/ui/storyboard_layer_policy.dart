@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
 
+import '../core/signed_memo.dart';
 import '../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../models/conte_group.dart';
 import '../models/cut.dart';
@@ -125,26 +126,27 @@ Layer trackConteRowShown(
   int seat = 0,
 }) {
   final laid = [...entries];
-  final kept = (_conteRowsShown[trackId] ??= {})[seat];
-  if (kept != null && listEquals(kept.laid, laid)) {
-    return kept.row;
-  }
-  final row = _conteRowLaid(trackId, laid, seat);
-  _conteRowsShown[trackId]![seat] = (laid: laid, row: row);
-  return row;
+  return _conteRowsShownAt(seat).resolve(
+    trackId,
+    laid,
+    () => _conteRowLaid(trackId, laid, seat),
+  );
 }
 
-/// A conte row as last shown, with the laying it was made of.
-typedef _ConteRowShown = ({
-  List<StoryboardTimelineLayoutEntry> laid,
-  Layer row,
-});
+/// The conte rows last shown of each track, a memo per seat — each on the
+/// track's id, which every version of the track shares, so they go with the
+/// project.
+final List<SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer>>
+_conteRowsShown = [];
 
-/// The conte rows last shown of each track, by seat — on the track's id,
-/// which every version of the track shares, so they go with the project.
-final Expando<Map<int, _ConteRowShown>> _conteRowsShown = Expando(
-  'conte rows shown',
-);
+SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer> _conteRowsShownAt(
+  int seat,
+) {
+  while (_conteRowsShown.length <= seat) {
+    _conteRowsShown.add(SignedMemo('conte rows shown', same: listEquals));
+  }
+  return _conteRowsShown[seat];
+}
 
 /// [trackConteRowShown] made from [laid].
 Layer _conteRowLaid(

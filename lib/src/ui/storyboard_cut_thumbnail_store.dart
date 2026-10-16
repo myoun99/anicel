@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../core/lru.dart';
+import '../core/signed_memo.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -402,8 +403,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// at the ten-minute floor every panel of the film is asked for on every
   /// paint, and each ask spelled the cut's whole layer stack again and
   /// folded every timeline.
-  final Expando<({int generation, String signature})> _signatures =
-      Expando();
+  final SignedMemo<int, String> _signatures = SignedMemo('cut signatures');
 
   /// How many signatures were spelled — the cost [_signatures] keeps off
   /// every paint.
@@ -413,13 +413,11 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
 
   String _signatureFor(Cut cut) {
     final generation = _editGenerations[cut.id] ?? 0;
-    final held = _signatures[cut];
-    if (held != null && held.generation == generation) {
-      return held.signature;
-    }
-    final signature = _spellSignature(cut, generation);
-    _signatures[cut] = (generation: generation, signature: signature);
-    return signature;
+    return _signatures.resolve(
+      cut,
+      generation,
+      () => _spellSignature(cut, generation),
+    );
   }
 
   /// What every panel's picture of [cut] is made of — alike for all of
