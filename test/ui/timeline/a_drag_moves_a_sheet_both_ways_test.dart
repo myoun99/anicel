@@ -515,6 +515,11 @@ void main() {
 
         expect(standing(tester), Offset.zero);
         expect(
+          positionOf(tester, sheet.inner).activity,
+          isA<IdleScrollActivity>(),
+          reason: 'the press held the frames, and letting go lets them go',
+        );
+        expect(
           [for (final position in theFloor(tester)) position.pixels],
           everyElement(0),
           reason: 'F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 '
