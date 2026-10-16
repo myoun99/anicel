@@ -307,7 +307,12 @@ void main() {
   /// other five (Invert Selection, Paste at original position, Register as
   /// Tip…, Add vanishing point, Rasterize) are composed from the table and
   /// add none. The ceiling stood at the count (131) when it came.
-  const untranslatedElsewhere = 135;
+  ///
+  /// 136 (I-103, the window's full screen, 2026-10-16): the English row of
+  /// one new registry action, 「Full screen」 — answered in the other four
+  /// languages by id (`shortcutAction.window-full-screen`). The ceiling
+  /// stood at the count (135) when it came.
+  const untranslatedElsewhere = 136;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
