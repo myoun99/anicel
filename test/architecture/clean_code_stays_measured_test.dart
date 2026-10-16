@@ -826,7 +826,16 @@ void main() {
   /// with it. 🔬`clean_code_diff` against `f99fdc4ff` names this one and no
   /// other class. ⛔Not split to fit: the windows are the host's state, read
   /// where the ink layer reads them.
-  const longClasses = 63;
+  ///
+  /// ⚠️63 → 64 on 2026-10-17, ONE name: `LayerVerbs` crossed (588 → 601)
+  /// in F-369 — a cut's conte row is born at the bottom of ACTION from
+  /// every door, so the verb that puts a new row in the stack takes WHERE
+  /// from its caller (`addRow`): above the active row is one answer
+  /// (`placementAboveActive`), the conte row's birthplace the other.
+  /// 🔬`clean_code_diff` against master (`34c6233f6`) names this one and
+  /// no other class. ⛔Not split to fit: a row is inserted in one place,
+  /// and a door that inserted its own would be the second.
+  const longClasses = 64;
 
   late CleanCodeScan scan;
   setUpAll(() {
