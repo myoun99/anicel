@@ -281,6 +281,21 @@ void main() {
       expect(preview.image, isNull);
       expect(preview.imageDab, isNull);
     });
+
+    testWidgets('a decode still on its way when the box ends lands nowhere — '
+        'letting go of the picture takes the decode\'s claim with it', (
+      tester,
+    ) async {
+      final now = over(box(scale: 2));
+      final preview = FloatResamplePreview(_Host(), () => now);
+      addTearDown(preview.discard);
+      preview.schedule();
+
+      preview.discard();
+      await decoded(tester, preview);
+
+      expect(preview.image, isNull);
+    });
   });
 }
 
