@@ -340,14 +340,17 @@ Offset onLayer(WidgetTester tester, double x, double y) => tester
 Offset onScreen(WidgetTester tester, double x, double y) =>
     tester.getTopLeft(textLayer()) + onLayer(tester, x, y);
 
-/// A mouse press on the canvas pixel ([x], [y]), still down a frame later.
-Future<TestGesture> pressAt(WidgetTester tester, double x, double y) async {
-  final mouse = await tester.startGesture(
-    onScreen(tester, x, y),
-    kind: PointerDeviceKind.mouse,
-  );
+/// A mouse press on the canvas pixel ([x], [y]) — or a [kind]'s — still
+/// down a frame later.
+Future<TestGesture> pressAt(
+  WidgetTester tester,
+  double x,
+  double y, {
+  PointerDeviceKind kind = PointerDeviceKind.mouse,
+}) async {
+  final hand = await tester.startGesture(onScreen(tester, x, y), kind: kind);
   await tester.pump();
-  return mouse;
+  return hand;
 }
 
 /// A mouse click on the canvas pixel ([x], [y]).
@@ -357,21 +360,23 @@ Future<void> clickAt(WidgetTester tester, double x, double y) async {
   await pumpFrames(tester);
 }
 
-/// A mouse drag from one canvas pixel to another, in a few steps.
+/// A mouse drag from one canvas pixel to another — or a [kind]'s — in a
+/// few steps.
 Future<void> dragFrom(
   WidgetTester tester,
   Offset from,
   Offset to, {
   int steps = 4,
+  PointerDeviceKind kind = PointerDeviceKind.mouse,
 }) async {
   final start = onScreen(tester, from.dx, from.dy);
   final end = onScreen(tester, to.dx, to.dy);
-  final mouse = await pressAt(tester, from.dx, from.dy);
+  final hand = await pressAt(tester, from.dx, from.dy, kind: kind);
   for (var i = 1; i <= steps; i += 1) {
-    await mouse.moveTo(Offset.lerp(start, end, i / steps)!);
+    await hand.moveTo(Offset.lerp(start, end, i / steps)!);
     await tester.pump();
   }
-  await mouse.up();
+  await hand.up();
   await pumpFrames(tester);
 }
 

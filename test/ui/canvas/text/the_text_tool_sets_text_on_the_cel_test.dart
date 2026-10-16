@@ -373,6 +373,57 @@ void main() {
       expect(shownPixel(celOf(tester), x + 10, y + 10), nothing);
     });
 
+    // 🗣️I-96-Q3 (유저 2026-10-16, a): 「손가락도 — 늘 켜짐(변형 · 도형처럼)」
+    // — a finger resting on the glass is a tablet's Ctrl.
+    testWidgets('🚨with a FINGER resting on the glass, a pen dragged inside '
+        'the text being typed into carries it as Ctrl does — and the finger '
+        'lifted, it is still typed into', (tester) async {
+      addTearDown(() => AppInput.settings.value = const AppInputSettings());
+      final c = await textToolInHand(tester);
+      // One finger moves the view: resting, it does nothing of its own.
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.navigate,
+      );
+      await pumpFrames(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+
+      final finger = await pressAt(
+        tester,
+        c.dx + 300,
+        c.dy + 200,
+        kind: PointerDeviceKind.touch,
+      );
+      await dragFrom(
+        tester,
+        Offset(c.dx + 10, c.dy + 30),
+        Offset(c.dx + 110.4, c.dy + 110.6),
+        kind: PointerDeviceKind.stylus,
+      );
+      await finger.up();
+      await pumpFrames(tester);
+
+      final tool = textToolOf(tester);
+      final carried = CanvasPoint(x: c.dx + 100, y: c.dy + 81);
+      expect(tool.hold, CelTextHold.letters);
+      expect(tool.letters!.content.anchor, carried);
+      expect(
+        tool.letters!.selection,
+        const TextSelection.collapsed(offset: 2),
+        reason: 'no caret was set',
+      );
+
+      await typeText(tester, 'hiya');
+      await clickAt(tester, c.dx + 300, c.dy + 200);
+
+      final landed = celOf(tester).texts.single;
+      expect(landed.content.text, 'hiya');
+      expect(landed.content.anchor, carried);
+      expect(history.undoCount, steps + 1);
+    });
+
     testWidgets('🚨Ctrl+Z while they are typed takes a step back in the '
         'LETTERS — history is not touched, and the text stays in hand', (
       tester,

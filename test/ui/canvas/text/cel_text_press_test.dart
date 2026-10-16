@@ -11,6 +11,7 @@ import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
@@ -158,6 +159,15 @@ void main() {
       ),
     );
     addTearDown(HardwareKeyboard.instance.clearState);
+  }
+
+  /// Finger [pointer] down on the glass for the rest of the test, as the
+  /// app's one observer of every pointer hears it (`InputInspectorHost`).
+  void restAFinger(int pointer) {
+    CanvasTouchContacts.noteAppWide(
+      PointerDownEvent(pointer: pointer, kind: PointerDeviceKind.touch),
+    );
+    addTearDown(CanvasTouchContacts.reset);
   }
 
   group('a press on nothing', () {
@@ -1244,22 +1254,25 @@ void main() {
     });
 
     // 🗣️I-96 (유저 2026-10-12): 「편집중이던 뭐던 컨트롤 누르고 상자 이동
-    // 가능하도록. ae에도 있던 기능인거같은데」.
+    // 가능하도록. ae에도 있던 기능인거같은데」 — and I-96-Q3 (2026-10-16,
+    // a): a finger resting on the glass is a tablet's Ctrl.
     group('with Ctrl held', () {
-      for (final key in [
-        LogicalKeyboardKey.controlLeft,
+      final holds = <String, void Function()>{
+        'Ctrl': () => hold(LogicalKeyboardKey.controlLeft),
         // Ctrl is ⌘ on a Mac or an iPad.
-        LogicalKeyboardKey.metaLeft,
-      ]) {
-        test('🚨(${key.keyLabel}) a press inside is the BOX\'S: dragged, it '
-            'carries the text a whole pixel at a time, its letters still '
-            'held, and lands with them', () async {
+        '⌘': () => hold(LogicalKeyboardKey.metaLeft),
+        'a finger on the glass': () => restAFinger(9),
+      };
+      for (final MapEntry(key: held, value: holdIt) in holds.entries) {
+        test('🚨($held) a press inside is the BOX\'S: dragged, it carries '
+            'the text a whole pixel at a time, its letters still held, and '
+            'lands with them', () async {
           final (:tool, :scene, :baker, begun: _, traced: _) = table(
             texts: [carried(4, says('ab'))],
           );
           press(scene, 12, 12);
           tool.typeAt(const TextSelection.collapsed(offset: 2));
-          hold(key);
+          holdIt();
 
           final down = press(scene, 9, 13)!;
 
@@ -1285,22 +1298,55 @@ void main() {
         });
       }
 
-      test('let go where it went down, the caret goes there, as a press '
-          'without it puts it', () {
+      for (final MapEntry(key: held, value: holdIt) in holds.entries) {
+        test('($held) let go where it went down, the caret goes there, as a '
+            'press without it puts it', () {
+          final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+            texts: [carried(4, says('ab'))],
+          );
+          press(scene, 12, 12);
+          tool.typeAt(const TextSelection.collapsed(offset: 2));
+          holdIt();
+
+          final click = press(scene, 9, 13)!;
+          up(scene, click, 9, 13);
+
+          expect(tool.hold, CelTextHold.letters);
+          expect(
+            tool.letters!.selection,
+            const TextSelection.collapsed(offset: 0),
+          );
+        });
+      }
+
+      test('🚨the finger PRESSING is not its own Ctrl, nor one that has '
+          'lifted: the press inside sets the caret', () {
         final (:tool, :scene, baker: _, begun: _, traced: _) = table(
           texts: [carried(4, says('ab'))],
         );
         press(scene, 12, 12);
         tool.typeAt(const TextSelection.collapsed(offset: 2));
-        hold(LogicalKeyboardKey.controlLeft);
+        restAFinger(9);
+        CanvasTouchContacts.noteAppWide(
+          const PointerUpEvent(pointer: 9, kind: PointerDeviceKind.touch),
+        );
+        // Heard as it goes down, as the app's observer may hear it first.
+        restAFinger(10);
 
-        final click = press(scene, 9, 13)!;
-        up(scene, click, 9, 13);
+        celTextPressAt(
+          scene,
+          PointerDownEvent(
+            pointer: 10,
+            kind: PointerDeviceKind.touch,
+            position: scene.stage.onPanel(const Offset(9, 13)),
+          ),
+          const Offset(9, 13),
+        );
 
-        expect(tool.hold, CelTextHold.letters);
         expect(
           tool.letters!.selection,
           const TextSelection.collapsed(offset: 0),
+          reason: 'a caret, not the box: no finger rests besides the press',
         );
       });
     });

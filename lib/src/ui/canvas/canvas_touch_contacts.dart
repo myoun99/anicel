@@ -63,6 +63,17 @@ class CanvasTouchContacts {
   /// Fingers currently down ANYWHERE — any panel, any surface.
   static int get appWideCount => _appWide.length;
 
+  /// Whether a finger other than [pointer] is down anywhere: one resting
+  /// on the glass beside a press — on a tablet, the modifier key held
+  /// (I-69-Q5 메모, 유저 2026-10-08: 「기본적으로 데스크톱의 쉬프트나
+  /// 컨트롤등 수정자키는 태블릿에선 터치임」).
+  ///
+  /// ⚠️[pointer] is the press's own, and this census may not have heard it
+  /// yet: its observer is an ancestor, and a down is dispatched deepest
+  /// first.
+  static bool aFingerDownBesides(int pointer) =>
+      _appWide.any((finger) => finger != pointer);
+
   /// 🚨★★★D34 최종 (유저 2026-08-23, 실기): 「**커서는 일단 커서ui랑 같은곳에
   /// 있는게 최우선**이고, **터치는 커서 없애고 펜은 커서 보이는채로 유지**하는
   /// 그런것만 가능할까싶은데」

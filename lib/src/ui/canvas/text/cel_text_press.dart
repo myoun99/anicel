@@ -13,6 +13,7 @@ import '../../../services/transform_box_law.dart';
 import '../../text/cel_text_layout.dart';
 import '../../timeline/axis_turn.dart' show extentAcross, extentAlong;
 import '../box_press.dart';
+import '../canvas_touch_contacts.dart';
 import 'cel_text_session.dart';
 import 'cel_text_stage.dart';
 import 'cel_text_tool.dart';
@@ -65,7 +66,8 @@ class CelTextScene {
 ///   the same code answers whatever is there — as a stroke's press on an
 ///   empty frame is still that stroke, `_BrushEditCelPress`).
 /// · A text by its LETTERS: inside it → the caret, and dragged a selection
-///   — or with Ctrl held, the box's: dragged it moves (I-96) · on another
+///   — or with Ctrl held, or a finger on the glass, the box's: dragged it
+///   moves (I-96) · on another
 ///   text → confirm, take that one · on nothing → confirm and let go.
 /// · A text by its BOX — the one order every box on the canvas keeps
 ///   ([boxPressAt], F-222): its cross → the cross is carried · a corner →
@@ -127,7 +129,7 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
     // 가능하도록. ae에도 있던 기능인거같은데」 — with it held the press is
     // the box's, as it is with the text held by its box: dragged, it
     // carries the text, and the letters stay held.
-    if (_carriesTheBox()) {
+    if (_carriesTheBox(pressed.event)) {
       return _InsidePress(pressed.event, artwork, held: true);
     }
     final at = layout.positionAt(artwork).offset;
@@ -141,11 +143,18 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
 }
 
 /// Whether Ctrl is held — ⌘ on a Mac or an iPad, where Ctrl is ⌘
-/// (`canvasRotateHold`'s note) — asked of the keyboard as the press goes
-/// down.
-bool _carriesTheBox() {
+/// (`canvasRotateHold`'s note) — or a finger rests on the glass beside
+/// [event], a tablet's Ctrl. Asked as the press goes down.
+///
+/// 🗣️I-96-Q3 (유저 2026-10-16, a): 「손가락도 — 늘 켜짐(변형 · 도형처럼)」 —
+/// no switch, as the transform handle's finger and the shape's have none.
+/// ⚠️Its cost was named with the answer: a palm on the glass while the pen
+/// picks letters carries the box instead.
+bool _carriesTheBox(PointerDownEvent event) {
   final keys = HardwareKeyboard.instance;
-  return keys.isControlPressed || keys.isMetaPressed;
+  return keys.isControlPressed ||
+      keys.isMetaPressed ||
+      CanvasTouchContacts.aFingerDownBesides(event.pointer);
 }
 
 CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
