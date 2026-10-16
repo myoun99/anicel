@@ -205,6 +205,38 @@ void main() {
     });
   });
 
+  testWidgets('🚨reading a picture in reads the rows still to make, and no '
+      'cel another frame has made already', (tester) async {
+    await tester.runAsync(() async {
+      final other = BrushFrameKey(
+        projectId: key.projectId,
+        trackId: key.trackId,
+        cutId: key.cutId,
+        layerId: const LayerId('m'),
+        frameId: const FrameId('b'),
+      );
+      final store = BrushFrameStore();
+      keepInAFile(store, {key: inACorner(), other: inACorner()});
+      final images = _ReadsRecorded(frameStore: store);
+      addTearDown(images.dispose);
+      final pictures = CanvasPictures(
+        layerImages: images,
+        rowsOf: (_, frame) => [
+          asItLies(),
+          if (frame == 1) CanvasLayerImageRequest(frameKey: other, opacity: 1),
+        ],
+        qualityAt: (_, _) => PlaybackQuality.full,
+      );
+      await pictures.readIn(picture);
+      expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
+      images.read.clear();
+
+      await pictures.readIn((cut: cut, frameIndex: 1));
+
+      expect(images.read, [other]);
+    });
+  });
+
   testWidgets('🚨a walk reading its picture in asks the room for nothing once '
       'it has been replaced', (tester) async {
     await tester.runAsync(() async {
@@ -296,6 +328,19 @@ class _ReadInHeld extends LayerFrameImageCache {
     return reading = held.future.then(
       (_) => super.readIn(key, canvasSize: canvasSize),
     );
+  }
+}
+
+/// An image cache saying which cels it was asked to read in.
+class _ReadsRecorded extends LayerFrameImageCache {
+  _ReadsRecorded({required super.frameStore});
+
+  final List<BrushFrameKey> read = [];
+
+  @override
+  Future<void> readIn(BrushFrameKey key, {required CanvasSize canvasSize}) {
+    read.add(key);
+    return super.readIn(key, canvasSize: canvasSize);
   }
 }
 
