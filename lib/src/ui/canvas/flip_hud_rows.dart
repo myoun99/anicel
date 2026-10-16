@@ -93,6 +93,7 @@ FlipHudRow flipHudLaneRow(
     name: lane.label,
     kind: kind,
     isLane: true,
+    isGroupHeader: lane.isGroupHeader,
     // A key row has no cels, so it prints no timesheet X — the same
     // reason the cells painter withholds one there.
     holdsDrawings: false,

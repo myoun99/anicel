@@ -19,7 +19,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 /// 타입이 서로 다르면 헤더에 동그라미**」), and since I-89 ② every mark is
 /// After Effects' (유저 2026-10-10: 「ae식 반반등은 검증된 업계기준이라 아주
 /// 마음에들어」): its left half the side arriving at the key, its right half
-/// the side leaving it, the disagreement a hollow ring.
+/// the side leaving it, the disagreement a ◉ (F-367-Q2; ↩️a hollow ring).
 ///
 /// ↩️The union was a set of the keyed frames beside a set of the holding
 /// ones and a set of the disagreeing ones, and a test walked every way the
@@ -488,28 +488,26 @@ void main() {
       );
     });
 
-    testWidgets('mixed is a HOLLOW circle — a disc is a smooth pass now '
-        '(유저 10-10 「추천대로」)', (tester) async {
-      final drawn = await pumpMarker(tester, KeyMark.mixed);
-      expect(
-        drawn,
-        paints
-          ..path(
-            includes: const [Offset(1, 6), Offset(5.5, 11)],
-            excludes: const [Offset(6, 6), Offset(0.5, 0.5)],
-          ),
-      );
-    });
-
-    testWidgets('the hollow ring weighs what the drawing the user picked did '
-        '— its hole about two thirds of the box across', (tester) async {
-      // The 12px box's middle is (6, 6); the ring's outside is 6 from it.
+    // 🗣️F-367-Q2 (유저 2026-10-16): 「혼합 ○도 고친다 — 구멍을 메우고 가는
+    // 틈만 남긴다」 — 「로빙키로 착각했네. 혼합마크였네」: a name in the hole
+    // sat on the band, black on dark. ↩️It was a HOLLOW circle (유저 10-10
+    // 「추천대로」 — a disc is a smooth pass); the cut ring keeps it apart
+    // from that disc still.
+    testWidgets('mixed is a ring with a thin gap where its hole was, and a '
+        'disc in it a name reads on', (tester) async {
+      // The 12px box's middle is (6, 6); the ring's outside is 6 from it,
+      // the gap from 4.8 in to 3.84, and the disc inside that.
       expect(
         await pumpMarker(tester, KeyMark.mixed),
         paints
           ..path(
-            includes: const [Offset(6 - 4.4, 6), Offset(6, 6 + 4.4)],
-            excludes: const [Offset(6 - 3.2, 6), Offset(6, 6 + 3.2)],
+            includes: const [
+              Offset(6 - 5.4, 6),
+              Offset(6, 6 + 5.4),
+              Offset(6, 6),
+              Offset(6 - 3.2, 6),
+            ],
+            excludes: const [Offset(6 - 4.3, 6), Offset(6, 6 + 4.3)],
           ),
       );
     });

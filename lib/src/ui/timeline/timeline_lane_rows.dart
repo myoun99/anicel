@@ -56,6 +56,7 @@ import '../repaint_props.dart';
 import 'timeline_cell_style.dart'
     show
         TimelineBlockWordGrowth,
+        timelineBlockNameFontSize,
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
         timelineInBlockInk,
@@ -1358,9 +1359,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
   /// Build-time is correct HERE: the band rebuilds on zoom.
   double get _markerSize => timelineLaneKeyMarkerSizeOf(
-    lane,
     _crossExtent,
     frameCellExtent: _cellExtent,
+    heads: lane.isGroupHeader,
   );
   /// The floor yields to the room, as a mark's does ([_squareInCell]): a
   /// lane the enlarged graph folds is thinner than it (I-89 ③D).
@@ -1557,12 +1558,13 @@ class TimelineLaneFrameRow extends StatelessWidget {
   );
 }
 
-/// A key name's type — the same at every zoom and on every row: the name
-/// narrows into its cell instead (B, 유저 2026-09-24).
-const double _laneKeyNameFontSize = 8;
-
 /// A named key's label, centred in its cell — a block word whose block is
-/// that one cell ([TimelineBlockText]).
+/// that one cell ([TimelineBlockText]), in a frame block name's type at
+/// every zoom and on every row: it narrows into its cell instead (B, 유저
+/// 2026-09-24).
+///
+/// ↩️Its type was a fixed 8px, sized to sit inside the mark (F-367 —
+/// [timelineBlockNameFontSize]).
 ///
 /// ↩️It was CLIPPED to the cell (「the first letters are what tell two names
 /// apart」 — mine, 2026-08-11) and its type shrank with the zoom; the law
@@ -1578,6 +1580,7 @@ class _LaneKeyName extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = DefaultTextStyle.of(context).style;
     return TimelineBlockText(
       text: text,
       // One cell: the word is centred on both axes whichever way the frame
@@ -1593,9 +1596,9 @@ class _LaneKeyName extends StatelessWidget {
       // makes centring read as centred (유저 2026-09-12: 「내부에 있는 텍스트
       // 디자인? 색도 똑같이 그대로 재사용」).
       style: timelineBlockWordStyle(
-        DefaultTextStyle.of(context).style,
+        style,
         ink: timelineInBlockInk(),
-        fontSize: _laneKeyNameFontSize,
+        fontSize: timelineBlockNameFontSize(style),
         bold: true,
       ),
     );
@@ -1616,49 +1619,46 @@ class _LaneKeyName extends StatelessWidget {
 /// "subtly different size" the device showed. One constant path now; a
 /// size change lands on every mark or on none.
 ///
+/// 🗣️F-367 (유저 2026-10-16): 「fx등의 키가 너무 작은데 최대한 키우도록. 칸
+/// 그냥 차지는 마름모라던가. 원도 칸 다 차지한다던가. 헤더는 그렇게하고
+/// 멤버키는 작게하는 구분 좋으니 그거보다 좀 더 작게」 — the union FILLS its
+/// cell ([timelineLaneUnionKeyMarkerSize]) and a member is the ㉗ step under
+/// it. ↩️The member was the row's 0.32 (6–11px) and the union half again
+/// that: 8.96 and 13.44px in a 24×28 cell.
+///
 /// D39 (2026-08-18): the law follows the ZOOM too — 「프레임블록
-/// 텍스트/엣지처럼 줌에 따라 작아지게」. The cross-derived base runs
-/// through [timelineFittedGlyphFontSize], so a 4–8px cell no longer wears
-/// a fixed 13px diamond spilling across its neighbours. At the default
-/// 24px cell nothing changes (the fit's knee is 14).
-/// ⚠️The block TEXT this was matched to keeps its type since B (유저
-/// 2026-09-24) and narrows into its block instead; a mark cannot narrow on
-/// one axis (D39-2 below), so the marks keep this shrink.
+/// 텍스트/엣지처럼 줌에 따라 작아지게」 — and a mark that fills its cell
+/// does it by being the cell. ↩️The row's share ran through
+/// [timelineFittedGlyphFontSize] while the marks were sized off the row.
 double timelineLaneKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
 }) => _squareInCell(
-  timelineFittedGlyphFontSize(
-    (crossExtent * 0.32).clamp(6.0, 11.0).toDouble(),
-    frameCellExtent,
-    crossExtent: crossExtent,
-  ),
+  _cellRoom(crossExtent, frameCellExtent) / _unionStep,
   crossExtent: crossExtent,
   frameCellExtent: frameCellExtent,
 );
 
-/// The UNION mark's size — half again a member's key (㉗), inside the same
-/// cell. The ×1.5 rides ON the fitted member size, so the summary keeps
-/// reading as "the sum of members" at every zoom.
+/// The UNION mark's size — the whole of its cell (F-367): the square the
+/// tighter of the row and the frame cell allows (D39-2).
 double timelineLaneUnionKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) => _squareInCell(
-  timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent) *
-      1.5,
-  crossExtent: crossExtent,
-  frameCellExtent: frameCellExtent,
-);
+}) => _cellRoom(crossExtent, frameCellExtent);
 
-/// The size of [lane]'s key marks: a group header's union ([timelineLaneUnionKeyMarkerSize]),
-/// a member's key ([timelineLaneKeyMarkerSize]) — the band's one answer,
-/// wherever a lane's keys are drawn ([TimelineLaneFrameRow], and the
-/// storyboard's camera rows through [timelineLaneKeySpan]).
+/// How much bigger a union is than a member's key: half again (㉗).
+const double _unionStep = 1.5;
+
+/// The size of the key marks of a lane that [heads] a group or not: a
+/// header's union ([timelineLaneUnionKeyMarkerSize]), a member's key
+/// ([timelineLaneKeyMarkerSize]) — the band's one answer, wherever a lane's
+/// keys are drawn ([TimelineLaneFrameRow], the storyboard's camera rows
+/// through [timelineLaneKeySpan], the flip window's slots).
 double timelineLaneKeyMarkerSizeOf(
-  PropertyLaneRow lane,
   double crossExtent, {
   required double frameCellExtent,
-}) => lane.isGroupHeader
+  required bool heads,
+}) => heads
     ? timelineLaneUnionKeyMarkerSize(
         crossExtent,
         frameCellExtent: frameCellExtent,
@@ -1678,11 +1678,10 @@ double timelineLaneKeyMarkerSizeOf(
 /// lozenge, not a diamond. That is exactly the degradation the three
 /// screenshots step through.
 ///
-/// The member size already ran through [timelineFittedGlyphFontSize], which
-/// takes whichever axis is tighter — but two things escaped it: the fit's
-/// own 4px floor, and the union's ×1.5 on top. Both are now caught here, in
-/// ONE place, so the rule is "a mark never outgrows its cell" rather than a
-/// patch on whichever caller showed it first.
+/// The rule is "a mark never outgrows its cell", said in ONE place rather
+/// than as a patch on whichever caller showed it first. (↩️Two sizes had
+/// escaped the glyph fit the member ran through: the fit's own 4px floor,
+/// and the union's ×1.5 on top.)
 ///
 /// ⚠️The floor yields to the room. A 3px cell gets a 3px mark, because a
 /// square that does not fit is not a smaller square.
@@ -1691,10 +1690,14 @@ double _squareInCell(
   required double crossExtent,
   required double frameCellExtent,
 }) {
-  final room = crossExtent < frameCellExtent ? crossExtent : frameCellExtent;
+  final room = _cellRoom(crossExtent, frameCellExtent);
   final floor = _keyMarkerFloor < room ? _keyMarkerFloor : room;
   return wanted.clamp(floor, room).toDouble();
 }
+
+/// The side of the largest square a cell holds — the tighter of its two.
+double _cellRoom(double crossExtent, double frameCellExtent) =>
+    crossExtent < frameCellExtent ? crossExtent : frameCellExtent;
 
 /// The smallest a key mark may be drawn while it still has room — the same
 /// floor [timelineFittedGlyphFontSize] holds every other mark to.
@@ -1813,9 +1816,9 @@ TimelineFrameSpan timelineLaneKeySpan({
           constraints.maxHeight,
         );
         final markerSize = timelineLaneKeyMarkerSizeOf(
-          lane,
           crossExtent,
           frameCellExtent: cellExtent,
+          heads: lane.isGroupHeader,
         );
         final marker = TimelineLaneKeyMarker(
           key: ValueKey<String>(
@@ -1963,11 +1966,12 @@ Iterable<int> timelineHollowKeyFrames(PropertyLaneRow lane) => [
 /// as half a cell and never wider than [timelineKeysLineBendReach] on
 /// either side, so the line stays one line.
 ///
-/// A HOLLOW mark — a union's ○, where its members disagree
+/// A HOLLOW mark — a union's ◉, where its members disagree
 /// ([keyMarkIsHollow]) — is not run through: the line stops at the edge of
-/// its box and goes on past it ([rings]), so the ring stays empty, as the
+/// its box and goes on past it ([rings]), so its gap stays clear, as the
 /// drawing the user picked has it (I-89 ②, option 나 — 유저 2026-10-10
-/// 「2. 추천대로」); a ring with the line through it is another mark.
+/// 「2. 추천대로」, for the ○ it was then); a ring with the line through it
+/// is another mark.
 /// ⛔Every other mark stands ON the line, which shows wherever the mark
 /// leaves it room — an hourglass's sides, a chevron's notch — as that
 /// drawing has it too.

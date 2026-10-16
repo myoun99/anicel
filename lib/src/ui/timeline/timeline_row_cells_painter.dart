@@ -1063,7 +1063,7 @@ class TimelineRowCellsPainter extends CustomPainter
       // and marks with the cell rather than blanking them below ~14px, and
       // #15 shrank them with a squeezed row — both are the narrowing now, on
       // the axis that ran short.
-      fontSize: baseTextStyle.fontSize ?? 12,
+      fontSize: timelineBlockNameFontSize(baseTextStyle),
       bold:
           !model.ghost &&
           !isEmptyX &&
@@ -1135,7 +1135,7 @@ class TimelineRowCellsPainter extends CustomPainter
     return (
       center: paper.center,
       size: timelineInbetweenMarkSize(
-        baseTextStyle.fontSize ?? 12,
+        timelineBlockNameFontSize(baseTextStyle),
         cell: sizeAlong(
           axis,
           along: extentAlong(axis, cell),

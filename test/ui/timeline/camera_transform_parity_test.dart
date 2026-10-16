@@ -27,8 +27,6 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
-    show timelineFittedGlyphFontSize;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show
@@ -153,43 +151,39 @@ void main() {
   const cellWidth = timelineFrameCellWidth; // 24 — the default zoom.
 
   group('B4-③ one metric law for every union mark', () {
-    test('the union size is derived from the member size — one constant '
-        'path, no second literal', () {
-      expect(
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
-        (28 * 0.32).clamp(6.0, 11.0),
-      );
+    // 🗣️F-367 (유저 2026-10-16): 「칸 그냥 차지는 마름모라던가. 원도 칸 다
+    // 차지한다던가. 헤더는 그렇게하고 멤버키는 작게하는 구분 좋으니 그거보다
+    // 좀 더 작게」.
+    test('a union mark fills its cell, and a member key is the union\'s '
+        '㉗ step smaller — one path, no second literal', () {
       expect(
         timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24),
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 24) * 1.5,
-        reason: 'at the default cell there is room for the whole ×1.5',
+        24,
+        reason: 'the whole of the cell, the tighter of its two sides',
+      );
+      expect(
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 48),
+        28,
+        reason: 'and the row where the row is the tighter',
+      );
+      expect(
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
+        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24) / 1.5,
+        reason: 'the union is still half again a member (㉗)',
       );
     });
 
     // D39 (2026-08-18): the marks follow the ZOOM like block text and edge
-    // grips do — the cross-derived base runs through the same fit law, so
-    // a shrunken cell shrinks its diamond instead of wearing a fixed 13px
-    // mark across three neighbours.
-    test('D39: the marks shrink with the cell through the one fit law', () {
-      // At the default cell nothing changes (the fit's knee is 14).
+    // grips do, so a shrunken cell shrinks its diamond instead of wearing a
+    // fixed mark across its neighbours. A mark that fills its cell does it
+    // by being the cell.
+    test('D39: the marks shrink with the cell', () {
+      expect(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8), 8);
+      expect(timelineLaneKeyMarkerSize(28, frameCellExtent: 8), 8 / 1.5);
       expect(
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 24),
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 999),
-      );
-      // Below the knee the member follows the fit exactly...
-      expect(
-        timelineLaneKeyMarkerSize(28, frameCellExtent: 8),
-        timelineFittedGlyphFontSize(
-          (28 * 0.32).clamp(6.0, 11.0).toDouble(),
-          8,
-          crossExtent: 28,
-        ),
-      );
-      // ...and the union keeps reading as half again the member (㉗),
-      // riding ON the fitted size rather than re-inflating past the cell.
-      expect(
-        timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 8),
-        lessThan(timelineLaneUnionKeyMarkerSize(28, frameCellExtent: 24)),
+        timelineLaneKeyMarkerSize(28, frameCellExtent: 5),
+        4,
+        reason: 'down to the floor every mark keeps while it has room',
       );
     });
 

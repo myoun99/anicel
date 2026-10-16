@@ -28,40 +28,59 @@ Path keyMarkPath(KeyMark mark, double size) {
       _walkHalf(path, incoming, right: false, unit: unit);
       _walkHalf(path, outgoing, right: true, unit: unit);
       return path..close();
-    // The union's ○ (F-17): the disc of 「부드럽게 지나감」 left hollow.
+    // The union's ◉ (F-17 · F-367-Q2): the disc of 「부드럽게 지나감」 with a
+    // thin ring cut out of it.
     case MixedKeyMark():
       return Path()
         ..fillType = PathFillType.evenOdd
         ..addOval(Rect.fromLTWH(0, 0, size, size))
-        ..addOval(
-          Rect.fromCircle(
-            center: Offset(size / 2, size / 2),
-            radius: size * _mixedHole,
-          ),
-        );
-    // A roving key (I-89 ④): After Effects' dot, smaller than any key
-    // whose time is its own, so 「부드럽게 지나감」's whole disc stays its own.
+        ..addOval(_middleCircle(size, _mixedGap))
+        ..addOval(_middleCircle(size, _mixedCore));
+    // A roving key (I-89 ④ · F-367): a pill lying along the frame axis —
+    // as wide as any key, lower than all of them, so 「부드럽게 지나감」's
+    // whole disc stays its own.
     case RovingKeyMark():
-      return Path()..addOval(
-        Rect.fromCircle(
-          center: Offset(size / 2, size / 2),
-          radius: size * _rovingRadius,
+      final low = size * _rovingHeight;
+      return Path()..addRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(0, (size - low) / 2, size, low),
+          Radius.circular(low / 2),
         ),
       );
   }
 }
 
-/// How much of a mixed mark is hole: the radius of its inside, as a share
-/// of its box.
-const double _mixedHole = 0.32;
+/// The circle about the middle of the [size]-square box whose radius is
+/// [share] of the box.
+Rect _middleCircle(double size, double share) =>
+    Rect.fromCircle(center: Offset(size / 2, size / 2), radius: size * share);
 
-/// How big a roving key's dot is: its radius, as a share of its box — the
-/// dot half as wide as the box.
-const double _rovingRadius = 0.25;
+/// Where a mixed mark's cut ring runs: from its core's edge out to this
+/// radius, as a share of its box — a gap of 0.08 of the box.
+///
+/// 🗣️F-367-Q2 (유저 2026-10-16): 「혼합 ○도 고친다 — 구멍을 메우고 가는 틈만
+/// 남긴다(◉)」 · 「혼합키만 속이 비어있으니 그냥 마크 다른걸로」. ↩️It was a ○
+/// with a hole of [_mixedCore] — 「중간 비어있어서 글자가 검은색이라
+/// 안보이는거같은데」: a key's name went unread over it.
+const double _mixedGap = 0.40;
 
-/// Whether [mark] is drawn HOLLOW — the union's ○ (F-17), the one mark
-/// with nothing in its middle — so the line between a row's keys stops at
-/// its edge rather than run through it (`strokeKeysLineClearOf`).
+/// The radius of a mixed mark's core, as a share of its box — the old ○'s
+/// hole, filled.
+const double _mixedCore = 0.32;
+
+/// How high a roving key's pill stands, as a share of its box; its ends are
+/// round.
+///
+/// 🗣️F-367 (유저 2026-10-16 23:12): 「다시 정정. 아티팩트 보니 맘이 바뀜.
+/// 로빙키 누운 알약으로」 — ↩️over the 23:10 answer 「그냥 로빙키 그대로 둬도
+/// 될듯. ae랑 같은 규칙이니까」. ↩️It was After Effects' dot, half as wide as
+/// the box.
+const double _rovingHeight = 0.6;
+
+/// Whether [mark] lets what is under it show through its middle — the
+/// union's ◉ (F-17 · F-367-Q2), the one mark with a gap in it — so the line
+/// between a row's keys stops at its edge rather than run across the gap
+/// (`strokeKeysLineClearOf`).
 bool keyMarkIsHollow(KeyMark mark) => mark is MixedKeyMark;
 
 /// A quarter turn clockwise of the [size]-square box about its middle —

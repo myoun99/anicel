@@ -48,9 +48,10 @@ final class SidesKeyMark extends KeyMark {
 
 /// 🚨F-17 (유저: 「멤버 타입이 서로 다르면 헤더에 동그라미」): a UNION whose
 /// keyed members do not wear one mark. ↩️It was a disc; since I-89 ② a disc
-/// is 「부드럽게 지나감」, so it is the same circle left HOLLOW (유저 10-10
-/// 「추천대로」). Never a member lane's: one key has nothing to disagree
-/// with.
+/// is 「부드럽게 지나감」, so it was the same circle left HOLLOW (유저 10-10
+/// 「추천대로」) — and since F-367-Q2 the hole is filled again with a thin
+/// ring cut round it, a ◉ (유저 2026-10-16 「구멍을 메우고 가는 틈만
+/// 남긴다」). Never a member lane's: one key has nothing to disagree with.
 final class MixedKeyMark extends KeyMark {
   const MixedKeyMark._();
 
@@ -58,9 +59,10 @@ final class MixedKeyMark extends KeyMark {
   String toString() => 'KeyMark.mixed';
 }
 
-/// A key whose time is its run's (I-89 ④, [PropertyKey.roving]) — After
-/// Effects' small dot. It says nothing of its sides: the pace through it
-/// is the one the run's timed ends set.
+/// A key whose time is its run's (I-89 ④, [PropertyKey.roving]) — a pill
+/// lying along the frame axis (F-367, 유저 2026-10-16 「로빙키 누운
+/// 알약으로」; ↩️After Effects' small dot). It says nothing of its sides:
+/// the pace through it is the one the run's timed ends set.
 final class RovingKeyMark extends KeyMark {
   const RovingKeyMark._();
 

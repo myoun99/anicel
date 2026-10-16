@@ -782,7 +782,7 @@ Future<void> _renameLaneKey(
   // 🗣️F-17 (유저 2026-09-01): 「해당 키 공용 편집창 손봐서 이름변경이랑
   // 오른쪽에 유니언 타입 변경 두개 존재하도록. 물론 헤더에서 작동시
   // 유니언타입 일괄변경되는건 기존이랑 조작감 동일」. The TYPE opens on what
-  // the covered keys agree on — nothing lit when they disagree, the ○ the
+  // the covered keys agree on — nothing lit when they disagree, the ◉ the
   // header draws for them — and a header's range is all of its members, so
   // a header's pick lands on every member at once.
   // ⛔Only a type the user PICKED is written. The window opens on what the

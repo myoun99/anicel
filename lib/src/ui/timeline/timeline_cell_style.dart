@@ -215,6 +215,16 @@ TextStyle timelineBlockWordStyle(
   leadingDistribution: TextLeadingDistribution.even,
 );
 
+/// The type a block's NAME is set in under [base]: the ambient type, at
+/// every zoom — a frame block's name (and the in-between mark sized off
+/// it), an instruction's A/B, a named key's.
+///
+/// 🗣️F-367 (유저 2026-10-16): 「이름도 지금 키 모양안에 맞춰넣으려는게
+/// 보이는데 그렇게 안해도됨 … 프레임블록의 이름이랑 법 통일」. ↩️The key's
+/// was a fixed 8px, a size that sat inside the mark, while the others each
+/// wrote this expression out.
+double timelineBlockNameFontSize(TextStyle base) => base.fontSize ?? 12;
+
 /// Which way a word in a block grows once it outgrows its cell.
 enum TimelineBlockWordGrowth {
   /// On into the block past the cell — a block's NAME, from its first cell.

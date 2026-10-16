@@ -926,7 +926,9 @@ const double _laneGraphSpare = 0.12;
 const double _laneGraphStroke = 2;
 const DashPattern _laneGraphGuestDashes = DashPattern(on: 6, off: 4);
 
-/// A key's mark in a graph — larger than a lane's, the mock's (5판).
+/// A key's mark in a graph — the mock's (5판), drawn larger than a lane's
+/// were then. ⚠️F-367 made a lane's fill its cell, so a graph's is now the
+/// smaller; whether it follows is F-367-Q3's to answer.
 const double _laneGraphKeySize = 11;
 
 /// A handle's circle and its ink, and its stem's width (the mock's, 5판).

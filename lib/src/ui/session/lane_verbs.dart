@@ -1371,7 +1371,7 @@ class LaneVerbs {
   /// The sides of every key the range covers that takes them — what the key
   /// window's two rows open with (I-89 ②): a choice is lit where the keys
   /// all are that kind ([keySidesTogether]), so nothing is lit where they
-  /// disagree, by the rule the name above follows (and the ○ the group
+  /// disagree, by the rule the name above follows (and the ◉ the group
   /// header draws where its members disagree). A name tag's flag holds by
   /// nature, so its keys are not asked (#902).
   List<({KeySide incoming, KeyExit outgoing})> get laneKeySidesForSelection => [
@@ -1403,7 +1403,7 @@ class LaneVerbs {
   /// Whether the sides the key window picks count on a key the range
   /// covers, the window's roving row picked as [roves] says — on every key
   /// but one whose time roves: the pace through it is the one its run's
-  /// timed ends set, and its mark is the roving dot, no sides — and but a
+  /// timed ends set, and its mark is the roving pill, no sides — and but a
   /// name tag's flag's, which holds by nature (#902). Where they count on
   /// none, the window's two rows are offered and refused (유저 2026-10-12:
   /// 「설정한 시작/끝 보간이 의미가 있다면 비활성화 안되는게 맞고. 의미가

@@ -544,34 +544,55 @@ void main() {
       WidgetTester tester, {
       required double cell,
       required Axis axis,
+      TextStyle ambient = const TextStyle(),
     }) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: Align(
               alignment: Alignment.topLeft,
-              child: TimelineLaneFrameRow(
-                layer: layer,
-                lane: const PropertyLaneRow(
-                  laneId: 'position',
-                  label: 'Position',
-                  keyMarks: {2: KeyMark.linear},
-                  keyNames: {2: 'Walk'},
+              child: DefaultTextStyle.merge(
+                style: ambient,
+                child: TimelineLaneFrameRow(
+                  layer: layer,
+                  lane: const PropertyLaneRow(
+                    laneId: 'position',
+                    label: 'Position',
+                    keyMarks: {2: KeyMark.linear},
+                    keyNames: {2: 'Walk'},
+                  ),
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: 12,
+                  leadingFrameSpacerWidth: 0,
+                  trailingFrameSpacerWidth: 0,
+                  metrics: TimelineGridMetrics.defaults.copyWith(
+                    frameCellWidth: cell,
+                  ),
+                  axis: axis,
                 ),
-                frameStartIndex: 0,
-                frameEndIndexExclusive: 12,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                metrics: TimelineGridMetrics.defaults.copyWith(
-                  frameCellWidth: cell,
-                ),
-                axis: axis,
               ),
             ),
           ),
         ),
       );
     }
+
+    // 🗣️F-367 (유저 2026-10-16): 「이름도 지금 키 모양안에 맞춰넣으려는게
+    // 보이는데 그렇게 안해도됨 … 프레임블록의 이름이랑 법 통일」.
+    testWidgets('prints in the type of a frame block\'s word — the ambient '
+        'size — not one fitted inside the mark', (tester) async {
+      await pumpLane(
+        tester,
+        cell: timelineFrameCellWidth,
+        axis: Axis.horizontal,
+        ambient: const TextStyle(fontSize: 13),
+      );
+      expect(
+        tester.widget<TimelineBlockText>(findBlockText('Walk')).style.fontSize,
+        13,
+        reason: 'what a frame block\'s word is set in under the same type',
+      );
+    });
 
     for (final axis in Axis.values) {
       testWidgets('shows below 14px cells too, inside its cell ($axis)', (
