@@ -3,8 +3,9 @@ import 'package:anicel/src/core/lru.dart';
 
 /// [Lru] — the order a bounded cache lets go by (card
 /// every-bounded-cache-is-one-lru): the least recently used first, until
-/// what is held is at or under the limit, and never the newest — what was
-/// just asked for.
+/// what is held is at or under the limit — and the entry cap, for a store
+/// bounded both ways — and never the newest, what was just asked for, nor
+/// what is still being read.
 void main() {
   /// An [Lru] over [costs] (kept in their order, so oldest first) with
   /// room for all of them, the letting go written down as it happens —
@@ -45,6 +46,26 @@ void main() {
     lru.fit();
 
     expect(gone, ['b'], reason: 'a was used, b only looked at');
+    expect(lru.keys, ['c', 'a']);
+  });
+
+  test('resolving builds what is not held — once, kept as the newest — and '
+      'uses what is', () {
+    final (:lru, :gone, :limitTo) = holding({'a': 10, 'b': 10});
+    var builds = 0;
+    int build() {
+      builds += 1;
+      return 10;
+    }
+
+    expect(lru.resolve('c', build), 10);
+    expect(lru.resolve('c', build), 10);
+    expect(lru.resolve('a', build), 10);
+    expect(builds, 1, reason: 'c built once, a held');
+    limitTo(20);
+    lru.fit();
+
+    expect(gone, ['b'], reason: 'resolving a was a use');
     expect(lru.keys, ['c', 'a']);
   });
 
@@ -97,6 +118,57 @@ void main() {
     expect(gone, ['a']);
     expect(lru.held, 2);
     expect(lru.length, 2);
+  });
+
+  test('🚨bounded both ways, either bound lets go: the entry cap whatever '
+      'the entries cost, the limit whatever their count', () {
+    var limit = 100;
+    final gone = <String>[];
+    final lru = Lru<String, int>(
+      limit: () => limit,
+      costOf: (cost) => cost,
+      entryCap: 2,
+      letGo: (key, _) => gone.add(key),
+    );
+
+    lru
+      ..keep('a', 1)
+      ..keep('b', 1)
+      ..keep('c', 1);
+    expect(gone, ['a'], reason: 'three past a cap of two, 3 far under 100');
+
+    limit = 1;
+    lru.fit();
+    expect(gone, ['a', 'b'], reason: 'two at the cap, 2 past the limit');
+    expect(lru.keys, ['c']);
+  });
+
+  test('🚨what is still being read is passed over as the newest is: the next '
+      'least recently used goes in its place — and with nothing else left, '
+      'nothing goes until the reading ends', () {
+    final reading = {'a'};
+    final gone = <String>[];
+    final lru = Lru<String, int>(
+      limit: () => 2,
+      inUse: reading.contains,
+      letGo: (key, _) => gone.add(key),
+    );
+
+    lru
+      ..keep('a', 0)
+      ..keep('b', 0)
+      ..keep('c', 0);
+    expect(gone, ['b'], reason: 'a is being read: b, the next oldest, goes');
+
+    reading.add('c');
+    lru.keep('d', 0);
+    expect(gone, ['b'], reason: 'left are what is read, and the newest');
+    expect(lru.keys, ['a', 'c', 'd']);
+
+    reading.clear();
+    lru.fit();
+    expect(gone, ['b', 'a']);
+    expect(lru.keys, ['c', 'd']);
   });
 
   test('🚨what is replaced, taken or cleared is NOT let go — it stays the '

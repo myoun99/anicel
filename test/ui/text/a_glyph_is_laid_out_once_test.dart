@@ -66,6 +66,27 @@ void main() {
   const dialogue = 'せりふ';
   const style = TextStyle(fontSize: 20);
 
+  test('🚨past its 2048 the one cache lets go of the glyph laid out longest '
+      'ago — not one asked for again since', () {
+    // Whatever another test left in the cache is older than all of these.
+    const room = 2048;
+    final first = laidOutGlyph('first', style);
+    final second = laidOutGlyph('second', style);
+    for (var i = 0; i < room - 2; i += 1) {
+      laidOutGlyph('glyph $i', style);
+    }
+    expect(laidOutGlyph('first', style), same(first), reason: 'held');
+
+    laidOutGlyph('one more', style);
+
+    expect(laidOutGlyph('first', style), same(first), reason: 'asked again');
+    expect(
+      laidOutGlyph('second', style),
+      isNot(same(second)),
+      reason: 'laid out longest ago: it went',
+    );
+  });
+
   test('down a column, the dialogue draws the glyphs the one cache '
       'holds', () {
     final drawn = _drawnBy(

@@ -570,6 +570,46 @@ void main() {
       reason: 'the paper\'s ground is part of the look the tile keys on — '
           'a fresh raster landed for it',
     );
+    expect(first.debugDisposed, isTrue, reason: 'the tile it replaced went');
+  });
+
+  test('🚨past its capacity the tile asked for longest ago goes, its picture '
+      'disposed — not one a paint asked for again since', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final store = TimelineGridTileStore.instance..debugCapacity = 2;
+    addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+    final painter = painterFor(blockLayer(), store: store);
+    ui.Image? tile(int span) => store.tileFor(
+      painter: painter,
+      spanStartIndex: span * 4,
+      spanEndIndexExclusive: span * 4 + 4,
+      devicePixelRatio: 2.0,
+    );
+    Future<ui.Image> landed(int span) async {
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      var image = tile(span);
+      while (image == null) {
+        if (DateTime.now().isAfter(deadline)) {
+          fail('span $span never landed');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        image = tile(span);
+      }
+      return image;
+    }
+
+    final first = await landed(0);
+    final second = await landed(1);
+    expect(tile(0), same(first), reason: 'asked for again: the newest');
+    final third = await landed(2);
+
+    expect(second.debugDisposed, isTrue, reason: 'asked for longest ago');
+    expect(first.debugDisposed, isFalse);
+    expect(third.debugDisposed, isFalse);
+    expect(tile(0), same(first));
   });
 
   // The block-frame-lines switch (유저 2026-09-24) bakes into the tile, and

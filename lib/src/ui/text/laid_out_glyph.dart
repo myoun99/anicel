@@ -1,5 +1,7 @@
 import 'package:flutter/painting.dart';
 
+import '../../core/lru.dart';
+
 /// UI-R16: ONE laid-out TextPainter cache for every painter that sets
 /// writing glyph by glyph or word by word — the timeline family (row cell
 /// glyphs, ruler labels, x-sheet rail numbers), the vertical-writing
@@ -23,7 +25,7 @@ import 'package:flutter/painting.dart';
 /// the painters all carry the app's face, the same number in two faces —
 /// or two heights, or two spacings — must be two entries, not whichever
 /// was laid out first.
-final Map<Object, TextPainter> _cache = <Object, TextPainter>{};
+final Lru<Object, TextPainter> _cache = Lru(limit: () => _cacheCap);
 
 /// Roomy enough for the widest live set (a storyboard-zoom ruler shows
 /// hundreds of headers × two styles) while bounding memory.
@@ -50,27 +52,17 @@ TextPainter laidOutGlyph(
   TextStyle style, {
   double? maxWidth,
   double tightening = 0,
-}) {
-  final key = (text, style, maxWidth, tightening);
-  final cached = _cache.remove(key);
-  if (cached != null) {
-    _cache[key] = cached; // LRU touch.
-    return cached;
-  }
-  final painter = TextPainter(
+}) => _cache.resolve(
+  (text, style, maxWidth, tightening),
+  () => TextPainter(
     text: tightening == 0
         ? TextSpan(text: text, style: style)
         : _tightSpan(text, style, tightening),
     textDirection: TextDirection.ltr,
     maxLines: maxWidth == null ? null : 1,
     ellipsis: maxWidth == null ? null : '…',
-  )..layout(maxWidth: maxWidth ?? double.infinity);
-  if (_cache.length >= _cacheCap) {
-    _cache.remove(_cache.keys.first);
-  }
-  _cache[key] = painter;
-  return painter;
-}
+  )..layout(maxWidth: maxWidth ?? double.infinity),
+);
 
 TextSpan _tightSpan(String text, TextStyle style, double tightening) {
   final letters = text.runes.toList();

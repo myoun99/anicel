@@ -99,9 +99,9 @@ class BrushTipStampCache {
         '${resolvedIdPrefix}analytic:${dab.tipShape.name}'
         '|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
 
-    var mask = _masks.use(key);
-    if (mask == null) {
-      mask = _render(
+    final mask = _masks.resolve(
+      key,
+      () => _render(
         key: key,
         tipShape: dab.tipShape,
         size: size,
@@ -109,9 +109,8 @@ class BrushTipStampCache {
         roundness: roundnessQ / 128.0,
         angleDegrees: angleQ.toDouble(),
         bakedStep: bakedStep,
-      );
-      _masks.keep(key, mask);
-    }
+      ),
+    );
 
     return dab.copyWith(
       size: size,

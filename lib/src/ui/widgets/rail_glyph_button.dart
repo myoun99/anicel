@@ -843,7 +843,7 @@ abstract final class _GlyphCache {
       theme.shadows,
       textDirection,
     );
-    return _cached(
+    return _painters.resolve(
       key,
       () => TextPainter(
         textDirection: textDirection,
@@ -878,23 +878,13 @@ abstract final class _GlyphCache {
     required TextStyle style,
     required TextDirection textDirection,
     required double maxWidth,
-  }) => _cached(
+  }) => _painters.resolve(
     (text, style, textDirection, maxWidth),
     () => TextPainter(
       textDirection: textDirection,
       text: TextSpan(text: text, style: style),
     )..layout(maxWidth: maxWidth.isFinite ? maxWidth : double.infinity),
   );
-
-  static TextPainter _cached(Object key, TextPainter Function() make) {
-    final held = _painters.use(key);
-    if (held != null) {
-      return held;
-    }
-    final made = make();
-    _painters.keep(key, made);
-    return made;
-  }
 }
 
 /// The rail glyphs' painter for [text] in [style] — the cache a pin asks to

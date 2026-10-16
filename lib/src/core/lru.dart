@@ -13,8 +13,10 @@ import 'dart:collection';
 /// What each store still says for itself: what an entry costs ([costOf] —
 /// one each when it counts entries), how much it may hold ([limit], asked
 /// every time it fits — budgets move with the memory tab's allowance and
-/// with a memory warning), and what letting go of an entry does besides
-/// forgetting it ([letGo] — a value owning a native handle disposes it).
+/// with a memory warning — and for a store bounded both ways how many too,
+/// [entryCap]), what it is still reading ([inUse]), and what letting go of
+/// an entry does besides forgetting it ([letGo] — a value owning a native
+/// handle disposes it).
 ///
 /// ⛔Not a memo: a value that owns nothing and is cheap to build again goes
 /// in `BoundedMemo`, which starts over rather than reshuffle on every hit.
@@ -24,12 +26,27 @@ import 'dart:collection';
 /// movie pictures and its cooling (🗣️저장, 2026-10-16): [costOf] is read
 /// when an entry comes and when it goes, and [letGo] runs at once.
 final class Lru<K, V> {
-  Lru({required this.limit, int Function(V value)? costOf, this.letGo})
-    : _costOf = costOf ?? _one;
+  Lru({
+    required this.limit,
+    int Function(V value)? costOf,
+    this.entryCap,
+    this.inUse,
+    this.letGo,
+  }) : _costOf = costOf ?? _one;
 
   /// How much it may hold — entries, or whatever [costOf] counts. Asked
   /// each time it fits, never kept.
   final int Function() limit;
+
+  /// How many entries it may hold whatever they cost, beside [limit] — for
+  /// a store bounded both ways: the engine's native uploads, a few big
+  /// copies and never more than a few. Null: [limit] alone.
+  final int? entryCap;
+
+  /// Whether [K]'s entry is still being read: passed over as the newest
+  /// is, and the next least recently used goes in its place — a picture a
+  /// render is reading (a numbered run's pages). Null: none is.
+  final bool Function(K key)? inUse;
 
   /// What letting go of an entry does besides forgetting it. Never called
   /// for one [take]n, replaced by [keep] or [clear]ed: those stay the
@@ -48,6 +65,10 @@ final class Lru<K, V> {
 
   int get length => _entries.length;
 
+  bool get isEmpty => _entries.isEmpty;
+
+  bool get isNotEmpty => _entries.isNotEmpty;
+
   bool containsKey(K key) => _entries.containsKey(key);
 
   /// [key]'s value as it stands — NOT a use: it keeps its place.
@@ -62,6 +83,19 @@ final class Lru<K, V> {
       return null;
     }
     return _entries[key] = value as V;
+  }
+
+  /// [key]'s value made the most recently used — or, with none, the one
+  /// [build] builds, kept as it: what `BoundedMemo.resolve` is to a memo.
+  /// ⚠️As [use]: a store that keeps nulls builds them again.
+  V resolve(K key, V Function() build) {
+    final held = use(key);
+    if (held != null) {
+      return held;
+    }
+    final built = build();
+    keep(key, built);
+    return built;
   }
 
   /// Keeps [value] for [key] as the most recently used, then lets go of
@@ -88,15 +122,41 @@ final class Lru<K, V> {
   }
 
   /// Lets go of the least recently used until what is held is within
-  /// [limit] — never the most recently used: it is what was just asked
-  /// for, and what is about to be drawn.
+  /// [limit] and [entryCap] — never the most recently used: it is what was
+  /// just asked for, and what is about to be drawn; nor one still being
+  /// read ([inUse]).
   void fit() {
-    while (_held > limit() && _entries.length > 1) {
-      final key = _entries.keys.first;
-      final value = _entries.remove(key) as V;
-      _held -= _costOf(value);
-      letGo?.call(key, value);
+    while (_overLimit()) {
+      if (!_letGoOfTheOldest()) {
+        return;
+      }
     }
+  }
+
+  bool _overLimit() {
+    final cap = entryCap;
+    return _held > limit() || (cap != null && _entries.length > cap);
+  }
+
+  /// Lets go of the least recently used entry that may go — false when
+  /// none may: what is left is the newest and what is still being read.
+  bool _letGoOfTheOldest() {
+    final inUse = this.inUse;
+    final newest = _entries.length - 1;
+    var at = 0;
+    for (final key in _entries.keys) {
+      if (at == newest) {
+        return false;
+      }
+      if (inUse == null || !inUse(key)) {
+        final value = _entries.remove(key) as V;
+        _held -= _costOf(value);
+        letGo?.call(key, value);
+        return true;
+      }
+      at += 1;
+    }
+    return false;
   }
 
   /// Least recently used first.

@@ -1,8 +1,9 @@
-import 'dart:collection';
 import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+
+import '../core/lru.dart';
 
 /// Native copies of Dart buffers, keyed by the SOURCE's identity, so a
 /// kernel that is handed the same list again reads the same pointer with
@@ -38,19 +39,28 @@ final class NativeUploadCache<L extends TypedData> {
 
   set byteBudget(int value) {
     _byteBudget = value;
-    _evictBeyondLimits();
+    _copies.fit();
   }
 
   int _byteBudget;
 
   final Expando<_Upload> _bySource = Expando<_Upload>('nativeUploads');
-  final LinkedHashSet<_Upload> _recency = LinkedHashSet<_Upload>.identity();
-  late final Finalizer<_Upload> _sourceGone = Finalizer<_Upload>(_free);
-  int _bytes = 0;
 
-  int get entryCount => _recency.length;
+  /// The copies by address, the least recently used first — bounded by
+  /// [byteBudget] and [entryCap] both, the newest excepted.
+  late final Lru<Pointer<Uint8>, _Upload> _copies = Lru(
+    limit: () => _byteBudget,
+    costOf: (copy) => copy.length,
+    entryCap: entryCap,
+    letGo: (_, copy) => _free(copy),
+  );
+  late final Finalizer<_Upload> _sourceGone = Finalizer<_Upload>(
+    _sourceCollected,
+  );
 
-  int get residentBytes => _bytes;
+  int get entryCount => _copies.length;
+
+  int get residentBytes => _copies.held;
 
   /// The native copy of [data], uploaded once.
   ///
@@ -60,9 +70,7 @@ final class NativeUploadCache<L extends TypedData> {
   Pointer<Uint8> upload(L data) {
     final cached = _bySource[data];
     if (cached != null && cached.resident) {
-      _recency
-        ..remove(cached)
-        ..add(cached);
+      _copies.use(cached.pointer);
       return cached.pointer;
     }
     final length = data.lengthInBytes;
@@ -75,32 +83,26 @@ final class NativeUploadCache<L extends TypedData> {
     final entry = _Upload(pointer, length);
     _bySource[data] = entry;
     _sourceGone.attach(data, entry, detach: entry);
-    _recency.add(entry);
-    _bytes += length;
-    _evictBeyondLimits();
+    _copies.keep(pointer, entry);
     return pointer;
   }
 
-  /// Frees from the least recently used end until both limits hold — the
-  /// newest entry always survives.
-  void _evictBeyondLimits() {
-    while (_recency.length > 1 &&
-        (_recency.length > entryCap || _bytes > _byteBudget)) {
-      _free(_recency.first);
+  /// [entry]'s source was collected: its copy goes, unless the budget let
+  /// it go first.
+  void _sourceCollected(_Upload entry) {
+    if (entry.resident) {
+      _copies.take(entry.pointer);
+      _free(entry);
     }
   }
 
-  /// Frees [entry]'s copy ONCE: the budget evicted it, or its source was
-  /// collected — whichever comes first, and the other finds it gone.
+  /// Frees [entry]'s copy, out of [_copies] already — ONCE: the budget let
+  /// it go, or its source was collected, whichever came first, and the
+  /// other finds it gone.
   void _free(_Upload entry) {
-    if (!entry.resident) {
-      return;
-    }
     entry.resident = false;
-    _recency.remove(entry);
     _sourceGone.detach(entry);
     malloc.free(entry.pointer);
-    _bytes -= entry.length;
   }
 }
 

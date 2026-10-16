@@ -21,6 +21,7 @@ import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
+import '../../core/lru.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
 ///
@@ -97,9 +98,25 @@ class TimelineGridTileStore {
   /// eviction starts.
   static const int capacity = 768;
 
-  final LinkedHashMap<String, _TileEntry> _entries =
-      LinkedHashMap<String, _TileEntry>();
-  final Map<String, _TileRequest> _pending = <String, _TileRequest>{};
+  /// How many tiles it keeps: [capacity] — lowered by a test that lands a
+  /// few past it, where 769 would be as many real rasters. ⚠️TEST ONLY.
+  @visibleForTesting
+  int debugCapacity = capacity;
+
+  /// The tiles, the least recently asked for first.
+  late final Lru<String, _TileEntry> _entries = Lru(
+    limit: () => debugCapacity,
+    letGo: (_, entry) => entry.image.dispose(),
+  );
+
+  /// The spans asked for and not rastered yet, the latest ask last — past
+  /// 32 the oldest ask is turned away into [_starved]. The order a bounded
+  /// cache lets go by, and so the one that keeps it.
+  late final Lru<String, _TileRequest> _pending = Lru(
+    limit: () => 32,
+    letGo: (_, turnedAway) => _starved[turnedAway.row] = turnedAway,
+  );
+
   bool _drainScheduled = false;
 
   /// The latest painter each row's paint asked through, with the device
@@ -338,21 +355,10 @@ class TimelineGridTileStore {
 
   /// The tile at [key], made the newest in the cache: a span asked for —
   /// shown, or warmed to be — is one about to be shown.
-  _TileEntry? _touched(String key) {
-    final entry = _entries.remove(key);
-    if (entry != null) {
-      _entries[key] = entry;
-    }
-    return entry;
-  }
+  _TileEntry? _touched(String key) => _entries.use(key);
 
   void _enqueue(String key, _TileRequest request) {
-    _pending.remove(key);
-    _pending[key] = request;
-    while (_pending.length > 32) {
-      final turnedAway = _pending.remove(_pending.keys.first)!;
-      _starved[turnedAway.row] = turnedAway;
-    }
+    _pending.keep(key, request);
     if (!_drainScheduled) {
       _drainScheduled = true;
       // Off the paint phase; microtasks run before the next frame, so a
@@ -382,7 +388,7 @@ class TimelineGridTileStore {
     _drainsRunning += 1;
     try {
       while (_pending.isNotEmpty) {
-        final request = _pending.remove(_pending.keys.first)!;
+        final request = _pending.take(_pending.keys.first)!;
         if (!await _rasterAndLand(engine, request, epoch, warm: false)) {
           return;
         }
@@ -441,8 +447,7 @@ class TimelineGridTileStore {
     if (rastered == null) {
       return true;
     }
-    _entries.remove(key)?.image.dispose();
-    _entries[key] = _TileEntry(
+    final landed = _TileEntry(
       substrateGeneration: request.painter.substrateGeneration,
       layer: request.painter.layer,
       coverageIdentity: request.painter.coverageIdentity,
@@ -470,9 +475,7 @@ class TimelineGridTileStore {
       framesPerSecond: request.painter.framesPerSecond,
       image: rastered.image,
     );
-    while (_entries.length > capacity) {
-      _entries.remove(_entries.keys.first)!.image.dispose();
-    }
+    _entries.keep(key, landed)?.image.dispose();
     revision.value += 1;
     if (!warm || _askedWhileWarm.remove(key)) {
       // A row whose tile lands asks again for itself when it repaints —

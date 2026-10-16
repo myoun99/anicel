@@ -137,12 +137,17 @@ void main() {
     cache.upload(b);
     cache.upload(c);
     expect(cache.entryCount, 2, reason: 'fixture: the cap evicted a');
+    a.fillRange(0, 4, 9);
 
     final again = cache.upload(a);
 
     expect(cache.entryCount, 2, reason: 'a is a miss: it evicts b');
     expect(cache.residentBytes, 8);
-    expect(again.asTypedList(4), a, reason: 'and reads its own bytes');
+    expect(
+      again.asTypedList(4),
+      [9, 9, 9, 9],
+      reason: 'and reads its own bytes as they are now — copied again',
+    );
   });
 
   test('lowering the byte budget evicts at once, from the least recently '
