@@ -166,6 +166,7 @@ void main() {
   AudioDeviceTransport buildTransport(
     AudioConformStore store, {
     int Function(int sampleRate)? offset,
+    String? Function()? outputName,
   }) => AudioDeviceTransport(
     controller: controller,
     resolveFrameRate: () => const ProjectFrameRate.integer(10),
@@ -173,6 +174,7 @@ void main() {
     conformStore: store,
     resolveDevice: () => QaAudioDevice.instance,
     resolveUserOffsetSamples: offset,
+    resolveOutputDeviceName: outputName,
   )..attach();
 
   test('no device → the transport stands down and the platform players '
@@ -1075,6 +1077,145 @@ void main() {
     transport.dispose();
     store.dispose();
   }, skip: skip);
+
+  // play-press-first-frame-stall-Q1 (유저 10-15: 「프로젝트를 열면 미리
+  // 연다(UI 스레드 밖에서)」): the output opened ahead of a run, and opened
+  // again ahead for a changed setting — never at the press, where the open
+  // held the UI thread for 63–272 ms.
+  group('the output opened ahead', () {
+    /// The device, closed, on the null backend from here on — so the
+    /// transport's own road opens it there ([QaAudioDevice.open]).
+    QaAudioDevice aBenchDevice() {
+      final device = QaAudioDevice.instance!;
+      expect(device.open(useNullBackend: true), greaterThan(0));
+      device.close();
+      return device;
+    }
+
+    Future<AudioConformStore> resident() async {
+      final store = _residentStore()..resultFor('tone.wav');
+      addTearDown(store.dispose);
+      await pumpEventQueue();
+      return store;
+    }
+
+    test('🚨opened ahead, the first run rides the output it finds open',
+        () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      addTearDown(transport.dispose);
+
+      transport.openAhead();
+      expect(device.isOpening, isTrue);
+      await pumpEventQueue();
+      expect(device.isOpen, isTrue, reason: 'open before any run');
+
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(transport.carryingPlayback, isTrue);
+      controller.stop();
+    }, skip: skip);
+
+    test('🚨an output a run opens itself is open for the setting it was '
+        'opened under — whoever opens it says so', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(
+        await resident(),
+        outputName: () => 'one',
+      );
+      addTearDown(transport.dispose);
+
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(transport.carryingPlayback, isTrue, reason: 'opened at the run');
+      expect(device.openedFor, 'one');
+      controller.stop();
+      await pumpEventQueue();
+    }, skip: skip);
+
+    test('🚨a run never waits on the open under way: it stands down onto the '
+        'fallback, and the next rides the output', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      addTearDown(transport.dispose);
+
+      transport.openAhead();
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(device.isOpening, isTrue, reason: 'fixture: pressed mid-open');
+      expect(transport.carryingPlayback, isFalse);
+      controller.stop();
+
+      await pumpEventQueue();
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(transport.carryingPlayback, isTrue);
+      controller.stop();
+    }, skip: skip);
+
+    test('🚨a setting changed under a run is not followed until the run '
+        'ends — then the output is opened again for it', () async {
+      final device = aBenchDevice();
+      String? name;
+      final transport = buildTransport(
+        await resident(),
+        outputName: () => name,
+      );
+      addTearDown(transport.dispose);
+      transport.openAhead();
+      await pumpEventQueue();
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(transport.carryingPlayback, isTrue, reason: 'fixture');
+
+      name = 'another';
+      transport.openAhead();
+      await pumpEventQueue();
+      expect(device.openedFor, isNull, reason: 'never under the run');
+      expect(transport.carryingPlayback, isTrue);
+
+      controller.stop();
+      await pumpEventQueue();
+      expect(device.isOpen, isTrue);
+      expect(device.openedFor, 'another');
+    }, skip: skip);
+
+    test('🚨a run that finds the output open for another setting stands down '
+        'and opens it again ahead — ↩️it reopened at the press', () async {
+      final device = aBenchDevice();
+      var name = 'one';
+      final transport = buildTransport(
+        await resident(),
+        outputName: () => name,
+      );
+      addTearDown(transport.dispose);
+      transport.openAhead();
+      await pumpEventQueue();
+
+      name = 'another';
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(transport.carryingPlayback, isFalse);
+      expect(device.isOpening, isTrue, reason: 'opened again off the press');
+      controller.stop();
+
+      await pumpEventQueue();
+      expect(device.openedFor, 'another');
+      controller.play(scope: PlaybackScope.activeCut);
+      expect(transport.carryingPlayback, isTrue);
+      controller.stop();
+    }, skip: skip);
+
+    test('🚨a transport going lets the output go: closed where nobody else '
+        'keeps it — ↩️it closed it under every other open project', () async {
+      final device = aBenchDevice();
+      final transport = buildTransport(await resident());
+      transport.openAhead();
+      await pumpEventQueue();
+      final another = Object();
+      device.keep(another);
+
+      transport.dispose();
+      expect(device.isOpen, isTrue, reason: 'another keeps it');
+
+      device.letGo(another);
+      expect(device.isOpen, isFalse);
+    }, skip: skip);
+  });
 }
 
 /// How late a device's callbacks were asked for, in samples: how far each

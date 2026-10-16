@@ -144,11 +144,9 @@ class TrimmedPieces {
 
   Future<KeptSpan?> _movie(String source, String work, _Trim trim) async {
     final clock = _clock();
-    final library = debugQaEngineLibraryPathOverride;
-    final written = await onAWorker(() {
-      debugQaEngineLibraryPathOverride ??= library;
-      return writeMovieSpan(source, work, trim: trim, clock: clock);
-    });
+    final written = await onAWorkerWithThisEngine(
+      () => writeMovieSpan(source, work, trim: trim, clock: clock),
+    );
     return written.kept;
   }
 
@@ -163,11 +161,9 @@ class TrimmedPieces {
       inFrame: trim.inFrame,
       outFrame: trim.outFrame,
     );
-    final library = debugQaEngineLibraryPathOverride;
-    final wav = await onAWorker(() {
-      debugQaEngineLibraryPathOverride ??= library;
-      return soundSpanAsWav(MediaFileBytes(source), kept, clock);
-    });
+    final wav = await onAWorkerWithThisEngine(
+      () => soundSpanAsWav(MediaFileBytes(source), kept, clock),
+    );
     if (wav == null) {
       return null;
     }

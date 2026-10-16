@@ -287,9 +287,9 @@ class PlaybackRig implements PlaybackRun {
   /// or what a test hands in — a device IT opened on the null backend, so
   /// the bench can hear a run the session plays (the transport's own tests
   /// hand theirs in the same way). ⛔Never the hardware: the transport plays
-  /// on an open device as it stands and opens only a closed one — or
-  /// reopens on a changed output setting, which a test that hands one in
-  /// leaves alone.
+  /// on an open device as it stands and opens only a closed one — ahead of
+  /// a run or at it — or reopens one open for another output setting, which
+  /// a test that hands one in leaves alone.
   QaAudioDevice? Function() debugTransportOutput = audioOutputUnlessTesting;
 
   /// The native device transport (audio program wiring): when it carries a

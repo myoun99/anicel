@@ -199,9 +199,19 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
               keyValue: 'settings-audio-output-device',
               capture: false,
               selected: settings.outputDeviceName,
-              onChanged: (name) => widget.session.appSettings.setAudioSyncSettings(
-                settings.copyWith(outputDeviceName: name),
-              ),
+              onChanged: (name) {
+                final session = widget.session;
+                session.appSettings.setAudioSyncSettings(
+                  settings.copyWith(outputDeviceName: name),
+                );
+                // The output follows the new choice, reopened off the UI
+                // thread — once the frame this rebuilds has listed the
+                // outputs again: a list asked for while the worker opens
+                // waits on the C, which makes a device one call at a time.
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => session.playbackRig.audioDeviceTransport.openAhead(),
+                );
+              },
             ),
             const SizedBox(height: 4),
             _deviceRow(

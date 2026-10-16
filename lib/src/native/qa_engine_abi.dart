@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+
+import '../core/on_a_worker.dart';
 
 /// The `qa_engine` binary's ABI contract: **one version number, one
 /// loader, one place to change either.**
@@ -270,6 +273,22 @@ const int kQaEngineAbiVersion = 48;
 /// `qa_tablet` is a different binary and keeps its own override, on
 /// `QA_TABLET_PATH`.
 String? debugQaEngineLibraryPathOverride;
+
+/// [job] on a worker ([onAWorker]) that loads the binary this isolate
+/// loads: a worker resolves every loader from scratch, and
+/// [debugQaEngineLibraryPathOverride] is a static — statics do not cross
+/// isolates.
+///
+/// ⚠️Written down once when opening the output ahead became the THIRD job to
+/// carry the path (play-press-first-frame-stall, 10-16): a trimmed movie's
+/// span and a trimmed sound's had each spelled the same two lines out.
+Future<T> onAWorkerWithThisEngine<T>(FutureOr<T> Function() job) {
+  final library = debugQaEngineLibraryPathOverride;
+  return onAWorker(() {
+    debugQaEngineLibraryPathOverride ??= library;
+    return job();
+  });
+}
 
 /// Opens the engine binary, or null when there is none here or the one
 /// found does not speak [kQaEngineAbiVersion].

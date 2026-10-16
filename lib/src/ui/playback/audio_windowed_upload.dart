@@ -341,10 +341,15 @@ LandedStreamWindow? _readInto(
 /// explicitly defers to it, so a reopen decided in here would be a second
 /// answer. A caller that wants one closes the device first and calls this.
 ///
-/// Null = the output would not open, and nothing was touched. `uploaded:
-/// false` = it is open at [deviceRate] but the sources are not resident
-/// yet — the lookups have KICKED their conforms, so the caller stands this
+/// Null = the output would not open, or is being opened off this thread
+/// ([QaAudioDevice.isOpening]), and nothing was touched. `uploaded: false` =
+/// it is open at [deviceRate] but the sources are not resident yet — the
+/// lookups have KICKED their conforms. Either way the caller stands this
 /// attempt down and the next one converges.
+///
+/// ⛔An output being opened ahead is not opened here as well: the C makes
+/// a device one call at a time, so this thread would wait out the worker's
+/// open — the stall the open ahead is there to take off it.
 ({int deviceRate, bool uploaded})? armAudioOutput({
   required QaAudioDevice device,
   required AudioConformStore conformStore,
@@ -354,6 +359,9 @@ LandedStreamWindow? _readInto(
   required int centerFrame,
   required String? preferredDeviceName,
 }) {
+  if (device.isOpening) {
+    return null;
+  }
   if (!device.isOpen &&
       !openAudioOutput(
         device,

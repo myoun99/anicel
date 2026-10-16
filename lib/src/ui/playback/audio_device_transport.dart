@@ -17,6 +17,7 @@
 /// acceptable outcome for audio.
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import '../../models/layer_id.dart';
@@ -62,13 +63,10 @@ class AudioDeviceTransport {
   final List<ScheduledAudioClip> Function()? resolveCueClips;
 
   /// The chosen output device by name (AUDIO-PRO R4); null = system
-  /// default. Read at each activation — a changed setting reopens the
-  /// device on the NEXT run (mid-run output hopping is not a thing any
-  /// pro tool does either).
+  /// default. A changed setting reopens the device ahead ([openAhead]) —
+  /// never under a run it carries (mid-run output hopping is not a thing
+  /// any pro tool does either), which reopens it as it ends.
   final String? Function()? resolveOutputDeviceName;
-
-  /// What the open device was opened as, to detect a setting change.
-  String? _openedDeviceName;
 
   final CanvasPlaybackController controller;
   final ProjectFrameRate Function() resolveFrameRate;
@@ -90,6 +88,8 @@ class AudioDeviceTransport {
   /// consults it before building players.
   bool _carrying = false;
 
+  /// The output this transport keeps open ([QaAudioDevice.keep]) — from
+  /// when it opened it ahead or first played on it, to [dispose].
   QaAudioDevice? _device;
   ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
@@ -124,6 +124,10 @@ class AudioDeviceTransport {
 
   bool get carryingPlayback => _carrying;
 
+  /// The output this transport plays on, as it resolves it — the one the
+  /// cues ring too (the take's count-in, the settings' test tone).
+  QaAudioDevice? get output => _resolveDevice();
+
   /// Listener order matters: attach BEFORE the platform-player sync so
   /// [carryingPlayback] is decided by the time the fallback asks.
   void attach() {
@@ -148,8 +152,40 @@ class AudioDeviceTransport {
       _attached = false;
     }
     _stopDevice();
-    _device?.close();
+    _device?.letGo(this);
     _device = null;
+  }
+
+  /// Opens the output ahead of a run, off the UI thread, for the setting
+  /// as it is — and reopens it there for a changed one
+  /// (play-press-first-frame-stall-Q1, 유저 10-15: 「프로젝트를 열면 미리
+  /// 연다(UI 스레드 밖에서)」 — a project with sound opening, and the output
+  /// setting changing). This transport keeps it open from here.
+  ///
+  /// ⛔Never under a run this transport carries: the run plays on the
+  /// device it activated on, and its end opens it ahead again for the
+  /// setting it ends under.
+  void openAhead() {
+    final device = _resolveDevice();
+    if (device == null) {
+      return;
+    }
+    _keep(device);
+    if (_carrying) {
+      return;
+    }
+    unawaited(
+      openAudioOutputAhead(
+        device,
+        sampleRate: conformStore.projectSampleRate,
+        preferredName: resolveOutputDeviceName?.call(),
+      ),
+    );
+  }
+
+  void _keep(QaAudioDevice device) {
+    device.keep(this);
+    _device = device;
   }
 
   /// Rebuilds and re-uploads the schedule MID-RUN (AUDIO-PRO R3): an
@@ -239,6 +275,11 @@ class AudioDeviceTransport {
     } else if (!active && _wasActive) {
       _carrying = false;
       _stopDevice();
+      if (_device != null) {
+        // The output this transport keeps follows the setting the run ends
+        // under: one changed while the run played is reopened now.
+        openAhead();
+      }
     } else if (active && _carrying) {
       if (sounding && !_wasSounding) {
         // The picture came: the run goes on from the frame it stands on,
@@ -263,6 +304,16 @@ class AudioDeviceTransport {
     if (device == null) {
       return;
     }
+    // The device stays open across runs (opening tears down and rebuilds an
+    // OS audio graph — not a per-play cost), opened ahead of the first
+    // ([openAhead]) or else here. One open for another output than the
+    // setting names is reopened ahead, and this run stands down onto the
+    // fallback: ⛔not reopened here, where the open held the UI thread.
+    final desiredName = resolveOutputDeviceName?.call();
+    if (device.isOpen && device.openedFor != desiredName) {
+      openAhead();
+      return;
+    }
     _rate = resolveFrameRate();
     final schedule = buildAudioPlaybackSchedule(
       window: controller.window,
@@ -273,15 +324,6 @@ class AudioDeviceTransport {
       mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
       extraClips: resolveCueClips?.call(),
     );
-
-    // The device opens lazily and stays open across runs (opening tears
-    // down and rebuilds an OS audio graph — not a per-play cost). A
-    // changed output-device setting reopens here, at the run boundary.
-    final desiredName = resolveOutputDeviceName?.call();
-    if (device.isOpen && _openedDeviceName != desiredName) {
-      device.stop();
-      device.close();
-    }
     // Every scheduled file must be resident at the DEVICE rate — or
     // streamable from its conform (AUDIO-PRO R6) — before the device can
     // promise anything. A missing one stands this run down and is kicked
@@ -298,11 +340,7 @@ class AudioDeviceTransport {
     if (armed == null) {
       return;
     }
-    // ⚠️Recorded even when the upload stands the run down: the device IS
-    // open under this name, and the reopen check above compares against
-    // what is open — not against what last carried a run.
-    _openedDeviceName = desiredName;
-    _device = device;
+    _keep(device);
     _deviceRate = armed.deviceRate;
     if (!armed.uploaded) {
       return;

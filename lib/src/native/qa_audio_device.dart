@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
@@ -265,7 +266,17 @@ final class QaAudioDevice {
     int channels = 2,
     bool useNullBackend = false,
     int deviceIndex = -1,
-  }) => _open(sampleRate, channels, useNullBackend ? 1 : 0, deviceIndex);
+  }) {
+    _onNullBackend |= useNullBackend;
+    return _open(sampleRate, channels, useNullBackend ? 1 : 0, deviceIndex);
+  }
+
+  /// Whether this device has been opened on the null backend — a bench's,
+  /// never the program's — so every open after it is on the null backend
+  /// too ([openAudioOutput]): 🚨a bench that hands a transport its null
+  /// device has it opened again AHEAD, by the program's own road
+  /// ([openAudioOutputAhead]), and that road must not find the speakers.
+  bool _onNullBackend = false;
 
   /// Enumerates output ([capture] false) or input devices, in the index
   /// order [open]'s `deviceIndex` refers to. Empty on any failure —
@@ -310,6 +321,50 @@ final class QaAudioDevice {
 
   void close() => _close();
   bool get isOpen => _isOpen() != 0;
+
+  /// The output setting [openAudioOutput] opened this device for — a name,
+  /// or null for the system default — while [isOpen]. An unattached name
+  /// opens the default and is still what it was opened for, so a changed
+  /// setting is told by this, whoever opened it: ↩️the transport kept a copy
+  /// of its own, and a device the scrubber or a cue had opened under a named
+  /// setting read to it as one to reopen.
+  String? get openedFor => _openedFor;
+  String? _openedFor;
+
+  /// Whether the output is being opened off this thread
+  /// ([openAudioOutputAhead]) — what an arm stands down on, rather than
+  /// open it here again and wait for the worker's open to let go of the C.
+  bool get isOpening => _opening != null;
+  Future<void>? _opening;
+
+  /// Who keeps the output open: a session's transport once it has opened or
+  /// used it, a cue while it sounds. ↩️Each transport closed it as it went,
+  /// under every other open project's next play.
+  final Set<Object> _keepers = {};
+
+  void keep(Object keeper) => _keepers.add(keeper);
+
+  /// [keeper] lets go, and the output closes once nobody keeps it — after
+  /// an open under way, which would otherwise leave it open and unkept.
+  void letGo(Object keeper) {
+    if (!_keepers.remove(keeper) || _keepers.isNotEmpty) {
+      return;
+    }
+    final opening = _opening;
+    if (opening == null) {
+      _closeUnkept();
+    } else {
+      unawaited(opening.whenComplete(_closeUnkept));
+    }
+  }
+
+  void _closeUnkept() {
+    if (_keepers.isEmpty && isOpen) {
+      stop();
+      close();
+    }
+  }
+
   int get sampleRate => _sampleRate();
   int get channels => _channels();
 
@@ -571,6 +626,7 @@ int audioDeviceIndexByName(
   QaAudioDevice device, {
   required bool capture,
   required String? name,
+  bool useNullBackend = false,
 }) {
   // 🧪Mutating this guard away leaves every ANSWER unchanged — the loop
   // below finds no device named null and returns -1 anyway. It stays as an
@@ -579,7 +635,10 @@ int audioDeviceIndexByName(
   if (name == null) {
     return -1;
   }
-  final devices = device.devicesOf(capture: capture);
+  final devices = device.devicesOf(
+    capture: capture,
+    useNullBackend: useNullBackend,
+  );
   for (var index = 0; index < devices.length; index += 1) {
     if (devices[index].name == name) {
       return index;
@@ -588,17 +647,6 @@ int audioDeviceIndexByName(
   return -1;
 }
 
-/// Opens [device] on the output named [preferredName], falling back to the
-/// system default — true when the device is open afterwards.
-///
-/// 🚨The named device failed to open (unplugged mid-enumeration): fall
-/// back to the system default deliberately, never to silence (AUDIO-PRO
-/// R4). The retry only happens when a NAMED device was actually picked;
-/// a default that will not open has nowhere left to fall.
-///
-/// One sequence for the three callers that need a speaker — the playback
-/// transport, the scrub arm and the recording cue — which differ only in
-/// the rate, the channel count and where the name comes from.
 /// The device, unless a widget test is asking.
 ///
 /// 🚨★★★**A WIDGET TEST NEVER TOUCHES THE HARDWARE.** `flutter_tester`
@@ -622,12 +670,30 @@ QaAudioDevice? audioOutputUnlessTesting() =>
     ? null
     : QaAudioDevice.instance;
 
+/// Opens the closed [device] on the output named [preferredName], falling
+/// back to the system default — true when the device is open afterwards,
+/// for [preferredName] ([QaAudioDevice.openedFor]).
+///
+/// 🚨The named device failed to open (unplugged mid-enumeration): fall
+/// back to the system default deliberately, never to silence (AUDIO-PRO
+/// R4). The retry only happens when a NAMED device was actually picked;
+/// a default that will not open has nowhere left to fall.
+///
+/// One sequence for every caller that opens a speaker — the shared arm
+/// (`armAudioOutput`: the transport, the scrubber, the viewer), the
+/// recording cue and the open ahead ([openAudioOutputAhead]) — which differ
+/// only in the rate, the channel count and where the name comes from.
+///
+/// On the null backend where [device] has been on it — or, for a worker's
+/// device, where [useNullBackend] says the device it opens for has been.
 bool openAudioOutput(
   QaAudioDevice device, {
   required int sampleRate,
   required String? preferredName,
   int channels = 2,
+  bool useNullBackend = false,
 }) {
+  final onTheNullBackend = useNullBackend || device._onNullBackend;
   final index = audioDeviceIndexByName(
     device,
     // 🧪MUTATION: flipping this to `capture: true` SURVIVES the suite —
@@ -638,11 +704,13 @@ bool openAudioOutput(
     // in `qa_audio_device_test` ("a name that exists only on one side").
     capture: false,
     name: preferredName,
+    useNullBackend: onTheNullBackend,
   );
   var opened = device.open(
     sampleRate: sampleRate,
     channels: channels,
     deviceIndex: index,
+    useNullBackend: onTheNullBackend,
   );
   // 🧪MUTATION: this retry SURVIVES the suite — never applied. Reaching it
   // needs a device that enumerates under a name and then REFUSES to open,
@@ -651,7 +719,86 @@ bool openAudioOutput(
   // opens. The reachable half — an unattached name falling back to the
   // default rather than to silence — is pinned in `qa_audio_device_test`.
   if (opened <= 0 && index >= 0) {
-    opened = device.open(sampleRate: sampleRate, channels: channels);
+    opened = device.open(
+      sampleRate: sampleRate,
+      channels: channels,
+      useNullBackend: onTheNullBackend,
+    );
   }
-  return opened > 0;
+  if (opened <= 0) {
+    return false;
+  }
+  device._openedFor = preferredName;
+  return true;
+}
+
+/// [openAudioOutput] on a worker, off the thread that draws — after closing
+/// [device] there when it is open for another output
+/// (play-press-first-frame-stall-Q1, 유저 10-15: 「프로젝트를 열면 미리
+/// 연다(UI 스레드 밖에서)」 — a first play's open held the UI thread for
+/// 63–272 ms). The device is one per process, so the output a worker opens
+/// is the one this isolate's [device] finds open.
+///
+/// One at a time: an open asked for while one is under way follows it, and
+/// an output already open for [preferredName] is left as it is.
+Future<void> openAudioOutputAhead(
+  QaAudioDevice device, {
+  required int sampleRate,
+  required String? preferredName,
+}) {
+  final opening = _openAhead(
+    device,
+    after: device._opening,
+    sampleRate: sampleRate,
+    preferredName: preferredName,
+  );
+  device._opening = opening;
+  return opening.whenComplete(() {
+    if (identical(device._opening, opening)) {
+      device._opening = null;
+    }
+  });
+}
+
+Future<void> _openAhead(
+  QaAudioDevice device, {
+  required Future<void>? after,
+  required int sampleRate,
+  required String? preferredName,
+}) async {
+  await after;
+  if (device.isOpen && device._openedFor == preferredName) {
+    return;
+  }
+  final reopen = device.isOpen;
+  // A worker's device is its own, so it is told the one fact a bench's
+  // device carries ([QaAudioDevice._onNullBackend]).
+  final onTheNullBackend = device._onNullBackend;
+  bool opened;
+  try {
+    opened = await onAWorkerWithThisEngine(() {
+      final here = QaAudioDevice.instance;
+      if (here == null) {
+        return false;
+      }
+      if (reopen) {
+        here
+          ..stop()
+          ..close();
+      }
+      return openAudioOutput(
+        here,
+        sampleRate: sampleRate,
+        preferredName: preferredName,
+        useNullBackend: onTheNullBackend,
+      );
+    });
+  } on Object {
+    // A worker that could not open it leaves it as one that would not open:
+    // closed, and opened on the next arm.
+    opened = false;
+  }
+  if (opened) {
+    device._openedFor = preferredName;
+  }
 }

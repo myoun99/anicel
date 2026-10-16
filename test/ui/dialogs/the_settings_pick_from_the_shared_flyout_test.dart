@@ -5,6 +5,8 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/native/qa_audio_device.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -13,6 +15,8 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
+
+import '../../helpers/native_engine_path.dart';
 
 /// 🗣️F-230 (유저 2026-09-29): 「오디오의 출력 선택이나 트랜지션레이어의 ol선택등
 /// 선택하는 ui가 구식 ui 쓰는곳있는데, 앵커팝오버? 공용화된 ui 통일적용.
@@ -23,6 +27,7 @@ import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 /// the button, then the row — so a picker that went back to a framework menu
 /// has no rows under these keys to tap.
 void main() {
+  final enginePath = nativeEngineLibraryPathOrNull();
   late EditorSessionManager session;
 
   setUp(() {
@@ -155,6 +160,54 @@ void main() {
       session.appSettings.audioSyncSettings.value.inputChannelMode,
       VoiceInputChannelMode.left,
     );
+  });
+
+  // play-press-first-frame-stall-Q1 (유저 10-15): 「출력 장치 설정을 바꾸면
+  // 그때 백그라운드에서 다시 엽니다」.
+  testWidgets('🚨audio: the output follows the device picked — opened again '
+      'off the UI thread once the frame that lists the outputs is drawn', (
+    tester,
+  ) async {
+    if (enginePath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaAudioDevice.debugResetForTests();
+    debugQaEngineLibraryPathOverride = enginePath;
+    addTearDown(() {
+      QaAudioDevice.instance?.close();
+      QaAudioDevice.debugResetForTests();
+      debugQaEngineLibraryPathOverride = null;
+    });
+    // The bench's device: opened once on the null backend, so the program's
+    // own road opens it there again.
+    final device = QaAudioDevice.instance!;
+    expect(device.open(useNullBackend: true), greaterThan(0));
+    device.close();
+    session.playbackRig.debugTransportOutput = () => device;
+    session.appSettings.setAudioSyncSettings(
+      session.appSettings.audioSyncSettings.value.copyWith(
+        outputDeviceName: 'Studio Monitor',
+      ),
+    );
+    session.playbackRig.audioDeviceTransport.openAhead();
+    await tester.pump();
+    expect(device.openedFor, 'Studio Monitor', reason: 'fixture');
+    await pumpPreferences(tester, PreferencesSection.audio);
+
+    final output = byKey('settings-audio-output-device');
+    await tester.ensureVisible(output);
+    await tester.pumpAndSettle();
+    await tester.tap(output);
+    await tester.pumpAndSettle();
+    await tester.tap(byKey('settings-audio-output-device-system-default'));
+    expect(device.openedFor, 'Studio Monitor',
+        reason: 'not before the frame: a list asked for while the worker '
+            'opens waits on the C');
+    await tester.pumpAndSettle();
+
+    expect(device.isOpen, isTrue);
+    expect(device.openedFor, isNull, reason: 'the system default');
   });
 
   testWidgets('language: the notation language is picked from the list', (
