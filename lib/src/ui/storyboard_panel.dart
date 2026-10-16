@@ -4555,9 +4555,14 @@ class _StoryboardLaneStripRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Its band is its whole row, as a camera or a conte row's lane's is and
+    // the timeline's lanes are, so a key's mark fills its cell here too
+    // (🗣️F-367: 「칸 그냥 차지는 마름모」). ↩️It stood a line in from either
+    // edge — the per-cut spans' blocks (R6-B1), which the continuous rows
+    // (#783) left behind.
     final metrics = TimelineGridMetrics(
       frameCellWidth: timelineScale.pixelsPerFrame,
-      layerRowHeight: height - 2,
+      layerRowHeight: height,
     );
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
@@ -4568,47 +4573,44 @@ class _StoryboardLaneStripRow extends StatelessWidget {
       key: ValueKey<String>(rowKey),
       width: width,
       height: height,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 1),
-        child: laneIsSeAudio(lane)
-            ? SeAudioLaneFrameRow(
-                layer: carrier,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: frames,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                metrics: metrics,
-                frameRate: projectFrameRate,
-                audioPeaksFor: audioPeaksFor,
-                // The span keys ride the row's id, as they did on the Audio
-                // lane this band replaced.
-                keyPrefix: 'storyboard-${carrier.id}',
-                onSetClipOffset: onSetClipOffset == null
-                    ? null
-                    : (clipIndex, offsetFrames) =>
-                          onSetClipOffset(carrier.id, clipIndex, offsetFrames),
-                offsetDrag: audioLane?.offsetDrag,
-                onSetClipFades: onSetClipFades == null
-                    ? null
-                    : (clipIndex, fadeIn, fadeOut) => onSetClipFades(
-                        carrier.id,
-                        clipIndex,
-                        fadeIn,
-                        fadeOut,
-                      ),
-              )
-            : TimelineLaneFrameRow(
-                layer: carrier,
-                lane: lane,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: frames,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                metrics: metrics,
-                laneRange: laneRange,
-                keyPrefix: 'storyboard',
-              ),
-      ),
+      child: laneIsSeAudio(lane)
+          ? SeAudioLaneFrameRow(
+              layer: carrier,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: frames,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              metrics: metrics,
+              frameRate: projectFrameRate,
+              audioPeaksFor: audioPeaksFor,
+              // The span keys ride the row's id, as they did on the Audio
+              // lane this band replaced.
+              keyPrefix: 'storyboard-${carrier.id}',
+              onSetClipOffset: onSetClipOffset == null
+                  ? null
+                  : (clipIndex, offsetFrames) =>
+                        onSetClipOffset(carrier.id, clipIndex, offsetFrames),
+              offsetDrag: audioLane?.offsetDrag,
+              onSetClipFades: onSetClipFades == null
+                  ? null
+                  : (clipIndex, fadeIn, fadeOut) => onSetClipFades(
+                      carrier.id,
+                      clipIndex,
+                      fadeIn,
+                      fadeOut,
+                    ),
+            )
+          : TimelineLaneFrameRow(
+              layer: carrier,
+              lane: lane,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: frames,
+              leadingFrameSpacerWidth: 0,
+              trailingFrameSpacerWidth: 0,
+              metrics: metrics,
+              laneRange: laneRange,
+              keyPrefix: 'storyboard',
+            ),
     );
   }
 }

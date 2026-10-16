@@ -169,7 +169,8 @@ void main() {
         )
         .markerSize;
     // How wide each key's mark is drawn — the whole of its box across the
-    // frames, whatever its shape.
+    // frames, whatever its shape, to a float's precision: a path keeps its
+    // points in floats.
     List<double> graphMarks() {
       final canvas = TestRecordingCanvas();
       _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
@@ -192,7 +193,7 @@ void main() {
       final marks = graphMarks();
       expect(marks, hasLength(2 * 2), reason: '⛔전제: Position\'s keys');
       for (final width in marks) {
-        expect(width, closeTo(member, 1e-6), reason: 'zoom step $step');
+        expect(width, closeTo(member, 1e-3), reason: 'zoom step $step');
       }
       await _tap(tester, 'timeline-zoom-out-button');
     }
