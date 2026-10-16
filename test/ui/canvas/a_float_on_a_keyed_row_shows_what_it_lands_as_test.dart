@@ -645,53 +645,56 @@ void main() {
   });
 
   testWidgets('a keyed sheet on a posed row in a folder shows what it lands '
-      'as — the folder buffers the landing where the pose put it', (
-    tester,
-  ) async {
+      'as — past the page too, where the pose put it', (tester) async {
+    final page = defaultCutCanvasSize;
     final c = await open(
       tester,
       projectOf(
         _Rows.folder,
         keyed: true,
-        // A moved down by 30: its anchor is the canvas's middle.
+        // A moved right by 30: its anchor is the canvas's middle.
         pose: TransformPose(
-          center: CanvasPoint(
-            x: defaultCutCanvasSize.width / 2,
-            y: defaultCutCanvasSize.height / 2 + 30,
-          ),
+          center: CanvasPoint(x: page.width / 2 + 30, y: page.height / 2),
         ),
       ),
     );
-    // A's foot 13 above the edge of its last row of tiles: carried down by
-    // 30, its last 17 rows land past every tile A's surface has, where
-    // nothing of A but its landing claims the folder's buffer. B ABOVE A,
-    // so B's own room in the buffer is nowhere near A's landing either.
-    final size = celOf(tester, textToolKey).tileSize;
-    final edge = ((c.dy + 56) / size).ceil() * size.toDouble();
-    final a = Rect.fromLTRB(c.dx - 160, edge - 133, c.dx - 40, edge - 13);
-    final b = Rect.fromLTWH(c.dx - 160, a.top - 160, 120, 120);
+    // A shows 10 short of the page's right edge — its cel 40 short, and the
+    // pose's 30 — so carried right by 40, its last 30 columns land PAST
+    // THE PAGE, where the composite holds only what the rows ask room for.
+    // B LEFT of A, so B's own room asks for none of that.
+    final a = Rect.fromLTRB(
+      page.width - 160.0,
+      c.dy - 64,
+      page.width - 40.0,
+      c.dy + 56,
+    );
+    final aShown = a.shift(const Offset(30, 0));
+    final b = aShown.shift(const Offset(-200, 0));
     await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
     await lay(tester, keyB, b, (x, y) => sheet(b, x, y));
     await settle(tester);
+    expect(
+      tester
+          .getRect(inMainCanvas(find.byType(CanvasLayerStackView)))
+          .contains(onScreen(tester, page.width + 29.0, c.dy + 30)),
+      isTrue,
+      reason: '⛔fixture: what lands past the page is on the screen',
+    );
     final drawn = await composite(tester);
 
-    // ⚠️The box ENDS AT A's FOOT on the canvas (the pose's 30 below the
-    // cel's): with room below the sheet, the landing's own room took the
-    // cut of a buffer measured through the pose a second time — 30 short —
-    // and the composite came out the same (2026-10-16, the mutant walked
-    // past the box this test first carried).
-    final aShown = a.shift(const Offset(0, 30));
+    // ⚠️The box ENDS AT A's RIGHT EDGE on the canvas: with room right of
+    // the sheet, the landing's own clear room took the cut of an extent
+    // measured through the pose a second time — 30 short — and the
+    // composite came out the same. 🔬2026-10-16, the mutant walked past
+    // the two boxes this test carried first: the folder is no buffer of
+    // its own (it passes through), so a short extent cuts only where the
+    // page's own room does not reach.
     final room = aShown.expandToInclude(b).inflate(60);
     expectLandsAsCarried(
       await carry(
         tester,
         _Rows.folder,
-        region: Rect.fromLTRB(
-          room.left,
-          room.top,
-          room.right,
-          aShown.bottom,
-        ),
+        region: Rect.fromLTRB(room.left, room.top, aShown.right, room.bottom),
       ),
       drawn,
     );
