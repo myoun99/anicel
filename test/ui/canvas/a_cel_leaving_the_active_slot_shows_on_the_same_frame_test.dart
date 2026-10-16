@@ -366,6 +366,12 @@ void main() {
       reason: 'fixture: the stack was handed a second handle — the snapshot '
           'that settled in place of the deferred image',
     );
+    // Then the frames the settle asks for: the stack's build, which lets
+    // its clone go, and the boundaries the cache's own retired handle waits
+    // out (`DeferredImageDisposer`) — frames, not time.
+    while (tester.binding.hasScheduledFrame) {
+      await tester.pump();
+    }
     final inTheBuild = images.handed.first;
     final settled = images.handed.last;
     expect(
