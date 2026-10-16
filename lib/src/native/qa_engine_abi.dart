@@ -257,7 +257,12 @@ import '../core/on_a_worker.dart';
 ///   `qa_audio_device_set_schedule` that names buffers — the device's PCM
 ///   is made once in C memory and a schedule copies none of it
 ///   (`QaAudioDevice.setSchedule`, board play-press-first-frame-stall).
-const int kQaEngineAbiVersion = 48;
+/// - v49: `qa_key_rgba` — a row's colour keys over straight pixels in
+///   place, from tables the one definition makes (`CelColorKey`), so a cel
+///   on a keyed row is shown at C speed — a live stroke's every tile, every
+///   flush (`QaNativeEngine.keyRgba`, board a-stroke-on-a-keyed-row-shows-
+///   its-tiles-unkeyed).
+const int kQaEngineAbiVersion = 49;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

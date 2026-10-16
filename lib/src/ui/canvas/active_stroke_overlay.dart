@@ -12,6 +12,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/canvas_size.dart';
 import '../../models/dirty_region.dart';
+import '../../models/layer_effect.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/tile_coord.dart';
 import '../../services/brush_live_stroke_rasterizer.dart'
@@ -22,7 +23,11 @@ import '../../services/brush_live_stroke_rasterizer.dart'
         PromotedStrokeTile;
 import '../../services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
-import '../../services/cel_text_laying.dart';
+import '../../services/cel_source_effect_pass.dart'
+    show celSourceEffectSignature;
+import '../../services/cel_surface_as_shown.dart'
+    show celStraightTileAsShown, celTileAsShown;
+import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_tile_image_cache.dart';
 import 'deferred_image_disposal.dart';
 
@@ -111,6 +116,24 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// semantics) rather than stroke-only pixels the painter must blend.
   bool get preBlended => preBlendBase != null;
 
+  /// The colour keys the cel's row shows it through — the chain the cel's
+  /// own painter shows its tiles through (`celSurfaceAsShown`).
+  ///
+  /// 🚨A COORDINATE THE OVERLAY REPLACES SHOWS THE OVERLAY'S PICTURE AND
+  /// NOTHING ELSE, so that picture goes through the row's keys as it has the
+  /// cel's texts laid ([_platesOver]): the bytes the committed tile will
+  /// show. 🔬Without them a keyed sheet's ground showed bare under a stroke
+  /// until the pen came up — 2,868 pixels apart on a keyed row, 0 on a bare
+  /// one (공통 2026-10-16, card a-stroke-on-a-keyed-row-shows-its-tiles-unkeyed;
+  /// 유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
+  ///
+  /// ★Told by the host that builds the cel's painter, in the statement
+  /// beside it: the keys are the ROW's, not the cel's, and that is where
+  /// the cel's tiles are shown through them — so the two cannot show the
+  /// cel two ways, and a stroke's start has nothing new to remember
+  /// ([preBlendBase]'s reason).
+  List<ResolvedLayerEffect> sourceEffects = const [];
+
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
 
   /// The stroke revision each picture represents (promotable path only).
@@ -169,15 +192,20 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   }
 
   /// The tile [coord] SHOWS when the cel holds [tile] there: [tile] itself,
-  /// or it with the cel's texts laid over it — the tile the painter draws
-  /// once the stroke has landed, and so the one a picture made for this
-  /// coordinate belongs to ([takeTileImageAt]'s caller hands it over).
-  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) {
-    final plates = _platesOver(coord);
-    return plates == null
-        ? tile
-        : celTileWithPlatesLaid(tile, plates, tileSize)!;
-  }
+  /// or it with the cel's texts laid over it and the row's keys through it
+  /// ([sourceEffects]) — the tile the painter draws once the stroke has
+  /// landed, and so the one a picture made for this coordinate belongs to
+  /// ([takeTileImageAt]'s caller hands it over).
+  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) =>
+      celTileAsShown(tile, _platesOver(coord), _effectsOver, tileSize);
+
+  /// The keys a result here is shown through: the row's ([sourceEffects])
+  /// where it REPLACES the cel's tile ([preBlended]), and none where it is
+  /// the stroke alone drawn over the cel's own tile — which its painter
+  /// shows through them already. Read off [preBlendBase] as [_platesOver]
+  /// is, for its reason.
+  List<ResolvedLayerEffect> get _effectsOver =>
+      preBlended ? sourceEffects : const [];
 
   /// Snapshots the overlay tiles that [region] touches from the live
   /// stroke [source] and pictures them — inside this call.
@@ -395,25 +423,31 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
 
   /// The picture [coord] shows for [result] — a live stroke's bytes there,
   /// pre-blended against the cel: the result's own picture, or, where the
-  /// cel's texts stand over the coordinate ([_platesOver]), the result with
-  /// them laid over it.
+  /// cel's texts stand over the coordinate ([_platesOver]) or the row keys
+  /// its colours ([sourceEffects]), the result as the cel shows it.
   ///
   /// Those are the bytes the committed tile will show there, made by the
-  /// laying that will show them (`layPlatesOverStraight`, which ends in the
-  /// same stamp as a tile's own laying) — so pen-up hands this very picture
-  /// to that tile ([tileShownFor]) and not a byte on screen moves.
+  /// seam that will show them (`celStraightTileAsShown`, the same laying and
+  /// the same keys' walk as a tile's own) — so pen-up hands this very
+  /// picture to that tile ([tileShownFor]) and not a byte on screen moves.
   ///
-  /// ⚠️A COPY of the result first: the laying writes in place, and those
-  /// bytes are the rasterizer's resident result — the commit's own.
+  /// ⚠️A COPY of the result first: the laying and the keys write in place,
+  /// and those bytes are the rasterizer's resident result — the commit's
+  /// own.
   ui.Image _pictureOfResult(TileCoord coord, PictureBytes result) {
     final plates = _platesOver(coord);
-    if (plates == null) {
+    final effects = _effectsOver;
+    if (plates == null && celSourceEffectSignature(effects).isEmpty) {
       return pictureOf(result);
     }
-    final laid = result.readStraight(Uint8List.fromList);
-    layPlatesOverStraight(laid, plates, tileSize);
     return BitmapTileImageCache.pictureOfTile(
-      BitmapTile(size: tileSize, pixels: laid),
+      BitmapTile.written(
+        size: tileSize,
+        write: (shown) {
+          result.readStraight((straight) => shown.setAll(0, straight));
+          celStraightTileAsShown(shown, plates, effects, tileSize);
+        },
+      ),
     );
   }
 

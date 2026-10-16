@@ -22,6 +22,7 @@
 library;
 
 import '../core/collection_equality.dart';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
@@ -29,6 +30,7 @@ import '../models/bitmap_tile.dart';
 import '../models/bitmap_tile_rewrite.dart';
 import '../models/layer_effect.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_native_engine.dart';
 
 /// One color key sampled at one frame — the parameters as the pixel loop
 /// wants them (bytes, not the spec's doubles).
@@ -136,14 +138,18 @@ class CelColorKey {
   /// drawn as a second layer over the first, because a two-pass mix
   /// accumulates alpha ([[derived-cel-projection-pattern]] rule 6).
   /// ⛔The full-strength case is NOT a branch. `_keptFraction` is 0 there and
-  /// the arithmetic below lands on 0 by itself — a second path would be a
-  /// second place for the shader to fail to match.
+  /// the arithmetic ([_erased]) lands on 0 by itself — a second path would be
+  /// a second place for the shader to fail to match.
   int alphaFor(int red, int green, int blue, int alpha) {
     if (alpha == 0 || !erases(red, green, blue)) {
       return alpha;
     }
-    return (_asFloat32(alpha * _keptFraction) + 0.5).floor();
+    return _erased(alpha);
   }
+
+  /// What erasing leaves of [alpha] — [alphaFor]'s arithmetic, and the
+  /// walk's alpha table ([_KeyTables]).
+  int _erased(int alpha) => (_asFloat32(alpha * _keptFraction) + 0.5).floor();
 
   /// Whether this key NAMES the pixel for erasure — PURELY a colour
   /// question, with no alpha in it.
@@ -324,6 +330,26 @@ void celSourceEffectsOverStraight(
   }
 }
 
+/// [tile] — one of a cel's tiles as its texts make it — with every colour
+/// key in [effects] applied: the very tile [celSurfaceWithSourceEffects]
+/// makes of it in a surface (one memo, [_keyedTile]), or [tile] itself
+/// when there is nothing to do.
+///
+/// ⛔Called by the seam alone, for [celSurfaceWithSourceEffects]'s reason
+/// (`a_cel_is_shown_through_one_seam_test`).
+BitmapTile celTileWithSourceEffects(
+  BitmapTile tile,
+  List<ResolvedLayerEffect> effects,
+  int tileSize,
+) {
+  final keys = _keysOf(effects);
+  return keys.isEmpty
+      ? tile
+      : _keyedTile(tile, keys, [
+          for (final key in keys) ...key.signature,
+        ], tileSize);
+}
+
 /// The colour keys [effects] applies, in its order — a kind that keys
 /// nothing, and a key that does nothing, left out.
 List<CelColorKey> _keysOf(List<ResolvedLayerEffect> effects) => [
@@ -381,12 +407,58 @@ BitmapTile _keyedTile(
 /// [keys] over the straight rgba [view]: every pixel's alpha what they
 /// leave it, written to the bytes [into] answers — asked once, at the
 /// first pixel that changes — and null when none does. THE walk, a tile's
-/// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike.
+/// ([_keyedTile]) and a region's ([celSourceEffectsOverStraight]) alike,
+/// [_KeyTables.most] keys at a time in the chain's order.
 Uint8List? _keyedPixels(
   Uint8List view,
   List<CelColorKey> keys,
   Uint8List Function() into,
 ) {
+  Uint8List? out;
+  for (var from = 0; from < keys.length; from += _KeyTables.most) {
+    final tables = _KeyTables(
+      keys.sublist(from, math.min(from + _KeyTables.most, keys.length)),
+    );
+    final source = out;
+    out = source == null
+        ? _walk(view, tables, into)
+        : _walk(source, tables, () => source) ?? source;
+  }
+  return out;
+}
+
+/// [tables] over [view] as [_keyedPixels] says — in C where the engine is
+/// loaded (`qa_key_rgba`), and here, step for step the same, where it is
+/// not (`the_keys_walk_the_same_in_c_test`).
+///
+/// 🔬IN C BECAUSE A STROKE PAYS IT EVERY FLUSH: a live stroke on a keyed row
+/// shows each tile it changes through the keys, and asking each key of
+/// each pixel took 1.1–3.4 ms over one 256 px tile of a keyed sheet here
+/// (AOT, 10-16), and these tables walked in C take 0.13 ms, the copy into
+/// the engine's buffer and all — the C pool pre-blends a whole 1800 px
+/// brush's tiles in ~21 ms (`ActiveStrokeOverlayModel`).
+Uint8List? _walk(
+  Uint8List view,
+  _KeyTables tables,
+  Uint8List Function() into,
+) {
+  final engine = QaNativeEngine.instance;
+  if (engine != null) {
+    final keyed = engine.keyRgba(
+      view,
+      red: tables.red,
+      green: tables.green,
+      blue: tables.blue,
+      keeps: tables.keeps,
+      alphaMaps: tables.alphaMaps,
+    );
+    return keyed == null ? null : (into()..setAll(0, keyed));
+  }
+  final red = tables.red;
+  final green = tables.green;
+  final blue = tables.blue;
+  final keeps = tables.keeps;
+  final maps = tables.alphaMaps;
   Uint8List? out;
   final length = view.length;
   for (var offset = 0; offset < length; offset += 4) {
@@ -394,15 +466,15 @@ Uint8List? _keyedPixels(
     if (alpha == 0) {
       continue;
     }
-    final red = view[offset];
-    final green = view[offset + 1];
-    final blue = view[offset + 2];
+    var erasing =
+        (red[view[offset]] & green[view[offset + 1]] & blue[view[offset + 2]]) ^
+        keeps;
     var next = alpha;
-    for (final key in keys) {
-      next = key.alphaFor(red, green, blue, next);
-      if (next == 0) {
-        break;
+    for (var map = 0; erasing != 0 && next != 0; map += 256) {
+      if (erasing & 1 == 1) {
+        next = maps[map + next];
       }
+      erasing >>= 1;
     }
     if (next == alpha) {
       continue;
@@ -411,6 +483,53 @@ Uint8List? _keyedPixels(
     out[offset + 3] = next;
   }
   return out;
+}
+
+/// Up to [most] colour keys as the walk reads them, here and in C — a
+/// table lookup a channel where the keys asked a question a key: bit k of
+/// [red]`[r]`, [green]`[g]` and [blue]`[b]` says key k is within its
+/// tolerance of a pixel in that channel, bit k of [keeps] that key k keeps
+/// what it names, and `alphaMaps[k * 256 + a]` is what key k leaves of an
+/// alpha `a` it erases.
+///
+/// ⛔MADE FROM THE KEYS' OWN ANSWERS, never a second spelling of them: a
+/// channel's bit is [CelColorKey.matches] asked with the other two channels
+/// at the key's own values, and an alpha's is [CelColorKey._erased] — so the
+/// walk, in either language, cannot drift from the definition the
+/// destructive verb and the shader are held to.
+final class _KeyTables {
+  _KeyTables(List<CelColorKey> keys)
+    : assert(keys.length <= most),
+      alphaMaps = Uint8List(keys.length * 256),
+      keeps = keys.indexed.fold(
+        0,
+        (bits, entry) => entry.$2.keepsMatches ? bits | 1 << entry.$1 : bits,
+      ) {
+    for (final (k, key) in keys.indexed) {
+      final bit = 1 << k;
+      for (var value = 0; value < 256; value += 1) {
+        if (key.matches(value, key.green, key.blue)) {
+          red[value] |= bit;
+        }
+        if (key.matches(key.red, value, key.blue)) {
+          green[value] |= bit;
+        }
+        if (key.matches(key.red, key.green, value)) {
+          blue[value] |= bit;
+        }
+        alphaMaps[k * 256 + value] = key._erased(value);
+      }
+    }
+  }
+
+  /// The keys one set of tables holds: a bit each in a 32-bit word, the C's.
+  static const int most = 32;
+
+  final Uint32List red = Uint32List(256);
+  final Uint32List green = Uint32List(256);
+  final Uint32List blue = Uint32List(256);
+  final Uint8List alphaMaps;
+  final int keeps;
 }
 
 /// A memo entry: what was derived, plus the VALUES it was derived from.

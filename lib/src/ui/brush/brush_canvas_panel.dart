@@ -1160,6 +1160,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShownCels.instance.hide(this);
       return null;
     }
+    // The overlay shows its pictures in place of this painter's tiles, so
+    // through the chain they are shown through below.
+    overlay.sourceEffects = widget.activeSourceEffects;
     final identity = widget._activeSurfaceIdentityFor(coordinator);
     // 🚨★★★**AN OPEN MOVE SESSION IS PART OF WHAT THIS PAINTER DRAWS**, so
     // it is part of the token: the hole is a derived surface the session

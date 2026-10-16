@@ -81,6 +81,24 @@ class BitmapTile implements Finalizable {
     return BitmapTile._adopt(size, buffer);
   }
 
+  /// A tile whose pixels [write] lays into the tile's own fresh buffer,
+  /// before anything else can read them — so it is as immutable as any
+  /// tile once this returns. ⚠️[write] fills EVERY byte: the buffer is
+  /// not cleared first.
+  ///
+  /// Bytes copied from elsewhere and rewritten land here with no copy on
+  /// the Dart heap between: a live stroke's result shown as the cel will
+  /// show it, 256 KB at every tile the stroke changes on every flush.
+  factory BitmapTile.written({
+    required int size,
+    required void Function(Uint8List pixels) write,
+  }) {
+    _validateSize(size);
+    final tile = BitmapTile._adopt(size, _allocate(bytesFor(size)));
+    write(tile._view);
+    return tile;
+  }
+
   /// Adopts a NATIVE buffer as this tile's pixels WITHOUT copying —
   /// ownership transfers to the tile (freed by its finalizer). The commit
   /// hot path hands its blend scratch over through this: a full-canvas

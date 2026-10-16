@@ -70,6 +70,7 @@ class QaNativeEngine {
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._premultiplyRgbaRows,
+    this._keyRgba,
     this._copyBytes,
     this._zeroBytes,
     this._widenBytes,
@@ -213,6 +214,71 @@ class QaNativeEngine {
     width,
     rows,
   );
+
+  final int Function(
+    Pointer<Uint8> pixels,
+    int pixelCount,
+    Pointer<Uint32> red,
+    Pointer<Uint32> green,
+    Pointer<Uint32> blue,
+    int keeps,
+    Pointer<Uint8> alphaMaps,
+  )
+  _keyRgba;
+
+  final _keyPixels = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+  final _keyRed = NativeScratch<Uint32>(
+    (n) => calloc<Uint32>(n),
+    bytesPerElement: sizeOf<Uint32>(),
+  );
+  final _keyGreen = NativeScratch<Uint32>(
+    (n) => calloc<Uint32>(n),
+    bytesPerElement: sizeOf<Uint32>(),
+  );
+  final _keyBlue = NativeScratch<Uint32>(
+    (n) => calloc<Uint32>(n),
+    bytesPerElement: sizeOf<Uint32>(),
+  );
+  final _keyAlphaMaps = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
+
+  /// [straight] rgba through a row's colour keys, given as the tables
+  /// their one definition makes (`CelColorKey`, the keys' pass) — the
+  /// keyed bytes, or null when the keys leave every alpha as it was
+  /// (`qa_key_rgba`, ABI 49).
+  ///
+  /// The bytes go through the engine's own buffer, so [straight] may live
+  /// anywhere, and the answer is a view of that buffer: good until the
+  /// next call.
+  Uint8List? keyRgba(
+    Uint8List straight, {
+    required Uint32List red,
+    required Uint32List green,
+    required Uint32List blue,
+    required int keeps,
+    required Uint8List alphaMaps,
+  }) {
+    final length = straight.length;
+    final pixels = _keyPixels.ensure(length);
+    final keyed = pixels.asTypedList(length)..setAll(0, straight);
+    final changed = _keyRgba(
+      pixels,
+      length ~/ 4,
+      _staged(_keyRed, red),
+      _staged(_keyGreen, green),
+      _staged(_keyBlue, blue),
+      keeps,
+      _keyAlphaMaps.ensure(alphaMaps.length)
+        ..asTypedList(alphaMaps.length).setAll(0, alphaMaps),
+    );
+    return changed == 0 ? null : keyed;
+  }
+
+  static Pointer<Uint32> _staged(
+    NativeScratch<Uint32> scratch,
+    Uint32List table,
+  ) =>
+      scratch.ensure(table.length)
+        ..asTypedList(table.length).setAll(0, table);
 
   final _tilesPictureScratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
@@ -1070,6 +1136,27 @@ class QaNativeEngine {
             ),
             void Function(Pointer<Uint8>, int, Pointer<Uint8>, int, int, int)
           >('qa_premultiply_rgba_rows');
+      final keyRgba = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Int32,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              Uint32,
+              Pointer<Uint8>,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              int,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              Pointer<Uint32>,
+              int,
+              Pointer<Uint8>,
+            )
+          >('qa_key_rgba');
       final copyBytes = library
           .lookupFunction<
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
@@ -1337,6 +1424,7 @@ class QaNativeEngine {
         preBlendTiles,
         premultiplyRgbaCopy,
         premultiplyRgbaRows,
+        keyRgba,
         copyBytes,
         zeroBytes,
         widenBytes,
