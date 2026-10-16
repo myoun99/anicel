@@ -182,6 +182,9 @@ void main() {
       ];
     }
 
+    // Zoomed in, a frame's cell is wider than a lane's row is tall and the
+    // row is the tighter of the two; zoomed out, the cell is.
+    await _tap(tester, 'timeline-zoom-in-button');
     final seen = <double>{};
     for (var step = 0; step < 3; step += 1) {
       final member = memberMark();

@@ -42,7 +42,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
     show LaneGraphPicture, TimelineLaneGraph, TimelineLaneGraphPainter;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
-    show TimelineLaneControlsRow, TimelineLaneFrameRow;
+    show TimelineLaneControlsRow, TimelineLaneFrameRow, TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -127,7 +127,7 @@ void main() {
   /// graphs, the timeline's state turned by the timeline's verbs — and,
   /// with [dragRows], the session's own row drags; with [laneEdits], the
   /// session's own lane edits, as the host hands the S and V rows theirs;
-  /// an edit in flight on [dragPreview].
+  /// an edit in flight on [dragPreview]; a frame [pixelsPerFrame] wide.
   Future<EditorSessionManager> pump(
     WidgetTester tester,
     Project project, {
@@ -136,6 +136,7 @@ void main() {
     bool dragRows = false,
     bool laneEdits = false,
     ValueListenable<TimelineDragPreview?>? dragPreview,
+    double pixelsPerFrame = 12,
   }) async {
     final session = EditorSessionManager(initialProject: project);
     addTearDown(session.dispose);
@@ -159,7 +160,7 @@ void main() {
               builder: (context, graphs, _) => StoryboardPanel(
                 project: session.repository.requireProject(),
                 activeCutId: const CutId('cut'),
-                pixelsPerFrame: 12,
+                pixelsPerFrame: pixelsPerFrame,
                 projectFrameRate: ProjectFrameRate.fps24,
                 expandedLaneLayerIds: twirls.expandedLaneLayerIds,
                 onToggleLayerLanes: twirls.onToggleLayerLanes,
@@ -641,6 +642,81 @@ void main() {
       track().effects.single.parameters['blurX']!.track.keyAt(0)!.outgoing,
       isNot(const EaseSide()),
     );
+  });
+
+  testWidgets('a key\'s mark in a graph is as big as a member lane marks '
+      'it, as on the timeline — where a frame is the tighter side of a cell '
+      'and where a lane\'s row is (F-367-Q3)', (tester) async {
+    final seKey = laneGroupKey(s1, transform);
+    final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
+    final blurX = blurred.parameters['blurX']!;
+    final seen = <double>{};
+    for (final pixelsPerFrame in const [12.0, 40.0]) {
+      await pump(
+        tester,
+        project(
+          seLayers: [
+            seLayer(s1).copyWith(
+              transformTrack: TransformTrack.empty().copyWith(
+                rotation: PropertyTrack<double>().withKey(0, 0).withKey(4, 45),
+              ),
+            ),
+          ],
+          effects: [
+            blurred.withParameter(
+              'blurX',
+              blurX.copyWith(track: blurX.track.withKey(0, 10)),
+            ),
+          ],
+          lanesExpanded: true,
+          expandedLaneGroups: {effectGroupLaneId(blur)},
+        ),
+        graphs: LaneGraphsView(open: {seKey: const LaneGraph()}),
+        pixelsPerFrame: pixelsPerFrame,
+      );
+      // The V row's blur, no graph open over it: a member lane marking its
+      // key at 0 itself.
+      final member = tester
+          .widget<TimelineLaneKeyMarker>(
+            find.descendant(
+              of: find.byKey(
+                ValueKey<String>(
+                  'storyboard-track-lane-row-0-${effectLaneId(blur, 'blurX')}',
+                ),
+              ),
+              matching: find.byType(TimelineLaneKeyMarker),
+            ),
+          )
+          .markerSize;
+      seen.add(member);
+      final paint = find.descendant(
+        of: find.descendant(
+          of: graphOf(seKey),
+          matching: find.byType(LaneGraphPicture),
+        ),
+        matching: find.byType(CustomPaint),
+      );
+      final canvas = TestRecordingCanvas();
+      tester
+          .widget<CustomPaint>(paint)
+          .painter!
+          .paint(canvas, tester.getSize(paint));
+      // How wide each key's mark is drawn — the whole of its box across the
+      // frames, whatever its shape.
+      final marks = [
+        for (final call in canvas.invocations)
+          if (call.invocation.memberName == #drawPath &&
+              (call.invocation.positionalArguments[1] as Paint).style ==
+                  PaintingStyle.fill)
+            (call.invocation.positionalArguments[0] as Path).getBounds().width,
+      ];
+      expect(marks, hasLength(2), reason: '⛔전제: the rotation\'s keys');
+      for (final width in marks) {
+        expect(width, closeTo(member, 1e-6), reason: '$pixelsPerFrame');
+      }
+      await tester.pumpWidget(const SizedBox());
+    }
+    expect(seen, hasLength(2), reason: '⛔전제: the frames moved the marks');
   });
 
   testWidgets('an fx header dragged into an open graph\'s room stays where '
