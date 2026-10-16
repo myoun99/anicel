@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/import_warnings.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -339,6 +340,30 @@ void main() {
 
     expect(added, hasLength(1));
     expect(added.single.frames, hasLength(2));
+  });
+
+  testWidgets('a picture of the run gone by the time Import is pressed is '
+      'named in the warnings the status line opens — and the rest of the run '
+      'still comes in', (tester) async {
+    final files = await writeFolder(tester);
+    final s = await open(tester, [files['A1']!]);
+    await tester.runAsync(() => File(files['A2']!).delete());
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1), reason: 'the run, short of what is gone');
+    final notice = await openImportWarnings(tester);
+    expect(
+      find.descendant(
+        of: notice,
+        matching: find.text('Could not read the file. (1)'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: notice, matching: find.text('A2.png')),
+      findsOneWidget,
+    );
   });
 
   /// Answers [option] in [column] for [path]'s row alone.

@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -288,6 +289,16 @@ void main() {
           .onPressed,
       isNull,
       reason: 'nothing runs while the first file is still coming',
+    );
+    // The wait after a pick is said on the window's own status line — no
+    // wait window stands over a pick.
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey<String>('import-status')))
+          .data,
+      startsWith(AppText.strings.openWaitingCloudTemplate.split('{sec}').first),
+      reason: 'the status line says whose work the wait is',
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-cancel-button')));
