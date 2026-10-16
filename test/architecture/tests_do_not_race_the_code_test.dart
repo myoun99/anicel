@@ -98,6 +98,41 @@ void main() {
     );
   });
 
+  /// 🚨**A POLL WAITS BY THE CLOCK, NOT BY A COUNT OF ROUNDS** (card
+  /// `a-poll-that-counts-rounds-runs-out-under-load`). A loop that lends
+  /// real time a fixed number of times and leaves the moment what it waits
+  /// for is there is bounded by how many rounds fit, and under load a round
+  /// takes longer: the settings round trip and the Drive save went red that
+  /// way and passed alone. ✅`settleAsync` and `pollUntil` (`test/helpers/`)
+  /// wait by `waitPatience`; a loop of a test's own is the copy coming back
+  /// — 🔬on master `76fbb39e8` this named 27, every one a wait for
+  /// something to come.
+  ///
+  /// ⛔A WINDOW is rounds on purpose — given to see that something does NOT
+  /// happen, it must not see less on a busy machine (`lendBothClocks`) —
+  /// and it never leaves early. Leaving early is what gives a poll away.
+  test('no test polls by a count of rounds', () {
+    final offenders = <String>[];
+    for (final file in testFiles()) {
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i += 1) {
+        final loop = _countedLoopAt(lines, i);
+        if (loop.any(_lendsRealTime.hasMatch) &&
+            loop.any(_leavesEarly.hasMatch)) {
+          offenders.add('${file.path}:${i + 1}: ${lines[i].trim()}');
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'these count rounds of real time and leave once the thing has '
+          'come — under load the count runs out first. Wait with '
+          'settleAsync or pollUntil, which wait by the clock.',
+    );
+  });
+
   test('no test spawns a process — the bulk run is the wrong place to '
       'compete for the machine', () {
     const spawns = ['Process.run', 'Process.start', 'Process.runSync'];
@@ -172,4 +207,43 @@ bool _delayedTakesAComputation(String source) {
     }
   }
   return false; // Unbalanced within the window — not a claim either way.
+}
+
+/// A counted `for` loop's own line — `for (var i = 0; i < n; …)`.
+final _countedLoop = RegExp(r'^\s*for \(var \w+ = \d+; \w+ < ');
+
+/// A line that lends real time: a test's `runAsync`, or a plain delay.
+final _lendsRealTime = RegExp(r'runAsync\(|\.delayed\(');
+
+/// A line that leaves a loop before its count is up.
+final _leavesEarly = RegExp(r'\bbreak;|\breturn\b');
+
+/// The lines of the counted loop that starts at [lines]' [at] — its own
+/// line to the brace that closes its block, or to its one statement when
+/// it has no block — and none when no counted loop starts there.
+///
+/// Reads the loop's block by counting braces, as
+/// [_delayedTakesAComputation] counts parentheses — not a window of so
+/// many lines, which would read a long loop short and a short one into
+/// whatever follows it.
+List<String> _countedLoopAt(List<String> lines, int at) {
+  if (!_countedLoop.hasMatch(lines[at])) {
+    return const [];
+  }
+  var depth = 0;
+  var opened = false;
+  for (var i = at; i < lines.length; i += 1) {
+    for (final unit in lines[i].codeUnits) {
+      if (unit == 0x7B) {
+        depth += 1;
+        opened = true;
+      } else if (unit == 0x7D) {
+        depth -= 1;
+      }
+    }
+    if (opened ? depth <= 0 : i > at) {
+      return lines.sublist(at, i + 1);
+    }
+  }
+  return lines.sublist(at);
 }
