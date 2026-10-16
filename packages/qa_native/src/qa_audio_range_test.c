@@ -396,12 +396,14 @@ typedef struct {
 /// order, ending at 0; [between] the bytes of something else before each
 /// chunk, as a reel's picture sits between its sound's chunks. The movie box
 /// comes first when [movie_first], as a movie made for streaming has it.
-/// [frames_said] is what the size table counts (0: the chunks' frames);
-/// [reference] the data reference the description names (0: the first);
-/// [no_dinf] leaves the data information out; a sample lasts [tick] ticks
-/// (0: 1) of a media clock of [scale] a second (0: the rate). The rest is
-/// wrong on purpose, for the movies that must not be read: the data in
-/// another file, [descriptions] descriptions.
+/// [frames_said] is what the size table counts (0: the chunks' frames), and
+/// [chunks_said] what the chunk table counts (0: the chunks); [reference]
+/// is the data reference the description names (0: the first), after
+/// [others_first] references to another file; [no_dinf] leaves the data
+/// information out; a sample lasts [tick] ticks (0: 1) of a media clock of
+/// [scale] a second (0: the rate). The rest is wrong on purpose, for the
+/// movies that must not be read: the data in another file ([elsewhere]),
+/// [descriptions] descriptions (0: 1).
 typedef struct {
   const movie_sound* sound;
   const int* chunks;
@@ -416,6 +418,8 @@ typedef struct {
   int reference;
   int no_dinf;
   int scale;
+  int others_first;
+  int chunks_said;
 } movie_layout;
 
 #define MOVIE_MAX_CHUNKS 2048
@@ -442,7 +446,10 @@ static void movie_sample_bytes(const movie_sound* sound, int64_t index,
   } else if (sound->kind == 'f') {
     const double value = (double)full / 2147483648.0;
     memcpy(&bits, &value, sizeof(bits));
-  } else {
+  } else if (sound->sample_bytes >= 4) {
+    // As wide or wider: its 32 bits at the top of the sample.
+    bits = (uint64_t)(uint32_t)full << (8 * sound->sample_bytes - 32);
+  } else if (sound->sample_bytes > 0) {
     bits = (uint64_t)(int64_t)(full >> (32 - 8 * sound->sample_bytes));
     if (sound->sample_bytes == 1 && (sound->kind == 'u' || as_wav)) {
       bits ^= 0x80;
@@ -626,15 +633,18 @@ static void movie_box(movie_writer* writer, const movie_layout* layout,
     movie_begin(writer, "dinf");
     movie_begin(writer, "dref");
     movie_zeros(writer, 4);
-    movie_be(writer, 1, 4);
-    movie_begin(writer, "url ");
-    // Flag 1 says the data is in this file; without it, the location
-    // follows.
-    movie_be(writer, layout->elsewhere ? 0 : 1, 4);
-    if (layout->elsewhere) {
-      movie_put(writer, "file:///elsewhere.mov", 22);
+    movie_be(writer, (uint64_t)(layout->others_first + 1), 4);
+    for (int index = 0; index <= layout->others_first; index += 1) {
+      const int elsewhere = index < layout->others_first || layout->elsewhere;
+      movie_begin(writer, "url ");
+      // Flag 1 says the data is in this file; without it, the location
+      // follows.
+      movie_be(writer, elsewhere ? 0 : 1, 4);
+      if (elsewhere) {
+        movie_put(writer, "file:///elsewhere.mov", 22);
+      }
+      movie_end(writer);
     }
-    movie_end(writer);
     movie_end(writer);
     movie_end(writer);
   }
@@ -680,7 +690,9 @@ static void movie_box(movie_writer* writer, const movie_layout* layout,
   movie_end(writer);
   movie_begin(writer, layout->co64 ? "co64" : "stco");
   movie_zeros(writer, 4);
-  movie_be(writer, (uint64_t)count, 4);
+  movie_be(writer,
+           (uint64_t)(layout->chunks_said > 0 ? layout->chunks_said : count),
+           4);
   for (int index = 0; index < count; index += 1) {
     movie_be(writer, offsets[index], layout->co64 ? 8 : 4);
   }
@@ -872,6 +884,12 @@ static void expect_reads_as_its_wav(const char* what, const uint8_t* movie,
 static int32_t movie_format(const movie_layout* layout) {
   static uint8_t movie[MOVIE_CAPACITY];
   const size_t bytes = build_movie(layout, movie, sizeof(movie), NULL);
+  if (bytes == 0) {
+    // ⚠️Nothing read is not a movie refused.
+    printf("FAIL fixture: a movie did not fit in its buffer\n");
+    g_failures += 1;
+    return -1;
+  }
   float* samples = NULL;
   int64_t frames = 0;
   int32_t channels = 0;
@@ -891,8 +909,8 @@ static const int kMovieReelChunks[] = {250, 250, 70, 250, 30, 0};
 
 /// The reel's movie into [out] (MOVIE_CAPACITY) — its length.
 static size_t build_reel_movie(uint8_t* out) {
-  const movie_layout reel = {&kMovieSowt, kMovieReelChunks, 0, 0, 77,
-                             0,           0,                1, 1};
+  const movie_layout reel = {
+      .sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77};
   return build_movie(&reel, out, MOVIE_CAPACITY, NULL);
 }
 
@@ -1307,6 +1325,10 @@ int main(void) {
          'f', 2, 0, 2, 48000},
         {"32-bit float big-endian: fl32", "fl32", 0, 32, 4, 1, 'f', 0, 0, 2,
          48000},
+        {"fl32, version 0, an enda of its own", "fl32", 0, 32, 4, 0, 'f', 2, 0,
+         2, 48000},
+        {"in24 in a version-2 description, an enda in its wave", "in24", 2, 24,
+         3, 0, 's', 1, 0, 2, 48000},
         {"64-bit float: fl64, an enda in its wave", "fl64", 1, 64, 8, 0, 'f',
          1, 0, 2, 48000},
         // Core Audio's flags: float 1, big-endian 2, signed 4, packed 8.
@@ -1316,12 +1338,16 @@ int main(void) {
          1 | 2 | 8, 2, 48000},
         {"lpcm, 16-bit in six channels", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 6,
          48000},
+        {"lpcm, 16-bit big-endian", "lpcm", 2, 16, 2, 1, 's', 0, 2 | 4 | 8, 2,
+         48000},
+        {"lpcm, unsigned 8-bit", "lpcm", 2, 8, 1, 0, 'u', 0, 8, 2, 22050},
     };
     static uint8_t movie[MOVIE_CAPACITY];
     for (size_t index = 0; index < sizeof(sounds) / sizeof(sounds[0]);
          index += 1) {
-      const movie_layout layout = {&sounds[index], kMovieReelChunks, 0, 0, 77,
-                                   0, 0, 1, 1};
+      const movie_layout layout = {.sound = &sounds[index],
+                                   .chunks = kMovieReelChunks,
+                                   .between = 77};
       int64_t frames = 0;
       const size_t bytes = build_movie(&layout, movie, sizeof(movie), &frames);
       expect_reads_as_its_wav(sounds[index].name, movie, bytes, &sounds[index],
@@ -1341,25 +1367,33 @@ int main(void) {
       movie_layout layout;
     } layouts[] = {
         {"one chunk longer than a read",
-         {&kMovieSowt, one_chunk, 0, 0, 0, 0, 0, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = one_chunk}},
         {"a reel of 1,500 chunks, each a run of its own",
-         {&kMovieSowt, long_reel, 0, 0, 7, 0, 0, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = long_reel, .between = 7}},
         {"a reel's chunks at 64-bit offsets",
-         {&kMovieSowt, kMovieReelChunks, 1, 0, 77, 0, 0, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .co64 = 1}},
         {"a reel's chunks behind the movie box",
-         {&kMovieSowt, kMovieReelChunks, 0, 1, 77, 0, 0, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .movie_first = 1}},
         {"a size table that says 1 a sample, as old QuickTime wrote",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 1, 0, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .size_one = 1}},
         // The size table's count is the sound's frames, whatever its chunks
         // hold past it.
         {"a size table that counts fewer frames than the chunks hold",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1, 840}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .frames_said = 840}},
         {"a movie without data information",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1, 0, 0, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .no_dinf = 1}},
+        {"the second of two data references, this file's",
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .reference = 2, .others_first = 1}},
         // A sample is a frame of the media's clock, whatever it ticks at.
         {"a media clock twice the rate, a sample two ticks of it",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 2, 1, 0, 0, 0,
-          96000}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .tick = 2, .scale = 96000}},
     };
     for (size_t index = 0; index < sizeof(layouts) / sizeof(layouts[0]);
          index += 1) {
@@ -1407,8 +1441,10 @@ int main(void) {
     // A movie cut short ends where its bytes do, as dr_wav ends a WAV cut
     // short: 101 bytes off the reel's last chunk of 30 frames leave 4 whole.
     {
-      const movie_layout streaming = {&kMovieSowt, kMovieReelChunks, 0, 1, 77,
-                                      0, 0, 1, 1};
+      const movie_layout streaming = {.sound = &kMovieSowt,
+                                      .chunks = kMovieReelChunks,
+                                      .between = 77,
+                                      .movie_first = 1};
       int64_t frames = 0;
       const size_t bytes =
           build_movie(&streaming, movie, sizeof(movie), &frames);
@@ -1439,40 +1475,65 @@ int main(void) {
     // shape; and what a codec must read stays the OS stack's.
     static const movie_sound shapes_refused[] = {
         {"AAC", "mp4a", 0, 16, 2, 0, 's', 0, 0, 2, 48000},
-        {"lpcm, one channel after another", "lpcm", 2, 16, 2, 0, 's', 0,
+        {"lpcm with one channel after another", "lpcm", 2, 16, 2, 0, 's', 0,
          4 | 8 | 32, 2, 48000},
         // Aligned high (16) in words wider than its bits.
-        {"lpcm, 24 bits in 32-bit words", "lpcm", 2, 24, 4, 0, 's', 0, 4 | 16,
-         2, 48000},
-        {"lpcm, two frames a packet", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 2,
+        {"lpcm with 24 bits in 32-bit words", "lpcm", 2, 24, 4, 0, 's', 0,
+         4 | 16, 2, 48000},
+        {"lpcm with two frames a packet", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 2,
          48000, 2},
-        {"twos of 12 bits", "twos", 0, 12, 2, 1, 's', 0, 0, 2, 48000},
-        {"raw of 16 bits", "raw ", 0, 16, 2, 1, 's', 0, 0, 2, 48000},
+        {"lpcm of 12 bits in a byte a sample", "lpcm", 2, 12, 1, 0, 's', 0,
+         4 | 8, 2, 48000},
+        // Sound dr_wav has no conversion for.
+        {"lpcm of unsigned 16 bits", "lpcm", 2, 16, 2, 0, 'u', 0, 8, 2, 48000},
+        {"lpcm of 64-bit integers", "lpcm", 2, 64, 8, 0, 's', 0, 4 | 8, 2,
+         48000},
+        {"a twos of 12 bits", "twos", 0, 12, 2, 1, 's', 0, 0, 2, 48000},
+        {"a raw of 16 bits", "raw ", 0, 16, 2, 1, 's', 0, 0, 2, 48000},
+        // Nothing to size a frame by, or to play it at.
+        {"a twos of no bits", "twos", 0, 0, 0, 1, 's', 0, 0, 2, 48000},
+        {"a sound of no channels", "sowt", 0, 16, 2, 0, 's', 0, 0, 0, 48000},
+        {"a sound at 0 Hz", "sowt", 0, 16, 2, 0, 's', 0, 0, 2, 0},
+        {"lpcm of no channels", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 0, 48000},
+        {"lpcm at 0 Hz", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 2, 0},
     };
+    for (size_t index = 0;
+         index < sizeof(shapes_refused) / sizeof(shapes_refused[0]);
+         index += 1) {
+      const movie_layout layout = {.sound = &shapes_refused[index],
+                                   .chunks = kMovieReelChunks,
+                                   .between = 77};
+      char label[128];
+      snprintf(label, sizeof(label), "%s is not the engine's movie PCM",
+               shapes_refused[index].name);
+      expect_int(label, movie_format(&layout) == QA_AUDIO_FORMAT_MOVIE_PCM,
+                 0);
+    }
+    // ⚠️No more channels than a version-0 description can say.
+    static const movie_sound too_wide = {
+        "lpcm", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 65536, 48000};
+    static const int one_frame[] = {1, 0};
     const struct {
       const char* name;
       movie_layout layout;
     } refused[] = {
         {"a movie whose sound is in another file",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 1, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .elsewhere = 1}},
         // Media Foundation's reading: no sound where the list says none.
         {"a description naming a reference the list does not have",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1, 0, 2}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .reference = 2}},
+        {"a chunk table that counts more chunks than it holds",
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .chunks_said = 6}},
         {"a sound whose samples last two ticks of a clock at its rate",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 2, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .tick = 2}},
         {"a sound described two ways",
-         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 2}},
-        {"AAC", {&shapes_refused[0], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
-        {"lpcm with one channel after another",
-         {&shapes_refused[1], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
-        {"lpcm with 24 bits in 32-bit words",
-         {&shapes_refused[2], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
-        {"lpcm with two frames a packet",
-         {&shapes_refused[3], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
-        {"a twos of 12 bits",
-         {&shapes_refused[4], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
-        {"a raw of 16 bits",
-         {&shapes_refused[5], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
+         {.sound = &kMovieSowt, .chunks = kMovieReelChunks, .between = 77,
+          .descriptions = 2}},
+        {"lpcm of 65,536 channels", {.sound = &too_wide, .chunks = one_frame}},
     };
     for (size_t index = 0; index < sizeof(refused) / sizeof(refused[0]);
          index += 1) {
