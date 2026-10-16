@@ -43,6 +43,20 @@ import 'layer_id.dart';
   );
 }
 
+/// Where a cut's CONTE row is born in [stack]: at the bottom of ACTION —
+/// the stack's first row, in no folder (raw order runs bottom-up, and the
+/// drawing section is the lowest on the screen).
+///
+/// 🗣️F-369 (유저 2026-10-16): 「콘티패널에서 콘티행에 +같은거 눌러서
+/// 콘티레이어 생성될때, 컷 들어가면 액션섹션의 젤 위에 생성되는데 그게아니라
+/// 젤 밑에 생성되도록」. ONE answer for every door that makes a cut its conte
+/// row — the conte row's `+`, a first stroke on a cut that has none, Add
+/// Layer's conte entry: a cut holds one (`LayerKind.isSingletonPerCut`), so
+/// each makes the same row. ↩️Add Layer and the `+` put it above the active
+/// row, and the first stroke on top of the stack.
+({int index, LayerId? folderId}) conteRowPlacement(List<Layer> stack) =>
+    newRowPlacement(stack, 0);
+
 /// The attach group [layer] belongs to, named by its base: a rider names
 /// the base it rides, an organizer folder the base it organizes, and any
 /// other row its own group.

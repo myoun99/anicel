@@ -595,12 +595,25 @@ class LayerVerbs {
   /// on the canvas, a file let go between two rail rows. Its two structural
   /// rules (an attach group is indivisible; a new row joins the folder of
   /// the row below it) are written there, with why.
-  void addRowAboveActive(Layer Function(Cut cut) build) {
+  void addRowAboveActive(Layer Function(Cut cut) build) =>
+      addRow(build, placementAboveActive);
+
+  /// Where [addRowAboveActive] places a new row in [stack].
+  ({int index, LayerId? folderId}) placementAboveActive(List<Layer> stack) =>
+      newRowPlacement(
+        stack,
+        _controllers.layerController.insertionIndexAboveActiveLayer(),
+      );
+
+  /// Inserts a NEW ROW in the active cut where [placeIn] places it in the
+  /// cut's stack — above the active layer ([placementAboveActive]), or at
+  /// a cut's conte row's birthplace (`conteRowPlacement`, F-369).
+  void addRow(
+    Layer Function(Cut cut) build,
+    ({int index, LayerId? folderId}) Function(List<Layer> stack) placeIn,
+  ) {
     final cut = _project.requireActiveCut;
-    final placement = newRowPlacement(
-      cut.layers,
-      _controllers.layerController.insertionIndexAboveActiveLayer(),
-    );
+    final placement = placeIn(cut.layers);
     final built = build(cut);
     _controllers.layerController.addLayer(
       layer: placement.folderId == null

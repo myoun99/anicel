@@ -10,7 +10,9 @@
 // ⛔It does not implement "insert a row above the active one": that verb
 // is [LayerVerbs.addRowAboveActive] and this calls it. What lives here is
 // the kind-by-kind decision of WHAT to insert and whether it is allowed
-// at all — a different question, and the reason the two are not merged.
+// at all — a different question, and the reason the two are not merged —
+// and the one kind born elsewhere: a cut's conte row, at the bottom of
+// ACTION (F-369, [LayerVerbs.addRow]).
 
 import 'package:flutter/foundation.dart';
 
@@ -21,6 +23,7 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart';
+import '../../models/new_row_placement.dart' show conteRowPlacement;
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../services/commands/cut_command_input_planner.dart'
@@ -138,13 +141,18 @@ class LayerStack {
         // so they never start empty and then have to be filled. (An image
         // row can be EMPTIED afterwards, F-98 — its birth is unchanged:
         // 「생성하면 기본적으로 프레임 생성되는건 그대로」.)
-        _layerVerbs.addRowAboveActive(
+        _layerVerbs.addRow(
           (cut) => bornRowOfKind(
             kind,
             layerId: layerId,
             coveringFrameId: () => _frameIds.mintFrameId(layerId),
             cut: cut,
           ),
+          // A cut's conte row is born at the bottom of ACTION, from this
+          // door as from the conte's own (F-369, [conteRowPlacement]).
+          kind == LayerKind.storyboard
+              ? conteRowPlacement
+              : _layerVerbs.placementAboveActive,
         );
       case LayerKind.adjustment:
         // R6b: a real row you ADD (unlike a folder), joining the stack

@@ -95,15 +95,16 @@ class AutoFrameForStroke {
   /// The conte row a first stroke on [cut] leaves, and where it goes in the
   /// stack — null [index] for the row [cut] has, covered in place.
   ///
-  /// A cut with no row gets one on top, where a row made with nothing
-  /// selected goes ([newRowPlacement]): [cut] is not the cut the canvas
-  /// stands on, so it has no active row to go above. A row with no block
-  /// is covered by one cel, as a row is born ([coveringCelFor]).
+  /// A cut with no row gets one where every door makes a cut its conte row
+  /// — the bottom of ACTION ([conteRowPlacement], F-369). ↩️It went on top,
+  /// where a row made with nothing selected goes: [cut] is not the cut the
+  /// canvas stands on, so it has no active row to go above. A row with no
+  /// block is covered by one cel, as a row is born ([coveringCelFor]).
   ({Layer layer, int? index})? _conteCelPlan(Cut cut) {
     final row = storyboardLayerForCut(cut);
     if (row == null) {
       final layerId = _nextConteRow.putIfAbsent(cut.id, _layerIds.mint);
-      final placement = newRowPlacement(cut.layers, cut.layers.length);
+      final placement = conteRowPlacement(cut.layers);
       final born = bornRowOfKind(
         LayerKind.storyboard,
         layerId: layerId,

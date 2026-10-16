@@ -38,11 +38,11 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 ///
 /// A conte picture draws into its block's cel, and a cut with no conte row
 /// has none. With the canvas's 「프레임 자동 생성」 on, the stroke makes the
-/// row — on top of the cut's stack, the cut's one covering cel — and lands
-/// in it, and ONE undo takes the row and the stroke; the picture shows the
-/// stroke while it is drawn, and nothing the canvas stands on moves. With
-/// it off, nothing is made and nothing drawn there, and the press says why
-/// as the canvas does.
+/// row — at the bottom of ACTION (F-369; ↩️on top of the cut's stack), the
+/// cut's one covering cel — and lands in it, and ONE undo takes the row and
+/// the stroke; the picture shows the stroke while it is drawn, and nothing
+/// the canvas stands on moves. With it off, nothing is made and nothing
+/// drawn there, and the press says why as the canvas does.
 ///
 /// A conte row whose every block is gone has no block either (the question
 /// said 「또는 블록이 없는 칸」): the stroke covers THAT row with one cel,
@@ -197,9 +197,9 @@ void main() {
             0;
   }
 
-  testWidgets('with 「프레임 자동 생성」 on, the stroke makes the conte row on '
-      'top and lands in its cel — ONE undo takes both, and the canvas stays '
-      'where it stood', (tester) async {
+  testWidgets('with 「프레임 자동 생성」 on, the stroke makes the conte row at '
+      'the bottom of ACTION and lands in its cel — ONE undo takes both, and '
+      'the canvas stays where it stood', (tester) async {
     final picture = await pumpPanel(tester, autoCreates: true);
     final standing = (
       cut: session.activeCutOrNull?.id,
@@ -217,9 +217,9 @@ void main() {
     final row = storyboardLayerForCut(cutOf(empty));
     expect(row, isNotNull);
     expect(
-      cutOf(empty).layers.last.id,
+      cutOf(empty).layers.first.id,
       row!.id,
-      reason: 'on top: nothing is selected on a cut the canvas is not on',
+      reason: 'at the bottom of ACTION, under the cut\'s drawing (F-369)',
     );
     expect(row.frames, hasLength(1), reason: 'born covering the cut');
     // ↩️'Conte' until I-73 (2026-10-08): the track's conte has ONE head, and
