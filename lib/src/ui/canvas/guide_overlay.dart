@@ -646,12 +646,16 @@ Color guideColorOf(BuildContext context) =>
     Theme.of(context).colorScheme.primary;
 
 /// [guide]'s lines on [canvasSize]'s paper, a canvas pixel to a pixel, as
-/// the canvas draws them while the guide tool holds it picked: its colour,
-/// its weight, its density, its eye level — no handle, no name. The
-/// picture 래스터라이즈 lands. Null when the picture cannot be read back.
+/// the canvas draws them at rest — the faint line a drawing is made over:
+/// its colour, its weight, its density, its eye level — no handle, no name.
+/// The picture 래스터라이즈 lands. Null when the picture cannot be read back.
 ///
 /// 🗣️vanishing-point-types-Q6 (유저 2026-10-16): 「화면에 보이는 그대로」 —
 /// 「가이드와 같은 색 · 굵기 · 밀도, 아이레벨 선도 포함 — 용지 안만」.
+/// 🗣️I-105-Q2 (유저 2026-10-16): 「애초에 래스터라이즈도 캔버스에 보이는
+/// 옅은선 그대로 래스터라이즈하도록 법 통일」. ↩️It baked the look the guide
+/// tool gives the guide it holds picked (0.95, 1.6 wide) — my reading of
+/// 「보이는 그대로」 as the screen the button is pressed on.
 /// ⚠️At 100%, unturned: the paper is the view it is drawn in, so a family at
 /// infinity stands its lanes across the paper as the canvas would at 100%
 /// — my reading of 「보이는 그대로」, not a word of the user's.
@@ -671,11 +675,10 @@ Future<CutPiece?> guideLinesOnPaper(
       guides: CutGuides(guides: [guide]),
       viewport: CanvasViewport(),
       canvasSize: canvasSize,
-      emphasized: true,
+      emphasized: false,
       color: color,
       face: const TextStyle(),
       vanishingPointLabel: '',
-      selectedGuideId: guide.id,
     ).paintLines(canvas, paper, guide),
   );
   try {

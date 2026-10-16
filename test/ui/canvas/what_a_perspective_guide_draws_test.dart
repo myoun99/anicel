@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
+import 'package:anicel/src/ui/export/offscreen_raster.dart';
 
 /// What a perspective guide draws (vanishing-point-types, 유저 2026-10-16),
 /// read at the canvas's own calls — and what 래스터라이즈 bakes of it.
@@ -16,8 +18,9 @@ import 'package:anicel/src/ui/canvas/guide_overlay.dart';
 /// each point sends, and how many lanes a family stands either side of the
 /// view's middle. Q3 「손잡이로 대충」: a family's handle hangs on a stem from
 /// the eye level's handle — part of the handle, drawn with the handles.
-/// Q6 「화면에 보이는 그대로」: the bake is the lines as the canvas draws
-/// them while the guide is picked, and nothing else.
+/// Q6 「화면에 보이는 그대로」 and I-105-Q2 「캔버스에 보이는 옅은선 그대로」:
+/// the bake is the lines as the canvas draws them at rest, and nothing
+/// else.
 ///
 /// ⚠️The eye level is hidden in every fixture, so every line on the canvas
 /// is a ray, a lane or a stem.
@@ -177,11 +180,10 @@ void main() {
       );
     });
 
-    test('🚨the lines 래스터라이즈 bakes carry no stem — the picked guide\'s '
-        'lines alone', () {
+    test('🚨the lines 래스터라이즈 bakes carry no stem — the guide\'s lines '
+        'alone', () {
       final lines = linesOf(
-        (canvas) =>
-            painterOf(guide, emphasized: true).paintLines(canvas, size, guide),
+        (canvas) => painterOf(guide).paintLines(canvas, size, guide),
       );
 
       expect(lines.where(isStem), isEmpty);
@@ -199,33 +201,46 @@ void main() {
       return rgba.sublist(at, at + 4);
     }
 
-    testWidgets('🚨the picked guide\'s lines on the paper, a canvas pixel '
-        'to a pixel, in the guide\'s colour and weight — no handle', (
-      tester,
-    ) async {
-      final piece = await tester.runAsync(
-        () => guideLinesOnPaper(
-          guideOf([VanishingPointTowards(dx: 0, dy: 1)]),
+    testWidgets('🚨the faint line the canvas shows at rest, on the paper, a '
+        'canvas pixel to a pixel — no handle', (tester) async {
+      final guide = guideOf([VanishingPointTowards(dx: 0, dy: 1)]);
+      final (piece, atRest) = (await tester.runAsync(() async {
+        final piece = await guideLinesOnPaper(
+          guide,
           canvasSize: paper,
           color: green,
-        ),
-      );
+        );
+        // The canvas at 100%, unturned, with the guide tool put away.
+        final shown = await rasterizeOffscreen(
+          width: paper.width,
+          height: paper.height,
+          paint: (canvas) => painterOf(guide).paint(canvas, size),
+        );
+        try {
+          final rgba = await shown.toByteData(
+            format: ui.ImageByteFormat.rawStraightRgba,
+          );
+          return (piece, rgba!.buffer.asUint8List());
+        } finally {
+          shown.dispose();
+        }
+      }))!;
 
       expect((piece!.originLeft, piece.originTop), (0, 0));
       expect((piece.image.width, piece.image.height), (300, 200));
       final rgba = piece.image.rgba;
       // The lanes stand 50 apart from the middle: x = 0, 50, …, 250.
       final lane = rgbaAt(rgba, 150, 10);
+      expect(lane[3], greaterThan(0), reason: 'premise: a lane is baked');
       expect(lane[1], greaterThan(250), reason: 'green');
       expect(lane[0] + lane[2], lessThan(10), reason: 'and only green');
-      // Picked under the guide tool, a lane is 1.6 wide at 0.95 × 0.5: a
-      // pixel either side of x = 150 holds 0.8 of it. Unpicked it would be
-      // a 1.0 line at 0.28 × 0.5 — a fifth of this ink.
-      expect(lane[3], greaterThan(60));
-      expect(rgbaAt(rgba, 125, 10)[3], 0, reason: 'between the lanes');
-      // The eye level's turning handle would ring (270, 100) at 5.
-      expect(rgbaAt(rgba, 265, 100)[3], 0, reason: 'no handle');
-      expect(rgbaAt(rgba, 275, 100)[3], 0, reason: 'no handle');
+      var differing = 0;
+      for (var at = 0; at < rgba.length; at += 1) {
+        if (rgba[at] != atRest[at]) {
+          differing += 1;
+        }
+      }
+      expect(differing, 0, reason: 'the canvas at rest, as it is');
     });
   });
 }

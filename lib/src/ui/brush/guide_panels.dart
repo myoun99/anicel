@@ -443,9 +443,9 @@ class GuideSettings extends StatelessWidget {
   /// preview would be back to one entry per sample.
   final ValueChanged<CutGuides> onGuidesPreview;
 
-  /// 래스터라이즈: the guide's lines, as the canvas shows them, drawn into the
-  /// cels (vanishing-point-types-Q5 · Q6). Null where nothing can take
-  /// them — the button keeps its place and goes dead.
+  /// 래스터라이즈: the guide's lines, as the canvas shows them at rest, drawn
+  /// into the cels (vanishing-point-types-Q5 · Q6, I-105-Q2). Null where
+  /// nothing can take them — the button keeps its place and goes dead.
   final ValueChanged<DrawingGuide>? onGuideRasterized;
 
   CutGuides _withShape(DrawingGuide guide, GuideShape shape) =>
