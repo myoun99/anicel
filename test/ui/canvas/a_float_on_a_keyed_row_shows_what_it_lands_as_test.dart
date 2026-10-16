@@ -662,21 +662,36 @@ void main() {
         ),
       ),
     );
-    // B ABOVE A, so B's own room in the folder's buffer is nowhere near
-    // where A's landing stands: what the buffer gives A's landing is A's
-    // to give.
-    final a = Rect.fromLTWH(c.dx - 160, c.dy - 64, 120, 120);
-    final b = Rect.fromLTWH(c.dx - 160, c.dy - 224, 120, 120);
+    // A's foot 13 above the edge of its last row of tiles: carried down by
+    // 30, its last 17 rows land past every tile A's surface has, where
+    // nothing of A but its landing claims the folder's buffer. B ABOVE A,
+    // so B's own room in the buffer is nowhere near A's landing either.
+    final size = celOf(tester, textToolKey).tileSize;
+    final edge = ((c.dy + 56) / size).ceil() * size.toDouble();
+    final a = Rect.fromLTRB(c.dx - 160, edge - 133, c.dx - 40, edge - 13);
+    final b = Rect.fromLTWH(c.dx - 160, a.top - 160, 120, 120);
     await lay(tester, textToolKey, a, (x, y) => sheet(a, x, y));
     await lay(tester, keyB, b, (x, y) => sheet(b, x, y));
     await settle(tester);
     final drawn = await composite(tester);
 
+    // ⚠️The box ENDS AT A's FOOT on the canvas (the pose's 30 below the
+    // cel's): with room below the sheet, the landing's own room took the
+    // cut of a buffer measured through the pose a second time — 30 short —
+    // and the composite came out the same (2026-10-16, the mutant walked
+    // past the box this test first carried).
+    final aShown = a.shift(const Offset(0, 30));
+    final room = aShown.expandToInclude(b).inflate(60);
     expectLandsAsCarried(
       await carry(
         tester,
         _Rows.folder,
-        region: a.expandToInclude(b).inflate(60),
+        region: Rect.fromLTRB(
+          room.left,
+          room.top,
+          room.right,
+          aShown.bottom,
+        ),
       ),
       drawn,
     );
