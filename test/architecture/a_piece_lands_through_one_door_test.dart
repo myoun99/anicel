@@ -99,7 +99,7 @@ void main() {
       isTrue,
     );
     // vanishing-point-types-Q5: 래스터라이즈 lays its picture as a paste does.
-    // ⚠️The whole parameter list: the body is read from the first `{` on.
+    // ⚠️The whole parameter list: the body is the first `{` after it.
     expect(
       sourceBodyOf(
         verbs,

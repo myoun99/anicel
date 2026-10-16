@@ -14,7 +14,9 @@ import 'package:flutter_test/flutter_test.dart';
 String sourceBodyOf(String source, String signature) {
   final start = source.indexOf(signature);
   expect(start, isNot(-1), reason: 'premise: $signature is in the file');
-  final open = source.indexOf('{', start);
+  // From the signature's END: one that runs through a named parameter list
+  // would otherwise be read from that list's brace.
+  final open = source.indexOf('{', start + signature.length);
   var depth = 0;
   for (var i = open; i < source.length; i += 1) {
     switch (source[i]) {
