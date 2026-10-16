@@ -337,15 +337,19 @@ void main() {
   }
 
   /// A box on [region], stood as [rows] says, carrying what it lifts: by a
-  /// hand that takes hold inside it ([holdIn]) and drags it by (40, 30),
-  /// which floats the lifted pixels themselves; or by [warps]' numbers in
-  /// Ctrl+T's box, one after another, which floats the picture each
-  /// resamples them to. The composite while it is carried, and once its
-  /// confirm has landed it.
+  /// hand that takes hold inside it ([holdIn]) and drags it by (40, 30) —
+  /// [twice], by as much again — which floats the lifted pixels
+  /// themselves; or by [warps]' numbers in Ctrl+T's box, one after
+  /// another, which floats the picture each resamples them to. The
+  /// composite while it is carried, and once its confirm has landed it.
   ///
-  /// ⚠️The hand takes hold while no box is open, so its press opens one as
-  /// the move: in a box already open the same drag is the box's own, which
-  /// resamples a translation too (`_handlePointerMove`).
+  /// The hand takes hold while no box is open, so its press opens one as
+  /// the move; its second hold is in the box that opened — the box's own
+  /// drag, a road of its own (`_handlePointerMove`), which floats the
+  /// lifted pixels as the first does (a-drag-in-an-open-box-resamples-a-
+  /// move). ↩️That road resampled a translation: the float became a
+  /// picture of its own, and on a keyed row a landing made again at every
+  /// move.
   ///
   /// Asked with the text tool in hand: its stage says where a canvas pixel
   /// is on the screen.
@@ -354,6 +358,7 @@ void main() {
     _Rows rows, {
     required Rect region,
     List<TransformValues Function(TransformValues now)> warps = const [],
+    bool twice = false,
   }) async {
     final hold = holdIn(tester, region);
     final drop = hold + handFor(tester, 40, 30);
@@ -372,16 +377,26 @@ void main() {
         commands.editTransformValues(warp);
       }
     } else {
-      final hand = await tester.startGesture(
-        hold,
-        kind: PointerDeviceKind.mouse,
-      );
-      await tester.pump();
-      await hand.moveTo(Offset.lerp(hold, drop, 0.5)!);
-      await tester.pump();
-      await hand.moveTo(drop);
-      await tester.pump();
-      await hand.up();
+      // [from] to [to] by one hand, the way a mouse drags.
+      Future<void> drag(Offset from, Offset to) async {
+        final hand = await tester.startGesture(
+          from,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await hand.moveTo(Offset.lerp(from, to, 0.5)!);
+        await tester.pump();
+        await hand.moveTo(to);
+        await tester.pump();
+        await hand.up();
+      }
+
+      await drag(hold, drop);
+      if (twice) {
+        await settle(tester);
+        expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
+        await drag(drop, drop + handFor(tester, 40, 30));
+      }
     }
     await settle(tester);
     expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
@@ -413,8 +428,8 @@ void main() {
         for (final _ in before)
           if (warps.isNotEmpty) 'an image' else 'its surface',
       ],
-      reason: '⛔fixture: every row floats — a warp as the image it '
-          'resamples to, a drag as its own surface',
+      reason: 'every row floats — a warp as the image it resamples to, a '
+          'drag as its own surface, in a box it opened or one already open',
     );
     expect(
       [for (final (i, cel) in cels().indexed) identical(cel, before[i])],
@@ -510,6 +525,22 @@ void main() {
         );
       });
     }
+  }
+
+  // ── Dragged twice: the second time in the box the first one opened. ──
+
+  for (final rows in _Rows.values) {
+    testWidgets('${rows.name}: a keyed sheet dragged again in its open box '
+        'floats its own pixels still', (tester) async {
+      final c = await open(tester, projectOf(rows, keyed: true));
+      final region = await sheets(tester, c, rows);
+      final drawn = await composite(tester);
+
+      expectLandsAsCarried(
+        await carry(tester, rows, region: region, twice: true),
+        drawn,
+      );
+    });
   }
 
   // ── The three ways a float is shown, at both kinds of zoom. ──
