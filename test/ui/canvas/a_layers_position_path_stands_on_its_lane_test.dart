@@ -183,6 +183,21 @@ void main() {
       [Offset(c.x, c.y)],
     ]);
     expect(box(tester).tangents, hasLength(1), reason: 'the key at 5\'s');
+    expect(
+      overlay(tester).centreTrail,
+      isEmpty,
+      reason: 'a point\'s one trail is its middle\'s — the camera\'s line '
+          'is not drawn twice',
+    );
+    // 🗣️F-368 (유저 2026-10-16): 「공간이든 공간+시간이든 공간이라는
+    // 정보로서」 — its handles in space as in space and time.
+    CameraPathSettings.settings.value = const CameraPathSettings(
+      show: CameraPathShow.space,
+    );
+    await tester.pump();
+    expect(box(tester).tangents, hasLength(1), reason: 'in space too');
+    reset();
+    await tester.pump();
 
     for (final elsewhere in [
       const LaneRowAddress(row, 'scale'),

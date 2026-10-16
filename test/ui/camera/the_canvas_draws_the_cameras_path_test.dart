@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/session/camera.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart' show CameraSizeDraft;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 /// I-89 ④ — the camera's path on the canvas: drawn as the canvas's camera
 /// path settings say, whether or not the canvas draws the camera's frame
@@ -245,6 +246,62 @@ void main() {
     );
     await tester.pump();
     expect(path(), findsNothing);
+
+    await drain(tester);
+  });
+
+  // 🗣️F-368 (유저 2026-10-16): 「공간+시간일때 카메라에 서면 핸들
+  // 보여주듯이, 애초에 공간인 상태면 서면 중앙 십자가도 궤적 보여주도록.
+  // 공간이든 공간+시간이든 공간이라는 정보로서」 — F-368-Q1 A: 「중앙 궤적
+  // 선 + 핸들(두 모드 공통, 서 있을 때)」.
+  testWidgets('standing on the camera\'s row it draws the line the camera\'s '
+      'middle walks, in space as in space and time — from key\'s cross to '
+      'key\'s cross, in the handles\' dashes — and elsewhere none', (
+    tester,
+  ) async {
+    final (s, _) = panning();
+    addTearDown(s.dispose);
+    await pumpArea(tester, s);
+    List<Offset> line() => tester.widget<CameraPathOverlay>(path()).centreTrail;
+
+    void fromKeyToKey(String when) {
+      final crosses = [
+        for (final frame in keyFrames(tester)) (frame[0] + frame[2]) / 2,
+      ];
+      expect(line(), hasLength(2 * 5 + 1), reason: '$when: every half frame');
+      expectPoints([line().first, line().last], crosses);
+    }
+
+    fromKeyToKey('in space and time');
+    CameraPathSettings.settings.value = const CameraPathSettings(
+      show: CameraPathShow.space,
+    );
+    await tester.pump();
+    fromKeyToKey('in space');
+
+    final canvas = TestRecordingCanvas();
+    final picture = find.byKey(const ValueKey<String>('camera-path-overlay'));
+    tester
+        .widget<CustomPaint>(picture)
+        .painter!
+        .paint(canvas, tester.getSize(picture));
+    final dashes = [
+      for (final call in canvas.invocations)
+        if (call.invocation.memberName == #drawPath)
+          if (call.invocation.positionalArguments[1] case final Paint ink
+              when ink.color == AppColors.accent)
+            ink.strokeWidth,
+    ];
+    expect(dashes.length, greaterThan(1), reason: 'in dashes');
+    expect(dashes.toSet(), {CameraPathOverlay.centreTrailWidth});
+
+    final drawing = s.requireActiveCut.layers
+        .firstWhere((layer) => layer.kind != LayerKind.camera)
+        .id;
+    s.standOnRow(LayerRowAddress(drawing));
+    await tester.pump();
+    expect(path(), findsOneWidget, reason: '⛔전제: the path is drawn');
+    expect(line(), isEmpty, reason: 'as the export writes it');
 
     await drain(tester);
   });

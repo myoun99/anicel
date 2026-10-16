@@ -157,20 +157,47 @@ class CameraPath {
   /// walks, not as a frame's chords. ↩️The canvas drew one trail, through
   /// the centre; the conte drew its four straight from key to key.
   List<List<Offset>> cornerTrailsBetween(int from, int to) {
+    final frames = _halvesBetween(from, to);
+    if (frames.isEmpty) {
+      return const [];
+    }
+    return [
+      for (var corner = 0; corner < frames.first.length; corner += 1)
+        [for (final frame in frames) frame[corner]],
+    ];
+  }
+
+  /// The line the middle of the camera's frame walks over the frames [from]
+  /// to [to] — through every key's cross, bent as the path's handles bend
+  /// it — read off the frames its corners' trails are
+  /// ([cornerTrailsBetween]). None where those frames hold no travel, and
+  /// none on a point's path: its one trail is its middle's.
+  ///
+  /// 🗣️F-368 (유저 2026-10-17, F-368-Q1 A): 「중앙 궤적 선 + 핸들(두 모드
+  /// 공통, 서 있을 때)」 — what the canvas adds while one stands on the
+  /// camera, never the camera's trail: that stays its four corners'.
+  List<Offset> centreTrailBetween(int from, int to) {
+    final frames = _halvesBetween(from, to);
+    if (frames.isEmpty || cameraPlaceIsAPoint(frames.first)) {
+      return const [];
+    }
+    return [for (final frame in frames) cameraFrameCentre(frame)];
+  }
+
+  /// The camera's frame at every frame and at the half between, over the
+  /// frames [from] to [to] the path covers — none where those frames hold
+  /// no travel.
+  List<List<Offset>> _halvesBetween(int from, int to) {
     final first = math.max(from, firstFrame);
     final last = math.min(to, lastFrame);
     if (first >= last) {
       return const [];
     }
-    final frames = [
+    return [
       for (var half = 2 * first; half <= 2 * last; half++)
         _halves[half - 2 * firstFrame] ??= half.isEven
             ? frameAt(half ~/ 2)
             : _shownAt(half / 2),
-    ];
-    return [
-      for (var corner = 0; corner < frames.first.length; corner += 1)
-        [for (final frame in frames) frame[corner]],
     ];
   }
 }

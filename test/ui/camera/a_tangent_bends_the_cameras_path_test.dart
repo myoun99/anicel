@@ -17,9 +17,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 /// I-89 ④ 3b — a curved key's handle on the canvas, the mock's 5판: shown
-/// with the camera's path in time, its tangent carried by the hand bends
-/// the key through it — the other side its mirror (④-Q4 A: 「캔버스에서 끈
-/// 접선 — 반대쪽은 거울」), one undo where it is let go.
+/// with the camera's path, in space too (F-368 — ↩️in time alone), its
+/// tangent carried by the hand bends the key through it — the other side
+/// its mirror (④-Q4 A: 「캔버스에서 끈 접선 — 반대쪽은 거울」), one undo
+/// where it is let go.
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
@@ -332,18 +333,28 @@ void main() {
     await drain(tester);
   });
 
-  testWidgets('no handle in space alone, nor off the frames the path is '
-      'drawn for, nor where the path is not drawn', (tester) async {
+  testWidgets('a handle in space as in space and time, and none off the '
+      'frames the path is drawn for, nor where the path is not drawn', (
+    tester,
+  ) async {
     final (s, row) = turning();
     addTearDown(s.dispose);
     await pumpArea(tester, s);
     expect(tangents(tester), hasLength(1), reason: '⛔전제');
 
+    // 🗣️F-368 (유저 2026-10-16): 「공간+시간일때 카메라에 서면 핸들
+    // 보여주듯이 … 공간이든 공간+시간이든 공간이라는 정보로서」.
     CameraPathSettings.settings.value = const CameraPathSettings(
       show: CameraPathShow.space,
     );
     await tester.pump();
-    expect(tangents(tester), isEmpty, reason: 'in space alone');
+    expect(tangents(tester), hasLength(1), reason: 'in space alone too');
+
+    CameraPathSettings.settings.value = const CameraPathSettings(
+      show: CameraPathShow.off,
+    );
+    await tester.pump();
+    expect(tangents(tester), isEmpty, reason: 'the path shown off');
 
     CameraPathSettings.settings.value = const CameraPathSettings(
       range: CameraPathRange.aroundPlayhead,

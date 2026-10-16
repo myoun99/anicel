@@ -1464,10 +1464,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// The handles of a row's curved [position] keys on its path (I-89 ④):
-  /// drawn with it in time (유저 2026-10-10, 「공간 + 시간」 — the mock's
-  /// 5판 draws them there), over the frames it is drawn for, each tangent
-  /// carried bending its key — one undo where it is let go — where the
-  /// canvas shows the row's position (a camera's is on it already).
+  /// drawn wherever it is, in space and in space and time alike (🗣️F-368,
+  /// 유저 2026-10-16: 「공간이든 공간+시간이든 공간이라는 정보로서」 ·
+  /// F-368-Q1 A 「중앙 궤적 선 + 핸들(두 모드 공통, 서 있을 때)」 — ↩️in
+  /// time alone, 2026-10-10, where the mock's 5판 drew them), over the
+  /// frames it is drawn for, each tangent carried bending its key — one
+  /// undo where it is let go — where the canvas shows the row's position
+  /// (a camera's is on it already).
   List<RowBoxTangent> _pathTangents(
     EditorSessionManager session,
     LayerId rowId,
@@ -1475,7 +1478,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required String description,
   }) {
     final settings = CameraPathSettings.settings.value;
-    if (settings.show != CameraPathShow.spaceAndTime) {
+    if (settings.show == CameraPathShow.off) {
       return const [];
     }
     final (:lane, :axisOffset, space: shown) = position;
@@ -1523,8 +1526,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// that standing on the camera row or its position lane alone) — at the
   /// size the frame is shown at, around the playhead the cursor moves, and
   /// nowhere in a gap. Standing on the camera's row, where its box is
-  /// ([_cameraBox]), it is drawn in time as well; elsewhere as the export
-  /// writes it ([CameraPathOverlay.standing]).
+  /// ([_cameraBox]), it is drawn with the line its middle walks, and in
+  /// time where the settings say; elsewhere as the export writes it
+  /// ([CameraPathOverlay.standing]).
   Positioned _cameraPath(
     _HostFrame frame,
     CanvasViewport viewport,
