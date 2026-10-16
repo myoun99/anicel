@@ -31,11 +31,12 @@ typedef _SeatedLane = ({
 });
 
 /// How [_StoryboardRailRows._laneFrameSide] draws a carrier's lanes: each
-/// lane's [strip] at its extent — and, in an open graph, each lane as
-/// [lineOf] reads its row now, its handles written through [laneEdit].
+/// lane's [strip] at its extent — and, in an open graph, each lane as the
+/// lines [linesOf] reads its row as now (a projection row's, one a cut),
+/// their handles written through [laneEdit].
 typedef _LanesDrawn = ({
   PropertyLaneEditCallbacks? laneEdit,
-  LaneGraphLine Function(TimelineDisplayRow row) lineOf,
+  Iterable<LaneGraphLine> Function(TimelineDisplayRow row) linesOf,
   Widget Function(TimelineDisplayRow row, double height) strip,
 });
 
@@ -470,7 +471,8 @@ class _StoryboardRailRows {
   /// [track]'s conte row at [seat] as its lanes are drawn from (I-73 ④ⓔ):
   /// each cut's row at that seat, and every lane of it — each groups'
   /// members whatever the twirls, so the row for a lane finds it in every
-  /// cut.
+  /// cut — valued in that cut, which a header graph draws its line of
+  /// (I-89 ①).
   _ProjectionLanes _conteProjection(Track track, int seat) {
     final keyName = _StoryboardRowsAndLabels.conteLabelKeyName(seat);
     return (
@@ -486,8 +488,8 @@ class _StoryboardRailRows {
           for (final effect in row.effects)
             laneGroupKey(row.id, effectGroupLaneId(effect.id)),
         },
-        valueSourceAt: null,
-        poseCentre: null,
+        valueSourceAt: (frame) => (layer: row, frame: frame),
+        poseCentre: cut.canvasSize,
       ),
     );
   }
@@ -975,7 +977,7 @@ class _StoryboardRailRows {
       // keyed there (F-102).
       frameCursor: _state.widget.playheadFrame,
       onSelectFrame: _state.widget.onSeekGlobalFrame,
-      graphVerbs: _state.widget.laneGraphVerbs,
+      graphVerbs: _laneGraphVerbs,
     );
     return _state._rows.selectableLanes(layer.id, lanes, labels);
   }
@@ -1097,6 +1099,8 @@ class _StoryboardRailRows {
       onSelectFrame: stood == null || seek == null
           ? null
           : (frame) => seek(stood.cut.id, frame),
+      // I-89 ①: by the row's own id, which this rail keys its graphs by.
+      graphVerbs: _laneGraphVerbs,
     );
     return _state._rows.selectableLanes(projection.rowId, labels.lanes, rows);
   }
@@ -1264,7 +1268,7 @@ class _StoryboardRailRows {
             active: true,
             frameCursor: _state.widget.playheadFrame,
             onSelectFrame: _state.widget.onSeekGlobalFrame,
-            graphVerbs: _state.widget.laneGraphVerbs,
+            graphVerbs: _laneGraphVerbs,
           ),
         ),
       ],
@@ -2085,8 +2089,111 @@ class _StoryboardRailRows {
   );
   _LaneSeating? _seating;
 
-  /// What [_laneSeating] was read for goes with the build it was read in.
-  void forgetLaneSeating() => _seating = null;
+  /// What [_laneSeating] and [_laneGraphs] were read for goes with the
+  /// build they were read in.
+  void forgetLaneSeating() {
+    _seating = null;
+    _graphs = null;
+  }
+
+  /// THE HEADER GRAPHS AS THIS RAIL KEYS ITS ROWS (I-89 ①): the session's
+  /// own ([StoryboardPanel.laneGraphs]), and a PROJECTION row's lanes by
+  /// the row's own id as well — what the layer it has in hand wears
+  /// ([_projectionRowsInHand]). Read once a build ([forgetLaneSeating]).
+  ///
+  /// The session keys a graph and a pin by a cut's layer, and turns the
+  /// rows that wear one head as one (`SessionRowButtonPresses._everyUseOf`,
+  /// `RailView.followHeads`), so the layer in hand speaks for the row — as
+  /// it does for the groups the row twirls open. But this rail stands on
+  /// the row by its own address, so it seats, draws and presses the row's
+  /// graphs by that: the key is changed ONCE, at the border — here, and
+  /// back again for a press ([_laneGraphVerbs]).
+  LaneGraphsView get _laneGraphs => _graphs ??= _graphsOnTheRows();
+  LaneGraphsView? _graphs;
+
+  /// [_laneGraphs], read: every key the session holds, and a projection
+  /// row's own beside the one its layer in hand is held by.
+  LaneGraphsView _graphsOnTheRows() {
+    final graphs = _state.widget.laneGraphs;
+    if (graphs.open.isEmpty && graphs.pinned.isEmpty) {
+      return graphs;
+    }
+    final rowOf = {
+      for (final MapEntry(key: row, value: layer)
+          in _projectionRowsInHand().entries)
+        layer: row,
+    };
+    String? onTheRow(String key) => switch (parseLaneGroupKey(key)) {
+      (:final layerId, :final laneId) when rowOf.containsKey(layerId) =>
+        laneGroupKey(rowOf[layerId]!, laneId),
+      _ => null,
+    };
+    return graphs.copyWith(
+      open: {
+        ...graphs.open,
+        for (final MapEntry(:key, :value) in graphs.open.entries)
+          ?onTheRow(key): value,
+      },
+      pinned: {
+        ...graphs.pinned,
+        for (final key in graphs.pinned) ?onTheRow(key),
+      },
+    );
+  }
+
+  /// Each projection row of this rail — every track's camera row, and its
+  /// conte row at every seat the rail shows — by its own id, to the layer
+  /// it has in hand ([_inHand]); none for a row no cut holds a layer for.
+  Map<LayerId, LayerId> _projectionRowsInHand() => {
+    for (final track in _state.widget.project.tracks) ...{
+      if (_inHand(track, LayerRowAddress(trackCameraRowId(track.id)))
+          case final inHand?)
+        trackCameraRowId(track.id): inHand.layer.id,
+      for (final seat in _shownConteSeats(track))
+        if (_inHand(track, _conteRow(track, seat)) case final inHand?)
+          trackConteRowId(track.id, seat: seat): inHand.layer.id,
+    },
+  };
+
+  /// THE HEADER GRAPHS' VERBS AS THIS RAIL HANDS THEM (I-89 ①): the
+  /// session's ([StoryboardPanel.laneGraphVerbs]), a press on a projection
+  /// row's lane by the row's own id handed on as that lane of the layer the
+  /// row has in hand — [_laneGraphs] read the other way, the session
+  /// turning the row's head family as one. Asked at the press, of the rows
+  /// as they stand then: a row kept from an earlier build keeps these.
+  LaneGraphVerbs? get _laneGraphVerbs {
+    final verbs = _state.widget.laneGraphVerbs;
+    if (verbs == null) {
+      return null;
+    }
+    String held(String key) => _laneKeyInHand(key) ?? key;
+    return (
+      toggle: (key) => verbs.toggle(held(key)),
+      togglePin: (key) => verbs.togglePin(held(key)),
+      plot: (key, mode) => verbs.plot(held(key), mode),
+      resize: (key, extent) => verbs.resize(held(key), extent),
+      enlarge: (key) => verbs.enlarge(held(key)),
+    );
+  }
+
+  /// The lane [key] names on a projection row, by the row's own id, as the
+  /// session holds it: that lane of the layer the row has in hand — or
+  /// null for a key of any other row, and for a row no cut holds a layer
+  /// for.
+  String? _laneKeyInHand(String key) {
+    final lane = parseLaneGroupKey(key);
+    final trackId = lane == null
+        ? null
+        : trackIdOfProjectionRow(lane.layerId);
+    final track = trackId == null ? null : _trackNamed(trackId);
+    if (lane == null || track == null) {
+      return null;
+    }
+    return switch (_inHand(track, LayerRowAddress(lane.layerId))) {
+      final inHand? => laneGroupKey(inHand.layer.id, lane.laneId),
+      null => null,
+    };
+  }
 
   /// Every lane of every track's table ([_trackGroupSlots]) seated for the
   /// row selection [selected] ([seatLaneGraphs]) and laid along a view as
@@ -2098,7 +2205,7 @@ class _StoryboardRailRows {
     ];
     final rows = seatLaneGraphs(
       lanes,
-      _state.widget.laneGraphs,
+      _laneGraphs,
       selection: selected.toSet(),
     );
     return (
@@ -2148,7 +2255,7 @@ class _StoryboardRailRows {
     }
     final rows = seatLaneGraphs(
       lanes,
-      _state.widget.laneGraphs,
+      _laneGraphs,
       selection: selected.toSet(),
     );
     _picked = (of: lanes, by: selected, rows: rows);
@@ -2164,10 +2271,98 @@ class _StoryboardRailRows {
   })?
   _picked;
 
-  /// The lane the pin [key] names on this rail's own rows (I-89 ①) — an S
-  /// row's, a V row's on its lane carrier — on the track's axis, as a drag
-  /// in flight shows it ([laneGraphLineAmong]); null for a lane of a cut's
-  /// layer, which this rail draws a cut at a time.
+  /// The lines the pin [key] names on this rail's own rows (I-89 ①), as a
+  /// drag in flight shows them: a projection row's lane, by the row's own
+  /// id, a cut at a time ([_projectionLines]) — or the one lane of an S
+  /// row's, or of a V row's on its lane carrier ([_laneGraphLineOf]).
+  /// None for a lane that draws no line, or a row the rail has not.
+  Iterable<LaneGraphLine> _laneGraphLinesOf(String key) {
+    final lane = parseLaneGroupKey(key);
+    final trackId = lane == null
+        ? null
+        : trackIdOfProjectionRow(lane.layerId);
+    final track = trackId == null ? null : _trackNamed(trackId);
+    final projection = lane == null || track == null
+        ? null
+        : _projectionOf(track, lane.layerId);
+    if (lane == null || track == null || projection == null) {
+      return [?_laneGraphLineOf(key)];
+    }
+    return [
+      for (final line in _projectionLines(
+        projection,
+        _reachesNow(track),
+        lane.laneId,
+      ))
+        if (line.lane.curve != null) line,
+    ];
+  }
+
+  /// The projection row [rowId] of [track] as its lanes are drawn from —
+  /// the camera row's, or the conte row's at its seat.
+  _ProjectionLanes? _projectionOf(Track track, LayerId rowId) {
+    if (trackIdOfCameraRow(rowId) != null) {
+      return _cameraProjection(track);
+    }
+    return switch (trackConteRowOf(rowId)) {
+      (:final seat, trackId: _) => _conteProjection(track, seat),
+      null => null,
+    };
+  }
+
+  /// [projection]'s lane [laneId] a cut at a time over [reaches] (I-89 ①):
+  /// each cut's own lane of the layer the row shows there, valued in that
+  /// cut, drawn over the cut's own frames on the track — 「컷 클램핑만
+  /// 되도록」 (유저 2026-10-08), the row's strip holding each cut's keys so.
+  List<LaneGraphLine> _projectionLines(
+    _ProjectionLanes projection,
+    List<CameraRowReach> reaches,
+    String laneId,
+  ) => [
+    for (final reach in reaches)
+      if (projection.layerOf(reach.entry.cut) case final layer?)
+        for (final lane in projection.lanesOf(reach.entry.cut, layer))
+          if (lane.laneId == laneId)
+            (
+              layer: layer,
+              lane: lane,
+              reach: (start: reach.mediaStart, end: reach.mediaEnd),
+            ),
+  ];
+
+  /// [track]'s cuts' reaches as a drag in flight lays them — their places
+  /// and the のりしろ its transition row asks ([_onTheReaches] hears the
+  /// same, row by row).
+  List<CameraRowReach> _reachesNow(Track track) {
+    final index = _state.widget.project.tracks.indexOf(track);
+    final preview = _state.widget.dragPreview?.value;
+    final strip = _previewedStripFor(index, preview, [
+      for (final entry in buildStoryboardTimelineLayout(_state.widget.project))
+        if (entry.trackIndex == index) entry,
+    ]);
+    return _reachesOn(
+      strip.entries,
+      timelineDragPreviewGlobalLayerFor(preview, track.transitionLayer.id) ??
+          strip.transitionRow,
+    );
+  }
+
+  /// [entries]' cuts — one track's — with their reaches under the のりしろ
+  /// [transitionRow] asks of each ([cameraRowReachesOf]).
+  List<CameraRowReach> _reachesOn(
+    List<StoryboardTimelineLayoutEntry> entries,
+    Layer transitionRow,
+  ) => cameraRowReachesOf(
+    entries,
+    transitionRowSpans(
+      transitionRow,
+      _state.widget.project.cameraInstructions,
+    ),
+  );
+
+  /// The lane the pin [key] names on an S row or a V row's lane carrier —
+  /// on the track's axis, as a drag in flight shows it
+  /// ([laneGraphLineAmong]); null for any other row's.
   LaneGraphLine? _laneGraphLineOf(String key) {
     final preview = _state.widget.dragPreview?.value;
     for (final track in _state.widget.project.tracks) {
@@ -2205,14 +2400,15 @@ class _StoryboardRailRows {
   /// as ONE graph across their unit — the timeline's frame side
   /// ([laneGraphFrameSide]) on this rail's frame axis, each lane drawn as
   /// [drawn] reads it now and the pins this rail's rows hold as guests
-  /// ([_laneGraphLineOf]). While a graph is open among them it follows the
-  /// row selection, which picks what it draws ([_pickedRows]).
+  /// ([_laneGraphLinesOf]) — keyed as this rail keys its rows
+  /// ([_laneGraphs]). While a graph is open among them it follows the row
+  /// selection, which picks what it draws ([_pickedRows]).
   List<Widget> _laneFrameSide(
     LayerId carrierId,
     List<PropertyLaneRow> lanes,
     _LanesDrawn drawn,
   ) {
-    final (:laneEdit, :lineOf, :strip) = drawn;
+    final (:laneEdit, :linesOf, :strip) = drawn;
     final seating = _laneSeating;
     final first = lanes.isEmpty
         ? null
@@ -2232,7 +2428,7 @@ class _StoryboardRailRows {
       ),
       frameAxisController: _state._horizontalController,
       keyPrefix: 'storyboard',
-      verbs: _state.widget.laneGraphVerbs,
+      verbs: _laneGraphVerbs,
       laneEdit: laneEdit,
     );
     List<Widget> laid(List<TimelineDisplayRow> rows) => laneGraphFrameSide(
@@ -2245,9 +2441,9 @@ class _StoryboardRailRows {
       lines: (seat, seated) => laneGraphLines(seat, seated, (
         standing: _state.widget.currentRowHooks?.currentRow,
         moves: _state.widget.dragPreview,
-        linesOf: (row) => [lineOf(row)],
-        pinned: _state.widget.laneGraphs.pinned,
-        guestsOf: (key) => [?_laneGraphLineOf(key)],
+        linesOf: linesOf,
+        pinned: _laneGraphs.pinned,
+        guestsOf: _laneGraphLinesOf,
       )),
       cells: (row) => strip(row, timelineDisplayRowExtent(row, metrics)),
     );
@@ -2587,33 +2783,32 @@ class _StoryboardRailRows {
             track.transitionLayer.id,
           ) ??
           strip.transitionRow,
-      builder: (context, transitionRow) => build(
-        cameraRowReachesOf(
-          strip.entries,
-          transitionRowSpans(
-            transitionRow,
-            _state.widget.project.cameraInstructions,
-          ),
-        ),
-      ),
+      builder: (context, transitionRow) =>
+          build(_reachesOn(strip.entries, transitionRow)),
     );
   }
 
   /// [track]'s camera row as its lanes are drawn from (I-73 ④ⓔ): each cut's
-  /// camera, and the camera's lanes ([cameraPropertyLanes]).
+  /// camera, and the camera's lanes ([cameraPropertyLanes]) — valued on the
+  /// cut's canvas, which a header graph draws its line of (I-89 ①).
   _ProjectionLanes _cameraProjection(Track track) => (
     rowId: trackCameraRowId(track.id),
     keyName: 'camera',
     markPrefix: 'storyboard-camera',
     layerOf: (cut) => cut.layers.cameraLayer,
-    lanesOf: (cut, camera) =>
-        cameraPropertyLanes(camera, cut.camera.track, canvasSize: null),
+    lanesOf: (cut, camera) => cameraPropertyLanes(
+      camera,
+      cut.camera.track,
+      canvasSize: cut.canvasSize,
+    ),
   );
 
   /// A projection row's lane strips (I-73 ④ⓔ), row for row with their
   /// labels — one a lane of [lanes] — over the cuts' own frames as [strip]
   /// lays them: a lane is held to each cut as its row is, and swept through
-  /// the timeline's lane selection ([_laneGestureCallbacksFor]).
+  /// the timeline's lane selection ([_laneGestureCallbacksFor]). And an open
+  /// header graph over them as the table lays it ([_laneFrameSide]), each
+  /// lane a line a cut, held to the cut as its keys are (I-89 ①).
   List<Widget> _projectionLaneStrips(
     Track track,
     _ProjectionLanes projection,
@@ -2624,28 +2819,29 @@ class _StoryboardRailRows {
       track,
       projection: projection.rowId,
     );
-    // Each lane as the table lays it: thin while an enlarged graph folds it.
-    double extentOf(PropertyLaneRow lane) =>
-        _seatedLane(LaneRowAddress(projection.rowId, lane.laneId))?.extent ??
-        _state._rowHeights.lane;
-    return [
-      for (final lane in lanes)
-        _StoryboardProjectionLaneRow(
-          trackId: track.id,
-          projection: projection,
-          laneId: lane.laneId,
-          reaches: strip.reaches,
-          width: strip.width,
-          height: extentOf(lane),
-          timelineScale: strip.scale,
-          frameGeometry: _state._frameGeometry,
-          windowBucket: _state._horizontalWindowBucket,
-          viewportWidth: _state._stripViewportWidth,
-          onRowFramePress: _state.widget.onRowFramePress,
-          onCameraCutPress: _state.widget.onCameraCutPress,
-          laneRange: laneRange,
-        ),
-    ];
+    return _laneFrameSide(projection.rowId, lanes, (
+      // The edits its labels key by: the cut stood in's (I-73 ④ⓔ). ⚠️A
+      // handle on the line of a cut not stood in writes nothing — what it
+      // should do is I-89-Q23's to say.
+      laneEdit: _state.widget.cutLaneEdit,
+      linesOf: (row) =>
+          _projectionLines(projection, strip.reaches, row.lane!.laneId),
+      strip: (row, height) => _StoryboardProjectionLaneRow(
+        trackId: track.id,
+        projection: projection,
+        laneId: row.lane!.laneId,
+        reaches: strip.reaches,
+        width: strip.width,
+        height: height,
+        timelineScale: strip.scale,
+        frameGeometry: _state._frameGeometry,
+        windowBucket: _state._horizontalWindowBucket,
+        viewportWidth: _state._stripViewportWidth,
+        onRowFramePress: _state.widget.onRowFramePress,
+        onCameraCutPress: _state.widget.onCameraCutPress,
+        laneRange: laneRange,
+      ),
+    ));
   }
 
   /// The CONTE rows' strips — the conte's, and an attach row's at each seat
@@ -2787,14 +2983,16 @@ class _StoryboardRailRows {
     // lane list to keep them in lockstep.
     return _laneFrameSide(carrier.id, _trackEffectLanes(track), (
       laneEdit: laneEdit,
-      lineOf: (row) => (
-        layer: carrier,
-        lane: shownAs(
-          row.lane!,
-          timelineDragPreviewTrackEffectsFor(preview?.value, track.id),
+      linesOf: (row) => [
+        (
+          layer: carrier,
+          lane: shownAs(
+            row.lane!,
+            timelineDragPreviewTrackEffectsFor(preview?.value, track.id),
+          ),
+          reach: null,
         ),
-        reach: null,
-      ),
+      ],
       // A key-move drag previews on the scoped channel. Nothing previewed
       // here before 2026-08-08 because nothing could MOVE here: the
       // lane-move path looked at a track's transform and never at its
@@ -2854,19 +3052,21 @@ class _StoryboardRailRows {
     final preview = _state.widget.dragPreview;
     return _laneFrameSide(layer.id, _seLanes(track, slot), (
       laneEdit: _state.widget.layerLaneEdit,
-      lineOf: (row) {
+      linesOf: (row) {
         final shown =
             timelineDragPreviewGlobalLayerFor(preview?.value, row.layer.id) ??
             row.layer;
-        return (
-          layer: shown,
-          lane: previewedLaneRow(
-            row: row,
-            previewLayer: shown,
-            lanesForLayer: (shown) => _seLanesOf(track, shown),
+        return [
+          (
+            layer: shown,
+            lane: previewedLaneRow(
+              row: row,
+              previewLayer: shown,
+              lanesForLayer: (shown) => _seLanesOf(track, shown),
+            ),
+            reach: null,
           ),
-          reach: null,
-        );
+        ];
       },
       strip: (row, height) => _StoryboardLaneStripRow(
         rowKey:

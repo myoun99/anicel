@@ -38,7 +38,7 @@ import '../models/track_camera_row.dart';
 import '../models/track_id.dart';
 import '../models/track_conte_row.dart';
 import '../models/track_projection_row.dart'
-    show projectionRowIdOf, projectionRowInHandOn;
+    show projectionRowIdOf, projectionRowInHandOn, trackIdOfProjectionRow;
 import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart' show TransformTrack;
 import '../models/track_transitions.dart' show transitionRowSpans;
@@ -67,7 +67,7 @@ import 'timeline/layer_rail_window.dart';
 import 'timeline/lane_graph.dart'
     show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
 import 'timeline/lane_graph_seats.dart'
-    show LaneGraphLine, laneGraphLineAmong, seatLaneGraphs;
+    show LaneGraphLine, laneGraphHeadedBy, laneGraphLineAmong, seatLaneGraphs;
 import 'timeline/timeline_lane_graph.dart'
     show LaneGraphGrid, laneGraphFrameSide, laneGraphLines;
 import 'timeline/timeline_section_runs.dart'
@@ -3258,6 +3258,9 @@ class _StoryboardRailHead extends KeptPiece {
     this.hasGroupFold = false,
     this.groupFoldExpanded = true,
     this.onToggleGroupFold,
+    this.laneGraphVerbs,
+    this.headsGraph = false,
+    this.graphOpen = false,
   });
 
   /// The row the head stands for — a conte row's seat
@@ -3320,6 +3323,14 @@ class _StoryboardRailHead extends KeptPiece {
   final bool groupFoldExpanded;
   final ValueChanged<LayerId>? onToggleGroupFold;
 
+  /// The header graphs' verbs (I-89 ①) — the timeline's, as this rail
+  /// hands them — and whether the row heads a graph and it stands open: the
+  /// camera row, the row being its own Transform group (㉙), as on the
+  /// timeline. Its button turns the graph of the layer the head wears.
+  final LaneGraphVerbs? laneGraphVerbs;
+  final bool headsGraph;
+  final bool graphOpen;
+
   /// What the head shows: its layer's FACE — never which layer, which a
   /// crossing changes — and what the session answers for the row. The eye
   /// is not here: it rides past the keep ([RailEyes]).
@@ -3353,6 +3364,9 @@ class _StoryboardRailHead extends KeptPiece {
     hasGroupFold,
     groupFoldExpanded,
     onToggleGroupFold != null,
+    laneGraphVerbs != null,
+    headsGraph,
+    graphOpen,
   );
 
   @override
@@ -3405,6 +3419,9 @@ class _StoryboardRailHead extends KeptPiece {
       onToggleGroupFold: toggleGroupFold == null
           ? null
           : (_) => toggleGroupFold(rowId),
+      laneGraphVerbs: laneGraphVerbs,
+      headsGraph: headsGraph,
+      graphOpen: graphOpen,
     );
   }
 }

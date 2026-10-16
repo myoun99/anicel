@@ -1,0 +1,471 @@
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_camera_row.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart';
+import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
+    show LaneGraphReach;
+import 'package:anicel/src/ui/timeline/lane_graph_toggle.dart'
+    show LaneGraphToggle;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show PropertyLaneRow, laneGroupKey;
+import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
+    show LaneGraphPicture, TimelineLaneGraph, TimelineLaneGraphPainter;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/named_finders.dart';
+
+/// **I-89 ① — a projection row's header graph draws a line a cut.**
+///
+/// 🗣️유저 2026-10-13: everything the timeline panel has, the conte panel
+/// has, by the same law and the same code. The camera row and the conte
+/// row show a cut's layer in every cut (I-73 ④), so the graph over their
+/// lanes draws each cut's lane of that layer — valued in the cut, over the
+/// cut's own frames on the track (「컷 클램핑만 되도록」, 유저 2026-10-08).
+/// The session keys a graph by the layer the row has in hand and turns the
+/// row's head family as one; the rail keys it by the row's own id, so its
+/// buttons, pins and tools turn the camera in hand's.
+///
+/// Cuts a [0, 24) and b [24, 48), four frames of gap, then c [52, 64). a's
+/// camera keys 0 and 12, b's 2 and 6 — each one's Rotation eased out of its
+/// first; c's none. An S row beside them, twirled to its Transform group.
+void main() {
+  const trackId = TrackId('t1');
+  const aCam = LayerId('a-cam');
+  const s1 = LayerId('s1');
+  final transform = transformGroupHeaderLane.laneId;
+  final cameraRow = trackCameraRowId(trackId);
+  final inHand = laneGroupKey(aCam, transform);
+  final cameraGraph = laneGroupKey(cameraRow, transform);
+
+  /// A camera keyed at [frames], its Rotation eased out of the first.
+  CutCamera keyed(List<int> frames) {
+    final track = CutCamera(
+      keyframes: {
+        for (final frame in frames)
+          frame: CameraPose(center: CanvasPoint(x: 320.0 + frame, y: 180)),
+      },
+    ).track;
+    var rotation = PropertyTrack<double>();
+    for (final (index, frame) in frames.indexed) {
+      rotation = rotation.withKey(
+        frame,
+        3.0 * frame,
+        outgoing: index == 0 ? const EaseSide() : null,
+      );
+    }
+    return CutCamera.fromTrack(track.copyWith(rotation: rotation));
+  }
+
+  Cut cameraCut(String id, int duration, List<int> keys, {int gap = 0}) =>
+      Cut(
+        id: CutId(id),
+        name: id,
+        duration: duration,
+        leadingGapFrames: gap,
+        canvasSize: const CanvasSize(width: 640, height: 360),
+        camera: keyed(keys),
+        layers: [
+          Layer(id: LayerId('$id-cel'), name: 'A', frames: const []),
+          Layer(
+            id: LayerId('$id-cam'),
+            name: 'Camera',
+            kind: LayerKind.camera,
+            frames: const [],
+          ),
+        ],
+      );
+
+  Project cameras() => Project(
+    id: const ProjectId('camera-graphs'),
+    name: 'Camera graphs',
+    createdAt: DateTime.utc(2026, 10, 16),
+    tracks: [
+      Track(
+        id: trackId,
+        name: 'V1',
+        cuts: [
+          cameraCut('a', 24, [0, 12]),
+          cameraCut('b', 24, [2, 6]),
+          cameraCut('c', 12, const [], gap: 4),
+        ],
+        seLayers: [
+          Layer(
+            id: s1,
+            name: 'S1',
+            kind: LayerKind.se,
+            frames: [
+              Frame(id: const FrameId('s1-f'), duration: 8, strokes: const []),
+            ],
+            timeline: {
+              0: const TimelineExposure.drawing(FrameId('s1-f'), length: 8),
+            },
+            lanesExpanded: true,
+            expandedLaneGroups: {transform},
+          ),
+        ],
+      ),
+    ],
+  );
+
+  /// The host over a session holding [project], wired as the workspace
+  /// wires it — the twirls, and the header graphs: the timeline's state,
+  /// turned by the timeline's verbs — with [twirl]'s lanes open.
+  Future<EditorSessionManager> pumpHost(
+    WidgetTester tester,
+    Project project, {
+    required String twirl,
+  }) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final session = EditorSessionManager(initialProject: project);
+    addTearDown(session.dispose);
+    final rail = session.railView;
+    final presses = SessionRowButtonPresses(session);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: Listenable.merge([
+              session,
+              rail.expandedLaneLayerIds,
+              rail.expandedLaneGroupKeys,
+              rail.laneGraphs,
+            ]),
+            builder: (context, _) => StoryboardTabHost(
+              session: session,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnails: null,
+              expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
+              onToggleLayerLanes: presses.toggleLanes,
+              expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
+              onToggleLaneGroupKey: presses.toggleLaneGroup,
+              laneGraphs: rail.laneGraphs.value,
+              laneGraphVerbs: presses.laneGraphVerbs,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.named('storyboard-lane-toggle-$twirl'));
+    await tester.pumpAndSettle();
+    return session;
+  }
+
+  Finder graphOf(String key) =>
+      find.byKey(ValueKey<String>('storyboard-lane-graph-$key'));
+
+  /// [key]'s graph's lines of [laneId] — its own, or its [guests] — each
+  /// by its layer and where it reaches.
+  List<(String, LaneGraphReach?)> linesOf(
+    WidgetTester tester,
+    String key,
+    String laneId, {
+    bool guests = false,
+  }) {
+    final lines = tester.widget<TimelineLaneGraph>(graphOf(key)).lines;
+    return [
+      for (final line in guests ? lines.guests() : lines.own())
+        if (line.lane.laneId == laneId) (line.layer.id.value, line.reach),
+    ];
+  }
+
+  /// The lanes of [laneId] [key]'s graph draws as its own, a line each.
+  List<PropertyLaneRow> lanesOf(
+    WidgetTester tester,
+    String key,
+    String laneId,
+  ) => [
+    for (final line
+        in tester.widget<TimelineLaneGraph>(graphOf(key)).lines.own())
+      if (line.lane.laneId == laneId) line.lane,
+  ];
+
+  bool lit(WidgetTester tester, String name) => tester
+      .widget<LaneGraphToggle>(
+        find.ancestor(
+          of: find.named(name),
+          matching: find.byType(LaneGraphToggle),
+        ),
+      )
+      .on;
+
+  LaneGraphsView graphs(EditorSessionManager session) =>
+      session.railView.laneGraphs.value;
+
+  testWidgets('the timeline\'s verb on the camera in hand opens the camera '
+      'row\'s graph over its lanes — a line a cut, each over the cut\'s own '
+      'frames', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    expect(graphOf(cameraGraph), findsNothing);
+
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+
+    expect(graphOf(cameraGraph), findsOneWidget);
+    expect(linesOf(tester, cameraGraph, 'position'), [
+      ('a-cam', (start: 0, end: 24)),
+      ('b-cam', (start: 24, end: 48)),
+      ('c-cam', (start: 52, end: 64)),
+    ]);
+    // Valued in its cut: each line the curve its own camera's keys draw —
+    // at the cut's own 12, a's last key, b held at its last, c at rest.
+    final rotations = [
+      for (final lane in lanesOf(tester, cameraGraph, 'rotation')) lane.curve,
+    ];
+    expect(rotations, everyElement(isNotNull));
+    expect([for (final curve in rotations) curve!.at(12).single], [36, 18, 0]);
+  });
+
+  testWidgets('the camera row\'s head wears the timeline camera row\'s graph '
+      'button: it turns the graph of the camera in hand, and reads it so', (
+    tester,
+  ) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    const button = 'storyboard-layer-graph-a-cam';
+    expect(lit(tester, button), isFalse);
+
+    await tester.tap(find.named(button));
+    await tester.pumpAndSettle();
+    expect(graphs(session).open.keys, contains(inHand));
+    expect(graphOf(cameraGraph), findsOneWidget);
+    expect(lit(tester, button), isTrue);
+
+    await tester.tap(find.named(button));
+    await tester.pumpAndSettle();
+    expect(graphs(session).open.keys, isNot(contains(inHand)));
+    expect(graphOf(cameraGraph), findsNothing);
+  });
+
+  testWidgets('a camera lane\'s pin is that lane of the camera in hand: every '
+      'open graph of another row draws it as a guest, a line a cut', (
+    tester,
+  ) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    final seGraph = laneGroupKey(s1, transform);
+    SessionRowButtonPresses(session).toggleLaneGraph(seGraph);
+    await tester.pumpAndSettle();
+    final pin = 'storyboard-lane-pin-${cameraRow.value}-position';
+    expect(find.named(pin), findsOneWidget);
+    expect(lit(tester, pin), isFalse);
+
+    await tester.tap(find.named(pin));
+    await tester.pumpAndSettle();
+
+    expect(graphs(session).pinned, contains(laneGroupKey(aCam, 'position')));
+    expect(lit(tester, pin), isTrue);
+    expect(linesOf(tester, seGraph, 'position', guests: true), [
+      ('a-cam', (start: 0, end: 24)),
+      ('b-cam', (start: 24, end: 48)),
+      ('c-cam', (start: 52, end: 64)),
+    ]);
+  });
+
+  testWidgets('its tools turn the graph of the camera in hand — the plot '
+      'pill, and the enlarging', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(
+        ValueKey<String>(
+          'storyboard-lane-graph-plot-${LaneGraphMode.speed.name}-'
+          '$cameraGraph',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(graphs(session).open[inHand]!.mode, LaneGraphMode.speed);
+
+    await tester.tap(
+      find.byKey(
+        ValueKey<String>('storyboard-lane-graph-enlarge-$cameraGraph'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(graphs(session).open[inHand]!.enlarged, isTrue);
+  });
+
+  testWidgets('what it draws follows the row selection of the row\'s own '
+      'lanes — a line a cut of each lane picked', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+    expect(lanesOf(tester, cameraGraph, 'scale'), hasLength(3));
+
+    session.rowSelection.value = [LaneRowAddress(cameraRow, 'position')];
+    await tester.pumpAndSettle();
+
+    expect(graphOf(cameraGraph), findsOneWidget);
+    expect(lanesOf(tester, cameraGraph, 'position'), hasLength(3));
+    expect(lanesOf(tester, cameraGraph, 'scale'), isEmpty);
+  });
+
+  testWidgets('a handle on the line of the cut stood in writes that cut\'s '
+      'key, through the edits its lane labels key by', (tester) async {
+    final session = await pumpHost(tester, cameras(), twirl: 'a-cam');
+    SessionRowButtonPresses(session).toggleLaneGraph(inHand);
+    await tester.pumpAndSettle();
+    expect(session.activeCutId, const CutId('a'), reason: '⛔전제');
+    final paint = find.descendant(
+      of: find.descendant(
+        of: graphOf(cameraGraph),
+        matching: find.byType(LaneGraphPicture),
+      ),
+      matching: find.byType(CustomPaint),
+    );
+    final painter =
+        tester.widget<CustomPaint>(paint).painter! as TimelineLaneGraphPainter;
+    final box = tester.renderObject<RenderBox>(paint);
+    final handle = painter
+        .handlesIn(box.size)
+        .singleWhere(
+          (handle) =>
+              handle.line.layer.id == aCam &&
+              handle.line.lane.laneId == 'rotation',
+        );
+    expect((handle.frame, handle.leaving), (0, true), reason: '⛔전제');
+
+    final gesture = await tester.startGesture(
+      box.localToGlobal(handle.at),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await gesture.moveBy(const Offset(20, -20));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final cuts = session.repository.requireProject().tracks.single.cuts;
+    expect(
+      cuts.first.camera.track.rotation.keyAt(0)!.outgoing,
+      isNot(const EaseSide()),
+    );
+    expect(
+      cuts[1].camera.track.rotation.keyAt(2)!.outgoing,
+      const EaseSide(),
+      reason: 'b\'s, untouched',
+    );
+  });
+
+  group('the conte row', () {
+    final conteRow = trackConteRowId(trackId);
+    final conteGraph = laneGroupKey(conteRow, transform);
+
+    Layer conte(String cut, List<int> keys) {
+      var position = PropertyTrack<CanvasPoint>.empty();
+      for (final frame in keys) {
+        position = position.withKey(frame, CanvasPoint(x: 10.0 * frame, y: 0));
+      }
+      return Layer(
+        id: LayerId('$cut-conte'),
+        name: 'Conte',
+        kind: LayerKind.storyboard,
+        transformTrack: TransformTrack.empty().copyWith(position: position),
+        frames: [
+          Frame(id: FrameId('$cut-panel'), duration: 12, strokes: const []),
+        ],
+        timeline: {
+          0: TimelineExposure.drawing(FrameId('$cut-panel'), length: 12),
+        },
+      );
+    }
+
+    Cut conteCut(String id, List<Layer> layers, {int gap = 0}) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      leadingGapFrames: gap,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: [
+        Layer(id: LayerId('$id-cel'), name: 'A', frames: const []),
+        ...layers,
+      ],
+    );
+
+    /// Cuts a [0, 12) and b [12, 24), each with a conte — a's Position
+    /// keyed at its own 2 and 8, b's at 3 — then c [28, 40), which has none.
+    Project contes() => Project(
+      id: const ProjectId('conte-graphs'),
+      name: 'Conte graphs',
+      createdAt: DateTime.utc(2026, 10, 16),
+      tracks: [
+        Track(
+          id: trackId,
+          name: 'V1',
+          cuts: [
+            conteCut('a', [
+              conte('a', [2, 8]),
+            ]),
+            conteCut('b', [
+              conte('b', [3]),
+            ]),
+            conteCut('c', const [], gap: 4),
+          ],
+        ),
+      ],
+    );
+
+    testWidgets('its Transform header\'s graph button turns the graph of the '
+        'conte in hand, drawn a line a cut that holds one, valued there', (
+      tester,
+    ) async {
+      final session = await pumpHost(tester, contes(), twirl: 'a-conte');
+      final button =
+          'storyboard-lane-group-graph-${conteRow.value}-$transform';
+      expect(find.named(button), findsOneWidget);
+
+      await tester.tap(find.named(button));
+      await tester.pumpAndSettle();
+
+      expect(
+        graphs(session).open.keys,
+        contains(laneGroupKey(const LayerId('a-conte'), transform)),
+      );
+      expect(lit(tester, button), isTrue);
+      expect(linesOf(tester, conteGraph, 'position'), [
+        ('a-conte', (start: 0, end: 12)),
+        ('b-conte', (start: 12, end: 24)),
+      ]);
+      // Each its own cut's keys, and a curve to draw them by.
+      final positions = lanesOf(tester, conteGraph, 'position');
+      expect([for (final lane in positions) lane.keyedFrames], [
+        {2, 8},
+        {3},
+      ]);
+      expect(
+        [for (final lane in positions) lane.curve],
+        everyElement(isNotNull),
+      );
+    });
+  });
+}

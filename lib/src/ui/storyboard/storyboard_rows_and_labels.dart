@@ -312,7 +312,9 @@ class _StoryboardRowsAndLabels {
     follow,
 
     /// What the lanes' header graph buttons and pins tell (I-89 ①) — the
-    /// timeline's own verbs, on the timeline's own graphs. Null mounts none.
+    /// timeline's own verbs, on the timeline's own graphs, as this rail
+    /// keys its rows ([_StoryboardRailRows._laneGraphVerbs]). Null mounts
+    /// none.
     LaneGraphVerbs? graphVerbs,
   }) {
     final laneHeight = _state._rowHeights.lane;
@@ -347,7 +349,8 @@ class _StoryboardRowsAndLabels {
         leadingInset: layerSectionLabelSlotWidth,
         optionalColumns: StoryboardPanel.optionalRailColumns,
         currentRowHooks: _state.widget.currentRowHooks,
-        laneGraphs: _state.widget.laneGraphs,
+        // As this rail keys its rows: a projection row's by its own id.
+        laneGraphs: _state._railRows._laneGraphs,
         laneGraphVerbs: graphVerbs,
         seat: seat,
         folded: seated?.row.folded ?? false,
@@ -720,6 +723,7 @@ class _StoryboardRowsAndLabels {
     final widget = _state.widget;
     final rowId = trackCameraRowId(track.id);
     final trackId = track.id;
+    final graphKey = laneGraphHeadedBy(head.layer, null);
     return (
       piece: _StoryboardRailHead(
         key: ValueKey<String>('storyboard-camera-label-${trackId.value}'),
@@ -752,6 +756,13 @@ class _StoryboardRowsAndLabels {
         fxState: widget.layerFxStateOf?.call(head.layer.id) ?? LayerFxState.on,
         onToggleLayerFx: widget.onToggleLayerFx,
         onOpenCameraPath: widget.onOpenCameraPath,
+        // I-89 ①: the timeline camera row's graph button — on the camera
+        // in hand, whose head family the session turns as one.
+        laneGraphVerbs: _state._railRows._laneGraphVerbs,
+        headsGraph: graphKey != null,
+        graphOpen:
+            graphKey != null &&
+            _state._railRows._laneGraphs.open.containsKey(graphKey),
       ),
       wears: (layer: head.layer, stack: head.cut.layers),
     );
