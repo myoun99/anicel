@@ -24,11 +24,13 @@ class ExportCelsCutDelta {
     Set<ExportCelRef> skippedCels = const {},
     Set<ExportDirectionOver> directionOver = const {},
     Set<ExportCelRef> cameraOver = const {},
+    Set<ExportCelRef> guidesOver = const {},
     Set<ExportDocumentPage> skippedPages = const {},
   }) : layerOverrides = Map.unmodifiable(layerOverrides),
        skippedCels = Set.unmodifiable(skippedCels),
        directionOver = Set.unmodifiable(directionOver),
        cameraOver = Set.unmodifiable(cameraOver),
+       guidesOver = Set.unmodifiable(guidesOver),
        skippedPages = Set.unmodifiable(skippedPages);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
@@ -68,6 +70,13 @@ class ExportCelsCutDelta {
   /// is this cut's camera's, as the canvas writes it.
   final Set<ExportCelRef> cameraOver;
 
+  /// The drawings the cut's guides are laid over when they are written —
+  /// the band's 「가이드」 (I-105, 유저 2026-10-16: 「셀 출력시 CAM 적용
+  /// 하는거랑 똑같이 거기에 가이드 버튼 만들어서 해당 컷 가이드 그림에
+  /// 넣기」), laid as the camera's work is. The guides are this cut's
+  /// perspective guides the canvas shows (I-105-Q1).
+  final Set<ExportCelRef> guidesOver;
+
   /// The files of the cut's documents the user turned off in the list — to
   /// a document what [skippedCels] is to a row; its row's switch writes
   /// every page.
@@ -82,6 +91,7 @@ class ExportCelsCutDelta {
       skippedCels.isEmpty &&
       directionOver.isEmpty &&
       cameraOver.isEmpty &&
+      guidesOver.isEmpty &&
       skippedPages.isEmpty;
 
   /// Whether a LAYER of this cut answers by hand rather than by the rules —
@@ -100,12 +110,14 @@ class ExportCelsCutDelta {
     Set<ExportCelRef>? skippedCels,
     Set<ExportDirectionOver>? directionOver,
     Set<ExportCelRef>? cameraOver,
+    Set<ExportCelRef>? guidesOver,
     Set<ExportDocumentPage>? skippedPages,
   }) => ExportCelsCutDelta(
     layerOverrides: layerOverrides ?? this.layerOverrides,
     skippedCels: skippedCels ?? this.skippedCels,
     directionOver: directionOver ?? this.directionOver,
     cameraOver: cameraOver ?? this.cameraOver,
+    guidesOver: guidesOver ?? this.guidesOver,
     skippedPages: skippedPages ?? this.skippedPages,
   );
 
@@ -146,6 +158,10 @@ class ExportCelsCutDelta {
   ExportCelsCutDelta withCameraOver(ExportCelRef cel, bool laid) =>
       _with(cameraOver: _held(cameraOver, cel, laid));
 
+  /// This delta with the cut's guides laid over [cel], or taken off it.
+  ExportCelsCutDelta withGuidesOver(ExportCelRef cel, bool laid) =>
+      _with(guidesOver: _held(guidesOver, cel, laid));
+
   /// [set] holding [member], or not.
   static Set<T> _held<T>(Set<T> set, T member, bool held) {
     final next = Set<T>.from(set);
@@ -163,8 +179,11 @@ class ExportCelsCutDelta {
 
   /// Reset: every row back on the rule and every drawing on. What is laid
   /// over a drawing is no answer to a rule, and stays.
-  ExportCelsCutDelta backOnTheRules() =>
-      ExportCelsCutDelta(directionOver: directionOver, cameraOver: cameraOver);
+  ExportCelsCutDelta backOnTheRules() => ExportCelsCutDelta(
+    directionOver: directionOver,
+    cameraOver: cameraOver,
+    guidesOver: guidesOver,
+  );
 
   static Map<String, dynamic> _refJson(ExportCelRef ref) => {
     'row': ref.row.value,
@@ -201,6 +220,7 @@ class ExportCelsCutDelta {
     },
     if (skippedCels.isNotEmpty) 'skippedCels': _refsJson(skippedCels),
     if (cameraOver.isNotEmpty) 'cameraOver': _refsJson(cameraOver),
+    if (guidesOver.isNotEmpty) 'guidesOver': _refsJson(guidesOver),
     if (skippedPages.isNotEmpty)
       'skippedPages': [
         for (final page
@@ -238,6 +258,7 @@ class ExportCelsCutDelta {
       },
       skippedCels: _refsFromJson(json['skippedCels']),
       cameraOver: _refsFromJson(json['cameraOver']),
+      guidesOver: _refsFromJson(json['guidesOver']),
       directionOver: {
         for (final laid in over.cast<Map<String, dynamic>>())
           (
@@ -256,6 +277,7 @@ class ExportCelsCutDelta {
           setEquals(other.skippedCels, skippedCels) &&
           setEquals(other.directionOver, directionOver) &&
           setEquals(other.cameraOver, cameraOver) &&
+          setEquals(other.guidesOver, guidesOver) &&
           setEquals(other.skippedPages, skippedPages);
 
   @override
@@ -267,6 +289,7 @@ class ExportCelsCutDelta {
     Object.hashAllUnordered(skippedCels),
     Object.hashAllUnordered(directionOver),
     Object.hashAllUnordered(cameraOver),
+    Object.hashAllUnordered(guidesOver),
     Object.hashAllUnordered(skippedPages),
   );
 }

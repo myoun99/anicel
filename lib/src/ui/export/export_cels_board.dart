@@ -4,6 +4,7 @@ import '../../models/export_cel_kind.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
@@ -570,8 +571,10 @@ class ExportCelBlock extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 _word(context, written),
-                if (sheet.cameraLaid || sheet.directionLaid)
-                  _laidMarks(idValue, written),
+                if (sheet.cameraLaid ||
+                    sheet.directionLaid ||
+                    sheet.guidesLaid)
+                  _laidMarks(idValue, written, guideColorOf(context)),
               ],
             ),
           ),
@@ -627,13 +630,15 @@ class ExportCelBlock extends StatelessWidget {
   );
 
   /// What is laid over this drawing, in its corner: 「C」 for the camera's
-  /// work, 「D」 for a direction — side by side where both are.
+  /// work, 「D」 for a direction, 「G」 for the guides — side by side where
+  /// more than one is.
   ///
   /// 🗣️I-89-Q21 (유저 2026-10-12): 「「C」를 붙인다」 — beside the 「D」
   /// 유저 asked for on 10-06 (「블록에 디렉션적용시 빨간점말고 D라는 텍스트가
   /// 더 맞을듯」), by the same law: each letter in the colour of the band's
-  /// button that laid it.
-  Widget _laidMarks(String idValue, bool written) => Positioned(
+  /// button that laid it. 「G」 by that law too (I-105) — in [guideInk], the
+  /// colour the canvas draws the guides in.
+  Widget _laidMarks(String idValue, bool written, Color guideInk) => Positioned(
     top: 1,
     right: 1.5,
     child: Row(
@@ -654,6 +659,8 @@ class ExportCelBlock extends StatelessWidget {
             exportLaidDirectionInk,
             written,
           ),
+        if (sheet.guidesLaid)
+          _laidMark('G', 'export-cels-block-g-$idValue', guideInk, written),
       ],
     ),
   );
@@ -691,9 +698,10 @@ typedef ExportCelsDirection = ({
   VoidCallback? onPressed,
 });
 
-/// The camera's work, as the band offers to lay it over the drawing shown:
-/// lit while it is laid, null to press while there is nothing to lay it on.
-typedef ExportCelsCamera = ({bool laid, VoidCallback? onPressed});
+/// What the band offers to lay over the drawing shown with one pill — the
+/// camera's work, the guides: lit while it is laid, null to press while
+/// there is nothing to lay it on.
+typedef ExportCelsLaying = ({bool laid, VoidCallback? onPressed});
 
 /// The band over the rows: the cut the list shows, how many files the
 /// export writes, the two steps that turn through the standing row's
@@ -708,6 +716,10 @@ typedef ExportCelsCamera = ({bool laid, VoidCallback? onPressed});
 /// ↩️It was the door alone until the canvas's was settled: 「나중에
 /// 캔버스에서 그 카메라 궤도같은거 어떻게 보여주게할지를 정할거고, 그
 /// 정한거를 가져오도록 입구만 만들어 주면되」.
+///
+/// 「가이드」 beside it lays the cut's guides over it, as the canvas draws
+/// them at rest — 🗣️I-105 (유저 2026-10-16): 「셀 출력시 CAM 적용 하는거랑
+/// 똑같이 거기에 가이드 버튼 만들어서 해당 컷 가이드 그림에 넣기」.
 class ExportCelsBand extends StatelessWidget {
   const ExportCelsBand({
     super.key,
@@ -718,6 +730,7 @@ class ExportCelsBand extends StatelessWidget {
     required this.canStepOn,
     required this.directions,
     this.camera = const (laid: false, onPressed: null),
+    this.guides = const (laid: false, onPressed: null),
   });
 
   final Widget cutPicker;
@@ -731,7 +744,8 @@ class ExportCelsBand extends StatelessWidget {
   final bool canStepOn;
 
   final List<ExportCelsDirection> directions;
-  final ExportCelsCamera camera;
+  final ExportCelsLaying camera;
+  final ExportCelsLaying guides;
 
   @override
   Widget build(BuildContext context) {
@@ -754,7 +768,7 @@ class ExportCelsBand extends StatelessWidget {
           const SizedBox(width: 8),
           ..._steps(),
           const SizedBox(width: 8),
-          Expanded(child: _laying()),
+          Expanded(child: _laying(guideColorOf(context))),
         ],
       ),
     );
@@ -779,9 +793,10 @@ class ExportCelsBand extends StatelessWidget {
   }
 
   /// What is laid over the drawing shown, at the band's far end: the
-  /// caption, a pill a direction drawing, and CAM. The caption and the
-  /// pills give width up before the band runs over.
-  Widget _laying() => Row(
+  /// caption, a pill a direction drawing, CAM and 「가이드」 — that one in
+  /// [guideInk], the colour the canvas draws the guides in. The caption and
+  /// the pills give width up before the band runs over.
+  Widget _laying(Color guideInk) => Row(
     mainAxisAlignment: MainAxisAlignment.end,
     children: [
       const Flexible(child: _LayDirectionCaption()),
@@ -814,6 +829,13 @@ class ExportCelsBand extends StatelessWidget {
             selected: camera.laid,
             tone: exportLaidCameraInk,
             onTap: camera.onPressed,
+          ),
+          PillItem(
+            keyValue: 'export-cels-guides',
+            label: AppText.strings.exLayGuides,
+            selected: guides.laid,
+            tone: guideInk,
+            onTap: guides.onPressed,
           ),
         ],
       ),

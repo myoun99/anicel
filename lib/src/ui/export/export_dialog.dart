@@ -39,6 +39,7 @@ import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
@@ -534,6 +535,7 @@ class ExportDialogState extends State<ExportDialog> {
         canStepOn: at >= 0 && at < pages.length - 1,
         directions: _celDirections(cut, standing.sheetIn(rows)),
         camera: _celCamera(cut, standing.sheetIn(rows)),
+        guides: _celGuides(cut, standing.sheetIn(rows)),
       ),
       rows: rows,
       standing: row?.idValue,
@@ -643,65 +645,89 @@ class ExportDialogState extends State<ExportDialog> {
     _turnCelFiles([sheet], off: !sheet.skipped);
   }
 
-  /// The direction drawings of [cut] the band offers to lay over [shown],
-  /// each lit while it is laid. Nothing is laid over a direction row's own
-  /// drawing, and nothing while no drawing is shown: the pills keep their
-  /// place and take no press.
+  /// The direction drawings of [cut] the band offers to lay over the
+  /// drawing shown, a pill each ([_celLaying]). Nothing is laid over a
+  /// direction row's own drawing: there its pills take no press.
   List<ExportCelsDirection> _celDirections(Cut cut, ExportListSheet? sheet) {
-    // A direction is laid over a DRAWING: not over a document's page, and
-    // not over a direction row's own drawing.
-    final shown = sheet is ExportCelSheet ? sheet : null;
-    final takes = shown != null && shown.row.kind != LayerKind.instruction;
-    final laid = shown == null
-        ? const <ExportCelRef>{}
-        : _overrides.deltaFor(cut.id)?.directionsOver(shown.ref) ?? const {};
-    return [
-      for (final direction in exportDirectionDrawingsOf(
+    final onADirection =
+        sheet is ExportCelSheet && sheet.row.kind == LayerKind.instruction;
+    final directions = <ExportCelsDirection>[];
+    for (final direction in exportDirectionDrawingsOf(
+      cut,
+      _session.repository.requireProject().cameraInstructions,
+    )) {
+      final (:laid, :onPressed) = _celLaying(
         cut,
-        _session.repository.requireProject().cameraInstructions,
-      ))
-        (
-          keyValue:
-              'export-cels-direction-${direction.ref.row.value}-'
-              '${direction.ref.cel.value}',
-          name: direction.name,
-          fullName: direction.fullName,
-          laid: laid.contains(direction.ref),
-          onPressed: takes && !_isExporting
-              ? () => _editCelDelta(
-                  cut.id,
-                  (delta) => delta.withDirectionOver(
-                    shown.ref,
-                    direction.ref,
-                    !laid.contains(direction.ref),
-                  ),
-                )
-              : null,
-        ),
-    ];
+        sheet,
+        offered: !onADirection,
+        laidOver: (delta, cel) =>
+            delta.directionsOver(cel).contains(direction.ref),
+        lay: (delta, cel, laid) =>
+            delta.withDirectionOver(cel, direction.ref, laid),
+      );
+      directions.add((
+        keyValue:
+            'export-cels-direction-${direction.ref.row.value}-'
+            '${direction.ref.cel.value}',
+        name: direction.name,
+        fullName: direction.fullName,
+        laid: laid,
+        onPressed: onPressed,
+      ));
+    }
+    return directions;
   }
 
-  /// [cut]'s camera's work as the band offers to lay it over [shown]: lit
-  /// while it is laid. Like a direction it is laid over a drawing — not
-  /// over a document's page, and not while none is shown — and there is
-  /// none to lay where the camera moves nothing: the canvas draws no path
-  /// there ([CameraPath.of]).
-  ExportCelsCamera _celCamera(Cut cut, ExportListSheet? sheet) {
+  /// [cut]'s camera's work as the band offers to lay it over the drawing
+  /// shown ([_celLaying]). There is none to lay where the camera moves
+  /// nothing: the canvas draws no path there ([CameraPath.of]).
+  ExportCelsLaying _celCamera(Cut cut, ExportListSheet? sheet) => _celLaying(
+    cut,
+    sheet,
+    offered: CameraPath.of(cut, _session.camera.cameraFrameSize) != null,
+    laidOver: (delta, cel) => delta.cameraOver.contains(cel),
+    lay: (delta, cel, laid) => delta.withCameraOver(cel, laid),
+  );
+
+  /// [cut]'s guides as the band offers to lay them over the drawing shown
+  /// ([_celLaying]) — the ones [exportLaidGuidesOf] names. There are none
+  /// to lay where the cut shows no perspective guide.
+  ExportCelsLaying _celGuides(Cut cut, ExportListSheet? sheet) => _celLaying(
+    cut,
+    sheet,
+    offered: exportLaidGuidesOf(cut).isNotEmpty,
+    laidOver: (delta, cel) => delta.guidesOver.contains(cel),
+    lay: (delta, cel, laid) => delta.withGuidesOver(cel, laid),
+  );
+
+  /// What the band offers to lay over [sheet] with one pill: lit while
+  /// [laidOver] says the hand laid it there, pressed to [lay] it on or take
+  /// it off. It is laid over a DRAWING — not over a document's page, and
+  /// not while none is shown — where it is [offered], and not while an
+  /// export runs: elsewhere the pill keeps its place and takes no press.
+  ExportCelsLaying _celLaying(
+    Cut cut,
+    ExportListSheet? sheet, {
+    required bool offered,
+    required bool Function(ExportCelsCutDelta delta, ExportCelRef cel)
+    laidOver,
+    required ExportCelsCutDelta Function(
+      ExportCelsCutDelta delta,
+      ExportCelRef cel,
+      bool laid,
+    )
+    lay,
+  }) {
     final shown = sheet is ExportCelSheet ? sheet : null;
     if (shown == null) {
       return const (laid: false, onPressed: null);
     }
-    final laid =
-        _overrides.deltaFor(cut.id)?.cameraOver.contains(shown.ref) ?? false;
-    final moves =
-        CameraPath.of(cut, _session.camera.cameraFrameSize) != null;
+    final delta = _overrides.deltaFor(cut.id);
+    final laid = delta != null && laidOver(delta, shown.ref);
     return (
       laid: laid,
-      onPressed: moves && !_isExporting
-          ? () => _editCelDelta(
-              cut.id,
-              (delta) => delta.withCameraOver(shown.ref, !laid),
-            )
+      onPressed: offered && !_isExporting
+          ? () => _editCelDelta(cut.id, (delta) => lay(delta, shown.ref, !laid))
           : null,
     );
   }
@@ -1396,7 +1422,10 @@ class ExportDialogState extends State<ExportDialog> {
       return null;
     }
     final face = _documentFace;
-    final pictures = [for (final sheet in pages) _sheetPicture(sheet, face)];
+    final guideInk = guideColorOf(context);
+    final pictures = [
+      for (final sheet in pages) _sheetPicture(sheet, face, guideInk),
+    ];
     return ExportPreviewDocument(
       subject: (ExportTab.cels, cut.id),
       // Every setting that changes a picture is in its look: two papers of
@@ -1429,7 +1458,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// [sheet] as a picture: the pixels its file is written at, what decides
   /// how it looks, and its render at a size — the very render the run
-  /// writes it through.
+  /// writes it through, the guides laid over a drawing in [guideInk].
   ///
   /// ONE place tells a cel from a timesheet's page from a cut envelope: the
   /// three answers were each a walk over the same question.
@@ -1438,7 +1467,7 @@ class ExportDialogState extends State<ExportDialog> {
     String look,
     Future<ui.Image?> Function(CanvasSize size) render,
   })
-  _sheetPicture(ExportListSheet sheet, TextStyle face) {
+  _sheetPicture(ExportListSheet sheet, TextStyle face, Color guideInk) {
     final spec = _specs.cels;
     if (sheet is ExportCelSheet) {
       final renderer = _previewRendererFor(
@@ -1458,6 +1487,7 @@ class ExportDialogState extends State<ExportDialog> {
           sheet.look,
           spec.sizeMode,
           outputSize: size,
+          guideColor: guideInk,
         ),
       );
     }
@@ -2532,6 +2562,7 @@ class ExportDialogState extends State<ExportDialog> {
       format: spec.format,
     );
     final face = _documentFace;
+    final guideInk = guideColorOf(context);
     final digital = spec.sheetFormat == ExportTimesheetFormat.xdts;
     bool isDigitalSheet(ExportDocumentSheet sheet) =>
         digital && sheet.kind == ExportCelKind.timesheet;
@@ -2543,7 +2574,11 @@ class ExportDialogState extends State<ExportDialog> {
       for (final task in plan.writtenCels)
         (
           fileName: task.fileName,
-          render: () => renderer.renderCelGroup(task, spec.sizeMode),
+          render: () => renderer.renderCelGroup(
+            task,
+            spec.sizeMode,
+            guideColor: guideInk,
+          ),
           encoder: stillEncoderFor(spec.format),
         ),
       for (final sheet in plan.writtenDocuments)

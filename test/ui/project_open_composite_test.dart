@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../helpers/no_guides_laid.dart';
 import '../helpers/opened_session.dart';
 import '../helpers/temp_dir.dart';
 
@@ -158,6 +159,7 @@ void main() {
           fileName: 'c.png',
         ),
         ExportSizeMode.canvas,
+        guideColor: noGuidesLaid,
       );
 
       expect(image, isNotNull, reason: 'a loaded cel must export');

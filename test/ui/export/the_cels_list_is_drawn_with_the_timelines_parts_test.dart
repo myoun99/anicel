@@ -21,6 +21,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/canvas/guide_overlay.dart' show guideColorOf;
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_cels_standing.dart';
@@ -155,7 +156,8 @@ void main() {
     bool enabled = true,
     double width = 900,
     List<ExportCelsDirection> directions = const [],
-    ExportCelsCamera camera = const (laid: false, onPressed: null),
+    ExportCelsLaying camera = const (laid: false, onPressed: null),
+    ExportCelsLaying guides = const (laid: false, onPressed: null),
     CelsExportSpec spec = celsAlone,
   }) async {
     pressed.clear();
@@ -180,6 +182,7 @@ void main() {
                   canStepOn: true,
                   directions: directions,
                   camera: camera,
+                  guides: guides,
                 ),
                 rows: rows,
                 standing: stood.rowIn(rows)?.idValue,
@@ -572,14 +575,26 @@ void main() {
         reason: 'nothing to lay: the pill keeps its place',
       );
 
+      expect(pill('export-cels-guides').label, AppText.strings.exLayGuides);
+      expect(pill('export-cels-guides').selected, isFalse);
+      expect(
+        pill('export-cels-guides').onTap,
+        isNull,
+        reason: 'nothing to lay: the pill keeps its place',
+      );
+
       await pumpBoard(
         tester,
         camera: (laid: true, onPressed: () => pressed.add('lay camera')),
+        guides: (laid: true, onPressed: () => pressed.add('lay guides')),
       );
       expect(pill('export-cels-cam').selected, isTrue);
+      expect(pill('export-cels-guides').selected, isTrue);
       await tester.tap(keyed('export-cels-cam'));
       await tester.pump();
-      expect(pressed, ['lay camera']);
+      await tester.tap(keyed('export-cels-guides'));
+      await tester.pump();
+      expect(pressed, ['lay camera', 'lay guides']);
     });
 
     testWidgets('a laid direction is said in ONE colour: its pill, and the '
@@ -665,6 +680,55 @@ void main() {
       // other.
       for (final other in ['b-b-3', 'a-a-1', 'l-l-1']) {
         expect(keyed('export-cels-block-c-$other'), findsNothing);
+      }
+    });
+
+    // 🗣️I-105 (유저 2026-10-16): 「셀 출력시 CAM 적용 하는거랑 똑같이 거기에
+    // 가이드 버튼 만들어서 해당 컷 가이드 그림에 넣기」.
+    testWidgets('the guides laid are said in ONE colour, the guides\' own on '
+        'the canvas: the 「가이드」 pill, and the 「G」 on the drawing they are '
+        'laid over — right of the 「C」 and the 「D」', (tester) async {
+      const b1 = (row: LayerId('b'), cel: FrameId('b-1'));
+      const b2 = (row: LayerId('b'), cel: FrameId('b-2'));
+      await pumpBoard(
+        tester,
+        delta: ExportCelsCutDelta()
+            .withGuidesOver(b1, true)
+            .withGuidesOver(b2, true)
+            .withCameraOver(b2, true)
+            .withDirectionOver(
+              b2,
+              (row: const LayerId('dir'), cel: const FrameId('d-1')),
+              true,
+            ),
+        guides: (laid: true, onPressed: () {}),
+      );
+
+      final ink = guideColorOf(tester.element(keyed('export-cels-guides')));
+      expect(tester.widget<Pill>(keyed('export-cels-guides')).tone, ink);
+      expect(
+        tester.widget<Text>(keyed('export-cels-block-g-b-b-1')).style!.color,
+        ink,
+      );
+      expect(
+        [
+          keyed('export-cels-block-c-b-b-1'),
+          keyed('export-cels-block-d-b-b-1'),
+        ],
+        everyElement(findsNothing),
+        reason: 'the guides alone are laid over b-1',
+      );
+      expect(
+        tester.getTopRight(keyed('export-cels-block-d-b-b-2')).dx,
+        lessThanOrEqualTo(
+          tester.getTopLeft(keyed('export-cels-block-g-b-b-2')).dx,
+        ),
+        reason: 'all three over b-2: 「C D G」',
+      );
+      // The mark is on the drawings the guides are laid over, and on no
+      // other.
+      for (final other in ['b-b-3', 'a-a-1', 'l-l-1']) {
+        expect(keyed('export-cels-block-g-$other'), findsNothing);
       }
     });
 

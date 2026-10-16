@@ -27,6 +27,8 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/no_guides_laid.dart';
+
 /// 🚨F-300 (유저 2026-10-05): 「겸용컷에서 BG 이미지레이어가 2장있는데 … 현재
 /// 컷에 BG1이면 용지 적용되고 현재컷이아닌 BG2쪽은 용지가 빠짐 … 렌더에
 /// 현재컷 관련 로직 있는건 이상하니 근본/구조적으로 해결」 · 「애니메이션
@@ -172,6 +174,7 @@ void main() {
           ).renderCelGroup(
             plan.cels.singleWhere((task) => task.fileName == file),
             ExportSizeMode.canvas,
+            guideColor: noGuidesLaid,
           );
           final bytes = (await image!.toByteData(
             format: ui.ImageByteFormat.rawRgba,

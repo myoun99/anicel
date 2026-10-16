@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/no_guides_laid.dart';
+
 /// The renderer must consume the store's VALID display cache read-only (the
 /// editing coordinator donates the session surface on every commit) instead
 /// of replaying the frame's whole command list — the storyboard-thumbnail
@@ -109,6 +111,7 @@ void main() {
                 fileName: 'cel.png',
               ),
               ExportSizeMode.canvas,
+              guideColor: noGuidesLaid,
             );
         final bytes = await image!.toByteData(
           format: ui.ImageByteFormat.rawRgba,
@@ -278,6 +281,7 @@ void main() {
                 fileName: 'A1.png',
               ),
               ExportSizeMode.canvas,
+              guideColor: noGuidesLaid,
             );
         final bytes = await image!.toByteData(
           format: ui.ImageByteFormat.rawRgba,
@@ -372,7 +376,11 @@ void main() {
         expect(celGroupFirstExposure(task), firstShown);
         final image = await ExportFrameRenderer(
           session: session,
-        ).renderCelGroup(task, ExportSizeMode.canvas);
+        ).renderCelGroup(
+          task,
+          ExportSizeMode.canvas,
+          guideColor: noGuidesLaid,
+        );
         final bytes = await image!.toByteData(
           format: ui.ImageByteFormat.rawRgba,
         );

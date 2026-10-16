@@ -1158,6 +1158,9 @@ enum AppStrings {
 
   /// The Cels list's band: what is laid over the drawing shown (F-289).
   String get exLayDirection => _s('exLayDirection');
+
+  /// The pill that lays the cut's guides over it (I-105).
+  String get exLayGuides => _s('exLayGuides');
   String get exCelFormat => _s('exCelFormat');
   String get exTimesheetFormat => _s('exTimesheetFormat');
   String get exEnvelopeFormat => _s('exEnvelopeFormat');
@@ -2449,6 +2452,7 @@ enum AppStrings {
     'exSuffix': 'Suffix',
     'exPrefix': 'Prefix',
     'exLayDirection': 'Lay direction on this drawing',
+    'exLayGuides': 'Guides',
     'exCelFormat': 'Cel format',
     'exTimesheetFormat': 'Timesheet format',
     'exEnvelopeFormat': 'Cut envelope format',
@@ -3831,6 +3835,7 @@ enum AppStrings {
     'exSuffix': '接尾辞',
     'exPrefix': '接頭辞',
     'exLayDirection': 'この絵にディレクションを適用',
+    'exLayGuides': 'ガイド',
     'exCelFormat': 'セル形式',
     'exTimesheetFormat': 'タイムシート形式',
     'exEnvelopeFormat': 'カット袋形式',
@@ -5403,6 +5408,7 @@ enum AppStrings {
     'exSuffix': '접미사',
     'exPrefix': '접두사',
     'exLayDirection': '이 그림에 디렉션 적용',
+    'exLayGuides': '가이드',
     'exCelFormat': '셀 형식',
     'exTimesheetFormat': '타임시트 형식',
     'exEnvelopeFormat': '컷 봉투 형식',
@@ -7024,6 +7030,7 @@ enum AppStrings {
     'exSuffix': 'Suffixe',
     'exPrefix': 'Préfixe',
     'exLayDirection': 'Poser une direction sur ce dessin',
+    'exLayGuides': 'Repères',
     'exCelFormat': 'Format des cellulos',
     'exTimesheetFormat': 'Format de la feuille de temps',
     'exEnvelopeFormat': 'Format de l\'enveloppe de plan',
@@ -8627,6 +8634,7 @@ enum AppStrings {
     'exSuffix': '后缀',
     'exPrefix': '前缀',
     'exLayDirection': '在此画上应用指示',
+    'exLayGuides': '参考线',
     'exCelFormat': '赛璐珞格式',
     'exTimesheetFormat': '摄影表格式',
     'exEnvelopeFormat': '卡袋格式',

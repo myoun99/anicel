@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
+import '../../helpers/no_guides_laid.dart';
+
 /// **CAM (I-89-Q18)** — the camera's work laid over a cel is written into
 /// its file as the canvas draws it off the camera's row: every key's frame
 /// with its cross at its centre, the first in IN's green and the last in
@@ -115,6 +117,7 @@ void main() {
         cameraLaid: laid,
       ),
       mode,
+      guideColor: noGuidesLaid,
     );
     final bytes = await image!.toByteData(format: ui.ImageByteFormat.rawRgba);
     final width = image.width;

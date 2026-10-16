@@ -10,6 +10,7 @@ import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../models/cut_id.dart';
+import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_format_selection.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
@@ -39,6 +40,7 @@ import '../../services/camera_projection_matrix.dart'
     show cameraMovesPixelsWhole;
 import '../camera/camera_frame_render_service.dart';
 import '../camera/camera_path_overlay.dart';
+import '../canvas/guide_overlay.dart' show paintGuidesAtRest;
 import '../conte/conte_fonts.dart' show conteTextStyle;
 import '../sheet_painting.dart';
 import '../../services/composite_effect_paint.dart' show alphaOnly;
@@ -1067,10 +1069,13 @@ class ExportFrameRenderer {
   /// for RGBA, the picked backing for RGB); [ExportSizeMode.camera]
   /// crops through the camera at the base cel's FIRST exposure (a cel
   /// has no time of its own — where it first shows is the honest frame).
+  /// The guides laid over it are drawn in [guideColor], the colour the
+  /// canvas draws them in (`guideColorOf`).
   Future<ui.Image?> renderCelGroup(
     ExportCelGroupTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
+    required ui.Color guideColor,
   }) async {
     _startFrame();
     // A cel has no time of its own, so the group's FX sample at the base
@@ -1128,7 +1133,62 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
-      overlayPass: _cameraWorkOver(task, view),
+      overlayPass: _laidOver([
+        _guidesOver(task, view, guideColor),
+        _cameraWorkOver(task, view),
+      ]),
+    );
+  }
+
+  /// What the hand laid over a cel, one pass over another in [passes]'
+  /// order — the guides under the camera's work. Null where nothing is.
+  ///
+  /// ⚠️The order is my call, not the user's (I-105): the camera's marks are
+  /// what is said of the drawing, the guides what it was drawn over.
+  void Function(ui.Canvas canvas)? _laidOver(
+    List<void Function(ui.Canvas canvas)?> passes,
+  ) {
+    final laid = passes.nonNulls.toList();
+    if (laid.isEmpty) {
+      return null;
+    }
+    return (canvas) {
+      for (final pass in laid) {
+        pass(canvas);
+      }
+    };
+  }
+
+  /// The cut's guides laid over [task]'s cel (I-105) — those of the cut the
+  /// hand laid them in ([ExportCelGroupTask.listedCut]) that a cel wears
+  /// ([exportLaidGuidesOf]), in [color]: the picture 래스터라이즈 bakes,
+  /// the faint line the canvas draws at rest on the paper alone
+  /// ([paintGuidesAtRest]), at the camera's work's sizes — a pixel of the
+  /// file for each pixel of the screen (I-89-Q20). Null where none is laid.
+  ///
+  /// 🗣️I-105-Q2 (유저 2026-10-16): 「래스터라이즈와 같은 … 모습」 — and
+  /// 「애초에 래스터라이즈도 캔버스에 보이는 옅은선 그대로 래스터라이즈하도록
+  /// 법 통일」: one picture, drawn by one function.
+  void Function(ui.Canvas canvas)? _guidesOver(
+    ExportCelGroupTask task,
+    CameraView view,
+    ui.Color color,
+  ) {
+    final cut = task.listedCut;
+    final guides = task.guidesLaid
+        ? exportLaidGuidesOf(cut)
+        : const <DrawingGuide>[];
+    if (guides.isEmpty) {
+      return null;
+    }
+    return (canvas) => paintGuidesAtRest(
+      canvas,
+      guides,
+      canvasSize: cut.canvasSize,
+      color: color,
+      // As for the camera's work: a canvas pixel is [CameraPose.zoom] of
+      // the file's.
+      scale: view.pose.zoom,
     );
   }
 

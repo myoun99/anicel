@@ -645,10 +645,49 @@ class GuideOverlayPainter extends CustomPainter with RepaintOnProps {
 Color guideColorOf(BuildContext context) =>
     Theme.of(context).colorScheme.primary;
 
+/// [guides]' lines as the canvas draws them at rest — the faint line a
+/// drawing is made over: their colour, their weight, their density, their
+/// eye level — no handle, no name — on [canvasSize]'s paper and nothing
+/// past its edge, onto [canvas] in canvas pixels; a line [scale] times as
+/// fine as a canvas pixel, for a picture that holds a canvas pixel in
+/// [scale] of its own.
+///
+/// What 래스터라이즈 bakes ([guideLinesOnPaper]) and what a cel's export
+/// lays over a drawing (I-105) — one picture, by one function: 🗣️I-105-Q2
+/// (유저 2026-10-16): 「래스터라이즈와 같은 … 모습」 — 「애초에 래스터라이즈도
+/// 캔버스에 보이는 옅은선 그대로 래스터라이즈하도록 법 통일」.
+void paintGuidesAtRest(
+  Canvas canvas,
+  List<DrawingGuide> guides, {
+  required CanvasSize canvasSize,
+  required Color color,
+  double scale = 1,
+}) {
+  final paper = Size(canvasSize.width * scale, canvasSize.height * scale);
+  final painter = GuideOverlayPainter(
+    guides: CutGuides(guides: guides),
+    viewport: CanvasViewport(zoom: scale),
+    canvasSize: canvasSize,
+    emphasized: false,
+    color: color,
+    face: const TextStyle(),
+    vanishingPointLabel: '',
+  );
+  canvas
+    ..save()
+    ..scale(1 / scale)
+    ..clipRect(Offset.zero & paper);
+  for (final guide in guides) {
+    painter.paintLines(canvas, paper, guide);
+  }
+  canvas.restore();
+}
+
 /// [guide]'s lines on [canvasSize]'s paper, a canvas pixel to a pixel, as
-/// the canvas draws them at rest — the faint line a drawing is made over:
-/// its colour, its weight, its density, its eye level — no handle, no name.
-/// The picture 래스터라이즈 lands. Null when the picture cannot be read back.
+/// the canvas draws them at rest ([paintGuidesAtRest]) — the faint line a
+/// drawing is made over: its colour, its weight, its density, its eye
+/// level — no handle, no name. The picture 래스터라이즈 lands. Null when
+/// the picture cannot be read back.
 ///
 /// 🗣️vanishing-point-types-Q6 (유저 2026-10-16): 「화면에 보이는 그대로」 —
 /// 「가이드와 같은 색 · 굵기 · 밀도, 아이레벨 선도 포함 — 용지 안만」.
@@ -664,22 +703,15 @@ Future<CutPiece?> guideLinesOnPaper(
   required CanvasSize canvasSize,
   required Color color,
 }) async {
-  final paper = Size(
-    canvasSize.width.toDouble(),
-    canvasSize.height.toDouble(),
-  );
   final image = await rasterizeOffscreen(
     width: canvasSize.width,
     height: canvasSize.height,
-    paint: (canvas) => GuideOverlayPainter(
-      guides: CutGuides(guides: [guide]),
-      viewport: CanvasViewport(),
+    paint: (canvas) => paintGuidesAtRest(
+      canvas,
+      [guide],
       canvasSize: canvasSize,
-      emphasized: false,
       color: color,
-      face: const TextStyle(),
-      vanishingPointLabel: '',
-    ).paintLines(canvas, paper, guide),
+    ),
   );
   try {
     final rgba = await image.toByteData(

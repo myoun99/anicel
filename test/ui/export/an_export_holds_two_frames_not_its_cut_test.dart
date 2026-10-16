@@ -33,6 +33,8 @@ import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/held_rows.dart';
 
+import '../../helpers/no_guides_laid.dart';
+
 /// 🚨★★★**AN EXPORT HOLDS THE CELS OF TWO FRAMES, NOT OF ITS CUT** (card
 /// `render-reads-thaw-into-hot`).
 ///
@@ -231,6 +233,7 @@ void main() {
               fileName: '${drawing.id.value}.png',
             ),
             ExportSizeMode.canvas,
+            guideColor: noGuidesLaid,
           );
           image!.dispose();
           expect(renderer.debugHeldSurfaceCount, lessThanOrEqualTo(2));

@@ -152,7 +152,7 @@ class CameraFrameRenderService {
   /// the canvas itself (`ResolvedSeNameTag.shot`), so through this
   /// projection it stands still in the frame (I-67-Q1). A cel's render
   /// leaves it null — a cel is the artwork alone — but where the camera's
-  /// work is laid over it (CAM, I-89-Q18).
+  /// work or the cut's guides are laid over it (CAM, I-89-Q18; I-105).
   ///
   /// 🚨★★★EVERY RENDER REDUCES AS THE CANVAS'S DISPLAY DOES
   /// ([displayLevelOf]): each row's image halved, a 2×2 box mean a time,

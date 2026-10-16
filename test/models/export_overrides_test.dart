@@ -121,6 +121,30 @@ void main() {
       );
     });
 
+    test('the cut\'s guides are laid over ONE drawing, and taken off it — '
+        '「가이드」 (I-105)', () {
+      final laid = ExportCelsCutDelta()
+          .withGuidesOver(ref('bg', 'b1'), true)
+          .withGuidesOver(ref('a', 'f1'), true);
+      expect(laid.guidesOver, {ref('bg', 'b1'), ref('a', 'f1')});
+      expect(laid.cameraOver, isEmpty, reason: 'a question of its own');
+      expect(laid.isEmpty, isFalse);
+      expect(
+        laid.leavesTheRules,
+        isFalse,
+        reason: 'what is laid over a drawing is no answer to a rule',
+      );
+      final less = laid.withGuidesOver(ref('bg', 'b1'), false);
+      expect(less.guidesOver, {ref('a', 'f1')});
+      expect(less, isNot(laid));
+      expect(less.hashCode, isNot(laid.hashCode));
+      expect(
+        less.withGuidesOver(ref('a', 'f1'), false),
+        ExportCelsCutDelta(),
+        reason: 'nothing laid is the empty delta again',
+      );
+    });
+
     test('a filter press drops the row answers alone; Reset drops the '
         'drawings turned off too — and what is laid over a drawing stays '
         'through both', () {
@@ -128,13 +152,15 @@ void main() {
           .withLayerOverride(const LayerId('l1'), true)
           .withCelSkipped(ref('a', 'f1'), true)
           .withDirectionOver(ref('a', 'f2'), ref('dir', 'd1'), true)
-          .withCameraOver(ref('a', 'f3'), true);
+          .withCameraOver(ref('a', 'f3'), true)
+          .withGuidesOver(ref('a', 'f4'), true);
 
       final refiltered = delta.withoutRowExceptions();
       expect(refiltered.layerOverrides, isEmpty);
       expect(refiltered.skippedCels, {ref('a', 'f1')});
       expect(refiltered.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
       expect(refiltered.cameraOver, {ref('a', 'f3')});
+      expect(refiltered.guidesOver, {ref('a', 'f4')});
 
       final reset = delta.backOnTheRules();
       expect(reset.layerOverrides, isEmpty);
@@ -142,6 +168,7 @@ void main() {
       expect(reset.leavesTheRules, isFalse);
       expect(reset.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
       expect(reset.cameraOver, {ref('a', 'f3')});
+      expect(reset.guidesOver, {ref('a', 'f4')});
       expect(reset.isEmpty, isFalse);
     });
 
@@ -157,7 +184,8 @@ void main() {
               .withCelSkipped(ref('a', cel), true)
               .withDirectionOver(ref('bg', cel), ref('dir', 'd1'), true)
               .withDirectionOver(ref('bg', cel), ref('dir', 'd0'), true)
-              .withCameraOver(ref('bg', cel), true);
+              .withCameraOver(ref('bg', cel), true)
+              .withGuidesOver(ref('a', cel), true);
         }
         return delta;
       }
@@ -174,6 +202,11 @@ void main() {
         ref('bg', 'f1'),
         ref('bg', 'f2'),
         ref('bg', 'f3'),
+      });
+      expect(restored.guidesOver, {
+        ref('a', 'f1'),
+        ref('a', 'f2'),
+        ref('a', 'f3'),
       });
       expect(restored.directionsOver(ref('bg', 'f2')), {
         ref('dir', 'd0'),

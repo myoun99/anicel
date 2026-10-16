@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/export_cel_naming.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
@@ -113,8 +114,12 @@ void main() {
   /// the sheet) and D — and, given [unplaced], a drawing of D's no block
   /// shows · a direction row. CUT2·CUT3 are 겸용 siblings and CUT4 stands
   /// alone — the scope grid's material. Given [camera], CUT1's camera
-  /// moves as it says.
-  EditorSessionManager celsSession({Frame? unplaced, CutCamera? camera}) {
+  /// moves as it says; given [guides], they are CUT1's.
+  EditorSessionManager celsSession({
+    Frame? unplaced,
+    CutCamera? camera,
+    CutGuides? guides,
+  }) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -131,6 +136,7 @@ void main() {
                 duration: 4,
                 canvasSize: const CanvasSize(width: 8, height: 8),
                 camera: camera,
+                guides: guides,
                 layers: [
                   drawing('paper', 'Paper', [
                     frame('p1'),
@@ -209,6 +215,26 @@ void main() {
       ),
     );
   }
+
+  /// A perspective guide on CUT1's paper — hidden where [visible] is false.
+  DrawingGuide aPerspectiveGuide({bool visible = true}) => DrawingGuide(
+    id: const GuideId('perspective'),
+    name: 'Perspective',
+    visible: visible,
+    shape: PerspectiveShape(
+      vanishingPoints: [VanishingPointAt(CanvasPoint(x: 6, y: 2))],
+      eyeLevel: GuideAxis(origin: CanvasPoint(x: 0, y: 2), angleDegrees: 0),
+    ),
+  );
+
+  /// A symmetry guide on CUT1's paper, shown.
+  DrawingGuide aSymmetryGuide() => DrawingGuide(
+    id: const GuideId('symmetry'),
+    name: 'Symmetry',
+    shape: SymmetryShape(
+      axis: GuideAxis(origin: CanvasPoint(x: 4, y: 4), angleDegrees: 90),
+    ),
+  );
 
   /// A camera that moves across CUT1: the canvas draws it a path.
   CutCamera aCameraThatMoves() => CutCamera(
@@ -878,11 +904,66 @@ void main() {
     expect(deltaOf(session), isNull);
   });
 
+  testWidgets('「가이드」 lays the cut\'s guides over the drawing shown, a '
+      'drawing at a time, and 초기화 leaves it — I-105', (tester) async {
+    final session = celsSession(
+      guides: CutGuides(guides: [aPerspectiveGuide()]),
+    );
+    await pumpCels(tester, session);
+    const guides = 'export-cels-guides';
+
+    await standOn(tester, 'a');
+    expect(pill(tester, guides).selected, isFalse);
+    await tapKey(tester, guides);
+    expect(deltaOf(session)?.guidesOver, {ref('a', 'f1')});
+    expect(pill(tester, guides).selected, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-block-g-a-f1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-block-g-a-f2')),
+      findsNothing,
+      reason: 'laid over ONE drawing, not its row',
+    );
+
+    // The other drawing reads its own answer.
+    await tapKey(tester, 'export-cels-next');
+    expect(pill(tester, guides).selected, isFalse);
+
+    // 초기화 is of the rules: what is laid over a drawing stays.
+    await tapKey(tester, 'export-cels-switch-b');
+    await tapKey(tester, 'export-cels-reset');
+    expect(deltaOf(session)?.guidesOver, {ref('a', 'f1')});
+
+    await tapKey(tester, 'export-cels-prev');
+    await tapKey(tester, guides);
+    expect(deltaOf(session), isNull);
+  });
+
+  testWidgets('「가이드」 has nothing to lay where the cut shows no '
+      'perspective guide — a hidden one, a symmetry one — and keeps its '
+      'place (I-105-Q1)', (tester) async {
+    final session = celsSession(
+      guides: CutGuides(
+        guides: [aPerspectiveGuide(visible: false), aSymmetryGuide()],
+      ),
+    );
+    await pumpCels(tester, session);
+    await standOn(tester, 'a');
+    expect(pill(tester, 'export-cels-guides').onTap, isNull);
+    await tapKey(tester, 'export-cels-guides');
+    expect(deltaOf(session), isNull);
+  });
+
   testWidgets('while a run is under way the band touches no drawing: it '
-      'steps to none, and lays neither a direction nor CAM', (tester) async {
+      'steps to none, and lays no direction, CAM or guides', (tester) async {
     final temp = Directory.systemTemp.createTempSync('qa-cels-under-way');
     deleteAfterSessionEnds(temp);
-    final session = celsSession(camera: aCameraThatMoves());
+    final session = celsSession(
+      camera: aCameraThatMoves(),
+      guides: CutGuides(guides: [aPerspectiveGuide()]),
+    );
     // A picture on one drawing: under the test's faked clock its render
     // never finishes, so the run stays under way for as long as the test
     // looks at it — a drawing with none renders nothing, at once.
@@ -907,6 +988,7 @@ void main() {
     expect(band().onStep, isNotNull);
     expect(band().directions.map((d) => d.onPressed), everyElement(isNotNull));
     expect(band().camera.onPressed, isNotNull);
+    expect(band().guides.onPressed, isNotNull);
 
     unawaited(state.export());
     await tester.pump();
@@ -915,6 +997,7 @@ void main() {
     expect(band().onStep, isNull);
     expect(band().directions.map((d) => d.onPressed), everyElement(isNull));
     expect(band().camera.onPressed, isNull);
+    expect(band().guides.onPressed, isNull);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

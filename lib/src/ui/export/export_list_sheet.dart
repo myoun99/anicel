@@ -66,6 +66,9 @@ abstract class ExportListSheet {
   /// Whether the camera's work is laid over it (CAM, I-89-Q18).
   bool get cameraLaid;
 
+  /// Whether the cut's guides are laid over it (I-105).
+  bool get guidesLaid;
+
   bool get planned => refused == null;
 
   /// Whether a file is written for it.

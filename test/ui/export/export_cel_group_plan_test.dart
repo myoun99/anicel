@@ -2,9 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
@@ -1745,6 +1747,76 @@ void main() {
     );
     expect(keyOf(built.cels.first), isNot(keyOf(plan(layers).cels.first)));
   });
+
+  test('the cut\'s guides laid over a drawing (I-105) are in that drawing\'s '
+      'cel alone — and the preview tells them from the cel before they were '
+      'laid, and from the camera\'s work laid there', () {
+    final layers = [
+      base('a', 'A', [frame('f1'), frame('f2')]),
+    ];
+    const f1 = (row: LayerId('a'), cel: FrameId('f1'));
+    List<ExportCelGroupTask> laid(ExportCelsCutDelta delta) => plan(
+      layers,
+      overrides: ExportProjectOverrides().withCelsDelta(
+        const CutId('cut'),
+        delta,
+      ),
+    ).cels;
+    final guides = laid(ExportCelsCutDelta().withGuidesOver(f1, true));
+    expect([for (final task in guides) task.guidesLaid], [true, false]);
+    expect([for (final task in guides) task.cameraLaid], [false, false]);
+    String keyOf(ExportCelGroupTask task) => celGroupPreviewKey(
+      task,
+      sizeMode: 'canvas',
+      backgroundKey: -1,
+      applyLayerFx: true,
+    );
+    expect(keyOf(guides.first), isNot(keyOf(plan(layers).cels.first)));
+    expect(
+      keyOf(guides.first),
+      isNot(keyOf(laid(ExportCelsCutDelta().withCameraOver(f1, true)).first)),
+      reason: 'the guides and the camera\'s work are two pictures',
+    );
+  });
+
+  test('the guides laid over a drawing are the perspective guides the '
+      'canvas shows, in the cut\'s order — 「다만 대칭 가이드는 무시. '
+      '퍼스가이드만 그림에 얹음」 (I-105-Q1)', () {
+    DrawingGuide guide(String id, GuideShape shape, {bool visible = true}) =>
+        DrawingGuide(id: GuideId(id), name: id, shape: shape, visible: visible);
+    PerspectiveShape perspective() => PerspectiveShape(
+      vanishingPoints: [VanishingPointAt(CanvasPoint(x: 6, y: 2))],
+      eyeLevel: GuideAxis(origin: CanvasPoint(x: 0, y: 2), angleDegrees: 0),
+    );
+    final cut = Cut(
+      id: const CutId('cut'),
+      name: 'CUT1',
+      duration: 4,
+      canvasSize: const CanvasSize(width: 8, height: 8),
+      layers: const [],
+      guides: CutGuides(
+        guides: [
+          guide('p1', perspective()),
+          guide(
+            'sym',
+            SymmetryShape(
+              axis: GuideAxis(
+                origin: CanvasPoint(x: 4, y: 4),
+                angleDegrees: 90,
+              ),
+            ),
+          ),
+          guide('hidden', perspective(), visible: false),
+          guide('p2', perspective()),
+        ],
+      ),
+    );
+    expect(
+      [for (final guide in exportLaidGuidesOf(cut)) guide.id.value],
+      ['p1', 'p2'],
+    );
+  });
+
   group('the cut\'s documents are written beside its cels (F-289, 유저 '
       '2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입. 컷봉투탭도 셀 '
       '내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」)', () {
