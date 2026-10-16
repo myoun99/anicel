@@ -309,15 +309,11 @@ void main() {
       visibleCanvasPoint(tester),
       kind: PointerDeviceKind.stylus,
     );
+    // The flood is worked out at the tap and lands after its frame
+    // (`_BrushEditFill`), so the frames settled land it.
+    // ↩️It waited six rounds of real time beside, while the flood was
+    // worked out off the frame.
     await tester.pumpAndSettle();
-    // The flood is worked out off the frame and lands after it — real time
-    // for the one, pumps for the other.
-    for (var i = 0; i < 6; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-    }
     final filled = pixelsOf(tester, frameA);
     expect(inkIn(filled), greaterThan(0), reason: '⛔CONTROL: the bucket filled');
     expect(

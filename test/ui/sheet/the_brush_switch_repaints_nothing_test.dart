@@ -51,6 +51,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🗣️F-215 (유저 2026-09-28): 「콘티 프리뷰패널에서 브러시 허용 on시 그림들이
 /// 리 렌더됨. 그림이 사라졌다가 다시 렌더되서 보이기시작. on하든off하든
@@ -590,12 +591,7 @@ const FrameId _artFrame = FrameId('39-art-0');
 
 /// Every asynchronous build the last change set off, landed and drawn.
 Future<void> _settle(WidgetTester tester) async {
-  for (var round = 0; round < 10; round += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
-    await tester.pump();
-  }
+  await lendBothClocks(tester, rounds: 10);
   await tester.pumpAndSettle();
 }
 

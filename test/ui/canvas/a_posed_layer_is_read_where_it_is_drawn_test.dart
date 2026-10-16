@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/panel_finders.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨I-36 — 「이 과정에서 법 다른거 통일」: on a TRANSFORMED layer, the tools
 /// that read the picture read it where it is drawn.
@@ -171,35 +172,45 @@ void main() {
     await hold(tester, tool: CanvasTool.fill, argb: blue);
 
     await tester.tapAt(onTheRed, kind: PointerDeviceKind.stylus);
-    for (var i = 0; i < 6; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 40)),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-    }
 
-    final surface = sessionOf(tester).pixelEditing.coordinator!
-        .currentSurfaceOf(
-          const BrushFrameKey(
-            projectId: ProjectId('pl-project'),
-            trackId: TrackId('pl-track'),
-            cutId: CutId('pl-cut'),
-            layerId: paint,
-            frameId: paintCel,
-          ),
-        );
-    final size = surface.canvasSize;
-    var cells = 0;
-    var filled = 0;
-    for (var y = 0; y < size.height; y += 4) {
-      for (var x = 0; x < size.width; x += 4) {
-        cells += 1;
-        if (surfacePixelRgba(surface, x, y) == opaqueBlue) {
-          filled += 1;
+    /// The painted cel on a grid four pixels apart: its cells, and how many
+    /// the bucket filled.
+    ({int cells, int filled}) read() {
+      final surface = sessionOf(tester).pixelEditing.coordinator!
+          .currentSurfaceOf(
+            const BrushFrameKey(
+              projectId: ProjectId('pl-project'),
+              trackId: TrackId('pl-track'),
+              cutId: CutId('pl-cut'),
+              layerId: paint,
+              frameId: paintCel,
+            ),
+          );
+      final size = surface.canvasSize;
+      var cells = 0;
+      var filled = 0;
+      for (var y = 0; y < size.height; y += 4) {
+        for (var x = 0; x < size.width; x += 4) {
+          cells += 1;
+          if (surfacePixelRgba(surface, x, y) == opaqueBlue) {
+            filled += 1;
+          }
         }
       }
+      return (cells: cells, filled: filled);
     }
-    expect(filled, greaterThan(0), reason: '⛔CONTROL: the bucket filled');
+
+    expect(
+      await settleAsync(
+        tester,
+        () => read().filled > 0,
+        beat: const Duration(milliseconds: 40),
+        step: const Duration(milliseconds: 16),
+      ),
+      isTrue,
+      reason: '⛔CONTROL: the bucket filled',
+    );
+    final (:cells, :filled) = read();
     expect(
       filled,
       lessThan(cells ~/ 20),

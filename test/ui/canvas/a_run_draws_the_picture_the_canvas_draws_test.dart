@@ -41,6 +41,7 @@ import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨A RUN DRAWS THE PICTURE THE CANVAS DRAWS STANDING STILL
 /// (playback-picture-is-not-the-canvas-picture, 유저 10-13: 「재생하면
@@ -285,14 +286,11 @@ void main() {
     return shot!;
   }
 
-  Future<void> landEverything(WidgetTester tester) async {
-    for (var i = 0; i < 8; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 30)),
-      );
-      await tester.pump();
-    }
-  }
+  Future<void> landEverything(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 8,
+    beat: const Duration(milliseconds: 30),
+  );
 
   /// The RGBA of device pixel ([x], [y]).
   List<int> pixelAt(Shot shot, int x, int y) => shot.rgba.sublist(

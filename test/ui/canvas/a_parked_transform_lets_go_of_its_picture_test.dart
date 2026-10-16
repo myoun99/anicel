@@ -106,14 +106,11 @@ void main() {
       ),
     );
 
-    Future<void> settle() async {
-      for (var i = 0; i < 12; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-        await tester.pump();
-      }
-    }
+    Future<void> settle() => lendBothClocks(
+      tester,
+      rounds: 12,
+      beat: const Duration(milliseconds: 16),
+    );
 
     await settle();
 

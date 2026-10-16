@@ -48,14 +48,18 @@ Future<bool> settleAsync(
 }
 
 /// Lends both clocks [rounds] times, each round [beat] of real time and
-/// then a frame [step] on: the window a test watches for something NOT to
-/// happen in.
+/// then a frame [step] on: a WINDOW — what a test watches for something NOT
+/// to happen in, or what it gives work that never says it is done.
 ///
 /// ⛔**A NUMBER OF ROUNDS, NOT A TIME** — the other way round from
 /// [settleAsync], because it answers the other question. Under load fewer
 /// rounds fit in a time, and a window that sees less passes what it is
 /// there to catch: a clock here would turn a real failure into a pass on a
 /// busy machine.
+///
+/// ⚠️Work given a window is the fragile kind: a busy machine can shut the
+/// window on it unfinished. Whatever can say it is done waits for that in
+/// [settleAsync] instead.
 Future<void> lendBothClocks(
   WidgetTester tester, {
   required int rounds,

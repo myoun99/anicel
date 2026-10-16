@@ -67,6 +67,7 @@ import '../helpers/home_page_probes.dart' show tapToolbarButton;
 import '../helpers/named_finders.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
+import '../helpers/settle_async.dart';
 import 'guide_shortcut_table.dart';
 
 final outRoot = Platform.environment['GUIDE_OUT'] ?? 'build/guide';
@@ -146,16 +147,15 @@ Future<void> settle(WidgetTester tester, [int frames = 10]) async {
   }
 }
 
-/// Lets the real threads (tile rasters, decoders) finish and the frames
-/// that show their results go by.
-Future<void> settleReal(WidgetTester tester, [int rounds = 10]) async {
-  for (var i = 0; i < rounds; i++) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 40)),
+/// Lets the real threads finish and the frames that show their results go
+/// by.
+Future<void> settleReal(WidgetTester tester, [int rounds = 10]) =>
+    lendBothClocks(
+      tester,
+      rounds: rounds,
+      beat: const Duration(milliseconds: 40),
+      step: const Duration(milliseconds: 16),
     );
-    await tester.pump(const Duration(milliseconds: 16));
-  }
-}
 
 Future<void> pumpApp(
   WidgetTester tester,

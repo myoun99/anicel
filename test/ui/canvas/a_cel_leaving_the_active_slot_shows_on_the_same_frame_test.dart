@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★A CEL THAT LEAVES THE ACTIVE SLOT IS STILL ON SCREEN THE SAME FRAME
 /// (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
@@ -321,14 +322,11 @@ void main() {
 
     /// Lets every picture the engine owes land — the async pass's compose
     /// and a snapshot's `toImage` both finish in real time.
-    Future<void> landEverything() async {
-      for (var i = 0; i < 6; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 30)),
-        );
-        await tester.pump();
-      }
-    }
+    Future<void> landEverything() => lendBothClocks(
+      tester,
+      rounds: 6,
+      beat: const Duration(milliseconds: 30),
+    );
 
     // The row under it is warm, as every row is once the editor has sat
     // idle: after the switch, the settle is the only thing still to come.
@@ -357,15 +355,19 @@ void main() {
           'raster a select has to pay',
     );
 
-    await landEverything();
-    final inTheBuild = images.handed.first;
-    final settled = images.handed.last;
     expect(
-      identical(settled.image, inTheBuild.image),
-      isFalse,
+      await settleAsync(
+        tester,
+        () =>
+            images.handed.isNotEmpty &&
+            !identical(images.handed.last.image, images.handed.first.image),
+      ),
+      isTrue,
       reason: 'fixture: the stack was handed a second handle — the snapshot '
           'that settled in place of the deferred image',
     );
+    final inTheBuild = images.handed.first;
+    final settled = images.handed.last;
     expect(
       identical(settled.content, inTheBuild.content),
       isTrue,

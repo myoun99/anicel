@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★A CEL THAT BECOMES THE ACTIVE ROW BELOW 100% SHOWS WHAT IT SHOWED A
 /// FRAME AGO, AND MAKES NOTHING IN THAT FRAME (2026-09-24, board
@@ -173,16 +174,6 @@ void main() {
     return true;
   }
 
-  /// Lets the asynchronous pass land the row's image.
-  Future<void> landEverything(WidgetTester tester) async {
-    for (var i = 0; i < 6; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 30)),
-      );
-      await tester.pump();
-    }
-  }
-
   BitmapSurfacePainter painterOf(BitmapSurface surface, Object lineage) =>
       BitmapSurfacePainter(
         surface: surface,
@@ -219,10 +210,9 @@ void main() {
       ),
     );
     await pumpStack(tester, images, active: false);
-    await landEverything(tester);
     expect(
-      blank(await onScreen(tester)),
-      isFalse,
+      await settleAsync(tester, () async => !blank(await onScreen(tester))),
+      isTrue,
       reason: 'fixture: the row is on screen from its image',
     );
     final surface = surfaceOf(store);

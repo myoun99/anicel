@@ -275,12 +275,11 @@ void main() {
     // frames however long the real waits take.
     const frames = 10;
     const looks = 25;
-    for (var look = 0; look < looks; look += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(microseconds: 16667));
-    }
+    await lendBothClocks(
+      tester,
+      rounds: looks,
+      step: const Duration(microseconds: 16667),
+    );
 
     final asks = fake.asked.length - before;
     expect(

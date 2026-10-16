@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/session/history_pictures.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/native_engine_path.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★UNDO INTO AN ENTRY THE BUDGET PARKED SHOWS NO BLANK FRAME
 /// (undo-held-tile-pictures, stage 1, 2026-09-11 — and the one door,
@@ -419,15 +420,13 @@ class _Walk {
 
   void press() => pictures.step(undo: true, apply: history.undo);
 
-  /// Real time for the decodes, and a frame after each landing.
-  Future<void> settle() async {
-    for (var i = 0; i < 12; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-      await tester.pump();
-    }
-  }
+  /// The moment the user looks at a step: frames, with real time beside
+  /// them.
+  Future<void> settle() => lendBothClocks(
+    tester,
+    rounds: 12,
+    beat: const Duration(milliseconds: 25),
+  );
 
   /// The frame on screen: pixels of stroke [showing]'s colour.
   Future<({int ink})> look({required int showing}) async {

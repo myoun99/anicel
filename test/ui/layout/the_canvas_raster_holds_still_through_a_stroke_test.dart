@@ -14,6 +14,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/scaled_test_binding.dart';
+import '../../helpers/settle_async.dart';
 
 /// F-67 (유저 2026-09-10): 「선을 그리기 시작하거나 … 일부 정해진 픽셀이
 /// 반픽셀 움직였다가 돌아오는」, at zoom >= 100%. The hands-on of 09-11 read
@@ -69,15 +70,6 @@ void main() {
       return out;
     });
     return result!;
-  }
-
-  Future<void> letDecodesLand(WidgetTester tester) async {
-    for (var i = 0; i < 12; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 16)),
-      );
-      await tester.pump();
-    }
   }
 
   testWidgets('at 110% the settled picture holds still, byte for byte, '
@@ -144,7 +136,7 @@ void main() {
     const liveRow = 0.62;
     await stroke(upperRow, 0.55, 0.9);
     await stroke(lowerRow, 0.55, 0.9);
-    await letDecodesLand(tester);
+    await lendBothClocks(tester, rounds: 12, beat: _beat);
     final settled = await capture(tester);
     final settled2 = await capture(tester);
     expect(
@@ -169,7 +161,7 @@ void main() {
     await tester.pump();
     final penUp = await capture(tester);
     await tester.pumpAndSettle();
-    await letDecodesLand(tester);
+    await lendBothClocks(tester, rounds: 12, beat: _beat);
     final after = await capture(tester);
 
     // A band 40 px tall around a reference row, over the stroke's span
@@ -250,3 +242,6 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 }
+
+/// A round of real time in the windows the strokes are given.
+const _beat = Duration(milliseconds: 16);

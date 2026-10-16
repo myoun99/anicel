@@ -1072,12 +1072,8 @@ void main() {
           ),
         ),
       );
-      for (var tries = 0; tries < 50; tries += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
-        await tester.pump();
-      }
+      // IN/OUT is a span of the file's pages, said once the file is open.
+      await settleLoadedPages(tester);
     }
 
     testWidgets('🚨registering into the pool shows IN/OUT where there is a '
@@ -2229,13 +2225,12 @@ void main() {
           ),
         ),
       );
-      // A loose file is PROBED (identity, size) before the table can say
-      // what it is; the real IO runs in runAsync and its awaits are
-      // fake-zone microtasks that only pump() drains.
-      for (var i = 0; i < 8; i += 1) {
-        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-        await tester.pump();
-      }
+      // The table says what a loose file is the frame it is listed (its
+      // size is read there and then); what the window reads off the file
+      // after that — its preview — lands before the test goes on.
+      // ↩️It lent the clocks eight rounds while a loose file was PROBED
+      // (identity, size) before the table could say what it was.
+      await settleLoadedPages(tester);
     }
 
 

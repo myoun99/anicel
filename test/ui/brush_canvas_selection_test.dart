@@ -443,16 +443,22 @@ void main() {
       .evaluate()
       .isNotEmpty;
 
-  /// Lets the real decode pipeline run to completion, so the committed
-  /// surface can paint and any hold releases.
-  Future<void> settle(WidgetTester tester) async {
-    for (var i = 0; i < 8; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 16)),
-      );
-      await tester.pump();
-    }
-  }
+  /// True once a float draws its warped preview's DECODED image — what a
+  /// confirm keeps. ⚠️Not [previewIsUp]: that key is the float overlay's,
+  /// mounted wherever a float is.
+  bool decodedPreviewIsUp(WidgetTester tester) => tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((paint) => paint.painter)
+      .whereType<SelectionFloatPainter>()
+      .any((painter) => painter.floats.any((float) => float.image != null));
+
+  /// A window of both clocks, so the committed surface can paint and any
+  /// hold releases.
+  Future<void> settle(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 8,
+    beat: const Duration(milliseconds: 16),
+  );
 
   /// The FLOAT's surface painters — every one whose surface is not the
   /// committed cel.
@@ -5348,14 +5354,12 @@ void main() {
       final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
 
-      Future<void> settle() async {
-        for (var i = 0; i < 8; i += 1) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 16)),
-          );
-          await tester.pump(const Duration(milliseconds: 16));
-        }
-      }
+      Future<void> settle() => lendBothClocks(
+        tester,
+        rounds: 8,
+        beat: const Duration(milliseconds: 16),
+        step: const Duration(milliseconds: 16),
+      );
 
       BitmapSurfacePainter floatPainter() {
         final floats = floatPainters(
@@ -5498,12 +5502,12 @@ void main() {
       // `_commitMove`, which is the first of the three rebuilds that have
       // a legitimate predecessor.
       await dragOnLayer(tester, const Offset(300, 250), const Offset(310, 258));
-      for (var i = 0; i < 10; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 16)),
-        );
-        await tester.pump(const Duration(milliseconds: 16));
-      }
+      await lendBothClocks(
+        tester,
+        rounds: 10,
+        beat: const Duration(milliseconds: 16),
+        step: const Duration(milliseconds: 16),
+      );
 
       final lifted = floatPainter().surface;
       expect(
@@ -5921,7 +5925,11 @@ void main() {
       );
       // The resample decodes asynchronously; the preview being up is what
       // says the image the confirm will keep actually exists yet.
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       expect(
         find.byKey(const ValueKey<String>('transform-resample-preview')),
         findsOneWidget,
@@ -5986,7 +5994,11 @@ void main() {
           sy: 1.5,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       env.commands.applyTransform();
       await tester.pump();
       final atConfirm = await screenInkMask(tester);
@@ -6210,7 +6222,11 @@ void main() {
           sy: 1.5,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       env.commands.applyTransform();
       await tester.pump();
       await settle(tester);
@@ -6290,18 +6306,9 @@ void main() {
       await tester.pump();
       await gesture.moveTo(origin + const Offset(60, 55));
       await tester.pump();
-      // The DECODE, not the resample: `previewIsUp` is the fallback
-      // painter, which is up for the float surface as well.
-      bool decodedPreviewIsUp() => tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<SelectionFloatPainter>()
-          .any(
-            (painter) => painter.floats.any((float) => float.image != null),
-          );
       await pumpUntil(
         tester,
-        decodedPreviewIsUp,
+        () => decodedPreviewIsUp(tester),
         reason: 'the drag-time resample to decode',
       );
       final window = debugLastResampledFloat!.stamp!;
@@ -6435,7 +6442,11 @@ void main() {
           sy: 0.5,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       env.commands.applyTransform();
       await tester.pump();
       await settle(tester);
@@ -6609,7 +6620,11 @@ void main() {
           sy: 1.4,
         ),
       );
-      await settle(tester);
+      await pumpUntil(
+        tester,
+        () => decodedPreviewIsUp(tester),
+        reason: 'the warped preview to decode',
+      );
       expect(
         find.byKey(const ValueKey<String>('transform-resample-preview')),
         findsOneWidget,

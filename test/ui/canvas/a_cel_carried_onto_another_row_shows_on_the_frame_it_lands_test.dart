@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 /// F-313 (유저 2026-10-08): 「다른행이동하면 일시적으로 빈 블록으로 만드는
 /// 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」.
@@ -149,15 +150,12 @@ void main() {
     return n;
   }
 
-  /// Lets the asynchronous pass land the row's image.
-  Future<void> landEverything(WidgetTester tester) async {
-    for (var i = 0; i < 6; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 30)),
-      );
-      await tester.pump();
-    }
-  }
+  /// Lets the asynchronous pass land the rows' images.
+  Future<void> landEverything(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 6,
+    beat: const Duration(milliseconds: 30),
+  );
 
   /// The cel on screen under the row it came from, as the drag shows it,
   /// then the release's rekey.
@@ -172,10 +170,13 @@ void main() {
     addTearDown(images.dispose);
 
     await pumpRow(tester, images, from, zoom: zoom);
-    await landEverything(tester);
     expect(
-      await blueColumns(tester, zoom),
-      viewSize.width.toInt(),
+      await settleAsync(
+        tester,
+        () async =>
+            await blueColumns(tester, zoom) == viewSize.width.toInt(),
+      ),
+      isTrue,
       reason: 'fixture: the drag shows the cel under the row it came from',
     );
     store.rekeyFrames([(from, to)]);
