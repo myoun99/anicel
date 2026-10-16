@@ -530,7 +530,20 @@ void main() {
   /// (a text in lines) asks `paint` itself. 🔬`clean_code_diff` against
   /// the lane under it (`17f66740b`, at 404) named that one added and
   /// nothing gone.
-  const wideSignatures = 405;
+  ///
+  /// ⚠️405 → 407 on 2026-10-18, two named as the rule above asks (I-105 —
+  /// 유저 2026-10-16: 「셀 출력시 CAM 적용 하는거랑 똑같이 … 가이드 버튼」).
+  /// `paintGuidesAtRest` (five) is the one picture 래스터라이즈 bakes and a
+  /// cel's export lays over a drawing (I-105-Q2: 「법 통일」): the guides,
+  /// the paper and the colour they are drawn on and in, and how many of its
+  /// own pixels a canvas pixel is — the bake at one, a file at the CAM's
+  /// sizes. `_ExportDialogState._celLaying` (five) is the one answer the
+  /// band's direction, CAM and guide pills give: the cut, the sheet shown,
+  /// whether there is anything to lay, and how the cut's list reads and
+  /// writes it. 🔬`clean_code_diff` against master (`9a7a8e3de`, at 404)
+  /// named those two added and nothing gone; stood on ⑥'s 405 above when
+  /// the lane was rebased onto it (10-19).
+  const wideSignatures = 407;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -753,7 +766,19 @@ void main() {
   /// at 408) named that one added and nothing gone. ⛔Not split to fit:
   /// the movies it opens it closes, in its own `finally` — a helper that
   /// opened them would leave the closing to a scope it cannot see.
-  const longBodies = 409;
+  ///
+  /// ⚠️409 → 411 on 2026-10-18, two named as the rule above asks (I-105,
+  /// the guides laid over a cel as CAM lays the camera's work).
+  /// `ExportFrameRenderer.renderCelGroup` stood at the line — the stack's
+  /// one picture a layer, with the decisions on blends and effects beside
+  /// it — and crossed it handing the camera's work and the guides over as
+  /// one pass, in the guides' colour. `_exportCels` crossed it reading that
+  /// colour off the theme where the run starts and handing it to each
+  /// cel's render. 🔬`clean_code_diff` against master (`9a7a8e3de`, at 409)
+  /// named those two added and nothing gone. ⛔Not split to fit: each says
+  /// one thing — the stack and what is laid over it; the files a run
+  /// writes — and a part taken out would be read beside the rest anyway.
+  const longBodies = 411;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
