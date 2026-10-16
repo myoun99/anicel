@@ -15,6 +15,7 @@ import '../../models/key_side.dart'
         keyHandleAt,
         keyHandleInfluenceAt,
         keyHandlePoint;
+import '../../models/timeline_row_address.dart' show TimelineRowAddress;
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
@@ -49,15 +50,37 @@ typedef TimelineLaidRows = ({
   TimelineRowEdges edges,
 });
 
-/// What [grid] lays on the frame side for [laid]: each row's own [cells],
-/// and an open graph's lanes as ONE [TimelineLaneGraph] across their whole
-/// unit (I-89 ③) — or, folded by the enlarged one, as its empty strip.
+/// What [grid] lays on the frame side for [laid] ([laneGraphFrameSide]),
+/// its graphs drawing what its hooks tell ([timelineLaneGraphLines]).
 List<Widget> timelineFrameSide(
   TimelineLaidRows laid,
   TimelineCellsRowGrid grid, {
   required Widget Function(TimelineDisplayRow row) cells,
+}) => laneGraphFrameSide(
+  laid,
+  laneGraphGridOf(grid),
+  lines: (seat, lanes) => timelineLaneGraphLines(seat, lanes, grid.hooks),
+  cells: cells,
+);
+
+/// What a rail lays on the frame side for [laid]: each row's own [cells],
+/// and an open graph's lanes as ONE [TimelineLaneGraph] across their whole
+/// unit (I-89 ③), drawn in [grid] with the [lines] its seat and its lanes
+/// draw — or, folded by the enlarged one, as its empty strip. The
+/// timeline's and the sheet's grids lay theirs so, and the storyboard's
+/// rail its own (I-89 ①).
+List<Widget> laneGraphFrameSide(
+  TimelineLaidRows laid,
+  LaneGraphGrid grid, {
+  required LaneGraphLines Function(
+    TimelineGraphSeat seat,
+    List<TimelineDisplayRow> lanes,
+  )
+  lines,
+  required Widget Function(TimelineDisplayRow row) cells,
 }) {
   final (:rows, :first, :edges) = laid;
+  final axis = grid.frameAxis.axis;
   return [
     for (final unit in edges.unitsIn(first, first + rows.length))
       // The mock's 5판 draws nothing in a folded graph's strip.
@@ -65,19 +88,18 @@ List<Widget> timelineFrameSide(
         graph: _?,
         folded: true,
       ))
-        acrossBox(grid.axis, edges.unitSpanOf(unit.first).extent)
+        acrossBox(axis, edges.unitSpanOf(unit.first).extent)
       else if (rows[unit.first - first].graph case final seat?)
         TimelineLaneGraph(
           key: ValueKey<String>(
             '${grid.keyPrefix}-lane-graph-${seat.groupKey}',
           ),
           seat: seat,
-          lines: timelineLaneGraphLines(
+          lines: lines(
             seat,
             rows.sublist(unit.first - first, unit.last - first + 1),
-            grid.hooks,
           ),
-          grid: laneGraphGridOf(grid),
+          grid: grid,
           crossExtent: edges.unitSpanOf(unit.first).extent,
           lanesExtent:
               edges.unitSpanOf(unit.first).extent - edges.roomOf(unit.last),
@@ -86,7 +108,7 @@ List<Widget> timelineFrameSide(
       else ...[
         cells(rows[unit.first - first]),
         if (edges.roomOf(unit.last) > 0)
-          acrossBox(grid.axis, edges.roomOf(unit.last)),
+          acrossBox(axis, edges.roomOf(unit.last)),
       ],
   ];
 }
@@ -141,52 +163,70 @@ typedef LaneGraphLines = ({
   List<LaneGraphLine> Function() guests,
 });
 
-/// What [seat]'s graph draws on a grid [hooks] tells (I-89 ③): of [lanes]
-/// — the group's lanes as the rail draws them, in its order — the ones it
-/// draws as its own ([laneGraphDrawnLanes]), read off where the rail
-/// stands, each as a drag in flight shows its row ([previewedLaneRow]);
-/// and every pin of another group's as a guest ([laneGraphGuests]), as
-/// the host finds it. Read again whenever the rail stands elsewhere or the
-/// drag moves.
+/// What [seat]'s graph draws on a grid [hooks] tells ([laneGraphLines]):
+/// each of its lanes as a drag in flight shows its row
+/// ([previewedLaneRow]), and every pin as the host finds it.
 LaneGraphLines timelineLaneGraphLines(
   TimelineGraphSeat seat,
   List<TimelineDisplayRow> lanes,
   TimelineGridHooks hooks,
 ) {
-  final standing = hooks.currentRowHooks?.currentRow;
   final preview = hooks.dragPreview;
   final lanesForLayer = hooks.lanesForLayer;
   final lineOf = hooks.laneGraphLineOf;
-  return (
-    changes: Listenable.merge([standing, preview]),
-    own: () {
-      final drawn = laneGraphDrawnLanes(seat, standing?.value);
-      return [
-        for (final row in lanes)
-          if (drawn.contains(row.lane!.laneId))
-            if (timelineDragPreviewLayerFor(preview?.value, row.layer.id)
-                case final layer?)
-              (
-                layer: layer,
-                lane: previewedLaneRow(
-                  row: row,
-                  previewLayer: layer,
-                  lanesForLayer: (layer) =>
-                      lanesForLayer?.call(layer) ?? const [],
-                ),
-                reach: null,
-              )
-            else
-              (layer: row.layer, lane: row.lane!, reach: null),
-      ];
-    },
-    guests: () => [
-      if (lineOf != null)
-        for (final key in laneGraphGuests(seat, hooks.laneGraphs.pinned))
-          ?lineOf(key),
+  return laneGraphLines(
+    seat,
+    lanes,
+    standing: hooks.currentRowHooks?.currentRow,
+    moves: preview,
+    linesOf: (row) => [
+      if (timelineDragPreviewLayerFor(preview?.value, row.layer.id)
+          case final layer?)
+        (
+          layer: layer,
+          lane: previewedLaneRow(
+            row: row,
+            previewLayer: layer,
+            lanesForLayer: (layer) => lanesForLayer?.call(layer) ?? const [],
+          ),
+          reach: null,
+        )
+      else
+        (layer: row.layer, lane: row.lane!, reach: null),
     ],
+    pinned: hooks.laneGraphs.pinned,
+    guestsOf: (key) => [?lineOf?.call(key)],
   );
 }
+
+/// What [seat]'s graph draws (I-89 ③): of [lanes] — the group's lanes as
+/// the rail draws them, in its order — the ones it draws as its own
+/// ([laneGraphDrawnLanes]), read off where the rail stands, each as
+/// [linesOf] reads its row now; and every pin of another group's of
+/// [pinned] as a guest ([laneGraphGuests]), as [guestsOf] finds it. A lane
+/// a storyboard's projection row draws is a line a cut. Read again
+/// whenever the rail stands elsewhere or [moves] says a drag moved.
+LaneGraphLines laneGraphLines(
+  TimelineGraphSeat seat,
+  List<TimelineDisplayRow> lanes, {
+  required ValueListenable<TimelineRowAddress?>? standing,
+  required Listenable? moves,
+  required Iterable<LaneGraphLine> Function(TimelineDisplayRow row) linesOf,
+  required Set<String> pinned,
+  required Iterable<LaneGraphLine> Function(String key) guestsOf,
+}) => (
+  changes: Listenable.merge([standing, moves]),
+  own: () {
+    final drawn = laneGraphDrawnLanes(seat, standing?.value);
+    return [
+      for (final row in lanes)
+        if (drawn.contains(row.lane!.laneId)) ...linesOf(row),
+    ];
+  },
+  guests: () => [
+    for (final key in laneGraphGuests(seat, pinned)) ...guestsOf(key),
+  ],
+);
 
 /// An open graph on the frame side: ONE picture over its group's lanes and
 /// the room after them, where their rows of cells would be (I-89 ③) — the

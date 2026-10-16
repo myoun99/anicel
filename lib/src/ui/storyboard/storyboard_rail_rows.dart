@@ -4,6 +4,32 @@ part of '../storyboard_panel.dart';
 /// lane carrier — and whether this build reads it open.
 typedef _Twirl = ({LayerId id, bool open});
 
+/// Every lane the rail draws, every track's, as the timeline's rows hold it
+/// (I-89 ①): the [lanes] as they are, the [rows] they make seated in their
+/// groups' open header graphs ([seatLaneGraphs]), where those sit — each
+/// at its extent, an open graph's room after its last lane
+/// ([timelineRowEdgesOf]) — and which of them each lane is [at]. The
+/// timeline's own seating on this rail's lanes: an ENLARGED graph folds
+/// every other lane of the rail, every track's — the panel is what it is
+/// enlarged over.
+typedef _LaneSeating = ({
+  List<TimelineDisplayRow> lanes,
+  List<TimelineDisplayRow> rows,
+  TimelineRowEdges edges,
+  Map<TimelineRowAddress, int> at,
+});
+
+/// One lane as the table lays it ([_StoryboardRailRows._seatedLane]): its
+/// [index] among the lanes, its [row] — seated in the open graph that draws
+/// it, folded where the enlarged one says — its [extent], and the [room] an
+/// open graph stands past it.
+typedef _SeatedLane = ({
+  int index,
+  TimelineDisplayRow row,
+  double extent,
+  double room,
+});
+
 /// THE RAIL'S ROWS AND LANES — the rows the storyboard's rail shows for
 /// a track and its SE rows, in display order, filtered; their extents,
 /// sections and geometry; the subject and row at a rail position; the
@@ -47,6 +73,15 @@ class _StoryboardRailRows {
     );
   }
 
+  /// The layer the V row's own lanes are worn by on this rail — its lane
+  /// carrier ([trackTransformLaneCarrierId]) — by its labels, its strips
+  /// and the graphs over them alike.
+  static Layer _trackLaneCarrier(Track track) => Layer(
+    id: trackTransformLaneCarrierId(track.id),
+    name: 'V',
+    frames: const [],
+  );
+
   /// The V row's OWN lanes — its Transform group when it has one, then its
   /// EFFECT chain.
   ///
@@ -83,12 +118,18 @@ class _StoryboardRailRows {
   }
 
   /// [_seLanes] read off [layer] — the S row as committed, or as a lane edit
-  /// in flight shows it (its labels re-derive through here, F-195).
-  List<PropertyLaneRow> _seLanesOf(Track track, Layer layer) {
+  /// in flight shows it (its labels re-derive through here, F-195) — its
+  /// groups open as the rows keep them, or as [expandedGroupKeys] says.
+  List<PropertyLaneRow> _seLanesOf(
+    Track track,
+    Layer layer, {
+    Set<String>? expandedGroupKeys,
+  }) {
     return propertyLanesForRow(
       layer: layer,
       rows: track.seLayers,
-      expandedGroupKeys: _state.widget.expandedLaneGroupKeys,
+      expandedGroupKeys:
+          expandedGroupKeys ?? _state.widget.expandedLaneGroupKeys,
       valueSourceAt: (frameIndex) => (layer: layer, frame: frameIndex),
       // The display size comes from the SESSION, exactly as the V row's
       // lanes take it — never from "the cut that happens to be open", which
@@ -925,6 +966,7 @@ class _StoryboardRailRows {
       // keyed there (F-102).
       frameCursor: _state.widget.playheadFrame,
       onSelectFrame: _state.widget.onSeekGlobalFrame,
+      graphVerbs: _state.widget.laneGraphVerbs,
     );
     return _state._rows.selectableLanes(layer.id, lanes, labels);
   }
@@ -1172,11 +1214,7 @@ class _StoryboardRailRows {
         ..._state._rows.draggableTrackEffectRows(
           track,
           _state._rows.laneLabels(
-            carrier: Layer(
-              id: trackTransformLaneCarrierId(track.id),
-              name: 'V',
-              frames: const [],
-            ),
+            carrier: _trackLaneCarrier(track),
             // A layer row's own key ([laneGroupKey]), on the lane carrier.
             groupKeyOf: (lane) =>
                 laneGroupKey(trackTransformLaneCarrierId(track.id), lane.laneId),
@@ -1217,6 +1255,7 @@ class _StoryboardRailRows {
             active: true,
             frameCursor: _state.widget.playheadFrame,
             onSelectFrame: _state.widget.onSeekGlobalFrame,
+            graphVerbs: _state.widget.laneGraphVerbs,
           ),
         ),
       ],
@@ -1785,6 +1824,37 @@ class _StoryboardRailRows {
         return rows.indexOf(head!) - rows.indexOf(anchor);
       };
 
+  /// Where a pointer [offset] from the top of [anchor]'s label stands, in
+  /// rows of the rail from that top ([LayerRowDragTarget.pointerRowsAt]),
+  /// read off the table every track's rail is drawn from — where the room
+  /// an open graph stands past its lanes is no row (I-89 ③,
+  /// [TimelineRowEdges.rowsAt]), as on the timeline's rail.
+  double Function(double offset) pointerRowsFrom(TimelineRowAddress anchor) =>
+      (offset) {
+        final rows = <TimelineRowSlot>[];
+        var anchorAt = -1;
+        for (final track in _state.widget.project.tracks) {
+          for (final slot in _trackGroupRowGeometry(track)) {
+            if (_isRoom(slot)) {
+              final last = rows.removeLast();
+              rows.add((
+                extent: last.extent,
+                room: slot.height,
+                joinsNext: false,
+              ));
+              continue;
+            }
+            if (_standingAddressOf(slot) == anchor) {
+              anchorAt = rows.length;
+            }
+            rows.add((extent: slot.height, room: 0, joinsNext: false));
+          }
+        }
+        return anchorAt < 0
+            ? 0
+            : TimelineRowEdges(rows).rowsAt(anchorAt, offset);
+      };
+
   /// C② — the lane strips' gesture bundle for [track]: raw cross pixels
   /// resolved against THIS rail's mixed-height row table (R9 #25), the
   /// in-group head lane read off the same table, and the drag JOINING the
@@ -1917,16 +1987,286 @@ class _StoryboardRailRows {
   /// wore two). This is where both are, drawn by the timeline's own sheet —
   /// 유저 F-18: 「스토리보드패널 타임라인이랑 그리드 다를거같은데 절대 다르지
   /// 않도록 통일」, where "절대" is about the next change, not today's pixels.
+  ///
+  /// An open header graph is ONE row of it, its lanes and its room: the
+  /// timeline's sheet rules a graph so ([TimelineRowEdges.unitSpanOf]) — it
+  /// rests on the lane ground, and no seam runs through its picture.
   TimelineGridRows gridRows(List<Track> tracks, Color hostGround) {
     final laneGround = timelineLaneGround(hostGround);
+    final seating = _laneSeating;
     return TimelineGridRows([
       for (final track in tracks)
         for (final slot in _trackGroupRowGeometry(track))
-          (extent: slot.height, ground: slot.lane ? laneGround : hostGround),
+          if (slot.graph == null)
+            (extent: slot.height, ground: slot.lane ? laneGround : hostGround)
+          else if (seating.at[slot.display?.address] case final index?
+              when seating.edges.unitOf(index).first == index)
+            (
+              extent: seating.edges.unitSpanOf(index).extent,
+              ground: laneGround,
+            ),
     ]);
   }
 
+  /// [track]'s rows as the rail is drawn from them ([_trackGroupSlots]),
+  /// each lane laid as the header graphs stand (I-89 ①): at its extent,
+  /// seated in its group's open graph, and the ROOM an open graph stands
+  /// past its lanes in a slot of its own after the last of them — the
+  /// timeline's rows' own seating ([_laneSeating]).
   List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
+    final seating = _laneSeating;
+    return [
+      for (final slot in _trackGroupSlots(track))
+        if (seating.at[slot.display?.address] case final index?) ...[
+          _seated(
+            slot,
+            seating.edges.extentOf(index),
+            seating.rows[index].graph,
+          ),
+          if (seating.edges.roomOf(index) > 0)
+            _roomOf(seating.rows[index].graph, seating.edges.roomOf(index)),
+        ] else
+          slot,
+    ];
+  }
+
+  /// [slot] laid [height] tall, in the open [graph] that draws it.
+  static _StoryboardRailSlot _seated(
+    _StoryboardRailSlot slot,
+    double height,
+    TimelineGraphSeat? graph,
+  ) => (
+    row: slot.row,
+    laneRow: slot.laneRow,
+    standRow: slot.standRow,
+    bandRow: slot.bandRow,
+    lane: slot.lane,
+    railRow: slot.railRow,
+    height: height,
+    display: slot.display,
+    graph: graph,
+  );
+
+  /// The room [graph] stands past its lanes, [height] tall: on the lane
+  /// ground, and no row anybody stands on — as the timeline's rail lays it
+  /// after an open graph's last lane.
+  static _StoryboardRailSlot _roomOf(TimelineGraphSeat? graph, double height) =>
+      (
+        row: null,
+        laneRow: null,
+        standRow: null,
+        bandRow: false,
+        lane: true,
+        railRow: null,
+        height: height,
+        display: null,
+        graph: graph,
+      );
+
+  /// Whether [slot] is an open graph's room ([_roomOf]): no lane of its
+  /// own, in the graph it stands past.
+  static bool _isRoom(_StoryboardRailSlot slot) =>
+      slot.display == null && slot.graph != null;
+
+  /// Every lane this rail draws as the timeline's rows hold it, seated and
+  /// laid ([_LaneSeating]) — read once a build ([forgetLaneSeating]), as
+  /// the rail, the strips and every gesture read one table.
+  _LaneSeating get _laneSeating => _seating ??= _laneSeatingFor(
+    _state.widget.rowSelection?.value ?? const [],
+  );
+  _LaneSeating? _seating;
+
+  /// What [_laneSeating] was read for goes with the build it was read in.
+  void forgetLaneSeating() => _seating = null;
+
+  /// Every lane of every track's table ([_trackGroupSlots]) seated for the
+  /// row selection [selected] ([seatLaneGraphs]) and laid along a view as
+  /// long as the rail's ([timelineRowEdgesOf]).
+  _LaneSeating _laneSeatingFor(List<TimelineRowAddress> selected) {
+    final lanes = [
+      for (final track in _state.widget.project.tracks)
+        for (final slot in _trackGroupSlots(track)) ?slot.display,
+    ];
+    final rows = seatLaneGraphs(
+      lanes,
+      _state.widget.laneGraphs,
+      selection: selected.toSet(),
+    );
+    return (
+      lanes: lanes,
+      rows: rows,
+      edges: timelineRowEdgesOf(
+        rows,
+        TimelineGridMetrics(layerRowHeight: _state._rowHeights.lane),
+        view: _state._middleViewportHeight,
+      ),
+      at: {for (final (index, row) in rows.indexed) row.address: index},
+    );
+  }
+
+  /// [lane] as the table lays it ([_laneSeating]) — null for a lane the
+  /// table has not.
+  _SeatedLane? _seatedLane(TimelineRowAddress lane) {
+    final seating = _laneSeating;
+    return switch (seating.at[lane]) {
+      final index? => (
+        index: index,
+        row: seating.rows[index],
+        extent: seating.edges.extentOf(index),
+        room: seating.edges.roomOf(index),
+      ),
+      null => null,
+    };
+  }
+
+  /// The open graph [lane] is drawn in while the row selection is
+  /// [selected] ([_pickedRows]).
+  TimelineGraphSeat? _seatIn(
+    _SeatedLane lane,
+    List<TimelineRowAddress> selected,
+  ) => _pickedRows(selected)[lane.index].graph;
+
+  /// [_laneSeating]'s rows with the row selection [selected] told to their
+  /// graphs ([seatLaneGraphs]) — which lanes each draws as picked. The rail
+  /// draws the selection on a listener of its own and a span grows per
+  /// pointer move, so what reads the picked lanes reads them here, once a
+  /// selection for every lane that asks.
+  List<TimelineDisplayRow> _pickedRows(List<TimelineRowAddress> selected) {
+    final lanes = _laneSeating.lanes;
+    if (_picked case (:final of, :final by, :final rows)
+        when identical(of, lanes) && identical(by, selected)) {
+      return rows;
+    }
+    final rows = seatLaneGraphs(
+      lanes,
+      _state.widget.laneGraphs,
+      selection: selected.toSet(),
+    );
+    _picked = (of: lanes, by: selected, rows: rows);
+    return rows;
+  }
+
+  /// What [_pickedRows] last seated: the table's lanes it seated — a build's
+  /// own list — and the selection it told them.
+  ({
+    List<TimelineDisplayRow> of,
+    List<TimelineRowAddress> by,
+    List<TimelineDisplayRow> rows,
+  })?
+  _picked;
+
+  /// The lane the pin [key] names on this rail's own rows (I-89 ①) — an S
+  /// row's, a V row's on its lane carrier — on the track's axis, as a drag
+  /// in flight shows it ([laneGraphLineAmong]); null for a lane of a cut's
+  /// layer, which this rail draws a cut at a time.
+  LaneGraphLine? _laneGraphLineOf(String key) {
+    final preview = _state.widget.dragPreview?.value;
+    for (final track in _state.widget.project.tracks) {
+      final line =
+          laneGraphLineAmong(
+            key,
+            rows: [
+              for (final layer in track.seLayers)
+                timelineDragPreviewGlobalLayerFor(preview, layer.id) ?? layer,
+            ],
+            lanesOf: (layer, open) =>
+                _seLanesOf(track, layer, expandedGroupKeys: open),
+          ) ??
+          laneGraphLineAmong(
+            key,
+            rows: [_trackLaneCarrier(track)],
+            lanesOf: (_, open) => _trackEffectLanes(
+              track.copyWith(
+                effects: timelineDragPreviewTrackEffectsFor(preview, track.id),
+                expandedLaneGroups: {
+                  for (final group in open) ?parseLaneGroupKey(group)?.laneId,
+                },
+              ),
+            ),
+          );
+      if (line != null) {
+        return line;
+      }
+    }
+    return null;
+  }
+
+  /// [carrierId]'s [lanes] on the frame side as the table lays them
+  /// (I-89 ①): each lane's [strip] at its extent, and an open graph's lanes
+  /// as ONE graph across their unit — the timeline's frame side
+  /// ([laneGraphFrameSide]) on this rail's frame axis, each lane drawn as
+  /// [lineOf] reads it now and the pins this rail's rows hold as guests
+  /// ([_laneGraphLineOf]). While a graph is open among them it follows the
+  /// row selection, which picks what it draws ([_pickedRows]).
+  List<Widget> _laneFrameSide(
+    LayerId carrierId,
+    List<PropertyLaneRow> lanes, {
+    required PropertyLaneEditCallbacks? laneEdit,
+    required LaneGraphLine Function(TimelineDisplayRow row) lineOf,
+    required Widget Function(TimelineDisplayRow row, double height) strip,
+  }) {
+    final seating = _laneSeating;
+    final first = lanes.isEmpty
+        ? null
+        : seating.at[LaneRowAddress(carrierId, lanes.first.laneId)];
+    if (first == null) {
+      return const [];
+    }
+    final metrics = TimelineGridMetrics(
+      layerRowHeight: _state._rowHeights.lane,
+    );
+    final LaneGraphGrid grid = (
+      frameAxis: (
+        geometry: _state._frameGeometry,
+        windowBucket: _state._horizontalWindowBucket,
+        viewportMainExtent: _state._stripViewportWidth,
+        axis: Axis.horizontal,
+      ),
+      frameAxisController: _state._horizontalController,
+      keyPrefix: 'storyboard',
+      verbs: _state.widget.laneGraphVerbs,
+      laneEdit: laneEdit,
+    );
+    List<Widget> laid(List<TimelineDisplayRow> rows) => laneGraphFrameSide(
+      (
+        rows: rows.sublist(first, first + lanes.length),
+        first: first,
+        edges: seating.edges,
+      ),
+      grid,
+      lines: (seat, seated) => laneGraphLines(
+        seat,
+        seated,
+        standing: _state.widget.currentRowHooks?.currentRow,
+        moves: _state.widget.dragPreview,
+        linesOf: (row) => [lineOf(row)],
+        pinned: _state.widget.laneGraphs.pinned,
+        guestsOf: (key) => [?_laneGraphLineOf(key)],
+      ),
+      cells: (row) => strip(row, timelineDisplayRowExtent(row, metrics)),
+    );
+    final selection = _state.widget.rowSelection;
+    if (selection == null ||
+        !seating.rows
+            .sublist(first, first + lanes.length)
+            .any((row) => row.graph != null)) {
+      return laid(seating.rows);
+    }
+    return [
+      ValueListenableBuilder<List<TimelineRowAddress>>(
+        valueListenable: selection,
+        builder: (context, selected, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: laid(_pickedRows(selected)),
+        ),
+      ),
+    ];
+  }
+
+  /// [track]'s rows, top first, each at its kind's height — every lane as
+  /// a row of its own, unseated.
+  List<_StoryboardRailSlot> _trackGroupSlots(Track track) {
     final heights = _state._rowHeights;
     final slots = <_StoryboardRailSlot>[];
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
@@ -1949,10 +2289,12 @@ class _StoryboardRailRows {
         lane: false,
         railRow: null,
         height: heights.camera,
+        display: null,
+        graph: null,
       ));
       // Its lanes, twirled down under it (I-73 ④ⓔ).
       if (_cameraLanesOpen(track)) {
-        _addProjectionLaneSlots(slots, rowId, _cameraLanes(track));
+        _addProjectionLaneSlots(slots, track, rowId, _cameraLanes(track));
       }
     }
     if (_showsTransitionRow(track)) {
@@ -1969,6 +2311,8 @@ class _StoryboardRailRows {
           conteSeat: null,
         ),
         height: heights.transition,
+        display: null,
+        graph: null,
       ));
     }
     for (final slot in _shownSeSlots(track)) {
@@ -1981,6 +2325,8 @@ class _StoryboardRailRows {
         lane: false,
         railRow: (track: track, layer: layer, seSlot: slot, conteSeat: null),
         height: heights.se,
+        display: null,
+        graph: null,
       ));
       if (layer != null && _seLanesOpen(track, slot)) {
         // One slot per lane the rail draws ([_seLanes]) — a phantom or a
@@ -1996,6 +2342,8 @@ class _StoryboardRailRows {
             lane: true,
             railRow: null,
             height: heights.lane,
+            display: TimelineDisplayRow.lane(layer, lane, layerIndex: 0),
+            graph: null,
           ));
         }
       }
@@ -2010,6 +2358,8 @@ class _StoryboardRailRows {
         lane: false,
         railRow: (track: track, layer: null, seSlot: null, conteSeat: null),
         height: _state.widget.trackLaneHeight,
+        display: null,
+        graph: null,
       ));
       // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape):
       // its fx chain, and no Transform group — a track row does not own one
@@ -2018,16 +2368,18 @@ class _StoryboardRailRows {
       // bands and the select-drag read, so a slot the rail no longer draws
       // shifts every row under it.
       if (track.lanesExpanded) {
-        final carrierId = trackTransformLaneCarrierId(track.id);
+        final carrier = _trackLaneCarrier(track);
         for (final lane in _trackEffectLanes(track)) {
           slots.add((
             row: null,
-            laneRow: LaneRowAddress(carrierId, lane.laneId),
+            laneRow: LaneRowAddress(carrier.id, lane.laneId),
             standRow: null,
             bandRow: true,
             lane: true,
             railRow: null,
             height: heights.lane,
+            display: TimelineDisplayRow.lane(carrier, lane, layerIndex: 0),
+            graph: null,
           ));
         }
       }
@@ -2049,11 +2401,14 @@ class _StoryboardRailRows {
             ? null
             : (track: track, layer: head, seSlot: null, conteSeat: seat),
         height: heights.conte,
+        display: null,
+        graph: null,
       ));
       // Its lanes (I-73 ④ⓔ), as the camera row's are.
       if (_conteLanesOpen(track, seat)) {
         _addProjectionLaneSlots(
           slots,
+          track,
           trackConteRowId(track.id, seat: seat),
           _conteLanes(track, seat),
         );
@@ -2066,12 +2421,18 @@ class _StoryboardRailRows {
   /// by its address on this rail (I-73 ④ⓔ). A lane selection there names a
   /// cut's layer in the cut's own frames, so the band over it is the cut's
   /// own ([_projectionLaneBand]) — not the track's, which this table lays
-  /// across the rows it covers.
+  /// across the rows it covers. Its lanes are worn by the ROW, as its labels
+  /// wear them: the layer in hand, by the row's own id.
   void _addProjectionLaneSlots(
     List<_StoryboardRailSlot> slots,
+    Track track,
     LayerId rowId,
     List<PropertyLaneRow> lanes,
   ) {
+    final carrier = _inHand(
+      track,
+      LayerRowAddress(rowId),
+    )?.layer.copyWith(id: rowId);
     for (final lane in lanes) {
       slots.add((
         row: null,
@@ -2081,6 +2442,10 @@ class _StoryboardRailRows {
         lane: true,
         railRow: null,
         height: _state._rowHeights.lane,
+        display: carrier == null
+            ? null
+            : TimelineDisplayRow.lane(carrier, lane, layerIndex: 0),
+        graph: null,
       ));
     }
   }
@@ -2253,6 +2618,10 @@ class _StoryboardRailRows {
       track,
       projection: projection.rowId,
     );
+    // Each lane as the table lays it: thin while an enlarged graph folds it.
+    double extentOf(PropertyLaneRow lane) =>
+        _seatedLane(LaneRowAddress(projection.rowId, lane.laneId))?.extent ??
+        _state._rowHeights.lane;
     return [
       for (final lane in lanes)
         _StoryboardProjectionLaneRow(
@@ -2261,7 +2630,7 @@ class _StoryboardRailRows {
           laneId: lane.laneId,
           reaches: strip.reaches,
           width: strip.width,
-          height: _state._rowHeights.lane,
+          height: extentOf(lane),
           timelineScale: strip.scale,
           frameGeometry: _state._frameGeometry,
           windowBucket: _state._horizontalWindowBucket,
@@ -2394,49 +2763,54 @@ class _StoryboardRailRows {
     double width,
     TimelineScale scale,
   ) {
-    final carrier = Layer(
-      id: trackTransformLaneCarrierId(track.id),
-      name: 'V',
-      frames: const [],
-    );
+    final carrier = _trackLaneCarrier(track);
     final laneEdit = _state.widget.trackLaneEditFor?.call(track);
-    final laneHeight = _state._rowHeights.lane;
-    return [
-      // The fx chain's strips, row for row with its labels — the rail and
-      // the strips share no scaffolding, so the two lists are built from the
-      // SAME lane list to keep them in lockstep.
-      //
-      // A key-move drag previews on the scoped channel. Nothing previewed here
-      // before 2026-08-08 because nothing could MOVE here: the lane-move path
-      // looked at a track's transform and never at its effects, so the drag
-      // answered "nothing to move" and refused in silence.
-      _followingTrackEffects(
-        track,
-        (previewed) {
-          final lanes = previewed == null
-              ? _trackEffectLanes(track)
-              : _trackEffectLanes(track.copyWith(effects: previewed));
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final lane in lanes)
-                _StoryboardLaneStripRow(
-                  rowKey:
-                      'storyboard-track-lane-row-$trackIndex-${lane.laneId}',
-                  carrier: carrier,
-                  lane: lane,
-                  width: width,
-                  height: laneHeight,
-                  timelineScale: scale,
-                  projectFrameRate: _state.widget.projectFrameRate,
-                  laneEdit: laneEdit,
-                  laneRange: _laneGestureCallbacksFor(track),
-                ),
-            ],
+    final preview = _state.widget.dragPreview;
+    // [lane] as the chain [effects] a drag in flight shows re-derives it.
+    PropertyLaneRow shownAs(
+      PropertyLaneRow lane,
+      List<LayerEffect>? effects,
+    ) => effects == null
+        ? lane
+        : laneAsPreviewed(
+            lane,
+            _trackEffectLanes(track.copyWith(effects: effects)),
           );
-        },
+    // The fx chain's strips, row for row with its labels — the rail and the
+    // strips share no scaffolding, so the two lists are built from the SAME
+    // lane list to keep them in lockstep.
+    return _laneFrameSide(
+      carrier.id,
+      _trackEffectLanes(track),
+      laneEdit: laneEdit,
+      lineOf: (row) => (
+        layer: carrier,
+        lane: shownAs(
+          row.lane!,
+          timelineDragPreviewTrackEffectsFor(preview?.value, track.id),
+        ),
+        reach: null,
       ),
-    ];
+      // A key-move drag previews on the scoped channel. Nothing previewed
+      // here before 2026-08-08 because nothing could MOVE here: the
+      // lane-move path looked at a track's transform and never at its
+      // effects, so the drag answered "nothing to move" and refused in
+      // silence.
+      strip: (row, height) => _followingTrackEffects(
+        track,
+        (effects) => _StoryboardLaneStripRow(
+          rowKey: 'storyboard-track-lane-row-$trackIndex-${row.lane!.laneId}',
+          carrier: carrier,
+          lane: shownAs(row.lane!, effects),
+          width: width,
+          height: height,
+          timelineScale: scale,
+          projectFrameRate: _state.widget.projectFrameRate,
+          laneEdit: laneEdit,
+          laneRange: _laneGestureCallbacksFor(track),
+        ),
+      ),
+    );
   }
 
   /// [build] with [track]'s EFFECT chain as the drag channel shows it — a
@@ -2458,7 +2832,10 @@ class _StoryboardRailRows {
   /// One S row's lane strips, row for row with [_seLaneLabels]: CONTINUOUS
   /// rows on the slot layer's OWN track-global axis (R4b — the per-cut spans
   /// emitted cut-LOCAL frames into these global layers' lanes: an offset
-  /// accident past the first cut, structurally gone with the spans).
+  /// accident past the first cut, structurally gone with the spans) — and
+  /// an open header graph over its lanes ([_laneFrameSide]), each lane in
+  /// the GLOBAL form a drag in flight shows it in, as the labels show it
+  /// (F-195).
   List<Widget> _seLaneStrips(
     Track track,
     int trackIndex,
@@ -2470,31 +2847,49 @@ class _StoryboardRailRows {
     if (layer == null) {
       return const [];
     }
-    return [
-      for (final lane in _seLanes(track, slot))
-        _StoryboardLaneStripRow(
-          rowKey:
-              'storyboard-se-lane-row-$trackIndex-${slot + 1}-${lane.laneId}',
-          // The Audio band draws the in-flight take while one rolls (REC1-C,
-          // `_seDisplayAt`); the list — and so the strip count — stays the
-          // repository row's, in lockstep with the labels.
-          carrier: laneIsSeAudio(lane)
-              ? (_state._seDisplayAt(track, slot) ?? layer)
-              : layer,
-          lane: lane,
-          width: width,
-          height: _state._rowHeights.lane,
-          timelineScale: scale,
-          projectFrameRate: _state.widget.projectFrameRate,
-          // The S row's lanes take the range gesture too (R5 ③b). Their
-          // keys are the TRACK's, on the global axis this rail already
-          // draws — so the span is stated where it lives, and the cut
-          // panel is the one that has a window to fit it into.
-          laneRange: _laneGestureCallbacksFor(track),
-          audioLane: _state.widget.audioLane,
-          audioPeaksFor: _state.widget.audioPeaksFor,
-        ),
-    ];
+    final preview = _state.widget.dragPreview;
+    return _laneFrameSide(
+      layer.id,
+      _seLanes(track, slot),
+      laneEdit: _state.widget.layerLaneEdit,
+      lineOf: (row) {
+        final shown =
+            timelineDragPreviewGlobalLayerFor(preview?.value, row.layer.id) ??
+            row.layer;
+        return (
+          layer: shown,
+          lane: previewedLaneRow(
+            row: row,
+            previewLayer: shown,
+            lanesForLayer: (shown) => _seLanesOf(track, shown),
+          ),
+          reach: null,
+        );
+      },
+      strip: (row, height) => _StoryboardLaneStripRow(
+        rowKey:
+            'storyboard-se-lane-row-$trackIndex-${slot + 1}-'
+            '${row.lane!.laneId}',
+        // The Audio band draws the in-flight take while one rolls (REC1-C,
+        // `_seDisplayAt`); the list — and so the strip count — stays the
+        // repository row's, in lockstep with the labels.
+        carrier: laneIsSeAudio(row.lane!)
+            ? (_state._seDisplayAt(track, slot) ?? layer)
+            : layer,
+        lane: row.lane!,
+        width: width,
+        height: height,
+        timelineScale: scale,
+        projectFrameRate: _state.widget.projectFrameRate,
+        // The S row's lanes take the range gesture too (R5 ③b). Their
+        // keys are the TRACK's, on the global axis this rail already
+        // draws — so the span is stated where it lives, and the cut
+        // panel is the one that has a window to fit it into.
+        laneRange: _laneGestureCallbacksFor(track),
+        audioLane: _state.widget.audioLane,
+        audioPeaksFor: _state.widget.audioPeaksFor,
+      ),
+    );
   }
 
   /// The base-layout TRACK-GLOBAL strip rows per track index — the transition

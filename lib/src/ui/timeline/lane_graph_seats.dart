@@ -150,6 +150,45 @@ List<String> laneGraphGuests(TimelineGraphSeat seat, Set<String> pinned) => [
       key,
 ];
 
+/// The lane the pin [key] names among [rows] (I-89 ③) as a header graph
+/// draws it — or null once its row or its lane is gone, or for a lane that
+/// draws no line. Each grid hands its rows as it draws them: the timeline
+/// the session's, the storyboard's rail a track's own (I-89 ①).
+///
+/// Read with the lane's own group twirled open — [lanesOf] asked with that
+/// group's key — whatever the rail shows: a pin in a folded group still
+/// reaches every graph (I-89-Q4 A, 유저 2026-10-12: 「계속 그림(AE 그래프
+/// 편집기 세트처럼)」).
+LaneGraphLine? laneGraphLineAmong(
+  String key, {
+  required Iterable<Layer> rows,
+  required List<PropertyLaneRow> Function(
+    Layer layer,
+    Set<String> expandedGroupKeys,
+  )
+  lanesOf,
+}) {
+  final pinned = parseLaneGroupKey(key);
+  if (pinned == null) {
+    return null;
+  }
+  final group = laneGroupOf(pinned.laneId);
+  for (final layer in rows) {
+    if (layer.id != pinned.layerId) {
+      continue;
+    }
+    final lanes = lanesOf(layer, {
+      if (group != null) laneGroupKey(layer.id, group),
+    });
+    for (final lane in lanes) {
+      if (lane.laneId == pinned.laneId && lane.curve != null) {
+        return (layer: layer, lane: lane, reach: null);
+      }
+    }
+  }
+  return null;
+}
+
 /// The key of the group [laneId] is a member of on [layerId]'s row, or
 /// null for a lane that is no member of a group — a header, a lane of its
 /// own.

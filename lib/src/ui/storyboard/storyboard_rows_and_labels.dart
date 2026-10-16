@@ -24,10 +24,10 @@ class _StoryboardRowsAndLabels {
   List<Widget> draggableTrackEffectRows(Track track, List<Widget> rows) {
     final hooks = _state.widget.rowDragHooks;
     final lanes = _state._railRows._trackEffectLanes(track);
-    if (hooks == null || lanes.length != rows.length) {
-      return rows;
-    }
     final carrierId = trackTransformLaneCarrierId(track.id);
+    if (hooks == null || lanes.length != rows.length) {
+      return _laidLanes(carrierId, lanes, rows);
+    }
     final headers = <({int rowIndex, EffectId effectId})>[];
     for (var index = 0; index < lanes.length; index += 1) {
       final parsed = parseEffectLaneId(lanes[index].laneId);
@@ -35,7 +35,7 @@ class _StoryboardRowsAndLabels {
         headers.add((rowIndex: index, effectId: parsed.effectId));
       }
     }
-    return [
+    return _laidLanes(carrierId, lanes, [
       for (var index = 0; index < rows.length; index += 1)
         _trackEffectRow(
           hooks,
@@ -43,7 +43,7 @@ class _StoryboardRowsAndLabels {
           (lane: lanes[index], index: index),
           rows[index],
         ),
-    ];
+    ]);
   }
 
   /// One label of the V row's fx chain at [at]: a group header re-orders
@@ -63,10 +63,11 @@ class _StoryboardRowsAndLabels {
     final slot = parsed == null || parsed.parameterId != null
         ? -1
         : displayEffects.indexOf(parsed.effectId);
+    final extent = _laneExtentOf(chain.carrierId, at.lane);
     if (slot < 0) {
       return selectOnly(
         LaneRowSubject(chain.carrierId, at.lane.laneId),
-        _state._rowHeights.lane,
+        extent,
         row,
       );
     }
@@ -74,7 +75,11 @@ class _StoryboardRowsAndLabels {
     return LayerRowDragTarget(
       subject: subject,
       slotBefore: slot,
-      rowExtent: _state._rowHeights.lane,
+      rowExtent: extent,
+      // I-89 ③: the room an open graph stands past its lanes is no row.
+      pointerRowsAt: _state._railRows.pointerRowsFrom(
+        LaneRowAddress(chain.carrierId, at.lane.laneId),
+      ),
       axis: Axis.horizontal,
       hooks: hooks,
       grip: () => [effectRowDragChip(at.lane)],
@@ -215,23 +220,52 @@ class _StoryboardRowsAndLabels {
   };
 
   /// A lane list's labels, each made to select ([selectOnly]) by the address
-  /// it is stood on — [carrierId]'s lane. The Audio lane keeps no address
-  /// (no key range lands on it), so it stays as it is.
+  /// it is stood on — [carrierId]'s lane — and laid as the table lays the
+  /// lanes ([_laidLanes]). The Audio lane keeps no address (no key range
+  /// lands on it), so it stays as it is.
   List<Widget> selectableLanes(
     LayerId carrierId,
     List<PropertyLaneRow> lanes,
     List<Widget> rows,
-  ) => [
+  ) => _laidLanes(carrierId, lanes, [
     for (var index = 0; index < rows.length; index += 1)
       if (index >= lanes.length || laneIsSeAudio(lanes[index]))
         rows[index]
       else
         selectOnly(
           LaneRowSubject(carrierId, lanes[index].laneId),
-          _state._rowHeights.lane,
+          _laneExtentOf(carrierId, lanes[index]),
           rows[index],
         ),
+  ]);
+
+  /// [rows] — [carrierId]'s lane labels, row for row with [lanes] — laid as
+  /// the table lays the lanes (I-89 ①, [_StoryboardRailRows._seatedLane]):
+  /// none for a lane of no extent — an open graph folded stands as its
+  /// first lane's strip — and an open graph's room after its last lane,
+  /// which is no row, as the timeline's rail lays them.
+  List<Widget> _laidLanes(
+    LayerId carrierId,
+    List<PropertyLaneRow> lanes,
+    List<Widget> rows,
+  ) => [
+    for (var index = 0; index < rows.length; index += 1)
+      if (index < lanes.length
+          ? _seatedOf(carrierId, lanes[index])
+          : null case final seated?) ...[
+        if (seated.extent > 0) rows[index],
+        if (seated.room > 0) SizedBox(height: seated.room),
+      ] else
+        rows[index],
   ];
+
+  /// [carrierId]'s [lane] as the table lays it.
+  _SeatedLane? _seatedOf(LayerId carrierId, PropertyLaneRow lane) =>
+      _state._railRows._seatedLane(LaneRowAddress(carrierId, lane.laneId));
+
+  /// How far [carrierId]'s [lane] stands on the rail ([_seatedOf]).
+  double _laneExtentOf(LayerId carrierId, PropertyLaneRow lane) =>
+      _seatedOf(carrierId, lane)?.extent ?? _state._rowHeights.lane;
 
   /// Lane rail label rows on the shared substrate — an S row's lanes
   /// ([_StoryboardRailRows._seLanes]) or a V row's fx chain
@@ -276,6 +310,10 @@ class _StoryboardRowsAndLabels {
       Widget Function(Layer carrier, PropertyLaneRow lane) row,
     )?
     follow,
+
+    /// What the lanes' header graph buttons and pins tell (I-89 ①) — the
+    /// timeline's own verbs, on the timeline's own graphs. Null mounts none.
+    LaneGraphVerbs? graphVerbs,
   }) {
     final laneHeight = _state._rowHeights.lane;
     final metrics = TimelineGridMetrics(
@@ -284,31 +322,47 @@ class _StoryboardRowsAndLabels {
       railColumns: layerRailColumnWidthsIn(_state.context),
     );
     final toggleGroup = _state.widget.onToggleLaneGroupKey;
-    Widget row(Layer shown, PropertyLaneRow lane) => TimelineLaneControlsRow(
-      layer: shown,
-      lane: lane,
-      metrics: metrics,
-      width: _state._naturalRailWidth,
-      height: laneHeight,
-      frameCursor: frameCursor,
-      onSelectFrame: active
-          ? onSelectFrame
-          : null,
-      laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
-      onToggleLaneGroup: toggleGroup == null
-          ? null
-          : (_, _) => toggleGroup(groupKeyOf(lane)),
-      onToggleLaneGroupEnabled: onToggleGroupEnabled == null
-          ? null
-          : (_, _) => onToggleGroupEnabled(lane),
-      onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
-          ? null
-          : (_, _) => onResetGroup(lane),
-      keyPrefix: 'storyboard',
-      leadingInset: layerSectionLabelSlotWidth,
-      optionalColumns: StoryboardPanel.optionalRailColumns,
-      currentRowHooks: _state.widget.currentRowHooks,
-    );
+    final selection = _state.widget.rowSelection;
+    Widget row(Layer shown, PropertyLaneRow lane) {
+      final seated = _seatedOf(carrier.id, lane);
+      Widget label(TimelineGraphSeat? seat) => TimelineLaneControlsRow(
+        layer: shown,
+        lane: lane,
+        metrics: metrics,
+        width: _state._naturalRailWidth,
+        height: seated?.extent ?? laneHeight,
+        frameCursor: frameCursor,
+        onSelectFrame: active ? onSelectFrame : null,
+        laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
+        onToggleLaneGroup: toggleGroup == null
+            ? null
+            : (_, _) => toggleGroup(groupKeyOf(lane)),
+        onToggleLaneGroupEnabled: onToggleGroupEnabled == null
+            ? null
+            : (_, _) => onToggleGroupEnabled(lane),
+        onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
+            ? null
+            : (_, _) => onResetGroup(lane),
+        keyPrefix: 'storyboard',
+        leadingInset: layerSectionLabelSlotWidth,
+        optionalColumns: StoryboardPanel.optionalRailColumns,
+        currentRowHooks: _state.widget.currentRowHooks,
+        laneGraphs: _state.widget.laneGraphs,
+        laneGraphVerbs: graphVerbs,
+        seat: seat,
+        folded: seated?.row.folded ?? false,
+      );
+      // What an open graph draws follows the row selection, which this rail
+      // draws on a listener of its own ([_StoryboardRailRows._seatIn]).
+      if (seated == null || seated.row.graph == null || selection == null) {
+        return label(seated?.row.graph);
+      }
+      return ValueListenableBuilder<List<TimelineRowAddress>>(
+        valueListenable: selection,
+        builder: (context, selected, _) =>
+            label(_state._railRows._seatIn(seated, selected)),
+      );
+    }
 
     // The track's rows — V and S alike, their keys are the track's — pass the
     // GLOBAL playhead (R4b). ↩️The S rows passed the ACTIVE cut's local cursor

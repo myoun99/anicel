@@ -312,22 +312,23 @@ class SessionRowButtonPresses {
 
   /// [groupKey]'s group twirled open where it is shut: the camera row's
   /// lanes — its group is the row — or the header's members.
+  ///
+  /// Read off the row's twirls ([_twirlsOf]), as the twirl verbs are: a V
+  /// row's lane carrier is no layer, and its fx header's graph opened shut
+  /// while the row's twirls were asked of a layer (I-89 ①).
   void _openGroupOf(String groupKey) {
     final row = parseLaneGroupKey(groupKey);
-    if (row == null) {
+    final twirls = row == null ? null : _twirlsOf(row.layerId);
+    if (row == null || twirls == null) {
       return;
     }
-    final layer = _row(row.layerId);
-    if (layer == null) {
-      return;
-    }
-    if (layer.kind == LayerKind.camera) {
-      if (!layer.lanesExpanded) {
+    if (_row(row.layerId)?.kind == LayerKind.camera) {
+      if (!twirls.lanesExpanded) {
         _toggleLanesOf(row.layerId);
       }
       return;
     }
-    if (!layer.expandedLaneGroups.contains(row.laneId)) {
+    if (!twirls.expandedLaneGroups.contains(row.laneId)) {
       toggleLaneGroup(groupKey);
     }
   }

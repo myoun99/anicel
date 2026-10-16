@@ -1033,6 +1033,8 @@ class _WorkspaceTabs {
               _state.widget.session.railView.expandedLaneLayerIds,
               _state.widget.session.railView.expandedLaneGroupKeys,
               _state.widget.session.railView.twirledTrackIds,
+              // Nor a header graph (I-89 ①) — the timeline's own.
+              _state.widget.session.railView.laneGraphs,
               _state._storyboardTrackLaneHeight,
               _state._showSecondsDisplay,
             ]),
@@ -1072,6 +1074,12 @@ class _WorkspaceTabs {
               expandedLaneGroupKeys:
                   _state.widget.session.railView.expandedLaneGroupKeys.value,
               onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
+              // And the header graphs (I-89 ①): the timeline's state and its
+              // verbs, so a graph opened on either rail is open on both.
+              laneGraphs: _state.widget.session.railView.laneGraphs.value,
+              laneGraphVerbs: SessionRowButtonPresses(
+                _state.widget.session,
+              ).laneGraphVerbs,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,

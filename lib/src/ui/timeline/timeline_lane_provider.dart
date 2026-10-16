@@ -2,10 +2,9 @@ import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../services/project_lookup.dart' show cutIdOfLayer, requireCut;
 import '../editor_session_manager.dart';
-import 'lane_graph_seats.dart' show LaneGraphLine;
+import 'lane_graph_seats.dart' show LaneGraphLine, laneGraphLineAmong;
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
-import 'timeline_current_row.dart' show laneGroupOf;
 import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
 import 'transform_lane_policy.dart'
     show cameraPropertyLanes, cameraUnionHeader;
@@ -129,13 +128,8 @@ PropertyLaneRow? timelineCameraUnionLane({
   );
 }
 
-/// The lane the pin [key] names (I-89 ③, a `laneGroupKey`) as a header
-/// graph draws it — or null once its row or its lane is gone, or for a
-/// lane that draws no line.
-///
-/// Read with the lane's own group twirled open, whatever the rail shows:
-/// a pin in a folded group still reaches every graph (I-89-Q4 A, 유저
-/// 2026-10-12: 「계속 그림(AE 그래프 편집기 세트처럼)」).
+/// The lane the pin [key] names (I-89 ③, a `laneGroupKey`) among the
+/// session's rows, as a header graph draws it ([laneGraphLineAmong]).
 ///
 /// Read as a drag in flight shows its row — the one substitution every drag
 /// makes ([timelineDragPreviewLayerFor]) — so a pin follows a handle pulled
@@ -143,28 +137,15 @@ PropertyLaneRow? timelineCameraUnionLane({
 LaneGraphLine? timelineLaneGraphLine(
   String key, {
   required EditorSessionManager session,
-}) {
-  final pinned = parseLaneGroupKey(key);
-  if (pinned == null) {
-    return null;
-  }
-  for (final row in session.layers) {
-    if (row.id != pinned.layerId) {
-      continue;
-    }
-    final layer =
-        timelineDragPreviewLayerFor(session.dragPreview.value, row.id) ?? row;
-    final group = laneGroupOf(pinned.laneId);
-    final lanes = timelineLanesForLayer(
-      layer: layer,
-      session: session,
-      expandedGroupKeys: {if (group != null) laneGroupKey(layer.id, group)},
-    );
-    for (final lane in lanes) {
-      if (lane.laneId == pinned.laneId && lane.curve != null) {
-        return (layer: layer, lane: lane, reach: null);
-      }
-    }
-  }
-  return null;
-}
+}) => laneGraphLineAmong(
+  key,
+  rows: session.layers.map(
+    (row) =>
+        timelineDragPreviewLayerFor(session.dragPreview.value, row.id) ?? row,
+  ),
+  lanesOf: (layer, expandedGroupKeys) => timelineLanesForLayer(
+    layer: layer,
+    session: session,
+    expandedGroupKeys: expandedGroupKeys,
+  ),
+);

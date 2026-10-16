@@ -32,6 +32,7 @@ import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/timeline_section_policy.dart' show TimelineSection;
+import 'timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
@@ -76,6 +77,8 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.rowsChannel,
     this.transformOptions,
   });
@@ -107,6 +110,12 @@ class StoryboardTabHost extends StatefulWidget {
   /// here as on the timeline's rail (I-73 ④ⓔ).
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// …and the header graphs standing open over them, the same state and
+  /// verbs ([TimelineTabHost.laneGraphs]): a graph opened here is open on
+  /// the timeline's rail, and the other way round (I-89 ①).
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -650,6 +659,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleLayerLanes: widget.onToggleLayerLanes,
                     expandedLaneGroupKeys: widget.expandedLaneGroupKeys,
                     onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
+                    laneGraphs: widget.laneGraphs,
+                    laneGraphVerbs: widget.laneGraphVerbs,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _session.dragPreview,
                     // ↩️While playing, this named the PLAYING cut and the

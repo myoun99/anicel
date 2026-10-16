@@ -64,6 +64,14 @@ import 'timeline/berth_row.dart' show BerthRow;
 import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
+import 'timeline/lane_graph.dart'
+    show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
+import 'timeline/lane_graph_seats.dart'
+    show LaneGraphLine, laneGraphLineAmong, seatLaneGraphs;
+import 'timeline/timeline_lane_graph.dart'
+    show LaneGraphGrid, laneGraphFrameSide, laneGraphLines;
+import 'timeline/timeline_section_runs.dart'
+    show timelineDisplayRowExtent, timelineRowEdgesOf;
 import 'widgets/dock_edge_splitter.dart';
 import 'widgets/drag_chip.dart' show DragChipItem;
 import 'widgets/tick_layer.dart';
@@ -74,7 +82,9 @@ import 'timeline/property_lane_model.dart'
         PropertyLaneRow,
         TimelineDisplayRow,
         laneAsPreviewed,
-        laneGroupKey;
+        laneGroupKey,
+        parseLaneGroupKey,
+        previewedLaneRow;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
 import 'timeline/timeline_row_selection_bands.dart';
@@ -277,6 +287,12 @@ typedef StoryboardRailRow = ({
 /// are its cuts' own, selected inside a cut on the cut's own axis, so no
 /// track-axis select-drag lands its head on it and it keeps no [row]
 /// (유저 2026-10-08: the sweep across cuts is for later).
+///
+/// [display] is a lane as the timeline's rows hold it — its carrier and
+/// the lane — what a header graph seats ([seatLaneGraphs], I-89 ①); null
+/// for every row that is no lane. [graph] is the open header graph the slot
+/// stands in: a lane it draws, or the ROOM it stands past them, a slot of
+/// its own after the last of them that nobody stands on.
 typedef _StoryboardRailSlot = ({
   TimelineRowAddress? row,
   LaneRowAddress? laneRow,
@@ -285,6 +301,8 @@ typedef _StoryboardRailSlot = ({
   bool lane,
   StoryboardRailRow? railRow,
   double height,
+  TimelineDisplayRow? display,
+  TimelineGraphSeat? graph,
 });
 
 /// The address a rail slot is stood on by — a row's own, a lane's, or the
@@ -625,6 +643,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGraphs = LaneGraphsView.none,
+    this.laneGraphVerbs,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
@@ -1230,6 +1250,13 @@ class StoryboardPanel extends StatefulWidget {
   /// of the track at once.
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// The header graphs open over those groups, and their verbs — the
+  /// timeline rail's own (I-89 ①): a lane this rail draws is seated in its
+  /// group's graph as the timeline's rows are ([seatLaneGraphs]). Null
+  /// [laneGraphVerbs] mounts no graph button.
+  final LaneGraphsView laneGraphs;
+  final LaneGraphVerbs? laneGraphVerbs;
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
@@ -1846,6 +1873,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       viewportExtent: _stripViewportWidth,
       frameCellExtent: _scale.pixelsPerFrame,
     );
+    // The rows' view, as [_scrollArea] is laid — the body less the pinned
+    // ruler band over it and the scrollbar row under it: an enlarged header
+    // graph stands as far as it lets one (I-89 ③D), so it is recorded
+    // before anything lays a row, and the rows are laid afresh.
+    _middleViewportHeight = constraints.hasBoundedHeight
+        ? (constraints.maxHeight -
+                  StoryboardPanel._rulerHeightIn(context) -
+                  StoryboardPanel._bottomScrollbarRailHeight)
+              .clamp(0.0, double.infinity)
+              .toDouble()
+        : 0.0;
+    _railRows.forgetLaneSeating();
     // The V rows' geometry for this pass. `frameStartIndex` is 0 and
     // there is no leading spacer: the storyboard's x IS the track-global
     // frame axis, which is exactly why the timeline's gesture layer can
@@ -1884,6 +1923,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// input (UI-R16). Recorded in build beside [_viewportFillFrameCells],
   /// which already derived from it.
   double _stripViewportWidth = 0;
+
+  /// The rows' viewport height — what an enlarged header graph stands to.
+  /// Recorded in build beside [_stripViewportWidth]; zero until layout.
+  double _middleViewportHeight = 0;
 
   /// The rail's layout ceiling for this pass (see
   /// [LayerRailExtent.windowExtent]); null in an unbounded host.
