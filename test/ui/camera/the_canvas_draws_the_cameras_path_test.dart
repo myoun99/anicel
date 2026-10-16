@@ -282,7 +282,8 @@ void main() {
       expectPoints([line.first, line.last], crosses);
     }
 
-    /// The widths of the strokes painted in [color], painted now.
+    /// The widths of the strokes painted in [color], painted now — read back
+    /// as 8-bit: a paint keeps its colour in floats.
     List<double> strokesIn(Color color) {
       final canvas = TestRecordingCanvas();
       painter().paint(canvas, tester.getSize(picture));
@@ -290,7 +291,7 @@ void main() {
         for (final call in canvas.invocations)
           if (call.invocation.memberName == #drawPath)
             if (call.invocation.positionalArguments[1] case final Paint ink
-                when ink.color == color)
+                when ink.color.toARGB32() == color.toARGB32())
               ink.strokeWidth,
       ];
     }
