@@ -5061,8 +5061,9 @@ void main() {
   /// ⇒ The document half of that law IS pinned, all through this file: the
   /// cel keeps every byte while a box is open, and the landing carries the
   /// erase with the stamp. The DRAWING half needs a host that composites —
-  /// the board carries it as its own round rather than a green test that
-  /// proves nothing.
+  /// it is pinned on the real workspace, which does
+  /// (`a_new_stroke_survives_a_transform_round_trip_test`: a pending move
+  /// shows its hole).
   /// 🚨★★★**전/중/후 같은 그림 — THE ABSOLUTE CONDITION OF THIS ROUND.**
   /// 유저 2026-09-17, choosing the non-destructive session: 「**조작 전/중/후가
   /// 빈 프레임 존재안하고 눈에 보이는 결과가 달라지지 않는건 절대조건**」.

@@ -193,8 +193,10 @@ void main() {
   /// attempts at this claim both stayed GREEN under the mutant that switches
   /// the holed surface off — 36 pixels of ink before the move and 36 after
   /// it, with and without the session surface — so neither was measuring the
-  /// thing it named. The rig that can answer in PIXELS is still owed; the
-  /// board carries it. This one bites, which is the whole difference.
+  /// thing it named. What came OUT is asked on the real workspace, which
+  /// shows the active row's pixels where this panel does not
+  /// (`a_new_stroke_survives_a_transform_round_trip_test`: a pending move
+  /// shows its hole). This one bites on what it was given.
   testWidgets('the composite is handed the session\'s holed picture while a '
       'move is pending', (tester) async {
     final env = await pumpComposite(tester);

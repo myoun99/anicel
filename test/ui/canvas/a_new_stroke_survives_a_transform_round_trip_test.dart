@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show ImageByteFormat;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +19,10 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
@@ -44,11 +48,17 @@ import '../../helpers/panel_finders.dart';
 /// reproduces it, since arriving on the next cel now opens a session that
 /// replaces the stale one (F-164 ③). With both off, the assertion that
 /// fails is ⑤'s own: the new stroke does not show.
+///
+/// It is also the rig that answers in PIXELS what the panel fixtures cannot:
+/// a pending move's hole (the last test here).
 void main() {
   const frameA = FrameId('rt-frame-a');
   const frameB = FrameId('rt-frame-b');
   const layerId = LayerId('rt-layer');
   const captureKey = ValueKey<String>('rt-capture');
+
+  /// How far a stroke runs on screen from where it starts ([strokeAt]).
+  const strokeRun = Offset(48, 24);
 
   Project twoFrameProject() => Project(
     id: const ProjectId('rt-project'),
@@ -92,8 +102,12 @@ void main() {
     frameId: frameId,
   );
 
-  /// How much ink a cel HOLDS, sampled on a grid over the whole canvas.
-  int inkOn(WidgetTester tester, FrameId frameId, {int step = 8}) {
+  /// Where a cel HOLDS ink, sampled on a grid over the whole canvas.
+  List<(int, int)> inkedOn(
+    WidgetTester tester,
+    FrameId frameId, {
+    int step = 8,
+  }) {
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
     );
@@ -101,15 +115,38 @@ void main() {
     expect(coordinator, isNotNull, reason: '⛔fixture: the canvas built one');
     final surface = coordinator!.currentSurfaceOf(keyFor(frameId));
     final size = surface.canvasSize;
-    var ink = 0;
-    for (var y = 0; y < size.height; y += step) {
-      for (var x = 0; x < size.width; x += step) {
-        if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) {
-          ink += 1;
-        }
-      }
-    }
-    return ink;
+    return [
+      for (var y = 0; y < size.height; y += step)
+        for (var x = 0; x < size.width; x += step)
+          if ((surfacePixelRgba(surface, x, y) ?? 0) != 0) (x, y),
+    ];
+  }
+
+  /// How much ink a cel HOLDS, on that grid.
+  int inkOn(WidgetTester tester, FrameId frameId) =>
+      inkedOn(tester, frameId).length;
+
+  /// Which pixels of the screen are dark, as it stands.
+  Future<bool Function(int x, int y)> darkOnScreen(WidgetTester tester) async {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(captureKey),
+    );
+    final image = boundary.toImageSync();
+    final width = image.width;
+    late final List<int> bytes;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = data!.buffer.asUint8List();
+    });
+    image.dispose();
+    return (int x, int y) {
+      final i = (y * width + x) * 4;
+      return i >= 0 &&
+          i + 2 < bytes.length &&
+          bytes[i] < 80 &&
+          bytes[i + 1] < 80 &&
+          bytes[i + 2] < 80;
+    };
   }
 
   /// How much ink is ON SCREEN inside the drawing canvas.
@@ -123,31 +160,42 @@ void main() {
   ///
   /// ⚠️Scoped to [visibleCanvasRect]: this app's chrome is dark, so an ink
   /// count over the whole window is a count of the panels. Inside the
-  /// canvas, dark means drawing — the marching ants are red or green.
+  /// canvas, dark means drawing — and a selection's marching ants, which
+  /// are black (F-65): a count that must not see a box reads along a
+  /// stroke instead ([inkAlong]).
   Future<int> inkOnScreen(WidgetTester tester) async {
-    final boundary = tester.renderObject<RenderRepaintBoundary>(
-      find.byKey(captureKey),
-    );
+    final dark = await darkOnScreen(tester);
     final rect = visibleCanvasRect(tester);
-    final image = boundary.toImageSync();
-    final width = image.width;
-    late int ink;
-    await tester.runAsync(() async {
-      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
-      final bytes = data!.buffer.asUint8List();
-      var dark = 0;
-      for (var y = rect.top.toInt(); y < rect.bottom; y += 1) {
-        for (var x = rect.left.toInt(); x < rect.right; x += 1) {
-          final i = (y * width + x) * 4;
-          if (i + 2 >= bytes.length) continue;
-          if (bytes[i] < 80 && bytes[i + 1] < 80 && bytes[i + 2] < 80) {
-            dark += 1;
-          }
+    var ink = 0;
+    for (var y = rect.top.toInt(); y < rect.bottom; y += 1) {
+      for (var x = rect.left.toInt(); x < rect.right; x += 1) {
+        if (dark(x, y)) {
+          ink += 1;
         }
       }
-      ink = dark;
-    });
-    image.dispose();
+    }
+    return ink;
+  }
+
+  /// How much of the stroke [strokeAt] draws from [start] is ON SCREEN:
+  /// points along the middle of its run, each read with the pixels around
+  /// it. ⚠️The middle only, so a box drawn around the stroke is never read
+  /// as the stroke.
+  Future<int> inkAlong(WidgetTester tester, Offset start) async {
+    final dark = await darkOnScreen(tester);
+    final from = visibleCanvasPoint(tester, offset: start);
+    var ink = 0;
+    for (var step = 4; step <= 16; step += 1) {
+      final point = from + strokeRun * (step / 20);
+      final x = point.dx.round();
+      final y = point.dy.round();
+      if ([
+        for (var dy = -1; dy <= 1; dy += 1)
+          for (var dx = -1; dx <= 1; dx += 1) dark(x + dx, y + dy),
+      ].contains(true)) {
+        ink += 1;
+      }
+    }
     return ink;
   }
 
@@ -171,9 +219,9 @@ void main() {
       kind: PointerDeviceKind.stylus,
     );
     await tester.pump();
-    await gesture.moveBy(const Offset(24, 12));
+    await gesture.moveBy(strokeRun / 2);
     await tester.pump();
-    await gesture.moveBy(const Offset(24, 12));
+    await gesture.moveBy(strokeRun / 2);
     await tester.pump();
     await gesture.up();
     await pumpFrames(tester);
@@ -286,5 +334,131 @@ void main() {
           'the new stroke has to show ON SCREEN and the old ink has to '
           'still be under it',
     );
+  });
+
+  /// 🚨★★★**A PENDING MOVE SHOWS ITS HOLE, ON THE SCREEN**
+  /// (stack-hole-needs-a-compositing-host — the debt the non-destructive
+  /// session left on 2026-09-17).
+  ///
+  /// A move session writes nothing to the cel until it lands, so what the
+  /// box took out leaves the picture through what the composite draws: the
+  /// active row's painter is built on the session's holed surface
+  /// (`_activeSurfacePainter`'s token). The panel fixtures can only ask what
+  /// the composite was GIVEN (`the_transform_first_frame_test`) — four
+  /// instruments there read 0 → 0 for a dab added, a widget-test panel
+  /// never showing its active row's committed pixels. This workspace shows
+  /// them, so here it is asked what came OUT. ↩️Without the hole the cel
+  /// still holds the ink and the float draws it again: the picture twice,
+  /// R28 #10 「원본그림 존재하고 변형된 그림도 존재」.
+  testWidgets('🚨a pending move shows its hole: what the box took out is '
+      'gone from where it was, the float is where the hand put it, and the '
+      'ink outside the box stays', (tester) async {
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: captureKey,
+        child: MaterialApp(home: HomePage(initialProject: twoFrameProject())),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final canvas = visibleCanvasRect(tester);
+    // ⚠️Where nothing the box brings lies over them: the strip under an open
+    // box, its menu, and the canvas's own scroll lanes.
+    final taken = Offset(-canvas.width * 0.3, -canvas.height * 0.25);
+    final kept = Offset(canvas.width * 0.07, -canvas.height * 0.27);
+    final moveBy = Offset(0, canvas.height * 0.25);
+
+    await strokeAt(tester, taken);
+    final takenInk = inkedOn(tester, frameA);
+    await strokeAt(tester, kept);
+    final drew = inkOn(tester, frameA);
+    expect(takenInk, isNotEmpty, reason: '⛔CONTROL: the rig draws at all');
+    expect(
+      drew,
+      greaterThan(takenInk.length),
+      reason: '⛔CONTROL: and both strokes reached the cel',
+    );
+    final shownTaken = await inkAlong(tester, taken);
+    final shownKept = await inkAlong(tester, kept);
+    expect(
+      shownTaken,
+      greaterThan(0),
+      reason: '⛔CONTROL: the SCREEN shows the stroke the box will take',
+    );
+    expect(
+      shownKept,
+      greaterThan(0),
+      reason: '⛔CONTROL: and the one it will leave',
+    );
+    expect(
+      await inkAlong(tester, taken + moveBy),
+      0,
+      reason: '⛔CONTROL: and nothing yet where the float goes',
+    );
+
+    // A box around the first stroke alone, on the cel's own pixels — then
+    // moved the way a hand moves it.
+    final xs = [for (final (x, _) in takenInk) x.toDouble()];
+    final ys = [for (final (_, y) in takenInk) y.toDouble()];
+    final commands = tester
+        .widget<BrushCanvasPanel>(mainCanvasPanelShell())
+        .selectionCommands!;
+    commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(
+          left: xs.reduce(math.min) - 24,
+          top: ys.reduce(math.min) - 24,
+          right: xs.reduce(math.max) + 24,
+          bottom: ys.reduce(math.max) + 24,
+        ),
+      ),
+    );
+    await pumpFrames(tester);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyT);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await pumpFrames(tester);
+    // ⚠️Off the cross: a press on the box's centre takes the anchor
+    // (`boxPressAt` — the cross first), and the box stays where it was.
+    final drag = await tester.startGesture(
+      visibleCanvasPoint(tester, offset: taken + strokeRun / 4),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await drag.moveBy(moveBy);
+    await tester.pump();
+    await drag.up();
+    await pumpFrames(tester);
+    expect(
+      commands.movePending,
+      isTrue,
+      reason: '🚨the session has to be OPEN or this proves nothing',
+    );
+    expect(
+      inkOn(tester, frameA),
+      drew,
+      reason: 'and it wrote nothing to the cel (F-116)',
+    );
+
+    expect(
+      await inkAlong(tester, taken),
+      0,
+      reason: 'what the box took out is gone from where it was',
+    );
+    expect(
+      await inkAlong(tester, taken + moveBy),
+      shownTaken,
+      reason: 'the float is where the hand put it',
+    );
+    expect(
+      await inkAlong(tester, kept),
+      shownKept,
+      reason: 'the ink outside the box is as it was',
+    );
+
+    // ⚠️Closed before the test ends: a box left open lands as the workspace
+    // unmounts, a frame after the history it writes to has gone
+    // (a-box-left-open-lands-after-its-history-is-gone).
+    commands.revertPendingMove();
+    await pumpFrames(tester);
   });
 }
