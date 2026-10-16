@@ -190,6 +190,21 @@ void main() {
     );
   });
 
+  test('a scale is measured once — whoever asks after gets the kept '
+      'phase', () {
+    // Between fractions, where measuring costs 30–610 µs (samplingPhaseFor):
+    // the sheet and the editing canvas ask at their own scales every frame.
+    // A scale no other test here asks, so the memo has not seen it.
+    const between = 1.2345678901;
+    final before = debugPhaseMeasures;
+    final phase = samplingPhaseFor(between);
+    final measured = debugPhaseMeasures;
+    expect(measured - before, 1, reason: 'a scale not asked before');
+
+    expect(samplingPhaseFor(between), phase);
+    expect(debugPhaseMeasures, measured, reason: 'asked again: kept');
+  });
+
   test('1:1, every whole zoom and every reduction keep phase 0 — their '
       'bytes are what they always were', () {
     for (final s in <double>[0.25, 0.5, 0.8, 0.9, 1.0, 2.0, 3.0, 4.0, 8.0]) {

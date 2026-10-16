@@ -135,6 +135,7 @@ double samplingPhaseFor(double scale) {
 }
 
 double _bestPhaseFor(double scale) {
+  debugPhaseMeasures += 1;
   final convergents = _convergentsOf(scale);
   final (:p, :q) = convergents.last;
   // Exactly p/q, with a full period of residues inside the measured pixels:
@@ -166,6 +167,11 @@ double _bestPhaseFor(double scale) {
 /// editing canvas paint at their own scales in the same frame, and a pinch
 /// moves one of them every frame.
 final BoundedMemo<double, double> _phaseMemo = BoundedMemo(8);
+
+/// How many phases have been measured — a scale is measured once and kept
+/// ([_phaseMemo]). ⚠️TEST ONLY.
+@visibleForTesting
+int debugPhaseMeasures = 0;
 
 /// The device pixel centres a phase is measured over: this many either
 /// side of the canvas origin.

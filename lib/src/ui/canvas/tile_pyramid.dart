@@ -180,7 +180,10 @@ class TilePyramid {
     }
   }
 
-  /// Lets every level picture of [scope] go.
+  /// Lets every level picture of [scope] go — how a test leaves the one
+  /// pyramid as it found it; the app's scopes go past [retainedScopeLimit].
+  /// ⚠️TEST ONLY.
+  @visibleForTesting
   void drop(Object? scope) => _letGo(scope, _byScope.take(scope));
 
   /// [scope]'s seed goes, and every level picture [scoped] keeps.
