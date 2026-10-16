@@ -254,6 +254,13 @@ class BrushFrameStore {
   /// drawings fit the hot budget together — always keeping the newest, the
   /// one about to be drawn. A picture let go of keeps its revision: nothing
   /// drawn with it is wrong, and the next ask decodes it again.
+  ///
+  /// ⛔Not the shared LRU (board every-bounded-cache-is-one-lru — decided
+  /// on storyboard-thumbnails-let-go-by-the-one-order, 2026-10-16): a
+  /// picture two keys share is paid for once, so letting a key go frees
+  /// nothing until the picture's last holder goes, and the sum is read
+  /// again each turn — where the shared one fixes an entry's cost as it
+  /// goes in. A third cache of this shape is when to share one.
   void _fitMovieCels() {
     while (_hotBytes + _movieCelBytes > hotCelByteBudget &&
         _movieCels.length > 1) {
@@ -1206,6 +1213,13 @@ class BrushFrameStore {
   ///   minutes earlier, at [anicelZstdLevel] — the only level there is.
   /// The most recently used cel never cools — the one being painted or
   /// displayed must not thrash even if it alone exceeds the budget.
+  ///
+  /// ⛔Not the shared LRU (board every-bounded-cache-is-one-lru — decided
+  /// on storyboard-thumbnails-let-go-by-the-one-order, 2026-10-16): the
+  /// same order, a different walk. A cel is let go of only once its park
+  /// has said yes, after an await, and a refusal stands the whole pass
+  /// down — a cache that lets go the moment it is over its limit cannot
+  /// keep that order. A third cache of this shape is when to share one.
   Future<void> _coolLoop() async {
     while (_hotBytes > hotCelByteBudget && _bakedSurfaces.length > 1) {
       final key = _bakedSurfaces.keys.first;
