@@ -1423,13 +1423,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       if (eases.isEmpty) {
         continue;
       }
-      final unit = switch (mode) {
-        LaneGraphMode.value => (
-          from: curve.at(span.from.toDouble()).single,
-          to: curve.at(span.to.toDouble()).single,
-        ),
-        LaneGraphMode.speed => (from: 0.0, to: _averageSpeed(curve, span)),
-      };
+      final unit = _unitOf(curve, span);
       final laid = (from: span.from + shift, to: span.to + shift);
       Offset place(double x, double y) => offsetAlong(
         axis,
@@ -1441,12 +1435,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
           (influence: side.influence, speed: side.speed),
           leaving: leaving,
         );
-        // ⚠️Mine (I-89 ①), read off 「컷 클램핑만 되도록」: a cut's lane
-        // takes a handle where its key is drawn — a handle is its key's —
-        // and where it stands on the cut's own frames, past which nothing
-        // of the cut is drawn.
-        if (!_reaches(line, leaving ? span.from : span.to) ||
-            !_reaches(line, span.from + point.x * (span.to - span.from))) {
+        final frame = leaving ? span.from : span.to;
+        if (!_takesHandle(line, span, frame, point.x)) {
           continue;
         }
         final end = leaving ? 0.0 : 1.0;
@@ -1458,7 +1448,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
           line: line,
           mode: mode,
           side: side,
-          frame: leaving ? span.from : span.to,
+          frame: frame,
           leaving: leaving,
           at: place(point.x, handle),
           key: place(end, key),
@@ -1468,6 +1458,38 @@ class TimelineLaneGraphPainter extends CustomPainter {
       }
     }
   }
+
+  /// What a handle's height on [span] is measured in, bottom to top: in a
+  /// value graph the numbers its two keys hold, a handle's height a share
+  /// of the way between them ([keyHandlePoint]); in a speed graph from
+  /// standing still to the speed it averages, a side's speed a multiple of
+  /// it ([EaseSide.speed]).
+  ({double from, double to}) _unitOf(
+    LaneCurve curve,
+    ({int from, int to}) span,
+  ) => switch (mode) {
+    LaneGraphMode.value => (
+      from: curve.at(span.from.toDouble()).single,
+      to: curve.at(span.to.toDouble()).single,
+    ),
+    LaneGraphMode.speed => (from: 0.0, to: _averageSpeed(curve, span)),
+  };
+
+  /// Whether [line] takes the handle of its key at [frame] that bends
+  /// [span] as far as [x] of the way along it.
+  ///
+  /// ⚠️Mine (I-89 ①), read off 「컷 클램핑만 되도록」: a cut's lane takes a
+  /// handle where its key is drawn — a handle is its key's — and where it
+  /// stands on the cut's own frames, past which nothing of the cut is
+  /// drawn.
+  static bool _takesHandle(
+    LaneGraphLine line,
+    ({int from, int to}) span,
+    int frame,
+    double x,
+  ) =>
+      _reaches(line, frame) &&
+      _reaches(line, span.from + x * (span.to - span.from));
 
   /// The segments [curve]'s handles bend, in order: from each of its
   /// [keyed] frames to the next — where it walks a path, from each that
