@@ -1473,14 +1473,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   static CanvasSize _cameraFrameSizeShown(EditorSessionManager session) =>
       session.canvasAdjust.cameraSizeShown ?? session.camera.cameraFrameSize;
 
-  /// The camera's path (I-89 ④) under its frame, wherever the frame is drawn
-  /// (유저 2026-10-12: 「비지블버튼처럼 어느 상태에 있던 카메라 사각형을
-  /// 보여주는 규칙 그대로 경로도」 — ↩️ it was drawn standing on the camera
-  /// row or its position lane alone), as the canvas's camera path settings
-  /// say — at the size the frame is shown at, around the playhead the cursor
-  /// moves, and nowhere in a gap. Standing on the camera's row, where its
-  /// box is ([_cameraBox]), it is drawn in time as well; elsewhere as the
-  /// export writes it ([CameraPathOverlay.standing]).
+  /// The camera's path (I-89 ④) under its frame, as the canvas's camera path
+  /// settings say, whether or not the frame is drawn (유저 2026-10-13: 「카메라
+  /// on하든 off하든 상관없어보이니까 on하든 off하든 설정한대로 보이도록」 —
+  /// ↩️ it was drawn wherever the frame was, 10-12 「비지블버튼처럼 어느
+  /// 상태에 있던 카메라 사각형을 보여주는 규칙 그대로 경로도」, and before
+  /// that standing on the camera row or its position lane alone) — at the
+  /// size the frame is shown at, around the playhead the cursor moves, and
+  /// nowhere in a gap. Standing on the camera's row, where its box is
+  /// ([_cameraBox]), it is drawn in time as well; elsewhere as the export
+  /// writes it ([CameraPathOverlay.standing]).
   Positioned _cameraPath(
     _HostFrame frame,
     CanvasViewport viewport,

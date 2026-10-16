@@ -31,6 +31,7 @@ class _InteractiveCanvasBuild {
   /// editing goes, as it goes under any run.
   late final bool _canvasPlays;
   late final bool _inGap;
+  late final bool _hasACamera;
   late final bool _cameraOverlayVisible;
   late final ({
     List<CompositeNode<CanvasStackRow>> nodes,
@@ -97,8 +98,8 @@ class _InteractiveCanvasBuild {
     // It survives a SCRUB (only `_isPlaybackActive` gates the overlay builder),
     // and that is the whole answer to the ruler-drag framing: the overlay was
     // never the missing half — the track stack's crop was the extra one.
-    _cameraOverlayVisible =
-        showCameraOverlay && session.activeCutOrNull != null;
+    _hasACamera = session.activeCutOrNull != null;
+    _cameraOverlayVisible = showCameraOverlay && _hasACamera;
     _layerStack = _inGap
         ? (
             nodes: const <CompositeNode<CanvasStackRow>>[],
@@ -863,8 +864,9 @@ class _InteractiveCanvasBuild {
             ),
           if (editing && frame.walksAPath)
             _state._positionPath(frame, viewport),
-          if (editing && _cameraOverlayVisible)
-            _state._cameraPath(frame, viewport),
+          // Not the frame's gate: [_EditorCanvasAreaState._cameraPath] says
+          // why.
+          if (editing && _hasACamera) _state._cameraPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
             _state._cameraOverlay(frame.session, viewport),
         ],

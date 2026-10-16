@@ -21,12 +21,13 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
 import 'package:anicel/src/ui/session/camera.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart' show CameraSizeDraft;
 
-/// I-89 ④ — the camera's path on the canvas: drawn wherever the canvas draws
-/// the camera's frame (유저 2026-10-12: 「비지블버튼처럼 어느 상태에 있던
-/// 카메라 사각형을 보여주는 규칙 그대로 경로도」), as the canvas's camera
-/// path settings say — in time only standing on the camera's row, where its
-/// frame is worked (「nf마다의 작은 십자가, 핸들 이런게 서있으면
-/// 보여주도록」), and elsewhere as the export writes it.
+/// I-89 ④ — the camera's path on the canvas: drawn as the canvas's camera
+/// path settings say, whether or not the canvas draws the camera's frame
+/// (유저 2026-10-13: 「on하든 off하든 설정한대로 보이도록」 — ↩️ 10-12
+/// 「비지블버튼처럼 어느 상태에 있던 카메라 사각형을 보여주는 규칙 그대로
+/// 경로도」 drew it where the frame was) — in time only standing on the
+/// camera's row, where its frame is worked (「nf마다의 작은 십자가, 핸들
+/// 이런게 서있으면 보여주도록」), and elsewhere as the export writes it.
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
@@ -154,9 +155,9 @@ void main() {
     }
   }
 
-  testWidgets('wherever the camera\'s frame is drawn, so is its path — in '
-      'time only standing on the camera\'s row, where its box is; where '
-      'the frame is not, no path', (tester) async {
+  testWidgets('its path is drawn whether or not the camera\'s frame is — in '
+      'time only standing on the camera\'s row, where its box is; '
+      'elsewhere as the export writes it', (tester) async {
     final (s, row) = panning();
     addTearDown(s.dispose);
     final eye = await pumpArea(tester, s);
@@ -186,14 +187,25 @@ void main() {
     expect(box(), findsNothing, reason: '⛔전제: the frame is not worked');
     // As the export writes it: the keys alone — their frames, crosses and
     // labels.
-    expect(keyFrames(tester), hasLength(2));
-    expect(labels(tester), ['1f', '6f']);
-    expect(armsOf(tester), 4);
+    void asExported() {
+      expect(keyFrames(tester), hasLength(2));
+      expect(labels(tester), ['1f', '6f']);
+      expect(armsOf(tester), 4);
+    }
 
+    asExported();
+
+    // ↩️ The frame's eye no longer takes the path with it (2026-10-13).
     eye.value = false;
     await tester.pump();
     expect(find.byType(CameraFrameOverlay), findsNothing, reason: '⛔전제');
-    expect(path(), findsNothing);
+    asExported();
+
+    CameraPathSettings.settings.value = const CameraPathSettings(
+      show: CameraPathShow.off,
+    );
+    await tester.pump();
+    expect(path(), findsNothing, reason: 'its own setting still does');
 
     await drain(tester);
   });
