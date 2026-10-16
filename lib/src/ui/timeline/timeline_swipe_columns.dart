@@ -94,6 +94,7 @@ typedef RailSwipeHooks = ({
   void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroupEnabled,
   bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
+  bool Function(LayerId layerId)? layerOnTimesheetOf,
   ValueChanged<LayerId>? onToggleLayerLanes,
   List<PropertyLaneRow> Function(Layer layer)? lanesForLayer,
   bool Function(LayerId layerId) laneOpenOf,
@@ -127,6 +128,7 @@ RailSwipeHooks timelineRailSwipeHooks(
   onToggleLaneGroupEnabled: hooks.onToggleLaneGroupEnabled,
   laneGroupOnOf: hooks.laneGroupOnOf,
   onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
+  layerOnTimesheetOf: hooks.layerOnTimesheetOf,
   onToggleLayerLanes: hooks.onToggleLayerLanes,
   lanesForLayer: hooks.lanesForLayer,
   laneOpenOf: (layerId) =>
@@ -272,12 +274,18 @@ void _fxToggle(RailSwipeHooks hooks, TimelineDisplayRow row) {
 ///
 /// An ATTACH row is null rather than false: its sheet slot holds the
 /// placement arrow (R10 R3), so there is no toggle under the swipe.
+///
+/// Read LIVE where the host reads it, as every other column is. ↩️It read
+/// the row as it was built — the one column of the list that did: a fast
+/// swipe, its down and first move in one frame, spread the flag its press
+/// had just turned over (I-89 ①ⓒ).
 RailToggle<TimelineDisplayRow>? _timesheet(RailSwipeHooks hooks) {
   final onToggle = hooks.onToggleLayerTimesheet;
   if (onToggle == null) return null;
   return (
     valueOf: (row) => !row.isLane && layerCarriesTimesheetToggle(row.layer)
-        ? row.layer.onTimesheet
+        ? hooks.layerOnTimesheetOf?.call(row.layer.id) ??
+              row.layer.onTimesheet
         : null,
     toggle: (row) => onToggle(row.layer.id),
   );

@@ -136,6 +136,7 @@ class TimelinePanel extends StatefulWidget {
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
+    this.layerOnTimesheetOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -514,6 +515,9 @@ class TimelinePanel extends StatefulWidget {
 
   /// Forwarded to the grids — see [LayerTimelineGrid.layerEyeOnOf].
   final bool Function(LayerId layerId)? layerEyeOnOf;
+
+  /// Forwarded to the grids — see [TimelineGridHooks.layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? layerOnTimesheetOf;
   final ValueChanged<LayerId>? onToggleLayerLanes;
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
@@ -708,6 +712,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       memoAux: widget.memoAux,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
       layerEyeOnOf: widget.layerEyeOnOf,
+      layerOnTimesheetOf: widget.layerOnTimesheetOf,
     );
     return Material(
       color: colorScheme.surfaceContainerHighest,

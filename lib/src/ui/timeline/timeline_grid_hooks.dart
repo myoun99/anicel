@@ -129,6 +129,7 @@ class TimelineGridHooks {
     this.laneOpenOf,
     this.laneGroupOnOf,
     this.layerEyeOnOf,
+    this.layerOnTimesheetOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -461,6 +462,11 @@ class TimelineGridHooks {
   /// the press just set, and a captured [Layer] still reports the last
   /// frame.
   final bool Function(LayerId layerId)? layerEyeOnOf;
+
+  /// A LIVE read of a layer’s sheet flag, for the same reason as
+  /// [layerEyeOnOf] — the read the session keeps for it
+  /// (`isLayerOnTimesheet`).
+  final bool Function(LayerId layerId)? layerOnTimesheetOf;
 
   final ValueChanged<LayerId>? onToggleLayerLanes;
 
