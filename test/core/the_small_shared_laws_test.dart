@@ -184,6 +184,21 @@ void main() {
       expect(memo.resolve(source, 0, make), isNull);
       expect(makes, 1);
     });
+
+    test('a lookup answers what is kept, under whatever signature, and '
+        'makes nothing', () {
+      final memo = SignedMemo<int, int>('test');
+      final source = Object();
+      var makes = 0;
+      int make() => ++makes;
+
+      expect(memo.keptOf(source), isNull, reason: 'nothing made yet');
+      memo.resolve(source, 1, make);
+      memo.resolve(source, 2, make);
+      expect(memo.keptOf(source), 2, reason: 'the newest');
+      expect(memo.keptOf(Object()), isNull, reason: 'another source\'s');
+      expect(makes, 2);
+    });
   });
 
   group('premultiply — one rounding, or a seam between a stroke and its '

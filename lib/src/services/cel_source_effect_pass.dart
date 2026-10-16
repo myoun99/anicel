@@ -22,6 +22,7 @@
 library;
 
 import '../core/collection_equality.dart';
+import '../core/signed_memo.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -299,8 +300,7 @@ BitmapSurface celSurfaceWithSourceEffects(
   // signature every frame, and holding them all would retain a derived copy
   // of the cel per slider step; the value being dragged is the only one
   // anyone is looking at.
-  return signedMemo(
-    _derived,
+  return _derived.resolve(
     surface,
     signature,
     () => _applyKeys(surface, keys, signature),
@@ -388,8 +388,7 @@ BitmapTile _keyedTile(
   List<double> signature,
   int tileSize,
 ) {
-  return signedMemo(
-    _keyedTiles,
+  return _keyedTiles.resolve(
     tile,
     signature,
     () =>
@@ -513,45 +512,13 @@ KeyRgbaTables _keyTables(List<CelColorKey> keys) {
   );
 }
 
-/// A memo entry: what was derived, plus the VALUES it was derived from.
-///
-/// ⛔Values, not a hash — see [CelColorKey.signature]. The grains (a
-/// surface, a tile, a carried float's painter) differ only in what `T` is,
-/// so they are one class.
-class SignedEntry<T> {
-  const SignedEntry(this.signature, this.value);
-
-  final List<double> signature;
-  final T value;
-}
-
-/// What [make] derives from [source] under [signature]: answered from
-/// [memo] — an entry kept on [source]'s identity — while that entry was made
-/// from the same values, and otherwise made and kept in its place. ONE entry
-/// per source; the newest values win.
-///
-/// ★The one memo of what a row's keys make of a thing — the keyed surface,
-/// the keyed tile and the carried float's keyed painter. The float's was
-/// written once more beside these two before it was shared (2026-10-16).
-T signedMemo<T>(
-  Expando<SignedEntry<T>> memo,
-  Object source,
-  List<double> signature,
-  T Function() make,
-) {
-  final kept = memo[source];
-  if (kept != null && listEquals(kept.signature, signature)) {
-    return kept.value;
-  }
-  final value = make();
-  memo[source] = SignedEntry(signature, value);
-  return value;
-}
-
 /// One keyed tile per source tile — the newest values win, for the reason
-/// [_derived] states about a slider being dragged.
-final Expando<SignedEntry<BitmapTile>> _keyedTiles =
-    Expando<SignedEntry<BitmapTile>>('celSourceEffectTiles');
+/// [_derived] states about a slider being dragged — by the values, as
+/// [_derived] keeps its.
+final SignedMemo<List<double>, BitmapTile> _keyedTiles = SignedMemo(
+  'celSourceEffectTiles',
+  same: sameCelSourceEffectSignature,
+);
 
 /// The keyed copy this pass made of [tile] and still holds, through whatever
 /// keys it was last made with — [tile] itself where the keys changed
@@ -559,12 +526,17 @@ final Expando<SignedEntry<BitmapTile>> _keyedTiles =
 ///
 /// A copy lives exactly as long as its source, so a picture made for the
 /// copy is let go with the source's (undo-held-tile-pictures, stage 2).
-BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles[tile]?.value;
+BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles.keptOf(tile);
 
 /// Derived render data keyed on the SOURCE surface's identity. Surfaces are
 /// immutable, so identity is a stable key and an edited cel is a different
 /// object that misses and recomputes — the same contract
-/// `BitmapTileImageCache` runs on. The [Expando] releases an entry when the
+/// `BitmapTileImageCache` runs on. The memo lets an entry go when the
 /// source surface itself goes.
-final Expando<SignedEntry<BitmapSurface>> _derived =
-    Expando<SignedEntry<BitmapSurface>>('celSourceEffectSurfaces');
+///
+/// ⛔Kept by the VALUES the keys were made from, not a hash — see
+/// [CelColorKey.signature].
+final SignedMemo<List<double>, BitmapSurface> _derived = SignedMemo(
+  'celSourceEffectSurfaces',
+  same: sameCelSourceEffectSignature,
+);

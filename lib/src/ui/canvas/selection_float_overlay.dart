@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 
+import '../../core/signed_memo.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/canvas_point.dart';
@@ -11,7 +12,7 @@ import '../../models/layer_effect.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
-    show SignedEntry, celSourceEffectSignature, signedMemo;
+    show celSourceEffectSignature, sameCelSourceEffectSignature;
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
@@ -285,16 +286,15 @@ bool _landsAlike(FloatLanding? a, FloatLanding? b) {
 
 /// The float's own surface through its row's keys, by the surface: one per
 /// lift (`_buildFloatSurface` keeps it for the session), so a carry moves
-/// the keyed pixels and makes none.
-final Expando<SignedEntry<BitmapSurfacePainter>> _keyedFloats = Expando(
-  'selectionFloatKeyed',
-);
+/// the keyed pixels and makes none — by the keys' values, as the keyed
+/// surface and tile are kept.
+final SignedMemo<List<double>, BitmapSurfacePainter> _keyedFloats =
+    SignedMemo('selectionFloatKeyed', same: sameCelSourceEffectSignature);
 
 BitmapSurfacePainter _keyedFloatPainter(
   BitmapSurface floatSurface,
   List<ResolvedLayerEffect> keys,
-) => signedMemo(
-  _keyedFloats,
+) => _keyedFloats.resolve(
   floatSurface,
   celSourceEffectSignature(keys),
   () => floatPainter(floatSurface, keys),

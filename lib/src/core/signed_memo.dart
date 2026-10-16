@@ -11,6 +11,9 @@
 /// signature by its edit generation and a track's conte row by its
 /// laying. Each kept an `Expando` of its own and spelled the same four
 /// lines over it; they differed only in what made two signatures the same.
+/// What a row's colour keys make of a thing — the keyed surface, the keyed
+/// tile and the carried float's keyed painter — had shared one memo of
+/// their own (2026-10-16), the same lines once more: it is this one now.
 ///
 /// ⚠️[same] is the memo's, fixed where it is declared: `identical` for an
 /// immutable model (`==` on one may be a deep compare, and the wrong law —
@@ -35,6 +38,10 @@ final class SignedMemo<S, V> {
     _kept[source] = (signature, value);
     return value;
   }
+
+  /// The value kept for [source], under whatever signature it was last
+  /// made — null where none is. A LOOKUP: it makes nothing.
+  V? keptOf(Object source) => _kept[source]?.$2;
 }
 
 bool _equal(Object? kept, Object? asked) => kept == asked;
