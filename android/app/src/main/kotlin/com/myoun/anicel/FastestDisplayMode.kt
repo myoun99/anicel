@@ -28,7 +28,6 @@ internal fun Activity.preferTheFastestDisplayMode() {
         }
         .maxByOrNull { it.refreshRate } ?: return
     val attributes = window.attributes
-    if (attributes.preferredDisplayModeId == fastest.modeId) return
     attributes.preferredDisplayModeId = fastest.modeId
     window.attributes = attributes
 }
