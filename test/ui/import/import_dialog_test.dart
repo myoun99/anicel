@@ -1708,7 +1708,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
       await settleAsync(tester, () => !tester.any(find.text('Importing…')));
-      await tester.pumpAndSettle();
+      // The file left on the list is previewed again, and its spinner never
+      // lets the frames settle until the page lands. ↩️A bare
+      // `pumpAndSettle` held only while the wait before it happened to lend
+      // the real clock once more after the run — 20ms the preview's read
+      // needed, and got by luck.
+      await settleLoadedPages(tester);
       session.playbackRig.prerenderScheduler.cancel();
       return session;
     }
