@@ -391,7 +391,7 @@ class PlaybackTransportControls extends StatelessWidget {
                       child: Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: Text(
-                          '$dropped dropped',
+                          AppText.strings.playbackDroppedCount(dropped),
                           key: const ValueKey<String>(
                             'playback-dropped-indicator',
                           ),

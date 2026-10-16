@@ -60,7 +60,11 @@ void main() {
     resolveActiveTrackId: () => const TrackId('track'),
     resolveFrameRate: () => const ProjectFrameRate.integer(10),
     onStopped: onStopped,
-  )..waitsOn = (frame, {required placed}) => missing.contains(frame);
+  )
+    ..waitsOn = ((frame, {required placed}) => missing.contains(frame))
+    // Asked as the rig asks it, so the counts below are of a run that also
+    // counts a frame it leaves unshown — which a run that waits never does.
+    ..frameIsThere = ((frame) => !missing.contains(frame));
 
   /// The picture came: the run is told, as the rig tells it.
   void arrive(CanvasPlaybackController c, int frame) {

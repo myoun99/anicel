@@ -1093,6 +1093,11 @@ enum AppStrings {
   String get playbackModeEveryPicture => _s('playbackModeEveryPicture');
   String get playbackModeRenderFirst => _s('playbackModeRenderFirst');
   String get playbackStop => _s('playbackStop');
+
+  /// The frames a run did not show, in the slot left of its play button
+  /// (T29) — said as the mode that skips them is named.
+  String playbackDroppedCount(int count) =>
+      _count('playbackDroppedCount', count);
   String get sheetPreviousPage => _s('sheetPreviousPage');
   String get sheetNextPage => _s('sheetNextPage');
   String get sheetPageDrag => _s('sheetPageDrag');
@@ -2361,6 +2366,8 @@ enum AppStrings {
     'playbackModeSkipFrames': 'Skip frames',
     'playbackModeEveryPicture': 'Every frame',
     'playbackModeRenderFirst': 'Render first',
+    'playbackDroppedCount': '{n} dropped',
+    'playbackDroppedCountOne': '{n} dropped',
     'playbackStop': 'Stop',
     'sheetPreviousPage': 'Previous page',
     'sheetNextPage': 'Next page',
@@ -3702,6 +3709,8 @@ enum AppStrings {
     'playbackModeSkipFrames': 'フレームを飛ばす',
     'playbackModeEveryPicture': 'すべてのフレーム',
     'playbackModeRenderFirst': '再生前にレンダリング',
+    'playbackDroppedCount': '{n}コマ落ち',
+    'playbackDroppedCountOne': '{n}コマ落ち',
     'playbackStop': '停止',
     'sheetPreviousPage': '前のページ',
     'sheetNextPage': '次のページ',
@@ -5226,6 +5235,8 @@ enum AppStrings {
     'playbackModeSkipFrames': '건너뛰기',
     'playbackModeEveryPicture': '모든 그림',
     'playbackModeRenderFirst': '재생 전 렌더링',
+    'playbackDroppedCount': '{n} 건너뜀',
+    'playbackDroppedCountOne': '{n} 건너뜀',
     'playbackStop': '정지',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
@@ -6794,6 +6805,8 @@ enum AppStrings {
     'playbackModeSkipFrames': 'Sauter des images',
     'playbackModeEveryPicture': 'Toutes les images',
     'playbackModeRenderFirst': 'Rendu avant lecture',
+    'playbackDroppedCount': '{n} sautées',
+    'playbackDroppedCountOne': '{n} sautée',
     'playbackStop': 'Arrêter',
     'sheetPreviousPage': 'Page précédente',
     'sheetNextPage': 'Page suivante',
@@ -8345,6 +8358,8 @@ enum AppStrings {
     'playbackModeSkipFrames': '跳帧',
     'playbackModeEveryPicture': '所有帧',
     'playbackModeRenderFirst': '播放前渲染',
+    'playbackDroppedCount': '跳过{n}帧',
+    'playbackDroppedCountOne': '跳过{n}帧',
     'playbackStop': '停止',
     'sheetPreviousPage': '上一页',
     'sheetNextPage': '下一页',

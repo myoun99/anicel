@@ -112,7 +112,7 @@ typedef _TrackStackMount = ({
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
   bool paintsFloor,
   bool cameraView,
-  StackRun? run,
+  TrackStackRun? run,
   Key key,
 });
 
@@ -714,8 +714,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     cameraView: ofTheRun && widget.cameraViewEnabled.value,
     run: ofTheRun
         ? (
-            landings: session.playbackRig.prerenderScheduler.landings,
-            gaveUpOn: session.playbackRig.canvasPictures.gaveUpOn,
+            cuts: (
+              landings: session.playbackRig.prerenderScheduler.landings,
+              gaveUpOn: session.playbackRig.canvasPictures.gaveUpOn,
+            ),
+            frameIsThere: session.playbackRig.frameIsThere,
           )
         : null,
     key: const ValueKey<String>('canvas-track-stack-view'),

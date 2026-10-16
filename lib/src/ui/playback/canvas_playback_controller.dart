@@ -115,6 +115,19 @@ class CanvasPlaybackController extends ChangeNotifier
   /// that frame's: white paper, at every cut's head on the iPad (F-365).
   bool Function(int playlistFrame, {required bool placed})? waitsOn;
 
+  /// Whether the run's picture at a frame is there — what the film shows a
+  /// frame by (`TrackStackRun.frameIsThere`), asked here of the frame the
+  /// playhead LEAVES: one whose picture never came while it stood there was
+  /// never shown, the last whole frame standing in for it, and is dropped
+  /// as surely as one it went over ([droppedFrames]). Null = every frame it
+  /// stands on is shown.
+  ///
+  /// Only a clock that goes on without a picture leaves such a frame —
+  /// skipping frames (유저 2026-10-15, F-365-Q2: 「컷을 넘을 때도 직전 그림을
+  /// 남기고, 건너뛴 프레임 수를 재생 버튼 왼쪽에 빨갛게」); one that waits
+  /// ([waitsOn]) leaves only frames it showed.
+  bool Function(int playlistFrame)? frameIsThere;
+
   /// Fired on every explicit seek with the clamped target frame, so a
   /// device transport can move without inferring the jump from frame
   /// deltas. (With the audio clock driving the picture, an un-forwarded
@@ -182,10 +195,12 @@ class CanvasPlaybackController extends ChangeNotifier
   int _currentGlobalFrame = 0;
   int _droppedFrames = 0;
 
-  /// Frames skipped to keep real time during the CURRENT loop pass
-  /// (DaVinci-style dropped frame indicator); resets on every wrap-around
-  /// and on play/seek. Counted where the playhead moves ([_countTheWay]):
-  /// a frame the run WAITS before is not one it skipped.
+  /// Frames not shown to keep real time during the CURRENT loop pass
+  /// (DaVinci-style dropped frame indicator): those the playhead went over,
+  /// and those it stood on whose picture never came ([frameIsThere]).
+  /// Resets on every wrap-around and on play/seek. Counted where the
+  /// playhead moves ([_countTheWay]): a frame the run WAITS before is not
+  /// one it skipped.
   int get droppedFrames => _droppedFrames;
 
   /// 🚨★★★ T28 — PLAYING, OR NOT. There is no third state.
@@ -565,18 +580,20 @@ class CanvasPlaybackController extends ChangeNotifier
   /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT —
   /// from where it stands [to] where it goes, its clock's way ([_goTo]) or
   /// onto the frame it waited for ([lookAgain]): the [passed] frames gone
-  /// over without standing on them. A move that wraps starts the new pass's
-  /// count, and counts nothing. ↩️Each clock kept its own count off its own
-  /// raw readings — the wall clock by lap, the device by a step back — and
-  /// with a run that can wait both were wrong the same way: they counted
-  /// the frames a run then WAITED before, which it went on to show. Each
-  /// also left a last reading behind, which a run going on from a wait had
-  /// to remember to forget.
+  /// over without standing on them, and the frame it leaves if that one's
+  /// picture never came ([frameIsThere]). A move that wraps starts the new
+  /// pass's count, and counts nothing. ↩️Each clock kept its own count off
+  /// its own raw readings — the wall clock by lap, the device by a step
+  /// back — and with a run that can wait both were wrong the same way: they
+  /// counted the frames a run then WAITED before, which it went on to show.
+  /// Each also left a last reading behind, which a run going on from a wait
+  /// had to remember to forget.
   void _countTheWay({required int to, required int passed}) {
     if (to < _currentGlobalFrame) {
       _droppedFrames = 0;
-    } else {
-      _droppedFrames += passed;
+    } else if (to > _currentGlobalFrame) {
+      final shown = frameIsThere?.call(_currentGlobalFrame) ?? true;
+      _droppedFrames += passed + (shown ? 0 : 1);
     }
   }
 

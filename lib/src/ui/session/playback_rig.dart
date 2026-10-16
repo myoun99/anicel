@@ -206,14 +206,29 @@ class PlaybackRig implements PlaybackRun {
   /// what the warmer has made of the run it follows.
   late final PlaybackPictureWait _pictureWait = PlaybackPictureWait(
     mode: () => playbackMode,
-    pictureIsThere: (playlistFrame) {
-      final wanted = prerenderScheduler.demand;
-      return wanted is PlayingDemand
-          ? prerenderScheduler.has(wanted.picturesOf(playlistFrame))
-          : null;
-    },
+    pictureIsThere: pictureIsThere,
     aheadIsFilled: () => prerenderScheduler.isResting,
   );
+
+  /// Whether the run's picture at [playlistFrame] is there to show — or can
+  /// never be — or null while the warmer follows no run, and so nothing
+  /// would ever say one had come. What the run's clock asks of a frame
+  /// before it goes on ([_pictureWait]), and what a frame is shown by
+  /// ([frameIsThere]).
+  bool? pictureIsThere(int playlistFrame) {
+    final wanted = prerenderScheduler.demand;
+    return wanted is PlayingDemand
+        ? prerenderScheduler.has(wanted.picturesOf(playlistFrame))
+        : null;
+  }
+
+  /// Whether the run's frame at [playlistFrame] goes up when asked for: its
+  /// picture is there — or nothing makes the run's pictures, and what the
+  /// cuts hold is all there will be. What the film changes frames by
+  /// (`TrackStackRun.frameIsThere`) and what the run's clock counts a frame
+  /// it leaves by ([CanvasPlaybackController.frameIsThere]) — one answer,
+  /// so the count is of the frames the screen did not show.
+  bool frameIsThere(int playlistFrame) => pictureIsThere(playlistFrame) ?? true;
 
   /// The question the run's clock asks of every frame it would stand on
   /// ([CanvasPlaybackController.waitsOn]).
@@ -240,7 +255,9 @@ class PlaybackRig implements PlaybackRun {
     onStopped: _onStopped,
     onStoppedInGap: _onStoppedInGap,
     onPlaylistWarmRequested: _onPlaylistWarmRequested,
-  )..waitsOn = _waitsOn;
+  )
+    ..waitsOn = _waitsOn
+    ..frameIsThere = frameIsThere;
 
   /// Everything in the app that plays, so the actuation gate can ask ONE
   /// object 「누가 재생 중인가」 and stop it.
