@@ -7,10 +7,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 
 /// **I-89 ③ — a header graph reads what its lines are fitted to once.**
@@ -46,8 +43,6 @@ void main() {
         ),
       );
       addTearDown(geometry.dispose);
-      final cursor = ValueNotifier<int>(0);
-      addTearDown(cursor.dispose);
       final bucket = ValueNotifier<int>(0);
       addTearDown(bucket.dispose);
       final painter = TimelineLaneGraphPainter(
@@ -59,29 +54,11 @@ void main() {
         ],
         guests: const [],
         mode: mode,
-        grid: (
-          hooks: TimelineGridHooks(
-            activeLayerId: null,
-            frameCursor: cursor,
-            playbackFrameCount: 48,
-            exposureStateForLayer: (_, _) =>
-                TimelineCellExposureState.uncovered,
-            onSelectLayer: (_) {},
-            onSelectFrame: (_) {},
-            onToggleLayerVisibility: (_) {},
-            onLayerOpacityChanged: (_, _) {},
-            onToggleLayerTimesheet: (_) {},
-            onLayerMarkSelected: (_, _) {},
-          ),
-          metrics: TimelineGridMetrics.defaults,
+        frameAxis: (
           geometry: geometry,
           windowBucket: bucket,
           viewportMainExtent: 240.0,
-          frameAxisController: null,
-          nextPage: null,
-          rangeGesture: null,
           axis: Axis.horizontal,
-          keyPrefix: 'timeline',
         ),
       );
       int readsOfAPaint() {

@@ -231,7 +231,7 @@ void main() {
       reason: '⛔전제: the cut runs on past the window',
     );
     expect(window.startIndex, 0, reason: '⛔전제: the view starts at frame 0');
-    var frames = painter.grid.geometry.value;
+    var frames = painter.frameAxis.geometry.value;
     final drawn = _drawnAlong(tester);
     expect(
       drawn.start,
@@ -256,7 +256,7 @@ void main() {
 
     expect(identical(_painter(tester), painter), isTrue, reason: 'no rebuild');
     final moved = painter.visibleFrameWindow();
-    frames = painter.grid.geometry.value;
+    frames = painter.frameAxis.geometry.value;
     expect(moved.startIndex, greaterThan(window.endIndexExclusive));
     expect(moved.endIndexExclusive, frames.frameEndIndexExclusive);
     final after = _drawnAlong(tester);

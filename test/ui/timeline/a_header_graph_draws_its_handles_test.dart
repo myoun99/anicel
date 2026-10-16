@@ -13,10 +13,7 @@ import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
-import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
@@ -74,7 +71,6 @@ void main() {
   /// not a cell apart everywhere.
   const cell = 13.7;
   late ValueNotifier<TimelineFrameGeometry> geometry;
-  late ValueNotifier<int> cursor;
   late ValueNotifier<int> bucket;
   setUp(() {
     geometry = ValueNotifier(
@@ -84,12 +80,10 @@ void main() {
         frameEndIndexExclusive: 48,
       ),
     );
-    cursor = ValueNotifier(0);
     bucket = ValueNotifier(0);
   });
   tearDown(() {
     geometry.dispose();
-    cursor.dispose();
     bucket.dispose();
   });
 
@@ -104,28 +98,11 @@ void main() {
     guests: guests,
     mode: mode,
     held: held,
-    grid: (
-      hooks: TimelineGridHooks(
-        activeLayerId: null,
-        frameCursor: cursor,
-        playbackFrameCount: 48,
-        exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
-        onSelectLayer: (_) {},
-        onSelectFrame: (_) {},
-        onToggleLayerVisibility: (_) {},
-        onLayerOpacityChanged: (_, _) {},
-        onToggleLayerTimesheet: (_) {},
-        onLayerMarkSelected: (_, _) {},
-      ),
-      metrics: TimelineGridMetrics.defaults,
+    frameAxis: (
       geometry: geometry,
       windowBucket: bucket,
       viewportMainExtent: 48 * cell,
-      frameAxisController: null,
-      nextPage: null,
-      rangeGesture: null,
       axis: axis,
-      keyPrefix: 'timeline',
     ),
   );
 

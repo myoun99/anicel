@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior;
 import 'package:flutter/material.dart' show Icons;
@@ -14,7 +15,6 @@ import '../../models/key_side.dart'
         keyHandleAt,
         keyHandleInfluenceAt,
         keyHandlePoint;
-import '../../models/timeline_row_address.dart';
 import '../dashed_path.dart' show DashPattern, dashesAlong;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
@@ -34,11 +34,11 @@ import 'lane_graph_seats.dart'
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'property_lane_model.dart';
 import 'timeline_cells_row_facts.dart' show TimelineCellsRowGrid;
-import 'timeline_drag_preview.dart'
-    show TimelineDragPreview, timelineDragPreviewLayerFor;
+import 'timeline_drag_preview.dart' show timelineDragPreviewLayerFor;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
+import 'timeline_grid_hooks.dart' show TimelineGridHooks;
 import 'timeline_row_edges.dart';
 
 /// Rows as a grid lays them: [rows] are its rows from [first] on, and
@@ -72,8 +72,12 @@ List<Widget> timelineFrameSide(
             '${grid.keyPrefix}-lane-graph-${seat.groupKey}',
           ),
           seat: seat,
-          lanes: rows.sublist(unit.first - first, unit.last - first + 1),
-          grid: grid,
+          lines: timelineLaneGraphLines(
+            seat,
+            rows.sublist(unit.first - first, unit.last - first + 1),
+            grid.hooks,
+          ),
+          grid: laneGraphGridOf(grid),
           crossExtent: edges.unitSpanOf(unit.first).extent,
           lanesExtent:
               edges.unitSpanOf(unit.first).extent - edges.roomOf(unit.last),
@@ -87,22 +91,117 @@ List<Widget> timelineFrameSide(
   ];
 }
 
-/// An open graph on the frame side: ONE picture over its group's [lanes]
-/// and the room after them, where their rows of cells would be (I-89 ③) —
-/// the same widget on the timeline and, turned on its side, the sheet.
+/// The frames a header graph is drawn over (I-89 ③), as the grid's rows of
+/// cells lay them: the grid's live geometry, the window over it, the
+/// view's extent along them and which way they run — what its picture and
+/// its handles read.
+typedef LaneGraphFrames = ({
+  ValueNotifier<TimelineFrameGeometry> geometry,
+  ValueListenable<int>? windowBucket,
+  double viewportMainExtent,
+  Axis axis,
+});
+
+/// What a header graph reads of the grid it is drawn in (I-89 ③): its
+/// [LaneGraphFrames], the scrollable its corners stand still in, its key
+/// prefix, the lane edits its handles write through and the buttons its
+/// tools and its grip tell.
 ///
-/// It draws the lanes its seat names as its own ([laneGraphDrawnLanes]),
-/// read off where the rail stands, and every pin of another group's as a
-/// guest ([laneGraphGuests]), named in the view's far corner
-/// ([LaneGraphGuestTags]) — its tools in the near one ([LaneGraphTools]).
-/// Along the frames it is a row of cells: laid out by the grid's live
-/// geometry ([TimelineFrameAxisBox]) and drawing only its window, so a
-/// scroll or a zoom step repaints it and rebuilds nothing.
+/// ⛔Not the grid's whole hook bundle ([TimelineCellsRowGrid]): a graph
+/// reads these and nothing else of it. The timeline's and the sheet's
+/// grids hand it theirs ([laneGraphGridOf]); a rail that lays no cells
+/// row hands it its own.
+typedef LaneGraphGrid = ({
+  LaneGraphFrames frameAxis,
+  ScrollController? frameAxisController,
+  String keyPrefix,
+  LaneGraphVerbs? verbs,
+  PropertyLaneEditCallbacks? laneEdit,
+});
+
+/// [grid] as a header graph drawn in it reads it.
+LaneGraphGrid laneGraphGridOf(TimelineCellsRowGrid grid) => (
+  frameAxis: (
+    geometry: grid.geometry,
+    windowBucket: grid.windowBucket,
+    viewportMainExtent: grid.viewportMainExtent,
+    axis: grid.axis,
+  ),
+  frameAxisController: grid.frameAxisController,
+  keyPrefix: grid.keyPrefix,
+  verbs: grid.hooks.laneGraphVerbs,
+  laneEdit: grid.hooks.laneEdit,
+);
+
+/// What a header graph draws (I-89 ③): its own lines and its guests as
+/// they stand, read again whenever [changes] says they moved.
+typedef LaneGraphLines = ({
+  Listenable changes,
+  List<LaneGraphLine> Function() own,
+  List<LaneGraphLine> Function() guests,
+});
+
+/// What [seat]'s graph draws on a grid [hooks] tells (I-89 ③): of [lanes]
+/// — the group's lanes as the rail draws them, in its order — the ones it
+/// draws as its own ([laneGraphDrawnLanes]), read off where the rail
+/// stands, each as a drag in flight shows its row ([previewedLaneRow]);
+/// and every pin of another group's as a guest ([laneGraphGuests]), as
+/// the host finds it. Read again whenever the rail stands elsewhere or the
+/// drag moves.
+LaneGraphLines timelineLaneGraphLines(
+  TimelineGraphSeat seat,
+  List<TimelineDisplayRow> lanes,
+  TimelineGridHooks hooks,
+) {
+  final standing = hooks.currentRowHooks?.currentRow;
+  final preview = hooks.dragPreview;
+  final lanesForLayer = hooks.lanesForLayer;
+  final lineOf = hooks.laneGraphLineOf;
+  return (
+    changes: Listenable.merge([standing, preview]),
+    own: () {
+      final drawn = laneGraphDrawnLanes(seat, standing?.value);
+      return [
+        for (final row in lanes)
+          if (drawn.contains(row.lane!.laneId))
+            if (timelineDragPreviewLayerFor(preview?.value, row.layer.id)
+                case final layer?)
+              (
+                layer: layer,
+                lane: previewedLaneRow(
+                  row: row,
+                  previewLayer: layer,
+                  lanesForLayer: (layer) =>
+                      lanesForLayer?.call(layer) ?? const [],
+                ),
+              )
+            else
+              (layer: row.layer, lane: row.lane!),
+      ];
+    },
+    guests: () => [
+      if (lineOf != null)
+        for (final key in laneGraphGuests(seat, hooks.laneGraphs.pinned))
+          ?lineOf(key),
+    ],
+  );
+}
+
+/// An open graph on the frame side: ONE picture over its group's lanes and
+/// the room after them, where their rows of cells would be (I-89 ③) — the
+/// same widget on the timeline and, turned on its side, the sheet.
+///
+/// It draws its [lines]: its own, and every pin of another group's as a
+/// guest, named in the view's far corner ([LaneGraphGuestTags]) — its
+/// tools in the near one ([LaneGraphTools]). Along the frames it is a row
+/// of cells: laid out by the grid's live geometry ([TimelineFrameAxisBox])
+/// and drawing only its window, so a scroll or a zoom step repaints it and
+/// rebuilds nothing.
 class TimelineLaneGraph extends StatelessWidget {
   const TimelineLaneGraph({
     super.key,
     required this.seat,
-    required this.lanes,
+    required this.lines,
     required this.grid,
     required this.crossExtent,
     required this.lanesExtent,
@@ -111,11 +210,11 @@ class TimelineLaneGraph extends StatelessWidget {
 
   final TimelineGraphSeat seat;
 
-  /// The group's lanes as the rail draws them, in its order.
-  final List<TimelineDisplayRow> lanes;
+  /// What it draws, as it stands.
+  final LaneGraphLines lines;
 
-  /// The grid it is drawn in, read as its rows of cells read it.
-  final TimelineCellsRowGrid grid;
+  /// The grid it is drawn in, as a graph reads it.
+  final LaneGraphGrid grid;
 
   /// How far it reaches across the frames — its lanes and the room after
   /// them.
@@ -129,23 +228,26 @@ class TimelineLaneGraph extends StatelessWidget {
   /// ([TimelineRowEdges.graphMost]).
   final double mostExtent;
 
+  Axis get _axis => grid.frameAxis.axis;
+
   @override
   Widget build(BuildContext context) {
-    final standing = grid.hooks.currentRowHooks?.currentRow;
-    final preview = grid.hooks.dragPreview;
-    final verbs = grid.hooks.laneGraphVerbs;
+    final verbs = grid.verbs;
     return Stack(
       children: [
         TimelineFrameAxisBox(
-          geometry: grid.geometry,
+          geometry: grid.frameAxis.geometry,
           crossAxisExtent: crossExtent,
-          axis: grid.axis,
+          axis: _axis,
           child: RepaintBoundary(
             child: ListenableBuilder(
-              listenable: Listenable.merge([standing, preview]),
-              builder: (context, _) => _picture(
-                standing?.value,
-                preview?.value,
+              listenable: lines.changes,
+              builder: (context, _) => LaneGraphPicture(
+                own: lines.own(),
+                guests: lines.guests(),
+                frameAxis: grid.frameAxis,
+                edits: grid.laneEdit,
+                mode: seat.graph.mode,
               ),
             ),
           ),
@@ -158,9 +260,12 @@ class TimelineLaneGraph extends StatelessWidget {
 
   /// Its tools and its guests' tags, each in its corner of the view.
   Widget _corners(LaneGraphVerbs? verbs) {
-    final guests = _guests();
+    final guests = lines.guests();
     return CustomMultiChildLayout(
-      delegate: _LaneGraphCorners(grid.axis, grid.viewportMainExtent),
+      delegate: _LaneGraphCorners(
+        _axis,
+        grid.frameAxis.viewportMainExtent,
+      ),
       children: [
         LayoutId(
           id: _LaneGraphCorner.tools,
@@ -194,15 +299,15 @@ class TimelineLaneGraph extends StatelessWidget {
   /// Its grip along its cross end: the timeline's bottom, the sheet's
   /// right.
   Widget _grip(LaneGraphVerbs? verbs) => Positioned(
-    left: grid.axis == Axis.horizontal ? 0 : null,
-    top: grid.axis == Axis.horizontal ? null : 0,
+    left: _axis == Axis.horizontal ? 0 : null,
+    top: _axis == Axis.horizontal ? null : 0,
     right: 0,
     bottom: 0,
     child: LaneGraphGrip(
       key: ValueKey<String>(
         '${grid.keyPrefix}-lane-graph-grip-${seat.groupKey}',
       ),
-      axis: grid.axis,
+      axis: _axis,
       extent: crossExtent,
       least: lanesExtent,
       most: mostExtent,
@@ -220,52 +325,11 @@ class TimelineLaneGraph extends StatelessWidget {
         ? corners
         : ScrollStill(
             controller: controller,
-            axisDirection: grid.axis == Axis.horizontal
+            axisDirection: _axis == Axis.horizontal
                 ? AxisDirection.right
                 : AxisDirection.down,
             child: corners,
           );
-  }
-
-  /// Every pin of another group's, as the host finds it.
-  List<LaneGraphLine> _guests() {
-    final hooks = grid.hooks;
-    final lineOf = hooks.laneGraphLineOf;
-    return [
-      if (lineOf != null)
-        for (final key in laneGraphGuests(seat, hooks.laneGraphs.pinned))
-          ?lineOf(key),
-    ];
-  }
-
-  /// The picture as it stands with [standing] stood on and [preview] in
-  /// flight: each of its own lanes as its row of cells would show it
-  /// ([previewedLaneRow]), and every guest as the host reads it then.
-  Widget _picture(TimelineRowAddress? standing, TimelineDragPreview? preview) {
-    final drawn = laneGraphDrawnLanes(seat, standing);
-    final lanesForLayer = grid.hooks.lanesForLayer;
-    return LaneGraphPicture(
-      own: [
-        for (final row in lanes)
-          if (drawn.contains(row.lane!.laneId))
-            if (timelineDragPreviewLayerFor(preview, row.layer.id)
-                case final layer?)
-              (
-                layer: layer,
-                lane: previewedLaneRow(
-                  row: row,
-                  previewLayer: layer,
-                  lanesForLayer: (layer) =>
-                      lanesForLayer?.call(layer) ?? const [],
-                ),
-              )
-            else
-              (layer: row.layer, lane: row.lane!),
-      ],
-      guests: _guests(),
-      grid: grid,
-      mode: seat.graph.mode,
-    );
   }
 }
 
@@ -283,13 +347,20 @@ class LaneGraphPicture extends StatefulWidget {
     super.key,
     required this.own,
     required this.guests,
-    required this.grid,
+    required this.frameAxis,
+    required this.edits,
     required this.mode,
   });
 
   final List<LaneGraphLine> own;
   final List<LaneGraphLine> guests;
-  final TimelineCellsRowGrid grid;
+
+  /// The frames it is drawn over.
+  final LaneGraphFrames frameAxis;
+
+  /// What a handle let go of writes through; null where the host takes no
+  /// lane edits, and a pull shows and writes nothing.
+  final PropertyLaneEditCallbacks? edits;
   final LaneGraphMode mode;
 
   @override
@@ -313,14 +384,14 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// The painter the last build drew with — what a press is asked of.
   late TimelineLaneGraphPainter _painter;
 
-  PropertyLaneEditCallbacks? get _edits => widget.grid.hooks.laneEdit;
+  PropertyLaneEditCallbacks? get _edits => widget.edits;
 
   @override
   Widget build(BuildContext context) {
     final painter = _painter = TimelineLaneGraphPainter(
       own: widget.own,
       guests: widget.guests,
-      grid: widget.grid,
+      frameAxis: widget.frameAxis,
       mode: widget.mode,
       held: _inHand?.fits ?? const {},
     );
@@ -369,8 +440,8 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final edit = inHand.edit = laneGraphPull(
       handle,
       handle.at + details.localPosition - inHand.press,
-      frames: widget.grid.geometry.value,
-      axis: widget.grid.axis,
+      frames: widget.frameAxis.geometry.value,
+      axis: widget.frameAxis.axis,
     );
     _edits?.onPreviewKeySides?.call(
       handle.line.layer,
@@ -1117,28 +1188,35 @@ KeySidesEdit laneGraphPull(
 /// A header graph's picture (I-89 ③): each line of [own] solid and each of
 /// [guests] dashed, every number it holds in its own colour and fitted to
 /// its own range, as [mode] plots it — its values, with a mark on every
-/// key, or how fast they change — over the frames [grid] lays, only those
-/// its window shows, as its rows of cells draw them
+/// key, or how fast they change — over the frames its grid lays, only
+/// those its window shows, as its rows of cells draw them
 /// ([visibleFrameWindowFor]); and over them, its handles.
 class TimelineLaneGraphPainter extends CustomPainter {
   TimelineLaneGraphPainter({
     required this.own,
     required this.guests,
-    required this.grid,
+    required this.frameAxis,
     this.mode = LaneGraphMode.value,
     this.held = const {},
-  }) : super(repaint: Listenable.merge([grid.geometry, ?grid.windowBucket]));
+  }) : super(
+         repaint: Listenable.merge([
+           frameAxis.geometry,
+           ?frameAxis.windowBucket,
+         ]),
+       );
 
   final List<LaneGraphLine> own;
   final List<LaneGraphLine> guests;
-  final TimelineCellsRowGrid grid;
+
+  /// The frames it draws over.
+  final LaneGraphFrames frameAxis;
   final LaneGraphMode mode;
 
   /// What a handle in hand holds its lines to, by line ([laneGroupKey]):
   /// what they were fitted to when it was taken ([fits]).
   final Map<String, LaneGraphFit> held;
 
-  Axis get axis => grid.axis;
+  Axis get axis => frameAxis.axis;
 
   /// Each of [own]'s lines and [guests]', with what it is fitted to — read
   /// on the first paint and kept, since its lines are this painter's for
@@ -1190,10 +1268,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// The frames [paint] draws — the probe surface for the window's tests,
   /// as the cells painter's is.
   ({int startIndex, int endIndexExclusive}) visibleFrameWindow() {
-    final frames = grid.geometry.value;
+    final frames = frameAxis.geometry.value;
     return visibleFrameWindowFor(
-      bucket: grid.windowBucket,
-      viewportMainExtent: grid.viewportMainExtent,
+      bucket: frameAxis.windowBucket,
+      viewportMainExtent: frameAxis.viewportMainExtent,
       cellExtent: frames.frameCellExtent,
       frameStartIndex: frames.frameStartIndex,
       frameEndIndexExclusive: frames.frameEndIndexExclusive,
@@ -1202,7 +1280,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final frames = grid.geometry.value;
+    final frames = frameAxis.geometry.value;
     final window = visibleFrameWindow();
     final pass = (
       canvas: canvas,
@@ -1265,7 +1343,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// [handleAt] on every move it makes over the picture. The probe surface
   /// for the handles' tests, as [visibleFrameWindow] is for the window's.
   List<LaneGraphHandle> handlesIn(Size size) {
-    final frames = grid.geometry.value;
+    final frames = frameAxis.geometry.value;
     final window = visibleFrameWindow();
     if (_handled case final last?
         when last.size == size &&
@@ -1460,7 +1538,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
   bool shouldRepaint(TimelineLaneGraphPainter oldDelegate) =>
       oldDelegate.own != own ||
       oldDelegate.guests != guests ||
-      oldDelegate.grid != grid ||
+      oldDelegate.frameAxis != frameAxis ||
       oldDelegate.mode != mode ||
       oldDelegate.held != held;
 }
