@@ -453,7 +453,18 @@ void main() {
   /// video stage's `_composite` already takes, handed on. 🔬`clean_code_diff`
   /// against master (`6ceb2a7ac`, at 398) named those two added and nothing
   /// gone.
-  const wideSignatures = 400;
+  ///
+  /// ⚠️400 → 402 on 2026-10-16, two named as the rule above asks
+  /// (vanishing-point-types-Q4 — 유저 2026-10-16: 「가이드마다 막대 하나」).
+  /// `GuideOverlayPainter._paintVanishingFan` (five) and
+  /// `_paintParallelFamily` (five) take the guide's line density: how many
+  /// rays a point sends and how many lanes a family stands either side of
+  /// the middle, the number Q4 made the guide's own. It is the guide's, not
+  /// the painter's — two guides on one canvas draw at their own — so it
+  /// travels with the point being drawn. 🔬`clean_code_diff` against master
+  /// (`ebefaea8b`, at 398, before F-371's two landed) named those two added
+  /// and nothing gone.
+  const wideSignatures = 402;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -845,7 +856,18 @@ void main() {
   /// between master (`76fbb39e8`) and the lane names this one and no other
   /// class. ⛔Not split to fit: the weight is the plan the image is made by,
   /// and it stands beside the making so the two cannot part.
-  const longClasses = 65;
+  ///
+  /// ⚠️65 → 66 on 2026-10-16, ONE name: `PixelVerbs` crossed (581 → 613)
+  /// in vanishing-point-types-Q5 — 래스터라이즈 lays a guide's lines on the
+  /// cels the paste's ladder names (유저 2026-10-16: 「지금 레이어의 지금
+  /// 셀에」), through the door the paste lands through: the paste's landing
+  /// moved into `_land`, which both call now, and the new verb is the
+  /// crossing a canvas picture makes onto a posed row. 🔬`clean_code_diff`
+  /// against master (`ebefaea8b`, before the two above landed) names this
+  /// one and no other class. ⛔Not split to fit: a picture that lands as a
+  /// paste lands stands beside the paste, where
+  /// `a_piece_lands_through_one_door_test` reads them both.
+  const longClasses = 66;
 
   late CleanCodeScan scan;
   setUpAll(() {

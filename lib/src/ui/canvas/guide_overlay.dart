@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui show ImageByteFormat, PictureRecorder;
+import 'dart:ui' as ui show ImageByteFormat;
 
 import 'package:flutter/material.dart';
 
@@ -11,6 +11,7 @@ import '../../models/cut_piece.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/guide_geometry.dart';
 import '../../models/app_input_settings.dart';
+import '../export/offscreen_raster.dart' show rasterizeOffscreen;
 import '../repaint_props.dart';
 import 'canvas_viewport_offset.dart';
 
@@ -663,20 +664,20 @@ Future<CutPiece?> guideLinesOnPaper(
     canvasSize.width.toDouble(),
     canvasSize.height.toDouble(),
   );
-  final recorder = ui.PictureRecorder();
-  GuideOverlayPainter(
-    guides: CutGuides(guides: [guide]),
-    viewport: CanvasViewport(),
-    canvasSize: canvasSize,
-    emphasized: true,
-    color: color,
-    face: const TextStyle(),
-    vanishingPointLabel: '',
-    selectedGuideId: guide.id,
-  ).paintLines(Canvas(recorder, Offset.zero & paper), paper, guide);
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(canvasSize.width, canvasSize.height);
-  picture.dispose();
+  final image = await rasterizeOffscreen(
+    width: canvasSize.width,
+    height: canvasSize.height,
+    paint: (canvas) => GuideOverlayPainter(
+      guides: CutGuides(guides: [guide]),
+      viewport: CanvasViewport(),
+      canvasSize: canvasSize,
+      emphasized: true,
+      color: color,
+      face: const TextStyle(),
+      vanishingPointLabel: '',
+      selectedGuideId: guide.id,
+    ).paintLines(canvas, paper, guide),
+  );
   try {
     final rgba = await image.toByteData(
       format: ui.ImageByteFormat.rawStraightRgba,

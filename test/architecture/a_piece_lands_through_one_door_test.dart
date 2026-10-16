@@ -90,9 +90,18 @@ void main() {
       'lib/src/ui/session/pixel_verbs.dart',
     ).readAsStringSync();
     expect(
-      sourceBodyOf(verbs, 'void _pastePixels(').contains('pieceLandings('),
+      sourceBodyOf(verbs, 'void _land(').contains('pieceLandings('),
       isTrue,
       reason: 'and the paste lands through the same one',
+    );
+    expect(
+      sourceBodyOf(verbs, 'void _pastePixels(').contains('_land('),
+      isTrue,
+    );
+    // vanishing-point-types-Q5: 래스터라이즈 lays its picture as a paste does.
+    expect(
+      sourceBodyOf(verbs, 'void landCanvasPicture(').contains('_land('),
+      isTrue,
     );
   });
 }
