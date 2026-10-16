@@ -132,6 +132,124 @@ metrics: metrics,
     );
   }
 
+  /// One row, 'layer-a', on the timeline or on the X-sheet — its frames
+  /// long enough to run past either surface's view, its Position lane
+  /// twirled down.
+  Widget edgeGrid(
+    Axis axis, {
+    required ValueNotifier<int> cursor,
+    required TimelineFrameRangeHooks rangeHooks,
+    TimelineLaneRangeHooks? laneRange,
+  }) {
+    final gridHooks = TimelineGridHooks(
+      activeLayerId: const LayerId('layer-a'),
+      frameCursor: cursor,
+      playbackFrameCount: 120,
+      exposureStateForLayer: stateFor,
+      onSelectLayer: (_) {},
+      onSelectFrame: (_) {},
+      onToggleLayerVisibility: (_) {},
+      onLayerOpacityChanged: (_, _) {},
+      onToggleLayerTimesheet: (_) {},
+      onLayerMarkSelected: (_, _) {},
+      rangeHooks: rangeHooks,
+      laneRange: laneRange,
+      expandedLaneLayerIds: {const LayerId('layer-a')},
+      lanesForLayer: (_) => [
+        const PropertyLaneRow(
+          laneId: 'position',
+          label: 'Position',
+          keyMarks: {},
+        ),
+      ],
+    );
+    final layers = [blockLayer('layer-a')];
+    return MaterialApp(
+      home: Scaffold(
+        body: axis == Axis.horizontal
+            ? LayerTimelineGrid(
+                hooks: gridHooks,
+                layers: layers,
+                metrics: const TimelineGridMetrics(
+                  frameCellWidth: 48,
+                  layerRowHeight: 52,
+                  layerControlsWidth: classicRailWidth,
+                ),
+              )
+            : XSheetTimelineGrid(hooks: gridHooks, layers: layers),
+      ),
+    );
+  }
+
+  /// D42: presses [gestureLayer] in its first cell, reaches into the
+  /// frame axis's trailing band and nudges there. The view keeps panning,
+  /// and [heads] keep advancing over frames that were NOT on screen at the
+  /// press, because the applied pan is folded back into the read — along
+  /// the timeline's x, and down the sheet's y.
+  Future<void> holdAtTheTrailingEdge(
+    WidgetTester tester,
+    Axis axis,
+    Finder gestureLayer,
+    List<int> heads,
+  ) async {
+    final horizontal = axis == Axis.horizontal;
+    final frameViewport = find.byKey(
+      ValueKey<String>(
+        horizontal
+            ? 'timeline-frame-scroll-viewport'
+            : 'xsheet-frame-vertical-viewport',
+      ),
+    );
+    double frameOffset() => tester
+        .state<ScrollableState>(
+          find
+              .descendant(of: frameViewport, matching: find.byType(Scrollable))
+              .first,
+        )
+        .position
+        .pixels;
+    expect(frameOffset(), 0, reason: '$axis');
+    final viewportRect = tester.getRect(frameViewport);
+
+    final start = tester.getTopLeft(gestureLayer) + const Offset(20, 18);
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    // Reach into the trailing 24px band: the reach itself scrolls…
+    await gesture.moveTo(
+      horizontal
+          ? Offset(viewportRect.right - 6, start.dy)
+          : Offset(start.dx, viewportRect.bottom - 6),
+    );
+    await tester.pump();
+    final offsetAtEdge = frameOffset();
+    final headAtEdge = heads.last;
+    expect(offsetAtEdge, greaterThan(0), reason: '$axis');
+
+    // …and nudging inside the band keeps scrolling (per pointer move).
+    for (var step = 0; step < 8; step += 1) {
+      final nudge = step.isEven ? 1.0 : -1.0;
+      await gesture.moveBy(horizontal ? Offset(nudge, 0) : Offset(0, nudge));
+      await tester.pump();
+    }
+    expect(frameOffset(), greaterThan(offsetAtEdge), reason: '$axis');
+    expect(
+      heads.last,
+      greaterThan(headAtEdge),
+      reason: '$axis: the selection head must ride the auto-pan, not freeze',
+    );
+
+    // The no-timer convention: holding perfectly still scrolls nothing.
+    final held = frameOffset();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(frameOffset(), held, reason: '$axis: holding still holds');
+
+    await gesture.up();
+    await tester.pump();
+  }
+
   testWidgets('EVERY layer row mounts the range gesture layer — SE, camera '
       'and instruction rows select too (UI-R20 #2)', (tester) async {
     final cursor = ValueNotifier<int>(0);
@@ -857,75 +975,73 @@ metrics: const TimelineGridMetrics(
   });
 
   testWidgets('D42: a SELECT drag held at the frame-axis trailing edge '
-      'auto-pans and the head keeps advancing past the initial view', (
-    tester,
-  ) async {
-    final cursor = ValueNotifier<int>(0);
-    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
-    addTearDown(cursor.dispose);
-    addTearDown(selection.dispose);
-    final heads = <int>[];
-
-    await tester.pumpWidget(
-      harness(
-        layers: [blockLayer('layer-a')],
-        cursor: cursor,
-        rangeHooks: hooks(
-          selection: selection,
-          onSelectUpdate: (_, _, head) => heads.add(head),
+      'auto-pans and the head keeps advancing past the initial view — on '
+      'the timeline and on the X-sheet', (tester) async {
+    for (final axis in Axis.values) {
+      final cursor = ValueNotifier<int>(0);
+      final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+      addTearDown(cursor.dispose);
+      addTearDown(selection.dispose);
+      final heads = <int>[];
+      await tester.pumpWidget(
+        edgeGrid(
+          axis,
+          cursor: cursor,
+          rangeHooks: hooks(
+            selection: selection,
+            onSelectUpdate: (_, _, head) => heads.add(head),
+          ),
         ),
-      ),
-    );
+      );
 
-    final frameViewport = find.byKey(
-      const ValueKey<String>('timeline-frame-scroll-viewport'),
-    );
-    double frameOffset() => tester
-        .state<ScrollableState>(
-          find
-              .descendant(of: frameViewport, matching: find.byType(Scrollable))
-              .first,
-        )
-        .position
-        .pixels;
-    expect(frameOffset(), 0);
-    final viewportRect = tester.getRect(frameViewport);
-
-    final gestureLayer = find.named('timeline-range-gesture-layer-a');
-    final start = tester.getTopLeft(gestureLayer) + const Offset(24, 26);
-    final gesture = await tester.startGesture(
-      start,
-      kind: PointerDeviceKind.mouse,
-    );
-    // Reach into the trailing 24px band: the reach itself scrolls…
-    await gesture.moveTo(Offset(viewportRect.right - 6, start.dy));
-    await tester.pump();
-    final offsetAtEdge = frameOffset();
-    final headAtEdge = heads.last;
-    expect(offsetAtEdge, greaterThan(0));
-
-    // …and nudging inside the band keeps scrolling (per pointer move):
-    // the head keeps advancing over frames that were NOT on screen at the
-    // press, because the applied pan is folded back into the read.
-    for (var step = 0; step < 8; step += 1) {
-      await gesture.moveBy(Offset(step.isEven ? 1 : -1, 0));
-      await tester.pump();
+      await holdAtTheTrailingEdge(
+        tester,
+        axis,
+        find.named('timeline-range-gesture-layer-a'),
+        heads,
+      );
     }
-    expect(frameOffset(), greaterThan(offsetAtEdge));
-    expect(
-      heads.last,
-      greaterThan(headAtEdge),
-      reason: 'the selection head must ride the auto-pan, not freeze',
-    );
+  });
 
-    // The no-timer convention: holding perfectly still scrolls nothing.
-    final held = frameOffset();
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(frameOffset(), held, reason: 'holding still at the edge holds');
+  testWidgets('D42: a LANE band\'s SELECT drag held at the frame-axis '
+      'trailing edge auto-pans and the head keeps advancing — on the '
+      'timeline and on the X-sheet', (tester) async {
+    for (final axis in Axis.values) {
+      final cursor = ValueNotifier<int>(0);
+      final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+      final laneSelection = ValueNotifier<TimelineLaneSelection?>(null);
+      addTearDown(cursor.dispose);
+      addTearDown(selection.dispose);
+      addTearDown(laneSelection.dispose);
+      final heads = <int>[];
+      await tester.pumpWidget(
+        edgeGrid(
+          axis,
+          cursor: cursor,
+          rangeHooks: hooks(selection: selection),
+          laneRange: TimelineLaneRangeHooks(
+            selection: laneSelection,
+            onSelectUpdate: (_, _, _, head, _) => heads.add(head),
+            onTapAt: (_, _, _) {},
+            onTapClear: () {},
+            onMoveBegin: () => false,
+            onMoveUpdate: (_) {},
+            onMoveEnd: () {},
+            onMoveCancel: () {},
+          ),
+        ),
+      );
 
-    await gesture.up();
-    await tester.pump();
+      final surface = axis == Axis.horizontal ? 'timeline' : 'xsheet';
+      await holdAtTheTrailingEdge(
+        tester,
+        axis,
+        find.byKey(
+          ValueKey<String>('$surface-lane-range-gesture-layer-a-position'),
+        ),
+        heads,
+      );
+    }
   });
 
   testWidgets('D42: a MOVE drag held at the bottom edge auto-pans the row '
