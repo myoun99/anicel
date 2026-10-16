@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 
 import '../helpers/named_finders.dart';
@@ -796,6 +797,112 @@ void main() {
         reason: 'one gesture, one commit — the backstop must not double it',
       );
       expect(events, isNot(contains('cancel')));
+    });
+
+    // D42: what the jumps here stand in for — the reach itself pans the
+    // rows, across the frame axis: down the timeline's rail, along the
+    // sheet's headers. And the caret walks on with them.
+    testWidgets('a MOVE held at the rows\' far edge pans them and the caret '
+        'keeps walking — on the timeline and on the X-sheet', (
+      tester,
+    ) async {
+      for (final axis in Axis.values) {
+        final horizontal = axis == Axis.horizontal;
+        final events = <String>[];
+        final slots = <int>[];
+        final rowDragHooks = hooks(
+          events: events,
+          slots: slots,
+          inSelection: true,
+        );
+        if (horizontal) {
+          await tester.pumpWidget(
+            _grid(
+              layers: manyLayers(),
+              playbackFrameCount: 48,
+              rowDragHooks: rowDragHooks,
+            ),
+          );
+        } else {
+          final cursor = ValueNotifier<int>(0);
+          addTearDown(cursor.dispose);
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: SizedBox(
+                  width: 600,
+                  height: 260,
+                  child: XSheetTimelineGrid(
+                    hooks: TimelineGridHooks(
+                      activeLayerId: const LayerId('layer-1'),
+                      frameCursor: cursor,
+                      playbackFrameCount: 48,
+                      exposureStateForLayer: (_, _) =>
+                          TimelineCellExposureState.uncovered,
+                      onSelectLayer: (_) {},
+                      onSelectFrame: (_) {},
+                      onToggleLayerVisibility: (_) {},
+                      onLayerOpacityChanged: (_, _) {},
+                      onToggleLayerTimesheet: (_) {},
+                      onLayerMarkSelected: (_, _) {},
+                      rowDragHooks: rowDragHooks,
+                    ),
+                    layers: manyLayers(),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        // Held by its name, which is the row's on both grids — the sheet's
+        // header is a stack of controls, and a press on one is the
+        // control's.
+        final name = find.named(
+          '${horizontal ? 'timeline' : 'xsheet'}-layer-name-layer-1',
+        );
+        final rows = Scrollable.of(tester.element(name), axis: flipAxis(axis));
+        final box = rows.context.findRenderObject()! as RenderBox;
+        final view = box.localToGlobal(Offset.zero) & box.size;
+        final start = tester.getCenter(name);
+        final gesture = await tester.startGesture(
+          start,
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.moveBy(
+          horizontal ? const Offset(0, 26) : const Offset(26, 0),
+        );
+        await tester.pump();
+        expect(events, contains('begin'), reason: '$axis');
+        expect(rows.position.pixels, 0, reason: '$axis: nothing panned yet');
+
+        await gesture.moveTo(
+          horizontal
+              ? Offset(start.dx, view.bottom - 6)
+              : Offset(view.right - 6, start.dy),
+        );
+        await tester.pump();
+        final atEdge = rows.position.pixels;
+        final slotAtEdge = slots.last;
+        expect(atEdge, greaterThan(0), reason: '$axis: the reach pans');
+
+        for (var step = 0; step < 8; step += 1) {
+          final nudge = step.isEven ? 1.0 : -1.0;
+          await gesture.moveBy(
+            horizontal ? Offset(0, nudge) : Offset(nudge, 0),
+          );
+          await tester.pump();
+        }
+        expect(rows.position.pixels, greaterThan(atEdge), reason: '$axis');
+        expect(
+          slots.last,
+          isNot(slotAtEdge),
+          reason: '$axis: the caret walks on over the rows the pan brought',
+        );
+
+        await gesture.up();
+        await tester.pump();
+      }
     });
 
     testWidgets('the anchor row of a SELECT drag survives the same way', (
