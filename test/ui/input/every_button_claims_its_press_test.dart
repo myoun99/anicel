@@ -542,10 +542,18 @@ void main() {
     await tester.pumpAndSettle();
 
     var pointer = 55;
+    // The S row is the timeline's own row (I-89 ①): its twirl is named by
+    // its layer, as the timeline's is.
+    final seRow = session.repository
+        .requireProject()
+        .tracks
+        .first
+        .seLayers
+        .first;
     for (final (id, finder) in [
-      for (final name in const [
+      for (final name in [
         'storyboard-track-lane-toggle-default-track',
-        'storyboard-se-lane-toggle-default-track-1',
+        'storyboard-lane-toggle-${seRow.id}',
       ])
         (name, find.named(name)),
       for (final key in const ['legend-lanes-toggle', 'legend-mute'])

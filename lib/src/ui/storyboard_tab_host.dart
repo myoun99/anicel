@@ -718,6 +718,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         seekStoryboardGlobalFrame(_session, frame);
                       }
                     },
+                    // And the press that stood INSIDE the selection and
+                    // turned out to be a tap lets it go — the timeline
+                    // rail's verb, as is (T10's second half).
+                    onSettledPress: _session.clearTimelineSelections,
                     labelDoubleClick: _renameOnLabelDoubleClick,
                     onSelectTrack: (trackId) =>
                         _session.standOnRow(TrackRowAddress(trackId)),

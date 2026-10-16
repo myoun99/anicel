@@ -344,9 +344,12 @@ void main() {
     await tester.pumpAndSettle();
 
     final trackId = session.selectedTrackId;
-    expect(seLayerIdForTrack(trackId, 1), isNotNull);
+    // The S row is the timeline's own row (I-89 ①): its type button is
+    // named by its layer, as the timeline's is.
     expect(
-      find.named('storyboard-layer-type-button-${trackId.value}-s1'),
+      find.named(
+        'storyboard-layer-type-button-${seLayerIdForTrack(trackId, 1)}',
+      ),
       findsOneWidget,
     );
     expect(

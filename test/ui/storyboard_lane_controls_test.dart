@@ -39,6 +39,8 @@ import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
         LayerRowSubject,
         TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
+    show TimelineLayerControlsRow;
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
@@ -219,20 +221,26 @@ void main() {
     expect(vRowOpen(), isFalse);
   });
 
-  testWidgets('an S row\'s twirl is the timeline\'s, and stands as tall as '
-      'the row\'s cells, as its InkWell did', (tester) async {
+  testWidgets('an S row\'s twirl is the timeline row\'s, in the box its type '
+      'button stands in', (tester) async {
     await _pumpPanel(tester, project: _project());
-    final twirl = find.named('storyboard-se-lane-toggle-lane-track-1');
-    final typeCell = find.named('storyboard-layer-type-button-lane-track-s1');
+    final twirl = find.named('storyboard-lane-toggle-lane-se');
+    final typeCell = find.named('storyboard-layer-type-button-lane-se');
+    expect(
+      find.ancestor(
+        of: twirl,
+        matching: find.byType(TimelineLayerControlsRow),
+      ),
+      findsOneWidget,
+      reason: 'the S row is the timeline\'s own row (I-89 ①)',
+    );
+    // ↩️It stood as tall as the row's cells, as this rail's own label's
+    // InkWell had: the rail's control box now, as the conte and camera
+    // heads beside it stand in.
     expect(
       tester.getSize(twirl).height,
       tester.getSize(typeCell).height,
-      reason: 'both are handed the row\'s height',
-    );
-    expect(
-      tester.getSize(twirl).height,
-      greaterThan(24),
-      reason: '⛔CONTROL: the row is taller than a rail row\'s 24',
+      reason: 'both stand in the rail\'s control box',
     );
     expect(
       tester.appIconButton(twirl).tooltip,
@@ -249,7 +257,7 @@ void main() {
     await _pumpPanel(tester, project: _project());
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -391,7 +399,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     expect(
@@ -473,7 +481,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -509,7 +517,7 @@ void main() {
     );
 
     await tester.tap(
-      find.named('storyboard-se-lane-toggle-lane-track-1'),
+      find.named('storyboard-lane-toggle-lane-se'),
     );
     await tester.pumpAndSettle();
     await tester.tap(
@@ -722,7 +730,7 @@ void main() {
       );
 
       await tester.tap(
-        find.named('storyboard-se-lane-toggle-lane-track-1'),
+        find.named('storyboard-lane-toggle-lane-se'),
       );
       await tester.pumpAndSettle();
 

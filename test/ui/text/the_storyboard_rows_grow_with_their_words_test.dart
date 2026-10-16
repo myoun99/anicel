@@ -128,7 +128,14 @@ void main() {
         atTextScale(tester, scale);
         final board = await openTheBoard(tester);
         final growth = timelineLayerRowGrowthIn(tester.element(board));
-        await tester.tap(named('storyboard-se-lane-toggle-').first);
+        // The S row's twirl — the timeline row's, named by its layer as the
+        // heads' are, so asked of the S row itself (I-89 ①).
+        await tester.tap(
+          find.descendant(
+            of: keyed('storyboard-se-label-').first,
+            matching: named('storyboard-lane-toggle-'),
+          ),
+        );
         await tester.pumpAndSettle();
 
         final labels = keyed('storyboard-lane-label-');

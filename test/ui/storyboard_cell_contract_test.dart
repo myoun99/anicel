@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/widgets/tick_text.dart';
 
+import '../helpers/named_finders.dart';
 import '../helpers/the_classic_rail.dart';
 
 /// THE cells contract, brought from the timeline to the storyboard: a press
@@ -163,20 +164,18 @@ void main() {
     await tester.tapAt(_seRowPoint(tester, 14));
     await tester.pumpAndSettle();
 
-    // The S row is now THE selected row (its label carries the marker).
+    // The S row is now THE selected row (its label carries the marker) —
+    // the timeline's own row's, which it is (I-89 ①).
     expect(
       find.descendant(
         of: find.byKey(
           const ValueKey<String>('storyboard-se-label-cells-track-1'),
         ),
-        matching: find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        matching: find.named('storyboard-selected-layer'),
       ),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-selected-row')),
-      findsOneWidget,
-    );
+    expect(_litRows(), 1, reason: 'one row is lit, never two');
     // The frame landed…
     expect(_frameCounter(tester), startsWith('15 · '));
     // …and the cut under it came with it (⑭). This used to assert the
@@ -205,9 +204,13 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-selected-row')),
-      findsOneWidget,
-    );
+    expect(_litRows(), 1, reason: 'the S row let go of it');
   });
 }
+
+/// How many rows of the rail are lit: a row that wears a layer carries the
+/// timeline row's marker, the V row and a headless row the rail's own.
+int _litRows() =>
+    find.named('storyboard-selected-layer').evaluate().length +
+    find.byKey(const ValueKey<String>('storyboard-selected-row')).evaluate()
+        .length;

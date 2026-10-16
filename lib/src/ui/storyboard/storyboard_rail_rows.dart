@@ -1153,6 +1153,7 @@ class _StoryboardRailRows {
           onSelectTrack: _state.widget.onSelectTrack == null
               ? null
               : () => _state.widget.onSelectTrack!(track.id),
+          onSettledPress: _state.widget.onSettledPress,
           // R9 #21: the track's own display column.
           trackFxState:
               _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,

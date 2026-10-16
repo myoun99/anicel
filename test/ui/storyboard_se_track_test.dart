@@ -130,10 +130,11 @@ void main() {
     await tester.tap(find.descendant(of: label, matching: find.text('S1')));
     await tester.pumpAndSettle();
 
+    // Its marker is the timeline row's, which the S row is (I-89 ①).
     expect(
       find.descendant(
         of: label,
-        matching: find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        matching: find.named('storyboard-selected-layer'),
       ),
       findsOneWidget,
     );
@@ -141,8 +142,9 @@ void main() {
     // row took it.
     expect(
       find.byKey(const ValueKey<String>('storyboard-selected-row')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(find.named('storyboard-selected-layer'), findsOneWidget);
 
     // The pick LANDS the editing focus (user 2026-07-29, superseding
     // #741's "row picks never move it") — and ⑭ decides WHICH cut that
