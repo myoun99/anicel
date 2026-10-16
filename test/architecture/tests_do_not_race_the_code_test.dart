@@ -110,9 +110,17 @@ void main() {
     //
     // ⛔Only for THIS law — the file is still held to every other one.
     const scannersNotSpawners = ['the_report_names_only_fallbacks_that_exist'];
+    // 🗣️The ONE process a test may start (Q1, 유저 2026-10-16: 「예외 하나 —
+    // 감시가 멈춤을 본 뒤 한 번만, 바깥에서 덤프」): the native call watch
+    // starts the SDK's dart once, after a step has stood past its limit, to
+    // dump the stuck process from outside it — as a minidump has to be
+    // written. By then the run is lost, so it competes with nothing (board
+    // the-trimmed-movie-test-can-hang-on-windows-ci-Q1).
+    const dumpsTheLostRun = ['native_call_watch.dart'];
     final offenders = <String>[];
     for (final file in testFiles()) {
-      if (scannersNotSpawners.any(file.path.contains)) {
+      if (scannersNotSpawners.any(file.path.contains) ||
+          dumpsTheLostRun.any(file.path.endsWith)) {
         continue;
       }
       for (final line in file.readAsLinesSync()) {

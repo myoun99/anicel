@@ -343,3 +343,14 @@ jobs:
         with:
           total: 6
           index: ${{ matrix.shard }}
+      # A step that stood past its limit leaves the process's threads in
+      # build/native_call_watch before the run ends
+      # (test/helpers/native_call_watch.dart) — kept from a red shard.
+      - name: Keep a stuck run's dump
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-call-watch-shard-${{ matrix.shard }}
+          path: build/native_call_watch/
+          if-no-files-found: ignore
+          retention-days: 7
