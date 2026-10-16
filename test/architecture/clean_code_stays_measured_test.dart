@@ -580,7 +580,21 @@ void main() {
   /// 겸용 conversion's `_celKey` (five) left the list — it takes the side
   /// a key is in. 🔬The lane's scan against master (`5cd21708d`, at 408)
   /// named that one gone and nothing added.
-  const wideSignatures = 407;
+  ///
+  /// ⚠️407 → 408 on 2026-10-21 (400 → 401 on 2026-10-17, where the lane was
+  /// cut), named as the rule above asks (F-364-Q1 b, a run behind its clock
+  /// shows every picture — 유저 2026-10-15: 「하나도 안 건너뛴다 — 소리를
+  /// 그림에 다시 맞춘다」). `playheadWay` (five) is the ONE way a run's playhead goes,
+  /// the canvas's run and the media viewer's: the walk's three numbers
+  /// (where it stands, where its clock says, how long the run is), what
+  /// stops it (a frame that waits for its picture), and now how far a look
+  /// may take it — every frame its clock went over, or one.
+  /// 🔬`clean_code_diff` against the lane's base (`34c6233f6`, at 400) named
+  /// that one added and nothing gone; stood on the brush lanes' and F-398's
+  /// 407 above when the lane was rebased onto them (10-21). ⛔Not bundled to
+  /// fit: a run that cut its clock's frame short itself would walk the lap
+  /// the way walks, once in each of the two runs.
+  const wideSignatures = 408;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

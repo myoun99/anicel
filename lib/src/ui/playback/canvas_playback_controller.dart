@@ -5,19 +5,16 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
-import '../../models/track_transitions.dart'
-    show cutDrawnFrameCount, cutMediaStartFrame;
 import '../../services/playback/behind_its_clock.dart';
 import '../../services/playback/playback_frame_mapping.dart';
+import '../../services/playback/playback_scope.dart';
 import '../../services/playback/playhead_way.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
 import 'looking_ticker.dart';
 import '../present_pacing.dart';
 
-/// What plays: the active cut (timeline context) or every cut of the active
-/// track in sequence (storyboard context).
-enum PlaybackScope { activeCut, allCuts }
+export '../../services/playback/playback_scope.dart' show PlaybackScope;
 
 enum PlaybackLoopMode { loop, once }
 
@@ -310,16 +307,18 @@ class CanvasPlaybackController extends ChangeNotifier
   }
 
   void play({required PlaybackScope scope, int? startGlobalFrame}) {
-    final playlist = _buildPlaylist(scope);
-    final window = _windowOf(scope, playlist);
-    if (window == null || window.frames == 0) {
+    final run = _runOf(scope);
+    if (run == null || run.window.frames == 0) {
       return;
     }
     _scope = scope;
-    _run = (playlist: playlist, window: window);
+    _run = run;
     _droppedFrames = 0;
-    _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(0, window.frames - 1);
-    onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
+    _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(
+      0,
+      run.window.frames - 1,
+    );
+    onPlaylistWarmRequested?.call(run.playlist, scope, _currentGlobalFrame);
 
     _standHere();
     _syncFrameNotifiers();
@@ -445,75 +444,16 @@ class CanvasPlaybackController extends ChangeNotifier
   /// The stretch of its track [play] would run for [scope] — the audio
   /// scrubber lays its sound over the same window, so scrubbed sound and
   /// played sound can never disagree about what sits where.
-  PlaybackWindow? windowForScope(PlaybackScope scope) =>
-      _windowOf(scope, _buildPlaylist(scope));
+  PlaybackWindow? windowForScope(PlaybackScope scope) => _runOf(scope)?.window;
 
-  /// Where [scope]'s run sits on its track. Null = nothing to play alone:
-  /// the session stands in a gap.
-  PlaybackWindow? _windowOf(
-    PlaybackScope scope,
-    List<StoryboardTimelineLayoutEntry> playlist,
-  ) {
-    final project = resolveProject();
-    switch (scope) {
-      case PlaybackScope.activeCut:
-        if (playlist.isEmpty) {
-          return null;
-        }
-        final alone = playlist.single;
-        return PlaybackWindow(
-          trackId: alone.trackId,
-          // Its frame 0 is where its material starts — ahead of the conte
-          // start in a cut an O.L arrives into (F-227 ④) — so the sound
-          // plays from there too.
-          trackStart: cutMediaStartFrame(project, alone.cutId)!,
-          frames: alone.duration,
-        );
-      case PlaybackScope.allCuts:
-        // The movie, to the end line the storyboard draws: past the last
-        // cut its trailing frames play as the gap void (UI-R20 #3) — and
-        // with no cut at all, those frames alone (F-341).
-        return PlaybackWindow(
-          trackId: resolveActiveTrackId(),
-          trackStart: 0,
-          frames: movieEndFrames(project),
-        );
-    }
-  }
-
-  List<StoryboardTimelineLayoutEntry> _buildPlaylist(PlaybackScope scope) {
-    switch (scope) {
-      case PlaybackScope.activeCut:
-        final activeCutId = resolveActiveCutId();
-        final project = resolveProject();
-        for (final entry in buildStoryboardTimelineLayout(project)) {
-          if (entry.cutId == activeCutId) {
-            // 🗣️F-227 (유저 2026-09-29): 「재생도 타임라인패널의 재생이면 여백까지
-            // 재생」 — the cut plays every frame it is DRAWN for, through the
-            // のりしろ an O.L asks of it, not to the red line.
-            final duration = cutDrawnFrameCount(project, entry.cutId)!;
-            return [
-              StoryboardTimelineLayoutEntry(
-                trackId: entry.trackId,
-                cutId: entry.cutId,
-                trackIndex: entry.trackIndex,
-                cutIndex: entry.cutIndex,
-                startFrame: 0,
-                endFrame: duration,
-                duration: duration,
-                cut: entry.cut,
-              ),
-            ];
-          }
-        }
-        return const [];
-      case PlaybackScope.allCuts:
-        final trackId = resolveActiveTrackId();
-        return buildStoryboardTimelineLayout(
-          resolveProject(),
-        ).where((entry) => entry.trackId == trackId).toList();
-    }
-  }
+  /// What [play] would run for [scope] ([playbackRunOf]).
+  ({List<StoryboardTimelineLayoutEntry> playlist, PlaybackWindow window})?
+  _runOf(PlaybackScope scope) => playbackRunOf(
+    resolveProject(),
+    scope,
+    activeCutId: resolveActiveCutId(),
+    activeTrackId: resolveActiveTrackId(),
+  );
 
   void _startTicker() {
     final vsync = _vsync;
