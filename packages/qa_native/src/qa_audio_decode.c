@@ -431,8 +431,9 @@ static int64_t qa_ticks_to_frames(int64_t value, uint32_t scale,
 
 /// A movie's first sound track — the one that answers, whatever it says:
 /// its `trak` and `mdia` boxes, the media information and sample table in
-/// them (`minf` · `stbl`), the movie header's time scale, and the movie box
-/// they are in, whose user data iTunes leaves its note in.
+/// them (`minf` · `stbl`), the movie's and the media's time scales (0: not
+/// said), and the movie box they are in, whose user data iTunes leaves its
+/// note in.
 typedef struct {
   qa_box moov;
   qa_box trak;
@@ -440,6 +441,7 @@ typedef struct {
   qa_box minf;
   qa_box stbl;
   uint32_t movie_scale;
+  uint32_t media_scale;
 } qa_movie_sound;
 
 /// [size] bytes of movie's first sound track, into [sound] — 0 when it has
@@ -459,6 +461,7 @@ static int qa_movie_first_sound(qa_media_span* span, int64_t size,
     qa_box hdlr;
     qa_box minf;
     qa_box stbl;
+    qa_box mdhd;
     uint8_t handler[12];
     if (memcmp(trak.type, "trak", 4) == 0 &&
         qa_box_find(span, trak.body, trak.end, "mdia", &mdia) &&
@@ -473,6 +476,10 @@ static int qa_movie_first_sound(qa_media_span* span, int64_t size,
       sound->minf = minf;
       sound->stbl = stbl;
       sound->movie_scale = qa_box_time_scale(span, &mvhd);
+      sound->media_scale =
+          qa_box_find(span, mdia.body, mdia.end, "mdhd", &mdhd)
+              ? qa_box_time_scale(span, &mdhd)
+              : 0;
       return 1;
     }
   }
@@ -488,15 +495,13 @@ static int qa_movie_first_sound(qa_media_span* span, int64_t size,
 static int qa_movie_sound_edit(qa_media_span* span,
                                const qa_movie_sound* sound, int32_t rate,
                                qa_audio_start* start) {
-  qa_box mdhd;
   qa_box edts;
   qa_box elst;
-  if (!qa_box_find(span, sound->mdia.body, sound->mdia.end, "mdhd", &mdhd) ||
-      !qa_box_find(span, sound->trak.body, sound->trak.end, "edts", &edts) ||
+  if (!qa_box_find(span, sound->trak.body, sound->trak.end, "edts", &edts) ||
       !qa_box_find(span, edts.body, edts.end, "elst", &elst)) {
     return 0;
   }
-  const uint32_t media_scale = qa_box_time_scale(span, &mdhd);
+  const uint32_t media_scale = sound->media_scale;
   uint8_t list[8];
   if (sound->movie_scale == 0 || media_scale == 0 ||
       qa_media_span_read(span, elst.body, list, 8) != 8) {
@@ -1158,23 +1163,36 @@ static int qa_mp3_open(qa_audio_stream* stream, qa_audio_start* start) {
 // ([qa_audio_container_start]).
 //
 // What is read is the layout ffmpeg's movie reader reads (⚠️known from it
-// and from Apple's file format, not from a file of every writer — but Media
-// Foundation, which read these movies before, reads every shape and layout
-// `qa_audio_range_test.c` builds to the same samples, measured 2026-10-16,
-// but four: 8-bit sound by a convention of its own (up to 1/128 off what a
-// WAV of it gives), 32-bit integers a last bit off (2^-23), and a `twos` of
-// 24 bits and an `enda` outside a `wave` as noise):
+// and from Apple's file format, not from a file of every writer):
 //   - the first sound track, the one its start is read from, and its one
 //     sample description: `twos` · `sowt` (signed, big- and little-endian,
 //     8 to 32 bits), `raw ` (unsigned 8-bit), `in24` · `in32` · `fl32` ·
 //     `fl64` (big-endian unless an `enda` says little), or `lpcm` (a
 //     version-2 description, by its flags);
 //   - a sample is a frame, whatever the size table says its size is (old
-//     QuickTime wrote 1) — so every sample lasts one tick, or it is not read;
+//     QuickTime wrote 1) — so every sample lasts one frame of the media's
+//     clock, or it is not read;
 //   - the chunks in order, each holding the frames its run of the
-//     sample-to-chunk table says.
+//     sample-to-chunk table says, as many as the size table counts.
 // ⛔A movie whose data reference says its sound is in another file is not
-// read: its offsets are that file's, and read here they would be noise.
+// read: its offsets are that file's, and read here they would be noise. Nor
+// is one whose description names a reference its list does not have.
+//
+// Media Foundation, which read these movies before, reads every shape and
+// layout `qa_audio_range_test.c` builds to the same samples and refuses
+// what it refuses (measured 2026-10-16), but:
+//   - 8-bit sound by a convention of its own (up to 1/128 off what a WAV of
+//     it gives), 32-bit integers a last bit off (2^-23), and a `twos` of 24
+//     bits and an `enda` outside a `wave` as noise;
+//   - a sound to the end of its chunks, past what the size table counts,
+//     and a chunk cut short not at all, where this reads it to its last
+//     whole frame as dr_wav reads a WAV cut short;
+//   - what this does not read, it does: samples two frames long, a sound
+//     described two ways, an `lpcm` whose flags say its channels come one
+//     after another (read as interleaved), or 24 bits in 32-bit words, or
+//     two frames a packet, and a `raw ` of 16 bits (read little-endian —
+//     ffmpeg reads it big-endian, and Apple's format says 8 bits). Those
+//     still ride it on Windows: the OS stack is asked after this.
 
 /// Entry [index] of [table]: its bytes, or NULL when it is not there or
 /// would not read.
@@ -1220,17 +1238,20 @@ static int qa_movie_table_open(qa_media_span* span, const qa_box* box,
   return (int64_t)table->count * entry_bytes <= box->end - table->at;
 }
 
-/// Whether every sample the time table [stts] times lasts one tick — a
-/// frame each, as a sample of uncompressed sound is.
+/// Whether every sample the time table [stts] times lasts one frame at
+/// [rate] of a media clock of [scale] — as a sample of uncompressed sound
+/// does.
 static int qa_movie_samples_are_frames(qa_media_span* span,
-                                       const qa_box* stts) {
+                                       const qa_box* stts, uint32_t scale,
+                                       int32_t rate) {
   qa_movie_table times;
   if (!qa_movie_table_open(span, stts, 8, &times)) {
     return 0;
   }
   for (uint32_t index = 0; index < times.count; index += 1) {
     const uint8_t* entry = qa_movie_table_entry(span, &times, index);
-    if (entry == NULL || qa_big_endian(entry + 4, 4) != 1) {
+    if (entry == NULL ||
+        qa_big_endian(entry + 4, 4) * (uint64_t)rate != scale) {
       return 0;
     }
   }
@@ -1344,15 +1365,15 @@ static int qa_movie_pcm_describe(qa_media_span* span, const qa_box* entry,
   if (memcmp(entry->type, "lpcm", 4) == 0 && version == 2) {
     // Core Audio's flags: float 1, big-endian 2, signed 4, and 32 for one
     // channel after another rather than frames, which this does not read.
-    // A packet is one frame of the samples packed, or it is not read.
+    // A packet is one frame of the samples packed, or it is not read: its
+    // bytes say both.
     const uint64_t packet_bytes = qa_big_endian(field + 56, 4);
-    const uint64_t packet_frames = qa_big_endian(field + 60, 4);
     pcm->kind = (flags & 1)   ? QA_MOVIE_PCM_FLOAT
                 : (flags & 4) ? QA_MOVIE_PCM_SIGNED
                               : QA_MOVIE_PCM_UNSIGNED;
     pcm->sample_bytes = (int)(bits / 8);
     pcm->big_endian = (flags & 2) != 0;
-    if ((flags & 32) || bits % 8 != 0 || packet_frames != 1 ||
+    if ((flags & 32) || bits % 8 != 0 ||
         packet_bytes != (uint64_t)*channels * (bits / 8)) {
       return 0;
     }
@@ -1371,8 +1392,9 @@ static int qa_movie_pcm_describe(qa_media_span* span, const qa_box* entry,
 
 /// Whether [sound]'s data reference [index] — counted from 1 — says its
 /// samples are in this movie's own file: flag 1, 「self reference」. A
-/// movie that names no such reference is read as holding its own sound, as
-/// ffmpeg reads it.
+/// movie with no data references at all is read as holding its own sound,
+/// and one whose description names a reference its list does not have is
+/// not read — as Media Foundation reads both (measured 2026-10-16).
 static int qa_movie_holds_its_sound(qa_media_span* span,
                                     const qa_movie_sound* sound,
                                     uint32_t index) {
@@ -1394,7 +1416,7 @@ static int qa_movie_holds_its_sound(qa_media_span* span,
              (flags[3] & 1) != 0;
     }
   }
-  return 1;
+  return 0;
 }
 
 /// Begins [pcm]'s next chunk: 0 when there is none, or its table would not
@@ -1489,14 +1511,13 @@ static void qa_movie_pcm_convert(qa_movie_pcm_decoder* pcm, float* out,
 
 static int64_t qa_movie_pcm_next(qa_audio_stream* stream) {
   qa_movie_pcm_decoder* pcm = &stream->decoder.movie;
-  while (pcm->chunk_frames == 0) {
-    if (pcm->frames_left == 0 ||
-        !qa_movie_pcm_next_chunk(stream->span, pcm)) {
-      return 0;
-    }
-  }
   if (pcm->frames_left == 0) {
     return 0;
+  }
+  while (pcm->chunk_frames == 0) {
+    if (!qa_movie_pcm_next_chunk(stream->span, pcm)) {
+      return 0;
+    }
   }
   int64_t frames = pcm->chunk_frames;
   if (frames > pcm->raw_frames) {
@@ -1569,7 +1590,7 @@ static int qa_movie_pcm_open(qa_audio_stream* stream, qa_audio_start* start) {
                              &reference) ||
       !qa_movie_holds_its_sound(span, &sound, reference) ||
       !qa_box_find(span, stbl->body, stbl->end, "stts", &stts) ||
-      !qa_movie_samples_are_frames(span, &stts) ||
+      !qa_movie_samples_are_frames(span, &stts, sound.media_scale, rate) ||
       !qa_box_find(span, stbl->body, stbl->end, "stsz", &stsz) ||
       stsz.end - stsz.body < 12 ||
       qa_media_span_read(span, stsz.body, counts, 12) != 12 ||

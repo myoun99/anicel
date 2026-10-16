@@ -375,7 +375,8 @@ static int32_t decode_behind(const char* what, const uint8_t* head,
 /// version and the bits it says; how each sample is stored — its bytes, its
 /// order, and its kind ('s' signed, 'u' offset binary, 'f' floating point);
 /// where an `enda` of 1 is (0 nowhere, 1 in a `wave`, 2 the description's
-/// own); a version-2 description's flags.
+/// own); a version-2 description's flags, and the frames it says a packet
+/// holds (0: one).
 typedef struct {
   const char* name;
   char type[5];
@@ -388,15 +389,19 @@ typedef struct {
   uint32_t flags;
   int channels;
   int rate;
+  int packet_frames;
 } movie_sound;
 
 /// How a movie lays its sound out. [chunks] is the frames of each chunk in
 /// order, ending at 0; [between] the bytes of something else before each
 /// chunk, as a reel's picture sits between its sound's chunks. The movie box
 /// comes first when [movie_first], as a movie made for streaming has it.
-/// The rest is wrong on purpose, for the movies that must not be read: the
-/// data in another file, a sample lasting [tick] ticks, [descriptions]
-/// descriptions.
+/// [frames_said] is what the size table counts (0: the chunks' frames);
+/// [reference] the data reference the description names (0: the first);
+/// [no_dinf] leaves the data information out; a sample lasts [tick] ticks
+/// (0: 1) of a media clock of [scale] a second (0: the rate). The rest is
+/// wrong on purpose, for the movies that must not be read: the data in
+/// another file, [descriptions] descriptions.
 typedef struct {
   const movie_sound* sound;
   const int* chunks;
@@ -407,9 +412,13 @@ typedef struct {
   int elsewhere;
   int tick;
   int descriptions;
+  int frames_said;
+  int reference;
+  int no_dinf;
+  int scale;
 } movie_layout;
 
-#define MOVIE_MAX_CHUNKS 16
+#define MOVIE_MAX_CHUNKS 2048
 #define MOVIE_CAPACITY (160 * 1024)
 
 /// The sound every movie holds: sample [index] as a fraction of full scale,
@@ -504,11 +513,11 @@ static void movie_matrix(movie_writer* writer) {
   }
 }
 
-static void movie_description(movie_writer* writer,
-                              const movie_sound* sound) {
+static void movie_description(movie_writer* writer, const movie_sound* sound,
+                              int reference) {
   movie_begin(writer, sound->type);
   movie_zeros(writer, 6);
-  movie_be(writer, 1, 2);  // the data reference
+  movie_be(writer, (uint64_t)(reference > 0 ? reference : 1), 2);
   movie_be(writer, (uint64_t)sound->version, 2);
   movie_zeros(writer, 6);  // revision, vendor
   if (sound->version == 2) {
@@ -526,9 +535,12 @@ static void movie_description(movie_writer* writer,
     movie_be(writer, 0x7F000000, 4);
     movie_be(writer, (uint64_t)sound->bits, 4);
     movie_be(writer, sound->flags, 4);
-    // A packet is one frame.
-    movie_be(writer, (uint64_t)(sound->channels * sound->sample_bytes), 4);
-    movie_be(writer, 1, 4);
+    const int packet_frames =
+        sound->packet_frames > 0 ? sound->packet_frames : 1;
+    movie_be(writer,
+             (uint64_t)(packet_frames * sound->channels * sound->sample_bytes),
+             4);
+    movie_be(writer, (uint64_t)packet_frames, 4);
   } else {
     movie_be(writer, (uint64_t)sound->channels, 2);
     movie_be(writer, (uint64_t)sound->bits, 2);
@@ -567,6 +579,7 @@ static void movie_description(movie_writer* writer,
 static void movie_box(movie_writer* writer, const movie_layout* layout,
                       const uint64_t* offsets, int count, int frames) {
   const movie_sound* sound = layout->sound;
+  const int tick = layout->tick > 0 ? layout->tick : 1;
   movie_begin(writer, "moov");
   movie_begin(writer, "mvhd");
   movie_zeros(writer, 12);  // version, flags, created, modified
@@ -595,8 +608,9 @@ static void movie_box(movie_writer* writer, const movie_layout* layout,
   movie_begin(writer, "mdia");
   movie_begin(writer, "mdhd");
   movie_zeros(writer, 12);
-  movie_be(writer, (uint64_t)sound->rate, 4);
-  movie_be(writer, (uint64_t)frames, 4);
+  movie_be(writer, (uint64_t)(layout->scale > 0 ? layout->scale : sound->rate),
+           4);
+  movie_be(writer, (uint64_t)frames * (uint64_t)tick, 4);
   movie_zeros(writer, 4);  // language, quality
   movie_end(writer);
   movie_begin(writer, "hdlr");
@@ -608,33 +622,36 @@ static void movie_box(movie_writer* writer, const movie_layout* layout,
   movie_begin(writer, "smhd");
   movie_zeros(writer, 8);
   movie_end(writer);
-  movie_begin(writer, "dinf");
-  movie_begin(writer, "dref");
-  movie_zeros(writer, 4);
-  movie_be(writer, 1, 4);
-  movie_begin(writer, "url ");
-  // Flag 1 says the data is in this file; without it, the location follows.
-  movie_be(writer, layout->elsewhere ? 0 : 1, 4);
-  if (layout->elsewhere) {
-    movie_put(writer, "file:///elsewhere.mov", 22);
+  if (!layout->no_dinf) {
+    movie_begin(writer, "dinf");
+    movie_begin(writer, "dref");
+    movie_zeros(writer, 4);
+    movie_be(writer, 1, 4);
+    movie_begin(writer, "url ");
+    // Flag 1 says the data is in this file; without it, the location
+    // follows.
+    movie_be(writer, layout->elsewhere ? 0 : 1, 4);
+    if (layout->elsewhere) {
+      movie_put(writer, "file:///elsewhere.mov", 22);
+    }
+    movie_end(writer);
+    movie_end(writer);
+    movie_end(writer);
   }
-  movie_end(writer);
-  movie_end(writer);
-  movie_end(writer);
   movie_begin(writer, "stbl");
   movie_begin(writer, "stsd");
   movie_zeros(writer, 4);
   const int descriptions = layout->descriptions > 0 ? layout->descriptions : 1;
   movie_be(writer, (uint64_t)descriptions, 4);
   for (int index = 0; index < descriptions; index += 1) {
-    movie_description(writer, sound);
+    movie_description(writer, sound, layout->reference);
   }
   movie_end(writer);
   movie_begin(writer, "stts");
   movie_zeros(writer, 4);
   movie_be(writer, 1, 4);
   movie_be(writer, (uint64_t)frames, 4);
-  movie_be(writer, (uint64_t)(layout->tick > 0 ? layout->tick : 1), 4);
+  movie_be(writer, (uint64_t)tick, 4);
   movie_end(writer);
   // The runs: chunks in a row holding the same frames are one entry.
   int runs = 0;
@@ -676,17 +693,18 @@ static void movie_box(movie_writer* writer, const movie_layout* layout,
 }
 
 /// [layout]'s movie into [out] — its length, or 0 when it did not fit — and
-/// its frames into [out_frames].
+/// the frames it says it has into [out_frames].
 static size_t build_movie(const movie_layout* layout, uint8_t* out,
                           size_t capacity, int64_t* out_frames) {
   const movie_sound* sound = layout->sound;
   const int frame_bytes = sound->channels * sound->sample_bytes;
   int count = 0;
-  int frames = 0;
+  int held = 0;
   while (count < MOVIE_MAX_CHUNKS && layout->chunks[count] > 0) {
-    frames += layout->chunks[count];
+    held += layout->chunks[count];
     count += 1;
   }
+  const int frames = layout->frames_said > 0 ? layout->frames_said : held;
   movie_writer writer = {out, capacity, 0, {0}, 0, 0};
   movie_begin(&writer, "ftyp");
   movie_put(&writer, "qt  ", 4);
@@ -1310,18 +1328,38 @@ int main(void) {
                               frames);
     }
 
-    static const int one_chunk[] = {850, 0};
+    // Longer than one read of the reader's; and a reel of so many chunks,
+    // each a run of its own, that both tables are read in more than one
+    // batch.
+    static const int one_chunk[] = {5000, 0};
+    static int long_reel[1501];
+    for (int index = 0; index < 1500; index += 1) {
+      long_reel[index] = 1 + index % 2;
+    }
     const struct {
       const char* name;
       movie_layout layout;
     } layouts[] = {
-        {"one chunk", {&kMovieSowt, one_chunk, 0, 0, 0, 0, 0, 1, 1}},
+        {"one chunk longer than a read",
+         {&kMovieSowt, one_chunk, 0, 0, 0, 0, 0, 1, 1}},
+        {"a reel of 1,500 chunks, each a run of its own",
+         {&kMovieSowt, long_reel, 0, 0, 7, 0, 0, 1, 1}},
         {"a reel's chunks at 64-bit offsets",
          {&kMovieSowt, kMovieReelChunks, 1, 0, 77, 0, 0, 1, 1}},
         {"a reel's chunks behind the movie box",
          {&kMovieSowt, kMovieReelChunks, 0, 1, 77, 0, 0, 1, 1}},
         {"a size table that says 1 a sample, as old QuickTime wrote",
          {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 1, 0, 1, 1}},
+        // The size table's count is the sound's frames, whatever its chunks
+        // hold past it.
+        {"a size table that counts fewer frames than the chunks hold",
+         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1, 840}},
+        {"a movie without data information",
+         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1, 0, 0, 1}},
+        // A sample is a frame of the media's clock, whatever it ticks at.
+        {"a media clock twice the rate, a sample two ticks of it",
+         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 2, 1, 0, 0, 0,
+          96000}},
     };
     for (size_t index = 0; index < sizeof(layouts) / sizeof(layouts[0]);
          index += 1) {
@@ -1399,24 +1437,42 @@ int main(void) {
     // ⛔What is not uncompressed sound in this file is not read as it: noise
     // where the samples are elsewhere, or are not frames, or change their
     // shape; and what a codec must read stays the OS stack's.
-    static const movie_sound aac = {"AAC", "mp4a", 0, 16, 2, 0, 's', 0, 0, 2,
-                                    48000};
-    static const movie_sound apart = {
-        "lpcm, one channel after another", "lpcm", 2, 16, 2, 0, 's', 0,
-        4 | 8 | 32, 2, 48000};
+    static const movie_sound shapes_refused[] = {
+        {"AAC", "mp4a", 0, 16, 2, 0, 's', 0, 0, 2, 48000},
+        {"lpcm, one channel after another", "lpcm", 2, 16, 2, 0, 's', 0,
+         4 | 8 | 32, 2, 48000},
+        // Aligned high (16) in words wider than its bits.
+        {"lpcm, 24 bits in 32-bit words", "lpcm", 2, 24, 4, 0, 's', 0, 4 | 16,
+         2, 48000},
+        {"lpcm, two frames a packet", "lpcm", 2, 16, 2, 0, 's', 0, 4 | 8, 2,
+         48000, 2},
+        {"twos of 12 bits", "twos", 0, 12, 2, 1, 's', 0, 0, 2, 48000},
+        {"raw of 16 bits", "raw ", 0, 16, 2, 1, 's', 0, 0, 2, 48000},
+    };
     const struct {
       const char* name;
       movie_layout layout;
     } refused[] = {
         {"a movie whose sound is in another file",
          {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 1, 1, 1}},
-        {"a sound whose samples last two ticks",
+        // Media Foundation's reading: no sound where the list says none.
+        {"a description naming a reference the list does not have",
+         {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1, 0, 2}},
+        {"a sound whose samples last two ticks of a clock at its rate",
          {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 2, 1}},
         {"a sound described two ways",
          {&kMovieSowt, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 2}},
+        {"AAC", {&shapes_refused[0], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
         {"lpcm with one channel after another",
-         {&apart, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
-        {"AAC", {&aac, kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
+         {&shapes_refused[1], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
+        {"lpcm with 24 bits in 32-bit words",
+         {&shapes_refused[2], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
+        {"lpcm with two frames a packet",
+         {&shapes_refused[3], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
+        {"a twos of 12 bits",
+         {&shapes_refused[4], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
+        {"a raw of 16 bits",
+         {&shapes_refused[5], kMovieReelChunks, 0, 0, 77, 0, 0, 1, 1}},
     };
     for (size_t index = 0; index < sizeof(refused) / sizeof(refused[0]);
          index += 1) {
