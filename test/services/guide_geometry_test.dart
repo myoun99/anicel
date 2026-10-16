@@ -499,4 +499,23 @@ void main() {
       );
     });
   });
+
+  group('toggledParallel', () {
+    test('⚠️a point standing ON the eye level\'s handle lay no way at all — '
+        'it turns into the vertical family', () {
+      // My choice, not the user's (2026-10-16): what 「정확히 수직으로」 made
+      // of every point before the 「평행」 pill took its place. The ways
+      // the pill reads off the other points are pinned at the panel
+      // (`the_guide_settings_edit_the_selected_guide_test`).
+      final shape = PerspectiveShape(
+        vanishingPoints: [VanishingPointAt(_point(50, 130))],
+        eyeLevel: _horizon(50, 130, 25),
+      );
+
+      expect(
+        toggledParallel(shape, shape.vanishingPoints.single, reach: 1200),
+        VanishingPointTowards(dx: 0, dy: 1),
+      );
+    });
+  });
 }
