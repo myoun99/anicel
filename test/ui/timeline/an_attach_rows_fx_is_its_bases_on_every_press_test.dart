@@ -125,8 +125,16 @@ void main() {
           reason: 'the premise: $id mounts no fx switch',
         );
       }
-      double rowY(LayerId id) =>
-          tester.getCenter(find.named('timeline-layer-row-${id.value}')).dy;
+      // A folder's row says so in its name.
+      double rowY(LayerId id) => tester
+          .getCenter(
+            find.named(
+              id == organizer
+                  ? 'timeline-folder-row-${id.value}'
+                  : 'timeline-layer-row-${id.value}',
+            ),
+          )
+          .dy;
       final ys = [for (final id in [a, base, rider, organizer, top]) rowY(id)];
       final first = ys.reduce((p, q) => p < q ? p : q);
       final last = ys.reduce((p, q) => p > q ? p : q);
