@@ -863,8 +863,6 @@ class _InteractiveCanvasBuild {
             ),
           if (editing && frame.walksAPath)
             _state._positionPath(frame, viewport),
-          // Not the frame's gate: [_EditorCanvasAreaState._cameraPath] says
-          // why. With no cut there is no path to draw.
           if (editing) _state._cameraPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
             _state._cameraOverlay(frame.session, viewport),
