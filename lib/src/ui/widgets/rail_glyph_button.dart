@@ -1,10 +1,9 @@
-import 'dart:collection';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/lru.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'app_tooltip.dart';
@@ -816,8 +815,10 @@ abstract final class _GlyphCache {
   /// Enough for every glyph × ink × size the rails show, with room; the
   /// least recently drawn goes first past it.
   static const int _capacity = 256;
-  static final LinkedHashMap<Object, TextPainter> _painters =
-      LinkedHashMap<Object, TextPainter>();
+  static final Lru<Object, TextPainter> _painters = Lru(
+    limit: () => _capacity,
+    letGo: (_, painter) => painter.dispose(),
+  );
 
   static TextPainter icon(
     IconData icon, {
@@ -886,16 +887,12 @@ abstract final class _GlyphCache {
   );
 
   static TextPainter _cached(Object key, TextPainter Function() make) {
-    final held = _painters.remove(key);
+    final held = _painters.use(key);
     if (held != null) {
-      _painters[key] = held;
       return held;
     }
-    final made = _painters[key] = make();
-    if (_painters.length > _capacity) {
-      final oldest = _painters.keys.first;
-      _painters.remove(oldest)!.dispose();
-    }
+    final made = make();
+    _painters.keep(key, made);
     return made;
   }
 }

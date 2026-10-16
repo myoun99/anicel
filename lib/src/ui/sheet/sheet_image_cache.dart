@@ -4,13 +4,13 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/lru.dart';
 import '../../models/canvas_size.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart' show HoldMediaBytes;
 import '../../services/media/viewer_document.dart';
-import '../../services/playback/let_go_wanted_latest.dart';
 import '../media/viewer_raster_budget.dart';
 
 /// What a sheet asks for a media image while it paints — the logo, a
@@ -139,8 +139,17 @@ class SheetImageCache extends ChangeNotifier {
   /// that lives in the workspace — the storyboard store's shape.
   final void Function(int bytes)? onHeldBytesChanged;
 
-  /// What is held, the least recently asked for first.
-  final Map<_SheetImageKey, ui.Image> _images = {};
+  /// What is held, the least recently asked for first — let go past the
+  /// budget in the ONE order a bounded cache lets go by ([Lru]), never the
+  /// newest, which a sheet just asked for.
+  ///
+  /// Disposed at once: a sheet asks while it paints, so no painter keeps
+  /// one past its paint — and a picture already recorded holds its own.
+  late final Lru<_SheetImageKey, ui.Image> _images = Lru(
+    limit: () => _budget.byteBudget,
+    costOf: ViewerRasterBudget.costOf,
+    letGo: (_, image) => image.dispose(),
+  );
 
   /// Paths that could not be read — never asked for again.
   final Set<String> _unreadable = {};
@@ -159,10 +168,8 @@ class SheetImageCache extends ChangeNotifier {
     physicalMemoryBytes: QaNativeEngine.instance?.physicalMemoryBytes,
   );
 
-  int _decodedBytes = 0;
-
   /// What the held images cost resident, 4 bytes a pixel.
-  int get decodedBytes => _decodedBytes;
+  int get decodedBytes => _images.held;
 
   /// [assetPath]'s picture [width] pixels wide (its own size where null):
   /// held, or the sharpest held of it at another width while that one is
@@ -172,10 +179,9 @@ class SheetImageCache extends ChangeNotifier {
       return null;
     }
     final key = (path: assetPath, width: width);
-    final held = _images.remove(key);
+    // Asked for: to the young end of the order things are let go in.
+    final held = _images.use(key);
     if (held != null) {
-      // Asked for: to the young end of the order things are let go in.
-      _images[key] = held;
       return held;
     }
     if (!_unreadable.contains(assetPath)) {
@@ -242,34 +248,11 @@ class SheetImageCache extends ChangeNotifier {
     if (image == null) {
       _unreadable.add(key.path);
     } else {
-      _images[key] = image;
-      _decodedBytes += ViewerRasterBudget.costOf(image);
-      _letGoBeyondBudget();
-      onHeldBytesChanged?.call(_decodedBytes);
+      _images.keep(key, image)?.dispose();
+      onHeldBytesChanged?.call(_images.held);
     }
     _wanted.clear();
     notifyListeners();
-  }
-
-  /// Lets go until what is held fits the budget, in the ONE order a budget
-  /// lets go by ([letGoLeastRecentlyUsed] — a sheet has no playhead, so
-  /// nothing is wanted at a step and the least recently asked for goes
-  /// first) — never the newest, which a sheet just asked for.
-  ///
-  /// Disposed at once: a sheet asks while it paints, so no painter keeps
-  /// one past its paint — and a picture already recorded holds its own.
-  void _letGoBeyondBudget() {
-    letGoLeastRecentlyUsed(
-      usedOldestFirst: _images.keys,
-      heldBytes: _decodedBytes,
-      maxBytes: _budget.byteBudget,
-      bytesOf: (key) => ViewerRasterBudget.costOf(_images[key]!),
-      letGo: (key) {
-        final image = _images.remove(key)!;
-        _decodedBytes -= ViewerRasterBudget.costOf(image);
-        image.dispose();
-      },
-    );
   }
 
   /// The OS says memory is tight: halve, never below one viewer page, and
@@ -279,9 +262,9 @@ class SheetImageCache extends ChangeNotifier {
       return;
     }
     final before = _images.length;
-    _letGoBeyondBudget();
+    _images.fit();
     if (_images.length != before) {
-      onHeldBytesChanged?.call(_decodedBytes);
+      onHeldBytesChanged?.call(_images.held);
       // A sheet still showing what went asks again — or for a stand-in.
       notifyListeners();
     }
@@ -295,7 +278,6 @@ class SheetImageCache extends ChangeNotifier {
       image.dispose();
     }
     _images.clear();
-    _decodedBytes = 0;
     onHeldBytesChanged?.call(0);
     super.dispose();
   }

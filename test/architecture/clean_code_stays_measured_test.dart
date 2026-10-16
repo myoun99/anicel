@@ -433,7 +433,15 @@ void main() {
   /// the floor), which the order the entries come in answers instead.
   /// 🔬`clean_code_diff` against master (`8d4b7c1fa`, at 398) named that one
   /// added and nothing gone.
-  const wideSignatures = 399;
+  ///
+  /// ⚠️399 → 398 on 2026-10-16, following that one down (card
+  /// every-bounded-cache-is-one-lru — every bounded cache lets go by one
+  /// LRU). `letGoLeastRecentlyUsed` is gone: the sheet's images and the
+  /// storyboard's pictures keep an `Lru` (core), which says the same with
+  /// three — what an entry costs, the limit, the letting go — and keeps the
+  /// order in its own map. 🔬`clean_code_diff` against master (`8d4b7c1fa`,
+  /// at 398): nothing added, nothing gone.
+  const wideSignatures = 398;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

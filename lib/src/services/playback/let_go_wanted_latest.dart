@@ -15,6 +15,11 @@
 /// by it. The second cache to take it wrote it out again, and a law the
 /// budget keeps in two copies is a law that can come to mean two things
 /// (playback-plays-the-screen-material, 10-09).
+///
+/// ⛔Not for a cache no step wants anything of — a sheet's images, the
+/// storyboard's panels, a brush's tip masks: that one is an `Lru`
+/// (`core/lru.dart`), this order with nothing wanted — the least recently
+/// used first, never the newest — kept by its map, with no sort.
 bool letGoWantedLatest<E>({
   required Iterable<E> entries,
   required int heldBytes,
@@ -49,39 +54,6 @@ bool letGoWantedLatest<E>({
     letGo(entry);
   }
   return held <= maxBytes;
-}
-
-/// The same order ([letGoWantedLatest]) for a cache no step wants anything
-/// of — a sheet's images, the storyboard's panels: the least recently used
-/// first, until what is held is at or under [maxBytes]. [usedOldestFirst]
-/// is the cache's entries in the order they were last used (a map that
-/// moves an entry to its young end on every use), and the newest of them
-/// is what was just asked for: it never goes, however much it holds.
-/// Answers whether it got under.
-///
-/// 🚨ONE SPELLING of 「the oldest goes, never the newest」: the sheet's
-/// image cache wrote this adapter out once and the storyboard's thumbnails
-/// a while loop of their own — the same order, twice (card
-/// storyboard-thumbnails-let-go-by-the-one-order).
-bool letGoLeastRecentlyUsed<E>({
-  required Iterable<E> usedOldestFirst,
-  required int heldBytes,
-  required int maxBytes,
-  required int Function(E entry) bytesOf,
-  required void Function(E entry) letGo,
-}) {
-  final order = [...usedOldestFirst];
-  final used = {for (final (at, entry) in order.indexed) entry: at};
-  return letGoWantedLatest(
-    // Every entry but the newest — the order is the law's to make.
-    entries: order.reversed.skip(1),
-    heldBytes: heldBytes,
-    maxBytes: maxBytes,
-    wantedAt: (_) => null,
-    lastUsed: (entry) => used[entry]!,
-    bytesOf: bytesOf,
-    letGo: letGo,
-  );
 }
 
 /// Wanted by no step at all — later than any.

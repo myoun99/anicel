@@ -1,7 +1,7 @@
-import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../core/lru.dart';
 import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
@@ -60,10 +60,12 @@ class BrushTipStampCache {
   /// copy the samplers read).
   int byteBudget;
 
-  final LinkedHashMap<String, BrushTipMask> _masks = LinkedHashMap();
-  int _bytes = 0;
+  late final Lru<String, BrushTipMask> _masks = Lru(
+    limit: () => byteBudget,
+    costOf: _maskCost,
+  );
 
-  int get residentBytes => _bytes;
+  int get residentBytes => _masks.held;
   int get entryCount => _masks.length;
 
   /// Rewrites an analytic [dab] to its cached-stamp form: quantized size,
@@ -97,10 +99,8 @@ class BrushTipStampCache {
         '${resolvedIdPrefix}analytic:${dab.tipShape.name}'
         '|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
 
-    var mask = _masks.remove(key);
-    if (mask != null) {
-      _masks[key] = mask; // LRU touch.
-    } else {
+    var mask = _masks.use(key);
+    if (mask == null) {
       mask = _render(
         key: key,
         tipShape: dab.tipShape,
@@ -110,12 +110,7 @@ class BrushTipStampCache {
         angleDegrees: angleQ.toDouble(),
         bakedStep: bakedStep,
       );
-      _masks[key] = mask;
-      _bytes += _maskCost(mask);
-      while (_masks.length > 1 && _bytes > byteBudget) {
-        final oldest = _masks.keys.first;
-        _bytes -= _maskCost(_masks.remove(oldest)!);
-      }
+      _masks.keep(key, mask);
     }
 
     return dab.copyWith(
@@ -133,10 +128,7 @@ class BrushTipStampCache {
     return [for (final dab in dabs) resolveDab(dab)];
   }
 
-  void clear() {
-    _masks.clear();
-    _bytes = 0;
-  }
+  void clear() => _masks.clear();
 
   static int _maskCost(BrushTipMask mask) => mask.size * mask.size * 9;
 

@@ -386,8 +386,18 @@ import '../../tool/refactor/clone_scan.dart';
 /// and lowers this back.
 /// 🔬Measured on the lane against master (`8d4b7c1fa`, at 88): this one
 /// added, none gone.
+///
+/// 89 → 88 (2026-10-16, every-bounded-cache-is-one-lru — every bounded
+/// cache lets go by one LRU). The pair named above is gone: both caches
+/// keep an `Lru` (core), and the bookkeeping they shared past the call —
+/// the map in the order it was asked, the count of what it holds, a
+/// picture's cost — is the `Lru`'s now, as it is the tip masks', the live
+/// stroke's results' and the rail's glyphs'. What stays theirs is what
+/// differs: the stand-in at another width and the memory warning.
+/// 🔬Measured on the lane against master (`8d4b7c1fa`, at 88): the same 88
+/// pairs, none added, none gone.
 void main() {
-  const ceiling = 89;
+  const ceiling = 88;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

@@ -222,13 +222,15 @@ const _notCensused = <String, String>{
 
 /// A class-level field that KEEPS `ui.Image`s — a map, list or set of them,
 /// or an `Expando` hanging them on other objects (the tile cache does:
-/// found by widening this the day it was written, 2026-09-11). Record keys
+/// found by widening this the day it was written, 2026-09-11), or the core
+/// `Lru` (2026-10-16: the sheets' images and the storyboard's panels moved
+/// onto it, card every-bounded-cache-is-one-lru). Record keys
 /// are allowed — `Map<(A, B), ui.Image>` is still a holder.
 /// Crude on purpose, like [_counter]: a holder that hides from this also
 /// hides from the reader looking for one.
 final _imageHolder = RegExp(
   '^  (?:static )?(?:late )?(?:final )?'
-  '(?:LinkedHashMap|Map|List|Set|Expando)<'
+  '(?:LinkedHashMap|Map|List|Set|Expando|Lru)<'
   r'[^;=]*\bui\.Image\??>+\s+(\w+)\s*[=;]',
   multiLine: true,
 );

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
+import '../../core/lru.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextBoxDepth;
