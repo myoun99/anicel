@@ -362,8 +362,32 @@ import '../../tool/refactor/clone_scan.dart';
 /// name the comprehension, reading worse with no law moved.
 /// 🔬Measured on the lane against master (`8929cc433`, at 87): this one
 /// added, none gone.
+///
+/// 88 → 89 (2026-10-16, storyboard-thumbnails-let-go-by-the-one-order — the
+/// storyboard's pictures let go by the one order). The new pair is named:
+///
+///     63 tokens
+///       lib/src/ui/sheet/sheet_image_cache.dart
+///         SheetImageCache._letGoBeyondBudget
+///       lib/src/ui/storyboard_cut_thumbnail_store.dart
+///         StoryboardCutThumbnailStore._letGoBeyondBudget
+///
+/// The reading CONFIRMS it: both hold a map of pictures on one viewer's
+/// share of the device and let go by the one order a budget lets go by
+/// (`letGoLeastRecentlyUsed` — the thumbnails had written it out as a while
+/// loop of their own, which this lane took away). What they share past the
+/// call is the bookkeeping: the map in the order it was asked, the count of
+/// what it holds, a picture's cost. ⛔Not merged: the SECOND, and the rule
+/// of three holds — the sheet's cache gives a picture back at once and the
+/// thumbnails after the next frame, forgetting its signature with it, so a
+/// shared body would take both as hooks invented for a shape seen twice.
+/// 🔜The third map of pictures on a viewer's share merges the bookkeeping
+/// (the map, the count, the stand-in at another width, the memory warning)
+/// and lowers this back.
+/// 🔬Measured on the lane against master (`8d4b7c1fa`, at 88): this one
+/// added, none gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

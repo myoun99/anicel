@@ -422,7 +422,18 @@ void main() {
   /// the sink a stroke's commit tells — so a photo lands through the door a
   /// stroke does. 🔬`clean_code_diff` against the lane's last commit before
   /// it (`f99fdc4ff`, at 397) named that one added and nothing gone.
-  const wideSignatures = 398;
+  ///
+  /// ⚠️398 → 399 on 2026-10-16, named as the rule above asks (card
+  /// storyboard-thumbnails-let-go-by-the-one-order — the storyboard's
+  /// pictures let go by the one order). `letGoLeastRecentlyUsed` (five) is
+  /// `letGoWantedLatest` (eight) said of a cache no step wants anything of:
+  /// the entries in the order they were used, what is held and the line, an
+  /// entry's bytes and the letting go — the law's own, less the three a
+  /// playhead answers (when an entry is next wanted, when it was last used,
+  /// the floor), which the order the entries come in answers instead.
+  /// 🔬`clean_code_diff` against master (`8d4b7c1fa`, at 398) named that one
+  /// added and nothing gone.
+  const wideSignatures = 399;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

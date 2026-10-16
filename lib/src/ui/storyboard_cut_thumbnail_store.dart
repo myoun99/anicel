@@ -10,6 +10,7 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../native/qa_native_engine.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
+import '../services/playback/let_go_wanted_latest.dart';
 import 'media/viewer_raster_budget.dart';
 import 'media/viewer_render_tier.dart';
 
@@ -322,7 +323,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     // A signature change DURING the render re-kicks on the repaint the
     // notify below triggers.
     _renderedSignatures[key] = signature;
-    _evictBeyondBudget();
+    _letGoBeyondBudget();
     _reportHeldBytes();
     _renderEnded();
   }
@@ -339,20 +340,26 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Lets go of the least recently asked-for pictures until the held ones
-  /// fit the budget — never the newest, which is what a panel just asked
-  /// for (the same rule as every other cache here).
-  void _evictBeyondBudget() {
-    while (_heldBytes > _budget.byteBudget && _images.length > 1) {
-      final oldest = _images.keys.first;
-      final image = _images.remove(oldest)!;
-      _heldBytes -= ViewerRasterBudget.costOf(image);
-      _retire(image);
-      // 🚨The signature goes WITH the picture. Kept, it would tell the next
-      // [thumbnailFor] that this panel is already rendered, and the panel
-      // would stay an empty block for good.
-      _renderedSignatures.remove(oldest);
-    }
+  /// Lets go until the held pictures fit the budget, in the ONE order a
+  /// budget lets go by ([letGoLeastRecentlyUsed] — the storyboard has no
+  /// playhead, so nothing is wanted at a step and the least recently asked
+  /// for goes first) — never the newest, which a panel just asked for.
+  void _letGoBeyondBudget() {
+    letGoLeastRecentlyUsed(
+      usedOldestFirst: _images.keys,
+      heldBytes: _heldBytes,
+      maxBytes: _budget.byteBudget,
+      bytesOf: (key) => ViewerRasterBudget.costOf(_images[key]!),
+      letGo: (key) {
+        final image = _images.remove(key)!;
+        _heldBytes -= ViewerRasterBudget.costOf(image);
+        _retire(image);
+        // 🚨The signature goes WITH the picture. Kept, it would tell the
+        // next [thumbnailFor] that this panel is already rendered, and the
+        // panel would stay an empty block for good.
+        _renderedSignatures.remove(key);
+      },
+    );
   }
 
   /// The OS says memory is tight: halve, never below one viewer page, and
@@ -362,7 +369,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       return;
     }
     final before = _images.length;
-    _evictBeyondBudget();
+    _letGoBeyondBudget();
     if (_images.length != before) {
       _reportHeldBytes();
       // Panels still showing an evicted picture must repaint before it is

@@ -252,21 +252,17 @@ class SheetImageCache extends ChangeNotifier {
   }
 
   /// Lets go until what is held fits the budget, in the ONE order a budget
-  /// lets go by ([letGoWantedLatest] — a sheet has no playhead, so nothing
-  /// is wanted at a step and the least recently asked for goes first) —
-  /// never the newest, which a sheet just asked for.
+  /// lets go by ([letGoLeastRecentlyUsed] — a sheet has no playhead, so
+  /// nothing is wanted at a step and the least recently asked for goes
+  /// first) — never the newest, which a sheet just asked for.
   ///
   /// Disposed at once: a sheet asks while it paints, so no painter keeps
   /// one past its paint — and a picture already recorded holds its own.
   void _letGoBeyondBudget() {
-    final order = [..._images.keys];
-    final asked = {for (final (at, key) in order.indexed) key: at};
-    letGoWantedLatest(
-      entries: order.reversed.skip(1),
+    letGoLeastRecentlyUsed(
+      usedOldestFirst: _images.keys,
       heldBytes: _decodedBytes,
       maxBytes: _budget.byteBudget,
-      wantedAt: (_) => null,
-      lastUsed: (key) => asked[key]!,
       bytesOf: (key) => ViewerRasterBudget.costOf(_images[key]!),
       letGo: (key) {
         final image = _images.remove(key)!;

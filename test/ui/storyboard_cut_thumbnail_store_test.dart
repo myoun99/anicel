@@ -681,6 +681,44 @@ void main() {
       expect(store.thumbnailFor(cut(), 0, shownHeight: 72), isNotNull);
     });
 
+    testWidgets('a picture the budget lets go of is disposed once the next '
+        'frame has painted — a panel may draw it until then', (tester) async {
+      final rendered = <ui.Image>[];
+      final store = StoryboardCutThumbnailStore(
+        originalSize: _original,
+        render: (_, _, _, _) async {
+          final image = await tinyImage();
+          rendered.add(image);
+          return image;
+        },
+      );
+      addTearDown(store.dispose);
+
+      await tester.runAsync(() async {
+        for (final frame in [0, 1, 2, 3, 4]) {
+          store.thumbnailFor(cut(), frame, shownHeight: 72);
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      expect(rendered, hasLength(5));
+      expect(
+        rendered.first.debugDisposed,
+        isFalse,
+        reason: 'let go, but not before the next frame',
+      );
+
+      // The landing's notify repaints the panels that ask, which is what
+      // puts the next frame in — no panel listens here, so it is asked for.
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      expect(rendered.first.debugDisposed, isTrue, reason: 'let go of');
+      expect(
+        [for (final image in rendered.skip(1)) image.debugDisposed],
+        everyElement(isFalse),
+        reason: 'the four that fit are held',
+      );
+    });
+
     testWidgets('a picture asked for again is kept over one that was not', (
       tester,
     ) async {
