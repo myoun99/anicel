@@ -128,11 +128,22 @@ class CanvasPlaybackController extends ChangeNotifier
   /// ([waitsOn]) leaves only frames it showed.
   bool Function(int playlistFrame)? frameIsThere;
 
-  /// Fired on every explicit seek with the clamped target frame, so a
-  /// device transport can move without inferring the jump from frame
-  /// deltas. (With the audio clock driving the picture, an un-forwarded
-  /// seek would simply snap back to the device's position on the next
-  /// tick.)
+  /// Whether a run behind its clock shows every picture all the same: it
+  /// goes on onto the next frame, however far its clock is ahead, and puts
+  /// its clock back to it — the sound with it ([onSeeked]). Null = it keeps
+  /// time, dropping the frames it is late for ([playheadWay]). The first
+  /// look after its clock starts is not behind it ([_clockLooked]).
+  ///
+  /// 🗣️유저 2026-10-15 (F-364-Q1 b): 「하나도 안 건너뛴다 — 소리를 그림에 다시
+  /// 맞춘다」 — the run that waits for its pictures, the default.
+  bool Function()? showsEveryPicture;
+
+  /// Fired on every explicit seek with the clamped target frame — and where
+  /// a run behind its clock puts its clock back to the frame it goes on
+  /// onto ([showsEveryPicture]) — so a device transport can move without
+  /// inferring the jump from frame deltas. (With the audio clock driving
+  /// the picture, an un-forwarded seek would simply snap back to the
+  /// device's position on the next tick.)
   void Function(int globalFrame)? onSeeked;
 
   TickerProvider? _vsync;
@@ -192,6 +203,22 @@ class CanvasPlaybackController extends ChangeNotifier
   PlaybackScope _scope = PlaybackScope.activeCut;
   PlaybackLoopMode _loopMode = PlaybackLoopMode.loop;
   int _baseGlobalFrame = 0;
+
+  /// Whether the run's clock has been looked at since it was started
+  /// ([_startTicker]): its first look is its start, and says nothing of how
+  /// late the app is ([showsEveryPicture]).
+  ///
+  /// 🚨THE FIRST LOOK AFTER A START IS NEVER LATENESS (F-364-Q1 b). The
+  /// device starts AT that look (`FirstLookStart`) and the wall clock counts
+  /// from it, so no tick the app was long in is in it — only how far the
+  /// sound is heard ahead of the picture by then: a frame is shown
+  /// refreshes after its tick, and the user's correction is on top
+  /// (`HeardOnTheDevice`). Two frames ahead, a run that showed every picture
+  /// by that look would put its clock back, find it two frames ahead at the
+  /// next first look, and put it back again — a frame a look, the sound
+  /// started afresh at every one. (Why the sound is ahead at a start at
+  /// all: board a-start-is-heard-ahead-of-its-first-picture.)
+  bool _clockLooked = false;
   int _currentGlobalFrame = 0;
   int _droppedFrames = 0;
 
@@ -500,6 +527,7 @@ class CanvasPlaybackController extends ChangeNotifier
       return;
     }
     _baseGlobalFrame = _currentGlobalFrame;
+    _clockLooked = false;
     _clock.start(vsync);
   }
 
@@ -523,19 +551,28 @@ class CanvasPlaybackController extends ChangeNotifier
     // ⚠️In the app the device's is the clock of every run, silent ones
     // too: an empty schedule uploads like any other and rides the device.
     // When the app's frames fall behind it, playback frames are dropped —
-    // the sound is not made to wait for them. It waits only where the
-    // picture itself is not made ([waitsOn]), and then the device is
-    // stopped with the clock ([isWaiting]).
+    // the sound is not made to wait for them — unless the run shows every
+    // picture ([showsEveryPicture]): then the sound is put back to the
+    // picture. It waits only where the picture itself is not made
+    // ([waitsOn]), and then the device is stopped with the clock
+    // ([isWaiting]).
     final says =
         resolveAudioClock?.call(frameTime: frameShownAt()) ??
         _wallClock(elapsed, total);
     final shown = _currentGlobalFrame;
+    final everyPicture =
+        _clockLooked && (showsEveryPicture?.call() ?? false);
+    _clockLooked = true;
     if (says.ended && _loopMode == PlaybackLoopMode.once) {
-      _endAt(total);
+      _endAt(total, everyPicture: everyPicture);
     } else {
       // A reading past either end is the end it is past; a step back is the
       // lap wrapping, and [_goTo] goes round the end to it.
-      _goTo(says.globalFrame.clamp(0, total - 1), total);
+      _goTo(
+        says.globalFrame.clamp(0, total - 1),
+        total,
+        everyPicture: everyPicture,
+      );
     }
     if (_currentGlobalFrame != shown) {
       lookChangedWhatItShows();
@@ -551,30 +588,46 @@ class CanvasPlaybackController extends ChangeNotifier
   }
 
   /// A run that plays once has run out: it stops on its last frame — once
-  /// that frame has been shown.
-  void _endAt(int total) {
-    _goTo(total - 1, total);
-    if (!isWaiting) {
+  /// that frame has been shown. (A run that shows every picture and was
+  /// behind its clock has frames still to show, and goes on to them.)
+  void _endAt(int total, {required bool everyPicture}) {
+    _goTo(total - 1, total, everyPicture: everyPicture);
+    if (!isWaiting && _currentGlobalFrame == total - 1) {
       stop();
     }
   }
 
   /// The clock says [frame]. The run goes there — unless a frame on the way
   /// has no picture yet, and then it stands before THAT frame ([waitsOn],
-  /// [playheadWay]).
-  void _goTo(int frame, int total) {
+  /// [playheadWay]) — or it shows [everyPicture] and goes on one frame
+  /// ([showsEveryPicture], [_clockLooked]).
+  void _goTo(int frame, int total, {required bool everyPicture}) {
     final (:stands, :passed, :waitsFor) = playheadWay(
       from: _currentGlobalFrame,
       to: frame,
       total: total,
       waitsOn: (next) => waitsOn?.call(next, placed: false) ?? false,
+      everyPicture: everyPicture,
     );
     _countTheWay(to: stands, passed: passed);
     if (waitsFor != null) {
       _waitFor(waitsFor, standing: stands);
+    } else if (stands != frame) {
+      _putTheClockBackTo(stands);
     } else {
       _setFrame(stands);
     }
+  }
+
+  /// The run stands on [frame], short of where its clock got to
+  /// ([showsEveryPicture]), and its clock is put back to it: the wall clock
+  /// starts afresh there, and the device is moved there as a seek moves it
+  /// ([onSeeked]) — the sound put back to the picture, as a run that waited
+  /// for a picture goes on with it ([lookAgain]).
+  void _putTheClockBackTo(int frame) {
+    _setFrame(frame);
+    _startTicker();
+    onSeeked?.call(frame);
   }
 
   /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT —

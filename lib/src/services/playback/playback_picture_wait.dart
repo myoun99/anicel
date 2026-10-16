@@ -1,6 +1,7 @@
 import '../../models/playback_mode.dart';
 
-/// Whether a run's clock waits for a frame: [PlaybackMode]'s three settings,
+/// Whether a run's clock waits for a frame — and whether a run behind its
+/// clock shows every picture all the same: [PlaybackMode]'s three settings,
 /// read against what the warmer has made.
 ///
 /// The one place the modes part. Everything else — which pictures are made,
@@ -51,4 +52,16 @@ class PlaybackPictureWait {
     }
     return _filling;
   }
+
+  /// Whether a run behind its clock — the app was longer than a frame —
+  /// shows the next picture all the same, its clock and its sound put back
+  /// to it, rather than go over the pictures it is late for (`playheadWay`).
+  ///
+  /// 🗣️유저 2026-10-15 (F-364-Q1 b): 「하나도 안 건너뛴다 — 소리를 그림에 다시
+  /// 맞춘다」 — every picture, however late the app, and the sound put back
+  /// as where a picture that is not there yet is waited for. Skipping frames
+  /// keeps time. ⚠️Rendering first is not decided yet (board
+  /// F-364-every-picture-even-when-late-Q1 — the media viewer plays by it
+  /// too), and keeps time until it is.
+  bool showsEveryPicture() => mode() == PlaybackMode.everyPicture;
 }

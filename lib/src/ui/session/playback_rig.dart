@@ -202,8 +202,9 @@ class PlaybackRig implements PlaybackRun {
     _changes.notifyChanged();
   }
 
-  /// Whether a run's clock waits for its picture: the mode, read against
-  /// what the warmer has made of the run it follows.
+  /// Whether a run's clock waits for its picture, and whether a run behind
+  /// its clock shows every picture: the mode, read against what the warmer
+  /// has made of the run it follows.
   late final PlaybackPictureWait _pictureWait = PlaybackPictureWait(
     mode: () => playbackMode,
     pictureIsThere: pictureIsThere,
@@ -257,7 +258,8 @@ class PlaybackRig implements PlaybackRun {
     onPlaylistWarmRequested: _onPlaylistWarmRequested,
   )
     ..waitsOn = _waitsOn
-    ..frameIsThere = frameIsThere;
+    ..frameIsThere = frameIsThere
+    ..showsEveryPicture = _pictureWait.showsEveryPicture;
 
   /// Everything in the app that plays, so the actuation gate can ask ONE
   /// object 「누가 재생 중인가」 and stop it.

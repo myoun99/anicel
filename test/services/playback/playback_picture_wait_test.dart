@@ -171,4 +171,19 @@ void main() {
       reason: 'a run that is going goes on until a frame is not there',
     );
   });
+
+  test('🚨a run behind its clock shows every picture all the same showing '
+      'every picture (F-364-Q1 b), and keeps time skipping frames', () {
+    final w = wait();
+    expect(w.showsEveryPicture(), isTrue);
+    mode = PlaybackMode.skipFrames;
+    expect(w.showsEveryPicture(), isFalse);
+    mode = PlaybackMode.renderFirst;
+    expect(
+      w.showsEveryPicture(),
+      isFalse,
+      reason: 'not decided yet (F-364-every-picture-even-when-late-Q1): it '
+          'keeps time until it is',
+    );
+  });
 }

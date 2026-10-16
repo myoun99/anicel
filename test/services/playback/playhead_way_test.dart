@@ -13,6 +13,7 @@ void main() {
     required int to,
     int total = 10,
     Set<int> missing = const {},
+    bool everyPicture = false,
   }) {
     final asked = <int>[];
     final way = playheadWay(
@@ -23,6 +24,7 @@ void main() {
         asked.add(frame);
         return missing.contains(frame);
       },
+      everyPicture: everyPicture,
     );
     return (way: way, asked: asked);
   }
@@ -64,5 +66,40 @@ void main() {
       'towards for good', () {
     final (:way, asked: _) = walk(from: 1, to: 23);
     expect(way, (stands: 3, passed: 1, waitsFor: null));
+  });
+
+  group('showing every picture (유저 2026-10-15, F-364-Q1 b)', () {
+    test('🚨a run behind its clock goes on ONE frame and drops none — it '
+        'stands short of its clock', () {
+      final (:way, :asked) = walk(from: 2, to: 6, everyPicture: true);
+      expect(way, (stands: 3, passed: 0, waitsFor: null));
+      expect(asked, [3]);
+    });
+
+    test('the next frame not there yet is waited for as ever', () {
+      final (:way, asked: _) = walk(
+        from: 2,
+        to: 6,
+        missing: {3},
+        everyPicture: true,
+      );
+      expect(way, (stands: 2, passed: 0, waitsFor: 3));
+    });
+
+    test('round the end of a lap the next frame is the first — and a clock '
+        'on time, or where the run stands, moves it as ever', () {
+      expect(
+        walk(from: 9, to: 2, everyPicture: true).way,
+        (stands: 0, passed: 0, waitsFor: null),
+      );
+      expect(
+        walk(from: 2, to: 3, everyPicture: true).way,
+        (stands: 3, passed: 0, waitsFor: null),
+      );
+      expect(
+        walk(from: 4, to: 4, everyPicture: true).way,
+        (stands: 4, passed: 0, waitsFor: null),
+      );
+    });
   });
 }

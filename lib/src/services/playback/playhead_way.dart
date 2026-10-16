@@ -12,6 +12,14 @@ import 'dart:math' as math;
 /// not there: a tick that came late does not carry the playhead over a
 /// picture that was never shown.
 ///
+/// 🚨★★★UNLESS IT SHOWS [everyPicture] (유저 2026-10-15, F-364-Q1 b: 「하나도
+/// 안 건너뛴다 — 소리를 그림에 다시 맞춘다」): then it goes on ONE frame
+/// however far its clock is ahead, and drops none — it `stands` short of
+/// [to], and the caller puts its clock, and with it the sound, back to
+/// where it stands. ↩️Every run kept time, the run that waits for its
+/// pictures included: an app late by a frame went over a picture that was
+/// there, which the playhead then never showed.
+///
 /// 🚨★★★WHERE A WAITING RUN STANDS IS ONE LAW, AND THIS IS WHERE IT IS
 /// ANSWERED: on the last frame it has, never on the one it waits for (유저
 /// 2026-10-15, F-365-Q1 「직전 프레임에 서서 기다린다(뷰어와 같은 법)」). A
@@ -48,8 +56,10 @@ import 'dart:math' as math;
   required int to,
   required int total,
   required bool Function(int frame) waitsOn,
+  bool everyPicture = false,
 }) {
-  final ahead = (to - from) % total;
+  final clockAhead = (to - from) % total;
+  final ahead = everyPicture ? math.min(clockAhead, 1) : clockAhead;
   var stands = from;
   for (var step = 0; step < ahead; step += 1) {
     final next = (stands + 1) % total;
