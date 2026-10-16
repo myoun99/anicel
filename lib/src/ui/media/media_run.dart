@@ -561,9 +561,7 @@ class MediaRun {
       total: _pageCount,
       waitsOn: (page) => _wait.holds(page, placed: false),
     );
-    if (stands != _page) {
-      _surface.turnToPage(stands);
-    }
+    _surface.turnToPage(stands);
     if (waitsFor != null) {
       _park();
     }

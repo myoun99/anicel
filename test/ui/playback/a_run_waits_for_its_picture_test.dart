@@ -103,6 +103,11 @@ void main() {
       2,
       reason: 'it goes onto the frame it waited for the moment it comes',
     );
+    expect(
+      (c.globalFrameIndexListenable.value, c.localFrameIndexListenable.value),
+      (2, 2),
+      reason: 'and the screen, the ruler and the warmer hear it then',
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 90));
     expect(
