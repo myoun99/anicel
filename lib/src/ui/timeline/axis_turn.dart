@@ -160,3 +160,49 @@ Offset offsetAlong(
   required double along,
   required double across,
 }) => axis == Axis.horizontal ? Offset(along, across) : Offset(across, along);
+
+/// A size [along] the axis and [across] it — the measured twin of
+/// [sizedAlong], for a render box's own size and a painter's.
+Size sizeAlong(Axis axis, {required double along, required double across}) =>
+    axis == Axis.horizontal ? Size(along, across) : Size(across, along);
+
+/// The rect spanning [along] along [axis] and [across] across it — a cell,
+/// a block, a band. A span is its two edges, not a start and an extent: a
+/// caller holding those adds them, which is the sum `Rect.fromLTWH` makes
+/// itself, so the edge lands where it did. (card
+/// values-built-by-the-axis-are-one-function — this, the edges below and
+/// the other builds were sixty-three lines by hand on 2026-10-17;
+/// `one_axis_turn_test` holds them at its ledger's three.)
+Rect rectAlong(
+  Axis axis, {
+  required ({double from, double to}) along,
+  required ({double from, double to}) across,
+}) => axis == Axis.horizontal
+    ? Rect.fromLTRB(along.from, across.from, along.to, across.to)
+    : Rect.fromLTRB(across.from, along.from, across.to, along.to);
+
+/// Where [rect] begins along [axis]: its left on a strip that runs across,
+/// its top on one that runs down.
+double startAlong(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.left : rect.top;
+
+/// Where [rect] ends along [axis].
+double endAlong(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.right : rect.bottom;
+
+/// Where [rect] begins across [axis].
+double startAcross(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.top : rect.left;
+
+/// Where [rect] ends across [axis].
+double endAcross(Axis axis, Rect rect) =>
+    axis == Axis.horizontal ? rect.bottom : rect.right;
+
+/// The middle of the edge [axis] runs from — where a strip's run begins, a
+/// fade sets off.
+Alignment centerStartAlong(Axis axis) =>
+    axis == Axis.horizontal ? Alignment.centerLeft : Alignment.topCenter;
+
+/// The middle of the edge [axis] runs to.
+Alignment centerEndAlong(Axis axis) =>
+    axis == Axis.horizontal ? Alignment.centerRight : Alignment.bottomCenter;

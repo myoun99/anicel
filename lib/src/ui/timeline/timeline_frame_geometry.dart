@@ -285,9 +285,8 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox
     this.axis = axis;
   }
 
-  Size _sizeFor(double main) => axis == Axis.horizontal
-      ? Size(main, crossAxisExtent)
-      : Size(crossAxisExtent, main);
+  Size _sizeFor(double main) =>
+      sizeAlong(axis, along: main, across: crossAxisExtent);
 
   /// What the CHILD is laid out at. Windowed, it is the constant window
   /// extent and the incoming constraints are deliberately NOT enforced: the

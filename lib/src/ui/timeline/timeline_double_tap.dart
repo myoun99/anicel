@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../input/value_control_pointers.dart' show controlOwnsTap;
+import 'axis_turn.dart' show offsetAlong, partAcross, partAlong;
 
 /// R26 #37: the cell editor opens only when BOTH taps land on the SAME
 /// cell.
@@ -102,9 +103,12 @@ Offset timelineDoubleTapAim(
   if (cells.cellExtent() >= 1) {
     return localPosition;
   }
-  return cells.axis == Axis.horizontal
-      ? Offset(localPosition.dx.floorToDouble() + 0.5, localPosition.dy)
-      : Offset(localPosition.dx, localPosition.dy.floorToDouble() + 0.5);
+  final axis = cells.axis;
+  return offsetAlong(
+    axis,
+    along: partAlong(axis, localPosition).floorToDouble() + 0.5,
+    across: partAcross(axis, localPosition),
+  );
 }
 
 /// The cell a double tap at [localPosition] names ([timelineDoubleTapAim]).

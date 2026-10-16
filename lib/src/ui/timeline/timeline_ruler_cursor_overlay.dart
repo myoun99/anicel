@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
+import 'axis_turn.dart' show extentAcross, rectAlong;
 import 'timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge, timelinePlayheadSpan;
@@ -140,27 +141,19 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
   @override
   void paint(Canvas canvas, Size size) {
-    final horizontal = axis == Axis.horizontal;
     final barPaint = Paint()..color = readyBarColor;
+    final barStart = extentAcross(axis, size) - readyBarThickness;
     final runs = runsToDraw?.call() ?? readyRuns();
     onPaintedRuns?.call(runs);
     for (final run in runs) {
       final start = timelineFrameEdge(run.startIndex, cellWidth);
       final extent = timelineFrameEdge(run.endIndexExclusive, cellWidth) - start;
       canvas.drawRect(
-        horizontal
-            ? Rect.fromLTWH(
-                start,
-                size.height - readyBarThickness,
-                extent,
-                readyBarThickness,
-              )
-            : Rect.fromLTWH(
-                size.width - readyBarThickness,
-                start,
-                readyBarThickness,
-                extent,
-              ),
+        rectAlong(
+          axis,
+          along: (from: start, to: start + extent),
+          across: (from: barStart, to: barStart + readyBarThickness),
+        ),
         barPaint,
       );
     }
@@ -170,9 +163,11 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
       // The grids' playhead, on the ruler's cell (F-212).
       final (:start, :end) = timelinePlayheadSpan(frame, cellWidth);
       canvas.drawRect(
-        horizontal
-            ? Rect.fromLTRB(start, 0, end, size.height)
-            : Rect.fromLTRB(0, start, size.width, end),
+        rectAlong(
+          axis,
+          along: (from: start, to: end),
+          across: (from: 0, to: extentAcross(axis, size)),
+        ),
         Paint()..color = timelinePlayheadWashColor,
       );
     }

@@ -4,7 +4,7 @@ import 'package:flutter/widgets.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../widgets/tick_layer.dart';
-import 'axis_turn.dart' show extentAlong;
+import 'axis_turn.dart' show endAlong, extentAlong, startAlong;
 import 'memo_token.dart';
 import 'timeline_frame_ruler_painter.dart';
 import 'timeline_frame_window.dart';
@@ -238,11 +238,8 @@ class TimelineRulerPlayheadWritingPainter extends CustomPainter
     if (cell <= 0) {
       return window;
     }
-    final horizontal = scale.axis == Axis.horizontal;
-    final from =
-        (horizontal ? rect.left : rect.top) - 1 - scale.leadingFrameSpacer;
-    final to =
-        (horizontal ? rect.right : rect.bottom) + 1 - scale.leadingFrameSpacer;
+    final from = startAlong(scale.axis, rect) - 1 - scale.leadingFrameSpacer;
+    final to = endAlong(scale.axis, rect) + 1 - scale.leadingFrameSpacer;
     final first = scale.frameStartIndex + (from / cell).floor() - 1;
     final past = scale.frameStartIndex + (to / cell).ceil() + 1;
     return (

@@ -852,9 +852,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final preview = lane.previewText;
     if (preview == null) return null;
     return Align(
-      alignment: widget.axis == Axis.horizontal
-          ? Alignment.centerRight
-          : Alignment.bottomCenter,
+      alignment: centerEndAlong(widget.axis),
       child: SeNameTagLanePreview(
         key: ValueKey<String>(
           '$_keyPrefix-lane-group-preview-${layer.id}-${lane.laneId}',
@@ -915,9 +913,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       // centered across it. The sheet centered on BOTH axes, which is what
       // made its lane names float in the middle of a column whose rail twin
       // begins at the leading edge.
-      alignment: widget.axis == Axis.horizontal
-          ? Alignment.centerLeft
-          : Alignment.topCenter,
+      alignment: centerStartAlong(widget.axis),
       child: lead == null
           ? content
           : Row(

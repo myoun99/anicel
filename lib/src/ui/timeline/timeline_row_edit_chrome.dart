@@ -11,7 +11,7 @@ import '../widgets/axis_bar_gesture.dart'
     show
         OwningHorizontalDragGestureRecognizer,
         OwningVerticalDragGestureRecognizer;
-import 'axis_turn.dart' show partAlong;
+import 'axis_turn.dart' show partAlong, rectAlong;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
 import '../../models/layer.dart';
@@ -256,14 +256,15 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
 }) {
   final targets = <TimelineRowChromeTarget>[];
   final patternSpans = <Rect>[];
-  final horizontal = axis == Axis.horizontal;
   final frameStartIndex = geometry.frameStartIndex;
   final frameEndIndexExclusive = geometry.frameEndIndexExclusive;
   final frameCellExtent = geometry.frameCellExtent;
 
-  Rect mainRect(double start, double extent) => horizontal
-      ? Rect.fromLTWH(start, 0, extent, crossAxisExtent)
-      : Rect.fromLTWH(0, start, crossAxisExtent, extent);
+  Rect mainRect(double start, double extent) => rectAlong(
+    axis,
+    along: (from: start, to: start + extent),
+    across: (from: 0, to: crossAxisExtent),
+  );
 
   for (final block in gripBlocks) {
     if (!frameRangesOverlap(

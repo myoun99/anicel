@@ -438,8 +438,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
   bool get _horizontal => _axis == Axis.horizontal;
 
   /// Where the child paints relative to the window's origin.
-  Offset get _shift =>
-      _horizontal ? Offset(-_railOffset, 0) : Offset(0, -_railOffset);
+  Offset get _shift => offsetAlong(_axis, along: -_railOffset, across: 0);
 
   BoxConstraints _childConstraints(BoxConstraints constraints) => _horizontal
       ? BoxConstraints(
@@ -457,9 +456,11 @@ class _RenderRailWindowBox extends RenderShiftedBox
 
   Size _windowSize(BoxConstraints constraints, Size childSize) =>
       constraints.constrain(
-        _horizontal
-            ? Size(_windowExtent, childSize.height)
-            : Size(childSize.width, _windowExtent),
+        sizeAlong(
+          _axis,
+          along: _windowExtent,
+          across: extentAcross(_axis, childSize),
+        ),
       );
 
   @override
@@ -483,7 +484,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
     final child = this.child;
     if (child == null) {
       return constraints.constrain(
-        _horizontal ? Size(_windowExtent, 0) : Size(0, _windowExtent),
+        sizeAlong(_axis, along: _windowExtent, across: 0),
       );
     }
     return _windowSize(
@@ -497,7 +498,7 @@ class _RenderRailWindowBox extends RenderShiftedBox
     final child = this.child;
     if (child == null) {
       size = constraints.constrain(
-        _horizontal ? Size(_windowExtent, 0) : Size(0, _windowExtent),
+        sizeAlong(_axis, along: _windowExtent, across: 0),
       );
       return;
     }

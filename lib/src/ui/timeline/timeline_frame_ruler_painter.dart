@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../../core/bounded_memo.dart';
-import 'axis_turn.dart' show extentAlong, offsetAlong;
+import 'axis_turn.dart' show extentAlong, offsetAlong, startAlong;
 import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
@@ -679,9 +679,8 @@ final class TimelineRulerScale {
     if (ink == null) {
       return;
     }
-    final rect = cellRectFor(frameIndex);
     final edge =
-        (axis == Axis.horizontal ? rect.left : rect.top) + timelineGridLineSnap;
+        startAlong(axis, cellRectFor(frameIndex)) + timelineGridLineSnap;
     canvas.drawLine(
       offsetAlong(axis, along: edge, across: 0),
       offsetAlong(axis, along: edge, across: crossExtent),

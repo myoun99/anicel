@@ -15,6 +15,7 @@ import '../../native/qa_native_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
+import 'axis_turn.dart' show endAlong, offsetAlong, startAlong;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
@@ -814,9 +815,8 @@ class TimelineGridTileStore {
     // so a tile is exactly as long as the cells it holds at any zoom.
     final first = painter.cellRectFor(request.spanStartIndex);
     final last = painter.cellRectFor(request.spanEndIndexExclusive - 1);
-    final spanExtent = horizontal
-        ? last.right - first.left
-        : last.bottom - first.top;
+    final spanExtent =
+        endAlong(painter.axis, last) - startAlong(painter.axis, first);
     final width = (spanExtent * dpr).ceil();
     final height = (painter.crossAxisExtent * dpr).ceil();
     if (width <= 0 || height <= 0) {
@@ -915,9 +915,12 @@ class TimelineGridTileStore {
     required double devicePixelRatio,
   }) {
     final dpr = devicePixelRatio;
-    final horizontal = painter.axis == Axis.horizontal;
-    final originRect = painter.cellRectFor(spanStartIndex);
-    final originMain = horizontal ? originRect.left : originRect.top;
+    final axis = painter.axis;
+    final toLocal = offsetAlong(
+      axis,
+      along: -startAlong(axis, painter.cellRectFor(spanStartIndex)),
+      across: 0,
+    );
 
     final glyphCells = <_TileGlyph>[];
     // F-96: a word may start before the span and grow into it, so the
@@ -932,9 +935,7 @@ class TimelineGridTileStore {
       final mark = model.mark;
       if (mark != null) {
         final place = painter.inbetweenMarkLayoutFor(frameIndex);
-        final center = horizontal
-            ? place.center.translate(-originMain, 0)
-            : place.center.translate(0, -originMain);
+        final center = place.center + toLocal;
         _emitInbetweenMark(
           writer,
           mark,
@@ -966,9 +967,7 @@ class TimelineGridTileStore {
         rgba: timelineGridPackRgba(ink),
         key: _glyphKey(model.glyph, style, bake),
         bake: bake,
-        origin: horizontal
-            ? layout.origin.translate(-originMain, 0)
-            : layout.origin.translate(0, -originMain),
+        origin: layout.origin + toLocal,
       ));
     }
     // The holds' lines: the box the classic pass strokes, as a capsule —
@@ -981,7 +980,7 @@ class TimelineGridTileStore {
         TimelineGridTileOp.cornerBottomRight;
     final startCap =
         TimelineGridTileOp.cornerTopLeft |
-        (horizontal
+        (axis == Axis.horizontal
             ? TimelineGridTileOp.cornerBottomLeft
             : TimelineGridTileOp.cornerTopRight);
     final endCap = everyCorner & ~startCap;
@@ -989,9 +988,7 @@ class TimelineGridTileStore {
       spanStartIndex,
       spanEndIndexExclusive,
     )) {
-      final box = horizontal
-          ? line.box.shift(Offset(-originMain, 0))
-          : line.box.shift(Offset(0, -originMain));
+      final box = line.box.shift(toLocal);
       writer.rrectFill(
         box.left * dpr,
         box.top * dpr,
@@ -1460,10 +1457,11 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
   required double devicePixelRatio,
 }) {
   final horizontal = painter.axis == Axis.horizontal;
-  final originRect = painter.cellRectFor(spanStartIndex);
-  final toLocal = horizontal
-      ? Offset(-originRect.left, 0)
-      : Offset(0, -originRect.top);
+  final toLocal = offsetAlong(
+    painter.axis,
+    along: -startAlong(painter.axis, painter.cellRectFor(spanStartIndex)),
+    across: 0,
+  );
   // 🚨D43-2 재개 (유저 2026-08-22: 「아직도 레이어행에만 그리드 없거든?」)
   // taught this: the emitter is a SECOND reader of the painter's contract,
   // and the painter's own tests stay green when it drops an answer. So it

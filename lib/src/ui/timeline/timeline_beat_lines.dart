@@ -492,9 +492,7 @@ class _TimelineGridLawScope extends InheritedWidget {
   final from = boundary + timelineGridLineSnap - ink.strokeWidth / 2;
   final to = from + ink.strokeWidth;
   return (
-    rect: axis == Axis.horizontal
-        ? Rect.fromLTRB(from, across.from, to, across.to)
-        : Rect.fromLTRB(across.from, from, across.to, to),
+    rect: rectAlong(axis, along: (from: from, to: to), across: across),
     color: timelineGridLineInkOnGround(ink, paper),
   );
 }

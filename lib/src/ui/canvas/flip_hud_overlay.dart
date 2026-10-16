@@ -4,6 +4,15 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/frame.dart' show drawingHeadOf;
+import '../timeline/axis_turn.dart'
+    show
+        centerEndAlong,
+        centerStartAlong,
+        endAcross,
+        endAlong,
+        offsetAlong,
+        startAcross,
+        startAlong;
 import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
@@ -420,7 +429,7 @@ class FlipHudPainter extends CustomPainter
     }
     final currentIndex = flipHudSlotIndexAt(slots, snapshot.frameIndex);
 
-    _inFadedLayer(canvas, stripRect, true, () {
+    _inFadedLayer(canvas, stripRect, Axis.horizontal, () {
       // The current column sits at the strip's centre; the strip slides.
       final originX = stripRect.center.dx - _scroll(snapshot);
       final first = flipHudFirstPaintedIndex(
@@ -500,7 +509,7 @@ class FlipHudPainter extends CustomPainter
       ((stripRect.bottom - originY) / extent).ceil(),
     );
 
-    _inFadedLayer(canvas, stripRect, false, () {
+    _inFadedLayer(canvas, stripRect, Axis.vertical, () {
       canvas.drawRect(
         Rect.fromLTWH(stripRect.left, washTop, stripRect.width, extent),
         Paint()..color = timelineActiveRowWashColor(colorScheme),
@@ -564,11 +573,12 @@ class FlipHudPainter extends CustomPainter
 
   // --- pieces ------------------------------------------------------------
 
-  /// Paints [body] into its own layer, then eats both ends of it away.
+  /// Paints [body] into its own layer, then eats both of its ends along
+  /// [axis] away.
   void _inFadedLayer(
     Canvas canvas,
     Rect rect,
-    bool horizontal,
+    Axis axis,
     VoidCallback body,
   ) {
     canvas.saveLayer(rect, Paint());
@@ -576,7 +586,7 @@ class FlipHudPainter extends CustomPainter
     canvas.clipRect(rect);
     body();
     canvas.restore();
-    _fadeEnds(canvas, rect, horizontal: horizontal);
+    _fadeEnds(canvas, rect, axis);
     canvas.restore();
   }
 
@@ -615,7 +625,7 @@ class FlipHudPainter extends CustomPainter
         ).createShader(rect),
     );
     if (fadeAcross) {
-      _fadeEnds(canvas, rect, horizontal: false);
+      _fadeEnds(canvas, rect, Axis.vertical);
     }
     canvas.restore();
   }
@@ -911,15 +921,15 @@ class FlipHudPainter extends CustomPainter
     final paint = Paint()
       ..color = timelineBaseGridInk(colorScheme, frameCellExtent: grid.step)
       ..strokeWidth = 1;
-    final horizontal = grid.axis == Axis.horizontal;
-    final from = horizontal ? rect.left : rect.top;
-    final to = horizontal ? rect.right : rect.bottom;
+    final axis = grid.axis;
+    final from = startAlong(axis, rect);
+    final to = endAlong(axis, rect);
     var at =
         grid.origin + (((from - grid.origin) / grid.step).ceil()) * grid.step;
     for (; at <= to; at += grid.step) {
       canvas.drawLine(
-        horizontal ? Offset(at, rect.top) : Offset(rect.left, at),
-        horizontal ? Offset(at, rect.bottom) : Offset(rect.right, at),
+        offsetAlong(axis, along: at, across: startAcross(axis, rect)),
+        offsetAlong(axis, along: at, across: endAcross(axis, rect)),
         paint,
       );
     }
@@ -936,15 +946,15 @@ class FlipHudPainter extends CustomPainter
     canvas.drawRect(rect, Paint()..color = timelinePlayheadWashColor);
   }
 
-  void _fadeEnds(Canvas canvas, Rect rect, {required bool horizontal}) {
+  void _fadeEnds(Canvas canvas, Rect rect, Axis axis) {
     const f = FlipHudMetrics.edgeFade;
     canvas.drawRect(
       rect,
       Paint()
         ..blendMode = BlendMode.dstIn
         ..shader = LinearGradient(
-          begin: horizontal ? Alignment.centerLeft : Alignment.topCenter,
-          end: horizontal ? Alignment.centerRight : Alignment.bottomCenter,
+          begin: centerStartAlong(axis),
+          end: centerEndAlong(axis),
           colors: const [
             Color(0x00000000),
             Color(0xFF000000),

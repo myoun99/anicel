@@ -140,9 +140,11 @@ Rect timelineFrameSpanRect(
   }
   final main = placement.anchorAtTrailingEdge ? anchor - mainExtent : anchor;
   final cross = placement.crossExtent ?? crossAxisExtent;
-  return axis == Axis.horizontal
-      ? Rect.fromLTWH(main, placement.crossInset, mainExtent, cross)
-      : Rect.fromLTWH(placement.crossInset, main, cross, mainExtent);
+  return rectAlong(
+    axis,
+    along: (from: main, to: main + mainExtent),
+    across: (from: placement.crossInset, to: placement.crossInset + cross),
+  );
 }
 
 /// Positions its children by frame span off the LIVE geometry.
@@ -368,9 +370,14 @@ class RenderTimelineFrameSpanLayout extends RenderBox
     _windowClip.layer = context.pushClipRect(
       needsCompositing,
       offset,
-      axis == Axis.horizontal
-          ? Rect.fromLTRB(0, largest.top, size.width, largest.bottom)
-          : Rect.fromLTRB(largest.left, 0, largest.right, size.height),
+      rectAlong(
+        axis,
+        along: (from: 0, to: extentAlong(axis, size)),
+        across: (
+          from: startAcross(axis, largest),
+          to: endAcross(axis, largest),
+        ),
+      ),
       defaultPaint,
       oldLayer: _windowClip.layer,
     );

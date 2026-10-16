@@ -286,7 +286,7 @@ double timelineBlockWordStart({
     growth: slot.growth,
   );
   final acrossRoom = extentAcross(axis, room.size);
-  final acrossStart = axis == Axis.horizontal ? room.top : room.left;
+  final acrossStart = startAcross(axis, room);
   final across =
       acrossStart +
       (acrossRoom - extentAcross(axis, fitted)) *

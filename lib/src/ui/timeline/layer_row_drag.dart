@@ -27,7 +27,7 @@ import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
-import 'axis_turn.dart' show partAcross;
+import 'axis_turn.dart' show centerEndAlong, centerStartAlong, partAcross;
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'memo_token.dart' show ByIdentity;
@@ -1042,9 +1042,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           child: label == null
               ? null
               : Align(
-                  alignment: widget.axis == Axis.horizontal
-                      ? Alignment.centerRight
-                      : Alignment.bottomCenter,
+                  alignment: centerEndAlong(widget.axis),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: DecoratedBox(
@@ -1089,7 +1087,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
         ? bar
         : Stack(
             clipBehavior: Clip.none,
-            alignment: horizontal ? Alignment.centerLeft : Alignment.topCenter,
+            alignment: centerStartAlong(widget.axis),
             children: [
               bar,
               // The drop does something structural, so it says so BEFORE

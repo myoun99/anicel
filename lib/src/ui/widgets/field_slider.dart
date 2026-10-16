@@ -1156,10 +1156,13 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
     // same fact twice.
     final fill = Paint()..color = accent;
     if (far > near) {
+      final extent = far - near;
       canvas.drawRect(
-        axis == Axis.horizontal
-            ? Rect.fromLTWH(near, 0, far - near, size.height)
-            : Rect.fromLTWH(0, near, size.width, far - near),
+        rectAlong(
+          axis,
+          along: (from: near, to: near + extent),
+          across: (from: 0, to: extentAcross(axis, size)),
+        ),
         fill,
       );
     }
