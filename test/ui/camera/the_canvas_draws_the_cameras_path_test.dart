@@ -103,6 +103,9 @@ void main() {
   List<SheetMark> marks(WidgetTester tester) =>
       tester.widget<CameraPathOverlay>(path()).marks;
 
+  List<Offset> centreTrail(WidgetTester tester) =>
+      tester.widget<CameraPathOverlay>(path()).centreTrail;
+
   /// What the keys are written as — at the size a key's label takes.
   List<String> labels(WidgetTester tester) => [
     for (final mark in marks(tester))
@@ -411,18 +414,24 @@ void main() {
       'and goes with the playhead', (tester) async {
     final (s, _) = panning();
     addTearDown(s.dispose);
+    await pumpArea(tester, s);
+    // The line the camera's middle walks, every half frame from 0 to 5.
+    final whole = centreTrail(tester);
+    expect(whole, hasLength(2 * 5 + 1), reason: '⛔전제');
     CameraPathSettings.settings.value = const CameraPathSettings(
       range: CameraPathRange.aroundPlayhead,
       around: 2,
     );
-    await pumpArea(tester, s);
+    await tester.pump();
     expect(labels(tester), ['1f']);
     expect(armsOf(tester), 2 + 4, reason: 'the key at 0, frames 1 and 2');
+    expectPoints(centreTrail(tester), whole.sublist(0, 2 * 2 + 1));
 
     s.selectFrameIndex(5);
     await tester.pump();
     expect(labels(tester), ['6f']);
     expect(armsOf(tester), 2 + 4, reason: 'frames 3 and 4, the key at 5');
+    expectPoints(centreTrail(tester), whole.sublist(2 * 3));
 
     await drain(tester);
   });
