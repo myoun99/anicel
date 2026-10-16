@@ -661,52 +661,79 @@ void main() {
     expect(painted.bottom, lessThanOrEqualTo(room.bottom + 1e-6));
   });
 
-  testWidgets('an instruction\'s writing stays inside its span', (
-    tester,
-  ) async {
+  /// A two-cell instruction writing FROMHERE / TOTHERE, under [ambient].
+  Future<void> pumpInstruction(
+    WidgetTester tester, {
+    TextStyle ambient = const TextStyle(),
+  }) async {
     const cell = 12.0;
     const cells = 2;
     await tester.pumpWidget(
       MaterialApp(
         home: Align(
           alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: cell * 8,
-            height: rowExtent,
-            child: TimelineFixedFrameSpanLayer(
-              geometry: const TimelineFrameGeometry(
-                frameCellExtent: cell,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: 8,
-              ),
-              crossAxisExtent: rowExtent,
-              axis: Axis.horizontal,
-              children: timelineRowInstructionOverlays(
-                layer: Layer(
-                  id: const LayerId('cam'),
-                  name: 'CAM',
-                  kind: LayerKind.instruction,
-                  frames: const [],
-                  timeline: const {},
-                  instructions: {
-                    0: const InstructionEvent(
-                      instructionId: 'pan',
-                      length: cells,
-                      valueA: 'FROMHERE',
-                      valueB: 'TOTHERE',
-                    ),
-                  },
+          child: DefaultTextStyle.merge(
+            style: ambient,
+            child: SizedBox(
+              width: cell * 8,
+              height: rowExtent,
+              child: TimelineFixedFrameSpanLayer(
+                geometry: const TimelineFrameGeometry(
+                  frameCellExtent: cell,
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: 8,
                 ),
-                frameStartIndex: 0,
-                frameEndIndexExclusive: 8,
+                crossAxisExtent: rowExtent,
                 axis: Axis.horizontal,
-                defById: CameraInstructionSet.standard.defById,
+                children: timelineRowInstructionOverlays(
+                  layer: Layer(
+                    id: const LayerId('cam'),
+                    name: 'CAM',
+                    kind: LayerKind.instruction,
+                    frames: const [],
+                    timeline: const {},
+                    instructions: {
+                      0: const InstructionEvent(
+                        instructionId: 'pan',
+                        length: cells,
+                        valueA: 'FROMHERE',
+                        valueB: 'TOTHERE',
+                      ),
+                    },
+                  ),
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: 8,
+                  axis: Axis.horizontal,
+                  defById: CameraInstructionSet.standard.defById,
+                ),
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // The A/B names print as a frame block's name does — through the one
+  // size a key's name reads too (F-367). ⚠️Asked under a size of its own:
+  // a bare ambient falls back to 12, which a fixed 12 would match unseen.
+  testWidgets('an instruction\'s writing prints in a frame block word\'s '
+      'type — the ambient size', (tester) async {
+    await pumpInstruction(tester, ambient: const TextStyle(fontSize: 13));
+    for (final text in ['FROMHERE', 'TOTHERE']) {
+      expect(
+        tester.widget<TimelineBlockText>(findBlockText(text)).style.fontSize,
+        13,
+        reason: '$text: what a frame block\'s word is set in under the same '
+            'type',
+      );
+    }
+  });
+
+  testWidgets('an instruction\'s writing stays inside its span', (
+    tester,
+  ) async {
+    await pumpInstruction(tester);
     final span = tester.getRect(
       find.byKey(const ValueKey<String>('timeline-instruction-cam-0')),
     );
