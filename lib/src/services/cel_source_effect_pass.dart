@@ -295,17 +295,16 @@ BitmapSurface celSurfaceWithSourceEffects(
   // the surface, and rebuilding this list per tile allocated a list per
   // tile per frame while a slider was moving.
   final signature = [for (final key in keys) ...key.signature];
-  final cached = _signedHit(_derived, surface, signature);
-  if (cached != null) {
-    return cached;
-  }
-  final result = _applyKeys(surface, keys, signature);
   // ONE entry per surface, deliberately. Dragging Tolerance makes a new
   // signature every frame, and holding them all would retain a derived copy
   // of the cel per slider step; the value being dragged is the only one
   // anyone is looking at.
-  _derived[surface] = _Signed(signature, result);
-  return result;
+  return signedMemo(
+    _derived,
+    surface,
+    signature,
+    () => _applyKeys(surface, keys, signature),
+  );
 }
 
 /// [straight] — straight rgba, a cel's bytes as its texts make them — with
@@ -389,19 +388,18 @@ BitmapTile _keyedTile(
   List<double> signature,
   int tileSize,
 ) {
-  final cached = _signedHit(_keyedTiles, tile, signature);
-  if (cached != null) {
-    return cached;
-  }
-  final keyed =
-      rewriteTileLazily(
+  return signedMemo(
+    _keyedTiles,
+    tile,
+    signature,
+    () =>
+        rewriteTileLazily(
+          tile,
+          tileSize,
+          (view) => _keyedPixels(view, keys, () => Uint8List.fromList(view)),
+        ) ??
         tile,
-        tileSize,
-        (view) => _keyedPixels(view, keys, () => Uint8List.fromList(view)),
-      ) ??
-      tile;
-  _keyedTiles[tile] = _Signed(signature, keyed);
-  return keyed;
+  );
 }
 
 /// [keys] over the straight rgba [view]: every pixel's alpha what they
@@ -517,33 +515,43 @@ KeyRgbaTables _keyTables(List<CelColorKey> keys) {
 
 /// A memo entry: what was derived, plus the VALUES it was derived from.
 ///
-/// ⛔Values, not a hash — see [CelColorKey.signature]. The two grains
-/// (surface and tile) differ only in what `T` is, so they are one class.
-class _Signed<T> {
-  const _Signed(this.signature, this.value);
+/// ⛔Values, not a hash — see [CelColorKey.signature]. The grains (a
+/// surface, a tile, a carried float's painter) differ only in what `T` is,
+/// so they are one class.
+class SignedEntry<T> {
+  const SignedEntry(this.signature, this.value);
 
   final List<double> signature;
   final T value;
 }
 
-/// The memo's one lookup: an entry keyed on [key]'s identity counts only
-/// while its signature still says the same thing.
-T? _signedHit<T>(
-  Expando<_Signed<T>> memo,
-  Object key,
+/// What [make] derives from [source] under [signature]: answered from
+/// [memo] — an entry kept on [source]'s identity — while that entry was made
+/// from the same values, and otherwise made and kept in its place. ONE entry
+/// per source; the newest values win.
+///
+/// ★The one memo of what a row's keys make of a thing — the keyed surface,
+/// the keyed tile and the carried float's keyed painter. The float's was
+/// written once more beside these two before it was shared (2026-10-16).
+T signedMemo<T>(
+  Expando<SignedEntry<T>> memo,
+  Object source,
   List<double> signature,
+  T Function() make,
 ) {
-  final cached = memo[key];
-  return cached != null && listEquals(cached.signature, signature)
-      ? cached.value
-      : null;
+  final kept = memo[source];
+  if (kept != null && listEquals(kept.signature, signature)) {
+    return kept.value;
+  }
+  final value = make();
+  memo[source] = SignedEntry(signature, value);
+  return value;
 }
 
 /// One keyed tile per source tile — the newest values win, for the reason
 /// [_derived] states about a slider being dragged.
-final Expando<_Signed<BitmapTile>> _keyedTiles = Expando<_Signed<BitmapTile>>(
-  'celSourceEffectTiles',
-);
+final Expando<SignedEntry<BitmapTile>> _keyedTiles =
+    Expando<SignedEntry<BitmapTile>>('celSourceEffectTiles');
 
 /// The keyed copy this pass made of [tile] and still holds, through whatever
 /// keys it was last made with — [tile] itself where the keys changed
@@ -558,5 +566,5 @@ BitmapTile? keyedCopyOf(BitmapTile tile) => _keyedTiles[tile]?.value;
 /// object that misses and recomputes — the same contract
 /// `BitmapTileImageCache` runs on. The [Expando] releases an entry when the
 /// source surface itself goes.
-final Expando<_Signed<BitmapSurface>> _derived =
-    Expando<_Signed<BitmapSurface>>('celSourceEffectSurfaces');
+final Expando<SignedEntry<BitmapSurface>> _derived =
+    Expando<SignedEntry<BitmapSurface>>('celSourceEffectSurfaces');

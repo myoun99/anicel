@@ -11,7 +11,7 @@ import '../../models/layer_effect.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_source_effect_pass.dart'
-    show celSourceEffectSignature;
+    show SignedEntry, celSourceEffectSignature, signedMemo;
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
@@ -286,22 +286,19 @@ bool _landsAlike(FloatLanding? a, FloatLanding? b) {
 /// The float's own surface through its row's keys, by the surface: one per
 /// lift (`_buildFloatSurface` keeps it for the session), so a carry moves
 /// the keyed pixels and makes none.
-final Expando<({List<double> keys, BitmapSurfacePainter painter})>
-_keyedFloats = Expando('selectionFloatKeyed');
+final Expando<SignedEntry<BitmapSurfacePainter>> _keyedFloats = Expando(
+  'selectionFloatKeyed',
+);
 
 BitmapSurfacePainter _keyedFloatPainter(
   BitmapSurface floatSurface,
   List<ResolvedLayerEffect> keys,
-) {
-  final signature = celSourceEffectSignature(keys);
-  final kept = _keyedFloats[floatSurface];
-  if (kept != null && listEquals(kept.keys, signature)) {
-    return kept.painter;
-  }
-  final painter = floatPainter(floatSurface, keys);
-  _keyedFloats[floatSurface] = (keys: signature, painter: painter);
-  return painter;
-}
+) => signedMemo(
+  _keyedFloats,
+  floatSurface,
+  celSourceEffectSignature(keys),
+  () => floatPainter(floatSurface, keys),
+);
 
 /// A painter of what floats — pixels a hand carries, as the row they float
 /// in shows them ([celSurfaceAsShown], through its leading [keys]): drawn in
