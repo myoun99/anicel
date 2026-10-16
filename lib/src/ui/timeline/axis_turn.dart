@@ -138,6 +138,11 @@ double extentAlong(Axis axis, Size size) =>
 double extentAcross(Axis axis, Size size) =>
     axis == Axis.horizontal ? size.height : size.width;
 
+/// The part of a movement that runs ALONG [axis] — what moves a scroller
+/// on that axis.
+double partAlong(Axis axis, Offset offset) =>
+    axis == Axis.horizontal ? offset.dx : offset.dy;
+
 /// A canvas point [along] the axis and [across] it — the painter twin of
 /// [placedAlong]. Called per bucket in the waveform loop, so it is a
 /// top-level one-expression function and not a per-paint closure.

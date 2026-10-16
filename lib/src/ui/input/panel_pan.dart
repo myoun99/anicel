@@ -13,6 +13,8 @@ import '../../models/app_input_settings.dart'
     show AppInput, CanvasTouchDragAction;
 import '../canvas/canvas_view_hold.dart';
 import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
+import '../timeline/axis_turn.dart' show partAlong;
+import 'pan_slide.dart';
 import 'value_control_pointers.dart';
 
 /// The canvas's pan on a panel that SCROLLS: Space held, or a mouse button
@@ -34,6 +36,10 @@ import 'value_control_pointers.dart';
 /// fling included, and both ways at once like this pan (F-351,
 /// [TwoAxisDrag]) — unless its count is set to 「없음」
 /// ([_FingerGatedDevices], [_fingerDown]).
+///
+/// 🚨What it moves is what the press landed on, as a finger's: on the
+/// layer area, the layers and the area's own window in place of the frames
+/// ([PanSlide]).
 class PanelPanDriver extends StatefulWidget {
   const PanelPanDriver({
     super.key,
@@ -55,6 +61,14 @@ class _PanelPanDriverState extends State<PanelPanDriver>
   int? _pointer;
   Offset _last = Offset.zero;
 
+  /// What [_pointer]'s press landed on, moved in place of the panel's
+  /// scrollers along its axis.
+  PanSlide? _slide;
+
+  /// The panel under the gate — where that is asked, since a held view
+  /// keeps everything under the gate out of the hit test ([ViewHoldGate]).
+  final GlobalKey _underTheGate = GlobalKey();
+
   /// The fingers down on this panel, each with its hold in its arena while
   /// a finger landing after it could still make the gesture a 「없음」 count.
   final Map<int, GestureArenaEntry?> _fingers = {};
@@ -74,6 +88,19 @@ class _PanelPanDriverState extends State<PanelPanDriver>
     }
     _pointer = event.pointer;
     _last = event.position;
+    // The hand stops a coasting panel before it asks what it landed on:
+    // while a sheet coasts, what it shows is out of the hit test (PEN-9).
+    for (final controller in widget.controllers) {
+      for (final position in controller.positions) {
+        if (position.isScrollingNotifier.value) {
+          position.jumpTo(position.pixels);
+        }
+      }
+    }
+    _slide = panSlideUnder(
+      event,
+      within: _underTheGate.currentContext?.findRenderObject() as RenderBox?,
+    );
     claimPointerForValueControl(event.pointer);
   }
 
@@ -145,11 +172,14 @@ class _PanelPanDriverState extends State<PanelPanDriver>
     }
     final delta = event.position - _last;
     _last = event.position;
+    final slide = _slide;
     for (final controller in widget.controllers) {
       for (final position in controller.positions) {
-        final along = position.axis == Axis.horizontal ? delta.dx : delta.dy;
+        if (!panMoves(position, slide)) {
+          continue;
+        }
         // The content goes WITH the hand: dragging down shows what was above.
-        final to = (position.pixels - along).clamp(
+        final to = (position.pixels - partAlong(position.axis, delta)).clamp(
           position.minScrollExtent,
           position.maxScrollExtent,
         );
@@ -158,6 +188,7 @@ class _PanelPanDriverState extends State<PanelPanDriver>
         }
       }
     }
+    slide?.slideWithHand(delta);
   }
 
   void _end(PointerEvent event) {
@@ -169,6 +200,7 @@ class _PanelPanDriverState extends State<PanelPanDriver>
       return;
     }
     _pointer = null;
+    _slide = null;
     releasePointerForValueControl(event.pointer);
   }
 
@@ -195,7 +227,9 @@ class _PanelPanDriverState extends State<PanelPanDriver>
       onPointerCancel: _end,
       child: ScrollConfiguration(
         behavior: behavior.copyWith(dragDevices: _devices),
-        child: ViewHoldGate(child: widget.child),
+        child: ViewHoldGate(
+          child: KeyedSubtree(key: _underTheGate, child: widget.child),
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../services/input/pen_sidecars.dart';
+import 'pan_slide.dart';
 import 'pen_friendly_scroll_controller.dart';
 import 'scroller_drive.dart';
 
@@ -34,6 +35,11 @@ import 'scroller_drive.dart';
 ///    drag, and a sheet that cannot scroll either way takes no drag at all;
 ///  * a control, an edit drag or a list on the sheet is offered the press
 ///    before this and answers first, as it did before.
+///
+/// 🚨One drag, but not always the same two axes: a pull that starts on the
+/// layer area moves the layer area — the layers, and the area's own window
+/// in place of the frames ([PanSlide], F-351: 「레이어쪽을 잡으면
+/// 레이어영역이 팬 작동하도록」).
 ///
 /// ⚠️A pull along an axis that cannot scroll is still the sheet's while the
 /// other axis can — the axes' own drags kept it with the press hold, and a
@@ -145,25 +151,63 @@ class _SheetDrag extends PanGestureRecognizer {
 
   List<TwoAxisScrollController> axes = const [];
 
+  /// The latest press — what it landed on is asked when the drag is first
+  /// told of it ([_down]), which a press after the first is not.
+  PointerEvent? _press;
+
   /// The axes that could scroll when the press landed — the ones whose
-  /// scroller would have taken it.
+  /// scroller would have taken it — that the pull moves.
   List<ScrollerDrive> _drives = const [];
+
+  /// The ones it does not: along what the press landed on, when that slides
+  /// ([panMoves]). The press still stops them, as a press anywhere on the
+  /// sheet does.
+  List<ScrollerDrive> _stilled = const [];
+
+  /// What the press landed on, when it can slide — moved in place of the
+  /// axis it slides along.
+  PanSlide? _slide;
 
   /// How far the hand has gone along each axis, counted the way each axis's
   /// own drag counted it.
   Offset _moved = Offset.zero;
 
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    _press = event;
+    super.addAllowedPointer(event);
+  }
+
+  @override
+  void addAllowedPointerPanZoom(PointerPanZoomStartEvent event) {
+    _press = event;
+    super.addAllowedPointerPanZoom(event);
+  }
+
   void _down(DragDownDetails details) {
     _moved = Offset.zero;
-    _drives = [
+    final scrollers = [
       for (final axis in axes)
         for (final position in axis.positions)
           if (position.hasContentDimensions &&
               position.physics.shouldAcceptUserOffset(position))
             ScrollerDrive(position)..hold(),
     ];
-    if (_drives.isNotEmpty) {
-      final physics = _drives.first.position.physics;
+    // Asked once the press has stopped the sheet: while it coasts, what it
+    // shows is out of the hit test (PEN-9).
+    final press = _press;
+    final slide = press == null ? null : panSlideUnder(press);
+    _slide = slide != null && slide.canSlide ? slide : null;
+    _drives = [
+      for (final drive in scrollers)
+        if (panMoves(drive.position, slide)) drive,
+    ];
+    _stilled = [
+      for (final drive in scrollers)
+        if (!panMoves(drive.position, slide)) drive,
+    ];
+    if (scrollers.isNotEmpty) {
+      final physics = scrollers.first.position.physics;
       minFlingDistance = physics.minFlingDistance;
       minFlingVelocity = physics.minFlingVelocity;
       maxFlingVelocity = physics.maxFlingVelocity;
@@ -189,7 +233,10 @@ class _SheetDrag extends PanGestureRecognizer {
       PenSidecars.kindOf(pointerDeviceKind),
       gestureSettings,
     );
-    return _drives.isNotEmpty &&
+    // The sheet keeps a pull wherever on it the pull lands while any of it
+    // can move — one on the layer area included, when only the frames can
+    // (F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 안새게」).
+    return (_drives.isNotEmpty || _stilled.isNotEmpty || _slide != null) &&
         (_moved.dx.abs() > slop || _moved.dy.abs() > slop);
   }
 
@@ -203,19 +250,29 @@ class _SheetDrag extends PanGestureRecognizer {
     for (final drive in _drives) {
       drive.update(details);
     }
+    _slide?.slideWithHand(details.delta);
   }
 
   void _end(DragEndDetails details) {
     for (final drive in _drives) {
       drive.end(details);
     }
-    _drives = const [];
+    _letGo();
   }
 
   void _cancel() {
     for (final drive in _drives) {
       drive.cancel();
     }
+    _letGo();
+  }
+
+  void _letGo() {
+    for (final drive in _stilled) {
+      drive.cancel();
+    }
     _drives = const [];
+    _stilled = const [];
+    _slide = null;
   }
 }

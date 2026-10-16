@@ -30,6 +30,7 @@ import 'layer_rail_columns.dart';
 import 'memo_token.dart' show KeptPiece;
 import 'timeline_grid_metrics.dart';
 import '../input/control_press_claim.dart';
+import '../input/pan_slide.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -280,24 +281,59 @@ class LayerRailWindow extends StatelessWidget {
       availableExtent: availableExtent,
     );
     final content = math.max(naturalExtent, windowExtent);
-    // Per-pixel pushes move the paint offset only — the rail's own subtree
-    // is handed through as the builder's stable child and never rebuilds.
-    return ValueListenableBuilder<double>(
-      valueListenable: rail.offset,
-      child: child,
-      builder: (context, value, child) => _RailWindowBox(
-        axis: axis,
-        windowExtent: windowExtent,
-        naturalExtent: content,
-        offset: LayerRailExtent.clampOffset(
-          value,
+    // A pan that starts here pushes this window, not the frames beside it
+    // (F-351: 「레이어쪽을 잡으면 레이어영역이 팬 작동하도록」).
+    return PanSlideRegion(
+      slide: _WindowSlide(this),
+      // Per-pixel pushes move the paint offset only — the rail's own
+      // subtree is handed through as the builder's stable child and never
+      // rebuilds.
+      child: ValueListenableBuilder<double>(
+        valueListenable: rail.offset,
+        child: child,
+        builder: (context, value, child) => _RailWindowBox(
+          axis: axis,
           windowExtent: windowExtent,
           naturalExtent: content,
+          offset: LayerRailExtent.clampOffset(
+            value,
+            windowExtent: windowExtent,
+            naturalExtent: content,
+          ),
+          child: child,
         ),
-        child: child,
       ),
     );
   }
+}
+
+/// [window] as a pan moves it: pushed along the rail by the push its
+/// scrollbar makes ([LayerRailExtent.pushTo]).
+class _WindowSlide implements PanSlide {
+  const _WindowSlide(this.window);
+
+  final LayerRailWindow window;
+
+  @override
+  Axis get axis => window.axis;
+
+  @override
+  bool get canSlide =>
+      LayerRailExtent.maximumOffset(
+        windowExtent: window.rail.windowExtent(
+          window.naturalExtent,
+          availableExtent: window.availableExtent,
+        ),
+        naturalExtent: window.naturalExtent,
+      ) >
+      0;
+
+  @override
+  void slideWithHand(Offset delta) => window.rail.pushTo(
+    window.rail.offset.value - partAlong(axis, delta),
+    naturalExtent: window.naturalExtent,
+    availableExtent: window.availableExtent,
+  );
 }
 
 class _RailWindowBox extends SingleChildRenderObjectWidget {
