@@ -92,6 +92,20 @@ void main() {
       expect(next.panX, 0);
     });
 
+    test('a bar sees as much of the panel as runs along its own axis', () {
+      // A panel wider than it is tall: the cases above are square, and
+      // read the same whichever side a bar measured.
+      CanvasViewportPanMetrics barOn(Axis axis) => CanvasViewportPanMetrics(
+        axis: axis,
+        viewport: CanvasViewport(zoom: 1),
+        editorViewportSize: const Size(300, 200),
+        canvasSize: const CanvasSize(width: 100, height: 100),
+      );
+
+      expect(barOn(Axis.horizontal).visibleExtent, 300);
+      expect(barOn(Axis.vertical).visibleExtent, 200);
+    });
+
     test('a 90° rotated view tracks the rotated AABB (P8)', () {
       // 300×100 canvas rotated 90°: the horizontal footprint becomes the
       // canvas HEIGHT (100·zoom = 200); the paper×3 runway (UI-R18 #16)
