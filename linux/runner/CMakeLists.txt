@@ -10,6 +10,7 @@ add_executable(${BINARY_NAME}
   "main.cc"
   "my_application.cc"
   "pen_sidecar.cc"
+  "window_full_screen.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
 )
 

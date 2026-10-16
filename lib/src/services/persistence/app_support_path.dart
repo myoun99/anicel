@@ -126,6 +126,7 @@ const List<String> appSettingsEntries = <String>[
   'save_settings.json',
   'shortcut_overrides.json',
   'ui_scale.json',
+  'window.json',
   'workspace_colors.json',
   'workspace_layout.json',
 ];

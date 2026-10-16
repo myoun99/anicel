@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include "pen_sidecar.h"
+#include "window_full_screen.h"
 
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
@@ -72,6 +73,10 @@ static void my_application_activate(GApplication* application) {
   // The pen sidecar stream (PEN-4): restores pen pressure the embedder
   // drops (flutter/flutter#63209).
   qa_pen_sidecar_register(window, view);
+
+  // The window's full screen (I-103-Q2), switched from Dart and reported
+  // back.
+  anicel_window_full_screen_register(window, view);
 
   // Show the window when Flutter renders.
   // Requires the view to be realized so we can start rendering.

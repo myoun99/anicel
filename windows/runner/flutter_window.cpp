@@ -76,6 +76,23 @@ constexpr char kScreenReaderChannel[] = "anicel/screen_reader";
 constexpr char kKeyboardChannel[] = "anicel/keyboard";
 constexpr char kSetImeOpen[] = "setImeOpen";
 
+// 🗣️I-103-Q2 — THE WINDOW GOES FULL SCREEN WHEN DART SAYS SO.
+//
+// 유저 2026-10-16: 「데스크톱만 켜고 끄기, 모바일은 지금처럼 늘 전체 화면」.
+// On, the frame, the title bar and the taskbar give way and the window
+// covers its monitor; off, it is back where it stood, at its size, maximized
+// if it was. Raymond Chen's way ("How do I switch a window between normal
+// and fullscreen?"): the overlapped-window style off and the monitor's whole
+// rect on, the placement kept to come back to.
+//
+// The runner says what the window did on the same channel
+// (kFullScreenChanged) — as the Mac's and Linux's runners say what their
+// OS's own switch did — and Dart's mark follows that, never the asking.
+// test/architecture/the_window_is_switched_one_way_test.dart reads these.
+constexpr char kWindowChannel[] = "anicel/window";
+constexpr char kSetFullScreen[] = "setFullScreen";
+constexpr char kFullScreenChanged[] = "fullScreenChanged";
+
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -101,6 +118,7 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   ListenForTheIme(flutter_controller_->view()->GetNativeWindow());
+  ListenForFullScreen();
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -117,8 +135,9 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
-  // The channel speaks through the engine's messenger, so it goes first.
+  // The channels speak through the engine's messenger, so they go first.
   ime_channel_ = nullptr;
+  window_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -207,4 +226,54 @@ void FlutterWindow::ListenForTheIme(HWND view) {
         ::ImmAssociateContextEx(view, nullptr, *open ? IACE_DEFAULT : 0);
         result->Success();
       });
+}
+
+void FlutterWindow::ListenForFullScreen() {
+  window_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kWindowChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  window_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        const bool* on = std::get_if<bool>(call.arguments());
+        if (call.method_name() != kSetFullScreen || on == nullptr) {
+          result->NotImplemented();
+          return;
+        }
+        SetFullScreen(*on);
+        result->Success();
+      });
+}
+
+void FlutterWindow::SetFullScreen(bool on) {
+  HWND window = GetHandle();
+  if (on && !full_screen_) {
+    MONITORINFO monitor = {sizeof(monitor)};
+    if (!::GetWindowPlacement(window, &placement_before_full_screen_) ||
+        !::GetMonitorInfo(
+            ::MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor)) {
+      return;
+    }
+    style_before_full_screen_ = ::GetWindowLongPtr(window, GWL_STYLE);
+    ::SetWindowLongPtr(window, GWL_STYLE,
+                       style_before_full_screen_ & ~WS_OVERLAPPEDWINDOW);
+    const RECT& screen = monitor.rcMonitor;
+    ::SetWindowPos(window, HWND_TOP, screen.left, screen.top,
+                   screen.right - screen.left, screen.bottom - screen.top,
+                   SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    full_screen_ = true;
+  } else if (!on && full_screen_) {
+    ::SetWindowLongPtr(window, GWL_STYLE, style_before_full_screen_);
+    ::SetWindowPlacement(window, &placement_before_full_screen_);
+    ::SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                       SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    full_screen_ = false;
+  }
+  // Said whether it moved or already stood so: Dart's mark is the window's.
+  window_channel_->InvokeMethod(
+      kFullScreenChanged,
+      std::make_unique<flutter::EncodableValue>(full_screen_));
 }

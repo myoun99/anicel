@@ -28,9 +28,9 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// panels ([setPanelActions]) and the brush library's ([setBrushActions])
   /// as they stand.
   List<EditorActionDefinition> get definitions => _definitions;
-  List<EditorActionDefinition> _definitions = editorActionDefinitions;
+  List<EditorActionDefinition> _definitions = editorActionsHere();
   Map<String, EditorActionDefinition> _definitionsById = {
-    for (final definition in editorActionDefinitions) definition.id: definition,
+    for (final definition in editorActionsHere()) definition.id: definition,
   };
 
   List<EditorActionDefinition> _panelActions = const [];
@@ -76,7 +76,7 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   void _relist() {
     _definitions = [
-      ...editorActionDefinitions,
+      ...editorActionsHere(),
       ..._panelActions,
       ..._brushActions,
     ];

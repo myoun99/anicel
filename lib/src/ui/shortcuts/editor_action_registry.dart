@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,6 +11,7 @@ import '../../models/layer_effect.dart' show EffectKind;
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../native/window_full_screen.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart'
@@ -59,6 +61,7 @@ class EditorActionDefinition {
     this.brushPress,
     this.menuRow = false,
     this.panelButton = false,
+    this.platforms,
   }) : composedName = null;
 
   /// An action whose name is COMPOSED rather than tabled: [name] says it in
@@ -81,7 +84,8 @@ class EditorActionDefinition {
        pixelVerb = null,
        pixelClipboardVerb = null,
        sheetMove = null,
-       brushPress = null;
+       brushPress = null,
+       platforms = null;
 
   final String id;
   final String label;
@@ -192,6 +196,17 @@ class EditorActionDefinition {
   /// (`PanelKeys` — the tool in hand's panels, and the panels of no tool).
   /// Like [menuRow], it has no road of its own to what the button does.
   final bool panelButton;
+
+  /// The platforms the action is offered on — null: every one. A platform
+  /// with no button for the action has no key for it either: the shortcut
+  /// list does not show it there ([offeredHere]).
+  ///
+  /// 🗣️I-103-Q2 (유저 2026-10-16): the window's full screen is a switch on
+  /// the desktops only — 「아이패드 · 안드로이드에는 이 줄이 없다」.
+  final Set<TargetPlatform>? platforms;
+
+  /// Whether this platform offers the action ([platforms]).
+  bool get offeredHere => platforms?.contains(defaultTargetPlatform) ?? true;
 }
 
 /// The move that walks [arrow] on the timeline: its one-frame step when
@@ -871,6 +886,9 @@ abstract final class EditorActionIds {
   static const bakePanels = 'edit-bake-panels';
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
+
+  /// The window's full screen (I-103-Q2) — the desktops' only.
+  static const fullScreen = 'window-full-screen';
 
   /// The floating region's fold chevron (I-40).
   static const regionFold = 'window-region-fold';
@@ -2101,6 +2119,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+  // 🗣️I-103-Q2 (유저 2026-10-16): a row of the workspace drawer and a row of
+  // this list. Its default key waits on I-103-Q3 — the F11 the question
+  // named is the overlay blend's (I-31's F1–F12, in order).
+  const EditorActionDefinition(
+    id: EditorActionIds.fullScreen,
+    label: 'Full screen',
+    shelf: ShortcutShelf.panels,
+    defaultActivators: [],
+    menuRow: true,
+    platforms: WindowFullScreen.platforms,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.regionFold,
     label: 'Fold / unfold the timeline region',
@@ -2114,4 +2143,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+];
+
+/// The registry as this platform offers it — every action but those of a
+/// button it has none of ([EditorActionDefinition.offeredHere]): what the
+/// shortcut list holds (`EditorShortcutBindings`).
+List<EditorActionDefinition> editorActionsHere() => [
+  for (final definition in editorActionDefinitions)
+    if (definition.offeredHere) definition,
 ];

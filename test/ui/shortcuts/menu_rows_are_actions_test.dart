@@ -7,6 +7,8 @@
 // one does what the row does — only where the row can be pressed.
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'
+    show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +16,9 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_group.dart';
 import 'package:anicel/src/models/brush_group_id.dart';
+import 'package:anicel/src/native/window_full_screen.dart';
+import 'package:anicel/src/services/persistence/app_window_store.dart';
+import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/panels/workspace_panels_menu.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
@@ -89,7 +94,7 @@ void main() {
           EditorActionIds.fileExport,
         ],
       );
-      expect(menuActions, hasLength(25));
+      expect(menuActions, hasLength(26));
       expect(
         editorActionDefinitions.last.shelf,
         ShortcutShelf.panels,
@@ -171,7 +176,7 @@ void main() {
       expect(told, 1);
       expect(
         bindings.definitions
-            .skip(editorActionDefinitions.length)
+            .skip(editorActionsHere().length)
             .map((row) => row.id),
         // A paint tool has its own brush rows (F-319): the brush tool's
         // Inks, then the eraser's.
@@ -352,6 +357,67 @@ void main() {
         silent.where((key) => !key.startsWith('menu-recent-')),
         isEmpty,
       );
+    });
+
+    testWidgets('🗣️I-103-Q2: the window\'s full screen is a row and an '
+        'action on the desktops — its key asks the window, its mark is what '
+        'the window said — and neither on the tablets', (tester) async {
+      final messenger = tester.binding.defaultBinaryMessenger;
+      final asked = <Object?>[];
+      messenger.setMockMethodCallHandler(WindowFullScreen.channel, (
+        call,
+      ) async {
+        asked.add(call.arguments);
+        return null;
+      });
+      addTearDown(
+        () =>
+            messenger.setMockMethodCallHandler(WindowFullScreen.channel, null),
+      );
+      debugSettingsFileWrite = (_, _) async {};
+      addTearDown(() => debugSettingsFileWrite = null);
+      final folder = Directory.systemTemp.createTempSync('window');
+      deleteAfterSessionEnds(folder);
+      Future<void> windowSays(bool on) => messenger.handlePlatformMessage(
+        WindowFullScreen.channel.name,
+        WindowFullScreen.channel.codec.encodeMethodCall(
+          MethodCall(WindowFullScreen.changedMethod, on),
+        ),
+        (_) {},
+      );
+      PanelFlyoutItem? row() => strip(tester)
+          .menuRows(stripContext(tester))
+          .where((row) => row.shortcuts.contains(EditorActionIds.fullScreen))
+          .singleOrNull;
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      await tester.runAsync(
+        () => WindowFullScreen.restore(
+          AppWindowStore(filePath: '${folder.path}/window.json'),
+        ),
+      );
+      await pumpApp(tester);
+      expect(
+        appShortcuts(tester).definitions.map((action) => action.id),
+        contains(EditorActionIds.fullScreen),
+      );
+      expect(row()?.checked, isFalse);
+      await pressKeyOf(tester, EditorActionIds.fullScreen);
+      expect(asked, [true]);
+      expect(row()?.checked, isFalse, reason: 'asked; the window has not gone');
+      await windowSays(true);
+      expect(row()?.checked, isTrue);
+      await windowSays(false);
+
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await tester.pumpWidget(const SizedBox());
+      await pumpApp(tester);
+      expect(row(), isNull);
+      expect(
+        appShortcuts(tester).definitions.map((action) => action.id),
+        isNot(contains(EditorActionIds.fullScreen)),
+      );
+      debugDefaultTargetPlatformOverride = null;
     });
 
     testWidgets('a row wears its action\'s name and key', (tester) async {

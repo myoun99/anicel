@@ -197,12 +197,12 @@ void main() {
       bindings.setBrushActions(brushActionsOf(groups, presets));
       expect(told, 1);
       expect(
-        bindings.definitions.take(editorActionDefinitions.length),
-        editorActionDefinitions,
+        bindings.definitions.take(editorActionsHere().length),
+        editorActionsHere(),
       );
       expect(
         bindings.definitions
-            .skip(editorActionDefinitions.length)
+            .skip(editorActionsHere().length)
             .map((row) => row.id),
         brushActionsOf(groups, presets).map((row) => row.id),
       );
@@ -238,7 +238,7 @@ void main() {
       // The library emptied: the rows go.
       bindings.setBrushActions(const []);
       expect(told, 3);
-      expect(bindings.definitions, editorActionDefinitions);
+      expect(bindings.definitions, editorActionsHere());
       expect(bindings.definitionFor(presetId('maru')), isNull);
     });
 

@@ -24,6 +24,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../native/device_battery.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart';
+import '../../native/window_full_screen.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
@@ -623,6 +624,21 @@ class EditorTopStrip extends StatelessWidget {
               ? () => panelsMenu.setRegionOnTop(!panelsMenu.regionOnTop)
               : null,
         ),
+        // 🗣️I-103-Q2 (유저 2026-10-16): 「데스크톱만 켜고 끄기, 모바일은
+        // 지금처럼 늘 전체 화면」 — a row on the three desktops and none on
+        // the iPad and Android, where there is nothing to switch. Its mark
+        // is the window's, as its runner last said ([WindowFullScreen.on]).
+        if (WindowFullScreen.offered)
+          _item(
+            id: 'window-full-screen',
+            label: editorActionLabel(EditorActionIds.fullScreen),
+            shortcuts: const [EditorActionIds.fullScreen],
+            icon: Icons.fullscreen,
+            checked: WindowFullScreen.on.value,
+            onPressed: () => unawaited(
+              WindowFullScreen.set(!WindowFullScreen.on.value),
+            ),
+          ),
         _item(
           id: 'window-reset-layout',
           label: editorActionLabel(EditorActionIds.resetLayout),

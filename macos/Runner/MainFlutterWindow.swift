@@ -579,8 +579,74 @@ final class PathGrantHandler {
   }
 }
 
+/// I-103-Q2 (user 2026-10-16: 「데스크톱만 켜고 끄기, 모바일은 지금처럼 늘
+/// 전체 화면」): the window's full screen — the Mac's own, its Space, the
+/// menu bar and the Dock giving way. Thrown when Dart asks, and REPORTED
+/// whenever it is thrown — the green button and the Window menu's ⌃⌘F
+/// throw the same switch without asking anyone — so the app's mark follows
+/// the window, never the asking.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class FullScreenSwitch: NSObject {
+  private weak var window: NSWindow?
+  private let channel: FlutterMethodChannel
+
+  init(window: NSWindow, messenger: FlutterBinaryMessenger) {
+    self.window = window
+    channel = FlutterMethodChannel(
+      name: "anicel/window", binaryMessenger: messenger)
+    super.init()
+    // The window AppKit lets go full screen, whatever the xib left it.
+    window.collectionBehavior.insert(.fullScreenPrimary)
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "setFullScreen", let on = call.arguments as? Bool
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.set(on)
+      result(nil)
+    }
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(entered),
+      name: NSWindow.didEnterFullScreenNotification, object: window)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(exited),
+      name: NSWindow.didExitFullScreenNotification, object: window)
+  }
+
+  /// Throws the switch where the window stands otherwise — the report comes
+  /// from the window once it has gone — and where it already stands so,
+  /// says so at once.
+  private func set(_ on: Bool) {
+    guard let window else {
+      return
+    }
+    if window.styleMask.contains(.fullScreen) == on {
+      report(on)
+    } else {
+      window.toggleFullScreen(nil)
+    }
+  }
+
+  @objc private func entered() {
+    report(true)
+  }
+
+  @objc private func exited() {
+    report(false)
+  }
+
+  private func report(_ on: Bool) {
+    channel.invokeMethod("fullScreenChanged", arguments: on)
+  }
+}
+
 class MainFlutterWindow: NSWindow {
   private let penStreamHandler = PenSidecarStreamHandler()
+
+  /// Held for the channel's sake, like the handlers beside it.
+  private var fullScreenSwitch: FullScreenSwitch?
 
   /// Held as a property for the same reason `penStreamHandler` is: the
   /// channel keeps no strong reference, and this object owns the open
@@ -598,6 +664,11 @@ class MainFlutterWindow: NSWindow {
       name: "qa_pen/macos",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
     penChannel.setStreamHandler(penStreamHandler)
+
+    // I-103-Q2: the window's full screen, switched and reported.
+    fullScreenSwitch = FullScreenSwitch(
+      window: self,
+      messenger: flutterViewController.engine.binaryMessenger)
 
     // PICK-2: the storage channel. macOS had none — `AppStorage` early
     // -returned for every non-mobile platform — so this is the first time

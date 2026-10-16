@@ -13,6 +13,8 @@ import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/services/persistence/app_ui_scale_store.dart';
+import 'src/services/persistence/app_window_store.dart';
+import 'src/native/window_full_screen.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
@@ -142,6 +144,11 @@ Future<void> main() async {
       PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 1.0,
     );
   }
+  // AWAITED like the scale, and for its reason (I-103-Q2: 「다음 실행 때도
+  // 기억한다」): a window the last run left full screen opens full screen,
+  // rather than opening and then jumping. One small file read, and on a
+  // desktop one call to its runner.
+  await WindowFullScreen.restore(AppWindowStore());
   // Read BEFORE this launch starts writing its own: an entry with no END
   // means the app died in the middle of that work, and a memory kill
   // leaves nothing else behind — no exception, no crash report, nothing

@@ -33,6 +33,14 @@ class FlutterWindow : public Win32Window {
   // and off everywhere else. The channel's constants say why.
   void ListenForTheIme(HWND view);
 
+  // Lets Dart put this window full screen and back (I-103-Q2). The
+  // channel's constants say why.
+  void ListenForFullScreen();
+
+  // Puts this window full screen over its monitor, or back where it stood,
+  // and says on the channel which it is now.
+  void SetFullScreen(bool on);
+
   // The project to run.
   flutter::DartProject project_;
 
@@ -42,6 +50,16 @@ class FlutterWindow : public Win32Window {
   // Where Dart says a text field took or let go of the keyboard.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       ime_channel_;
+
+  // Where Dart asks for full screen, and hears what the window did.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_channel_;
+
+  // Whether the window covers its monitor, and how it stood before — its
+  // place, its size, whether it was maximized, and its frame's style.
+  bool full_screen_ = false;
+  WINDOWPLACEMENT placement_before_full_screen_ = {sizeof(WINDOWPLACEMENT)};
+  LONG_PTR style_before_full_screen_ = 0;
 
   // Whether the app has drawn a frame, and so has someone to answer a close.
   bool app_can_answer_ = false;
