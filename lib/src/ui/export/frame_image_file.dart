@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../../models/export_spec.dart';
+import '../../models/project_background.dart';
 import '../editor_session_manager.dart';
 import 'export_frame_renderer.dart';
 import 'export_plan.dart';
@@ -39,18 +40,21 @@ typedef FrameImageFile = ({
 });
 
 /// Writes [task] as ONE still file under [spec] — its size, its layer FX,
-/// its format's ground and bytes. True when the file was written.
+/// its format's ground and bytes — with [paper] laid under its rows
+/// ([ExportFrameRenderer.renderComposite]). True when the file was written.
 ///
 /// 🚨The image tab's one picture and 「다른 이름으로 저장」's are THIS call
 /// (backlog-21-Q7, 유저 2026-09-30: 「내보내기 「이미지」와 같은 깨끗한 한
 /// 장」) — the same picture because it is the same code, never two
-/// spellings that agree today.
+/// spellings that agree today. What each asks of it differs only in what it
+/// hands in: the spec, and the paper.
 Future<bool> writeFrameImage(
   EditorSessionManager session,
   ExportFrameTask task,
   ImageExportSpec spec,
-  FrameImageFile file,
-) async {
+  FrameImageFile file, {
+  ProjectBackground? paper,
+}) async {
   final renderer = ExportFrameRenderer.forFormat(
     session: session,
     format: spec.format,
@@ -58,7 +62,8 @@ Future<bool> writeFrameImage(
   );
   final summary = await const PngSequenceExportService().exportImages(
     count: 1,
-    renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
+    renderImage: (_) =>
+        renderer.renderComposite(task, spec.sizeMode, paper: paper),
     fileNameFor: (_) => file.name,
     directoryPath: file.directory,
     encoderFor: (_) => stillEncoderFor(spec.format),

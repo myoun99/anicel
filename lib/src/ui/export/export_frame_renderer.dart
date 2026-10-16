@@ -355,11 +355,14 @@ class ExportFrameRenderer {
   /// picture (R5b) — ON for presentation renders (the アフレコ video),
   /// OFF for compositing sources: PNG sequences already stay unposed and
   /// unfaded for the same reason, and a thumbnail has no room for them.
+  /// [paper] is laid under the rows as the canvas lays it — none for a
+  /// compositing source, the project's for a picture of how it looks.
   Future<ui.Image> renderComposite(
     ExportFrameTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
     bool withNameTags = false,
+    ProjectBackground? paper,
   }) {
     _startFrame();
     return _composite(
@@ -369,6 +372,7 @@ class ExportFrameRenderer {
       nameTags: withNameTags
           ? session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex)
           : const [],
+      paper: paper,
     );
   }
 

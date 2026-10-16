@@ -2565,11 +2565,22 @@ Future<void> _saySavedOncePlaced(BuildContext context) =>
 /// canvas ([writeFrameImage]): the layers as they show, none of the editing
 /// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
 /// settings are that tab's defaults, not the ones last used there: this is
-/// Save As, not the export window — all but its ground: RGB on white, PNG
-/// as JPG, where the tab's PNG keeps its alpha.
+/// Save As, not the export window — all but its ground. Whatever the
+/// format, the picture stands on the project's PAPER as the canvas shows
+/// it, its colour and its alpha; where the paper is absent or thin, a file
+/// that keeps alpha (PNG) keeps nothing there and one that cannot (JPG)
+/// shows white.
 ///
-/// 🗣️F-335 (유저 10-10): 「다른이름저장의 png, 형식 기본값 RGB의
-/// 배경흰색으로」.
+/// 🗣️F-371 (유저 10-16): 「그냥 저번처럼 RGBA 고정으로. 다만 RGB로직
+/// 만든건 좋고 출력에서도 쓰니 그건 건들지않음. 설정만 RGBA로 할뿐」 ·
+/// 「바탕 앱에서 설정한 캔버스 색 따라감. 캔버스색이 없으면 투명인거고
+/// 그런식」 — the 캔버스 색 is the paper's swatch (`viewCanvasColor`) — and
+/// the JPG with it, as the rule for every picture Save As writes: 「jpg도
+/// 바탕 흰색고정말고 용지색으로 가자. 없음같은 투명한상황에서만 흰색으로
+/// 하고. 앞으로 다른이름저장은 기본적으로 anicel형식아닌 이미지형식은 그걸
+/// 기본으로」.
+/// ↩️F-335 (유저 10-10) had made the PNG RGB on white, as the JPG was:
+/// 「다른이름저장의 png, 형식 기본값 RGB의 배경흰색으로」.
 Future<void> saveFrameAsImage(
   BuildContext context,
   EditorSessionManager session,
@@ -2583,14 +2594,18 @@ Future<void> saveFrameAsImage(
     format: ExportFormatSelection(
       kind: ExportMediaKind.still,
       stillFormat: format,
-      channels: ExportChannels.rgb,
-      // ⚠️White because F-335 says white — not the window's default ground
+      // A format that keeps no alpha makes its file RGB itself
+      // ([ExportFormatSelection.effectiveChannels]).
+      channels: ExportChannels.rgba,
+      // ⚠️White where the paper lets the ground show in a file with no
+      // alpha — not the window's default ground
       // ([defaultExportBackgroundArgb]), which answers what the export
       // window starts on and may change on its own.
       backgroundArgb: 0xFFFFFFFF,
     ),
     sizeMode: ExportSizeMode.canvas,
   );
+  final paper = session.projectSettings.projectBackground;
   final name = sanitizeExportFileComponent(
     session.repository.requireProject().name,
   );
@@ -2613,12 +2628,18 @@ Future<void> saveFrameAsImage(
         doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
         windowKey: const ValueKey<String>('save-progress-dialog'),
         task: (report) async {
-          final written = await writeFrameImage(session, task, spec, (
-            directory: File(path).parent.path,
-            name: fileNameOfPath(path),
-            isCancelled: null,
-            onProgress: null,
-          ));
+          final written = await writeFrameImage(
+            session,
+            task,
+            spec,
+            (
+              directory: File(path).parent.path,
+              name: fileNameOfPath(path),
+              isCancelled: null,
+              onProgress: null,
+            ),
+            paper: paper,
+          );
           // ⛔Never 「Saved」 over no file: the throw takes the window down
           // before it says so, and the notice below says why.
           return written ? true : throw const _NothingWritten();
