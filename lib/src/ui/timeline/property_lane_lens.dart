@@ -36,6 +36,11 @@ abstract interface class LaneLens<Track> {
 
   /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
   Set<int> keyFrames(Track track);
+
+  /// The lane's keys, frame by frame — what the key window reads of the
+  /// keys a span covers (their names and types), whichever family the
+  /// lane is of (F-374).
+  Map<int, PropertyKey<Object?>> keysOf(Track track);
 }
 
 /// A lane that is ONE [PropertyTrack] field of its track: read by [get],
@@ -62,6 +67,43 @@ class PropertyLaneLens<Track, T> implements LaneLens<Track> {
     return next == null ? null : set(track, next);
   }
 
+  /// The key window's write on this lane (F-17 · I-89): the keys inside
+  /// [frames] named as [naming] says (a null name un-names them) — all
+  /// collapsed onto ONE value, the key the name already holds on
+  /// [adoptFrom] where it holds one — and then given [pick]. ONE write of
+  /// the lane ([PropertyTrack.withKeysWritten]); null when nothing changed.
+  /// What of the window's pick a lane takes is its family's to say.
+  ///
+  /// ⛔Written once for every lane that is a field of its track: the name
+  /// tag's took the transform's body when its lanes reached the window
+  /// (F-374).
+  Track? keysWritten(
+    Track track, {
+    required Set<int> frames,
+    ({String? name, int? preferredFrame})? naming,
+    Track? adoptFrom,
+    KeyTypePick pick = const KeyTypePick(),
+  }) => updateBeside(track, adoptFrom, <U>(
+    PropertyTrack<U> lane,
+    PropertyTrack<U>? holder,
+  ) {
+    final name = naming?.name;
+    return lane.withKeysWritten(
+      frames: frames,
+      naming: naming == null
+          ? null
+          : (
+              name: name,
+              adopted: name == null ? null : holder?.keyForName(name),
+              preferredFrame: naming.preferredFrame,
+            ),
+      pick: pick,
+    );
+  });
+
   @override
   Set<int> keyFrames(Track track) => get(track).keys.keys.toSet();
+
+  @override
+  Map<int, PropertyKey<Object?>> keysOf(Track track) => get(track).keys;
 }

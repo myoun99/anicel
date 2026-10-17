@@ -25,14 +25,10 @@ class LaneEditSubject {
   const LaneEditSubject({
     required this.transformTrack,
     required this.effects,
-    required this.commitTransform,
-    required this.commitEffects,
-    required this.previewTransform,
-    required this.previewEffects,
+    required this.commit,
+    required this.preview,
     this.referenceFx,
     this.seNameTag,
-    this.commitSeNameTag,
-    this.previewSeNameTag,
   });
 
   /// The transform lanes' keys, the effect chain's, and — on SE rows — the
@@ -48,25 +44,51 @@ class LaneEditSubject {
   final TransformTrack? referenceFx;
 
   /// The row's name tag (C①). Null on rows that cannot carry one — the
-  /// name-tag arm is only armed where a tag can exist, because the commit
-  /// verb throws for non-SE layers.
+  /// write of a tag throws for any row but an SE row's, so no edit of one
+  /// is made there.
   final SeNameTag? seNameTag;
 
-  /// The transform lanes go back home by home, in ONE step.
-  final void Function(TransformHomes next, String description)
-  commitTransform;
-  final void Function(List<LayerEffect> next, String description)
-  commitEffects;
-  final void Function(SeNameTag next, String description)? commitSeNameTag;
+  /// [seNameTag] keyed as [keys] — null where [keys] is, or the row
+  /// carries no tag.
+  SeNameTag? nameTagWith(SeNameTagTrack? keys) =>
+      keys == null ? null : seNameTag?.copyWith(track: keys);
+
+  /// [LaneEdit] goes back home by home, in ONE step.
+  final void Function(LaneEdit next, String description) commit;
 
   /// What an edit in flight shows as — null where it shows nothing (a V
-  /// row's carrier has no transform to show).
-  final TimelineDragPreview? Function(TransformHomes next) previewTransform;
-  final TimelineDragPreview Function(List<LayerEffect> next) previewEffects;
-  final TimelineDragPreview Function(SeNameTag next)? previewSeNameTag;
+  /// row's carrier has no transform to show), and where [commit] would
+  /// refuse it.
+  final TimelineDragPreview? Function(LaneEdit next) preview;
 }
 
 /// What an edit leaves a row's TRANSFORM keys at, home by home: its own
 /// lanes' track, and a reference row's fx (F-374) — null for a home the
 /// edit leaves alone.
 typedef TransformHomes = ({TransformTrack? own, TransformTrack? reference});
+
+/// What a lane edit leaves a row's keys at, family by family — each null
+/// where the edit leaves that family alone: the transform's two homes, the
+/// effect chain and, on an SE row, the name tag.
+///
+/// 🚨F-374: ONE edit for every family, so a verb over a span is one step
+/// over all the span holds (`RowLaneHomes`). ↩️An edit was ONE family's,
+/// which a span over lanes of two could not be.
+class LaneEdit {
+  const LaneEdit({
+    this.transform = (own: null, reference: null),
+    this.effects,
+    this.nameTag,
+  });
+
+  final TransformHomes transform;
+  final List<LayerEffect>? effects;
+  final SeNameTag? nameTag;
+
+  /// Whether it leaves every family alone.
+  bool get isEmpty =>
+      transform.own == null &&
+      transform.reference == null &&
+      effects == null &&
+      nameTag == null;
+}

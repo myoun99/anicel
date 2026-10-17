@@ -80,17 +80,6 @@ TransformTrack? transformTrackWithLaneKeyToggled(
 // span — and a dead single-key mover left lying here is an invitation to
 // wire the second grammar back.
 
-/// Removes a lane's key at [frameIndex].
-TransformTrack? transformTrackWithLaneKeyRemoved(
-  TransformTrack track, {
-  required String laneId,
-  required int frameIndex,
-}) => transformLaneLens(laneId)?.update(
-  track,
-  <U>(PropertyTrack<U> lane) =>
-      lane.keyAt(frameIndex) == null ? null : lane.withoutKey(frameIndex),
-);
-
 /// The key window's write on lane [laneId] (F-17 · I-89): the keys inside
 /// [frames] named as [naming] says (a null name un-names them) — all
 /// collapsed onto ONE value, the key the name already holds on [adoptFrom]
@@ -113,26 +102,13 @@ TransformTrack? transformTrackWithLaneKeysWritten(
   KeyTypePick pick = const KeyTypePick(),
 }) {
   final property = transformPropertyOfLaneId(laneId);
-  final picked = property != null && walksAPath(property)
-      ? pick
-      : pick.sidesAlone;
-  return transformLaneLens(laneId)?.updateBeside(track, adoptFrom, <U>(
-    PropertyTrack<U> lane,
-    PropertyTrack<U>? holder,
-  ) {
-    final name = naming?.name;
-    return lane.withKeysWritten(
-      frames: frames,
-      naming: naming == null
-          ? null
-          : (
-              name: name,
-              adopted: name == null ? null : holder?.keyForName(name),
-              preferredFrame: naming.preferredFrame,
-            ),
-      pick: picked,
-    );
-  });
+  return transformLaneLens(laneId)?.keysWritten(
+    track,
+    frames: frames,
+    naming: naming,
+    adoptFrom: adoptFrom,
+    pick: property != null && walksAPath(property) ? pick : pick.sidesAlone,
+  );
 }
 
 /// Applies a value typed into a lane's value editor: sets/updates the key

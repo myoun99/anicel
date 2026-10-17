@@ -6,7 +6,6 @@
 // The chain is a LIST, so each edit finds its effect by id, rebuilds that one
 // entry and leaves the rest identical.
 
-import 'lane_span_keys_shift.dart';
 import '../../models/layer_effect.dart';
 import '../../models/property_track.dart';
 import 'effect_lane_policy.dart';
@@ -37,22 +36,10 @@ List<LayerEffect>? effectsWithLaneKeyToggled(
 }
 
 // 2026-08-08: `effectsWithLaneKeyMoved` went with the key marker's private
-// drag. Re-timing is [effectsWithLaneSpanKeysShifted] now — select the
-// span, move the span — and a dead single-key mover left lying here is an
-// invitation to wire the second grammar back.
-
-List<LayerEffect>? effectsWithLaneKeyRemoved(
-  List<LayerEffect> effects, {
-  required String laneId,
-  required int frameIndex,
-}) {
-  return _editParameter(effects, laneId, (parameter, spec) {
-    if (parameter.track.keyAt(frameIndex) == null) {
-      return null;
-    }
-    return parameter.copyWith(track: parameter.track.withoutKey(frameIndex));
-  });
-}
+// drag. Re-timing is the span's move now — select the span, move the span
+// ([laneSpanKeysShifted] on [effectLaneLens], every home's one move since
+// F-374) — and a dead single-key mover left lying here is an invitation to
+// wire the second grammar back.
 
 /// The key window's write on parameter lane [laneId] (F-17 · I-89): the
 /// keys inside [frames] named as [naming] says (a null name un-names them)
@@ -214,26 +201,24 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
   @override
   Set<int> keyFrames(List<LayerEffect> effects) =>
       effectLaneKeyFrames(effects, laneId);
-}
 
-/// Shifts every ranged key of EVERY [laneIds] lane by [frameDelta] — the
-/// MULTI-LANE range move (R26 #3): rigid group, one delta, all-or-nothing
-/// ACROSS lanes. A lane with no key in the range rides along; a lane whose
-/// landing is blocked vetoes the WHOLE move.
-List<LayerEffect>? effectsWithLaneSpanKeysShifted(
-  List<LayerEffect> effects, {
-  required List<String> laneIds,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) => laneSpanKeysShifted(
-  effects,
-  laneIds: laneIds,
-  lensOf: effectLaneLens,
-  rangeStartIndex: rangeStartIndex,
-  rangeEndIndexExclusive: rangeEndIndexExclusive,
-  frameDelta: frameDelta,
-);
+  /// A parameter lane's keys — none on a header, which keeps none of its
+  /// own (its keys are its members').
+  @override
+  Map<int, PropertyKey<Object?>> keysOf(List<LayerEffect> effects) {
+    final address = parseEffectLaneId(laneId);
+    final parameterId = address?.parameterId;
+    if (address == null || parameterId == null) {
+      return const {};
+    }
+    for (final effect in effects) {
+      if (effect.id == address.effectId) {
+        return effect.parameterOf(parameterId).track.keys;
+      }
+    }
+    return const {};
+  }
+}
 
 /// The lane's keyed frames — the keyframe navigator's ◀/▶ jump targets.
 Set<int> effectLaneKeyFrames(List<LayerEffect> effects, String laneId) {

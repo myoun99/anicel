@@ -5,7 +5,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/track_se_display.dart';
-import 'package:anicel/src/ui/timeline/se_name_tag_lane_editing.dart';
+import 'package:anicel/src/ui/timeline/lane_span_keys_shift.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -21,7 +21,9 @@ TrackSeDisplay trackSeDisplayOf(EditorSessionManager session) =>
     session.trackSe;
 
 void main() {
-  group('seNameTagTrackWithLaneSpanKeysShifted (the pure law)', () {
+  // ↩️Through a name-tag wrapper of its own until F-374 gave every home the
+  // one move (`LaneHome.shifted`): the law on the name tag's lane table.
+  group('laneSpanKeysShifted on seNameTagLaneLens (the pure law)', () {
     SeNameTagTrack keyed(Map<int, double> sizes, {Map<int, bool>? bolds}) =>
         SeNameTagTrack(
           fontSize: PropertyTrack(
@@ -43,9 +45,10 @@ void main() {
     test('shifts every ranged key of every spanned lane as one group', () {
       final track = keyed({2: 20, 3: 24}, bolds: {2: true});
 
-      final next = seNameTagTrackWithLaneSpanKeysShifted(
+      final next = laneSpanKeysShifted(
         track,
         laneIds: const [seNameTagSizeLaneId, seNameTagBoldLaneId],
+        lensOf: seNameTagLaneLens,
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 4,
         frameDelta: 5,
@@ -58,9 +61,10 @@ void main() {
     test('a lane with no ranged key rides along', () {
       final track = keyed({2: 20}, bolds: {9: true});
 
-      final next = seNameTagTrackWithLaneSpanKeysShifted(
+      final next = laneSpanKeysShifted(
         track,
         laneIds: const [seNameTagSizeLaneId, seNameTagBoldLaneId],
+        lensOf: seNameTagLaneLens,
         rangeStartIndex: 2,
         rangeEndIndexExclusive: 4,
         frameDelta: 3,
@@ -76,9 +80,10 @@ void main() {
       final track = keyed({2: 20}, bolds: {3: true, 9: false});
 
       expect(
-        seNameTagTrackWithLaneSpanKeysShifted(
+        laneSpanKeysShifted(
           track,
           laneIds: const [seNameTagSizeLaneId, seNameTagBoldLaneId],
+          lensOf: seNameTagLaneLens,
           rangeStartIndex: 2,
           rangeEndIndexExclusive: 4,
           frameDelta: 6,
@@ -91,9 +96,10 @@ void main() {
       final track = keyed({2: 20});
 
       expect(
-        seNameTagTrackWithLaneSpanKeysShifted(
+        laneSpanKeysShifted(
           track,
           laneIds: const [seNameTagSizeLaneId],
+          lensOf: seNameTagLaneLens,
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
           frameDelta: -3,
@@ -106,9 +112,10 @@ void main() {
       final track = keyed({9: 20});
 
       expect(
-        seNameTagTrackWithLaneSpanKeysShifted(
+        laneSpanKeysShifted(
           track,
           laneIds: const [seNameTagSizeLaneId, seNameTagBoldLaneId],
+          lensOf: seNameTagLaneLens,
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 4,
           frameDelta: 2,

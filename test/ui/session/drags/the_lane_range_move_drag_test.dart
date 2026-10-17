@@ -3,22 +3,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/session/drags/lane_range_move_drag.dart';
 import 'package:anicel/src/ui/session/lane_edit_subject.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_editing.dart'
+    show effectLaneKeyFrames;
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectLaneId;
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 
 /// The lane-key range MOVE drag — nothing named it (the audit's
 /// untested-file pass, 2026-09-05).
 ///
-/// 🚨Three families share one drag: the transform lanes, an effect chain's
-/// lanes, and (on SE rows) the name tag's. Which one is decided ONCE at
-/// begin, the same way update decides it — asking per lane would let the
-/// drag answer "there are keys" about a lane the step is not going to
-/// shift.
+/// 🚨F-374: ONE drag moves every home the span holds lanes of — the row's
+/// own transform, its reference fx, its effect chain, its name tag — as
+/// ONE rigid group: a home whose landing is blocked holds the whole move,
+/// and a home with no key in the span rides along. ↩️It moved ONE family,
+/// picked at begin by whether an effect lane was in the span, so a span
+/// over a transform lane and an fx lane moved the fx's keys alone.
 ///
 /// 🚨A BLOCKED landing HOLDS: the last valid preview and outline stay
 /// where they were, rather than snapping back mid-drag.
@@ -30,43 +36,49 @@ void main() {
     },
   );
 
-  TimelineLaneSelection selection({
-    int start = 2,
-    int endExclusive = 5,
-    List<String> laneIds = const ['position'],
-  }) => TimelineLaneSelection(
-    layerId: const LayerId('l'),
-    laneId: laneIds.first,
-    startIndex: start,
-    endIndexExclusive: endExclusive,
-    laneIds: laneIds,
-  );
+  final blurLane = effectLaneId(const EffectId('e1'), 'blurX');
+
+  List<LayerEffect> blurWithKeysAt(List<int> frames) => [
+    LayerEffect(
+      id: const EffectId('e1'),
+      kind: EffectKind.blur,
+      parameters: {
+        'blurX': EffectParameter(
+          track: PropertyTrack<double>(
+            keys: {
+              for (final frame in frames)
+                frame: PropertyKey<double>(frame.toDouble()),
+            },
+          ),
+        ),
+      },
+    ),
+  ];
 
   ({
     LaneRangeMoveDrag? drag,
     ValueNotifier<TimelineDragPreview?> preview,
     ValueNotifier<TimelineLaneSelection?> outline,
-    List<TransformTrack> transformCommits,
-    List<List<LayerEffect>> effectCommits,
+    List<LaneEdit> commits,
     List<String> descriptions,
   })
   open({
     TransformTrack? track,
+    List<LayerEffect> effects = const [],
     List<String> laneIds = const ['position'],
-    int start = 2,
-    int endExclusive = 5,
+    bool previewRefuses = false,
   }) {
-    final subjectTrack = track ?? trackWithKeysAt([0, 3, 4, 9]);
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     final outline = ValueNotifier<TimelineLaneSelection?>(null);
     addTearDown(preview.dispose);
     addTearDown(outline.dispose);
-    final transformCommits = <TransformTrack>[];
-    final effectCommits = <List<LayerEffect>>[];
+    final commits = <LaneEdit>[];
     final descriptions = <String>[];
-    final before = selection(
-      start: start,
-      endExclusive: endExclusive,
+    final before = TimelineLaneSelection(
+      layerId: const LayerId('l'),
+      laneId: laneIds.first,
+      startIndex: 2,
+      endIndexExclusive: 5,
       laneIds: laneIds,
     );
     outline.value = before;
@@ -74,25 +86,19 @@ void main() {
       drag: LaneRangeMoveDrag.begin(
         selection: before,
         subject: LaneEditSubject(
-          transformTrack: subjectTrack,
-          effects: const [],
-          commitTransform: (next, why) {
-            // A row with no file has its own home alone (F-374).
-            transformCommits.add(next.own!);
+          transformTrack: track ?? trackWithKeysAt([0, 3, 4, 9]),
+          effects: effects,
+          commit: (next, why) {
+            commits.add(next);
             descriptions.add(why);
           },
-          commitEffects: (next, why) {
-            effectCommits.add(next);
-            descriptions.add(why);
-          },
-          previewTransform: (next) => const LaneEditPreview.track(
-            trackId: TrackId('t'),
-            trackEffects: [],
-          ),
-          previewEffects: (next) => LaneEditPreview.track(
-            trackId: const TrackId('t'),
-            trackEffects: next,
-          ),
+          // What a camera key put out of its cut shows: nothing.
+          preview: (next) => previewRefuses
+              ? null
+              : LaneEditPreview.track(
+                  trackId: const TrackId('t'),
+                  trackEffects: next.effects ?? const [],
+                ),
         ),
         laneVerbTargets: (spanLaneIds, {effects = const []}) => spanLaneIds,
         preview: preview,
@@ -100,18 +106,14 @@ void main() {
       ),
       preview: preview,
       outline: outline,
-      transformCommits: transformCommits,
-      effectCommits: effectCommits,
+      commits: commits,
       descriptions: descriptions,
     );
   }
 
   test('⛔a selection covering NO key on any spanned lane gives no object — '
       'nothing to move, no drag', () {
-    expect(
-      open(track: trackWithKeysAt([0, 9]), start: 2, endExclusive: 5).drag,
-      isNull,
-    );
+    expect(open(track: trackWithKeysAt([0, 9])).drag, isNull);
   });
 
   test('a selection that does cover a key begins', () {
@@ -125,10 +127,91 @@ void main() {
     session.drag!.commit();
 
     expect(
-      transformLaneKeyFrames(session.transformCommits.single, 'position'),
+      transformLaneKeyFrames(
+        session.commits.single.transform.own!,
+        'position',
+      ),
       {0, 5, 6, 9},
       reason: 'the keys at 3 and 4 moved; 0 and 9 were outside the range',
     );
+  });
+
+  test('🎯a span over a transform lane and an fx lane moves BOTH — one step '
+      '(F-374)', () {
+    final session = open(
+      effects: blurWithKeysAt([3, 9]),
+      laneIds: ['position', blurLane],
+    );
+
+    session.drag!.update(frameDelta: 2);
+    session.drag!.commit();
+
+    final landed = session.commits.single;
+    expect(transformLaneKeyFrames(landed.transform.own!, 'position'), {
+      0,
+      5,
+      6,
+      9,
+    });
+    expect(effectLaneKeyFrames(landed.effects!, blurLane), {5, 9});
+  });
+
+  test('🚨a home whose landing is blocked holds the WHOLE move — the homes '
+      'are one rigid group', () {
+    // The fx key at 3 lands on the one at 5, which the range does not
+    // cover; the transform's keys could land.
+    final session = open(
+      effects: blurWithKeysAt([3, 5]),
+      laneIds: ['position', blurLane],
+    );
+
+    session.drag!.update(frameDelta: 2);
+    expect(session.preview.value, isNull);
+    expect(session.outline.value?.startIndex, 2, reason: 'it held');
+
+    session.drag!.commit();
+    expect(session.commits, isEmpty);
+  });
+
+  test('a home with no key in the span rides along, left as it was', () {
+    final session = open(
+      effects: blurWithKeysAt([0, 9]),
+      laneIds: ['position', blurLane],
+    );
+
+    session.drag!.update(frameDelta: 2);
+    session.drag!.commit();
+
+    expect(session.commits.single.effects, isNull);
+    expect(session.commits.single.transform.own, isNotNull);
+  });
+
+  test('a span whose keys are all in ONE home of several begins and moves '
+      'that home alone', () {
+    final session = open(
+      track: trackWithKeysAt([0, 9]),
+      effects: blurWithKeysAt([3]),
+      laneIds: ['position', blurLane],
+    );
+
+    session.drag!.update(frameDelta: 2);
+    session.drag!.commit();
+
+    expect(session.commits.single.transform.own, isNull);
+    expect(effectLaneKeyFrames(session.commits.single.effects!, blurLane), {
+      5,
+    });
+  });
+
+  test('🚨a landing the subject will not take HOLDS as a blocked one does — '
+      'a camera key put out of its cut', () {
+    final session = open(previewRefuses: true);
+
+    session.drag!.update(frameDelta: 2);
+    expect(session.outline.value?.startIndex, 2);
+
+    session.drag!.commit();
+    expect(session.commits, isEmpty);
   });
 
   test('🚨the OUTLINE rides the shift, so the selection lands on what it '
@@ -182,7 +265,7 @@ void main() {
     session.drag!.update(frameDelta: 0);
     session.drag!.commit();
 
-    expect(session.transformCommits, isEmpty);
+    expect(session.commits, isEmpty);
     expect(session.outline.value?.startIndex, 2);
   });
 
@@ -192,7 +275,7 @@ void main() {
     session.drag!.update(frameDelta: 2);
     session.drag!.commit();
 
-    expect(session.transformCommits, hasLength(1));
+    expect(session.commits, hasLength(1));
     expect(
       session.descriptions,
       ['Move lane keys'],
@@ -209,7 +292,7 @@ void main() {
     session.drag!.update(frameDelta: 2);
     session.drag!.cancel();
 
-    expect(session.transformCommits, isEmpty);
+    expect(session.commits, isEmpty);
     expect(session.outline.value?.startIndex, 2);
     expect(session.preview.value, isNull);
   });

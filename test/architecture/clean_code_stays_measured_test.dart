@@ -487,6 +487,15 @@ void main() {
   /// Create alike. `poseWithLaneValueEdited` left: a reference lane's value
   /// is a transform lane's value now. 🔬`clean_code_diff` against master
   /// (`0df66289b`, at 403) named those two added and that one gone.
+  /// The same day the span verbs became one code over a row's homes, at
+  /// 404 still — two named, two gone: `PropertyLaneLens.keysWritten`
+  /// (five) is the key window's one write of a lane that is a field of its
+  /// track, the transform's body, which the name tag's lanes take now, and
+  /// `seNameTagTrackWithLaneKeysWritten` (six) is the name tag's door to it
+  /// as `transformTrackWithLaneKeysWritten` is the transform's. The effect
+  /// chain's and the name tag's span shifts left: every home moves through
+  /// `LaneHome.shifted`. 🔬`clean_code_diff` against master (`7fe69eac7`,
+  /// at 403) named the four added and the three gone of the two commits.
   const wideSignatures = 404;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
@@ -692,7 +701,14 @@ void main() {
   /// split to fit: the arms answer the one question the loop asks — where a
   /// bake's pixels are — side by side, and one taken out would answer it
   /// somewhere the other two do not.
-  const longBodies = 409;
+  ///
+  /// ⚠️409 → 408 on 2026-10-17, following one down (F-374): the lane range
+  /// move's `LaneRangeMoveDrag.update` shifted each family through an arm
+  /// of its own; every home moves through one `LaneHome.shifted` now, and
+  /// the update is a preview of what that answers. 🔬`clean_code_diff`
+  /// against master (`7fe69eac7`, at 409) named that one gone and nothing
+  /// added.
+  const longBodies = 408;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

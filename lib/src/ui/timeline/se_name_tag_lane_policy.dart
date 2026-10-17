@@ -106,12 +106,35 @@ PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
       _ => null,
     };
 
-/// The member lane's keyed frames — what the move machine's keyed gate
-/// reads (the name-tag twin of `transformLaneKeyFrames`). The lane rows
-/// read the keys with the marks they wear ([seNameTagLaneKeyMarks]),
-/// through the same table.
+/// The member lane's keyed frames (the name-tag twin of
+/// `transformLaneKeyFrames`). The lane rows read the keys with the marks
+/// they wear ([seNameTagLaneKeyMarks]), through the same table. ↩️What the
+/// move machine's keyed gate read, until every home's verbs read their
+/// lanes through the lens itself (F-374).
 Set<int> seNameTagLaneKeyFrames(SeNameTagTrack keys, String laneId) =>
     seNameTagLaneLens(laneId)?.keyFrames(keys) ?? const {};
+
+/// Whether [name] is already used by member lane [laneId] in [keys] — the
+/// read a rename does before it commits, as `transformLaneUsesName` is a
+/// transform lane's: a tag's keys name on that tag alone (F-374).
+/// [excludeFrames] drops the keys a RANGE rename is about to name — they
+/// are the ones joining, so they must not answer for the name.
+bool seNameTagLaneUsesName(
+  SeNameTagTrack keys,
+  String laneId,
+  String name, {
+  Set<int> excludeFrames = const {},
+}) =>
+    seNameTagLaneLens(
+      laneId,
+    )?.get(keys).keyForName(name, excludeFrames: excludeFrames) !=
+    null;
+
+/// Whether member lane [laneId]'s keys take the key window's SIDES: a
+/// flag's do not — it holds by nature, half a shown line not being a
+/// state, so its keys are authored HOLD (#902) and stay so.
+bool seNameTagLaneTakesSides(String laneId) =>
+    seNameTagLaneValueKind(laneId) != PropertyLaneValueKind.boolean;
 
 /// The member lane's keys with the marks they wear, read through the same
 /// table as its frames — so a flag lane's held keys draw as holds.

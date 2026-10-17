@@ -1,21 +1,10 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../models/layer_effect.dart';
-import '../../../models/se_name_tag.dart';
 import '../../../models/timeline_frame_range.dart';
-import '../../../models/transform_track.dart';
-import '../../timeline/effect_lane_editing.dart'
-    show effectLaneKeyFrames, effectsWithLaneSpanKeysShifted;
-import '../../timeline/effect_lane_policy.dart' show parseEffectLaneId;
-import '../../timeline/reference_lane_policy.dart' show transformLanesByHome;
-import '../../timeline/se_name_tag_lane_editing.dart'
-    show seNameTagTrackWithLaneSpanKeysShifted;
-import '../../timeline/se_name_tag_lane_policy.dart'
-    show laneIsSeNameTag, seNameTagLaneKeyFrames;
 import '../../timeline/timeline_drag_preview.dart';
-import '../../timeline/transform_lane_editing.dart'
-    show transformLaneKeyFrames, transformTrackWithLaneSpanKeysShifted;
 import '../lane_edit_subject.dart';
+import '../lane_homes.dart';
 
 /// The lane-key range MOVE drag (UI-R23 #3 part 2).
 ///
@@ -24,29 +13,26 @@ import '../lane_edit_subject.dart';
 /// landing HOLDS the last valid preview rather than snapping back (UI-R23
 /// #10).
 ///
-/// ⛔It does NOT sign `EditorDragSession`, and it keeps the three-branch
-/// shape it arrived with. The branching by lane family (effect chain /
-/// name tag / transform track) is genuinely three different payloads with
-/// three different commit verbs; folding them together is a design change,
-/// and the split brief forbids making one during a move.
+/// 🚨F-374: the group is every home the span holds lanes of
+/// ([RowLaneHomes]) — the row's own transform, its reference fx, its effect
+/// chain, its name tag — landed as ONE step, and a home whose landing is
+/// blocked blocks the move. ↩️It moved ONE family, chosen by asking whether
+/// an effect lane was in the span and then a name tag's, so the rest of a
+/// span the rail drew across families stayed where it was. It had kept that
+/// three-branch shape when it was moved off the session (2026-09-02): a
+/// design change during a move was what that brief forbade.
 ///
-/// ⚠️Exactly one of the three shifted slots is ever set. They clear
-/// together, because a stale payload would send the commit down a branch
-/// the drag never took.
+/// ⛔It does NOT sign `EditorDragSession`.
 class LaneRangeMoveDrag {
   LaneRangeMoveDrag._({
     required LaneEditSubject subject,
     required TimelineLaneSelection selectionBefore,
-    required List<String> Function(
-      List<String> spanLaneIds, {
-      List<LayerEffect> effects,
-    })
-    laneVerbTargets,
+    required RowLaneHomes homes,
     required ValueNotifier<TimelineDragPreview?> preview,
     required ValueNotifier<TimelineLaneSelection?> selection,
   }) : _subject = subject,
        _selectionBefore = selectionBefore,
-       _laneVerbTargets = laneVerbTargets,
+       _homes = homes,
        _preview = preview,
        _selection = selection;
 
@@ -58,25 +44,17 @@ class LaneRangeMoveDrag {
   /// step back to zero delta, restore the outline to.
   final TimelineLaneSelection _selectionBefore;
 
-  final List<String> Function(
-    List<String> spanLaneIds, {
-    List<LayerEffect> effects,
-  })
-  _laneVerbTargets;
+  /// The span's lanes in the homes they live in, as the grip found them.
+  final RowLaneHomes _homes;
 
   final ValueNotifier<TimelineDragPreview?> _preview;
   final ValueNotifier<TimelineLaneSelection?> _selection;
 
-  TransformHomes? _shifted;
-  List<LayerEffect>? _shiftedEffects;
-  SeNameTagTrack? _shiftedNameTag;
+  /// The last valid shift — what the release lands.
+  LaneEdit? _shifted;
 
   /// Null when the selection covers no keys on ANY spanned lane — nothing
   /// to move, so no drag.
-  ///
-  /// ⚠️The family is decided ONCE here, the same way [update] decides it.
-  /// Asking per lane would let this answer "there are keys" about a lane
-  /// the step is not going to shift.
   static LaneRangeMoveDrag? begin({
     required TimelineLaneSelection selection,
     required LaneEditSubject subject,
@@ -88,41 +66,17 @@ class LaneRangeMoveDrag {
     required ValueNotifier<TimelineDragPreview?> preview,
     required ValueNotifier<TimelineLaneSelection?> selectionChannel,
   }) {
-    // R6: an EFFECT lane selection moves the effect chain's keys instead of
-    // the transform track's — same rigid all-or-nothing group, same drag.
-    final moveTargets = laneVerbTargets(
-      selection.spanLaneIds,
-      effects: subject.effects,
+    final homes = rowLaneHomes(
+      subject,
+      laneVerbTargets(selection.spanLaneIds, effects: subject.effects),
     );
-    final isEffectSelection = moveTargets.any(
-      (laneId) => parseEffectLaneId(laneId) != null,
-    );
-    // C①: the name-tag family is the third mode. Safe as an any() because
-    // the span switch keeps a lane selection single-family.
-    final isNameTagSelection =
-        !isEffectSelection && moveTargets.any(laneIsSeNameTag);
-    final nameTagKeys = subject.seNameTag?.track ?? SeNameTagTrack.empty();
-    final homes = _transformHomesKeyed(subject, moveTargets, selection);
-    final keyed = isEffectSelection || isNameTagSelection
-        ? moveTargets.any(
-            (laneId) => isEffectSelection
-                ? effectLaneKeyFrames(
-                    subject.effects,
-                    laneId,
-                  ).any(selection.contains)
-                : seNameTagLaneKeyFrames(
-                    nameTagKeys,
-                    laneId,
-                  ).any(selection.contains),
-          )
-        : homes.own || homes.reference;
-    if (!keyed) {
+    if (!rowLaneHomesKeyedWhere(homes, selection.contains)) {
       return null;
     }
     return LaneRangeMoveDrag._(
       subject: subject,
       selectionBefore: selection,
-      laneVerbTargets: laneVerbTargets,
+      homes: homes,
       preview: preview,
       selection: selectionChannel,
     );
@@ -133,57 +87,13 @@ class LaneRangeMoveDrag {
   /// what makes the last valid preview and outline hold.
   void update({required int frameDelta}) {
     if (frameDelta == 0) {
-      _dropInFlight();
+      _shifted = null;
       _preview.value = null;
       _selection.value = _selectionBefore;
       return;
     }
-    final targets = _laneVerbTargets(
-      _selectionBefore.spanLaneIds,
-      effects: _subject.effects,
-    );
-    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
-      final shiftedEffects = effectsWithLaneSpanKeysShifted(
-        _subject.effects,
-        laneIds: targets,
-        rangeStartIndex: _selectionBefore.startIndex,
-        rangeEndIndexExclusive: _selectionBefore.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      if (shiftedEffects == null) {
-        // Blocked landing: the last valid preview and outline HOLD.
-        return;
-      }
-      _shiftedEffects = shiftedEffects;
-      _preview.value = _subject.previewEffects(shiftedEffects);
-      _rideSelection(frameDelta);
-      return;
-    }
-    // C①: the name-tag family's branch — same rigid group, same hold.
-    if (targets.any(laneIsSeNameTag)) {
-      final tag = _subject.seNameTag;
-      final previewNameTag = _subject.previewSeNameTag;
-      if (tag == null || previewNameTag == null) {
-        return;
-      }
-      final shiftedTag = seNameTagTrackWithLaneSpanKeysShifted(
-        tag.track ?? SeNameTagTrack.empty(),
-        laneIds: targets,
-        rangeStartIndex: _selectionBefore.startIndex,
-        rangeEndIndexExclusive: _selectionBefore.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      if (shiftedTag == null) {
-        // Blocked landing: the last valid preview and outline HOLD.
-        return;
-      }
-      _shiftedNameTag = shiftedTag;
-      _preview.value = previewNameTag(tag.copyWith(track: shiftedTag));
-      _rideSelection(frameDelta);
-      return;
-    }
-    final shifted = _transformShifted(targets, frameDelta);
-    final shown = shifted == null ? null : _subject.previewTransform(shifted);
+    final shifted = _shiftedBy(frameDelta);
+    final shown = shifted == null ? null : _subject.preview(shifted);
     if (shown == null) {
       // Blocked landing — or one its home will not take, a camera key put
       // out of its cut: the last valid preview and outline HOLD.
@@ -194,37 +104,26 @@ class LaneRangeMoveDrag {
     _rideSelection(frameDelta);
   }
 
-  /// [targets]' ranged keys shifted by [frameDelta], each lane on the track
-  /// it lives on ([transformLanesByHome] — a reference fx's member on that
-  /// fx, F-374): ONE rigid group across the two homes, so a home whose
-  /// landing is blocked blocks the move, and a home with no key in the
-  /// span rides along. Null when blocked or when no key moves.
-  TransformHomes? _transformShifted(List<String> targets, int frameDelta) {
-    final lanes = transformLanesByHome(targets);
-    final keyed = _transformHomesKeyed(_subject, targets, _selectionBefore);
-    TransformTrack? shifted(TransformTrack? track, List<String> laneIds) =>
-        track == null
-        ? null
-        : transformTrackWithLaneSpanKeysShifted(
-            track,
-            laneIds: laneIds,
-            rangeStartIndex: _selectionBefore.startIndex,
-            rangeEndIndexExclusive: _selectionBefore.endIndexExclusive,
-            frameDelta: frameDelta,
-          );
-    final own = keyed.own ? shifted(_subject.transformTrack, lanes.own) : null;
-    final reference = keyed.reference
-        ? shifted(_subject.referenceFx, lanes.reference)
-        : null;
-    final blocked =
-        (keyed.own && own == null) || (keyed.reference && reference == null);
-    return blocked || (own == null && reference == null)
-        ? null
-        : (own: own, reference: reference);
+  /// The span's keys shifted by [frameDelta], home by home: ONE rigid
+  /// group, so a home whose landing is blocked blocks the move, and a home
+  /// with no key in the span rides along. Null when blocked.
+  LaneEdit? _shiftedBy(int frameDelta) {
+    var blocked = false;
+    T? shifted<T>(LaneHome<T> home) {
+      if (!home.keyedWhere(_selectionBefore.contains)) {
+        return null;
+      }
+      final next = home.shifted(_selectionBefore, frameDelta);
+      blocked = blocked || next == null;
+      return next;
+    }
+
+    final edit = rowLaneHomesEdited(_subject, _homes, shifted);
+    return blocked || edit.isEmpty ? null : edit;
   }
 
-  /// The step's selection ride, one law for all three branches: the outline
-  /// follows the shifted span (never below 0).
+  /// The step's selection ride: the outline follows the shifted span
+  /// (never below 0).
   void _rideSelection(int frameDelta) {
     final newStart = _selectionBefore.startIndex + frameDelta;
     if (newStart < 0) {
@@ -244,64 +143,21 @@ class LaneRangeMoveDrag {
   /// where it started and writes nothing.
   void commit() {
     final shifted = _shifted;
-    final shiftedEffects = _shiftedEffects;
-    final shiftedNameTag = _shiftedNameTag;
     final landed = _selection.value;
-    _dropInFlight();
+    _shifted = null;
     _preview.value = null;
-
-    if (shiftedEffects != null) {
-      _subject.commitEffects(shiftedEffects, _why);
-      _selection.value = landed;
-      return;
-    }
-    if (shiftedNameTag != null) {
-      final tag = _subject.seNameTag ?? const SeNameTag();
-      _subject.commitSeNameTag?.call(
-        tag.copyWith(track: shiftedNameTag),
-        _why,
-      );
-      _selection.value = landed;
-      return;
-    }
     if (shifted == null) {
       _selection.value = _selectionBefore;
       return;
     }
-    _subject.commitTransform(shifted, _why);
+    _subject.commit(shifted, _why);
     _selection.value = landed;
   }
 
   /// Drops the preview and puts the outline back; history is untouched.
   void cancel() {
-    _dropInFlight();
+    _shifted = null;
     _preview.value = null;
     _selection.value = _selectionBefore;
   }
-
-  void _dropInFlight() {
-    _shifted = null;
-    _shiftedEffects = null;
-    _shiftedNameTag = null;
-  }
-}
-
-/// Whether [laneIds] hold a key [selection] covers, home by home: the row's
-/// own transform lanes, and its reference fx's (F-374).
-({bool own, bool reference}) _transformHomesKeyed(
-  LaneEditSubject subject,
-  List<String> laneIds,
-  TimelineLaneSelection selection,
-) {
-  final lanes = transformLanesByHome(laneIds);
-  bool keyedOn(TransformTrack? track, List<String> laneIds) =>
-      track != null &&
-      laneIds.any(
-        (laneId) =>
-            transformLaneKeyFrames(track, laneId).any(selection.contains),
-      );
-  return (
-    own: keyedOn(subject.transformTrack, lanes.own),
-    reference: keyedOn(subject.referenceFx, lanes.reference),
-  );
 }

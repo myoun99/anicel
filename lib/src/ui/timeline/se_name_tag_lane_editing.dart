@@ -5,7 +5,6 @@
 
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
-import 'lane_span_keys_shift.dart';
 import 'se_name_tag_lane_policy.dart';
 
 /// Adds a key at [frameIndex] holding the member's RESOLVED value there
@@ -251,6 +250,30 @@ SeNameTag? seNameTagWithLaneValueEdited(
   return null;
 }
 
+/// The key window's write on member lane [laneId] (F-374): the keys inside
+/// [frames] named as [naming] says — all collapsed onto ONE value, the key
+/// the name already holds on [adoptFrom] where it holds one — and given
+/// [pick]'s sides where the lane's keys take them
+/// ([seNameTagLaneTakesSides]): a member's keys walk no path. ONE write of
+/// the lane, the transform's (`PropertyLaneLens.keysWritten`). Null when
+/// nothing changed.
+SeNameTagTrack? seNameTagTrackWithLaneKeysWritten(
+  SeNameTagTrack keys, {
+  required String laneId,
+  required Set<int> frames,
+  ({String? name, int? preferredFrame})? naming,
+  SeNameTagTrack? adoptFrom,
+  KeyTypePick pick = const KeyTypePick(),
+}) => seNameTagLaneLens(laneId)?.keysWritten(
+  keys,
+  frames: frames,
+  naming: naming,
+  adoptFrom: adoptFrom,
+  pick: seNameTagLaneTakesSides(laneId)
+      ? pick.sidesAlone
+      : const KeyTypePick(),
+);
+
 /// AE's group Reset for the NAME TAG header — the rule an effect header's
 /// takes (`effectsWithGroupReset`): **키를 삭제하진 않고 값만 리셋**. A member
 /// with no keys puts its static slot back to the look a new tag has; a
@@ -336,24 +359,3 @@ bool? parseBoolInput(String input) => switch (input.trim().toLowerCase()) {
   'off' || 'false' || 'no' || '0' => false,
   _ => null,
 };
-
-/// Shifts every ranged key of EVERY [laneIds] lane by [frameDelta] — the
-/// MULTI-LANE range move (R26 #3), the name-tag twin of
-/// `transformTrackWithLaneSpanKeysShifted`: rigid group, one delta,
-/// all-or-nothing ACROSS lanes. A lane with no key in the range rides
-/// along; a lane whose landing is blocked vetoes the WHOLE move. The
-/// single-lane arm is `keysShifted` on [seNameTagLaneLens].
-SeNameTagTrack? seNameTagTrackWithLaneSpanKeysShifted(
-  SeNameTagTrack track, {
-  required List<String> laneIds,
-  required int rangeStartIndex,
-  required int rangeEndIndexExclusive,
-  required int frameDelta,
-}) => laneSpanKeysShifted(
-  track,
-  laneIds: laneIds,
-  lensOf: seNameTagLaneLens,
-  rangeStartIndex: rangeStartIndex,
-  rangeEndIndexExclusive: rangeEndIndexExclusive,
-  frameDelta: frameDelta,
-);
