@@ -12,6 +12,8 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAcross, startAlong;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
@@ -101,9 +103,12 @@ void main() {
         final frames = painter.geometry.value;
         final main = (frames.edgeAt(frame) + frames.edgeAt(frame + 1)) / 2;
         final box = tester.getRect(strip);
-        return horizontal
-            ? Offset(box.left + main, box.center.dy)
-            : Offset(box.center.dx, box.top + main);
+        final axis = orientation.axis;
+        return offsetAlong(
+          axis,
+          along: startAlong(axis, box) + main,
+          across: partAcross(axis, box.center),
+        );
       }
 
       /// Two cells further along the frame axis.

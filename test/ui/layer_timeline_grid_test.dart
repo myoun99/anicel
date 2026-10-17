@@ -9,6 +9,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show endAcross, offsetAlong, partAlong;
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
@@ -869,17 +871,17 @@ void main() {
           start,
           kind: PointerDeviceKind.mouse,
         );
-        await gesture.moveBy(
-          horizontal ? const Offset(0, 26) : const Offset(26, 0),
-        );
+        await gesture.moveBy(offsetAlong(axis, along: 0, across: 26));
         await tester.pump();
         expect(events, contains('begin'), reason: '$axis');
         expect(rows.position.pixels, 0, reason: '$axis: nothing panned yet');
 
         await gesture.moveTo(
-          horizontal
-              ? Offset(start.dx, view.bottom - 6)
-              : Offset(view.right - 6, start.dy),
+          offsetAlong(
+            axis,
+            along: partAlong(axis, start),
+            across: endAcross(axis, view) - 6,
+          ),
         );
         await tester.pump();
         final atEdge = rows.position.pixels;
@@ -888,9 +890,7 @@ void main() {
 
         for (var step = 0; step < 8; step += 1) {
           final nudge = step.isEven ? 1.0 : -1.0;
-          await gesture.moveBy(
-            horizontal ? Offset(0, nudge) : Offset(nudge, 0),
-          );
+          await gesture.moveBy(offsetAlong(axis, along: 0, across: nudge));
           await tester.pump();
         }
         expect(rows.position.pixels, greaterThan(atEdge), reason: '$axis');

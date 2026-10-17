@@ -249,6 +249,9 @@ void main() {
   // nothing pinned the sheet's half of their pan until the edge-pan tests
   // ran on both surfaces.
   //
+  // The tests' forty followed the same day (card
+  // tests-build-values-by-the-axis-by-hand) — the ban holds them too.
+  //
   // ⛔A margin (`EdgeInsets`) and a `BoxConstraints` are not here: two
   // each, in shapes that differ, and a third has to show they are one
   // algorithm before they are made one (the card's own ⛔).
@@ -333,6 +336,49 @@ void main() {
         if (libPath(file) != home)
           for (final line in handBuildsIn(file.readAsStringSync()))
             '${libPath(file)}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for offsetAlong / sizeAlong / rectAlong / centerStartAlong '
+          '/ centerEndAlong',
+    );
+  });
+
+  test('premise: the scan sees the builds the tests took out', () {
+    // Lines as they stood on 2026-10-17, of the shapes lib had not.
+    const built = [
+      'orientation == TimelineOrientation.horizontal\n'
+          '    ? const Offset(0, -40)\n'
+          '    : const Offset(-40, 0),',
+      'final point = across\n'
+          '    ? Offset((d + 0.5) / on.ratio, middle.dy)\n'
+          '    : Offset(middle.dx, (d + 0.5) / on.ratio);',
+      'along == Axis.horizontal ? Offset(dx, 0) : Offset(0, dx),',
+    ];
+    for (final line in built) {
+      expect(handBuildsIn(line), hasLength(1), reason: line);
+    }
+  });
+
+  /// ⛔**NOR A TEST** (card tests-build-values-by-the-axis-by-hand): a test
+  /// that builds a value by hand is the same turn spelled once more. 🔬On
+  /// master `9638abf52` the tests built forty by hand, in twenty files.
+  ///
+  /// ⚠️Two ANSWERS are not one value turned: a fader that fills up the
+  /// sheet's column is dragged DOWN toward empty, and a tap's aim snaps
+  /// only along the frame axis. Those stand as a table by the axis, each
+  /// answer written out — what this scan hears is a pick.
+  test('no test builds a value by hand either', () {
+    final files = dartFilesUnder('test').toList();
+    expect(files, isNotEmpty, reason: 'the scan read nothing');
+    final offenders = <String>[
+      for (final file in files)
+        // It spells the old builds out, to show the scan sees them.
+        if (!file.path.endsWith('one_axis_turn_test.dart'))
+          for (final line in handBuildsIn(file.readAsStringSync()))
+            '${file.path}:$line',
     ];
     expect(
       offenders,

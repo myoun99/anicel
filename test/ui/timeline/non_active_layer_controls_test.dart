@@ -295,9 +295,10 @@ void main() {
           // the row; the sheet's, turned with its header, up the column.
           await tester.drag(
             find.named('$rail-layer-opacity-$other'),
-            way.orientation == TimelineOrientation.horizontal
-                ? const Offset(-30, 0)
-                : const Offset(0, 30),
+            const {
+              TimelineOrientation.horizontal: Offset(-30, 0),
+              TimelineOrientation.vertical: Offset(0, 30),
+            }[way.orientation]!,
           );
           await tester.pumpAndSettle();
 

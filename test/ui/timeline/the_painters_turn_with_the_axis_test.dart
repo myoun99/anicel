@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
@@ -194,9 +195,8 @@ void main() {
           },
         );
 
-    Size sizeFor(Axis axis) => axis == Axis.horizontal
-        ? const Size(mainExtent, crossExtent)
-        : const Size(crossExtent, mainExtent);
+    Size sizeFor(Axis axis) =>
+        sizeAlong(axis, along: mainExtent, across: crossExtent);
 
     /// The pixel at [along] the axis and [across] it.
     bool inkAt(Uint32List pixels, Axis axis, int along, int across) =>

@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -86,12 +87,11 @@ void main() {
         Future<void> sweep({required bool vertical}) async {
           const cell = 24.0;
           const row = timelineLayerRowHeight;
+          final axis = vertical ? Axis.vertical : Axis.horizontal;
           final start =
               tester.getTopLeft(headerBand()) +
-              (vertical
-                  ? const Offset(row / 2, cell / 2)
-                  : const Offset(cell / 2, row / 2));
-          final step = vertical ? const Offset(0, cell) : const Offset(cell, 0);
+              offsetAlong(axis, along: cell / 2, across: row / 2);
+          final step = offsetAlong(axis, along: cell, across: 0);
           final finger = await tester.startGesture(start, kind: kind);
           await finger.moveBy(step);
           await tester.pump();

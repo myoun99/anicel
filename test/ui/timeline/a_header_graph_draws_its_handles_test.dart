@@ -111,9 +111,7 @@ void main() {
     ),
   );
 
-  Size sizeFor(Axis axis) => axis == Axis.horizontal
-      ? const Size(48 * cell, 196)
-      : const Size(196, 48 * cell);
+  Size sizeFor(Axis axis) => sizeAlong(axis, along: 48 * cell, across: 196);
 
   /// [at] read back along and across the graph.
   ({double time, double across}) readOf(Offset at, Axis axis) => (

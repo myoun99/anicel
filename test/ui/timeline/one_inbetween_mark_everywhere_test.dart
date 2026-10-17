@@ -100,9 +100,8 @@ void main() {
         axis: axis,
       );
 
-  Size rowSize(Axis axis, {double cell = 24}) => axis == Axis.horizontal
-      ? Size(cell * frames, rowExtent)
-      : Size(rowExtent, cell * frames);
+  Size rowSize(Axis axis, {double cell = 24}) =>
+      sizeAlong(axis, along: cell * frames, across: rowExtent);
 
   final roomy = timelineInbetweenMarkSize(font, cell: const Size(100, 100));
 
@@ -261,9 +260,11 @@ void main() {
           );
           // The tile starts at its first cell, along the frame axis.
           final first = painter.cellRectFor(start);
-          final origin = axis == Axis.horizontal
-              ? Offset(first.left, 0)
-              : Offset(0, first.top);
+          final origin = offsetAlong(
+            axis,
+            along: startAlong(axis, first),
+            across: 0,
+          );
           final expected = TimelineGridTileOpWriter();
           for (final frame in [0, 2]) {
             if (frame < start) {

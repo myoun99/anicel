@@ -5,6 +5,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
 import 'package:anicel/src/ui/timeline/berth_row.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show laneGraphHeadedBy;
@@ -119,9 +120,7 @@ void main() {
           (tester) async {
             await tester.drag(
               find.named('$rail-layer-name-${_two.draw}'),
-              orientation == TimelineOrientation.horizontal
-                  ? const Offset(0, -40)
-                  : const Offset(-40, 0),
+              offsetAlong(orientation.axis, along: 0, across: -40),
             );
             await tester.pumpAndSettle();
           },
@@ -147,9 +146,13 @@ void main() {
           (tester) async {
             await tester.drag(
               find.named('$rail-layer-opacity-${_two.draw}'),
-              orientation == TimelineOrientation.horizontal
-                  ? const Offset(-30, 0)
-                  : const Offset(0, 30),
+              // Toward empty: the rail's runs along the row; the sheet's,
+              // turned with its header, up the column — two ways, not one
+              // turned.
+              const {
+                TimelineOrientation.horizontal: Offset(-30, 0),
+                TimelineOrientation.vertical: Offset(0, 30),
+              }[orientation]!,
             );
             await tester.pumpAndSettle();
           },

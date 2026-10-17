@@ -377,9 +377,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// The preview inside the instance dialogs follows the visible
   /// orientation (Axis policy in miniature).
-  Axis get _previewAxis => widget.orientation == TimelineOrientation.horizontal
-      ? Axis.horizontal
-      : Axis.vertical;
+  Axis get _previewAxis => widget.orientation.axis;
 
   Future<void> _activateCellEditor(LayerId layerId, int frameIndex) =>
       activateCellOnDoubleTap(

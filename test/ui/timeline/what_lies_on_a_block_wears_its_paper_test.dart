@@ -10,6 +10,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show endAcross, rectAlong, startAcross, startAlong;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
@@ -181,9 +183,12 @@ void main() {
       );
       final paper = paperOf(axis, 2, 4);
       // The chip's stretch of the paper: its 16 from the block's start.
-      final chip = axis == Axis.horizontal
-          ? Rect.fromLTWH(paper.left, paper.top, seNameBoxExtent, paper.height)
-          : Rect.fromLTWH(paper.left, paper.top, paper.width, seNameBoxExtent);
+      final start = startAlong(axis, paper);
+      final chip = rectAlong(
+        axis,
+        along: (from: start, to: start + seNameBoxExtent),
+        across: (from: startAcross(axis, paper), to: endAcross(axis, paper)),
+      );
       expect(
         shot.alphaAt(chip.center),
         greaterThan(0),
@@ -255,12 +260,16 @@ void main() {
       expect(line.clips, [shape], reason: 'the warning line');
       // What each lays under the cut: the chip's stretch of the block, and
       // the line's own strip.
-      final chip = axis == Axis.horizontal
-          ? const Rect.fromLTWH(0, 0, seNameBoxExtent, row)
-          : const Rect.fromLTWH(0, 0, row, seNameBoxExtent);
-      final strip = axis == Axis.horizontal
-          ? const Rect.fromLTWH(0, 0, 4 * cell, 2)
-          : const Rect.fromLTWH(0, 0, 2, 4 * cell);
+      final chip = rectAlong(
+        axis,
+        along: (from: 0, to: seNameBoxExtent),
+        across: (from: 0, to: row),
+      );
+      final strip = rectAlong(
+        axis,
+        along: (from: 0, to: 4 * cell),
+        across: (from: 0, to: 2),
+      );
       expect(name.rects, [chip]);
       expect(line.rects, [strip]);
       expect(timelineBlockWarningBarThickness, 2, reason: '⛔전제');

@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/input/two_axis_drag.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 /// 🗣️F-202 (유저 2026-09-27): 「띠가 스크롤되는거, 같은상황에서 뷰어패널
@@ -83,12 +84,8 @@ void main() {
     PointerDeviceKind kind, {
     double reach = 60,
   }) async {
-    final across = axis == Axis.horizontal
-        ? const Offset(0, -24)
-        : const Offset(-24, 0);
-    final step = axis == Axis.horizontal
-        ? Offset(reach / 3, 0)
-        : Offset(0, reach / 3);
+    final across = offsetAlong(axis, along: 0, across: -24);
+    final step = offsetAlong(axis, along: reach / 3, across: 0);
     final gesture = await tester.startGesture(at, kind: kind);
     await tester.pump();
     await gesture.moveBy(across);
@@ -160,10 +157,7 @@ void main() {
         await inTheStrip(tester, scrollbar(axis, offsets));
         final lane = tester.getTopLeft(find.byType(AppScrollbar));
         await tester.tapAt(
-          lane +
-              (axis == Axis.horizontal
-                  ? const Offset(250, 8)
-                  : const Offset(8, 250)),
+          lane + offsetAlong(axis, along: 250, across: 8),
         );
         await tester.pumpAndSettle();
         // A 100px thumb centred on 250 of a 300px lane: its start at 200 of
@@ -431,9 +425,7 @@ void main() {
             everyElement(greaterThan(0)),
             reason: '⛔fixture premise: under the floor on both axes',
           );
-          final step = axis == Axis.horizontal
-              ? const Offset(-30, 0)
-              : const Offset(0, -30);
+          final step = offsetAlong(axis, along: -30, across: 0);
           final gesture = await tester.startGesture(
             tester.getTopLeft(find.byType(EditorPanelTabs)) +
                 const Offset(100, 100),

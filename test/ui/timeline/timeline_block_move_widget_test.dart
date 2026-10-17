@@ -13,6 +13,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show endAlong, offsetAlong, partAcross;
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 
 import 'timeline_cell_probe.dart';
@@ -218,9 +220,11 @@ metrics: metrics,
     );
     // Reach into the trailing 24px band: the reach itself scrolls…
     await gesture.moveTo(
-      horizontal
-          ? Offset(viewportRect.right - 6, start.dy)
-          : Offset(start.dx, viewportRect.bottom - 6),
+      offsetAlong(
+        axis,
+        along: endAlong(axis, viewportRect) - 6,
+        across: partAcross(axis, start),
+      ),
     );
     await tester.pump();
     final offsetAtEdge = frameOffset();
@@ -230,7 +234,7 @@ metrics: metrics,
     // …and nudging inside the band keeps scrolling (per pointer move).
     for (var step = 0; step < 8; step += 1) {
       final nudge = step.isEven ? 1.0 : -1.0;
-      await gesture.moveBy(horizontal ? Offset(nudge, 0) : Offset(0, nudge));
+      await gesture.moveBy(offsetAlong(axis, along: nudge, across: 0));
       await tester.pump();
     }
     expect(frameOffset(), greaterThan(offsetAtEdge), reason: '$axis');

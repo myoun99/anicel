@@ -197,7 +197,6 @@ void main() {
 
           // Measured from the block's corner, in the corner's own terms: a
           // quarter of each leg in is ink, three quarters of each is not.
-          final horizontal = axis == Axis.horizontal;
           final lead = edge == TimelineBlockEdge.start;
           final along = extentAlong(axis, box.size);
           final across = extentAcross(axis, box.size);
@@ -208,7 +207,7 @@ void main() {
             final c = lead
                 ? endAcross(axis, box) - across * acrossShare
                 : startAcross(axis, box) + across * acrossShare;
-            return horizontal ? Offset(a, c) : Offset(c, a);
+            return offsetAlong(axis, along: a, across: c);
           }
 
           expect(path.contains(fromCorner(0.25, 0.25)), isTrue, reason: why);

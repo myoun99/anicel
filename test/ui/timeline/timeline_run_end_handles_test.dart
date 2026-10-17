@@ -10,6 +10,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_run_edit.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show endAlong, offsetAlong, partAcross;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -212,9 +214,11 @@ void main() {
         kind: PointerDeviceKind.mouse,
       );
       await gesture.moveTo(
-        horizontal
-            ? Offset(viewportRect.right - 6, start.dy)
-            : Offset(start.dx, viewportRect.bottom - 6),
+        offsetAlong(
+          axis,
+          along: endAlong(axis, viewportRect) - 6,
+          across: partAcross(axis, start),
+        ),
       );
       await tester.pump();
       final offsetAtEdge = frameOffset();
@@ -223,7 +227,7 @@ void main() {
 
       for (var step = 0; step < 8; step += 1) {
         final nudge = step.isEven ? 1.0 : -1.0;
-        await gesture.moveBy(horizontal ? Offset(nudge, 0) : Offset(0, nudge));
+        await gesture.moveBy(offsetAlong(axis, along: nudge, across: 0));
         await tester.pump();
       }
       expect(frameOffset(), greaterThan(offsetAtEdge), reason: '$axis');

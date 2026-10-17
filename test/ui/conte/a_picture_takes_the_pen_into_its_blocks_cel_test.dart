@@ -55,6 +55,8 @@ import 'package:anicel/src/ui/sheet/sheet_image_cache.dart'
     show SheetImageLookup;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAcross;
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -1321,17 +1323,19 @@ void main() {
         );
         final middle = onScreen(slot.center);
         // Across each side: three device pixels either way of the edge.
-        for (final (side, edge, across) in [
-          ('left', onScreen(slot.centerLeft).dx, true),
-          ('right', onScreen(slot.centerRight).dx, true),
-          ('top', onScreen(slot.topCenter).dy, false),
-          ('bottom', onScreen(slot.bottomCenter).dy, false),
+        for (final (side, edge, axis) in [
+          ('left', onScreen(slot.centerLeft).dx, Axis.horizontal),
+          ('right', onScreen(slot.centerRight).dx, Axis.horizontal),
+          ('top', onScreen(slot.topCenter).dy, Axis.vertical),
+          ('bottom', onScreen(slot.bottomCenter).dy, Axis.vertical),
         ]) {
           final device = edge * on.ratio;
           for (var d = device.floor() - 3; d <= device.ceil() + 3; d += 1) {
-            final point = across
-                ? Offset((d + 0.5) / on.ratio, middle.dy)
-                : Offset(middle.dx, (d + 0.5) / on.ratio);
+            final point = offsetAlong(
+              axis,
+              along: (d + 0.5) / on.ratio,
+              across: partAcross(axis, middle),
+            );
             final red = (on.colorAt(point).r * 255).round();
             scans += 1;
             if (red > 64) {
