@@ -13,17 +13,19 @@ class _TimesheetSePass {
 
   /// The timeline's `~` continuation marks, printed (SE globalization
   /// round: "타임시트에도 동일하게 추가"). END: a sound starting inside
-  /// this cut runs past its end — the mark straddles the red cut-end
-  /// line, centred on its SE column. START: a sound from an earlier cut
-  /// spills into row 0 — the mark sits on the column's first row edge.
-  /// Pure display, exactly the timeline rows' meaning.
+  /// this cut runs past its end — the mark straddles the cut's end line,
+  /// centred on its SE column. START: a sound from an earlier cut
+  /// spills into row 0 — the mark straddles the column's first row edge.
+  /// Pure display, exactly the timeline rows' meaning, drawn by their own
+  /// drawer standing down the column ([paintSeCrossingMark], F-358).
   void paintSeCrossingMarks(Canvas canvas) {
-    // The `~` straddles the cut's CONTE end — where the next cut's sound
-    // begins — and follows the same live length, or a drag leaves it
-    // hanging where the end used to be. ⚠️F-227 moved the sheet's END LINE
-    // to the drawn end when the cut owes のりしろ; a sound crossing into the
-    // next cut still crosses here, so this mark did not move with it.
-    final frameCount = _painter.livePlaybackFrameCount;
+    // The `~` straddles the line the cut is DRAWN to, and follows the same
+    // live length, or a drag leaves it hanging where the end used to be.
+    // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+    // 엔드라인) 넘어가는건 안보이게하고, 물론 ~표시가 있는데」. ↩️F-227 moved
+    // the END LINE to the drawn end and left this mark on the conte end —
+    // 「a sound crossing into the next cut still crosses here」.
+    final frameCount = _painter.liveDrawnFrameCount;
     final endLine = _painter.layout.cutEndLineFor(frameCount);
     final startTop = _painter.layout.frameRowTop(0);
     final startPosition = _painter.layout.positionOfFrame(0);
@@ -44,26 +46,20 @@ class _TimesheetSePass {
         final left =
             _painter.layout.halfLeft(endLine.page, endLine.half) +
             _painter.layout.columnLeftInHalf(column);
-        _painter._text(
+        paintSeCrossingMark(
           canvas,
-          '~',
-          Offset(left + columnWidth / 2, endLine.y - 5),
-          fontSize: 10,
-          bold: true,
-          centeredAtX: true,
+          Offset(left + columnWidth / 2, endLine.y),
+          Axis.vertical,
         );
       }
       if (spec.spillsInAtStart) {
         final left =
             _painter.layout.halfLeft(startPosition.page, startPosition.half) +
             _painter.layout.columnLeftInHalf(column);
-        _painter._text(
+        paintSeCrossingMark(
           canvas,
-          '~',
-          Offset(left + columnWidth / 2, startTop - 5),
-          fontSize: 10,
-          bold: true,
-          centeredAtX: true,
+          Offset(left + columnWidth / 2, startTop),
+          Axis.vertical,
         );
       }
     }

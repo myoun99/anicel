@@ -960,14 +960,17 @@ void main() {
       canvasSize: const CanvasSize(width: 100, height: 100),
     );
 
-    TimesheetDocument sheet({List<TransitionSpan> spans = const []}) =>
-        TimesheetDocument.fromCut(
-          cut: cut,
-          projectName: 'p',
-          fps: fps,
-          cutStartFrame: cutStart,
-          transitionSpans: spans,
-        );
+    TimesheetDocument sheet({
+      List<TransitionSpan> spans = const [],
+      List<Layer> trackSeLayers = const [],
+    }) => TimesheetDocument.fromCut(
+      cut: cut,
+      projectName: 'p',
+      fps: fps,
+      cutStartFrame: cutStart,
+      transitionSpans: spans,
+      trackSeLayers: trackSeLayers,
+    );
 
     test('no transition means no のりしろ — the sheet is the conte 尺', () {
       final document = sheet();
@@ -993,6 +996,40 @@ void main() {
       expect(document.drawnFrameCount, 3 * fps + 12);
       expect(document.durationLabel, '3+0');
       expect(document.drawnDurationLabel, '3+12');
+    });
+
+    // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+    // 엔드라인)」.
+    test('🚨F-358: a sound crosses the cut\'s end at the line the sheet is '
+        'drawn to — one ending inside the のりしろ does not', () {
+      // An O.L across the cut's END at 120 reaches 12 frames past it: the
+      // sheet is drawn to local 84, its 尺 72.
+      bool crosses(int start, int length) {
+        final sound = Layer(
+          id: const LayerId('track-se'),
+          name: 'S1',
+          kind: LayerKind.se,
+          frames: [
+            Frame(id: const FrameId('s'), duration: length, strokes: const []),
+          ],
+          timeline: {
+            start: TimelineExposure.drawing(
+              const FrameId('s'),
+              length: length,
+            ),
+          },
+        );
+        final column = sheet(
+          spans: const [
+            (start: 108, length: 24, mark: CameraInstructionMarkType.ol),
+          ],
+          trackSeLayers: [sound],
+        ).columns.firstWhere((c) => c.kind == TimesheetColumnKind.se);
+        return column.crossesCutEnd;
+      }
+
+      expect(crosses(100, 26), isFalse, reason: 'local [52, 78) ends by 84');
+      expect(crosses(110, 30), isTrue, reason: 'local [62, 92) runs past 84');
     });
 
     test('a sheet without transitions prints one number, as it always did', () {

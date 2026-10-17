@@ -503,8 +503,7 @@ class _WorkspaceCollapsedRows {
               projectId: session.repository.requireProject().id.value,
               cutId: session.activeCutId?.value,
             ),
-            playbackFrameCount:
-                session.activeCutSpan.activeCutPlaybackFrameCount,
+            drawnFrameCount: session.activeCutSpan.activeCutDrawnFrameCount,
             // A sound carried over from an earlier cut reads as the
             // timeline's does: its words where the track has them, its `~`
             // at frame 0 (F-358).

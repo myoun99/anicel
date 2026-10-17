@@ -12,6 +12,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
@@ -36,8 +37,11 @@ void main() {
     (start: 18, length: 12, mark: CameraInstructionMarkType.ol),
   ];
 
-  TimesheetDocument sheet(List<TransitionSpan> spans) =>
-      TimesheetDocument.fromCut(
+  TimesheetDocument sheet(
+    List<TransitionSpan> spans, {
+    List<Layer> sounds = const [],
+    int cutStartFrame = 0,
+  }) => TimesheetDocument.fromCut(
         cut: Cut(
           id: cutId,
           name: '1',
@@ -59,7 +63,23 @@ void main() {
         projectName: 'P',
         fps: 24,
         transitionSpans: spans,
+        trackSeLayers: sounds,
+        cutStartFrame: cutStartFrame,
       );
+
+  /// A track's SE row holding one sound, over global
+  /// `[start, start + length)`.
+  Layer sound(int start, int length) => Layer(
+    id: const LayerId('se'),
+    name: 'SE1',
+    kind: LayerKind.se,
+    frames: [
+      Frame(id: const FrameId('s'), duration: length, strokes: const []),
+    ],
+    timeline: {
+      start: TimelineExposure.drawing(const FrameId('s'), length: length),
+    },
+  );
 
   Future<(ByteData, int, TimesheetDocumentLayout)> rasterize(
     WidgetTester tester,
@@ -197,5 +217,94 @@ void main() {
       isFalse,
       reason: 'the big number is the conte 尺 either way — 1 + 0',
     );
+  });
+
+  // 🗣️F-358 (유저 2026-10-14): 「타임시트패널에도 시작부분에 ~랑 엔드라인쪽에
+  // ~ 제대로 표시. 빨간색으로. 중요한건 방향을 세로로 해야지」; (10-17)
+  // 「컷 엔드라인(OL여백이든 뭐든 총합적인 엔드라인)」.
+  group('🚨F-358: the ~ of a sound crossing the cut', () {
+    /// Whether [raster] wears red within a pixel of [at].
+    bool redNear((ByteData, int, TimesheetDocumentLayout) raster, Offset at) {
+      final (bytes, width, _) = raster;
+      for (var dy = -1; dy <= 1; dy += 1) {
+        for (var dx = -1; dx <= 1; dx += 1) {
+          final x = at.dx.floor() + dx;
+          final y = at.dy.floor() + dy;
+          if (near(bytes, (y * width + x) * 4, AppColors.danger)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    /// The middle of the SE column, on the page half of [at].
+    double seColumnMiddle(
+      TimesheetDocument document,
+      TimesheetDocumentLayout layout,
+      ({int page, int half}) at,
+    ) =>
+        layout.halfLeft(at.page, at.half) +
+        layout.columnLeftInHalf(
+          document.columns.indexWhere(
+            (column) => column.kind == TimesheetColumnKind.se,
+          ),
+        ) +
+        layout.columnWidthFor(TimesheetColumnKind.se) / 2;
+
+    // Down a column the wave turns a quarter clockwise: its first hump
+    // stands right of the middle above the line, its second left below.
+    testWidgets('one running past the DRAWN end wears it on that line, '
+        'down the column', (tester) async {
+      final document = sheet(crossing, sounds: [sound(0, 40)]);
+      final raster = await rasterize(tester, document);
+      final layout = raster.$3;
+      final line = layout.cutEndLineFor(30);
+      final mark = Offset(
+        seColumnMiddle(document, layout, (page: line.page, half: line.half)),
+        line.y,
+      );
+      expect(redNear(raster, mark.translate(3, -3.5)), isTrue);
+      expect(redNear(raster, mark.translate(-3, 3.5)), isTrue);
+      expect(redNear(raster, mark.translate(-3, -3.5)), isFalse);
+      expect(redNear(raster, mark.translate(3, 3.5)), isFalse);
+    });
+
+    testWidgets('one ending inside the のりしろ crosses nothing', (
+      tester,
+    ) async {
+      final document = sheet(crossing, sounds: [sound(0, 28)]);
+      final raster = await rasterize(tester, document);
+      final layout = raster.$3;
+      for (final frames in [24, 30]) {
+        final line = layout.cutEndLineFor(frames);
+        final mark = Offset(
+          seColumnMiddle(document, layout, (page: line.page, half: line.half)),
+          line.y,
+        );
+        expect(redNear(raster, mark.translate(3, -3.5)), isFalse);
+        expect(redNear(raster, mark.translate(-3, 3.5)), isFalse);
+      }
+    });
+
+    // Above the first row's edge — below it the cell is the sound's.
+    testWidgets('one spilling in from an earlier cut wears it on the first '
+        'row\'s edge, down the column', (tester) async {
+      // The cut sits at global 24; the sound runs [10, 30).
+      final document = sheet(
+        const [],
+        sounds: [sound(10, 20)],
+        cutStartFrame: 24,
+      );
+      final raster = await rasterize(tester, document);
+      final layout = raster.$3;
+      final first = layout.positionOfFrame(0);
+      final mark = Offset(
+        seColumnMiddle(document, layout, (page: first.page, half: first.half)),
+        layout.frameRowTop(0),
+      );
+      expect(redNear(raster, mark.translate(3, -3.5)), isTrue);
+      expect(redNear(raster, mark.translate(-3, -3.5)), isFalse);
+    });
   });
 }

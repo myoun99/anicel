@@ -3970,8 +3970,9 @@ class _StoryboardTransitionRow extends KeptPiece
 
 /// One TRACK-owned SE row: the track's [slot]th SE layer rendered straight
 /// on the global frame axis — blocks keep their true lengths (a sound may
-/// cross cut boundaries; each crossed boundary draws a `~` continuation
-/// mark) and the timeline's data is exactly this layer, by identity.
+/// cross cut boundaries) and the timeline's data is exactly this layer, by
+/// identity. It shows the whole flow, so it wears no `~`: 🗣️F-358 (유저
+/// 2026-10-14) 「이런건 물론 로컬패널(타임라인패널)에서만」.
 class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   const _StoryboardSeRow({
     required this.trackIndex,

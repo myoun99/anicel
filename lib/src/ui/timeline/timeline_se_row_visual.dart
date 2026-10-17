@@ -9,6 +9,7 @@ import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
+import '../../models/track_se_window.dart' show seSoundRunsPast;
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
@@ -19,6 +20,7 @@ import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
+import 'se_crossing_mark_painter.dart';
 import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
@@ -101,12 +103,22 @@ List<Widget> timelineRowSeLabelOverlays({
 /// an earlier cut marks the cut start ("something precedes"; its start
 /// grip stands down — the real start lives in that cut). The storyboard's
 /// track-global strip shows the whole flow and carries no marks.
+///
+/// The cut's end is the line it is DRAWN to — its 尺 plus the のりしろ a
+/// transition asks ([drawnFrameCount], the timeline's blue line and the
+/// sheet's end line). 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든
+/// 뭐든 총합적인 엔드라인)」. ↩️It stood on the 尺, short of the margin.
+///
+/// Each mark straddles its boundary, centred across the row, and runs along
+/// the [axis] ([paintSeCrossingMark]) — so at the cut's start only its back
+/// half is the cut's (유저: 「물론 끝에만 보이게 되겟지」).
 List<Widget> timelineRowSeContinuationMarks({
   required Layer layer,
-  required int cutFrameCount,
+  required int drawnFrameCount,
   required bool spillsInAtStart,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
+  required Axis axis,
   String keyPrefix = 'timeline',
 }) {
   final marks = <Widget>[];
@@ -117,40 +129,40 @@ List<Widget> timelineRowSeContinuationMarks({
     }
     marks.add(
       TimelineFrameSpan(
-        // A fixed 14px glyph straddling the boundary — the one piece of SE
-        // chrome that must NOT scale with the zoom.
         placement: TimelineFrameSpanPlacement(
           startIndex: boundaryFrame,
-          mainInset: -7,
-          mainExtent: 14,
+          mainInset: -seCrossingMarkLength / 2,
+          mainExtent: seCrossingMarkLength,
         ),
         child: IgnorePointer(
           key: ValueKey<String>('$keyPrefix-se-crossing-${layer.id}-$suffix'),
-          child: const Center(
-            child: Text(
-              '~',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: timelineDrawingInkColor,
-              ),
-            ),
-          ),
+          child: CustomPaint(painter: _SeCrossingMarkPainter(axis)),
         ),
       ),
     );
   }
 
-  for (final block in drawingBlocks(layer.timeline)) {
-    if (spillsInAtStart && block.startIndex == 0) {
-      mark(0, 'start');
-    }
-    if (block.startIndex < cutFrameCount &&
-        block.endIndexExclusive > cutFrameCount) {
-      mark(cutFrameCount, 'end');
-    }
+  if (spillsInAtStart) {
+    mark(0, 'start');
+  }
+  if (seSoundRunsPast(layer, drawnFrameCount)) {
+    mark(drawnFrameCount, 'end');
   }
   return marks;
+}
+
+/// One `~`, in the middle of the strip it stands in.
+class _SeCrossingMarkPainter extends CustomPainter with RepaintOnProps {
+  const _SeCrossingMarkPainter(this.axis);
+
+  final Axis axis;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintSeCrossingMark(canvas, size.center(Offset.zero), axis);
+
+  @override
+  Object get props => axis;
 }
 
 /// Waveform strips for an SE row's audio, painted ABOVE the paper cells

@@ -257,8 +257,7 @@ List<ConteDialogueLine> _dialogueOf(Track track, int startFrame, int endFrame) {
       lines.add(
         ConteDialogueLine(
           // Clipped: a line that began in an earlier cut still belongs to
-          // this cut's first cell, which is where the continuation arrow
-          // will sit.
+          // this cut's first cell.
           startFrame: math.max(0, block.startIndex - startFrame),
           text: text,
           speaker: frame?.seName ?? '',

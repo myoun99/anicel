@@ -34,14 +34,18 @@ void main() {
     required Layer layer,
     int? spillInLeadFrames,
     TimelineCommaDragCallbacks? commaDrag,
+    int drawnFrameCount = 6,
+    Axis axis = Axis.horizontal,
   }) {
     return MaterialApp(
       home: Scaffold(
         body: Material(
           child: TimelineFrameCellsRow(
+            axis: axis,
             layer: layer,
-            // The cut is 6 frames long; the row shows a few runway frames.
-            playbackFrameCount: 6,
+            // The cut is drawn for 6 frames; the row shows a few runway
+            // frames.
+            drawnFrameCount: drawnFrameCount,
             geometry: testFrameGeometry(
               frameCellExtent: 48,
               frameEndIndexExclusive: 10,
@@ -116,9 +120,15 @@ void main() {
       ),
     );
 
+    final start = find.byKey(
+      const ValueKey<String>('timeline-se-crossing-se-1-start'),
+    );
+    expect(start, findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('timeline-se-crossing-se-1-start')),
-      findsOneWidget,
+      tester.getCenter(start).dx -
+          tester.getTopLeft(find.byType(TimelineFrameCellsRow)).dx,
+      0,
+      reason: 'it straddles the cut start',
     );
     final targets = timelineRowChromeTargets(tester, 'se-1');
     expect(
@@ -142,5 +152,37 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-se-crossing-se-1-start')),
       findsNothing,
     );
+  });
+
+  // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+  // 엔드라인)」 — the 尺 plus the のりしろ, the timeline's blue line.
+  testWidgets('🚨F-358: the end ~ stands on the line the cut is DRAWN to, '
+      'and a sound ending short of it carries none', (tester) async {
+    final end = find.byKey(
+      const ValueKey<String>('timeline-se-crossing-se-1-end'),
+    );
+    await tester.pumpWidget(
+      harness(
+        layer: seLayer({
+          2: const TimelineExposure.drawing(FrameId('f1'), length: 8),
+        }),
+        drawnFrameCount: 8,
+      ),
+    );
+    expect(
+      tester.getCenter(end).dx -
+          tester.getTopLeft(find.byType(TimelineFrameCellsRow)).dx,
+      8 * 48,
+    );
+
+    await tester.pumpWidget(
+      harness(
+        layer: seLayer({
+          2: const TimelineExposure.drawing(FrameId('f1'), length: 5),
+        }),
+        drawnFrameCount: 8,
+      ),
+    );
+    expect(end, findsNothing);
   });
 }

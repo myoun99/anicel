@@ -64,7 +64,7 @@ void main() {
             body: Material(
               child: TimelineFrameCellsRow(
                 layer: _spillingRow(),
-                playbackFrameCount: 6,
+                drawnFrameCount: 6,
                 geometry: testFrameGeometry(
                   frameCellExtent: 48,
                   frameEndIndexExclusive: 10,

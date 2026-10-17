@@ -203,6 +203,24 @@ class TrackSeWindow {
   }
 }
 
+/// Whether a sound of [window] — a cut's display clone of an SE row —
+/// starts before [frame] and runs past it: the crossing the cut marks with
+/// its `~` at the cut's end (UI-R7 #6). An edge's ghost is no sound of its
+/// own (the printed sheet's filter, #770). The timeline's rows and the
+/// sheet ask this one question (F-358); ↩️each asked it its own way, the
+/// rows over the ghosts too.
+bool seSoundRunsPast(Layer window, int frame) {
+  for (final MapEntry(key: start, value: exposure)
+      in window.timeline.entries) {
+    if (!exposure.ghost &&
+        start < frame &&
+        start + (exposure.length ?? 1) > frame) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// [layer] with every exposure STARTING at or past [endFrameExclusive]
 /// dropped — the cut-scoped exports' clip on an open-ended display window
 /// (a printed page is no runway). Blocks that start inside and RUN PAST

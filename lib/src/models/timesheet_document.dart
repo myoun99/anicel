@@ -275,9 +275,10 @@ class TimesheetColumn {
   /// for unbacked slots.
   final List<TimesheetCell> Function(Layer layer)? previewCellsBuilder;
 
-  /// SE columns: whether a sound starting inside this cut runs past its
-  /// end — the timeline's `~` continuation mark, printed on the sheet at
-  /// the cut-end line (SE globalization round). Pure display.
+  /// SE columns: whether a sound starting inside this cut runs past the
+  /// line it is drawn to — its 尺 plus the のりしろ — the timeline's `~`
+  /// continuation mark, printed on the sheet at that end line (SE
+  /// globalization round; F-358). Pure display.
   final bool crossesCutEnd;
 
   /// SE columns: whether a sound from an earlier cut spills into row 0 —
@@ -457,7 +458,15 @@ class TimesheetDocument {
       for (var slot = 0; slot < actionSlots; slot += 1)
         _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet),
       for (var slot = 0; slot < seColumnSlots; slot += 1)
-        _seColumn(slot, seSlots, rowCount, playbackFrameCount, dataSheet, clipToSheet),
+        _seColumn(
+          slot,
+          seSlots,
+          rowCount,
+          playbackFrameCount,
+          dataSheet,
+          clipToSheet,
+          drawnFrameCount: drawnFrameCount,
+        ),
       for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
         _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, dataSheet),
       // CAM block: slot 0 keeps the camera transform keyframes; the
@@ -495,7 +504,15 @@ class TimesheetDocument {
     );
   }
 
-  static TimesheetColumn _seColumn(int slot, List<({bool crosses, Layer layer, bool spills})> seSlots, int rowCount, int playbackFrameCount, bool dataSheet, Layer Function(Layer displayClone) clipToSheet) {
+  static TimesheetColumn _seColumn(
+    int slot,
+    List<({Layer layer, bool spills})> seSlots,
+    int rowCount,
+    int playbackFrameCount,
+    bool dataSheet,
+    Layer Function(Layer displayClone) clipToSheet, {
+    required int drawnFrameCount,
+  }) {
     return TimesheetColumn(
       kind: TimesheetColumnKind.se,
       // The layer's stored name — the same label the timeline and
@@ -505,7 +522,11 @@ class TimesheetDocument {
           : 'S${slot + 1}',
       layerName: slot < seSlots.length ? seSlots[slot].layer.name : null,
       layerId: slot < seSlots.length ? seSlots[slot].layer.id : null,
-      crossesCutEnd: slot < seSlots.length && seSlots[slot].crosses,
+      // The `~` at the line the cut is DRAWN to, as the timeline's rows
+      // mark it (F-358, [seSoundRunsPast]).
+      crossesCutEnd:
+          slot < seSlots.length &&
+          seSoundRunsPast(seSlots[slot].layer, drawnFrameCount),
       spillsInAtStart: slot < seSlots.length && seSlots[slot].spills,
       cells: slot < seSlots.length
           ? timesheetLayerCells(

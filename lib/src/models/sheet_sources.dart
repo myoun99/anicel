@@ -44,9 +44,7 @@ class SheetSources {
       actionBooks: sheetBooksOf(_actionBlockRows(cut.layers)),
       seLayers: [
         for (final layer in cut.layers)
-          if (layerPrintsSheetLines(layer))
-            (layer: layer, crosses: crossesCutEnd(layer, playbackFrameCount),
-             spills: false),
+          if (layerPrintsSheetLines(layer)) (layer: layer, spills: false),
         for (final layer in trackSeLayers)
           if (layerPrintsSheetLines(layer))
             () {
@@ -64,7 +62,6 @@ class SheetSources {
               );
               return (
                 layer: clone,
-                crosses: crossesCutEnd(clone, playbackFrameCount),
                 spills: seWindow.spillInBlock(layer) != null,
               );
             }(),
@@ -128,10 +125,11 @@ class SheetSources {
   /// 란에는 BOOK표시 안하는 것」. It marked its own since F-406-Q1.
   final List<SheetBook> actionBooks;
 
-  /// The SE rows, already windowed and clipped to this cut, each with the
-  /// two facts the printed sheet marks: whether the row's block runs past
-  /// the cut end, and whether it spilled in from an earlier cut.
-  final List<({Layer layer, bool crosses, bool spills})> seLayers;
+  /// The SE rows, already windowed and clipped to this cut, each with
+  /// whether it spilled in from an earlier cut — the start-side `~` the
+  /// printed sheet marks. Whether one runs past the end is the sheet's to
+  /// ask, at the line it draws the cut to ([seSoundRunsPast], F-358).
+  final List<({Layer layer, bool spills})> seLayers;
 
   /// The instruction rows the sheet prints.
   final List<Layer> instructionLayers;
@@ -178,18 +176,4 @@ String sheetBookLabel(Layer layer) {
   final shown = authoredBlockOf(layer)?.frameId;
   final picture = shown == null ? null : layer.frameById(shown);
   return '${layer.name}${picture?.celNumber ?? ''}';
-}
-
-/// Whether any authored block of [clone] starts inside the cut and runs
-/// past [playbackFrameCount] — the `~` the sheet marks a crossing with.
-bool crossesCutEnd(Layer clone, int playbackFrameCount) {
-  for (final entry in clone.timeline.entries) {
-    if (entry.value.isDrawing &&
-        !entry.value.ghost &&
-        entry.key < playbackFrameCount &&
-        entry.key + (entry.value.length ?? 1) > playbackFrameCount) {
-      return true;
-    }
-  }
-  return false;
 }

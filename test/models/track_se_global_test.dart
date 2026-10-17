@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -15,6 +16,8 @@ import 'package:anicel/src/models/track_se_window.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
     show seNameTagLaneDisplayOrder, seNameTagLaneLens;
+
+import '../helpers/run_edge_fixtures.dart';
 
 /// W3: SE rows move from cut-owned to TRACK-owned (global frame axis,
 /// cut-crossing sounds). Pins the JSON shape and the display window.
@@ -140,6 +143,34 @@ void main() {
         'without a cut there is no local axis to rebase onto', () {
       const parked = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 0);
       expect(parked.displayLayer(global).timeline, isEmpty);
+    });
+
+    test('🚨F-358: a sound runs past a line when it starts before it and '
+        'ends after it — the one question behind every end ~', () {
+      // Local blocks [0, 10) and [10, 18).
+      final display = window.displayLayer(global);
+      expect(seSoundRunsPast(display, 12), isTrue);
+      expect(
+        seSoundRunsPast(display, 10),
+        isFalse,
+        reason: 'one sound ends on the line and the next starts there',
+      );
+      expect(seSoundRunsPast(display, 18), isFalse, reason: 'ends on it');
+    });
+
+    test('an edge\'s ghost is no sound of its own: it crosses nothing', () {
+      Layer runningPast6({TimelineRunEdgeGhost? ghostOf}) => seLayer(
+        'se-ghost',
+        timeline: {
+          4: TimelineExposure.drawing(
+            const FrameId('fa'),
+            length: 8,
+            ghostOf: ghostOf,
+          ),
+        },
+      );
+      expect(seSoundRunsPast(runningPast6(), 6), isTrue);
+      expect(seSoundRunsPast(runningPast6(ghostOf: endHoldGhost), 6), isFalse);
     });
   });
 
