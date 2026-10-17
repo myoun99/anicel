@@ -304,6 +304,7 @@ void main() {
     // cel deletes from anywhere on it — both gates open now.
     s.selectFrameIndex(1);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isTrue);
+    expect(s.layerMarks.canMarkEvery, isTrue);
     expect(s.cells.canDeleteCellAtCurrentFrame, isTrue);
     s.selectFrameIndex(0);
 
@@ -411,6 +412,7 @@ void main() {
 
     expect(s.exposureVerbs.canBlankExposureAtCurrentFrame, isFalse);
     expect(s.layerMarks.canToggleMarkAtCurrentFrame, isFalse);
+    expect(s.layerMarks.canMarkEvery, isFalse);
     expect(s.cells.canDeleteCellAtCurrentFrame, isFalse);
     expect(s.canPasteLinkedFrameAtCurrentFrame, isFalse);
     expect(s.layerSwitches.canToggleTargetLayerKind, isFalse);

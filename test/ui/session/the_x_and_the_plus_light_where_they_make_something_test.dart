@@ -211,6 +211,14 @@ void main() {
       expectLands(session, id, session.layerMarks.toggleMarkAtCurrentFrame);
     });
 
+    test('mark every n koma (I-58)', () {
+      final (session, id) = conteScene();
+      session.selectFrameIndex(8);
+
+      expect(session.layerMarks.canMarkEvery, isTrue);
+      expectLands(session, id, () => session.layerMarks.markEvery(3));
+    });
+
     test('cut', () {
       final (session, id) = conteScene();
       session.selectFrameIndex(8);

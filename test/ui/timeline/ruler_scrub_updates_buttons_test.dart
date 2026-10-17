@@ -98,6 +98,7 @@ void main() {
     s.frameVerbs.canRenameFrameAtCurrentFrame,
     s.exposureVerbs.canBlankExposureAtCurrentFrame,
     s.layerMarks.canToggleMarkAtCurrentFrame,
+    s.layerMarks.canMarkEvery,
     s.canCopyFrameAtCurrentFrame,
     s.canPasteLinkedFrameAtCurrentFrame,
     s.clipboard.canCutRunAtCurrentFrame,

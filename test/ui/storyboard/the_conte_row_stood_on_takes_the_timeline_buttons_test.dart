@@ -148,6 +148,7 @@ void main() {
     'edit': panel.canEditInstance,
     'X': panel.canBlankExposure,
     'mark': panel.canToggleMark,
+    'mark every': panel.canMarkEvery,
     'cut': panel.canCutRun,
     'copy': panel.canCopyFrame,
     'paste': panel.canPasteIndependentFrame,
@@ -187,7 +188,14 @@ void main() {
       expect(storyboard, timeline);
       expect(
         [
-          for (final lit in ['edit', 'mark', 'cut', 'copy', 'row span'])
+          for (final lit in [
+            'edit',
+            'mark',
+            'mark every',
+            'cut',
+            'copy',
+            'row span',
+          ])
             storyboard[lit],
           storyboard['unlink'],
           storyboard['push'],
@@ -237,6 +245,20 @@ void main() {
       expect(band?.layerId, conteA);
       expect((band?.startIndex, band?.endIndexExclusive), (0, 24));
       expect(session.trackFrameRangeSelection.value, isNull);
+    });
+
+    test('🗣️I-58: the ● every n koma dots the panel stood on from its head, '
+        'as the timeline\'s press on that cell does', () {
+      final session = onTheConteRow(18);
+      StoryboardToolbarPanelContext(session).markEvery(3);
+
+      final timeline = onTheTimelinesRow(18);
+      TimelineToolbarPanelContext(timeline).markEvery(3);
+
+      List<int>? marksOf(EditorSessionManager s) =>
+          conteOf(s).timeline[16]?.breakdownOffsets;
+      expect(marksOf(session), [3, 6], reason: 'the third panel, 16..24');
+      expect(marksOf(session), marksOf(timeline));
     });
 
     test('링크 독립 gives the panel a cel of its own', () {
@@ -355,6 +377,7 @@ void main() {
 
     expect(panel.editTarget, isA<StoryboardEditCut>());
     expect(panel.canToggleMark, isFalse);
+    expect(panel.canMarkEvery, isFalse);
     expect(panel.canCopyFrame, isFalse);
     expect(panel.canSelectRowSpan, isTrue, reason: 'D40: the cuts\' span');
     session.storyboardCursor.deleteBlockAtStoryboardCursor();

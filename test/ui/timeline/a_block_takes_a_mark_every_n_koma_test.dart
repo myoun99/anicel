@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -17,6 +18,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
@@ -37,7 +40,7 @@ void main() {
 
   /// A: ONE block ten frames long — the user's `1---------`. B: a block of
   /// four, a block of six that holds, and the hold's ghost to the cut's
-  /// end. C: a single frame.
+  /// end. C: a single frame, then a block of two.
   Project project() => Project(
     id: const ProjectId('mark-every'),
     name: 'Every',
@@ -88,9 +91,10 @@ void main() {
                 id: idC,
                 name: 'C',
                 kind: LayerKind.animation,
-                frames: [cel('c1', 1)],
+                frames: [cel('c1', 1), cel('c2', 2)],
                 timeline: {
                   0: const TimelineExposure.drawing(FrameId('c1'), length: 1),
+                  1: const TimelineExposure.drawing(FrameId('c2'), length: 2),
                 },
               ),
             ],
@@ -187,11 +191,16 @@ void main() {
     );
   });
 
-  test('one press is ONE undo', () {
+  test('one press is ONE undo, and the rows hear it', () {
     final session = rig();
     sweep(session, [idA, idB], from: 0, toExclusive: 10);
+    var notifies = 0;
+    session.addListener(() => notifies += 1);
+
     session.layerMarks.markEvery(3);
+
     expect(marksAt(session, idB, 4), [3], reason: 'premise');
+    expect(notifies, isPositive);
 
     session.undo();
 
@@ -214,8 +223,8 @@ void main() {
     }
   });
 
-  test('nothing to dot stays dark and lands no undo step: a hold\'s ghost '
-      'is no block, a single frame has no cell past its head', () {
+  test('nothing to dot stays dark and lands nothing: a hold\'s ghost is no '
+      'block, a single frame has no cell past its head', () {
     final session = rig();
     standOn(session, idB, 12);
     expect(session.layerMarks.canMarkEvery, isFalse, reason: 'the ghost');
@@ -225,30 +234,64 @@ void main() {
 
     standOn(session, idA, 0);
     final undoBefore = session.canUndo;
+    var notifies = 0;
+    session.addListener(() => notifies += 1);
     session.layerMarks.markEvery(10);
     expect(marksAt(session, idA, 0), isEmpty, reason: '10 is past the end');
-    expect(session.canUndo, undoBefore);
+    expect((session.canUndo, notifies), (undoBefore, 0));
   });
 
-  // 🗣️I-58-Q1 (유저 2026-10-18): 「토글은 지금 자리, 새 버튼만 ● 오른쪽」.
-  testWidgets('the button stands right after the ●, and its window takes '
-      'the count the way every count of frames is typed', (tester) async {
+  test('a block of two lights it: its one cell past the head takes the ●',
+      () {
+    final session = rig();
+    standOn(session, idC, 1);
+
+    expect(session.layerMarks.canMarkEvery, isTrue);
+    session.layerMarks.markEvery(1);
+
+    expect(marksAt(session, idC, 1), [1]);
+  });
+
+  Future<EditorSessionManager> pumpEditor(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: project())),
     );
     await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
+    return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+  }
 
-    final pill = find.descendant(
-      of: find.byType(TimelineActionToolbar),
-      matching: find.byKey(
-        const ValueKey<String>('timeline-toolbar-frame-group'),
-      ),
+  final pill = find.descendant(
+    of: find.byType(TimelineActionToolbar),
+    matching: find.byKey(
+      const ValueKey<String>('timeline-toolbar-frame-group'),
+    ),
+  );
+
+  Finder inThePill(String keyValue) => find.descendant(
+    of: pill,
+    matching: find.byWidgetPredicate(
+      (w) => w is AppIconButton && w.keyValue == keyValue,
+    ),
+  );
+
+  final window = find.byKey(const ValueKey<String>('mark-every-dialog'));
+
+  Future<void> typeAndApply(WidgetTester tester, String count) async {
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('mark-every-field')),
+      count,
     );
+    await tester.tap(find.byKey(const ValueKey<String>('mark-every-apply')));
+    await tester.pumpAndSettle();
+  }
+
+  // 🗣️I-58-Q1 (유저 2026-10-18): 「토글은 지금 자리, 새 버튼만 ● 오른쪽」.
+  testWidgets('the button stands right after the ●, and its window takes '
+      'the count the way every count of frames is typed', (tester) async {
+    final session = await pumpEditor(tester);
+
     final order = [
       for (final button in tester.widgetList<AppIconButton>(
         find.descendant(of: pill, matching: find.byType(AppIconButton)),
@@ -268,17 +311,9 @@ void main() {
 
     standOn(session, idA, 7);
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: pill,
-        matching: find.byWidgetPredicate(
-          (w) => w is AppIconButton && w.keyValue == 'mark-every-button',
-        ),
-      ),
-    );
+    await tester.tap(inThePill('mark-every-button'));
     await tester.pumpAndSettle();
 
-    final window = find.byKey(const ValueKey<String>('mark-every-dialog'));
     expect(window, findsOneWidget);
     expect(
       find.descendant(
@@ -288,15 +323,46 @@ void main() {
       findsOneWidget,
       reason: 'the window is called what its button is',
     );
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('mark-every-field')),
-      '3',
-    );
-    await tester.tap(find.byKey(const ValueKey<String>('mark-every-apply')));
-    await tester.pumpAndSettle();
+    await typeAndApply(tester, '3');
 
     expect(window, findsNothing);
     expect(marksAt(session, idA, 0), [3, 6, 9]);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // ⚠️The pill is memoized on what its buttons read and baked into a
+  // raster, so a change that only THIS button reads has to reach it too.
+  testWidgets('it lights with the block under the playhead', (tester) async {
+    final session = await pumpEditor(tester);
+    final button = inThePill('mark-every-button');
+    bool lit() => tester.widget<AppIconButton>(button).onPressed != null;
+
+    // Each a block's head, where the ● is dark either way.
+    standOn(session, idC, 0);
+    await tester.pumpAndSettle();
+    expect(lit(), isFalse, reason: 'one frame');
+    standOn(session, idA, 0);
+    await tester.pumpAndSettle();
+    expect(lit(), isTrue, reason: 'ten frames');
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a key recorded for it opens the same window', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 7);
+    EditorShortcutScope.peek(
+      tester.element(find.byType(EditorWorkspace)),
+    )!.setActivators(EditorActionIds.frameMarkEvery, const [
+      SingleActivator(LogicalKeyboardKey.keyK),
+    ]);
+    await tester.pump();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pumpAndSettle();
+    expect(window, findsOneWidget);
+    await typeAndApply(tester, '2');
+
+    expect(marksAt(session, idA, 0), [2, 4, 6, 8]);
     session.playbackRig.prerenderScheduler.cancel();
   });
 }
