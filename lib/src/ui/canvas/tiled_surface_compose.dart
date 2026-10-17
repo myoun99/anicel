@@ -517,8 +517,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   final image =
       _reachesPastTheWall(surface, worldRect) && !debugRastersPastTheWall
       ? await _composedFromBytes(
-          surface,
-          worldRect,
+          _bytesShownOver(surface, worldRect),
           shouldAbort: shouldAbort,
           missing: missing,
           rastered: rastered,
@@ -536,11 +535,16 @@ bool _reachesPastTheWall(BitmapSurface surface, ui.Rect over) {
   return wall.expandToInclude(over) != wall;
 }
 
-/// [surface]'s pixels over [over] made from its tiles' bytes, not rastered:
-/// the bytes the door reads ([SurfaceRegionBytes]), premultiplied into
-/// memory of this compose's own a tile at a time — [missing] says whether
-/// it gives way between runs of them, as a raster does — and uploaded off
-/// this thread ([uploadRawRgba]). Null when [shouldAbort] stood it down.
+/// [surface]'s bytes over [over], as shown ([_shownBy]) — what a compose
+/// past the wall is made from.
+SurfaceRegionBytes _bytesShownOver(BitmapSurface surface, ui.Rect over) =>
+    SurfaceRegionBytes(_shownBy(surface), DirtyRegion.wholePixelsOf(over));
+
+/// The picture of [bytes] — the bytes the door reads — made from them, not
+/// rastered: premultiplied into memory of this compose's own a tile at a
+/// time — [missing] says whether it gives way between runs of them, as a
+/// raster does — and uploaded off this thread ([uploadRawRgba]). Null when
+/// [shouldAbort] stood it down.
 ///
 /// ⚠️THE SECOND OF ITS KIND: [_composeAsync] paces its pictures the same
 /// way — the same run, the same turn, the same ask before each. Not shared
@@ -566,17 +570,12 @@ bool _reachesPastTheWall(BitmapSurface surface, ui.Rect over) {
 /// decoder holds: 20000 wide came back 16384, its height kept — is let go,
 /// and the picture [rastered] as it always was.
 Future<ui.Image?> _composedFromBytes(
-  BitmapSurface surface,
-  ui.Rect over, {
+  SurfaceRegionBytes bytes, {
   required bool Function()? shouldAbort,
   required MissingTilePictures missing,
   required Future<ui.Image?> Function() rastered,
 }) async {
   debugComposesFromBytes += 1;
-  final bytes = SurfaceRegionBytes(
-    _shownBy(surface),
-    DirtyRegion.wholePixelsOf(over),
-  );
   final native = QaNativeEngine.instance;
   if (native == null) {
     // No engine — a load that failed: every build the app ships carries
@@ -638,13 +637,12 @@ Future<ui.Image?> _uploadedOrRastered(
   return rastered();
 }
 
-/// [surface]'s pixels over [over] made from its tiles' bytes inside the
-/// call — [_composedFromBytes]'s synchronous twin, for a row that was on
-/// screen and may not go blank (`_composeSync`): premultiplied into memory
-/// of its own ([_BytesOfItsOwn]) and uploaded now
-/// ([wholePictureUploadedOrNull]). Null where this engine has no upload of
-/// that kind (Skia), refuses this one, or hands back another size — the
-/// caller rasters, as it always did.
+/// The picture of [bytes] made from them inside the call —
+/// [_composedFromBytes]'s synchronous twin, for a row that was on screen
+/// and may not go blank (`_composeSync`): premultiplied into memory of its
+/// own ([_BytesOfItsOwn]) and uploaded now ([wholePictureUploadedOrNull]).
+/// Null where this engine has no upload of that kind (Skia), refuses this
+/// one, or hands back another size — the caller rasters, as it always did.
 ///
 /// 🚨★★★PAST THE WALL A ROW ON SCREEN IS MADE FROM ITS BYTES TOO (F-374-Q8
 /// ⑦, 2026-10-18). 🔬Measured on the Windows app (Surface Pro 11, profile
@@ -664,12 +662,8 @@ Future<ui.Image?> _uploadedOrRastered(
 /// bytes in the call, or a raster of every tile's picture at 9–15 times
 /// the image — so a row that was not on screen arrives from the
 /// asynchronous road, as such rows always have.
-ui.Image? _composedFromBytesNow(BitmapSurface surface, ui.Rect over) {
+ui.Image? _composedFromBytesNow(SurfaceRegionBytes bytes) {
   debugComposesFromBytes += 1;
-  final bytes = SurfaceRegionBytes(
-    _shownBy(surface),
-    DirtyRegion.wholePixelsOf(over),
-  );
   final image = wholePictureUploadedOrNull(_BytesOfItsOwn(bytes));
   if (image == null ||
       image.width == bytes.width && image.height == bytes.height) {
@@ -740,7 +734,7 @@ composePositionedSurfaceImageSync(
     if (!makePictures) {
       return null;
     }
-    final now = _composedFromBytesNow(surface, worldRect);
+    final now = _composedFromBytesNow(_bytesShownOver(surface, worldRect));
     if (now != null) {
       return (
         deferred: PositionedSurfaceImage(image: now, worldRect: worldRect),

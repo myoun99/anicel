@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/native_scratch.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
@@ -448,9 +449,15 @@ void main() {
     )!;
 
     Future<Uint8List> rasteredNow(BitmapSurface surface) async {
+      final composes = debugComposesFromBytes;
       debugRastersPastTheWall = true;
       final rastered = madeNow(surface, BitmapTileImageCache());
       debugRastersPastTheWall = false;
+      expect(
+        debugComposesFromBytes,
+        composes,
+        reason: 'premise: the hatch rasters',
+      );
       final kept = await rastered.real!;
       rastered.deferred.image.dispose();
       try {
@@ -476,10 +483,16 @@ void main() {
           return pictureOf(bytes);
         };
         final reuse = BitmapTileImageCache();
+        NativeScratch.releaseAll();
 
         final now = madeNow(surface, reuse);
 
         expect(debugComposesFromBytes, 1);
+        expect(
+          NativeScratch.liveBytes,
+          lessThan(now.deferred.image.width * now.deferred.image.height * 4),
+          reason: 'the engine\'s scratch did not grow to hold it',
+        );
         expect(
           premultiplied,
           SurfaceRegionBytes(
@@ -539,22 +552,26 @@ void main() {
       await tester.runAsync(() async {
         final surface = pastTheWallWithAText();
         final want = await rasteredNow(surface);
-        for (final (refusal, upload) in <(String, ui.Image? Function())>[
-          ('refused', () => null),
-          (
-            'another size',
+        /// A picture of [surface] the size of [left]..[right] by
+        /// [top]..[bottom] — not the size asked for.
+        ui.Image Function() sized(int left, int top, int right, int bottom) =>
             () => pictureOf(
               SurfaceRegionBytes(
                 surface,
                 DirtyRegion(
-                  left: 0,
-                  top: 0,
-                  rightExclusive: 16,
-                  bottomExclusive: 16,
+                  left: left,
+                  top: top,
+                  rightExclusive: right,
+                  bottomExclusive: bottom,
                 ),
               ),
-            ),
-          ),
+            );
+        for (final (refusal, upload) in <(String, ui.Image? Function())>[
+          ('refused', () => null),
+          // Narrower, its height kept — what this device's decoder does
+          // past its limit — and shorter, its width kept.
+          ('narrower', sized(-45, 2, 41, 14)),
+          ('shorter', sized(-45, 2, 61, 6)),
         ]) {
           debugComposesFromBytes = 0;
           debugWholePictureUploader = (_) => upload();

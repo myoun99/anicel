@@ -80,6 +80,11 @@ bool get pictureOfUploads => _uploadsPremultiplied ??= _probe();
 
 bool? _uploadsPremultiplied;
 
+/// A test's answer to the probe — the test runner draws (Skia), so an
+/// engine that uploads is one it is told it is; null asks the probe again.
+@visibleForTesting
+set debugPictureOfUploads(bool? uploads) => _uploadsPremultiplied = uploads;
+
 ui.Image? _uploadOrNull(Uint8List premultiplied, int width, int height) {
   final image = _uploadedNowOrNull(premultiplied, width, height);
   if (image == null) {
