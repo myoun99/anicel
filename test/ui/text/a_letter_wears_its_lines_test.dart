@@ -267,16 +267,19 @@ void main() {
     const squareRight = middle + size / 2;
 
     testWidgets('🚨wears its line under the letters on their RIGHT, outside '
-        'their square, down the column as far as they run', (tester) async {
+        'their square, as thick as their face says, down the column as far '
+        'as they run', (tester) async {
       await tester.runAsync(() async {
-        const letters = TextLetterStyle(fontSize: size);
+        // 나눔고딕: its underline is thinner than its strikethrough.
+        final face = AppTypography.bundledFallback.single;
+        final letters = TextLetterStyle(fontFamily: face, fontSize: size);
         final bare = await textDrawn(
-          said([run('あい', letters)], vertical: true, at: columnRight),
+          said([run('가나', letters)], vertical: true, at: columnRight),
         );
         final line = apart(
           await textDrawn(
             said(
-              [run('あい', letters.copyWith(underline: true))],
+              [run('가나', letters.copyWith(underline: true))],
               vertical: true,
               at: columnRight,
             ),
@@ -284,9 +287,7 @@ void main() {
           bare,
         );
         final thickness =
-            CanvasLetterFaces.appFaceLines[AppTypography.bundledFamily]!
-                .underlineThickness *
-            size;
+            CanvasLetterFaces.appFaceLines[face]!.underlineThickness * size;
         final xs = {for (final (x, _) in line) x};
         final ys = {for (final (_, y) in line) y};
 
@@ -370,6 +371,87 @@ void main() {
         expect(one, isNotEmpty);
         expect(trailed, one);
       });
+    });
+
+    testWidgets('🚨its line is ONE down the column — no paler seam where one '
+        'letter\'s place meets the next\'s between two pixels', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final between = CanvasPoint(x: 300, y: 20.5);
+        const letters = TextLetterStyle(fontSize: size, underline: true);
+        final content = said(
+          [run('あいう', letters)],
+          vertical: true,
+          at: between,
+        );
+        final layout = layoutCelText(content);
+        final meet = between.y + layout.selectionRects(0, 1).single.bottom;
+        layout.dispose();
+        expect(meet - meet.floor(), inInclusiveRange(0.1, 0.9), reason: 'premise');
+        final ours = await textDrawn(content);
+        final thickness =
+            CanvasLetterFaces.appFaceLines[AppTypography.bundledFamily]!
+                .underlineThickness *
+            size;
+        // The column of pixels down the line's middle.
+        final x = (squareRight + thickness / 2).floor();
+
+        expect(pixelAt(ours, x, meet.floor()) >>> 24, 0xFF);
+        expect(pixelAt(ours, x, meet.floor() - 3) >>> 24, 0xFF, reason: 'fixture');
+      });
+    });
+  });
+
+  testWidgets('🚨a line is ONE along its letters where they turn bold — no '
+      'paler seam where one run meets the next between two pixels', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      const plain = TextLetterStyle(fontSize: 64, underline: true);
+      final content = said([
+        run('ab', plain),
+        run('cd', plain.copyWith(bold: true)),
+      ]);
+      final layout = layoutCelText(content);
+      final meet = anchor.x + layout.selectionRects(0, 2).single.right;
+      layout.dispose();
+      expect(meet - meet.floor(), inInclusiveRange(0.1, 0.9), reason: 'premise');
+      final ours = await textDrawn(content);
+      final bare = await textDrawn(
+        said([
+          run('ab', plain.copyWith(underline: false)),
+          run('cd', plain.copyWith(underline: false, bold: true)),
+        ]),
+      );
+      // A row the line covers whole, under 「a」.
+      final under = middleOf('ab', plain, 0);
+      final row = rowsAt(apart(ours, bare), under).firstWhere(
+        (y) => pixelAt(ours, under, y) >>> 24 == 0xFF,
+      );
+
+      expect(pixelAt(ours, meet.floor(), row) >>> 24, 0xFF);
+    });
+  });
+
+  testWidgets('🚨lines set closer than their letters are tall each wear their '
+      'OWN line — the second\'s is under the second', (tester) async {
+    await tester.runAsync(() async {
+      const letters = TextLetterStyle(fontSize: 64, underline: true);
+      CelTextContent closeSet(TextLetterStyle style) => CelTextContent(
+        spans: [run('あ\nあ', style)],
+        anchor: anchor,
+        lineHeight: 0.5,
+      );
+      final line = apart(
+        await textDrawn(closeSet(letters)),
+        await textDrawn(closeSet(letters.copyWith(underline: false))),
+      );
+      final rows = rowsAt(line, middleOf('あ', letters, 0));
+      // Two bands of rows, one pitch apart.
+      final second = rows.firstWhere((y) => y > rows.first + 8);
+
+      expect(second - rows.first, closeTo(64 * 0.5, 1));
     });
   });
 
@@ -469,6 +551,43 @@ void main() {
       );
 
       expect(line, isNotEmpty);
+
+      // Shrunk to half its width, a tag of 48 is drawn at 24 — and so is
+      // its line: as a tag of 24 wears it.
+      final whole = layoutTextCel(
+        content: const TextCelContent(
+          text: 'S1 太郎',
+          style: style,
+          position: ui.Offset(300, 40),
+        ),
+        canvas: const CanvasSize(width: width, height: height),
+      );
+      final half = whole.textSize.width / 2;
+      whole.dispose();
+      Future<Set<(int, int)>> lineOf(TextCelStyle style, {double? fit}) async {
+        Future<Uint8List> at(TextCelStyle style) async {
+          final layout = layoutTextCel(
+            content: TextCelContent(
+              text: 'S1 太郎',
+              style: style,
+              position: const ui.Offset(300, 40),
+            ),
+            canvas: const CanvasSize(width: width, height: height),
+            maxWidth: fit,
+          );
+          try {
+            return await drawn(layout.paint);
+          } finally {
+            layout.dispose();
+          }
+        }
+
+        return apart(await at(style.copyWith(underline: true)), await at(style));
+      }
+
+      final shrunk = await lineOf(style, fit: half);
+      expect(shrunk, isNotEmpty);
+      expect(shrunk, await lineOf(style.copyWith(fontSize: 24)));
     });
   });
 

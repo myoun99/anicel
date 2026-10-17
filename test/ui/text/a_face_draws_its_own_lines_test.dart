@@ -89,10 +89,11 @@ void main() {
     });
 
     test('a set whose first file says nothing of its lines draws as the '
-        'first of its files that does', () async {
+        'first of its files that does — whatever the ones after it say', () async {
       files['Probe Sans'] = [
         Uint8List.fromList([1, 2, 3]),
         fileOf(AppTypography.bundledFallbackFiles.regular),
+        fileOf(AppTypography.bundledFiles.regular),
       ];
       faces.setHeld({'Probe Sans': 'probe'});
       faces.sendFor('Probe Sans');
@@ -118,6 +119,23 @@ void main() {
   test('bytes that are no font say no lines', () {
     expect(readFontLines(Uint8List.fromList([0, 1, 0, 0])), isNull);
     expect(readFontLines(Uint8List(0)), isNull);
+  });
+
+  test('a face that says a line is no thicker than nothing says no lines',
+      () {
+    final font = fileOf(AppTypography.bundledFallbackFiles.regular);
+    expect(readFontLines(font), isNotNull, reason: '⛔fixture');
+
+    expect(
+      readFontLines(_withTableWord(font, 'post', 10, 0)),
+      isNull,
+      reason: 'the underline',
+    );
+    expect(
+      readFontLines(_withTableWord(font, 'OS/2', 26, 0)),
+      isNull,
+      reason: 'the strikethrough',
+    );
   });
 
   test('a face\'s lines are a value', () {
@@ -149,4 +167,18 @@ void main() {
       ),
     );
   });
+}
+
+/// [font] with the 16-bit word at [at] of its table [tag] made [value].
+Uint8List _withTableWord(Uint8List font, String tag, int at, int value) {
+  final bytes = Uint8List.fromList(font);
+  final data = ByteData.sublistView(bytes);
+  for (var index = 0; index < data.getUint16(4); index += 1) {
+    final record = 12 + index * 16;
+    if (String.fromCharCodes(bytes.sublist(record, record + 4)) == tag) {
+      data.setInt16(data.getUint32(record + 8) + at, value);
+      return bytes;
+    }
+  }
+  throw StateError('no $tag table');
 }

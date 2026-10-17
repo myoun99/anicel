@@ -159,11 +159,10 @@ class CanvasLetterFaces {
     if (isAppFace(family)) {
       return appFaceLines[family ?? AppTypography.bundledFamily]!;
     }
-    final files = _held[family];
-    final lines = engineFamilyOf(family) == null
-        ? null
-        : _linesInEngine[files];
-    return lines ?? appFaceLines[AppTypography.bundledFamily]!;
+    // Known only of a set the engine has — the one the family is set with
+    // now ([engineFamilyOf] reads the same two maps).
+    return _linesInEngine[_held[family]] ??
+        appFaceLines[AppTypography.bundledFamily]!;
   }
 
   /// Where the app's own faces draw their lines — as their files say

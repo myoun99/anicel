@@ -76,8 +76,8 @@ CanvasLetterLines canvasLetterLinesOf(
 }
 
 /// How far [run]'s letters reach along each line they are set on: from the
-/// left of the first to the right of the last, within the letters the line
-/// itself holds — what hangs past its end is no part of it.
+/// left of the first to the right of the last — and no further than the
+/// line's own letters reach: the white space it ends with hangs past it.
 List<({ui.LineMetrics line, double left, double right})> _reachOf(
   TextPainter painter,
   List<ui.LineMetrics> metrics,
@@ -86,20 +86,26 @@ List<({ui.LineMetrics line, double left, double right})> _reachOf(
   final reach = <int, ({double left, double right})>{};
   for (final box in painter.getBoxesForSelection(
     TextSelection(baseOffset: run.start, extentOffset: run.end),
+    // As tall as its line, so it holds that line's baseline and no other's
+    // whatever the lines' pitch (a box as tall as its letters reaches up
+    // past the line above where the lines are set closer than that).
+    boxHeightStyle: ui.BoxHeightStyle.max,
   )) {
     final line = _lineOf(metrics, box);
     if (line == null) {
       continue;
     }
-    final left = math.max(box.left, line.left);
     final right = math.min(box.right, line.left + line.width);
-    if (right <= left) {
+    if (right <= box.left) {
       continue;
     }
     final had = reach[line.lineNumber];
     reach[line.lineNumber] = had == null
-        ? (left: left, right: right)
-        : (left: math.min(had.left, left), right: math.max(had.right, right));
+        ? (left: box.left, right: right)
+        : (
+            left: math.min(had.left, box.left),
+            right: math.max(had.right, right),
+          );
   }
   return [
     for (final MapEntry(key: number, value: (:left, :right)) in reach.entries)
@@ -107,10 +113,11 @@ List<({ui.LineMetrics line, double left, double right})> _reachOf(
   ];
 }
 
-/// The line [box] stands on: the one whose baseline it holds.
+/// The line [box] — as tall as its line — stands on: the first, down the
+/// page, whose baseline is not above it, which is the one it holds.
 ui.LineMetrics? _lineOf(List<ui.LineMetrics> metrics, ui.TextBox box) {
   for (final line in metrics) {
-    if (box.top <= line.baseline && line.baseline <= box.bottom) {
+    if (box.top <= line.baseline) {
       return line;
     }
   }
@@ -176,19 +183,11 @@ class CanvasLetterLinesBuilder {
 /// as thick and as high, or down a column, as wide and where it stands —
 /// and null where it does not.
 ui.Rect? _carriedOn(ui.Rect a, ui.Rect b) {
-  if (a.top == b.top &&
-      a.bottom == b.bottom &&
-      (b.left - a.right).abs() <= _meets) {
+  if (a.top == b.top && a.bottom == b.bottom && b.left == a.right) {
     return ui.Rect.fromLTRB(a.left, a.top, b.right, a.bottom);
   }
-  if (a.left == b.left &&
-      a.right == b.right &&
-      (b.top - a.bottom).abs() <= _meets) {
+  if (a.left == b.left && a.right == b.right && b.top == a.bottom) {
     return ui.Rect.fromLTRB(a.left, a.top, a.right, b.bottom);
   }
   return null;
 }
-
-/// How near two lines' ends are to meet: a thousandth of a pixel, for ends
-/// the engine measured from the same glyph's place in two sums.
-const double _meets = 1 / 1000;
