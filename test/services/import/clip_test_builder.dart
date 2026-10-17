@@ -241,20 +241,28 @@ Uint8List _section(String name, List<int> fields) => (BytesBuilder()
 /// setting at the sample's value — CLIP STUDIO's defaults, so a word read
 /// one place off lands on one that is not 0 — with the switches of the
 /// effects named in [on] set, and the tone's own settings at
-/// [reflectOpacity] and [posterize].
+/// [reflectOpacity] and [posterize] — the records named in [without] left
+/// out.
 Uint8List layerEffectInfoBytes({
   Set<String> on = const {},
   int reflectOpacity = 1,
   int posterize = 0,
+  Set<String> without = const {},
 }) {
   int switchOf(String name) => on.contains(name) ? 1 : 0;
   // A record's body as words — led by their size, counting itself, when
   // [sized] (every record but the two oldest).
-  Uint8List record(String name, List<int> body, {bool sized = true}) =>
-      _section(name, [
-        if (sized) ..._be32(4 * (body.length + 1)),
-        for (final word in body) ..._be32(word),
-      ]);
+  (String, Uint8List) record(
+    String name,
+    List<int> body, {
+    bool sized = true,
+  }) => (
+    name,
+    _section(name, [
+      if (sized) ..._be32(4 * (body.length + 1)),
+      for (final word in body) ..._be32(word),
+    ]),
+  );
   List<int> f64(double value) {
     final bits = ByteData(8)..setFloat64(0, value);
     return [bits.getUint32(0), bits.getUint32(4)];
@@ -305,7 +313,11 @@ Uint8List layerEffectInfoBytes({
   ];
   // The sample's three words after the last record, their sense unknown.
   final tail = [..._be32(0), ..._be32(1), ..._be32(200)];
-  final body = [for (final r in records) ...r, ...tail];
+  final body = [
+    for (final (name, bytes) in records)
+      if (!without.contains(name)) ...bytes,
+    ...tail,
+  ];
   return (BytesBuilder()
         ..add(_be32(8 + body.length))
         ..add(_be32(2))

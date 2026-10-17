@@ -39,6 +39,18 @@ void main() {
     );
   });
 
+  test('a blob that lacks some records still turns on the ones it has', () {
+    expect(
+      clipEffectsOn(
+        layerEffectInfoBytes(
+          on: {'EffectTextureMap'},
+          without: {'EffectEdge', 'EffectTone', 'EffectWaterEdge'},
+        ),
+      ),
+      isTrue,
+    );
+  });
+
   test('a blob that holds no record, or ends inside one, turns none on', () {
     expect(clipEffectsOn(Uint8List(8)), isFalse);
     // The border's switch on, and the blob cut two bytes into it.
