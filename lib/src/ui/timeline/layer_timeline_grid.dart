@@ -662,7 +662,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       range: rowWindow,
       rows: windowRows,
       edges: edges,
-      viewportExtent: bodyViewportHeight,
       leadingSpacerHeight: leadingRowSpacerHeight,
       trailingSpacerHeight: trailingRowSpacerHeight,
       pinnedIndex: pinnedIndex,
@@ -1452,6 +1451,30 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                               ),
                                             ),
                                           ),
+                                          // The room under the rail's rows is
+                                          // the layer area's entrance too: past
+                                          // the last row is the foot, where an
+                                          // ACTION with no row stands (F-372).
+                                          // ⛔Not by making the rows reach it —
+                                          // the content stops at the rows
+                                          // (D43-2 above).
+                                          if (bodyViewportHeight >
+                                              verticalContentHeight)
+                                            if (_railRows.placementEntrance(
+                                                  key: const ValueKey<String>(
+                                                    'timeline-layer-placement-room',
+                                                  ),
+                                                  lead: verticalContentHeight,
+                                                )
+                                                case final room?)
+                                              Positioned(
+                                                left: _metrics
+                                                    .verticalScrollbarWidth,
+                                                top: verticalContentHeight,
+                                                width: railWindowExtent,
+                                                bottom: 0,
+                                                child: room,
+                                              ),
                                           // The layer-axis bar sat between the rail
                                           // and the cells, and its opaque hit lane
                                           // owned the only gap a splitter could
@@ -1585,7 +1608,6 @@ class _RowWindow {
     required this.range,
     required this.rows,
     required this.edges,
-    required this.viewportExtent,
     required this.leadingSpacerHeight,
     required this.trailingSpacerHeight,
     required this.pinnedIndex,
@@ -1602,10 +1624,6 @@ class _RowWindow {
   /// Where ALL the grid's rows sit — [range] indexes it, as it indexes the
   /// list [rows] was cut from.
   final TimelineRowEdges edges;
-
-  /// How tall the body the rows scroll in is — 0 where no viewport was
-  /// measured.
-  final double viewportExtent;
 
   final double leadingSpacerHeight;
   final double trailingSpacerHeight;

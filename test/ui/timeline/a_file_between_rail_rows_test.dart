@@ -391,25 +391,31 @@ void main() {
           find.namedWhere((name) => name.startsWith('timeline-rail-row-')).last,
         )
         .bottom;
-    final at = Offset(
-      tester
-              .getRect(
-                find.byKey(
-                  const ValueKey<String>('timeline-layer-placement-entrance'),
-                ),
-              )
-              .left +
-          40,
-      foot + 120,
+    final rail = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-entrance')),
+    );
+    final room = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-room')),
+    );
+    expect(
+      (rail.bottom, room.left, room.top, room.right),
+      (foot, rail.left, foot, rail.right),
+      reason: '⛔D43-2: the rows stop where they end — the room under them '
+          'is an entrance of its own, the rail\'s width',
     );
     final gesture = await tester.startGesture(
       tester.getCenter(find.byKey(dragSourceKey)),
     );
     await tester.pump(const Duration(milliseconds: 100));
-    await gesture.moveTo(at);
-    await tester.pump();
-    expect(verdict.value, isTrue, reason: 'the chip says yes there');
-    final caret = s.layerRowDragVerbs.inFlight.value?.caretSlot;
+    // Right under the last row and well below it: anywhere in the room is
+    // past the rows, the foot.
+    final carets = <int?>[];
+    for (final below in [2.0, 120.0]) {
+      await gesture.moveTo(Offset(rail.left + 40, foot + below));
+      await tester.pump();
+      expect(verdict.value, isTrue, reason: 'the chip says yes $below under');
+      carets.add(s.layerRowDragVerbs.inFlight.value?.caretSlot);
+    }
 
     await gesture.up();
     await tester.pumpAndSettle();
@@ -417,7 +423,7 @@ void main() {
     final (layers, slot, path) = placed!;
     expect(path, png);
     expect(slot, layers.length, reason: 'the gap under the last row');
-    expect(caret, slot, reason: 'the caret stood where it lands');
+    expect(carets, [slot, slot], reason: 'the caret stood where it lands');
     expect(s.layerSlotSpotFor(layers, slot, png), const LayerSlotSpot(0));
   });
 

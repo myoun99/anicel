@@ -282,11 +282,6 @@ class _LayerGridRailRows {
               stack: _state.widget.layers,
               child: Stack(
                 children: [
-                  // The rail stands to the foot of the body however few its
-                  // rows, so the layer area's entrance below takes the room
-                  // under the last of them — where ACTION stands on the rail,
-                  // and where an ACTION with no row is (F-372).
-                  SizedBox(height: window.viewportExtent),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -413,33 +408,46 @@ class _LayerGridRailRows {
                   // The layer area as a place entrance, on top so a file let
                   // go anywhere on the rail finds it — an empty box the rest
                   // of the time, so every row keeps its own pointer.
-                  if (_state.widget.hooks.onDropMediaAssetBetweenLayers
-                      case final onDrop?)
-                    Positioned.fill(
-                      child: LayerPlacementEntrance(
+                  if (placementEntrance(
                         key: const ValueKey<String>(
                           'timeline-layer-placement-entrance',
                         ),
-                        rowAxis: Axis.vertical,
-                        rows: () => (
-                          rows: _state._dragRows,
-                          edges: _state._dragEdges,
-                        ),
-                        onHover:
-                            _state.widget.hooks.rowDragHooks?.onPlacementHover,
-                        onLeave:
-                            _state.widget.hooks.rowDragHooks?.onPlacementLeave,
-                        accepts:
-                            _state.widget.hooks.rowDragHooks?.acceptsPlacement,
-                        onDrop: onDrop,
-                      ),
-                    ),
+                      )
+                      case final entrance?)
+                    Positioned.fill(child: entrance),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  /// The layer area as a place entrance — over the rail's rows, and over
+  /// the room under them where the body is taller than they are, [lead]
+  /// the rows' extent there — or null where the host takes no file
+  /// between layers.
+  ///
+  /// ONE entrance for both, so a gap is counted in the rows the same way
+  /// wherever the file is let go: under the rows is past the last of them,
+  /// the foot — where ACTION stands on the rail, and where an ACTION with
+  /// no row is (F-372).
+  Widget? placementEntrance({required Key key, double lead = 0}) {
+    final onDrop = _state.widget.hooks.onDropMediaAssetBetweenLayers;
+    if (onDrop == null) {
+      return null;
+    }
+    final rowDrag = _state.widget.hooks.rowDragHooks;
+    return LayerPlacementEntrance(
+      key: key,
+      rowAxis: Axis.vertical,
+      lead: lead,
+      rows: () => (rows: _state._dragRows, edges: _state._dragEdges),
+      onHover: rowDrag?.onPlacementHover,
+      onLeave: rowDrag?.onPlacementLeave,
+      accepts: rowDrag?.acceptsPlacement,
+      onDrop: onDrop,
     );
   }
 }
