@@ -1316,6 +1316,26 @@ void main() {
     });
   });
 
+  test('a vector layer with strokes is baked like any picture — and what its '
+      'round pen leaves out is said', () {
+    final result = plan(
+      root([
+        layer(
+          'lines',
+          kind: ClipLayerKind.vector,
+          drawn: false,
+          vectorData: const ['strokes'],
+        ),
+      ]),
+      [timeline(const [])],
+    );
+
+    expect([for (final warning in result.warnings) warning.key], [
+      'clipVector',
+    ]);
+    expect(result.bakes.single.source.name, 'lines');
+  });
+
   test('what CLIP STUDIO draws over what comes in — an effect of its '
       'properties on, or a clip to the layer under it — is said in every '
       'decoder\'s words: a layer or folder outside the cels by its own '
@@ -1362,26 +1382,6 @@ void main() {
     );
     expect(result.warnings.first, layerEffectsNotApplied('tinted'));
     expect(result.warnings[2], clippingNotApplied('clipped'));
-  });
-
-  test('a vector layer with strokes is baked like any picture — and what its '
-      'round pen leaves out is said', () {
-    final result = plan(
-      root([
-        layer(
-          'lines',
-          kind: ClipLayerKind.vector,
-          drawn: false,
-          vectorData: const ['strokes'],
-        ),
-      ]),
-      [timeline(const [])],
-    );
-
-    expect([for (final warning in result.warnings) warning.key], [
-      'clipVector',
-    ]);
-    expect(result.bakes.single.source.name, 'lines');
   });
 
   test('a cel holding folders says its layers\' names are not kept, and '
