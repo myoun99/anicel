@@ -71,13 +71,10 @@ class _CelTextWayOut {
       _tool._held = null;
     }
     if (held.session.settled) {
-      // A landing still owed was asked for first, and this is its step.
-      final step = held.owed ?? of;
-      held.owed = null;
       if (letGo) {
-        _landOut(held, step);
+        _landOut(held, of);
       } else {
-        land(held, step);
+        land(held, of);
       }
       return;
     }

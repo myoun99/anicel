@@ -2158,6 +2158,61 @@ void main() {
       expect(host.history.undoCount, 0, reason: 'nothing landed');
     });
 
+    test('what lands it before the box lets go — a save, or a step about to '
+        'be taken elsewhere — lands among the box\'s steps', () {
+      final saved = holdingAb();
+      carryBy(saved.tool, 4);
+      saved.tool.carry(dx: 3, dy: 0);
+      expect(saved.tool.landShown(), isTrue, reason: '⛔전제: a save');
+      saved.tool
+        ..landEdit()
+        ..confirm();
+      expect(saved.host.history.undoCount, 1, reason: 'saved, still one');
+
+      final taken = holdingAb();
+      carryBy(taken.tool, 4);
+      taken.tool
+        ..carry(dx: 3, dy: 0)
+        ..landNow();
+      expect(taken.host.history.undoCount, 1, reason: 'landed now, one');
+      taken.host.history.undo();
+      expect(xOn(taken.cel), 8);
+    });
+
+    test('🚨a visit still being set when the box takes the text again is the '
+        'visit\'s step: what the box did meanwhile rides it, and none of it '
+        'is the box\'s to take back', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      tool.typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      tool
+        ..stopTyping()
+        ..changeBox((content) => content.copyWith(align: TextCelAlign.right));
+      expect(host.history.undoCount, 0, reason: '⛔전제: nothing set yet');
+
+      await baker.pending.answer();
+      await baker.pending.answer();
+
+      expect(host.history.undoCount, 1, reason: 'one step, the visit');
+      expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
+      expect(tool.canStepBack, isFalse);
+    });
+
+    test('a step the box still owes when its letters are taken rides the '
+        'visit: while they are held the box has none to take back', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      tool
+        ..changeBox((content) => content.copyWith(align: TextCelAlign.right))
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+
+      expect(tool.canStepBack, isFalse);
+
+      await baker.pending.answer();
+      tool.stopTyping();
+      expect(host.history.undoCount, 1, reason: 'the visit, the setting in it');
+      expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
+    });
+
     test('taken off its cel after the box landed steps: those are ONE, and '
         'taking it off another', () {
       final (:tool, :host, baker: _, :cel) = holdingAb();

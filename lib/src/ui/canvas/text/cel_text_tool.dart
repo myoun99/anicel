@@ -645,13 +645,14 @@ class CelTextTool extends ChangeNotifier {
 
   // ── a step back ─────────────────────────────────────────────────────
 
-  /// Whether an undo has a step of the BOX to take back ([stepBack]): the
-  /// text in hand held by its box, with a step landed while it is — or one
-  /// still owed, its last want still being set.
+  /// Whether an undo has a step of the BOX to take back ([stepBack]): one
+  /// landed while the box holds the text in hand — or one still owed, its
+  /// last want still being set. (None while its letters are held: taking
+  /// them up closed the box's steps, and what it still owed rides the
+  /// visit — [typeAt].)
   bool get canStepBack {
     final held = _held;
     return held != null &&
-        _letters == null &&
         (held.owed == _StepOf.box || (held.boxSteps?.canTakeBack ?? false));
   }
 
