@@ -29,6 +29,34 @@ void main() {
     expect(dialogueGlyphCellExtent(glyphCount: 4, mainExtent: 120), 30);
   });
 
+  test('🚨F-358: a window shows the glyphs whose centre it holds — the '
+      'whole run\'s, not its own share spread again', () {
+    // Centres 15, 45, 75, 105.
+    expect(
+      dialogueGlyphsShownIn(glyphCount: 4, mainExtent: 120),
+      (first: 0, end: 4),
+    );
+    expect(
+      dialogueGlyphsShownIn(glyphCount: 4, mainExtent: 120, from: 45),
+      (first: 1, end: 4),
+      reason: 'a centre on the opening edge is the window\'s',
+    );
+    expect(
+      dialogueGlyphsShownIn(
+        glyphCount: 4,
+        mainExtent: 120,
+        from: 46,
+        to: 105,
+      ),
+      (first: 2, end: 3),
+      reason: 'and one on the closing edge is the next window\'s',
+    );
+    expect(
+      dialogueGlyphsShownIn(glyphCount: 0, mainExtent: 120, from: 10),
+      (first: 0, end: 0),
+    );
+  });
+
   // F-93's narrowing moved to `word_condensation_test.dart` with the rule
   // itself — it is every block word's now, not the dialogue's alone.
 }

@@ -13,6 +13,8 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
+import '../text/dialogue_fit_layout.dart'
+    show dialogueGlyphCellExtent, dialogueGlyphsShownIn;
 import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
@@ -40,11 +42,18 @@ bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 
 /// The name-box + fitted-dialogue overlays for every SE block intersecting
 /// the visible window; mirrors [timelineRowBlockEdgeGrips]' windowing math.
+///
+/// [spillInLeadFrames]: how far into its block the cut's frame 0 already
+/// is — a sound spilling in from an earlier cut. That block is laid out
+/// from where it really starts and seen from frame 0 on
+/// ([SeSpanVisual.shownFrom]), so its words stand where the track's own
+/// row has them (F-358).
 List<Widget> timelineRowSeLabelOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
   required Axis axis,
+  int? spillInLeadFrames,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
@@ -61,10 +70,11 @@ List<Widget> timelineRowSeLabelOverlays({
     final frame = layer.frameById(block.frameId);
     final dialogue = frame?.name;
     final seName = frame?.seName;
+    final lead = block.startIndex == 0 ? spillInLeadFrames ?? 0 : 0;
     overlays.add(
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
-          startIndex: block.startIndex,
+          startIndex: block.startIndex - lead,
           endIndexExclusive: block.endIndexExclusive,
         ),
         child: IgnorePointer(
@@ -73,9 +83,10 @@ List<Widget> timelineRowSeLabelOverlays({
           ),
           child: SeSpanVisual(
             axis: axis,
-            frames: block.length,
+            frames: block.length + lead,
             dialogue: dialogue ?? '',
             seName: seName,
+            shownFrom: lead,
           ),
         ),
       ),
@@ -551,6 +562,7 @@ class SeSpanVisual extends StatelessWidget {
     required this.frames,
     required this.dialogue,
     this.seName,
+    this.shownFrom = 0,
   });
 
   final Axis axis;
@@ -561,6 +573,12 @@ class SeSpanVisual extends StatelessWidget {
   final int frames;
   final String dialogue;
   final String? seName;
+
+  /// How many of [frames] run before the window the span is seen through:
+  /// the cut a sound spilled into sees its block from its own frame 0 on,
+  /// the block laid out from where it really starts (F-358,
+  /// [dialogueGlyphsShownIn]). Zero shows the whole span.
+  final int shownFrom;
 
   /// 🚨A ZOOM LAYS THE SPAN OUT AGAIN; IT DOES NOT BUILD IT AGAIN
   /// (zoom-step-lays-out-five-times-the-07-25-count, 10-12): how far the
@@ -578,7 +596,7 @@ class SeSpanVisual extends StatelessWidget {
       dialogue: dialogue,
       style: dialogueFitStyle(context, color: timelineDrawingInkColor),
     );
-    return CustomPaint(
+    final span = CustomPaint(
       painter: seName.isEmpty
           ? null
           : _SeNameGroundPainter(frames: frames, fit: fit),
@@ -601,7 +619,73 @@ class SeSpanVisual extends StatelessWidget {
         ],
       ),
     );
+    if (shownFrom <= 0 || frames <= 0) {
+      return span;
+    }
+    return ClipRect(
+      clipper: _SeSpanShownPart(
+        fit: fit,
+        named: seName.isNotEmpty,
+        frames: frames,
+        shownFrom: shownFrom,
+      ),
+      child: span,
+    );
   }
+}
+
+/// The part of an SE span a window shows ([SeSpanVisual.shownFrom]): from
+/// the cell of the first glyph whose centre the window holds — the glyph
+/// before it is the earlier cut's, whole, and this one is this cut's,
+/// whole ([dialogueGlyphsShownIn]). The name chip stands at the block's
+/// head, before every glyph, so a window opening past it never shows it;
+/// one opening inside it shows the chip's tail.
+///
+/// Asked at PAINT, of the box the span is laid out at: a zoom lays the
+/// span out again and does not build it again ([_SeSpanFit]).
+class _SeSpanShownPart extends CustomClipper<Rect> {
+  _SeSpanShownPart({
+    required this.fit,
+    required this.named,
+    required this.frames,
+    required this.shownFrom,
+  });
+
+  final _SeSpanFit fit;
+  final bool named;
+  final int frames;
+  final int shownFrom;
+
+  @override
+  Rect getClip(Size size) {
+    final axis = fit.axis;
+    final along = extentAlong(axis, size);
+    final window = along * shownFrom / frames;
+    final chip = named ? fit.chipExtentIn(size) : 0.0;
+    final glyphs = fit.dialogue.characters.length;
+    final run = along - chip;
+    final from = window <= chip || glyphs == 0
+        ? window
+        : chip +
+              dialogueGlyphsShownIn(
+                    glyphCount: glyphs,
+                    mainExtent: run,
+                    from: window - chip,
+                  ).first *
+                  dialogueGlyphCellExtent(glyphCount: glyphs, mainExtent: run);
+    return rectAlong(
+      axis,
+      along: (from: from, to: along),
+      across: (from: 0, to: extentAcross(axis, size)),
+    );
+  }
+
+  @override
+  bool shouldReclip(_SeSpanShownPart oldClipper) =>
+      !fit.answersAs(oldClipper.fit) ||
+      named != oldClipper.named ||
+      frames != oldClipper.frames ||
+      shownFrom != oldClipper.shownFrom;
 }
 
 /// How far an SE span's name chip runs along the box the span lies in:

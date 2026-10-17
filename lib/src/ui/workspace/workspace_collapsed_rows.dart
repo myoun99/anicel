@@ -505,6 +505,11 @@ class _WorkspaceCollapsedRows {
             ),
             playbackFrameCount:
                 session.activeCutSpan.activeCutPlaybackFrameCount,
+            // A sound carried over from an earlier cut reads as the
+            // timeline's does: its words where the track has them, its `~`
+            // at frame 0 (F-358).
+            spillInLeadFrames:
+                session.activeCutSpan.activeCutSpillInLeadFrames[layer.id],
             geometry: geometry,
             crossAxisExtent: collapsedRowHeight(),
             exposureStateForLayer: session.exposureStateForLayer,

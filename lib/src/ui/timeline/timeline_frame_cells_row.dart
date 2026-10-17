@@ -495,6 +495,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         frameStartIndex: frames.frameStartIndex,
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
         axis: axis,
+        spillInLeadFrames: spillInLeadFrames,
         keyPrefix: keyPrefix,
       ),
       if (clipTooltip != null)

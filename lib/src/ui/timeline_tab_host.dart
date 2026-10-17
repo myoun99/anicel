@@ -890,10 +890,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // spill block's start grip stands down, a sound's cut start
             // draws `~` and its waveform starts that far in (F-113) — and
             // the transition row's mark answers the same way.
-            spillInLeadFrames: {
-              ..._session.trackSe.trackSeSpillInLeadFrames,
-              ..._session.transitions.transitionSpillInLeadFrames,
-            },
+            spillInLeadFrames:
+                _session.activeCutSpan.activeCutSpillInLeadFrames,
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.
