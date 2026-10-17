@@ -22,9 +22,9 @@ import 'package:anicel/src/ui/playback/canvas_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
 
+import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/poll_until.dart';
-import '../../helpers/project_scratch_folder.dart';
 
 /// playback-plays-the-screen-material ② (10-09): where the canvas shows a
 /// cut, a frame's picture is the canvas's own — each row an image of its
@@ -72,6 +72,17 @@ void main() {
         );
       }
     }
+    return store;
+  }
+
+  /// A store keeping [cel] as an opened project keeps one — a stretch of a
+  /// file — and that file since gone: its bytes cannot be read.
+  BrushFrameStore storeWithGone(String cel) {
+    final store = BrushFrameStore();
+    final kept = keepInAFile(store, {
+      keyOf(cel): storeOf([cel]).bakedSurfaceOrNull(keyOf(cel))!,
+    });
+    File(kept.values.single.filePath).deleteSync();
     return store;
   }
 
@@ -194,24 +205,8 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      // a kept, as an opened project keeps a cel, in a stretch of a file
-      // that is not there — its bytes cannot be read; b drawn.
-      final directory = await Directory.systemTemp.createTemp('qa-cel-gone');
-      deleteAfterSessionEnds(directory);
-      final store = storeOf(
-        ['b'],
-        store: BrushFrameStore()
-          ..restoreFromFile({
-            keyOf('a'): AnicelCelFileRef(
-              filePath: '${directory.path}/gone.anicel',
-              dataOffset: 0,
-              length: 64,
-              canvasSize: canvasSize,
-              tileSize: tileSize,
-              photoPaths: const [],
-            ),
-          }),
-      );
+      // a's file gone; b drawn.
+      final store = storeOf(['b'], store: storeWithGone('a'));
       final images = _CountsMakings(keyOf('a'), frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(images, both: true);
@@ -238,14 +233,14 @@ void main() {
   testWidgets('a row given up on is neither named nor weighed — what will not '
       'be made adds nothing to the room asked for', (tester) async {
     await tester.runAsync(() async {
-      final images = _ThrowsFor(keyOf('a'), frameStore: storeOf(['a']));
+      final images = LayerFrameImageCache(frameStore: storeWithGone('a'));
       addTearDown(images.dispose);
       final pictures = picturesOf(images);
       expect(pictures.bytesToMake(at(0)), imageBytes, reason: '⛔premise');
 
       await expectLater(
         pictures.make(at(0), shouldAbort: () => false),
-        throwsA(isA<StateError>()),
+        throwsA(anything),
       );
 
       expect(pictures.partsToMake(at(0)), isEmpty);
