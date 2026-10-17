@@ -651,7 +651,7 @@ class ProjectImportDoors {
       // A NEW cut is made at the span's first page, at the size the
       // renderer calls 1:1 — the size the window's locked 1:1 fit draws.
       final arrival = gate.targetCut == null
-          ? gate.withCanvasSize(pagePixelSize(document,firstPage))
+          ? gate.withCanvasSize(pagePixelSize(document, firstPage))
           : gate;
       final source = arrival.source;
       final identity = readMediaIdentity(source);
@@ -662,7 +662,7 @@ class ProjectImportDoors {
           ? null
           : placedReference(
               source,
-              pagePixelSize(document,firstPage),
+              pagePixelSize(document, firstPage),
               arrival.canvasSize,
               fit,
             );
@@ -754,7 +754,7 @@ class ProjectImportDoors {
             onPageRenderFailed?.call(firstPage + bake.sourceFrameIndex),
         pictureOf: (bake, canvas) {
           final pageIndex = firstPage + bake.sourceFrameIndex;
-          final page = pagePixelSize(document,pageIndex);
+          final page = pagePixelSize(document, pageIndex);
           return _renderedPage(
             document,
             pageIndex,
@@ -1270,7 +1270,7 @@ class ProjectImportDoors {
               at: (index) => _renderedPage(
                 document,
                 index,
-                pagePixelSize(document,index),
+                pagePixelSize(document, index),
                 reference.laid,
               ),
               close: document.dispose,

@@ -8,13 +8,13 @@ import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/import/import_warning.dart';
 import '../../services/import/cut_folder_listing.dart';
+import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart';
 import '../../models/movie_clock.dart' show movieClockFor;
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
-import '../../models/canvas_size.dart';
 import '../../services/media/media_pixel_size.dart';
 import '../../services/media/movie_bytes.dart' show readHeldMovieInfo;
 import '../../services/media/video_decode_worker.dart'

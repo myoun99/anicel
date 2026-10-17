@@ -58,7 +58,7 @@ final class ImageViewerDocument implements ViewerDocument {
           ? PsdCompositeDocument.read(bytes)
           : _decoded(await ui.ImmutableBuffer.fromUint8List(bytes));
     }
-    return looksLikePsdBytes(_headOf(file, 4))
+    return looksLikePsdBytes(_frontOf(source, 4))
         ? PsdCompositeDocument.read(await File(file).readAsBytes())
         : _decoded(await ui.ImmutableBuffer.fromFilePath(file));
   }
@@ -71,19 +71,19 @@ final class ImageViewerDocument implements ViewerDocument {
   /// frames — the whole picture, for a codec that cannot decode small — and
   /// reads a Photoshop document whole ([PsdCompositeDocument]). Here the
   /// codec reads its header, and a Photoshop document gives its first
-  /// [psdHeaderLength] bytes.
+  /// [psdHeaderLength] bytes — inside the project file too, where reading
+  /// it whole would hold every byte of it.
   static Future<CanvasSize> sizeOf(MediaByteSource source) async {
-    final file = source.wholeFilePath;
-    if (file == null) {
-      final bytes = await source.read();
-      return looksLikePsdBytes(bytes)
-          ? _psdSize(bytes)
-          : _codecSize(await ui.ImmutableBuffer.fromUint8List(bytes));
+    final head = _frontOf(source, psdHeaderLength);
+    if (looksLikePsdBytes(head)) {
+      return _psdSize(head);
     }
-    final head = _headOf(file, psdHeaderLength);
-    return looksLikePsdBytes(head)
-        ? _psdSize(head)
-        : _codecSize(await ui.ImmutableBuffer.fromFilePath(file));
+    final file = source.wholeFilePath;
+    return _codecSize(
+      file == null
+          ? await ui.ImmutableBuffer.fromUint8List(await source.read())
+          : await ui.ImmutableBuffer.fromFilePath(file),
+    );
   }
 
   static CanvasSize _psdSize(Uint8List header) {
@@ -107,23 +107,21 @@ final class ImageViewerDocument implements ViewerDocument {
     }
   }
 
-  /// Up to [length] bytes off the front of the file at [path] — so a
-  /// Photoshop document is known, and an image the codec takes still never
-  /// enters the heap.
+  /// Up to [length] bytes off the front of [source] — so a Photoshop
+  /// document is known, and an image the codec takes still never enters
+  /// the heap.
   ///
-  /// 🚨SYNCHRONOUS ON PURPOSE: open, read and close in one breath, so the
-  /// file is never held open across an event. An awaited open left a
-  /// handle standing between turns, and on Windows a file with a handle on
-  /// it cannot be deleted — a Drive pick replaced while the import preview
-  /// was reading it kept its copy's folder (`ProviderDocuments.letGo` gave
-  /// up in silence). A few bytes cost nothing on the thread that asks.
-  static Uint8List _headOf(String path, int length) {
-    final file = File(path).openSync();
-    try {
-      return file.readSync(length);
-    } finally {
-      file.closeSync();
-    }
+  /// 🚨SYNCHRONOUS ON PURPOSE: open, read and close in one breath
+  /// ([MediaByteSource.readIntoSync]), so the file is never held open
+  /// across an event. An awaited open left a handle standing between
+  /// turns, and on Windows a file with a handle on it cannot be deleted — a
+  /// Drive pick replaced while the import preview was reading it kept its
+  /// copy's folder (`ProviderDocuments.letGo` gave up in silence). A few
+  /// bytes cost nothing on the thread that asks.
+  static Uint8List _frontOf(MediaByteSource source, int length) {
+    final front = Uint8List(length);
+    final landed = source.readIntoSync(front, 0, length);
+    return Uint8List.sublistView(front, 0, landed);
   }
 
   /// [buffer] through the platform codec. The buffer is released here,

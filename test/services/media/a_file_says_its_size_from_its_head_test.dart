@@ -62,14 +62,18 @@ void main() {
 
   /// [bytes] stored seven bytes into a file of their own, as a carried
   /// file sits inside the project — read through what the hold hands back,
-  /// never by a path of their own.
-  HoldMediaBytes inside(List<int> bytes) {
-    final archive = write('project.anicel', [...List.filled(7, 0x2A), ...bytes]);
+  /// never by a path of their own. The entry says it is [length] bytes
+  /// long, which may run on past what is there.
+  HoldMediaBytes inside(List<int> bytes, {int? length}) {
+    final archive = write('project.anicel', [
+      ...List.filled(7, 0x2A),
+      ...bytes,
+    ]);
     return (path) async => HeldMediaBytes(
       source: MediaArchiveBytes(
         archivePath: archive,
         dataOffset: 7,
-        length: bytes.length,
+        length: length ?? bytes.length,
       ),
       release: () {},
       moved: const Stream<HeldBytesMove>.empty(),
@@ -96,23 +100,21 @@ void main() {
   });
 
   testWidgets('🚨a Photoshop document says its canvas from its HEADER — '
-      'a file that is nothing but the header still answers', (tester) async {
+      'a file that is nothing but the header still answers, and so does one '
+      'inside the project too large to read whole', (tester) async {
     final head = buildPsd(width: 640, height: 480).sublist(0, psdHeaderLength);
     final psd = write('only-the-head.psd', head);
+    // An entry that says it runs on for a terabyte past its header.
+    final huge = inside(head, length: 1 << 40);
 
     expect(await sizeOf(tester, MediaAssetKind.image, psd), (640, 480));
     expect(
-      await sizeOf(
-        tester,
-        MediaAssetKind.image,
-        'carried.psd',
-        hold: inside(head),
-      ),
+      await sizeOf(tester, MediaAssetKind.image, 'carried.psd', hold: huge),
       (640, 480),
     );
 
-    // CONTROL: the document itself cannot be read from these bytes — the
-    // answer above came from the header alone, never from a whole read.
+    // CONTROL: neither can be read whole — the answers above came from the
+    // header alone, never from a whole read.
     final opened = await tester.runAsync(() async {
       try {
         return await ImageViewerDocument.open(MediaFileBytes(psd));
@@ -121,6 +123,14 @@ void main() {
       }
     });
     expect(opened, isNull, reason: 'a header is not a document');
+    final whole = await tester.runAsync(() async {
+      try {
+        return await readHeldMediaBytes(huge, 'carried.psd');
+      } on OutOfMemoryError {
+        return null;
+      }
+    });
+    expect(whole, isNull, reason: 'a terabyte is never held');
   });
 
   testWidgets('a movie says its frame as its decoder reads it', (
