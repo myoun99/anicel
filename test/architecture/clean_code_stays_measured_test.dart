@@ -1022,6 +1022,15 @@ void main() {
   /// (`17f66740b`) names this one and no other class. ⛔Not split to fit:
   /// what a paragraph setting speaks for is what a letter setting does, and
   /// the two are read in one place.
+  ///
+  /// It grew again in F-377, no new name: a text held by its BOX writes
+  /// what it lands (a carry, a turn, a corner, a setting come to rest) as
+  /// a run of history (`HistoryRun`): undo takes the last one back while
+  /// the box holds it (`canStepBack` · `stepBack`), and they are ONE step
+  /// once the box lets go — the transform tool's law said of a text (유저
+  /// 10-17 「텍스트 변형이든 뭐든」). ⛔Not split to fit: whose step a
+  /// landing is (`_StepOf`) is decided where the tool lands the text it
+  /// holds, and the run is the holding's own.
   const longClasses = 69;
 
   late CleanCodeScan scan;
