@@ -661,6 +661,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
                     laneGraphs: widget.laneGraphs,
                     laneGraphVerbs: widget.laneGraphVerbs,
+                    laneGraphsNow: () => _session.railView.laneGraphs.value,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                     dragPreview: _session.dragPreview,
                     // ↩️While playing, this named the PLAYING cut and the
@@ -983,6 +984,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           layer.id,
                           lane.laneId,
                         ),
+                    laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
                     poseDisplaySize: _session.camera.cameraFrameSize,
                     // No onSetCutFade: the fade handles went with the V row's
                     // transform. F.I/F.O spans on the transition row are the

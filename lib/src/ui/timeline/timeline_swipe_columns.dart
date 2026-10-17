@@ -100,7 +100,32 @@ typedef RailSwipeHooks = ({
   bool Function(LayerId layerId) laneOpenOf,
   LaneGraphVerbs? laneGraphVerbs,
   LaneGraphsView Function() laneGraphsNow,
+  RailRowHands hands,
 });
+
+/// Which of a rail's verbs a ROW is handed, as its label is — what the row
+/// mounts a button by beside what its kind says (I-89 ①ⓒ). A grid hands
+/// every row every verb ([handsEveryRow]), its row widget mounting by kind;
+/// the conte rail hands its rows by family — its V row no eye and no sheet
+/// toggle, and the TRACK's fx switch (I-73), its projection heads no sheet
+/// toggle (I-89-Q22), a projection row's lane its group's switch only while
+/// a cut is stood in.
+typedef RailRowHands = ({
+  bool Function(TimelineDisplayRow row) eye,
+  bool Function(TimelineDisplayRow row) fx,
+  bool Function(TimelineDisplayRow row) timesheet,
+  bool Function(TimelineDisplayRow row) groupSwitch,
+});
+
+/// A grid's rows, each handed every verb.
+const RailRowHands handsEveryRow = (
+  eye: _handed,
+  fx: _handed,
+  timesheet: _handed,
+  groupSwitch: _handed,
+);
+
+bool _handed(TimelineDisplayRow row) => true;
 
 /// What a grid's [hooks] hand its sweep over its [layers] — the stack an
 /// attach row's base is found in, as the grid's rows are told
@@ -136,6 +161,7 @@ RailSwipeHooks timelineRailSwipeHooks(
       hooks.expandedLaneLayerIds.contains(layerId),
   laneGraphVerbs: hooks.laneGraphVerbs,
   laneGraphsNow: () => hooks.laneGraphsNow?.call() ?? hooks.laneGraphs,
+  hands: handsEveryRow,
 );
 
 /// I-89 ③: a header graph's button, on each row that heads one — a
@@ -185,7 +211,7 @@ RailToggle<TimelineDisplayRow>? _visibility(RailSwipeHooks hooks) {
   final onToggle = hooks.onToggleLayerVisibility;
   if (onToggle == null) return null;
   return (
-    valueOf: (row) => row.isLane
+    valueOf: (row) => row.isLane || !hooks.hands.eye(row)
         ? null
         : layerRailEyeIsOn(row.layer, live: hooks.layerEyeOnOf),
     toggle: (row) => onToggle(row.layer.id),
@@ -237,7 +263,11 @@ bool? _laneFxValue(
   PropertyLaneRow lane,
 ) {
   final drawn = lane.groupEnabled;
-  if (hooks.onToggleLaneGroupEnabled == null || drawn == null) return null;
+  if (hooks.onToggleLaneGroupEnabled == null ||
+      drawn == null ||
+      !hooks.hands.groupSwitch(row)) {
+    return null;
+  }
   return hooks.laneGroupOnOf?.call(row.layer.id, lane.laneId) ?? drawn;
 }
 
@@ -251,6 +281,7 @@ bool? _layerFxValue(RailSwipeHooks hooks, TimelineDisplayRow row) {
   final fxStateOf = hooks.layerFxStateOf;
   if (hooks.onToggleLayerFx == null ||
       fxStateOf == null ||
+      !hooks.hands.fx(row) ||
       !layerRowWearsFxSwitch(
         row.layer.kind,
         wearsBaseComposite: hooks.wearsBaseComposite(row.layer),
@@ -283,7 +314,10 @@ RailToggle<TimelineDisplayRow>? _timesheet(RailSwipeHooks hooks) {
   final onToggle = hooks.onToggleLayerTimesheet;
   if (onToggle == null) return null;
   return (
-    valueOf: (row) => !row.isLane && layerCarriesTimesheetToggle(row.layer)
+    valueOf: (row) =>
+        !row.isLane &&
+            hooks.hands.timesheet(row) &&
+            layerCarriesTimesheetToggle(row.layer)
         ? hooks.layerOnTimesheetOf?.call(row.layer.id) ??
               row.layer.onTimesheet
         : null,

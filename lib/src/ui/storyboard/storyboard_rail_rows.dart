@@ -603,7 +603,7 @@ class _StoryboardRailRows {
   /// twirled open — its run in the table the rail is drawn from
   /// ([_trackGroupRowGeometry]), read back as a number.
   double _seRowGroupExtent(Track track, int slot) =>
-      _rowRunExtent(track, (row) => row.railRow?.seSlot == slot);
+      _rowRunExtent(track, (row) => row.seSlot == slot);
 
   /// How tall the conte row at [seat] stands on the rail: the row, plus its
   /// lanes when twirled open — [_seRowGroupExtent]'s run, on that row.
@@ -661,194 +661,6 @@ class _StoryboardRailRows {
       extent += row.height;
     }
     return extent;
-  }
-
-  /// Which rail rows a swipe SEGMENT crosses. The rail stacks three kinds
-  /// and they do NOT share a subject: a V row's buttons are its TRACK's,
-  /// while an S row's and the transition row's are that LAYER's own. One
-  /// column, two verbs — so the row carries which it is rather than the
-  /// column guessing.
-  ///
-  /// 🚨[layer] null means the V row. It is not "no subject": the V row's
-  /// subject is its track. (↩️Its eye's was the cut under the playhead,
-  /// looked up per press — UI-R13 #2 — until the eye left the row with
-  /// I-73; the eye column reads null there now, and a sweep down it steps
-  /// over the V rows.) [seSlot] is set only for an S row, because its lane
-  /// twirl is addressed by slot rather than by layer.
-  ///
-  /// ⛔Naming only V rows was WRONG and the first version did it — a swipe
-  /// down the eye column then stepped over every S row it crossed, and the
-  /// test did not notice because it only asked about the three cuts. Every
-  /// row that HAS the column has to answer; the column decides what it can
-  /// paint, by returning null.
-  ///
-  /// 🚨★★★AND IT WALKS A STRETCH, NOT A POINT (F-66; the reason is in
-  /// [RailColumnSwipe.rowsIn]). THIS is the rail the walk exists for — it
-  /// stacks a transition row, S rows and a V row at three different heights
-  /// with the lane groups between them, so no division names its rows and
-  /// no sampling step is short enough to be safe.
-  ///
-  /// ⚠️It still stops at the far end of the segment, so a press near the top
-  /// of a hundred-track board costs what it always did rather than the whole
-  /// board.
-  ///
-  /// 🚨IT WALKS THE TABLE THE RAIL IS DRAWN FROM ([_trackGroupRowGeometry]).
-  /// It kept a sum of its own and counted the S rows from slot 0, while the
-  /// rail draws the TOP slot first — so with two S rows a stroke that stopped
-  /// on S2 hid S1 and left S2 alone (found by text-scale-storyboard-rows).
-  List<RailSwipeRow<StoryboardRailRow>> railRowsIn(double fromY, double toY) {
-    final lo = fromY <= toY ? fromY : toY;
-    final hi = fromY <= toY ? toY : fromY;
-    final rows = <RailSwipeRow<StoryboardRailRow>>[];
-    var top = 0.0;
-    for (final track in _state.widget.project.tracks) {
-      for (final row in _trackGroupRowGeometry(track)) {
-        if (top > hi) {
-          return rows;
-        }
-        // A lane carries no column of its own, so the walk steps OVER it —
-        // the thing a fixed sampling step could never be trusted to do. The
-        // identity is what the sweep dedupes by, so it has to separate a
-        // track's V row from its S rows.
-        final subject = row.railRow;
-        if (subject != null && top + row.height > lo) {
-          rows.add((
-            row: subject,
-            id: subject.layer?.id.value ?? 'v-${subject.track.id.value}',
-          ));
-        }
-        top += row.height;
-      }
-    }
-    return rows;
-  }
-
-  /// What THIS rail can toggle, handed to the ONE construction every rail
-  /// shares ([railSwipeColumns]). 유저 2026-08-29: 「버튼이면 다 가능하도록」·
-  /// 「로직적으로 다른규칙 두지말고 통일」 — which columns exist and where
-  /// their bands fall stopped being this rail's business, and the two it was
-  /// silently missing (the sheet toggle and the lane twirl) came back with
-  /// the move.
-  ///
-  /// ⚠️[leadingOrigin] is 0: this rail's row plate starts at the rail's own
-  /// edge and pads only on the right, unlike the layer rail's bordered plate.
-  List<RailToggleColumn<StoryboardRailRow>> _railSwipeColumns() {
-    final toggleTimesheet = _state.widget.onToggleLayerTimesheet;
-    return railSwipeColumns<StoryboardRailRow>(
-      crossExtent: _state._naturalRailWidth,
-      columns: layerRailColumnWidthsIn(_state.context),
-      leadingOrigin: 0,
-      optionalColumns: StoryboardPanel.optionalRailColumns,
-      visibility: (valueOf: _rowEyeOn, toggle: _toggleRowEye),
-      // The transition row draws no fx switch, and a kind that shows none
-      // draws none either — both read null, which is the same answer the row
-      // builder gives by mounting nothing.
-      fx: (valueOf: _rowFxOn, toggle: _toggleRowFx),
-      // ⛔The V row mounts NO sheet toggle, so it reads null here — the same
-      // rule an attach row follows on the layer rail.
-      timesheet: toggleTimesheet == null
-          ? null
-          : (valueOf: _rowOnTimesheet, toggle: _toggleRowTimesheet),
-      // One verb, and a row kind without it: the V row's twirl opens the
-      // TRACK's lanes, an S row's that SLOT's audio and transform lanes —
-      // each the row's own (F-360) — and the transition row has none.
-      laneToggle: _state.widget.onToggleLayerLanes == null
-          ? null
-          : (valueOf: _rowLaneOpen, toggle: _toggleRowLane),
-    );
-  }
-
-  /// The eye column's value for a row: the layer's eye — null where the
-  /// column has no verb, which is the V row too since its eye left (I-73).
-  bool? _rowEyeOn(StoryboardRailRow row) {
-    final layer = row.layer;
-    return layer == null || _state.widget.onToggleLayerVisibility == null
-        ? null
-        : layerRailEyeIsOn(layer, live: _state.widget.layerEyeOnOf);
-  }
-
-  void _toggleRowEye(StoryboardRailRow row) {
-    final layer = row.layer;
-    if (layer != null) {
-      _state.widget.onToggleLayerVisibility?.call(layer.id);
-    }
-  }
-
-  /// The FX column's value for a row: the layer's FX state where the kind
-  /// shows the toggle, the track's on a V row — null where it has no verb,
-  /// which is an attach row too: it wears its base's switch
-  /// ([isAttachedLayer]; no organizer folder is a row of this rail).
-  bool? _rowFxOn(StoryboardRailRow row) {
-    final toggleTrackFx = _state.widget.onToggleTrackFx;
-    final trackFxStateOf = _state.widget.trackFxStateOf;
-    final toggleLayerFx = _state.widget.onToggleLayerFx;
-    final layerFxStateOf = _state.widget.layerFxStateOf;
-    final layer = row.layer;
-    if (layer != null) {
-      return toggleLayerFx == null ||
-              !layerKindShowsFxToggle(layer.kind) ||
-              isAttachedLayer(layer)
-          ? null
-          : fxEnabledFromState(layerFxStateOf?.call(layer.id));
-    }
-    return toggleTrackFx == null || trackFxStateOf == null
-        ? null
-        : fxEnabledFromState(trackFxStateOf(row.track));
-  }
-
-  void _toggleRowFx(StoryboardRailRow row) {
-    final toggleTrackFx = _state.widget.onToggleTrackFx;
-    final toggleLayerFx = _state.widget.onToggleLayerFx;
-    final layer = row.layer;
-    if (layer != null) {
-      toggleLayerFx?.call(layer.id);
-      return;
-    }
-    toggleTrackFx?.call(row.track);
-  }
-
-  /// The timesheet column's value: whether the layer is on the sheet, for
-  /// an eligible unattached layer row — null elsewhere, and on a conte row:
-  /// its head mounts no sheet toggle
-  /// ([_StoryboardRowsAndLabels.conteLabelRow]).
-  bool? _rowOnTimesheet(StoryboardRailRow row) {
-    final layer = row.layer;
-    return layer != null &&
-            row.conteSeat == null &&
-            layerCarriesTimesheetToggle(layer)
-        ? (_state.widget.layerOnTimesheetOf?.call(layer.id) ??
-              layer.onTimesheet)
-        : null;
-  }
-
-  void _toggleRowTimesheet(StoryboardRailRow row) {
-    final toggleTimesheet = _state.widget.onToggleLayerTimesheet;
-    final layer = row.layer;
-    if (layer != null) {
-      toggleTimesheet?.call(layer.id);
-    }
-  }
-
-  /// The lane column's value: an S row's twirl where it has lanes, the V
-  /// row's where the track owns any — null elsewhere.
-  bool? _rowLaneOpen(StoryboardRailRow row) => switch (_twirlOfRow(row)) {
-    final twirl? => _openNow(twirl),
-    null => null,
-  };
-
-  void _toggleRowLane(StoryboardRailRow row) {
-    if (_twirlOfRow(row) case final twirl?) {
-      _state.widget.onToggleLayerLanes?.call(twirl.id);
-    }
-  }
-
-  /// The twirl [row] draws in the lane column: its S row's, or the V
-  /// row's — the transition row has none.
-  _Twirl? _twirlOfRow(StoryboardRailRow row) {
-    if (row.seSlot case final slot?) {
-      return _seTwirlOf(row.track, slot);
-    }
-    return row.layer == null ? _trackTwirlOf(row.track) : null;
   }
 
   List<Widget> railRowsForTrack(Track track, int index) {
@@ -2054,7 +1866,7 @@ class _StoryboardRailRows {
     standRow: slot.standRow,
     bandRow: slot.bandRow,
     lane: slot.lane,
-    railRow: slot.railRow,
+    seSlot: slot.seSlot,
     height: height,
     display: slot.display,
     graph: graph,
@@ -2070,7 +1882,7 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: true,
-        railRow: null,
+        seSlot: null,
         height: height,
         display: null,
         graph: graph,
@@ -2108,13 +1920,14 @@ class _StoryboardRailRows {
   /// the row by its own address, so it seats, draws and presses the row's
   /// graphs by that: the key is changed ONCE, at the border — here, and
   /// back again for a press ([_laneGraphVerbs]).
-  LaneGraphsView get _laneGraphs => _graphs ??= _graphsOnTheRows();
+  LaneGraphsView get _laneGraphs =>
+      _graphs ??= _graphsOnTheRows(_state.widget.laneGraphs);
   LaneGraphsView? _graphs;
 
-  /// [_laneGraphs], read: every key the session holds, and a projection
-  /// row's own beside the one its layer in hand is held by.
-  LaneGraphsView _graphsOnTheRows() {
-    final graphs = _state.widget.laneGraphs;
+  /// [graphs] as this rail keys its rows ([_laneGraphs]): every key the
+  /// session holds, and a projection row's own beside the one its layer in
+  /// hand is held by.
+  LaneGraphsView _graphsOnTheRows(LaneGraphsView graphs) {
     if (graphs.open.isEmpty && graphs.pinned.isEmpty) {
       return graphs;
     }
@@ -2182,17 +1995,21 @@ class _StoryboardRailRows {
   /// for.
   String? _laneKeyInHand(String key) {
     final lane = parseLaneGroupKey(key);
-    final trackId = lane == null
-        ? null
-        : trackIdOfProjectionRow(lane.layerId);
-    final track = trackId == null ? null : _trackNamed(trackId);
-    if (lane == null || track == null) {
+    if (lane == null) {
       return null;
     }
-    return switch (_inHand(track, LayerRowAddress(lane.layerId))) {
+    return switch (_rowInHand(lane.layerId)) {
       final inHand? => laneGroupKey(inHand.layer.id, lane.laneId),
       null => null,
     };
+  }
+
+  /// The projection row [rowId] names, IN HAND ([_inHand]) — null for an
+  /// id of any other row, and for a row no cut holds a layer for.
+  ({Cut cut, Layer layer, bool stood})? _rowInHand(LayerId rowId) {
+    final trackId = trackIdOfProjectionRow(rowId);
+    final track = trackId == null ? null : _trackNamed(trackId);
+    return track == null ? null : _inHand(track, LayerRowAddress(rowId));
   }
 
   /// Every lane of every track's table ([_trackGroupSlots]) seated for the
@@ -2201,7 +2018,8 @@ class _StoryboardRailRows {
   _LaneSeating _laneSeatingFor(List<TimelineRowAddress> selected) {
     final lanes = [
       for (final track in _state.widget.project.tracks)
-        for (final slot in _trackGroupSlots(track)) ?slot.display,
+        for (final slot in _trackGroupSlots(track))
+          if (slot.display case final row? when row.isLane) row,
     ];
     final rows = seatLaneGraphs(
       lanes,
@@ -2478,21 +2296,29 @@ class _StoryboardRailRows {
     // by its own address ([trackCameraRowId]) — no track-axis select-drag
     // lands on it — then the transition row.
     //
-    // ⚠️It carries no [_StoryboardRailSlot.railRow] yet: the column sweep
-    // reads an eye off the layer ([layerRailEyeIsOn]), and the camera row's
-    // eye is the camera VIEW, not a flag of the layer — a sweep would spread
-    // the opposite of what its first press set.
+    // A head wears its row's own id to the column sweep, as its presses act
+    // on the row; a headless row — in a gap, or while the host has not
+    // wired the head's verbs — has no button to sweep. ↩️The camera row
+    // carried none: its eye was the camera VIEW, not a flag of the layer,
+    // until it became the layer's own (F-363).
+    final headsWired = _state._rows._headVerbsWired;
     if (_showsCameraRow(track)) {
       final rowId = trackCameraRowId(track.id);
+      final head = headsWired ? _cameraHeadAt(track)?.layer : null;
       slots.add((
         row: null,
         laneRow: null,
         standRow: LayerRowAddress(rowId),
         bandRow: false,
         lane: false,
-        railRow: null,
+        seSlot: null,
         height: heights.camera,
-        display: null,
+        display: head == null
+            ? null
+            : TimelineDisplayRow.layer(
+                head.copyWith(id: rowId),
+                layerIndex: 0,
+              ),
         graph: null,
       ));
       // Its lanes, twirled down under it (I-73 ④ⓔ).
@@ -2507,14 +2333,9 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: false,
-        railRow: (
-          track: track,
-          layer: track.transitionLayer,
-          seSlot: null,
-          conteSeat: null,
-        ),
+        seSlot: null,
         height: heights.transition,
-        display: null,
+        display: TimelineDisplayRow.layer(track.transitionLayer, layerIndex: 0),
         graph: null,
       ));
     }
@@ -2526,9 +2347,11 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: false,
-        railRow: (track: track, layer: layer, seSlot: slot, conteSeat: null),
+        seSlot: slot,
         height: heights.se,
-        display: null,
+        display: layer == null
+            ? null
+            : TimelineDisplayRow.layer(layer, layerIndex: slot),
         graph: null,
       ));
       if (layer != null && _seLanesOpen(track, slot)) {
@@ -2543,7 +2366,7 @@ class _StoryboardRailRows {
             standRow: null,
             bandRow: !audio,
             lane: true,
-            railRow: null,
+            seSlot: null,
             height: heights.lane,
             display: TimelineDisplayRow.lane(layer, lane, layerIndex: 0),
             graph: null,
@@ -2559,9 +2382,13 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: false,
-        railRow: (track: track, layer: null, seSlot: null, conteSeat: null),
+        seSlot: null,
         height: _state.widget.trackLaneHeight,
-        display: null,
+        // Its subject is its TRACK, which its lane carrier stands for.
+        display: TimelineDisplayRow.layer(
+          _trackLaneCarrier(track),
+          layerIndex: 0,
+        ),
         graph: null,
       ));
       // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape):
@@ -2579,7 +2406,7 @@ class _StoryboardRailRows {
             standRow: null,
             bandRow: true,
             lane: true,
-            railRow: null,
+            seSlot: null,
             height: heights.lane,
             display: TimelineDisplayRow.lane(carrier, lane, layerIndex: 0),
             graph: null,
@@ -2593,18 +2420,24 @@ class _StoryboardRailRows {
     // it — and carries the columns its head does, once a cut holds a layer
     // at its seat to be that head.
     for (final seat in _shownConteSeats(track)) {
-      final head = _inHand(track, _conteRow(track, seat))?.layer;
+      final rowId = trackConteRowId(track.id, seat: seat);
+      final head = headsWired
+          ? _inHand(track, _conteRow(track, seat))?.layer
+          : null;
       slots.add((
         row: null,
         laneRow: null,
-        standRow: LayerRowAddress(trackConteRowId(track.id, seat: seat)),
+        standRow: LayerRowAddress(rowId),
         bandRow: false,
         lane: false,
-        railRow: head == null
-            ? null
-            : (track: track, layer: head, seSlot: null, conteSeat: seat),
+        seSlot: null,
         height: heights.conte,
-        display: null,
+        display: head == null
+            ? null
+            : TimelineDisplayRow.layer(
+                head.copyWith(id: rowId),
+                layerIndex: 0,
+              ),
         graph: null,
       ));
       // Its lanes (I-73 ④ⓔ), as the camera row's are.
@@ -2612,7 +2445,7 @@ class _StoryboardRailRows {
         _addProjectionLaneSlots(
           slots,
           track,
-          trackConteRowId(track.id, seat: seat),
+          rowId,
           _conteLanes(track, seat),
         );
       }
@@ -2643,7 +2476,7 @@ class _StoryboardRailRows {
         standRow: null,
         bandRow: false,
         lane: true,
-        railRow: null,
+        seSlot: null,
         height: _state._rowHeights.lane,
         display: carrier == null
             ? null

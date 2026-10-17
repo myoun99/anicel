@@ -79,7 +79,7 @@ class _StoryboardFolded {
         null => _camera(track, entries, slot.height),
       };
     }
-    if (slot.railRow?.seSlot case final seSlot?) {
+    if (slot.seSlot case final seSlot?) {
       return _se(track, (index: trackIndex, slot: seSlot), slot.height);
     }
     return _transition(track, slot.height);

@@ -509,7 +509,7 @@ class _StoryboardRowsAndLabels {
         labelDoubleClick: widget.labelDoubleClick,
         onToggleLayerVisibility: widget.onToggleLayerVisibility,
         onLayerMarkSelected: widget.onLayerMarkSelected,
-        onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
+        onToggleLayerTimesheet: _sheetToggleOf(layer.id),
         // The rail's blend column, its slot kept empty by the kind.
         onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
       ),
@@ -750,6 +750,7 @@ class _StoryboardRowsAndLabels {
         onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
         opacityDragPreview: widget.opacityDragPreview,
         onLayerMarkSelected: widget.onLayerMarkSelected,
+        onToggleLayerTimesheet: _sheetToggleOf(rowId),
         // This rail has the blend column, as the conte heads say: a camera
         // keeps its slot empty, so the columns stand over the rows' own.
         onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
@@ -826,6 +827,14 @@ class _StoryboardRowsAndLabels {
         widget.onLayerBlendModeSelected != null;
   }
 
+  /// The sheet toggle the head of [rowId]'s row is handed: the host's,
+  /// where the row is handed one at all — the rule the column sweep paints
+  /// by too ([_StoryboardRailSweep.handsSheetToggle]).
+  ValueChanged<LayerId>? _sheetToggleOf(LayerId rowId) =>
+      _state._sweep.handsSheetToggle(rowId)
+      ? _state.widget.onToggleLayerTimesheet
+      : null;
+
   /// The metrics a head is laid out at: this rail's width, [rowHeight].
   TimelineGridMetrics _headMetrics(double rowHeight) =>
       TimelineGridMetrics.defaults.copyWith(
@@ -886,6 +895,7 @@ class _StoryboardRowsAndLabels {
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       opacityDragPreview: widget.opacityDragPreview,
       onLayerMarkSelected: widget.onLayerMarkSelected,
+      onToggleLayerTimesheet: _sheetToggleOf(rowId),
       fxState: widget.layerFxStateOf?.call(head.row.id) ?? LayerFxState.on,
       onToggleLayerFx: widget.onToggleLayerFx,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
@@ -1021,7 +1031,7 @@ class _StoryboardRowsAndLabels {
         onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
         opacityDragPreview: widget.opacityDragPreview,
         onLayerMarkSelected: widget.onLayerMarkSelected,
-        onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
+        onToggleLayerTimesheet: _sheetToggleOf(layer.id),
         onOpenLayerMixer: widget.onOpenLayerMixer,
         soloed: widget.isLayerSoloed?.call(layer.id) ?? false,
         onToggleLayerFx: widget.onToggleLayerFx,

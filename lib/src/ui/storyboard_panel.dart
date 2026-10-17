@@ -72,6 +72,8 @@ import 'timeline/timeline_lane_graph.dart'
     show LaneGraphGrid, laneGraphFrameSide, laneGraphLines;
 import 'timeline/timeline_section_runs.dart'
     show timelineDisplayRowExtent, timelineRowEdgesOf;
+import 'timeline/timeline_swipe_columns.dart'
+    show RailSwipeHooks, timelineSwipeColumns;
 import 'widgets/dock_edge_splitter.dart';
 import 'widgets/drag_chip.dart' show DragChipItem;
 import 'widgets/tick_layer.dart';
@@ -244,23 +246,9 @@ part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
 part 'storyboard/storyboard_rail_rows.dart';
+part 'storyboard/storyboard_rail_sweep.dart';
 part 'storyboard/storyboard_sheet.dart';
 part 'storyboard/storyboard_folded_row.dart';
-
-/// One row of the storyboard rail, as the shared swipe sees it.
-///
-/// Four kinds share the rail and they do not share a subject — see
-/// `_StoryboardRailRows._trackGroupRowGeometry`, the only place that builds
-/// one, and `railRowsIn`, which walks them. [conteSeat] is set only for a
-/// row of the track's conte group (`models/conte_group.dart`), whose
-/// [layer] is that seat's HEAD: the buttons act on it, and the commands
-/// carry what they write to the seat's row in every cut.
-typedef StoryboardRailRow = ({
-  Track track,
-  Layer? layer,
-  int? seSlot,
-  int? conteSeat,
-});
 
 /// One row of a track group's rail, as the strip column lays it out.
 ///
@@ -277,10 +265,8 @@ typedef StoryboardRailRow = ({
 /// under (I-44). Neither address says it: the Audio lane keeps none, and an
 /// S slot with no layer keeps none either.
 ///
-/// [railRow] is the row as the rail's column swipe sees it — the transition,
-/// S, V and conte rows, which carry the columns. A lane carries none, so it
-/// has none, and the walk steps over it; nor does a conte row no cut holds
-/// a layer for yet.
+/// [seSlot] is the slot of an S row, which its run is found by; null for
+/// every other row.
 ///
 /// [standRow] is the address you can STAND on when the row is neither of
 /// those — a CONTE row of the track ([trackConteRowId], I-73): its cells
@@ -288,18 +274,23 @@ typedef StoryboardRailRow = ({
 /// track-axis select-drag lands its head on it and it keeps no [row]
 /// (유저 2026-10-08: the sweep across cuts is for later).
 ///
-/// [display] is a lane as the timeline's rows hold it — its carrier and
-/// the lane — what a header graph seats ([seatLaneGraphs], I-89 ①); null
-/// for every row that is no lane. [graph] is the open header graph the slot
-/// stands in: a lane it draws, or the ROOM it stands past them, a slot of
-/// its own after the last of them that nobody stands on.
+/// [display] is the row as the timeline's rail holds one: a lane — its
+/// carrier and the lane — which is what a header graph seats
+/// ([seatLaneGraphs], I-89 ①), and a row that wears a layer — the S and
+/// transition rows theirs, the V row its lane carrier, a projection head
+/// the layer it has in hand by the row's own id — which is what the
+/// column sweep reads and presses ([_StoryboardRailSweep], I-89 ①ⓒ); null
+/// for a row with no button to sweep — a headless one, an empty S slot.
+/// [graph] is the open header graph the slot stands in: a lane it draws, or
+/// the ROOM it stands past them, a slot of its own after the last of them
+/// that nobody stands on.
 typedef _StoryboardRailSlot = ({
   TimelineRowAddress? row,
   LaneRowAddress? laneRow,
   LayerRowAddress? standRow,
   bool bandRow,
   bool lane,
-  StoryboardRailRow? railRow,
+  int? seSlot,
   double height,
   TimelineDisplayRow? display,
   TimelineGraphSeat? graph,
@@ -645,11 +636,13 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleLaneGroupKey,
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
+    this.laneGraphsNow,
     this.trackFxStateOf,
     this.onToggleTrackFx,
     this.onToggleTrackEffectEnabled,
     this.onResetTrackEffectGroup,
     this.onToggleLaneGroupEnabled,
+    this.laneGroupOnOf,
     this.onResetLaneGroup,
     this.seCommaDrag,
     this.seSelect,
@@ -1258,6 +1251,11 @@ class StoryboardPanel extends StatefulWidget {
   final LaneGraphsView laneGraphs;
   final LaneGraphVerbs? laneGraphVerbs;
 
+  /// A LIVE read of [laneGraphs] — for the column sweep, as
+  /// [layerOnTimesheetOf] is: a press on a graph or pin button opens it,
+  /// and the new set reaches this widget only on the next build.
+  final LaneGraphsView Function()? laneGraphsNow;
+
   /// The timeline's rail legend over this panel's rail (UI-R5): same
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
   /// through the same session hooks. Null renders a display-only legend.
@@ -1339,6 +1337,10 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
   final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
+
+  /// A LIVE read of a lane group's switch, by its header lane — for the
+  /// column sweep, as [layerOnTimesheetOf] is.
+  final bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf;
 
   // The TRANSITION row (O.L / F.I / F.O). This panel is the ONE surface that
   // authors it: the row is track-owned and its spans address the global frame
@@ -1492,6 +1494,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   // A collaborator (storyboard/storyboard_rail_rows.dart, a part of this library). The
   // State keeps the entry points its build tree calls.
   late final _StoryboardRailRows _railRows = _StoryboardRailRows(this);
+
+  // ── the rail's column sweep: its own object, in its own file ────────
+  //
+  // A collaborator (storyboard/storyboard_rail_sweep.dart, a part of this
+  // library): the timeline's one list over these rows.
+  late final _StoryboardRailSweep _sweep = _StoryboardRailSweep(this);
 
   /// The rail's NATURAL width — what its rows cost laid out in full. The
   /// window never changes it, so every row in this file keeps stating
@@ -2156,10 +2164,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                               // [RailSwipeColumnPointer].
                               child: Stack(
                                 children: [
-                                  RailColumnSwipe<StoryboardRailRow>(
+                                  RailColumnSwipe<TimelineDisplayRow>(
                                     axis: Axis.vertical,
-                                    columns: _railRows._railSwipeColumns(),
-                                    rowsIn: _railRows.railRowsIn,
+                                    columns: _sweep.columns(),
+                                    rowsIn: _sweep.rowsIn,
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
