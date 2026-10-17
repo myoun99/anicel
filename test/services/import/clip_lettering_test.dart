@@ -411,6 +411,8 @@ void main() {
             attribute: Uint8List.fromList(utf8.encode('no picture')),
             blocksId: 'unreadable',
           ),
+          pictureOf(31, 99, 'as wide, and taller'),
+          pictureOf(99, 41, 'as tall, and wider'),
           pictureOf(31, 41, 'second'),
         ],
       ),

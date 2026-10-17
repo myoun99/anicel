@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:anicel/src/ui/text/cel_text_bake.dart';
 
 import '../../helpers/opened_session.dart';
@@ -99,17 +101,20 @@ void main() {
     return path;
   }
 
+  /// A plate no picture of the file makes: what the stand-in engine sets.
+  Map<TileCoord, BitmapTile> markerPlate() => {
+    TileCoord(x: 1, y: 1): BitmapTile(
+      size: defaultCelTileSize,
+      pixels: Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
+        ..[3] = 255,
+    ),
+  };
+
   test('🎯its texts are the cel\'s — the one CLIP STUDIO drew shown as it '
       'drew it, where it stands; the one it did not set by this app, and '
       'said', () async {
     final set = <String>[];
-    final marker = <TileCoord, BitmapTile>{
-      TileCoord(x: 1, y: 1): BitmapTile(
-        size: defaultCelTileSize,
-        pixels: Uint8List(defaultCelTileSize * defaultCelTileSize * 4)
-          ..[3] = 255,
-      ),
-    };
+    final marker = markerPlate();
     debugCelTextBaker =
         (layout, {required canvasSize, required tileSize, previous = const {}}) {
           set.add(layout.content.text);
@@ -158,5 +163,37 @@ void main() {
       isEmpty,
       reason: 'the cel draws nothing but its texts',
     );
+  });
+
+  test('a text this app sets is set once the face it is in — held by the '
+      'device and still being read — has reached the engine, as the text '
+      'tool waits for it', () async {
+    final reading = Completer<List<Uint8List>>();
+    final faces = CanvasLetterFaces(
+      files: (_) => reading.future,
+      register: (_, {required engineFamily}) async {},
+    )..setHeld({'Face': 'face-files'});
+    final before = CanvasLetterFaces.current;
+    CanvasLetterFaces.current = faces;
+    addTearDown(() {
+      CanvasLetterFaces.current = before;
+      faces.dispose();
+    });
+    final arrived = <bool>[];
+    debugCelTextBaker =
+        (layout, {required canvasSize, required tileSize, previous = const {}}) {
+          arrived.add(!faces.isOnItsWay('Face'));
+          return Future.value(markerPlate());
+        };
+    unawaited(
+      Future<void>.delayed(
+        const Duration(milliseconds: 50),
+        () => reading.complete([Uint8List(4)]),
+      ),
+    );
+    final opened = await openedClip(writeClip());
+    addTearDown(opened!.session.dispose);
+
+    expect(arrived, [true], reason: 'set in its face, not in a stand-in');
   });
 }

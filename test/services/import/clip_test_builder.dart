@@ -588,7 +588,9 @@ Uint8List clipTextAttributesBytes({
           13,
           (run.colour == null ? 0 : 1) | (run.scale == null ? 0 : 2),
         )
-        ..setFloat64(20, run.scale ?? 100, Endian.little)
+        // What a run keeps here when its scale is not its own is not
+        // read: something no scale would be.
+        ..setFloat64(20, run.scale ?? 250, Endian.little)
         ..setUint16(28, run.face.length, Endian.little);
       if (run.colour case (final r, final g, final b)) {
         data
@@ -640,7 +642,8 @@ Uint8List clipTextAttributesBytes({
   parameter(
     34,
     Uint8List.fromList([
-      for (final channel in [r, g, b]) ..._le32(channel * 0x01010101),
+      // A channel is its top byte; the bytes under it are not the colour's.
+      for (final channel in [r, g, b]) ..._le32(channel << 24 | 0x123456),
     ]),
   );
   if (box != null) {
