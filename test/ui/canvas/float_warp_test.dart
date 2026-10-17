@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart';
 import 'package:anicel/src/ui/canvas/transform_box.dart';
 
+import '../../helpers/settle_async.dart';
+
 /// Where the open box puts the float, read without a selection layer
 /// around it: [FloatWarp]'s geometry, and the [FloatResamplePreview] that
 /// resamples through it.
@@ -235,17 +237,13 @@ void main() {
       pasteboard: wall,
     );
 
-    /// Lends the decode the preview asked for a second to land in.
-    Future<void> decoded(
-      WidgetTester tester,
-      FloatResamplePreview preview,
-    ) async {
-      for (var i = 0; i < 100 && preview.image == null; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
-      }
-    }
+    /// Lends a decode, were one asked for, a second to land in: the window
+    /// a test watches for a picture NOT to come in.
+    Future<void> window(WidgetTester tester) => lendBothClocks(
+      tester,
+      rounds: 100,
+      beat: const Duration(milliseconds: 10),
+    );
 
     testWidgets('a box that only moves the float shows no picture of its own '
         '— the float\'s pixels draw it — and lands it moved', (tester) async {
@@ -254,7 +252,7 @@ void main() {
       addTearDown(preview.discard);
 
       preview.schedule();
-      await decoded(tester, preview);
+      await window(tester);
 
       expect(preview.image, isNull);
       final landed = preview.warped()!;
@@ -268,7 +266,7 @@ void main() {
       final preview = FloatResamplePreview(_Host(), () => now);
       addTearDown(preview.discard);
       preview.schedule();
-      await decoded(tester, preview);
+      await settleAsync(tester, () => preview.image != null);
       expect(
         preview.image,
         isNotNull,
@@ -292,7 +290,7 @@ void main() {
       preview.schedule();
 
       preview.discard();
-      await decoded(tester, preview);
+      await window(tester);
 
       expect(preview.image, isNull);
     });

@@ -6432,12 +6432,11 @@ void main() {
       await dragOnLayer(tester, const Offset(340, 225), const Offset(380, 250));
       // A decode is real work on a real thread: lend it the time to land,
       // were one asked for.
-      for (var i = 0; i < 50; i += 1) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
-        await tester.pump();
-      }
+      await lendBothClocks(
+        tester,
+        rounds: 50,
+        beat: const Duration(milliseconds: 10),
+      );
 
       final floats = tester
           .widgetList<CustomPaint>(find.byType(CustomPaint))
