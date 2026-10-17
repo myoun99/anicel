@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, PointerHoverEvent;
+    show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
@@ -154,6 +154,7 @@ part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
 part 'canvas_panel/canvas_panel_build.dart';
+part 'canvas_panel/canvas_panel_control_holds.dart';
 
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
@@ -508,7 +509,8 @@ class BrushCanvasPanel extends StatefulWidget {
   final bool Function()? onStrokeNeedsCel;
 
   /// Settles a block [onStrokeNeedsCel] made that no stroke claimed —
-  /// the host's pointer-up does it for a press (I-10).
+  /// the tool's entrance does it at a press's end (I-10,
+  /// `_PanelBuild._toolEntrance`).
   final VoidCallback? onAutoFrameSettled;
 
   /// The view PUSHED by a caller that keeps it in its own `setState` — an
@@ -1047,9 +1049,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// only (the timesheet's ink and header-edit overlays).
   final bool allowViewRotation;
 
-  /// False suppresses the tool cursors (brush tip outline, fill icon) —
-  /// for strictly read-only hosts (the media viewer), where a paint
-  /// cursor over undrawable content is a false affordance.
+  /// False suppresses the marking tools' cursors (the drawing cursor, the
+  /// fill's bucket, the text tool's caret) where the content under them
+  /// cannot be drawn on — a
+  /// paint cursor there is a false affordance: a strictly read-only host
+  /// (the media viewer), and on the drawing canvas a row that is no drawing
+  /// surface (the camera, a property lane, a data or reference row).
+  ///
+  /// 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  /// 도구가 연관이 없는 곳에선 기본커서」 — the system's default stands there.
   final bool toolCursorsEnabled;
 
   /// False stands down the layers a tool takes the pointer through — the tap
@@ -1346,9 +1354,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).
   /// The drawing view stands down in place, or would draw, under a layer
   /// that takes the press. Where a cel IS there and its row takes no marks,
-  /// or nothing stands here at all, the host's own listener speaks
-  /// (`MainCanvasBrushHost`) and this is null — a second question would say
-  /// it twice.
+  /// or nothing stands here at all, the tool's entrance speaks
+  /// ([_CanvasPanelTap.pressNoLayerHears]) and this is null — a second
+  /// question would say it twice.
   bool Function()? get _markDoorOverTheView {
     final door = widget.onPressNeedsCel;
     if (widget.coordinator == null || door == null) {
@@ -1616,6 +1624,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _toolCursorHover.dispose();
     _penPose.dispose();
     _stampPreview.dispose();
+    _controlHolds.dispose();
     widget.viewCommands?.unbind(this);
     super.dispose();
   }
@@ -1717,6 +1726,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// deleted the mouse's ring. Keyed by `event.device`, which is what
   /// Flutter's own bookkeeping uses — a hover has no stable pointer id.
   final Set<int> _hoverDevicesInside = <int>{};
+
+  /// The pointers a control over the tools holds — while one does, the
+  /// tool's entrance takes none ([_ControlHolds]).
+  final _ControlHolds _controlHolds = _ControlHolds();
 
   /// The census records a pointer only if that pointer could DRIVE a tool.
   ///

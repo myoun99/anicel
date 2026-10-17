@@ -311,6 +311,7 @@ class _InteractiveCanvasBuild {
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
         session,
       ),
+      toolCursorsEnabled: _EditorCanvasAreaState._standingRowIsDrawn(session),
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
       // composite tree and a folder's group buffer can enclose
@@ -405,8 +406,8 @@ class _InteractiveCanvasBuild {
           : session.endSelectionInteraction(),
       // 🚨ONE ANSWER TO 「이 프레스 밑에 셀이 없다」 (I-10 + R26 #35),
       // because two callers ask it now: the interactive view, which
-      // stands down on an empty cel, and the shell listener above it
-      // for a project that has no editing stack yet.
+      // stands down on an empty cel, and the panel's tool entrance for a
+      // press no layer under it hears (`_CanvasPanelTap.pressNoLayerHears`).
       //
       // ⛔The TOOL first, and HERE rather than at either caller: the
       // eyedropper reads a colour and the _selection tools mark

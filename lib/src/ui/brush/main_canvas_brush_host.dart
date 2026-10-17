@@ -15,7 +15,6 @@ import '../../models/drawing_guide.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
-import '../canvas/canvas_press.dart';
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../../services/command.dart';
@@ -120,6 +119,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onAutoFrameSettled,
     this.takeStrokePrefixCommand,
     this.rowAcceptsStrokes = true,
+    this.toolCursorsEnabled = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
     this.transformCelsUnderfoot,
@@ -355,8 +355,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Whether a mark pressed now makes a cel of its own although one stands
   /// under the playhead (I-113) — see
   /// [InteractiveBrushEditCanvasView.markMakesItsOwnCel]. A press it takes
-  /// is the view's to ask about, so this host's own listener stays quiet
-  /// over it: the cel stands, and `hasEditableFrame` says so.
+  /// is the view's to ask about, so the panel's tool entrance stays quiet
+  /// over it: the cel stands, and its row takes strokes
+  /// (`_CanvasPanelTap.pressNoLayerHears`).
   final bool Function()? markMakesItsOwnCel;
 
   /// The same answer for a STROKE whatever tool is up — what 확정's 재입력
@@ -394,6 +395,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// It joins the SAME gate an empty frame goes through, so every pixel
   /// verb refuses for one reason and the shared cursor notice explains it.
   final bool rowAcceptsStrokes;
+
+  /// Forwarded to [BrushCanvasPanel.toolCursorsEnabled]: false on a row the
+  /// marking tools have nothing to do with — a property lane, the camera, a
+  /// data or reference row (F-285).
+  final bool toolCursorsEnabled;
 
   /// Which cels a transform confirm lands on (F-116-b) — passed straight
   /// through to the panel, which is where the law is written down.
@@ -474,7 +480,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     // CEL question decides what is PAINTED, the ROW question decides what a
     // press may DO.
     final hasCelUnderPlayhead = _frameKeys.isNotEmpty && coordinator != null;
-    final hasEditableFrame = widget.rowAcceptsStrokes && hasCelUnderPlayhead;
     // The blank canvas is for having NO COORDINATOR — a project where
     // nothing has been drawn yet, so the panel has no editing stack to
     // show. It is deliberately NOT the answer to "the playhead is on an
@@ -486,94 +491,31 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         widget.contentOverride ??
         (coordinator == null ? _blankCanvasContent : null);
 
-    final onPressNeedsCel = widget.onPressNeedsCel;
-    // 🚨WHOEVER HEARS THE PRESS IS THE ONLY ONE WHO CAN DRAW IT (I-10).
+    // ⛔Nothing wraps the panel CONDITIONALLY here. A [ValueKey] holds
+    // identity only under the SAME parent, so a wrapper that came and went
+    // with 「no cel ↔ cel」 tore `_BrushCanvasPanelState` down on every flip
+    // that crossed it — mid-gesture the pointer kept going to the DISPOSED
+    // render object, and the flip HUD ended for the rest of the drag. A
+    // widget whose subtree carries live gesture state must not change shape
+    // under it.
     //
-    // The interactive view is mounted whenever there is a coordinator, and
-    // it stands down IN PLACE on an empty cel — so it is already in the hit
-    // path, and it is the one that must ask for the cel. A `Listener` up
-    // here cannot: Flutter routes the rest of a gesture to the path it
-    // captured at pointer-DOWN, so a view built afterwards never sees the
-    // moves. 유저 (F-61): 「자동생성은 되는데 **선이 안그려지고있음**」.
+    // ↩️A translucent Listener stood around the panel here for the press no
+    // layer hears (I-10 · R26 #35) — an ancestor of every control on the
+    // canvas, so a drag of the camera's box was told the row takes no
+    // strokes (F-377). It is the panel's tool entrance now
+    // (`_CanvasPanelTap.pressNoLayerHears`), where a press a control took
+    // never arrives.
     //
-    // ↩️What was left for this one was a project with NO editing stack at
-    // all, where `contentOverride` stood in and the view was not built: the
-    // block got made and the stroke did not start — one press, once per
-    // project. I-10 wrote that down rather than papering over it, and
-    // F-171 is the user finding it (「그 가장 처음 상태만 선이 안그어짐 … 다른
-    // 규칙 두지말고 법 완벽통일」). The stack stands on the cel the press will
-    // make now ([MainCanvasBrushHost.standingFrameKeyOf]), so the view hears
-    // that press like any other; this listener speaks only where nothing can
-    // stand (a host that makes no cels, a row that takes no strokes).
-    final viewHearsTheEmptyPress = coordinator != null && _frameKeys.isEmpty;
-    // R26 #35: without an editable cel a paint press does nothing at all
-    // — the passive Listener above the panel turns that silence into the
-    // shared cursor notice. Translucent: it observes, never consumes, so
-    // viewport navigation over the paper keeps working.
-    //
-    // ★ ALWAYS mounted; only the CALLBACK stands down. Wrapping it
-    // conditionally moved the panel between two parents, and a [ValueKey]
-    // holds identity only under the SAME parent — so every flip that
-    // crossed "no cel ↔ cel" tore down `_BrushCanvasPanelState` and built
-    // a fresh one. Mid-gesture that is worse than it sounds: the pointer
-    // in flight keeps being delivered to the DISPOSED render object (a
-    // "ValueNotifier used after being disposed" assertion per move, and
-    // silence rather than an assert in release), while the gesture layer's
-    // own `dispose` ends the flip HUD for the rest of the drag — the
-    // window vanished the moment a flip landed on a block and never came
-    // back until the finger lifted. A widget whose subtree carries live
-    // gesture state must not change shape under it.
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown:
-          hasEditableFrame || viewHearsTheEmptyPress || onPressNeedsCel == null
-          ? null
-          : (event) {
-              // ⛔The TOOL question is NOT asked here any more. It rode
-              // this call site while this was the only one; it lives inside
-              // `onPressNeedsCel` now, so the view's press and this one get
-              // the same answer rather than two copies of one predicate
-              // drifting apart.
-              //
-              // R27 #15: only a press that would actually DRAW earns the
-              // notice. A finger whose one-finger slot is flip/pan/none is
-              // navigating, not drawing — telling it "no frame here" was
-              // noise on every page flip.
-              //
-              // 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바 하고
-              // 클릭하면 이거는 드로잉로직이 아니라 프레임이 존재하지
-              // 않는다는 메시지 안뜨도록」. Nor does a press the pan takes or
-              // a mapped button claims — and the PRESS question went the way
-              // the tool question did: this call site asked its own copy of
-              // half of it (the primary bit, the finger's slot), and asks
-              // [canvasPressDraws] now, as the view's press does. No tail
-              // hold is known up here.
-              if (!canvasPressDraws(event, penTailActive: false)) {
-                return;
-              }
-              // Make the cell if it can be made, and explain the silence
-              // if it cannot — ONE call, because it is one question. A
-              // notice about nothing having happened would be wrong the
-              // moment something did.
-              onPressNeedsCel();
-            },
-      onPointerUp: widget.onAutoFrameSettled == null
-          ? null
-          : (_) => widget.onAutoFrameSettled!(),
-      onPointerCancel: widget.onAutoFrameSettled == null
-          ? null
-          : (_) => widget.onAutoFrameSettled!(),
-      // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100% 넘어서 확대하지
-      // 못하게 락」 — and, asked where it holds (I-27-Q1): 「그리기 캔버스만」.
-      // This host IS the drawing canvas, so it is the one place that says
-      // the lock to the view under it; the sheets and the viewers build the
-      // same panel and say nothing.
-      child: ValueListenableBuilder<AppInputSettings>(
-        valueListenable: AppInput.settings,
-        builder: (context, settings, panel) =>
-            CanvasZoomCeiling(percent: settings.zoomCeiling, child: panel!),
-        child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
-      ),
+    // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100% 넘어서 확대하지
+    // 못하게 락」 — and, asked where it holds (I-27-Q1): 「그리기 캔버스만」.
+    // This host IS the drawing canvas, so it is the one place that says
+    // the lock to the view under it; the sheets and the viewers build the
+    // same panel and say nothing.
+    return ValueListenableBuilder<AppInputSettings>(
+      valueListenable: AppInput.settings,
+      builder: (context, settings, panel) =>
+          CanvasZoomCeiling(percent: settings.zoomCeiling, child: panel!),
+      child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
     );
   }
 
@@ -598,6 +540,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // H19: the row question, carried separately — the pixel verbs still
       // refuse on a property lane, the artwork still shows.
       rowAcceptsStrokes: widget.rowAcceptsStrokes,
+      toolCursorsEnabled: widget.toolCursorsEnabled,
       availableFrameKeys: _frameKeys,
       transformTargetKeys: widget.transformTargetKeys,
       cellPlacementOf: widget.cellPlacementOf,

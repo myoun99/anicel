@@ -41,6 +41,10 @@ void main() {
     WidgetTester tester, {
     CanvasTool tool = CanvasTool.brush,
     Widget Function(BuildContext context, Object viewport)? controls,
+    bool rowAcceptsStrokes = true,
+    bool toolCursorsEnabled = true,
+    bool Function()? onPressNeedsCel,
+    VoidCallback? onAutoFrameSettled,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     await tester.pumpWidget(
@@ -57,11 +61,41 @@ void main() {
               BrushToolState.defaults.copyWith(tool: tool, size: 40),
             ),
             viewportControlsBuilder: controls,
+            rowAcceptsStrokes: rowAcceptsStrokes,
+            toolCursorsEnabled: toolCursorsEnabled,
+            onPressNeedsCel: onPressNeedsCel,
+            onAutoFrameSettled: onAutoFrameSettled,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  /// A control over the LEFT half of the canvas, as the standing row's box
+  /// lies over the tools and takes the presses that are its own.
+  Widget Function(BuildContext context, Object viewport) leftHalfControl(
+    VoidCallback pressed,
+  ) =>
+      (context, viewport) => Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: 0.5,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: (_) => pressed(),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      );
+
+  /// A point on [leftHalfControl], and one on the tool's half beside it.
+  ({Offset onTheControl, Offset onTheTool}) halves(WidgetTester tester) {
+    final width = tester.getSize(interactiveBrushCanvasFinder()).width;
+    return (
+      onTheControl: Offset(width / 4, 40),
+      onTheTool: Offset(width * 3 / 4, 40),
+    );
   }
 
   Future<TestGesture> hover(WidgetTester tester, Offset local) async {
@@ -123,35 +157,150 @@ void main() {
     expect(drawn(tester, outline), isTrue);
   });
 
-  testWidgets('🚨F-285: a box floating over the tools with no cursor of its '
-      'own (the standing row\'s) wears the tool\'s — the system\'s arrow '
-      'never shows beside the app\'s', (tester) async {
-    var boxPresses = 0;
-    await pumpPanel(
-      tester,
-      // As the camera row's box does: it takes the whole canvas's presses.
-      controls: (context, viewport) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (_) => boxPresses++,
-        child: const SizedBox.expand(),
-      ),
-    );
-    final mouse = await hover(tester, const Offset(40, 40));
-    await mouse.down(canvasGlobalOffset(tester, const Offset(40, 40)));
-    await mouse.up();
-    await tester.pump();
-    expect(boxPresses, 1, reason: '⛔CONTROL: the box is over the tools');
+  // 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  // 도구가 연관이 없는 곳에선 기본커서. 트랜스폼fx든 뭐 그런거 전부」 — and
+  // F-377: 「그런 누름 관련, 입구 확실하게 나눠서 근본/구조적으로」.
+  testWidgets('🚨a control over the tools takes the pointer before the '
+      'tool\'s entrance: the system\'s default shows on it and nothing of '
+      'the tool\'s is drawn there', (tester) async {
+    choose(DrawingCursor.brush);
+    var controlPresses = 0;
+    await pumpPanel(tester, controls: leftHalfControl(() => controlPresses++));
+    final (:onTheControl, :onTheTool) = halves(tester);
 
-    expect(shown(), SystemMouseCursors.none, reason: 'the outline is up');
-    expect(drawn(tester, outline), isTrue);
+    final mouse = await hover(tester, onTheTool);
+    expect(shown(), SystemMouseCursors.none, reason: '⛔CONTROL: the outline');
+    expect(drawn(tester, outline), isTrue, reason: '⛔CONTROL');
+
+    await mouse.moveTo(canvasGlobalOffset(tester, onTheControl));
+    await tester.pump();
+    expect(shown(), SystemMouseCursors.basic);
+    expect(drawn(tester, outline), isFalse, reason: 'no aim over a control');
 
     choose(DrawingCursor.crosshair);
     await tester.pump();
-    expect(shown(), SystemMouseCursors.precise);
+    expect(shown(), SystemMouseCursors.basic, reason: 'whatever the tool asks');
+
+    await mouse.down(canvasGlobalOffset(tester, onTheControl));
+    await mouse.up();
+    await tester.pump();
+    expect(controlPresses, 1, reason: '⛔CONTROL: the control is over them');
+
+    await mouse.moveTo(canvasGlobalOffset(tester, onTheTool));
+    await tester.pump();
+    expect(shown(), SystemMouseCursors.precise, reason: 'the tool\'s off it');
   });
 
-  testWidgets('the view hold\'s hand lies deeper than the tool\'s cursor, and '
-      'wins for as long as it is held', (tester) async {
+  testWidgets('🚨a press a control takes asks for no cel and settles none — '
+      'the tool\'s entrance never hears it; a press beside the control does', (
+    tester,
+  ) async {
+    var asks = 0;
+    var settles = 0;
+    var controlPresses = 0;
+    await pumpPanel(
+      tester,
+      // A cel is there and its row takes no strokes — the camera row's
+      // borrowed cel, a property lane: no layer under the entrance hears a
+      // press, so the entrance asks for the cel itself (I-10 · R26 #35).
+      rowAcceptsStrokes: false,
+      onPressNeedsCel: () {
+        asks++;
+        return false;
+      },
+      // A press's end settles a block no stroke claimed (I-10) — the tool's
+      // business, so a control's press settles none.
+      onAutoFrameSettled: () => settles++,
+      controls: leftHalfControl(() => controlPresses++),
+    );
+    final (:onTheControl, :onTheTool) = halves(tester);
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+
+    await mouse.down(canvasGlobalOffset(tester, onTheControl));
+    await mouse.up();
+    await tester.pump();
+    expect(controlPresses, 1, reason: '⛔CONTROL: the control took it');
+    expect(asks, 0, reason: 'the camera\'s box, dragged: no 「그릴 수 없음」');
+    expect(settles, 0);
+
+    await mouse.down(canvasGlobalOffset(tester, onTheTool));
+    await mouse.up();
+    await tester.pump();
+    expect(asks, 1, reason: 'a paint press on the row is still told why');
+    expect(settles, 1, reason: 'and its end settles what it may have made');
+  });
+
+  // CLAUDE.md: 「컨트롤 위에서 시작한 제스처는 그 컨트롤의 것이다」 — and a
+  // pressed mouse's cursor is asked of whatever lies under it at every move,
+  // so a drag that outran its handle wore the tool's there: under the
+  // outline, nothing at all.
+  testWidgets('🚨a drag that began on a control is the control\'s to its '
+      'lift — no tool where it outruns the control, and the tool\'s back '
+      'under the resting hand at the lift', (tester) async {
+    choose(DrawingCursor.brush);
+    await pumpPanel(tester, controls: leftHalfControl(() {}));
+    final (:onTheControl, :onTheTool) = halves(tester);
+    final mouse = await hover(tester, onTheTool);
+    expect(shown(), SystemMouseCursors.none, reason: '⛔CONTROL: the outline');
+    expect(drawn(tester, outline), isTrue, reason: '⛔CONTROL');
+
+    await mouse.moveTo(canvasGlobalOffset(tester, onTheControl));
+    await tester.pump();
+    await mouse.down(canvasGlobalOffset(tester, onTheControl));
+    await tester.pump();
+    await mouse.moveTo(canvasGlobalOffset(tester, onTheTool));
+    await tester.pump();
+    expect(shown(), SystemMouseCursors.basic, reason: 'the control\'s drag');
+    expect(drawn(tester, outline), isFalse);
+
+    await mouse.up();
+    await tester.pump();
+    await tester.pump();
+    expect(shown(), SystemMouseCursors.none, reason: 'the tool\'s again');
+    expect(drawn(tester, outline), isTrue, reason: 'with no move needed');
+  });
+
+  testWidgets('a marking tool wears no cursor of its own where the panel '
+      'shows none — the system\'s default', (tester) async {
+    choose(DrawingCursor.brush);
+    // One mouse for both: a second one added while the first is still there
+    // is a device added twice.
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    for (final (tool, own, sprite) in [
+      (CanvasTool.brush, SystemMouseCursors.none, outline),
+      (
+        CanvasTool.fill,
+        SystemMouseCursors.none,
+        const ValueKey<String>('fill-cursor-icon'),
+      ),
+      // The caret's own cursor, which the system wears.
+      (CanvasTool.text, SystemMouseCursors.text, null),
+    ]) {
+      for (final enabled in [true, false]) {
+        await pumpPanel(tester, tool: tool, toolCursorsEnabled: enabled);
+        await mouse.moveTo(Offset.zero);
+        await mouse.moveTo(canvasGlobalOffset(tester, const Offset(40, 40)));
+        await tester.pump();
+        final why =
+            '${tool.name}, cursors ${enabled ? 'on (⛔CONTROL)' : 'off'}';
+        expect(
+          shown(),
+          enabled ? own : SystemMouseCursors.basic,
+          reason: why,
+        );
+        if (sprite != null) {
+          expect(drawn(tester, sprite), enabled, reason: why);
+        }
+      }
+    }
+  });
+
+  testWidgets('the view hold\'s hand wins over the tool\'s cursor for as long '
+      'as it is held', (tester) async {
     addTearDown(() => CanvasViewHold.held.value = null);
     choose(DrawingCursor.crosshair);
     await pumpPanel(tester);

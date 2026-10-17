@@ -856,6 +856,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       _rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
       session.editingCanvas.activeRowStrokeRefusal == null;
 
+  /// Whether the row you stand on is a DRAWING SURFACE at all: not a
+  /// property lane, and a layer whose kind takes strokes — the rows
+  /// [_drawRefusalFor] does not call undrawable. A HIDDEN row is one: it
+  /// takes no stroke while its eye is off, and is still the tool's.
+  ///
+  /// 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  /// 도구가 연관이 없는 곳에선 기본커서. 트랜스폼fx든 뭐 그런거 전부」 — on any
+  /// other row a marking tool wears no cursor of its own.
+  static bool _standingRowIsDrawn(EditorSessionManager session) =>
+      _rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+      session.editingCanvas.activeRowStrokeRefusal !=
+          StrokeRefusal.notDrawable;
+
   void _noteCanvasProbe(
     EditorSessionManager session,
     bool inGap,

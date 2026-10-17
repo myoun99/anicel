@@ -324,9 +324,10 @@ void main() {
           expect(shell.tool, tool);
           expect(
             shell.cellAsks,
-            ground == _Ground.emptyFrame ? 1 : 0,
-            reason: 'ONCE where a view stands down on the frame, whether it '
-                'heard the press or was handed it; never where none is built',
+            1,
+            reason: 'ONCE — by the view that stands down on the frame, or, '
+                'where none is built, by the tool\'s entrance (F-377: what '
+                'the main canvas\'s host asked around the panel)',
           );
           expect(shell.drewSomething, isFalse);
           expect(tester.takeException(), isNull);

@@ -69,6 +69,63 @@ class _CanvasPanelTap {
     _state._forgetCanvasPointer();
   }
 
+  /// 🚨WHOEVER HEARS THE PRESS IS THE ONLY ONE WHO CAN DRAW IT (I-10) — and
+  /// this is the press no tool layer hears: the tool's entrance took it, and
+  /// there is no editing stack under it, or a cel whose row takes no strokes.
+  /// It asks for its cel ONCE, so the shell makes one or says at the cursor
+  /// why not (R26 #35).
+  ///
+  /// Every other press is heard below: the view draws on an editable cel,
+  /// and on an empty one stands down in place and asks itself (F-61:
+  /// 「자동생성은 되는데 **선이 안그려지고있음**」 — a listener cannot draw
+  /// the press it makes a cel for, because the rest of a gesture goes to the
+  /// path captured at the DOWN) — as the selection and text layers do in its
+  /// stead. ↩️F-171 (「그 가장 처음 상태만 선이 안그어짐 … 다른 규칙 두지말고
+  /// 법 완벽통일」): a project with no editing stack yet made its block here
+  /// and the stroke did not start. The stack stands on the cel the press
+  /// will make now (`MainCanvasBrushHost.standingFrameKeyOf`), so this speaks
+  /// only where nothing can stand — a host that makes no cels, a row that
+  /// takes no strokes.
+  ///
+  /// ⛔The TOOL question is not asked here: it lives inside
+  /// [BrushCanvasPanel.onPressNeedsCel], so the view's press and this one get
+  /// the same answer rather than two copies of one predicate drifting apart.
+  ///
+  /// ↩️It was a translucent `Listener` around the whole panel
+  /// (`MainCanvasBrushHost`), which made it an ancestor of every control on
+  /// the canvas: a drag of the camera's box was told the row takes no
+  /// strokes (F-377). It stands at the tool's entrance now
+  /// ([_PanelBuild._toolEntrance]), where a press a control took never
+  /// arrives.
+  void pressNoLayerHears(PointerDownEvent event) {
+    final ask = _state.widget.onPressNeedsCel;
+    if (ask == null || _aLayerHearsThePress) {
+      return;
+    }
+    // R27 #15: only a press that would DRAW earns it — a finger whose slot is
+    // flip/pan/none is navigating, and telling it 「no frame here」 was noise
+    // on every page flip. 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바
+    // 하고 클릭하면 이거는 드로잉로직이 아니라 프레임이 존재하지 않는다는 메시지
+    // 안뜨도록」 — nor a press the pan takes or a mapped button claims. The
+    // same question the view's press asks ([canvasPressDraws]), with the tail
+    // it knows.
+    if (!canvasPressDraws(event, penTailActive: _state._toolHolds.penTail)) {
+      return;
+    }
+    // Make the cel if it can be made, and explain the silence if it cannot
+    // — ONE call, because it is one question.
+    ask();
+  }
+
+  /// Whether a layer under the tool's entrance hears a press itself: the
+  /// view on an editable cel, and the view — or the selection or text layer
+  /// over it — on an empty one.
+  bool get _aLayerHearsThePress {
+    final panel = _state.widget;
+    return panel.coordinator != null &&
+        (!panel.celEditable || panel.rowAcceptsStrokes);
+  }
+
   Positioned toolTapLayer() {
     return Positioned.fill(
       child: Listener(

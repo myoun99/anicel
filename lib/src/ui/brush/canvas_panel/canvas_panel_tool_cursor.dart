@@ -71,20 +71,25 @@ class _CanvasPanelToolCursor {
       brushCursorActive &&
           appDrawsDrawingCursor(AppInput.settings.value.drawingCursor);
 
-  /// The ONE region the canvas says its system cursor in, around the whole
-  /// deck: the tool's while the tool has one, and whatever lies deeper
-  /// everywhere else.
+  /// The ONE region the canvas says its system cursor in, around the tool's
+  /// layers at the tool's entrance ([_PanelBuild._toolEntrance]): the tool's
+  /// while the tool has one, and whatever lies deeper everywhere else (the
+  /// text tool's beam).
   ///
   /// ↩️It was three regions — the brush's, the fill's and the eyedropper's —
   /// siblings of the tools inside the deck, one algorithm under three keys.
-  /// And a sibling lies beneath whatever floats over the tools: on the camera
-  /// row the standing row's box takes the whole canvas's presses, so the
-  /// region that hid the system cursor was never hit there and the system's
-  /// arrow showed beside the tool's own (F-285 — 「카메라레이어에서 도구커서랑
-  /// 추가로 os커서도 보임. 다른 레이어랑 법 통일해서 도구커서만 보이게」). An
-  /// ANCESTOR is hit wherever the deck is: a layer with no cursor of its own
-  /// (the row's box) wears the tool's, and one with its own lies deeper and
-  /// wins (the text tool's beam, the view hold's hand).
+  ///
+  /// 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  /// 도구가 연관이 없는 곳에선 기본커서. 트랜스폼fx든 뭐 그런거 전부」. A control
+  /// over the tools — the standing row's box, what is adjusted on the canvas
+  /// — takes the pointer before the tool's entrance can, so this region is
+  /// not hit there and nothing of the tool's shows: the system's default.
+  /// ↩️10-04 it read 「도구커서랑 추가로 os커서도 보임. 다른 레이어랑 법 통일해서
+  /// 도구커서만 보이게」: the app's outline, drawn at an aim the census still
+  /// wrote over the box, beside the system's arrow. I-54 first made this
+  /// region an ANCESTOR of the whole deck so the box wore the tool's cursor;
+  /// the user's answer was the default instead, and the census stopped
+  /// writing over a control with it.
   ///
   /// ⛔It says nothing about the pointer LEAVING. The three said that as
   /// well, unconditionally, and so overruled the census's own law — a
@@ -268,10 +273,10 @@ class _CanvasPanelToolCursor {
   /// Their TRACKERS stay down there on purpose (see the deck's comment):
   /// those are full-bleed `MouseRegion`s that decide hit-testing and which
   /// system cursor wins, and moving them would reorder both for no gain.
-  /// ↩️There are no trackers now: the census tracks, and ONE region around
-  /// the deck says the system cursor ([region]) — the order the three
-  /// siblings kept was the very thing that lost the cursor under the row's
-  /// box (F-285).
+  /// ↩️There are no trackers now: the census tracks and ONE region says the
+  /// system cursor ([region]), both at the tool's entrance — so over a
+  /// control neither hears the pointer, and these draw nothing there
+  /// (F-285).
   ///
   /// ⚠️CONTRACT for every widget returned here: it either paints nothing or
   /// carries its own `RepaintBoundary`. A sprite IS its own boundary, and
