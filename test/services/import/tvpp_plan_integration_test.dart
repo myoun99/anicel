@@ -183,48 +183,65 @@ void main() {
   });
 
   test('a locked sound track comes in on an SE row, which has no lock — '
-      'named by its file, as a muted one is (보드 the-clip-import-leaves-'
-      'masks-and-locks-unsaid)', () {
-    const parsed = TvpImportClip(
-      versionMajor: 0,
-      versionMinor: 0,
-      clipName: 'cut',
+      'named by its file, as a muted one is; the track beside it, not '
+      'locked, says nothing (보드 the-clip-import-leaves-masks-and-locks-'
+      'unsaid)', () {
+    // From the parse model, through the conversion: a planner fed the
+    // import model directly passed with the conversion dropping the lock.
+    const clip = TvppClip(
+      name: 'cut',
       width: 320,
       height: 180,
       frameRate: 24,
       pixelAspectRatio: 1,
-      frameCount: 48,
-      background: TvpColor(255, 255, 255),
-      markIn: null,
-      markOut: null,
-      camera: TvpCamera(
-        width: 320,
-        height: 180,
-        keyedOn: (position: [], zoom: [], rotation: []),
-        positions: [],
-      ),
-      layers: [],
-      warnings: [],
+      layers: [
+        TvppLayer(
+          kind: TvppLayerKind.camera,
+          name: 'cam',
+          layerId: 0,
+          parentId: 0,
+          start: 0,
+          end: 47,
+          opacity: 255,
+          preBehavior: TvpEdgeBehavior.none,
+          postBehavior: TvpEdgeBehavior.none,
+          slots: [],
+          ctgSecondStream: [],
+          instanceNames: {},
+        ),
+      ],
+      imageMarks: [],
+      cameraPoints: [],
+      cameraDataText: '',
       audioTracks: [
-        TvpAudioTrack(
+        TvppAudioTrack(
           filePath: 'G:/sagyou/12.mp4',
           offsetSeconds: 0,
           volume: 1,
           muted: false,
           locked: true,
         ),
+        TvppAudioTrack(
+          filePath: 'G:/sagyou/13.wav',
+          offsetSeconds: 0,
+          volume: 1,
+          muted: false,
+        ),
       ],
     );
     final plan = planTvpImport(
-      parsed: parsed,
+      parsed: convertTvppClip(clip, clipIndex: 0).result,
       resolveFile: (key) => key,
       mint: mint(),
     );
 
     expect(plan.warnings, [lockNotImported('12.mp4')]);
     expect(
-      plan.cut.layers.where((layer) => layer.kind == LayerKind.se),
-      hasLength(1),
+      [
+        for (final layer in plan.cut.layers)
+          if (layer.kind == LayerKind.se) layer.name,
+      ],
+      unorderedEquals(['12.mp4', '13.wav']),
     );
   });
 }
