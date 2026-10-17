@@ -173,6 +173,67 @@ void main() {
     );
   });
 
+  test('premise: the ceiling scan sees both doors, and not the one wait', () {
+    const doors = [
+      'await whole.timeout(const Duration(seconds: 30));',
+      '.timeout(const Duration(seconds: 10), onTimeout: () {});',
+      'patience: const Duration(seconds: 30),',
+    ];
+    for (final line in doors) {
+      expect(_ownCeiling(line), isTrue, reason: line);
+    }
+    const notOne = ['await patiently(whole);', '// .timeout( in a comment'];
+    for (final line in notOne) {
+      expect(_ownCeiling(line), isFalse, reason: line);
+    }
+  });
+
+  /// 🚨**A FUTURE IS AWAITED AT THE ONE CEILING TOO** (card
+  /// `a-test-awaits-a-future-with-a-ceiling-of-its-own`). What waits for
+  /// something to come waits by `waitPatience`, a poll as much as a future,
+  /// and `patiently` (`poll_until.dart`) is a future's. A `.timeout(` of a
+  /// test's own is the copy with a number of its own — ten seconds, or
+  /// thirty — and four of them went on when it ran out (`onTimeout: () {}`),
+  /// so a walk still at work read as one at rest. A `patience:` handed to a
+  /// wait is the same number through another door. 🔬On the poll lane's tip
+  /// (`578d25152`) this named 13 — twelve `.timeout(` and one `patience:`.
+  test('no test waits with a ceiling of its own', () {
+    // The ceilings that are not a wait for something to come.
+    const notAWait = [
+      // The one ceiling's home.
+      'helpers/poll_until.dart',
+      // The watch on a stuck native call: its limits are what it measures —
+      // a step stood past its limit, a dump that must end — and its own
+      // test holds the watch to them.
+      'helpers/native_call_watch.dart',
+      'helpers/a_stuck_native_call_is_named_test.dart',
+      // The run's end: what it left is asked until the run's own deadline,
+      // and the test of that asks at once.
+      'helpers/temp_dir.dart',
+      'architecture/a_test_run_leaves_its_temp_empty_test.dart',
+    ];
+    final offenders = <String>[];
+    for (final file in testFiles()) {
+      final path = file.path.replaceAll(r'\', '/');
+      if (notAWait.any(path.endsWith)) {
+        continue;
+      }
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i += 1) {
+        if (_ownCeiling(lines[i])) {
+          offenders.add('$path:${i + 1}: ${lines[i].trim()}');
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'these wait with a number of their own. Await a future with '
+          'patiently, and let a poll wait by waitPatience.',
+    );
+  });
+
   test('no test spawns a process — the bulk run is the wrong place to '
       'compete for the machine', () {
     const spawns = ['Process.run', 'Process.start', 'Process.runSync'];
@@ -217,6 +278,14 @@ void main() {
           'thing in-process.',
     );
   });
+}
+
+/// Whether [line] gives a wait a ceiling of its own: a future's `.timeout(`
+/// or a poll's `patience:`. A comment only names them.
+bool _ownCeiling(String line) {
+  final trimmed = line.trim();
+  return !trimmed.startsWith('//') &&
+      (trimmed.contains('.timeout(') || trimmed.contains('patience:'));
 }
 
 /// Whether a `.delayed(…)` call passes a SECOND argument — the computation

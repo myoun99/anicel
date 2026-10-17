@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/poll_until.dart';
 
 /// Card playback-picture-weight-estimates (F-365 ③): the warmer asks the
 /// playback line for room before it makes a picture, and it weighed a row as
@@ -298,10 +299,7 @@ void main() {
           playlistFrameOf: (_, frame) => frame,
         ),
       );
-      await scheduler.idle.timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {},
-      );
+      await patiently(scheduler.idle);
 
       expect(pictures.has(picture), isTrue, reason: '⛔premise: it was made');
       final weight = pictures.weighNew(picture, {});

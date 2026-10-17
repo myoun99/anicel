@@ -219,12 +219,15 @@ void main() {
 
   /// Lets [whole] run to its end.
   ///
-  /// ⚠️With a limit of its own: a run left standing at a window nobody
-  /// answers never ends, and without one the test would wait out the
-  /// binding's ten minutes — each of them (measured 2026-10-07, a mutant
-  /// that swapped the two answers held the machine for twenty).
+  /// ⚠️With a limit: a run left standing at a window nobody answers never
+  /// ends, and without one the test would wait out the binding's ten
+  /// minutes — each of them (measured 2026-10-07, a mutant that swapped the
+  /// two answers held the machine for twenty). ↩️It was thirty seconds of
+  /// its own until 2026-10-17; the limit is [patiently]'s now, the one
+  /// every future a test awaits has (board
+  /// `a-test-awaits-a-future-with-a-ceiling-of-its-own`).
   Future<void> ended(WidgetTester tester, Future<void> whole) async {
-    await tester.runAsync(() => whole.timeout(const Duration(seconds: 30)));
+    await tester.runAsync(() => patiently(whole));
     await tester.pump();
   }
 

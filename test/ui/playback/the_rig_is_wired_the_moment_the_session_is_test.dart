@@ -28,6 +28,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 
 /// What the playback rig owes the session — that it is wired the moment
 /// the session exists, that it goes down with it, and that its warmer
@@ -121,12 +122,6 @@ void main() {
     }
     return s;
   }
-
-  /// The warmer at rest — or ten seconds gone, which the test then says.
-  Future<void> rested(PlaybackRig rig) => rig.prerenderScheduler.idle.timeout(
-    const Duration(seconds: 10),
-    onTimeout: () {},
-  );
 
   /// Whether frame [frameIndex]'s picture is there, as the screen it is
   /// shown on counts it.
@@ -251,7 +246,7 @@ void main() {
             rig.playbackCache.debugSetPlaybackCacheBudgetBytes(picture);
 
             rig.playback.play(scope: scope);
-            await rested(rig);
+            await patiently(rig.prerenderScheduler.idle);
             expect(
               [held(s, 0), held(s, 2)],
               [true, false],
@@ -259,7 +254,7 @@ void main() {
             );
 
             rig.playback.seekToGlobalFrame(2);
-            await rested(rig);
+            await patiently(rig.prerenderScheduler.idle);
             expect([held(s, 0), held(s, 2)], [false, true]);
 
             rig.playback.stop();
@@ -284,7 +279,7 @@ void main() {
             );
             rig.playback.play(scope: scope);
             waited.insert(0, rig.playback.isWaiting);
-            await rested(rig);
+            await patiently(rig.prerenderScheduler.idle);
             return waited;
           }
 
@@ -304,7 +299,7 @@ void main() {
               rig.prerenderScheduler.changes.addListener(() => seen.add(now()));
               rig.playback.play(scope: scope);
               seen.insert(0, now());
-              await rested(rig);
+              await patiently(rig.prerenderScheduler.idle);
 
               final made = seen.indexWhere((at) => at.there);
               expect(made, greaterThan(0), reason: 'at the press, nothing is made');
@@ -369,7 +364,7 @@ void main() {
 
               rig.playback.seekToGlobalFrame(2);
               expect(rig.playback.isWaiting, isTrue);
-              await rested(rig);
+              await patiently(rig.prerenderScheduler.idle);
               expect(rig.playback.isWaiting, isFalse);
 
               // 🚨Onto the frame it already stands on: the playhead does not
@@ -377,7 +372,7 @@ void main() {
               // rest never says it has come to rest.
               rig.playback.seekToGlobalFrame(2);
               expect(rig.playback.isWaiting, isTrue);
-              await rested(rig);
+              await patiently(rig.prerenderScheduler.idle);
               expect(
                 rig.playback.isWaiting,
                 isFalse,
@@ -442,7 +437,7 @@ void main() {
                 rig.playbackCache.debugSetPlaybackCacheBudgetBytes(picture);
 
                 rig.playback.play(scope: scope, startGlobalFrame: 1);
-                await rested(rig);
+                await patiently(rig.prerenderScheduler.idle);
 
                 expect(
                   [held(s, 1), held(s, 2)],
@@ -515,11 +510,11 @@ void main() {
         final rig = playbackRigOf(s);
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
         rig.playback.play(scope: PlaybackScope.allCuts);
-        await rested(rig);
+        await patiently(rig.prerenderScheduler.idle);
         expect([held(s, 0), held(s, 2)], [true, true], reason: '⛔premise');
         rig.playback.stop();
 
-        await rested(rig);
+        await patiently(rig.prerenderScheduler.idle);
         expect(
           [held(s, 0), held(s, 2)],
           [true, true],
@@ -551,7 +546,7 @@ void main() {
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
         rig.playback.play(scope: PlaybackScope.activeCut);
-        await rested(rig);
+        await patiently(rig.prerenderScheduler.idle);
         expect(held(s, 0), isTrue, reason: '⛔premise');
 
         s.renderCaches.canvasLook.value = CanvasLook(
@@ -559,7 +554,7 @@ void main() {
           devicePixelRatio: 1,
         );
         expect(held(s, 0), isFalse, reason: 'nothing is made at half yet');
-        await rested(rig);
+        await patiently(rig.prerenderScheduler.idle);
         expect([held(s, 0), held(s, 2)], [true, true]);
         rig.playback.stop();
       });
@@ -587,7 +582,7 @@ void main() {
           ),
         );
         rig.playback.play(scope: PlaybackScope.activeCut);
-        await rested(rig);
+        await patiently(rig.prerenderScheduler.idle);
 
         LayerFrameImage? imageOf(String cel, PlaybackQuality level) =>
             s.renderCaches.layerFrameImageCache.peek(

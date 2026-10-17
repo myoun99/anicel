@@ -36,3 +36,16 @@ Future<bool> pollUntil(
   }
   return true;
 }
+
+/// Waits for [future] at most [waitPatience], and fails with a
+/// [TimeoutException] if it has not come by then: a future a test awaits
+/// never hangs the run, and never lets the test go on as if it had come.
+///
+/// 🚨★**THE ONE CEILING FOR A FUTURE TOO** (board
+/// `a-test-awaits-a-future-with-a-ceiling-of-its-own`, 2026-10-17). Tests
+/// gave `.timeout(…)` a number of their own — thirty seconds, or ten — and
+/// four went on when it ran out (`onTimeout: () {}`): on a busy machine a
+/// walk still at work read as one at rest, and a test that says something
+/// was NOT made would pass for it. As [pollUntil], for whatever has no
+/// pumped clock to turn: a plain `test`, the body of a `runAsync`.
+Future<T> patiently<T>(Future<T> future) => future.timeout(waitPatience);

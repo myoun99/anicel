@@ -55,6 +55,7 @@ import '../../helpers/cel_text_fixture.dart' show pixelOf;
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/three_frame_gif.dart';
@@ -974,9 +975,7 @@ void main() {
       Layer row,
     ) async {
       await tester.runAsync(
-        () => s.movieCels
-            .hydrate(s.requireActiveCut, 0)
-            .timeout(const Duration(seconds: 30)),
+        () => patiently(s.movieCels.hydrate(s.requireActiveCut, 0)),
       );
       final layer = s.layerById(row.id)!;
       return inkOf(

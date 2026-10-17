@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 
 /// B1 — THE WARM, THE BUDGET AND THE BAR REASON OVER ONE ORDER.
 ///
@@ -113,11 +114,6 @@ void main() {
 
   const picture = 8 * 8 * 4;
 
-  /// The walk at rest — or ten seconds gone: a walk that never rests is a
-  /// failure the test SAYS, not one it hangs on.
-  Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
-      .timeout(const Duration(seconds: 10), onTimeout: () {});
-
   /// Whether frame [frameIndex]'s picture is there, as the screen counts it.
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
@@ -141,7 +137,7 @@ void main() {
       // body cel (0..1) and the runway cel (5..6) — the nothing between asks
       // for none.
       s.warmActiveCut();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [true, true, false],
@@ -162,7 +158,7 @@ void main() {
 
       // The playhead out on the runway: the window follows it.
       s.selectFrameIndex(5);
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [false, true, true],
@@ -181,7 +177,7 @@ void main() {
       budget.debugSetPlaybackCacheBudgetBytes(picture);
       final scheduler = s.playbackRig.prerenderScheduler;
       s.warmActiveCut();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       // A second picture — the runway cel, made by another hand — and the
       // body cel is now the one used longest ago.

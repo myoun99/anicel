@@ -38,14 +38,10 @@ import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/poll_until.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-
-  /// The walk at rest — or ten seconds gone: a walk that never rests is a
-  /// failure the test SAYS, not one it hangs on.
-  Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
-      .timeout(const Duration(seconds: 10), onTimeout: () {});
 
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
       BrushFrameKey(
@@ -227,7 +223,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 0,
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(
         shownAt(f.layerImages, runwayCut(), 6),
@@ -269,7 +265,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 0,
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(filled, isNotEmpty);
       for (final frame in filled) {
@@ -302,7 +298,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 2,
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       for (var index = 0; index < 4; index += 1) {
         expect(
@@ -342,7 +338,7 @@ void main() {
       );
 
       warm();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       // The runway's empty frames need no picture: one to make.
       expect(warmed, 1, reason: 'the premise: one picture to make');
       expect(
@@ -354,7 +350,7 @@ void main() {
       reports = 0;
       final cold = warmed;
       warm();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       expect(warmed, cold, reason: 'the second pass warmed nothing');
       expect(reports, 1 + 1, reason: 'the request, then the pass once');
       expect(
@@ -396,7 +392,7 @@ void main() {
       );
 
       scheduler.dispose();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       f.layerImages.dispose();
     });
   });
@@ -421,7 +417,7 @@ void main() {
           resolveCut: (_) => cut(duration: 40),
         ),
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(scheduler.progress.value.total, 2);
       expect(scheduler.progress.value.isComplete, isTrue);
@@ -457,7 +453,7 @@ void main() {
       );
 
       scheduler.endInputHold();
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       expect(scheduler.progress.value.isComplete, isTrue);
       expect(
@@ -484,7 +480,7 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
       final before = shownAt(f.layerImages, cut(), 0);
 
       // Edit: caches invalidate via revision, then re-warm.
@@ -511,7 +507,7 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      await rested(scheduler);
+      await patiently(scheduler.idle);
 
       final after = shownAt(f.layerImages, cut(), 0);
       expect(after, isNotNull);
@@ -579,7 +575,7 @@ void main() {
           aroundFrameIndex: 2,
           followedByCutId: const CutId('cut-b'),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         for (var index = 0; index < 4; index += 1) {
           expect(
@@ -624,7 +620,7 @@ void main() {
           cutId: const CutId('cut'),
           followedByCutId: const CutId('cut'),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           scheduler.progress.value.total,
           4,
@@ -635,7 +631,7 @@ void main() {
           cutId: const CutId('cut'),
           followedByCutId: const CutId('gone'),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           scheduler.progress.value.total,
           4,
@@ -804,7 +800,7 @@ void main() {
         );
 
         gated.gate.complete();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         scheduler.dispose();
         gated.dispose();
       });
@@ -892,7 +888,7 @@ void main() {
         for (final frame in ['f3', 'f4', 'f5']) {
           await cache.letThrough(FrameId(frame));
         }
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         scheduler.dispose();
         cache.dispose();
       });
@@ -911,7 +907,7 @@ void main() {
         // The stroke or the seek just before play was pressed.
         scheduler.notifyEditActivity();
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(there(f.pictures), everyElement(isTrue));
         expect(
@@ -939,7 +935,7 @@ void main() {
 
         playhead = 2;
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(made, [2, 3, 0, 1]);
         expect(landings, 4, reason: 'a landing is told once a picture');
@@ -966,7 +962,7 @@ void main() {
 
         scheduler.follow(run());
         expect(scheduler.isResting, isFalse);
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           restingAtEach,
           [false, false, false, false, true],
@@ -982,7 +978,7 @@ void main() {
         scheduler.progress.addListener(() => progressSaid += 1);
         scheduler.wake();
         expect(scheduler.isResting, isFalse, reason: 'it has not looked yet');
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(scheduler.progress.value, before, reason: '⛔premise');
         expect(progressSaid, 0, reason: '⛔premise');
         expect(restingAtEach, [true], reason: 'a rest is told every time');
@@ -1012,7 +1008,7 @@ void main() {
             },
           ),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(made, [2, 3, 0, 1], reason: 'two frames on, then the lap');
         expect(askedWith.first, Duration.zero, reason: 'nothing made yet');
@@ -1052,7 +1048,7 @@ void main() {
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           scheduler.composeTime,
@@ -1081,7 +1077,7 @@ void main() {
         room.demand = () => scheduler.demand;
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(made, [0, 1], reason: 'two pictures fit');
         expect(there(f.pictures), [true, true, false, false]);
         expect(
@@ -1095,13 +1091,13 @@ void main() {
         // of the room of the one that fell behind.
         playhead = 1;
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(made, [0, 1, 2]);
         expect(there(f.pictures), [false, true, true, false]);
 
         playhead = 2;
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           made,
           [0, 1, 2, 3],
@@ -1134,7 +1130,7 @@ void main() {
         );
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           said.first,
@@ -1178,7 +1174,7 @@ void main() {
 
         playhead = 1;
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           there(f.pictures),
@@ -1216,7 +1212,7 @@ void main() {
         room.demand = () => scheduler.demand;
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           there(f.pictures),
@@ -1250,7 +1246,7 @@ void main() {
 
         playhead = 1;
         scheduler.follow(run(lead: (_) => 2));
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         expect(
           there(f.pictures),
@@ -1277,7 +1273,7 @@ void main() {
           idleDelay: Duration.zero,
         );
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(there(f.pictures), everyElement(isTrue));
 
         // A memory warning's work: every picture goes.
@@ -1285,7 +1281,7 @@ void main() {
         expect(there(f.pictures), everyElement(isFalse));
 
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(there(f.pictures), everyElement(isTrue));
         scheduler.dispose();
         f.layerImages.dispose();
@@ -1314,13 +1310,13 @@ void main() {
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(asked, greaterThanOrEqualTo(40), reason: 'the first walk');
 
         asked = 0;
         playhead = 1;
         scheduler.wake();
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(
           asked,
           lessThanOrEqualTo(2),
@@ -1342,7 +1338,7 @@ void main() {
           idleDelay: Duration.zero,
         );
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
 
         f.layerImages.invalidateFrame(
           frameKey(four(), const LayerId('layer'), const FrameId('f2')),
@@ -1350,7 +1346,7 @@ void main() {
         expect(there(f.pictures), [true, true, false, true]);
 
         scheduler.wake(fromTheStart: true);
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(there(f.pictures), everyElement(isTrue));
         scheduler.dispose();
         f.layerImages.dispose();
@@ -1381,7 +1377,7 @@ void main() {
         );
 
         scheduler.follow(run());
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         // ⛔Handed back BEFORE anything is expected: a failed expectation is
         // reported through this same door, and a collector left on it
         // swallows the failure — the pin could not fail.
@@ -1416,7 +1412,7 @@ void main() {
         );
 
         scheduler.wake(fromTheStart: true);
-        await rested(scheduler);
+        await patiently(scheduler.idle);
         expect(layerImages.thrown, 1, reason: 'the same content is not retried');
         scheduler.dispose();
         layerImages.dispose();
