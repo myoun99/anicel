@@ -1005,6 +1005,79 @@ void main() {
     }, skip: skip);
   });
 
+  // board a-start-is-heard-ahead-of-its-first-picture: a frame is shown
+  // refreshes after the look that starts its run, and a device started ON
+  // the run's first sample was heard that much ahead of it — the first look
+  // read frames on, and the frames between were never shown.
+  group('🚨a run\'s first sample is heard as its first picture is shown', () {
+    const frameSamples = 4800;
+
+    /// When a look's frame is shown: [ahead] from now, on the device's clock
+    /// (the frame clock's own, on this machine — `FrameTimeOnDevice`).
+    Duration shownIn(QaAudioDevice device, Duration ahead) =>
+        Duration(microseconds: device.clockNowMicros) + ahead;
+
+    test('a first look whose frame is shown three frames on starts the device '
+        'that far ahead, in silence, and reads the frame play was pressed on',
+        () async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final transport = buildTransport(store);
+
+      controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 2);
+      final status = transport.clockStatus(
+        frameTime: shownIn(device, const Duration(milliseconds: 300)),
+      );
+      final handed = device.positionSamples;
+
+      expect(
+        status!.globalFrame,
+        2,
+        reason: '↩️started on its first sample, it read frame 4 — three '
+            'frames\' time, less what the device holds, ahead',
+      );
+      expect(
+        handed,
+        lessThan(2 * frameSamples),
+        reason: 'the device stands ahead of the run\'s first sample',
+      );
+      controller.stop();
+      transport.dispose();
+      store.dispose();
+    }, skip: skip);
+
+    test('🚨and so does the loop\'s second pass: its run starts afresh at the '
+        'look that finds the first pass run out', () async {
+      final device = openNullDevice();
+      final store = _residentStore();
+      store.resultFor('tone.wav');
+      await pumpEventQueue();
+      final transport = buildTransport(store);
+
+      controller.loopMode = PlaybackLoopMode.loop;
+      controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 8);
+      transport.clockStatus(); // the clock's first look starts the device
+      expect(await _waitFor(() => !device.isPlaying), isTrue);
+
+      final status = transport.clockStatus(
+        frameTime: shownIn(device, const Duration(milliseconds: 300)),
+      );
+      final handed = device.positionSamples;
+      expect(status!.globalFrame, 0);
+      expect(
+        handed,
+        lessThan(0),
+        reason: 'the second pass\'s first sample is heard as its first look '
+            'is shown — ↩️started on it, heard three frames ahead',
+      );
+      controller.stop();
+      transport.dispose();
+      store.dispose();
+    }, skip: skip);
+  });
+
   // take-head-trims-at-the-playback-start (10-15): a take is placed by what
   // the microphone had taken in when its anchor was heard.
   group('🚨a take\'s head is what the microphone had taken in when its '

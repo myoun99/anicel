@@ -6,14 +6,15 @@
 ///
 /// 🚨THE FIRST LOOK AFTER A START IS NEVER LATENESS (F-364-Q1 b). The
 /// device starts AT that look (`FirstLookStart`) and a clock of the run's
-/// own counts from it, so no tick the app was long in is in it — only how
-/// far the sound is heard ahead of the picture by then: a frame is shown
-/// refreshes after its tick, and the user's correction is on top
-/// (`HeardOnTheDevice`). Two frames ahead, a run that showed every picture
-/// by that look would put its clock back, find it two frames ahead at the
-/// next first look, and put it back again — a frame a look, the sound
-/// started afresh at every one. (Why the sound is ahead at a start at all:
-/// board a-start-is-heard-ahead-of-its-first-picture.)
+/// own counts from it, so no tick the app was long in is in it. ↩️What it
+/// held then was how far the sound was heard ahead of the picture: a frame
+/// is shown refreshes after its tick, and the user's correction is on top.
+/// Two frames ahead, a run that showed every picture by that look would put
+/// its clock back, find it two frames ahead at the next first look, and put
+/// it back again — a frame a look, the sound started afresh at every one.
+/// A run starts that far ahead of its first sample now, in silence
+/// (`HeardOnTheDevice.leadFor`, board a-start-is-heard-ahead-of-its-first-
+/// picture), and its first look reads its first frame.
 ///
 /// 🚨ONE LAW for both runs that show every picture — the canvas's and the
 /// media viewer's (유저 2026-10-16, F-364-every-picture-even-when-late-Q1 a:

@@ -262,7 +262,11 @@ import '../core/on_a_worker.dart';
 ///   on a keyed row is shown at C speed — a live stroke's every tile, every
 ///   flush (`QaNativeEngine.keyRgba`, board a-stroke-on-a-keyed-row-shows-
 ///   its-tiles-unkeyed).
-const int kQaEngineAbiVersion = 49;
+/// - v50: `qa_audio_device_play` gains `lead_samples` — a run started that
+///   much silence ahead of its first sample, so the sample is heard as the
+///   run's first picture is shown (`QaAudioDevice.play`, board a-start-is-
+///   heard-ahead-of-its-first-picture).
+const int kQaEngineAbiVersion = 50;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

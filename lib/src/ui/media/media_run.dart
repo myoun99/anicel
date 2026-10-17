@@ -548,7 +548,7 @@ class MediaRun {
       _rasters.forgetRefusals();
       _retriedAt = elapsed;
     }
-    sound.keepStreaming();
+    sound.keepStreaming(frameTime: frameShownAt());
     // 🚨BEFORE the turn, from the page on screen — the page the cache will
     // not let go ([PageRasters.shown]). Asked after it, the new frame could
     // land while the screen still showed the old one, and a budget holding

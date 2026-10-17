@@ -464,23 +464,30 @@ class AudioDeviceTransport {
   /// Arms the device at [startSample], and the line that reads it — started
   /// together in ONE place, so the device is never started under a line
   /// still counting the run before — on the clock's first look
-  /// ([FirstLookStart]).
+  /// ([FirstLookStart]), the lead ahead of it that has [startSample] heard
+  /// as that look's frame is shown ([HeardOnTheDevice.leadFor]).
   void _armDevice(
     QaAudioDevice device, {
     required int startSample,
     required bool looping,
   }) {
-    _start.arm(() {
-      device.play(
-        startSample: startSample,
-        stopSample: _stopSample,
-        looping: looping,
-      );
+    _start.arm((frameTime) {
       _heard.arm(
         deviceRate: _deviceRate,
         carriesFor: device.latencySamples,
         // A device loops from the top or not at all ([_needsLoopRearm]).
         lapSamples: looping ? _stopSample : 0,
+      );
+      device.play(
+        startSample: startSample,
+        stopSample: _stopSample,
+        looping: looping,
+        leadSamples: _heard.leadFor(
+          deviceNowMicros: device.clockNowMicros,
+          frameTime: frameTime,
+          latencySamples: device.latencySamples,
+          userOffsetSamples: _resolveUserOffsetSamples(_deviceRate),
+        ),
       );
     });
   }
@@ -521,7 +528,7 @@ class AudioDeviceTransport {
     }
     // A run armed at the press starts here, at the clock's first look: its
     // first frame and its first sound together ([FirstLookStart]).
-    _start.look();
+    _start.look(frameTime: frameTime);
     if (!device.isPlaying) {
       if (_needsLoopRearm) {
         // First pass of a mid-timeline loop ran out: every later pass is
@@ -531,7 +538,7 @@ class AudioDeviceTransport {
         _needsLoopRearm = false;
         _armFrame = 0;
         _armDevice(device, startSample: 0, looping: true);
-        _start.look();
+        _start.look(frameTime: frameTime);
         return const ClockReading(globalFrame: 0);
       }
       return ClockReading(globalFrame: _totalFrames - 1, ended: true);

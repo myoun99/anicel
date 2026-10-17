@@ -342,6 +342,27 @@ void main() {
     expect(asks, greaterThan(0), reason: 'it is still trying');
   });
 
+  // board a-start-is-heard-ahead-of-its-first-picture: the look that keeps
+  // the sound streaming comes first in a tick, so it is the one that starts
+  // a sound armed since — and a start not told when its frame is shown
+  // hands no lead, and is heard ahead of its first picture.
+  testWidgets('🚨the look that keeps the sound streaming is told when its '
+      'frame is shown, as the clock\'s reading is', (tester) async {
+    await playEveryPageLanded(tester);
+    sound.keptAt.clear();
+    for (var i = 0; i < 3; i += 1) {
+      await tester.pump(tick);
+    }
+
+    expect(sound.keptAt, hasLength(3), reason: '⛔premise: a look a tick');
+    expect(sound.keptAt, everyElement(isNotNull));
+    expect(
+      sound.keptAt,
+      everyElement(isIn(sound.askedAt)),
+      reason: 'the moment the clock is read at — one moment for a tick',
+    );
+  });
+
   testWidgets('🚨a movie\'s pictures keep its SOUND\'s time — and a sound '
       'that ends before them hands the film on to the clock, from where it '
       'ended', (tester) async {

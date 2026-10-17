@@ -233,9 +233,20 @@ class ViewerSound {
       conformStore: conformStore,
       deviceRate: _deviceRate,
     );
-    _start.arm(() {
-      device.play(startSample: startSample, stopSample: _endSample);
+    _start.arm((frameTime) {
       _heard.arm(deviceRate: _deviceRate, carriesFor: device.latencySamples);
+      device.play(
+        startSample: startSample,
+        stopSample: _endSample,
+        // Heard as the look's frame is shown — the canvas's law
+        // ([HeardOnTheDevice.leadFor]).
+        leadSamples: _heard.leadFor(
+          deviceNowMicros: device.clockNowMicros,
+          frameTime: frameTime,
+          latencySamples: device.latencySamples,
+          userOffsetSamples: resolveUserOffsetSamples(_deviceRate),
+        ),
+      );
     });
   }
 
@@ -246,16 +257,17 @@ class ViewerSound {
   }
 
   /// Moves the streaming window along with the sound — asked every tick of
-  /// a run. A file past two minutes streams from disk, and a window left
-  /// where [play] centred it runs dry half a minute in
-  /// ([AudioStreamingWindow.followPlayback], the timeline's own rule).
-  void keepStreaming() {
+  /// a run, whose frame is shown at [frameTime]. A file past two minutes
+  /// streams from disk, and a window left where [play] centred it runs dry
+  /// half a minute in ([AudioStreamingWindow.followPlayback], the
+  /// timeline's own rule).
+  void keepStreaming({required Duration? frameTime}) {
     final device = _device;
     if (device == null) {
       return;
     }
     // A look of the run: a sound started since the last one starts now.
-    _start.look();
+    _start.look(frameTime: frameTime);
     _window.followPlayback(
       positionSamples: device.positionSamples,
       deviceRate: _deviceRate,
@@ -292,7 +304,7 @@ class ViewerSound {
       return null;
     }
     // A look of the run: a sound started since the last one starts now.
-    _start.look();
+    _start.look(frameTime: frameTime);
     final heard = math.max(
       _startSample,
       _heard.heard(

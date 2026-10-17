@@ -378,6 +378,160 @@ void main() {
     }, skip: skip);
   });
 
+  // board a-start-is-heard-ahead-of-its-first-picture: a run's first sample
+  // must be heard as its first picture is shown, refreshes after the look
+  // that starts it — so the run is started that far ahead, in silence
+  // (`HeardOnTheDevice.leadFor`).
+  group('🚨the lead: a run started ahead of its first sample', () {
+    /// Four seconds of a steady tone from the timeline's start.
+    void scheduleTone(QaAudioDevice device) => device.setSchedule(
+      clips: const [
+        AudioMixClip(sourceIndex: 0, startSample: 0, endSample: 4 * 48000),
+      ],
+      sources: [constantSource(0.25, 4 * 48000, 2)],
+    );
+
+    test('it is counted from the lead\'s first sample, hands silence until '
+        'its own first sample, and sounds from it', () async {
+      final device = openNull();
+      scheduleTone(device);
+      const first = 96000;
+      const lead = 48000;
+      device.play(startSample: first, leadSamples: lead);
+      expect(
+        device.positionSamples,
+        inInclusiveRange(first - lead, first - 1),
+        reason: 'counted from the lead\'s first sample',
+      );
+
+      expect(
+        await waitFor(() => device.positionSamples > first - lead + 2400),
+        isTrue,
+      );
+      // The peak first: a block that sounds is stored before the count that
+      // passes it, so a count still short of the first sample says the peak
+      // read before it was the lead's.
+      final peak = device.peakFor(0);
+      expect(
+        device.positionSamples,
+        lessThan(first),
+        reason: '⛔premise: still in the lead',
+      );
+      expect(
+        peak,
+        0,
+        reason: 'the sound from before the first sample is never heard over '
+            'the first picture',
+      );
+
+      expect(await waitFor(() => device.peakFor(0) > 0), isTrue);
+      expect(
+        device.positionSamples,
+        greaterThan(first),
+        reason: 'its sound begins on its first sample',
+      );
+    }, skip: skip);
+
+    test('🚨the sound begins ON its first sample — where the lead ends '
+        'inside a callback, a sound sixteen samples long there is heard',
+        () async {
+      final device = openNull();
+      const first = 96000;
+      device.setSchedule(
+        clips: const [
+          AudioMixClip(
+            sourceIndex: 0,
+            startSample: first,
+            endSample: first + 16,
+          ),
+        ],
+        sources: [constantSource(0.25, 16, 2)],
+      );
+      // No whole number of callbacks of any size a device asks for (480,
+      // 512, 1024 …): the lead ends inside one.
+      device.play(startSample: first, leadSamples: 48007);
+      // It sounds for one callback: watched without a pause, not polled.
+      var heard = false;
+      final watch = Stopwatch()..start();
+      while (!heard && watch.elapsedMilliseconds < 3000) {
+        heard = device.peakFor(0) > 0;
+      }
+      expect(
+        heard,
+        isTrue,
+        reason: 'a lead held silent to the end of the callback it ends in '
+            'drops what the run sounds first',
+      );
+    }, skip: skip);
+
+    test('a loop wraps to its first sample: the lead is its first lap\'s '
+        'alone', () async {
+      final device = openNull();
+      scheduleTone(device);
+      // Laps of a quarter second, half a second of lead before the first.
+      device.play(
+        startSample: 0,
+        stopSample: 12000,
+        looping: true,
+        leadSamples: 24000,
+      );
+      expect(await waitFor(() => device.positionSamples > 6000), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      // A third of a second of looks — longer than a lap.
+      for (var look = 0; look < 12; look += 1) {
+        expect(
+          device.positionSamples,
+          inInclusiveRange(0, 12000),
+          reason: 'wrapped into the lead, every lap would start silent',
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      }
+    }, skip: skip);
+
+    test('the meter reads silence through the lead, after a run that '
+        'sounded', () async {
+      final device = openNull();
+      scheduleTone(device);
+      device.play(startSample: 0);
+      expect(await waitFor(() => device.peakFor(0) > 0), isTrue);
+      // Started again ahead with no stop between, as a run is re-armed.
+      device.play(startSample: 144000, leadSamples: 48000);
+      expect(
+        await waitFor(() => device.positionSamples > 96000 + 2400),
+        isTrue,
+      );
+      final bars = [device.peakFor(0), device.peakFor(1)];
+      expect(
+        device.positionSamples,
+        lessThan(144000),
+        reason: '⛔premise: still in the lead',
+      );
+      expect(
+        bars,
+        [0, 0],
+        reason: 'the bars must not hold the last run\'s sound',
+      );
+    }, skip: skip);
+
+    test('a seek ends the lead: where it lands is heard', () async {
+      final device = openNull();
+      scheduleTone(device);
+      device.play(startSample: 480000, leadSamples: 48000);
+      device.seek(0);
+      expect(
+        await waitFor(() => device.peakFor(0) > 0),
+        isTrue,
+        reason: 'held silent to the run\'s first sample, ten seconds of '
+            'sound would be lost',
+      );
+      expect(
+        device.positionSamples,
+        lessThan(480000 - 48000),
+        reason: '⛔premise: nowhere near where the lead would have ended',
+      );
+    }, skip: skip);
+  });
+
   // 유저 2026-10-08: 「늦게바뀌는건 좀 많이 신경쓰이는데. 근본/구조적으로
   // 어떻게 안되나」 — the device's count is a stair, and each callback now
   // says WHEN it climbed, so a reader can draw the line through it.

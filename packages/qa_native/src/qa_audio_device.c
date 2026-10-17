@@ -278,6 +278,18 @@ typedef struct {
   volatile ma_uint64 stop_position;  // exclusive; <= start means "no end"
   volatile ma_uint32 looping;
 
+  // THE LEAD (a-start-is-heard-ahead-of-its-first-picture, 2026-10-17). A
+  // run's first sample must be HEARD as its first picture is SHOWN, and a
+  // picture is shown refreshes after the look that starts the run — longer
+  // than the device takes to play what it is handed. So a run is started
+  // that much AHEAD of its first sample, and what it hands before
+  // `audible_from` is silence: counted on the clock like any sample, so the
+  // picture reads the run's first frame at the look that starts it.
+  // ⛔Not the run's sound from before its start: that would be heard over
+  // the first picture, a frame or two of the frames before it. Written by
+  // the control thread alone (play, seek); the callback only reads it.
+  volatile ma_uint64 audible_from;
+
   // THE CLOCK'S LINE (2026-10-08). `position` is a STAIR: it climbs one
   // callback at a time, so read between two callbacks it says what was
   // handed at the last one — and the device has gone on playing since. A
@@ -562,6 +574,21 @@ static void qa_audio_data_callback(ma_device* device,
         (ma_uint32)qa_transport_load_32(&g_audio.active_slot) & 1u;
     qa_transport_store_32(&g_audio.callback_slot, (int32_t)slot_index);
     const qa_audio_schedule* schedule = &g_audio.slots[slot_index];
+
+    // The lead: handed, and silent (`out` is zeroed above). Never past the
+    // first audible sample in one block — the sound has to begin on it.
+    const int64_t audible_from = qa_transport_load_64(&g_audio.audible_from);
+    if (position < audible_from) {
+      const int64_t silent = audible_from - position;
+      if ((int64_t)block > silent) {
+        block = (ma_uint32)silent;
+      }
+      qa_transport_store_32(&g_audio.peak_left_bits, 0);
+      qa_transport_store_32(&g_audio.peak_right_bits, 0);
+      qa_transport_store_64(&g_audio.position, position + (int64_t)block);
+      done += block;
+      continue;
+    }
 
     qa_audio_mix(schedule->clips, schedule->clip_count, schedule->sources,
                  schedule->source_count, schedule->envelope_keys,
@@ -867,11 +894,15 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
   return set;
 }
 
-// Starts playback at [start_sample]. [stop_sample] is exclusive; pass a
-// value at or below the start for "no end".
+// Starts playback at [start_sample], [lead_samples] of silence ahead of it
+// (the lead — `audible_from`). [stop_sample] is exclusive; pass a value at
+// or below the start for "no end". A loop wraps to [start_sample]: the
+// lead is the run's first lap's alone. ⛔No floor here: a lead is never
+// below none by `HeardOnTheDevice.leadFor`, the one place that says so.
 QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
                                        int64_t stop_sample,
-                                       int32_t looping) {
+                                       int32_t looping,
+                                       int64_t lead_samples) {
   if (!g_audio.device_open) {
     return 0;
   }
@@ -880,7 +911,8 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
   // seq-cst stores double as the release fence playing needs on ARM.
   qa_transport_store_32(&g_audio.playing, 0);
   qa_audio_begin_arm();
-  qa_transport_store_64(&g_audio.position, start_sample);
+  qa_transport_store_64(&g_audio.position, start_sample - lead_samples);
+  qa_transport_store_64(&g_audio.audible_from, start_sample);
   qa_transport_store_64(&g_audio.start_position, start_sample);
   qa_transport_store_64(&g_audio.stop_position, stop_sample);
   qa_transport_store_32(&g_audio.looping, looping ? 1 : 0);
@@ -931,6 +963,8 @@ QA_EXPORT int64_t qa_audio_device_position(void) {
 // out torn values.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
   qa_audio_begin_arm();
+  // A seek starts no run: where it lands is heard, and so is all after it.
+  qa_transport_store_64(&g_audio.audible_from, INT64_MIN);
   qa_transport_store_64(&g_audio.position, sample);
 }
 

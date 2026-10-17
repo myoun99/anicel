@@ -18,18 +18,24 @@
 /// canvas's transport and the media viewer's sound each arm their runs
 /// here, and look through it before they read the device.
 final class FirstLookStart {
-  void Function()? _start;
+  void Function(Duration? frameTime)? _start;
 
-  /// A run is armed: [start] starts its device — on the first [look]. A run
-  /// armed again before then is the run armed last.
-  void arm(void Function() start) => _start = start;
+  /// A run is armed: [start] starts its device — on the first [look], told
+  /// when that look's frame is shown, so its first sample is heard then
+  /// (`HeardOnTheDevice.leadFor`). A run armed again before then is the run
+  /// armed last.
+  void arm(void Function(Duration? frameTime) start) => _start = start;
 
-  /// The device is read for a look of the clock: the run armed last starts
+  /// The device is read for a look of the clock — whose frame is shown at
+  /// [frameTime], or null where nothing says: the run armed last starts
   /// now, if it has not. Every later look finds nothing to start.
-  void look() {
+  ///
+  /// ⚠️Every look says it, whoever looks first: a run started by a look
+  /// that said nothing hands no lead, and is heard ahead of its picture.
+  void look({required Duration? frameTime}) {
     final start = _start;
     _start = null;
-    start?.call();
+    start?.call(frameTime);
   }
 
   /// The run stopped before its first look: it never starts.

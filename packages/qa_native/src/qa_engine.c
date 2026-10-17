@@ -6206,4 +6206,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // schedule copies none of it.
 // v49: qa_key_rgba - a row's colour keys over straight pixels in place,
 // from tables the Dart definition makes, so a keyed cel is shown at C speed.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 49; }
+// v50: qa_audio_device_play gains lead_samples - a run started that much
+// silence ahead of its first sample, so that sample is heard as its first
+// picture is shown.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 50; }

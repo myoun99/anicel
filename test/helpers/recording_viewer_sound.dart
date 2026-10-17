@@ -118,8 +118,14 @@ class RecordingViewerSound extends ViewerSound {
     at = fromSeconds;
   }
 
+  /// The frame time each look that kept the sound streaming was told.
+  final List<Duration?> keptAt = [];
+
   @override
-  void keepStreaming() => keeps += 1;
+  void keepStreaming({required Duration? frameTime}) {
+    keeps += 1;
+    keptAt.add(frameTime);
+  }
 
   @override
   void stop() {

@@ -131,15 +131,60 @@ void main() {
     final (device, sound) = await playing(fromSeconds: 1, look: false);
     sound.hold();
 
-    sound.keepStreaming(); // the parked run's next look
+    sound.keepStreaming(frameTime: null); // the parked run's next look
     expect(sound.heardAt()!.seconds, 1, reason: 'held where it was pressed');
     expect(device.isPlaying, isFalse, reason: 'held before it was looked at');
 
     sound.resume(1);
-    sound.keepStreaming();
+    sound.keepStreaming(frameTime: null);
     expect(device.isPlaying, isTrue, reason: 'going on, the next look starts');
     sound.stop();
   }, skip: skip);
+
+  // board a-start-is-heard-ahead-of-its-first-picture — the canvas's law,
+  // here too: the run's first sample is heard as its first look's frame is
+  // shown, whichever of the viewer's two looks comes first.
+  group('🚨the sound\'s first sample is heard as the first look\'s frame is '
+      'shown', () {
+    /// When a look's frame is shown: [ahead] from now, on the device's clock
+    /// (the frame clock's own, on this machine — `FrameTimeOnDevice`).
+    Duration shownIn(QaAudioDevice device, Duration ahead) =>
+        Duration(microseconds: device.clockNowMicros) + ahead;
+
+    test('the look that reads the clock first', () async {
+      final (device, sound) = await playing(fromSeconds: 1, look: false);
+      final heard = sound
+          .heardAt(
+            frameTime: shownIn(device, const Duration(milliseconds: 300)),
+          )!
+          .seconds;
+      final handed = device.positionSamples;
+
+      expect(
+        heard,
+        inInclusiveRange(1, 1.05),
+        reason: 'read where play was pressed — a callback\'s time on at most',
+      );
+      expect(
+        handed,
+        lessThan(rate),
+        reason: 'the device stands ahead of the sound\'s first sample — '
+            '↩️started on it, it was heard 0.3s less what it holds ahead',
+      );
+      sound.stop();
+    }, skip: skip);
+
+    test('the look that keeps the sound streaming first — as a run\'s tick '
+        'looks (`MediaRun`)', () async {
+      final (device, sound) = await playing(fromSeconds: 1, look: false);
+      sound.keepStreaming(
+        frameTime: shownIn(device, const Duration(milliseconds: 300)),
+      );
+      expect(device.isPlaying, isTrue, reason: '⛔premise: it started');
+      expect(device.positionSamples, lessThan(rate));
+      sound.stop();
+    }, skip: skip);
+  });
 
   test('🚨what the viewer reads is HEARD: the device\'s latency off what it '
       'was handed, and the user\'s own correction on', () async {

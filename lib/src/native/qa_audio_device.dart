@@ -174,9 +174,10 @@ final class QaAudioDevice {
     'device buffers',
   );
   late final _play = _library
-      .lookupFunction<Int32 Function(Int64, Int64, Int32), int Function(int, int, int)>(
-        'qa_audio_device_play',
-      );
+      .lookupFunction<
+        Int32 Function(Int64, Int64, Int32, Int64),
+        int Function(int, int, int, int)
+      >('qa_audio_device_play');
   late final _stop = _library
       .lookupFunction<Void Function(), void Function()>('qa_audio_device_stop');
   late final _isPlaying = _library
@@ -516,13 +517,17 @@ final class QaAudioDevice {
     return copy;
   }
 
-  /// Starts at [startSample]. [stopSample] is exclusive; pass a value at
-  /// or below the start for "no end".
+  /// Starts at [startSample], [leadSamples] of silence ahead of it — handed
+  /// and counted like any sample, so [positionSamples] starts that far
+  /// before [startSample] (`HeardOnTheDevice.leadFor` has why). [stopSample]
+  /// is exclusive; pass a value at or below the start for "no end". A loop
+  /// wraps to [startSample]: the lead is its first lap's alone.
   bool play({
     required int startSample,
     int stopSample = -1,
     bool looping = false,
-  }) => _play(startSample, stopSample, looping ? 1 : 0) != 0;
+    int leadSamples = 0,
+  }) => _play(startSample, stopSample, looping ? 1 : 0, leadSamples) != 0;
 
   void stop() => _stop();
   bool get isPlaying => _isPlaying() != 0;
