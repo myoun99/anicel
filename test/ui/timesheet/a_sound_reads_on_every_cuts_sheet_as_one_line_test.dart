@@ -112,10 +112,12 @@ void main() {
   }
 
   /// What the SE column of the cut at [cutStart] wears, on the track's
-  /// axis: the writing's centres, the red bars' rows, the filled boxes'.
+  /// axis: the writing's centres, the red bars' rows, the name boxes'.
   ({List<double> writing, List<double> bars, List<double> boxes}) inkOf(
     int cutStart,
   ) {
+    // The name box's tint — not the wash an empty row wears.
+    final nameBox = AppColors.accent.withValues(alpha: 0.3).toARGB32();
     final sheet = sheetAt(cutStart);
     final layout = TimesheetDocumentLayout(document: sheet);
     final ink = _SheetInk();
@@ -140,7 +142,8 @@ void main() {
       ],
       boxes: [
         for (final fill in ink.rects)
-          if (inColumn(fill.rect.topLeft, fill.rect.bottomRight))
+          if (fill.argb == nameBox &&
+              inColumn(fill.rect.topLeft, fill.rect.bottomRight))
             row(fill.rect.topLeft)!,
       ],
     );
