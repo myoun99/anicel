@@ -70,11 +70,19 @@ Future<List<DecodedImageFrame>> decodeImageFrames(Uint8List bytes) async {
 /// Where [fit] stands a picture of [picture]'s size on [canvas] (§6-q: fit
 /// is a placement decision): its centre on the canvas's, scaled over its
 /// own pixels — stretch fills the canvas, contain letterboxes inside it,
-/// none is 1:1 (the pasteboard keeps the overflow).
+/// none is 1:1 (the pasteboard keeps the overflow), its pixels on the
+/// canvas's own.
 ///
 /// ↩️It was a RECT (`placementRectFor`), which says where a picture lies
 /// and not how it stands: a reference's pose is a transform's (I-68), and a
 /// fit is only where one starts. ONE fit, read as a pose everywhere.
+///
+/// 1:1 stands half a pixel off the centre where the picture and the canvas
+/// differ by an odd number of pixels: a picture laid 1:1 is COPIED, never
+/// resampled ([rasterizeImageToSurface]) — what F-374-Q1's 「놓을때 100%인걸
+/// 놓기만」 asks of every reference's file — as a canvas resize moves its
+/// content by whole pixels (`ResizeCutCanvasCommand`). ↩️It stood on the
+/// centre exactly, and such a picture was resampled half a pixel over.
 ///
 /// A picture with no pixels has no size to fit and stands 1:1.
 TransformPose fitPose({
@@ -98,13 +106,28 @@ TransformPose fitPose({
       center: center,
       zoom: math.min(across, down),
     ),
-    MediaFitMode.none => TransformPose(center: center),
+    MediaFitMode.none => TransformPose(
+      center: CanvasPoint(
+        x: ((canvas.width - picture.width) / 2).roundToDouble() +
+            picture.width / 2,
+        y: ((canvas.height - picture.height) / 2).roundToDouble() +
+            picture.height / 2,
+      ),
+    ),
   };
 }
 
 /// The reference a placement makes to SHOW [path]: the picture's own size
-/// ([picture]) and the pose [fit] starts it at on [canvas] — where it then
-/// stands until it is moved (I-68: 「배치된 값, 원본값 유지」).
+/// ([picture]), its pixels laid on the cels as they are — 1:1, its centre
+/// on the canvas's ([MediaReference.laid]) — and the pose [fit] starts its
+/// reference fx at on [canvas], where it then stands until it is moved
+/// (I-68: 「배치된 값, 원본값 유지」).
+///
+/// 🗣️F-374-Q1 (유저 2026-10-17): 「놓을때 100%인걸 놓기만 하면 됨.
+/// 비율유지맞춤같은걸 하면 거기서 변형값을 바꾸는식으로 하는느낌」 — the fit
+/// is the fx's value, and the canvas shows the cel by it. Q4: 「100% 그대로
+/// — 셀 밖은 잘린다」; Q5: a PDF's page at its own size. ↩️The file was
+/// laid at the fit, so the fit was in the cel's pixels.
 MediaReference placedReference(
   String path,
   CanvasSize picture,
@@ -114,6 +137,7 @@ MediaReference placedReference(
   assetPath: path,
   pose: fitPose(picture: picture, canvas: canvas, fit: fit),
   pictureSize: picture,
+  laid: fitPose(picture: picture, canvas: canvas, fit: MediaFitMode.none),
 );
 
 /// Where [fit] lays [image] on [canvas] ([fitPose] as a placement).

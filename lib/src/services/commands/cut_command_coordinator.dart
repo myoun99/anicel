@@ -39,6 +39,7 @@ import '../command.dart' show Command, oneStepOf;
 import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import '../reference_move_carried.dart';
 import 'cut_command_input_planner.dart';
 import 'convert_to_linked_cut_command.dart';
 import 'convert_to_linked_cut_plan.dart';
@@ -763,8 +764,9 @@ class CutCommandCoordinator {
   }
 
   /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are
-  /// already its cels. The asset stays in the pool (유저 2026-09-11: 「구워도
-  /// 풀에 남음」). One undo step; no-op on non-reference layers.
+  /// already its cels — once its reference fx's move is the row's own
+  /// ([carryReferenceMove]). The asset stays in the pool (유저 2026-09-11:
+  /// 「구워도 풀에 남음」). One undo step; no-op on non-reference layers.
   void rasterizeLayerReference({
     required CutId cutId,
     required LayerId layerId,
@@ -777,13 +779,53 @@ class CutCommandCoordinator {
     if (layer.mediaReference == null) {
       return;
     }
-    historyManager.execute(
-      RasterizeLayerReferenceCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-      ),
+    historyManager.runAsOneStep('Rasterize layer', () {
+      carryReferenceMove(cutId: cutId, layerId: layerId);
+      historyManager.execute(
+        RasterizeLayerReferenceCommand(
+          repository: repository,
+          cutId: cutId,
+          layerId: layerId,
+        ),
+      );
+    });
+  }
+
+  /// F-374-Q3: [layerId]'s reference fx's move carried into its own
+  /// transform ([transformCarryingReferenceMove]) through the transform's
+  /// one write — what a rasterize does before it lets the reference go, a
+  /// still's or a movie's. False when the row's transform cannot carry it.
+  ///
+  /// A carried key's name is free where no OTHER use of the row holds it:
+  /// the row's own keys of that lane are the ones the carry replaces.
+  bool carryReferenceMove({required CutId cutId, required LayerId layerId}) {
+    final project = repository.requireProject();
+    final layer = requireLayer(project, cutId: cutId, layerId: layerId);
+    final carried = transformCarryingReferenceMove(
+      cut: requireCut(project, cutId),
+      layer: layer,
+      nameIsFree: (property, name) =>
+          transformTrackHoldingName(
+            cutId: cutId,
+            layerId: layerId,
+            property: property,
+            name: name,
+            excludeFramesOnSource: {
+              ...transformLaneOf(layer.transformTrack, property).keys.keys,
+            },
+          ) ==
+          null,
     );
+    if (carried == null) {
+      return false;
+    }
+    updateLayerTransformTrack(
+      cutId: cutId,
+      layerId: layerId,
+      transformTrack: carried,
+      description: 'Rasterize layer',
+    );
+    return true;
   }
 
   // ── the project setting commands: their own object ──────────────────

@@ -8,9 +8,11 @@
 // The box frames the PICTURE where the reference fx stands it at the
 // playhead, and each grab keys that fx there, as the layer's box keys its
 // transform: the inside its position, a corner its scale, outside its turn
-// — shown while the hand moves, written on release, and the file laid
-// again where the fx then stands still.
+// — shown while the hand moves, written on release, the canvas standing the
+// file there as it is laid (F-374-Q1). ↩️The file was laid again where the
+// fx then stood still.
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -25,6 +27,8 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show layerPlacementAt;
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
@@ -113,30 +117,42 @@ void main() {
   MediaReference referenceOf(EditorSessionManager s, Layer row) =>
       s.layerById(row.id)!.mediaReference!;
 
+  /// Where the canvas shows [row]'s picture at frame 0: its cel's ink, each
+  /// corner through the row's placement — the cel holds the file where it
+  /// was laid, the canvas stands it where the fx says.
   ui.Rect? shown(EditorSessionManager s, Layer row) {
     final cut = s.requireActiveCut;
     final surface = s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
       s.brushFrameKeyForCut(cut, row.id, row.frames.single.id),
     );
     final box = surface == null ? null : bitmapSurfaceContentBounds(surface);
-    return box == null
-        ? null
-        : ui.Rect.fromLTRB(
-            box.left.toDouble(),
-            box.top.toDouble(),
-            box.rightExclusive.toDouble(),
-            box.bottomExclusive.toDouble(),
-          );
-  }
-
-  /// Lets the file be laid again where the fx stands still, and land.
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 100 && !done(); tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
+    if (box == null) {
+      return null;
     }
+    final placement = layerPlacementAt(
+      cut: cut,
+      layer: s.layerById(row.id)!,
+      frameIndex: 0,
+    );
+    CanvasPoint shownAt(int x, int y) {
+      final onCel = CanvasPoint(x: x.toDouble(), y: y.toDouble());
+      return placement?.apply(onCel) ?? onCel;
+    }
+
+    final corners = [
+      shownAt(box.left, box.top),
+      shownAt(box.rightExclusive, box.top),
+      shownAt(box.rightExclusive, box.bottomExclusive),
+      shownAt(box.left, box.bottomExclusive),
+    ];
+    final xs = [for (final corner in corners) corner.x];
+    final ys = [for (final corner in corners) corner.y];
+    return ui.Rect.fromLTRB(
+      xs.reduce(math.min),
+      ys.reduce(math.min),
+      xs.reduce(math.max),
+      ys.reduce(math.max),
+    );
   }
 
   /// The test's own epilogue: the edit's timers run out, the warmer they
@@ -203,7 +219,6 @@ void main() {
       isTrue,
       reason: '「레이어 트랜스폼은 따로 남는다」',
     );
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1200);
     await tester.pump(const Duration(minutes: 1));
 
     s.standOnRow(LaneRowAddress(row.id, transformGroupHeaderLane.laneId));
@@ -220,8 +235,8 @@ void main() {
   });
 
   testWidgets('a drag shows the picture where the hand is — nothing written '
-      '— and the release keys the fx there at once, the file laid there '
-      'after it: ONE undo', (tester) async {
+      '— and the release keys the fx there at once, the canvas standing the '
+      'picture there: ONE undo', (tester) async {
     final (s, row, _) = await onTheCanvas(tester);
     s.standOnRow(LaneRowAddress(row.id, referenceGroupLaneId));
     await tester.pump();
@@ -240,9 +255,8 @@ void main() {
     expect(
       referenceOf(s, row).poseAt(0).center,
       CanvasPoint(x: 1250, y: 900),
-      reason: 'written on release, before the file is read',
+      reason: 'written on release',
     );
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1250);
     expect(shown(s, row), const ui.Rect.fromLTRB(1200, 870, 1300, 930));
 
     s.undo();
@@ -278,7 +292,6 @@ void main() {
       reason: 'the row\'s own move taken back off — where the file stands '
           'in the row',
     );
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1200);
     await wrapUp(tester, s);
   });
 
@@ -293,16 +306,11 @@ void main() {
     final scale = boxOf(tester)!.scale! as RowBoxTwoScales;
     scale.landing.committed(CanvasPoint(x: 2, y: 2));
     expect(referenceOf(s, row).poseAt(0).scale, CanvasPoint(x: 2, y: 2));
-    await settle(tester, () => referenceOf(s, row).laid.scaleX == 2);
     expect(shown(s, row), const ui.Rect.fromLTRB(1070, 767, 1270, 887));
     await tester.pump(const Duration(minutes: 1));
 
     boxOf(tester)!.turn!.committed(90);
     expect(referenceOf(s, row).poseAt(0).rotationDegrees, 90);
-    await settle(
-      tester,
-      () => referenceOf(s, row).laid.rotationDegrees == 90,
-    );
     expect(
       shown(s, row),
       const ui.Rect.fromLTRB(1110, 727, 1230, 927),

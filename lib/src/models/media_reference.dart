@@ -52,10 +52,11 @@ import 'transform_track.dart';
 /// has no frames, so it never keys one.
 ///
 /// [laid] is where the file's pixels are LAID on the row's cels — the
-/// canvas moves them from there to [poseAt]. The file is laid when the row
-/// is placed and when it takes another file, never because its fx moved:
-/// 🗣️F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼 화면에서 옮긴다」) 「굳이
-/// 다시 그릴필요도없고 그래봣자 더 선명해지지도않음」. ↩️Where the fx stood
+/// canvas moves them from there to [poseAt]. The file is laid 1:1 when the
+/// row is placed (`placedReference`) and where it was when the row takes
+/// another file, never because its fx moved: 🗣️F-374-Q1 (유저 2026-10-17,
+/// 「트랜스폼처럼 화면에서 옮긴다」) 「굳이 다시 그릴필요도없고 그래봣자 더
+/// 선명해지지도않음」. ↩️Where the fx stood
 /// the picture still, the file was laid there again — into [laid], not
 /// [pose], or deleting the keys would have left the reference where they had
 /// been, while a transform's go back to its identity.

@@ -1165,7 +1165,7 @@ class ProjectImportDoors {
 
   /// [reference]'s file as the pictures [layer]'s cels show — each cel the
   /// picture of the file it says it is ([Frame.filePicture]: a still's one,
-  /// a GIF's frame, a PDF's page), laid where the reference lays them
+  /// a GIF frame's kept), laid where the reference lays them
   /// ([MediaReference.laid]) on a [canvas]-sized cel — and the reference
   /// saying the size of its first cel's picture as the file reads now. Or
   /// why not: the file does not read, or lacks a picture a cel shows — the
@@ -1174,7 +1174,9 @@ class ProjectImportDoors {
   /// 🗣️I-68 (유저 2026-10-10 「가」): every row that shows a file is laid
   /// again by one law — the cel's own picture, where its reference lays it.
   /// ↩️Only a still's one cel could be: a GIF's or a PDF's cels said nowhere
-  /// which picture of the file each was.
+  /// which picture of the file each was. ↩️A moved fx laid a GIF's frames
+  /// and a PDF's pages again by it too, until F-374-Q1 — and only a still
+  /// row takes another file ([referenceSwapFor]).
   Future<_Remade> _filePictures(
     Layer layer,
     MediaReference reference,
@@ -1215,33 +1217,15 @@ class ProjectImportDoors {
     );
   }
 
-  /// [reference]'s file open for its pictures: a PDF's pages, each rendered
-  /// once at the size its pose stands it at ([_renderedPage]) — or an
-  /// image's, a still's one and a GIF's frames, read through the project's
-  /// copy first ([readHeldMediaBytes]) as every door here reads. Null when
-  /// it does not open.
+  /// [reference]'s file open for its pictures — an image's, a still's one
+  /// and a GIF's frames, read through the project's copy first
+  /// ([readHeldMediaBytes]) as every door here reads. Null when it does not
+  /// open.
   ///
-  /// ⛔ONE way in for both: each opened, counted and let go of its own.
+  /// ↩️A PDF's pages opened here too, each rendered once at the size its
+  /// pose stood it at, for a moved fx to lay them again — until F-374-Q1:
+  /// no PDF row takes another file ([referenceSwapFor]).
   Future<_OpenPictures?> _openPictures(MediaReference reference) async {
-    if (mediaAssetKindForPath(reference.assetPath) == MediaAssetKind.pdf) {
-      final document = await openHeldViewerDocument(
-        _holdBytes,
-        reference.assetPath,
-        PdfRenderService.open,
-      );
-      return document == null
-          ? null
-          : (
-              count: document.pageCount,
-              at: (index) => _renderedPage(
-                document,
-                index,
-                pagePixelSize(document, index),
-                reference.laid,
-              ),
-              close: document.dispose,
-            );
-    }
     final List<DecodedImageFrame> frames;
     try {
       frames = await decodeImageFrames(
@@ -1265,7 +1249,8 @@ class ProjectImportDoors {
   /// place in the file and laid on a [canvas]-sized cel where [pose] stands
   /// it ([_celLaid]), with its own size.
   ///
-  /// ⛔ONE LOOP for a GIF's frames and a PDF's pages: each wrote it out.
+  /// ⛔ONE LOOP for a GIF's frames and a PDF's pages: each wrote it out —
+  /// and a PDF's are laid again no more (F-374-Q1, [_openPictures]).
   static Future<_MadePictures> _picturesMade(
     Set<int> wanted,
     Future<_BakePicture> Function(int index) pictureAt, {
@@ -1343,26 +1328,36 @@ class ProjectImportDoors {
       assetKind: MediaAssetKind.video,
       sourceFps: info.fps,
     );
-    // ⛔`plan.assets` is dropped: the pool entry is already there, and it
-    // stays there — baking does not unregister a file.
-    final rasterized = layer.copyWith(
-      frames: plan.layer.frames,
-      timeline: SplayTreeMap<int, TimelineExposure>.of({
-        for (final entry in plan.layer.timeline.entries)
-          entry.key + block.startIndex: entry.value,
-      }),
-      mediaReference: null,
-    );
-    // ONE undo step for the structure — the cels, their exposure and the
-    // reference let go of — through the edit funnel every timeline change
-    // uses. The pixels follow it, as a landed import's do.
-    _project.historyManager.execute(
-      UpdateLayerTimelineCommand(
-        repository: _project.repository,
-        before: layer,
-        after: rasterized,
-      ),
-    );
+    // ONE undo step for the structure — the reference fx's move carried into
+    // the row's own transform as a still's is (F-374-Q3), the cels, their
+    // exposure and the reference let go of — through the edit funnels every
+    // transform and timeline change uses. The pixels follow it, as a landed
+    // import's do.
+    late final Layer rasterized;
+    _project.historyManager.runAsOneStep('Rasterize layer', () {
+      _project.cutCommandCoordinator.carryReferenceMove(
+        cutId: cutId,
+        layerId: layer.id,
+      );
+      final carried = _project.cutById(cutId)!.layers.byId(layer.id)!;
+      // ⛔`plan.assets` is dropped: the pool entry is already there, and it
+      // stays there — baking does not unregister a file.
+      rasterized = carried.copyWith(
+        frames: plan.layer.frames,
+        timeline: SplayTreeMap<int, TimelineExposure>.of({
+          for (final entry in plan.layer.timeline.entries)
+            entry.key + block.startIndex: entry.value,
+        }),
+        mediaReference: null,
+      );
+      _project.historyManager.execute(
+        UpdateLayerTimelineCommand(
+          repository: _project.repository,
+          before: carried,
+          after: rasterized,
+        ),
+      );
+    });
     await _bakeLandedCels(
       cutId,
       rasterized,
