@@ -160,6 +160,60 @@ void main() {
     );
   });
 
+  test('each of a text\'s runs is read where the one before it ends', () {
+    final result = read(
+      textLayer([
+        lettering(
+          'abcd',
+          clipTextAttributesBytes(
+            runs: [
+              (
+                start: 0,
+                length: 1,
+                bold: true,
+                italic: false,
+                colour: null,
+                scale: null,
+                face: 'One',
+              ),
+              (
+                start: 2,
+                length: 2,
+                bold: false,
+                italic: false,
+                colour: (255, 0, 0),
+                scale: null,
+                face: 'Second',
+              ),
+            ],
+          ),
+        ),
+      ]),
+    );
+
+    expect(
+      [
+        for (final span in result.texts.single.content.spans)
+          (span.text, span.style),
+      ],
+      [
+        (
+          'a',
+          const TextLetterStyle(fontFamily: 'One', fontSize: 12, bold: true),
+        ),
+        ('b', const TextLetterStyle(fontFamily: 'Face', fontSize: 12)),
+        (
+          'cd',
+          const TextLetterStyle(
+            fontFamily: 'Second',
+            fontSize: 12,
+            color: 0xFFFF0000,
+          ),
+        ),
+      ],
+    );
+  });
+
   test('a run with no colour, scale or face of its own takes the text\'s', () {
     final result = read(
       textLayer([
