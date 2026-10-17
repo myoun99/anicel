@@ -539,8 +539,8 @@ void main() {
     // test left in flight can bump the revision first.
     final plain = painterFor(layer, store: store);
     expect(tile(plain), isNull, reason: 'cold');
-    await pollUntil(() => tile(plain) != null);
-    final first = tile(plain);
+    expect(await pollUntil(() => tile(plain) != null), isTrue);
+    final first = tile(plain)!;
 
     final grounded = painterFor(
       layer,
