@@ -9,6 +9,8 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 G="$here/guard_bare_cd.sh"
 root="$(cd "$here/../.." && pwd)"
 root_w="$(cd "$here/../.." && pwd -W)"
+# The root as Windows writes it, each backslash escaped for the JSON.
+root_bs="$(printf '%s' "$root_w" | sed 's#/#\\\\#g')"
 pass=0; fail=0
 
 t() { # name, payload, expected(block|allow)
@@ -60,6 +62,7 @@ t "back to the root"          "$(c "cd $root")"                            allow
 t "root, trailing slash"      "$(c "cd $root/ && ls")"                     allow
 t "root, Windows spelling"    "$(c "cd $root_w")"                          allow
 t "root, after an option"     "$(c "cd -P $root")"                         allow
+t "root, backslashes, quoted" "$(c "cd '$root_bs'")"                       allow
 
 # --- must ALLOW: cd that is only text --------------------------------------
 t "echo double-quoted"        "$(c 'echo \"a; cd /x\"')"                   allow
@@ -68,6 +71,7 @@ t "echo single-quoted"        "$(c "echo 'a; cd /x'")"                     allow
 t "escaped separator"         "$(c 'echo a\\;cd /x')"                      allow
 t "grep for it"               "$(c 'grep -rn \"cd /x\" docs/')"            allow
 t "comment"                   "$(c 'ls # cd /x')"                          allow
+t "comment hides a separator" "$(c 'ls # a; cd /x')"                       allow
 t "heredoc body"              "$(c "cat > f.sh <<'EOF'\\ncd /x\\nls\\nEOF\\nbash f.sh")" allow
 t "tab-stripped heredoc"      "$(c 'cat <<-EOF\n\tcd /x\n\tEOF\nls')"      allow
 t "commit message heredoc"    "$(c "git commit -m \\\"\$(cat <<'EOF'\ncd guard: it did not refuse\nEOF\n)\\\"")" allow
@@ -77,6 +81,7 @@ t "inside a word"             "$(c 'abcd /x; ls cd/x')"                    allow
 t "git -C"                    "$(c 'git -C /x status')"                    allow
 t "redirect target"           "$(c 'ls >cd')"                              allow
 t "a target named cd, first"  "$(c '>cd ls')"                              allow
+t "a both-target named cd"    "$(c '&>cd ls')"                             allow
 
 # --- edge: no command field (other tools) -----------------------------------
 t "no command field"          '{"tool_input":{"file_path":"/x/cd /y"}}'     allow

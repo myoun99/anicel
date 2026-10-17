@@ -19,7 +19,7 @@ import '../../tool/session_hooks/install.dart';
 /// (tests_do_not_race_the_code_test): what they DO was run by hand from
 /// their new place that day — `autorun_test.sh` 35/35 and
 /// `guard_git_add_test.sh` 22/22, the conflicted-copy guard on names in
-/// three languages; `guard_bare_cd_test.sh` the day it came in (43/43,
+/// three languages; `guard_bare_cd_test.sh` the day it came in (54/54,
 /// 2026-10-17). What is pinned here is what a machine is GIVEN, and that
 /// the scripts can be given it.
 void main() {
