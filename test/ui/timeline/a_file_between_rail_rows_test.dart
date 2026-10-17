@@ -427,6 +427,66 @@ void main() {
     expect(s.layerSlotSpotFor(layers, slot, png), const LayerSlotSpot(0));
   });
 
+  testWidgets('a body its rows overfill has no room under them — the rows '
+      'are all the layer area there is', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('full-project'),
+        name: 'Full Project',
+        createdAt: DateTime.utc(2026, 10, 17),
+        tracks: [
+          Track(
+            id: const TrackId('full-track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('full-cut'),
+                name: 'Full Cut',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  for (var index = 0; index < 40; index += 1) row('L$index'),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(s.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TimelineTabHost(
+            session: s,
+            orientation: TimelineOrientation.horizontal,
+            onOrientationChanged: (_) {},
+            pixelsPerFrame: 48,
+            onPixelsPerFrameChanged: (_) {},
+            showSeconds: false,
+            onShowSecondsChanged: (_) {},
+            onPlaceMediaAssetBetweenLayers: (_, _, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final rows = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-entrance')),
+    );
+    final body = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+    );
+    expect(rows.height, greaterThan(body.height), reason: 'CONTROL');
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-placement-room')),
+      findsNothing,
+    );
+  });
+
   testWidgets('a picture that wanders off the layer area takes its caret '
       'with it', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 800));
