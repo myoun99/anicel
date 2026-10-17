@@ -180,6 +180,7 @@ BEGIN { RS = "\001" }
     }
     if (c == "<" || c == ">") {
       if (c == ">" && ch[i + 1] == "&") i++
+      if (w ~ /^[0-9]+$/) { w = ""; has = 0 }  # the fd it redirects
       end_word()
       skip_target = 1
       i++; continue

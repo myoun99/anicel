@@ -42,12 +42,16 @@ t "back"                      "$(c 'cd -')"                                block
 t "a folder of the root"      "$(c "cd $root/lib && wc -l a")"            block
 t "the root, in a variable"   "$(c "R=$root; cd \$R; ls")"                 block
 t "after a heredoc ends"      "$(c 'cat <<EOF\ntext\nEOF\ncd /x')"         block
+t "after a quoted one ends"   "$(c "cat <<'EOF'\nx\nEOF\ncd /x")"         block
+t "after a tab-stripped one"  "$(c 'cat <<-EOF\n\tx\n\tEOF\ncd /x')"       block
+t "assigned by substitution"  "$(c 'x=$(pwd) cd /x')"                      block
+t "redirect before it"        "$(c '2>/dev/null cd /x')"                   block
 
 # --- must ALLOW: a subshell takes its directory with it --------------------
 t "subshell"                  "$(c '(cd /x && ls)')"                       allow
 t "spaced subshell"           "$(c '( cd /x && ls )')"                     allow
 t "substitution"              "$(c 'x=$(cd /x && pwd); echo $x')"          allow
-t "backticks"                 "$(c 'x=`cd /x && pwd`; echo $x')"           allow
+t "backticks"                 "$(c 'x=`ls; cd /x`; echo $x')"              allow
 t "subshell after a cd-less"  "$(c 'ls && (cd /x && ls)')"                 allow
 t "quoted to bash -c"         "$(c 'bash -c \"cd /x && ls\"')"             allow
 
@@ -55,10 +59,13 @@ t "quoted to bash -c"         "$(c 'bash -c \"cd /x && ls\"')"             allow
 t "back to the root"          "$(c "cd $root")"                            allow
 t "root, trailing slash"      "$(c "cd $root/ && ls")"                     allow
 t "root, Windows spelling"    "$(c "cd $root_w")"                          allow
+t "root, after an option"     "$(c "cd -P $root")"                         allow
 
 # --- must ALLOW: cd that is only text --------------------------------------
-t "echo double-quoted"        "$(c 'echo \"cd /x\"')"                      allow
-t "echo single-quoted"        "$(c "echo 'cd /x; ls'")"                    allow
+t "echo double-quoted"        "$(c 'echo \"a; cd /x\"')"                   allow
+t "escaped quote inside"      "$(c 'echo \"a\\\"; cd /x\"')"               allow
+t "echo single-quoted"        "$(c "echo 'a; cd /x'")"                     allow
+t "escaped separator"         "$(c 'echo a\\;cd /x')"                      allow
 t "grep for it"               "$(c 'grep -rn \"cd /x\" docs/')"            allow
 t "comment"                   "$(c 'ls # cd /x')"                          allow
 t "heredoc body"              "$(c "cat > f.sh <<'EOF'\\ncd /x\\nls\\nEOF\\nbash f.sh")" allow
@@ -69,6 +76,7 @@ t "argument after a sub"      "$(c 'echo $(pwd) cd')"                      allow
 t "inside a word"             "$(c 'abcd /x; ls cd/x')"                    allow
 t "git -C"                    "$(c 'git -C /x status')"                    allow
 t "redirect target"           "$(c 'ls >cd')"                              allow
+t "a target named cd, first"  "$(c '>cd ls')"                              allow
 
 # --- edge: no command field (other tools) -----------------------------------
 t "no command field"          '{"tool_input":{"file_path":"/x/cd /y"}}'     allow
