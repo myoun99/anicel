@@ -387,21 +387,10 @@ class TimesheetDocument {
       cut: cut,
       trackSeLayers: trackSeLayers,
       cutStartFrame: cutStartFrame,
+      transitionSpans: transitionSpans,
     );
     final playbackFrameCount = sources.playbackFrameCount;
-    // のりしろ. The conte 尺 (and so the cut block, and so the total) never
-    // moves — the sheet just has more rows to fill than the cut is long,
-    // which is exactly what 「シートは必ずここまで記入する」 asks for.
-    //
-    // Both sides show it at the TAIL (user's rule): the blue line answers
-    // "how much do I draw", not "where does the extra sit", and the mark on
-    // the transition row answers where.
-    final handles = cutTransitionHandles(
-      cutStart: cutStartFrame,
-      cutEnd: cutStartFrame + playbackFrameCount,
-      spans: transitionSpans,
-    );
-    final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
+    final drawnFrameCount = sources.drawnFrameCount;
     final actionLayers = sources.actionLayers;
     final cellLayers = sources.cellLayers;
     final sheetKind = sheetKindFor(
@@ -415,10 +404,6 @@ class TimesheetDocument {
 
     final seSlots = sources.seLayers;
     final instructionLayers = sources.instructionLayers;
-    // The one clip, again, for the LIVE preview clone a drag publishes —
-    // it arrives outside [SheetSources] and still owes the same rule.
-    Layer clipToSheet(Layer displayClone) =>
-        clipLayerStartsBefore(displayClone, playbackFrameCount);
     // The CAM keyframe column obeys the camera layer's timesheet toggle
     // (unified layer controls); toggled off it stays printed blank form
     // space, like an unbacked slot.
@@ -470,7 +455,7 @@ class TimesheetDocument {
           rowCount,
           playbackFrameCount,
           dataSheet,
-          clipToSheet,
+          sources.clipToSheet,
           drawnFrameCount: drawnFrameCount,
         ),
       for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
@@ -494,7 +479,7 @@ class TimesheetDocument {
       cutName: cut.name,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
-      transitionHandles: handles,
+      transitionHandles: sources.handles,
       sheetKind: sheetKind,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),

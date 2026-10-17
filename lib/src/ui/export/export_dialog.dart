@@ -16,7 +16,6 @@ import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/camera_path.dart' show CameraPath;
 import '../sheet/sheet_image_cache.dart' show SheetImageRun, readSheetImage;
-import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/move_into_folder.dart';
@@ -2802,13 +2801,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// The digital sheet of a cut's timesheet, at [sheet]'s file.
   Future<void> _writeXdts(ExportDocumentSheet sheet) async {
     final cut = sheet.of;
-    final content = buildXdtsContent(
+    final content = cutXdtsContent(
+      _session,
       cut: cut,
-      cutLabel: cut.name,
-      instructionDefById: _session.camera.cameraInstructionSet.defById,
-      // The print sheet's own SE sources (track lanes + this cut's true
-      // origin on the track axis) — the two sheets must read one story.
-      trackSeLayers: _session.activeTrack.seLayers,
       cutStartFrame: _trackStartOf(cut),
     );
     final file = File(_joinLocation(sheet.fileName));

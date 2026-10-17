@@ -2,6 +2,7 @@ import 'cut.dart';
 import 'layer.dart';
 import 'layer_kind.dart';
 import 'track_se_window.dart';
+import 'transition_geometry.dart';
 
 /// The rows one cut hands a SHEET, and how long the sheet runs.
 ///
@@ -13,27 +14,71 @@ import 'track_se_window.dart';
 class SheetSources {
   SheetSources._({
     required this.playbackFrameCount,
+    required this.handles,
+    required this.drawnFrameCount,
+    required this.clipToSheet,
     required this.celLayers,
     required this.actionBooks,
     required this.seLayers,
     required this.instructionLayers,
   });
 
+  /// [transitionSpans] are the track's, on the GLOBAL axis; only the ones
+  /// that cross one of the cut's boundaries matter, and what they buy the
+  /// sheet is のりしろ ([handles]).
   factory SheetSources.of({
     required Cut cut,
     List<Layer> trackSeLayers = const [],
     int cutStartFrame = 0,
+    List<TransitionSpan> transitionSpans = const [],
   }) {
     final playbackFrameCount = cut.duration < 1 ? 1 : cut.duration;
+    // のりしろ. The conte 尺 (and so the cut block, and so the total) never
+    // moves — the sheet just has more rows to fill than the cut is long,
+    // which is exactly what 「シートは必ずここまで記入する」 asks for.
+    //
+    // Both sides show it at the TAIL (user's rule): the blue line answers
+    // "how much do I draw", not "where does the extra sit", and the mark on
+    // the transition row answers where.
+    final handles = cutTransitionHandles(
+      cutStart: cutStartFrame,
+      cutEnd: cutStartFrame + playbackFrameCount,
+      spans: transitionSpans,
+    );
+    final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
     // SE rows are track-owned: window their global timelines to this cut
     // (spill-in synthesizes a display block). Cut-owned SE layers remain
     // for legacy fixtures.
+    //
+    // 🗣️I-73-ol-sheet-columns: the window opens where the cut's OWN frame 0
+    // stands — its conte start less the のりしろ an O.L arriving into it
+    // asks — as the cut view's does (`TrackSeDisplay.trackSeWindow`). The
+    // sheet's rows are the cut's own frames, its cel columns' and its
+    // sounds' alike. ↩️It opened at the cut's place, so in a cut an O.L
+    // arrives into a sound printed the のりしろ above the picture it is
+    // heard with (🧪10-09: the picture's head on row 12, the sound's on 6).
     final seWindow = TrackSeWindow(
-      cutStartFrame: cutStartFrame,
-      cutDurationFrames: cut.duration,
+      cutStartFrame: cutStartFrame - handles.head,
+      cutDurationFrames: handles.head + cut.duration,
     );
+    // The display window is open-ended on the right now (SE globalization
+    // — the timeline's runway shows the neighbours' sounds), but a printed
+    // page is no runway: entries starting at or past the line the cut is
+    // DRAWN to stay off the sheet, crossing blocks keep their true length
+    // and the sheet marks them with the timeline's `~`. One clip for every
+    // cut-scoped export ([clipLayerStartsBefore] — the XDTS sheet reads the
+    // same projection), and for the live clone a drag publishes.
+    //
+    // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+    // 엔드라인) 넘어가는건 안보이게하고」. ↩️It clipped at the conte end, and
+    // a sound starting in the tail のりしろ the sheet draws stayed off it.
+    Layer clipToSheet(Layer displayClone) =>
+        clipLayerStartsBefore(displayClone, drawnFrameCount);
     return SheetSources._(
       playbackFrameCount: playbackFrameCount,
+      handles: handles,
+      drawnFrameCount: drawnFrameCount,
+      clipToSheet: clipToSheet,
       // Cel columns: ONE gate shared with the envelope and the XDTS export
       // ([layerTakesSheetCelColumn], D24) — image rows answer false, a
       // nameless held picture prints nothing.
@@ -48,24 +93,10 @@ class SheetSources {
             (layer: layer, spillInLeadFrames: null),
         for (final layer in trackSeLayers)
           if (layerPrintsSheetLines(layer))
-            () {
-              // The display window is open-ended on the right now (SE
-              // globalization — the timeline's runway shows the
-              // neighbours' sounds), but a printed page is no runway:
-              // entries starting at or past the cut end stay off the
-              // sheet, crossing blocks keep their true length and the
-              // sheet marks them with the timeline's `~`. One clip for
-              // every cut-scoped export ([clipLayerStartsBefore] — the
-              // XDTS sheet reads the same projection).
-              final clone = clipLayerStartsBefore(
-                seWindow.displayLayer(layer),
-                playbackFrameCount,
-              );
-              return (
-                layer: clone,
-                spillInLeadFrames: seWindow.spillInLeadFrames(layer),
-              );
-            }(),
+            (
+              layer: clipToSheet(seWindow.displayLayer(layer)),
+              spillInLeadFrames: seWindow.spillInLeadFrames(layer),
+            ),
       ],
       instructionLayers: [
         for (final layer in cut.layers)
@@ -85,6 +116,19 @@ class SheetSources {
 
   /// The cut's length in rows the sheet must show, never less than 1.
   final int playbackFrameCount;
+
+  /// The のりしろ the cut draws outside its conte 尺, one side at a time.
+  final CutTransitionHandles handles;
+
+  /// How many rows the sheet DRAWS: the conte 尺 and the [handles] — the
+  /// line the cut ends at on paper.
+  final int drawnFrameCount;
+
+  /// An SE row windowed onto the cut's own frames, as the sheet prints it:
+  /// nothing starting at or past [drawnFrameCount]. The rows in [seLayers]
+  /// already wear it; the live clone a drag publishes arrives outside this
+  /// class and still owes it.
+  final Layer Function(Layer displayClone) clipToSheet;
 
   /// The rows that take a cel column — on the printed timesheet, the
   /// ACTION block's ([actionLayers]) and the CELL block's ([cellLayers]).
@@ -126,8 +170,9 @@ class SheetSources {
   /// 란에는 BOOK표시 안하는 것」. It marked its own since F-406-Q1.
   final List<SheetBook> actionBooks;
 
-  /// The SE rows, already windowed and clipped to this cut, each with how
-  /// far into a sound spilled in from an earlier cut its first frame is
+  /// The SE rows, already windowed onto the cut's own frames and clipped
+  /// ([clipToSheet]), each with how far into a sound spilled in from an
+  /// earlier cut its first frame is
   /// ([TrackSeWindow.spillInLeadFrames]) — where the printed sheet lays
   /// that sound's words from, and marks its start-side `~`. Whether one
   /// runs past the end is the sheet's to ask, at the line it draws the cut

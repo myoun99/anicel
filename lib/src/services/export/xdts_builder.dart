@@ -5,6 +5,7 @@ import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/sheet_sources.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/transition_geometry.dart';
 
 /// Builds an XDTS (exchange digital time sheet, OpenToonz/Toei) document
 /// for one cut, straight from the unified timeline model.
@@ -41,6 +42,12 @@ String buildXdtsContent({
   /// to the cut, spill-in synthesized, starts past the cut end clipped.
   List<Layer> trackSeLayers = const [],
   int cutStartFrame = 0,
+
+  /// The track's transition spans (GLOBAL axis): the のりしろ an O.L
+  /// arriving into the cut asks puts its own frame 0 — the cel tracks'
+  /// first — that much before [cutStartFrame], and the DIALOG tracks count
+  /// from there too (I-73-ol-sheet-columns).
+  List<TransitionSpan> transitionSpans = const [],
 }) {
   // The SAME projection the print timesheet reads (the comment below the
   // parameter list has promised this all along).
@@ -48,6 +55,7 @@ String buildXdtsContent({
     cut: cut,
     trackSeLayers: trackSeLayers,
     cutStartFrame: cutStartFrame,
+    transitionSpans: transitionSpans,
   );
   final duration = sources.playbackFrameCount;
   final celLayers = sources.celLayers;

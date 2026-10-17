@@ -1032,6 +1032,44 @@ void main() {
       expect(crosses(110, 30), isTrue, reason: 'local [62, 92) runs past 84');
     });
 
+    // 🗣️I-73-ol-sheet-columns · F-358 (유저 2026-10-17): 「컷 엔드라인(OL
+    // 여백이든 뭐든 총합적인 엔드라인) 넘어가는건 안보이게하고」.
+    test('🚨a sound in the のりしろ is the sheet\'s, on the row of the cut\'s '
+        'own frame it plays at — one past the drawn end is not', () {
+      // O.L-s across both ends: the cut's own frame 0 is the track's 36,
+      // twelve before its place, and it is drawn to its own 96 — the
+      // track's 132, twelve past its end.
+      final sounds = Layer(
+        id: const LayerId('track-se'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: [
+          for (final id in ['head', 'tail', 'past'])
+            Frame(id: FrameId(id), duration: 2, strokes: const []),
+        ],
+        timeline: const {
+          40: TimelineExposure.drawing(FrameId('head'), length: 2),
+          125: TimelineExposure.drawing(FrameId('tail'), length: 2),
+          134: TimelineExposure.drawing(FrameId('past'), length: 2),
+        },
+      );
+      final column = sheet(
+        spans: const [
+          (start: 36, length: 24, mark: CameraInstructionMarkType.ol),
+          (start: 108, length: 24, mark: CameraInstructionMarkType.ol),
+        ],
+        trackSeLayers: [sounds],
+      ).columns.firstWhere((c) => c.kind == TimesheetColumnKind.se);
+
+      expect(
+        [
+          for (var row = 0; row < column.cells.length; row += 1)
+            if (column.cells[row].kind == TimesheetCellKind.drawing) row,
+        ],
+        [4, 89],
+      );
+    });
+
     test('a sheet without transitions prints one number, as it always did', () {
       expect(sheet().durationLabel, '3+0');
       expect(sheet().drawnDurationLabel, isNull);

@@ -395,13 +395,12 @@ void main() {
       );
     });
 
-    // ⚠️Board `I-73-ol-sheet-columns`: the sheet's cel columns are the
-    // cut's own frames, so in a cut an O.L arrives into these two stand
-    // the のりしろ above the pictures they go with. They are counted the
-    // same way as each other, which this keeps until the sheet is put
-    // right as one.
-    test('the SHEET still counts its track-owned columns from the cut\'s '
-        'place — both the same way', () {
+    // 🗣️Board `I-73-ol-sheet-columns`: the sheet's cel columns are the
+    // cut's own frames, and so are its track-owned ones now — counted from
+    // the cut's own frame 0, as the cut view counts them. ↩️Both counted
+    // from the cut's place, the のりしろ above the pictures they go with.
+    test('🚨the SHEET counts its track-owned columns from the cut\'s own '
+        'frame 0 — as the cut view does', () {
       final session = withAFadeInsideB();
       final track = session.repository.requireProject().tracks.single;
 
@@ -413,19 +412,22 @@ void main() {
             olWord: 'O.L',
           ),
         ),
-        {0: 12, 18: 6},
+        {0: 12, 24: 6},
       );
       final sounds = SheetSources.of(
         cut: track.cuts[1],
         trackSeLayers: track.seLayers,
         cutStartFrame: 24,
+        transitionSpans: session.transitions.activeTrackTransitionSpans,
       ).seLayers.single.layer;
       expect(
         {
           for (final entry in sounds.timeline.entries)
             entry.key: entry.value.length,
         },
-        {6: 4},
+        {2: 2, 12: 4},
+        reason: 'the sound in the overlap on b\'s のりしろ, the later one '
+            'under the picture it is heard with',
       );
     });
   });
