@@ -307,6 +307,44 @@ void _runTests() {
       expect(earlier.undoCount, 0);
       expect(history.undoCount, 1);
     });
+
+    test('a step another hand filed at the run\'s asking is the run\'s own '
+        'once adopted — it folds with what the run writes', () {
+      final history = HistoryManager();
+      final run = HistoryRun(history.gestures)..begin();
+      final asked = _FakeCommand();
+      history.execute(asked);
+      final own = _FakeCommand();
+
+      run
+        ..adopt()
+        ..write(() => history.execute(own))
+        ..end('Hold');
+
+      expect(history.undoCount, 1, reason: 'the two in one');
+      history.undo();
+      expect([asked.undoCount, own.undoCount], [1, 1]);
+    });
+
+    test('⛔adopted, a step is the run\'s only while it is all that was '
+        'filed: with another beside it, the run begins again', () {
+      final history = HistoryManager();
+      final run = HistoryRun(history.gestures)..begin();
+      final asked = _FakeCommand();
+      history.execute(asked);
+      final elsewhere = _FakeCommand();
+      history.execute(elsewhere);
+      final own = _FakeCommand();
+
+      run
+        ..adopt()
+        ..write(() => history.execute(own))
+        ..end('Hold');
+
+      expect(history.undoCount, 3);
+      history.undo();
+      expect([asked.undoCount, elsewhere.undoCount], [0, 0]);
+    });
   });
 }
 
