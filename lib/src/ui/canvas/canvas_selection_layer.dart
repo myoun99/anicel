@@ -549,12 +549,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     implicit: _shapeIsImplicitWholePicture,
   );
 
-  /// True whenever the shape's pixels are NOT already floating: from a
-  /// USER selection (marquee commit, shape channel apply) until a Move
-  /// interaction lifts them, and again after every confirm (R19 pixel
-  /// model — the next move re-lifts the landed raster, byte-identical).
-  bool _shapeNeedsLift = false;
-
   /// R26 #13: true while [_region] is the IMPLICIT whole-canvas target the
   /// MOVE tool synthesized because no selection existed ("선택하지 않은
   /// 상황이어도 그림 전체를 이동"). The session's end — confirm or revert
@@ -578,7 +572,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ) {
     final region = CanvasSelectionRegion.shape(shape);
     _setRegion(region, implicit: true);
-    _shapeNeedsLift = true;
     return region;
   }
 
@@ -589,7 +582,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _setRegion(null);
-    _shapeNeedsLift = false;
   }
 
   /// The lift command owning this selection's pixels (R15-④), the stamp
@@ -712,12 +704,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // selection — the user never selected anything.
         if (_shapeIsImplicitWholePicture) {
           _setRegion(null);
-          _shapeNeedsLift = false;
-        } else {
-          if (startShape != null) {
-            _setRegion(startShape);
-          }
-          _shapeNeedsLift = true;
+        } else if (startShape != null) {
+          _setRegion(startShape);
         }
       });
     }
@@ -753,12 +741,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     void settle() {
-      _shapeNeedsLift = true;
       // R26 #13: a confirmed implicit whole-picture session lands and
       // simply ends — back to no selection.
       if (_shapeIsImplicitWholePicture) {
         _setRegion(null);
-        _shapeNeedsLift = false;
       }
     }
 
@@ -951,7 +937,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // outlives this layer (tool switches unmount it), so mounting must
     // pick it back up instead of starting empty.
     _region = widget.selectionCommands?.liveShape;
-    _shapeNeedsLift = _region != null;
     _bindCommands();
     widget.selectionCommands?.addListener(_adoptChannelRegion);
   }
@@ -978,7 +963,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     setState(() {
       _region = channelRegion;
-      _shapeNeedsLift = channelRegion != null;
       _shapeIsImplicitWholePicture = false;
       // 🚨★★★THIS DROPS A PENDING MOVE WITHOUT LANDING IT, and what makes
       // that safe is not visible from here. [_letGoOfSession] lets the
@@ -1020,7 +1004,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       oldWidget.selectionCommands?.unbind(this);
       oldWidget.selectionCommands?.removeListener(_adoptChannelRegion);
       _region = widget.selectionCommands?.liveShape;
-      _shapeNeedsLift = _region != null;
       _bindCommands();
       widget.selectionCommands?.addListener(_adoptChannelRegion);
     }
@@ -1487,8 +1470,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ⛔**THE TRANSFORM IS KEPT ON PURPOSE.** It is the 「편집값」 the user
   /// asked to survive the walk: scale the box on frame 1, step to frame 5,
   /// and the same scale is waiting there — applied to frame 5's own pixels,
-  /// which [_shapeNeedsLift] is what arranges (F-86: 「the next move lifts
-  /// it afresh from the cel it then stands on」).
+  /// which letting the float go is what arranges: a shape no session floats
+  /// is lifted afresh ([_ensureLifted]; F-86: 「the next move lifts it
+  /// afresh from the cel it then stands on」).
   ///
   /// ⛔**AND LETTING THE FLOAT GO IS FREE, which is why this is allowed to
   /// be a drop at all.** A session writes nothing to the cel until it
@@ -1510,7 +1494,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _endDrag(cancelled: true, notify: false);
       }
       _letGoOfSession();
-      _shapeNeedsLift = _region != null;
     });
     // The resample on screen was computed from the cel we just left, and
     // an open box starts again HERE.
@@ -1532,8 +1515,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// 않는** 문제」 · 「변형이 제대로 **프레임바뀌면 다음 프레임에 적용시작**
   /// 한다던가」.
   ///
-  /// ↩️The box used to arrive open and EMPTY: [_shapeNeedsLift] was set and
-  /// the pixels waited for a drag to notice them. 🧪Measured 2026-09-18 —
+  /// ↩️The box used to arrive open and EMPTY: the shape was marked liftable
+  /// and the pixels waited for a drag to notice them. 🧪Measured 2026-09-18 —
   /// Enter on the cel walked to moved nothing at all, which is exactly
   /// 유저's own next step (「그 상태에서 **엔터버튼으로 확정**시키고」). An
   /// open box was being reported as a started transform, and those are not
@@ -1572,9 +1555,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // that here turned 유저's ②「확정버튼도 사라지는문제」 red on the
         // very next run, because the button asks for a shape to draw.
         //
-        // ⚠️Nothing to put back either: [_ensureLifted] leaves
-        // [_shapeNeedsLift] set when it finds nothing, so the same outline
-        // over this cel stays liftable if ink arrives under it.
+        // ⚠️Nothing to put back either: a lift that finds nothing leaves no
+        // session, and a shape no session floats is liftable — so the same
+        // outline over this cel lifts if ink arrives under it.
         setState(() {});
         _syncAnts();
         return;
@@ -1860,7 +1843,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.onLiftRequested == null) {
       return;
     }
-    final hadPendingLift = _movePending;
     if (!_ensureLifted(targetRegion)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
@@ -1868,7 +1850,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     setState(() {
       _aimTransformAt(targetRegion);
-      _box!.openedLift = !hadPendingLift;
       _syncOffsetsToMode();
       _buildFloatSurfaces();
     });
@@ -1968,9 +1949,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return region.mapped(_box!.affine.apply);
   }
 
-  /// Escape: discards the open transform. A lift the Ctrl+T itself
-  /// opened (and that never moved otherwise) reverts whole — the picture
-  /// returns byte-exactly.
+  /// Escape: discards the open transform. A session under it reverts
+  /// whole — the picture returns byte-exactly.
   void _cancelTransform() {
     if (_transform == null) {
       return;
@@ -1981,10 +1961,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // handle you had used. That distinction was real only while the move
     // lived outside the affine: clearing the box now undoes the move with
     // everything else, so there is nothing left for the extra term to
-    // protect. ⛔A session this box did NOT open still only loses the box
-    // (`TransformBox.openedLift`), which is the case that term was mixed up
-    // with.
-    if ((_box?.openedLift ?? false) && _movePending) {
+    // protect.
+    // ↩️And a session this box did NOT open only lost the box
+    // (`TransformBox.openedLift`). There has been no such session since a
+    // move became the box's tx/ty (`18d9424ec`, 09-22): every lift opens
+    // its box or rides the one a walk carried, so a session is never
+    // pending under a box that came after it — the flag read true for
+    // every box (a-lift-is-a-shape-with-no-session, 2026-10-18).
+    if (_movePending) {
       setState(_clearTransform);
       _revertMoveSession();
       return;
@@ -2089,7 +2073,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // it is gone; the line that used to sit under this one only told the
       // layer.
       _setRegion(null);
-      _shapeNeedsLift = false;
     });
     _syncAnts();
     // Deselecting a real region is undoable, symmetric with selecting.
@@ -2105,24 +2088,35 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// — the host commits the ERASE (origin vanishes) and hands back the
   /// stamp, which floats until the session confirms. False = nothing
   /// under the shape to move.
+  ///
+  /// A shape is lifted whenever no session floats it: from a USER selection
+  /// (marquee commit, shape channel apply) until a Move interaction lifts
+  /// it, and again after every confirm (R19 pixel model — the next move
+  /// re-lifts the landed raster, byte-identical).
+  ///
+  /// ↩️That was a flag of its own, `_shapeNeedsLift`, written beside every
+  /// change of the shape or the session — sixteen writes of what those two
+  /// already say (a-lift-is-a-shape-with-no-session, 2026-10-18). One of
+  /// them set it while a session floated the shape (Ctrl+T over an open
+  /// implicit box), and only the box being open kept the next press from
+  /// lifting a second session over the first.
   bool _ensureLifted(CanvasSelectionRegion region) {
-    if (!_shapeNeedsLift) {
-      return _movePending;
+    if (_session != null) {
+      // The pixels are in hand already.
+      return true;
     }
     final lift = widget.onLiftRequested!(region);
     if (lift == null) {
-      // ⛔**A FAILED LIFT LEAVES [_shapeNeedsLift] ALONE.** It says 「the
-      // pixels under this shape have not been lifted」, and after a lift
-      // that found nothing they still have not been. Clearing it here made
-      // one flag answer two questions — 「already lifted」 and 「we tried」
-      // — and the entrances hid that by dropping the shape on the same
-      // breath. The walk to another cel (F-164 ③) keeps its shape, so it
-      // is the caller that shows the difference: the same outline over a
-      // cel that later gains ink has to be liftable.
-      _letGoOfSession();
+      // ⛔**A FAILED LIFT LEAVES THE SHAPE LIFTABLE.** The pixels under it
+      // have not been lifted, and after a lift that found nothing they
+      // still have not been. ↩️A flag cleared here made one flag answer two
+      // questions — 「already lifted」 and 「we tried」 — and the entrances
+      // hid that by dropping the shape on the same breath. The walk to
+      // another cel (F-164 ③) keeps its shape, so it is the caller that
+      // shows the difference: the same outline over a cel that later gains
+      // ink has to be liftable.
       return false;
     }
-    _shapeNeedsLift = false;
     // ⛔THE ONLY PLACE ONE BEGINS, as [_endSession] is the only place one
     // ends. A session is made whole or not at all.
     _session = _MoveSession(
@@ -2435,14 +2429,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         () => _adoptImplicitWholePictureShape(implicitRegion.singleShape!),
       );
     }
-    final hadPendingLift = _movePending;
     if (!_ensureLifted(implicitRegion)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
       return null;
     }
     setState(() {
-      _box = candidate..openedLift = !hadPendingLift;
+      _box = candidate;
       _syncOffsetsToMode();
       _buildFloatSurfaces();
     });
@@ -2488,11 +2481,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     final liftShape = targetShape;
-    // ⚠️Read BEFORE the lift, and it is the same question `_beginTransform`
-    // asks: did this gesture open the session, or ride one that was
-    // already pending? 취소 needs it — a box that opened the lift reverts
-    // the whole thing, one that rode a pending move only loses the box.
-    final hadPendingLift = _movePending;
     // R14-④/R19 pixel model: the shape's PIXELS are the content — the
     // first gesture on a selection (or on a confirmed landing) lifts
     // them fresh from the current raster.
@@ -2516,7 +2504,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // behind it start existing, not a new thing appearing.
       if (_box == null) {
         _aimTransformAt(liftShape);
-        _box!.openedLift = !hadPendingLift;
         _syncOffsetsToMode();
       }
       final affine = _box!.affine;
@@ -3068,7 +3055,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final wasTransformDrag = drag is TransformDrag;
     if (cancelled && drag is MarqueeDrag && drag.before != null) {
       _setRegion(drag.before);
-      _shapeNeedsLift = true;
     }
     if (cancelled &&
         drag is MarqueeDrag &&
@@ -3276,7 +3262,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _confirmMoveSession();
     setState(() {
       _setRegion(region);
-      _shapeNeedsLift = region != null;
       _letGoOfSession();
       if (region == null) {
         _clearTransform();
