@@ -85,6 +85,7 @@ import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
 import 'update_layer_reference_fx_command.dart';
 import 'update_layer_timeline_command.dart';
+import 'update_layer_transform_enabled_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
@@ -766,7 +767,9 @@ class CutCommandCoordinator {
   /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are
   /// already its cels — once its reference fx's move is the row's own
   /// ([carryReferenceMove]). The asset stays in the pool (유저 2026-09-11:
-  /// 「구워도 풀에 남음」). One undo step; no-op on non-reference layers.
+  /// 「구워도 풀에 남음」). One undo step; no-op on non-reference layers,
+  /// and on a row whose move its transform cannot carry ([referenceLetGo]
+  /// — its cels take it, or it waits).
   void rasterizeLayerReference({
     required CutId cutId,
     required LayerId layerId,
@@ -780,30 +783,51 @@ class CutCommandCoordinator {
       return;
     }
     historyManager.runAsOneStep('Rasterize layer', () {
-      carryReferenceMove(cutId: cutId, layerId: layerId);
-      historyManager.execute(
-        RasterizeLayerReferenceCommand(
-          repository: repository,
-          cutId: cutId,
-          layerId: layerId,
-        ),
-      );
+      if (carryReferenceMove(cutId: cutId, layerId: layerId)) {
+        historyManager.execute(
+          RasterizeLayerReferenceCommand(
+            repository: repository,
+            cutId: cutId,
+            layerId: layerId,
+          ),
+        );
+      }
     });
   }
 
-  /// F-374-Q3: [layerId]'s reference fx's move carried into its own
-  /// transform ([transformCarryingReferenceMove]) through the transform's
-  /// one write — what a rasterize does before it lets the reference go, a
-  /// still's or a movie's. False when the row's transform cannot carry it.
+  /// How RASTERIZE keeps where [layerId] shows its file ([referenceLetGo]),
+  /// asked of the project: what the rows wearing its head keep, and whether
+  /// another use shows its cels.
   ///
   /// A carried key's name is free where no OTHER use of the row holds it:
   /// the row's own keys of that lane are the ones the carry replaces.
-  bool carryReferenceMove({required CutId cutId, required LayerId layerId}) {
+  ReferenceLetGo referenceLetGoOf({
+    required CutId cutId,
+    required LayerId layerId,
+  }) {
     final project = repository.requireProject();
     final layer = requireLayer(project, cutId: cutId, layerId: layerId);
-    final carried = transformCarryingReferenceMove(
+    final others = headMirrorTargets(
+      project,
+      cutId: cutId,
+      layerId: layerId,
+      cameraHead: true,
+    ).skip(1);
+    return referenceLetGo(
       cut: requireCut(project, cutId),
       layer: layer,
+      others: (
+        keys: others.any(
+          (other) => requireLayer(
+            project,
+            cutId: other.cutId,
+            layerId: other.layerId,
+          ).transformTrack.isNotEmpty,
+        ),
+        cels:
+            project.linkRegistry.groupOf(cutId: cutId, layerId: layerId) !=
+            null,
+      ),
       nameIsFree: (property, name) =>
           transformTrackHoldingName(
             cutId: cutId,
@@ -816,15 +840,39 @@ class CutCommandCoordinator {
           ) ==
           null,
     );
-    if (carried == null) {
+  }
+
+  /// F-374-Q3: [layerId]'s reference fx's move carried into its own
+  /// transform ([ReferenceMoveKeyed]) through the transform's one write, and
+  /// its switch through the switch's (F-374-Q7 ①) — what a rasterize does
+  /// before it lets the reference go, a still's or a movie's. False when the
+  /// row's transform cannot carry it.
+  bool carryReferenceMove({required CutId cutId, required LayerId layerId}) {
+    final way = referenceLetGoOf(cutId: cutId, layerId: layerId);
+    if (way is! ReferenceMoveKeyed) {
       return false;
     }
+    final layer = requireLayer(
+      repository.requireProject(),
+      cutId: cutId,
+      layerId: layerId,
+    );
     updateLayerTransformTrack(
       cutId: cutId,
       layerId: layerId,
-      transformTrack: carried,
+      transformTrack: way.track,
       description: 'Rasterize layer',
     );
+    if (way.enabled != layer.transformEnabled) {
+      historyManager.execute(
+        UpdateLayerTransformEnabledCommand(
+          repository: repository,
+          layerId: layerId,
+          transformEnabled: way.enabled,
+          description: 'Rasterize layer',
+        ),
+      );
+    }
     return true;
   }
 

@@ -169,7 +169,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('rasterizeActiveLayer nulls the reference, keeps the pixels '
+  testWidgets('rasterizeLayerReferences nulls the reference, keeps the pixels '
       'and KEEPS the asset in the pool; undo restores the reference', (
     tester,
   ) async {
@@ -190,7 +190,7 @@ void main() {
     expect(s.editingCanvas.canRasterizeActiveLayer, isTrue);
     expect(s.mediaPool.mediaAssets, hasLength(1));
 
-    s.editingCanvas.rasterizeActiveLayer();
+    s.editingCanvas.rasterizeLayerReferences([layer.id]);
     final after = s.requireActiveCut.layers.firstWhere(
       (l) => l.id == layer.id,
     );

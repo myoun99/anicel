@@ -3,6 +3,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer.dart';
 import '../models/media_reference.dart';
+import '../models/movie_cel.dart' show isMovieReference;
 import '../models/property_track.dart';
 import '../models/transform_track.dart';
 import 'cut_frame_composite_plan.dart'
@@ -10,6 +11,88 @@ import 'cut_frame_composite_plan.dart'
 import 'import/camera_track.dart' show transformTrackOfFramePoses;
 import 'layer_pose_matrix.dart'
     show LayerPlacement, LayerPoseSample, placementOf;
+
+/// How RASTERIZE keeps where [layer] shows its file as it lets the reference
+/// go — ⛔ONE answer for every door that rasterizes (F-374-Q7, 유저
+/// 2026-10-17: 「①은 스위치를 켜고 키로, ②③만 굽는다」):
+///
+/// * the move becomes the row's own transform
+///   ([transformCarryingReferenceMove]) — F-374-Q3's keys, its switch on;
+/// * where that transform cannot carry it, the cels take the picture where
+///   the row shows it ([ReferenceMoveBaked]);
+/// * and two rows wait, left the references they are ([ReferenceMoveWaits]).
+///
+/// [others] is what the rows beside it hold ([OthersHold]).
+ReferenceLetGo referenceLetGo({
+  required Cut cut,
+  required Layer layer,
+  required OthersHold others,
+  required bool Function(TransformPropertyId property, String name)
+  nameIsFree,
+}) {
+  final carried = transformCarryingReferenceMove(
+    cut: cut,
+    layer: layer,
+    nameIsFree: nameIsFree,
+  );
+  // ⏳F-374-Q10: the switch is the row's HEAD, one for every row that wears
+  // it (유저 2026-08-06) — on, it shows the keys the others kept while it
+  // was off, keys Q7 ① never weighed.
+  final switchShowsOthers =
+      carried != null &&
+      carried.enabled &&
+      !layer.transformEnabled &&
+      others.keys;
+  if (carried != null && !switchShowsOthers) {
+    return ReferenceMoveKeyed(carried.track, enabled: carried.enabled);
+  }
+  // ⏳F-374-Q10: a cel the link group shares is ONE picture
+  // (`SwapLayerReferenceCommand`) — baked in place, every other use would
+  // show it moved, and moved again by its own fx.
+  if (others.cels) {
+    return const ReferenceMoveWaits();
+  }
+  // ⏳F-374-Q9: a cel baked in place holds the picture at ONE place, and an
+  // image row holds one cel (D22) — a still that moves has no cels to take
+  // its frames. A movie's are made a position apiece.
+  final fx = layer.mediaReference!.fx;
+  return isMovieReference(layer) || fx.lanes.every((l) => l.keys.length < 2)
+      ? const ReferenceMoveBaked()
+      : const ReferenceMoveWaits();
+}
+
+/// What the rows beside a reference row hold that its rasterize must not
+/// disturb ([referenceLetGo]): [keys] — another row wearing its head, its
+/// transform switch with it (`headMirrorRows`), keeps transform keys of its
+/// own, which the switch coming on would show; [cels] — another use of its
+/// link group shows its cels.
+typedef OthersHold = ({bool keys, bool cels});
+
+/// What [referenceLetGo] answers.
+sealed class ReferenceLetGo {
+  const ReferenceLetGo();
+}
+
+/// The move carried into the row's own transform: [track], with its switch
+/// [enabled].
+final class ReferenceMoveKeyed extends ReferenceLetGo {
+  const ReferenceMoveKeyed(this.track, {required this.enabled});
+
+  final TransformTrack track;
+  final bool enabled;
+}
+
+/// The cels take the picture where the row shows it, and the row's
+/// transform and switch stay as they are (F-374-Q7 ②③: 「멈춘 참조는 한 장
+/// (보이는 크기 그대로), 움직이는 참조는 움직이는 프레임마다 한 장」).
+final class ReferenceMoveBaked extends ReferenceLetGo {
+  const ReferenceMoveBaked();
+}
+
+/// Neither yet: the row stays the reference it is.
+final class ReferenceMoveWaits extends ReferenceLetGo {
+  const ReferenceMoveWaits();
+}
 
 /// [layer]'s own transform with its REFERENCE FX's move carried into it —
 /// what RASTERIZE leaves the row at as it lets the reference go (§6-f): the
@@ -46,12 +129,17 @@ import 'layer_pose_matrix.dart'
 /// holds would join keys the fx never named — and move them. The keys made
 /// frame by frame carry none: their values are no longer the fx's.
 ///
-/// Null when the row's transform cannot carry the move (F-374-Q7): its
-/// switch is off — the fx has none, I-68-Q1 — an attach row stands where
-/// its base's transform puts it, and a row scaled unevenly under a picture
-/// turned other than by a quarter would have to SHEAR it, which no pose
-/// does.
-TransformTrack? transformCarryingReferenceMove({
+/// The switch comes ON with the move (F-374-Q7 ①, 유저 2026-10-17: 「①은
+/// 스위치를 켜고 키로」): a row whose transform is switched off shows none of
+/// its own — the fx has no switch (I-68-Q1) — so the move is carried over
+/// none, and the keys the row kept while it showed nothing give way. A row
+/// with no move to carry keeps its transform and its switch as they are.
+///
+/// Null when the row's transform cannot carry the move (F-374-Q7 ②③ — the
+/// cels take it): an attach row stands where its base's transform puts it,
+/// and a row scaled unevenly under a picture turned other than by a quarter
+/// would have to SHEAR it, which no pose does.
+({TransformTrack track, bool enabled})? transformCarryingReferenceMove({
   required Cut cut,
   required Layer layer,
   required bool Function(TransformPropertyId property, String name)
@@ -60,24 +148,27 @@ TransformTrack? transformCarryingReferenceMove({
   final reference = layer.mediaReference;
   if (reference == null ||
       (reference.fx.isEmpty && reference.pose == reference.laid)) {
-    return layer.transformTrack;
+    return (track: layer.transformTrack, enabled: layer.transformEnabled);
   }
   final laid = reference.laid;
   // A file is laid upright since F-374-Q1 (`placedReference`), and a lay
   // that collapsed the picture has no move to carry.
-  if (!layer.transformEnabled ||
-      isAttachedLayer(layer) ||
+  if (isAttachedLayer(layer) ||
       laid.rotationDegrees != 0 ||
       laid.scaleX == 0 ||
       laid.scaleY == 0) {
     return null;
   }
+  final shown = layer.transformEnabled
+      ? layer
+      : layer.copyWith(transformTrack: TransformTrack.empty());
   final canvas = cut.canvasSize;
-  final row = layer.transformTrack;
+  final row = shown.transformTrack;
   final own = [row.anchorPoint, row.position, row.scale, row.rotation];
-  return own.every((lane) => lane.keys.length < 2)
-      ? _keysCarried(layer, reference, canvas, nameIsFree)
-      : _framesCarried(layer, reference, canvas, own);
+  final track = own.every((lane) => lane.keys.length < 2)
+      ? _keysCarried(shown, reference, canvas, nameIsFree)
+      : _framesCarried(shown, reference, canvas, own);
+  return track == null ? null : (track: track, enabled: true);
 }
 
 /// The fx's keys through the row's one pose ([transformCarryingReferenceMove]).

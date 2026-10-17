@@ -322,7 +322,7 @@ void main() {
     await openOn(tester, s, movie);
 
     final waitWindow = find.byKey(
-      const ValueKey<String>('movie-rasterize-progress'),
+      const ValueKey<String>('reference-rasterize-progress'),
     );
     await tester.tap(rasterize);
     await tester.pump();
@@ -361,7 +361,7 @@ void main() {
     );
 
     final waitWindow = find.byKey(
-      const ValueKey<String>('movie-rasterize-progress'),
+      const ValueKey<String>('reference-rasterize-progress'),
     );
     // ⛔Not awaited HERE: the decode needs the pumps below to run, and a
     // test body waiting on it is a test body not pumping.

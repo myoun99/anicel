@@ -32,7 +32,7 @@ import 'track_se_display.dart';
 /// brush a target at all. Asking it in two objects is how the canvas would
 /// come to draw a live row nothing could draw on.
 ///
-/// [rasterizeActiveLayer] is the verb that CHANGES that answer: a media
+/// [rasterizeLayerReferences] is the verb that CHANGES that answer: a media
 /// reference has no editable cel until its derived content is baked into
 /// ordinary ones.
 ///
@@ -418,15 +418,9 @@ class EditingCanvas {
   bool get canRasterizeActiveLayer =>
       _selection.activeLayer?.mediaReference != null;
 
-  void rasterizeActiveLayer() {
-    final layer = _selection.activeLayer;
-    if (layer == null || layer.mediaReference == null) {
-      return;
-    }
-    rasterizeLayerReferences([layer.id]);
-  }
-
-  /// Rasterizes every REFERENCE row among [layerIds] as ONE undo step.
+  /// Rasterizes every REFERENCE row among [layerIds] as ONE undo step —
+  /// each whose move its own transform carries (`rasterizeReferenceRows`
+  /// hands the rest to the bakes).
   ///
   /// The reference button's popover hands over the rows its press acts on
   /// (`RowSelection.rowsActedOnBy`: 「선택 안에서 누르면 선택 전체, 밖에서

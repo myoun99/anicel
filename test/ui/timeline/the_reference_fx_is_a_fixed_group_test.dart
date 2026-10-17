@@ -41,7 +41,6 @@ import 'package:anicel/src/ui/session/editing_stack_map.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/property_track.dart';
-import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
