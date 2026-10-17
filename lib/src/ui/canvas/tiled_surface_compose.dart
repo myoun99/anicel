@@ -497,7 +497,8 @@ ui.Image composeTiledSurfaceImageNow(
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
 ///
-/// Past the wall it is made from the tiles' bytes ([_composedFromBytes]).
+/// A file's picture laid past the wall ([_laidPastTheWall]) is made from
+/// its tiles' bytes ([_composedFromBytes]).
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
@@ -515,7 +516,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
     deferred: false,
   );
   final image =
-      _reachesPastTheWall(surface, worldRect) && !debugRastersPastTheWall
+      _laidPastTheWall(surface) && !debugRastersPastTheWall
       ? await _composedFromBytes(
           _bytesShownOver(surface, worldRect),
           shouldAbort: shouldAbort,
@@ -528,11 +529,23 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
       : PositionedSurfaceImage(image: image, worldRect: worldRect);
 }
 
-/// Whether [over] reaches past [surface]'s wall ([pasteboardRect]) — where
-/// only a file's picture laid whole lies (F-374-Q8).
-bool _reachesPastTheWall(BitmapSurface surface, ui.Rect over) {
+/// Whether [surface] holds a file's picture laid whole past its wall
+/// ([pasteboardRect]) — the one thing that lies there
+/// ([BitmapSurface.laidBounds], F-374-Q8).
+///
+/// ⚠️NOT WHETHER A COMPOSE'S RECT REACHES PAST IT: a cel's tiles poke past
+/// the wall where they straddle it, and so does its ink pushed out to the
+/// halving grid ([surfaceInkWorldRect]) — nothing lies there, and such a
+/// cel rasters as it always did. Read off the rect, a stroke near a small
+/// picture's wall took the bytes road (a conte's cell,
+/// `a_conte_stroke_keeps_to_the_cell_it_starts_in_test`).
+bool _laidPastTheWall(BitmapSurface surface) {
+  final laid = surface.laidBounds;
+  if (laid == null) {
+    return false;
+  }
   final wall = surface.canvasSize.pasteboardRect;
-  return wall.expandToInclude(over) != wall;
+  return wall.expandToInclude(laid.rect) != wall;
 }
 
 /// [surface]'s bytes over [over], as shown ([_shownBy]) — what a compose
@@ -713,10 +726,10 @@ class _BytesOfItsOwn implements PictureBytes {
 /// The synchronous positioned compose — the layer stack's, for the frame a
 /// row changes route or content ([_composeSync] says what [makePictures]
 /// and [snapshot] mean; [over] is the async twin's). Null when
-/// [makePictures] is false and a tile has no picture — and past the wall
-/// whenever it is false.
+/// [makePictures] is false and a tile has no picture — and, for a file's
+/// picture laid past the wall ([_laidPastTheWall]), whenever it is false.
 ///
-/// Past the wall the picture is made from its tiles' bytes
+/// Such a picture is made from its tiles' bytes
 /// ([_composedFromBytesNow]): no recording is rastered, so what comes back
 /// as "deferred" is a plain picture already, and [snapshot]'s is a handle
 /// of its own on the same picture — the holder's swap retires the handle it
@@ -730,7 +743,7 @@ composePositionedSurfaceImageSync(
   ui.Rect? over,
 }) {
   final worldRect = _composedOver(surface, over);
-  if (_reachesPastTheWall(surface, worldRect) && !debugRastersPastTheWall) {
+  if (_laidPastTheWall(surface) && !debugRastersPastTheWall) {
     if (!makePictures) {
       return null;
     }

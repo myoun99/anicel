@@ -208,7 +208,25 @@ void main() {
   });
 
   testWidgets('inside the wall a compose is rastered as it was — a picture '
-      'laid whole that lies within it too', (tester) async {
+      'laid whole that lies within it too, and a cel whose tile straddles '
+      'the wall: its rect reaches past it, and nothing lies there', (
+    tester,
+  ) async {
+    // A 20×16 canvas's wall is -20..40: a tile at 32..48 straddles it, its
+    // ink cut at the wall as every stroke is.
+    const wall = ui.Rect.fromLTRB(-20, -16, 40, 32);
+    final straddling = BitmapSurface(
+      canvasSize: const CanvasSize(width: 20, height: 16),
+      tileSize: 16,
+      tiles: {
+        TileCoord(x: 2, y: 0): inked(3, at: TileCoord(x: 2, y: 0), lies: wall),
+      },
+    );
+    expect(
+      surfaceContentWorldRect(straddling).right,
+      greaterThan(wall.right),
+      reason: 'premise: its rect reaches past the wall',
+    );
     await tester.runAsync(() async {
       for (final surface in [
         BitmapSurface(
@@ -220,9 +238,16 @@ void main() {
           },
         ),
         laid(-16, 32),
+        straddling,
       ]) {
         final composed = (await composePositionedSurfaceImage(surface))!;
         composed.image.dispose();
+        composePositionedSurfaceImageSync(
+          surface,
+          reuse: BitmapTileImageCache(),
+          makePictures: true,
+          snapshot: false,
+        )!.deferred.image.dispose();
       }
       expect(debugComposesFromBytes, 0);
     });
