@@ -52,6 +52,7 @@ void main() {
   final carrier = trackTransformLaneCarrierId(t1);
   final conteRow = trackConteRowId(t1);
   const effects = [EffectId('blur'), EffectId('glow')];
+  const shade = EffectId('shade');
 
   Layer se(String id) => Layer(
     id: LayerId(id),
@@ -79,6 +80,7 @@ void main() {
           id: LayerId('$id-conte'),
           name: 'Conte',
           kind: LayerKind.storyboard,
+          effects: [LayerEffect(id: shade, kind: EffectKind.blur)],
           frames: [
             Frame(id: FrameId('$id-panel'), duration: 12, strokes: const []),
           ],
@@ -275,6 +277,56 @@ void main() {
       reason:
           'the press bypassed the first, and the sweep the one under it — '
           'the header the press set read live, not as its row was built',
+    );
+  });
+
+  testWidgets('🚨and on a projection row\'s — the conte\'s Transform, read off '
+      'the conte in hand as the press left it', (tester) async {
+    final session = await pump(tester);
+    await tap(tester, 'storyboard-lane-toggle-a-conte');
+    String header(String lane) => 'storyboard-lane-group-fx-$conteRow-$lane';
+
+    await sweep(
+      tester,
+      header('transform-group'),
+      header(effectGroupLaneId(shade)),
+    );
+
+    final conte = row(session, 'a-conte');
+    expect(
+      [conte.transformEnabled, conte.effects.single.enabled],
+      [false, false],
+      reason:
+          'the press bypassed the Transform, and the sweep the effect under '
+          'it — the row read by its layer in hand: by its own id the host '
+          'finds no layer, and a stale read spreads what the press undid',
+    );
+  });
+
+  testWidgets('⛔in a gap a projection row\'s group switches are inert — a '
+      'press there starts no sweep', (tester) async {
+    final session = await pump(tester);
+    await tap(tester, 'storyboard-lane-toggle-a-conte');
+    session.selectCut(const CutId('c'));
+    await tester.pumpAndSettle();
+    final header = 'storyboard-lane-group-fx-$conteRow-transform-group';
+    expect(
+      find.named(header),
+      findsOneWidget,
+      reason: 'the fixture: the row keeps its lanes with no cut stood in',
+    );
+
+    await sweep(tester, header, 'storyboard-layer-fx-t2-s1');
+
+    expect(
+      row(session, 'a-conte').transformEnabled,
+      isTrue,
+      reason: 'no cut of the row is stood in, so there is none to write',
+    );
+    expect(
+      fx(session, 't2-s1'),
+      LayerFxState.on,
+      reason: 'and a switch a tap cannot press starts no sweep',
     );
   });
 
