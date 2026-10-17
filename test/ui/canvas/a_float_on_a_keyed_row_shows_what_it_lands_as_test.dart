@@ -361,7 +361,8 @@ void main() {
     bool twice = false,
   }) async {
     final hold = holdIn(tester, region);
-    final drop = hold + handFor(tester, 40, 30);
+    final step = handFor(tester, 40, 30);
+    final drop = hold + step;
     final commands = await select(tester, rows, region);
     // Each cel the box holds, as it stands before the confirm.
     List<BitmapSurface> cels() => [
@@ -395,7 +396,7 @@ void main() {
       if (twice) {
         await settle(tester);
         expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
-        await drag(drop, drop + handFor(tester, 40, 30));
+        await drag(drop, drop + step);
       }
     }
     await settle(tester);
