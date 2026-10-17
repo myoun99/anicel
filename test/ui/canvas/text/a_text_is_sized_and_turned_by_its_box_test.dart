@@ -108,10 +108,18 @@ void main() {
     final c = await hiInHandByItsBox(tester);
     final history = sessionOf(tester).historyManager;
     final steps = history.undoCount;
-    final middle = Offset(c.dx + 48, c.dy + 30);
-    final moved = middle + const Offset(20, 30);
-    await dragFrom(tester, middle, middle + const Offset(20, 0));
-    await dragFrom(tester, middle + const Offset(20, 0), moved);
+    // Inside the box and off the cross in its middle, which a press ON
+    // carries instead (R9-rest-Q2).
+    await dragFrom(
+      tester,
+      Offset(c.dx + 10, c.dy + 30),
+      Offset(c.dx + 30, c.dy + 30),
+    );
+    await dragFrom(
+      tester,
+      Offset(c.dx + 30, c.dy + 40),
+      Offset(c.dx + 30, c.dy + 70),
+    );
     // The corner, carried with the text, taken twice as far from the
     // centre.
     await dragFrom(

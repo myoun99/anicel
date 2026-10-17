@@ -742,15 +742,22 @@ void main() {
       );
       expect(history.undoCount, steps + 2);
 
-      history.undo();
+      // 🗣️F-377: undo takes the box's steps back one at a time while the
+      // text is held — by the rail's ↶, a door undo is asked through as
+      // Ctrl+Z is (H42). ↩️History's own undo stood in for it: a hold is
+      // let go of — its steps ONE — before the document is undone.
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
       await pumpFrames(tester);
 
       expect(landedCentre(tester).dx, moreOrLessEquals(500));
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
 
-      history.undo();
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
       await pumpFrames(tester);
 
       expect(landedCentre(tester), offsetMoreOrLessEquals(before));
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
+      expect(history.undoCount, steps);
     });
 
     testWidgets('🚨a scrub on X carries the text a whole pixel at a time and '
