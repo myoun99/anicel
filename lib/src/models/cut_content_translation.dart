@@ -162,9 +162,17 @@ Layer translateLayerForResize(
       position: _translatedPointTrack(track.position, positionDx, positionDy),
       anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
     ),
+    // Its keys and where its file is laid stand on the same canvas (F-374),
+    // so they move with it — the cel's pixels move with the drawings.
     mediaReference: reference?.copyWith(
       pose: reference.pose.copyWith(
         center: _translated(reference.pose.center, dx, dy),
+      ),
+      fx: reference.fx.copyWith(
+        position: _translatedPointTrack(reference.fx.position, dx, dy),
+      ),
+      laid: reference.laid.copyWith(
+        center: _translated(reference.laid.center, dx, dy),
       ),
     ),
   );

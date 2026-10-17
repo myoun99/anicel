@@ -77,7 +77,8 @@ void main() {
           transformTrack: subjectTrack,
           effects: const [],
           commitTransform: (next, why) {
-            transformCommits.add(next);
+            // A row with no file has its own home alone (F-374).
+            transformCommits.add(next.own!);
             descriptions.add(why);
           },
           commitEffects: (next, why) {

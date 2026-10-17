@@ -166,6 +166,9 @@ List<PropertyLaneRow> cameraPropertyLanes(
 /// (AE display units: Position and Anchor Point in canvas px, Scale as its
 /// [scaleForm] prints it, Rotation in clockwise degrees, Opacity ·100 %);
 /// null hides the values, and the curve with them.
+///
+/// [laneIdOf] names each member's row: a reference's fx is these lanes
+/// under ids of its own (F-374, `reference:position`, …).
 List<PropertyLaneRow> transformPropertyLanes(
   TransformTrack track, {
   required ScaleLaneForm scaleForm,
@@ -173,13 +176,14 @@ List<PropertyLaneRow> transformPropertyLanes(
   TransformPose Function(double time)? poseAt,
   CanvasPoint Function(double time)? anchorAt,
   double Function(double time)? opacityAt,
+  String Function(String laneId) laneIdOf = _itsOwnLaneId,
 }) {
   const point = [LaneCurvePalette.across, LaneCurvePalette.down];
   return [
     transformGroupHeaderLane,
     if (includeAnchorAndOpacity)
       _lane(
-        'anchor-point',
+        laneIdOf('anchor-point'),
         AppText.strings.tlLaneAnchorPoint,
         track.anchorPoint,
         _reading(
@@ -193,7 +197,7 @@ List<PropertyLaneRow> transformPropertyLanes(
             scrubTransformLaneValue('anchor-point', label, delta),
       ),
     _lane(
-      'position',
+      laneIdOf('position'),
       AppText.strings.tlLanePosition,
       track.position,
       _reading(
@@ -207,7 +211,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       walks: positionKeySpace,
     ),
     _lane(
-      'scale',
+      laneIdOf('scale'),
       AppText.strings.tlLaneScale,
       track.scale,
       _reading(
@@ -226,7 +230,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       linkable: scaleForm.links,
     ),
     _lane(
-      'rotation',
+      laneIdOf('rotation'),
       AppText.strings.tlLaneRotation,
       track.rotation,
       _reading(
@@ -240,7 +244,7 @@ List<PropertyLaneRow> transformPropertyLanes(
     ),
     if (includeAnchorAndOpacity)
       _lane(
-        'opacity',
+        laneIdOf('opacity'),
         AppText.strings.tlLaneOpacity,
         track.opacity,
         _reading(
@@ -254,6 +258,8 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
   ];
 }
+
+String _itsOwnLaneId(String laneId) => laneId;
 
 /// What a lane's value column prints and the line a header graph draws it
 /// by (I-89 ③), off ONE reading of its value — so the two cannot come to

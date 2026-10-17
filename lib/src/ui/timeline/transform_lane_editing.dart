@@ -143,6 +143,9 @@ TransformTrack? transformTrackWithLaneKeysWritten(
 /// `150, 80%`, the one left as shown carried when [scaleLinked]
 /// ([ScaleLaneForm.typed]); rotation `45` or `45°`; opacity `75` or `75%`
 /// (clamped 0–100). Null on parse failure.
+///
+/// [unkeyedScale] is what the Scale lane holds with no key — 1 on a layer,
+/// and where a reference's fx placed its picture (F-374).
 TransformTrack? transformTrackWithLaneValueEdited(
   TransformTrack track, {
   required String laneId,
@@ -150,6 +153,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
   required String input,
   required ScaleLaneForm scaleForm,
   required bool scaleLinked,
+  CanvasPoint? unkeyedScale,
 }) {
   if (frameIndex < 0) {
     return null;
@@ -181,7 +185,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         input,
         current: track.scale.resolveAt(
           frameIndex: frameIndex,
-          orElse: () => uniformScale(1),
+          orElse: () => unkeyedScale ?? uniformScale(1),
           space: pointKeySpace,
         ),
         linked: scaleLinked,
@@ -286,37 +290,10 @@ TransformTrack transformTrackWithAnchorDragged(
   );
 }
 
-/// A value typed into one lane of a lone POSE — a reference fx's (I-68),
-/// one value with no keys. [laneId] is the transform lane it is
-/// (`position`, `scale` or `rotation`), read the way
-/// [transformTrackWithLaneValueEdited] reads that lane. Null on parse
-/// failure.
-TransformPose? poseWithLaneValueEdited(
-  TransformPose pose, {
-  required String laneId,
-  required String input,
-  required ScaleLaneForm scaleForm,
-  required bool scaleLinked,
-}) {
-  switch (laneId) {
-    case 'position':
-      final point = _parsePoint(input);
-      return point == null ? null : pose.copyWith(center: point);
-    case 'scale':
-      final scale = scaleForm.typed(
-        input,
-        current: pose.scale,
-        linked: scaleLinked,
-      );
-      return scale == null
-          ? null
-          : pose.copyWith(scaleX: scale.x, scaleY: scale.y);
-    case 'rotation':
-      final degrees = _parseDegrees(input);
-      return degrees == null ? null : pose.copyWith(rotationDegrees: degrees);
-  }
-  return null;
-}
+// F-374: `poseWithLaneValueEdited` — a value typed into a reference fx's
+// one pose — went when its lanes became keyed transform lanes. A reference
+// lane's value is [transformTrackWithLaneValueEdited] on its fx now, and a
+// second reader of the same three inputs is how the two would drift.
 
 CanvasPoint? _parsePoint(String input) {
   final parts = input.split(',');

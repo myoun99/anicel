@@ -13,10 +13,10 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/timeline_exposure.dart';
-import '../layer_pose_matrix.dart' show LayerPlacement;
+import '../layer_pose_matrix.dart' show LayerPlacement, picturePlacement;
 import '../photoshop/psd_reader.dart';
 import 'media_import_planner.dart' show ImportIdMint;
-import 'raster_cel_import.dart' show fitPose, picturePlacement;
+import 'raster_cel_import.dart' show fitPose;
 import '../../models/import/import_warning.dart';
 
 /// EXPAND: a Photoshop stack becomes our stack.

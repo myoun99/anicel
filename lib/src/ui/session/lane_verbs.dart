@@ -10,7 +10,7 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/reference_swap.dart' show ReferenceRedraw;
+import '../../models/reference_swap.dart' show ReferenceLaid, ReferenceRedraw;
 import '../../models/property_track.dart'
     show KeyExit, KeyPath, KeySide, KeySidesEdit, KeyTypePick, PropertyKey;
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -37,10 +37,15 @@ import '../timeline/effect_lane_editing.dart'
 import '../timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/reference_lane_policy.dart'
-    show laneIsReference, referenceMemberTransformLane, referenceScaleForm;
+    show
+        laneIsReference,
+        referenceGroupLaneId,
+        referenceLaneDisplayOrder,
+        referenceMemberTransformLane,
+        referenceScaleForm,
+        transformLanesByHome;
 import '../timeline/transform_lane_editing.dart'
     show
-        poseWithLaneValueEdited,
         transformLaneKeyFrames,
         transformTrackWithGroupReset,
         transformTrackWithLaneKeyRemoved,
@@ -49,7 +54,10 @@ import '../timeline/transform_lane_editing.dart'
         transformTrackWithLaneValueEdited;
 import '../timeline/scale_lane_form.dart' show scaleLaneFormOf;
 import '../timeline/se_name_tag_lane_editing.dart'
-    show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
+    show
+        seNameTagWithGroupReset,
+        seNameTagWithLaneKeyToggled,
+        seNameTagWithLaneValueEdited;
 import '../timeline/se_name_tag_lane_policy.dart'
     show laneIsSeNameTag, seNameTagGroupLaneId, seNameTagLaneDisplayOrder;
 import '../timeline/transform_lane_policy.dart'
@@ -106,7 +114,7 @@ class LaneVerbs {
       LayerId layerId,
       TransformPose pose,
     )
-    reposeReference,
+    layReferenceAt,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
@@ -119,13 +127,13 @@ class LaneVerbs {
        _activeCut = activeCut,
        _updateCameraTrack = updateCameraTrack,
        _previewFormsOf = previewFormsOf,
-       _reposeReference = reposeReference;
+       _layReferenceAt = layReferenceAt;
 
-  /// `ProjectImportDoors.reposeReference` — a reference fx's one write
-  /// (I-68): the file is laid again where the pose stands it, which only
-  /// the doors that read files can do.
+  /// `ProjectImportDoors.layReferenceAt` — a reference's file laid again at
+  /// a pose (I-68), which only the doors that read files can do: where its
+  /// fx stands still ([_commitReferenceFx]).
   final Future<ReferenceRedraw> Function(LayerId layerId, TransformPose pose)
-  _reposeReference;
+  _layReferenceAt;
 
   final EffectsAndFx _effectsAndFx;
   final ChangeSink _changes;
@@ -240,9 +248,14 @@ class LaneVerbs {
         continue;
       }
       // The name-tag header stands for its seven members, exactly as the
-      // transform header does (한번에 잡아 이동).
+      // transform header does (한번에 잡아 이동) — and the reference fx's
+      // for its three (F-374).
       if (laneId == seNameTagGroupLaneId) {
         seNameTagLaneDisplayOrder.forEach(add);
+        continue;
+      }
+      if (laneId == referenceGroupLaneId) {
+        referenceLaneDisplayOrder.forEach(add);
         continue;
       }
       final address = parseEffectLaneId(laneId);
@@ -418,6 +431,26 @@ class LaneVerbs {
       ? (_cutWriting(layer)?.camera.track ?? layer.transformTrack)
       : layer.transformTrack;
 
+  /// The transform track [layer]'s lanes of one home hold: its reference
+  /// fx's where [reference] says (F-374), else its own.
+  TransformTrack _transformTrackAt(Layer layer, {required bool reference}) =>
+      reference
+      ? (layer.mediaReference?.fx ?? TransformTrack.empty())
+      : _laneTransformTrackOf(layer);
+
+  /// [track] as an edit of one home alone.
+  TransformHomes _transformHomesWith(
+    TransformTrack track, {
+    required bool reference,
+  }) => reference
+      ? (own: null, reference: track)
+      : (own: track, reference: null);
+
+  /// The transform lane [laneId] is on its home's track: a reference
+  /// member's is the lane it holds (F-374), every other lane itself.
+  String _trackLaneOf(String laneId) =>
+      referenceMemberTransformLane(laneId) ?? laneId;
+
   /// The layer a LANE verb READS and WRITES.
   ///
   /// ★A track-owned SE row answers with the GLOBAL layer, never the cut's
@@ -541,10 +574,14 @@ class LaneVerbs {
           laneId: laneId,
           frameIndex: frame,
         ),
-        transform: (layer, track, frame) =>
-            _transformTrackWithKeyToggled(layer, track, laneId, frame),
-        // A reference fx holds no keys (I-68 「키 없는 값 하나」).
-        reference: (_) => null,
+        transform: (layer, track, frame, {required reference}) =>
+            _transformTrackWithKeyToggled(
+              layer,
+              track,
+              _trackLaneOf(laneId),
+              frame,
+              reference: reference,
+            ),
       ),
     ),
     description: description,
@@ -636,27 +673,22 @@ class LaneVerbs {
       frameIndex: frame,
       input: input,
     ),
-    transform: (layer, track, frame) => transformTrackWithLaneValueEdited(
-      track,
-      laneId: laneId,
-      frameIndex: frame,
-      input: input,
-      scaleForm: scaleLaneFormOf(layer),
-      scaleLinked: scaleLinked,
-    ),
-    reference: (pose) => poseWithLaneValueEdited(
-      pose,
-      laneId: referenceMemberTransformLane(laneId) ?? laneId,
-      input: input,
-      scaleForm: referenceScaleForm,
-      scaleLinked: scaleLinked,
-    ),
+    transform: (layer, track, frame, {required reference}) =>
+        transformTrackWithLaneValueEdited(
+          track,
+          laneId: _trackLaneOf(laneId),
+          frameIndex: frame,
+          input: input,
+          scaleForm: reference ? referenceScaleForm : scaleLaneFormOf(layer),
+          scaleLinked: scaleLinked,
+          unkeyedScale: reference ? layer.mediaReference?.pose.scale : null,
+        ),
   );
 
   /// The ONE dispatch behind every lane verb at a frame: which of a row's
-  /// three keyed families [laneId] names, the row and frame to edit it on,
-  /// and what [edits] leaves that family at — or null when it changes
-  /// nothing. Committing it and showing it are the caller's.
+  /// keyed families [laneId] names, the row and frame to edit it on, and
+  /// what [edits] leaves that family at — or null when it changes nothing.
+  /// Committing it and showing it are the caller's.
   ({Layer layer, _LaneEdit edit})? _laneEditAt(
     LayerId layerId,
     String laneId,
@@ -674,24 +706,26 @@ class LaneVerbs {
       frameIsGlobal: frameIsGlobal,
     );
     // R5 #7: the name tag is a fixed FIELD on the row, so it lands through
-    // its own funnel — not the transform track, not the chain. I-68: so
-    // does a reference's fx, the file's own pose.
+    // its own funnel — not the transform track, not the chain.
     final _LaneEdit? edit;
-    final reference = layer.mediaReference;
     if (laneIsSeNameTag(laneId)) {
       final next = edits.nameTag(layer.seNameTag ?? const SeNameTag(), frame);
       edit = next == null ? null : _NameTagEdit(next);
-    } else if (laneIsReference(laneId)) {
-      final next = reference == null ? null : edits.reference(reference.pose);
-      edit = next == null || next == reference?.pose
-          ? null
-          : _ReferenceEdit(next);
     } else if (parseEffectLaneId(laneId) != null) {
       final next = edits.effects(layer.effects, frame);
       edit = next == null ? null : _EffectsEdit(next);
     } else {
-      final next = edits.transform(layer, _laneTransformTrackOf(layer), frame);
-      edit = next == null ? null : _TransformEdit(next);
+      // A reference's fx is a transform's lanes in another home (F-374).
+      final reference = laneIsReference(laneId);
+      final next = edits.transform(
+        layer,
+        _transformTrackAt(layer, reference: reference),
+        frame,
+        reference: reference,
+      );
+      edit = next == null
+          ? null
+          : _TransformEdit(_transformHomesWith(next, reference: reference));
     }
     return edit == null ? null : (layer: layer, edit: edit);
   }
@@ -702,9 +736,7 @@ class LaneVerbs {
     ({Layer layer, _LaneEdit edit})? target, {
     required String description,
   }) {
-    if (target?.edit is! _ReferenceEdit) {
-      endLaneEditPreview();
-    }
+    endLaneEditPreview();
     if (target == null) {
       return;
     }
@@ -715,38 +747,9 @@ class LaneVerbs {
       case _EffectsEdit(:final next):
         _commitLaneEffects(layer, next, description: description);
       case _TransformEdit(:final next):
-        _commitTransformTrack(layer, next, description: description);
-      case _ReferenceEdit(:final next):
-        _commitReferencePose(layer, next);
+        _commitTransformHomes(layer, next, description: description);
     }
   }
-
-  /// The lane path's REFERENCE FX commit (I-68) — the fourth funnel. The
-  /// file is laid again where [pose] stands it, which takes a read (a
-  /// still's picture is made anew from its file), so the value stays on the
-  /// preview channel until it has landed: dropped first, the picture would
-  /// stand back where it was for the length of the read, the frame
-  /// 「한 프레임 보이는 건 무조건 걸린다」 is about.
-  void _commitReferencePose(Layer layer, TransformPose pose) {
-    final shown = _referencePreview(layer, pose);
-    _dragPreview.value = shown;
-    unawaited(
-      _reposeReference(layer.id, pose).whenComplete(() {
-        // Another edit's preview is not this one's to drop.
-        if (!_sessionDisposed() && identical(_dragPreview.value, shown)) {
-          _dragPreview.value = null;
-        }
-      }),
-    );
-  }
-
-  /// [layer] with its reference fx at [pose], as an edit in flight shows it.
-  TimelineDragPreview _referencePreview(Layer layer, TransformPose pose) =>
-      _rowPreview(
-        layer.copyWith(
-          mediaReference: layer.mediaReference?.copyWith(pose: pose),
-        ),
-      );
 
   /// Shows [target] on the preview channel — the committed row when it is
   /// null.
@@ -760,7 +763,6 @@ class LaneVerbs {
       _NameTagEdit(:final next) => _rowPreview(layer.copyWith(seNameTag: next)),
       _EffectsEdit(:final next) => _laneEffectsPreview(layer, next),
       _TransformEdit(:final next) => _laneTransformPreview(layer, next),
-      _ReferenceEdit(:final next) => _referencePreview(layer, next),
     };
   }
 
@@ -777,18 +779,12 @@ class LaneVerbs {
     LayerId layerId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit, {
     required String description,
-  }) {
-    endLaneEditPreview();
-    final layer = laneVerbLayerFor(layerId);
-    if (layer == null) {
-      return;
-    }
-    _commitTransformTrack(
-      layer,
-      edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
-      description: description,
-    );
-  }
+  }) => _editAtPlayhead(
+    layerId,
+    edit,
+    reference: false,
+    description: description,
+  );
 
   /// A canvas handle mid-drag: the edit [editLayerTransformAtPlayhead]
   /// would write at the release, shown on the preview channel (F-195) — the
@@ -796,37 +792,76 @@ class LaneVerbs {
   void previewLayerTransformAtPlayhead(
     LayerId layerId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
-  ) {
+  ) => _previewAtPlayhead(layerId, edit, reference: false);
+
+  /// A canvas box's drag landing on [layerId]'s REFERENCE FX (I-68): the
+  /// same ONE key at the playhead a transform's box writes (F-374 — 유저
+  /// 「지금 움직여도 키 안생긴다거나 … 싹 통일」), one undo.
+  void editReferenceFxAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required String description,
+  }) => _editAtPlayhead(
+    layerId,
+    edit,
+    reference: true,
+    description: description,
+  );
+
+  /// The reference box mid-drag: the edit [editReferenceFxAtPlayhead]
+  /// would write at the release, shown on the preview channel.
+  void previewReferenceFxAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit,
+  ) => _previewAtPlayhead(layerId, edit, reference: true);
+
+  /// [edit] of [layerId]'s transform track — its reference fx's where
+  /// [reference] says — at the playhead on the row's own axis, committed as
+  /// one undo, any lane edit in flight dropped with it.
+  void _editAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required bool reference,
+    required String description,
+  }) {
+    endLaneEditPreview();
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    _commitTransformHomes(
+      layer,
+      _transformHomesWith(
+        edit(
+          _transformTrackAt(layer, reference: reference),
+          _laneVerbFrameFor(layerId),
+        ),
+        reference: reference,
+      ),
+      description: description,
+    );
+  }
+
+  /// [_editAtPlayhead]'s edit, shown on the preview channel and not written.
+  void _previewAtPlayhead(
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required bool reference,
+  }) {
     final layer = laneVerbLayerFor(layerId);
     if (layer == null) {
       return;
     }
     _dragPreview.value = _laneTransformPreview(
       layer,
-      edit(_laneTransformTrackOf(layer), _laneVerbFrameFor(layerId)),
+      _transformHomesWith(
+        edit(
+          _transformTrackAt(layer, reference: reference),
+          _laneVerbFrameFor(layerId),
+        ),
+        reference: reference,
+      ),
     );
-  }
-
-  /// A canvas box's drag landing on [layerId]'s reference fx (I-68): the
-  /// file laid again where [pose] stands it, one undo — and the box's
-  /// preview held until it has landed ([_commitReferencePose]).
-  void editReferencePose(LayerId layerId, TransformPose pose) {
-    final layer = laneVerbLayerFor(layerId);
-    if (layer?.mediaReference == null || layer!.mediaReference!.pose == pose) {
-      endLaneEditPreview();
-      return;
-    }
-    _commitReferencePose(layer, pose);
-  }
-
-  /// A canvas box mid-drag on [layerId]'s reference fx: the pose
-  /// [editReferencePose] would lay the file at, shown on the preview channel.
-  void previewReferencePose(LayerId layerId, TransformPose pose) {
-    final layer = laneVerbLayerFor(layerId);
-    if (layer?.mediaReference == null) {
-      return;
-    }
-    _dragPreview.value = _referencePreview(layer!, pose);
   }
 
   /// WHAT a lane edit on [layer] edits — the homes its three families land
@@ -836,13 +871,14 @@ class LaneVerbs {
     final isSe = layer.kind == LayerKind.se;
     return LaneEditSubject(
       transformTrack: _laneTransformTrackOf(layer),
+      referenceFx: layer.mediaReference?.fx,
       effects: layer.effects,
       // The name-tag arm (C①) is armed only on SE rows: the commit verb
       // throws elsewhere. The layer is GLOBAL for a track-SE row
       // ([laneVerbLayerFor]), so the tag goes home as it is.
       seNameTag: isSe ? (layer.seNameTag ?? const SeNameTag()) : null,
       commitTransform: (next, why) =>
-          _commitTransformTrack(layer, next, description: why),
+          _commitTransformHomes(layer, next, description: why),
       commitEffects: (next, why) =>
           _commitLaneEffects(layer, next, description: why),
       commitSeNameTag: isSe
@@ -896,24 +932,33 @@ class LaneVerbs {
   }
 
   /// [track] with [laneId]'s key at [frame] toggled — a new one frozen at
-  /// the value [layer] resolves there. What the navigator's ◆ and the range
-  /// Create both write.
+  /// the value [layer] resolves there: where its reference fx stands the
+  /// picture, when [reference] says the lane is that fx's (F-374). What the
+  /// navigator's ◆ and the range Create both write.
   TransformTrack? _transformTrackWithKeyToggled(
     Layer layer,
     TransformTrack track,
     String laneId,
-    int frame,
-  ) {
-    final isCamera = layer.kind == LayerKind.camera;
+    int frame, {
+    required bool reference,
+  }) {
+    final pose = reference
+        ? layer.mediaReference?.poseAt(frame)
+        : _laneResolvedPose(layer, frame);
+    if (pose == null) {
+      return null;
+    }
+    // The camera's lanes and a reference fx's are the pose trio alone.
+    final poseOnly = reference || layer.kind == LayerKind.camera;
     return transformTrackWithLaneKeyToggled(
       track,
       laneId: laneId,
       frameIndex: frame,
-      resolvedPose: _laneResolvedPose(layer, frame),
-      resolvedAnchorPoint: isCamera
+      resolvedPose: pose,
+      resolvedAnchorPoint: poseOnly
           ? null
           : _timeline.layerAnchorPointAtFrame(layer, frame),
-      resolvedOpacity: isCamera
+      resolvedOpacity: poseOnly
           ? 1
           : resolveOpacityTrackAt(layer.transformTrack.opacity, frame),
     );
@@ -951,8 +996,8 @@ class LaneVerbs {
     return _TransformHome.row;
   }
 
-  /// THE transform commit of a row's lanes — the camera row goes home to the
-  /// cut, a V row's carrier to nowhere, every other row to its layer.
+  /// The commit of a row's OWN transform lanes — the camera row goes home to
+  /// the cut, a V row's carrier to nowhere, every other row to its layer.
   ///
   /// ↩️The lane MOVE spelled the camera-or-layer half of this again inline
   /// (and without the carrier's arm); it commits through here now
@@ -980,13 +1025,95 @@ class LaneVerbs {
     }
   }
 
+  /// THE transform commit of a row's lanes, home by home (F-374): its own
+  /// lanes through [_commitTransformTrack], a reference row's fx through
+  /// [_commitReferenceFx] — one undo step for the two.
+  void _commitTransformHomes(
+    Layer layer,
+    TransformHomes next, {
+    required String description,
+  }) => _project.historyManager.runAsOneStep(description, () {
+    if (next.own case final own?) {
+      _commitTransformTrack(layer, own, description: description);
+    }
+    if (next.reference case final fx?) {
+      _commitReferenceFx(layer, fx, description: description);
+    }
+  });
+
+  /// The REFERENCE FX's commit (F-374): its keys written the moment they
+  /// change, as every fx's are — and where they stand the picture still,
+  /// somewhere its file is not laid ([MediaReference.stillPose]), the file
+  /// laid there again and folded into the same undo step once it lands,
+  /// so a picture that does not move is drawn from its file where it
+  /// stands. A row changed in between, or a file that does not read,
+  /// leaves the step as it is: the canvas moves the picture from where it
+  /// was laid.
+  ///
+  /// ⛔Folded ONLY while the edit and its laying are the two entries filed
+  /// since the mark, exactly — the guard a text and its cel fold by
+  /// (`_foldWithItsCel`): an edit somebody else filed while the file was
+  /// read, folded in, would be undone with the move. The second of its
+  /// kind: F-377's `HistoryRun` cuts a run where another's step comes
+  /// between, and both move onto it once it lands.
+  void _commitReferenceFx(
+    Layer layer,
+    TransformTrack fx, {
+    required String description,
+  }) {
+    final reference = layer.mediaReference;
+    if (reference == null) {
+      return;
+    }
+    final gestures = _project.historyManager.gestures;
+    final before = gestures.mark;
+    _project.cutCommandCoordinator.updateLayerReferenceFx(
+      layerId: layer.id,
+      fx: fx,
+      description: description,
+    );
+    _changes.notifyChanged();
+    final still = reference.copyWith(fx: fx).stillPose;
+    if (still == null || still == reference.laid) {
+      return;
+    }
+    unawaited(
+      _layReferenceAt(layer.id, still).then((laid) {
+        final now = gestures.mark;
+        if (laid is ReferenceLaid &&
+            now.pushed - before.pushed == 2 &&
+            now.retracted == before.retracted) {
+          gestures.foldSince(before, description);
+        }
+      }),
+    );
+  }
+
+  /// [next] on [layer] as a lane edit in flight shows it — the twin of
+  /// [_commitTransformHomes]. A row that shows a file keeps its own lanes
+  /// on itself, so one row carries both homes in flight.
+  TimelineDragPreview? _laneTransformPreview(
+    Layer layer,
+    TransformHomes next,
+  ) {
+    final reference = layer.mediaReference;
+    final fx = next.reference;
+    final own = next.own;
+    if (reference == null || fx == null) {
+      return own == null ? null : _ownTransformPreview(layer, own);
+    }
+    return _rowPreview(
+      layer.copyWith(
+        transformTrack: own ?? layer.transformTrack,
+        mediaReference: reference.copyWith(fx: fx),
+      ),
+    );
+  }
+
   /// [track] on [layer] as a lane edit in flight shows it — the twin of
   /// [_commitTransformTrack], home for home. Null where it shows nothing,
   /// and where that commit would refuse it: a range move holds there.
-  TimelineDragPreview? _laneTransformPreview(
-    Layer layer,
-    TransformTrack track,
-  ) {
+  TimelineDragPreview? _ownTransformPreview(Layer layer, TransformTrack track) {
     switch (_transformHomeOf(layer)) {
       case _TransformHome.cutCamera:
         final cut = _cutWriting(layer);
@@ -1159,10 +1286,10 @@ class LaneVerbs {
             _commitLaneEffects(layer, effects, description: 'Delete keys'),
       );
     }
-    return _commitLaneFold(
-      _laneTransformTrackOf(layer),
+    return _commitTransformFold(
+      layer,
       _laneVerbTargetsFor(layer, scope.targets),
-      (track, laneId) => _foldedEdits(
+      (track, laneId, {required reference}) => _foldedEdits(
         track,
         transformLaneKeyFrames(track, laneId).where(lane.contains),
         (value, frame) => transformTrackWithLaneKeyRemoved(
@@ -1171,9 +1298,41 @@ class LaneVerbs {
           frameIndex: frame,
         ),
       ),
-      commit: (track) =>
-          _commitTransformTrack(layer, track, description: 'Delete keys'),
+      description: 'Delete keys',
     );
+  }
+
+  /// [step] folded over [laneIds] of [layer]'s transform lanes — each on
+  /// the track it lives on, in that track's words ([transformLanesByHome]:
+  /// a reference fx's member is the lane it holds, F-374) — and committed
+  /// as ONE undo step when any lane changed. Returns whether anything was.
+  bool _commitTransformFold(
+    Layer layer,
+    List<String> laneIds,
+    TransformTrack? Function(
+      TransformTrack track,
+      String laneId, {
+      required bool reference,
+    })
+    step, {
+    required String description,
+  }) {
+    final lanes = transformLanesByHome(laneIds);
+    TransformTrack? folded(List<String> laneIds, {required bool reference}) =>
+        _foldedEdits(
+          _transformTrackAt(layer, reference: reference),
+          laneIds,
+          (track, laneId) => step(track, laneId, reference: reference),
+        );
+    final next = (
+      own: folded(lanes.own, reference: false),
+      reference: folded(lanes.reference, reference: true),
+    );
+    if (next.own == null && next.reference == null) {
+      return false;
+    }
+    _commitTransformHomes(layer, next, description: description);
+    return true;
   }
 
   /// What every lane verb settles first: the row the lane range names (an
@@ -1238,20 +1397,26 @@ class LaneVerbs {
       }
       return keys;
     }
-    final track = _laneTransformTrackOf(layer);
-    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
-      final property = transformPropertyOfLaneId(laneId);
-      if (property == null) {
-        continue;
-      }
-      for (final frame in transformLaneKeyFrames(track, laneId)) {
-        final key = transformLaneKeyAt(track, property, frame);
-        if (key != null && lane.contains(frame)) {
-          keys.add((
-            laneId: laneId,
-            key: key,
-            canRove: transformLaneKeyCanRove(track, property, frame),
-          ));
+    final lanes = transformLanesByHome(_laneVerbTargetsFor(layer, targets));
+    for (final (:laneIds, :reference) in [
+      (laneIds: lanes.own, reference: false),
+      (laneIds: lanes.reference, reference: true),
+    ]) {
+      final track = _transformTrackAt(layer, reference: reference);
+      for (final laneId in laneIds) {
+        final property = transformPropertyOfLaneId(laneId);
+        if (property == null) {
+          continue;
+        }
+        for (final frame in transformLaneKeyFrames(track, laneId)) {
+          final key = transformLaneKeyAt(track, property, frame);
+          if (key != null && lane.contains(frame)) {
+            keys.add((
+              laneId: laneId,
+              key: key,
+              canRove: transformLaneKeyCanRove(track, property, frame),
+            ));
+          }
         }
       }
     }
@@ -1475,47 +1640,88 @@ class LaneVerbs {
       );
     }
 
-    final track = _laneTransformTrackOf(layer);
-    final reads = <String, ({Set<int> frames, TransformTrack? holder})>{};
-    for (final laneId in _laneVerbTargetsFor(layer, scope.targets)) {
-      final property = transformPropertyOfLaneId(laneId);
-      if (property == null) {
-        continue;
+    // Each home is its own naming space: a row's own lanes name across its
+    // 겸용 link group, a reference fx's (F-374) on that fx alone.
+    var taken = false;
+    TransformTrack? written(
+      TransformTrack track,
+      List<String> laneIds,
+      TransformTrack? Function(TransformPropertyId property, Set<int> frames)
+      holderOf,
+    ) {
+      final reads = <String, ({Set<int> frames, TransformTrack? holder})>{};
+      for (final laneId in laneIds) {
+        final property = transformPropertyOfLaneId(laneId);
+        if (property == null) {
+          continue;
+        }
+        final frames = transformLaneKeyFrames(
+          track,
+          laneId,
+        ).where(lane.contains).toSet();
+        if (frames.isEmpty) {
+          continue;
+        }
+        final holder = asked == null ? null : holderOf(property, frames);
+        if (holder != null && !adopt) {
+          taken = true;
+          return null;
+        }
+        reads[laneId] = (frames: frames, holder: holder);
       }
-      final frames = transformLaneKeyFrames(
-        track,
-        laneId,
-      ).where(lane.contains).toSet();
-      if (frames.isEmpty) {
-        continue;
-      }
-      final holder = asked == null
-          ? null
-          : _laneTransformHoldingName(
-              layer,
-              property,
-              asked,
-              excludeFrames: frames,
-            );
-      if (holder != null && !adopt) {
-        return (taken: true, edit: null);
-      }
-      reads[laneId] = (frames: frames, holder: holder);
+      return _foldedEdits(track, reads.keys, (value, laneId) {
+        final read = reads[laneId]!;
+        return transformTrackWithLaneKeysWritten(
+          value,
+          laneId: laneId,
+          frames: read.frames,
+          naming: named,
+          adoptFrom: read.holder,
+          pick: pick,
+        );
+      });
     }
-    final next = _foldedEdits(track, reads.keys, (value, laneId) {
-      final read = reads[laneId]!;
-      return transformTrackWithLaneKeysWritten(
-        value,
-        laneId: laneId,
-        frames: read.frames,
-        naming: named,
-        adoptFrom: read.holder,
-        pick: pick,
-      );
-    });
+
+    final lanes = transformLanesByHome(
+      _laneVerbTargetsFor(layer, scope.targets),
+    );
+    final own = written(
+      _laneTransformTrackOf(layer),
+      lanes.own,
+      (property, frames) => _laneTransformHoldingName(
+        layer,
+        property,
+        asked!,
+        excludeFrames: frames,
+      ),
+    );
+    final fx = _transformTrackAt(layer, reference: true);
+    final reference = taken
+        ? null
+        : written(
+            fx,
+            lanes.reference,
+            (property, frames) =>
+                transformLaneUsesName(
+                  fx,
+                  property,
+                  asked!,
+                  excludeFrames: frames,
+                )
+                ? fx
+                : null,
+          );
+    if (taken) {
+      return (taken: true, edit: null);
+    }
     return (
       taken: false,
-      edit: next == null ? null : (layer: layer, edit: _TransformEdit(next)),
+      edit: own == null && reference == null
+          ? null
+          : (
+              layer: layer,
+              edit: _TransformEdit((own: own, reference: reference)),
+            ),
     );
   }
 
@@ -1585,7 +1791,8 @@ class LaneVerbs {
   /// property into an animated one behind the user's back.
   ///
   /// [headerLaneId] names the group: the transform header resets the
-  /// transform track, an `fx-group:` header its own effect.
+  /// transform track, an `fx-group:` header its own effect, and the two
+  /// fixed groups' headers the SE row's name tag and a reference row's fx.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
     final layer = laneVerbLayerFor(layerId);
     if (layer == null || isAttachedLayer(layer)) {
@@ -1616,10 +1823,60 @@ class LaneVerbs {
       _commitLaneEffects(layer, effects, description: 'Reset group');
       return true;
     }
+    // ↩️The two fixed groups drew the button and nothing answered it
+    // (F-374, 유저 2026-10-17: 「참조fx에서 리셋버튼도 안먹힘」).
+    if (headerLaneId == seNameTagGroupLaneId) {
+      final tag = layer.kind == LayerKind.se
+          ? seNameTagWithGroupReset(
+              layer.seNameTag ?? const SeNameTag(),
+              frameIndexes: frames,
+              keyedFramesOnly: scoped,
+            )
+          : null;
+      if (tag == null) {
+        return false;
+      }
+      _commitLaneSeNameTag(layer, tag, description: 'Reset group');
+      return true;
+    }
+    if (headerLaneId == referenceGroupLaneId) {
+      return _resetReferenceGroup(layer, frames, scoped: scoped);
+    }
     // An effect's reset above needs no space and runs anywhere; the
     // transform's goes to the middle of the space the row is posed in.
     return headerLaneId == transformGroupHeaderLane.laneId &&
         _resetTransformGroup(layer, frames, scoped: scoped);
+  }
+
+  /// [layer]'s reference fx back at [frames] to where an unkeyed lane of it
+  /// stands — where its file was placed ([MediaReference.pose]), as a
+  /// transform's reset is the identity its unkeyed lanes hold (F-374-Q2).
+  bool _resetReferenceGroup(
+    Layer layer,
+    List<int> frames, {
+    required bool scoped,
+  }) {
+    final reference = layer.mediaReference;
+    if (reference == null) {
+      return false;
+    }
+    final next = transformTrackWithGroupReset(
+      reference.fx,
+      frameIndexes: frames,
+      identity: reference.pose,
+      // No anchor lane: nothing is reset to it.
+      defaultAnchorPoint: reference.pose.center,
+      keyedFramesOnly: scoped,
+    );
+    if (next == null) {
+      return false;
+    }
+    _commitTransformHomes(
+      layer,
+      (own: null, reference: next),
+      description: 'Reset group',
+    );
+    return true;
   }
 
   /// [layer]'s transform group back to its defaults at [frames]: the middle
@@ -1677,8 +1934,8 @@ class LaneVerbs {
       (laneId) => parseEffectLaneId(laneId) != null
           ? effectLaneKeyFrames(layer.effects, laneId).any(lane.contains)
           : transformLaneKeyFrames(
-              _laneTransformTrackOf(layer),
-              laneId,
+              _transformTrackAt(layer, reference: laneIsReference(laneId)),
+              _trackLaneOf(laneId),
             ).any(lane.contains),
     );
   }
@@ -1777,18 +2034,23 @@ class LaneVerbs {
     }
     // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
     // still one undo.
-    _commitLaneFold(
-      _laneTransformTrackOf(layer),
+    _commitTransformFold(
+      layer,
       _laneVerbTargetsFor(layer, scope.targets),
-      (track, laneId) => _foldedEdits(
+      (track, laneId, {required reference}) => _foldedEdits(
         track,
         frames,
         (value, frame) => transformLaneKeyFrames(value, laneId).contains(frame)
             ? null
-            : _transformTrackWithKeyToggled(layer, value, laneId, frame),
+            : _transformTrackWithKeyToggled(
+                layer,
+                value,
+                laneId,
+                frame,
+                reference: reference,
+              ),
       ),
-      commit: (track) =>
-          _commitTransformTrack(layer, track, description: 'Create keys'),
+      description: 'Create keys',
     );
   }
 }
@@ -1818,9 +2080,14 @@ T? _foldedEdits<T, I>(
 typedef _LaneEdits = ({
   SeNameTag? Function(SeNameTag tag, int frame) nameTag,
   List<LayerEffect>? Function(List<LayerEffect> effects, int frame) effects,
-  TransformTrack? Function(Layer layer, TransformTrack track, int frame)
+  // [reference]: the lane is a reference fx's (F-374), [track] that fx.
+  TransformTrack? Function(
+    Layer layer,
+    TransformTrack track,
+    int frame, {
+    required bool reference,
+  })
   transform,
-  TransformPose? Function(TransformPose pose) reference,
 });
 
 /// What the key window writes of the keys' NAMES: [name] on every key the
@@ -1854,12 +2121,7 @@ class _EffectsEdit extends _LaneEdit {
 
 class _TransformEdit extends _LaneEdit {
   const _TransformEdit(this.next);
-  final TransformTrack next;
-}
-
-class _ReferenceEdit extends _LaneEdit {
-  const _ReferenceEdit(this.next);
-  final TransformPose next;
+  final TransformHomes next;
 }
 
 /// Where a row's TRANSFORM lanes live ([LaneVerbs._transformHomeOf]).

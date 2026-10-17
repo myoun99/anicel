@@ -13,8 +13,8 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
-import '../../services/import/raster_cel_import.dart' show picturePlacement;
-import '../../services/layer_pose_matrix.dart' show placementMatrix;
+import '../../services/layer_pose_matrix.dart'
+    show picturePlacement, placementMatrix;
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
 import '../sheet_painting.dart'

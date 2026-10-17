@@ -81,6 +81,29 @@ LayerPlacement placementOf(LayerPoseSample sample, CanvasSize canvasSize) =>
       ),
     );
 
+/// Where [pose] lays a picture of [picture]'s size: its own pixels → the
+/// canvas. The picture turns and scales about its own centre — the anchor a
+/// pose of a picture has (I-68: 「변형도구랑 같은거」).
+LayerPlacement picturePlacement(TransformPose pose, CanvasSize picture) =>
+    placementOf((pose: pose, anchorPoint: null), picture);
+
+/// The move that takes a picture laid at [from] to where [to] stands it —
+/// in the canvas space its cel is drawn in: what a reference fx shows the
+/// cels by, at a frame its keys stand the file elsewhere (F-374) and while a
+/// value is in flight (I-68). Null when [from] collapsed the picture (a zero
+/// scale), which no move brings back.
+///
+/// The picture's own size cancels out of the move; [picture] only names
+/// the space the two poses share.
+LayerPlacement? pictureMoved({
+  required TransformPose from,
+  required TransformPose to,
+  required CanvasSize picture,
+}) {
+  final back = canvasToArtwork(picturePlacement(from, picture));
+  return back == null ? null : picturePlacement(to, picture).compose(back);
+}
+
 /// [rect]'s four corners where [placement] carries them — top-left,
 /// top-right, bottom-right, bottom-left: the order a box wears them.
 ///

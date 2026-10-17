@@ -3,8 +3,12 @@
 // 유지되고 출력시에도 fx 적용 해제되있어도 유지됨 … 비슷한 다른 fx도
 // 있었던것도같은데 있으면 통일」 — like the SE row's name tag: a field the
 // row has, no switch. 10-10 (chat): 「담는값은 변형도구랑 같은거 공유」 —
-// Position · Scale · Rotation in the transform lanes' own words, one value
-// with no keys, written by laying the file again where it now stands.
+// Position · Scale · Rotation in the transform lanes' own words. 10-17
+// (F-374): 「참조fx도 똑같이 fx로서 법 통일. 지금 움직여도 키
+// 안생긴다거나 그런 각종 fx관련 싹 통일. 언두도 가능하게 … 리셋버튼도
+// 안먹힘」 — keyed, undone and reset as a transform's lanes are, and the
+// file laid again where they stand it still. ↩️One value with no keys,
+// written by laying the file again where it now stood.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -12,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -21,10 +26,12 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
-import 'package:anicel/src/services/import/raster_cel_import.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show pictureMoved, picturePlacement;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_stack_map.dart';
@@ -37,6 +44,8 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_provider.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
+    show transformLaneKeyFrames;
 
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -51,12 +60,20 @@ void main() {
   tearDown(() => deleteTempQuietly(tempDir));
 
   /// A session with a red 100×60 paper placed 1:1 as a reference on the
-  /// default 2340×1654 canvas — its middle at (1170, 827).
-  Future<(EditorSessionManager, Layer)> placed(WidgetTester tester) async {
+  /// default 2340×1654 canvas — its middle at (1170, 827) — or on [canvas],
+  /// fitted to it by [fit].
+  Future<(EditorSessionManager, Layer)> placed(
+    WidgetTester tester, {
+    CanvasSize? canvas,
+    MediaFitMode fit = MediaFitMode.none,
+  }) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.playbackRig.prerenderScheduler.beginInputHold();
     await tester.runAsync(() async {
+      if (canvas != null) {
+        s.cutVerbs.resizeActiveCutCanvas(canvas);
+      }
       final red = await writeSolidPng(
         tempDir,
         'red.png',
@@ -69,7 +86,7 @@ void main() {
           path: red,
           destination: ImportDestination.activeCutLayer,
           copyIntoProject: false,
-          fit: MediaFitMode.none,
+          fit: fit,
         ),
         isTrue,
       );
@@ -81,6 +98,26 @@ void main() {
       ),
     );
   }
+
+  MediaReference referenceOf(EditorSessionManager s, Layer row) =>
+      s.layerById(row.id)!.mediaReference!;
+
+  /// [input] typed into [row]'s reference [laneId] at frame 0.
+  void typed(
+    EditorSessionManager s,
+    Layer row,
+    String laneId,
+    String input, {
+    bool scaleLinked = false,
+  }) => s.laneVerbs.setLaneValueAt(
+    row.id,
+    laneId,
+    0,
+    input,
+    frameIsGlobal: false,
+    description: 'Edit value',
+    scaleLinked: scaleLinked,
+  );
 
   List<PropertyLaneRow> lanesOf(
     EditorSessionManager s,
@@ -110,9 +147,14 @@ void main() {
           );
   }
 
-  /// Lets a lay-again read and land, then the edit's own timers.
-  Future<void> settle(WidgetTester tester, bool Function() done) async {
-    for (var tries = 0; tries < 100 && !done(); tries += 1) {
+  /// Lets a lay-again read and land — [done] asked up to [tries] times —
+  /// then the edit's own timers.
+  Future<void> settle(
+    WidgetTester tester,
+    bool Function() done, {
+    int tries = 100,
+  }) async {
+    for (var tried = 0; tried < tries && !done(); tried += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
@@ -131,7 +173,7 @@ void main() {
 
   testWidgets('🎯a row that shows a file has the group FIRST — before its '
       'effects and its transform — with no switch, its three members in '
-      'the transform\'s own words, and no keys', (tester) async {
+      'the transform\'s own words, unkeyed as it was placed', (tester) async {
     final (s, row) = await placed(tester);
 
     final collapsed = lanesOf(s, row, expanded: false);
@@ -162,8 +204,12 @@ void main() {
       '0.00°',
     ]);
     for (final lane in members) {
-      expect(lane.keyedFrames, isEmpty, reason: '「키 없는 값 하나」');
-      expect(lane.showsKeyNavigator, isFalse);
+      expect(lane.keyedFrames, isEmpty, reason: 'unkeyed as it was placed');
+      expect(
+        lane.showsKeyNavigator,
+        isTrue,
+        reason: 'a transform lane\'s navigator, as every fx\'s (F-374)',
+      );
     }
     await stopTheWarmer(tester, s);
   });
@@ -188,8 +234,8 @@ void main() {
     ),
   );
 
-  test('moving the fx of a row that is not made from its file again is left '
-      'alone — nothing read, nothing landed, nothing said', () async {
+  test('laying again the file of a row that is not made from it again is '
+      'left alone — nothing read, nothing landed, nothing said', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final gif = unsaidGif();
@@ -197,7 +243,7 @@ void main() {
     final canUndo = s.canUndo;
 
     expect(
-      await s.importDoors.reposeReference(
+      await s.importDoors.layReferenceAt(
         layerId: gif.id,
         pose: TransformPose(center: CanvasPoint(x: 5, y: 5)),
       ),
@@ -231,89 +277,163 @@ void main() {
     }
   });
 
-  testWidgets('a value typed into Position lays the file again there — its '
-      'value held on the canvas until the picture has landed — and ONE undo '
-      'puts it back', (tester) async {
+  testWidgets('🎯a value typed into Position KEYS the fx at the playhead — '
+      'written at once, nothing held on the canvas — and the file laid again '
+      'where it now stands still joins that step: ONE undo puts it all back',
+      (tester) async {
     final (s, row) = await placed(tester);
+    final before = s.layerById(row.id)!;
 
-    s.laneVerbs.setLaneValueAt(
-      row.id,
-      referencePositionLaneId,
-      0,
-      '1210, 800',
-      frameIsGlobal: false,
-      description: 'Edit Position',
-      scaleLinked: false,
-    );
-    final held = laneEditInFlight(s.dragPreview.value);
-    expect(
-      held?.row?.mediaReference?.pose.center,
-      CanvasPoint(x: 1210, y: 800),
-      reason: 'the value shows while its picture is made — not the old place',
-    );
+    typed(s, row, referencePositionLaneId, '1210, 800');
 
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.center.x == 1210,
-    );
+    final keyed = referenceOf(s, row);
     expect(
-      s.layerById(row.id)!.mediaReference!.pose.center,
-      CanvasPoint(x: 1210, y: 800),
+      transformLaneKeyFrames(keyed.fx, 'position'),
+      {0},
+      reason: '「지금 움직여도 키 안생긴다」 — a key, as a transform lane\'s '
+          'value makes',
     );
-    expect(shown(s, row), const ui.Rect.fromLTRB(1160, 770, 1260, 830));
+    expect(keyed.poseAt(0).center, CanvasPoint(x: 1210, y: 800));
+    expect(
+      keyed.pose,
+      before.mediaReference!.pose,
+      reason: 'where it was placed stays — the value an unkeyed lane holds',
+    );
     expect(
       s.dragPreview.value,
       isNull,
-      reason: 'landed: the held value goes with it',
+      reason: 'written, so there is nothing to hold meanwhile',
     );
 
+    await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
+    expect(referenceOf(s, row).laid.center, CanvasPoint(x: 1210, y: 800));
+    expect(shown(s, row), const ui.Rect.fromLTRB(1160, 770, 1260, 830));
+
     s.undo();
-    expect(
-      s.layerById(row.id)!.mediaReference!.pose.center,
-      CanvasPoint(x: 1170, y: 827),
-    );
+    expect(s.layerById(row.id), before, reason: 'the key and the laying');
     expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
     await tester.pump(const Duration(minutes: 1));
     await stopTheWarmer(tester, s);
   });
 
-  testWidgets('Scale is typed as the transform lane\'s two — linked or not '
-      '— and Rotation in degrees', (tester) async {
+  testWidgets('the key is undone at once — before its file has been laid '
+      'again — and the laying that comes after lands nothing', (
+    tester,
+  ) async {
     final (s, row) = await placed(tester);
+    final before = s.layerById(row.id)!;
 
-    s.laneVerbs.setLaneValueAt(
-      row.id,
-      referenceScaleLaneId,
-      0,
-      '200, 100%',
-      frameIsGlobal: false,
-      description: 'Edit Scale',
-      scaleLinked: true,
+    typed(s, row, referencePositionLaneId, '1210, 800');
+    s.undo();
+    expect(
+      s.layerById(row.id),
+      before,
+      reason: 'its own step from the moment it was written — 「언두도 '
+          '가능하게」',
     );
-    await settle(
-      tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.scaleX == 2,
+
+    // A laying that landed would file a step, and a new step clears redo.
+    await settle(tester, () => !s.canRedo, tries: 25);
+    expect(
+      s.canRedo,
+      isTrue,
+      reason: 'the row changed while its file was read: nothing landed',
+    );
+    expect(s.layerById(row.id), before);
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('⛔an edit filed while the file is read is NOT folded into the '
+      'move — one undo takes the laying back, and the other edit stays', (
+    tester,
+  ) async {
+    final (s, row) = await placed(tester);
+    final drawn = s.requireActiveCut.layers.firstWhere(
+      (layer) =>
+          layer.kind == LayerKind.animation && layer.mediaReference == null,
+    );
+
+    typed(s, row, referencePositionLaneId, '1210, 800');
+    // Before the file has been read: its laying lands after this.
+    s.laneVerbs.setLaneValueAt(
+      drawn.id,
+      'position',
+      0,
+      '10, 10',
+      frameIsGlobal: false,
+      description: 'Edit Position',
+      scaleLinked: false,
+    );
+    await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
+
+    s.undo();
+    expect(
+      referenceOf(s, row).laid.center,
+      CanvasPoint(x: 1170, y: 827),
+      reason: 'the laying, a step of its own',
     );
     expect(
-      s.layerById(row.id)!.mediaReference!.pose.scale,
+      transformLaneKeyFrames(s.layerById(drawn.id)!.transformTrack, 'position'),
+      {0},
+      reason: 'somebody else\'s edit is not undone with the move',
+    );
+    expect(transformLaneKeyFrames(referenceOf(s, row).fx, 'position'), {0});
+    await tester.pump(const Duration(minutes: 1));
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('Scale is typed as the transform lane\'s two — linked or not '
+      '— and Rotation in degrees, each a key at the playhead', (tester) async {
+    final (s, row) = await placed(tester);
+
+    typed(s, row, referenceScaleLaneId, '200, 100%', scaleLinked: true);
+    expect(
+      referenceOf(s, row).poseAt(0).scale,
       CanvasPoint(x: 2, y: 2),
       reason: 'the chain carries the box left as it was shown',
     );
 
-    s.laneVerbs.setLaneValueAt(
-      row.id,
-      referenceRotationLaneId,
-      0,
-      '30°',
-      frameIsGlobal: false,
-      description: 'Edit Rotation',
-      scaleLinked: false,
-    );
+    typed(s, row, referenceRotationLaneId, '30°');
+    final keyed = referenceOf(s, row);
+    expect(keyed.poseAt(0).rotationDegrees, 30);
+    expect(transformLaneKeyFrames(keyed.fx, 'scale'), {0});
+    expect(transformLaneKeyFrames(keyed.fx, 'rotation'), {0});
+
     await settle(
       tester,
-      () => s.layerById(row.id)!.mediaReference!.pose.rotationDegrees == 30,
+      () => referenceOf(s, row).laid.rotationDegrees == 30,
     );
-    expect(s.layerById(row.id)!.mediaReference!.pose.rotationDegrees, 30);
+    expect(
+      referenceOf(s, row).laid,
+      keyed.poseAt(0),
+      reason: 'laid once where both keys stand it',
+    );
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('a paper placed at twice its size reads a linked Scale '
+      'against the 200% it shows — not a layer\'s unkeyed 100%', (
+    tester,
+  ) async {
+    final (s, row) = await placed(
+      tester,
+      canvas: const CanvasSize(width: 200, height: 120),
+      fit: MediaFitMode.contain,
+    );
+    expect(
+      row.mediaReference!.pose.scale,
+      CanvasPoint(x: 2, y: 2),
+      reason: '⛔전제: contained at twice its size',
+    );
+
+    typed(s, row, referenceScaleLaneId, '300, 200%', scaleLinked: true);
+
+    expect(
+      referenceOf(s, row).poseAt(0).scale,
+      CanvasPoint(x: 3, y: 3),
+      reason: 'down was left as shown, so the chain carries it',
+    );
+    await settle(tester, () => referenceOf(s, row).laid.scaleX == 3);
     await stopTheWarmer(tester, s);
   });
 
@@ -376,7 +496,9 @@ void main() {
       scaleLinked: false,
     );
     expect(
-      laneEditInFlight(s.dragPreview.value)?.row?.mediaReference?.pose.center,
+      laneEditInFlight(
+        s.dragPreview.value,
+      )?.row?.mediaReference?.poseAt(0).center,
       CanvasPoint(x: 1300, y: 827),
     );
 
@@ -385,8 +507,119 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
+  testWidgets('🎯the ◆ on a reference lane keys it where it stands — as a '
+      'transform lane\'s does (F-374) — one undo, and again takes the key '
+      'away', (tester) async {
+    final (s, row) = await placed(tester);
+    final before = s.layerById(row.id)!;
+    void diamond() => s.laneVerbs.toggleLaneKeyAt(
+      row.id,
+      referencePositionLaneId,
+      0,
+      frameIsGlobal: false,
+      description: 'Key Position',
+    );
+
+    diamond();
+    final keyed = referenceOf(s, row);
+    expect(transformLaneKeyFrames(keyed.fx, 'position'), {0});
+    expect(
+      keyed.poseAt(0),
+      keyed.laid,
+      reason: 'keyed where it stands: nothing moves, nothing is laid again',
+    );
+    s.undo();
+    expect(s.layerById(row.id), before);
+
+    s.redo();
+    diamond();
+    expect(referenceOf(s, row).fx.isEmpty, isTrue);
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('🎯the group\'s Reset puts the fx back where its file was '
+      'PLACED — not in the middle of the canvas — and lays it there again, '
+      'one undo (「참조fx에서 리셋버튼도 안먹힘」)', (tester) async {
+    final (s, row) = await placed(tester);
+    // Grown to the right, the paper stays where it was placed: the
+    // canvas's middle is x 1470 now, the paper's 1170.
+    s.cutVerbs.resizeActiveCutCanvas(
+      const CanvasSize(width: 2940, height: 1654),
+      anchor: CanvasResizeAnchor.centerLeft,
+    );
+    typed(s, row, referencePositionLaneId, '1210, 800');
+    await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
+
+    expect(s.laneVerbs.resetLaneGroup(row.id, referenceGroupLaneId), isTrue);
+
+    expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1170, y: 827));
+    expect(
+      transformLaneKeyFrames(referenceOf(s, row).fx, 'position'),
+      {0},
+      reason: 'AE\'s reset puts the value back and deletes no key',
+    );
+    await settle(tester, () => referenceOf(s, row).laid.center.x == 1170);
+    expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+
+    s.undo();
+    expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1210, y: 800));
+    expect(
+      referenceOf(s, row).laid.center,
+      CanvasPoint(x: 1210, y: 800),
+      reason: 'the laying went with the reset it followed',
+    );
+    await tester.pump(const Duration(minutes: 1));
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('🎯a span over the row\'s own Position and its reference fx\'s '
+      'is ONE group: Create keys both, a move slides both, Delete takes '
+      'both — each one undo', (tester) async {
+    final (s, row) = await placed(tester);
+    final span = TimelineLaneSelection(
+      layerId: row.id,
+      laneId: 'position',
+      startIndex: 0,
+      endIndexExclusive: 1,
+      laneIds: const ['position', referencePositionLaneId],
+    );
+    void keysAt(Set<int> frames, String why) {
+      expect(
+        transformLaneKeyFrames(s.layerById(row.id)!.transformTrack, 'position'),
+        frames,
+        reason: 'its own Position $why',
+      );
+      expect(
+        transformLaneKeyFrames(referenceOf(s, row).fx, 'position'),
+        frames,
+        reason: 'its reference fx\'s $why',
+      );
+    }
+
+    s.laneVerbs.createLaneKeysForSelection(span);
+    keysAt({0}, 'keyed');
+    s.undo();
+    keysAt({}, 'both undone at once');
+    s.redo();
+
+    s.laneRangeSelection.value = span;
+    expect(s.laneMove.beginLaneRangeMoveDrag(), isTrue);
+    s.laneMove.updateLaneRangeMoveDrag(frameDelta: 2);
+    s.laneMove.endLaneRangeMoveDrag();
+    keysAt({2}, 'slid');
+    s.undo();
+    keysAt({0}, 'both slid back at once');
+
+    expect(s.laneVerbs.removeLaneKeysForSelection(span), isTrue);
+    keysAt({}, 'deleted');
+    s.undo();
+    keysAt({0}, 'both given back at once');
+    await stopTheWarmer(tester, s);
+  });
+
   test('a reference lane\'s row stands on the reference: a transform edit '
-      'leaves it as it was, an edit of the pose gives a new one', () {
+      'leaves it as it was, an edit of its pose or its keys gives a new one',
+      () {
     final reference = MediaReference(
       assetPath: '/paper.png',
       pose: TransformPose(center: CanvasPoint(x: 50, y: 30)),
@@ -411,6 +644,16 @@ void main() {
         pose: TransformPose(center: CanvasPoint(x: 60, y: 30)),
       ),
     );
+    final rekeyed = row.copyWith(
+      mediaReference: reference.copyWith(
+        fx: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 60, y: 30),
+          ),
+        ),
+      ),
+    );
 
     for (final laneId in referenceLaneSelectionOrder) {
       expect(
@@ -418,11 +661,16 @@ void main() {
         isTrue,
         reason: '$laneId does not rebuild for a transform key',
       );
-      expect(
-        identical(laneRowSlice(row, laneId), laneRowSlice(reposed, laneId)),
-        isFalse,
-        reason: '$laneId rebuilds for its own value',
-      );
+      for (final (edited, what) in [
+        (reposed, 'its pose'),
+        (rekeyed, 'its keys'),
+      ]) {
+        expect(
+          identical(laneRowSlice(row, laneId), laneRowSlice(edited, laneId)),
+          isFalse,
+          reason: '$laneId rebuilds for $what',
+        );
+      }
     }
   });
 
@@ -460,23 +708,35 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
-  testWidgets('the ◆ on a reference lane makes no key — it has none to make',
-      (tester) async {
-    final (s, row) = await placed(tester);
-    final before = s.layerById(row.id)!;
-    final canUndo = s.canUndo;
-
-    s.laneVerbs.toggleLaneKeyAt(
-      row.id,
-      referencePositionLaneId,
-      0,
-      frameIsGlobal: false,
-      description: 'Key Position',
+  test('an fx that moves over the cut moves the picture each frame from '
+      'where its file is laid — and has no still pose to lay it at', () {
+    final reference = MediaReference(
+      assetPath: '/paper.png',
+      pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
+      pictureSize: const CanvasSize(width: 100, height: 60),
+      fx: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 100, y: 50))
+            .withKey(10, CanvasPoint(x: 300, y: 50)),
+      ),
+    );
+    final row = Layer(
+      id: const LayerId('paper'),
+      name: 'paper',
+      frames: const [],
+      mediaReference: reference,
     );
 
-    expect(s.layerById(row.id), before);
-    expect(s.canUndo, canUndo);
-    await stopTheWarmer(tester, s);
+    expect(reference.stillPose, isNull, reason: 'two keys on a lane');
+    expect(
+      referenceMoveAt(row, 0),
+      isNull,
+      reason: 'it stands where its file is laid',
+    );
+    expect(
+      referenceMoveAt(row, 10)!.apply(CanvasPoint(x: 100, y: 50)),
+      CanvasPoint(x: 300, y: 50),
+    );
   });
 
   test('pictureMoved is the move from one pose to the other, whatever the '

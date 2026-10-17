@@ -7,6 +7,7 @@ import '../../../models/transform_track.dart';
 import '../../timeline/effect_lane_editing.dart'
     show effectLaneKeyFrames, effectsWithLaneSpanKeysShifted;
 import '../../timeline/effect_lane_policy.dart' show parseEffectLaneId;
+import '../../timeline/reference_lane_policy.dart' show transformLanesByHome;
 import '../../timeline/se_name_tag_lane_editing.dart'
     show seNameTagTrackWithLaneSpanKeysShifted;
 import '../../timeline/se_name_tag_lane_policy.dart'
@@ -66,7 +67,7 @@ class LaneRangeMoveDrag {
   final ValueNotifier<TimelineDragPreview?> _preview;
   final ValueNotifier<TimelineLaneSelection?> _selection;
 
-  TransformTrack? _shifted;
+  TransformHomes? _shifted;
   List<LayerEffect>? _shiftedEffects;
   SeNameTagTrack? _shiftedNameTag;
 
@@ -101,16 +102,20 @@ class LaneRangeMoveDrag {
     final isNameTagSelection =
         !isEffectSelection && moveTargets.any(laneIsSeNameTag);
     final nameTagKeys = subject.seNameTag?.track ?? SeNameTagTrack.empty();
-    final keyed = moveTargets.any(
-      (laneId) => isEffectSelection
-          ? effectLaneKeyFrames(subject.effects, laneId).any(selection.contains)
-          : isNameTagSelection
-          ? seNameTagLaneKeyFrames(nameTagKeys, laneId).any(selection.contains)
-          : transformLaneKeyFrames(
-              subject.transformTrack,
-              laneId,
-            ).any(selection.contains),
-    );
+    final homes = _transformHomesKeyed(subject, moveTargets, selection);
+    final keyed = isEffectSelection || isNameTagSelection
+        ? moveTargets.any(
+            (laneId) => isEffectSelection
+                ? effectLaneKeyFrames(
+                    subject.effects,
+                    laneId,
+                  ).any(selection.contains)
+                : seNameTagLaneKeyFrames(
+                    nameTagKeys,
+                    laneId,
+                  ).any(selection.contains),
+          )
+        : homes.own || homes.reference;
     if (!keyed) {
       return null;
     }
@@ -177,13 +182,7 @@ class LaneRangeMoveDrag {
       _rideSelection(frameDelta);
       return;
     }
-    final shifted = transformTrackWithLaneSpanKeysShifted(
-      _subject.transformTrack,
-      laneIds: targets,
-      rangeStartIndex: _selectionBefore.startIndex,
-      rangeEndIndexExclusive: _selectionBefore.endIndexExclusive,
-      frameDelta: frameDelta,
-    );
+    final shifted = _transformShifted(targets, frameDelta);
     final shown = shifted == null ? null : _subject.previewTransform(shifted);
     if (shown == null) {
       // Blocked landing — or one its home will not take, a camera key put
@@ -193,6 +192,35 @@ class LaneRangeMoveDrag {
     _shifted = shifted;
     _preview.value = shown;
     _rideSelection(frameDelta);
+  }
+
+  /// [targets]' ranged keys shifted by [frameDelta], each lane on the track
+  /// it lives on ([transformLanesByHome] — a reference fx's member on that
+  /// fx, F-374): ONE rigid group across the two homes, so a home whose
+  /// landing is blocked blocks the move, and a home with no key in the
+  /// span rides along. Null when blocked or when no key moves.
+  TransformHomes? _transformShifted(List<String> targets, int frameDelta) {
+    final lanes = transformLanesByHome(targets);
+    final keyed = _transformHomesKeyed(_subject, targets, _selectionBefore);
+    TransformTrack? shifted(TransformTrack? track, List<String> laneIds) =>
+        track == null
+        ? null
+        : transformTrackWithLaneSpanKeysShifted(
+            track,
+            laneIds: laneIds,
+            rangeStartIndex: _selectionBefore.startIndex,
+            rangeEndIndexExclusive: _selectionBefore.endIndexExclusive,
+            frameDelta: frameDelta,
+          );
+    final own = keyed.own ? shifted(_subject.transformTrack, lanes.own) : null;
+    final reference = keyed.reference
+        ? shifted(_subject.referenceFx, lanes.reference)
+        : null;
+    final blocked =
+        (keyed.own && own == null) || (keyed.reference && reference == null);
+    return blocked || (own == null && reference == null)
+        ? null
+        : (own: own, reference: reference);
   }
 
   /// The step's selection ride, one law for all three branches: the outline
@@ -256,4 +284,24 @@ class LaneRangeMoveDrag {
     _shiftedEffects = null;
     _shiftedNameTag = null;
   }
+}
+
+/// Whether [laneIds] hold a key [selection] covers, home by home: the row's
+/// own transform lanes, and its reference fx's (F-374).
+({bool own, bool reference}) _transformHomesKeyed(
+  LaneEditSubject subject,
+  List<String> laneIds,
+  TimelineLaneSelection selection,
+) {
+  final lanes = transformLanesByHome(laneIds);
+  bool keyedOn(TransformTrack? track, List<String> laneIds) =>
+      track != null &&
+      laneIds.any(
+        (laneId) =>
+            transformLaneKeyFrames(track, laneId).any(selection.contains),
+      );
+  return (
+    own: keyedOn(subject.transformTrack, lanes.own),
+    reference: keyedOn(subject.referenceFx, lanes.reference),
+  );
 }

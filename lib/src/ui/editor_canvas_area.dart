@@ -77,9 +77,13 @@ import 'timeline/timeline_drag_preview.dart'
 import '../models/layer.dart' show Layer;
 import '../models/layer_kind.dart';
 import '../models/reference_swap.dart' show referenceRedrawFor;
-import '../services/import/raster_cel_import.dart' show picturePlacement;
 import '../services/layer_pose_matrix.dart'
-    show LayerPlacement, canvasToArtwork, placedCorners, placementOf;
+    show
+        LayerPlacement,
+        canvasToArtwork,
+        picturePlacement,
+        placedCorners,
+        placementOf;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart'
     show
@@ -1176,10 +1180,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// A REFERENCE row's box (I-68): where the file it shows stands. The
   /// inside moves it, a corner or an edge's middle scales it, outside on
   /// stage turns it — the layer's box's grabs — and what each writes is the
-  /// row's reference fx, one value with no keys (유저 2026-10-10 「참조
-  /// 행에서 이동(변형) 도구로 끌면 참조 fx 의 값이 바뀐다」). It frames the
-  /// PICTURE — its own corners where its pose lays them, under the row's
-  /// transform and its folders, where the canvas shows it.
+  /// row's reference fx (유저 2026-10-10 「참조 행에서 이동(변형) 도구로 끌면
+  /// 참조 fx 의 값이 바뀐다」): ONE key at the playhead, as the layer's box
+  /// writes its transform's (F-374 — 「지금 움직여도 키 안생긴다거나 … 싹
+  /// 통일」). It frames the PICTURE — its own corners where the fx stands
+  /// them at the playhead, under the row's transform and its folders, where
+  /// the canvas shows it.
   Widget _referenceBox(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1188,15 +1194,27 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final session = frame.session;
     final row = _shownRow(session, frame.activeLayer!);
     final reference = row.mediaReference!;
-    final pose = reference.pose;
-    final parent = session.frameVerbs.layerCanvasPoseSample(row.id);
+    final pose = reference.poseAt(session.currentFrameIndex);
+    final parent = session.frameVerbs.layerReferenceSpace(row.id);
     final back = parent == null ? null : canvasToArtwork(parent);
     CanvasPoint toCanvas(CanvasPoint point) => parent?.apply(point) ?? point;
     CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
     final verbs = session.laneVerbs;
-    RowBoxLanding<T> landing<T>(TransformPose Function(T value) poseOf) => (
-      changed: (value) => verbs.previewReferencePose(row.id, poseOf(value)),
-      committed: (value) => verbs.editReferencePose(row.id, poseOf(value)),
+    final name = row.name;
+    RowBoxLanding<T> landing<T>(
+      TransformTrack Function(TransformTrack track, int frameIndex) Function(
+        T value,
+      )
+      editOf,
+      String description,
+    ) => (
+      changed: (value) =>
+          verbs.previewReferenceFxAtPlayhead(row.id, editOf(value)),
+      committed: (value) => verbs.editReferenceFxAtPlayhead(
+        row.id,
+        editOf(value),
+        description: description,
+      ),
     );
     final picture = reference.pictureSize;
     return RowTransformBox(
@@ -1214,16 +1232,31 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       presses: frame.boxPresses,
       onCancelled: verbs.endLaneEditPreview,
       move: landing<CanvasPoint>(
-        (dropped) => pose.copyWith(center: fromCanvas(dropped)),
+        (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
+          track,
+          frameIndex: frameIndex,
+          position: fromCanvas(dropped),
+        ),
+        'Move $name reference',
       ),
       scale: RowBoxTwoScales(
         landing<CanvasPoint>(
-          (scale) => pose.copyWith(scaleX: scale.x, scaleY: scale.y),
+          (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
+            track,
+            frameIndex: frameIndex,
+            scale: scale,
+          ),
+          'Scale $name reference',
         ),
       ),
       turnSpace: fromCanvas,
       turn: landing<double>(
-        (degrees) => pose.copyWith(rotationDegrees: degrees),
+        (degrees) => (track, frameIndex) => transformTrackWithRotationDragged(
+          track,
+          frameIndex: frameIndex,
+          rotationDegrees: degrees,
+        ),
+        'Rotate $name reference',
       ),
     );
   }

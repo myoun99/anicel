@@ -116,28 +116,6 @@ MediaReference placedReference(
   pictureSize: picture,
 );
 
-/// Where [pose] lays a picture of [picture]'s size: its own pixels → the
-/// canvas. The picture turns and scales about its own centre — the anchor a
-/// pose of a picture has (I-68: 「변형도구랑 같은거」).
-LayerPlacement picturePlacement(TransformPose pose, CanvasSize picture) =>
-    placementOf((pose: pose, anchorPoint: null), picture);
-
-/// The move that takes a picture laid at [from] to where [to] stands it —
-/// in the canvas space its cel is drawn in (I-68: what a reference fx in
-/// flight shows the cels by, before they are laid again). Null when [from]
-/// collapsed the picture (a zero scale), which no move brings back.
-///
-/// The picture's own size cancels out of the move; [picture] only names
-/// the space the two poses share.
-LayerPlacement? pictureMoved({
-  required TransformPose from,
-  required TransformPose to,
-  required CanvasSize picture,
-}) {
-  final back = canvasToArtwork(picturePlacement(from, picture));
-  return back == null ? null : picturePlacement(to, picture).compose(back);
-}
-
 /// Where [fit] lays [image] on [canvas] ([fitPose] as a placement).
 LayerPlacement fitPlacement(
   ui.Image image,

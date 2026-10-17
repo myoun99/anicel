@@ -65,6 +65,21 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v21 (2026-10-17, F-374 — 유저 「참조fx도 똑같이 fx로서 법 통일 …
+/// 움직여도 키 안생긴다거나」): a reference row's reference fx holds KEYS —
+/// `fx` on its reference (`MediaReference.toJson`), a transform track of
+/// position, scale and turn — and where its file's pixels are laid is said
+/// apart from where it was placed (`laid` beside `pose`) once the two part.
+/// A v20 build reads neither: it opens the row standing still where its
+/// pixels were laid, and its next save writes the reference back without
+/// its keys. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a reference with no keys, laid where
+/// it was placed, says neither at THIS version too, so a v20 file is such a
+/// document.
+///
 /// v20 (2026-10-16, vanishing-point-types — 유저 09-17 「소실점 몇개든
 /// 추가할수있게」, Q4 「가이드마다 막대 하나」): a perspective guide holds
 /// any number of vanishing points, and says how densely they draw
@@ -316,7 +331,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 20;
+const int anicelFormatVersion = 21;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

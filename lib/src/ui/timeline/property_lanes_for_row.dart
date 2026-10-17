@@ -232,6 +232,14 @@ List<PropertyLaneRow> propertyLanesForRow({
             expanded: expandedGroupKeys.contains(
               laneGroupKey(layer.id, referenceGroupLaneId),
             ),
+            poseAt: source == null
+                ? null
+                : (time) {
+                    final at = _sourceAtTime(source, time);
+                    return (at.layer.mediaReference ?? reference).poseAtTime(
+                      at.time,
+                    );
+                  },
           ),
         ...layerEffectLanes(),
         ...collapsibleTransformGroup(layerTransformLanes()),

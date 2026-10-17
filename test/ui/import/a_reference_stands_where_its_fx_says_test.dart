@@ -6,10 +6,11 @@
 //
 // The pose a placement starts a file's picture at is the reference's own:
 // the canvas growing afterwards moves it with the drawings, a file swapped
-// in stands at it over ITS pixels, moving it lays the file again — and a
-// movie, decoded as it is shown, stands there too. 10-10 「가」: a GIF's
-// frames and a PDF's pages are laid again the same way, each cel from the
-// picture of the file it says it is.
+// in stands at it over ITS pixels, the file laid again draws its cels where
+// it is laid (F-374: where the fx stands still) — and a movie, decoded as it
+// is shown, stands there too. 10-10 「가」: a GIF's frames and a PDF's pages
+// are laid again the same way, each cel from the picture of the file it says
+// it is.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -30,6 +31,8 @@ import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/raster_cel_import.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show picturePlacement;
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -285,10 +288,12 @@ void main() {
       );
     });
 
-    testWidgets('moving the reference fx lays the file again where it now '
-        'stands — and ONE undo puts both back', (tester) async {
+    testWidgets('the file laid again at another pose draws its cel there — '
+        'the fx left where it stands — and ONE undo puts both back',
+        (tester) async {
       final (s, row) = await placed(tester);
-      final moved = rowOf(s, row).mediaReference!.pose.copyWith(
+      final placedAt = TransformPose(center: CanvasPoint(x: 1170, y: 827));
+      final moved = placedAt.copyWith(
         center: CanvasPoint(x: 1210, y: 827),
         scaleX: 2,
         scaleY: 2,
@@ -296,18 +301,21 @@ void main() {
 
       expect(
         await tester.runAsync(
-          () => s.importDoors.reposeReference(layerId: row.id, pose: moved),
+          () => s.importDoors.layReferenceAt(layerId: row.id, pose: moved),
         ),
         isA<ReferenceLaid>(),
       );
-      expect(rowOf(s, row).mediaReference!.pose, moved);
+      expect(rowOf(s, row).mediaReference!.laid, moved);
+      expect(
+        rowOf(s, row).mediaReference!.pose,
+        placedAt,
+        reason: 'where the fx stands is its keys\' to say, not the door\'s '
+            '(F-374)',
+      );
       expect(shown(s, row), const ui.Rect.fromLTRB(1110, 767, 1310, 887));
 
       s.undo();
-      expect(
-        rowOf(s, row).mediaReference!.pose,
-        TransformPose(center: CanvasPoint(x: 1170, y: 827)),
-      );
+      expect(rowOf(s, row).mediaReference!.laid, placedAt);
       expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
       // The undo's own settling timers, run out on the test's clock — and
       // the warmer they woke stopped after them.
@@ -315,7 +323,7 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('the pose it already stands at changes nothing', (
+    testWidgets('the pose it is already laid at changes nothing', (
       tester,
     ) async {
       final (s, row) = await placed(tester);
@@ -323,9 +331,9 @@ void main() {
 
       expect(
         await tester.runAsync(
-          () => s.importDoors.reposeReference(
+          () => s.importDoors.layReferenceAt(
             layerId: row.id,
-            pose: rowOf(s, row).mediaReference!.pose,
+            pose: rowOf(s, row).mediaReference!.laid,
           ),
         ),
         isA<ReferenceLeftAlone>(),
@@ -441,18 +449,32 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('moving its reference fx decodes it again where it stands',
-        (tester) async {
+    /// [row]'s reference fx keyed where [position] is typed into its
+    /// Position lane — on the real clock, as a canvas edit is above.
+    Future<void> typed(
+      WidgetTester tester,
+      EditorSessionManager s,
+      Layer row,
+      String position,
+    ) => tester.runAsync(
+      () async => s.laneVerbs.setLaneValueAt(
+        row.id,
+        referencePositionLaneId,
+        0,
+        position,
+        frameIsGlobal: false,
+        description: 'Edit Position',
+        scaleLinked: false,
+      ),
+    );
+
+    testWidgets('its reference fx standing still somewhere else decodes it '
+        'again where it stands', (tester) async {
       final (s, row, fake) = await placed(tester);
       await shownAt(tester, s, row);
       final asked = fake.asked.length;
 
-      await tester.runAsync(
-        () => s.importDoors.reposeReference(
-          layerId: row.id,
-          pose: TransformPose(center: CanvasPoint(x: 200, y: 100)),
-        ),
-      );
+      await typed(tester, s, row, '200, 100');
 
       expect(
         await shownAt(tester, s, row),
@@ -505,12 +527,7 @@ void main() {
     testWidgets('rasterizing bakes the frames where the reference stands',
         (tester) async {
       final (s, row, _) = await placed(tester);
-      await tester.runAsync(
-        () => s.importDoors.reposeReference(
-          layerId: row.id,
-          pose: TransformPose(center: CanvasPoint(x: 200, y: 100)),
-        ),
-      );
+      await typed(tester, s, row, '200, 100');
 
       await tester.runAsync(
         () => s.importDoors.rasterizeMovieReference(
@@ -579,13 +596,14 @@ void main() {
       return (s, row);
     }
 
-    /// [row]'s reference fx moved to 1:1 in the canvas's middle.
+    /// [row]'s file laid again 1:1 in the canvas's middle — where its fx,
+    /// moved there, stands it still.
     Future<ReferenceRedraw?> moved(
       WidgetTester tester,
       EditorSessionManager s,
       Layer row,
     ) => tester.runAsync(
-      () => s.importDoors.reposeReference(
+      () => s.importDoors.layReferenceAt(
         layerId: row.id,
         pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
       ),
@@ -622,7 +640,7 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('🎯moving the fx renders EACH page again from its own page '
+    testWidgets('🎯laying the file again renders EACH page from its own page '
         'of the file — counted from the span\'s IN, not from the row\'s '
         'first cel — each at its own size, and lets each render go once '
         'laid', (tester) async {
@@ -661,13 +679,13 @@ void main() {
         pdf.renders.where((image) => !image.debugDisposed),
         isEmpty,
         reason: 'a page rendered for the laying is let go of once laid — the '
-            'placing\'s and the move\'s alike',
+            'placing\'s and the laying\'s alike',
       );
       await stopTheWarmer(tester, s);
     });
 
     testWidgets('one page kept from the middle is a still that says WHICH '
-        'page it is — and the fx lays that page again', (tester) async {
+        'page it is — and that page is the one laid again', (tester) async {
       final pdf = FakePdfDocument(
         pageSizes: const [ui.Size(100, 50), ui.Size(100, 50), ui.Size(100, 50)],
       );
@@ -686,7 +704,7 @@ void main() {
     });
 
     testWidgets('a page the renderer gives up on is a file that does not '
-        'read — the move lands nothing', (tester) async {
+        'read — the laying lands nothing', (tester) async {
       // The placing let go of the document; the same one, asked again,
       // cancels every page it is asked for — pdfrx's way.
       final (s, row) = await placed(
@@ -706,7 +724,7 @@ void main() {
     });
 
     testWidgets('a document that has since lost the page a cel shows is not '
-        'laid again — the move lands nothing, and every cel keeps what it '
+        'laid again — the laying lands nothing, and every cel keeps what it '
         'showed', (tester) async {
       final (s, row) = await placed(
         tester,
@@ -806,14 +824,14 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('🎯moving the reference fx lays EACH cel again from its own '
+    testWidgets('🎯laying the file again lays EACH cel from its own '
         'picture of the file — the white one white, the black one black — '
         'not every cel from the first', (tester) async {
       final (s, row) = await placed(tester);
 
       expect(
         await tester.runAsync(
-          () => s.importDoors.reposeReference(
+          () => s.importDoors.layReferenceAt(
             layerId: row.id,
             pose: TransformPose.uniform(
               center: CanvasPoint(x: 50, y: 50),
@@ -838,7 +856,7 @@ void main() {
       expect(row.frames.single.filePicture, 1);
 
       await tester.runAsync(
-        () => s.importDoors.reposeReference(
+        () => s.importDoors.layReferenceAt(
           layerId: row.id,
           pose: TransformPose.uniform(
             center: CanvasPoint(x: 50, y: 50),
@@ -854,7 +872,7 @@ void main() {
     });
 
     // ⓐ (유저 2026-10-10 「추천대로가자」): a swap keeps the picture's number
-    // as a move does — the file is all that changes.
+    // as laying it again does — the file is all that changes.
     testWidgets('🎯a still that is one frame takes the SAME frame of a file '
         'swapped in — another GIF\'s 2nd, not its 1st — and a file with no '
         'such frame is not taken: the answer names the one it lacks',
@@ -902,7 +920,7 @@ void main() {
     });
 
     testWidgets('a file that has since lost the picture a cel shows is not '
-        'laid again — the move lands nothing, and every cel keeps what it '
+        'laid again — the laying lands nothing, and every cel keeps what it '
         'showed', (tester) async {
       final (s, row) = await placed(tester);
       final canUndo = s.canUndo;
@@ -919,7 +937,7 @@ void main() {
 
       expect(
         await tester.runAsync(
-          () => s.importDoors.reposeReference(
+          () => s.importDoors.layReferenceAt(
             layerId: row.id,
             pose: TransformPose.uniform(
               center: CanvasPoint(x: 50, y: 50),

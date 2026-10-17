@@ -251,6 +251,71 @@ SeNameTag? seNameTagWithLaneValueEdited(
   return null;
 }
 
+/// AE's group Reset for the NAME TAG header — the rule an effect header's
+/// takes (`effectsWithGroupReset`): **키를 삭제하진 않고 값만 리셋**. A member
+/// with no keys puts its static slot back to the look a new tag has; a
+/// keyed one takes that value at [frameIndexes] — at every one at the
+/// playhead, on the keys a lane range covers alone ([keyedFramesOnly]).
+/// ↩️The header drew the reset button and nothing answered it (F-374).
+///
+/// Null when nothing changed.
+SeNameTag? seNameTagWithGroupReset(
+  SeNameTag tag, {
+  required Iterable<int> frameIndexes,
+  bool keyedFramesOnly = false,
+}) {
+  final frames = frameIndexes.where((frame) => frame >= 0).toSet();
+  if (frames.isEmpty) {
+    return null;
+  }
+  const fresh = SeNameTag();
+  final keys = tag.track ?? SeNameTagTrack.empty();
+  PropertyTrack<T> keyed<T>(PropertyTrack<T> lane, T value, {KeyExit? out}) {
+    var track = lane;
+    for (final frame in frames) {
+      if (lane.isNotEmpty && (!keyedFramesOnly || lane.keyAt(frame) != null)) {
+        track = track.withKey(frame, value, outgoing: out);
+      }
+    }
+    return track;
+  }
+
+  final ink = fresh.style.backgroundColor;
+  final next = tag.copyWith(
+    style: tag.style.copyWith(
+      fontSize: keys.fontSize.isEmpty ? fresh.style.fontSize : null,
+      letterSpacing: keys.letterSpacing.isEmpty
+          ? fresh.style.letterSpacing
+          : null,
+      bold: keys.bold.isEmpty ? fresh.style.bold : null,
+      color: keys.nameInk.isEmpty ? fresh.style.color : null,
+      backgroundColor: keys.boxColor.isEmpty ? ink : tag.style.backgroundColor,
+    ),
+    lineStyle: tag.lineStyle.copyWith(
+      fontSize: keys.fontSize.isEmpty ? fresh.lineStyle.fontSize : null,
+      letterSpacing: keys.letterSpacing.isEmpty
+          ? fresh.lineStyle.letterSpacing
+          : null,
+      bold: keys.bold.isEmpty ? fresh.lineStyle.bold : null,
+      color: keys.lineInk.isEmpty ? fresh.lineStyle.color : null,
+    ),
+    showLine: keys.showLine.isEmpty ? fresh.showLine : null,
+    track: tag.track == null
+        ? null
+        : keys.copyWith(
+            fontSize: keyed(keys.fontSize, fresh.style.fontSize),
+            letterSpacing: keyed(keys.letterSpacing, fresh.style.letterSpacing),
+            // Booleans hold by nature, as the toggle keys them.
+            bold: keyed(keys.bold, fresh.style.bold, out: KeyExit.hold),
+            nameInk: keyed(keys.nameInk, fresh.style.color),
+            boxColor: ink == null ? null : keyed(keys.boxColor, ink),
+            lineInk: keyed(keys.lineInk, fresh.lineStyle.color),
+            showLine: keyed(keys.showLine, fresh.showLine, out: KeyExit.hold),
+          ),
+  );
+  return next == tag ? null : next;
+}
+
 /// `#RRGGBB` / `RRGGBB` / `#AARRGGBB` → an opaque ARGB int. Null when the
 /// text is not a colour.
 int? parseArgbInput(String input) {

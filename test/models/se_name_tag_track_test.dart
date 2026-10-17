@@ -221,5 +221,62 @@ void main() {
       expect(laneIsSeNameTag(seNameTagGroupLaneId), isTrue);
       expect(laneIsSeNameTag(seNameTagSizeLaneId), isTrue);
     });
+
+    test('🎯the group\'s Reset puts an UNKEYED member back to a new tag\'s '
+        'look in its static slot — and keys none (F-374)', () {
+      final edited = seNameTagWithLaneValueEdited(
+        const SeNameTag(),
+        laneId: seNameTagSizeLaneId,
+        frameIndex: 0,
+        input: '48',
+      )!;
+
+      final reset = seNameTagWithGroupReset(edited, frameIndexes: const [3])!;
+
+      expect(reset.style.fontSize, SeNameTag.defaultStyle.fontSize);
+      expect(reset.lineStyle.fontSize, SeNameTag.defaultLineStyle.fontSize);
+      expect(reset.track, isNull, reason: 'no key was authored');
+    });
+
+    test('a KEYED member takes the default AT the playhead, keeping its '
+        'keys — and on a span, only the keys the span covers', () {
+      final tag = SeNameTag(
+        track: SeNameTagTrack(
+          nameInk: keyed({0: 0xFF000000, 10: 0xFF00FF00}),
+        ),
+      );
+      final ink = SeNameTag.defaultStyle.color;
+
+      final atPlayhead = seNameTagWithGroupReset(
+        tag,
+        frameIndexes: const [5],
+      )!;
+      expect(atPlayhead.track!.nameInk.keyAt(5)!.value, ink);
+      expect(
+        atPlayhead.track!.nameInk.keyAt(0)!.value,
+        0xFF000000,
+        reason: 'no key deleted',
+      );
+
+      final spanned = seNameTagWithGroupReset(
+        tag,
+        frameIndexes: const [0, 1, 2, 3, 4, 5],
+        keyedFramesOnly: true,
+      )!;
+      expect(spanned.track!.nameInk.keyAt(0)!.value, ink);
+      expect(
+        spanned.track!.nameInk.keyAt(5),
+        isNull,
+        reason: 'a span resets the keys it covers and authors none',
+      );
+    });
+
+    test('a tag that already looks as a new one does is not reset — no '
+        'step', () {
+      expect(
+        seNameTagWithGroupReset(const SeNameTag(), frameIndexes: const [0]),
+        isNull,
+      );
+    });
   });
 }

@@ -95,6 +95,12 @@ class FrameVerbs {
   LayerPlacement? layerParentPlacement(LayerId layerId) =>
       _atThePlayhead(layerId, layerParentPlacementAt);
 
+  /// Where [layerId]'s REFERENCE FX stands its file's picture from at the
+  /// playhead ([layerReferenceSpaceAt]) — the space the reference's box
+  /// frames the fx's values in (F-374). Null = the canvas itself.
+  LayerPlacement? layerReferenceSpace(LayerId layerId) =>
+      _atThePlayhead(layerId, layerReferenceSpaceAt);
+
   /// [placement] asked of [layerId]'s row in the open cut at the playhead —
   /// null with no cut open or no such row.
   ///

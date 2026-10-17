@@ -7,7 +7,7 @@ import 'package:flutter/rendering.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
 import '../../models/layer_blend_mode.dart';
-import '../../services/import/raster_cel_import.dart' show picturePlacement;
+import '../../services/layer_pose_matrix.dart' show picturePlacement;
 import '../canvas/display_resample.dart'
     show displayScaleOf, filterQualityForDisplayScale;
 import '../canvas/layer_image_draw.dart' show drawPosedLayerImage;

@@ -1,7 +1,7 @@
 import 'canvas_point.dart';
 import 'canvas_size.dart';
 import 'media_asset.dart' show normalizedMediaPath;
-import 'transform_pose.dart';
+import 'transform_track.dart';
 
 /// A layer's link to an EXTERNAL media source (§6-z23, the two-axis
 /// model): the layer KIND says what the row is (image vs animation), and
@@ -41,56 +41,94 @@ import 'transform_pose.dart';
 /// [pictureSize] is the size of the picture the row shows, in its own
 /// pixels — what [pose] stands on (원본값), and what a box around it is
 /// drawn from.
+///
+/// [fx] is the reference fx's KEYS — position, scale and turn keyed the
+/// way a transform's are, over the same values. ↩️It held none: 「키 없는
+/// 값 하나」 (I-68 상담 ③ 「가」, 2026-10-10). 🗣️유저 2026-10-17 (F-374):
+/// 「참조fx도 똑같이 fx로서 법 통일. 지금 움직여도 키 안생긴다거나 그런 각종
+/// fx관련 싹 통일」. Unkeyed, a lane stands at [pose] — the value no edit
+/// moves, as a transform's unkeyed lane stands at its identity — and keyed,
+/// it stands where its keys say at each frame ([poseAt]). A sheet's photo
+/// has no frames, so it never keys one.
+///
+/// [laid] is where the file's pixels are LAID on the row's cels — the
+/// canvas moves them from there to [poseAt]. It is [pose] until the fx
+/// stands still somewhere else ([stillPose]) and the file is laid there
+/// again, so a picture that does not move is drawn from its file where it
+/// stands. ⛔Not [pose] itself: laying the file again moved it, so deleting
+/// the keys left the reference where they had been, while a transform's go
+/// back to its identity.
 class MediaReference {
   MediaReference({
     required String assetPath,
     this.frameOffset = 0,
     required this.pose,
     required this.pictureSize,
-  }) : assetPath = normalizedMediaPath(assetPath);
+    TransformTrack? fx,
+    TransformPose? laid,
+  }) : assetPath = normalizedMediaPath(assetPath),
+       fx = fx ?? TransformTrack.empty(),
+       _laid = laid == pose ? null : laid;
 
   /// In the pool's one spelling ([normalizedMediaPath]).
   final String assetPath;
   final int frameOffset;
   final TransformPose pose;
   final CanvasSize pictureSize;
+  final TransformTrack fx;
+
+  /// Null while the pixels are laid at [pose] — so a [copyWith] that moves
+  /// [pose] alone (a sheet photo dragged) moves them with it.
+  final TransformPose? _laid;
+  TransformPose get laid => _laid ?? pose;
+
+  /// Where the reference fx stands the file's picture at [frameIndex].
+  TransformPose poseAt(int frameIndex) => poseAtTime(frameIndex.toDouble());
+
+  /// [poseAt] between frames too — a header graph's curve (I-89 ③).
+  TransformPose poseAtTime(double time) =>
+      fx.resolveAtTime(time: time, orElse: () => pose);
+
+  /// Where [fx] stands the picture on EVERY frame — null while it moves
+  /// over the cut: a lane holds two keys or more.
+  TransformPose? get stillPose =>
+      fx.lanes.every((lane) => lane.keys.length < 2) ? poseAt(0) : null;
 
   MediaReference copyWith({
     String? assetPath,
     int? frameOffset,
     TransformPose? pose,
     CanvasSize? pictureSize,
+    TransformTrack? fx,
+    TransformPose? laid,
   }) => MediaReference(
     assetPath: assetPath ?? this.assetPath,
     frameOffset: frameOffset ?? this.frameOffset,
     pose: pose ?? this.pose,
     pictureSize: pictureSize ?? this.pictureSize,
+    fx: fx ?? this.fx,
+    laid: laid ?? _laid,
   );
 
   Map<String, dynamic> toJson() => {
     'path': assetPath,
     if (frameOffset != 0) 'offset': frameOffset,
-    'pose': {
-      'center': pose.center.toJson(),
-      'scale': pose.scale.toJson(),
-      if (pose.rotationDegrees != 0) 'rotation': pose.rotationDegrees,
-    },
+    'pose': _poseToJson(pose),
     'size': pictureSize.toJson(),
+    if (fx.isNotEmpty) 'fx': fx.toJson(),
+    if (_laid case final laid?) 'laid': _poseToJson(laid),
   };
 
   factory MediaReference.fromJson(Map<String, dynamic> json) {
-    final pose = json['pose'] as Map<String, dynamic>;
-    final scale = CanvasPoint.fromJson(pose['scale'] as Map<String, dynamic>);
+    final fx = json['fx'] as Map<String, dynamic>?;
+    final laid = json['laid'] as Map<String, dynamic>?;
     return MediaReference(
       assetPath: json['path'] as String,
       frameOffset: (json['offset'] as int?) ?? 0,
-      pose: TransformPose(
-        center: CanvasPoint.fromJson(pose['center'] as Map<String, dynamic>),
-        scaleX: scale.x,
-        scaleY: scale.y,
-        rotationDegrees: (pose['rotation'] as num?)?.toDouble() ?? 0,
-      ),
+      pose: _poseFromJson(json['pose'] as Map<String, dynamic>),
       pictureSize: CanvasSize.fromJson(json['size'] as Map<String, dynamic>),
+      fx: fx == null ? null : TransformTrack.fromJson(fx),
+      laid: laid == null ? null : _poseFromJson(laid),
     );
   }
 
@@ -100,13 +138,33 @@ class MediaReference {
       other.assetPath == assetPath &&
       other.frameOffset == frameOffset &&
       other.pose == pose &&
-      other.pictureSize == pictureSize;
+      other.pictureSize == pictureSize &&
+      other.fx == fx &&
+      other.laid == laid;
 
   @override
-  int get hashCode => Object.hash(assetPath, frameOffset, pose, pictureSize);
+  int get hashCode =>
+      Object.hash(assetPath, frameOffset, pose, pictureSize, fx, laid);
 
   @override
   String toString() =>
       'MediaReference($assetPath, offset: $frameOffset, pose: $pose, '
-      'size: ${pictureSize.width}x${pictureSize.height})';
+      'size: ${pictureSize.width}x${pictureSize.height}, fx: $fx, '
+      'laid: $laid)';
+}
+
+Map<String, dynamic> _poseToJson(TransformPose pose) => {
+  'center': pose.center.toJson(),
+  'scale': pose.scale.toJson(),
+  if (pose.rotationDegrees != 0) 'rotation': pose.rotationDegrees,
+};
+
+TransformPose _poseFromJson(Map<String, dynamic> json) {
+  final scale = CanvasPoint.fromJson(json['scale'] as Map<String, dynamic>);
+  return TransformPose(
+    center: CanvasPoint.fromJson(json['center'] as Map<String, dynamic>),
+    scaleX: scale.x,
+    scaleY: scale.y,
+    rotationDegrees: (json['rotation'] as num?)?.toDouble() ?? 0,
+  );
 }

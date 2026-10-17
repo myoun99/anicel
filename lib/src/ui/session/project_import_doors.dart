@@ -32,7 +32,8 @@ import '../../models/transform_pose.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/commands/swap_layer_reference_command.dart';
 import '../../services/guide_geometry.dart' show GuideTransform;
-import '../../services/layer_pose_matrix.dart' show LayerPlacement;
+import '../../services/layer_pose_matrix.dart'
+    show LayerPlacement, picturePlacement;
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
@@ -128,10 +129,11 @@ typedef _Standing =
 _Standing _atTheFit(MediaFitMode fit) =>
     (picture, canvas) => fitPose(picture: picture, canvas: canvas, fit: fit);
 
-/// Every picture at [reference]'s pose when the row SHOWS a file (I-68),
-/// over each picture's own pixels; each at its own [fit] when it bakes.
+/// Every picture where [reference] lays its file ([MediaReference.laid])
+/// when the row SHOWS a file (I-68), over each picture's own pixels; each
+/// at its own [fit] when it bakes.
 _Standing _standingFor(MediaReference? reference, MediaFitMode fit) =>
-    reference == null ? _atTheFit(fit) : (_, _) => reference.pose;
+    reference == null ? _atTheFit(fit) : (_, _) => reference.laid;
 
 /// The image / PSD / PDF / sound import doors.
 class ProjectImportDoors {
@@ -1089,24 +1091,27 @@ class ProjectImportDoors {
     );
   }
 
-  /// I-68: [layerId]'s reference fx — where its file's picture stands —
-  /// becomes [pose], as ONE undo step: a still's picture is baked anew from
-  /// its file at the pose, and a movie's frames are decoded at it as they
-  /// are shown — or why not. [ReferenceLeftAlone] for a row whose pictures
-  /// are not drawn from its file again ([referenceRedrawFor]), the pose it
-  /// already stands at, or a row that changed while it was being read.
-  Future<ReferenceRedraw> reposeReference({
+  /// I-68: [layerId]'s file LAID again at [pose] ([MediaReference.laid]),
+  /// as ONE undo step: a still's picture is baked anew from its file at the
+  /// pose, and a movie's frames are decoded at it as they are shown — or
+  /// why not. [ReferenceLeftAlone] for a row whose pictures are not drawn
+  /// from its file again ([referenceRedrawFor]), the pose they are already
+  /// laid at, or a row that changed while it was being read.
+  ///
+  /// ↩️It moved the reference fx itself, which held one value (F-374): the
+  /// fx is keyed now, and where its file is laid is this door's alone.
+  Future<ReferenceRedraw> layReferenceAt({
     required LayerId layerId,
     required TransformPose pose,
   }) async {
     final layer = _project.layerById(layerId);
     final reference = layer?.mediaReference;
-    if (layer == null || reference == null || reference.pose == pose) {
+    if (layer == null || reference == null || reference.laid == pose) {
       return const ReferenceLeftAlone();
     }
     return _drawAgain(
       layer,
-      reference.copyWith(pose: pose),
+      reference.copyWith(laid: pose),
       description: 'Move ${layer.name} reference',
     );
   }
@@ -1179,10 +1184,11 @@ class ProjectImportDoors {
 
   /// [reference]'s file as the pictures [layer]'s cels show — each cel the
   /// picture of the file it says it is ([Frame.filePicture]: a still's one,
-  /// a GIF's frame, a PDF's page), laid at the reference's pose on a
-  /// [canvas]-sized cel — and the reference saying the size of its first
-  /// cel's picture as the file reads now. Or why not: the file does not
-  /// read, or lacks a picture a cel shows — the first, in the cels' order.
+  /// a GIF's frame, a PDF's page), laid where the reference lays them
+  /// ([MediaReference.laid]) on a [canvas]-sized cel — and the reference
+  /// saying the size of its first cel's picture as the file reads now. Or
+  /// why not: the file does not read, or lacks a picture a cel shows — the
+  /// first, in the cels' order.
   ///
   /// 🗣️I-68 (유저 2026-10-10 「가」): every row that shows a file is laid
   /// again by one law — the cel's own picture, at the row's reference fx.
@@ -1207,7 +1213,7 @@ class ProjectImportDoors {
       made = await _picturesMade(
         wanted,
         file.at,
-        pose: reference.pose,
+        pose: reference.laid,
         canvas: canvas,
       );
     } on Object {
@@ -1250,7 +1256,7 @@ class ProjectImportDoors {
                 document,
                 index,
                 _pageSizeOf(document, index),
-                reference.pose,
+                reference.laid,
               ),
               close: document.dispose,
             );
@@ -1389,10 +1395,10 @@ class ProjectImportDoors {
       // The planned layer was only a shape to fold by: the cels are THIS
       // row's, under its own id.
       rowId: layer.id,
-      // Where the reference's pictures stood, so the cels land exactly
+      // Where the reference lays its pictures, so the cels land exactly
       // there (I-68). ↩️It read the pool's fit for the file — the fit the
       // row was placed with — and fitted each frame to the canvas again.
-      standing: (_, _) => reference.pose,
+      standing: (_, _) => reference.laid,
       onProgress: onRenderProgress,
       // One frame the reader refuses leaves its cel empty and is reported
       // — never an abort into a half-rasterized row.

@@ -82,6 +82,7 @@ import 'update_track_effects_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
+import 'update_layer_reference_fx_command.dart';
 import 'update_layer_timeline_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
@@ -978,6 +979,32 @@ class CutCommandCoordinator {
         repository: repository,
         layerId: layerId,
         seNameTag: seNameTag,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces a reference row's REFERENCE FX keys (F-374); one undo step,
+  /// no-op when unchanged. Where the file's pixels are laid is left as it
+  /// is.
+  void updateLayerReferenceFx({
+    required LayerId layerId,
+    required TransformTrack fx,
+    String description = 'Edit layer reference',
+  }) {
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
+    final reference = layer.mediaReference;
+    if (reference == null) {
+      throw StateError('A reference fx belongs on a row that shows a file.');
+    }
+    if (reference.fx == fx) {
+      return;
+    }
+    historyManager.execute(
+      UpdateLayerReferenceFxCommand(
+        repository: repository,
+        layerId: layerId,
+        fx: fx,
         description: description,
       ),
     );

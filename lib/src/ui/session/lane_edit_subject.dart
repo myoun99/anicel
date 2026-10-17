@@ -29,6 +29,7 @@ class LaneEditSubject {
     required this.commitEffects,
     required this.previewTransform,
     required this.previewEffects,
+    this.referenceFx,
     this.seNameTag,
     this.commitSeNameTag,
     this.previewSeNameTag,
@@ -41,12 +42,18 @@ class LaneEditSubject {
   final TransformTrack transformTrack;
   final List<LayerEffect> effects;
 
+  /// A reference row's REFERENCE FX keys (F-374) — the transform lanes'
+  /// other home: a `reference:` lane is the transform lane it holds there.
+  /// Null on a row that shows no file.
+  final TransformTrack? referenceFx;
+
   /// The row's name tag (C①). Null on rows that cannot carry one — the
   /// name-tag arm is only armed where a tag can exist, because the commit
   /// verb throws for non-SE layers.
   final SeNameTag? seNameTag;
 
-  final void Function(TransformTrack next, String description)
+  /// The transform lanes go back home by home, in ONE step.
+  final void Function(TransformHomes next, String description)
   commitTransform;
   final void Function(List<LayerEffect> next, String description)
   commitEffects;
@@ -54,7 +61,12 @@ class LaneEditSubject {
 
   /// What an edit in flight shows as — null where it shows nothing (a V
   /// row's carrier has no transform to show).
-  final TimelineDragPreview? Function(TransformTrack next) previewTransform;
+  final TimelineDragPreview? Function(TransformHomes next) previewTransform;
   final TimelineDragPreview Function(List<LayerEffect> next) previewEffects;
   final TimelineDragPreview Function(SeNameTag next)? previewSeNameTag;
 }
+
+/// What an edit leaves a row's TRANSFORM keys at, home by home: its own
+/// lanes' track, and a reference row's fx (F-374) — null for a home the
+/// edit leaves alone.
+typedef TransformHomes = ({TransformTrack? own, TransformTrack? reference});

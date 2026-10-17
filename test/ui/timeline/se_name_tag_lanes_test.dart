@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -156,5 +157,35 @@ void main() {
       ).where((lane) => laneIsSeNameTag(lane.laneId)),
       isEmpty,
     );
+  });
+
+  test('🎯the header\'s Reset answers — a typed size back to a new tag\'s, '
+      'one undo (F-374: 「참조fx에서 리셋버튼도 안먹힘」, and so here)', () {
+    final s = session();
+    addTearDown(s.dispose);
+    double? size() => s.layers
+        .firstWhere((layer) => layer.id == seLayerId)
+        .seNameTag
+        ?.style
+        .fontSize;
+    s.laneVerbs.setLaneValueAt(
+      seLayerId,
+      seNameTagSizeLaneId,
+      0,
+      '48',
+      frameIsGlobal: false,
+      description: 'Edit Size',
+      scaleLinked: false,
+    );
+    expect(size(), 48, reason: '⛔전제: the size was typed');
+
+    expect(
+      s.laneVerbs.resetLaneGroup(seLayerId, seNameTagGroupLaneId),
+      isTrue,
+    );
+
+    expect(size(), SeNameTag.defaultStyle.fontSize);
+    s.undo();
+    expect(size(), 48);
   });
 }

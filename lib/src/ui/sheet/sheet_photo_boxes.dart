@@ -9,8 +9,8 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cel_photo.dart';
 import '../../models/transform_pose.dart';
 import '../../services/canvas_selection_shape.dart';
-import '../../services/import/raster_cel_import.dart' show picturePlacement;
-import '../../services/layer_pose_matrix.dart' show placedCorners;
+import '../../services/layer_pose_matrix.dart'
+    show picturePlacement, placedCorners;
 import '../canvas/canvas_press.dart' show canvasPressIsTheTools;
 import '../canvas/canvas_target_pill.dart';
 import '../canvas/canvas_viewport_offset.dart';
