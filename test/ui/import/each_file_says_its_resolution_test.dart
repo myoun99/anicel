@@ -110,6 +110,21 @@ void main() {
     ]);
   });
 
+  testWidgets('a file the window does not list is never read — a loose '
+      'movie dropped with a folder is set aside, and its decoder never '
+      'opened', (tester) async {
+    final backend = FakeVideoBackend();
+    debugVideoDecodeBackend = backend;
+    final folder = Directory(
+      '${tempDir.path}${Platform.pathSeparator}c001',
+    )..createSync();
+    final movie = write('cut.mp4', const [0, 0, 0, 24]);
+    await open(tester, [folder.path, movie]);
+
+    await settle(tester, until: () => false, tries: 10);
+    expect(backend.openedAt, isEmpty);
+  });
+
   testWidgets('🚨the sizes are read ONE AT A TIME, in the order the files '
       'are listed — a batch of large pictures is never held together, and '
       'a row waiting its turn says nothing yet', (tester) async {

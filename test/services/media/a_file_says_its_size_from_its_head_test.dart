@@ -146,6 +146,43 @@ void main() {
     expect(pdf.disposed, isTrue);
   });
 
+  testWidgets('every kind gives back the bytes it held once it has its '
+      'answer — a list of files asks of every row, and holds none', (
+    tester,
+  ) async {
+    debugVideoDecodeBackend = FakeVideoBackend(width: 64, height: 36);
+    PdfRenderService.debugOpenerOverride = (source) async =>
+        FakePdfDocument(pageSizes: const [ui.Size(100, 50)]);
+    final png = (await tester.runAsync(
+      () => writeSolidPng(dir, 'a.png', width: 4, height: 4),
+    ))!;
+    final files = {
+      MediaAssetKind.image: png,
+      MediaAssetKind.video: write('cut.mp4', const [0, 0, 0, 24]),
+      MediaAssetKind.pdf: write('conte.pdf', const [0x25, 0x50, 0x44, 0x46]),
+    };
+    for (final MapEntry(key: kind, value: path) in files.entries) {
+      var held = 0;
+      Future<HeldMediaBytes> counted(String path) async {
+        held += 1;
+        final file = await theFileItself(path);
+        return HeldMediaBytes(
+          source: file.source,
+          release: () => held -= 1,
+          moved: file.moved,
+          again: file.again,
+        );
+      }
+
+      expect(
+        await sizeOf(tester, kind, path, hold: counted),
+        isNotNull,
+        reason: '$kind',
+      );
+      expect(held, 0, reason: '$kind: given back');
+    }
+  });
+
   testWidgets('a sound has none — and neither has a file that cannot be '
       'read', (tester) async {
     final sound = write('se.wav', const [0x52, 0x49, 0x46, 0x46]);
