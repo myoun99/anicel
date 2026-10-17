@@ -2549,12 +2549,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     final liftShape = targetShape;
-    // The box the lift rides: the open one — a walk can have carried one
-    // here with nothing under it — or a new one framing the shape.
-    final box = switch (liftShape) {
-      null => null,
-      final shape => _box ?? _boxOver(shape),
-    };
+    // The box the lift rides. An open box takes every press
+    // ([_pressOnImplicitBox]), so none is open here: the press opens one
+    // framing the shape.
+    final box = liftShape == null ? null : _boxOver(liftShape);
     // R14-④/R19 pixel model: the shape's PIXELS are the content — the
     // first gesture on a selection (or on a confirmed landing) lifts
     // them fresh from the current raster.
@@ -2577,10 +2575,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // ⚠️Opening it here rather than refusing: with the Move tool the box
       // is already on screen (R17-U), so this is the moment the numbers
       // behind it start existing, not a new thing appearing.
-      if (_box == null) {
-        _box = box;
-        _syncOffsetsToMode();
-      }
+      _box = box;
+      _syncOffsetsToMode();
       final affine = box.affine;
       // ⚠️AFTER the box exists: an inside grab that opened it steps back
       // to the box as it opened, which is what the user sees.
