@@ -35,6 +35,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
@@ -650,6 +651,41 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    testWidgets('each door lets go of its own rows alone — the keyed '
+        'rasterize leaves a row whose cel has to take the picture, and the '
+        'bake leaves a row its own keys carry the move of', (tester) async {
+      final (s, row) = await placed(tester);
+      posed(s, row, track: squashed, fx: turnedOnce);
+      expect(wayOf(s, row), bakes);
+      final baking = rowOf(s, row);
+
+      s.editingCanvas.rasterizeLayerReferences([row.id]);
+      expect(rowOf(s, row), baking);
+
+      posed(s, row, track: TransformTrack.empty());
+      expect(
+        wayOf(s, row),
+        isA<ReferenceMoveCarried>().having(
+          (way) => way.bakes,
+          'bakes',
+          isFalse,
+        ),
+      );
+      final keyed = rowOf(s, row);
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.bakeReferenceAsSeen(
+            cutId: s.requireActiveCut.id,
+            layerId: row.id,
+          ),
+        ),
+        isFalse,
+      );
+      expect(rowOf(s, row), keyed);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('🎯a 겸용 copy: rasterizing one use rasterizes every use of '
         'its cel — each keeps the picture where it showed it, the switch '
         'they share comes on and the keys the copy kept while it was off '
@@ -1098,13 +1134,14 @@ void main() {
         'they show, and one undo gives both back (F-374-Q10)', (
       tester,
     ) async {
-      final (s, row, _) = await placed(tester);
+      final (s, row, fake) = await placed(tester);
       final copy = s.cutCommandCoordinator.linkDuplicateLayer(
         cutId: s.requireActiveCut.id,
         layerId: row.id,
         insertionIndex: 0,
       );
       final before = [s.layerById(row.id)!, s.layerById(copy)!];
+      fake.asked.clear();
 
       expect(await rasterized(tester, s, row), isTrue);
 
@@ -1116,6 +1153,11 @@ void main() {
         baked.frames,
         hasLength(drawingBlocks(before.first.timeline).single.length),
         reason: 'a cel a position, as the row alone takes — not one more',
+      );
+      expect(
+        fake.asked,
+        hasLength(baked.frames.length),
+        reason: 'a picture both show is decoded once, for its one cel',
       );
       expect(
         bakedCopy.timeline,
@@ -1157,6 +1199,34 @@ void main() {
       expect(inkAt(s, bakedCopy, 12), turnedAQuarter);
       expect(inkAt(s, baked, 12), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
       expect(bakedCopy.transformTrack, squashed);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a movie a use of which exposes it in two blocks — what no '
+        'verb leaves a movie reference — is left as it is, and so is every '
+        'other use', (tester) async {
+      final (s, row, _) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      s.repository.updateLayer(
+        layerId: copy,
+        update: (layer) => layer.copyWith(
+          timeline: {
+            0: TimelineExposure.drawing(layer.frames.single.id, length: 4),
+            8: TimelineExposure.drawing(layer.frames.single.id, length: 4),
+          },
+        ),
+      );
+      final before = [s.layerById(row.id)!, s.layerById(copy)!];
+      expect(drawingBlocks(before.last.timeline), hasLength(2));
+
+      expect(await rasterized(tester, s, row), isFalse);
+
+      expect([s.layerById(row.id)!, s.layerById(copy)!], before);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });

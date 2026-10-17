@@ -15,14 +15,23 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart'
     show layerPlacementAt;
+import 'package:anicel/src/services/editing/editing_session_state.dart';
+import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show picturePlacement;
+import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/services/reference_move_carried.dart';
 
 void main() {
@@ -913,6 +922,85 @@ void main() {
       ]);
       expect(nameOn(freed.uses.first, 0), 'up');
       expect(freed.uses.last.track, TransformTrack.empty());
+    });
+  });
+
+  group('referenceLetGoOf — a row that wears the uses\' head but shows none '
+      'of their cels: the conte of another cut of the track (F-374-Q10)', () {
+    final laid = TransformPose(center: middle);
+    final fitted = TransformPose.uniform(center: middle, zoom: 0.5);
+
+    /// How a rasterize lets go of cut `a`'s conte — a reference its fx fits,
+    /// its switch off — on a track whose cut `b` has a conte keeping [kept]
+    /// of its own: one head, two cuts' cels.
+    ReferenceLetGo wayOfTheConte({TransformTrack? kept}) {
+      final conte = paper(
+        id: 'a-conte',
+        laid: laid,
+        pose: fitted,
+        transformEnabled: false,
+      ).copyWith(kind: LayerKind.storyboard);
+      final other = Layer(
+        id: const LayerId('b-conte'),
+        name: 'Conte',
+        kind: LayerKind.storyboard,
+        frames: [
+          Frame(id: const FrameId('b-panel'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('b-panel'), length: 1),
+        },
+        transformTrack: kept,
+        transformEnabled: false,
+      );
+      Cut cut(String id, Layer layer) => Cut(
+        id: CutId(id),
+        name: id,
+        layers: [layer],
+        duration: 48,
+        canvasSize: canvas,
+      );
+      final project = Project(
+        id: const ProjectId('one-head'),
+        name: 'One head',
+        createdAt: DateTime.utc(2026, 10, 18),
+        tracks: [
+          Track(
+            id: const TrackId('t1'),
+            name: 'V1',
+            cuts: [cut('a', conte), cut('b', other)],
+          ),
+        ],
+      );
+      return CutCommandCoordinator(
+        repository: ProjectRepository(initialProject: project),
+        editingSession: EditingSessionState(activeCutId: const CutId('a')),
+        historyManager: HistoryManager(),
+      ).referenceLetGoOf(
+        cutId: const CutId('a'),
+        layerId: const LayerId('a-conte'),
+      );
+    }
+
+    test('🎯where that row keeps no keys of its own, the switch comes on '
+        'with the keys — where it keeps some, the cel takes the picture '
+        'instead, and the keys it kept are never shown', () {
+      expect(
+        wayOfTheConte(),
+        isA<ReferenceMoveCarried>()
+            .having((way) => way.switchOn, 'switchOn', isTrue)
+            .having((way) => way.bakes, 'bakes', isFalse),
+      );
+      expect(
+        wayOfTheConte(
+          kept: TransformTrack.empty().copyWith(
+            rotation: PropertyTrack<double>().withKey(0, 45),
+          ),
+        ),
+        isA<ReferenceMoveCarried>()
+            .having((way) => way.switchOn, 'switchOn', isFalse)
+            .having((way) => way.bakes, 'bakes', isTrue),
+      );
     });
   });
 }
