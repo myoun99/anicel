@@ -574,16 +574,21 @@ void main() {
     });
 
     test('a movie its transform cannot carry bakes moving or not — a cel '
-        'a position — and waits only where its cels are shared', () {
+        'a position — and waits where its cels are shared, the keys '
+        'carrying the move or not: its one cel gives way to cels of its '
+        'frames (F-374-Q10)', () {
       final movie = paper(
         laid: laid,
         fx: moving,
         attachedTo: const LayerId('a'),
         file: '/clip.mp4',
       );
+      final keyedMovie = paper(laid: laid, pose: fitted, file: '/clip.mp4');
 
       expect(wayOf(movie), isA<ReferenceMoveBaked>());
       expect(wayOf(movie, celsShared: true), isA<ReferenceMoveWaits>());
+      expect(wayOf(keyedMovie), isA<ReferenceMoveKeyed>());
+      expect(wayOf(keyedMovie, celsShared: true), isA<ReferenceMoveWaits>());
     });
 
     test('shared cels stop a bake, never the keys', () {

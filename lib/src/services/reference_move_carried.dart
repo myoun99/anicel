@@ -20,7 +20,8 @@ import 'layer_pose_matrix.dart'
 ///   ([transformCarryingReferenceMove]) — F-374-Q3's keys, its switch on;
 /// * where that transform cannot carry it, the cels take the picture where
 ///   the row shows it ([ReferenceMoveBaked]);
-/// * and two rows wait, left the references they are ([ReferenceMoveWaits]).
+/// * and the rows F-374-Q9 · Q10 ask about wait, left the references they
+///   are ([ReferenceMoveWaits]).
 ///
 /// [others] is what the rows beside it hold ([OthersHold]).
 ReferenceLetGo referenceLetGo({
@@ -43,20 +44,24 @@ ReferenceLetGo referenceLetGo({
       carried.enabled &&
       !layer.transformEnabled &&
       others.keys;
-  if (carried != null && !switchShowsOthers) {
-    return ReferenceMoveKeyed(carried.track, enabled: carried.enabled);
-  }
+  final keyed = switchShowsOthers ? null : carried;
+  final movie = isMovieReference(layer);
   // ⏳F-374-Q10: a cel the link group shares is ONE picture
   // (`SwapLayerReferenceCommand`) — baked in place, every other use would
-  // show it moved, and moved again by its own fx.
-  if (others.cels) {
+  // show it moved, and moved again by its own fx; and a movie's one cel
+  // gives way to cels of its frames, which sweeps every other use's
+  // exposures of it away (`UpdateLayerTimelineCommand`).
+  if (others.cels && (movie || keyed == null)) {
     return const ReferenceMoveWaits();
+  }
+  if (keyed != null) {
+    return ReferenceMoveKeyed(keyed.track, enabled: keyed.enabled);
   }
   // ⏳F-374-Q9: a cel baked in place holds the picture at ONE place, and an
   // image row holds one cel (D22) — a still that moves has no cels to take
   // its frames. A movie's are made a position apiece.
   final fx = layer.mediaReference!.fx;
-  return isMovieReference(layer) || fx.lanes.every((l) => l.keys.length < 2)
+  return movie || fx.lanes.every((l) => l.keys.length < 2)
       ? const ReferenceMoveBaked()
       : const ReferenceMoveWaits();
 }
