@@ -109,7 +109,9 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
 /// none. Either way a picture is a block's ([tileBlocksOf]), comes through
 /// the one door ([surfaceRegionPicture]), is the compose's own, and is let
 /// go right after it; what differs is whether the compose gives way while
-/// it makes them.
+/// it makes them. Past the wall a compose makes no pictures: it
+/// premultiplies its tiles' bytes ([_composedFromBytes]), and gives way
+/// between runs of them the same way.
 enum MissingTilePictures {
   /// A run of them at a time ([tilePictureRun]), the event queue given its
   /// turn between runs ([_giveWay]) — which is what lets a pen that comes
@@ -517,6 +519,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
           surface,
           worldRect,
           shouldAbort: shouldAbort,
+          missing: missing,
           rastered: rastered,
         )
       : await rastered();
@@ -534,9 +537,13 @@ bool _reachesPastTheWall(BitmapSurface surface, ui.Rect over) {
 
 /// [surface]'s pixels over [over] made from its tiles' bytes, not rastered:
 /// the bytes the door reads ([SurfaceRegionBytes]), premultiplied into
-/// memory of this compose's own a run at a time ([tilePictureRun]) and
-/// uploaded off this thread ([uploadRawRgba]). Null when [shouldAbort]
-/// stood it down.
+/// memory of this compose's own a tile at a time — [missing] says whether
+/// it gives way between runs of them, as a raster does — and uploaded off
+/// this thread ([uploadRawRgba]). Null when [shouldAbort] stood it down.
+///
+/// ⚠️THE SECOND OF ITS KIND: [_composeAsync] paces its pictures the same
+/// way — the same run, the same turn, the same ask before each. Not shared
+/// under the rule of three (CLAUDE.md 절대명령 1).
 ///
 /// 🚨★★★PAST THE WALL A CEL'S IMAGE IS ITS BYTES, NOT A RASTER (F-374-Q8
 /// ⑦, 2026-10-18). Until a file's picture could be laid whole, the wall
@@ -561,6 +568,7 @@ Future<ui.Image?> _composedFromBytes(
   BitmapSurface surface,
   ui.Rect over, {
   required bool Function()? shouldAbort,
+  required MissingTilePictures missing,
   required Future<ui.Image?> Function() rastered,
 }) async {
   debugComposesFromBytes += 1;
@@ -570,7 +578,10 @@ Future<ui.Image?> _composedFromBytes(
   );
   final native = QaNativeEngine.instance;
   if (native == null) {
-    // No engine, no shared buffer to grow: the door's own bytes, kept.
+    // No engine — a load that failed: every build the app ships carries
+    // one. The door's bytes in one read, not paced: what this road keeps
+    // is the memory, one image where a raster held 9–15. Copied out, as
+    // they are the door's only while it reads them.
     final premultiplied = bytes.readPremultiplied(Uint8List.fromList);
     return _uploadedOrRastered(premultiplied, bytes, shouldAbort, rastered);
   }
@@ -581,12 +592,13 @@ Future<ui.Image?> _composedFromBytes(
     int now() => debugTilePictureClock?.call() ?? watch.elapsedMicroseconds;
     var runBegan = now();
     for (final tile in tilesCovering(bytes.surface, bytes.region)) {
-      if (now() - runBegan >= tilePictureRun.inMicroseconds) {
+      if (missing == MissingTilePictures.madeInTurn &&
+          now() - runBegan >= tilePictureRun.inMicroseconds) {
         await _giveWay();
         runBegan = now();
-        if (shouldAbort?.call() ?? false) {
-          return null;
-        }
+      }
+      if (shouldAbort?.call() ?? false) {
+        return null;
       }
       bytes.premultiplyInto(native, tile, target);
     }

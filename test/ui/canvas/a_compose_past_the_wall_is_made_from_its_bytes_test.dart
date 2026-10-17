@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -12,26 +13,34 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
+import '../../helpers/cel_text_fixture.dart' show textOf;
 import '../../helpers/native_engine_path.dart';
 
 /// F-374-Q8 ⑦: a compose that reaches past the wall — where only a file's
 /// picture laid whole lies — is made from its tiles' bytes and uploaded,
 /// not rastered: the same picture, without the 9–15 times the image a
 /// raster of it held while it ran (`_composedFromBytes` has the numbers).
-/// Its bytes are premultiplied by the engine a run of tiles at a time, or
-/// by Dart where there is no engine — both roads are held here.
+/// Its bytes are premultiplied by the engine a tile at a time, paced as a
+/// raster's pictures are, or by Dart where there is no engine — both roads
+/// are held here.
 void main() {
   final dllPath = nativeEngineLibraryPathOrNull();
 
+  // The corpus holds a clock of its own (`flutter_test_config.dart`): it is
+  // handed back, not dropped for the wall's.
+  int Function()? corpusClock;
+
   setUp(() {
     debugComposesFromBytes = 0;
+    corpusClock = debugTilePictureClock;
     QaNativeEngine.debugResetForTests();
     debugQaEngineLibraryPathOverride = dllPath;
   });
 
   tearDown(() {
     debugRastersPastTheWall = false;
-    debugTilePictureClock = null;
+    debugRawRgbaUploader = null;
+    debugTilePictureClock = corpusClock;
     QaNativeEngine.debugResetForTests();
     QaNativeEngine.debugForceDartFallback = false;
     debugQaEngineLibraryPathOverride = null;
@@ -82,7 +91,15 @@ void main() {
     ),
   );
 
-  /// [surface] over its ink from its bytes, against the raster of it.
+  /// Past the wall on both sides, a tile left out inside it — and a text
+  /// over its first tile: a picture is shown with its texts laid over it
+  /// (R9-rest, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+  BitmapSurface pastTheWallWithAText() => laid(-48, 64, without: 16)
+      .withTexts([
+        textOf(1, plate: {TileCoord(x: -3, y: 0): inked(99)}),
+      ]);
+
+  /// [surface] composed over its ink from its bytes, against the raster.
   Future<void> expectTheRastersPicture(BitmapSurface surface) async {
     final over = surfaceInkWorldRect(surface);
     expect(
@@ -114,13 +131,14 @@ void main() {
   }
 
   testWidgets('past the wall the picture is its tiles\' bytes, premultiplied '
-      'by the engine — the raster\'s picture byte for byte', (tester) async {
+      'by the engine — the raster\'s picture byte for byte, its texts and '
+      'all', (tester) async {
     if (engineMissing()) {
       return;
     }
     expect(kQaEngineAbiVersion, greaterThanOrEqualTo(46));
     await tester.runAsync(
-      () => expectTheRastersPicture(laid(-48, 64, without: 16)),
+      () => expectTheRastersPicture(pastTheWallWithAText()),
     );
   });
 
@@ -128,7 +146,7 @@ void main() {
     QaNativeEngine.debugForceDartFallback = true;
     expect(QaNativeEngine.instance, isNull);
     await tester.runAsync(
-      () => expectTheRastersPicture(laid(-48, 64, without: 16)),
+      () => expectTheRastersPicture(pastTheWallWithAText()),
     );
   });
 
@@ -154,9 +172,8 @@ void main() {
   });
 
   testWidgets('an upload that comes back another size — past what a '
-      'device\'s decoder holds — is let go, and the picture rastered', (
-    tester,
-  ) async {
+      'device\'s decoder holds, on either side — is let go, and the '
+      'picture rastered', (tester) async {
     await tester.runAsync(() async {
       final surface = laid(-48, 64);
       final over = surfaceInkWorldRect(surface);
@@ -166,59 +183,188 @@ void main() {
         over: over,
       ))!;
       debugRastersPastTheWall = false;
+      final wide = rastered.image.width;
+      final high = rastered.image.height;
 
-      // What the device's decoder does past its limit: a smaller picture.
-      debugRawRgbaUploader =
-          (rgba, {required width, required height, targetWidth, targetHeight}) {
-            debugRawRgbaUploader = null;
-            return uploadRawRgba(Uint8List(4 * 4 * 4), width: 4, height: 4);
-          };
-      addTearDown(() => debugRawRgbaUploader = null);
-      final composed = (await composePositionedSurfaceImage(
-        surface,
-        over: over,
-      ))!;
+      for (final (uploadedWidth, uploadedHeight) in [
+        // What this device's decoder does past its limit: narrower, its
+        // height kept.
+        (wide - 12, high),
+        (wide, high - 8),
+      ]) {
+        debugComposesFromBytes = 0;
+        debugRawRgbaUploader =
+            (rgba, {required width, required height, targetWidth, targetHeight}) {
+              debugRawRgbaUploader = null;
+              return uploadRawRgba(
+                Uint8List(uploadedWidth * uploadedHeight * 4),
+                width: uploadedWidth,
+                height: uploadedHeight,
+              );
+            };
+        final composed = (await composePositionedSurfaceImage(
+          surface,
+          over: over,
+        ))!;
 
-      expect(debugComposesFromBytes, 1, reason: 'premise: the bytes first');
-      expect(
-        [composed.image.width, composed.image.height],
-        [rastered.image.width, rastered.image.height],
-      );
-      expect(await bytesOf(composed.image), await bytesOf(rastered.image));
-      composed.image.dispose();
+        final upload = '${uploadedWidth}x$uploadedHeight';
+        expect(debugComposesFromBytes, 1, reason: 'premise: the bytes first');
+        expect(
+          [composed.image.width, composed.image.height],
+          [wide, high],
+          reason: upload,
+        );
+        expect(
+          await bytesOf(composed.image),
+          await bytesOf(rastered.image),
+          reason: upload,
+        );
+        composed.image.dispose();
+      }
       rastered.image.dispose();
     });
   });
 
-  testWidgets('stood down between its runs of tiles, it makes nothing — '
-      'and asks before each run, not only before the upload', (tester) async {
-    if (engineMissing()) {
-      return;
-    }
+  testWidgets('stood down before it uploads, it uploads nothing', (
+    tester,
+  ) async {
+    QaNativeEngine.debugForceDartFallback = true;
     await tester.runAsync(() async {
-      var clock = 0;
-      debugTilePictureClock = () => clock += tilePictureRun.inMicroseconds;
-      var asked = 0;
       var uploads = 0;
       debugRawRgbaUploader =
           (rgba, {required width, required height, targetWidth, targetHeight}) {
             uploads += 1;
-            debugRawRgbaUploader = null;
             return uploadRawRgba(rgba, width: width, height: height);
           };
-      addTearDown(() => debugRawRgbaUploader = null);
       final surface = laid(-48, 64);
 
-      final composed = await composePositionedSurfaceImage(
-        surface,
-        over: surfaceInkWorldRect(surface),
-        shouldAbort: () => (asked += 1) > 2,
+      expect(
+        await composePositionedSurfaceImage(
+          surface,
+          over: surfaceInkWorldRect(surface),
+          shouldAbort: () => true,
+        ),
+        isNull,
       );
-
-      expect(composed, isNull);
       expect(debugComposesFromBytes, 1);
-      expect(asked, 3, reason: 'the third run was stood down');
       expect(uploads, 0);
+    });
+  });
+
+  group('in turn it gives way as a raster does', () {
+    // A test's clock, moved on a quarter of a run by every check before a
+    // tile: the queue's turn comes before the fifth tile, the ninth, the
+    // thirteenth (the raster's own group in `tiled_surface_compose_test`).
+    var clock = 0;
+    final aQuarterOfARun = tilePictureRun.inMicroseconds ~/ 4;
+    bool Function() checking(bool Function() abandoned) => () {
+      clock += aQuarterOfARun;
+      return abandoned();
+    };
+
+    setUp(() {
+      clock = 0;
+      debugTilePictureClock = () => clock;
+    });
+
+    /// A picture laid past the wall, [tiles] tiles in a row.
+    BitmapSurface rowOf(int tiles) => laid(-48, -48 + tiles * 16);
+
+    Future<PositionedSurfaceImage?> composed(
+      BitmapSurface surface, {
+      required bool Function() shouldAbort,
+      MissingTilePictures missing = MissingTilePictures.madeInTurn,
+    }) => composePositionedSurfaceImage(
+      surface,
+      over: surfaceInkWorldRect(surface),
+      shouldAbort: shouldAbort,
+      missing: missing,
+    );
+
+    testWidgets('🚨what was waiting in the event queue is heard before a '
+        'compose longer than a run is done — and a compose somebody waits '
+        'for does not stop for it', (tester) async {
+      if (engineMissing()) {
+        return;
+      }
+      await tester.runAsync(() async {
+        var heard = false;
+        Timer.run(() => heard = true);
+        expect(
+          await composed(rowOf(5), shouldAbort: checking(() => heard)),
+          isNull,
+          reason: 'what was waiting was let in when the run was up, and it '
+              'stood the compose down',
+        );
+        expect(heard, isTrue);
+        expect(debugComposesFromBytes, 1, reason: 'premise: the bytes road');
+
+        clock = 0;
+        var heardInARun = false;
+        Timer.run(() => heardInARun = true);
+        final oneRun = await composed(
+          rowOf(4),
+          shouldAbort: checking(() => heardInARun),
+        );
+        expect(
+          oneRun,
+          isNotNull,
+          reason: 'a run is made in one go: nothing was let in before its '
+              'last tile, nor before the upload after it',
+        );
+        oneRun!.image.dispose();
+
+        // A render somebody waits for — an export's frame — never gives way.
+        clock = 0;
+        var heardAtOnce = false;
+        Timer.run(() => heardAtOnce = true);
+        final atOnce = await composed(
+          rowOf(5),
+          missing: MissingTilePictures.madeAtOnce,
+          shouldAbort: checking(() => heardAtOnce),
+        );
+        expect(atOnce, isNotNull);
+        atOnce!.image.dispose();
+        expect(debugComposesFromBytes, 3);
+      });
+    });
+
+    testWidgets('once a RUN, not once a tile', (tester) async {
+      if (engineMissing()) {
+        return;
+      }
+      await tester.runAsync(() async {
+        // Every turn of the event queue from here on is counted: each one,
+        // when it comes, asks for the next.
+        var turns = 0;
+        var counting = true;
+        void count() {
+          if (counting) {
+            turns += 1;
+            Timer.run(count);
+          }
+        }
+
+        Timer.run(count);
+        var turnsAtTheLastCheck = -1;
+        final image = await composed(
+          // Three whole runs, and one tile more.
+          rowOf(13),
+          shouldAbort: checking(() {
+            turnsAtTheLastCheck = turns;
+            return false;
+          }),
+        );
+        counting = false;
+        image!.image.dispose();
+        expect(debugComposesFromBytes, 1, reason: 'premise: the bytes road');
+        expect(
+          turnsAtTheLastCheck,
+          3,
+          reason: 'the queue had its turn after each of the three runs, '
+              'and at no other tile',
+        );
+      });
     });
   });
 }
