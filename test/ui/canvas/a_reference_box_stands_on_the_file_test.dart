@@ -194,6 +194,10 @@ void main() {
       {0},
       reason: '「지금 움직여도 키 안생긴다」 — one key, at the playhead',
     );
+    await tester.pump();
+    // The box frames the picture where the key stands it, not where the
+    // file was placed.
+    expectPoint(boxOf(tester)!.corners[0], CanvasPoint(x: 1150, y: 797));
     expect(
       s.layerById(row.id)!.transformTrack.position.isEmpty,
       isTrue,

@@ -225,6 +225,47 @@ void main() {
     expect(moved.transformTrack.anchorPoint.isEmpty, isTrue);
   });
 
+  // F-374: the reference fx's keys and where its file is laid stand on the
+  // same canvas as its pose, so they move by the same content offset.
+  test('a reference\'s fx position keys and where its file is laid move by '
+      'the content offset too — its turn keys untouched', () {
+    final pose = TransformPose(center: CanvasPoint(x: 1170, y: 827));
+    final fx = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>()
+          .withKey(0, CanvasPoint(x: 1170, y: 827))
+          .withKey(10, CanvasPoint(x: 1370, y: 827)),
+      rotation: PropertyTrack<double>().withKey(10, 30),
+    );
+    final reference = Layer(
+      id: const LayerId('paper'),
+      name: 'P',
+      frames: const [],
+      timeline: const {},
+      mediaReference: MediaReference(
+        assetPath: '/paper.png',
+        pose: pose,
+        pictureSize: const CanvasSize(width: 100, height: 60),
+        fx: fx,
+        laid: TransformPose(center: CanvasPoint(x: 1370, y: 827)),
+      ),
+    );
+
+    final moved = translateLayerForResize(
+      reference,
+      dx: 600,
+      dy: -40,
+      centreDx: 300,
+      centreDy: -20,
+    ).mediaReference!;
+
+    expect(
+      moved.fx.position.keys.map((frame, key) => MapEntry(frame, key.value)),
+      {0: CanvasPoint(x: 1770, y: 787), 10: CanvasPoint(x: 1970, y: 787)},
+    );
+    expect(moved.fx.rotation, fx.rotation);
+    expect(moved.laid, TransformPose(center: CanvasPoint(x: 1970, y: 787)));
+  });
+
   test('camera translation goes through the LANES: hold interpolation, '
       'key names and a lone scale key all survive', () {
     final camera = CutCamera.fromTrack(

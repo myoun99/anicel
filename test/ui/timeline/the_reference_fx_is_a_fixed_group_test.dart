@@ -15,6 +15,7 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -31,7 +32,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
-    show pictureMoved, picturePlacement;
+    show LayerPlacement, pictureMoved, picturePlacement;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editing_stack_map.dart';
@@ -169,6 +170,35 @@ void main() {
   ) async {
     s.playbackRig.prerenderScheduler.cancel();
     await tester.pump();
+  }
+
+  /// Where the editing canvas's stack draws [row]'s cel at frame 0 of the
+  /// cut stood in — a movie's picture decoded where [movieLaidAt] says.
+  LayerPlacement stackPlacementOf(
+    EditorSessionManager s,
+    Layer row, {
+    TransformPose? Function(BrushFrameKey key)? movieLaidAt,
+  }) {
+    final cut = s.requireActiveCut;
+    final map = EditingStackMap(
+      opacityVerbs: s.opacityVerbs,
+      project: s,
+      cut: cut,
+      stackCut: cut,
+      frameIndex: 0,
+      activeLayerId: null,
+      movieLaidAt: movieLaidAt ?? (_) => null,
+    );
+    return [
+      for (final node in map.mapTree(
+        resolveCutFrameCompositeTree(cut: cut, frameIndex: 0),
+      ))
+        if (node is CompositeLeaf<CanvasStackRow> &&
+            node.payload is CanvasLayerImageRequest &&
+            (node.payload as CanvasLayerImageRequest).frameKey.layerId ==
+                row.id)
+          (node.payload as CanvasLayerImageRequest).placement,
+    ].single!;
   }
 
   testWidgets('🎯a row that shows a file has the group FIRST — before its '
@@ -764,32 +794,48 @@ void main() {
       'move\'s own picture is decoded — is drawn moved from where it was '
       'laid', (tester) async {
     final (s, row) = await placed(tester);
-    final cut = s.requireActiveCut;
     final laidLeft = TransformPose(center: CanvasPoint(x: 1070, y: 827));
-    final map = EditingStackMap(
-      opacityVerbs: s.opacityVerbs,
-      project: s,
-      cut: cut,
-      stackCut: cut,
-      frameIndex: 0,
-      activeLayerId: null,
+    final placement = stackPlacementOf(
+      s,
+      row,
       movieLaidAt: (key) => key.layerId == row.id ? laidLeft : null,
     );
-    final placement = [
-      for (final node in map.mapTree(
-        resolveCutFrameCompositeTree(cut: cut, frameIndex: 0),
-      ))
-        if (node is CompositeLeaf<CanvasStackRow> &&
-            node.payload is CanvasLayerImageRequest &&
-            (node.payload as CanvasLayerImageRequest).frameKey.layerId ==
-                row.id)
-          (node.payload as CanvasLayerImageRequest).placement,
-    ].single!;
 
     expect(
       placement.apply(CanvasPoint(x: 1070, y: 827)),
       CanvasPoint(x: 1170, y: 827),
       reason: 'laid 100 to the left of where the row stands it',
+    );
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('a still laid elsewhere than its row stands it is drawn — and '
+      'placed for the pen, the pick and the marquee — moved from where the '
+      'committed row lays its file', (tester) async {
+    final (s, row) = await placed(tester);
+    s.repository.updateLayer(
+      layerId: row.id,
+      update: (layer) => layer.copyWith(
+        mediaReference: layer.mediaReference!.copyWith(
+          laid: TransformPose(center: CanvasPoint(x: 1070, y: 827)),
+        ),
+      ),
+    );
+    final cut = s.requireActiveCut;
+    final committed = cut.layers.byId(row.id)!;
+
+    expect(
+      stackPlacementOf(s, row).apply(CanvasPoint(x: 1070, y: 827)),
+      CanvasPoint(x: 1170, y: 827),
+      reason: 'laid 100 to the left of where the row stands it',
+    );
+    expect(
+      layerPlacementAt(
+        cut: cut,
+        layer: committed,
+        frameIndex: 0,
+      )!.apply(CanvasPoint(x: 1070, y: 827)),
+      CanvasPoint(x: 1170, y: 827),
     );
     await stopTheWarmer(tester, s);
   });

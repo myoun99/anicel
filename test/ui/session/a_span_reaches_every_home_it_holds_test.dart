@@ -267,4 +267,37 @@ void main() {
 
     expect(s.laneVerbs.laneKeySidesCountForSelection(null), isFalse);
   });
+
+  test('a lane of the span with no key under it is not asked whether it '
+      'holds the name — the keys under the span are named', () {
+    final s = session();
+    final cel = keyedCel(s);
+    s.laneVerbs.updateLayerTransformTrack(
+      cel.id,
+      s.layerById(cel.id)!.transformTrack.copyWith(
+        rotation: PropertyTrack<double>(
+          keys: {9: const PropertyKey<double>(30, name: 'N')},
+        ),
+      ),
+    );
+    s.laneRangeSelection.value = span(cel, ['position', 'rotation'], 3, 4);
+
+    expect(
+      s.laneVerbs.setLaneKeyNamesForSelection('N'),
+      isFalse,
+      reason: 'Rotation holds no key under the span to name',
+    );
+    expect(s.layerById(cel.id)!.transformTrack.position.keyAt(3)!.name, 'N');
+  });
+
+  test('Delete over a span that holds no key takes nothing, and says so', () {
+    final s = session();
+    final cel = keyedCel(s);
+    final lane = span(cel, ['position', blurLane], 5, 7);
+    s.laneRangeSelection.value = lane;
+
+    expect(s.laneVerbs.removeLaneKeysForSelection(lane), isFalse);
+    expect(positionKeys(s, cel), {3});
+    expect(blurKeys(s, cel), {3});
+  });
 }
