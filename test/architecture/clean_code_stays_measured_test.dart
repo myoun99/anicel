@@ -891,7 +891,18 @@ void main() {
   /// one and no other class. ⛔Not split to fit: a picture that lands as a
   /// paste lands stands beside the paste, where
   /// `a_piece_lands_through_one_door_test` reads them both.
-  const longClasses = 66;
+  ///
+  /// ⚠️66 → 67 on 2026-10-17, ONE name: CLIP STUDIO's `_Planner` crossed
+  /// (597 → 618) in the-clip-import-drops-layer-effects-silently — what
+  /// CLIP STUDIO draws over a layer that comes in without it (an effect of
+  /// its properties, its layer colour, its clipping) is said in every
+  /// decoder's words (유저 10-07 「없는 기능은 알리는거 ok」), by the name
+  /// the reader sees: the three places the planner makes one — a folder's
+  /// row, a folder inside a cel, a layer that comes in — call one
+  /// `_sayNotApplied`. 🔬`clean_code_diff` against master (`42ceeb00d`)
+  /// names this one and no other class. ⛔Not split to fit: the name a
+  /// warning is said by is made where the row is, and the planner makes it.
+  const longClasses = 67;
 
   late CleanCodeScan scan;
   setUpAll(() {
