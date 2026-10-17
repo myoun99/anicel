@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show buildAppTheme;
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/app_faces.dart';
@@ -19,6 +20,11 @@ import '../../helpers/canvas_pill.dart';
 /// UDPGothic from the bundle's own file and measures with the style the
 /// mounted readout really carries (the theme's letter spacing included —
 /// it is 2px of a box that has 3px to spare).
+///
+/// 🚨And under the app's own theme, so the pill measures its boxes in that
+/// face too. Without it the pill measured them in the test font's squares,
+/// wider than any number in BIZ UDPGothic, and this pin held whatever the
+/// measuring did (found by mutation, F-383).
 void main() {
   double widthOf(
     String text,
@@ -42,6 +48,7 @@ void main() {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildAppTheme(),
         home: Scaffold(
           body: BrushCanvasPanel(
             coordinator: BrushCanvasFixture.createCoordinator(
@@ -78,7 +85,7 @@ void main() {
     );
     return (
       box: tester.widget<DragValueLabel>(label).width,
-      style: painted.text.style!.copyWith(fontFamily: 'BIZ UDPGothic'),
+      style: painted.text.style!,
       scaler: painted.textScaler,
     );
   }
