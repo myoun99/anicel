@@ -44,7 +44,8 @@ class SheetSources {
       actionBooks: sheetBooksOf(_actionBlockRows(cut.layers)),
       seLayers: [
         for (final layer in cut.layers)
-          if (layerPrintsSheetLines(layer)) (layer: layer, spills: false),
+          if (layerPrintsSheetLines(layer))
+            (layer: layer, spillInLeadFrames: null),
         for (final layer in trackSeLayers)
           if (layerPrintsSheetLines(layer))
             () {
@@ -62,7 +63,7 @@ class SheetSources {
               );
               return (
                 layer: clone,
-                spills: seWindow.spillInBlock(layer) != null,
+                spillInLeadFrames: seWindow.spillInLeadFrames(layer),
               );
             }(),
       ],
@@ -125,11 +126,13 @@ class SheetSources {
   /// 란에는 BOOK표시 안하는 것」. It marked its own since F-406-Q1.
   final List<SheetBook> actionBooks;
 
-  /// The SE rows, already windowed and clipped to this cut, each with
-  /// whether it spilled in from an earlier cut — the start-side `~` the
-  /// printed sheet marks. Whether one runs past the end is the sheet's to
-  /// ask, at the line it draws the cut to ([seSoundRunsPast], F-358).
-  final List<({Layer layer, bool spills})> seLayers;
+  /// The SE rows, already windowed and clipped to this cut, each with how
+  /// far into a sound spilled in from an earlier cut its first frame is
+  /// ([TrackSeWindow.spillInLeadFrames]) — where the printed sheet lays
+  /// that sound's words from, and marks its start-side `~`. Whether one
+  /// runs past the end is the sheet's to ask, at the line it draws the cut
+  /// to ([seSoundRunsPast], F-358).
+  final List<({Layer layer, int? spillInLeadFrames})> seLayers;
 
   /// The instruction rows the sheet prints.
   final List<Layer> instructionLayers;

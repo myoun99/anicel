@@ -23,7 +23,6 @@ import '../../models/timesheet_sheet_kind.dart';
 import '../../models/timesheet_words.dart';
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
-import '../text/dialogue_fit_layout.dart' show dialogueGlyphCenters;
 import '../text/dialogue_fit_paint.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;

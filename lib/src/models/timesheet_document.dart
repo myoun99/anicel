@@ -248,7 +248,7 @@ class TimesheetColumn {
     this.layerId,
     this.previewCellsBuilder,
     this.crossesCutEnd = false,
-    this.spillsInAtStart = false,
+    this.spillInLeadFrames,
   });
 
   final TimesheetColumnKind kind;
@@ -281,9 +281,15 @@ class TimesheetColumn {
   /// globalization round; F-358). Pure display.
   final bool crossesCutEnd;
 
+  /// SE columns: how far into a sound from an earlier cut row 0 already is
+  /// — the block there began that many frames before the cut — or null
+  /// when none spills in ([TrackSeWindow.spillInLeadFrames]). The sheet
+  /// lays its words out from that head and shows its own part (F-358).
+  final int? spillInLeadFrames;
+
   /// SE columns: whether a sound from an earlier cut spills into row 0 —
   /// the timeline's start-side `~`, printed at the column's first row.
-  final bool spillsInAtStart;
+  bool get spillsInAtStart => spillInLeadFrames != null;
 }
 
 /// One paper page: [frameCount] rows starting at [startFrame], laid out in
@@ -506,7 +512,7 @@ class TimesheetDocument {
 
   static TimesheetColumn _seColumn(
     int slot,
-    List<({Layer layer, bool spills})> seSlots,
+    List<({Layer layer, int? spillInLeadFrames})> seSlots,
     int rowCount,
     int playbackFrameCount,
     bool dataSheet,
@@ -527,7 +533,9 @@ class TimesheetDocument {
       crossesCutEnd:
           slot < seSlots.length &&
           seSoundRunsPast(seSlots[slot].layer, drawnFrameCount),
-      spillsInAtStart: slot < seSlots.length && seSlots[slot].spills,
+      spillInLeadFrames: slot < seSlots.length
+          ? seSlots[slot].spillInLeadFrames
+          : null,
       cells: slot < seSlots.length
           ? timesheetLayerCells(
               layer: seSlots[slot].layer,
@@ -1175,16 +1183,23 @@ class _LayerCellsPass {
   /// lead-in ghosts — [se] is the only value the two sites differ on,
   /// and `covered[…]` is idempotent on the ghost path (the chain walk sets
   /// it before dispatching).
+  ///
+  /// The span is the run's TRUE length even where the sheet's rows end
+  /// first: a sound running on past them lays its words over all of it, as
+  /// the track does, and closes nowhere on this sheet (F-358). ↩️It was cut
+  /// to the rows, so the words spread over what was left and the last row
+  /// drew the closing bar.
   void _writeDrawingRun(
     int start,
     TimelineExposure exposure, {
     required SeEntryFields? se,
   }) {
-    final endExclusive = (start + exposure.length!).clamp(0, rowCount);
+    final spanLength = exposure.length!;
+    final endExclusive = (start + spanLength).clamp(0, rowCount);
     cells[start] = _headCell(
       TimesheetCellKind.drawing,
       exposure.frameId,
-      spanLength: endExclusive - start,
+      spanLength: spanLength,
       se: se,
     );
     covered[start] = true;
@@ -1194,7 +1209,7 @@ class _LayerCellsPass {
       // (N+1)th comma of N+ holds only).
       cells[row] = _coveredRow(
         breakdown: exposure.hasBreakdownAt(row - start),
-        spanLength: endExclusive - start,
+        spanLength: spanLength,
         spanOffset: row - start,
       );
       covered[row] = true;

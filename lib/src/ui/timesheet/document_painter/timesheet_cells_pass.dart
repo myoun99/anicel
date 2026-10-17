@@ -379,7 +379,19 @@ class _TimesheetCellsPass {
       final columnLeft = left + _painter.layout.columnLeftInHalf(column);
       final columnWidth = _painter.layout.columnWidthFor(spec.kind);
       final centerX = columnLeft + columnWidth / 2;
-      final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
+      final seColumn = spec.kind == TimesheetColumnKind.se;
+      // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+      // 엔드라인) 넘어가는건 안보이게하고」 — an SE column's rows end at the
+      // line the cut is DRAWN to, so a sound running past it prints no
+      // words there, and no closing bar where it does not close.
+      final rowsShown = seColumn
+          ? (_painter.liveDrawnFrameCount - startFrame).clamp(0, rowCount)
+          : rowCount;
+      // How far before row 0 the block there began: the spill-in's head is
+      // an earlier cut's (F-358).
+      int leadOf(int blockStart) =>
+          blockStart == 0 ? spec.spillInLeadFrames ?? 0 : 0;
+      final (firstRow, lastRow) = _rowRange(rowsTop, rowsShown);
       for (
         var row = _spanStartRow(cells, startFrame, firstRow);
         row < lastRow;
@@ -390,7 +402,6 @@ class _TimesheetCellsPass {
           break;
         }
         final cell = cells[frame];
-        final seColumn = spec.kind == TimesheetColumnKind.se;
         final cellTop = rowsTop + row * TimesheetDocumentLayout.rowHeight;
         final cellBottom = cellTop + TimesheetDocumentLayout.rowHeight;
         final cellCenterY = cellTop + TimesheetDocumentLayout.rowHeight / 2;
@@ -419,11 +430,12 @@ class _TimesheetCellsPass {
           cellCenterY: cellCenterY,
           seColumn: seColumn,
           stretchFrom: _painter.document.stretchLineFrom(spec.kind),
+          lead: leadOf(frame),
         );
         _paintCellOfKind(
           canvas,
           slot,
-          rowCount: rowCount,
+          rowCount: rowsShown,
         );
         // F-165: an entry that began in an earlier half writes the rest of
         // its dialogue here, from this half's top — its share of the words
@@ -434,8 +446,9 @@ class _TimesheetCellsPass {
             canvas,
             start: cells[frame - offset],
             spanOffset: offset,
+            lead: leadOf(frame - offset),
             row: row,
-            rowCount: rowCount,
+            rowCount: rowsShown,
             centerX: centerX,
             cellTop: cellTop,
           );
@@ -454,6 +467,7 @@ class _TimesheetCellsPass {
       _painter._se.paintSeEntryStart(
         canvas,
         cell: slot.cell,
+        lead: slot.lead,
         row: slot.row,
         rowCount: rowCount,
         columnLeft: slot.columnLeft,
@@ -643,6 +657,7 @@ class _CellSlot {
     required this.cellCenterY,
     required this.seColumn,
     required this.stretchFrom,
+    required this.lead,
   });
 
   final TimesheetCell cell;
@@ -674,6 +689,10 @@ class _CellSlot {
       );
     }
   }
+
+  /// How many rows before the sheet's first the span this cell starts
+  /// began — a sound spilled in from an earlier cut (F-358) — else 0.
+  final int lead;
 }
 
 /// One half page's frame: where it sits, which rows are visible, the three

@@ -71,9 +71,17 @@ class _TimesheetSePass {
   /// hugging the boundary, the dialogue distributed vertically over the
   /// REST of the span — no duration bar. Single-row entries close with the
   /// red end bar right here; longer ones close from their last held row.
+  ///
+  /// 🗣️F-358: a sound that spilled in from an earlier cut began [lead] rows
+  /// before this one. Its HEAD — the opening bar, the delivery, the name
+  /// box — is that cut's, and this row shows the words the block's one
+  /// layout lays here ([paintSeDialogueShare]). ↩️It opened the block again
+  /// at row 0, with the name box, and spread the whole line over the rows
+  /// the cut had left.
   void paintSeEntryStart(
     Canvas canvas, {
     required TimesheetCell cell,
+    required int lead,
     required int row,
     required int rowCount,
     required double columnLeft,
@@ -81,15 +89,8 @@ class _TimesheetSePass {
     required double centerX,
     required double cellTop,
   }) {
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    final spanLength = cell.spanLength ?? 1;
-    final rowsHere = spanLength.clamp(1, rowCount - row);
-    final spanBottom = cellTop + rowsHere * rowHeight;
     final seName = cell.seName ?? '';
-
-    // The opening red bar sits ON the start boundary only when this row
-    // really is the span's first (page-half continuations skip it).
-    if ((cell.spanOffset ?? 0) == 0) {
+    if (lead == 0) {
       paintSeRedBar(
         canvas,
         columnLeft: columnLeft,
@@ -102,32 +103,32 @@ class _TimesheetSePass {
         boundary: Offset(centerX, cellTop),
         maxWidth: columnWidth - 2,
       );
-    }
-
-    if (seName.isNotEmpty) {
-      _paintNameBox(
-        canvas,
-        seName,
-        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
-      );
+      if (seName.isNotEmpty) {
+        _paintNameBox(
+          canvas,
+          seName,
+          Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
+        );
+      }
     }
 
     paintSeDialogueShare(
       canvas,
       start: cell,
-      spanOffset: cell.spanOffset ?? 0,
+      spanOffset: 0,
+      lead: lead,
       row: row,
       rowCount: rowCount,
       centerX: centerX,
       cellTop: cellTop,
     );
 
-    if (spanLength == 1) {
+    if ((cell.spanLength ?? 1) == 1) {
       paintSeRedBar(
         canvas,
         columnLeft: columnLeft,
         columnWidth: columnWidth,
-        y: spanBottom - 1,
+        y: cellTop + TimesheetDocumentLayout.rowHeight - 1,
       );
     }
   }
@@ -189,10 +190,20 @@ class _TimesheetSePass {
   }
 
   /// This page half's share of an SE entry's dialogue: the glyphs that the
-  /// layout over the WHOLE span lands on this half's rows, from [row] down —
-  /// [start] is the span's first cell, and carries the words and the name
-  /// box they sit under — written inside those rows, so a glyph never
-  /// straddles the edge of the half.
+  /// layout over the WHOLE span lands on this half's rows, from [row] down
+  /// to [rowCount] — [start] is the span's first cell on this sheet, and
+  /// carries the words and the name box they sit under; [spanOffset] is
+  /// how far down the span this row is, and [lead] how many of its rows
+  /// ran in earlier cuts.
+  ///
+  /// 🗣️F-358 (유저 2026-10-14 · 10-17): 「타임시트패널에도 타임라인에서
+  /// 보이는 글자 나눠짐상태? 그대로 보이도록. 즉 오프셋 맞추듯이?」. The
+  /// span is the block's TRUE one — from the head an earlier cut holds, to
+  /// the end it reaches past the sheet's rows — and a half, or the cut, is
+  /// a window on its one layout: each glyph shows whole, where that layout
+  /// lays it, in the window holding its centre ([paintDialogueFitColumn]),
+  /// as the timeline's rows show it. ↩️Each half wrote its share again,
+  /// spread over its own rows.
   ///
   /// 🗣️F-165 (유저 2026-09-18): 「왼쪽영역에서 시작한 블록이면 대사가 다
   /// 왼쪽 시작한곳의 영역에 몰아서 써져있음. 오른쪽 영역에 나눠서
@@ -209,39 +220,31 @@ class _TimesheetSePass {
     Canvas canvas, {
     required TimesheetCell start,
     required int spanOffset,
+    required int lead,
     required int row,
     required int rowCount,
     required double centerX,
     required double cellTop,
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
-    final glyphs = (start.label ?? '').characters.toList(growable: false);
-    final spanTop = cellTop - spanOffset * rowHeight;
-    final spanBottom = spanTop + (start.spanLength ?? 1) * rowHeight - 2;
+    final spanTop = cellTop - (lead + spanOffset) * rowHeight;
+    final spanBottom =
+        spanTop + (lead + (start.spanLength ?? 1)) * rowHeight - 2;
     final dialogueTop =
         spanTop + ((start.seName ?? '').isEmpty ? 3 : _nameBoxHeight + 4);
-    // Which words are this half's: where the whole span's layout lands them.
+    // The window: this half's rows of the span.
     final top = math.max(dialogueTop, cellTop);
     final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
-    final centers = dialogueGlyphCenters(
-      glyphCount: glyphs.length,
-      mainExtent: spanBottom - dialogueTop,
-    );
-    final share = [
-      for (var i = 0; i < glyphs.length; i += 1)
-        if (dialogueTop + centers[i] >= top && dialogueTop + centers[i] < bottom)
-          glyphs[i],
-    ];
-    if (share.isEmpty || bottom - top <= 4) {
+    if (bottom <= top) {
       return;
     }
-    // …and written inside this half's rows, so no glyph straddles the edge
-    // of the page half.
     paintDialogueFitColumn(
       canvas,
-      share.join(),
-      topCenter: Offset(centerX, top),
-      extent: bottom - top,
+      start.label ?? '',
+      topCenter: Offset(centerX, dialogueTop),
+      extent: spanBottom - dialogueTop,
+      shownFrom: top - dialogueTop,
+      shownTo: bottom - dialogueTop,
       style: _painter.face.copyWith(
         color: TimesheetDocumentPainter._ink,
         fontSize: 9,
