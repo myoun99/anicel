@@ -127,7 +127,7 @@ void main() {
     final lru = Lru<String, int>(
       limit: () => limit,
       costOf: (cost) => cost,
-      entryCap: 2,
+      entryCap: () => 2,
       letGo: (key, _) => gone.add(key),
     );
 
@@ -141,6 +141,31 @@ void main() {
     lru.fit();
     expect(gone, ['a', 'b'], reason: 'two at the cap, 2 past the limit');
     expect(lru.keys, ['c']);
+  });
+
+  test('🚨bounded by how many alone, it tells what its entries cost: the cap '
+      'lets go however little they cost, is asked each time it fits, and '
+      'held is their cost (card census-misses-bake-once-images)', () {
+    var cap = 3;
+    final gone = <String>[];
+    final lru = Lru<String, int>(
+      costOf: (cost) => cost,
+      entryCap: () => cap,
+      letGo: (key, _) => gone.add(key),
+    );
+
+    lru
+      ..keep('a', 1000)
+      ..keep('b', 1000)
+      ..keep('c', 5);
+    expect(gone, isEmpty, reason: '2005 held, and no bound on it');
+    expect(lru.held, 2005);
+
+    cap = 2;
+    lru.keep('d', 1);
+    expect(gone, ['a', 'b'], reason: 'four past the lowered cap of two');
+    expect(lru.keys, ['c', 'd']);
+    expect(lru.held, 6, reason: 'what c and d cost — weighed, not counted');
   });
 
   test('🚨what is still being read is passed over as the newest is: the next '

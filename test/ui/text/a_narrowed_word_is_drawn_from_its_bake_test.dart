@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
 
+import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/dart_sources.dart';
 import '../../helpers/word_bakes.dart';
 
@@ -159,11 +160,27 @@ void main() {
     expect(strip, paintsExactlyCountTimes(#drawImageRect, 0));
 
     final before = painted.value;
+    final weighed = BakedWords.instance.imageBytes;
     await pumpUntilAWordBakeLands(tester);
     expect(
       painted.value,
       before + 1,
       reason: 'its painter paints again when the bake lands',
+    );
+    // 🧮The memory census reads what the bake weighs: its picture, the
+    // narrowed box and its one-pixel margin at 4 bytes a pixel (card
+    // census-misses-bake-once-images).
+    expect(
+      BakedWords.instance.imageBytes - weighed,
+      ((word.width * fit.x).ceil() + 2) *
+          ((word.height * fit.y).ceil() + 2) *
+          4,
+    );
+    expect(
+      collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.singleWhere((item) => item.id == 'textImages').bytes,
+      BakedWords.instance.imageBytes,
     );
     expect(strip, paints..drawImageRect());
     expect(strip, paintsExactlyCountTimes(#drawParagraph, 0));

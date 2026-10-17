@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/native_engine_path.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -610,6 +611,18 @@ void main() {
     expect(first.debugDisposed, isFalse);
     expect(third.debugDisposed, isFalse);
     expect(tile(0), same(first));
+    // 🧮What the memory census reads of it is what the two kept weigh — the
+    // one that went no longer (card census-misses-bake-once-images).
+    expect(
+      store.tileImageBytes,
+      [first, third].fold(0, (sum, image) => sum + image.width * image.height * 4),
+    );
+    expect(
+      collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.singleWhere((item) => item.id == 'timelineTiles').bytes,
+      store.tileImageBytes,
+    );
   });
 
   // The block-frame-lines switch (유저 2026-09-24) bakes into the tile, and

@@ -6,6 +6,8 @@ import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
+import '../helpers/census_where_textures_are_ram.dart';
+
 /// UI-R18 R18-B: the stroke-preview raster moved into an app-wide LRU
 /// image cache filled off the UI isolate — a preset rasterizes ONCE per
 /// (settings, size), and rows draw the cached image thereafter.
@@ -42,6 +44,26 @@ void main() {
     final other = await cache.ensure(settings, 48, 24);
     expect(identical(other, sample), isFalse);
     expect(other.image.width, 48);
+  });
+
+  test('🧮what the cached samples weigh is what the memory census reads — '
+      '4 bytes a pixel, and nothing once they are let go (card '
+      'census-misses-bake-once-images)', () async {
+    final cache = BrushStrokePreviewCache.instance;
+    expect(cache.sampleBytes, 0);
+
+    await cache.ensure(BrushSettings(), 96, 24);
+    await cache.ensure(BrushSettings(), 48, 24);
+    expect(cache.sampleBytes, (96 + 48) * 24 * 4);
+    expect(
+      collectMemoryCensusWhereTexturesAreRam(
+        const [],
+      ).items.singleWhere((item) => item.id == 'strokePreviews').bytes,
+      cache.sampleBytes,
+    );
+
+    cache.clear();
+    expect(cache.sampleBytes, 0);
   });
 
   test('concurrent requests for one key share one raster', () async {

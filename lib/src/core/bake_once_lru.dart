@@ -13,7 +13,9 @@ import 'lru.dart';
 /// bounded cache lets go by; [retire] is its letting go — a store whose
 /// values own native handles disposes them there; one whose values are
 /// plain data leaves it null. Eviction never touches an in-flight bake,
-/// and never the entry just inserted.
+/// and never the entry just inserted. What a value weighs ([costOf]) is
+/// told, never bounded: [held] is what the memory census reads of a store
+/// whose values are pictures.
 ///
 /// A bake that FAILS is no answer: the asks while it ran share its failure,
 /// and the next ask bakes anew. 🗣️브러시/렌더링 (2026-10-15, card
@@ -22,13 +24,17 @@ import 'lru.dart';
 /// a bake the GPU slipped on once left that word or preview blank until the
 /// app restarted. ↩️It was kept, by `.then`, which nobody had decided.
 class BakeOnceLru<K, V> {
-  BakeOnceLru({required this.capacity, this.retire});
+  BakeOnceLru({required this.capacity, this.retire, this.costOf});
 
   final int capacity;
   final void Function(V value)? retire;
 
+  /// What a finished value weighs. Null: one each.
+  final int Function(V value)? costOf;
+
   late final Lru<K, V> _done = Lru(
-    limit: () => capacity,
+    entryCap: () => capacity,
+    costOf: costOf,
     letGo: (_, value) => retire?.call(value),
   );
   final InFlight<K, V> _baking = InFlight();
@@ -57,10 +63,14 @@ class BakeOnceLru<K, V> {
   }
 
   /// Every finished value, oldest first — for a store that has to walk
-  /// what it holds (a byte budget, a teardown).
+  /// what it holds (a teardown).
   Iterable<MapEntry<K, V>> get entries => _done.entries;
 
   int get length => _done.length;
+
+  /// What the finished values weigh together ([costOf]) — how many, for a
+  /// store that weighs none.
+  int get held => _done.held;
 
   void clear() => _done.clear();
 }

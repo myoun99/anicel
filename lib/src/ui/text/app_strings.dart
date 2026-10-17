@@ -627,6 +627,9 @@ enum AppStrings {
   String get memoryItemStoryboardThumbnails =>
       _s('memoryItemStoryboardThumbnails');
   String get memoryItemSheetImages => _s('memoryItemSheetImages');
+  String get memoryItemTextImages => _s('memoryItemTextImages');
+  String get memoryItemStrokePreviews => _s('memoryItemStrokePreviews');
+  String get memoryItemTimelineTiles => _s('memoryItemTimelineTiles');
   String get memoryItemMoviePictures => _s('memoryItemMoviePictures');
   String get memoryItemTileImages => _s('memoryItemTileImages');
   String get memoryItemEnginePool => _s('memoryItemEnginePool');
@@ -2149,6 +2152,9 @@ enum AppStrings {
     'memoryItemImageCache': 'Image cache',
     'memoryItemStoryboardThumbnails': 'Storyboard thumbnails',
     'memoryItemSheetImages': 'Sheet images',
+    'memoryItemTextImages': 'Text images',
+    'memoryItemStrokePreviews': 'Stroke previews',
+    'memoryItemTimelineTiles': 'Timeline tile images',
     'memoryItemMoviePictures': 'Reference movies',
     'memoryItemTileImages': 'Canvas tile images',
     'memoryItemEnginePool': 'Drawing engine tile pool',
@@ -3368,6 +3374,9 @@ enum AppStrings {
     'memoryItemImageCache': '画像キャッシュ',
     'memoryItemStoryboardThumbnails': '絵コンテのサムネイル',
     'memoryItemSheetImages': '用紙の画像',
+    'memoryItemTextImages': '文字の画像',
+    'memoryItemStrokePreviews': 'ストロークのプレビュー',
+    'memoryItemTimelineTiles': 'タイムラインのタイル画像',
     'memoryItemMoviePictures': '参照動画',
     'memoryItemTileImages': 'キャンバスのタイル画像',
     'memoryItemEnginePool': '描画エンジンのタイルプール',
@@ -4917,6 +4926,9 @@ enum AppStrings {
     'memoryItemImageCache': '이미지 캐시',
     'memoryItemStoryboardThumbnails': '콘티 썸네일',
     'memoryItemSheetImages': '용지 이미지',
+    'memoryItemTextImages': '글자 이미지',
+    'memoryItemStrokePreviews': '스트로크 미리보기',
+    'memoryItemTimelineTiles': '타임라인 타일 이미지',
     'memoryItemMoviePictures': '참조 동영상',
     'memoryItemTileImages': '캔버스 타일 이미지',
     'memoryItemEnginePool': '그리기 엔진 타일 풀',
@@ -6475,6 +6487,9 @@ enum AppStrings {
     'memoryItemImageCache': "Cache d'images",
     'memoryItemStoryboardThumbnails': 'Vignettes du storyboard',
     'memoryItemSheetImages': 'Images sur feuille',
+    'memoryItemTextImages': 'Images de texte',
+    'memoryItemStrokePreviews': 'Aperçus du tracé',
+    'memoryItemTimelineTiles': 'Images des tuiles de la timeline',
     'memoryItemMoviePictures': 'Vidéos de référence',
     'memoryItemTileImages': 'Images des tuiles du canevas',
     'memoryItemEnginePool': 'Réserve de tuiles du moteur de dessin',
@@ -8108,6 +8123,9 @@ enum AppStrings {
     'memoryItemImageCache': '图像缓存',
     'memoryItemStoryboardThumbnails': '分镜缩略图',
     'memoryItemSheetImages': '纸面图像',
+    'memoryItemTextImages': '文字图像',
+    'memoryItemStrokePreviews': '笔画预览',
+    'memoryItemTimelineTiles': '时间轴图块图像',
     'memoryItemMoviePictures': '引用视频',
     'memoryItemTileImages': '画布图块图像',
     'memoryItemEnginePool': '绘图引擎图块池',

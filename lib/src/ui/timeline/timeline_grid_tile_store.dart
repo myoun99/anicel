@@ -11,6 +11,7 @@ import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../native/qa_native_engine.dart';
 import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
@@ -103,11 +104,17 @@ class TimelineGridTileStore {
   @visibleForTesting
   int debugCapacity = capacity;
 
-  /// The tiles, the least recently asked for first.
+  /// The tiles, the least recently asked for first — bounded by how many,
+  /// and weighed for [tileImageBytes].
   late final Lru<String, _TileEntry> _entries = Lru(
-    limit: () => debugCapacity,
+    entryCap: () => debugCapacity,
+    costOf: (entry) =>
+        estimatedImageBytes(entry.image.width, entry.image.height),
     letGo: (_, entry) => entry.image.dispose(),
   );
+
+  /// What the tiles' pictures weigh resident, for the memory census.
+  int get tileImageBytes => _entries.held;
 
   /// The spans asked for and not rastered yet, the latest ask last — past
   /// 32 the oldest ask is turned away into [_starved]. The order a bounded

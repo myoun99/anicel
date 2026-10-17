@@ -18,6 +18,12 @@ import 'dart:collection';
 /// an entry does besides forgetting it ([letGo] — a value owning a native
 /// handle disposes it).
 ///
+/// 🧮A STORE BOUNDED BY HOW MANY STILL SAYS WHAT IT WEIGHS (card
+/// census-misses-bake-once-images, 2026-10-17): its [entryCap] bounds it,
+/// with no [limit], and [held] is what [costOf] counts — the memory census
+/// reads the baked words' and the timeline tiles' pictures by the same
+/// [held] it reads the byte-bounded stores' by.
+///
 /// ⛔Not a memo: a value that owns nothing and is cheap to build again goes
 /// in `BoundedMemo`, which starts over rather than reshuffle on every hit.
 /// ⛔Not a cache a playhead reads, where what it wants latest goes first
@@ -27,21 +33,24 @@ import 'dart:collection';
 /// when an entry comes and when it goes, and [letGo] runs at once.
 final class Lru<K, V> {
   Lru({
-    required this.limit,
+    this.limit,
     int Function(V value)? costOf,
     this.entryCap,
     this.inUse,
     this.letGo,
-  }) : _costOf = costOf ?? _one;
+  }) : assert(limit != null || entryCap != null, 'an Lru with no bound'),
+       _costOf = costOf ?? _one;
 
   /// How much it may hold — entries, or whatever [costOf] counts. Asked
-  /// each time it fits, never kept.
-  final int Function() limit;
+  /// each time it fits, never kept. Null: [entryCap] alone.
+  final int Function()? limit;
 
-  /// How many entries it may hold whatever they cost, beside [limit] — for
-  /// a store bounded both ways: the engine's native uploads, a few big
-  /// copies and never more than a few. Null: [limit] alone.
-  final int? entryCap;
+  /// How many entries it may hold whatever they cost — beside [limit] for
+  /// a store bounded both ways (the engine's native uploads: a few big
+  /// copies and never more than a few), or alone for one whose [costOf] is
+  /// told and not bounded. Asked each time it fits, as [limit] is. Null:
+  /// [limit] alone.
+  final int Function()? entryCap;
 
   /// Whether [K]'s entry is still being read: passed over as the newest
   /// is, and the next least recently used goes in its place — a picture a
@@ -142,8 +151,10 @@ final class Lru<K, V> {
   }
 
   bool _overLimit() {
+    final limit = this.limit;
     final cap = entryCap;
-    return _held > limit() || (cap != null && _entries.length > cap);
+    return (limit != null && _held > limit()) ||
+        (cap != null && _entries.length > cap());
   }
 
   /// Lets go of the least recently used entry that may go — false when

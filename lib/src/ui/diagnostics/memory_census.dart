@@ -8,9 +8,12 @@ import '../../native/qa_native_engine.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
+import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/tile_pyramid.dart';
 import '../editor_session_manager.dart';
+import '../text/word_bake.dart';
+import '../timeline/timeline_grid_tile_store.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/still_raster.dart';
 
@@ -330,6 +333,28 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       MemoryCensusItem(
         id: 'sheetImages',
         bytes: sum((session) => session.renderCaches.sheetImageBytes),
+      ),
+    // 🚨THE PICTURES A SCREEN BAKES ONCE AND DRAWS FROM AFTER, the app's
+    // and so counted once: a word narrowed under the legible size, a
+    // preset's stroke in the brush list, a span of a timeline row — each
+    // store bounded by how many, up to 512, 512 and 768 of them. They read
+    // as engine overhead until 2026-10-17 (card
+    // census-misses-bake-once-images): no field of theirs had the shape the
+    // census ratchet looked for.
+    if (textures)
+      MemoryCensusItem(
+        id: 'textImages',
+        bytes: BakedWords.instance.imageBytes,
+      ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'strokePreviews',
+        bytes: BrushStrokePreviewCache.instance.sampleBytes,
+      ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'timelineTiles',
+        bytes: TimelineGridTileStore.instance.tileImageBytes,
       ),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —

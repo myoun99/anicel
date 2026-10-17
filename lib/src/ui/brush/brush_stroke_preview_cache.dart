@@ -13,6 +13,7 @@ import '../../core/worker_count.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
+import '../../models/rgba_image_bytes.dart';
 import '../../services/brush_dab_coverage.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_dab_share.dart';
@@ -48,10 +49,16 @@ class BrushStrokePreviewCache {
   final BakeOnceLru<(BrushSettings, int, int), BrushStrokeSample> _store =
       BakeOnceLru<(BrushSettings, int, int), BrushStrokeSample>(
         capacity: capacity,
+        costOf: (sample) =>
+            estimatedImageBytes(sample.image.width, sample.image.height),
         // Callers hold clones (the contract above), so disposing the
         // cache's own handle here is safe.
         retire: (sample) => sample.image.dispose(),
       );
+
+  /// What the cached samples' pictures weigh resident, for the memory
+  /// census.
+  int get sampleBytes => _store.held;
 
   /// Isolate fan-out cap: a fast scroll — or simply opening a group —
   /// requests dozens of rows at once.

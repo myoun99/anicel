@@ -51,7 +51,7 @@ final class NativeUploadCache<L extends TypedData> {
   late final Lru<Pointer<Uint8>, _Upload> _copies = Lru(
     limit: () => _byteBudget,
     costOf: (copy) => copy.length,
-    entryCap: entryCap,
+    entryCap: () => entryCap,
     letGo: (_, copy) => _free(copy),
   );
   late final Finalizer<_Upload> _sourceGone = Finalizer<_Upload>(
