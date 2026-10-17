@@ -277,7 +277,8 @@ void main() {
       expect(
         [
           for (final warning in result.warnings)
-            if (warning.key == 'psdLayerEffects') warning.values['name'],
+            if (warning.key == 'layerEffectsNotApplied')
+              warning.values['name'],
         ],
         ['shadowed', 'stroked'],
       );

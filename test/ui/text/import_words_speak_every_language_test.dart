@@ -30,8 +30,9 @@ void main() {
   /// cut folder's parse and plan, `tvp*`/`tvpp*` the TVPaint planner,
   /// parser and converter, three the .tvpp door itself, `clip*` the CLIP
   /// STUDIO planner and door, `brushPack*` · `abr*` · `sut*` the brush file
-  /// readers' refusals (F-273) — and `unsupportedLayerKind` every decoder's
-  /// one word (`import_warning.dart`).
+  /// readers' refusals (F-273) — and `unsupportedLayerKind` ·
+  /// `layerEffectsNotApplied` · `clippingNotApplied` every decoder's one
+  /// word for each (`import_warning.dart`).
   const keys = [
     'psdBitDepth',
     'psdVectorMask',
@@ -43,8 +44,6 @@ void main() {
     'psdIndexedNoPalette',
     'psdCmyk',
     'psdLab',
-    'psdClipping',
-    'psdLayerEffects',
     'psdBlend',
     'folderNothing',
     'folderNoBase',
@@ -101,6 +100,8 @@ void main() {
     'sutNoBrushData',
     'sutNothingImportable',
     'unsupportedLayerKind',
+    'layerEffectsNotApplied',
+    'clippingNotApplied',
   ];
 
   for (final language in translated) {

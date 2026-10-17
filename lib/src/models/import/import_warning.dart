@@ -98,3 +98,23 @@ ImportWarning unsupportedLayerKind(String name) => ImportWarning(
   '{name}: this kind of layer is not supported.',
   {'name': name},
 );
+
+/// A layer that came in without the effects its program drew over its own
+/// pixels — Photoshop's layer effects, CLIP STUDIO's layer properties'
+/// (a border, a tone, its layer colour …) — named, as every decoder says
+/// it: they used to fall away without a word (F-306 for Photoshop; CLIP
+/// STUDIO's, 10-17, under 유저 10-07 「없는 기능은 알리는거 ok」).
+ImportWarning layerEffectsNotApplied(String name) => ImportWarning(
+  'layerEffectsNotApplied',
+  '{name}: layer effects not applied.',
+  {'name': name},
+);
+
+/// A layer clipped to the one under it, come in unclipped — named, as
+/// every decoder says it (CLIP STUDIO's, 10-17, by the same 10-07 law as
+/// [layerEffectsNotApplied]).
+ImportWarning clippingNotApplied(String name) => ImportWarning(
+  'clippingNotApplied',
+  '{name}: clipping mask not applied.',
+  {'name': name},
+);

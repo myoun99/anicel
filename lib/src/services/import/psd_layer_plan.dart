@@ -179,13 +179,7 @@ PsdExpandPlan planPsdExpansion({
           continue;
         }
         if (source.clipping) {
-          warnings.add(
-            ImportWarning(
-              'psdClipping',
-              '{name}: clipping mask not applied.',
-              {'name': source.name},
-            ),
-          );
+          warnings.add(clippingNotApplied(source.name));
         }
         _sayEffects(source, warnings);
         final layerId = mint.nextLayerId();
@@ -259,16 +253,9 @@ PsdExpandPlan planPsdExpansion({
 /// the layers' own pixels, and an effect is drawn by Photoshop on top of
 /// them (F-306 — they used to fall away without a word).
 void _sayEffects(PsdLayer source, List<ImportWarning> warnings) {
-  if (!source.hasLayerEffects) {
-    return;
+  if (source.hasLayerEffects) {
+    warnings.add(layerEffectsNotApplied(source.name));
   }
-  warnings.add(
-    ImportWarning(
-      'psdLayerEffects',
-      '{name}: layer effects not applied.',
-      {'name': source.name},
-    ),
-  );
 }
 
 /// The part of [source] inside [document], in the layer's own pixels — or
