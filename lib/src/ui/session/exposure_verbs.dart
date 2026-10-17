@@ -112,9 +112,9 @@ class ExposureVerbs {
   /// 🚨T3 rename: this was `cutExposureAtCurrentFrame` while 「잘라내기」 was
   /// a word nothing in the app used. Now that [FrameClipboard.cutRunAtCurrentFrame] exists,
   /// two different verbs would answer to "cut". The UI never said 「cut」
-  /// here — the button is `×` (`blank-exposure-button`, tooltip `tlBlankX`)
-  /// — so the code name follows the button and the new verb takes the word
-  /// the user gave it.
+  /// here — the button is `×` (`blank-exposure-button`, which the user
+  /// calls 「비우기」, I-58) — so the code name follows the button and the
+  /// new verb takes the word the user gave it.
   void blankExposureAtCurrentFrame() {
     final banded = _blankableSpanForSelection();
     if (banded.isNotEmpty) {
