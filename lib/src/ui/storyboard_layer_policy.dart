@@ -136,17 +136,19 @@ Layer trackConteRowShown(
 /// The conte rows last shown of each track, a memo per seat — each on the
 /// track's id, which every version of the track shares, so they go with the
 /// project.
-final List<SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer>>
-_conteRowsShown = [];
+///
+/// ⚠️By seat in a MAP: a seat is any number — the rows riding below the
+/// conte sit at negative ones ([conteGroupOf]), where a list indexed from
+/// 0 throws building the rail.
+final Map<int, SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer>>
+_conteRowsShown = {};
 
 SignedMemo<List<StoryboardTimelineLayoutEntry>, Layer> _conteRowsShownAt(
   int seat,
-) {
-  while (_conteRowsShown.length <= seat) {
-    _conteRowsShown.add(SignedMemo('conte rows shown', same: listEquals));
-  }
-  return _conteRowsShown[seat];
-}
+) => _conteRowsShown.putIfAbsent(
+  seat,
+  () => SignedMemo('conte rows shown', same: listEquals),
+);
 
 /// [trackConteRowShown] made from [laid].
 Layer _conteRowLaid(
