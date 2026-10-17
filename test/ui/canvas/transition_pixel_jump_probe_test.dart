@@ -93,15 +93,10 @@ void main() {
   BitmapSurface surfaceOf(Map<TileCoord, BitmapTile> tiles) =>
       BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: tiles);
 
-  Future<void> decodeAll(WidgetTester tester, BitmapSurface surface) {
-    return tester.runAsync(() async {
-      for (final entry in surface.tiles.entries) {
-        tileCache.pictureFor(entry.value);
-      }
-      while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    });
+  void decodeAll(BitmapSurface surface) {
+    for (final entry in surface.tiles.entries) {
+      tileCache.pictureFor(entry.value);
+    }
   }
 
   Future<Uint8List> paintBytes(WidgetTester tester, CustomPainter painter) {
@@ -287,9 +282,9 @@ void main() {
     );
     final surface2 = surfaceOf({...tilesV1, coord00: tile00V2});
     final surface3 = surfaceOf(freshTiles());
-    await decodeAll(tester, surface1);
-    await decodeAll(tester, surface2);
-    await decodeAll(tester, surface3);
+    decodeAll(surface1);
+    decodeAll(surface2);
+    decodeAll(surface3);
 
     BitmapSurfacePainter painterFor(BitmapSurface surface) =>
         BitmapSurfacePainter(

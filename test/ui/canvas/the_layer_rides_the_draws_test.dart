@@ -149,12 +149,9 @@ void main() {
   // from the tile paint survived exactly that gap.
   final cache = BitmapTileImageCache();
 
-  Future<void> decodeAll(BitmapSurface surface) async {
+  void decodeAll(BitmapSurface surface) {
     for (final entry in surface.tiles.entries) {
       cache.pictureFor(entry.value);
-    }
-    while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
     }
   }
 
@@ -172,7 +169,7 @@ void main() {
     double phase = 0,
   }) async {
     final surface = inkedSurface();
-    await decodeAll(surface);
+    decodeAll(surface);
     final painter = painterOver(surface);
     // ⛔The precondition, not an assumption: the whole equivalence is
     // conditional on it, so a fixture that quietly stopped being disjoint
@@ -289,7 +286,7 @@ void main() {
       // Its isolation layer exists precisely because it blends with the
       // committed pixels — so the layer paint cannot ride the draws.
       final surface = inkedSurface();
-      await decodeAll(surface);
+      decodeAll(surface);
       // A MISMATCHED grid is the case the replacement route refuses.
       final overlay = ActiveStrokeOverlayModel(tileSize: tileSize ~/ 2);
       addTearDown(overlay.dispose);
@@ -594,16 +591,11 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       // ⛔AND THE TILE HAS TO BE DECODED IN THE SINGLETON, or the slot draws
       // it per pixel out of the fallback budget on one reading and from its
-      // picture on the next. `runAsync` because the upload lands on the
-      // engine, which a widget test's fake clock never completes.
-      await tester.runAsync(() async {
-        BitmapTileImageCache.instance.pictureFor(
-          sharedTile,
-        );
-        while (BitmapTileImageCache.instance.imageFor(sharedTile) == null) {
-          await Future<void>.delayed(const Duration(milliseconds: 1));
-        }
-      });
+      // picture on the next. ↩️It was asked inside `runAsync` and waited for
+      // while the upload landed on the engine, which a widget test's fake
+      // clock never completes; since 2026-09-17 the picture is made inside
+      // the call ([BitmapTileImageCache.pictureFor]).
+      BitmapTileImageCache.instance.pictureFor(sharedTile);
       expect(
         BitmapTileImageCache.instance.imageFor(sharedTile),
         isNotNull,
@@ -1130,7 +1122,7 @@ void main() {
       // by tile. (The app pre-blends every stroke on the surface's own grid,
       // so its tiles replace their coordinates and never come this way.)
       final surface = inkedSurface();
-      await decodeAll(surface);
+      decodeAll(surface);
 
       Future<List<Invocation>> callsFor(BrushBlendMode blend) async {
         final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);

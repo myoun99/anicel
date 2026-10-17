@@ -68,12 +68,9 @@ void main() {
     return BitmapSurface(canvasSize: canvasSize, tileSize: 256, tiles: tiles);
   }
 
-  Future<void> decodeAll(BitmapSurface surface) async {
+  void decodeAll(BitmapSurface surface) {
     for (final entry in surface.tiles.entries) {
       tileCache.pictureFor(entry.value);
-    }
-    while (surface.tiles.values.any((t) => tileCache.imageFor(t) == null)) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
     }
   }
 
@@ -194,7 +191,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
-    await tester.runAsync(() => decodeAll(surface));
+    decodeAll(surface);
     final rig = await pump(tester, surface: surface, viewport: atLevelOne);
 
     final bytes = await paintOverBackdrop(tester, rig.painter, screen);
@@ -228,7 +225,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
-    await tester.runAsync(() => decodeAll(surface));
+    decodeAll(surface);
     final rig = await pump(tester, surface: surface, viewport: atLevelZero);
 
     final bytes = await paintOverBackdrop(tester, rig.painter, screen);

@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -238,7 +239,7 @@ void main() {
       await pumpPanel(tester, autoCreates: false, brush: brush);
 
       dropOnSheet(tester, png, bandOf(cellOf(twins)));
-      await settleSheetDrop(tester, () => photosOf(twins).isNotEmpty);
+      await settleAsync(tester, () => photosOf(twins).isNotEmpty);
 
       final inkId = inkIdOf(twins) ?? '';
       expect(inkId, isNotEmpty, reason: 'the block took its id');
@@ -264,7 +265,7 @@ void main() {
     await pumpPanel(tester, autoCreates: true, brush: false);
 
     dropOnSheet(tester, png, bandOf(cellOf(hollow)));
-    await settleSheetDrop(tester, () => inkIdOf(hollow) != null);
+    await settleAsync(tester, () => inkIdOf(hollow) != null);
 
     final row = storyboardLayerForCut(session.cutById(hollow)!)!;
     expect(row.frames, hasLength(1), reason: 'the block covers the cut');
@@ -292,7 +293,7 @@ void main() {
       isFalse,
     );
     dropOnSheet(tester, png, at);
-    await settleSheetDrop(tester, () => false, tries: 5);
+    await lendBothClocks(tester, rounds: 5);
 
     expect(
       storyboardLayerForCut(session.cutById(hollow)!)?.timeline ?? const {},
@@ -313,7 +314,7 @@ void main() {
       isFalse,
     );
     dropOnSheet(tester, png, at);
-    await settleSheetDrop(tester, () => false, tries: 5);
+    await lendBothClocks(tester, rounds: 5);
 
     expect(inkIdOf(twins), isNull);
     expect(photosOf(twins), isEmpty);
@@ -325,7 +326,7 @@ void main() {
     await pumpPanel(tester, autoCreates: true, brush: false);
 
     dropOnSheet(tester, png, nextCutsBand());
-    await settleSheetDrop(tester, () => cutsOnTheSecond().length > 1);
+    await settleAsync(tester, () => cutsOnTheSecond().length > 1);
 
     expect([for (final cut in cutsOnTheSecond()) cut.name], ['39', '40']);
     final made = cutsOnTheSecond().last.id;

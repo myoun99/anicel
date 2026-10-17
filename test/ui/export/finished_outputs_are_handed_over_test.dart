@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'fake_ffmpeg_process.dart';
 import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// WHERE AN EXPORT GOES IS ASKED WHEN IT IS PRESSED (F-221, 유저 2026-10-06:
@@ -209,9 +210,7 @@ void main() {
     late Future<void> whole;
     await tester.runAsync(() async {
       whole = run();
-      while (!reached()) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
+      expect(await pollUntil(reached), isTrue);
     });
     await tester.pump();
     await tester.pump();

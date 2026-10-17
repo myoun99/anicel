@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -87,10 +88,7 @@ void main() {
       png,
       sheetPaperOnScreen(tester, page.documentRect.center),
     );
-    await settleSheetDrop(
-      tester,
-      () => sheetPhotosOn(ink, page.key).isNotEmpty,
-    );
+    await settleAsync(tester, () => sheetPhotosOn(ink, page.key).isNotEmpty);
     await tester.pump();
 
     expect(sheetPhotosOn(ink, page.key), hasLength(1));
@@ -116,10 +114,7 @@ void main() {
       png,
       sheetPaperOnScreen(tester, page.documentRect.center),
     );
-    await settleSheetDrop(
-      tester,
-      () => sheetPhotosOn(ink, page.key).isNotEmpty,
-    );
+    await settleAsync(tester, () => sheetPhotosOn(ink, page.key).isNotEmpty);
 
     expect(sheetPhotosOn(ink, page.key), hasLength(1));
     session.historyManager.undo();

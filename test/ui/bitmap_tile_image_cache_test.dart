@@ -10,8 +10,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
-import '../helpers/poll_until.dart';
-
 BitmapTile _gradientTile({required TileCoord coord, int size = 4}) {
   final pixels = Uint8List(size * size * BitmapTile.bytesPerPixel);
   for (var y = 0; y < size; y += 1) {
@@ -28,17 +26,6 @@ BitmapTile _gradientTile({required TileCoord coord, int size = 4}) {
     }
   }
   return BitmapTile(size: size, pixels: pixels);
-}
-
-Future<ui.Image> _awaitDecode(
-  BitmapTileImageCache cache,
-  BitmapTile tile,
-) async {
-  cache.pictureFor(tile);
-  if (!await pollUntil(() => cache.imageFor(tile) != null)) {
-    fail('Tile image decode did not complete.');
-  }
-  return cache.imageFor(tile)!;
 }
 
 Future<Uint8List> _paintPixels(
@@ -60,7 +47,7 @@ void main() {
       final cache = BitmapTileImageCache();
       final tile = _gradientTile(coord: TileCoord(x: 0, y: 0));
 
-      final first = await _awaitDecode(cache, tile);
+      final first = cache.pictureFor(tile);
       cache.pictureFor(tile);
       final second = cache.imageFor(tile);
 
@@ -92,7 +79,7 @@ void main() {
 
         // Image path: decode first, then paint through the same cache.
         final cache = BitmapTileImageCache();
-        await _awaitDecode(cache, tile);
+        cache.pictureFor(tile);
         final imagePixels = await _paintPixels(
           BitmapSurfacePainter(
             surface: surface,

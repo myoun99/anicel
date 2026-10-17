@@ -105,20 +105,33 @@ void main() {
   /// takes longer: the settings round trip and the Drive save went red that
   /// way and passed alone. ✅`settleAsync` and `pollUntil` (`test/helpers/`)
   /// wait by `waitPatience`; a loop of a test's own is the copy coming back
-  /// — 🔬on master `76fbb39e8` this named 27, every one a wait for
-  /// something to come.
+  /// in one of four forms — counted, leaving by its body or by its own
+  /// condition (`i < n && !landed()`), or a `while` that keeps a deadline of
+  /// its own or does nothing but wait. 🔬On master `4520fe717` this named
+  /// 124 — 27 · 49 · 23 · 25, the forms in that order — every one a wait
+  /// for something to come.
   ///
   /// ⛔A WINDOW is rounds on purpose — given to see that something does NOT
   /// happen, it must not see less on a busy machine (`lendBothClocks`) —
   /// and it never leaves early. Leaving early is what gives a poll away.
-  test('no test polls by a count of rounds', () {
+  test('no test polls in a loop of its own', () {
+    // The loops that look like a test's own poll and are not one.
+    const pollsOnPurpose = [
+      // The poll every test waits through — its one home.
+      'poll_until.dart',
+      // A take on the null device rolls in real time: the 600 ms it is
+      // given is what the microphone takes in, ticked, not a wait for
+      // anything to come.
+      'a_take_lands_by_what_was_heard_test.dart',
+    ];
     final offenders = <String>[];
     for (final file in testFiles()) {
+      if (pollsOnPurpose.any(file.path.endsWith)) {
+        continue;
+      }
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
-        final loop = _countedLoopAt(lines, i);
-        if (loop.any(_lendsRealTime.hasMatch) &&
-            loop.any(_leavesEarly.hasMatch)) {
+        if (_pollStartsAt(lines, i)) {
           offenders.add('${file.path}:${i + 1}: ${lines[i].trim()}');
         }
       }
@@ -127,9 +140,34 @@ void main() {
       offenders,
       isEmpty,
       reason:
-          'these count rounds of real time and leave once the thing has '
-          'come — under load the count runs out first. Wait with '
-          'settleAsync or pollUntil, which wait by the clock.',
+          'these wait for something in a loop of their own — a count of '
+          'rounds runs out under load, and a deadline of their own is the '
+          'same guess. Wait with settleAsync or pollUntil, which wait by '
+          'waitPatience.',
+    );
+  });
+
+  /// ⛔**A WINDOW HAS ONE HOME TOO** — `lendBothClocks`, which says why it
+  /// is rounds. A counted loop that lends real time and pumps and does
+  /// nothing else is its copy: the landing waits four times over and a
+  /// `_settle` twice were that, each with a count and a beat of its own.
+  /// 🔬On master `4520fe717` this named 27.
+  test('no test lends both clocks in a window of its own', () {
+    final offenders = <String>[];
+    for (final file in testFiles()) {
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i += 1) {
+        if (_windowStartsAt(lines, i)) {
+          offenders.add('${file.path}:${i + 1}: ${lines[i].trim()}');
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'these lend both clocks a count of rounds in a loop of their own. '
+          'Give the window with lendBothClocks.',
     );
   });
 
@@ -212,24 +250,84 @@ bool _delayedTakesAComputation(String source) {
 /// A counted `for` loop's own line — `for (var i = 0; i < n; …)`.
 final _countedLoop = RegExp(r'^\s*for \(var \w+ = \d+; \w+ < ');
 
+/// A `while` loop's own line, or a `do` loop's.
+final _openLoop = RegExp(r'^\s*(while \(|do \{)');
+
 /// A line that lends real time: a test's `runAsync`, or a plain delay.
 final _lendsRealTime = RegExp(r'runAsync\(|\.delayed\(');
 
-/// A line that leaves a loop before its count is up.
-final _leavesEarly = RegExp(r'\bbreak;|\breturn\b');
+/// A line that leaves a counted loop before its count is up — a `break`, a
+/// `return`, or the loop's own condition asking for more than the count.
+final _leavesEarly = RegExp(
+  r'\bbreak;|\breturn\b|^\s*for \(var \w+ = \d+; \w+ < [^;]*&&',
+);
 
-/// The lines of the counted loop that starts at [lines]' [at] — its own
-/// line to the brace that closes its block, or to its one statement when
-/// it has no block — and none when no counted loop starts there.
+/// A line that reads the wall clock — a deadline of a loop's own.
+final _readsTheClock = RegExp(r'DateTime\.now\(\)|Stopwatch|\.elapsed\b');
+
+/// A line of a loop's body that does nothing but wait: time lent and the
+/// closure it is lent through, a pump, a re-read of what is waited for, a
+/// closing bracket, a comment.
+final _onlyWaits = RegExp(
+  r'^\s*(await (Future<void>|Future|tester)\.'
+  r'(delayed|pump|pumpAndSettle|runAsync)\b.*'
+  r'|\(\) (async )?(=>|\{).*'
+  r'|\w+ = [^;]*;'
+  r'|[})\];,]*'
+  r'|//.*)$',
+);
+
+/// Whether a loop that waits for something to come starts at [lines]'
+/// [at]: one that lends real time and leaves once it has come — counted,
+/// by its body or by its own condition — or a `while` / `do` that keeps a
+/// deadline of its own or does nothing but wait.
+bool _pollStartsAt(List<String> lines, int at) {
+  final counted = _countedLoop.hasMatch(lines[at]);
+  if (!counted && !_openLoop.hasMatch(lines[at])) {
+    return false;
+  }
+  final loop = _loopAt(lines, at);
+  if (!loop.any(_lendsRealTime.hasMatch)) {
+    return false;
+  }
+  if (counted) {
+    return loop.any(_leavesEarly.hasMatch);
+  }
+  return loop.any(_readsTheClock.hasMatch) ||
+      _bodyOf(loop).every(_onlyWaits.hasMatch);
+}
+
+/// A line that turns a widget test's pumped clock.
+final _pumps = RegExp(r'tester\.pump\(');
+
+/// Whether a window of a test's own starts at [lines]' [at]: a counted
+/// loop that lends both clocks — real time and a pump — does nothing else,
+/// and never leaves early.
+bool _windowStartsAt(List<String> lines, int at) {
+  if (!_countedLoop.hasMatch(lines[at])) {
+    return false;
+  }
+  final loop = _loopAt(lines, at);
+  return loop.any(_lendsRealTime.hasMatch) &&
+      loop.any(_pumps.hasMatch) &&
+      !loop.any(_leavesEarly.hasMatch) &&
+      _bodyOf(loop).every(_onlyWaits.hasMatch);
+}
+
+/// The lines between a loop's own line and the brace that closes it — or
+/// its one statement, when it has no block.
+List<String> _bodyOf(List<String> loop) =>
+    loop.length > 2 ? loop.sublist(1, loop.length - 1) : loop.sublist(1);
+
+/// The lines of the loop that starts at [lines]' [at] — its own line to the
+/// brace that closes its block, or to its one statement when it has no
+/// block.
 ///
 /// Reads the loop's block by counting braces, as
 /// [_delayedTakesAComputation] counts parentheses — not a window of so
 /// many lines, which would read a long loop short and a short one into
 /// whatever follows it.
-List<String> _countedLoopAt(List<String> lines, int at) {
-  if (!_countedLoop.hasMatch(lines[at])) {
-    return const [];
-  }
+List<String> _loopAt(List<String> lines, int at) {
   var depth = 0;
   var opened = false;
   for (var i = at; i < lines.length; i += 1) {

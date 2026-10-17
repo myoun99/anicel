@@ -62,21 +62,6 @@ void dropOnSheet(WidgetTester tester, String path, Offset at) =>
       ),
     );
 
-/// Lets the picture's read run until [landed] says so — [tries] times at
-/// most, for a drop that is to land nothing.
-Future<void> settleSheetDrop(
-  WidgetTester tester,
-  bool Function() landed, {
-  int tries = 100,
-}) async {
-  for (var tried = 0; tried < tries && !landed(); tried += 1) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 20)),
-    );
-    await tester.pump();
-  }
-}
-
 /// The photos [key]'s picture carries on [ink], as the sheet prints it.
 List<CelPhoto> sheetPhotosOn(
   SheetInkController<Null> ink,

@@ -578,16 +578,12 @@ void main() {
       devicePixelRatio: 2.0,
     );
     Future<ui.Image> landed(int span) async {
-      final deadline = DateTime.now().add(const Duration(seconds: 20));
-      var image = tile(span);
-      while (image == null) {
-        if (DateTime.now().isAfter(deadline)) {
-          fail('span $span never landed');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-        image = tile(span);
-      }
-      return image;
+      expect(
+        await pollUntil(() => tile(span) != null),
+        isTrue,
+        reason: 'span $span never landed',
+      );
+      return tile(span)!;
     }
 
     final first = await landed(0);

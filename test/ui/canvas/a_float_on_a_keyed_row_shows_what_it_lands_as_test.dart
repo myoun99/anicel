@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
+import '../../helpers/settle_async.dart';
 
 /// Who the box carries: the row the canvas edits, alone; that row and
 /// another across a frame range (F-329), the other floating in a slot of
@@ -236,14 +237,12 @@ void main() {
   }
 
   /// Lets what is drawn off the frame's clock land.
-  Future<void> settle(WidgetTester tester) async {
-    for (var i = 0; i < 12; i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 16)),
-      );
-      await tester.pump(const Duration(milliseconds: 16));
-    }
-  }
+  Future<void> settle(WidgetTester tester) => lendBothClocks(
+    tester,
+    rounds: 12,
+    beat: const Duration(milliseconds: 16),
+    step: const Duration(milliseconds: 16),
+  );
 
   /// The app on [project], stood on row A — at the 1:1 it opens at, or
   /// [zoomedOut] by the bar's own steps until its rows are drawn as level

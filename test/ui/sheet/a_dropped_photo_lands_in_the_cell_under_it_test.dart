@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/sheet/sheet_photo_drop.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -140,10 +141,7 @@ void main() {
       windows: [outer, inner],
     );
     dropOnSheet(tester, png, sheetPaperOnScreen(tester, dropped));
-    await settleSheetDrop(
-      tester,
-      () => sheetPhotosOn(ink, inner.key).isNotEmpty,
-    );
+    await settleAsync(tester, () => sheetPhotosOn(ink, inner.key).isNotEmpty);
 
     expect(sheetPhotosOn(ink, inner.key), hasLength(1));
     expect(sheetPhotosOn(ink, outer.key), isEmpty);
@@ -171,10 +169,7 @@ void main() {
       ink: ink,
       windows: [outer, moved],
     );
-    await settleSheetDrop(
-      tester,
-      () => sheetPhotosOn(ink, outer.key).isNotEmpty,
-    );
+    await settleAsync(tester, () => sheetPhotosOn(ink, outer.key).isNotEmpty);
 
     expect(sheetPhotosOn(ink, inner.key), isEmpty);
     final [photo] = sheetPhotosOn(ink, outer.key);
@@ -198,7 +193,7 @@ void main() {
     expect(session.historyManager.canUndo, isFalse, reason: '⛔fixture');
     dropOnSheet(tester, png, sheetPaperOnScreen(tester, dropped));
     await tester.pumpWidget(const SizedBox());
-    await settleSheetDrop(tester, () => false, tries: 10);
+    await lendBothClocks(tester, rounds: 10);
 
     expect(sheetPhotosOn(ink, inner.key), isEmpty);
     expect(session.historyManager.canUndo, isFalse);
@@ -225,7 +220,7 @@ void main() {
 
     expect(session.historyManager.canUndo, isFalse, reason: '⛔fixture');
     dropOnSheet(tester, gone, sheetPaperOnScreen(tester, dropped));
-    await settleSheetDrop(tester, () => false, tries: 10);
+    await lendBothClocks(tester, rounds: 10);
 
     expect(sheetPhotosOn(ink, inner.key), isEmpty);
     expect(session.historyManager.canUndo, isFalse);

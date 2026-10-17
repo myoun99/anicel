@@ -35,6 +35,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import '../../helpers/conte_book.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/sheet_photo_drops.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
@@ -112,7 +113,7 @@ void main() {
     Offset at,
   ) async {
     dropOnSheet(tester, png, at);
-    await settleSheetDrop(
+    await settleAsync(
       tester,
       () => session.sheetPhotoEdits.pathsByCel.isNotEmpty,
     );

@@ -87,19 +87,10 @@ void main() {
   BitmapSurface surfaceWith(Map<TileCoord, BitmapTile> tiles) =>
       BitmapSurface(canvasSize: canvasSize, tileSize: tileSize, tiles: tiles);
 
-  Future<void> decodeAll(
-    WidgetTester tester,
-    BitmapTileImageCache cache,
-    BitmapSurface surface,
-  ) async {
-    await tester.runAsync(() async {
-      for (final entry in surface.tiles.entries) {
-        cache.pictureFor(entry.value);
-      }
-      while (surface.tiles.values.any((tile) => cache.imageFor(tile) == null)) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-    });
+  void decodeAll(BitmapTileImageCache cache, BitmapSurface surface) {
+    for (final entry in surface.tiles.entries) {
+      cache.pictureFor(entry.value);
+    }
   }
 
   Future<CustomPainter> pumpStack(
@@ -214,7 +205,7 @@ void main() {
         pixels: redRgba(),
       ),
     });
-    await decodeAll(tester, tiles, surface);
+    decodeAll(tiles, surface);
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(
@@ -499,7 +490,7 @@ void main() {
         pixels: redRgba(),
       ),
     });
-    await decodeAll(tester, floatTiles, lifted);
+    decodeAll(floatTiles, lifted);
     final float = SelectionFloatOverlay(null);
     addTearDown(float.dispose);
     final stack = await pumpStack(
@@ -538,7 +529,7 @@ void main() {
         pixels: redRgba(),
       ),
     });
-    await decodeAll(tester, floatTiles, plate);
+    decodeAll(floatTiles, plate);
     final landing = ValueNotifier<LandingPreview?>(null);
     addTearDown(landing.dispose);
     final stack = await pumpStack(
@@ -607,7 +598,7 @@ void main() {
     final surface = surfaceWith({
       TileCoord(x: 1, y: 1): BitmapTile.blank(size: tileSize),
     });
-    await decodeAll(tester, tiles, surface);
+    decodeAll(tiles, surface);
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(
