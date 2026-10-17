@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import '../helpers/library_source.dart';
+import '../helpers/settle_async.dart';
 import 'brush_canvas_test_helpers.dart';
 
 void main() {
@@ -523,19 +524,19 @@ void main() {
         //
         // What the test can still say without asserting which case it got:
         // the overlay ALWAYS ends up clear.
-        for (
-          var i = 0;
-          i < 40 && canvasView.overlayModel!.dabs.isNotEmpty;
-          i++
-        ) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 16)),
-          );
-          await tester.pump(const Duration(milliseconds: 16));
-          canvasView = tester.widget<BrushEditCanvasView>(
-            find.byType(BrushEditCanvasView),
-          );
-        }
+        await settleAsync(
+          tester,
+          () => tester
+              .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+              .overlayModel!
+              .dabs
+              .isEmpty,
+          beat: const Duration(milliseconds: 16),
+          step: const Duration(milliseconds: 16),
+        );
+        canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
         expect(
           canvasView.overlayModel!.dabs,
           isEmpty,

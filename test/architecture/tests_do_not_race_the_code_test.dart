@@ -107,9 +107,11 @@ void main() {
   /// wait by `waitPatience`; a loop of a test's own is the copy coming back
   /// in one of four forms — counted, leaving by its body or by its own
   /// condition (`i < n && !landed()`), or a `while` that keeps a deadline of
-  /// its own or does nothing but wait. 🔬On master `4520fe717` this named
-  /// 124 — 27 · 49 · 23 · 25, the forms in that order — every one a wait
-  /// for something to come.
+  /// its own or does nothing but wait. 🔬On master `2d410f381` this named
+  /// 128 — 26 · 54 · 23 · 25, the forms in that order — every one a wait
+  /// for something to come. Five of them stood in a header dart format
+  /// broke over lines, which a loop's own line alone never shows
+  /// ([_headersOnOneLine]): read line by line, the scan had passed them.
   ///
   /// ⛔A WINDOW is rounds on purpose — given to see that something does NOT
   /// happen, it must not see less on a busy machine (`lendBothClocks`) —
@@ -129,7 +131,7 @@ void main() {
       if (pollsOnPurpose.any(file.path.endsWith)) {
         continue;
       }
-      final lines = file.readAsLinesSync();
+      final lines = _headersOnOneLine(file.readAsLinesSync());
       for (var i = 0; i < lines.length; i += 1) {
         if (_pollStartsAt(lines, i)) {
           offenders.add('${file.path}:${i + 1}: ${lines[i].trim()}');
@@ -155,7 +157,7 @@ void main() {
   test('no test lends both clocks in a window of its own', () {
     final offenders = <String>[];
     for (final file in testFiles()) {
-      final lines = file.readAsLinesSync();
+      final lines = _headersOnOneLine(file.readAsLinesSync());
       for (var i = 0; i < lines.length; i += 1) {
         if (_windowStartsAt(lines, i)) {
           offenders.add('${file.path}:${i + 1}: ${lines[i].trim()}');
@@ -345,3 +347,37 @@ List<String> _loopAt(List<String> lines, int at) {
   }
   return lines.sublist(at);
 }
+
+/// [lines] with each loop header dart format broke over lines — `for (`
+/// or `while (` alone, its clauses, then `) {` — read as one line on its
+/// first, and the lines it took left blank, so every line keeps its
+/// number. A loop's own line is where every scan here looks for its count
+/// and its condition, and a broken header shows neither there.
+List<String> _headersOnOneLine(List<String> lines) {
+  final joined = [...lines];
+  for (var i = 0; i < joined.length; i += 1) {
+    if (!_brokenHeader.hasMatch(joined[i])) {
+      continue;
+    }
+    var end = i + 1;
+    while (end < joined.length && !_headerCloses.hasMatch(joined[end])) {
+      end += 1;
+    }
+    if (end == joined.length) {
+      continue;
+    }
+    final clauses = [for (var j = i + 1; j < end; j += 1) joined[j].trim()];
+    joined[i] = '${joined[i]}${clauses.join(' ')}${joined[end].trim()}';
+    for (var j = i + 1; j <= end; j += 1) {
+      joined[j] = '';
+    }
+  }
+  return joined;
+}
+
+/// A loop's own line that holds nothing but its keyword and the bracket
+/// its header opens.
+final _brokenHeader = RegExp(r'^\s*(for|while) \($');
+
+/// The line a broken header closes on.
+final _headerCloses = RegExp(r'^\s*\)');
