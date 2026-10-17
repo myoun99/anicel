@@ -21,6 +21,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
+import '../helpers/cels_parked_cold.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel's thaw — zstd, then a copy
 /// per tile — ran on the UI thread, 60–70 ms of a first playback's late
@@ -65,9 +66,6 @@ void main() {
     );
   }
 
-  AnicelCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
-
   Map<TileCoord, List<int>> pixelsOf(BitmapSurface surface) => {
     for (final entry in surface.tiles.entries)
       entry.key: entry.value.pixels.toList(),
@@ -104,7 +102,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key('a');
     final source = inkSurface();
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
     expect(store.isCelCold(k), isTrue, reason: 'premise');
 
     await store.thawAhead(k, canvasSize: canvasSize);
@@ -138,7 +136,7 @@ void main() {
       'once', () async {
     final store = BrushFrameStore();
     final k = key('a');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
 
     final first = store.thawAhead(k, canvasSize: canvasSize);
     final second = store.thawAhead(k, canvasSize: canvasSize);
@@ -160,7 +158,7 @@ void main() {
     final store = BrushFrameStore();
     final other = key('other');
     // A restore swaps the WHOLE store, so it goes first.
-    store.restoreBaked({other: blobOf(other, inkSurface())});
+    parkCold(store, {other: inkSurface()});
     final hotKey = key('hot');
     final hot = inkSurface();
     store.storeBakedSurface(hotKey, hot);
@@ -207,13 +205,13 @@ void main() {
       'nothing — a read at the size it was asked at never would', () async {
     final store = BrushFrameStore();
     final k = key('a');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
     late final Future<void> thaw;
 
     await whileEveryTurnIsTaken(() async {
       thaw = store.thawAhead(k, canvasSize: canvasSize);
       const bigger = CanvasSize(width: 32, height: 32);
-      store.restoreBaked({k: blobOf(k, inkSurface(canvas: bigger))});
+      parkCold(store, {k: inkSurface(canvas: bigger)});
     });
     await thaw;
 
@@ -224,7 +222,7 @@ void main() {
       'go, never written over it', () async {
     final store = BrushFrameStore();
     final k = key('a');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
 
     final thaw = store.thawAhead(k, canvasSize: canvasSize);
     final drawn = inkSurface(seed: 9);
@@ -280,9 +278,8 @@ void main() {
       layerId: LayerId('linked'),
       frameId: FrameId('a'),
     );
-    store
-      ..restoreBaked({bank: blobOf(bank, inkSurface())})
-      ..setLinkResolver((k) => k == window ? bank : k);
+    parkCold(store, {bank: inkSurface()});
+    store.setLinkResolver((k) => k == window ? bank : k);
 
     await store.thawAhead(window, canvasSize: canvasSize);
 
@@ -292,7 +289,7 @@ void main() {
   test('a cel emptied while it thaws stays empty', () async {
     final store = BrushFrameStore();
     final k = key('a');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
 
     final thaw = store.thawAhead(k, canvasSize: canvasSize);
     store.storeBakedSurface(k, BitmapSurface(canvasSize: canvasSize));
@@ -306,11 +303,11 @@ void main() {
       'the old ones is let go', () async {
     final store = BrushFrameStore();
     final k = key('a');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
 
     final thaw = store.thawAhead(k, canvasSize: canvasSize);
     final again = inkSurface(seed: 11);
-    store.restoreBaked({k: blobOf(k, again)});
+    parkCold(store, {k: again});
     await thaw;
 
     expect(store.isCelCold(k), isTrue, reason: 'the new bytes stay parked');
@@ -321,7 +318,7 @@ void main() {
       'nothing, and the cel stays parked — its only copy', () async {
     final store = BrushFrameStore();
     final k = key('a');
-    final bytes = Uint8List.fromList(blobOf(k, inkSurface()).bytes);
+    final bytes = Uint8List.fromList(coldBlobOf(k, inkSurface()).bytes);
     for (var i = bytes.length - 16; i < bytes.length; i += 1) {
       bytes[i] ^= 0xFF;
     }

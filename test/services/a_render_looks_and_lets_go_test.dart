@@ -12,9 +12,9 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
+import '../helpers/cels_parked_cold.dart';
 
 /// 🚨★★★**A RENDER LOOKS AND LETS GO** (card `render-reads-thaw-into-hot`).
 ///
@@ -48,15 +48,12 @@ void main() {
     );
   }
 
-  AnicelCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
-
   test('🎯a LOOK at a cold cel gets its pixels and leaves every tier as it '
       'found it — nothing hot, the parked copy kept, no picture seeded', () {
     final store = BrushFrameStore();
     final k = key('f');
     final source = inkSurface(seed: 7);
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
     final parked = store.coldBakedBytes;
 
     final looked = store.currentSurfaceWithoutReplay(
@@ -86,7 +83,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key('ink');
     final source = inkSurface(seed: 9);
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
 
     final looked = store.bakedSurfaceOrNull(k, read: CelRead.look);
 

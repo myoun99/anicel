@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
+import '../helpers/cels_parked_cold.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// R22-C verdict lab (400-cut scenario): a TV-scale project — 400 HD
@@ -74,7 +75,7 @@ void main() {
       final encodeWatch = Stopwatch()..start();
       final blobs = <BrushFrameKey, AnicelCelBlob>{
         for (var i = 0; i < cels; i += 1)
-          key(i): AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key(i), inked(i))),
+          key(i): coldBlobOf(key(i), inked(i)),
       };
       encodeWatch.stop();
       var blobBytes = 0;

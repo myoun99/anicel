@@ -35,7 +35,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_picture_ink.dart';
@@ -51,6 +50,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🗣️F-215 (유저 2026-09-28): 「콘티 프리뷰패널에서 브러시 허용 on시 그림들이
@@ -126,9 +126,7 @@ void main() {
     addTearDown(session.dispose);
     final drawn = session.cutById(_drawn)!;
     final key = session.brushFrameKeyForCut(drawn, _art, _artFrame);
-    session.renderCaches.brushFrameStore.restoreBaked({
-      key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, _red())),
-    });
+    parkCold(session.renderCaches.brushFrameStore, {key: _red()});
     brushAllowed = ValueNotifier<bool>(brushOn);
     addTearDown(brushAllowed.dispose);
     photoLanded = ValueNotifier<bool>(true);

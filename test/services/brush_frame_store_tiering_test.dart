@@ -18,6 +18,7 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
+import '../helpers/cels_parked_cold.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// R20-A1 two-tier baked truth: cold cels are encoded+compressed blobs
@@ -52,16 +53,12 @@ void main() {
     );
   }
 
-  AnicelCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
-
   test('a restore ACCOUNTS for the bytes it took on — a tier put that '
       'forgot its increment would read as free RAM', () {
     final store = BrushFrameStore();
     final a = key(frame: 'a');
     final b = key(frame: 'b');
-    final blobs = {a: blobOf(a, inkSurface()), b: blobOf(b, inkSurface(seed: 3))};
-    store.restoreBaked(blobs);
+    final blobs = parkCold(store, {a: inkSurface(), b: inkSurface(seed: 3)});
 
     expect(
       store.coldBakedBytes,
@@ -79,7 +76,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key();
     final source = inkSurface();
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
 
     expect(
       store.celHasRenderableContent(k),
@@ -112,7 +109,7 @@ void main() {
       'and rejects a mismatched one', () {
     final store = BrushFrameStore();
     final k = key();
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
 
     expect(
       store.currentSurfaceWithoutReplay(
@@ -167,7 +164,7 @@ void main() {
     () async {
       final store = BrushFrameStore();
       final k = key();
-      store.restoreBaked({k: blobOf(k, inkSurface(seed: 7))});
+      parkCold(store, {k: inkSurface(seed: 7)});
 
       final donated = inkSurface(seed: 9);
       store.storeBakedSurface(k, donated);
@@ -187,8 +184,7 @@ void main() {
     // to the already-encoded bytes says just as well.
     final store = BrushFrameStore();
     final k = key();
-    final blob = blobOf(k, inkSurface());
-    store.restoreBaked({k: blob});
+    final blob = parkCold(store, {k: inkSurface()})[k]!;
 
     final snapshot = store.bakedSnapshotForSave();
     expect(snapshot.hot, isEmpty);
@@ -218,7 +214,7 @@ void main() {
     final store = BrushFrameStore();
     final from = key(layer: 'a');
     final to = key(layer: 'b');
-    store.restoreBaked({from: blobOf(from, inkSurface())});
+    parkCold(store, {from: inkSurface()});
 
     store.rekeyFrames([(from, to)]);
 
@@ -376,7 +372,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key();
     final s = inkSurface(seed: 17);
-    store.restoreBaked({k: blobOf(k, s)});
+    parkCold(store, {k: s});
 
     final path = '${directory.path}/full.anicel';
     await const AnicelFileService().save(
@@ -661,7 +657,7 @@ void main() {
     final store = BrushFrameStore();
     final k = key();
     final source = inkSurface();
-    store.restoreBaked({k: blobOf(k, source)});
+    parkCold(store, {k: source});
 
     const grown = CanvasSize(width: 32, height: 32);
     store.resizeBakedSurfaces(grown, cutId: const CutId('c'));
@@ -687,7 +683,7 @@ void main() {
     // COLD arm.
     final store = BrushFrameStore();
     final k = key(frame: 'cold-victim');
-    store.restoreBaked({k: blobOf(k, inkSurface())});
+    parkCold(store, {k: inkSurface()});
     expect(store.isCelCold(k), isTrue, reason: 'fixture: really cold');
     store.storeBakedSurface(k, BitmapSurface(canvasSize: canvasSize));
     expect(store.celHasRenderableContent(k), isFalse);

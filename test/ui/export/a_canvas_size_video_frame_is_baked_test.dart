@@ -23,10 +23,11 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+
+import '../../helpers/cels_parked_cold.dart';
 
 /// A CANVAS-size video frame is baked: the backdrop under it, the V row's
 /// chain through it, a transition's two cuts mixed in it, the names over it
@@ -115,16 +116,11 @@ void main() {
       layer.id,
       layer.frames.single.id,
     );
-    session.renderCaches.brushFrameStore.restoreBaked({
-      key: AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(
-          key,
-          BitmapSurface(
-            canvasSize: small,
-            tileSize: 8,
-            tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
-          ),
-        ),
+    parkCold(session.renderCaches.brushFrameStore, {
+      key: BitmapSurface(
+        canvasSize: small,
+        tileSize: 8,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
       ),
     });
   }

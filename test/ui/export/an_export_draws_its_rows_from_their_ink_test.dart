@@ -21,13 +21,14 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+
+import '../../helpers/cels_parked_cold.dart';
 
 /// 🎯AN EXPORT'S ROWS ARE COMPOSED AS THEIR INK where every picture of its
 /// run lays them down texel for texel (card
@@ -98,10 +99,7 @@ void main() {
       const LayerId('layer'),
       const FrameId('f1'),
     );
-    final cel = AnicelCelEntry.fromSurface(key, inkInOneTile());
-    s.renderCaches.brushFrameStore.restoreBaked({
-      key: AnicelCelBlob.encode(cel),
-    });
+    parkCold(s.renderCaches.brushFrameStore, {key: inkInOneTile()});
     return s;
   }
 

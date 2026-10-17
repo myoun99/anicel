@@ -13,10 +13,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
+import '../../helpers/cels_parked_cold.dart';
 
 /// 🚨2026-09-11: the census added each cel store's COLD bytes to the
 /// drawings and sheet-ink rows. But a cooled cel is written to the run's
@@ -46,9 +46,6 @@ void main() {
       tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 8, pixels: pixels)},
     );
   }
-
-  AnicelCelBlob parkedBlob(BrushFrameKey k) =>
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, inked()));
 
   Map<String, int> censusRows(EditorSessionManager session) => {
     for (final item in collectMemoryCensusWhereTexturesAreRam([session]).items)
@@ -112,8 +109,8 @@ void main() {
     );
     addTearDown(session.dispose);
     final caches = session.renderCaches;
-    caches.brushFrameStore.restoreBaked({key('a'): parkedBlob(key('a'))});
-    caches.conteInkRowStore.restoreBaked({key('b'): parkedBlob(key('b'))});
+    parkCold(caches.brushFrameStore, {key('a'): inked()});
+    parkCold(caches.conteInkRowStore, {key('b'): inked()});
     // Fixture: both stores really hold parked bytes.
     expect(caches.brushFrameStore.coldBakedBytes, greaterThan(0));
     expect(caches.conteInkRowStore.coldBakedBytes, greaterThan(0));

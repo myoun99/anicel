@@ -5,8 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/dart_sources.dart';
 import '../helpers/project_scratch_folder.dart';
 
-/// 🚨**A TEST KEEPS A CEL IN A FILE THROUGH ONE HELPER** —
-/// `keepInAFile` (`test/helpers/cels_kept_in_a_file.dart`).
+/// 🚨**A TEST KEEPS A CEL THROUGH ONE HELPER** — in a file, `keepInAFile`
+/// (`test/helpers/cels_kept_in_a_file.dart`); parked cold in RAM, `parkCold`
+/// (`test/helpers/cels_parked_cold.dart`).
 ///
 /// Keeping a cel as an opened project keeps it — a stretch of a saved file,
 /// cold until it is read — is one algorithm: the surface encoded, written
@@ -16,22 +17,29 @@ import '../helpers/project_scratch_folder.dart';
 /// test-cels-kept-in-a-file-by-hand, 2026-10-16), and one of them read the
 /// photo index off the head where the others named none.
 ///
-/// ⛔**A test that measures the FILE ITSELF is not a copy**: refs at
-/// offsets it chose, what a real save wrote and an open read back, an
-/// empty open. Those call the store themselves, on purpose, and stand in
-/// the ledger below with the reason and how many calls they make — a hand
-/// copy added beside them is one more than the ledger says.
+/// Parking one as a cooled cel is parked — the surface encoded to the blob
+/// it cools into, handed to `BrushFrameStore.restoreBaked` — is its
+/// neighbour, and fifteen tests wrote that one, four through a `blobOf` of
+/// their own (board test-cels-parked-cold-by-hand, 2026-10-17).
+///
+/// ⛔**A test that measures the ENTRANCE ITSELF is not a copy**: refs at
+/// offsets it chose, what a real save wrote and an open read back, bytes no
+/// cel encodes to, a landing timed on its own, an empty open. Those call
+/// the store themselves, on purpose, and stand in the ledgers below with
+/// the reason and how many calls they make — a hand copy added beside them
+/// is one more than the ledger says.
 ///
 /// A behaviour test cannot hold this — every copy passes on its own — so the
 /// ratchet is a source scan, and it proves it can see what it forbids.
 void main() {
   /// ⚠️Exempt from its own scan: the files it plants are STRINGS holding
-  /// the very call the scan counts.
+  /// the very calls the scan counts.
   const itself =
-      'test/architecture/a_cel_is_kept_in_a_file_in_one_place_test.dart';
+      'test/architecture/a_test_keeps_a_cel_through_one_helper_test.dart';
 
-  /// The files that call the store themselves, how many times, and why.
-  const ledger = <String, (int, String)>{
+  /// The files that call the store's FILE entrance themselves, how many
+  /// times, and why.
+  const keptLedger = <String, (int, String)>{
     'test/helpers/cels_kept_in_a_file.dart': (1, 'the helper'),
     'test/services/a_moved_entry_takes_its_refs_along_test.dart': (
       3,
@@ -65,13 +73,46 @@ void main() {
     ),
   };
 
+  /// The files that call the store's COLD entrance themselves, how many
+  /// times, and why.
+  const coldLedger = <String, (int, String)>{
+    'test/helpers/cels_parked_cold.dart': (1, 'the helper'),
+    'test/services/a_cel_thaws_ahead_off_the_ui_thread_test.dart': (
+      2,
+      'parks bytes no cel encodes to — ones that will not decode, and the '
+          'read here refusing them too',
+    ),
+    'test/services/brush_frame_store_400cut_test.dart': (
+      1,
+      'times the landing of 400 blobs alone — the encode has a stopwatch of '
+          'its own',
+    ),
+    'test/ui/canvas/layer_stack_failure_isolation_test.dart': (
+      1,
+      'an empty open that reseeds every frame — no cel parked',
+    ),
+  };
+
+  /// Each entrance, the helper that owns it, and its ledger.
+  const families = [
+    (
+      call: 'restoreFromFile(',
+      helper: 'keepInAFile(store, {key: surface})',
+      ledger: keptLedger,
+    ),
+    (
+      call: 'restoreBaked(',
+      helper: 'parkCold(store, {key: surface})',
+      ledger: coldLedger,
+    ),
+  ];
+
   /// How many times each file under [root] — itself a folder named `test` —
-  /// calls the store's file entrance, for the files that do, by their path
-  /// from `test/` on.
+  /// makes [call], for the files that do, by their path from `test/` on.
   ///
   /// ⛔THE WALK IS NOT WRITTEN HERE: `dartFilesUnder` is the one walk every
   /// source scan asks, and it fails on a folder that is not there.
-  Map<String, int> callsUnder(String root) {
+  Map<String, int> callsUnder(String root, String call) {
     final from = root.replaceAll(r'\', '/').length + 1;
     final calls = <String, int>{};
     for (final file in dartFilesUnder(root)) {
@@ -79,9 +120,7 @@ void main() {
       if (path == itself) {
         continue;
       }
-      final count = 'restoreFromFile('.allMatches(
-        file.readAsStringSync(),
-      ).length;
+      final count = call.allMatches(file.readAsStringSync()).length;
       if (count > 0) {
         calls[path] = count;
       }
@@ -99,50 +138,59 @@ void main() {
       if (count > (allowed[path]?.$1 ?? 0)) '$path ($count)',
   ]..sort();
 
-  test('a test keeps a cel in a file through keepInAFile, or the ledger '
-      'says why it calls the store itself', () {
-    expect(
-      overTheLedger(callsUnder('test'), ledger),
-      isEmpty,
-      reason:
-          'keep the cel with keepInAFile(store, {key: surface}) — it '
-          'answers the refs, for a test that needs where a cel is kept',
-    );
-  });
+  for (final (:call, :helper, :ledger) in families) {
+    test('a test reaches $call through $helper, or the ledger says why it '
+        'calls the store itself', () {
+      expect(
+        overTheLedger(callsUnder('test', call), ledger),
+        isEmpty,
+        reason: 'keep the cel with $helper — it answers what it handed the '
+            'store, for a test that needs it',
+      );
+    });
 
-  test('the ledger is exact: every file it names calls the store as many '
-      'times as it says', () {
-    final calls = callsUnder('test');
-    expect(
-      {for (final path in ledger.keys) path: calls[path] ?? 0},
-      {
-        for (final MapEntry(key: path, value: (count, _)) in ledger.entries)
-          path: count,
-      },
-      reason: 'a call that went to the helper takes its line out of the '
-          'ledger, so the ceiling never stands above what is there',
-    );
-  });
+    test('the $call ledger is exact: every file it names calls the store as '
+        'many times as it says', () {
+      final calls = callsUnder('test', call);
+      expect(
+        {for (final path in ledger.keys) path: calls[path] ?? 0},
+        {
+          for (final MapEntry(key: path, value: (count, _)) in ledger.entries)
+            path: count,
+        },
+        reason: 'a call that went to the helper takes its line out of the '
+            'ledger, so the ceiling never stands above what is there',
+      );
+    });
+  }
 
-  test('the scan sees what it forbids, and lets through only what the '
-      'ledger counts', () {
+  test('the scan sees what it forbids, each entrance on its own, and lets '
+      'through only what the ledger counts', () {
     final planted = Directory.systemTemp.createTempSync('kept-cel-ratchet');
     deleteAfterSessionEnds(planted);
     final folder = Directory('${planted.path}/test')..createSync();
     File('${folder.path}/kept_test.dart').writeAsStringSync(
       'void main() {\n'
       '  keepInAFile(store, {key: surface});\n'
+      '  parkCold(store, {key: surface});\n'
       '}\n',
     );
     File('${folder.path}/by_hand_test.dart').writeAsStringSync(
       'void main() {\n'
       '  store.restoreFromFile({key: ref});\n'
       '  other.restoreFromFile(const {});\n'
+      '  store.restoreBaked({key: blob});\n'
       '}\n',
     );
 
-    final calls = callsUnder(folder.path);
+    final calls = callsUnder(folder.path, 'restoreFromFile(');
     expect(calls, {'test/by_hand_test.dart': 2});
+    expect(
+      callsUnder(folder.path, 'restoreBaked('),
+      {'test/by_hand_test.dart': 1},
+      reason: 'each entrance is counted on its own — the other one in the '
+          'same file is no part of its count',
+    );
     expect(
       overTheLedger(calls, const {}),
       ['test/by_hand_test.dart (2)'],

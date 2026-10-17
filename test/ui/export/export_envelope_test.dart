@@ -28,7 +28,6 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
@@ -38,6 +37,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/awaited_uploads.dart';
 import '../../helpers/cel_photo_fixture.dart';
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/checker_sampling.dart';
 import '../../helpers/export_scope_pick.dart';
 import '../../helpers/sheet_image_runs.dart';
@@ -492,11 +492,7 @@ void main() {
       final store = session.renderCaches.envelopeInkStore;
       final inkBox = CutEnvelopePresets.analog.inkBoxes.first;
       final key = envelopeInkBoxKey(const CutId('39'), inkBox.id);
-      store.restoreBaked({
-        key: AnicelCelBlob.encode(
-          AnicelCelEntry.fromSurface(key, _inkSurface()),
-        ),
-      });
+      parkCold(store, {key: _inkSurface()});
       final state = await pumpDialog(tester, session);
       await tapSetting(tester, 'export-envelope-paper-sheet');
 

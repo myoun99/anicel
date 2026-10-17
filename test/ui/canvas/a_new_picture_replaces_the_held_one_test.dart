@@ -27,11 +27,11 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/settle_async.dart';
 
 void main() {
@@ -45,10 +45,6 @@ void main() {
   );
   const canvasSize = CanvasSize(width: tileSize, height: tileSize);
   const size = Size(tileSize * 1.0, tileSize * 1.0);
-
-  /// A cel blob the store can hold for [key].
-  AnicelCelBlob blobOf(BitmapSurface surface) =>
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
 
   /// One solid tile: [red] or blue.
   BitmapSurface solid({required bool red}) {
@@ -141,8 +137,8 @@ void main() {
   Future<(BrushFrameStore, LayerFrameImageCache)> blueOnScreen(
     WidgetTester tester,
   ) async {
-    final store = BrushFrameStore()
-      ..restoreBaked({key: blobOf(solid(red: false))});
+    final store = BrushFrameStore();
+    parkCold(store, {key: solid(red: false)});
     final cache = LayerFrameImageCache(frameStore: store);
     await warm(tester, cache);
     await pumpStack(tester, cache);
@@ -163,7 +159,7 @@ void main() {
   testWidgets('the sync sweep: a warm new picture for a HELD key replaces '
       'the one held', (tester) async {
     final (store, cache) = await blueOnScreen(tester);
-    store.restoreBaked({key: blobOf(solid(red: true))});
+    parkCold(store, {key: solid(red: true)});
     cache.invalidateFrame(key);
     await warm(tester, cache);
     await pumpStack(tester, cache);
@@ -182,7 +178,7 @@ void main() {
   testWidgets('the async pass: a COLD new picture for a HELD key replaces '
       'it and asks the view to repaint', (tester) async {
     final (store, cache) = await blueOnScreen(tester);
-    store.restoreBaked({key: blobOf(solid(red: true))});
+    parkCold(store, {key: solid(red: true)});
     cache.invalidateFrame(key);
     // Nothing warmed: the sync sweep misses and the ASYNC pass adopts, so
     // the repaint it asks for is what puts the new cel on screen.

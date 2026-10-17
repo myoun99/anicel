@@ -26,13 +26,13 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/export/held_rows.dart';
 
+import '../../helpers/cels_parked_cold.dart';
 import '../../helpers/no_guides_laid.dart';
 
 /// 🚨★★★**AN EXPORT HOLDS THE CELS OF TWO FRAMES, NOT OF ITS CUT** (card
@@ -105,9 +105,8 @@ void main() {
       }
     }
     var seed = 1;
-    session.renderCaches.brushFrameStore.restoreBaked({
-      for (final key in keys.values)
-        key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, ink(seed++))),
+    parkCold(session.renderCaches.brushFrameStore, {
+      for (final key in keys.values) key: ink(seed++),
     });
     return keys;
   }

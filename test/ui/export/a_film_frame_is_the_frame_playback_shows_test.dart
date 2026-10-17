@@ -28,10 +28,11 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+
+import '../../helpers/cels_parked_cold.dart';
 
 /// 🗣️유저 2026-10-13 (card video-export-speed-Q2): 「캔버스 규칙으로」 — a
 /// film is drawn as the canvas draws: each cut through its camera at the
@@ -110,17 +111,16 @@ void main() {
   );
 
   /// Parks [drawings] — each a cut, one of its rows by id, and that row's
-  /// drawing — as every drawing [session] holds: `restoreBaked` puts back
-  /// the whole store, so they go in at once.
+  /// drawing — as every drawing [session] holds: parking puts back the
+  /// whole store, so they go in at once.
   void ink(
     EditorSessionManager session,
     List<(Cut, String, BitmapSurface)> drawings,
   ) {
-    session.renderCaches.brushFrameStore.restoreBaked({
+    parkCold(session.renderCaches.brushFrameStore, {
       for (final (cut, id, surface) in drawings)
-        if (session.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-f'))
-            case final key)
-          key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface)),
+        session.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-f')):
+            surface,
     });
   }
 
