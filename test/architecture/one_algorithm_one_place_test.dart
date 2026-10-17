@@ -396,8 +396,30 @@ import '../../tool/refactor/clone_scan.dart';
 /// differs: the stand-in at another width and the memory warning.
 /// 🔬Measured on the lane against master (`8d4b7c1fa`, at 88): the same 88
 /// pairs, none added, none gone.
+///
+/// 88 → 89 (2026-10-17, the-masks-are-baked-and-locks-said — CLIP STUDIO's
+/// layer masks come in baked). The new pair is named:
+///
+///     75 tokens
+///       lib/src/services/import/clip_offscreen.dart
+///         clipColourRgba
+///       lib/src/services/import/clip_offscreen.dart
+///         clipMaskPlane
+///
+/// The reading CONFIRMS it: both lay a picture CLIP STUDIO keeps in
+/// 256-pixel blocks onto one plane by the same walk — a block's place by
+/// its number on the grid, its pixels cut at the picture's right and bottom
+/// edges. What differs is a block's inside and the plane where none is: a
+/// colour block is an alpha plane and then B · G · R · unused, turned to
+/// straight RGBA over transparency; a mask's block is the plane itself,
+/// over the mask's outside value. ⛔Not merged: the SECOND, and the rule of
+/// three holds — a shared walk would take the pixel's writing and the empty
+/// plane as hooks invented for a shape seen twice. 🔜The third picture read
+/// out of these blocks merges the walk and lowers this back.
+/// 🔬Measured on the lane against master (`4c997b9cc`, at 88): this one
+/// added, none gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

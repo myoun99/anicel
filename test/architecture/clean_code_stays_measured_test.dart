@@ -902,7 +902,17 @@ void main() {
   /// `_sayNotApplied`. 🔬`clean_code_diff` against master (`42ceeb00d`)
   /// names this one and no other class. ⛔Not split to fit: the name a
   /// warning is said by is made where the row is, and the planner makes it.
-  const longClasses = 67;
+  ///
+  /// ⚠️67 → 68 on 2026-10-17, ONE name: CLIP STUDIO's `_DocumentReader`
+  /// crossed (585 → 609) in the-masks-are-baked-and-locks-said — a layer's
+  /// mask comes in baked as Photoshop's does, and a lock is said (유저 10-09
+  /// 「다른 디코드 마찬가지 통일해서」): the reader asks the row for the
+  /// mask's columns and its lock with the others, and reads where the mask
+  /// stands (`_maskOf`: the layer's offset, the mask's own, the offscreen's).
+  /// 🔬`clean_code_diff` against master (`4c997b9cc`) names this one and no
+  /// other class. ⛔Not split to fit: a column is asked for in the one list
+  /// the row is read by, and read off that row beside the others.
+  const longClasses = 68;
 
   late CleanCodeScan scan;
   setUpAll(() {
