@@ -27,7 +27,6 @@
 // one draw the active slot has, so the last test pins the frame the
 // stand-in existed for — activation — with the ghost over the tiles.
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -57,7 +56,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -67,7 +65,7 @@ import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 void main() {
   const side = 32;
@@ -430,8 +428,6 @@ void main() {
     );
     const celSize = CanvasSize(width: tileCount * tileSize, height: tileSize);
     final celBox = Size(celSize.width.toDouble(), celSize.height.toDouble());
-    final tempDir = Directory.systemTemp.createTempSync('anicel-ghost-standin');
-    deleteAfterSessionEnds(tempDir);
     final tiles = <TileCoord, BitmapTile>{};
     for (var x = 0; x < tileCount; x += 1) {
       final pixels = Uint8List(tileSize * tileSize * 4);
@@ -441,19 +437,9 @@ void main() {
       }
       tiles[TileCoord(x: x, y: 0)] = BitmapTile(size: tileSize, pixels: pixels);
     }
-    final surface = BitmapSurface(canvasSize: celSize, tileSize: tileSize, tiles: tiles);
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
-    final file = File('${tempDir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
     final store = BrushFrameStore();
-    store.restoreFromFile({
-      key: AnicelCelFileRef(
-        filePath: file.path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: celSize,
-        tileSize: tileSize,
-        photoPaths: const [],
-      ),
+    keepInAFile(store, {
+      key: BitmapSurface(canvasSize: celSize, tileSize: tileSize, tiles: tiles),
     });
     final imageCache = LayerFrameImageCache(frameStore: store);
     final prepared = await tester.runAsync(

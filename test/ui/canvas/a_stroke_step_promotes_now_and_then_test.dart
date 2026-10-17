@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -22,13 +21,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
-import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// 🚨A SNAPSHOT IS A FIXED PRICE WHATEVER ITS SIZE (2026-09-25, the real
 /// Windows app: 32×32 and 2448×1313 alike 1.6–2.0 ms of raster), and on a
@@ -214,28 +212,14 @@ void main() {
 
   /// A cache holding [runKey]'s image, made from a one-tile cel on disk.
   Future<LayerFrameImageCache> heldRunImage(WidgetTester tester) async {
-    final dir = Directory.systemTemp.createTempSync('anicel-run-rows');
-    deleteAfterSessionEnds(dir);
-    final surface = BitmapSurface(
-      canvasSize: canvasSize,
-      tileSize: tileSize,
-      tiles: {TileCoord(x: 2, y: 2): tile},
-    );
-    final blob = AnicelCelBlob.encode(
-      AnicelCelEntry.fromSurface(runKey, surface),
-    );
-    final file = File('${dir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
-    final store = BrushFrameStore()
-      ..restoreFromFile({
-        runKey: AnicelCelFileRef(
-          filePath: file.path,
-          dataOffset: 0,
-          length: blob.bytes.length,
-          canvasSize: canvasSize,
-          tileSize: tileSize,
-          photoPaths: const [],
-        ),
-      });
+    final store = BrushFrameStore();
+    keepInAFile(store, {
+      runKey: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {TileCoord(x: 2, y: 2): tile},
+      ),
+    });
     final cache = LayerFrameImageCache(frameStore: store);
     await tester.runAsync(
       () => cache.prepare(

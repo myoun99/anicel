@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -18,12 +17,11 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/models/composite_tree.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// 유저 2026-08-27, iPhone (H27 잔여): 「**변형툴의 외곽에만** 그림이 남음 …
 /// 변형중에는 해당 그림 사라지고 … 이전에 확정했던게 존재하고 변형중이 아닌
@@ -57,14 +55,6 @@ void main() {
   const canvasSize = CanvasSize(width: tileSize * 4, height: tileSize);
   const size = Size(tileSize * 4.0, tileSize * 1.0);
 
-  late Directory dir;
-
-  setUp(() {
-    dir = Directory.systemTemp.createTempSync('anicel-bake-key');
-  });
-
-  tearDown(() => deleteTempQuietly(dir));
-
   BrushFrameStore drawnStore() {
     final tiles = <TileCoord, BitmapTile>{};
     for (var x = 0; x < 4; x += 1) {
@@ -83,18 +73,8 @@ void main() {
       tileSize: tileSize,
       tiles: tiles,
     );
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
-    final file = File('${dir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
     final store = BrushFrameStore();
-    final ref = AnicelCelFileRef(
-      filePath: file.path,
-      dataOffset: 0,
-      length: blob.bytes.length,
-      canvasSize: canvasSize,
-      tileSize: tileSize,
-      photoPaths: const [],
-    );
-    store.restoreFromFile({key: ref, settled: ref});
+    keepInAFile(store, {key: surface, settled: surface});
     return store;
   }
 

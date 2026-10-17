@@ -4,12 +4,11 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/cel_photo_fixture.dart';
 import '../helpers/cel_text_fixture.dart';
-import '../helpers/temp_dir.dart';
+import '../helpers/cels_kept_in_a_file.dart';
 
 /// I-97 E: a sheet store says which pool files its cels' photos name, in
 /// every tier a cel can be in — hot from its picture, cooled or in the
@@ -19,14 +18,6 @@ import '../helpers/temp_dir.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('cel_photo_paths_');
-  });
-
-  tearDown(() => deleteTempQuietly(tempDir));
-
   const key = celTextTestKey;
   final a = TileCoord(x: 0, y: 0);
   final ink = tileOf({
@@ -35,21 +26,6 @@ void main() {
   final picture = drawingOf({
     a: ink,
   }).withPhotos([photoOf(1, path: 'C:/pool/a.png')]);
-
-  /// [picture] written into a file of its own, and the ref its head reads
-  /// into — the open path's.
-  AnicelCelFileRef inAFile() {
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, picture));
-    final file = File('${tempDir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
-    return AnicelCelFileRef(
-      filePath: file.path,
-      dataOffset: 0,
-      length: blob.bytes.length,
-      canvasSize: blob.canvasSize,
-      tileSize: blob.tileSize,
-      photoPaths: blob.photoPaths,
-    );
-  }
 
   test('a hot cel names its photos\' files off its picture', () {
     final store = BrushFrameStore()..storeBakedSurface(key, picture);
@@ -61,7 +37,8 @@ void main() {
 
   test('🚨a cel whose bytes are in the file names them off its ref — '
       'nothing is decoded to ask', () {
-    final store = BrushFrameStore()..restoreFromFile({key: inAFile()});
+    final store = BrushFrameStore();
+    keepInAFile(store, {key: picture});
 
     expect(store.celPhotoPathsByKey, {
       key: ['C:/pool/a.png'],
@@ -94,7 +71,8 @@ void main() {
 
   test('an edit that took a cel\'s photos off is not outvoted by the file '
       'it was read from — the edit lets go of its ref', () {
-    final store = BrushFrameStore()..restoreFromFile({key: inAFile()});
+    final store = BrushFrameStore();
+    keepInAFile(store, {key: picture});
     final read = store.bakedSurfaceOrNull(key)!;
     expect(store.isCelFileBacked(key), isTrue, reason: '⛔fixture: promoted');
 
@@ -105,9 +83,9 @@ void main() {
   });
 
   test('a ref moved to another file, or within one, keeps its index', () {
-    final store = BrushFrameStore()..restoreFromFile({key: inAFile()});
-    final ref = inAFile();
-    final rescued = File('${tempDir.path}/rescued.bin')
+    final store = BrushFrameStore();
+    final ref = keepInAFile(store, {key: picture})[key]!;
+    final rescued = File('${File(ref.filePath).parent.path}/rescued.bin')
       ..writeAsBytesSync(File(ref.filePath).readAsBytesSync());
 
     store.repointFileRefs(ref.filePath, rescued.path);

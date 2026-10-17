@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -19,12 +18,11 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// F-313 (유저 2026-10-08): 「다른행이동하면 일시적으로 빈 블록으로 만드는
 /// 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」.
@@ -58,55 +56,34 @@ void main() {
 
   final screen = GlobalKey();
 
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('anicel-carried-cel');
-  });
-
-  tearDown(() => deleteTempQuietly(tempDir));
-
-  /// A store whose cels are each one opaque, FILE-BACKED cel of eight tiles,
-  /// full in the colour channel [channelOf] names (0 red, 2 blue) — file-
-  /// backed because the image cache refuses a cel without a drawing state
-  /// at its first gate.
-  BrushFrameStore celStore(Map<BrushFrameKey, int> channelOf) {
-    final refs = <BrushFrameKey, AnicelCelFileRef>{};
-    for (final MapEntry(:key, value: channel) in channelOf.entries) {
-      final tiles = <TileCoord, BitmapTile>{};
-      for (var x = 0; x < tileCount; x += 1) {
-        final pixels = Uint8List(tileSize * tileSize * 4);
-        for (var i = 0; i < pixels.length; i += 4) {
-          pixels[i + channel] = 0xFF;
-          pixels[i + 3] = 0xFF;
-        }
-        tiles[TileCoord(x: x, y: 0)] = BitmapTile(
-          size: tileSize,
-          pixels: pixels,
-        );
+  /// One opaque cel of eight tiles, full in colour [channel] (0 red, 2 blue).
+  BitmapSurface opaque(int channel) {
+    final tiles = <TileCoord, BitmapTile>{};
+    for (var x = 0; x < tileCount; x += 1) {
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i + channel] = 0xFF;
+        pixels[i + 3] = 0xFF;
       }
-      final blob = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(
-          key,
-          BitmapSurface(
-            canvasSize: canvasSize,
-            tileSize: tileSize,
-            tiles: tiles,
-          ),
-        ),
-      );
-      final file = File('${tempDir.path}/${key.layerId.value}.bin')
-        ..writeAsBytesSync(blob.bytes);
-      refs[key] = AnicelCelFileRef(
-        filePath: file.path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-        photoPaths: const [],
-      );
+      tiles[TileCoord(x: x, y: 0)] = BitmapTile(size: tileSize, pixels: pixels);
     }
-    return BrushFrameStore()..restoreFromFile(refs);
+    return BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: tiles,
+    );
+  }
+
+  /// A store whose cels are each [opaque] in the channel [channelOf] names,
+  /// FILE-BACKED — because the image cache refuses a cel without a drawing
+  /// state at its first gate.
+  BrushFrameStore celStore(Map<BrushFrameKey, int> channelOf) {
+    final store = BrushFrameStore();
+    keepInAFile(store, {
+      for (final MapEntry(:key, value: channel) in channelOf.entries)
+        key: opaque(channel),
+    });
+    return store;
   }
 
   /// [key]'s cel as an image row — or, with [active], as the row the brush

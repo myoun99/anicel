@@ -10,6 +10,11 @@ import 'project_scratch_folder.dart';
 /// [cels] kept in [store] as an opened project keeps them: each a stretch of
 /// a saved file, cold until it is read ([BrushFrameStore.restoreFromFile]).
 /// Answers where each is kept.
+///
+/// ★Each ref is the one the open path reads off the cel's head — its size,
+/// its tiles and its photo index ([AnicelCelBlob.photoPaths]) — so a test
+/// keeps a cel the way a project keeps it, photos named and all
+/// (`test/architecture/a_cel_is_kept_in_a_file_in_one_place_test.dart`).
 Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
   BrushFrameStore store,
   Map<BrushFrameKey, BitmapSurface> cels,
@@ -25,9 +30,9 @@ Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
       filePath: path,
       dataOffset: 0,
       length: blob.bytes.length,
-      canvasSize: surface.canvasSize,
+      canvasSize: blob.canvasSize,
       tileSize: blob.tileSize,
-      photoPaths: const [],
+      photoPaths: blob.photoPaths,
     );
   }
   store.restoreFromFile(refs);

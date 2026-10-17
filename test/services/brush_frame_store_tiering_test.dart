@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
+import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/project_scratch_folder.dart';
 
 /// R20-A1 two-tier baked truth: cold cels are encoded+compressed blobs
@@ -229,24 +230,10 @@ void main() {
   test('a FILE-BACKED cel counts as content, materializes byte-exactly, '
       'keeps its ref through the clean promotion, and re-cools for FREE '
       '(no encode, no cold blob) — R22-C', () async {
-    final directory = await Directory.systemTemp.createTemp('qa-fileref');
-    deleteAfterSessionEnds(directory);
     final store = BrushFrameStore();
     final k = key(frame: 'f1');
     final s = inkSurface(seed: 19);
-    final blob = blobOf(k, s);
-    final path = '${directory.path}/cel.bin';
-    File(path).writeAsBytesSync(blob.bytes);
-    store.restoreFromFile({
-      k: AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-        photoPaths: const [],
-      ),
-    });
+    keepInAFile(store, {k: s});
 
     expect(store.celHasRenderableContent(k), isTrue);
     expect(store.isCelFileBacked(k), isTrue);
@@ -719,23 +706,9 @@ void main() {
     );
 
     // FILE arm.
-    final directory = await Directory.systemTemp.createTemp('qa-empty-arm');
-    deleteAfterSessionEnds(directory);
     final fileStore = BrushFrameStore();
     final fk = key(frame: 'file-victim');
-    final blob = blobOf(fk, inkSurface(seed: 7));
-    final path = '${directory.path}/cel.bin';
-    File(path).writeAsBytesSync(blob.bytes);
-    fileStore.restoreFromFile({
-      fk: AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-        photoPaths: const [],
-      ),
-    });
+    keepInAFile(fileStore, {fk: inkSurface(seed: 7)});
     expect(fileStore.isCelFileBacked(fk), isTrue, reason: 'fixture');
     fileStore.storeBakedSurface(fk, BitmapSurface(canvasSize: canvasSize));
     expect(fileStore.celHasRenderableContent(fk), isFalse);

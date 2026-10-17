@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -15,7 +14,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 
-import '../helpers/project_scratch_folder.dart';
+import '../helpers/cels_kept_in_a_file.dart';
 
 /// 🚨★★★**A RENDER LOOKS AND LETS GO** (card `render-reads-thaw-into-hot`).
 ///
@@ -98,24 +97,10 @@ void main() {
   });
 
   test('a LOOK at a FILE-BACKED cel reads the file and keeps nothing', () {
-    final directory = Directory.systemTemp.createTempSync('qa-look');
-    deleteAfterSessionEnds(directory);
     final store = BrushFrameStore();
     final k = key('saved');
     final source = inkSurface(seed: 11);
-    final blob = blobOf(k, source);
-    final path = '${directory.path}/cel.bin';
-    File(path).writeAsBytesSync(blob.bytes);
-    store.restoreFromFile({
-      k: AnicelCelFileRef(
-        filePath: path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: blob.tileSize,
-        photoPaths: const [],
-      ),
-    });
+    keepInAFile(store, {k: source});
 
     final looked = store.currentSurfaceWithoutReplay(
       k,

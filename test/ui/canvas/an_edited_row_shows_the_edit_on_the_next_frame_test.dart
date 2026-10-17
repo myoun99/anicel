@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -20,12 +19,11 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 import 'package:anicel/src/models/composite_tree.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// H27 — 「이전 변형하기 전 그림이 남아있었음」.
 ///
@@ -75,14 +73,6 @@ void main() {
   const size = Size(tileSize * tileCount * 1.0, tileSize * 1.0);
 
   final screen = GlobalKey();
-
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('anicel-h27');
-  });
-
-  tearDown(() => deleteTempQuietly(tempDir));
 
   BitmapSurface filledSurface({
     required int r,
@@ -195,21 +185,8 @@ void main() {
   /// pixels without a drawing state, `frameOrNull` stays null, and `prepare`
   /// refuses at its first gate. A fixture built that way measures nothing.
   BrushFrameStore blueStore() {
-    final surface = filledSurface(r: 0, g: 0, b: 0xFF);
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
-    final file = File('${tempDir.path}/cel.bin')
-      ..writeAsBytesSync(blob.bytes);
     final store = BrushFrameStore();
-    store.restoreFromFile({
-      key: AnicelCelFileRef(
-        filePath: file.path,
-        dataOffset: 0,
-        length: blob.bytes.length,
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-        photoPaths: const [],
-      ),
-    });
+    keepInAFile(store, {key: filledSurface(r: 0, g: 0, b: 0xFF)});
     expect(store.celHasRenderableContent(key), isTrue);
     expect(store.frameOrNull(key)?.sourceRevision, isNotNull);
     return store;

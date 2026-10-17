@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -31,7 +30,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/camera_projection_matrix.dart';
-import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/services/viewport_transform_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -42,7 +40,7 @@ import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
-import '../../helpers/temp_dir.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// 🚨A RUN DRAWS THE PICTURE THE CANVAS DRAWS STANDING STILL
 /// (playback-picture-is-not-the-canvas-picture, 유저 10-13: 「재생하면
@@ -127,14 +125,6 @@ void main() {
 
   final screen = GlobalKey();
 
-  late Directory tempDir;
-
-  setUp(() {
-    tempDir = Directory.systemTemp.createTempSync('anicel-a-run-draws');
-  });
-
-  tearDown(() => deleteTempQuietly(tempDir));
-
   /// The tile at ([tx], [ty]) of a cel filled [reach] pixels past the
   /// canvas's right and bottom edges and not a pixel further — to the edge
   /// itself at 0, as the fill leaves one — but for the [hole].
@@ -164,32 +154,19 @@ void main() {
   BrushFrameStore storeWithTheCel({int reach = 0}) {
     final tilesAcross = (canvasSize.width + reach + tileSize - 1) ~/ tileSize;
     final tilesDown = (canvasSize.height + reach + tileSize - 1) ~/ tileSize;
-    final blob = AnicelCelBlob.encode(
-      AnicelCelEntry.fromSurface(
-        key,
-        BitmapSurface(
-          canvasSize: canvasSize,
-          tileSize: tileSize,
-          tiles: {
-            for (var ty = 0; ty < tilesDown; ty += 1)
-              for (var tx = 0; tx < tilesAcross; tx += 1)
-                TileCoord(x: tx, y: ty): tileAt(tx, ty, reach: reach),
-          },
-        ),
+    final store = BrushFrameStore();
+    keepInAFile(store, {
+      key: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          for (var ty = 0; ty < tilesDown; ty += 1)
+            for (var tx = 0; tx < tilesAcross; tx += 1)
+              TileCoord(x: tx, y: ty): tileAt(tx, ty, reach: reach),
+        },
       ),
-    );
-    final file = File('${tempDir.path}/cel.bin')..writeAsBytesSync(blob.bytes);
-    return BrushFrameStore()
-      ..restoreFromFile({
-        key: AnicelCelFileRef(
-          filePath: file.path,
-          dataOffset: 0,
-          length: blob.bytes.length,
-          canvasSize: canvasSize,
-          tileSize: tileSize,
-          photoPaths: const [],
-        ),
-      });
+    });
+    return store;
   }
 
   BitmapSurface surfaceOf(BrushFrameStore store) =>
