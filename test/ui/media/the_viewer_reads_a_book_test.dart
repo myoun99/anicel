@@ -136,8 +136,9 @@ void main() {
 
   /// [page] framed whole: a portrait page fits the window's height, less
   /// the fit's own margin — not the book, whose pages would each take a
-  /// share. The window is the box less the pill's band over it and the
-  /// lane under it (유저 2026-09-30: 「판정을 알약까지 포함해서」).
+  /// share. The window is the box less the pill's band over it, and the
+  /// lane and the page turner's band under it (유저 2026-09-30: 「판정을
+  /// 알약까지 포함해서」 · F-383).
   void expectFramed(WidgetTester tester, Rect page) {
     final view = renderOf(tester, slot.viewport.value!);
     final box = tester.getSize(
@@ -147,7 +148,7 @@ void main() {
       0,
       pillBandOf(tester),
       box.width - AppScrollbarLane.wide,
-      box.height - AppScrollbarLane.wide,
+      box.height - AppScrollbarLane.wide - bandCoverOf(tester),
     );
     final top = page.top * view.zoom + view.panY;
     final height = page.height * view.zoom;

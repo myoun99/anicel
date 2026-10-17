@@ -364,7 +364,12 @@ void main() {
     final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
     expect(
       stack.paper.bottom - (stack.pageRect(3).top - stack.gap / 2),
-      lessThan(box.height - pillBandOf(tester) - AppScrollbarLane.wide),
+      lessThan(
+        box.height -
+            pillBandOf(tester) -
+            bandCoverOf(tester) -
+            AppScrollbarLane.wide,
+      ),
       reason: '⛔전제: the last page, from half a gap above it to the '
           'paper\'s end, is shorter than the window',
     );
@@ -376,10 +381,11 @@ void main() {
     expect(readout(tester), '4 / 4');
     final shown = printedThrough(tester);
     // The view ends where the bottom lane begins (F-209: a docked panel's
-    // scrollbars take their room).
+    // scrollbars take their room), over the band the book's page turner
+    // stands in (F-383).
     expect(
       stack.paper.bottom * shown.zoom + shown.panY,
-      closeTo(box.height - AppScrollbarLane.wide, 1),
+      closeTo(box.height - bandCoverOf(tester) - AppScrollbarLane.wide, 1),
       reason: 'the paper\'s end on the view\'s',
     );
   });
