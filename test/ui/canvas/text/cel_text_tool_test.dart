@@ -2158,6 +2158,20 @@ void main() {
       expect(host.history.undoCount, 0, reason: 'nothing landed');
     });
 
+    test('one that lands once its bake is made is a step like any other: '
+        'taken back, and owed no more', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      final taken = pictureOf(cel).texts.single.content;
+      tool.changeBox((content) => content.copyWith(align: TextCelAlign.right));
+      await baker.pending.answer();
+      expect(host.history.undoCount, 1, reason: '⛔전제: landed');
+
+      tool.stepBack();
+
+      expect(pictureOf(cel).texts.single.content, taken);
+      expect(tool.canStepBack, isFalse);
+    });
+
     test('what lands it before the box lets go — a save, or a step about to '
         'be taken elsewhere — lands among the box\'s steps', () {
       final saved = holdingAb();
