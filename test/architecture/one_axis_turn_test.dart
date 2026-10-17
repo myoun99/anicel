@@ -120,10 +120,11 @@ void main() {
   // [endAcross] — and this is a ban, with no ledger.
 
   /// The axis asked by name just before the `?`: `horizontal`, `_vertical`,
-  /// `axis == Axis.horizontal`, `across`. ⚠️By name, because a pick of a
-  /// pair's part need not be by the axis — `a.width > a.height ? a.width :
-  /// a.height` is the longer side, and it stays.
-  const axisAsked = r'(?:\w*(?:[Hh]orizontal|[Vv]ertical)|across)\s*\?\s*';
+  /// `axis == Axis.horizontal`, `across`, `along`. ⚠️By name, because a pick
+  /// of a pair's part need not be by the axis — `a.width > a.height ?
+  /// a.width : a.height` is the longer side, and it stays.
+  const axisAsked =
+      r'(?:\w*(?:[Hh]orizontal|[Vv]ertical)|across|along)\s*\?\s*';
   RegExp byTheAxis(String part) => RegExp('$axisAsked$part');
   final readByHand = [
     // A part of an offset: `? p.dx : p.dy`, or the reverse.
@@ -182,6 +183,8 @@ void main() {
       'final a1 = horizontal ? box.right : box.bottom;',
       'final c0 = horizontal ? box.top : box.left;',
       'final c1 = horizontal ? box.bottom : box.right;',
+      // A test's, by a flag named for the axis it runs along.
+      'final across = (along ? end.dy : end.dx).floor();',
     ];
     for (final line in spelled) {
       expect(handReadsIn(line), hasLength(1), reason: line);
@@ -200,6 +203,28 @@ void main() {
         if (libPath(file) != home)
           for (final line in handReadsIn(file.readAsStringSync()))
             '${libPath(file)}:$line',
+    ];
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'reach for partAlong / partAcross / extentAlong / extentAcross / '
+          'startAlong / endAlong / startAcross / endAcross',
+    );
+  });
+
+  /// ⛔**NOR A TEST** (card axis-offset-read-inline-copies): a test that
+  /// reads a part by hand is the same turn spelled once more, and it reads
+  /// the old way the day the home learns a new one. 🔬On master `4520fe717`
+  /// the tests read twenty-seven by hand, in eleven files — two of them by
+  /// a flag named `along`, which the scan learned to hear with them.
+  test('no test reads a part by hand either', () {
+    final offenders = <String>[
+      for (final file in dartFilesUnder('test'))
+        // It spells the old reads out, to show the scan sees them.
+        if (!file.path.endsWith('one_axis_turn_test.dart'))
+          for (final line in handReadsIn(file.readAsStringSync()))
+            '${file.path}:$line',
     ];
     expect(
       offenders,

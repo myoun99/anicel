@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart' show wordFitsAsItIs;
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineFrameBoundaryLineInk, timelineGridLineSnap, timelineMarkGap;
 import 'package:anicel/src/ui/timeline/timeline_frame_ruler_painter.dart';
@@ -715,11 +716,8 @@ void main() {
         final lines = _Lines();
         strip.paintPaperIn(lines, (startIndex: 0, endIndexExclusive: 1000));
 
-        double edgeOf(int frame) {
-          final rect = strip.cellRectFor(frame);
-          return (axis == Axis.horizontal ? rect.left : rect.top) +
-              timelineGridLineSnap;
-        }
+        double edgeOf(int frame) =>
+            startAlong(axis, strip.cellRectFor(frame)) + timelineGridLineSnap;
 
         final ruled = [
           for (var frame = 0; frame < 1000; frame += 1)
@@ -732,10 +730,12 @@ void main() {
                 null)
               edgeOf(frame),
         ];
-        double along(Offset start) =>
-            axis == Axis.horizontal ? start.dx : start.dy;
         expect(ruled.length, greaterThan(2), reason: 'the premise');
-        expect(lines.starts.map(along), ruled, reason: '$axis');
+        expect(
+          lines.starts.map((start) => partAlong(axis, start)),
+          ruled,
+          reason: '$axis',
+        );
       }
     });
   });

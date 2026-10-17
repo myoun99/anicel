@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/dialogue_fit_paint.dart'
     show dialogueNaturalExtent;
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
@@ -67,10 +68,8 @@ void main() {
       Widget along(double extent) => axis == Axis.horizontal
           ? host(width: extent, height: cross, name: 'SE')
           : host(width: cross, height: extent, name: 'SE', axis: axis);
-      double extentOf(Finder finder) {
-        final size = tester.getSize(finder);
-        return axis == Axis.horizontal ? size.width : size.height;
-      }
+      double extentOf(Finder finder) =>
+          extentAlong(axis, tester.getSize(finder));
 
       await tester.pumpWidget(along(400));
       final natural =

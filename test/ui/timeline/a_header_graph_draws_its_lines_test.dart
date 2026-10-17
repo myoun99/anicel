@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/layout/device_grid_scroll_controller.dart'
     show ScrollStill;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
@@ -771,8 +772,8 @@ Future<void> _expectTheCompositorShowsTheTags(
   final end =
       port.globalToLocal(along ? tags.centerRight : tags.bottomCenter) *
       ratio;
-  final across = (along ? end.dy : end.dx).floor();
-  final edge = along ? end.dx : end.dy;
+  final across = partAcross(axis, end).floor();
+  final edge = partAlong(axis, end);
   bool isGround(int at) {
     final i = (along ? across * width + at : at * width + across) * 4;
     const ground = AppColors.surface;

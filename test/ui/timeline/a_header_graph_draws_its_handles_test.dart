@@ -8,6 +8,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
     show LaneGraphLine;
@@ -113,11 +114,8 @@ void main() {
 
   /// [at] read back along and across the graph.
   ({double time, double across}) readOf(Offset at, Axis axis) => (
-    time: laneGraphTimeAt(
-      axis == Axis.horizontal ? at.dx : at.dy,
-      geometry.value,
-    ),
-    across: axis == Axis.horizontal ? at.dy : at.dx,
+    time: laneGraphTimeAt(partAlong(axis, at), geometry.value),
+    across: partAcross(axis, at),
   );
 
   EaseSide sideOf(LaneGraphHandle handle) {

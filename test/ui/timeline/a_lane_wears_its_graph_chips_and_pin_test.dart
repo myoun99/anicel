@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/lane_curve_palette.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -595,12 +596,12 @@ void main() {
           find.byKey(ValueKey<String>('$grid-lane-chip-draw-position-0')),
         );
         expect(
-          horizontal ? chip.left : chip.top,
-          greaterThanOrEqualTo(horizontal ? name.right : name.bottom),
+          startAlong(axis, chip),
+          greaterThanOrEqualTo(endAlong(axis, name)),
           reason: '$axis: the chips stand at the end of the name',
         );
       }
-      return horizontal ? name.left - keys.right : name.top - keys.bottom;
+      return startAlong(axis, name) - endAlong(axis, keys);
     }
 
     for (final axis in Axis.values) {
