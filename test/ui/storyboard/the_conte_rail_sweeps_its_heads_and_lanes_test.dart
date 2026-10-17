@@ -315,6 +315,11 @@ void main() {
       findsOneWidget,
       reason: 'the fixture: the row keeps its lanes with no cut stood in',
     );
+    // The header reads on, so the row the sweep reaches starts off: a sweep
+    // that started would turn it over. (🧪10-18: with the row on, a sweep
+    // from here showed nothing either way.)
+    await tap(tester, 'storyboard-layer-fx-t2-s1');
+    expect(fx(session, 't2-s1'), LayerFxState.off, reason: '⛔전제');
 
     await sweep(tester, header, 'storyboard-layer-fx-t2-s1');
 
@@ -325,7 +330,7 @@ void main() {
     );
     expect(
       fx(session, 't2-s1'),
-      LayerFxState.on,
+      LayerFxState.off,
       reason: 'and a switch a tap cannot press starts no sweep',
     );
   });
