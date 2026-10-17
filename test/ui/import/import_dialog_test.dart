@@ -2096,8 +2096,11 @@ void main() {
       final notice = await warningsAfterImporting(
         tester,
         [folder!],
+        // Moved away rather than deleted: a recursive delete in test/ sits
+        // in one of the two seats (a_temp_dir_cleans_itself_up_in_one_place)
+        // and the folder is gone from where it was picked all the same.
         asked: () => tester.runAsync(
-          () => Directory(folder).delete(recursive: true),
+          () => Directory(folder).rename('$folder-moved'),
         ),
       );
 
