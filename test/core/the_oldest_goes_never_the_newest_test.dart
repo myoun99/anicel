@@ -170,7 +170,7 @@ void main() {
 
   test('a store bounded neither way is refused — it would hold every value '
       'it was ever given', () {
-    expect(() => Lru<String, int>(), throwsAssertionError);
+    expect(Lru<String, int>.new, throwsAssertionError);
     expect(
       () => Lru<String, int>(costOf: (cost) => cost),
       throwsAssertionError,
