@@ -244,6 +244,39 @@ mpoints-1-bezieraftery=0.000000
       );
     });
 
+    test('a lock is LRHD[7]\'s bit 4, beside the hidden bit, and a sound '
+        'track\'s is its `locked` — read, so the import can say it (보드 '
+        'the-clip-import-leaves-masks-and-locks-unsaid)', () {
+      final b = TvppBuilder();
+      b.clipProperties('first');
+      b.clipHeader(width: 64, height: 32);
+      b.layerHead('A(folder)', headerChunk: 'LRFH', layerId: 976, locked: true);
+      b.layerExt(const {});
+      b.layerHead('A', layerId: 975, parentId: 976, visible: false);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.layerHead('B', layerId: 974, visible: false, locked: true);
+      b.layerExt(const {});
+      b.zchkSlot(srawRecord(List.filled(64 * 32, 0), 64, 32));
+      b.clipConfig(
+        audio: [('G:/w/a.wav', 0, 1, false), ('G:/w/b.wav', 0, 1, false)],
+        lockedTracks: const {1},
+      );
+
+      final clip = parseTvppStructure(b.bytes).clips.single;
+      expect(
+        [
+          for (final layer in clip.layers)
+            (layer.name, layer.locked, layer.visible),
+        ],
+        [('A(folder)', true, true), ('A', false, false), ('B', true, false)],
+      );
+      expect([for (final track in clip.audioTracks) track.locked], [
+        false,
+        true,
+      ]);
+    });
+
     test('🎯a header chunk this parser does not know makes the layer '
         'UNKNOWN — kept in its place with its own images, and the layers '
         'after it read as ever (보드 tvpp-unknown-layer-kinds-come-in-'

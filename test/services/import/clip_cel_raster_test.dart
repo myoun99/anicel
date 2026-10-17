@@ -105,6 +105,189 @@ void main() {
     expect(bake(picture(alpha: 0)), isEmpty);
   });
 
+  group('🎯through its mask, as Photoshop\'s is baked (보드 the-clip-import-'
+      'leaves-masks-and-locks-unsaid)', () {
+    /// A one-byte mask of 64 × 64 standing at ([left], [top]): [coverage]
+    /// in its one block — or no block stored — and [fill] past its edges.
+    ClipStoredMask mask({
+      required int left,
+      required int top,
+      int fill = 1,
+      int Function(int x, int y)? coverage,
+      int colourChannels = 0,
+    }) {
+      final block = Uint8List(256 * 256);
+      if (coverage != null) {
+        for (var y = 0; y < 256; y += 1) {
+          for (var x = 0; x < 256; x += 1) {
+            block[y * 256 + x] = coverage(x, y);
+          }
+        }
+      }
+      return (
+        attribute: offscreenAttributeBytes(
+          width: 64,
+          height: 64,
+          columns: 1,
+          rows: 1,
+          colourChannels: colourChannels,
+          fill: fill,
+        ),
+        blocks: blockRecordsBytes({0: coverage == null ? null : block}),
+        left: left,
+        top: top,
+      );
+    }
+
+    /// [picture] standing at (4, 6), baked through [mask].
+    List<ClipCelTile>? bakeThrough(ClipStoredMask mask) {
+      final stored = picture();
+      return clipCelTiles(
+        stored.attribute,
+        stored.blocks,
+        (
+          left: 4,
+          top: 6,
+          canvasWidth: 300,
+          canvasHeight: 200,
+          alpha: 1,
+          tileSize: 128,
+        ),
+        mask: mask,
+      );
+    }
+
+    test('its alpha times the mask where the mask stands on the canvas — '
+        'and past the mask\'s edges, the mask\'s fill', () {
+      final tiles = bakeThrough(
+        mask(left: 10, top: 20, coverage: (x, y) => x < 32 ? 0 : 128),
+      )!;
+
+      expect(
+        pixelAt(tiles, 12, 25),
+        [0, 0, 0, 0],
+        reason: 'the mask\'s (2, 5) hides it',
+      );
+      expect(
+        pixelAt(tiles, 50, 30),
+        [46, 24, 7, 128],
+        reason: 'the mask\'s (40, 10) halves it — picture 46, 24',
+      );
+      expect(
+        pixelAt(tiles, 8, 8),
+        [4, 2, 7, 255],
+        reason: 'left of the mask its fill shows all',
+      );
+      expect(pixelAt(tiles, 80, 30), [76, 24, 7, 255], reason: 'right of it');
+    });
+
+    test('where it stores no block it is its fill — 0 hides everything', () {
+      expect(bakeThrough(mask(left: 0, top: 0, fill: 0)), isEmpty);
+      expect(
+        pixelAt(bakeThrough(mask(left: 0, top: 0))!, 20, 20),
+        [16, 14, 7, 255],
+      );
+    });
+
+    test('one that is not one byte a pixel is not baked', () {
+      expect(
+        pixelAt(
+          bakeThrough(mask(left: 0, top: 0, fill: 0, colourChannels: 4))!,
+          20,
+          20,
+        ),
+        [16, 14, 7, 255],
+      );
+    });
+
+    group('which mask a layer\'s picture is baked through', () {
+      final oneByte = ClipPictureSource(
+        attribute: offscreenAttributeBytes(
+          width: 4,
+          height: 4,
+          columns: 1,
+          rows: 1,
+          colourChannels: 0,
+        ),
+        blocksId: 'm',
+      );
+
+      ClipLayer layer(ClipLayerKind kind, ClipLayerMask? mask) => ClipLayer(
+        id: 1,
+        name: 'masked',
+        kind: kind,
+        visibility: 3,
+        opacity: 256,
+        composite: 0,
+        folderFlags: kind == ClipLayerKind.folder ? 1 : 0,
+        isAnimationFolder: false,
+        uuid: 'u',
+        left: 0,
+        top: 0,
+        offsetX: 0,
+        offsetY: 0,
+        render: null,
+        original: null,
+        originalTransform: null,
+        mask: mask,
+        children: const [],
+      );
+
+      test('a stored picture\'s — a raster layer\'s, a dropped picture\'s '
+          '— and a vector layer\'s, where it stands; no other layer bakes '
+          'a picture through one', () {
+        final mask = (source: oneByte, left: 3, top: -2);
+        expect(
+          {
+            for (final kind in ClipLayerKind.values)
+              kind: clipBakedMaskOf(layer(kind, mask)) != null,
+          },
+          {
+            for (final kind in ClipLayerKind.values)
+              kind:
+                  kind == ClipLayerKind.raster ||
+                  kind == ClipLayerKind.picture ||
+                  kind == ClipLayerKind.vector,
+          },
+        );
+        final baked = clipBakedMaskOf(layer(ClipLayerKind.raster, mask))!;
+        expect(
+          (baked.source, baked.left, baked.top),
+          (oneByte, 3, -2),
+        );
+      });
+
+      test('none for a layer with none on, one the file holds no picture '
+          'of, and one that is not one byte a pixel', () {
+        final colour = ClipPictureSource(
+          attribute: offscreenAttributeBytes(
+            width: 4,
+            height: 4,
+            columns: 1,
+            rows: 1,
+          ),
+          blocksId: 'c',
+        );
+        for (final mask in <ClipLayerMask?>[
+          null,
+          (source: null, left: 0, top: 0),
+          (source: colour, left: 0, top: 0),
+          (
+            source: ClipPictureSource(attribute: Uint8List(3), blocksId: 'b'),
+            left: 0,
+            top: 0,
+          ),
+        ]) {
+          expect(
+            clipBakedMaskOf(layer(ClipLayerKind.raster, mask)),
+            isNull,
+            reason: '$mask',
+          );
+        }
+      });
+    });
+  });
+
   test('a picture that is not colour is not turned into colour', () {
     expect(
       bake((

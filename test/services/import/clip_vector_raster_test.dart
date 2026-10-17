@@ -204,6 +204,46 @@ void main() {
       expect(pixel(faint.tiles, 30, 20).$4, closeTo(64, 1));
     });
 
+    test('the picture is baked through the layer\'s mask as a stored one '
+        'is — where the mask stands on the canvas', () {
+      // The mask stands from x 20, hiding its first 16 columns; past its
+      // edges its fill shows everything.
+      final block = Uint8List(256 * 256);
+      for (var y = 0; y < 256; y += 1) {
+        for (var x = 16; x < 256; x += 1) {
+          block[y * 256 + x] = 255;
+        }
+      }
+      final drawn = clipVectorTiles(
+        [
+          vectorStrokeBytes([(10, 20, 1), (50, 20, 1)], radius: 3),
+        ],
+        (x: 0, y: 0),
+        canvas(),
+        mask: (
+          attribute: offscreenAttributeBytes(
+            width: 64,
+            height: 64,
+            columns: 1,
+            rows: 1,
+            colourChannels: 0,
+            fill: 1,
+          ),
+          blocks: blockRecordsBytes({0: block}),
+          left: 20,
+          top: 0,
+        ),
+      );
+
+      expect(pixel(drawn.tiles, 30, 20).$4, 0, reason: 'the mask\'s x 10');
+      expect(pixel(drawn.tiles, 40, 20).$4, closeTo(255, 1));
+      expect(
+        pixel(drawn.tiles, 15, 20).$4,
+        closeTo(255, 1),
+        reason: 'left of the mask',
+      );
+    });
+
     test('a line narrows toward a thin point as a pressed pen\'s does — and '
         'a point with no width, or less, lays nothing', () {
       final drawn = clipVectorTiles(

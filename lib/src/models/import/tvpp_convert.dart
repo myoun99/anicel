@@ -61,6 +61,9 @@ TvppClipConversion convertTvppClip(
       continue;
     }
     position += 1;
+    if (layer.locked) {
+      warnings.add(lockNotImported(layer.name));
+    }
 
     if (layer.kind == TvppLayerKind.folder) {
       topFirst.add(
@@ -228,6 +231,7 @@ TvppClipConversion convertTvppClip(
             offsetSeconds: track.offsetSeconds,
             volume: track.volume,
             muted: track.muted,
+            locked: track.locked,
           ),
       ],
     ),

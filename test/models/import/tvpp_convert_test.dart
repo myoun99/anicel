@@ -30,6 +30,7 @@ TvppLayer _layer(
   int opacity = 255,
   bool visible = true,
   bool collapsed = false,
+  bool locked = false,
   TvpEdgeBehavior pre = TvpEdgeBehavior.none,
   TvpEdgeBehavior post = TvpEdgeBehavior.none,
 }) =>
@@ -43,6 +44,7 @@ TvppLayer _layer(
       opacity: opacity,
       visible: visible,
       collapsed: collapsed,
+      locked: locked,
       preBehavior: pre,
       postBehavior: post,
       slots: slots,
@@ -156,6 +158,45 @@ void main() {
         conversion.slotsByFile.keys,
         everyElement(startsWith('tvpp:2:')),
         reason: 'nothing of the puppet is decoded',
+      );
+    });
+
+    test('a locked layer comes in as no row here has a lock — named in every '
+        'decoder\'s word, a folder and a CTG as much as a layer; the camera '
+        'and a kind left out are not rows, and say nothing of it (보드 '
+        'the-clip-import-leaves-masks-and-locks-unsaid)', () {
+      final clip = _clip(
+        layers: [
+          _layer('cam', kind: TvppLayerKind.camera, locked: true),
+          _layer('F', kind: TvppLayerKind.folder, layerId: 9, locked: true),
+          _layer('A', parentId: 9, slots: [_image()], locked: true),
+          _layer('B', slots: [_image()]),
+          _layer(
+            'CTG',
+            kind: TvppLayerKind.ctg,
+            slots: [_image()],
+            second: [_image()],
+            locked: true,
+          ),
+          _layer(
+            'puppet',
+            kind: TvppLayerKind.unknown,
+            slots: [_image()],
+            locked: true,
+          ),
+        ],
+      );
+      final conversion = convertTvppClip(clip, clipIndex: 0);
+
+      expect(conversion.result.warnings, [
+        lockNotImported('F'),
+        lockNotImported('A'),
+        lockNotImported('CTG'),
+        unsupportedLayerKind('puppet'),
+      ]);
+      expect(
+        [for (final layer in conversion.result.layers) layer.name],
+        containsAll(['F', 'A', 'B']),
       );
     });
 

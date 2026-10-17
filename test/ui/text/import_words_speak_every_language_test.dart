@@ -31,8 +31,9 @@ void main() {
   /// parser and converter, three the .tvpp door itself, `clip*` the CLIP
   /// STUDIO planner and door, `brushPack*` · `abr*` · `sut*` the brush file
   /// readers' refusals (F-273) — and `unsupportedLayerKind` ·
-  /// `layerEffectsNotApplied` · `clippingNotApplied` every decoder's one
-  /// word for each (`import_warning.dart`).
+  /// `layerEffectsNotApplied` · `clippingNotApplied` · `layerMaskNotApplied`
+  /// · `lockNotImported` every decoder's one word for each
+  /// (`import_warning.dart`).
   const keys = [
     'psdBitDepth',
     'psdVectorMask',
@@ -102,6 +103,8 @@ void main() {
     'unsupportedLayerKind',
     'layerEffectsNotApplied',
     'clippingNotApplied',
+    'layerMaskNotApplied',
+    'lockNotImported',
   ];
 
   for (final language in translated) {

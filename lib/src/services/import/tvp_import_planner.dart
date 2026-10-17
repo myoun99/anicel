@@ -208,6 +208,9 @@ TvpImportPlan planTvpImport({
         ),
       );
     }
+    if (track.locked) {
+      warnings.add(lockNotImported(fileNameOfPath(track.filePath)));
+    }
     layers.add(
       Layer(
         id: layerId,

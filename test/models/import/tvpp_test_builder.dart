@@ -102,6 +102,7 @@ class TvppBuilder {
     int parentId = 0,
     bool visible = true,
     bool folded = true,
+    bool locked = false,
     List<int>? ansiNameBytes,
   }) {
     final utf = [...utf8.encode(name), 0];
@@ -120,7 +121,7 @@ class TvppBuilder {
     // (F-306, 10-09).
     v.setUint32(11 * 4, (post << 16) | (folded ? 1 : 0));
     v.setUint32(13 * 4, (pre << 16) | 1);
-    v.setUint32(7 * 4, visible ? 0 : 1);
+    v.setUint32(7 * 4, (visible ? 0 : 1) | (locked ? 0x10 : 0));
     v.setUint32(17 * 4, parentId);
     v.setUint32(18 * 4, layerId);
     chunk(headerChunk, header);
@@ -169,10 +170,12 @@ class TvppBuilder {
     chunk(magic, record.sublist(8));
   }
 
+  /// [lockedTracks] are the indexes of [audio] locked in TVPaint.
   void clipConfig({
     String cameraData = '',
     List<(String path, double offset, double volume, bool mute)> audio =
         const [],
+    Set<int> lockedTracks = const {},
   }) {
     final sb = StringBuffer('\u{FEFF}[info]\ncreationos=TEST\n');
     if (audio.isNotEmpty) {
@@ -183,7 +186,8 @@ class TvppBuilder {
           ..write('filepath=$path\n')
           ..write('offset=${offset.toStringAsFixed(6)}\n')
           ..write('volume=${volume.toStringAsFixed(6)}\n')
-          ..write('mute=${mute ? 1 : 0}\n');
+          ..write('mute=${mute ? 1 : 0}\n')
+          ..write('locked=${lockedTracks.contains(i) ? 1 : 0}\n');
       }
     }
     if (cameraData.isNotEmpty) {

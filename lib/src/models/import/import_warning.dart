@@ -118,3 +118,24 @@ ImportWarning clippingNotApplied(String name) => ImportWarning(
   '{name}: clipping mask not applied.',
   {'name': name},
 );
+
+/// A layer whose mask, switched on, came in unapplied — a folder's (유저
+/// 10-07: 「폴더마스크는 나중에 구현할예정」), a text layer's, one this
+/// import cannot read — named, as every decoder says it. A mask that is
+/// baked into its layer's picture says nothing; one switched off is not
+/// applied by its program either (보드 `the-clip-import-leaves-masks-and-
+/// locks-unsaid`, 10-17).
+ImportWarning layerMaskNotApplied(String name) => ImportWarning(
+  'layerMaskNotApplied',
+  '{name}: layer mask not applied.',
+  {'name': name},
+);
+
+/// A layer that was locked, come in unlocked — no row here carries a lock
+/// — named, as every decoder says it (the same card, by the same 10-07 law
+/// as [layerEffectsNotApplied]; 유저 10-09 「다른 디코드 마찬가지 통일해서」).
+ImportWarning lockNotImported(String name) => ImportWarning(
+  'lockNotImported',
+  '{name}: lock not imported.',
+  {'name': name},
+);

@@ -254,12 +254,14 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
 }
 
 /// One picture to bake, the cut it lands in, what its pixels come out of,
-/// and where that is in the file.
+/// and where that is in the file — and the mask it is baked through, with
+/// where that mask's blocks are.
 typedef _ClipWork = ({
   ClipCelBake bake,
   Cut cut,
   _ClipSource source,
   List<ClipPlace> places,
+  ({ClipBakedMask mask, ClipPlace place})? mask,
 });
 
 /// What a bake's pixels come out of.
@@ -373,18 +375,27 @@ final class ClipImportDoor {
       final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
       for (var at = 0; at < work.length; at += pool) {
         final wave = work.sublist(at, math.min(at + pool, work.length));
+        Future<Uint8List> read(ClipPlace place) async {
+          await reader.setPosition(place.offset);
+          return reader.read(place.length);
+        }
+
         final windows = <List<Uint8List>>[];
+        final masks = <Uint8List?>[];
         for (final item in wave) {
           final bytes = <Uint8List>[];
           for (final place in item.places) {
-            await reader.setPosition(place.offset);
-            bytes.add(await reader.read(place.length));
+            bytes.add(await read(place));
           }
           windows.add(bytes);
+          masks.add(switch (item.mask) {
+            final mask? => await read(mask.place),
+            null => null,
+          });
         }
         final decoded = await Future.wait([
           for (var w = 0; w < wave.length; w += 1)
-            _decodeOne(wave[w], windows[w]),
+            _decodeOne(wave[w], windows[w], masks[w]),
         ]);
         for (var w = 0; w < wave.length; w += 1) {
           await _bakeDecoded(decoded[w], wave[w], warnings);
@@ -430,6 +441,7 @@ final class ClipImportDoor {
           cut: cut,
           source: const _Strokes(),
           places: [...places.nonNulls],
+          mask: _maskOf(bake, container, warnings),
         ));
         continue;
       }
@@ -449,6 +461,7 @@ final class ClipImportDoor {
             for (final one in drawn) (text: one.text, picture: one.picture),
           ]),
           places: [for (final one in drawn) one.place],
+          mask: null,
         ));
         continue;
       }
@@ -475,14 +488,39 @@ final class ClipImportDoor {
         cut: cut,
         source: _StoredPicture(picture),
         places: [blocks],
+        mask: _maskOf(bake, container, warnings),
       ));
     }
     return work;
   }
 
+  /// The mask [bake]'s picture is baked through ([clipBakedMaskOf]) and
+  /// where its blocks are — said, and the picture baked without it, where
+  /// the file does not hold them.
+  ({ClipBakedMask mask, ClipPlace place})? _maskOf(
+    ClipCelBake bake,
+    ClipContainer container,
+    List<ImportWarning> warnings,
+  ) {
+    final mask = clipBakedMaskOf(bake.source);
+    if (mask == null) {
+      return null;
+    }
+    final place = container.externals[mask.source.blocksId];
+    if (place == null) {
+      warnings.add(layerMaskNotApplied(bake.label));
+      return null;
+    }
+    return (mask: mask, place: place);
+  }
+
   /// [item] decoded on a worker of its own out of [bytes] — its blocks, its
-  /// strokes, or its texts' pictures.
-  Future<Object?> _decodeOne(_ClipWork item, List<Uint8List> bytes) {
+  /// strokes, or its texts' pictures — through its mask's [maskBlocks].
+  Future<Object?> _decodeOne(
+    _ClipWork item,
+    List<Uint8List> bytes,
+    Uint8List? maskBlocks,
+  ) {
     ClipCelTarget at(int left, int top) => (
       left: left,
       top: top,
@@ -492,16 +530,27 @@ final class ClipImportDoor {
       tileSize: defaultCelTileSize,
     );
     final bake = item.bake;
+    final mask = switch ((item.mask?.mask, maskBlocks)) {
+      (final baked?, final blocks?) => (
+        attribute: baked.source.attribute,
+        blocks: blocks,
+        left: baked.left,
+        top: baked.top,
+      ),
+      _ => null,
+    };
     return switch (item.source) {
       _StoredPicture(:final picture) => _decodeOnWorker(
         bytes.single,
         picture.source.attribute,
         at(picture.left, picture.top),
+        mask,
       ),
       _Strokes() => _drawOnWorker(
         bytes,
         (x: bake.source.offsetX, y: bake.source.offsetY),
         at(0, 0),
+        mask,
       ),
       _Letters(:final pictures) when pictures.isEmpty => Future.value(
         const <Object?>[],
@@ -672,7 +721,10 @@ Future<Object?> _decodeOnWorker(
   Uint8List blocks,
   Uint8List attribute,
   ClipCelTarget target,
-) => Isolate.run<Object?>(() => _tilesOf(attribute, blocks, target));
+  ClipStoredMask? mask,
+) => Isolate.run<Object?>(
+  () => _tilesOf(attribute, blocks, target, mask: mask),
+);
 
 /// Several pictures — a text layer's — decoded on one worker of its own,
 /// each as [_decodeOnWorker] answers for one. Its own function for the same
@@ -688,11 +740,17 @@ Future<Object?> _readOnWorker(
   ],
 );
 
-/// The tiles a picture's [attribute] and [blocks] make on [target] — null
-/// for a picture that is not colour, or the reason it would not decode.
-Object? _tilesOf(Uint8List attribute, Uint8List blocks, ClipCelTarget target) {
+/// The tiles a picture's [attribute] and [blocks] make on [target] through
+/// [mask] — null for a picture that is not colour, or the reason it would
+/// not decode.
+Object? _tilesOf(
+  Uint8List attribute,
+  Uint8List blocks,
+  ClipCelTarget target, {
+  ClipStoredMask? mask,
+}) {
   try {
-    return clipCelTiles(attribute, blocks, target);
+    return clipCelTiles(attribute, blocks, target, mask: mask);
   } on ClipFormatException catch (error) {
     return error;
   } on FormatException catch (error) {
@@ -707,10 +765,11 @@ Future<Object?> _drawOnWorker(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
   ClipCelTarget target,
+  ClipStoredMask? mask,
 ) {
   return Isolate.run<Object?>(() {
     try {
-      return clipVectorTiles(bodies, offset, target);
+      return clipVectorTiles(bodies, offset, target, mask: mask);
     } on ClipFormatException catch (error) {
       return error;
     }

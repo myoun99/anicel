@@ -57,6 +57,11 @@ final class ClipPictureSource {
   final String blocksId;
 }
 
+/// A layer's mask as CLIP STUDIO applies it ([ClipLayer.mask]): where its
+/// picture is stored — null when the file does not hold it — and where its
+/// top-left stands on the canvas.
+typedef ClipLayerMask = ({ClipPictureSource? source, int left, int top});
+
 /// One sound a sound layer holds — the file CLIP STUDIO took in, whole, in
 /// the external chunk [binaryId] (an mp3 of the samples began 「ID3」 —
 /// memory `csp-clip-format-notes` §3): what a sound track's clip names to
@@ -101,6 +106,8 @@ final class ClipLayer {
     this.mainColour,
     this.effectsOn = false,
     this.clipped = false,
+    this.mask,
+    this.locked = false,
     required this.children,
   });
 
@@ -198,6 +205,16 @@ final class ClipLayer {
 
   /// `LayerClip` — clipped to the layer under it.
   final bool clipped;
+
+  /// The layer mask CLIP STUDIO applies: a `LayerLayerMaskMipmap` with
+  /// [visibility]'s bit 2 on, standing at `LayerOffset + LayerMaskOffset +
+  /// LayerMaskOffscrOffset` (MoArt's reading — memory `csp-clip-format-notes`
+  /// §2; no sample holds a mask). Null for a layer with none, and for one
+  /// whose mask is off: CLIP STUDIO does not apply that either.
+  final ClipLayerMask? mask;
+
+  /// `LayerLock` not 0 — some lock is on (the samples' are 1 and 16).
+  final bool locked;
 
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
@@ -512,6 +529,12 @@ final class _DocumentReader {
     'LayerEffectInfo',
     'DrawColorEnable',
     'LayerClip',
+    'LayerLayerMaskMipmap',
+    'LayerMaskOffsetX',
+    'LayerMaskOffsetY',
+    'LayerMaskOffscrOffsetX',
+    'LayerMaskOffscrOffsetY',
+    'LayerLock',
     ..._mainColourColumns,
   ];
 
@@ -724,8 +747,26 @@ final class _DocumentReader {
       mainColour: _mainColourOf(row),
       effectsOn: _effectsOn(row, kind),
       clipped: _int(row['LayerClip']) != 0,
+      mask: _maskOf(row, pictures),
+      locked: _int(row['LayerLock']) != 0,
       children: children,
     );
+  }
+
+  /// [row]'s [ClipLayer.mask].
+  static ClipLayerMask? _maskOf(
+    Map<String, Object?> row,
+    Map<int, ClipPictureSource> pictures,
+  ) {
+    final mipmap = _int(row['LayerLayerMaskMipmap']);
+    if (mipmap == 0 || _int(row['LayerVisibility']) & 2 == 0) {
+      return null;
+    }
+    int at(String axis) =>
+        _int(row['LayerOffset$axis']) +
+        _int(row['LayerMaskOffset$axis']) +
+        _int(row['LayerMaskOffscrOffset$axis']);
+    return (source: pictures[mipmap], left: at('X'), top: at('Y'));
   }
 
   /// [row]'s [ClipLayer.effectsOn].

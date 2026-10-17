@@ -45,6 +45,8 @@ void main() {
     String? adjustment,
     bool pixels = true,
     bool effects = false,
+    bool unbakedMask = false,
+    bool locked = false,
   }) => PsdLayer(
     name: name,
     left: left,
@@ -59,6 +61,8 @@ void main() {
     pixels: pixels ? Uint8List((right - left) * (bottom - top) * 4) : null,
     adjustmentKey: adjustment,
     hasLayerEffects: effects,
+    hasUnbakedMask: unbakedMask,
+    locked: locked,
   );
 
   PsdLayer bracket(
@@ -67,6 +71,8 @@ void main() {
     String blend = 'pass',
     bool collapsed = false,
     bool effects = false,
+    bool unbakedMask = false,
+    bool locked = false,
   }) => PsdLayer(
     name: name,
     left: 0,
@@ -82,6 +88,8 @@ void main() {
     adjustmentKey: null,
     collapsed: collapsed,
     hasLayerEffects: effects,
+    hasUnbakedMask: unbakedMask,
+    locked: locked,
   );
 
   PsdDocument document(
@@ -285,6 +293,34 @@ void main() {
       expect(
         result.layers.map((layer) => layer.name),
         containsAll(['plain', 'shadowed', 'stroked']),
+      );
+    });
+
+    test('a mask its pixels were not baked through and a lock are named — on '
+        'a layer and on a group — in every decoder\'s words, and the rows '
+        'still come in; an adjustment is named only as left out (보드 '
+        'the-clip-import-leaves-masks-and-locks-unsaid)', () {
+      final result = plan(
+        document([
+          raster('plain'),
+          bracket(PsdLayerRole.groupClose, locked: true),
+          raster('held', locked: true),
+          bracket(PsdLayerRole.groupOpen, name: 'masked', unbakedMask: true),
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'kept', locked: true),
+          raster('Curves 1', adjustment: 'curv', locked: true),
+        ]),
+      );
+      expect(result.warnings, [
+        lockNotImported('held'),
+        layerMaskNotApplied('masked'),
+        lockNotImported('kept'),
+        unsupportedLayerKind('Curves 1'),
+      ]);
+      expect(
+        result.layers.map((layer) => layer.name),
+        containsAll(['plain', 'held', 'masked', 'inside', 'kept']),
       );
     });
 

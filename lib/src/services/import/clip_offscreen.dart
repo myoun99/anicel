@@ -47,6 +47,11 @@ final class ClipOffscreenShape {
 
   /// One byte a pixel — a mask.
   bool get isSingleChannel => alphaChannels + colourChannels == 1;
+
+  /// What a mask is where it stores no block, and past its edges: all shown
+  /// for a [fill] that is not 0, else hidden (MoArt's reading — memory
+  /// `csp-clip-format-notes` §2).
+  int get maskOutside => fill != 0 ? 255 : 0;
 }
 
 /// The side of the square blocks a picture is stored in.
@@ -163,4 +168,39 @@ Uint8List? clipColourRgba(
     }
   });
   return rgba;
+}
+
+/// A one-channel picture ([ClipOffscreenShape.isSingleChannel]) — a layer
+/// mask — as one byte a pixel, [ClipOffscreenShape.width] ×
+/// [ClipOffscreenShape.height]; null for a picture of another channel
+/// bundle.
+///
+/// A block inflates to the plane itself. Where no block is, or one holds
+/// another size than a whole block, stands
+/// [ClipOffscreenShape.maskOutside].
+Uint8List? clipMaskPlane(
+  ClipOffscreenShape shape,
+  Map<int, Uint8List?> blocks,
+) {
+  if (!shape.isSingleChannel) {
+    return null;
+  }
+  const side = clipBlockSide;
+  final width = shape.width;
+  final height = shape.height;
+  final plane = Uint8List(width * height)
+    ..fillRange(0, width * height, shape.maskOutside);
+  blocks.forEach((number, block) {
+    if (block == null || block.length != side * side) {
+      return;
+    }
+    final left = (number % shape.columns) * side;
+    final top = (number ~/ shape.columns) * side;
+    for (var y = 0; y < side && top + y < height; y += 1) {
+      for (var x = 0; x < side && left + x < width; x += 1) {
+        plane[(top + y) * width + left + x] = block[y * side + x];
+      }
+    }
+  });
+  return plane;
 }

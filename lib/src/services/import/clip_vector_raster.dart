@@ -183,12 +183,14 @@ final _pen = const BrushShape().withCurve(
 /// Each stroke lands as the brush lands one re-derived from its dabs
 /// ([brushCommitResultForBrushDabSequenceOnBitmapSurface]: piled up, then
 /// laid once at its opacity) and the picture is cut and baked as a stored
-/// one is ([clipCelTilesOf]). Pure, so it runs on a worker.
+/// one is ([clipCelTilesOf]) — through [mask] as well. Pure, so it runs on
+/// a worker.
 ({List<ClipCelTile> tiles, int unread}) clipVectorTiles(
   List<Uint8List> bodies,
   ({int x, int y}) offset,
-  ClipCelTarget target,
-) {
+  ClipCelTarget target, {
+  ClipStoredMask? mask,
+}) {
   final width = target.canvasWidth;
   final height = target.canvasHeight;
   var surface = BitmapSurface(
@@ -222,14 +224,18 @@ final _pen = const BrushShape().withCurve(
     ),
   );
   return (
-    tiles: clipCelTilesOf((rgba: rgba, width: width, height: height), (
-      left: 0,
-      top: 0,
-      canvasWidth: width,
-      canvasHeight: height,
-      alpha: target.alpha,
-      tileSize: target.tileSize,
-    )),
+    tiles: clipCelTilesOf(
+      (rgba: rgba, width: width, height: height),
+      (
+        left: 0,
+        top: 0,
+        canvasWidth: width,
+        canvasHeight: height,
+        alpha: target.alpha,
+        tileSize: target.tileSize,
+      ),
+      mask: mask,
+    ),
     unread: unread,
   );
 }

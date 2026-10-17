@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../core/mask_into_alpha.dart';
+import 'clip_container.dart' show ClipFormatException;
 import 'clip_document.dart';
 import 'clip_offscreen.dart';
 import 'clip_placement.dart';
@@ -63,6 +65,56 @@ ClipPicture? clipPictureOf(ClipLayer layer) {
   );
 }
 
+/// A layer's mask as its picture is baked through it ([clipBakedMaskOf]).
+typedef ClipBakedMask = ({ClipPictureSource source, int left, int top});
+
+/// The mask [layer]'s picture is baked through, by the law Photoshop's is
+/// ([applyMaskToAlpha]): a stored picture's or a vector layer's mask that
+/// is on. Null for a layer with none on — and for one whose mask cannot be
+/// baked, which the import names (`layerMaskNotApplied`): a folder's or a
+/// text layer's, whose own picture is not baked here; one the file does not
+/// hold the picture of; one that is not one byte a pixel.
+ClipBakedMask? clipBakedMaskOf(ClipLayer layer) {
+  final mask = layer.mask;
+  final source = mask?.source;
+  if (mask == null || source == null) {
+    return null;
+  }
+  final bakesItsPicture = switch (layer.kind) {
+    ClipLayerKind.raster || ClipLayerKind.picture || ClipLayerKind.vector =>
+      true,
+    ClipLayerKind.root ||
+    ClipLayerKind.folder ||
+    ClipLayerKind.paper ||
+    ClipLayerKind.lettering ||
+    ClipLayerKind.sound ||
+    ClipLayerKind.fill ||
+    ClipLayerKind.other => false,
+  };
+  if (!bakesItsPicture || !_isSingleChannel(source.attribute)) {
+    return null;
+  }
+  return (source: source, left: mask.left, top: mask.top);
+}
+
+bool _isSingleChannel(Uint8List attribute) {
+  try {
+    return parseClipOffscreenAttribute(attribute).isSingleChannel;
+  } on ClipFormatException {
+    return false;
+  }
+}
+
+/// A layer's mask as the file stores it — its offscreen's attribute and
+/// blocks — and where its top-left stands on the canvas: what a worker is
+/// given to bake a picture through it.
+typedef ClipStoredMask = ({
+  Uint8List attribute,
+  Uint8List blocks,
+  int left,
+  int top,
+});
+
 /// Where a picture is baked: its top-left on a [canvasWidth] ×
 /// [canvasHeight] canvas, in tiles of [tileSize], its alpha times [alpha] —
 /// the bake that keeps a fainter cel fainter.
@@ -75,16 +127,17 @@ typedef ClipCelTarget = ({
   int tileSize,
 });
 
-/// The picture [attribute] and [blocks] store, as cel tiles on [target] —
-/// or null for a picture that is not colour: a grey or monochrome layer,
-/// which this reader does not turn into colour.
+/// The picture [attribute] and [blocks] store, as cel tiles on [target]
+/// through [mask] — or null for a picture that is not colour: a grey or
+/// monochrome layer, which this reader does not turn into colour.
 ///
-/// Pure, so it runs on a worker: the two byte lists are all it is given.
+/// Pure, so it runs on a worker: the byte lists are all it is given.
 List<ClipCelTile>? clipCelTiles(
   Uint8List attribute,
   Uint8List blocks,
-  ClipCelTarget target,
-) {
+  ClipCelTarget target, {
+  ClipStoredMask? mask,
+}) {
   final shape = parseClipOffscreenAttribute(attribute);
   final rgba = clipColourRgba(shape, clipBlocksOf(blocks));
   if (rgba == null) {
@@ -93,18 +146,24 @@ List<ClipCelTile>? clipCelTiles(
   return clipCelTilesOf(
     (rgba: rgba, width: shape.width, height: shape.height),
     target,
+    mask: mask,
   );
 }
 
-/// [picture] — straight RGBA — as cel tiles on [target]: a stored picture
-/// once decoded ([clipCelTiles]), and a vector layer once drawn.
+/// [picture] — straight RGBA, its own to change — as cel tiles on
+/// [target], baked through [mask] when there is one: a stored picture once
+/// decoded ([clipCelTiles]), and a vector layer once drawn.
 ///
 /// What falls off the canvas is dropped, and a tile with no ink is not
 /// there at all — the shape the drawing store gives an empty tile.
 List<ClipCelTile> clipCelTilesOf(
   ({Uint8List rgba, int width, int height}) picture,
-  ClipCelTarget target,
-) {
+  ClipCelTarget target, {
+  ClipStoredMask? mask,
+}) {
+  if (mask != null) {
+    _bakeMask(picture, target, mask);
+  }
   final size = target.tileSize;
   // The picture's part on the canvas, in canvas pixels.
   final on = (
@@ -128,6 +187,34 @@ List<ClipCelTile> clipCelTilesOf(
     }
   }
   return tiles;
+}
+
+/// [mask] multiplied into [picture]'s alpha where the picture stands on
+/// [target] — nothing for a mask that is not one byte a pixel, which
+/// [clipBakedMaskOf] never hands on.
+void _bakeMask(
+  ({Uint8List rgba, int width, int height}) picture,
+  ClipCelTarget target,
+  ClipStoredMask mask,
+) {
+  final shape = parseClipOffscreenAttribute(mask.attribute);
+  final plane = clipMaskPlane(shape, clipBlocksOf(mask.blocks));
+  if (plane == null) {
+    return;
+  }
+  applyMaskToAlpha(
+    picture.rgba,
+    layerLeft: target.left,
+    layerTop: target.top,
+    layerWidth: picture.width,
+    layerHeight: picture.height,
+    mask: plane,
+    maskLeft: mask.left,
+    maskTop: mask.top,
+    maskWidth: shape.width,
+    maskHeight: shape.height,
+    defaultColor: shape.maskOutside,
+  );
 }
 
 /// [tile]'s pixels out of [picture] — only where [on], the picture's part

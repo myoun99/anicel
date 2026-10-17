@@ -56,6 +56,10 @@
 /// * **A text layer is a cel of the app's own texts** (F-370-Q3, 유저
 ///   10-17: 「이제 들인다(앱의 글자로)」), shown as CLIP STUDIO drew them until
 ///   one is edited ([clipCelTextsOf]).
+/// * **A layer mask that is on is baked into its layer's picture**, by the
+///   law Photoshop's is ([clipBakedMaskOf] — 보드 `the-clip-import-leaves-
+///   masks-and-locks-unsaid`, 10-17); one no picture is baked through — a
+///   folder's, a text layer's — is said, as a lock is: no row here has one.
 library;
 
 import 'dart:collection';
@@ -90,6 +94,7 @@ import '../../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../editing/default_cut_helpers.dart';
 import '../layer_pose_matrix.dart' show LayerPoseSample;
 import 'camera_track.dart';
+import 'clip_cel_raster.dart' show clipBakedMaskOf;
 import 'clip_document.dart';
 import 'clip_lettering.dart';
 import 'clip_placement.dart';
@@ -873,6 +878,7 @@ final class _Planner {
     // A sound plays on each cut's SE rows ([_SoundRows]), not in a row of
     // pictures.
     if (layer.kind == ClipLayerKind.sound) {
+      _sayNotApplied(layer, layer.name);
       sounds.add(layer, folders);
       return;
     }
@@ -1294,16 +1300,23 @@ final class _Planner {
     return comes;
   }
 
-  /// Names [layer] by [name] where CLIP STUDIO draws it in a way no row
-  /// here does — an effect of its properties on, or clipped to the layer
-  /// under it — in every decoder's words for them: a folder as much as a
-  /// layer, since either can wear them.
+  /// Names [layer] by [name] where CLIP STUDIO keeps something of it that
+  /// no row here does — an effect of its properties on, clipped to the
+  /// layer under it, a mask on that its picture is not baked through
+  /// ([clipBakedMaskOf]), a lock — in every decoder's words for them: a
+  /// folder as much as a layer, since either can wear them.
   void _sayNotApplied(ClipLayer layer, String name) {
     if (layer.effectsOn) {
       warnings.add(layerEffectsNotApplied(name));
     }
     if (layer.clipped) {
       warnings.add(clippingNotApplied(name));
+    }
+    if (layer.mask != null && clipBakedMaskOf(layer) == null) {
+      warnings.add(layerMaskNotApplied(name));
+    }
+    if (layer.locked) {
+      warnings.add(lockNotImported(name));
     }
   }
 

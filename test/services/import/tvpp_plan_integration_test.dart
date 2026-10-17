@@ -1,5 +1,6 @@
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
 import 'package:anicel/src/models/import/tvpp_convert.dart';
 import 'package:anicel/src/models/import/tvpp_parse.dart';
@@ -178,5 +179,52 @@ void main() {
     expect(se.audioClips.single.filePath, 'G:/sagyou/12.mp4');
     expect(se.audioClips.single.frameId, block.frameId);
     expect(se.audioClips.single.gain, closeTo(0.51, 1e-9));
+    expect(plan.warnings, isEmpty);
+  });
+
+  test('a locked sound track comes in on an SE row, which has no lock — '
+      'named by its file, as a muted one is (보드 the-clip-import-leaves-'
+      'masks-and-locks-unsaid)', () {
+    const parsed = TvpImportClip(
+      versionMajor: 0,
+      versionMinor: 0,
+      clipName: 'cut',
+      width: 320,
+      height: 180,
+      frameRate: 24,
+      pixelAspectRatio: 1,
+      frameCount: 48,
+      background: TvpColor(255, 255, 255),
+      markIn: null,
+      markOut: null,
+      camera: TvpCamera(
+        width: 320,
+        height: 180,
+        keyedOn: (position: [], zoom: [], rotation: []),
+        positions: [],
+      ),
+      layers: [],
+      warnings: [],
+      audioTracks: [
+        TvpAudioTrack(
+          filePath: 'G:/sagyou/12.mp4',
+          offsetSeconds: 0,
+          volume: 1,
+          muted: false,
+          locked: true,
+        ),
+      ],
+    );
+    final plan = planTvpImport(
+      parsed: parsed,
+      resolveFile: (key) => key,
+      mint: mint(),
+    );
+
+    expect(plan.warnings, [lockNotImported('12.mp4')]);
+    expect(
+      plan.cut.layers.where((layer) => layer.kind == LayerKind.se),
+      hasLength(1),
+    );
   });
 }

@@ -70,10 +70,15 @@ void main() {
   /// drawn.
   ///
   /// [papered] puts a paper 0x204060 under BG.
+  ///
+  /// [masked] gives BG a mask that is on, standing 5 across from BG's
+  /// top-left: it hides all it covers, and past its edges shows all — its
+  /// blocks held, or not in the file.
   String writeClip({
     bool troubled = false,
     _Strokes? strokes,
     bool papered = false,
+    _Masked? masked,
   }) {
     final attribute = offscreenAttributeBytes(
       width: 64,
@@ -92,6 +97,7 @@ void main() {
         ...vectorStrokeBytes([(0, 10, 1), (40, 10, 1)], radius: 3),
         ...vectorStrokeBytes([(0, 0, 1)], flags: 2),
       ],
+      externalId(30): blockRecordsBytes({0: Uint8List(256 * 256)}),
       // Timeline one, A: 「1」 at tick 0, 「2」 at tick 12 (frame 6 — two
       // ticks a frame at 30 fps), to tick 24 (frame 12). BG throughout.
       externalId(10): trackDataBytes(
@@ -176,6 +182,35 @@ void main() {
           'DrawColorMainBlue = ? WHERE MainId = 12',
           [0x20202020, 0x40404040, 0x60606060],
         );
+      }
+      if (masked != null) {
+        db
+          ..execute('ALTER TABLE Layer ADD COLUMN LayerLayerMaskMipmap INTEGER')
+          ..execute('ALTER TABLE Layer ADD COLUMN LayerMaskOffsetX INTEGER')
+          ..execute(
+            'UPDATE Layer SET LayerVisibility = 3, LayerLayerMaskMipmap = 108, '
+            'LayerMaskOffsetX = 5 WHERE MainId = 2',
+          )
+          ..execute('''
+            INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (108, 208);
+            INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+              VALUES (208, 100, 308, 0);
+          ''')
+          ..execute(
+            'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
+            'VALUES (308, ?, ?)',
+            [
+              offscreenAttributeBytes(
+                width: 64,
+                height: 64,
+                columns: 1,
+                rows: 1,
+                colourChannels: 0,
+                fill: 1,
+              ),
+              externalId(masked == _Masked.held ? 30 : 96),
+            ],
+          );
       }
       if (strokes != null) {
         db.execute('''
@@ -444,6 +479,47 @@ void main() {
       2 * 2,
       reason: 'the doubled picture still lands, at its move',
     );
+  });
+
+  test('🎯a layer\'s mask that is on is baked into its picture where the '
+      'mask stands — and nothing said (보드 the-clip-import-leaves-masks-and-'
+      'locks-unsaid)', () async {
+    final opened = await openedClip(writeClip(masked: _Masked.held));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect([for (final warning in opened.warnings) warning.key], [
+      'clipCelLayers',
+    ]);
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    expect(
+      inked(session, cut, bg.id, bg.frames.single.id),
+      5 * 10,
+      reason: 'its square 120 … 129 across, the mask over 125 … — five '
+          'columns left of it',
+    );
+  });
+
+  test('a mask whose blocks the file does not hold is said, and the picture '
+      'comes in whole', () async {
+    final opened = await openedClip(writeClip(masked: _Masked.lost));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('layerMaskNotApplied', 'BG'),
+      ]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final bg = cut.layers.singleWhere((layer) => layer.name == 'BG');
+    expect(inked(session, cut, bg.id, bg.frames.single.id), 10 * 10);
   });
 
   test('F-370: the paper under every row opens as the project\'s '
@@ -847,3 +923,6 @@ void main() {
 /// What the vector layer of [writeClip] holds: its strokes, strokes the file
 /// does not hold, or none at all.
 enum _Strokes { held, lost, none }
+
+/// Whether the file of [writeClip] holds the blocks of BG's mask.
+enum _Masked { held, lost }

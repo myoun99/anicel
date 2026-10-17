@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../core/mask_into_alpha.dart';
 import '../abr/photoshop_descriptor.dart';
 import 'photoshop_byte_reader.dart';
 import 'psd_pixels.dart';
@@ -61,6 +62,8 @@ class PsdLayer {
     required this.adjustmentKey,
     this.collapsed = false,
     this.hasLayerEffects = false,
+    this.hasUnbakedMask = false,
+    this.locked = false,
   });
 
   final String name;
@@ -72,6 +75,18 @@ class PsdLayer {
   /// 0–255, as the file stores it.
   final int opacity;
   final bool visible;
+
+  /// Whether the record carries a layer mask that is switched on and that
+  /// [pixels] were not baked through — a group's, whose row has no pixels
+  /// to bake it into — so the importer names the layer instead of losing
+  /// the mask without a word (보드 `the-clip-import-leaves-masks-and-locks-
+  /// unsaid`, 10-17).
+  final bool hasUnbakedMask;
+
+  /// Whether some lock is on — `lspf`, the protection Photoshop's Layers
+  /// panel sets: transparency, pixels, position, all. No row here carries
+  /// one, so the importer names the layer.
+  final bool locked;
 
   /// A folder row Photoshop shows closed — `lsct` 2, where an open one is 1.
   /// F-306 (유저 2026-10-07: 「접힌 폴더는 접힌상태로 들여오도록. 이건 tvp든
@@ -296,6 +311,7 @@ class _LayerRecord {
     required this.mask,
     required this.collapsed,
     required this.hasLayerEffects,
+    required this.locked,
   });
 
   final String name;
@@ -310,6 +326,7 @@ class _LayerRecord {
   final PsdLayerRole role;
   final bool collapsed;
   final bool hasLayerEffects;
+  final bool locked;
 
   /// (channel id, declared byte length) in the order the file stores them.
   final List<(int, int)> channels;
@@ -432,6 +449,7 @@ _LayerRecord _readLayerRecord(
   // newer block speaks.
   bool? effectsOn;
   var legacyEffects = false;
+  var locked = false;
   while (reader.offset + 12 <= extraEnd) {
     final signature = reader.readAscii(4);
     if (signature != '8BIM' && signature != '8B64') {
@@ -463,6 +481,8 @@ _LayerRecord _readLayerRecord(
       effectsOn = _effectsSwitchedOn(reader) || (effectsOn ?? false);
     } else if (key == 'lrFX') {
       legacyEffects = true;
+    } else if (key == 'lspf' && blockLength >= 4) {
+      locked = reader.readUint32() != 0;
     }
     reader.offset = blockEnd <= extraEnd ? blockEnd : extraEnd;
     // Blocks are padded to an even length in practice; a stray odd byte
@@ -492,6 +512,7 @@ _LayerRecord _readLayerRecord(
     mask: mask,
     collapsed: collapsed,
     hasLayerEffects: effectsOn ?? legacyEffects,
+    locked: locked,
   );
 }
 
@@ -570,6 +591,9 @@ PsdLayer _readLayerPixels(
     reader.offset = planeStart + byteLength;
   }
 
+  final mask = record.mask;
+  final maskOn = mask != null && !mask.disabled;
+  var maskBaked = false;
   Uint8List? pixels;
   if (record.width > 0 && record.height > 0 && colorPlanes.isNotEmpty) {
     pixels = psdPlanesToRgba(
@@ -584,9 +608,9 @@ PsdLayer _readLayerPixels(
       palette: palette,
       warnings: warnings,
     );
-    final mask = record.mask;
-    if (mask != null && maskPlane != null && !mask.disabled) {
-      applyPsdMaskToAlpha(
+    if (maskOn && maskPlane != null) {
+      maskBaked = true;
+      applyMaskToAlpha(
         pixels,
         layerLeft: record.left,
         layerTop: record.top,
@@ -617,6 +641,8 @@ PsdLayer _readLayerPixels(
     adjustmentKey: record.adjustmentKey,
     collapsed: record.collapsed,
     hasLayerEffects: record.hasLayerEffects,
+    hasUnbakedMask: maskOn && !maskBaked,
+    locked: record.locked,
   );
 }
 

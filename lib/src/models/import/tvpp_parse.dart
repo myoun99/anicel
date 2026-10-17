@@ -131,7 +131,13 @@ class TvppLayer {
     required this.instanceNames,
     this.visible = true,
     this.collapsed = false,
+    this.locked = false,
   });
+
+  /// LRHD[7] bit 4: the layer is LOCKED in TVPaint (memory
+  /// `tvpp-format-notes`, beside the hidden bit [visible] reads). No row
+  /// here carries a lock, so the converter names it.
+  final bool locked;
 
   /// LRHD[11]'s low half: the row is FOLDED in TVPaint's timeline (1) —
   /// a folder showing none of its members, a layer showing no thumbnail
@@ -247,6 +253,7 @@ class TvppAudioTrack {
     required this.offsetSeconds,
     required this.volume,
     required this.muted,
+    this.locked = false,
   });
 
   final String filePath;
@@ -258,6 +265,9 @@ class TvppAudioTrack {
   final double volume;
 
   final bool muted;
+
+  /// `locked` 1 — the track is locked in TVPaint.
+  final bool locked;
 }
 
 class TvppClip {
@@ -551,6 +561,7 @@ TvppClip _parseClip(
         postBehavior: _edgeBehavior(field(11) >> 16),
         visible: header == null || field(7) & 1 == 0,
         collapsed: header != null && field(11) & 0xFFFF == 1,
+        locked: field(7) & 0x10 != 0,
         slots: List.unmodifiable(slots),
         ctgSecondStream: List.unmodifiable(secondStream),
         instanceNames: Map.unmodifiable(instanceNames),
@@ -745,6 +756,7 @@ List<TvppAudioTrack> _audioTracks(String fcfgText) {
         offsetSeconds: double.tryParse(values['offset'] ?? '') ?? 0,
         volume: double.tryParse(values['volume'] ?? '') ?? 1,
         muted: values['mute'] == '1',
+        locked: values['locked'] == '1',
       ),
     );
   }

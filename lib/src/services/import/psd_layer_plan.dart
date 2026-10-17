@@ -151,7 +151,7 @@ PsdExpandPlan planPsdExpansion({
         openGroups.add(mint.nextLayerId());
       case PsdLayerRole.groupOpen:
         final id = openGroups.isEmpty ? mint.nextLayerId() : openGroups.removeLast();
-        _sayEffects(source, warnings);
+        _sayNotApplied(source, warnings);
         layers.add(
           Layer(
             id: id,
@@ -181,7 +181,7 @@ PsdExpandPlan planPsdExpansion({
         if (source.clipping) {
           warnings.add(clippingNotApplied(source.name));
         }
-        _sayEffects(source, warnings);
+        _sayNotApplied(source, warnings);
         final layerId = mint.nextLayerId();
         final frameId = mint.nextFrameId(layerId);
         layers.add(
@@ -249,12 +249,21 @@ PsdExpandPlan planPsdExpansion({
   );
 }
 
-/// Names [source] when it carries layer effects that are on: the stack is
-/// the layers' own pixels, and an effect is drawn by Photoshop on top of
-/// them (F-306 — they used to fall away without a word).
-void _sayEffects(PsdLayer source, List<ImportWarning> warnings) {
+/// Names [source] where Photoshop keeps something of it that no row here
+/// does, in every decoder's words for them — a group as much as a layer,
+/// since either can wear them: layer effects that are on (the stack is the
+/// layers' own pixels, and an effect is drawn by Photoshop on top of them —
+/// F-306, they used to fall away without a word), a mask that is on and was
+/// not baked into its pixels, a lock (10-17).
+void _sayNotApplied(PsdLayer source, List<ImportWarning> warnings) {
   if (source.hasLayerEffects) {
     warnings.add(layerEffectsNotApplied(source.name));
+  }
+  if (source.hasUnbakedMask) {
+    warnings.add(layerMaskNotApplied(source.name));
+  }
+  if (source.locked) {
+    warnings.add(lockNotImported(source.name));
   }
 }
 

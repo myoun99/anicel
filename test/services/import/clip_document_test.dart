@@ -613,6 +613,87 @@ void main() {
     );
   });
 
+  test('🎯a layer\'s mask is the one CLIP STUDIO applies — a '
+      'LayerLayerMaskMipmap with LayerVisibility\'s bit 2 on, standing at '
+      'LayerOffset + LayerMaskOffset + LayerMaskOffscrOffset (MoArt\'s '
+      'reading); one switched off is none — and LayerLock locks it', () {
+    final attribute = offscreenAttributeBytes(
+      width: 4,
+      height: 4,
+      columns: 1,
+      rows: 1,
+      colourChannels: 0,
+    );
+    final database = databaseBytes((db) {
+      db.execute(clipSchema);
+      for (final column in [
+        'LayerLayerMaskMipmap',
+        'LayerMaskOffsetX',
+        'LayerMaskOffsetY',
+        'LayerMaskOffscrOffsetX',
+        'LayerMaskOffscrOffsetY',
+        'LayerLock',
+      ]) {
+        db.execute('ALTER TABLE Layer ADD COLUMN $column INTEGER');
+      }
+      db
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        );
+      final layer = db.prepare(
+        'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+        'LayerNextIndex, LayerVisibility, LayerOffsetX, LayerOffsetY, '
+        'LayerLayerMaskMipmap, LayerMaskOffsetX, LayerMaskOffsetY, '
+        'LayerMaskOffscrOffsetX, LayerMaskOffscrOffsetY, LayerLock) '
+        'VALUES (?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      );
+      layer
+        ..execute([2, 'masked', 3, 3, 10, 20, 100, 1, 2, 300, 400, 0])
+        ..execute([3, 'mask off', 4, 1, 10, 20, 100, 1, 2, 300, 400, 0])
+        ..execute([4, 'not held', 5, 2, 0, 0, 101, 0, 0, 0, 0, 0])
+        ..execute([5, 'locked', 6, 1, 0, 0, 0, 0, 0, 0, 0, 16])
+        ..execute([6, 'bare', 0, 3, 0, 0, 0, 0, 0, 0, 0, 0])
+        ..close();
+      db.execute('''
+        INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (100, 200);
+        INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+          VALUES (200, 100, 300, 0);
+      ''');
+      db.prepare(
+          'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
+          'VALUES (?, ?, ?)',
+        )
+        ..execute([300, attribute, externalId(1)])
+        ..close();
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+    final [masked, off, notHeld, _, bare] = document.root.children;
+
+    expect((masked.mask?.left, masked.mask?.top), (311, 422));
+    expect(masked.mask?.source?.attribute, attribute);
+    expect(masked.mask?.source?.blocksId, externalId(1));
+    expect(off.mask, isNull, reason: 'CLIP STUDIO does not apply it either');
+    expect(notHeld.mask, isNotNull, reason: 'on, and said when it comes in');
+    expect(notHeld.mask?.source, isNull);
+    expect(bare.mask, isNull, reason: 'bit 2 with no mask names none');
+    expect([for (final layer in document.root.children) layer.locked], [
+      false,
+      false,
+      false,
+      true,
+      false,
+    ]);
+  });
+
   test('🎯a sound layer holds its sound — the chunk its file is in, its name '
       'and extension — and its track\'s clip says what plays from which '
       'second on which frame (memory `csp-clip-format-notes` §3)', () {

@@ -203,12 +203,17 @@ class TvpAudioTrack {
     required this.offsetSeconds,
     required this.volume,
     required this.muted,
+    this.locked = false,
   });
 
   final String filePath;
   final double offsetSeconds;
   final double volume;
   final bool muted;
+
+  /// Locked in TVPaint — no row here carries a lock, so the planner names
+  /// it.
+  final bool locked;
 }
 
 /// One clip, ready for the planner.
