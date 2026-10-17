@@ -978,6 +978,30 @@ class _ImportDialogState extends State<ImportDialog> {
       ..warnAll(folderWarnings);
   }
 
+  /// Whether the file at [path] reads for a placement — said in [tally],
+  /// of its name, when it does not.
+  ///
+  /// A PLACEMENT reads the file, so this is where the picked path has to
+  /// become a path that reads — the same law the two open doors go
+  /// through. A cloud file arrives here as a placeholder and would
+  /// otherwise fail as if it were corrupt.
+  ///
+  /// 🐞F-282 ④ (유저 2026-10-04: 「동영상을 잘라내서 임포트시,
+  /// 미디어풀에 등록되는데, 그걸 다시 타임라인에 배치하려하면 파일을
+  /// 읽지 못했다고 뜸」): bytes the PROJECT holds are not read from the
+  /// file — every door reads the carry first — so there is no file to wait
+  /// for. A piece cut on import and a voice take never had one; a carried
+  /// file's original may be gone.
+  Future<bool> _readsForPlacement(String path, _ImportTally tally) async {
+    if (widget.session.projectFile.projectHoldsMediaBytes(path) ||
+        await _readableForImport(path) != null) {
+      return true;
+    }
+    final name = mediaFileName(path);
+    tally.warnOf(name, AppText.strings.imUnreadable(name));
+    return false;
+  }
+
   /// Places every picked file — a picture where the window says, a sound on
   /// the track's SE rows — telling [report] the files before the one being
   /// placed and that one as far as it says. Answers FALSE when the dialog
@@ -1005,21 +1029,7 @@ class _ImportDialogState extends State<ImportDialog> {
         continue;
       }
       final kind = mediaAssetKindForPath(path);
-      // A PLACEMENT reads the file, so this is where the picked path
-      // has to become a path that reads — the same law the two open
-      // doors go through. A cloud file arrives here as a placeholder
-      // and would otherwise fail as if it were corrupt.
-      //
-      // 🐞F-282 ④ (유저 2026-10-04: 「동영상을 잘라내서 임포트시,
-      // 미디어풀에 등록되는데, 그걸 다시 타임라인에 배치하려하면 파일을
-      // 읽지 못했다고 뜸」): bytes the PROJECT holds are not read from the
-      // file — every door reads the carry first — so there is no file to
-      // wait for. A piece cut on import and a voice take never had one; a
-      // carried file's original may be gone.
-      if (!widget.session.projectFile.projectHoldsMediaBytes(path) &&
-          await _readableForImport(path) == null) {
-        final name = mediaFileName(path);
-        tally.warnOf(name, AppText.strings.imUnreadable(name));
+      if (!await _readsForPlacement(path, tally)) {
         continue;
       }
       if (!mounted) {
@@ -1240,15 +1250,12 @@ class _ImportDialogState extends State<ImportDialog> {
     for (final cel in kept) {
       final file = '$folder/${cel.file}';
       // Every picture of the run reads before it is placed, the law the
-      // picked one already went through ([_placeFiles]).
+      // picked one already went through ([_readsForPlacement]).
       if (!mounted) {
         return false;
       }
       if (mediaFileName(file) != mediaFileName(path) &&
-          !widget.session.projectFile.projectHoldsMediaBytes(file) &&
-          await _readableForImport(file) == null) {
-        final name = mediaFileName(file);
-        tally.warnOf(name, AppText.strings.imUnreadable(name));
+          !await _readsForPlacement(file, tally)) {
         continue;
       }
       files.add((path: file, label: cel.label));
