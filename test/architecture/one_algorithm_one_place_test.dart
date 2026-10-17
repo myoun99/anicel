@@ -76,10 +76,13 @@ import '../../tool/refactor/clone_scan.dart';
 /// 88 → 89 (2026-09-11, I-14 — the media viewer's cut). The new pair is
 /// named:
 ///
-///     76 tokens
-///       lib/src/services/import/raster_cel_import.dart
-///         rasterizeImageToSurface
+///     59 tokens
+///       lib/src/services/import/raster_cel_import.dart  _laidBlock
 ///       lib/src/services/media/viewer_document.dart  cropImageRgba
+///
+/// (76 tokens and `rasterizeImageToSurface` until 2026-10-18, when a lay
+/// went a block of tiles at a time — F-374-Q8 ⑦ — and the raster moved
+/// into the block's own function. Still the pair, still the reading.)
 ///
 /// They ARE one algorithm — draw an image into a recorded picture the
 /// target's size, rasterize it and read it back as straight RGBA, giving
@@ -87,7 +90,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// the candidate.
 ///
 /// ⛔It is not merged, because it is the SECOND. The import's is the middle
-/// of a function that places, clips and slices into tiles; the cut's is the
+/// of a function that places and slices a block into tiles; the cut's is the
 /// whole of one that copies a box 1:1. A shared helper would take the
 /// paint's filter and the canvas's translation as arguments for a shape
 /// seen twice. ⛔Nor is the cut read another way to keep the count: reading

@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
@@ -175,7 +177,7 @@ LayerPlacement rectPlacement(
 /// everywhere), laid by [placement] — the image's own pixels → the canvas.
 /// The raster covers what the placed picture covers, clipped to the
 /// pasteboard — fit=none overflow lives on the pasteboard exactly like an
-/// oversized selection drop.
+/// oversized selection drop — a block of tiles at a time ([layRasterSide]).
 ///
 /// [whole]: a FILE's picture, laid all of it, past the pasteboard where it
 /// is larger than the wall — the surface says where it lies
@@ -203,31 +205,71 @@ Future<BitmapSurface> rasterizeImageToSurface({
     return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
   }
 
-  // Tile span covered by the placement.
-  final (
-    firstX: tileX0,
-    lastX: tileX1,
-    firstY: tileY0,
-    lastY: tileY1,
-  ) = tileRangeCovering(
-    left: clipped.left,
-    top: clipped.top,
-    right: clipped.right,
-    bottom: clipped.bottom,
+  final tiles = <PlacedTile>[];
+  for (final block in _layBlocks(
+    tileRangeCovering(
+      left: clipped.left,
+      top: clipped.top,
+      right: clipped.right,
+      bottom: clipped.bottom,
+      tileSize: tileSize,
+    ),
+    tileSize,
+  )) {
+    tiles.addAll(await _laidBlock(image, placement, block, tileSize));
+  }
+  return BitmapSurface(
+    canvasSize: canvas,
     tileSize: tileSize,
-  );
+    laidBounds: laid,
+  ).putTiles(tiles);
+}
 
-  // Raster the placed image ONCE over the covered tile block, then slice
-  // into tiles. The recorder canvas is translated so the block's origin
-  // is (0,0).
-  final blockWidth = (tileX1 - tileX0 + 1) * tileSize;
-  final blockHeight = (tileY1 - tileY0 + 1) * tileSize;
-  final recorder = ui.PictureRecorder();
-  final paintCanvas = ui.Canvas(recorder);
-  paintCanvas.translate(
-    -(tileX0 * tileSize).toDouble(),
-    -(tileY0 * tileSize).toDouble(),
-  );
+/// The longest side, in pixels, of ONE raster a lay asks the GPU for: a
+/// picture that covers more is laid a block of tiles at a time
+/// ([rasterizeImageToSurface]).
+///
+/// Since F-374-Q8 (유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지
+/// 통째로」) a file's picture is laid as big as the file (A3 at 600dpi,
+/// 7016×9921), and a bake as seen that turns or grows it bigger still: ONE
+/// raster of it could pass the largest image a device makes, and held the
+/// picture three times over at its peak — the raster, its bytes, the tiles
+/// (⑦ of the plan on the board's F-374).
+///
+/// 2048: the largest texture GLES 3.0 promises on every GPU (its
+/// MAX_TEXTURE_SIZE floor). ⛔A FOURTH limit, beside the three the decision
+/// on `CanvasSizeDialog.maxDimension` keeps apart, with a remedy of its
+/// own — a SPLIT, which a cel already is: its tiles.
+const int layRasterSide = 2048;
+
+/// The side a test lays its blocks at instead of [layRasterSide] — so a
+/// small picture is laid in many — or null.
+@visibleForTesting
+int? debugLayRasterSide;
+
+/// How many rasters the lays have asked the GPU for, counted for the tests
+/// that see a picture laid in blocks.
+@visibleForTesting
+int debugLayRasters = 0;
+
+/// [covered] in blocks of at most [layRasterSide] a side, row by row.
+Iterable<TileRange> _layBlocks(TileRange covered, int tileSize) sync* {
+  final step = math.max(1, (debugLayRasterSide ?? layRasterSide) ~/ tileSize);
+  for (var y = covered.firstY; y <= covered.lastY; y += step) {
+    for (var x = covered.firstX; x <= covered.lastX; x += step) {
+      yield (
+        firstX: x,
+        lastX: math.min(x + step - 1, covered.lastX),
+        firstY: y,
+        lastY: math.min(y + step - 1, covered.lastY),
+      );
+    }
+  }
+}
+
+/// How [placement] lays a picture's pixels: copied where it stands them 1:1
+/// on whole pixels, resampled anywhere else.
+ui.Paint _layPaint(LayerPlacement placement) {
   // A 1:1 integer-aligned placement must copy bytes, not resample:
   // bicubic (high) blurs even at identity — a hard black line came back
   // 28/255 gray through the cubic kernel — and the text bake's whole
@@ -236,17 +278,34 @@ Future<BitmapSurface> rasterizeImageToSurface({
       placement.isPureTranslation &&
       placement.tx == placement.tx.truncateToDouble() &&
       placement.ty == placement.ty.truncateToDouble();
-  paintCanvas
+  return ui.Paint()
+    ..filterQuality = identityPlacement
+        ? ui.FilterQuality.none
+        : ui.FilterQuality.high
+    ..isAntiAlias = true;
+}
+
+/// The tiles of [block] that [image], laid by [placement], puts any ink on
+/// — ONE raster of the block, sliced into its tiles. The recorder canvas
+/// is translated so the block's origin is (0,0).
+Future<List<PlacedTile>> _laidBlock(
+  ui.Image image,
+  LayerPlacement placement,
+  TileRange block,
+  int tileSize,
+) async {
+  final (firstX: tileX0, lastX: tileX1, firstY: tileY0, lastY: tileY1) =
+      block;
+  final blockWidth = (tileX1 - tileX0 + 1) * tileSize;
+  final blockHeight = (tileY1 - tileY0 + 1) * tileSize;
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(recorder)
+    ..translate(
+      -(tileX0 * tileSize).toDouble(),
+      -(tileY0 * tileSize).toDouble(),
+    )
     ..transform(placementMatrix(placement).storage)
-    ..drawImage(
-      image,
-      ui.Offset.zero,
-      ui.Paint()
-        ..filterQuality = identityPlacement
-            ? ui.FilterQuality.none
-            : ui.FilterQuality.high
-        ..isAntiAlias = true,
-    );
+    ..drawImage(image, ui.Offset.zero, _layPaint(placement));
   final picture = recorder.endRecording();
   // 🚨THE `finally` IS THE POINT. `toImage` is the awaited call, and an await
   // that throws skips every statement after it — so a dispose written on the
@@ -255,6 +314,7 @@ Future<BitmapSurface> rasterizeImageToSurface({
   // given back on ALL THREE arms — landing, overtaking, refusal — and the
   // place that gives it back has to be structural.
   final ui.Image raster;
+  debugLayRasters += 1;
   try {
     raster = await picture.toImage(blockWidth, blockHeight);
   } finally {
@@ -303,19 +363,11 @@ Future<BitmapSurface> rasterizeImageToSurface({
         }
         tiles.add((
           coord: TileCoord(x: tx, y: ty),
-          tile: BitmapTile(
-
-            size: tileSize,
-            pixels: tilePixels,
-          ),
+          tile: BitmapTile(size: tileSize, pixels: tilePixels),
         ));
       }
     }
-    return BitmapSurface(
-      canvasSize: canvas,
-      tileSize: tileSize,
-      laidBounds: laid,
-    ).putTiles(tiles);
+    return tiles;
   } finally {
     raster.dispose();
   }
