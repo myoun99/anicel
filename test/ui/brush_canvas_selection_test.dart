@@ -4553,6 +4553,7 @@ void main() {
             Offset? outlineTopLeft,
             int entries,
             List<int> undone,
+            bool boxOpen,
           })
         >
         endedBy(String ending) async {
@@ -4603,6 +4604,7 @@ void main() {
           await tester.pump();
           await settle(tester);
           final pixels = read();
+          final boxOpen = env.commands.transformActive;
           final box = env.commands.region?.selectedBounds;
           final outline = '$box';
           final entries = env.history.undoCount - before;
@@ -4618,6 +4620,7 @@ void main() {
             outlineTopLeft: box == null ? null : Offset(box.left, box.top),
             entries: entries,
             undone: read(),
+            boxOpen: boxOpen,
           );
           await tester.pumpWidget(const SizedBox.shrink());
           await tester.pump();
@@ -4630,6 +4633,7 @@ void main() {
           isNot(original),
           reason: '⛔전제: 확정이 그림을 바꿨다',
         );
+        expect(confirmed.boxOpen, isFalse, reason: '⛔전제: 확정이 상자를 닫았다');
         expect(confirmed.recall, isNotNull, reason: '⛔전제: 확정이 기록을 남겼다');
         expect(confirmed.entries, 1, reason: '⛔전제');
         expect(confirmed.undone, original, reason: '⛔전제: 언두 하나로 돌아온다');
@@ -4659,6 +4663,9 @@ void main() {
             confirmed.pixels,
             reason: '$ending: the cel holds what 확정 would have landed',
           );
+          // A box whose transform is in the landing is spent — left open, it
+          // would show that transform again over the picture it landed on.
+          expect(ended.boxOpen, isFalse, reason: '$ending: the box closed');
           final recall = ended.recall;
           expect(recall, isNotNull, reason: '$ending: 재현 has a record');
           expect(recall!.values, confirmed.recall!.values, reason: ending);

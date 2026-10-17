@@ -31,7 +31,7 @@ void main() {
 
   test('⛔a session is CLEARED in exactly one place', () {
     expect(
-      '_session = null'.allMatches(layer).length,
+      'session = null'.allMatches(layer).length,
       1,
       reason:
           '🚨every extra one is a way to forget a session quietly, which is '
@@ -42,9 +42,31 @@ void main() {
 
   test('⛔a session is MADE in exactly one place', () {
     expect(
-      '_session = _MoveSession('.allMatches(layer).length,
+      'session = _MoveSession('.allMatches(layer).length,
       1,
       reason: 'a session is made whole or not at all',
+    );
+  });
+
+  test('⛔the box a session rides is dropped in exactly one place, and only '
+      'once nothing rides it', () {
+    // A session rides its box (`_OpenBox`), so dropping the box with a
+    // session on it drops the session too — with the host never told,
+    // which is F-164 again by another door.
+    expect(
+      '_box = null'.allMatches(layer).length,
+      1,
+      reason: 'the one that stands is inside `_clearTransform`',
+    );
+    final closer = _methodBody(layer, 'void _clearTransform(');
+    expect(closer, isNotNull, reason: '⛔fixture premise: the one door exists');
+    expect(closer, contains('_box = null'));
+    expect(
+      closer,
+      contains('_session == null'),
+      reason:
+          'the box closes after its session has ended, and says so where '
+          'it closes',
     );
   });
 

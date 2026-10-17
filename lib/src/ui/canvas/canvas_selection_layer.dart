@@ -462,6 +462,60 @@ class _Float {
   BrushStampImage? surfaceStamp;
 }
 
+/// The open transform box as this layer holds it: the box, and the move
+/// session riding it — or none, when a walk carried the box onto a cel
+/// with nothing under its outline.
+///
+/// 🚨★★★**A SESSION RIDES ITS BOX, AND HAS NO OTHER HOME.** Every lift
+/// opens a box or rides the one a walk carried
+/// (a-lift-is-a-shape-with-no-session, 2026-10-18), so 「a session with no
+/// box」 was never a state anyone meant the layer to be in — and holding
+/// the session here makes it one the layer cannot be in.
+///
+/// ↩️The session was a field of its own beside the box, and the box closed
+/// a line before the session ended: the fold, a confirm over an untouched
+/// box and 취소 each left a session with no box over it for that line, and
+/// every reader asked both (`_movePending || _transform != null`).
+///
+/// ⛔So closing the box is not a way to end a session. The session ends
+/// first, through the one door that tells the host
+/// ([_CanvasSelectionLayerState._endSession]), and the box closes after
+/// ([_CanvasSelectionLayerState._clearTransform] holds it to that).
+class _OpenBox extends TransformBox {
+  _OpenBox({
+    required super.affine,
+    required super.baseWidth,
+    required super.baseHeight,
+  });
+
+  /// The lift command owning this selection's pixels (R15-④), the stamp
+  /// dab currently FLOATING (removed from the command so the base never
+  /// shows it — no double image), and the command's dabs as they stood
+  /// before the session opened (the transform `before` for re-opened
+  /// sessions).
+  ///
+  /// R16-① (TVP-style): the stamp stays floating through EVERY drag —
+  /// nothing lands and nothing is undoable until the user CONFIRMS
+  /// (button, Enter, tool switch, deselect, undo/redo hook), which adopts
+  /// the whole session as ONE history entry.
+  /// 🚨★★★**THE SESSION IS ONE VALUE, AND THIS IS THE ONLY FIELD THAT HOLDS
+  /// IT.** There is no such thing as half a session: the token, the float,
+  /// whether it moved and the shape it started from begin together and end
+  /// together.
+  ///
+  /// ↩️They were four fields, and the END was spelled in FOUR places that
+  /// did not agree — one of them cleared three of the four and told the HOST
+  /// nothing at all. That is F-164 (유저 2026-09-18): the host holds the
+  /// hole this cel is drawn through, so a session it is never told about
+  /// leaves that cel drawn through a hole for the rest of the run — 「돌아가면
+  /// 그림사라져있는데 … **새로 선을 그어도 긋고나서 커밋하면 사라짐**」.
+  ///
+  /// ⛔So ending one goes through [_CanvasSelectionLayerState._endSession]
+  /// and nowhere else, and `a_move_session_has_one_owner_test` reads this
+  /// file to keep it that way. 유저: 「절대로 낡지않을 구조로 튼튼하게」.
+  _MoveSession? session;
+}
+
 /// 🚨★★★**WHAT AN INTERRUPTION DOES TO AN OPEN EDIT. THERE ARE TWO.**
 ///
 /// 🗣️유저 2026-09-17: 「**프레임이동이나 레이어이동등은 착지시킬 이유가
@@ -584,32 +638,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _setRegion(null);
   }
 
-  /// The lift command owning this selection's pixels (R15-④), the stamp
-  /// dab currently FLOATING (removed from the command so the base never
-  /// shows it — no double image), and the command's dabs as they stood
-  /// before the session opened (the transform `before` for re-opened
-  /// sessions).
-  ///
-  /// R16-① (TVP-style): the stamp stays floating through EVERY drag —
-  /// nothing lands and nothing is undoable until the user CONFIRMS
-  /// (button, Enter, tool switch, deselect, undo/redo hook), which adopts
-  /// the whole session as ONE history entry.
-  /// 🚨★★★**THE SESSION IS ONE VALUE, AND THIS IS THE ONLY FIELD THAT HOLDS
-  /// IT.** There is no such thing as half a session: the token, the float,
-  /// whether it moved and the shape it started from begin together and end
-  /// together.
-  ///
-  /// ↩️They were four fields, and the END was spelled in FOUR places that
-  /// did not agree — one of them cleared three of the four and told the HOST
-  /// nothing at all. That is F-164 (유저 2026-09-18): the host holds the
-  /// hole this cel is drawn through, so a session it is never told about
-  /// leaves that cel drawn through a hole for the rest of the run — 「돌아가면
-  /// 그림사라져있는데 … **새로 선을 그어도 긋고나서 커밋하면 사라짐**」.
-  ///
-  /// ⛔So ending one goes through [_endSession] and nowhere else, and
-  /// `a_move_session_has_one_owner_test` reads this file to keep it that
-  /// way. 유저: 「절대로 낡지않을 구조로 튼튼하게」.
-  _MoveSession? _session;
+  /// The open session — the one riding the open box ([_OpenBox.session]),
+  /// or null.
+  _MoveSession? get _session => _box?.session;
 
   /// What floats now — nothing outside a session.
   List<_Float> get _floats => _session?.floats ?? const [];
@@ -635,13 +666,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// one cost — the cel kept drawing its hole, and everything drawn there
   /// afterwards was masked away on commit.
   ///
-  /// Returns the session that ended, or null when there was none.
+  /// Returns the session that ended, or null when there was none. The box
+  /// it rode stays open: closing that is its caller's, once this is done
+  /// ([_OpenBox]).
   _MoveSession? _endSession(_SessionEnd how) {
-    final session = _session;
-    if (session == null) {
+    final box = _box;
+    final session = box?.session;
+    if (box == null || session == null) {
       return null;
     }
-    _session = null;
+    box.session = null;
     // Its pictures go with it ([_Float]) — the decoded resample is a GPU
     // allocation the size of the selection.
     for (final float in session.floats) {
@@ -736,11 +770,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ↩️A `landedWith` argument stood here for the one caller that had
     // folded and closed the box itself; the fold is one function now and
     // leaves what it landed with on the session ([_foldOpenBox]).
-    _foldOpenBox();
-    if (_endLanded() == null) {
+    final folded = _endLanded();
+    if (folded == null) {
       return;
     }
     void settle() {
+      // The box that folded is spent: its transform is in the landing now,
+      // and the floats went with the session ([_endSession]). A box that
+      // changed nothing is the caller's to close.
+      if (folded) {
+        _clearTransform();
+      }
       // R26 #13: a confirmed implicit whole-picture session lands and
       // simply ends — back to no selection.
       if (_shapeIsImplicitWholePicture) {
@@ -749,9 +789,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
 
     if (mounted) {
-      // The floats went with the session ([_endSession]). A box still open
-      // here changed nothing — the fold closes a box that changed anything
-      // — and is the caller's to close.
       setState(settle);
     } else {
       settle();
@@ -759,8 +796,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
-  /// Ends the session as LANDED: one undo entry when something was folded
-  /// into it, and simply let go when nothing was.
+  /// Ends the session as LANDED, with whatever the open box shows folded
+  /// into it first ([_foldOpenBox]): one undo entry when that leaves it
+  /// holding a change, and simply let go when it does not.
   ///
   /// A float that was lifted and never changed is the picture as it stood —
   /// a session writes nothing to the cel until it lands — so there is
@@ -770,9 +808,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// picture, and a confirm taken just before an undo (the history's own
   /// hook) handed that undo an entry of nothing to consume (measured
   /// 2026-10-06, an untouched box under each ending).
-  _MoveSession? _endLanded() => _endSession(
-    _session?.holdsAChange ?? false ? _SessionEnd.confirm : _SessionEnd.letGo,
-  );
+  ///
+  /// 🚨★★★**THE FOLD AND THE END ARE ONE STEP.** The fold leaves the box
+  /// open over stamps that already carry its transform — a state that would
+  /// draw that transform twice, and fold it twice — so nothing may come
+  /// between the two, and no caller may fold on its own. ↩️The fold closed
+  /// the box itself while the session rode beside it; the session rides
+  /// the box now ([_OpenBox]), so it ends first and the box closes after.
+  ///
+  /// Null when no session was open; otherwise whether the box folded
+  /// anything into it.
+  bool? _endLanded() {
+    final folded = _foldOpenBox();
+    final ended = _endSession(
+      _session?.holdsAChange ?? false ? _SessionEnd.confirm : _SessionEnd.letGo,
+    );
+    return ended == null ? null : folded;
+  }
 
   /// The drag running right now, or null — the ONE field that says which
   /// mode owns the pointer and what that mode is holding. See
@@ -818,10 +870,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     ),
   );
 
-  // Ctrl+T free-transform session (P9b): the open box, or none — see
-  // [TransformBox]. The per-drag solving context is NOT here — it lives on
-  // [TransformDrag] and dies with the gesture.
-  TransformBox? _box;
+  // Ctrl+T free-transform session (P9b): the open box and the session
+  // riding it, or none — see [TransformBox] and [_OpenBox]. The per-drag
+  // solving context is NOT here — it lives on [TransformDrag] and dies with
+  // the gesture.
+  _OpenBox? _box;
 
   /// The open box's affine; null when no box is up.
   SelectionAffine? get _transform => _box?.affine;
@@ -1261,28 +1314,26 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return () => _replayTransform(recall);
   }
 
-  /// Lands the session: the open box first, then the move it rides.
+  /// Lands the session: the open box folded into the move it rides, the
+  /// move landed, and the box closed.
   ///
-  /// ⛔**BOTH HALVES.** A box that changed nothing is only closed and leaves
-  /// the session pending, so the single branch Enter used to take made one
-  /// confirm into two. With both, a warped box lands warped and an untouched
-  /// box closes with its session in the one press.
+  /// ⛔**BOTH HALVES.** A box that changed nothing folds nothing and stays
+  /// open, so the landing alone made one confirm into two (↩️Enter's single
+  /// branch did exactly that). With both, a warped box lands warped and an
+  /// untouched box closes with its session in the one press.
   ///
   /// ↩️The box's ✓, wired straight to `_confirmMoveSession`, landed the
   /// UNWARPED lift: the artwork committed at its pre-transform position and
   /// size, the warped preview kept painting on top until something closed
   /// the box, and the wrong landing went into history.
   void _confirmSession() {
-    if (_transform != null && !_foldOpenBox()) {
-      // Untouched (or a degenerate quad): close the box, and a session
-      // under it goes on pending.
+    _confirmMoveSession();
+    if (_transform != null) {
+      // Untouched, a degenerate quad, or a box a walk carried onto a cel
+      // with nothing under it: nothing to fold, and it closes all the same.
       setState(_clearTransform);
     }
-    if (_movePending) {
-      _confirmMoveSession();
-    } else {
-      _syncAnts();
-    }
+    _syncAnts();
   }
 
   void _replayTransform(TransformRecall recall) {
@@ -1316,8 +1367,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// Two terms because a session has two ways to hold a change.
   /// [_moveSessionDirty] is set by a drag that carried the box, and by
   /// nothing else — ↩️it was also set where a box was closed onto the
-  /// session, and those closings end the session on their next line now
-  /// ([_foldOpenBox]). While a box is OPEN that flag is false however far
+  /// session, and the session ends before any box closes now
+  /// ([_endLanded]). While a box is OPEN that flag is false however far
   /// the user has dragged a handle — 유저 2026-08-27: 「**변형중일땐**.
   /// 그니까 변경사항이 있으면 … 빨간색」. [_boxIsTransformed] is the answer
   /// for exactly that window and already existed; ⛔a second dirty flag
@@ -1368,8 +1419,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.onLiftRequested == null) {
       return false;
     }
-    // A session already open is its own answer: the pixels are in hand.
-    if (_transform != null || _movePending) {
+    // A box already open is its own answer: the pixels are in hand, or the
+    // box carries the edit to wherever they are ([_OpenBox] — no session
+    // stands without one).
+    if (_transform != null) {
       return true;
     }
     final content = widget.contentBoundsProvider?.call();
@@ -1413,9 +1466,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// picture nobody owns, drawn over the one that just landed (유저
   /// 2026-09-22: 「캔버스 사라지고 이상해지는데」).
   void _landOpenSession() {
-    // R27 #18: fold the box in FIRST, so whatever it showed is what lands
-    // rather than the stamp's pre-transform place — through the fold 확정
-    // itself takes ([_foldOpenBox]), which also closes the box.
+    // R27 #18: the box is folded in FIRST, so whatever it showed is what
+    // lands rather than the stamp's pre-transform place — through the fold
+    // 확정 itself takes ([_endLanded]).
     //
     // ↩️It folded the AFFINE alone and then went on to commit. A quad or a
     // mesh with every number at rest was not folded, so a switch to a
@@ -1423,14 +1476,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // 취소되고 바뀜」); and under a switch that keeps this layer the commit
     // found the box still open over the folded stamp and ran the picture
     // through its transform a second time (measured 2026-10-06).
-    _foldOpenBox();
+    // ↩️It folded here itself, ahead of the landing, while the fold closed
+    // the box; the fold is the landing's own first step now.
     _takeBackFloats();
     if (_disposing) {
       // ⚠️SAME LANDING, NO UI TO UPDATE. The widget is going, so the part
       // of a commit that paints — closing the box, re-running the ants —
       // has nothing to paint on, and `setState` on a defunct element is an
-      // assertion, not a no-op. The fold above already made the session
-      // hold what the box showed, which is the whole of the landing.
+      // assertion, not a no-op. The fold makes the session hold what the
+      // box showed, which is the whole of the landing.
       _endLanded();
       return;
     }
@@ -1535,7 +1589,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _tellHost(() {
-      if (!mounted || _transform == null) {
+      final box = _box;
+      if (!mounted || box == null) {
         return;
       }
       // ⛔THE SAME DOOR THE Ctrl+T ENTRANCE USES — 유저 2026-09-19: 「선택을
@@ -1545,7 +1600,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       CanvasSelectionRegion? here;
       setState(() => here = _regionToTransformHere());
       final region = here;
-      if (region == null || !_ensureLifted(region)) {
+      if (region == null || !_ensureLifted(region, into: box)) {
         // 「불가능하면 그냥 무시」 — this cel has nothing under the outline.
         //
         // ⛔**AND NOTHING IS CLEARED.** [_clearFailedImplicitShape] is what
@@ -1564,7 +1619,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       setState(() {
         // The numbers travel; the box is re-read from the region HERE.
-        _aimTransformAt(region, keeping: _transform);
+        _aimTransformAt(box, region, keeping: box.affine);
         _buildFloatSurfaces();
       });
       _scheduleResamples();
@@ -1713,11 +1768,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// Closes the transform box.
   ///
-  /// [confirming] is passed by the three CONFIRM paths, and only by them:
-  /// the session ends on the caller's next line, so the float is not
-  /// rebuilt (a rebuild re-materializes the whole stamp — 651 ms of a
-  /// 2,060 ms confirm frame on a 2340×1654 cel scaled to the pasteboard —
-  /// to make tiles nothing will paint).
+  /// ⛔**ONLY ONCE NOTHING RIDES IT** ([_OpenBox]). A session under the box
+  /// ends first, through the door that tells the host, and how it ends is
+  /// the caller's to say — a confirm lands it, 취소 reverts it, a walk lets
+  /// it go. Closing the box is none of those, so it may not be one by
+  /// accident.
+  ///
+  /// ↩️A `confirming` flag stood here for the three confirm paths, which
+  /// closed the box a line before their session ended: it spared the float
+  /// the rebuild a session going on without its box needed (a rebuild
+  /// re-materializes the whole stamp — 651 ms of a 2,060 ms confirm frame
+  /// on a 2340×1654 cel scaled to the pasteboard). With the session ended
+  /// first there is no float left to rebuild or to spare.
   ///
   /// 🪦Until 2026-09-17 a confirm also KEPT the decoded resample when it
   /// was what lands, so the base could compose the landing's tiles from
@@ -1725,7 +1787,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// 한 프레임 보이는 건 무조건 걸린다). A committed tile pictures itself
   /// inside the paint now, so the landing's first frame is whole with
   /// nothing handed over, and the resample goes with the box.
-  void _clearTransform({bool confirming = false}) {
+  void _clearTransform() {
+    assert(
+      _session == null,
+      'a session rides its box — end it before the box closes',
+    );
     // A drag still down when the box closes under it is NOT dropped here:
     // its release still has to lower the drag-active flags. What stops it
     // moving anything is that the box is gone, which
@@ -1738,14 +1804,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ↩️So does everything else the box held: they were thirteen fields
     // cleared here by name, and are one object dropped ([TransformBox]).
     _box = null;
-    for (final float in _floats) {
-      float.preview.discard();
-      // Confirming, the landing is warped and the float is not, so the
-      // float has nothing to stay for. Otherwise a pending session's float
-      // must keep rendering — its pixels are NOT in the base surface (they
-      // left with the lift's erase).
-      float.surface = confirming ? null : _buildFloatSurface(float);
-    }
   }
 
   /// Ctrl+T: opens the free-transform box on the live selection (R19
@@ -1796,8 +1854,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ⚠️A warp's per-point offsets are left alone: they are edit values too
   /// and they live in the box's own frame, so they travel with it. Only
   /// the mode decides how many there are, and a walk does not change it.
-  /// With no box open, the aim is what opens one.
+  /// ↩️With no box open the aim also opened one; a box is made before the
+  /// lift now, so the session has it to ride ([_boxOver]).
   void _aimTransformAt(
+    _OpenBox box,
     CanvasSelectionRegion region, {
     SelectionAffine? keeping,
   }) {
@@ -1805,23 +1865,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ⛔WHOLE. It named the scales, the rotation and the move one by one,
     // and the cross — an edit value like the rest (유저 09-20: 「편집값은
     // 절대값이야」) — went back to the middle on every walk.
-    final affine = SelectionAffine.of(
-      bounds.center,
-      keeping?.values ?? TransformValues.identity,
-    );
-    final box = _box;
-    if (box == null) {
-      _box = TransformBox(
-        affine: affine,
-        baseWidth: bounds.width,
-        baseHeight: bounds.height,
-      );
-      return;
-    }
     box
-      ..affine = affine
+      ..affine = SelectionAffine.of(
+        bounds.center,
+        keeping?.values ?? TransformValues.identity,
+      )
       ..baseWidth = bounds.width
       ..baseHeight = bounds.height;
+  }
+
+  /// A box framing [region] as it stands here, untransformed and with
+  /// nothing riding it — open once it is the layer's [_box].
+  _OpenBox _boxOver(CanvasSelectionRegion region) {
+    final bounds = _regionBounds(region);
+    return _OpenBox(
+      affine: SelectionAffine(pivot: bounds.center),
+      baseWidth: bounds.width,
+      baseHeight: bounds.height,
+    );
   }
 
   void _beginTransform() {
@@ -1843,13 +1904,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (widget.onLiftRequested == null) {
       return;
     }
-    if (!_ensureLifted(targetRegion)) {
+    final box = _boxOver(targetRegion);
+    if (!_ensureLifted(targetRegion, into: box)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
       return;
     }
     setState(() {
-      _aimTransformAt(targetRegion);
+      _box = box;
       _syncOffsetsToMode();
       _buildFloatSurfaces();
     });
@@ -1859,11 +1921,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// 🚨★★★**THE ONE FOLD — WHATEVER THE BOX SHOWS BECOMES THE SESSION.**
   ///
   /// The float is resampled through the open box (a pure translation stays
-  /// byte-exact), the outline goes where the box put it, the transform is
-  /// remembered for 재현, and the box closes. The session is still PENDING
-  /// afterwards — ending it is the caller's — and it holds what the screen
-  /// was showing. False when there is no box over a session, or the box
-  /// changes no pixel: nothing was folded and the box is as it was.
+  /// byte-exact), the outline goes where the box put it, and the transform
+  /// is remembered for 재현. The session is still PENDING afterwards and
+  /// holds what the screen was showing, under a box that still shows it
+  /// too — which is why only the landing calls this, and ends the session
+  /// on its next line ([_endLanded]). False when there is no box over a
+  /// session, or the box changes no pixel: nothing was folded and the box
+  /// is as it was.
   ///
   /// 🗣️유저 2026-10-04 (F-280): 「일반변형은 도중에 도구 바꾼다거나 하는
   /// 동작하면 확정되고 바뀌는데, 자유변형은 취소되고 바뀜. 동작이 서로 다르니
@@ -1921,7 +1985,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (landedRegion != null) {
       _moveRegion(landedRegion);
     }
-    _clearTransform(confirming: true);
     return true;
   }
 
@@ -1968,11 +2031,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // its box or rides the one a walk carried, so a session is never
     // pending under a box that came after it — the flag read true for
     // every box (a-lift-is-a-shape-with-no-session, 2026-10-18).
-    if (_movePending) {
-      setState(_clearTransform);
-      _revertMoveSession();
-      return;
-    }
+    //
+    // The session reverts first, and the box closes once nothing rides it
+    // ([_clearTransform]); without a session the revert is a no-op.
+    _revertMoveSession();
     setState(_clearTransform);
     _syncAnts();
   }
@@ -2100,8 +2162,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// them set it while a session floated the shape (Ctrl+T over an open
   /// implicit box), and only the box being open kept the next press from
   /// lifting a second session over the first.
-  bool _ensureLifted(CanvasSelectionRegion region) {
-    if (_session != null) {
+  ///
+  /// The session rides [into] ([_OpenBox]) — the open box, or the one the
+  /// entrance is about to open, which then opens with the pixels in hand
+  /// and does not open at all when there are none.
+  bool _ensureLifted(
+    CanvasSelectionRegion region, {
+    required _OpenBox into,
+  }) {
+    assert(
+      _box == null || identical(into, _box),
+      'a lift rides the open box, never a second one beside it',
+    );
+    if (into.session != null) {
       // The pixels are in hand already.
       return true;
     }
@@ -2119,7 +2192,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     // ⛔THE ONLY PLACE ONE BEGINS, as [_endSession] is the only place one
     // ends. A session is made whole or not at all.
-    _session = _MoveSession(
+    into.session = _MoveSession(
       token: lift.liftToken,
       floats: [for (final lifted in lift.floats) _floatOf(lifted)],
       startShape: region,
@@ -2398,14 +2471,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // implicit whole-canvas shape.
     final implicitRegion =
         _region ?? CanvasSelectionRegion.shape(_wholeCanvasShape());
-    final bounds = _regionBounds(implicitRegion);
     // The box already on screen, asked before it is open: a handle press
     // makes it the open one, anything else leaves it unopened.
-    final candidate = TransformBox(
-      affine: SelectionAffine(pivot: bounds.center),
-      baseWidth: bounds.width,
-      baseHeight: bounds.height,
-    );
+    final candidate = _boxOver(implicitRegion);
     final handle = _onScreen.hitTestTransformHandle(
       event.localPosition,
       candidate,
@@ -2429,7 +2497,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         () => _adoptImplicitWholePictureShape(implicitRegion.singleShape!),
       );
     }
-    if (!_ensureLifted(implicitRegion)) {
+    if (!_ensureLifted(implicitRegion, into: candidate)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
       return null;
@@ -2481,12 +2549,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     final liftShape = targetShape;
+    // The box the lift rides: the open one — a walk can have carried one
+    // here with nothing under it — or a new one framing the shape.
+    final box = switch (liftShape) {
+      null => null,
+      final shape => _box ?? _boxOver(shape),
+    };
     // R14-④/R19 pixel model: the shape's PIXELS are the content — the
     // first gesture on a selection (or on a confirmed landing) lifts
     // them fresh from the current raster.
     if (liftShape == null ||
+        box == null ||
         widget.onLiftRequested == null ||
-        !_ensureLifted(liftShape)) {
+        !_ensureLifted(liftShape, into: box)) {
       setState(_clearFailedImplicitShape);
       _syncAnts();
       return false;
@@ -2503,10 +2578,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // is already on screen (R17-U), so this is the moment the numbers
       // behind it start existing, not a new thing appearing.
       if (_box == null) {
-        _aimTransformAt(liftShape);
+        _box = box;
         _syncOffsetsToMode();
       }
-      final affine = _box!.affine;
+      final affine = box.affine;
       // ⚠️AFTER the box exists: an inside grab that opened it steps back
       // to the box as it opened, which is what the user sees.
       _pushTransformStep();
@@ -3492,7 +3567,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           //
           // 🗣️유저 2026-09-18 (F-164): 「그리고 **확정버튼도 사라지는**
           // 문제」.
-          if ((_movePending || _transform != null) && displayShape != null)
+          //
+          // ↩️Then it asked both, while a session could stand a line without
+          // its box. It rides the box now ([_OpenBox]), so the box is the
+          // whole answer.
+          if (_transform != null && displayShape != null)
             // 🚨★★★**THE WAY OUT CANNOT LEAVE THE SCREEN.** The bar sat
             // 34px ABOVE the box's top-right, which was safe only while a
             // scale grew the box down and right — it anchors on the corner
@@ -3594,7 +3673,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // ⚠️Since 확정 became one verb (confirm-button) no door leaves a
             // session without its box — Enter on an untouched box used to —
             // so this states the law rather than guarding a case a user can
-            // reach.
+            // reach. Since 2026-10-18 no door can: the session rides its
+            // box ([_OpenBox]).
             //
             // 🗣️F-231 ① (유저 2026-09-29): 「기존 초록 프리뷰는 항상 사각형
             // 변형도구 실루엣만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고
