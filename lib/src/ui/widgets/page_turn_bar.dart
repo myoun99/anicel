@@ -71,10 +71,9 @@ class PageTurnBar extends StatelessWidget {
   /// each digit in turn.
   double _readoutWidthIn(BuildContext context) {
     final last = page.spell(page.count - 1);
-    return TextMeasure(context, DragValueLabel.bareStyleIn(context)).widest([
-      for (final digit in '0123456789'.split(''))
-        last.replaceAll(_digit, digit),
-    ]).ceilToDouble();
+    return TextMeasure(context, DragValueLabel.bareStyleIn(context))
+        .widest(everyDigitIn((digit) => last.replaceAll(_digit, digit)))
+        .ceilToDouble();
   }
 
   @override

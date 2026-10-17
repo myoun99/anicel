@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart'
     show CanvasTransportBand;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/page_turn_bar.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
+import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
 
 /// The one page turner every panel that turns pages wears in the band under
@@ -35,8 +38,10 @@ void main() {
     required int pageCount,
     required ValueChanged<int>? onTurnTo,
     TurnedPage? page,
+    ThemeData? theme,
   }) => tester.pumpWidget(
     MaterialApp(
+      theme: theme,
       home: Scaffold(
         body: Builder(
           builder: (context) {
@@ -137,6 +142,61 @@ void main() {
     final line = tester.getSize(find.text('100 / 120'));
     expect(firstReadout.height, lessThan(line.height * 1.5));
     expect(firstReadout.width, greaterThanOrEqualTo(line.width - 0.01));
+  });
+
+  testWidgets('🚨in the app\'s own face the readout holds every page it can '
+      'say — a 0 is wider there than a 1, so the last page is not the widest '
+      'of them', (tester) async {
+    await loadTheAppFaces();
+    await pump(
+      tester,
+      pageIndex: 0,
+      pageCount: 21,
+      onTurnTo: (_) {},
+      theme: ThemeData(fontFamily: AppTypography.bundledFamily),
+    );
+    final box = tester
+        .widget<DragValueLabel>(
+          find.ancestor(
+            of: find.byKey(readout),
+            matching: find.byType(DragValueLabel),
+          ),
+        )
+        .width;
+    // The style the number is painted in, read off it.
+    final style = tester
+        .widget<RichText>(
+          find.descendant(
+            of: find.byKey(readout),
+            matching: find.byType(RichText),
+          ),
+        )
+        .text
+        .style!;
+    double widthOf(String text) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    expect(
+      widthOf('1'),
+      lessThan(widthOf('0')),
+      reason: 'fixture: the app\'s face did not load — in the test font\'s '
+          'squares every page measures alike',
+    );
+    final page = viewerPage(0, 21);
+    for (var index = 0; index < page.count; index += 1) {
+      expect(
+        widthOf(page.spell(index)),
+        lessThanOrEqualTo(box),
+        reason: '"${page.spell(index)}" does not fit the readout\'s ${box}px',
+      );
+    }
   });
 
   testWidgets('the readout says the page as its host spells it, and is as '

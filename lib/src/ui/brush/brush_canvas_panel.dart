@@ -3578,7 +3578,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     TextMeasure(
       context,
       DefaultTextStyle.of(context).style.copyWith(fontSize: fontSize),
-    ).widest([for (final d in '0123456789'.split('')) number(d)]).ceilToDouble(),
+    ).widest(everyDigitIn(number)).ceilToDouble(),
   );
 
   static double zoomReadoutWidthIn(BuildContext context) => _widestIn(

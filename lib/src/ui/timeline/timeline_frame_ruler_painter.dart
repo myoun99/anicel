@@ -12,6 +12,7 @@ import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
+import '../text/text_measure.dart' show everyDigitIn;
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_second.dart';
@@ -719,8 +720,8 @@ final class TimelineRulerScale {
     double widthAtMost = double.infinity,
   }) {
     var widest = 0.0;
-    for (var digit = 0; digit <= 9; digit += 1) {
-      final glyph = laidOutGlyph('$digit' * digits, type);
+    for (final run in everyDigitIn((digit) => digit * digits)) {
+      final glyph = laidOutGlyph(run, type);
       final extent = extentAlong(
         axis,
         Size(math.min(glyph.width, widthAtMost), glyph.height),

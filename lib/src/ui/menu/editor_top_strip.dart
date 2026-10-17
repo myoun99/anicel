@@ -946,7 +946,7 @@ class _BatteryGauge extends StatelessWidget {
       _iconGap +
       TextMeasure(context, _styleIn(context)).widest([
         '100%',
-        for (var digit = 0; digit < 10; digit += 1) '$digit$digit%',
+        ...everyDigitIn((digit) => '$digit$digit%'),
       ]).ceilToDouble();
 
   @override
