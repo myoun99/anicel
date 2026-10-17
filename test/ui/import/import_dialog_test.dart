@@ -2142,6 +2142,23 @@ void main() {
         findsNothing,
         reason: 'with nothing to warn of, there is no button to press',
       );
+      // Held, not shown: the button keeps the line as tall as it, and is
+      // there for nothing else.
+      final held = find.byKey(const ValueKey<String>('import-warnings-button'));
+      expect(
+        tester.widget<ButtonStyleButton>(held).onPressed,
+        isNull,
+        reason: 'no key reaches a button that is not there to see',
+      );
+      expect(
+        tester
+            .widget<Opacity>(
+              find.ancestor(of: held, matching: find.byType(Opacity)),
+            )
+            .opacity,
+        0,
+        reason: 'its place shows nothing',
+      );
 
       await tester.tap(run);
       await pumpPastTheWaitWindow(tester);
