@@ -10,12 +10,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/movie_cel.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -321,9 +324,6 @@ void main() {
     );
     await openOn(tester, s, movie);
 
-    final waitWindow = find.byKey(
-      const ValueKey<String>('reference-rasterize-progress'),
-    );
     await tester.tap(rasterize);
     await tester.pump();
     expect(
@@ -342,27 +342,30 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the layer menu takes the same road — its rasterize is this '
-      'verb, so a movie goes behind the window there too', (tester) async {
-    final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
-    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
-    late BuildContext menuContext;
+  /// A context under an app, for a verb that puts a window up.
+  Future<BuildContext> hostedContext(WidgetTester tester) async {
+    late BuildContext hosted;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Builder(
             builder: (context) {
-              menuContext = context;
+              hosted = context;
               return const SizedBox.shrink();
             },
           ),
         ),
       ),
     );
+    return hosted;
+  }
 
-    final waitWindow = find.byKey(
-      const ValueKey<String>('reference-rasterize-progress'),
-    );
+  testWidgets('the layer menu takes the same road — its rasterize is this '
+      'verb, so a movie goes behind the window there too', (tester) async {
+    final (s, movie) = await movieSession(tester, frameCount: 6, inFrame: 0);
+    expect(s.activeLayer?.id, movie, reason: 'fixture: the placed row');
+    final menuContext = await hostedContext(tester);
+
     // ⛔Not awaited HERE: the decode needs the pumps below to run, and a
     // test body waiting on it is a test body not pumping.
     unawaited(rasterizeActiveRow(menuContext, s));
@@ -377,6 +380,72 @@ void main() {
     );
     expect(current(s, movie).frames, hasLength(6));
     await tester.pumpAndSettle();
+  });
+
+  /// [rowId]'s paper squashed by its own transform under a [turn] of its
+  /// fx's — a move the row's transform cannot carry (F-374-Q7 ③).
+  void sheared(
+    EditorSessionManager s,
+    LayerId rowId,
+    PropertyTrack<double> turn,
+  ) => s.cutCommandCoordinator
+    ..updateLayerTransformTrack(
+      cutId: s.requireActiveCut.id,
+      layerId: rowId,
+      transformTrack: TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 1, y: 0.5),
+        ),
+      ),
+    )
+    ..updateLayerReferenceFx(
+      layerId: rowId,
+      fx: TransformTrack.empty().copyWith(rotation: turn),
+    );
+
+  testWidgets('a still its transform cannot carry the move of goes behind '
+      'the window too, and comes back baked in its own cel (F-374-Q7)', (
+    tester,
+  ) async {
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    sheared(s, street, PropertyTrack<double>().withKey(0, 30));
+    final cel = current(s, street).frames.single.id;
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, [current(s, street)]));
+    await tester.pump();
+    expect(waitWindow, findsOneWidget);
+
+    await settle(
+      tester,
+      () =>
+          waitWindow.evaluate().isEmpty &&
+          current(s, street).mediaReference == null,
+    );
+    expect(current(s, street).mediaReference, isNull);
+    expect(current(s, street).frames.single.id, cel, reason: 'in place');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a row that waits stays the reference it is, and no window '
+      'comes up for it (F-374-Q9)', (tester) async {
+    final (s, rows) = await sessionWith(tester, ['bg_street.png']);
+    final street = rows['bg_street.png']!;
+    sheared(
+      s,
+      street,
+      PropertyTrack<double>().withKey(0, 30).withKey(12, 60),
+    );
+    final before = current(s, street);
+    final menuContext = await hostedContext(tester);
+
+    unawaited(rasterizeReferenceRows(menuContext, s, [before]));
+    await tester.pump();
+
+    expect(waitWindow, findsNothing);
+    expect(current(s, street), before);
   });
 
   test('the pool state is where the file\'s bytes live — carried or linked',
@@ -397,3 +466,8 @@ void main() {
 }
 
 final popover = find.byKey(const ValueKey<String>('layer-reference-popover'));
+
+/// The one window heavy work waits behind, as a rasterize puts it up.
+final waitWindow = find.byKey(
+  const ValueKey<String>('reference-rasterize-progress'),
+);

@@ -158,15 +158,21 @@ void main() {
 
     expect(valuesOf(track.anchorPoint), {0: offMiddle});
     expect(valuesOf(track.position), {0: CanvasPoint(x: 160, y: 120)});
+    expect(
+      track.position.keys[0]!.path,
+      KeyPath.auto,
+      reason: 'written as every new Position key is (`positionLaneKeyed`)',
+    );
     expect(valuesOf(track.scale), {0: CanvasPoint(x: 1.5, y: 1.5)});
     expect(valuesOf(track.rotation), {0: 30.0});
     expect(strayed(row, track, frames(4)), lessThan(1e-9));
   });
 
   test('a lane the fx leaves as the row had it stays the row\'s own — its '
-      'key where the row keyed it', () {
+      'key where the row keyed it, and its opacity', () {
     final own = TransformTrack.empty().copyWith(
       rotation: PropertyTrack<double>().withKey(7, 15),
+      opacity: PropertyTrack<double>().withKey(3, 0.4),
     );
     final row = paper(
       laid: TransformPose(center: middle),
@@ -177,8 +183,25 @@ void main() {
     final track = carried(row)!;
 
     expect(valuesOf(track.rotation), {7: 15.0});
+    expect(track.opacity, own.opacity);
     expect(track.scale.isEmpty, isTrue);
     expect(track.position.keys.keys, [0]);
+    expect(strayed(row, track, frames(10)), lessThan(1e-9));
+  });
+
+  test('a lane the two moves together leave at its identity is none — the '
+      'row\'s own key of it gives way', () {
+    final row = paper(
+      laid: TransformPose(center: offMiddle),
+      pose: TransformPose(center: offMiddle, rotationDegrees: -15),
+      own: TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(7, 15),
+      ),
+    );
+
+    final track = carried(row)!;
+
+    expect(track.rotation.isEmpty, isTrue);
     expect(strayed(row, track, frames(10)), lessThan(1e-9));
   });
 
@@ -323,6 +346,86 @@ void main() {
     expect(strayed(row, track, frames(30)), lessThanOrEqualTo(1 + 1e-9));
   });
 
+  test('🎯frame by frame, a lane is keyed on every frame either move keys '
+      'it — the row\'s own keys as well, though no way between needs them '
+      '— and a lane neither keys is ONE key where the row starts', () {
+    final row = paper(
+      laid: TransformPose(center: middle),
+      pose: TransformPose(center: middle, rotationDegrees: 30),
+      fx: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, middle)
+            .withKey(24, CanvasPoint(x: 224, y: 150)),
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          7,
+          CanvasPoint(x: 1.5, y: 1.5),
+        ),
+      ),
+      own: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>()
+            .withKey(0, middle)
+            .withKey(10, CanvasPoint(x: 210, y: 150))
+            .withKey(24, CanvasPoint(x: 224, y: 150)),
+      ),
+      from: 2,
+    );
+
+    final track = carried(row)!;
+
+    expect(
+      valuesOf(track.position),
+      {
+        0: middle,
+        10: CanvasPoint(x: 220, y: 150),
+        24: CanvasPoint(x: 248, y: 150),
+      },
+      reason: 'the row\'s key on 10 stands, though the way is straight',
+    );
+    expect(
+      valuesOf(track.scale),
+      {7: CanvasPoint(x: 1.5, y: 1.5)},
+      reason: 'the fx\'s one key, on its frame',
+    );
+    expect(valuesOf(track.rotation), {2: 30.0});
+    expect(strayed(row, track, frames(30)), lessThan(1e-9));
+  });
+
+  test('frame by frame, the row\'s own turn and scale keep their keys where '
+      'the row keyed them, and its opacity is its own', () {
+    final own = TransformTrack.empty().copyWith(
+      scale: PropertyTrack<CanvasPoint>()
+          .withKey(0, CanvasPoint(x: 2, y: 2))
+          .withKey(12, CanvasPoint(x: 2, y: 2))
+          .withKey(24, CanvasPoint(x: 2, y: 2)),
+      rotation: PropertyTrack<double>()
+          .withKey(0, 0)
+          .withKey(10, 10)
+          .withKey(24, 24),
+      opacity: PropertyTrack<double>().withKey(0, 0.5),
+    );
+    final row = paper(
+      laid: TransformPose(center: middle),
+      fx: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 210, y: 150),
+        ),
+      ),
+      own: own,
+    );
+
+    final track = carried(row)!;
+
+    expect(valuesOf(track.rotation), {0: 0.0, 10: 10.0, 24: 24.0});
+    expect(valuesOf(track.scale), {
+      0: CanvasPoint(x: 2, y: 2),
+      12: CanvasPoint(x: 2, y: 2),
+      24: CanvasPoint(x: 2, y: 2),
+    });
+    expect(track.opacity, own.opacity);
+    expect(strayed(row, track, frames(30)), lessThanOrEqualTo(1 + 1e-9));
+  });
+
   test('a row scaled unevenly carries a picture turned a quarter with its '
       'two axes swapped', () {
     final row = paper(
@@ -342,6 +445,29 @@ void main() {
     expect(valuesOf(track.rotation), {0: 90.0});
     expect(valuesOf(track.position), {0: CanvasPoint(x: 60, y: 110)});
     expect(strayed(row, track, frames(4)), lessThan(1e-9));
+  });
+
+  test('a turn the fx keys ONCE is the turn it stands the picture at all '
+      'along — a quarter of it swaps an uneven row\'s two axes, and any '
+      'other would shear', () {
+    final uneven = TransformTrack.empty().copyWith(
+      scale: PropertyTrack<CanvasPoint>().withKey(0, CanvasPoint(x: 2, y: 1)),
+    );
+    Layer turnedOnceBy(double degrees) => paper(
+      laid: TransformPose(center: offMiddle),
+      fx: TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(5, degrees),
+      ),
+      own: uneven,
+    );
+    final quarter = turnedOnceBy(90);
+
+    final track = carried(quarter)!;
+
+    expect(valuesOf(track.scale), {0: CanvasPoint(x: 1, y: 2)});
+    expect(valuesOf(track.rotation), {5: 90.0});
+    expect(strayed(quarter, track, frames(8)), lessThan(1e-9));
+    expect(carried(turnedOnceBy(30)), isNull);
   });
 
   test('a row scaled unevenly under a picture turned other than by a '
@@ -436,7 +562,8 @@ void main() {
     );
   });
 
-  test('a file laid turned or collapsed has no move the row carries', () {
+  test('a file laid other than 1:1 and upright has no move the row carries',
+      () {
     final moved = TransformPose(center: CanvasPoint(x: 260, y: 150));
 
     expect(

@@ -26,6 +26,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
@@ -33,6 +34,7 @@ import 'package:anicel/src/models/movie_cel.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/reference_swap.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
@@ -114,6 +116,12 @@ ui.Rect? inkOf(BitmapSurface? surface) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  /// A row's own transform at half its height: under a picture its fx turns
+  /// other than by a quarter, a shear no pose of the row's makes.
+  final squashed = TransformTrack.empty().copyWith(
+    scale: PropertyTrack<CanvasPoint>().withKey(0, CanvasPoint(x: 1, y: 0.5)),
+  );
+
   group('a fit is where a pose STARTS', () {
     const picture = CanvasSize(width: 200, height: 100);
     const canvas = CanvasSize(width: 400, height: 400);
@@ -187,9 +195,14 @@ void main() {
 
     tearDown(() => deleteTempQuietly(tempDir));
 
-    /// A session with a red 100×60 paper placed 1:1 as a reference on the
-    /// default 2340×1654 canvas — its middle at (1170, 827).
-    Future<(EditorSessionManager, Layer)> placed(WidgetTester tester) async {
+    /// A session with a red [width]×[height] paper placed 1:1 as a
+    /// reference on the default 2340×1654 canvas — its middle at
+    /// (1170, 827).
+    Future<(EditorSessionManager, Layer)> placed(
+      WidgetTester tester, {
+      int width = 100,
+      int height = 60,
+    }) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       s.playbackRig.prerenderScheduler.beginInputHold();
@@ -197,8 +210,8 @@ void main() {
         red = await writeSolidPng(
           tempDir,
           'red.png',
-          width: 100,
-          height: 60,
+          width: width,
+          height: height,
           rgba: 0xFF0000FF,
         );
         blue = await writeSolidPng(
@@ -382,9 +395,54 @@ void main() {
     final turnedOnce = TransformTrack.empty().copyWith(
       rotation: PropertyTrack<double>().withKey(0, 30),
     );
-    final squashed = TransformTrack.empty().copyWith(
-      scale: PropertyTrack<CanvasPoint>().withKey(0, CanvasPoint(x: 1, y: 0.5)),
+    final halved = TransformTrack.empty().copyWith(
+      scale: PropertyTrack<CanvasPoint>().withKey(
+        0,
+        CanvasPoint(x: 0.5, y: 0.5),
+      ),
     );
+
+    /// [row] attached above the cut's drawing: an attach row, which stands
+    /// where its base's transform puts it.
+    void attachToTheDrawing(EditorSessionManager s, Layer row) {
+      final base = s.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      s.cutCommandCoordinator.setLayerAttachment(
+        cutId: s.requireActiveCut.id,
+        attach: LayerAttachDrop(
+          mounts: [
+            (
+              layerId: row.id,
+              baseId: base.id,
+              placement: AttachedPlacement.above,
+            ),
+          ],
+        ),
+      );
+    }
+
+    testWidgets('a key the fx named keeps its name on the row — the row\'s '
+        'own key of that name is one the move replaces', (tester) async {
+      final (s, row) = await placed(tester);
+      PropertyTrack<CanvasPoint> up(double x) => PropertyTrack(
+        keys: {0: PropertyKey(CanvasPoint(x: x, y: 827), name: 'up')},
+      );
+      posed(
+        s,
+        row,
+        track: TransformTrack.empty().copyWith(position: up(1170)),
+        fx: TransformTrack.empty().copyWith(position: up(1200)),
+      );
+
+      s.editingCanvas.rasterizeLayerReferences([row.id]);
+
+      final baked = rowOf(s, row);
+      expect(baked.mediaReference, isNull);
+      expect(baked.transformTrack.position.keys[0]!.name, 'up');
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
 
     testWidgets('🎯① a row whose transform is switched off: rasterizing '
         'turns it on and the move is its keys — the keys it kept while it '
@@ -477,34 +535,37 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    testWidgets('a row changed while its cels are drawn is left as it is now '
+        '— the bake takes nothing', (tester) async {
+      final (s, row) = await placed(tester);
+      posed(s, row, track: squashed, fx: turnedOnce);
+      final turnedTwice = TransformTrack.empty().copyWith(
+        rotation: PropertyTrack<double>().withKey(0, 60),
+      );
+
+      final baked = await tester.runAsync(() {
+        final bake = s.importDoors.bakeReferenceAsSeen(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        );
+        // Lands while the cels are being drawn.
+        posed(s, row, fx: turnedTwice);
+        return bake;
+      });
+
+      expect(baked, isFalse);
+      final now = rowOf(s, row);
+      expect(now.mediaReference!.fx, turnedTwice);
+      expect(shown(s, now), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('② an attach row stands where its base puts it: its cel '
         'takes the picture where it shows, half its size', (tester) async {
       final (s, row) = await placed(tester);
-      final base = s.requireActiveCut.layers.firstWhere(
-        (layer) => layer.kind == LayerKind.animation,
-      );
-      s.cutCommandCoordinator.setLayerAttachment(
-        cutId: s.requireActiveCut.id,
-        attach: LayerAttachDrop(
-          mounts: [
-            (
-              layerId: row.id,
-              baseId: base.id,
-              placement: AttachedPlacement.above,
-            ),
-          ],
-        ),
-      );
-      posed(
-        s,
-        row,
-        fx: TransformTrack.empty().copyWith(
-          scale: PropertyTrack<CanvasPoint>().withKey(
-            0,
-            CanvasPoint(x: 0.5, y: 0.5),
-          ),
-        ),
-      );
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: halved);
       expect(wayOf(s, row), isA<ReferenceMoveBaked>());
 
       await tester.runAsync(
@@ -521,6 +582,31 @@ void main() {
         inkOf(celOf(s, baked, 0)),
         const ui.Rect.fromLTRB(1145, 812, 1195, 842),
       );
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a paper bigger than the canvas bakes where it shows — the '
+        'part the pasteboard holds as well', (tester) async {
+      final (s, row) = await placed(tester, width: 2400, height: 1700);
+      expect(
+        shown(s, row)!.topLeft,
+        const ui.Offset(-30, -23),
+        reason: 'the premise: laid 1:1, its overflow on the pasteboard',
+      );
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: halved);
+
+      await tester.runAsync(
+        () => s.importDoors.bakeReferenceAsSeen(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        ),
+      );
+
+      final baked = rowOf(s, row);
+      expect(baked.mediaReference, isNull);
+      expect(shown(s, baked), const ui.Rect.fromLTRB(570, 402, 1770, 1252));
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
@@ -638,12 +724,13 @@ void main() {
       deleteTempQuietly(tempDir);
     });
 
-    /// A 64×36 take placed 1:1 as a reference on the default canvas, the
-    /// warmer held so what is decoded is the test's asking.
+    /// A 64×36 take of [fps] placed 1:1 as a reference on the default
+    /// canvas, the warmer held so what is decoded is the test's asking.
     Future<(EditorSessionManager, Layer, FakeVideoBackend)> placed(
-      WidgetTester tester,
-    ) async {
-      final fake = FakeVideoBackend(frameCount: 24);
+      WidgetTester tester, {
+      int fps = 24,
+    }) async {
+      final fake = FakeVideoBackend(frameCount: 24, fpsNumerator: fps);
       debugVideoDecodeBackend = fake;
       final s = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -746,6 +833,44 @@ void main() {
       ),
     );
 
+    Future<bool?> rasterized(
+      WidgetTester tester,
+      EditorSessionManager s,
+      Layer row,
+    ) => tester.runAsync(
+      () => s.importDoors.rasterizeMovieReference(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+      ),
+    );
+
+    /// [row] squashed on its own and turned a quarter by its fx over frames
+    /// 0 to 12 of the cut — a move its transform cannot carry.
+    void squashedAndTurning(EditorSessionManager s, Layer row) =>
+        s.cutCommandCoordinator
+          ..updateLayerTransformTrack(
+            cutId: s.requireActiveCut.id,
+            layerId: row.id,
+            transformTrack: squashed,
+          )
+          ..updateLayerReferenceFx(
+            layerId: row.id,
+            fx: TransformTrack.empty().copyWith(
+              rotation: PropertyTrack<double>().withKey(0, 0).withKey(12, 90),
+            ),
+          );
+
+    /// Where [row]'s cel at [frame] of the cut holds ink.
+    ui.Rect? inkAt(EditorSessionManager s, Layer row, int frame) => inkOf(
+      s.renderCaches.brushSurfaceForLayerFrame(
+        row,
+        resolveExposedFrameAt(row, frame)!,
+      ),
+    );
+
+    /// Turned a quarter about where the 64×36 take is laid.
+    const turnedAQuarter = ui.Rect.fromLTRB(1152, 795, 1188, 859);
+
     testWidgets('its reference fx standing somewhere else decodes nothing '
         'again — the frame stays where the movie is laid, and the canvas '
         'moves it there (F-374-Q1)', (tester) async {
@@ -817,21 +942,11 @@ void main() {
       final (s, row, _) = await placed(tester);
       await typed(tester, s, row, '200, 100');
 
-      await tester.runAsync(
-        () => s.importDoors.rasterizeMovieReference(
-          cutId: s.requireActiveCut.id,
-          layerId: row.id,
-        ),
-      );
+      await rasterized(tester, s, row);
 
       final baked = s.layerById(row.id)!;
       expect(baked.mediaReference, isNull);
-      expect(
-        inkOf(
-          s.renderCaches.brushSurfaceForLayerFrame(baked, baked.frames.first),
-        ),
-        const ui.Rect.fromLTRB(1138, 809, 1202, 845),
-      );
+      expect(inkAt(s, baked, 0), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
       expect(
         baked.transformTrack.position.keys.map(
           (frame, key) => MapEntry(frame, key.value),
@@ -859,50 +974,107 @@ void main() {
         'apiece as it turns, the row\'s transform as it was (F-374-Q7 · '
         '「움직이는 참조는 움직이는 프레임마다 한 장」)', (tester) async {
       final (s, row, _) = await placed(tester);
-      final squashed = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<CanvasPoint>().withKey(
-          0,
-          CanvasPoint(x: 1, y: 0.5),
-        ),
-      );
-      s.cutCommandCoordinator
-        ..updateLayerTransformTrack(
-          cutId: s.requireActiveCut.id,
-          layerId: row.id,
-          transformTrack: squashed,
-        )
-        ..updateLayerReferenceFx(
-          layerId: row.id,
-          fx: TransformTrack.empty().copyWith(
-            rotation: PropertyTrack<double>().withKey(0, 0).withKey(12, 90),
-          ),
-        );
-
+      squashedAndTurning(s, row);
       expect(
         await tester.runAsync(
-          () => s.importDoors.rasterizeMovieReference(
+          () => s.importDoors.bakeReferenceAsSeen(
             cutId: s.requireActiveCut.id,
             layerId: row.id,
           ),
         ),
-        isTrue,
+        isFalse,
+        reason: 'a movie\'s frames are decoded, not its one cel moved',
       );
+
+      expect(await rasterized(tester, s, row), isTrue);
 
       final baked = s.layerById(row.id)!;
       expect(baked.mediaReference, isNull);
       expect(baked.transformTrack, squashed);
-      ui.Rect? inkAt(int frame) => inkOf(
-        s.renderCaches.brushSurfaceForLayerFrame(
-          baked,
-          resolveExposedFrameAt(baked, frame)!,
+      expect(inkAt(s, baked, 0), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
+      expect(inkAt(s, baked, 12), turnedAQuarter);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a movie trimmed at its head, slower than the cut: each '
+        'position stands where the fx stands it on ITS frame of the cut — a '
+        'cel wherever the movie or the move changes, the block where it '
+        'was', (tester) async {
+      final (s, row, _) = await placed(tester, fps: 8);
+      s.activeCutControllers.timelineController.shiftExposureEdge(
+        layerId: row.id,
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.start,
+        delta: 6,
+      );
+      squashedAndTurning(s, row);
+
+      expect(await rasterized(tester, s, row), isTrue);
+
+      final baked = s.layerById(row.id)!;
+      expect(baked.timeline.firstKey(), 6, reason: 'where the trim left it');
+      FrameId celAt(int frame) => resolveExposedFrameAt(baked, frame)!.id;
+      expect(
+        celAt(7),
+        isNot(celAt(6)),
+        reason: 'one picture of the movie, turned on',
+      );
+      expect(
+        celAt(13),
+        celAt(12),
+        reason: 'neither the movie nor the move changes',
+      );
+      expect(inkAt(s, baked, 12), turnedAQuarter);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a movie whose cel another use shows waits — its cels would '
+        'sweep that use\'s exposures away (F-374-Q10)', (tester) async {
+      final (s, row, _) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      final shared = s.layerById(copy)!;
+
+      expect(await rasterized(tester, s, row), isFalse);
+
+      expect(s.layerById(row.id)!.mediaReference, isNotNull);
+      expect(s.layerById(copy), shared);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a movie row changed while its file is opened is left as it '
+        'is now — nothing is rasterized', (tester) async {
+      final (s, row, _) = await placed(tester);
+      final moved = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 200, y: 100),
         ),
       );
-      expect(inkAt(0), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
-      expect(
-        inkAt(12),
-        const ui.Rect.fromLTRB(1152, 795, 1188, 859),
-        reason: 'turned a quarter about where the movie is laid',
-      );
+
+      final answer = await tester.runAsync(() {
+        final rasterize = s.importDoors.rasterizeMovieReference(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        );
+        // Lands while the movie is being opened.
+        s.cutCommandCoordinator.updateLayerReferenceFx(
+          layerId: row.id,
+          fx: moved,
+        );
+        return rasterize;
+      });
+
+      expect(answer, isFalse);
+      final now = s.layerById(row.id)!;
+      expect(now.mediaReference!.fx, moved);
+      expect(now.frames, row.frames);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });

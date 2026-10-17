@@ -156,12 +156,10 @@ final class ReferenceMoveWaits extends ReferenceLetGo {
     return (track: layer.transformTrack, enabled: layer.transformEnabled);
   }
   final laid = reference.laid;
-  // A file is laid upright since F-374-Q1 (`placedReference`), and a lay
-  // that collapsed the picture has no move to carry.
-  if (isAttachedLayer(layer) ||
-      laid.rotationDegrees != 0 ||
-      laid.scaleX == 0 ||
-      laid.scaleY == 0) {
+  // A file is laid 1:1 and upright since F-374-Q1 (`placedReference`): the
+  // carry reads the fx's pose as the row's over the cel's own pixels, and a
+  // lay that is not would need that lay undone first.
+  if (isAttachedLayer(layer) || laid != TransformPose(center: laid.center)) {
     return null;
   }
   final shown = layer.transformEnabled
@@ -203,7 +201,7 @@ TransformTrack? _keysCarried(
 /// Each of a row's lanes as the fx's keys carry them through its one pose.
 class _KeysCarry {
   _KeysCarry(Layer layer, this.reference, CanvasSize canvas, this.nameIsFree)
-    : carrier = _Carrier(_ownAt(layer, canvas, 0), canvas, reference.laid),
+    : carrier = _Carrier(_ownAt(layer, canvas, 0), canvas),
       still = _StillLanes(layer, canvas);
 
   final MediaReference reference;
@@ -343,11 +341,7 @@ TransformTrack? _framesCarried(
   final frames = keyed([...own, ...fx.lanes]).toList()..sort();
   final byFrame = <int, LayerPoseSample>{};
   for (var frame = frames.first; frame <= frames.last; frame += 1) {
-    final carrier = _Carrier(
-      _ownAt(layer, canvas, frame),
-      canvas,
-      reference.laid,
-    );
+    final carrier = _Carrier(_ownAt(layer, canvas, frame), canvas);
     final pose = carrier.pose(reference.poseAt(frame));
     if (pose == null) {
       return null;
@@ -387,13 +381,13 @@ LayerPoseSample _ownAt(Layer layer, CanvasSize canvas, int frame) => (
 
 /// The row's own pose at one frame, as it carries where the fx stands the
 /// picture: the fx's centre goes where the row's placement puts it, the
-/// fx's turn after the row's, and the fx's two scales — over the scale the
-/// file was laid at — under the row's, whose two axes a quarter turn of the
-/// picture swaps. ⛔One law for a key carried and a frame carried: the
-/// composite's own order, the row's pose over the fx's move
+/// fx's turn after the row's, and the fx's two scales — over the cel's own
+/// pixels, the file laid 1:1 — under the row's, whose two axes a quarter
+/// turn of the picture swaps. ⛔One law for a key carried and a frame
+/// carried: the composite's own order, the row's pose over the fx's move
 /// (`placementUnderFolders`' `within`).
 class _Carrier {
-  _Carrier(LayerPoseSample own, CanvasSize canvas, this.laid)
+  _Carrier(LayerPoseSample own, CanvasSize canvas)
     : placement = placementOf(own, canvas),
       turn = own.pose.rotationDegrees,
       scale = own.pose.scale;
@@ -401,7 +395,6 @@ class _Carrier {
   final LayerPlacement placement;
   final double turn;
   final CanvasPoint scale;
-  final TransformPose laid;
 
   bool get even => scale.x == scale.y;
 
@@ -427,8 +420,8 @@ class _Carrier {
   CanvasPoint scaled(CanvasPoint shown, double shownTurn) {
     final swapped = !even && (shownTurn / 90).round().isOdd;
     return CanvasPoint(
-      x: (swapped ? scale.y : scale.x) * shown.x / laid.scaleX,
-      y: (swapped ? scale.x : scale.y) * shown.y / laid.scaleY,
+      x: (swapped ? scale.y : scale.x) * shown.x,
+      y: (swapped ? scale.x : scale.y) * shown.y,
     );
   }
 
