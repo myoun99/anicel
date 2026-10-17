@@ -529,6 +529,7 @@ void main() {
     'exSuffix': (s) => s.exSuffix,
     'exPrefix': (s) => s.exPrefix,
     'exLayDirection': (s) => s.exLayDirection,
+    'exLayGuides': (s) => s.exLayGuides,
     'exCelFormat': (s) => s.exCelFormat,
     'exTimesheetFormat': (s) => s.exTimesheetFormat,
     'exEnvelopeFormat': (s) => s.exEnvelopeFormat,

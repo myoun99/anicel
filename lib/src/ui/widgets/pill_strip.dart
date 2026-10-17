@@ -164,10 +164,38 @@ class PillStrip extends StatelessWidget {
   }
 }
 
+/// Strips side by side, [gap] apart, given width as a strip's pills are
+/// ([_PillRow]): each its own width while they all fit the room — and where
+/// they do not, the widest strip gives width up first, down to one cap they
+/// share, and inside it its own pills by the same law.
+///
+/// 🗣️I-105 (2026-10-17): the export band's end — the direction pills, then
+/// CAM and 「가이드」 — did not fit the window's least width, and the loose
+/// `Flexible`s that held its strips gave the direction pills an EQUAL share
+/// with the caption beside them: 0 px of a 41 px word once 「가이드」 stood
+/// beside CAM.
+class PillStrips extends StatelessWidget {
+  const PillStrips({super.key, required this.strips, this.gap = 8});
+
+  final List<PillStrip> strips;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) => _PillRow(
+    children: [
+      for (var i = 0; i < strips.length; i += 1) ...[
+        if (i > 0) SizedBox(width: gap),
+        strips[i],
+      ],
+    ],
+  );
+}
+
 /// Pills side by side: each its OWN width while the strip fits the room it
 /// is given — and where it does not, the widest give width up first (their
 /// words ellipsising), down to one cap they share, so a short word is never
-/// cut for a long one. A strip never overflows its row.
+/// cut for a long one. A strip never overflows its row — nor do strips
+/// side by side ([PillStrips]).
 ///
 /// ↩️A `Flex` of loose `Flexible`s stood here. It capped every pill at an
 /// EQUAL share of the room whether or not the strip fit, so in a strip of

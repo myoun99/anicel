@@ -180,6 +180,56 @@ void main() {
     expect(given['a long long word'], closeTo(own['cd']! - 1, 0.01));
   });
 
+  testWidgets('strips side by side are given width as a strip\'s pills are: '
+      'each its own while they fit — and where they do not, the WIDER strip '
+      'gives width up first, its own pills by the same law', (tester) async {
+    const labels = ['ab', 'cd', 'a long long word'];
+    Future<Map<String, double>> widthsIn(double width) async {
+      await pump(
+        tester,
+        width,
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PillStrips(
+            strips: [
+              PillStrip(items: items(['ab'])),
+              PillStrip(items: items(['cd', 'a long long word'])),
+            ],
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      return {
+        for (final label in labels)
+          label: tester.getSize(find.byKey(ValueKey<String>(label))).width,
+      };
+    }
+
+    final own = await widthsIn(2000);
+    final both = tester.getSize(find.byType(PillStrips)).width;
+    Rect at(String label) =>
+        tester.getRect(find.byKey(ValueKey<String>(label)));
+    expect(
+      at('cd').left - at('ab').right,
+      greaterThanOrEqualTo(8),
+      reason: 'two outlines, a gap apart',
+    );
+    expect(await widthsIn(both), own, reason: 'they fit: each its own');
+
+    final given = await widthsIn(both - 30);
+    expect(given['ab'], own['ab'], reason: 'the narrower strip is whole');
+    expect(given['cd'], own['cd'], reason: 'and the short word beside it');
+    expect(
+      given['a long long word'],
+      closeTo(own['a long long word']! - 30, 0.01),
+    );
+    expect(
+      tester.getSize(find.byType(PillStrips)).width,
+      closeTo(both - 30, 0.01),
+      reason: 'they give up no more than they have to',
+    );
+  });
+
   testWidgets('across, a press on a pill is THAT pill\'s', (tester) async {
     final pressed = <String>[];
     await pump(

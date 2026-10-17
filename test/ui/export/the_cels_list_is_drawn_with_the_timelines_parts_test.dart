@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -751,12 +752,95 @@ void main() {
       await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
       expect(tester.takeException(), isNull);
       expect(caption(), strings.tlKindInstruction);
-      expect(
-        tester.getSize(keyed('export-cels-lay-caption')).width,
-        greaterThan(0),
-        reason: 'the short word is there to be READ at the narrowest',
-      );
+      // ↩️The word was pinned READ at the narrowest. With 「가이드」 beside
+      // CAM the narrowest band has not the room for the word and the pills
+      // both, and the word gives way first (I-105 — the test below).
       expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
+    });
+
+    // ⚖️I-105 (공통 2026-10-17, the user's to overturn): a pill is what is
+    // pressed, and cut short, 「T.U」 and 「PAN」 read alike.
+    testWidgets('where the band\'s end has not the room for all of it, the '
+        'caption gives width up first — its whole, then its word — and the '
+        'pills only after it: the wider strip first', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(2400, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final strings = AppText.strings;
+      const tu = 'direction-tu';
+      const cam = 'export-cels-cam';
+      const guides = 'export-cels-guides';
+      final end = find
+          .ancestor(
+            of: keyed('export-cels-lay-caption'),
+            matching: find.byType(Row),
+          )
+          .first;
+      double widthOf(Finder finder) => tester.getSize(finder).width;
+      String caption() =>
+          tester.widget<Text>(keyed('export-cels-lay-caption')).data!;
+      Future<void> pumpAt(double width) async {
+        await pumpBoard(
+          tester,
+          width: width,
+          directions: [
+            (
+              keyValue: tu,
+              name: 'T.U',
+              fullName: 'T.U_A-B',
+              laid: false,
+              onPressed: () {},
+            ),
+          ],
+        );
+        expect(tester.takeException(), isNull);
+        expect(
+          tester.getRect(find.byType(PillStrips)).right,
+          lessThanOrEqualTo(tester.getRect(end).right + 0.01),
+          reason: 'nothing runs past the band',
+        );
+      }
+
+      const wide = 2000.0;
+      await pumpAt(wide);
+      final own = {
+        for (final key in [tu, cam, guides]) key: widthOf(keyed(key)),
+      };
+      final strips = widthOf(find.byType(PillStrips));
+      final whole = widthOf(keyed('export-cels-lay-caption'));
+      expect(caption(), strings.exLayDirection, reason: '⛔fixture: room');
+      // The end grows as the board does: what the board needs for [room].
+      final over = wide - widthOf(end);
+      Future<void> endAt(double room) => pumpAt(over + room);
+      void pillsWhole() {
+        for (final key in [tu, cam, guides]) {
+          expect(widthOf(keyed(key)), own[key], reason: '$key is whole');
+        }
+      }
+
+      await endAt(whole - 1 + 8 + strips);
+      expect(caption(), strings.tlKindInstruction);
+      final word = tester
+          .renderObject<RenderParagraph>(find.text(strings.tlKindInstruction))
+          .getMaxIntrinsicWidth(double.infinity);
+      expect(widthOf(keyed('export-cels-lay-caption')), word);
+      pillsWhole();
+
+      await endAt(word / 2 + 8 + strips);
+      expect(
+        widthOf(keyed('export-cels-lay-caption')),
+        closeTo(word / 2, 0.01),
+        reason: 'the word gives way before the pills',
+      );
+      pillsWhole();
+
+      await endAt(8 + strips - 10);
+      expect(widthOf(keyed('export-cels-lay-caption')), 0);
+      expect(widthOf(keyed(tu)), own[tu], reason: 'the narrower strip');
+      expect(
+        widthOf(keyed(cam)) + widthOf(keyed(guides)),
+        closeTo(own[cam]! + own[guides]! - 10, 0.01),
+        reason: 'the wider strip gives up what the end has not',
+      );
     });
   });
 
