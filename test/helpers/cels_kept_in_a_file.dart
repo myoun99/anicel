@@ -42,3 +42,17 @@ Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
   store.restoreFromFile(refs, pasteboardReach: pasteboardReach);
   return refs;
 }
+
+/// [cels] kept in [store] as [keepInAFile] keeps them, and their files since
+/// gone — moved or deleted under the open project: every read of one fails.
+/// Answers where each was kept.
+Map<BrushFrameKey, AnicelCelFileRef> keepInAFileThatIsGone(
+  BrushFrameStore store,
+  Map<BrushFrameKey, BitmapSurface> cels,
+) {
+  final refs = keepInAFile(store, cels);
+  for (final ref in refs.values) {
+    File(ref.filePath).deleteSync();
+  }
+  return refs;
+}

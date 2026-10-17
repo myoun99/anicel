@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -722,10 +721,9 @@ void main() {
     inked({FrameId? gone}) {
       final store = BrushFrameStore();
       if (gone != null) {
-        final kept = keepInAFile(store, {
+        keepInAFileThatIsGone(store, {
           frameKey(four(), const LayerId('layer'), gone): inkedOut(0),
         });
-        File(kept.values.single.filePath).deleteSync();
       }
       for (var index = 0; index < 4; index += 1) {
         if (FrameId('f$index') == gone) {

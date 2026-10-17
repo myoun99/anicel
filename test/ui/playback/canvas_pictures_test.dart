@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -79,10 +78,9 @@ void main() {
   /// file — and that file since gone: its bytes cannot be read.
   BrushFrameStore storeWithGone(String cel) {
     final store = BrushFrameStore();
-    final kept = keepInAFile(store, {
+    keepInAFileThatIsGone(store, {
       keyOf(cel): storeOf([cel]).bakedSurfaceOrNull(keyOf(cel))!,
     });
-    File(kept.values.single.filePath).deleteSync();
     return store;
   }
 

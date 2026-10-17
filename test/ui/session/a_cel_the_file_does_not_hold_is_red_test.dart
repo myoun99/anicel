@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -18,11 +17,9 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_frame_store.dart'
-    show AnicelCelFileRef;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
 
 /// 유저 2026-10-16 (frame-picture-indicator-Q1 b): 「a + 그 셀이 있는 타임라인
 /// 칸에도 빨간 표시」 — for 「영영실패 … 아예 해동실패했을때 얘기잖아.
@@ -31,7 +28,8 @@ import '../../helpers/project_scratch_folder.dart';
 /// red on the timeline.
 ///
 /// The cel is kept as an opened project keeps one — a stretch of its file —
-/// in a file that is not there, and read the way a run reads it.
+/// in a file since gone ([keepInAFileThatIsGone]), and read the way a run
+/// reads it.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const layerId = LayerId('layer');
@@ -79,21 +77,23 @@ void main() {
   BrushFrameKey celOf(EditorSessionManager s, [FrameId frame = frameId]) =>
       s.brushFrameKeyForCut(s.activeCutOrNull!, layerId, frame);
 
-  /// [s]'s cel kept in a stretch of a file that is not there.
-  Future<void> keepInAFileThatIsGone(EditorSessionManager s) async {
-    final directory = await Directory.systemTemp.createTemp('qa-cel-gone');
-    deleteAfterSessionEnds(directory);
-    s.renderCaches.brushFrameStore.restoreFromFile({
-      celOf(s): AnicelCelFileRef(
-        filePath: '${directory.path}/gone.anicel',
-        dataOffset: 0,
-        length: 64,
-        canvasSize: canvasSize,
-        tileSize: 8,
-        photoPaths: const [],
+  /// White over the whole canvas, one tile.
+  BitmapSurface drawn() => BitmapSurface(
+    canvasSize: canvasSize,
+    tileSize: 8,
+    tiles: {
+      TileCoord(x: 0, y: 0): BitmapTile(
+        size: 8,
+        pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 0xFF),
       ),
-    });
-  }
+    },
+  );
+
+  /// [s]'s cel kept in a stretch of a file since gone.
+  void loseTheCelsFile(EditorSessionManager s) =>
+      keepInAFileThatIsGone(s.renderCaches.brushFrameStore, {
+        celOf(s): drawn(),
+      });
 
   /// The run's making of the cut's first frame — which reads the cel.
   Future<void> readTheCel(EditorSessionManager s) => expectLater(
@@ -109,7 +109,7 @@ void main() {
       'run does not wait for it', (tester) async {
     await tester.runAsync(() async {
       final s = session();
-      await keepInAFileThatIsGone(s);
+      loseTheCelsFile(s);
       final budget = s.playbackRig.playbackCache;
       expect(
         budget.playbackReadyRuns(0, 30),
@@ -131,7 +131,7 @@ void main() {
       'again', (tester) async {
     await tester.runAsync(() async {
       final s = session();
-      await keepInAFileThatIsGone(s);
+      loseTheCelsFile(s);
       final stack = s.layerStack;
       final layer = s.layerById(layerId)!;
       expect(
@@ -172,7 +172,7 @@ void main() {
   ) async {
     await tester.runAsync(() async {
       final s = session();
-      await keepInAFileThatIsGone(s);
+      loseTheCelsFile(s);
       await readTheCel(s);
       final store = s.renderCaches.brushFrameStore;
       final generation = store.celContentRevision.value;
@@ -180,16 +180,7 @@ void main() {
       // A cel nothing on the cut shows, drawn for the first time.
       store.storeBakedSurface(
         celOf(s, const FrameId('drawn-elsewhere')),
-        BitmapSurface(
-          canvasSize: canvasSize,
-          tileSize: 8,
-          tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(
-              size: 8,
-              pixels: Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 0xFF),
-            ),
-          },
-        ),
+        drawn(),
       );
       expect(
         store.celContentRevision.value,
