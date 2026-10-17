@@ -1,10 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/history_run.dart';
 
 void main() {
   _pressureTests();
   _foldTests();
+  _runTests();
   group('HistoryManager', () {
     test('starts empty', () {
       final historyManager = HistoryManager();
@@ -226,6 +228,84 @@ void _foldTests() {
         [0, 0, 1],
         reason: 'one undo is still one entry — not the last two of three',
       );
+    });
+  });
+}
+
+void _runTests() {
+  // F-377 (유저 2026-10-17): 「변형 상태는 모두 기본적으로 그걸 따르도록」
+  // — a hold's steps take undo one at a time while it is held, and are ONE
+  // step once it is let go.
+  group('HistoryRun', () {
+    test('a hold\'s steps take undo one at a time — and no redo — and fold '
+        'into ONE when it ends', () {
+      final history = HistoryManager();
+      final earlier = _FakeCommand();
+      history.execute(earlier);
+      final run = HistoryRun(history.gestures)..begin();
+      final steps = [_FakeCommand(), _FakeCommand(), _FakeCommand()];
+      for (final step in steps) {
+        run.write(() => history.execute(step));
+      }
+
+      expect(run.canTakeBack, isTrue);
+      run.takeBack();
+      expect([for (final step in steps) step.undoCount], [0, 0, 1]);
+      expect(history.canRedo, isFalse, reason: 'taken back, not undone');
+
+      run.end('Hold');
+      expect(history.undoCount, 2, reason: 'the step before, and the hold');
+      history.undo();
+      expect(
+        [for (final step in steps) step.undoCount],
+        [1, 1, 1],
+        reason: 'one undo takes the hold back whole',
+      );
+      expect(earlier.undoCount, 0);
+    });
+
+    test('a step written past the hold breaks its run: the take-back and '
+        'the fold reach the hold\'s own steps alone', () {
+      final history = HistoryManager();
+      final run = HistoryRun(history.gestures)..begin();
+      final first = _FakeCommand();
+      run.write(() => history.execute(first));
+      final elsewhere = _FakeCommand();
+      history.execute(elsewhere);
+
+      expect(run.canTakeBack, isFalse);
+      run.takeBack();
+      expect(elsewhere.undoCount, 0, reason: 'not the hold\'s to take');
+
+      final after = [_FakeCommand(), _FakeCommand()];
+      for (final step in after) {
+        run.write(() => history.execute(step));
+      }
+      run.end('Hold');
+
+      expect(
+        history.undoCount,
+        3,
+        reason: 'the step before the break, the one written past it, and '
+            'what the hold wrote after it',
+      );
+      history.undo();
+      expect([for (final step in after) step.undoCount], [1, 1]);
+      expect(elsewhere.undoCount, 0);
+    });
+
+    test('a hold that wrote nothing takes nothing back and folds nothing', () {
+      final history = HistoryManager();
+      final earlier = _FakeCommand();
+      history.execute(earlier);
+      final run = HistoryRun(history.gestures)..begin();
+
+      expect(run.canTakeBack, isFalse);
+      run.takeBack();
+      run.end('Hold');
+
+      expect(earlier.undoCount, 0);
+      expect(history.undoCount, 1);
     });
   });
 }

@@ -4,6 +4,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/cel_photo.dart';
 import '../../models/transform_pose.dart';
 import '../../services/history_manager.dart';
+import '../../services/history_run.dart';
 import '../../services/media/sheet_photo_edits.dart';
 
 /// A photo on a sheet: the ink it lies on and its id there.
@@ -31,6 +32,13 @@ class SheetPhotoHold extends ChangeNotifier {
   final HistoryManager _history;
 
   SheetPhotoAt? _held;
+
+  /// The grabs of the photo held: undo takes them back one at a time while
+  /// it is held ([stepBack]), and they are ONE step once it is let go
+  /// ([letGo]) — F-377 (유저 2026-10-17: 「변형 상태는 모두 기본적으로 그걸
+  /// 따르도록」). ↩️Each grab stayed a step of its own: a photo moved,
+  /// sized and turned took three undos once let go.
+  late final HistoryRun _grabs = HistoryRun(_history.gestures);
 
   /// Where a grab has its photo — the GRAB's, and gone with the grab alone
   /// ([land], [dropShowing]). A photo let go of mid-grab (Escape, another
@@ -64,9 +72,17 @@ class SheetPhotoHold extends ChangeNotifier {
     if (_held == photo) {
       return;
     }
+    _grabs.end(_transformed);
     _held = photo;
+    _grabs.begin();
     notifyListeners();
   }
+
+  /// Whether undo has a grab of the photo held to take back ([stepBack]).
+  bool get canStepBack => _grabs.canTakeBack;
+
+  /// Takes the last grab of the photo held back.
+  void stepBack() => _grabs.takeBack();
 
   /// Where a grab has [photo], before it lets go.
   void show(SheetPhotoAt photo, TransformPose pose) {
@@ -85,11 +101,13 @@ class SheetPhotoHold extends ChangeNotifier {
 
   /// Lands [pose] on [photo] — ONE step — and what the grab showed with it.
   void land(SheetPhotoAt photo, TransformPose pose) {
-    _edits.edit(
-      photo.key,
-      description: 'Transform photo',
-      history: _history,
-      photos: (photos) => _posed(photos, photo.id, pose),
+    _grabs.write(
+      () => _edits.edit(
+        photo.key,
+        description: _transformed,
+        history: _history,
+        photos: (photos) => _posed(photos, photo.id, pose),
+      ),
     );
     dropShowing(photo);
   }
@@ -101,6 +119,9 @@ class SheetPhotoHold extends ChangeNotifier {
     if (held == null) {
       return;
     }
+    // What the hand did to it before is one step, and taking it off
+    // another.
+    _grabs.end(_transformed);
     _edits.edit(
       held.key,
       description: 'Delete photo',
@@ -110,14 +131,18 @@ class SheetPhotoHold extends ChangeNotifier {
     letGo();
   }
 
-  /// Lets go of what is held.
+  /// Lets go of what is held — its grabs ONE step from here on.
   void letGo() {
     if (_held == null) {
       return;
     }
+    _grabs.end(_transformed);
     _held = null;
     notifyListeners();
   }
+
+  /// What a grab's step — and the grabs of a hold folded — is called.
+  static const String _transformed = 'Transform photo';
 
   /// Lets go of [photo] and of nothing else — a press another photo took
   /// first has already taken that one.

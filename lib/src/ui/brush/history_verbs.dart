@@ -69,6 +69,8 @@ class HistoryVerbs {
     selection,
     traces.changes,
     text,
+    session.canvasAdjust,
+    session.sheetPhotoHold,
     session.historyManager,
   ]);
 
@@ -106,6 +108,14 @@ class HistoryVerbs {
   /// the document is LAST: asked first, it would land an open session and
   /// undo somebody else's edit while the user was still transforming.
   VoidCallback? _undo() {
+    // 🗣️F-377 (유저 2026-10-17): 「변형 상태는 모두 기본적으로 그걸
+    // 따르도록」 — a canvas or the camera's frame adjusted on the canvas
+    // (I-79 · I-80) takes undo a grab at a time, as the open box below
+    // does. Asked first, as 확정 asks it first (`ConfirmVerb`): it is a
+    // mode the user stepped into over whatever was open.
+    if (session.canvasAdjust.canStepBack) {
+      return session.canvasAdjust.stepBack;
+    }
     if (traces.open case final trace?) {
       return trace.undoPolygonPoint;
     }
@@ -119,6 +129,12 @@ class HistoryVerbs {
     // one shape, asked twice.
     if (selection.canUndoTransformStep) {
       return selection.undoTransformStep;
+    }
+    // F-377: a photo held on a sheet (I-97) wears the box's chrome and
+    // keeps its law — a grab back at a time while held, ONE step once let
+    // go (`HistoryRun`).
+    if (session.sheetPhotoHold.canStepBack) {
+      return session.sheetPhotoHold.stepBack;
     }
     // R9-rest: a text being TYPED answers the same way — a step back is a
     // word, a letter taken out, a change of setting — and falls through

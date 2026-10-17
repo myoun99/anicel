@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -13,6 +15,7 @@ import 'package:anicel/src/ui/session/sheet_photo_hold.dart';
 import '../helpers/app_shortcuts.dart';
 import '../helpers/cel_photo_fixture.dart';
 import '../helpers/cel_text_tool_harness.dart';
+import '../helpers/key_chords.dart';
 
 /// I-97 through the app: a photo held on a sheet is the thing in hand.
 /// Escape lets go of it, as a press past its cell does (Q4), and Delete
@@ -99,6 +102,44 @@ void main() {
 
     history.undo();
     expect(photosOn(session, at), 1);
+  });
+
+  testWidgets('🗣️F-377: Ctrl+Z takes the held photo\'s grabs back one at a '
+      'time, and once it is let go they are ONE step', (tester) async {
+    final session = await pumpApp(tester);
+    final at = putPhoto(session);
+    final history = session.historyManager;
+    final hold = session.sheetPhotoHold;
+    TransformPose poseOf() => session.renderCaches.envelopeInkStore
+        .bakedSurfaceOrNull(at.key)!
+        .photos
+        .single
+        .reference
+        .pose;
+    final put = poseOf();
+    final steps = history.undoCount;
+    hold.take(at);
+    final moved = put.copyWith(
+      center: CanvasPoint(x: put.center.x + 30, y: put.center.y),
+    );
+    final sized = moved.copyWith(scaleX: 2, scaleY: 2);
+    for (final pose in [moved, sized, sized.copyWith(rotationDegrees: 30)]) {
+      hold.land(at, pose);
+    }
+    await tester.pump();
+    expect(history.undoCount, steps + 3, reason: '⛔전제: a step a grab');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(poseOf(), sized, reason: 'the last grab taken back');
+    expect(hold.held, at, reason: 'and the photo still held');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(hold.held, isNull);
+    expect(history.undoCount, steps + 1, reason: 'its grabs are ONE step');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(poseOf(), put, reason: 'one undo takes the hold back whole');
   });
 
   testWidgets('🚨a text held on the canvas as well: Delete takes the photo '

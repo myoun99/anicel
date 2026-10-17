@@ -1734,9 +1734,15 @@ final class _ProjectHooks {
     //
     // R9-rest: and a text in hand lands the same way — as it is shown, at
     // once — so the step taken is the one the user is looking at.
+    //
+    // F-377: and a photo held on a sheet is let go of, its grabs folded
+    // into their one step — the undo got here because none of them was
+    // left to take back (`HistoryVerbs`), and a document stepped under a
+    // hold would leave its fold nothing whole to fold.
     history.onBeforeUndoRedo = () {
       shell._canvasSelectionCommands.confirmPendingMove();
       shell._canvasTextCommands.landNow();
+      session.sheetPhotoHold.letGo();
     };
     // ...and a step that WAITED for its pictures asks first whether there
     // is anything to adopt: work begun after the press is the user's.

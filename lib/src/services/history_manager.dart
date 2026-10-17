@@ -681,17 +681,22 @@ class HistoryGestures {
   /// ⛔Nothing at or below [since] is touched. False when the gesture has
   /// nothing of its own left to take.
   bool retractSince(HistoryMark since) {
-    final stack = _history._undoStack;
-    if (stack.length <= since.depth) {
+    if (!keepsSince(since)) {
       return false;
     }
-    final command = stack.removeLast();
+    final command = _history._undoStack.removeLast();
     _history._made.undo(command);
     dropPayloadsOf([command]);
     _retracted += 1;
     _history._changed();
     return true;
   }
+
+  /// Whether the stack holds an entry above [since] for [retractSince] to
+  /// take back — asked by an undo door before it opens, which must not
+  /// take anything to find out.
+  bool keepsSince(HistoryMark since) =>
+      _history._undoStack.length > since.depth;
 
   /// Folds every entry pushed since [since] into ONE — for a gesture that
   /// writes across many events, which [HistoryManager.runAsOneStep]'s

@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/session/canvas_adjust.dart';
 
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/key_chords.dart';
 import 'flyout_test_helpers.dart' show tapCommandButton;
 
 /// I-79 through the app: an adjust opened on the canvas stands its box and
@@ -114,6 +115,52 @@ void main() {
       inkBefore.left + 10,
       reason: 'the left edge pulled out by 10 moved the picture by as much',
     );
+  });
+
+  testWidgets('🗣️F-377: Ctrl+Z takes the edges back a grab at a time while '
+      'the adjust is open, leaving the document\'s steps be — and landed, '
+      'the adjust is ONE step', (tester) async {
+    final session = await pumpApp(tester);
+    session.createDrawingAtCurrentFrame();
+    final history = session.historyManager;
+    expect(history.canUndo, isTrue, reason: '⛔전제: a step of the document');
+    final steps = history.undoCount;
+    final cut = session.requireActiveCut;
+    final before = cut.canvasSize;
+    CanvasEdgesDraft edges(int right) => CanvasEdgesDraft(
+      cut: cut.id,
+      edges: Rect.fromLTRB(
+        0,
+        0,
+        right.toDouble(),
+        before.height.toDouble(),
+      ),
+    );
+    session.canvasAdjust
+      ..begin(CanvasEdgesDraft.of(cut.id, before))
+      ..move(edges(before.width + 20))
+      ..move(edges(before.width + 40));
+    await tester.pump();
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+
+    expect(
+      (session.canvasAdjust.draft! as CanvasEdgesDraft).edges,
+      edges(before.width + 20).edges,
+      reason: 'the last grab taken back',
+    );
+    expect(history.undoCount, steps, reason: 'the document is not asked');
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await pumpPastTheWait(tester);
+    expect(
+      session.requireActiveCut.canvasSize,
+      CanvasSize(width: before.width + 20, height: before.height),
+    );
+    expect(history.undoCount, steps + 1, reason: 'it landed as ONE step');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(session.requireActiveCut.canvasSize, before);
   });
 
   testWidgets('an adjust left open on a cut the canvas no longer shows is let '
