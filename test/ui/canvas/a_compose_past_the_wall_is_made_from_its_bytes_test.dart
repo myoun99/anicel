@@ -61,11 +61,16 @@ void main() {
     format: ui.ImageByteFormat.rawRgba,
   ))!.buffer.asUint8List();
 
-  /// A tile of 16 with ink in the premultiply's three regimes — clear,
-  /// part and whole.
-  BitmapTile inked(int seed) {
+  /// A tile of 16 [at] its place with ink in the premultiply's three
+  /// regimes — clear, part and whole — and none outside [lies].
+  BitmapTile inked(int seed, {required TileCoord at, ui.Rect? lies}) {
     final pixels = Uint8List(16 * 16 * 4);
     for (var p = 0; p < 16 * 16; p += 1) {
+      final x = at.x * 16 + p % 16 + 0.5;
+      final y = at.y * 16 + p ~/ 16 + 0.5;
+      if (lies != null && !lies.contains(ui.Offset(x, y))) {
+        continue;
+      }
       pixels[p * 4] = (p * 7 + seed * 31) & 255;
       pixels[p * 4 + 1] = (p * 13) & 255;
       pixels[p * 4 + 2] = (p * 29 + seed) & 255;
@@ -75,50 +80,97 @@ void main() {
   }
 
   /// A file's picture laid whole on a 16×16 canvas (its wall -16..32), a
-  /// row of tiles from [left] to [right], one of them left out.
-  BitmapSurface laid(int left, int right, {int? without}) => BitmapSurface(
-    canvasSize: const CanvasSize(width: 16, height: 16),
-    tileSize: 16,
-    tiles: {
-      for (var x = left; x < right; x += 16)
-        if (x != without) TileCoord(x: x ~/ 16, y: 0): inked(x),
-    },
-    laidBounds: DirtyRegion(
-      left: left,
-      top: 0,
-      rightExclusive: right,
-      bottomExclusive: 16,
-    ),
-  );
+  /// row of tiles from [left] to [right], one of them left out — lying in
+  /// the tiles, or in [lies] within them.
+  BitmapSurface laid(int left, int right, {int? without, ui.Rect? lies}) {
+    final where = lies ?? ui.Rect.fromLTRB(left * 1.0, 0, right * 1.0, 16);
+    return BitmapSurface(
+      canvasSize: const CanvasSize(width: 16, height: 16),
+      tileSize: 16,
+      tiles: {
+        for (var x = left; x < right; x += 16)
+          if (x != without)
+            TileCoord(x: x ~/ 16, y: 0): inked(
+              x,
+              at: TileCoord(x: x ~/ 16, y: 0),
+              lies: lies,
+            ),
+      },
+      laidBounds: DirtyRegion.wholePixelsOf(where),
+    );
+  }
 
-  /// Past the wall on both sides, a tile left out inside it — and a text
-  /// over its first tile: a picture is shown with its texts laid over it
-  /// (R9-rest, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
-  BitmapSurface pastTheWallWithAText() => laid(-48, 64, without: 16)
-      .withTexts([
-        textOf(1, plate: {TileCoord(x: -3, y: 0): inked(99)}),
+  /// Where [pastTheWallWithAText] lies: past the wall on both sides, and
+  /// through its edge tiles' clear pixels on every side — as a compose
+  /// over where a picture lies cuts them (`_celMoved`).
+  final lies = ui.Rect.fromLTRB(-45, 2, 61, 14);
+
+  /// A tile left out inside the wall — and a text over the first tile: a
+  /// picture is shown with its texts laid over it (R9-rest, 유저
+  /// 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+  BitmapSurface pastTheWallWithAText() =>
+      laid(-48, 64, without: 16, lies: lies).withTexts([
+        textOf(
+          1,
+          plate: {
+            TileCoord(x: -3, y: 0): inked(
+              99,
+              at: TileCoord(x: -3, y: 0),
+              lies: lies,
+            ),
+          },
+        ),
       ]);
 
-  /// [surface] composed over its ink from its bytes, against the raster.
-  Future<void> expectTheRastersPicture(BitmapSurface surface) async {
-    final over = surfaceInkWorldRect(surface);
+  /// [surface] composed over [over] from its bytes, against the raster.
+  Future<void> expectTheRastersPicture(
+    BitmapSurface surface, {
+    required ui.Rect over,
+  }) async {
     expect(
       over.left < -16 && over.right > 32,
       isTrue,
       reason: 'premise: past the wall on both sides ($over)',
     );
+    var uploads = 0;
+    Future<ui.Image> counted(
+      Uint8List rgba, {
+      required int width,
+      required int height,
+      int? targetWidth,
+      int? targetHeight,
+    }) {
+      uploads += 1;
+      debugRawRgbaUploader = null;
+      try {
+        return uploadRawRgba(
+          rgba,
+          width: width,
+          height: height,
+          targetWidth: targetWidth,
+          targetHeight: targetHeight,
+        );
+      } finally {
+        debugRawRgbaUploader = counted;
+      }
+    }
+
+    debugRawRgbaUploader = counted;
     final fromBytes = (await composePositionedSurfaceImage(
       surface,
       over: over,
     ))!;
     expect(debugComposesFromBytes, 1);
+    expect(uploads, 1, reason: 'made from its bytes, and uploaded');
     debugRastersPastTheWall = true;
     final rastered = (await composePositionedSurfaceImage(
       surface,
       over: over,
     ))!;
     debugRastersPastTheWall = false;
+    debugRawRgbaUploader = null;
     expect(debugComposesFromBytes, 1, reason: 'premise: the hatch rasters');
+    expect(uploads, 1, reason: 'premise: a raster uploads nothing');
 
     expect(fromBytes.worldRect, rastered.worldRect);
     expect(
@@ -138,7 +190,7 @@ void main() {
     }
     expect(kQaEngineAbiVersion, greaterThanOrEqualTo(46));
     await tester.runAsync(
-      () => expectTheRastersPicture(pastTheWallWithAText()),
+      () => expectTheRastersPicture(pastTheWallWithAText(), over: lies),
     );
   });
 
@@ -146,7 +198,7 @@ void main() {
     QaNativeEngine.debugForceDartFallback = true;
     expect(QaNativeEngine.instance, isNull);
     await tester.runAsync(
-      () => expectTheRastersPicture(pastTheWallWithAText()),
+      () => expectTheRastersPicture(pastTheWallWithAText(), over: lies),
     );
   });
 
@@ -158,8 +210,8 @@ void main() {
           canvasSize: const CanvasSize(width: 16, height: 16),
           tileSize: 16,
           tiles: {
-            TileCoord(x: -1, y: -1): inked(1),
-            TileCoord(x: 1, y: 1): inked(2),
+            TileCoord(x: -1, y: -1): inked(1, at: TileCoord(x: -1, y: -1)),
+            TileCoord(x: 1, y: 1): inked(2, at: TileCoord(x: 1, y: 1)),
           },
         ),
         laid(-16, 32),
@@ -193,15 +245,22 @@ void main() {
         (wide, high - 8),
       ]) {
         debugComposesFromBytes = 0;
-        debugRawRgbaUploader =
-            (rgba, {required width, required height, targetWidth, targetHeight}) {
-              debugRawRgbaUploader = null;
-              return uploadRawRgba(
-                Uint8List(uploadedWidth * uploadedHeight * 4),
-                width: uploadedWidth,
-                height: uploadedHeight,
-              );
-            };
+        Future<ui.Image> comesBackShort(
+          Uint8List rgba, {
+          required int width,
+          required int height,
+          int? targetWidth,
+          int? targetHeight,
+        }) {
+          debugRawRgbaUploader = null;
+          return uploadRawRgba(
+            Uint8List(uploadedWidth * uploadedHeight * 4),
+            width: uploadedWidth,
+            height: uploadedHeight,
+          );
+        }
+
+        debugRawRgbaUploader = comesBackShort;
         final composed = (await composePositionedSurfaceImage(
           surface,
           over: over,
