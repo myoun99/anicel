@@ -77,7 +77,9 @@ void main() {
 
     adjust
       ..move(edges(120))
-      ..begin(CanvasEdgesDraft.of(cut, size));
+      ..move(edges(140));
+    expect(adjust.canStepBack, isTrue, reason: '⛔premise: a grab to take');
+    adjust.begin(CanvasEdgesDraft.of(cut, size));
     expect(adjust.canStepBack, isFalse, reason: 'begun over an open one');
   });
 }
