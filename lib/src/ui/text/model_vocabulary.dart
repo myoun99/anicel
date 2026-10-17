@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/reference_move_carried.dart' show ReferenceWait;
 import 'app_strings.dart';
 import '../../models/import/cut_folder_parse.dart' show ExclusionReason;
 import '../../models/import/import_warning.dart';
@@ -170,6 +171,13 @@ final _opensWithOne = RegExp(r'^\{(\w+)\}');
 extension ExclusionReasonWords on ExclusionReason {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).exclusionReason(name, label);
+}
+
+/// Why a rasterize left a row the reference it is, and what gets it past,
+/// in a language (F-374-Q11).
+extension ReferenceWaitWords on ReferenceWait {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).referenceWait(name, label);
 }
 
 /// A save window's file type, its name said in a language — the group keeps

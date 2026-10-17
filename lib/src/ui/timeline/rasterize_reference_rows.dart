@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/reference_move_carried.dart'
-    show ReferenceMoveKeyed, ReferenceMoveWaits;
+    show ReferenceMoveCarried, ReferenceMoveWaits, ReferenceWait;
+import '../dialogs/app_confirm_dialog.dart' show NoticeDetails, showAppNotice;
 import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../text/model_vocabulary.dart' show ReferenceWaitWords;
 
 /// How many cels rasterizing [layer] would leave behind.
 ///
@@ -31,14 +34,16 @@ int rasterizeCelCount(Layer layer) {
 }
 
 /// Rasterizes [targets] — the reference rows a press acts on — each the
-/// way the coordinator's one answer says (`referenceLetGo`, F-374-Q7).
+/// way the coordinator's one answer says (`referenceLetGo`, F-374-Q7), with
+/// every other use of its cels (F-374-Q10).
 ///
 /// The rows whose move their own transform carries land at once, in the one
 /// undo step they always did. The rest are BAKED — a movie decoded frame by
 /// frame, a still's cels drawn where the row shows them — so they go behind
 /// the one wait window this app shows for heavy work ([runWithAppProgress])
 /// — the window the placement window's bake uses, because it is the same
-/// work. A row that waits is left the reference it is (F-374-Q9 · Q10).
+/// work. A row that waits is left the reference it is, and says why
+/// ([showReferenceWaits]).
 Future<void> rasterizeReferenceRows(
   BuildContext context,
   EditorSessionManager session,
@@ -50,28 +55,41 @@ Future<void> rasterizeReferenceRows(
   }
   final keyed = <LayerId>[];
   final baked = <Layer>[];
+  final waits = <({Layer row, ReferenceWait why})>[];
   for (final layer in targets) {
     switch (session.cutCommandCoordinator.referenceLetGoOf(
       cutId: cutId,
       layerId: layer.id,
     )) {
-      case ReferenceMoveWaits():
-        break;
-      // A movie is decoded either way: its door carries the move first.
-      case ReferenceMoveKeyed() when !isMovieReference(layer):
+      case ReferenceMoveWaits(:final why):
+        waits.add((row: layer, why: why));
+      // A movie is decoded either way: its door carries the moves first.
+      case ReferenceMoveCarried(bakes: false) when !isMovieReference(layer):
         keyed.add(layer.id);
-      case _:
+      case ReferenceMoveCarried():
         baked.add(layer);
     }
   }
   if (keyed.isNotEmpty) {
     session.editingCanvas.rasterizeLayerReferences(keyed);
   }
-  if (baked.isEmpty) {
-    return;
+  if (baked.isNotEmpty) {
+    await _bake(context, session, cutId, baked);
   }
+  if (waits.isNotEmpty && context.mounted) {
+    await showReferenceWaits(context, waits);
+  }
+}
+
+/// [baked] rasterized behind the wait window, one bar for the batch.
+Future<void> _bake(
+  BuildContext context,
+  EditorSessionManager session,
+  CutId cutId,
+  List<Layer> baked,
+) {
   final strings = AppText.strings;
-  await runWithAppProgress<void>(
+  return runWithAppProgress<void>(
     context: context,
     title: baked.length > 1 ? strings.tlSelectedLayers : baked.single.name,
     titleIcon: Icons.texture_outlined,
@@ -99,6 +117,35 @@ Future<void> rasterizeReferenceRows(
         }
       }
     },
+  );
+}
+
+/// THE notice a rasterize that left rows the references they are is read
+/// in — 🗣️F-374-Q11 (유저 2026-10-17, 「막고 경고」: 「그 두 경우는
+/// 래스터라이즈하지 않고 경고로 왜인지 알립니다」): why each waits and what
+/// gets it past, said once over every row it was said of.
+Future<void> showReferenceWaits(
+  BuildContext context,
+  List<({Layer row, ReferenceWait why})> waits,
+) {
+  final named = <ReferenceWait, List<String>>{};
+  for (final (:row, :why) in waits) {
+    (named[why] ??= []).add(row.name);
+  }
+  return showAppNotice(
+    context,
+    windowKey: const ValueKey<String>('reference-rasterize-waits'),
+    title: AppText.strings.commonNotice,
+    message: AppText.strings.rasterizeLeftReferences,
+    details: [
+      for (final MapEntry(key: why, value: names) in named.entries)
+        NoticeDetails(
+          names,
+          heading: why.labelFor(AppText.language),
+          open: true,
+          oneLineEach: true,
+        ),
+    ],
   );
 }
 

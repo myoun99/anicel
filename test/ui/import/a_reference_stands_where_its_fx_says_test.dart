@@ -392,6 +392,13 @@ void main() {
         .cutCommandCoordinator
         .referenceLetGoOf(cutId: s.requireActiveCut.id, layerId: row.id);
 
+    /// A way whose cels take the picture where the uses show it.
+    final bakes = isA<ReferenceMoveCarried>().having(
+      (way) => way.bakes,
+      'bakes',
+      isTrue,
+    );
+
     final turnedOnce = TransformTrack.empty().copyWith(
       rotation: PropertyTrack<double>().withKey(0, 30),
     );
@@ -497,7 +504,7 @@ void main() {
         'picture and the reference back (F-374-Q7)', (tester) async {
       final (s, row) = await placed(tester);
       posed(s, row, track: squashed, fx: turnedOnce);
-      expect(wayOf(s, row), isA<ReferenceMoveBaked>());
+      expect(wayOf(s, row), bakes);
       final cel = rowOf(s, row).frames.single.id;
 
       expect(
@@ -566,7 +573,7 @@ void main() {
       final (s, row) = await placed(tester);
       attachToTheDrawing(s, row);
       posed(s, row, fx: halved);
-      expect(wayOf(s, row), isA<ReferenceMoveBaked>());
+      expect(wayOf(s, row), bakes);
 
       await tester.runAsync(
         () => s.importDoors.bakeReferenceAsSeen(
@@ -643,18 +650,22 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('🎯a 겸용 copy: the switch comes on for both where the copy '
-        'keeps no keys of its own; where it keeps some, and where the cels '
-        'would be baked, the row waits (F-374-Q10)', (tester) async {
+    testWidgets('🎯a 겸용 copy: rasterizing one use rasterizes every use of '
+        'its cel — each keeps the picture where it showed it, the switch '
+        'they share comes on and the keys the copy kept while it was off '
+        'give way — and ONE undo gives both back (F-374-Q10)', (tester) async {
       final (s, row) = await placed(tester);
-      final cutId = s.requireActiveCut.id;
       final copy = s.cutCommandCoordinator.linkDuplicateLayer(
-        cutId: cutId,
+        cutId: s.requireActiveCut.id,
         layerId: row.id,
         insertionIndex: 0,
       );
       s.effectsAndFx.setLayerTransformFx(row.id, enabled: false);
-      expect(s.layerById(copy)!.transformEnabled, isFalse);
+      expect(
+        s.layerById(copy)!.transformEnabled,
+        isFalse,
+        reason: 'the premise: one switch for both',
+      );
       posed(
         s,
         row,
@@ -665,42 +676,94 @@ void main() {
           ),
         ),
       );
-      final kept = TransformTrack.empty().copyWith(
-        rotation: PropertyTrack<double>().withKey(0, 45),
+      posed(
+        s,
+        s.layerById(copy)!,
+        track: TransformTrack.empty().copyWith(
+          rotation: PropertyTrack<double>().withKey(0, 45),
+        ),
       );
-      s.cutCommandCoordinator.updateLayerTransformTrack(
-        cutId: cutId,
-        layerId: copy,
-        transformTrack: kept,
-      );
+      final before = [rowOf(s, row), s.layerById(copy)!];
 
-      expect(wayOf(s, row), isA<ReferenceMoveWaits>());
       s.editingCanvas.rasterizeLayerReferences([row.id]);
-      expect(rowOf(s, row).mediaReference, isNotNull);
 
-      s.cutCommandCoordinator.updateLayerTransformTrack(
-        cutId: cutId,
-        layerId: copy,
-        transformTrack: TransformTrack.empty(),
+      final baked = rowOf(s, row);
+      final bakedCopy = s.layerById(copy)!;
+      expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
+      expect([baked.transformEnabled, bakedCopy.transformEnabled], [
+        true,
+        true,
+      ]);
+      expect(
+        baked.transformTrack.position.keys.map(
+          (frame, key) => MapEntry(frame, key.value),
+        ),
+        {0: CanvasPoint(x: 1200, y: 827)},
       );
-      expect(wayOf(s, row), isA<ReferenceMoveKeyed>());
-      s.editingCanvas.rasterizeLayerReferences([row.id]);
-      expect(rowOf(s, row).mediaReference, isNull);
-      expect(rowOf(s, row).transformEnabled, isTrue);
-      expect(s.layerById(copy)!.transformEnabled, isTrue);
-      expect(s.layerById(copy)!.mediaReference, isNotNull);
+      expect(
+        bakedCopy.transformTrack.isEmpty,
+        isTrue,
+        reason: 'the copy showed the picture where it is laid',
+      );
+      expect(
+        shown(s, bakedCopy),
+        const ui.Rect.fromLTRB(1120, 797, 1220, 857),
+        reason: 'the one cel, as the file was laid on it',
+      );
 
-      final squashedCopy = s.cutCommandCoordinator.linkDuplicateLayer(
-        cutId: cutId,
-        layerId: copy,
+      s.undo();
+      expect([rowOf(s, row), s.layerById(copy)!], before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🎯a 겸용 copy its transform cannot carry the move of: the '
+        'one cel takes the picture where both uses show it, and both let '
+        'go — where they show it apart, both wait (F-374-Q10: 「쓰임마다 참조 '
+        'fx 가 다르면 한 셀에 담을 수 없어, 그때는 막힙니다」)', (tester) async {
+      final (s, row) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
         insertionIndex: 0,
       );
-      posed(s, s.layerById(squashedCopy)!, track: squashed, fx: turnedOnce);
+      posed(s, s.layerById(copy)!, track: squashed, fx: turnedOnce);
       expect(
-        wayOf(s, s.layerById(squashedCopy)!),
-        isA<ReferenceMoveWaits>(),
-        reason: 'baked in place, the cel would move under every use',
+        wayOf(s, row),
+        isA<ReferenceMoveWaits>().having(
+          (way) => way.why,
+          'why',
+          ReferenceWait.usesApart,
+        ),
+        reason: 'the row shows the picture where it is laid',
       );
+
+      posed(s, row, fx: turnedOnce);
+      expect(wayOf(s, row), bakes);
+      expect(
+        await tester.runAsync(
+          () => s.importDoors.bakeReferenceAsSeen(
+            cutId: s.requireActiveCut.id,
+            layerId: row.id,
+          ),
+        ),
+        isTrue,
+      );
+
+      final bakedCopy = s.layerById(copy)!;
+      expect([rowOf(s, row).mediaReference, bakedCopy.mediaReference], [
+        null,
+        null,
+      ]);
+      expect(bakedCopy.transformTrack, squashed);
+      // 100×60 turned 30° about (1170, 827): 116.6 × 102 across.
+      final ink = shown(s, bakedCopy)!;
+      expect(ink.left, closeTo(1111.7, 1.5));
+      expect(ink.bottom, closeTo(878, 1.5));
+
+      s.undo();
+      expect(rowOf(s, row).mediaReference, isNotNull);
+      expect(s.layerById(copy)!.mediaReference, isNotNull);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });
@@ -1030,20 +1093,70 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
-    testWidgets('a movie whose cel another use shows waits — its cels would '
-        'sweep that use\'s exposures away (F-374-Q10)', (tester) async {
+    testWidgets('🎯a movie whose cel another use shows is rasterized with it '
+        '— both expose ONE bank of cels, a cel for each picture of the movie '
+        'they show, and one undo gives both back (F-374-Q10)', (
+      tester,
+    ) async {
       final (s, row, _) = await placed(tester);
       final copy = s.cutCommandCoordinator.linkDuplicateLayer(
         cutId: s.requireActiveCut.id,
         layerId: row.id,
         insertionIndex: 0,
       );
-      final shared = s.layerById(copy)!;
+      final before = [s.layerById(row.id)!, s.layerById(copy)!];
 
-      expect(await rasterized(tester, s, row), isFalse);
+      expect(await rasterized(tester, s, row), isTrue);
 
-      expect(s.layerById(row.id)!.mediaReference, isNotNull);
-      expect(s.layerById(copy), shared);
+      final baked = s.layerById(row.id)!;
+      final bakedCopy = s.layerById(copy)!;
+      expect([baked.mediaReference, bakedCopy.mediaReference], [null, null]);
+      expect(bakedCopy.frames, baked.frames);
+      expect(
+        baked.frames,
+        hasLength(drawingBlocks(before.first.timeline).single.length),
+        reason: 'a cel a position, as the row alone takes — not one more',
+      );
+      expect(
+        bakedCopy.timeline,
+        baked.timeline,
+        reason: 'the same pictures, the same cels',
+      );
+
+      s.undo();
+      expect([s.layerById(row.id)!, s.layerById(copy)!], before);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a movie\'s uses each take their own way: the copy its '
+        'transform cannot carry shows its frames where its fx turns them, '
+        'in cels of its own — and a picture both show is one cel '
+        '(F-374-Q10)', (tester) async {
+      final (s, row, _) = await placed(tester);
+      final copy = s.cutCommandCoordinator.linkDuplicateLayer(
+        cutId: s.requireActiveCut.id,
+        layerId: row.id,
+        insertionIndex: 0,
+      );
+      squashedAndTurning(s, s.layerById(copy)!);
+
+      expect(await rasterized(tester, s, row), isTrue);
+
+      final baked = s.layerById(row.id)!;
+      final bakedCopy = s.layerById(copy)!;
+      FrameId celAt(Layer layer, int frame) =>
+          resolveExposedFrameAt(layer, frame)!.id;
+      expect(bakedCopy.frames, baked.frames, reason: 'one bank');
+      expect(
+        celAt(bakedCopy, 0),
+        celAt(baked, 0),
+        reason: 'not turned yet: the picture the row shows there',
+      );
+      expect(celAt(bakedCopy, 12), isNot(celAt(baked, 12)));
+      expect(inkAt(s, bakedCopy, 12), turnedAQuarter);
+      expect(inkAt(s, baked, 12), const ui.Rect.fromLTRB(1138, 809, 1202, 845));
+      expect(bakedCopy.transformTrack, squashed);
       await tester.pump(const Duration(minutes: 1));
       await stopTheWarmer(tester, s);
     });

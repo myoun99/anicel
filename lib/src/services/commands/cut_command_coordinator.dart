@@ -764,12 +764,12 @@ class CutCommandCoordinator {
     );
   }
 
-  /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are
-  /// already its cels — once its reference fx's move is the row's own
-  /// ([carryReferenceMove]). The asset stays in the pool (유저 2026-09-11:
+  /// RASTERIZE (§6-f): nulls the media reference of every use of the
+  /// layer's cels ([referenceLetGo], F-374-Q10) — the pixels are already
+  /// their cels — once each use's reference fx's move is its own
+  /// ([letReferencesGo]). The asset stays in the pool (유저 2026-09-11:
   /// 「구워도 풀에 남음」). One undo step; no-op on non-reference layers,
-  /// and on a row whose move its transform cannot carry ([referenceLetGo]
-  /// — its cels take it, or it waits).
+  /// and where a cel has to take the picture first, or the uses wait.
   void rasterizeLayerReference({
     required CutId cutId,
     required LayerId layerId,
@@ -782,98 +782,83 @@ class CutCommandCoordinator {
     if (layer.mediaReference == null) {
       return;
     }
-    historyManager.runAsOneStep('Rasterize layer', () {
-      if (carryReferenceMove(cutId: cutId, layerId: layerId)) {
-        historyManager.execute(
-          RasterizeLayerReferenceCommand(
-            repository: repository,
-            cutId: cutId,
-            layerId: layerId,
-          ),
-        );
-      }
-    });
+    final way = referenceLetGoOf(cutId: cutId, layerId: layerId);
+    if (way is ReferenceMoveCarried && !way.bakes) {
+      historyManager.runAsOneStep(
+        'Rasterize layer',
+        () => letReferencesGo(way),
+      );
+    }
   }
 
   /// How RASTERIZE keeps where [layerId] shows its file ([referenceLetGo]),
-  /// asked of the project: what the rows wearing its head keep, and whether
-  /// another use shows its cels.
-  ///
-  /// A carried key's name is free where no OTHER use of the row holds it:
-  /// the row's own keys of that lane are the ones the carry replaces.
+  /// asked of the project: every use of its cels — its 겸용 link group, or
+  /// the row alone ([linkMirrorTargets]) — and whether a row that wears
+  /// their head and is none of them keeps keys of its own.
   ReferenceLetGo referenceLetGoOf({
     required CutId cutId,
     required LayerId layerId,
   }) {
     final project = repository.requireProject();
-    final layer = requireLayer(project, cutId: cutId, layerId: layerId);
-    final others = headMirrorTargets(
-      project,
-      cutId: cutId,
-      layerId: layerId,
-      cameraHead: true,
-    ).skip(1);
+    final uses = linkMirrorTargets(project, cutId: cutId, layerId: layerId);
+    Layer rowAt(({CutId cutId, LayerId layerId}) at) =>
+        requireLayer(project, cutId: at.cutId, layerId: at.layerId);
     return referenceLetGo(
-      cut: requireCut(project, cutId),
-      layer: layer,
-      others: (
-        keys: others.any(
-          (other) => requireLayer(
-            project,
-            cutId: other.cutId,
-            layerId: other.layerId,
-          ).transformTrack.isNotEmpty,
-        ),
-        cels:
-            project.linkRegistry.groupOf(cutId: cutId, layerId: layerId) !=
-            null,
-      ),
-      nameIsFree: (property, name) =>
-          transformTrackHoldingName(
-            cutId: cutId,
-            layerId: layerId,
-            property: property,
-            name: name,
-            excludeFramesOnSource: {
-              ...transformLaneOf(layer.transformTrack, property).keys.keys,
-            },
-          ) ==
-          null,
+      uses: [
+        for (final use in uses)
+          (cut: requireCut(project, use.cutId), layer: rowAt(use)),
+      ],
+      othersKeepKeys:
+          headMirrorTargets(
+                project,
+                cutId: cutId,
+                layerId: layerId,
+                cameraHead: true,
+              )
+              .where((row) => !uses.contains(row))
+              .any((row) => rowAt(row).transformTrack.isNotEmpty),
     );
   }
 
-  /// F-374-Q3: [layerId]'s reference fx's move carried into its own
-  /// transform ([ReferenceMoveKeyed]) through the transform's one write, and
-  /// its switch through the switch's (F-374-Q7 ①) — what a rasterize does
-  /// before it lets the reference go, a still's or a movie's. False when the
-  /// row's transform cannot carry it.
-  bool carryReferenceMove({required CutId cutId, required LayerId layerId}) {
-    final way = referenceLetGoOf(cutId: cutId, layerId: layerId);
-    if (way is! ReferenceMoveKeyed) {
-      return false;
+  /// F-374-Q3 · Q10: every use's reference fx's move carried into its own
+  /// transform — [way]'s tracks through the transform's one write — and the
+  /// switch they share through the switch's (F-374-Q7 ①): what a rasterize
+  /// does before it lets the references go, a still's or a movie's.
+  void carryReferenceMoves(ReferenceMoveCarried way) {
+    for (final (:use, :track, asShown: _) in way.uses) {
+      updateLayerTransformTrack(
+        cutId: use.cut.id,
+        layerId: use.layer.id,
+        transformTrack: track,
+        description: 'Rasterize layer',
+      );
     }
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
-    updateLayerTransformTrack(
-      cutId: cutId,
-      layerId: layerId,
-      transformTrack: way.track,
-      description: 'Rasterize layer',
-    );
-    if (way.enabled != layer.transformEnabled) {
+    if (way.switchOn) {
       historyManager.execute(
         UpdateLayerTransformEnabledCommand(
           repository: repository,
-          layerId: layerId,
-          transformEnabled: way.enabled,
+          layerId: way.uses.first.use.layer.id,
+          transformEnabled: true,
           description: 'Rasterize layer',
         ),
       );
     }
-    return true;
+  }
+
+  /// [way]'s uses let go of their references once their moves are their own
+  /// ([carryReferenceMoves]) — the end of a still's rasterize, keyed or
+  /// baked. A movie's references go with the cels that replace its one.
+  void letReferencesGo(ReferenceMoveCarried way) {
+    carryReferenceMoves(way);
+    for (final (:use, track: _, asShown: _) in way.uses) {
+      historyManager.execute(
+        RasterizeLayerReferenceCommand(
+          repository: repository,
+          cutId: use.cut.id,
+          layerId: use.layer.id,
+        ),
+      );
+    }
   }
 
   // ── the project setting commands: their own object ──────────────────

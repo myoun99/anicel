@@ -496,7 +496,14 @@ void main() {
   /// chain's and the name tag's span shifts left: every home moves through
   /// `LaneHome.shifted`. 🔬`clean_code_diff` against master (`7fe69eac7`,
   /// at 403) named the four added and the three gone of the two commits.
-  const wideSignatures = 404;
+  ///
+  /// ⚠️404 → 403 on 2026-10-18, following one down (F-374-Q10, every use of
+  /// a reference's cel rasterized with it): `_bakeMovieRowIntoCels` (seven)
+  /// left — a movie's rasterize plans each use of its cel
+  /// (`_plannedMovieUse`) and bakes them from the door that opened their
+  /// files. 🔬`clean_code_diff` against master (`38f473e11`, at 404) named
+  /// that one gone and nothing added.
+  const wideSignatures = 403;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -708,7 +715,18 @@ void main() {
   /// the update is a preview of what that answers. 🔬`clean_code_diff`
   /// against master (`7fe69eac7`, at 409) named that one gone and nothing
   /// added.
-  const longBodies = 408;
+  ///
+  /// ⚠️408 → 409 on 2026-10-18, named as the rule above asks (F-374-Q10,
+  /// every use of a reference's cel rasterized with it):
+  /// `ProjectImportDoors.rasterizeMovieReference` (66) opens each file the
+  /// uses of its cel show, once, and bakes them all through one bank — the
+  /// one row's tail `_bakeMovieRowIntoCels` held is planned a use apiece
+  /// now (`_plannedMovieUse`, folded by `_movieCelsOf`), and the door keeps
+  /// the bake's own call. 🔬`clean_code_diff` against master (`38f473e11`,
+  /// at 408) named that one added and nothing gone. ⛔Not split to fit:
+  /// the movies it opens it closes, in its own `finally` — a helper that
+  /// opened them would leave the closing to a scope it cannot see.
+  const longBodies = 409;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

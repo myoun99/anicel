@@ -644,6 +644,7 @@ void main() {
     'imSoundOnly': (s) => s.imSoundOnly,
     'bakeProgressRunning': (s) => s.bakeProgressRunning,
     'bakeProgressDone': (s) => s.bakeProgressDone,
+    'rasterizeLeftReferences': (s) => s.rasterizeLeftReferences,
     'pasteProgressRunning': (s) => s.pasteProgressRunning,
     'pasteProgressDone': (s) => s.pasteProgressDone,
     'mpFileMissing': (s) => s.mpFileMissing,

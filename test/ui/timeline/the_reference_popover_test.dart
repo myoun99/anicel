@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -21,11 +22,18 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/services/reference_move_carried.dart'
+    show ReferenceWait;
+import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart'
+    show DetailsDisclosure;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/model_vocabulary.dart'
+    show ReferenceWaitWords;
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
@@ -429,8 +437,9 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('a row that waits stays the reference it is, and no window '
-      'comes up for it (F-374-Q9)', (tester) async {
+  testWidgets('a row that waits stays the reference it is — no wait window '
+      'comes up for it, the notice that says why does (F-374-Q9 · Q11 '
+      '「막고 경고」)', (tester) async {
     final (s, rows) = await sessionWith(tester, ['bg_street.png']);
     final street = rows['bg_street.png']!;
     sheared(
@@ -442,10 +451,74 @@ void main() {
     final menuContext = await hostedContext(tester);
 
     unawaited(rasterizeReferenceRows(menuContext, s, [before]));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(waitWindow, findsNothing);
     expect(current(s, street), before);
+    expect(foldsOf(tester), {
+      ReferenceWait.sheared.labelFor(AppText.language): [before.name],
+    });
+  });
+
+  testWidgets('🎯the notice says each reason once, in its own words, over '
+      'every row it was said of — under the one line that says the rows '
+      'stayed references (F-374-Q11)', (tester) async {
+    final menuContext = await hostedContext(tester);
+    Layer row(String name) =>
+        Layer(id: LayerId(name), name: name, frames: const []);
+    String words(ReferenceWait why) => why.labelFor(AppText.language);
+
+    unawaited(
+      showReferenceWaits(menuContext, [
+        (row: row('a'), why: ReferenceWait.attached),
+        (row: row('b'), why: ReferenceWait.laidAsFitted),
+        (row: row('c'), why: ReferenceWait.sheared),
+        (row: row('d'), why: ReferenceWait.othersKeepKeys),
+        (row: row('e'), why: ReferenceWait.usesApart),
+        (row: row('f'), why: ReferenceWait.sheared),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(AppText.strings.rasterizeLeftReferences),
+      findsOneWidget,
+    );
+    expect(foldsOf(tester), {
+      words(ReferenceWait.attached): ['a'],
+      words(ReferenceWait.laidAsFitted): ['b'],
+      words(ReferenceWait.sheared): ['c', 'f'],
+      words(ReferenceWait.othersKeepKeys): ['d'],
+      words(ReferenceWait.usesApart): ['e'],
+    });
+  });
+
+  testWidgets('the notice says why in the program\'s language — a reason '
+      'reads its words from the tables, not its English (F-374-Q11)', (
+    tester,
+  ) async {
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+      notationLanguage: AppLanguage.ko,
+    );
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final menuContext = await hostedContext(tester);
+    final words = ReferenceWait.attached.labelFor(AppLanguage.ko);
+    expect(words, isNot(ReferenceWait.attached.label), reason: 'the premise');
+
+    unawaited(
+      showReferenceWaits(menuContext, [
+        (
+          row: Layer(id: const LayerId('a'), name: 'a', frames: const []),
+          why: ReferenceWait.attached,
+        ),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(foldsOf(tester), {
+      words: ['a'],
+    });
   });
 
   test('the pool state is where the file\'s bytes live — carried or linked',
@@ -471,3 +544,15 @@ final popover = find.byKey(const ValueKey<String>('layer-reference-popover'));
 final waitWindow = find.byKey(
   const ValueKey<String>('reference-rasterize-progress'),
 );
+
+/// The folds of the notice a rasterize that left rows waiting puts up: what
+/// each says, over the rows it says it of.
+Map<String, List<String>> foldsOf(WidgetTester tester) => {
+  for (final fold in tester.widgetList<DetailsDisclosure>(
+    find.descendant(
+      of: find.byKey(const ValueKey<String>('reference-rasterize-waits')),
+      matching: find.byType(DetailsDisclosure),
+    ),
+  ))
+    fold.heading: fold.lines,
+};

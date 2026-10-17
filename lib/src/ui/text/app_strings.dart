@@ -143,6 +143,12 @@ enum AppStrings {
   String exclusionReason(String key, String fallback) =>
       _values['exclusionReason.$key'] ?? fallback;
 
+  /// Why a rasterize left a row the reference it is, and what gets it past
+  /// (F-374-Q11), by `ReferenceWait.name` — the contract [exclusionReason]
+  /// keeps: the English is the enum's own, the other languages are here.
+  String referenceWait(String key, String fallback) =>
+      _values['referenceWait.$key'] ?? fallback;
+
   /// A file type's name in the save window, by the extensions it writes —
   /// the contract of [importWarning]: the English is the group's own label
   /// (`file_type_groups.dart`), the other languages are here (F-273).
@@ -497,6 +503,11 @@ enum AppStrings {
   /// or by the reference button's rasterize.
   String get bakeProgressRunning => _s('bakeProgressRunning');
   String get bakeProgressDone => _s('bakeProgressDone');
+
+  /// The notice over a rasterize that left rows the references they are
+  /// (F-374-Q11 「막고 경고」): its line. Why each row waits, with what gets
+  /// it past, is [referenceWait]'s.
+  String get rasterizeLeftReferences => _s('rasterizeLeftReferences');
   String get pasteProgressRunning => _s('pasteProgressRunning');
   String get pasteProgressDone => _s('pasteProgressDone');
   String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
@@ -2023,6 +2034,7 @@ enum AppStrings {
     'resizeProgressDone': 'Resized',
     'bakeProgressRunning': 'Rasterizing…',
     'bakeProgressDone': 'Rasterized',
+    'rasterizeLeftReferences': 'Some layers were left as references.',
     'pasteProgressRunning': 'Pasting…',
     'pasteProgressDone': 'Pasted',
     'unsavedAutosaveTitle': 'Save your project',
@@ -3199,6 +3211,28 @@ enum AppStrings {
     'resizeProgressDone': 'サイズ変更しました',
     'bakeProgressRunning': 'ラスタライズ中…',
     'bakeProgressDone': 'ラスタライズしました',
+    'rasterizeLeftReferences': '参照のまま残したレイヤーがあります。',
+    'referenceWait.attached':
+        'アタッチされたレイヤーはベースのトランスフォームで置かれるため、'
+        '動く参照を自分のキーに移せません。'
+        'アタッチを解除するとラスタライズできます。',
+    'referenceWait.laidAsFitted':
+        '以前のバージョンで合わせた大きさに置かれたファイルのため、'
+        '動く参照をキーに移せません。'
+        'ファイルを置き直すとラスタライズできます。',
+    'referenceWait.sheared':
+        '片方の軸だけ伸ばした拡大率の下での90°単位でない回転は、'
+        'トランスフォームでは描けません。'
+        '拡大率をそろえるか90°単位で回すとラスタライズできます。',
+    'referenceWait.othersKeepKeys':
+        'トランスフォームのスイッチを共有する別のレイヤーが、'
+        'オフの間のキーを持っているため、'
+        'スイッチを入れるとそのキーが表示されます。'
+        '先にトランスフォームをオンにするとラスタライズできます。',
+    'referenceWait.usesApart':
+        'リンクされたレイヤーが同じセルの絵を別々の位置に見せているため、'
+        'セル1枚に収められません。'
+        '参照を同じ位置にそろえるとラスタライズできます。',
     'pasteProgressRunning': 'ペースト中…',
     'pasteProgressDone': 'ペーストしました',
     'unsavedAutosaveTitle': 'プロジェクトを保存',
@@ -4756,6 +4790,23 @@ enum AppStrings {
     'resizeProgressDone': '크기 변경 완료',
     'bakeProgressRunning': '래스터라이즈 중…',
     'bakeProgressDone': '래스터라이즈 완료',
+    'rasterizeLeftReferences': '참조로 남긴 레이어가 있습니다.',
+    'referenceWait.attached':
+        '어태치된 레이어는 베이스의 변형으로 놓여, 움직이는 참조를 자기 키로 '
+        '옮길 수 없습니다. 어태치를 해제하면 래스터라이즈됩니다.',
+    'referenceWait.laidAsFitted':
+        '이전 버전에서 맞춘 크기로 깔린 파일이라, 움직이는 참조를 키로 옮길 수 '
+        '없습니다. 파일을 다시 놓으면 래스터라이즈됩니다.',
+    'referenceWait.sheared':
+        '한 축만 늘인 배율 아래에서 90° 단위가 아닌 회전은 변형이 그릴 수 '
+        '없습니다. 배율을 고르게 하거나 90° 단위로 돌리면 래스터라이즈됩니다.',
+    'referenceWait.othersKeepKeys':
+        '변형 스위치를 같이 쓰는 다른 레이어가 꺼 둔 동안의 키를 갖고 있어, '
+        '스위치를 켜면 그 키가 보이게 됩니다. 변형을 먼저 켜면 '
+        '래스터라이즈됩니다.',
+    'referenceWait.usesApart':
+        '링크된 레이어들이 같은 셀의 그림을 서로 다른 자리에 보여, 셀 한 장에 '
+        '담을 수 없습니다. 참조를 같은 자리로 맞추면 래스터라이즈됩니다.',
     'pasteProgressRunning': '붙여넣는 중…',
     'pasteProgressDone': '붙여넣음',
     'unsavedAutosaveTitle': '프로젝트 저장',
@@ -6314,6 +6365,27 @@ enum AppStrings {
     'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
     'bakeProgressDone': 'Pixellisé',
+    'rasterizeLeftReferences': 'Certains calques restent des références.',
+    'referenceWait.attached':
+        'Un calque attaché se place selon la Transformation de sa base. Une '
+        'Référence qui bouge ne peut donc pas devenir ses propres clés. '
+        'Détachez-le pour le pixelliser.',
+    'referenceWait.laidAsFitted':
+        'Ce fichier a été posé à une taille ajustée par une version '
+        'antérieure. Une Référence qui bouge ne peut donc pas devenir des '
+        'clés. Replacez le fichier pour le pixelliser.',
+    'referenceWait.sheared':
+        'Une rotation qui n’est pas un multiple de 90° sous une Échelle '
+        'étirée sur un seul axe donne une forme qu’aucune Transformation ne '
+        'dessine. Égalisez l’Échelle ou tournez par 90° pour pixelliser.',
+    'referenceWait.othersKeepKeys':
+        'Un autre calque qui partage cet interrupteur de Transformation garde '
+        'ses propres clés tant qu’il est éteint, et l’allumer les montrerait. '
+        'Allumez d’abord la Transformation pour pixelliser.',
+    'referenceWait.usesApart':
+        'Les calques liés montrent l’image de ce cellulo à des endroits '
+        'différents, et un cellulo la garde à un seul. Alignez leur '
+        'Référence pour pixelliser.',
     'pasteProgressRunning': 'Collage…',
     'pasteProgressDone': 'Collé',
     'unsavedAutosaveTitle': 'Enregistrez votre projet',
@@ -7976,6 +8048,22 @@ enum AppStrings {
     'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
     'bakeProgressDone': '栅格化完成',
+    'rasterizeLeftReferences': '部分图层仍保留为参照。',
+    'referenceWait.attached':
+        '附属图层由其基底的变换放置，移动的参照无法变成它自己的关键帧。'
+        '解除附属即可栅格化。',
+    'referenceWait.laidAsFitted':
+        '此文件由旧版本按适配尺寸放置，移动的参照无法变成关键帧。'
+        '重新放置文件即可栅格化。',
+    'referenceWait.sheared':
+        '在只拉伸一个轴的缩放下，非 90° 倍数的旋转无法用变换绘制。'
+        '统一缩放或按 90° 旋转即可栅格化。',
+    'referenceWait.othersKeepKeys':
+        '共用此变换开关的另一个图层在关闭期间保留了自己的关键帧，'
+        '打开开关会显示它们。先打开变换即可栅格化。',
+    'referenceWait.usesApart':
+        '链接的图层在不同位置显示同一张赛璐珞的画面，'
+        '一张赛璐珞只能放在一个位置。将参照对齐到同一位置即可栅格化。',
     'pasteProgressRunning': '粘贴中…',
     'pasteProgressDone': '已粘贴',
     'unsavedAutosaveTitle': '保存你的项目',

@@ -42,9 +42,10 @@ void main() {
     bool transformEnabled = true,
     LayerId? attachedTo,
     String file = '/paper.png',
+    String id = 'paper',
   }) => Layer(
-    id: const LayerId('paper'),
-    name: 'paper',
+    id: LayerId(id),
+    name: id,
     frames: [Frame(id: const FrameId('p'), duration: 1, strokes: const [])],
     timeline: {from: const TimelineExposure.drawing(FrameId('p'), length: 1)},
     mediaReference: MediaReference(
@@ -67,7 +68,7 @@ void main() {
     canvasSize: canvas,
   );
 
-  ({TransformTrack track, bool enabled})? carriedWithSwitch(
+  ReferenceCarry carryOf(
     Layer row, {
     bool Function(TransformPropertyId property, String name)? nameIsFree,
   }) => transformCarryingReferenceMove(
@@ -75,6 +76,23 @@ void main() {
     layer: row,
     nameIsFree: nameIsFree ?? (property, name) => true,
   );
+
+  ({TransformTrack track, bool enabled})? carriedWithSwitch(
+    Layer row, {
+    bool Function(TransformPropertyId property, String name)? nameIsFree,
+  }) => switch (carryOf(row, nameIsFree: nameIsFree)) {
+    ReferenceCarried(:final track, :final enabled) => (
+      track: track,
+      enabled: enabled,
+    ),
+    ReferenceUncarried() => null,
+  };
+
+  /// Why [row]'s own transform cannot carry its move — null where it can.
+  ReferenceWait? whyUncarried(Layer row) => switch (carryOf(row)) {
+    ReferenceUncarried(:final why) => why,
+    ReferenceCarried() => null,
+  };
 
   TransformTrack? carried(
     Layer row, {
@@ -467,29 +485,29 @@ void main() {
     expect(valuesOf(track.scale), {0: CanvasPoint(x: 1, y: 2)});
     expect(valuesOf(track.rotation), {5: 90.0});
     expect(strayed(quarter, track, frames(8)), lessThan(1e-9));
-    expect(carried(turnedOnceBy(30)), isNull);
+    expect(whyUncarried(turnedOnceBy(30)), ReferenceWait.sheared);
   });
 
   test('a row scaled unevenly under a picture turned other than by a '
-      'quarter would SHEAR it, which no pose does — nothing carries it '
-      '(F-374-Q7)', () {
+      'quarter would SHEAR it, which no pose does — nothing carries it, '
+      'and that is why (F-374-Q7 · Q11)', () {
     final uneven = TransformTrack.empty().copyWith(
       scale: PropertyTrack<CanvasPoint>().withKey(0, CanvasPoint(x: 2, y: 1)),
     );
     final turned = TransformPose(center: offMiddle, rotationDegrees: 30);
 
     expect(
-      carried(
+      whyUncarried(
         paper(
           laid: TransformPose(center: offMiddle),
           pose: turned,
           own: uneven,
         ),
       ),
-      isNull,
+      ReferenceWait.sheared,
     );
     expect(
-      carried(
+      whyUncarried(
         paper(
           laid: TransformPose(center: offMiddle),
           fx: TransformTrack.empty().copyWith(
@@ -498,11 +516,11 @@ void main() {
           own: uneven,
         ),
       ),
-      isNull,
+      ReferenceWait.sheared,
       reason: 'a quarter turn keyed over frames passes every turn between',
     );
     expect(
-      carried(
+      whyUncarried(
         paper(
           laid: TransformPose(center: offMiddle),
           pose: turned,
@@ -513,7 +531,7 @@ void main() {
           ),
         ),
       ),
-      isNull,
+      ReferenceWait.sheared,
       reason: 'frame by frame, as key by key',
     );
   });
@@ -551,14 +569,14 @@ void main() {
   test('an attach row stands where its base\'s transform puts it — its own '
       'transform cannot carry the move (F-374-Q7 ②)', () {
     expect(
-      carried(
+      whyUncarried(
         paper(
           laid: TransformPose(center: middle),
           pose: TransformPose(center: CanvasPoint(x: 260, y: 150)),
           attachedTo: const LayerId('a'),
         ),
       ),
-      isNull,
+      ReferenceWait.attached,
     );
   });
 
@@ -567,19 +585,19 @@ void main() {
     final moved = TransformPose(center: CanvasPoint(x: 260, y: 150));
 
     expect(
-      carried(
+      whyUncarried(
         paper(
           laid: TransformPose(center: middle, rotationDegrees: 10),
           pose: moved,
         ),
       ),
-      isNull,
+      ReferenceWait.laidAsFitted,
     );
     expect(
-      carried(
+      whyUncarried(
         paper(laid: TransformPose(center: middle, scaleX: 0), pose: moved),
       ),
-      isNull,
+      ReferenceWait.laidAsFitted,
     );
   });
 
@@ -607,7 +625,8 @@ void main() {
     expect(off.enabled, isFalse);
   });
 
-  group('referenceLetGo — keys, the cels, or waiting (F-374-Q7)', () {
+  group('referenceLetGo — keys, the cels, or waiting, every use of the '
+      'cel together (F-374-Q7 · Q10 · Q11)', () {
     final laid = TransformPose(center: middle);
     final fitted = TransformPose.uniform(center: middle, zoom: 0.5);
     final uneven = TransformTrack.empty().copyWith(
@@ -618,118 +637,282 @@ void main() {
           .withKey(0, middle)
           .withKey(24, CanvasPoint(x: 260, y: 150)),
     );
-
-    ReferenceLetGo wayOf(
-      Layer row, {
-      bool othersKeepKeys = false,
-      bool celsShared = false,
-    }) => referenceLetGo(
-      cut: cutOf(row),
-      layer: row,
-      others: (keys: othersKeepKeys, cels: celsShared),
-      nameIsFree: (property, name) => true,
+    final turning = TransformTrack.empty().copyWith(
+      rotation: PropertyTrack<double>().withKey(0, 0).withKey(12, 30),
     );
+    final kept = TransformTrack.empty().copyWith(
+      rotation: PropertyTrack<double>().withKey(0, 45),
+    );
+    const base = LayerId('a');
+
+    ReferenceLetGo wayOf(List<Layer> uses, {bool othersKeepKeys = false}) =>
+        referenceLetGo(
+          uses: [for (final use in uses) (cut: cutOf(use), layer: use)],
+          othersKeepKeys: othersKeepKeys,
+        );
+
+    ReferenceMoveCarried goes(
+      List<Layer> uses, {
+      bool othersKeepKeys = false,
+    }) => switch (wayOf(uses, othersKeepKeys: othersKeepKeys)) {
+      final ReferenceMoveCarried way => way,
+      ReferenceMoveWaits(:final why) => fail('the uses wait: $why'),
+    };
+
+    ReferenceWait? whyWaits(List<Layer> uses, {bool othersKeepKeys = false}) =>
+        switch (wayOf(uses, othersKeepKeys: othersKeepKeys)) {
+          ReferenceMoveWaits(:final why) => why,
+          ReferenceMoveCarried() => null,
+        };
 
     test('a row its transform carries the move of takes it as keys — the '
-        'track the carry makes, its switch on', () {
+        'track the carry makes, the switch as it was', () {
       final row = paper(laid: laid, pose: fitted);
 
-      final way = wayOf(row);
+      final way = goes([row]);
 
-      expect(way, isA<ReferenceMoveKeyed>());
-      way as ReferenceMoveKeyed;
-      expect(way.track, carried(row));
-      expect(way.enabled, isTrue);
+      expect(way.uses.single.use.layer, row);
+      expect(way.uses.single.track, carried(row));
+      expect(way.bakes, isFalse);
+      expect(way.switchOn, isFalse, reason: 'it is on already');
     });
 
     test('🎯① the switch comes on where it shows nothing new on the rows '
-        'wearing the head with it; where one keeps keys of its own the row '
-        'bakes instead — and waits where its cels are shared too '
-        '(F-374-Q10)', () {
+        'wearing the head with it; where a row that is no use of the cel '
+        'keeps keys of its own the row bakes instead — and waits, saying '
+        'so, where its cel cannot take the move (F-374-Q10)', () {
       final off = paper(laid: laid, pose: fitted, transformEnabled: false);
 
-      final alone = wayOf(off);
-      expect(alone, isA<ReferenceMoveKeyed>());
-      expect((alone as ReferenceMoveKeyed).enabled, isTrue);
-      expect(wayOf(off, othersKeepKeys: true), isA<ReferenceMoveBaked>());
+      expect(goes([off]).switchOn, isTrue);
+      final baked = goes([off], othersKeepKeys: true);
+      expect(baked.bakes, isTrue);
+      expect(baked.switchOn, isFalse);
+      expect(baked.uses.single.track, off.transformTrack);
       expect(
-        wayOf(off, othersKeepKeys: true, celsShared: true),
-        isA<ReferenceMoveWaits>(),
+        whyWaits([
+          paper(laid: laid, fx: moving, transformEnabled: false),
+        ], othersKeepKeys: true),
+        ReferenceWait.othersKeepKeys,
       );
     });
 
     test('a switch that stays as it is shows no other row anything — keys '
         'kept on the rows wearing the head do not stop the keys', () {
       expect(
-        wayOf(paper(laid: laid, pose: fitted), othersKeepKeys: true),
-        isA<ReferenceMoveKeyed>(),
+        goes([paper(laid: laid, pose: fitted)], othersKeepKeys: true).bakes,
+        isFalse,
       );
-      final standing = wayOf(
+      final standing = goes([
         paper(laid: laid, transformEnabled: false),
-        othersKeepKeys: true,
-        celsShared: true,
-      );
-      expect(standing, isA<ReferenceMoveKeyed>());
-      expect((standing as ReferenceMoveKeyed).enabled, isFalse);
+      ], othersKeepKeys: true);
+      expect(standing.bakes, isFalse);
+      expect(standing.switchOn, isFalse);
     });
 
     test('🎯②③ a still reference its transform cannot carry bakes — an '
-        'attach row, a shear — and one that MOVES waits (F-374-Q9)', () {
-      final attached = paper(
+        'attach row, a shear — and one that MOVES waits, saying why '
+        '(F-374-Q9 · Q11)', () {
+      final attached = goes([
+        paper(laid: laid, pose: fitted, attachedTo: base),
+      ]);
+      final sheared = goes([
+        paper(
+          laid: laid,
+          pose: TransformPose(center: middle, rotationDegrees: 30),
+          own: uneven,
+        ),
+      ]);
+
+      expect(attached.bakes, isTrue);
+      expect(sheared.bakes, isTrue);
+      expect(
+        whyWaits([paper(laid: laid, fx: moving, attachedTo: base)]),
+        ReferenceWait.attached,
+      );
+      expect(
+        whyWaits([paper(laid: laid, fx: turning, own: uneven)]),
+        ReferenceWait.sheared,
+      );
+    });
+
+    test('a movie its transform cannot carry bakes moving or not — a cel a '
+        'position — and one it carries takes the keys', () {
+      expect(
+        goes([
+          paper(laid: laid, fx: moving, attachedTo: base, file: '/clip.mp4'),
+        ]).bakes,
+        isTrue,
+      );
+      expect(
+        goes([paper(laid: laid, pose: fitted, file: '/clip.mp4')]).bakes,
+        isFalse,
+      );
+    });
+
+    test('🎯every use of a still takes its own move as keys, and where the '
+        'switch they share comes on, the keys each kept while it was off '
+        'give way — a use with no move of its own as well (F-374-Q10)', () {
+      final row = paper(laid: laid, pose: fitted, transformEnabled: false);
+      final copy = paper(
+        id: 'copy',
+        laid: laid,
+        pose: TransformPose(center: offMiddle),
+        own: kept,
+        transformEnabled: false,
+      );
+      final standing = paper(
+        id: 'standing',
+        laid: laid,
+        own: kept,
+        transformEnabled: false,
+      );
+
+      final way = goes([row, copy, standing]);
+
+      expect(way.switchOn, isTrue);
+      expect(way.bakes, isFalse);
+      expect([for (final use in way.uses) use.track], [
+        carried(row),
+        carried(copy),
+        TransformTrack.empty(),
+      ]);
+    });
+
+    test('🎯a still whose one cel has to take the picture takes it where '
+        'every use shows it at one place — and where they show it apart, '
+        'a use that is no reference among them, every use waits '
+        '(F-374-Q10: 「쓰임마다 참조 fx 가 다르면 한 셀에 담을 수 없어, '
+        '그때는 막힙니다」)', () {
+      final attached = paper(laid: laid, pose: fitted, attachedTo: base);
+      final copy = paper(id: 'copy', laid: laid, pose: fitted, own: kept);
+
+      final way = goes([attached, copy]);
+
+      expect([for (final use in way.uses) use.asShown], [true, true]);
+      expect([for (final use in way.uses) use.track], [
+        attached.transformTrack,
+        kept,
+      ]);
+      expect(way.switchOn, isFalse);
+      expect(
+        whyWaits([
+          attached,
+          paper(
+            id: 'copy',
+            laid: laid,
+            pose: TransformPose.uniform(center: middle, zoom: 0.25),
+          ),
+        ]),
+        ReferenceWait.usesApart,
+      );
+      expect(
+        whyWaits([
+          attached,
+          paper(id: 'drawn', laid: laid).copyWith(mediaReference: null),
+        ]),
+        ReferenceWait.usesApart,
+      );
+    });
+
+    test('a use whose still MOVES on a transform that cannot carry it holds '
+        'every use back, a use whose own could — the keys are all or none '
+        '(F-374-Q10 · Q11)', () {
+      final carriable = paper(laid: laid, fx: moving);
+
+      expect(
+        whyWaits([
+          carriable,
+          paper(id: 'copy', laid: laid, fx: moving, attachedTo: base),
+        ]),
+        ReferenceWait.attached,
+      );
+      expect(
+        whyWaits([
+          carriable,
+          paper(id: 'copy', laid: laid, pose: fitted, attachedTo: base),
+        ]),
+        ReferenceWait.attached,
+        reason: 'the cel would have to take a move one use makes',
+      );
+    });
+
+    test('🎯a movie\'s uses each take their own way — the keys where a '
+        'transform carries the move, its frames as shown where none does — '
+        'and where the switch comes on, the keys a use showing its frames '
+        'kept while it was off give way (F-374-Q10)', () {
+      final keyedMovie = paper(
         laid: laid,
         pose: fitted,
-        attachedTo: const LayerId('a'),
+        file: '/clip.mp4',
+        transformEnabled: false,
       );
-      final sheared = paper(
-        laid: laid,
-        pose: TransformPose(center: middle, rotationDegrees: 30),
-        own: uneven,
-      );
-
-      expect(wayOf(attached), isA<ReferenceMoveBaked>());
-      expect(wayOf(sheared), isA<ReferenceMoveBaked>());
-      expect(
-        wayOf(
-          paper(
-            laid: laid,
-            fx: moving,
-            attachedTo: const LayerId('a'),
-          ),
-        ),
-        isA<ReferenceMoveWaits>(),
-      );
-    });
-
-    test('a movie its transform cannot carry bakes moving or not — a cel '
-        'a position — and waits where its cels are shared, the keys '
-        'carrying the move or not: its one cel gives way to cels of its '
-        'frames (F-374-Q10)', () {
-      final movie = paper(
+      final attachedMovie = paper(
+        id: 'copy',
         laid: laid,
         fx: moving,
-        attachedTo: const LayerId('a'),
+        own: kept,
+        attachedTo: base,
         file: '/clip.mp4',
+        transformEnabled: false,
       );
-      final keyedMovie = paper(laid: laid, pose: fitted, file: '/clip.mp4');
 
-      expect(wayOf(movie), isA<ReferenceMoveBaked>());
-      expect(wayOf(movie, celsShared: true), isA<ReferenceMoveWaits>());
-      expect(wayOf(keyedMovie), isA<ReferenceMoveKeyed>());
-      expect(wayOf(keyedMovie, celsShared: true), isA<ReferenceMoveWaits>());
+      final way = goes([keyedMovie, attachedMovie]);
+
+      expect(way.switchOn, isTrue);
+      expect([for (final use in way.uses) use.asShown], [false, true]);
+      expect([for (final use in way.uses) use.track], [
+        carried(keyedMovie),
+        TransformTrack.empty(),
+      ]);
+
+      final showing = goes([
+        keyedMovie,
+        attachedMovie,
+      ], othersKeepKeys: true);
+      expect(showing.switchOn, isFalse);
+      expect([for (final use in showing.uses) use.asShown], [true, true]);
+      expect([for (final use in showing.uses) use.track], [
+        keyedMovie.transformTrack,
+        kept,
+      ]);
     });
 
-    test('shared cels stop a bake, never the keys', () {
-      expect(
-        wayOf(paper(laid: laid, pose: fitted), celsShared: true),
-        isA<ReferenceMoveKeyed>(),
-      );
-      expect(
-        wayOf(
-          paper(laid: laid, pose: fitted, attachedTo: const LayerId('a')),
-          celsShared: true,
+    test('the uses are one naming space: a name two of them carry is '
+        'neither\'s, one another use keeps on its own track stays its own, '
+        'and one only keys that give way held is free', () {
+      TransformTrack named(String name) => TransformTrack.empty().copyWith(
+        position: PropertyTrack(
+          keys: {
+            0: PropertyKey(middle, name: name),
+            12: PropertyKey(CanvasPoint(x: 260, y: 150)),
+          },
         ),
-        isA<ReferenceMoveWaits>(),
       );
+      String? nameOn(ReferenceUseLetGo use, int frame) =>
+          use.track.position.keys[frame]?.name;
+      final row = paper(laid: laid, fx: named('up'));
+      final holding = TransformTrack.empty().copyWith(
+        position: PropertyTrack(
+          keys: {3: PropertyKey(offMiddle, name: 'up')},
+        ),
+      );
+
+      final both = goes([row, paper(id: 'copy', laid: laid, fx: named('up'))]);
+      expect([for (final use in both.uses) nameOn(use, 0)], [null, null]);
+
+      final alone = goes([row, paper(id: 'copy', laid: laid)]);
+      expect(nameOn(alone.uses.first, 0), 'up');
+
+      final taken = goes([row, paper(id: 'copy', laid: laid, own: holding)]);
+      expect(nameOn(taken.uses.first, 0), isNull);
+      expect(nameOn(taken.uses.last, 3), 'up');
+
+      final freed = goes([
+        paper(laid: laid, fx: named('up'), transformEnabled: false),
+        paper(id: 'copy', laid: laid, own: holding, transformEnabled: false),
+      ]);
+      expect(nameOn(freed.uses.first, 0), 'up');
+      expect(freed.uses.last.track, TransformTrack.empty());
     });
   });
 }

@@ -7,96 +7,268 @@ import '../models/movie_cel.dart' show isMovieReference;
 import '../models/property_track.dart';
 import '../models/transform_track.dart';
 import 'cut_frame_composite_plan.dart'
-    show layerIdentityPose, resolveLayerAnchorPointAt, resolveLayerPoseAt;
+    show
+        layerIdentityPose,
+        referenceMoveAt,
+        resolveLayerAnchorPointAt,
+        resolveLayerPoseAt;
 import 'import/camera_track.dart' show transformTrackOfFramePoses;
 import 'layer_pose_matrix.dart'
     show LayerPlacement, LayerPoseSample, placementOf;
 
-/// How RASTERIZE keeps where [layer] shows its file as it lets the reference
-/// go — ⛔ONE answer for every door that rasterizes (F-374-Q7, 유저
-/// 2026-10-17: 「①은 스위치를 켜고 키로, ②③만 굽는다」):
+/// One use of a reference row's cels — a member of its 겸용 link group, or
+/// the row alone — with the cut it stands in.
+typedef ReferenceUse = ({Cut cut, Layer layer});
+
+/// How RASTERIZE keeps where a reference row shows its file as it lets the
+/// reference go — ⛔ONE answer for every door that rasterizes (F-374-Q7,
+/// 유저 2026-10-17: 「①은 스위치를 켜고 키로, ②③만 굽는다」), asked of every
+/// one of [uses] together:
 ///
-/// * the move becomes the row's own transform
+/// * a use's move becomes its own transform
 ///   ([transformCarryingReferenceMove]) — F-374-Q3's keys, its switch on;
-/// * where that transform cannot carry it, the cels take the picture where
-///   the row shows it ([ReferenceMoveBaked]);
-/// * and the rows F-374-Q9 · Q10 ask about wait, left the references they
-///   are ([ReferenceMoveWaits]).
+/// * where a transform cannot carry it, the cels take the picture where
+///   the use shows it ([ReferenceUseLetGo]'s `asShown`);
+/// * and where the cels cannot either, every use waits, the reference it
+///   is, and the row says why ([ReferenceMoveWaits] — F-374-Q11, 유저
+///   2026-10-17: 「막고 경고」).
 ///
-/// [others] is what the rows beside it hold ([OthersHold]).
+/// 🗣️F-374-Q10 (유저 2026-10-17: 「같은 셀을 보는 쓰임을 전부 같이」 —
+/// 「겸용컷이니까 다른컷이 바뀌는거는 인지하고있는게 사용자 기준」): the uses
+/// of one cel let go of it TOGETHER. Their switch is one — the row's HEAD
+/// (유저 2026-08-06) — so where it comes on, the keys each use kept while it
+/// was off give way. A still's cel is ONE picture
+/// (`SwapLayerReferenceCommand`): baked in place, every use shows it moved,
+/// so its uses take their moves as keys all or none, and the cel takes the
+/// picture only where every use shows it at one place (Q10's cost: 「쓰임마다
+/// 참조 fx 가 다르면 한 셀에 담을 수 없어, 그때는 막힙니다」). A movie's cels
+/// are made a position apiece, so each of its uses takes its own way.
+///
+/// [othersKeepKeys]: a row that wears their head but shows none of their
+/// cels — a track's conte row (`headMirrorRows`) — keeps transform keys of
+/// its own, which the switch coming on would show. Q10 answered for the
+/// uses alone, so those keys never give way: the uses bake instead, or
+/// wait.
 ReferenceLetGo referenceLetGo({
-  required Cut cut,
-  required Layer layer,
-  required OthersHold others,
-  required bool Function(TransformPropertyId property, String name)
-  nameIsFree,
+  required List<ReferenceUse> uses,
+  required bool othersKeepKeys,
 }) {
-  final carried = transformCarryingReferenceMove(
-    cut: cut,
-    layer: layer,
-    nameIsFree: nameIsFree,
+  final carries = [
+    for (final use in uses)
+      transformCarryingReferenceMove(
+        cut: use.cut,
+        layer: use.layer,
+        nameIsFree: (_, _) => true,
+      ),
+  ];
+  final turnsOn = [
+    for (final (use, carry) in carries.indexed)
+      carry is ReferenceCarried &&
+          carry.enabled &&
+          !uses[use].layer.transformEnabled,
+  ];
+  final uncarried = carries.whereType<ReferenceUncarried>().firstOrNull;
+  final movie = uses.any((use) => isMovieReference(use.layer));
+  final showsOthers = othersKeepKeys && turnsOn.contains(true);
+  final keyed = [
+    for (final carry in carries)
+      !showsOthers &&
+          carry is ReferenceCarried &&
+          (movie || uncarried == null),
+  ];
+  if (!movie && !keyed.contains(true)) {
+    final why = _whyTheCelWaits(
+      uses,
+      keysWait: uncarried?.why ?? ReferenceWait.othersKeepKeys,
+    );
+    if (why != null) {
+      return ReferenceMoveWaits(why);
+    }
+  }
+  final on = [
+    for (final (use, key) in keyed.indexed) key && turnsOn[use],
+  ].contains(true);
+  return ReferenceMoveCarried(
+    _usesLetGo(uses, carries, keyed: keyed, on: on),
+    switchOn: on,
   );
-  // ⏳F-374-Q10: the switch is the row's HEAD, one for every row that wears
-  // it (유저 2026-08-06) — on, it shows the keys the others kept while it
-  // was off, keys Q7 ① never weighed.
-  final switchShowsOthers =
-      carried != null &&
-      carried.enabled &&
-      !layer.transformEnabled &&
-      others.keys;
-  final keyed = switchShowsOthers ? null : carried;
-  final movie = isMovieReference(layer);
-  // ⏳F-374-Q10: a cel the link group shares is ONE picture
-  // (`SwapLayerReferenceCommand`) — baked in place, every other use would
-  // show it moved, and moved again by its own fx; and a movie's one cel
-  // gives way to cels of its frames, which sweeps every other use's
-  // exposures of it away (`UpdateLayerTimelineCommand`).
-  if (others.cels && (movie || keyed == null)) {
-    return const ReferenceMoveWaits();
-  }
-  if (keyed != null) {
-    return ReferenceMoveKeyed(keyed.track, enabled: keyed.enabled);
-  }
-  // ⏳F-374-Q9: a cel baked in place holds the picture at ONE place, and an
-  // image row holds one cel (D22) — a still that moves has no cels to take
-  // its frames. A movie's are made a position apiece.
-  final fx = layer.mediaReference!.fx;
-  return movie || fx.lanes.every((l) => l.keys.length < 2)
-      ? const ReferenceMoveBaked()
-      : const ReferenceMoveWaits();
 }
 
-/// What the rows beside a reference row hold that its rasterize must not
-/// disturb ([referenceLetGo]): [keys] — another row wearing its head, its
-/// transform switch with it (`headMirrorRows`), keeps transform keys of its
-/// own, which the switch coming on would show; [cels] — another use of its
-/// link group shows its cels.
-typedef OthersHold = ({bool keys, bool cels});
+/// Each of [uses] as it lets go ([referenceLetGo]): the track [carries]
+/// gives a use that takes its move as keys ([keyed]), the row's own to one
+/// that does not — none where the switch comes on ([on]) over keys it kept
+/// while off.
+///
+/// The uses are one naming space (`transformTrackHoldingName`): a name a
+/// key the fx named takes on one of them is free only where no other holds
+/// it once they have let go — two that carry it would join keys the fx
+/// never named, and neither keeps it.
+List<ReferenceUseLetGo> _usesLetGo(
+  List<ReferenceUse> uses,
+  List<ReferenceCarry> carries, {
+  required List<bool> keyed,
+  required bool on,
+}) {
+  TransformTrack tracked(int use, ReferenceCarry carry) => switch (carry) {
+    ReferenceCarried(:final track, enabled: true) when keyed[use] => track,
+    _ when on && !uses[use].layer.transformEnabled => TransformTrack.empty(),
+    _ => uses[use].layer.transformTrack,
+  };
+  final tracks = [
+    for (final (use, carry) in carries.indexed) tracked(use, carry),
+  ];
+  bool heldElsewhere(int use, TransformPropertyId property, String name) => [
+    for (final (other, track) in tracks.indexed)
+      if (other != use) track,
+  ].any((track) => transformLaneUsesName(track, property, name));
+  return [
+    for (final (index, use) in uses.indexed)
+      (
+        use: use,
+        track: tracked(
+          index,
+          transformCarryingReferenceMove(
+            cut: use.cut,
+            layer: use.layer,
+            nameIsFree: (property, name) =>
+                !heldElsewhere(index, property, name),
+          ),
+        ),
+        asShown: !keyed[index],
+      ),
+  ];
+}
+
+/// Why a still's one cel cannot take the picture where [uses] show it —
+/// null where it can: each shows it at ONE place, the move its fx makes at
+/// every frame ([referenceMoveAt]), and all of them at the same one. Where
+/// an fx MOVES the picture there is no place to take, and the row waits for
+/// [keysWait], what kept the keys from carrying it (F-374-Q9 · Q11): an
+/// image row holds one cel (D22), and a still that moves has no cels to
+/// take its frames.
+ReferenceWait? _whyTheCelWaits(
+  List<ReferenceUse> uses, {
+  required ReferenceWait keysWait,
+}) {
+  final moves = <LayerPlacement?>{};
+  for (final use in uses) {
+    final fx = use.layer.mediaReference?.fx;
+    if (fx != null && fx.lanes.any((lane) => lane.keys.length > 1)) {
+      return keysWait;
+    }
+    moves.add(referenceMoveAt(use.layer, 0));
+  }
+  return moves.length > 1 ? ReferenceWait.usesApart : null;
+}
 
 /// What [referenceLetGo] answers.
 sealed class ReferenceLetGo {
   const ReferenceLetGo();
 }
 
-/// The move carried into the row's own transform: [track], with its switch
-/// [enabled].
-final class ReferenceMoveKeyed extends ReferenceLetGo {
-  const ReferenceMoveKeyed(this.track, {required this.enabled});
+/// Every use lets go of the reference, each the way [uses] says, and where
+/// [switchOn] the switch they share comes on with them.
+final class ReferenceMoveCarried extends ReferenceLetGo {
+  const ReferenceMoveCarried(this.uses, {required this.switchOn});
+
+  final List<ReferenceUseLetGo> uses;
+  final bool switchOn;
+
+  /// Whether a cel takes a picture where a use shows it — the rasterize
+  /// that bakes.
+  bool get bakes => uses.any((use) => use.asShown);
+}
+
+/// How one use lets go ([ReferenceMoveCarried]): the transform [track] it
+/// is left with, and whether its cels take the picture where it shows it
+/// ([asShown] — F-374-Q7 ②③: 「멈춘 참조는 한 장 (보이는 크기 그대로),
+/// 움직이는 참조는 움직이는 프레임마다 한 장」) or where the file is laid,
+/// the move its track's now.
+typedef ReferenceUseLetGo = ({
+  ReferenceUse use,
+  TransformTrack track,
+  bool asShown,
+});
+
+/// Neither yet: every use stays the reference it is, and [why] is what the
+/// row's warning says.
+final class ReferenceMoveWaits extends ReferenceLetGo {
+  const ReferenceMoveWaits(this.why);
+
+  final ReferenceWait why;
+}
+
+/// Why a rasterize leaves a reference row the reference it is
+/// ([ReferenceMoveWaits]) — what its warning says, and how to get past it
+/// (F-374-Q11 「막고 경고」: 「회전을 90° 단위로 · 배율을 고르게 · 어태치를
+/// 풀면 그대로 「한 장 + 트랜스폼」으로 굽힙니다」) — the stable key the
+/// string tables answer, and the English the UI falls back to (I-4, the
+/// contract every reason a model gives keeps since F-124).
+enum ReferenceWait {
+  /// An attach row stands where its base's transform puts it: it has no
+  /// transform of its own to key.
+  attached(
+    "An attached layer stands where its base's Transform puts it, so a "
+    'moving Reference cannot become its own keys. Detach it to rasterize.',
+  ),
+
+  /// The file is laid on the cels other than 1:1 and upright — as a row
+  /// placed before F-374-Q1 lays it.
+  laidAsFitted(
+    'This file was laid at a fitted size by an earlier version, so a '
+    'moving Reference cannot become keys. Place the file again to '
+    'rasterize.',
+  ),
+
+  /// The row is scaled unevenly under a picture turned other than by a
+  /// quarter: a shear, which no pose of its own makes.
+  sheared(
+    'A turn other than by 90° under a Scale stretched on one axis is a '
+    'shape no Transform draws. Even out the Scale, or turn by 90°, to '
+    'rasterize.',
+  ),
+
+  /// The switch coming on would show keys a row wearing the head with it
+  /// keeps ([referenceLetGo]'s `othersKeepKeys`).
+  othersKeepKeys(
+    'Another layer that shares this Transform switch keeps keys of its '
+    'own while it is off, and switching it on would show them. Switch '
+    'the Transform on first to rasterize.',
+  ),
+
+  /// The uses show the picture at different places, and the cel they share
+  /// holds it at one.
+  usesApart(
+    "The linked layers show this cel's picture in different places, and "
+    'one cel holds it in one. Match their Reference to rasterize.',
+  );
+
+  const ReferenceWait(this.label);
+
+  /// The English wording, and the fallback for a language that has not
+  /// tabled this reason (`ReferenceWaitWords.labelFor`).
+  final String label;
+}
+
+/// What [transformCarryingReferenceMove] answers.
+sealed class ReferenceCarry {
+  const ReferenceCarry();
+}
+
+/// The move carried: the row's transform [track], its switch [enabled].
+final class ReferenceCarried extends ReferenceCarry {
+  const ReferenceCarried(this.track, {required this.enabled});
 
   final TransformTrack track;
   final bool enabled;
 }
 
-/// The cels take the picture where the row shows it, and the row's
-/// transform and switch stay as they are (F-374-Q7 ②③: 「멈춘 참조는 한 장
-/// (보이는 크기 그대로), 움직이는 참조는 움직이는 프레임마다 한 장」).
-final class ReferenceMoveBaked extends ReferenceLetGo {
-  const ReferenceMoveBaked();
-}
+/// The row's transform cannot carry the move, and [why] — an attach row, a
+/// file not laid 1:1, a shear.
+final class ReferenceUncarried extends ReferenceCarry {
+  const ReferenceUncarried(this.why);
 
-/// Neither yet: the row stays the reference it is.
-final class ReferenceMoveWaits extends ReferenceLetGo {
-  const ReferenceMoveWaits();
+  final ReferenceWait why;
 }
 
 /// [layer]'s own transform with its REFERENCE FX's move carried into it —
@@ -140,11 +312,12 @@ final class ReferenceMoveWaits extends ReferenceLetGo {
 /// none, and the keys the row kept while it showed nothing give way. A row
 /// with no move to carry keeps its transform and its switch as they are.
 ///
-/// Null when the row's transform cannot carry the move (F-374-Q7 ②③ — the
-/// cels take it): an attach row stands where its base's transform puts it,
-/// and a row scaled unevenly under a picture turned other than by a quarter
-/// would have to SHEAR it, which no pose does.
-({TransformTrack track, bool enabled})? transformCarryingReferenceMove({
+/// [ReferenceUncarried] when the row's transform cannot carry the move
+/// (F-374-Q7 ②③ — the cels take it), and why: an attach row stands where
+/// its base's transform puts it, and a row scaled unevenly under a picture
+/// turned other than by a quarter would have to SHEAR it, which no pose
+/// does.
+ReferenceCarry transformCarryingReferenceMove({
   required Cut cut,
   required Layer layer,
   required bool Function(TransformPropertyId property, String name)
@@ -153,14 +326,20 @@ final class ReferenceMoveWaits extends ReferenceLetGo {
   final reference = layer.mediaReference;
   if (reference == null ||
       (reference.fx.isEmpty && reference.pose == reference.laid)) {
-    return (track: layer.transformTrack, enabled: layer.transformEnabled);
+    return ReferenceCarried(
+      layer.transformTrack,
+      enabled: layer.transformEnabled,
+    );
   }
   final laid = reference.laid;
+  if (isAttachedLayer(layer)) {
+    return const ReferenceUncarried(ReferenceWait.attached);
+  }
   // A file is laid 1:1 and upright since F-374-Q1 (`placedReference`): the
   // carry reads the fx's pose as the row's over the cel's own pixels, and a
   // lay that is not would need that lay undone first.
-  if (isAttachedLayer(layer) || laid != TransformPose(center: laid.center)) {
-    return null;
+  if (laid != TransformPose(center: laid.center)) {
+    return const ReferenceUncarried(ReferenceWait.laidAsFitted);
   }
   final shown = layer.transformEnabled
       ? layer
@@ -171,7 +350,9 @@ final class ReferenceMoveWaits extends ReferenceLetGo {
   final track = own.every((lane) => lane.keys.length < 2)
       ? _keysCarried(shown, reference, canvas, nameIsFree)
       : _framesCarried(shown, reference, canvas, own);
-  return track == null ? null : (track: track, enabled: true);
+  return track == null
+      ? const ReferenceUncarried(ReferenceWait.sheared)
+      : ReferenceCarried(track, enabled: true);
 }
 
 /// The fx's keys through the row's one pose ([transformCarryingReferenceMove]).
