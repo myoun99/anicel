@@ -11,11 +11,11 @@ import '../../models/sheet_marks.dart' show SheetInkPlacement;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/cel_photo_edit_command.dart';
 import '../../services/import/raster_cel_import.dart' show fitPose;
+import '../../services/media/media_pixel_size.dart';
 import '../editor_session_manager.dart';
 import '../media/media_asset_drag_data.dart';
 import '../media/media_asset_drop_target.dart';
 import '../theme/app_theme.dart' show AppColors;
-import 'sheet_image_cache.dart' show readSheetPictureSize;
 import 'sheet_ink_controller.dart';
 import 'sheet_ink_layer.dart';
 
@@ -156,14 +156,16 @@ class _SheetPhotoDropState extends State<SheetPhotoDrop> {
     }
   }
 
-  /// [path]'s picture read for its size, then landed in the cell under
-  /// [paper] as the sheet is THEN — one laid again while the picture was
-  /// read (a form switched, a page added) is asked again, as a stroke
+  /// [path]'s picture read for its size — its own pixels, what a photo
+  /// dropped on a sheet stands at (I-97 Q2 c) — then landed in the cell
+  /// under [paper] as the sheet is THEN — one laid again while the picture
+  /// was read (a form switched, a page added) is asked again, as a stroke
   /// started there would ask it.
   Future<void> _land(Offset paper, String path) async {
-    final picture = await readSheetPictureSize(
-      widget.session.projectFile.holdMediaBytes,
+    final picture = await readMediaPixelSize(
+      MediaAssetKind.image,
       path,
+      widget.session.projectFile.holdMediaBytes,
     );
     if (picture == null || !mounted) {
       return;

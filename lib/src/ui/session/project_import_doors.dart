@@ -42,7 +42,8 @@ import '../../services/import/psd_expand_import.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
-import '../../services/media/viewer_document.dart' show ViewerDocument;
+import '../../services/media/viewer_document.dart'
+    show ViewerDocument, pagePixelSize, pagePixels;
 import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/pdf/pdf_render_service.dart';
@@ -650,7 +651,7 @@ class ProjectImportDoors {
       // A NEW cut is made at the span's first page, at the size the
       // renderer calls 1:1 — the size the window's locked 1:1 fit draws.
       final arrival = gate.targetCut == null
-          ? gate.withCanvasSize(_pageSizeOf(document, firstPage))
+          ? gate.withCanvasSize(pagePixelSize(document,firstPage))
           : gate;
       final source = arrival.source;
       final identity = readMediaIdentity(source);
@@ -661,7 +662,7 @@ class ProjectImportDoors {
           ? null
           : placedReference(
               source,
-              _pageSizeOf(document, firstPage),
+              pagePixelSize(document,firstPage),
               arrival.canvasSize,
               fit,
             );
@@ -753,7 +754,7 @@ class ProjectImportDoors {
             onPageRenderFailed?.call(firstPage + bake.sourceFrameIndex),
         pictureOf: (bake, canvas) {
           final pageIndex = firstPage + bake.sourceFrameIndex;
-          final page = _pageSizeOf(document, pageIndex);
+          final page = pagePixelSize(document,pageIndex);
           return _renderedPage(
             document,
             pageIndex,
@@ -1269,7 +1270,7 @@ class ProjectImportDoors {
               at: (index) => _renderedPage(
                 document,
                 index,
-                _pageSizeOf(document, index),
+                pagePixelSize(document,index),
                 reference.laid,
               ),
               close: document.dispose,
@@ -1318,25 +1319,19 @@ class ProjectImportDoors {
   /// now — a movie's cel holds no pictures, so there is nothing to make —
   /// or, when the movie does not open, why not.
   Future<_Remade> _movieSized(MediaReference reference) async {
-    final opened = await openHeldMovie(
+    final info = await readHeldMovieInfo(
       videoDecodeBackend,
       _holdBytes,
       reference.assetPath,
     );
-    if (opened == null) {
-      return const _NotDrawn(ReferenceUnreadable());
-    }
-    try {
-      final info = opened.info;
-      return _Drawn(
-        const <FrameId, BitmapSurface>{},
-        reference.copyWith(
-          pictureSize: CanvasSize(width: info.width, height: info.height),
-        ),
-      );
-    } finally {
-      await opened.close();
-    }
+    return info == null
+        ? const _NotDrawn(ReferenceUnreadable())
+        : _Drawn(
+            const <FrameId, BitmapSurface>{},
+            reference.copyWith(
+              pictureSize: CanvasSize(width: info.width, height: info.height),
+            ),
+          );
   }
 
   /// The sound's clock for a movie the decoder has answered about: the
@@ -1615,20 +1610,6 @@ class ProjectImportDoors {
     return landed;
   }
 
-  /// A page extent as whole pixels the renderer accepts.
-  static int _pagePixels(double extent) =>
-      extent.round().clamp(1, 1 << 13).toInt();
-
-  /// [pageIndex]'s size at what the renderer calls 1:1 — the picture's own
-  /// size, the one a pose stands on.
-  static CanvasSize _pageSizeOf(ViewerDocument document, int pageIndex) {
-    final size = document.pageSize(pageIndex);
-    return CanvasSize(
-      width: _pagePixels(size.width),
-      height: _pagePixels(size.height),
-    );
-  }
-
   /// [pageIndex] — a [page]-sized picture — rendered at the size [pose]
   /// stands it at: the vector source rasters ONCE, at the size it will live
   /// at, and no second resample makes it soft.
@@ -1640,8 +1621,8 @@ class ProjectImportDoors {
   ) async => (
     image: await document.renderPage(
       pageIndex,
-      width: _pagePixels(page.width * pose.scaleX.abs()),
-      height: _pagePixels(page.height * pose.scaleY.abs()),
+      width: pagePixels(page.width * pose.scaleX.abs()),
+      height: pagePixels(page.height * pose.scaleY.abs()),
     ),
     owned: true,
     size: page,

@@ -11,6 +11,7 @@ import '../session/canvas_adjust.dart' show CameraSizeDraft;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
+import '../text/pixel_size_label.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
@@ -193,9 +194,10 @@ class ProjectSettingsMenu {
       PanelFlyoutItem(
         keyValue: 'project-settings-camera-size',
         shortcuts: const [EditorActionIds.projectCameraSize],
-        label: strings.exCameraTemplate
-            .replaceAll('{w}', '${cameraSize.width}')
-            .replaceAll('{h}', '${cameraSize.height}'),
+        label: strings.exCameraTemplate.replaceAll(
+          '{size}',
+          pixelSizeLabel(cameraSize.width, cameraSize.height),
+        ),
         icon: Icons.videocam_outlined,
         onSelected: () => unawaited(_editCameraSize(context)),
       ),

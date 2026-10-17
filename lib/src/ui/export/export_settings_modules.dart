@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../timeline/layer_label_controls.dart' show layerMarkChipText;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
+import '../text/pixel_size_label.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
@@ -769,15 +770,19 @@ class ExportSizeModule extends StatelessWidget {
   String _labelOf(ExportSizeMode mode) {
     final strings = AppText.strings;
     return switch (mode) {
-      ExportSizeMode.camera =>
-        strings.exCameraTemplate
-            .replaceAll('{w}', '${cameraSize.width}')
-            .replaceAll('{h}', '${cameraSize.height}'),
+      ExportSizeMode.camera => strings.exCameraTemplate.replaceAll(
+        '{size}',
+        pixelSizeLabel(cameraSize.width, cameraSize.height),
+      ),
       ExportSizeMode.canvas =>
         canvasSizes.length == 1
-            ? strings.exCanvasTemplate
-                  .replaceAll('{w}', '${canvasSizes.first.width}')
-                  .replaceAll('{h}', '${canvasSizes.first.height}')
+            ? strings.exCanvasTemplate.replaceAll(
+                '{size}',
+                pixelSizeLabel(
+                  canvasSizes.first.width,
+                  canvasSizes.first.height,
+                ),
+              )
             : strings.exCanvasPerCut,
     };
   }

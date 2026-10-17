@@ -14,7 +14,9 @@ import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_import_planner.dart';
-import '../../services/media/movie_bytes.dart' show openHeldMovie;
+import '../../models/canvas_size.dart';
+import '../../services/media/media_pixel_size.dart';
+import '../../services/media/movie_bytes.dart' show readHeldMovieInfo;
 import '../../services/media/video_decode_worker.dart'
     show videoDecodeBackend;
 import '../../services/pdf/pdf_render_service.dart';
@@ -31,6 +33,7 @@ import 'import_preview.dart';
 import 'import_warnings_notice.dart';
 import 'movie_rate_dialog.dart';
 import '../text/byte_size_label.dart';
+import '../text/pixel_size_label.dart';
 import '../widgets/app_window.dart';
 import '../widgets/dock_edge_splitter.dart';
 import '../widgets/settings_rows.dart';
@@ -420,6 +423,14 @@ class _ImportDialogState extends State<ImportDialog> {
         : [for (final cel in run.cells) '$folder/${cel.file}'];
   }
 
+  /// What the window asks of a file the moment it is listed: whether its
+  /// movie has a sound ([_movieSound]), and its size in pixels
+  /// ([_pixelSizes]).
+  void _probe(String path) {
+    _probeMovieSound(path);
+    _readPixelSize(path);
+  }
+
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
   /// conform answers, and the 「소리」 column asks only of a movie with one.
   final Map<String, bool> _movieSound = {};
@@ -439,6 +450,45 @@ class _ImportDialogState extends State<ImportDialog> {
         }
       }),
     );
+  }
+
+  /// Each listed file's size at 1:1 once it is read ([readMediaPixelSize])
+  /// — null for one that has none, a sound, or that could not be read. A
+  /// file not here is still waiting its turn (F-375).
+  final Map<String, CanvasSize?> _pixelSizes = {};
+
+  /// The reads, ONE AT A TIME in the order the files were listed: a
+  /// picture's header is read off its whole file in memory, so a batch read
+  /// at once would hold every file of it together.
+  Future<void> _pixelSizeReads = Future<void>.value();
+
+  void _readPixelSize(String path) {
+    _pixelSizeReads = _pixelSizeReads.then((_) async {
+      if (!mounted || _pixelSizes.containsKey(path) || !_files.contains(path)) {
+        return;
+      }
+      final kind = mediaAssetKindForPath(path);
+      final size = kind == null
+          ? null
+          : await readMediaPixelSize(
+              kind,
+              path,
+              widget.session.projectFile.holdMediaBytes,
+            );
+      if (mounted) {
+        setState(() => _pixelSizes[path] = size);
+      }
+    });
+  }
+
+  /// [path]'s row word for its size: nothing until it is read, a dash for
+  /// a file with none.
+  String _resolutionOf(String path) {
+    if (!_pixelSizes.containsKey(path)) {
+      return '';
+    }
+    final size = _pixelSizes[path];
+    return size == null ? '—' : pixelSizeLabel(size.width, size.height);
   }
 
   /// The project's accumulated audio pull — a movie's preview counts its
@@ -520,7 +570,7 @@ class _ImportDialogState extends State<ImportDialog> {
         }
       } else {
         _files.add(path);
-        _probeMovieSound(path);
+        _probe(path);
       }
     }
     final dropped = _folder;
@@ -568,7 +618,7 @@ class _ImportDialogState extends State<ImportDialog> {
         _files.addAll(paths);
       }
     });
-    paths.forEach(_probeMovieSound);
+    paths.forEach(_probe);
   }
 
   /// What each of [picked] is read from: its own path, or — a document with
@@ -831,22 +881,12 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   /// What [path]'s movie says of itself, read as its door will read it
-  /// ([openHeldMovie]) — null when it does not open.
-  Future<QaVideoInfo?> _movieInfoOf(String path) async {
-    final opened = await openHeldMovie(
-      videoDecodeBackend,
-      widget.session.projectFile.holdMediaBytes,
-      path,
-    );
-    if (opened == null) {
-      return null;
-    }
-    try {
-      return opened.info;
-    } finally {
-      await opened.close();
-    }
-  }
+  /// ([readHeldMovieInfo]) — null when it does not open.
+  Future<QaVideoInfo?> _movieInfoOf(String path) => readHeldMovieInfo(
+    videoDecodeBackend,
+    widget.session.projectFile.holdMediaBytes,
+    path,
+  );
 
   /// Every span counted in PROJECT frames — a movie's and a sound's, whose
   /// IN/OUT run on the sound's clock (`ProjectImportDoors.importVideoFile`)
@@ -1684,6 +1724,7 @@ class _ImportDialogState extends State<ImportDialog> {
       extension: mediaFileNameParts(path).extension,
       modified: _modifiedOf(path),
       size: byteSizeLabel(_sizeOf(path)),
+      resolution: _resolutionOf(path),
     );
   }
 

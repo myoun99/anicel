@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 
 import '../../core/lru.dart';
-import '../../models/canvas_size.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
@@ -59,15 +58,6 @@ Future<ui.Image?> readSheetImage(
     height: math.max(1, (own.height * read / ownWidth).round()),
   );
 });
-
-/// [path]'s picture's own size, in its own pixels, as [readSheetImage]
-/// reads the picture — what a photo dropped on a sheet stands at (I-97
-/// Q2 c) — or null where it cannot be read.
-Future<CanvasSize?> readSheetPictureSize(HoldMediaBytes hold, String path) =>
-    _readSheetPicture(hold, path, (document) async {
-      final own = document.pageSize(0);
-      return CanvasSize(width: own.width.round(), height: own.height.round());
-    });
 
 /// [read] on [path]'s picture as [hold] answers for it, the document
 /// closed after; null where it cannot be read ([readSheetImage]).

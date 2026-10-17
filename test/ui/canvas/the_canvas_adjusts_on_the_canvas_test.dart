@@ -85,7 +85,7 @@ void main() {
     );
     expect(pill.center.dx - origin.dx, closeTo(200, 0.01));
     expect(pill.top - origin.dy, closeTo(300 + targetPillGap, 0.01));
-    expect(sizeShown(tester), '400 × 300');
+    expect(sizeShown(tester), '400×300');
   });
 
   testWidgets('🚨the right edge dragged moves alone — the left edge stays, '
@@ -94,7 +94,7 @@ void main() {
     await drag(tester, origin + const Offset(400, 150), const Offset(100, 30));
 
     expect(shown().edges, const Rect.fromLTRB(0, 0, 500, 300));
-    expect(sizeShown(tester), '500 × 300');
+    expect(sizeShown(tester), '500×300');
     expect(kept().contentOffset, (dx: 0.0, dy: 0.0), reason: 'nothing moved');
   });
 

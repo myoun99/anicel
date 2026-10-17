@@ -18,7 +18,7 @@ import '../../helpers/boolean_dot_probe.dart';
 /// And a column's header is a button too: it applies one answer to every
 /// row, because setting twenty files one at a time is not a feature.
 void main() {
-  ImportFileRow row(String file) {
+  ImportFileRow row(String file, {String resolution = '1920×1080'}) {
     final parts = mediaFileNameParts('/in/$file');
     return ImportFileRow(
       path: '/in/$file',
@@ -26,6 +26,7 @@ void main() {
       extension: parts.extension,
       modified: '09-05',
       size: '1 MB',
+      resolution: resolution,
     );
   }
 
@@ -65,12 +66,13 @@ void main() {
     bool onlyOneAnswer = false,
     List<ImportFileRow>? rows,
     List<ImportColumn<Object?>> extra = const [],
-    double? width = 500,
+    double? width = 640,
     double textScale = 1,
   }) async {
     final q = question(onlyOneAnswer: onlyOneAnswer);
     final taps = <String>[];
-    final shownRows = rows ?? [row('a.png'), row('b.png'), row('c.wav')];
+    final shownRows =
+        rows ?? [row('a.png'), row('b.png'), row('c.wav', resolution: '—')];
     final columns = [q.column, ...extra];
     await tester.pumpWidget(
       MaterialApp(
@@ -147,7 +149,10 @@ void main() {
       'a value nobody chose', (tester) async {
     await pumpTable(tester);
 
-    expect(find.text('—'), findsOneWidget);
+    expect(tester.widget<Text>(cell('mode', 'c.wav')).data, '—');
+    for (final file in ['a.png', 'b.png']) {
+      expect(tester.widget(cell('mode', file)), isNot(isA<Text>()));
+    }
   });
 
   testWidgets('🚨the column HEADER applies one answer to every row — '
@@ -241,6 +246,14 @@ void main() {
         reason: 'the header and the rows are laid out in one box, beside '
             'the same scrollbar lane',
       );
+      final resolutionHeader = tester.getRect(
+        find.text(AppText.strings.imResolution),
+      );
+      final resolutionValue = tester.getRect(find.text('1920×1080').first);
+      expect(
+        resolutionHeader.right,
+        moreOrLessEquals(resolutionValue.right, epsilon: 0.5),
+      );
 
       final modeHeader = tester.getCenter(find.text('Mode'));
       final modeCell = tester.getCenter(cell('mode', 'a.png'));
@@ -252,6 +265,28 @@ void main() {
         modifiedHeader.left,
         moreOrLessEquals(modifiedValue.left, epsilon: 0.5),
       );
+    });
+
+    testWidgets('🚨the resolution keeps its room while the sizes come in — '
+        'one arriving moves nothing beside it (F-375: the room is kept and '
+        'only what is in it changes)', (tester) async {
+      Future<(Rect, double)> laidOutWith(String resolution) async {
+        final rows = [row('a.png', resolution: resolution)];
+        await pumpTable(tester, rows: rows);
+        return (
+          tester.getRect(find.text(AppText.strings.imSize)),
+          ImportFileTable.minimumWidth(
+            tester.element(find.byType(ImportFileTable)),
+            rows: rows,
+            columns: const [],
+          ),
+        );
+      }
+
+      final reading = await laidOutWith('');
+      // The largest canvas the app makes a side, then five digits a side.
+      expect(await laidOutWith('16384×16384'), reading);
+      expect(await laidOutWith('99999×99999'), reading);
     });
 
     testWidgets('🚨the name is READ — at the narrowest the table may be, a '
@@ -326,12 +361,14 @@ void main() {
         for (final word in [
           AppText.strings.imModified,
           AppText.strings.imSize,
+          AppText.strings.imResolution,
           'Mode',
           'A long question',
           'carry',
           'reference',
           '09-05',
           '1 MB',
+          '1920×1080',
           'On',
         ]) {
           expectWhole(tester, find.text(word).first, '"$word" at ×$scale');

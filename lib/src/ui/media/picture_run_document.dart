@@ -120,12 +120,11 @@ final class PictureRunDocument implements ViewerDocument {
     _rendering[pageIndex] = (_rendering[pageIndex] ?? 0) + 1;
     try {
       final picture = await _picture(pageIndex);
-      final own = picture.pageSize(0);
-      final at = width / asked.width;
+      final size = pagePixelSize(picture, 0, at: width / asked.width);
       return await picture.renderPage(
         0,
-        width: (own.width * at).round().clamp(1, 1 << 13).toInt(),
-        height: (own.height * at).round().clamp(1, 1 << 13).toInt(),
+        width: size.width,
+        height: size.height,
       );
     } finally {
       final left = _rendering[pageIndex]! - 1;

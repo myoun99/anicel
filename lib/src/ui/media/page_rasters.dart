@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show VoidCallback;
 
+import '../../models/canvas_size.dart';
 import '../../models/rgba_image_bytes.dart' show estimatedImageBytes;
 import '../../services/media/viewer_document.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
@@ -158,7 +159,11 @@ class PageRasters {
     }
     _renders[(pageIndex, at)] = _RenderAsk.asking;
     final generation = _generation;
-    final (:width, :height) = _rasterSizeOf(document, pageIndex, at);
+    final CanvasSize(:width, :height) = pagePixelSize(
+      document,
+      pageIndex,
+      at: at,
+    );
     unawaited(() async {
       final image = await decodedImageStillWanted(
         document.renderPage(pageIndex, width: width, height: height),
@@ -221,24 +226,11 @@ class PageRasters {
     if (document == null) {
       return false;
     }
-    final (:width, :height) = _rasterSizeOf(document, page, at);
+    final CanvasSize(:width, :height) = pagePixelSize(document, page, at: at);
     return _letGo(
       maxBytes: budget.byteBudget - estimatedImageBytes(width, height),
       kept: shown,
       laterThan: step,
-    );
-  }
-
-  /// The size [page] is asked of the document at, at [at].
-  static ({int width, int height}) _rasterSizeOf(
-    ViewerDocument document,
-    int page,
-    double at,
-  ) {
-    final size = document.pageSize(page);
-    return (
-      width: (size.width * at).round().clamp(1, 1 << 13).toInt(),
-      height: (size.height * at).round().clamp(1, 1 << 13).toInt(),
     );
   }
 

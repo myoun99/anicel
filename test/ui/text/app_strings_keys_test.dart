@@ -603,6 +603,7 @@ void main() {
     'imRevisions': (s) => s.imRevisions,
     'imModified': (s) => s.imModified,
     'imSize': (s) => s.imSize,
+    'imResolution': (s) => s.imResolution,
     'imArchivedProcesses': (s) => s.imArchivedProcesses,
     'imMultiCutFolders': (s) => s.imMultiCutFolders,
     'imProcess': (s) => s.imProcess,

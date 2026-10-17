@@ -68,7 +68,7 @@ void main() {
             find.byKey(const ValueKey<String>('camera-adjust-size')),
           )
           .data,
-      '${size.width} × ${size.height}',
+      '${size.width}×${size.height}',
     );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);

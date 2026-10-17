@@ -10,6 +10,7 @@ import '../../services/camera_frame_corners.dart'
     show cameraFrameCornersInCanvas;
 import '../session/canvas_adjust.dart';
 import '../text/app_strings.dart';
+import '../text/pixel_size_label.dart';
 import '../widgets/panel_flyout.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
@@ -113,7 +114,7 @@ class CameraAdjustLayer extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Text(
-                    '${shown.size.width} × ${shown.size.height}',
+                    pixelSizeLabel(shown.size.width, shown.size.height),
                     key: const ValueKey<String>('camera-adjust-size'),
                     style: const TextStyle(fontSize: 12),
                   ),

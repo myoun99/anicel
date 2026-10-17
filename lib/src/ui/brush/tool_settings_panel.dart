@@ -35,6 +35,7 @@ import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
 import '../text/imported_fonts.dart';
 import '../text/model_vocabulary.dart';
+import '../text/pixel_size_label.dart';
 import '../text/readout_text.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/fill_reference_button.dart';
@@ -651,9 +652,10 @@ class _CutStampSettings extends StatelessWidget {
                 bottom: ToolSettingsSection.rowGap,
               ),
               child: Text(
-                AppText.strings.toolCutHoldingTemplate
-                    .replaceAll('{width}', '${piece.image.width}')
-                    .replaceAll('{height}', '${piece.image.height}'),
+                AppText.strings.toolCutHoldingTemplate.replaceAll(
+                  '{size}',
+                  pixelSizeLabel(piece.image.width, piece.image.height),
+                ),
                 key: const ValueKey<String>('cut-stamp-holding'),
                 style: theme.textTheme.labelMedium,
               ),

@@ -189,6 +189,56 @@ const Set<String> _psbLongKeys = {
   'lnk2', 'FEid', 'FXid', 'PxSD', 'cinf',
 };
 
+/// How many bytes a Photoshop document's header takes — everything a size
+/// needs ([readPsdCanvasSize]).
+const psdHeaderLength = 26;
+
+/// The header every Photoshop document opens with, read off the front of
+/// [reader] over [bytes]: the first thing [readPsdDocument] reads, and the
+/// only thing [readPsdCanvasSize] does. The signature is sniffed on [bytes]
+/// before the reader walks, so a file that is not one says so rather than
+/// naming whichever byte ran out first.
+({
+  bool psb,
+  int channelCount,
+  int height,
+  int width,
+  int depth,
+  PsdColorMode colorMode,
+})
+_readHeader(Uint8List bytes, PhotoshopByteReader reader) {
+  if (!looksLikePsdBytes(bytes)) {
+    throw const FormatException('Not a Photoshop document.');
+  }
+  reader.skip(4);
+  final version = reader.readUint16();
+  if (version != 1 && version != 2) {
+    throw FormatException('Unknown Photoshop document version $version.');
+  }
+  reader.skip(6); // Reserved, always zero.
+  final channelCount = reader.readUint16();
+  final height = reader.readUint32();
+  final width = reader.readUint32();
+  final depth = reader.readUint16();
+  final colorMode = PsdColorMode.fromCode(reader.readUint16());
+  return (
+    psb: version == 2,
+    channelCount: channelCount,
+    height: height,
+    width: width,
+    depth: depth,
+    colorMode: colorMode,
+  );
+}
+
+/// A Photoshop document's canvas size, from its first [psdHeaderLength]
+/// bytes — what a list of files asks of every row (the import window's
+/// resolution, F-375), where [readPsdDocument] would read the whole file.
+({int width, int height}) readPsdCanvasSize(Uint8List header) {
+  final read = _readHeader(header, PhotoshopByteReader(header));
+  return (width: read.width, height: read.height);
+}
+
 /// Reads [bytes] as a Photoshop document.
 ///
 /// [withLayers] and [withComposite] exist because the two readings cost
@@ -200,21 +250,8 @@ PsdDocument readPsdDocument(
   bool withComposite = true,
 }) {
   final reader = PhotoshopByteReader(bytes);
-  if (!looksLikePsdBytes(bytes)) {
-    throw const FormatException('Not a Photoshop document.');
-  }
-  reader.skip(4);
-  final version = reader.readUint16();
-  if (version != 1 && version != 2) {
-    throw FormatException('Unknown Photoshop document version $version.');
-  }
-  final psb = version == 2;
-  reader.skip(6); // Reserved, always zero.
-  final channelCount = reader.readUint16();
-  final height = reader.readUint32();
-  final width = reader.readUint32();
-  final depth = reader.readUint16();
-  final colorMode = PsdColorMode.fromCode(reader.readUint16());
+  final (:psb, :channelCount, :height, :width, :depth, :colorMode) =
+      _readHeader(bytes, reader);
   final warnings = <ImportWarning>[];
   if (depth == 16 || depth == 32) {
     warnings.add(

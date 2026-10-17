@@ -1304,9 +1304,11 @@ enum AppStrings {
   String get imRevisions => _s('imRevisions');
 
   /// The file table's columns — 「size」 here is a file's BYTES, which is a
-  /// different question from the export's pixel [exSize].
+  /// different question from the export's pixel [exSize]; a file's pixels
+  /// are its [imResolution] (F-375).
   String get imModified => _s('imModified');
   String get imSize => _s('imSize');
+  String get imResolution => _s('imResolution');
   String get imArchivedProcesses => _s('imArchivedProcesses');
   String get imMultiCutFolders => _s('imMultiCutFolders');
 
@@ -1432,7 +1434,8 @@ enum AppStrings {
   String get mpInUseOnTimeline => _s('mpInUseOnTimeline');
   String get mpNameEmpty => _s('mpNameEmpty');
 
-  /// '{w}'/'{h}' are the camera frame's pixel dimensions.
+  /// '{size}' is the camera frame's pixel size, as `pixelSizeLabel` spells
+  /// every one.
   String get exCameraTemplate => _s('exCameraTemplate');
 
   /// '{name}' is the current layer-group label.
@@ -2528,7 +2531,7 @@ enum AppStrings {
     'exCheckingEncoders': 'Checking this machine’s encoders…',
     'exNotInThisBuild': 'Not available in this build yet.',
     'exBitrateAuto': 'Auto',
-    'exCanvasTemplate': 'Canvas {w}×{h}',
+    'exCanvasTemplate': 'Canvas {size}',
     'exCanvasPerCut': 'Canvas (per cut)',
     'imImport': 'Import',
     'imFile': 'File',
@@ -2538,6 +2541,7 @@ enum AppStrings {
     'imRevisions': 'Revisions',
     'imModified': 'Modified',
     'imSize': 'Size',
+    'imResolution': 'Resolution',
     'imArchivedProcesses': 'Archived processes (LO/, GEN/…)',
     'imMultiCutFolders': 'Multi-cut folders (兼用)',
     'imProcess': 'Process',
@@ -2604,7 +2608,7 @@ enum AppStrings {
     'mpFileMissing': 'File missing — relink it',
     'mpInUseOnTimeline': 'In use on the timeline',
     'mpNameEmpty': 'Media name cannot be empty.',
-    'exCameraTemplate': 'Camera {w}×{h}',
+    'exCameraTemplate': 'Camera {size}',
     'toolBrush': 'Brush',
     'toolEraser': 'Eraser',
     'toolEyedropper': 'Eyedropper',
@@ -2656,7 +2660,7 @@ enum AppStrings {
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
     'toolCutNothingHeld': 'Nothing held yet',
-    'toolCutHoldingTemplate': 'Holding {width}×{height} px',
+    'toolCutHoldingTemplate': 'Holding {size} px',
     'toolLibraryEmpty': 'Nothing to show',
     'toolCutPasteAtOrigin': 'Paste at original position',
     'toolCutFlipHorizontal': 'Flip horizontal',
@@ -3974,7 +3978,7 @@ enum AppStrings {
     'exCheckingEncoders': 'このマシンのエンコーダーを確認中…',
     'exNotInThisBuild': 'このビルドではまだ使えません。',
     'exBitrateAuto': '自動',
-    'exCanvasTemplate': 'キャンバス {w}×{h}',
+    'exCanvasTemplate': 'キャンバス {size}',
     'exCanvasPerCut': 'キャンバス（カットごと）',
     'imImport': 'インポート',
     'imFile': 'ファイル',
@@ -3984,6 +3988,7 @@ enum AppStrings {
     'imRevisions': 'リビジョン',
     'imModified': '更新日時',
     'imSize': 'サイズ',
+    'imResolution': '解像度',
     'imArchivedProcesses': '格納済み工程（LO/・GEN/…）',
     'imMultiCutFolders': '兼用カットのフォルダ',
     'imProcess': '工程',
@@ -4047,7 +4052,7 @@ enum AppStrings {
     'mpFileMissing': 'ファイルが見つかりません — リンクし直してください',
     'mpInUseOnTimeline': 'タイムラインで使用中',
     'mpNameEmpty': 'メディア名を入力してください。',
-    'exCameraTemplate': 'カメラ {w}×{h}',
+    'exCameraTemplate': 'カメラ {size}',
     'toolBrush': 'ブラシ',
     'toolEraser': '消しゴム',
     'toolEyedropper': 'スポイト',
@@ -4099,7 +4104,7 @@ enum AppStrings {
     // TVPaint's own term for this verb in Japanese studios.
     'toolShapeFill': '図形の塗り',
     'toolCutNothingHeld': 'まだ何も持っていません',
-    'toolCutHoldingTemplate': '{width}×{height} px を持っています',
+    'toolCutHoldingTemplate': '{size} px を持っています',
     'toolLibraryEmpty': '表示するものがありません',
     'toolCutPasteAtOrigin': '元の位置に貼り付け',
     'toolCutFlipHorizontal': '左右反転',
@@ -5527,7 +5532,7 @@ enum AppStrings {
     'exCheckingEncoders': '이 컴퓨터의 인코더를 확인하는 중…',
     'exNotInThisBuild': '이 빌드에서는 아직 쓸 수 없습니다.',
     'exBitrateAuto': '자동',
-    'exCanvasTemplate': '캔버스 {w}×{h}',
+    'exCanvasTemplate': '캔버스 {size}',
     'exCanvasPerCut': '캔버스(컷마다)',
     'imImport': '임포트',
     'imFile': '파일',
@@ -5537,6 +5542,7 @@ enum AppStrings {
     'imRevisions': '리비전',
     'imModified': '수정일',
     'imSize': '크기',
+    'imResolution': '해상도',
     'imArchivedProcesses': '보관된 공정 (LO/, GEN/…)',
     'imMultiCutFolders': '겸용컷 폴더',
     'imProcess': '공정',
@@ -5596,7 +5602,7 @@ enum AppStrings {
     'mpFileMissing': '파일이 없습니다 — 다시 연결하세요',
     'mpInUseOnTimeline': '타임라인에서 쓰는 중',
     'mpNameEmpty': '미디어 이름을 비울 수 없습니다.',
-    'exCameraTemplate': '카메라 {w}×{h}',
+    'exCameraTemplate': '카메라 {size}',
     'toolBrush': '브러시',
     'toolEraser': '지우개',
     'toolEyedropper': '스포이트',
@@ -5646,7 +5652,7 @@ enum AppStrings {
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
     'toolCutNothingHeld': '아직 든 것이 없습니다',
-    'toolCutHoldingTemplate': '{width}×{height} px 를 들고 있습니다',
+    'toolCutHoldingTemplate': '{size} px 를 들고 있습니다',
     'toolLibraryEmpty': '표시할 것이 없습니다',
     'toolCutPasteAtOrigin': '원래 위치에 붙여넣기',
     'toolCutFlipHorizontal': '좌우 반전',
@@ -7208,7 +7214,7 @@ enum AppStrings {
     'exCheckingEncoders': 'Vérification des encodeurs de cette machine…',
     'exNotInThisBuild': 'Pas encore disponible dans cette version.',
     'exBitrateAuto': 'Auto',
-    'exCanvasTemplate': 'Canevas {w}×{h}',
+    'exCanvasTemplate': 'Canevas {size}',
     'exCanvasPerCut': 'Canevas (par plan)',
     'imImport': 'Importer',
     'imFile': 'Fichier',
@@ -7218,6 +7224,7 @@ enum AppStrings {
     'imRevisions': 'Révisions',
     'imModified': 'Modifié',
     'imSize': 'Taille',
+    'imResolution': 'Résolution',
     'imArchivedProcesses': 'Étapes archivées (LO/, GEN/…)',
     'imMultiCutFolders': 'Dossiers multi-plans (兼用)',
     'imProcess': 'Étape',
@@ -7286,7 +7293,7 @@ enum AppStrings {
     'mpFileMissing': 'Fichier introuvable — reliez-le',
     'mpInUseOnTimeline': 'Utilisé dans la timeline',
     'mpNameEmpty': 'Le nom du média ne peut pas être vide.',
-    'exCameraTemplate': 'Caméra {w}×{h}',
+    'exCameraTemplate': 'Caméra {size}',
     'toolBrush': 'Pinceau',
     'toolEraser': 'Gomme',
     'toolEyedropper': 'Pipette',
@@ -7339,7 +7346,7 @@ enum AppStrings {
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
     'toolCutNothingHeld': 'Rien en main pour l\'instant',
-    'toolCutHoldingTemplate': 'En main : {width}×{height} px',
+    'toolCutHoldingTemplate': 'En main : {size} px',
     'toolLibraryEmpty': 'Rien à afficher',
     'toolCutPasteAtOrigin': 'Coller à la position d\'origine',
     'toolCutFlipHorizontal': 'Miroir horizontal',
@@ -8708,7 +8715,7 @@ enum AppStrings {
     'exCheckingEncoders': '正在检查本机的编码器…',
     'exNotInThisBuild': '此版本尚不可用。',
     'exBitrateAuto': '自动',
-    'exCanvasTemplate': '画布 {w}×{h}',
+    'exCanvasTemplate': '画布 {size}',
     'exCanvasPerCut': '画布（按镜头）',
     'imImport': '导入',
     'imFile': '文件',
@@ -8718,6 +8725,7 @@ enum AppStrings {
     'imRevisions': '修订',
     'imModified': '修改时间',
     'imSize': '大小',
+    'imResolution': '分辨率',
     'imArchivedProcesses': '已归档工序（LO/、GEN/…）',
     'imMultiCutFolders': '兼用镜头文件夹',
     'imProcess': '工序',
@@ -8776,7 +8784,7 @@ enum AppStrings {
     'mpFileMissing': '文件缺失 — 请重新链接',
     'mpInUseOnTimeline': '在时间线中使用',
     'mpNameEmpty': '媒体名称不能为空。',
-    'exCameraTemplate': '摄影机 {w}×{h}',
+    'exCameraTemplate': '摄影机 {size}',
     'toolBrush': '画笔',
     'toolEraser': '橡皮',
     'toolEyedropper': '吸管',
@@ -8825,7 +8833,7 @@ enum AppStrings {
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
     'toolCutNothingHeld': '尚未持有任何内容',
-    'toolCutHoldingTemplate': '持有 {width}×{height} px',
+    'toolCutHoldingTemplate': '持有 {size} px',
     'toolLibraryEmpty': '没有可显示的内容',
     'toolCutPasteAtOrigin': '粘贴到原位置',
     'toolCutFlipHorizontal': '水平翻转',

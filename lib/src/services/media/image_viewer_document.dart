@@ -2,8 +2,10 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../../models/canvas_size.dart';
 import '../photoshop/psd_image.dart' show decodePsdCompositeImage;
-import '../photoshop/psd_reader.dart' show looksLikePsdBytes;
+import '../photoshop/psd_reader.dart'
+    show looksLikePsdBytes, psdHeaderLength, readPsdCanvasSize;
 import 'media_byte_source.dart';
 import 'psd_composite_document.dart';
 import 'viewer_document.dart';
@@ -56,24 +58,69 @@ final class ImageViewerDocument implements ViewerDocument {
           ? PsdCompositeDocument.read(bytes)
           : _decoded(await ui.ImmutableBuffer.fromUint8List(bytes));
     }
-    return _startsLikePsd(file)
+    return looksLikePsdBytes(_headOf(file, 4))
         ? PsdCompositeDocument.read(await File(file).readAsBytes())
         : _decoded(await ui.ImmutableBuffer.fromFilePath(file));
   }
 
-  /// Whether the file at [path] begins like a Photoshop document — four
-  /// bytes read, so an image the codec takes still never enters the heap.
+  /// How big the picture in [source] is, from its header alone: what [open]
+  /// would show, never decoded — the size a list of files asks of every row
+  /// (the import window's resolution, F-375).
+  ///
+  /// ⛔Not [open] and its page size: [open] decodes a frame to count the
+  /// frames — the whole picture, for a codec that cannot decode small — and
+  /// reads a Photoshop document whole ([PsdCompositeDocument]). Here the
+  /// codec reads its header, and a Photoshop document gives its first
+  /// [psdHeaderLength] bytes.
+  static Future<CanvasSize> sizeOf(MediaByteSource source) async {
+    final file = source.wholeFilePath;
+    if (file == null) {
+      final bytes = await source.read();
+      return looksLikePsdBytes(bytes)
+          ? _psdSize(bytes)
+          : _codecSize(await ui.ImmutableBuffer.fromUint8List(bytes));
+    }
+    final head = _headOf(file, psdHeaderLength);
+    return looksLikePsdBytes(head)
+        ? _psdSize(head)
+        : _codecSize(await ui.ImmutableBuffer.fromFilePath(file));
+  }
+
+  static CanvasSize _psdSize(Uint8List header) {
+    final size = readPsdCanvasSize(header);
+    return CanvasSize(width: size.width, height: size.height);
+  }
+
+  /// The size the codec reads off the head of [buffer]. The buffer and
+  /// the description are released here, whichever way this ends.
+  static Future<CanvasSize> _codecSize(ui.ImmutableBuffer buffer) async {
+    final ui.ImageDescriptor descriptor;
+    try {
+      descriptor = await ui.ImageDescriptor.encoded(buffer);
+    } finally {
+      buffer.dispose();
+    }
+    try {
+      return CanvasSize(width: descriptor.width, height: descriptor.height);
+    } finally {
+      descriptor.dispose();
+    }
+  }
+
+  /// Up to [length] bytes off the front of the file at [path] — so a
+  /// Photoshop document is known, and an image the codec takes still never
+  /// enters the heap.
   ///
   /// 🚨SYNCHRONOUS ON PURPOSE: open, read and close in one breath, so the
   /// file is never held open across an event. An awaited open left a
   /// handle standing between turns, and on Windows a file with a handle on
   /// it cannot be deleted — a Drive pick replaced while the import preview
   /// was reading it kept its copy's folder (`ProviderDocuments.letGo` gave
-  /// up in silence). Four bytes cost nothing on the thread that asks.
-  static bool _startsLikePsd(String path) {
+  /// up in silence). A few bytes cost nothing on the thread that asks.
+  static Uint8List _headOf(String path, int length) {
     final file = File(path).openSync();
     try {
-      return looksLikePsdBytes(file.readSync(4));
+      return file.readSync(length);
     } finally {
       file.closeSync();
     }

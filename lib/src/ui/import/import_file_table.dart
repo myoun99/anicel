@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
+import '../text/pixel_size_label.dart';
 import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
@@ -105,6 +106,7 @@ class ImportFileRow {
     required this.extension,
     required this.modified,
     required this.size,
+    required this.resolution,
   });
 
   final String path;
@@ -114,9 +116,13 @@ class ImportFileRow {
   final String name;
   final String extension;
 
-  /// Already formatted — the table does not know about dates or bytes.
+  /// Already formatted — the table does not know about dates, bytes or
+  /// pixels.
   final String modified;
   final String size;
+
+  /// The file's size in pixels (F-375) — empty while it is being read.
+  final String resolution;
 }
 
 class ImportFileTable extends StatefulWidget {
@@ -186,6 +192,7 @@ class _ImportTableMetrics {
   _ImportTableMetrics._({
     required this.modifiedWidth,
     required this.sizeWidth,
+    required this.resolutionWidth,
     required this.columnWidths,
     required this.rowHeight,
   });
@@ -212,6 +219,18 @@ class _ImportTableMetrics {
           text.widest([
             AppText.strings.imSize,
             for (final row in rows) row.size,
+          ]) +
+          gap,
+      // ⛔Not the widest that has come in: the sizes come in one by one
+      // after the rows are up, and a column that widened with them would
+      // shove every column past it while the person reads — the room is
+      // kept and only what is in it changes (「없다가 생기는 UI 금지」). It
+      // is kept for five digits a side from the start.
+      resolutionWidth:
+          text.widest([
+            AppText.strings.imResolution,
+            pixelSizeLabel(99999, 99999),
+            for (final row in rows) row.resolution,
           ]) +
           gap,
       columnWidths: [
@@ -249,11 +268,15 @@ class _ImportTableMetrics {
 
   final double modifiedWidth;
   final double sizeWidth;
+  final double resolutionWidth;
   final List<double> columnWidths;
   final double rowHeight;
 
   double get _fixedWidth =>
-      modifiedWidth + sizeWidth + columnWidths.fold(0.0, (sum, w) => sum + w);
+      modifiedWidth +
+      sizeWidth +
+      resolutionWidth +
+      columnWidths.fold(0.0, (sum, w) => sum + w);
 
   double tableWidthFor(double nameWidth) =>
       2 * ImportFileTable._sidePadding +
@@ -364,6 +387,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
     required Widget name,
     required Widget modified,
     required Widget size,
+    required Widget resolution,
     required Widget Function(ImportColumn<Object?> column) cell,
   }) => Row(
     children: [
@@ -376,6 +400,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
         ),
       ),
       SizedBox(width: metrics.sizeWidth, child: size),
+      SizedBox(width: metrics.resolutionWidth, child: resolution),
       for (var index = 0; index < widget.columns.length; index += 1)
         SizedBox(
           width: metrics.columnWidths[index],
@@ -399,6 +424,12 @@ class _ImportFileTableState extends State<ImportFileTable> {
       modified: Text(AppText.strings.imModified, style: dim, maxLines: 1),
       size: Text(
         AppText.strings.imSize,
+        style: dim,
+        maxLines: 1,
+        textAlign: TextAlign.right,
+      ),
+      resolution: Text(
+        AppText.strings.imResolution,
         style: dim,
         maxLines: 1,
         textAlign: TextAlign.right,
@@ -463,6 +494,13 @@ class _ImportFileTableState extends State<ImportFileTable> {
             modified: Text(row.modified, style: dim, maxLines: 1),
             size: Text(
               row.size,
+              style: dim,
+              maxLines: 1,
+              textAlign: TextAlign.right,
+            ),
+            resolution: Text(
+              row.resolution,
+              key: ValueKey<String>('import-resolution-${row.path}'),
               style: dim,
               maxLines: 1,
               textAlign: TextAlign.right,

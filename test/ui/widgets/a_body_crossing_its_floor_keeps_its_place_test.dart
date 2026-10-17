@@ -69,6 +69,7 @@ void main() {
           extension: '.png',
           modified: '09-05',
           size: '1 MB',
+          resolution: '1920×1080',
         ),
     ];
     final table = ImportFileTable(

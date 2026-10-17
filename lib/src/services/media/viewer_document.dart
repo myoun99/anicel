@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../../models/canvas_size.dart';
 import 'media_byte_source.dart';
 
 /// One open document the viewer can show: how many pages it has, how big
@@ -140,6 +141,32 @@ abstract class ViewerDocument {
 /// exactly as the engine it stands in for would be.
 typedef ViewerDocumentOpener =
     Future<ViewerDocument> Function(MediaByteSource source);
+
+/// [pageIndex]'s size in whole pixels at [at] times its own — at 1, what
+/// the renderer calls 1:1: the size a PDF page lands at, the one a pose
+/// stands on. Never under one pixel a side, nor over the 8192 a page is
+/// ever asked to render at.
+///
+/// 🪦A PDF's placement, the viewer's page rasters and a picture run each
+/// worked this out for themselves; the import window's resolution column
+/// (F-375, 2026-10-17) would have been the fourth.
+/// ⛔Not [viewerPagePixels], which has no ceiling on purpose: a box cut at
+/// a page's own size reads every pixel the page has, past 8192 too.
+CanvasSize pagePixelSize(
+  ViewerDocument document,
+  int pageIndex, {
+  double at = 1,
+}) {
+  final size = document.pageSize(pageIndex);
+  return CanvasSize(
+    width: pagePixels(size.width * at),
+    height: pagePixels(size.height * at),
+  );
+}
+
+/// An extent of a page as the whole pixels it is rendered at — never under
+/// one, nor over 8192 ([pagePixelSize]).
+int pagePixels(double extent) => extent.round().clamp(1, 1 << 13).toInt();
 
 /// A page's own size in whole PIXELS — the size
 /// [ViewerDocument.readRegionRgba] reads at. PDF points round to the

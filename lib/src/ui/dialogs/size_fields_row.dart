@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_size.dart';
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
+import '../text/pixel_size_label.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
@@ -125,7 +126,9 @@ class SizePresetsRow extends StatelessWidget {
         current: group.where((preset) => preset.size == entered).firstOrNull,
         choiceOf: (preset) => PanelFlyoutChoice(
           key: '$keyPrefix-preset-${preset.size.width}x${preset.size.height}',
-          label: '${preset.name} ${preset.size.width}×${preset.size.height}',
+          label:
+              '${preset.name} '
+              '${pixelSizeLabel(preset.size.width, preset.size.height)}',
         ),
         onPicked: (preset) => onPicked(preset.size),
       ),

@@ -6,6 +6,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/transform_pose.dart';
 import '../session/canvas_adjust.dart';
+import '../text/pixel_size_label.dart';
 import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
 import 'row_transform_box.dart';
@@ -97,7 +98,7 @@ class CanvasAdjustLayer extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Text(
-                    '${edges.width.round()} × ${edges.height.round()}',
+                    pixelSizeLabel(edges.width.round(), edges.height.round()),
                     key: const ValueKey<String>('canvas-adjust-size'),
                     style: const TextStyle(fontSize: 12),
                   ),
