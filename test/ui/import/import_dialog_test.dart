@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -99,6 +100,21 @@ void main() {
       find.byKey(ValueKey<String>('import-option-$column-$option')),
     );
     await tester.pumpAndSettle();
+  }
+
+  /// Types [first] into the preview's IN and [last] into its OUT, each as
+  /// a hand does — one-based, as they stand on screen.
+  Future<void> keepSpan(WidgetTester tester, int first, int last) async {
+    for (final (end, at) in [('in', first), ('out', last)]) {
+      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(ValueKey<String>('transport-$end-input')),
+        '$at',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
   }
 
   testWidgets('🎯a cut folder counts its scans into the run\'s % (F-282-Q1)', (
@@ -1179,23 +1195,8 @@ void main() {
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
 
-    // Pages three and four of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-in-input')),
-      '3',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-out-input')),
-      '4',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    // Pages three and four of five.
+    await keepSpan(tester, 3, 4);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
@@ -1296,22 +1297,7 @@ void main() {
     );
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-in-input')),
-      '3',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-out-input')),
-      '4',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    await keepSpan(tester, 3, 4);
     final bake = find.byKey(ValueKey<String>('import-cell-bake-$pdfPath'));
     await tester.ensureVisible(bake);
     await tester.pumpAndSettle();
@@ -1383,23 +1369,8 @@ void main() {
     );
     await tester.pump();
 
-    // Pages two and three of five: IN and OUT are one-based on screen.
-    await tester.tap(find.byKey(const ValueKey<String>('transport-in-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-in-input')),
-      '2',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('transport-out-edit')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('transport-out-input')),
-      '3',
-    );
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    // Pages two and three of five.
+    await keepSpan(tester, 2, 3);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
@@ -1922,12 +1893,14 @@ void main() {
     /// once the run has left them on the status line — a picture the window
     /// [previews] shown first: a Photoshop file is read whole for it, and
     /// held while it is (the file table's PSD pins) — and what the rows are
-    /// [asked] answered before Import is pressed.
+    /// [asked] answered before Import is pressed; the pool's window when
+    /// it is [poolOnly].
     Future<Finder> warningsAfterImporting(
       WidgetTester tester,
       List<String> paths, {
       bool previews = false,
       Future<void> Function()? asked,
+      bool poolOnly = false,
     }) async {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -1936,7 +1909,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: ImportDialog(session: session, initialPaths: paths),
+            body: ImportDialog(
+              session: session,
+              initialPaths: paths,
+              poolOnly: poolOnly,
+            ),
           ),
         ),
       );
@@ -2115,6 +2092,110 @@ void main() {
           ),
         ),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('F-370-Q1: a file its door could not open is named under '
+        'corrupt or locked', (tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      // A PDF that will not open — locked, say: its renderer throws.
+      PdfRenderService.debugOpenerOverride = (_) async =>
+          throw const FormatException('a password is needed');
+      final pdf = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}locked.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [pdf!],
+        asked: () =>
+            pickCell(tester, column: 'into', path: pdf, option: 'newCut'),
+      );
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(
+        inNotice('Could not be opened — corrupt or password-locked. (1)'),
+        findsOneWidget,
+      );
+      expect(inNotice('locked.pdf'), findsOneWidget);
+    });
+
+    testWidgets('F-370-Q1: a PDF registered as the pages it keeps, whose '
+        'pages could not be cut out, is named — and nothing registers in '
+        'their stead', (tester) async {
+      addTearDown(PdfRenderService.debugResetForTests);
+      PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+        pageSizes: List.filled(5, const ui.Size(595, 842)),
+      );
+      // The renderer could not write those pages out as a file of their own.
+      PdfRenderService.debugPageSpanOverride = (path, first, count) async =>
+          null;
+      final pdf = await tester.runAsync(() async {
+        final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+        await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+        return file.path;
+      });
+      final notice = await warningsAfterImporting(
+        tester,
+        [pdf!],
+        poolOnly: true,
+        asked: () => keepSpan(tester, 2, 3),
+      );
+      Finder inNotice(String text) =>
+          find.descendant(of: notice, matching: find.text(text));
+
+      expect(inNotice('Could not be imported. (1)'), findsOneWidget);
+      expect(inNotice('conte.pdf'), findsOneWidget);
+      expect(
+        tester
+            .widget<ImportDialog>(find.byType(ImportDialog))
+            .session
+            .repository
+            .requireProject()
+            .mediaAssets,
+        isEmpty,
+        reason: 'not the piece, and not the whole file in its place',
+      );
+    });
+
+    testWidgets('F-370-Q1: what threw part-way through a run is a line of '
+        'the notice\'s own sentence — and what landed before it stays '
+        'landed', (tester) async {
+      final good = await tester.runAsync(() => writePng('lands.png'));
+      final cloudy = await tester.runAsync(() => writePng('cloudy.png'));
+      final notice = await warningsAfterImporting(
+        tester,
+        [good!, cloudy!],
+        asked: () async {
+          // A file that has not arrived, whose provider is asked for it and
+          // fails as a platform can: no file the run read, so said of none.
+          FolderPicker.debugDownloadRequester = (_) async =>
+              throw PlatformException(
+                code: 'offline',
+                message: 'the provider let go',
+              );
+          await tester.runAsync(() => emptyWhenFree(File(cloudy)));
+        },
+      );
+
+      expect(
+        find.descendant(
+          of: notice,
+          matching: find.textContaining('the provider let go'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('import-name-$good')),
+        findsNothing,
+        reason: 'it landed before the throw, and is not imported again',
+      );
+      expect(
+        find.byKey(ValueKey<String>('import-name-$cloudy')),
+        findsOneWidget,
+        reason: 'what threw is still on the list to retry',
       );
     });
 
