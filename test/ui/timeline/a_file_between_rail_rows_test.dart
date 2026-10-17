@@ -97,6 +97,7 @@ void main() {
         [null, null, null],
         reason: 'one section cannot say which way the list runs',
       );
+      expect(gaps(const [], const []), [null], reason: 'nor can no row');
     });
 
     test('never between a base and its rider', () {

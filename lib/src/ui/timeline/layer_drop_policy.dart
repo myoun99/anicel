@@ -300,10 +300,11 @@ bool _standsInTheDrawingSection(Layer layer) =>
 /// [modelInsertionForSlot]'s rows of the stack: a track's rows are no rows
 /// of the cut's stack, and with no drawing row they may be all the list
 /// has. Null where both ends stand in the same place of that order — one
-/// section, which cannot say which way it runs.
+/// section, which cannot say which way it runs — and where there is no row
+/// to stand by.
 int? _emptyDrawingSectionSlot(List<Layer> displayRows) {
   if (displayRows.isEmpty) {
-    return 0;
+    return null;
   }
   final first = displayRows.first;
   final last = displayRows.last;
