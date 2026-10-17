@@ -189,7 +189,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/conte.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'conte',
     );
     await tester.pumpAndSettle();
 
@@ -237,7 +236,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/conte.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'conte',
     );
     await tester.pump();
     expect(loading, findsOneWidget, reason: 'the file is opening');
@@ -303,7 +301,6 @@ void main() {
       const MediaViewerRequest(
         path: 'C:/work/conte.pdf',
         kind: MediaAssetKind.pdf,
-        name: 'conte',
       ),
     );
     await tester.pump();
@@ -561,7 +558,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/clip.mp4',
       kind: MediaAssetKind.pdf,
-      name: 'clip',
     );
     await tester.pumpAndSettle();
 

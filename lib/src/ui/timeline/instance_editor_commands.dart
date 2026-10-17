@@ -8,7 +8,6 @@ import '../../models/frame_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show KeySidesEdit, KeyTypePick;
 import '../../models/layer_id.dart';
-import '../../models/media_asset.dart' show mediaFileName;
 import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
@@ -350,7 +349,7 @@ SeInstanceAudioLink _audioLink(
   int index,
   int blockFrames,
 ) => (
-  label: mediaFileName(clip.filePath),
+  label: session.repository.requireProject().shownNameOfMedia(clip.filePath),
   token: index,
   offsetFrames: clip.offsetFrames,
   blockFrames: blockFrames,

@@ -447,7 +447,6 @@ void main() {
       slot.request.value = MediaViewerRequest(
         path: movie,
         kind: MediaAssetKind.video,
-        name: 'take',
       );
       await settleLoadedPages(tester);
 
@@ -495,7 +494,6 @@ void main() {
         slot.request.value = MediaViewerRequest(
           path: movie,
           kind: MediaAssetKind.video,
-          name: 'take',
         );
         await tester.pumpAndSettle();
 

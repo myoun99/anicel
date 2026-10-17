@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
@@ -79,14 +80,17 @@ void main() {
 
   /// A document of [pages] pages that turns them itself at
   /// [framesPerSecond], or a book when that is null — the PDF arm with a
-  /// fake behind it, which is how the bench reaches either.
+  /// fake behind it, which is how the bench reaches either — in [project].
   Future<void> openPages(
     WidgetTester tester, {
     required int pages,
     double? framesPerSecond,
     CanvasFloorInsets Function(Widget child)? onFloor,
+    Project? project,
   }) async {
-    session = EditorSessionManager(initialProject: createDefaultProject());
+    session = EditorSessionManager(
+      initialProject: project ?? createDefaultProject(),
+    );
     PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
       pageSizes: List<ui.Size>.filled(pages, const ui.Size(595, 842)),
       framesPerSecond: framesPerSecond,
@@ -95,7 +99,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/pages.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'pages',
     );
     await tester.pumpAndSettle();
   }
@@ -108,7 +111,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/clip.mp4',
       kind: MediaAssetKind.video,
-      name: 'clip',
     );
     await settleLoadedPages(tester);
   }
@@ -139,7 +141,6 @@ void main() {
     slot.request.value = const MediaViewerRequest(
       path: 'C:/work/line.wav',
       kind: MediaAssetKind.audio,
-      name: 'line',
     );
     await tester.pumpAndSettle();
   }
@@ -383,7 +384,6 @@ void main() {
         const MediaViewerRequest(
           path: 'C:/work/other.wav',
           kind: MediaAssetKind.audio,
-          name: 'other',
         ),
       );
       await tester.pumpAndSettle();
@@ -402,16 +402,27 @@ void main() {
   });
 
   group('the file\'s name', () {
-    testWidgets('is written whatever the document is — the asset\'s, or the '
-        'file\'s own', (tester) async {
-      await openPages(tester, pages: 12, framesPerSecond: 24);
-      expect(
-        find.descendant(
-          of: key('canvas-document-name'),
-          matching: find.text('pages'),
-        ),
-        findsOneWidget,
+    const pooled = 'C:/work/pages.pdf';
+    final inThePool = createDefaultProject().copyWith(
+      mediaAssets: [
+        MediaAsset(path: pooled, name: 'pages', kind: MediaAssetKind.pdf),
+      ],
+    );
+
+    Finder plate(String name) => find.descendant(
+      of: key('canvas-document-name'),
+      matching: find.text(name),
+    );
+
+    testWidgets('is written whatever the document is — as the pool shows '
+        'it, or the file\'s own', (tester) async {
+      await openPages(
+        tester,
+        pages: 12,
+        framesPerSecond: 24,
+        project: inThePool,
       );
+      expect(plate('pages'), findsOneWidget);
 
       slot.open(
         const MediaViewerRequest(
@@ -420,13 +431,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: key('canvas-document-name'),
-          matching: find.text('board_03.pdf'),
-        ),
-        findsOneWidget,
-      );
+      expect(plate('board_03.pdf'), findsOneWidget);
+    });
+
+    // 🗣️F-376 (유저 2026-10-17): 「미디어풀에서 이름바꾸고 … 파일이름
+    // 표시되는게 다 바꾸기 전 이름임」.
+    testWidgets('🚨a rename in the pool while the file is open reaches the '
+        'plate', (tester) async {
+      await openPages(tester, pages: 3, project: inThePool);
+      expect(plate('pages'), findsOneWidget);
+
+      session!.mediaPool.renameMediaAsset(pooled, '콘티');
+      await tester.pump();
+
+      expect(plate('콘티'), findsOneWidget);
+      expect(plate('pages'), findsNothing);
     });
   });
 

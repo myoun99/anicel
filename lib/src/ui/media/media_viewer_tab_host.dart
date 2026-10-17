@@ -61,15 +61,15 @@ import '../sliced_value_listenable_builder.dart';
 /// dockable-panel view-state rule) so the choice survives tab switches
 /// and re-docking.
 class MediaViewerRequest {
-  const MediaViewerRequest({required this.path, required this.kind, this.name});
+  const MediaViewerRequest({required this.path, required this.kind});
 
   final String path;
   final MediaAssetKind kind;
 
-  /// Display name (the asset's); null falls back to the file name.
-  final String? name;
-
-  String get displayName => name ?? mediaFileName(path);
+  // 🪦No name of its own (F-376, 2026-10-17): it carried the pooled
+  // asset's name as it stood when the viewer opened, and a rename while
+  // the file was open did not reach the viewer's plate. The plate reads
+  // the pool now ([MediaViewerTabHost]).
 }
 
 /// ONE viewer's whole state, owned by the workspace: what it looks at,
@@ -364,6 +364,26 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   MediaViewerRequest? get _currentRequest => widget.request.value;
 
+  /// The open file's name as the pool shows it NOW (F-376) — a rename while
+  /// it is open reaches the plate — or null with nothing open.
+  String? get _shownName => switch (_currentRequest) {
+    final request? => mediaFileShownName(
+      widget.session.repository.currentProject?.mediaAssetByPath(request.path),
+      request.path,
+    ),
+    null => null,
+  };
+
+  /// The name the plate was last drawn with: the session tells of every
+  /// edit, and only one that changes this name redraws the viewer.
+  String? _drawnName;
+
+  void _onSessionChanged() {
+    if (mounted && _shownName != _drawnName) {
+      setState(() {});
+    }
+  }
+
   /// The open document, whatever medium it came from — 🪦there used to be
   /// a `_frames` list AND a `_pdf` handle here, and five places downstream
   /// had to ask which was live. See [ViewerDocument].
@@ -478,6 +498,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   void initState() {
     super.initState();
     widget.request.addListener(_onRequestChanged);
+    widget.session.addListener(_onSessionChanged);
     widget.session.memoryPressureTicks.addListener(_onMemoryPressure);
     widget.position.addListener(_onPosition);
     widget.session.playbackRig.transports.add(this);
@@ -490,6 +511,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     if (rebindListener(oldWidget.request, widget.request, _onRequestChanged)) {
       _onRequestChanged();
     }
+    rebindListener(oldWidget.session, widget.session, _onSessionChanged);
     rebindListener(
       oldWidget.session.memoryPressureTicks,
       widget.session.memoryPressureTicks,
@@ -532,6 +554,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   @override
   void dispose() {
     widget.request.removeListener(_onRequestChanged);
+    widget.session.removeListener(_onSessionChanged);
     widget.session.memoryPressureTicks.removeListener(_onMemoryPressure);
     widget.position.removeListener(_onPosition);
     // ⚠️Before [_disposeContent]: it stops the clock, and a transport that
@@ -1219,6 +1242,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final request = _currentRequest;
     final pageCount = _pageCount;
     final pageIndex = _pageShown;
+    _drawnName = _shownName;
 
     // Document space: the page/frame being shown. ONE answer now — the
     // document knows its own page size, whether that is PDF points, image
@@ -1351,7 +1375,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ],
       pageStrip: _pageStrip(pageIndex, pageCount),
       transport: transport,
-      documentName: request?.displayName,
+      documentName: _drawnName,
       bottomBarSettings: [
         // Both keep their retired button's key string — the flyout's own
         // convention, so every test that pressed them gains a menu-open

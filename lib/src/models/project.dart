@@ -214,6 +214,11 @@ class Project {
     return null;
   }
 
+  /// How the file at [path] is shown to a person ([mediaFileShownName]):
+  /// as its entry in this pool has it, or by its file name.
+  String shownNameOfMedia(String path) =>
+      mediaFileShownName(mediaAssetByPath(path), path);
+
   Project copyWith({
     ProjectId? id,
     String? name,

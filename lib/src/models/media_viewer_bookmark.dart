@@ -18,7 +18,6 @@ class MediaViewerBookmark {
   const MediaViewerBookmark({
     required this.path,
     required this.kind,
-    this.name,
     this.position = 0,
   });
 
@@ -31,8 +30,10 @@ class MediaViewerBookmark {
 
   final MediaAssetKind kind;
 
-  /// The pooled asset's display name, when it had one.
-  final String? name;
+  // 🪦No name of its own (F-376, 2026-10-17): it kept the pooled asset's
+  // name as it stood when the viewer opened, and a viewer shows the file
+  // as the pool shows it NOW — a copy here only ever said a name the pool
+  // had given up (`Project.shownNameOfMedia`).
 
   /// How far into the document — see `MediaViewerTabHost.position`.
   final int position;
@@ -40,19 +41,16 @@ class MediaViewerBookmark {
   MediaViewerBookmark copyWith({
     String? path,
     MediaAssetKind? kind,
-    String? name,
     int? position,
   }) => MediaViewerBookmark(
     path: path ?? this.path,
     kind: kind ?? this.kind,
-    name: name ?? this.name,
     position: position ?? this.position,
   );
 
   Map<String, Object?> toJson() => {
     'path': path,
     'kind': kind.name,
-    if (name != null) 'name': name,
     if (position != 0) 'position': position,
   };
 
@@ -74,12 +72,10 @@ class MediaViewerBookmark {
     if (kind == null) {
       return null;
     }
-    final name = json['name'];
     final position = json['position'];
     return MediaViewerBookmark(
       path: path,
       kind: kind,
-      name: name is String ? name : null,
       position: position is int && position >= 0 ? position : 0,
     );
   }
@@ -89,11 +85,10 @@ class MediaViewerBookmark {
       other is MediaViewerBookmark &&
       other.path == path &&
       other.kind == kind &&
-      other.name == name &&
       other.position == position;
 
   @override
-  int get hashCode => Object.hash(path, kind, name, position);
+  int get hashCode => Object.hash(path, kind, position);
 }
 
 /// The remembered documents of every viewer, keyed by the viewer's panel

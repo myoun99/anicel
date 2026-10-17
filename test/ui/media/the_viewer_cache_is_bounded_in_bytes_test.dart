@@ -117,7 +117,6 @@ void main() {
     slot.request.value = MediaViewerRequest(
       path: path,
       kind: MediaAssetKind.pdf,
-      name: 'conte',
     );
     await tester.pumpAndSettle();
     expect(

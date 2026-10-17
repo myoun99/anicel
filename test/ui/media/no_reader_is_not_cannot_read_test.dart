@@ -85,7 +85,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/reference.pdf',
         kind: MediaAssetKind.pdf,
-        name: 'reference',
       );
       await tester.pumpAndSettle();
     }

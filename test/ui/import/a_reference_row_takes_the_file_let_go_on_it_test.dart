@@ -348,14 +348,18 @@ void main() {
     test('nothing when the file came in or the row was left as it was — a '
         'row that changed while the file was read included; the file and '
         'why when it did not', () {
-      expect(referenceSwapWords(const ReferenceLaid(), '/w/bg.png'), isNull);
+      final project = createDefaultProject();
       expect(
-        referenceSwapWords(const ReferenceLeftAlone(), '/w/bg.png'),
+        referenceSwapWords(const ReferenceLaid(), '/w/bg.png', project),
+        isNull,
+      );
+      expect(
+        referenceSwapWords(const ReferenceLeftAlone(), '/w/bg.png', project),
         isNull,
         reason: '↩️it said 「could not read the file」',
       );
       expect(
-        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png'),
+        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png', project),
         AppText.strings.imUnreadable('bg.png'),
       );
       AppText.settings.value = const AppLanguageSettings(
@@ -363,9 +367,38 @@ void main() {
         notationLanguage: AppLanguage.ko,
       );
       expect(
-        referenceSwapWords(const ReferenceLacksPicture(1), '/w/bg.png'),
+        referenceSwapWords(
+          const ReferenceLacksPicture(1),
+          '/w/bg.png',
+          project,
+        ),
         'bg.png: 이 파일에는 2번째 그림이 없습니다.',
         reason: 'counted from 1 where a person reads it',
+      );
+    });
+
+    test('F-376: a file the pool holds is named as the pool names it — a '
+        'name given in the pool, not the file\'s', () {
+      final project = createDefaultProject().copyWith(
+        mediaAssets: [
+          MediaAsset(
+            path: '/w/bg.png',
+            name: '거리',
+            kind: MediaAssetKind.image,
+          ),
+        ],
+      );
+      expect(
+        referenceSwapWords(const ReferenceUnreadable(), '/w/bg.png', project),
+        AppText.strings.imUnreadable('거리'),
+      );
+      expect(
+        referenceSwapWords(
+          const ReferenceLacksPicture(0),
+          '/w/bg.png',
+          project,
+        ),
+        AppText.strings.imLacksPicture('거리', 1),
       );
     });
 
@@ -532,7 +565,11 @@ void main() {
       expect(answer, isA<ReferenceUnreadable>());
       expect(session.layerById(takeRow), row);
       expect(
-        referenceSwapWords(answer!, '/work/take2.mp4'),
+        referenceSwapWords(
+          answer!,
+          '/work/take2.mp4',
+          session.repository.requireProject(),
+        ),
         AppText.strings.imUnreadable('take2.mp4'),
       );
     });

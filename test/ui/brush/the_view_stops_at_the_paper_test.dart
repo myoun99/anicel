@@ -533,7 +533,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/conte.pdf',
         kind: MediaAssetKind.pdf,
-        name: 'conte',
       );
       await tester.pump();
       expect(

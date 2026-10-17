@@ -75,7 +75,6 @@ void main() {
           'media-viewer-sub': MediaViewerBookmark(
             path: 'C:/work/conte.pdf',
             kind: MediaAssetKind.pdf,
-            name: 'conte',
             position: 12,
           ),
         },
@@ -117,7 +116,6 @@ void main() {
           'media-viewer-sub': MediaViewerBookmark(
             path: 'C:/work/conte.pdf',
             kind: MediaAssetKind.pdf,
-            name: 'conte',
             position: 3,
           ),
         },

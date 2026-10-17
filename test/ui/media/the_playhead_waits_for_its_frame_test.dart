@@ -89,7 +89,6 @@ void main() {
     slot.request.value = MediaViewerRequest(
       path: 'C:/work/clip-$opens.pdf',
       kind: MediaAssetKind.pdf,
-      name: 'clip',
     );
     await tester.pumpAndSettle();
     return fake;

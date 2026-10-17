@@ -108,7 +108,6 @@ void main() {
       // A movie, so `mediaKindCanCarrySound` says it can hold a soundtrack.
       path: 'C:/work/clip-$opens.mp4',
       kind: MediaAssetKind.video,
-      name: 'clip',
     );
     await settleLoadedPages(tester);
     return fake;

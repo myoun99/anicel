@@ -24,7 +24,7 @@ import '../models/project_font_file.dart';
 import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
-import '../models/media_asset.dart' show MediaAsset, mediaFileName;
+import '../models/media_asset.dart' show MediaAsset;
 import '../models/reference_swap.dart';
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
@@ -1082,8 +1082,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// A remembered reference, or null when the app can no longer reach it.
   ///
   /// 유저 확정 ⑭: BOTH kinds come back — a pooled asset by its pool key
-  /// (its name and kind are the pool's, which may have been renamed since)
-  /// and a loose file by the absolute path it was opened from. A path
+  /// (its kind is the pool's; its name the viewer reads off the pool as it
+  /// draws) and a loose file by the absolute path it was opened from. A path
   /// that is neither is simply gone: the viewer comes back empty and says
   /// nothing, because a reference is not the work and losing one must not
   /// greet anybody with a dialog.
@@ -1096,22 +1096,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     final asset = project.mediaAssetByPath(bookmark.path);
     if (asset != null) {
-      return MediaViewerRequest(
-        path: asset.path,
-        kind: asset.kind,
-        name: asset.name,
-      );
+      return MediaViewerRequest(path: asset.path, kind: asset.kind);
     }
     // Sync on purpose: this runs inside a notify, and a widget test's
     // fake-async zone never completes an awaited dart:io future.
     if (!File(bookmark.path).existsSync()) {
       return null;
     }
-    return MediaViewerRequest(
-      path: bookmark.path,
-      kind: bookmark.kind,
-      name: bookmark.name,
-    );
+    return MediaViewerRequest(path: bookmark.path, kind: bookmark.kind);
   }
 
   /// Writes both viewers back into the project — no command, so no undo
@@ -1129,7 +1121,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             entry.key: MediaViewerBookmark(
               path: request.path,
               kind: request.kind,
-              name: request.name,
               position: entry.value.position.value,
             ),
       },
@@ -1590,7 +1581,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the drawing instead.
   void _openAssetInViewer(MediaAsset asset, {required String tabId}) {
     _openInViewer(
-      MediaViewerRequest(path: asset.path, kind: asset.kind, name: asset.name),
+      MediaViewerRequest(path: asset.path, kind: asset.kind),
       tabId: tabId,
     );
   }
@@ -2197,6 +2188,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         path: path,
       ),
       path,
+      widget.session.repository.requireProject(),
     );
     if (words == null || !mounted) {
       return;
@@ -3127,14 +3119,19 @@ class _CanvasAreaKey extends GlobalObjectKey {
 /// only lacks the picture the row's cel shows, says that — 「bg.png에는
 /// 2번째 그림이 없습니다」. ↩️It was told 「could not read the file」, and so
 /// was a row that changed while its file was read.
-String? referenceSwapWords(ReferenceRedraw answer, String path) =>
-    switch (answer) {
-      ReferenceLaid() || ReferenceLeftAlone() => null,
-      ReferenceUnreadable() => AppText.strings.imUnreadable(
-        mediaFileName(path),
-      ),
-      ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
-        mediaFileName(path),
-        picture + 1,
-      ),
-    };
+///
+/// The file is named as [project]'s pool shows it (F-376).
+String? referenceSwapWords(
+  ReferenceRedraw answer,
+  String path,
+  Project project,
+) => switch (answer) {
+  ReferenceLaid() || ReferenceLeftAlone() => null,
+  ReferenceUnreadable() => AppText.strings.imUnreadable(
+    project.shownNameOfMedia(path),
+  ),
+  ReferenceLacksPicture(:final picture) => AppText.strings.imLacksPicture(
+    project.shownNameOfMedia(path),
+    picture + 1,
+  ),
+};

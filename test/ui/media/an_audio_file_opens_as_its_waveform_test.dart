@@ -151,7 +151,6 @@ void main() {
       slot.request.value = const MediaViewerRequest(
         path: 'C:/work/line.wav',
         kind: MediaAssetKind.audio,
-        name: 'line',
       );
       await tester.pumpAndSettle();
     }

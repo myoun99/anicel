@@ -305,6 +305,22 @@ class _ImportDialogState extends State<ImportDialog> {
       .requireProject()
       .mediaAssetByPath(path);
 
+  /// How this window names [path] — in its title, its rows and the
+  /// warnings it gives about the file: as the pool shows it (F-376).
+  String _shownName(String path) =>
+      widget.session.repository.requireProject().shownNameOfMedia(path);
+
+  /// What [says] of the file at [path], put on [tally] — the file named
+  /// as this window names it ([_shownName]).
+  void _warnOf(
+    _ImportTally tally,
+    String path,
+    String Function(String name) says,
+  ) {
+    final name = _shownName(path);
+    tally.warnOf(name, says(name));
+  }
+
   void _setSettings(
     Iterable<String> paths,
     ImportFileSettings Function(ImportFileSettings) change,
@@ -997,8 +1013,7 @@ class _ImportDialogState extends State<ImportDialog> {
         await _readableForImport(path) != null) {
       return true;
     }
-    final name = mediaFileName(path);
-    tally.warnOf(name, AppText.strings.imUnreadable(name));
+    _warnOf(tally, path, AppText.strings.imUnreadable);
     return false;
   }
 
@@ -1054,20 +1069,20 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) within,
   ) async {
     final fileReport = _FileReport(within);
-    final name = mediaFileName(path);
     final bool ok;
     try {
       ok = await _placeCarryingOnlyTheSpan(path, kind, tally, fileReport);
     } on Object {
-      tally.warnOf(name, AppText.strings.imCorrupt(name));
+      _warnOf(tally, path, AppText.strings.imCorrupt);
       return;
     }
     final failed = fileReport.failed.length;
     if (failed > 0) {
       // A PDF's are pages; a movie's — and a numbered run's — are frames.
-      tally.warnOf(
-        name,
-        kind == MediaAssetKind.pdf
+      _warnOf(
+        tally,
+        path,
+        (name) => kind == MediaAssetKind.pdf
             ? AppText.strings.imPagesFailed(name, failed)
             : AppText.strings.imFramesFailed(name, failed),
       );
@@ -1077,7 +1092,7 @@ class _ImportDialogState extends State<ImportDialog> {
       tally.done.add(path);
       return;
     }
-    tally.warnOf(name, _placementFailure(name, kind));
+    _warnOf(tally, path, (name) => _placementFailure(name, kind));
   }
 
   /// Whether [path] comes in as its PIECE ([TrimmedPieces]) — trimmed, and
@@ -1342,8 +1357,7 @@ class _ImportDialogState extends State<ImportDialog> {
           outFrame: settings.outFrame,
         );
         if (piece == null) {
-          final name = mediaFileName(path);
-          tally.warnOf(name, _placementFailure(name, kind));
+          _warnOf(tally, path, (name) => _placementFailure(name, kind));
         } else {
           carried[piece.path] = path;
         }
@@ -1397,8 +1411,7 @@ class _ImportDialogState extends State<ImportDialog> {
       spot: widget.spot,
     );
     if (expanded == null) {
-      final name = mediaFileName(path);
-      tally.warnOf(name, AppText.strings.imPsdNoLayers(name));
+      _warnOf(tally, path, AppText.strings.imPsdNoLayers);
       return false;
     }
     tally.warnAll(expanded);
@@ -1482,7 +1495,7 @@ class _ImportDialogState extends State<ImportDialog> {
       // about one file, and the strip below already owns the word "Place"
       // for the question it asks.
       title: widget.placeOnly && _files.isNotEmpty
-          ? AppText.strings.imPlaceTitle(mediaFileName(_files.first))
+          ? AppText.strings.imPlaceTitle(_shownName(_files.first))
           : AppText.strings.imImport,
       titleIcon: Icons.download_outlined,
       width: room.width,
@@ -1662,13 +1675,13 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// A row names its file WITHOUT the extension, which it shows on its own:
   /// the name is what gets cut short when room runs out, the extension never
-  /// is.
+  /// is. The name is the pool's when the pool holds the file, as the pool's
+  /// own row shows it (F-376).
   ImportFileRow _tableRow(String path) {
-    final parts = mediaFileNameParts(path);
     return ImportFileRow(
       path: path,
-      name: parts.name,
-      extension: parts.extension,
+      name: mediaAssetNameFor(_poolEntryFor(path), path),
+      extension: mediaFileNameParts(path).extension,
       modified: _modifiedOf(path),
       size: byteSizeLabel(_sizeOf(path)),
     );
