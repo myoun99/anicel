@@ -428,8 +428,10 @@ const double timelineSecondGridAlpha = 1.0;
 /// ⛔NOT FOR A BLOCK'S WORDS any more (유저 2026-09-24, `block-word-size-at-
 /// zoom-Q1` 답 B): a word keeps its type and narrows into its block instead
 /// ([timelineBlockWordLayout]), which says it just as surely. What still
-/// shrinks here is what cannot be narrowed on one axis — a key MARK is a
-/// square (D39-2) — and the rulers' numbers, which are no block's writing.
+/// shrinks here is the rulers' numbers, which are no block's writing.
+/// ↩️A key MARK did too, as a square that cannot narrow on one axis
+/// (D39-2), until F-367 (유저 2026-10-16: 「칸 그냥 차지는 마름모라던가」):
+/// a mark fills its cell, so the cell is its size.
 ///
 /// [crossExtent] is the cell's OTHER dimension (#15's vertical half of
 /// the same rule): the fit takes whichever axis is tighter, so squeezing
