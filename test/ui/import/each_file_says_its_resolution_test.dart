@@ -15,6 +15,7 @@ import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -63,21 +64,13 @@ void main() {
       .widget<Text>(find.byKey(ValueKey<String>('import-resolution-$path')))
       .data!;
 
-  /// Real IO runs in `runAsync`; its answers land on the pumps after —
-  /// [tries] of them at most, each moving the window's clock on by [step].
-  Future<void> settle(
-    WidgetTester tester, {
-    required bool Function() until,
-    int tries = 100,
-    Duration step = const Duration(milliseconds: 50),
-  }) async {
-    for (var i = 0; i < tries && !until(); i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(step);
-    }
-  }
+  /// How far each round of real IO moves the window's clock on.
+  const step = Duration(milliseconds: 50);
+
+  /// Real IO runs in `runAsync`; its answers land on the pumps after, each
+  /// moving the window's clock on by [step] — until [until], by the clock.
+  Future<void> settle(WidgetTester tester, bool Function() until) =>
+      settleAsync(tester, until, step: step);
 
   testWidgets('every kind the window lists says its own — a picture its '
       'pixels, a Photoshop document its canvas, a movie its frame, a PDF '
@@ -100,7 +93,7 @@ void main() {
 
     await settle(
       tester,
-      until: () => paths.every((path) => resolutionOf(tester, path) != ''),
+      () => paths.every((path) => resolutionOf(tester, path) != ''),
     );
     expect([for (final path in paths) resolutionOf(tester, path)], [
       '37×23',
@@ -125,7 +118,7 @@ void main() {
 
     // The reads finish while the window's clock stands still: nothing
     // comes up yet.
-    await settle(tester, until: () => false, tries: 10, step: Duration.zero);
+    await lendBothClocks(tester, rounds: 10);
     expect([for (final path in pictures) resolutionOf(tester, path)], [
       '',
       '',
@@ -152,7 +145,7 @@ void main() {
     final movie = write('cut.mp4', const [0, 0, 0, 24]);
     await open(tester, [folder.path, movie]);
 
-    await settle(tester, until: () => false, tries: 10);
+    await lendBothClocks(tester, rounds: 10, step: step);
     expect(backend.openedAt, isEmpty);
   });
 
@@ -172,7 +165,7 @@ void main() {
 
     // Long enough for the picture to have been read many times over, had
     // it not waited behind the PDF.
-    await settle(tester, until: () => false, tries: 10);
+    await lendBothClocks(tester, rounds: 10, step: step);
     expect(resolutionOf(tester, pdf), '');
     expect(
       resolutionOf(tester, picture),
@@ -181,10 +174,7 @@ void main() {
     );
 
     held.complete();
-    await settle(
-      tester,
-      until: () => resolutionOf(tester, picture) != '',
-    );
+    await settle(tester, () => resolutionOf(tester, picture) != '');
     expect(resolutionOf(tester, pdf), '100×50');
     expect(resolutionOf(tester, picture), '37×23');
   });
