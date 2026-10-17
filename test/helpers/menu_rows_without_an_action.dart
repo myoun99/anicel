@@ -1,3 +1,4 @@
+import '../../tool/source_brackets.dart';
 import 'dart_sources.dart';
 
 /// Every menu row written under [dir] — a `PanelFlyoutItem(…)` call — as
@@ -18,7 +19,8 @@ import 'dart_sources.dart';
 /// [menuRowsUnder]'s scan, for every call of any of [callees] — a widget's
 /// constructor, or a private method that builds one on its owner's behalf
 /// (`_bar._barIconButton(…)`). A call is known by its key, or by its NAME
-/// where the widget takes one instead ([Named] — the rail's buttons, I-57);
+/// where the widget takes one instead ([Named] — the rail's buttons, I-57)
+/// — the first one written in it, so a pill is known by its name cell's;
 /// a call with neither is 「keyless [what] N」 among the keyless calls of
 /// its file.
 ({Set<String> named, Set<String> silent}) callsNamingAnActionUnder(
@@ -35,7 +37,10 @@ import 'dart_sources.dart';
     var keyless = 0;
     for (final callee in callees) {
       for (final call in _callsOf(callee, text)) {
-        final key = _argument('keyValue', call) ?? _argument('name', call);
+        final open = callee.length;
+        final key =
+            namedArgumentWithin(call, open, 'keyValue') ??
+            namedArgumentWithin(call, open, 'name');
         final id = '$path | ${key ?? 'keyless $what ${++keyless}'}';
         (call.contains('shortcuts:') ? named : silent).add(id);
       }
@@ -58,8 +63,8 @@ Iterable<String> _callsOf(String callee, String text) sync* {
     if (at > 0 && joined.hasMatch(text[at - 1])) continue;
     final lead = text.substring(text.lastIndexOf('\n', at) + 1, at);
     if (lead.trimLeft().startsWith('//')) continue;
-    final end = _closing(text, at + callee.length);
-    if (end < 0) return;
+    final end = matchingClose(text, at + callee.length);
+    if (end == null) return;
     final call = text.substring(at, end + 1);
     // `const PanelFlyoutItem({…})` is the class saying what a row takes,
     // and `PanelFlyoutItem(:final action) =>` a switch asking what it has.
@@ -67,35 +72,4 @@ Iterable<String> _callsOf(String callee, String text) sync* {
     if (text.substring(end + 1).trimLeft().startsWith('=>')) continue;
     yield call;
   }
-}
-
-/// The index of the `)` that closes the `(` at [open], or -1.
-int _closing(String text, int open) {
-  var depth = 0;
-  for (var i = open; i < text.length; i++) {
-    final c = text[i];
-    if (c == '(') depth++;
-    if (c == ')' && --depth == 0) return i;
-  }
-  return -1;
-}
-
-/// What [call] passes as [name], as written and on one line — or null.
-///
-/// The argument itself, not one whose name ends in it: `name:` is not
-/// `debugName:`.
-String? _argument(String name, String call) {
-  final at = RegExp('(?<![\\w\$])$name:').firstMatch(call)?.start;
-  if (at == null) return null;
-  var depth = 0;
-  final from = at + name.length + 1;
-  for (var i = from; i < call.length; i++) {
-    final c = call[i];
-    if (c == '(' || c == '[' || c == '{') depth++;
-    if (c == ')' || c == ']' || c == '}') depth--;
-    if ((c == ',' && depth == 0) || depth < 0) {
-      return call.substring(from, i).replaceAll(RegExp(r'\s+'), ' ').trim();
-    }
-  }
-  return null;
 }

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/temp_dir.dart';
@@ -93,10 +94,9 @@ void main() {
     return offenders..sort();
   }
 
-  /// The callbacks handed to `addTearDown` in [source], balanced on
-  /// parentheses. ⚠️A parenthesis inside a string in the callback would
-  /// throw the balance off; none does, and that failure is loud — it reports
-  /// a file that is innocent, never passes one that is not.
+  /// The calls of `addTearDown` in [source], each whole — its parentheses
+  /// read the one way ([matchingClose]), so one inside a string or a
+  /// comment is not one.
   Iterable<String> addTearDownCallbacks(String source) sync* {
     const opener = 'addTearDown(';
     var from = 0;
@@ -105,15 +105,10 @@ void main() {
       if (start < 0) {
         return;
       }
-      var depth = 1;
-      var index = start + opener.length;
-      while (index < source.length && depth > 0) {
-        if (source[index] == '(') depth += 1;
-        if (source[index] == ')') depth -= 1;
-        index += 1;
-      }
-      yield source.substring(start, index);
-      from = index;
+      final open = start + opener.length - 1;
+      final close = matchingClose(source, open) ?? source.length - 1;
+      yield source.substring(start, close + 1);
+      from = close + 1;
     }
   }
 

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_shelf.dart';
 
+import '../../helpers/source_body.dart';
+
 /// 🚨F-37 — EVERY SHORTCUT ACTION HAS A ROW IN EVERY LANGUAGE.
 ///
 /// ⚠️THE COUNT RATCHET CANNOT SEE THIS, and reads it backwards. The registry
@@ -61,20 +63,9 @@ void main() {
   /// table rather than whole-file: a key present in Japanese and absent in
   /// Korean is exactly the bug, and a whole-file scan would call it covered.
   Set<String> keysOf(String tableName, String prefix) {
-    final start = source.indexOf('$tableName = <String, String>{');
-    expect(start, greaterThan(0), reason: '$tableName not found');
-    var depth = 0;
-    var i = source.indexOf('{', start);
-    final open = i;
-    for (; i < source.length; i++) {
-      if (source[i] == '{') depth++;
-      if (source[i] == '}') {
-        depth--;
-        if (depth == 0) break;
-      }
-    }
+    final table = sourceBodyOf(source, '$tableName = <String, String>');
     return RegExp("'$prefix\\.([A-Za-z0-9-]+)'")
-        .allMatches(source.substring(open, i))
+        .allMatches(table)
         .map((match) => match.group(1)!)
         .toSet();
   }

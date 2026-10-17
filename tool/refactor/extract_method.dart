@@ -30,6 +30,8 @@ import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 
+import '../source_brackets.dart';
+
 late Process _server;
 final _pending = <String, Completer<Map<String, Object?>>>{};
 final _status = StreamController<bool>.broadcast();
@@ -358,59 +360,11 @@ int _lineExact(String src, String lineText, int from) {
 }
 
 /// The index of the bracket closing the one at [openAt], skipping strings
-/// and comments.
-int _matchingClose(String src, int openAt) {
-  final open = src[openAt];
-  final close = switch (open) {
-    '(' => ')',
-    '[' => ']',
-    '{' => '}',
-    _ => throw StateError('not a bracket at $openAt: "$open"'),
-  };
-  var depth = 0;
-  var i = openAt;
-  while (i < src.length) {
-    final c = src[i];
-    if (c == '/' && i + 1 < src.length && src[i + 1] == '/') {
-      i = src.indexOf('\n', i);
-      if (i < 0) break;
-      continue;
-    }
-    if (c == '/' && i + 1 < src.length && src[i + 1] == '*') {
-      i = src.indexOf('*/', i) + 2;
-      continue;
-    }
-    if (c == "'" || c == '"') {
-      i = _skipString(src, i);
-      continue;
-    }
-    if (c == open) depth++;
-    if (c == close) {
-      depth--;
-      if (depth == 0) return i;
-    }
-    i++;
-  }
-  throw StateError('no matching $close for the $open at $openAt');
-}
-
-int _skipString(String src, int at) {
-  final quote = src[at];
-  final triple = src.startsWith(quote * 3, at);
-  var i = at + (triple ? 3 : 1);
-  while (i < src.length) {
-    final c = src[i];
-    if (c == r'\') {
-      i += 2;
-      continue;
-    }
-    if (triple ? src.startsWith(quote * 3, i) : c == quote) {
-      return i + (triple ? 3 : 1);
-    }
-    i++;
-  }
-  return src.length;
-}
+/// and comments — read the one way (`tool/source_brackets.dart`, which
+/// began here); a bracket that never closes stops the run.
+int _matchingClose(String src, int openAt) =>
+    matchingClose(src, openAt) ??
+    (throw StateError('no bracket closes the one at $openAt'));
 
 /// The first non-blank, non-comment character at or after the line of
 /// [anchor] — a selection may not begin inside a comment.

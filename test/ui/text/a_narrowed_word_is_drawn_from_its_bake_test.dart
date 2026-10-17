@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/text/word_condensation.dart';
 import '../../helpers/census_where_textures_are_ram.dart';
 import '../../helpers/dart_sources.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/source_body.dart';
 import '../../helpers/word_bakes.dart';
 
 /// F-224 — a narrowed word is drawn from its bake.
@@ -105,24 +106,6 @@ Future<Color> _inkOf(void Function(Canvas) paint, Size size) async {
 }
 
 String _squash(String s) => s.replaceAll(RegExp(r'\s+'), '');
-
-/// The body of class [name] in [source], braces matched.
-String _classBody(String source, String name) {
-  final head = RegExp('class $name\\b').firstMatch(source)!;
-  final open = source.indexOf('{', head.end);
-  var depth = 0;
-  for (var i = open; i < source.length; i += 1) {
-    if (source[i] == '{') {
-      depth += 1;
-    } else if (source[i] == '}') {
-      depth -= 1;
-      if (depth == 0) {
-        return source.substring(open, i + 1);
-      }
-    }
-  }
-  return source.substring(open);
-}
 
 void main() {
   testWidgets('a word narrowed under the legible size is drawn from its '
@@ -790,7 +773,7 @@ void main() {
       );
       // ⛔The mixin's paint is what makes the painter the one waiting; a
       // painter that paints itself draws its stand-ins for nobody.
-      final body = _classBody(source, painter);
+      final body = sourceBodyOf(source, RegExp('class $painter\\b'));
       expect(
         body,
         contains('void paintWords(Canvas canvas, Size size)'),

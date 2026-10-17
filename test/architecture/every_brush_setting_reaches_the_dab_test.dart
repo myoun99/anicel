@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/source_brackets.dart';
+
 /// 🚨★★★**A SETTING THAT NEVER REACHES A DAB IS A CONTROL THAT DOES
 /// NOTHING** — and the pixel tests cannot see the hop, because they all
 /// build their dabs by hand.
@@ -60,25 +62,6 @@ void main() {
     return names;
   }
 
-  /// The argument text of the first `BrushDab(` in [path], by paren depth.
-  String dabArguments(String path) {
-    final source = File(path).readAsStringSync();
-    final start = source.indexOf('BrushDab(');
-    expect(start, isNot(-1), reason: '$path builds no BrushDab any more');
-    var depth = 0;
-    for (var i = start + 'BrushDab'.length; i < source.length; i += 1) {
-      if (source[i] == '(') {
-        depth += 1;
-      } else if (source[i] == ')') {
-        depth -= 1;
-        if (depth == 0) {
-          return source.substring(start, i);
-        }
-      }
-    }
-    fail('$path has an unbalanced BrushDab( — cannot read its arguments');
-  }
-
   test('🚨every setting a dab can carry is passed where one is built', () {
     final shared =
         namesIn('lib/src/models/brush_shape.dart')
@@ -98,9 +81,20 @@ void main() {
 
     final missing = <String>[];
     for (final builder in builders) {
-      final arguments = dabArguments(builder);
+      final source = File(builder).readAsStringSync();
+      final at = source.indexOf('BrushDab(');
+      expect(at, isNot(-1), reason: '$builder builds no BrushDab any more');
+      final dab = at + 'BrushDab'.length;
+      expect(
+        callArguments(source, dab),
+        isNotNull,
+        reason: '$builder has an unbalanced BrushDab( — cannot read its '
+            'arguments',
+      );
       for (final field in shared) {
-        if (!arguments.contains('$field:')) {
+        // The dab's OWN argument by name: `minOpacity:` is not `opacity:`,
+        // and one inside another call is not the dab's.
+        if (namedArgument(source, dab, field) == null) {
           missing.add('$builder: $field');
         }
       }

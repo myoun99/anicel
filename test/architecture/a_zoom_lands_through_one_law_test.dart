@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
 
 /// 🚨★★★A ZOOM LANDS THROUGH ONE LAW (F-122 · I-27).
@@ -57,18 +59,6 @@ void main() {
   });
 
   test('every fit under lib/ says where its zoom lands', () {
-    // The argument list of each call, by paren depth — a fit's arguments
-    // are plain expressions, so the first `)` at depth zero closes it.
-    String argumentsFrom(String source, int open) {
-      var depth = 0;
-      for (var i = open; i < source.length; i += 1) {
-        if (source[i] == '(') depth += 1;
-        if (source[i] == ')') depth -= 1;
-        if (depth == 0) return source.substring(open, i);
-      }
-      return source.substring(open);
-    }
-
     final fits = <String>[];
     final unlanded = <String>[];
     for (final file in libSources()) {
@@ -77,7 +67,8 @@ void main() {
         r'CanvasViewport\.fitTo(?:CanvasRect|View)\(',
       ).allMatches(file.source)) {
         fits.add(file.path);
-        if (!argumentsFrom(file.source, call.end - 1).contains('zoomLanding:')) {
+        // The fit's OWN argument — one inside another call is not the fit's.
+        if (namedArgument(file.source, call.end - 1, 'zoomLanding') == null) {
           unlanded.add(file.path);
         }
       }

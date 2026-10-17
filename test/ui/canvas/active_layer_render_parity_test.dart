@@ -22,6 +22,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../../helpers/source_body.dart';
+
 /// BEING THE ROW YOU ARE DRAWING ON IS NOT A REASON TO COMPOSITE DIFFERENTLY.
 ///
 /// 유저 실기 2026-08-13: 「액티브 레이어랑 그 외 레이어랑 렌더처리가 다른가?
@@ -45,12 +47,12 @@ import 'package:anicel/src/models/composite_tree.dart';
 void main() {
   group('L1 — the two node kinds carry the same render properties', () {
     test('every render property of a cached row has a live-surface twin', () {
-      final lines = File(
+      final source = File(
         'lib/src/ui/canvas/canvas_layer_stack_view.dart',
-      ).readAsLinesSync();
+      ).readAsStringSync();
 
-      final cached = _fieldsOf(lines, 'CanvasLayerImageRequest');
-      final live = _fieldsOf(lines, 'CanvasActiveLayerRow');
+      final cached = _fieldsOf(source, 'CanvasLayerImageRequest');
+      final live = _fieldsOf(source, 'CanvasActiveLayerRow');
 
       expect(
         cached,
@@ -85,13 +87,13 @@ void main() {
     });
 
     test('the asymmetry allowlist stays honest — no stale entries', () {
-      final lines = File(
+      final source = File(
         'lib/src/ui/canvas/canvas_layer_stack_view.dart',
-      ).readAsLinesSync();
+      ).readAsStringSync();
       final known = _fieldsOf(
-        lines,
+        source,
         'CanvasLayerImageRequest',
-      ).union(_fieldsOf(lines, 'CanvasActiveLayerRow'));
+      ).union(_fieldsOf(source, 'CanvasActiveLayerRow'));
 
       final stale = _asymmetryReasons.keys
           .where((field) => !known.contains(field))
@@ -351,28 +353,22 @@ const _asymmetryReasons = <String, String>{
       'active node can never carry one.',
 };
 
-/// The `final <type> <name>;` declarations inside the class body that starts
-/// at the line ending with [declaration].
+/// The `final <type> <name>;` declarations inside class [className]'s body
+/// in [source].
 ///
 /// Deliberately a plain scan rather than a real parse: the contract has to
 /// stay readable by the next person who has to add a field to it.
-Set<String> _fieldsOf(List<String> lines, String className) {
+Set<String> _fieldsOf(String source, String className) {
   // The declaration may carry `final`, `extends`, `implements` — match the
-  // NAME and the opening brace, not a spelling of the whole line. (Matching
-  // the whole line is how this contract first passed while parsing nothing:
-  // `CanvasActiveLayerRow` declares `extends CanvasStackRow`.)
-  final declaration = RegExp(r'\bclass\s+' + className + r'\b.*\{\s*$');
-  final start = lines.indexWhere(declaration.hasMatch);
-  if (start < 0) {
-    return const {};
-  }
+  // NAME, not a spelling of the whole line. (Matching the whole line is how
+  // this contract first passed while parsing nothing: `CanvasActiveLayerRow`
+  // declares `extends CanvasStackRow`.) ↩️The body ran to the first line
+  // that was a lone `}`; it is read by its braces now, as every body is.
+  final body = sourceBodyOf(source, RegExp('\\bclass\\s+$className\\b'));
   final fields = <String>{};
   final field = RegExp(r'^\s*final\s+[\w<>,\s\?]+\s+(\w+)\s*;');
-  for (var i = start + 1; i < lines.length; i += 1) {
-    if (lines[i] == '}') {
-      break;
-    }
-    final match = field.firstMatch(lines[i]);
+  for (final line in body.split('\n')) {
+    final match = field.firstMatch(line);
     if (match != null) {
       fields.add(match.group(1)!);
     }
