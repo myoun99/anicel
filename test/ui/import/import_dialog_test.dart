@@ -1858,6 +1858,11 @@ void main() {
         () => importWarningsButton.evaluate().isNotEmpty,
       );
       session.playbackRig.prerenderScheduler.cancel();
+      // 🚨A run that landed some of the files and not others leaves the
+      // preview opening the next: its spinner never settles until that
+      // page lands. ↩️The wait window's loop lent real time after its last
+      // frame, and that slice opened it — or did not, on a busy machine.
+      await settleLoadedPages(tester);
       return openImportWarnings(tester);
     }
 
