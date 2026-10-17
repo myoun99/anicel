@@ -464,7 +464,17 @@ void main() {
   /// travels with the point being drawn. 🔬`clean_code_diff` against master
   /// (`ebefaea8b`, at 398, before F-371's two landed) named those two added
   /// and nothing gone.
-  const wideSignatures = 402;
+  ///
+  /// ⚠️402 → 403 on 2026-10-17, named as the rule above asks (F-370-Q3, a
+  /// CLIP STUDIO text layer comes in as the app's own texts — 유저
+  /// 2026-10-17: 「이제 들인다(앱의 글자로)」). `clipCelTextsOf` (five) is
+  /// one layer's texts set as the app's: the layer, the resolution its
+  /// point sizes are counted in, the opacity its cel bakes them at, and the
+  /// name and the list what the app cannot keep of a setting is said by —
+  /// the pair every warning of the plan is said with. 🔬`clean_code_diff`
+  /// against master (`42ceeb00d`, at 402) named that one added and nothing
+  /// gone.
+  const wideSignatures = 403;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -655,7 +665,21 @@ void main() {
   /// named that one added and nothing gone. ⛔Not split to fit: the chain's
   /// law (one wait an image, at any level) is one statement over the whole
   /// chain, and its sync twin keeps the same shape.
-  const longBodies = 408;
+  ///
+  /// ⚠️408 → 409 on 2026-10-17, named as the rule above asks (F-370-Q3, the
+  /// same text layers): the tree stood at 407, and two crossed.
+  /// `planClipImport` (65) is the plan's one assembly, and each bake it
+  /// hands out now carries a text layer's texts — read where the bake is
+  /// addressed, so what they cannot keep is the plan's to say, before a
+  /// pixel is read. `ClipImportDoor._workOf` (72) finds each bake's bytes in
+  /// the file, an arm a kind of source, and a text layer's is the third:
+  /// the pictures CLIP STUDIO drew of its texts, beside a stored picture's
+  /// blocks and a vector layer's strokes. 🔬`clean_code_diff` against master
+  /// (`42ceeb00d`, at 407) named those two added and nothing gone. ⛔Not
+  /// split to fit: the arms answer the one question the loop asks — where a
+  /// bake's pixels are — side by side, and one taken out would answer it
+  /// somewhere the other two do not.
+  const longBodies = 409;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

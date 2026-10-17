@@ -94,6 +94,12 @@ void main() {
           'a blank of its cel\'s grid — what floats over it while a hand '
           'carries it (F-344)',
     ),
+    'lib/src/ui/session/clip_import_door.dart': (
+      count: 1,
+      why:
+          'a CLIP STUDIO text layer\'s cel begins as its texts, handed in '
+          '(`texts: texts`) — it has no drawing of its own (F-370-Q3)',
+    ),
   };
 
   /// The places that put the texts and the photos back themselves, and how
@@ -150,7 +156,7 @@ void main() {
           '`texts:`; if it really starts a picture, name it in the ledger '
           'with the reason',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 18);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 19);
   });
 
   test('the places that rebuild a picture from its parts hand the texts '

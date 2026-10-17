@@ -57,11 +57,13 @@ void main() {
 
   testWidgets('🎯each reason once, over every name it was said of — and what '
       'was said of no one thing under the sentence', (tester) async {
-    const text = 800;
+    // A kind of layer no reader knows. (A text layer comes in now — F-370-Q3.)
+    const unknown = 3;
     final path = clipOf([
-      for (var i = 1; i <= 7; i += 1) ('words $i', text, 0),
-      // A text layer is named by its text, blank lines and all.
-      ('\n  first line\n\nsecond line', text, 0),
+      for (var i = 1; i <= 7; i += 1) ('kind $i', unknown, 0),
+      // A name may hold blank lines: CLIP STUDIO names a text layer by its
+      // text, and a name is a name whatever its layer.
+      ('\n  first line\n\nsecond line', unknown, 0),
       // A raster layer whose blend has no equivalent.
       ('odd', 1, 5),
     ]);
@@ -114,7 +116,7 @@ void main() {
     expect(
       [
         for (var i = 1; i <= 7; i += 1)
-          if (inNotice('words $i').evaluate().length != 1) i,
+          if (inNotice('kind $i').evaluate().length != 1) i,
       ],
       isEmpty,
       reason: 'every name, open, each on a line of its own',
