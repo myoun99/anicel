@@ -103,7 +103,7 @@ void main() {
   /// Where [pastTheWallWithAText] lies: past the wall on both sides, and
   /// through its edge tiles' clear pixels on every side — as a compose
   /// over where a picture lies cuts them (`_celMoved`).
-  final lies = ui.Rect.fromLTRB(-45, 2, 61, 14);
+  const lies = ui.Rect.fromLTRB(-45, 2, 61, 14);
 
   /// A tile left out inside the wall — and a text over the first tile: a
   /// picture is shown with its texts laid over it (R9-rest, 유저
