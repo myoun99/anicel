@@ -148,6 +148,40 @@ void main() {
     expect(hold.held, isNull);
   });
 
+  testWidgets('F-377: another photo taken lets go of the one held — its '
+      'grabs one step', (tester) async {
+    final session = await pumpApp(tester);
+    final first = putPhoto(session);
+    putPhoto(session);
+    final store = session.renderCaches.envelopeInkStore;
+    final ids = [
+      for (final photo in store.bakedSurfaceOrNull(first.key)!.photos)
+        photo.id,
+    ];
+    expect(ids, hasLength(2), reason: '⛔전제: two photos on the box');
+    final held = (key: first.key, id: ids.first);
+    TransformPose poseOf(SheetPhotoAt at) => store
+        .bakedSurfaceOrNull(at.key)!
+        .photos
+        .firstWhere((photo) => photo.id == at.id)
+        .reference
+        .pose;
+    final put = poseOf(held);
+    final moved = put.copyWith(
+      center: CanvasPoint(x: put.center.x + 30, y: put.center.y),
+    );
+    session.sheetPhotoHold
+      ..take(held)
+      ..land(held, moved)
+      ..land(held, moved.copyWith(rotationDegrees: 30))
+      ..take((key: first.key, id: ids.last));
+    await tester.pump();
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+
+    expect(poseOf(held), put, reason: 'its grabs went back in one');
+  });
+
   testWidgets('F-377: a photo taken off after a grab — the grab is one step, '
       'and taking it off another', (tester) async {
     final session = await pumpApp(tester);
