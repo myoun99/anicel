@@ -23,6 +23,10 @@ import '../../helpers/draw_on_current_frame.dart';
 CutVerbs cutVerbsOf(EditorSessionManager session) => session.cutVerbs;
 
 void main() {
+  // The session warms playback's rows in the quiet this test leaves it, and
+  // a row asks the binding for the quiet it takes its turn in ([QuietTurns]):
+  // without one, every run printed the warm's assertion.
+  TestWidgetsFlutterBinding.ensureInitialized();
   late EditorSessionManager session;
   late BitmapSurface ink;
 
