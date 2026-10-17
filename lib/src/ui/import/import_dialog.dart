@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -476,7 +476,24 @@ class _ImportDialogState extends State<ImportDialog> {
               widget.session.projectFile.holdMediaBytes,
             );
       if (mounted) {
-        setState(() => _pixelSizes[path] = size);
+        _pixelSizes[path] = size;
+        _showPixelSizesSoon();
+      }
+    });
+  }
+
+  /// The sizes read since the rows last showed them come up together, at
+  /// most every [_pixelSizesShownEvery]: a batch read one by one would
+  /// otherwise rebuild the whole window once a file — the window whose
+  /// every press was late (F-373).
+  Timer? _pixelSizesShowing;
+  static const _pixelSizesShownEvery = Duration(milliseconds: 200);
+
+  void _showPixelSizesSoon() {
+    _pixelSizesShowing ??= Timer(_pixelSizesShownEvery, () {
+      _pixelSizesShowing = null;
+      if (mounted) {
+        setState(() {});
       }
     });
   }
@@ -585,6 +602,7 @@ class _ImportDialogState extends State<ImportDialog> {
 
   @override
   void dispose() {
+    _pixelSizesShowing?.cancel();
     // A copy still on its way is stopped: nothing is left to take it.
     _wait.cancel();
     _wait.status.removeListener(_waitChanged);

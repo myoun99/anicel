@@ -64,17 +64,18 @@ void main() {
       .data!;
 
   /// Real IO runs in `runAsync`; its answers land on the pumps after —
-  /// [tries] of them at most.
+  /// [tries] of them at most, each moving the window's clock on by [step].
   Future<void> settle(
     WidgetTester tester, {
     required bool Function() until,
     int tries = 100,
+    Duration step = const Duration(milliseconds: 50),
   }) async {
     for (var i = 0; i < tries && !until(); i += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
-      await tester.pump();
+      await tester.pump(step);
     }
   }
 
@@ -108,6 +109,36 @@ void main() {
       '842×595',
       '—',
     ]);
+  });
+
+  testWidgets('🚨the sizes read come up TOGETHER, not one rebuild of the '
+      'window a file — the window whose every press was late (F-373)', (
+    tester,
+  ) async {
+    final pictures = (await tester.runAsync(
+      () async => [
+        for (final name in ['a', 'b', 'c'])
+          await writeSolidPng(tempDir, '$name.png', width: 9, height: 7),
+      ],
+    ))!;
+    await open(tester, pictures);
+
+    // The reads finish while the window's clock stands still: nothing
+    // comes up yet.
+    await settle(tester, until: () => false, tries: 10, step: Duration.zero);
+    expect([for (final path in pictures) resolutionOf(tester, path)], [
+      '',
+      '',
+      '',
+    ]);
+
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump();
+    expect(
+      [for (final path in pictures) resolutionOf(tester, path)],
+      ['9×7', '9×7', '9×7'],
+      reason: 'all three read while it stood, and shown at once',
+    );
   });
 
   testWidgets('a file the window does not list is never read — a loose '
