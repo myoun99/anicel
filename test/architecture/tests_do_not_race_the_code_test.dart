@@ -180,10 +180,10 @@ void main() {
     const pollsOnPurpose = [
       // The poll every test waits through — its one home.
       'poll_until.dart',
-      // A take on the null device rolls in real time: the 600 ms it is
-      // given is what the microphone takes in, ticked, not a wait for
-      // anything to come.
-      'a_take_lands_by_what_was_heard_test.dart',
+      // The poll a wait on a device's own run goes through: the device
+      // keeps the time, not the wall (its head says why), and a take's
+      // 600 ms is what the device handed, counted there.
+      'device_paced.dart',
     ];
     final offenders = <String>[];
     for (final file in testFiles()) {

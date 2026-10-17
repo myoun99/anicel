@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/canned_audio_recorder.dart';
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
 
 /// 🚨★★★**A TAKE LANDS BY WHAT WAS HEARD** (take-head-trims-at-the-
@@ -110,11 +111,19 @@ void main() {
       isTrue,
       reason: 'fixture: the roll rides the null device',
     );
-    final until = DateTime.now().add(const Duration(milliseconds: 600));
-    while (DateTime.now().isBefore(until)) {
-      transport.clockStatus();
-      await Future<void>.delayed(const Duration(milliseconds: 8));
-    }
+    // Until the roll's device has played 0.6s of its own — well past the
+    // anchor. ↩️0.6s of the wall, which a starved device can spend short of
+    // it.
+    final device = QaAudioDevice.instance!;
+    final handed = Handed(device);
+    expect(
+      await waitOnTheDevice(device, () {
+        transport.clockStatus();
+        return handed.samples >= 28800;
+      }),
+      isTrue,
+      reason: 'the roll\'s device stopped',
+    );
     expect(await manager.voiceRecording.stopVoiceRecordingAndPlace(), isNull);
   }
 

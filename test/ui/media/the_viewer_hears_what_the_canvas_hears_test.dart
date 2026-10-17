@@ -11,8 +11,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
-import '../../helpers/poll_until.dart';
 
 /// 🚨★★★**THE VIEWER HEARS WHAT THE CANVAS HEARS**
 /// (viewer-plays-by-the-one-playback-law ④-b).
@@ -147,7 +147,8 @@ void main() {
     const correction = rate ~/ 10;
     final (device, sound) = await playing(correction: correction);
     expect(
-      await pollUntil(
+      await waitOnTheDevice(
+        device,
         () => device.clockPoint != null && device.positionSamples > rate ~/ 5,
       ),
       isTrue,
@@ -181,7 +182,7 @@ void main() {
     final (device, sound) = await playing(frames: frames);
 
     expect(
-      await pollUntil(() => sound.heardAt()?.ended ?? false),
+      await waitOnTheDevice(device, () => sound.heardAt()?.ended ?? false),
       isTrue,
       reason: 'a sound played to its end is over',
     );

@@ -28,8 +28,8 @@ import 'package:anicel/src/ui/playback/audio_scrubber.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
-import '../../helpers/poll_until.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The audio scrub, driven for real on the null backend: each crossed
@@ -253,17 +253,23 @@ void main() {
     // Frame 3 at 10fps/48k = samples [14400, 19200).
     scrubber.onScrubFrame(3);
     expect(scrubber.isArmed, isTrue);
-    expect(await pollUntil(() => device.positionSamples >= 14400), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples >= 14400),
+      isTrue,
+    );
     // The slice runs out on its own at the frame boundary.
-    expect(await pollUntil(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     expect(device.positionSamples, lessThanOrEqualTo(19200));
 
     // The next crossed frame re-arms the same uploaded schedule.
     scrubber.onScrubFrame(7);
-    expect(await pollUntil(() => device.positionSamples >= 33600), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples >= 33600),
+      isTrue,
+    );
 
     scrubber.onScrubEnd();
-    expect(await pollUntil(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     expect(scrubber.isArmed, isFalse);
     scrubber.dispose();
     controller.dispose();
@@ -371,7 +377,10 @@ void main() {
       standIn(const CutId('cut-b'));
       scrubber.onScrubFrame(3);
       expect(scrubber.isArmed, isTrue, reason: 'cut B has sound of its own');
-      expect(await pollUntil(() => device.positionSamples >= 14400), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples >= 14400),
+        isTrue,
+      );
       scrubber.onScrubEnd();
     }, skip: skip);
 
@@ -388,7 +397,7 @@ void main() {
       standIn(const CutId('cut-b'));
       scrubber.onScrubFrame(5);
       expect(scrubber.isArmed, isFalse);
-      expect(await pollUntil(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       scrubber.onScrubEnd();
     }, skip: skip);
   });
@@ -433,7 +442,10 @@ void main() {
       // Frame 3 at 10fps/48k = samples [14400, 19200).
       scrubber.onScrubTrackFrame(3);
       expect(scrubber.isArmed, isTrue);
-      expect(await pollUntil(() => device.positionSamples >= 14400), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples >= 14400),
+        isTrue,
+      );
       scrubber.onScrubEnd();
     }, skip: skip);
 
@@ -450,7 +462,10 @@ void main() {
       // Frame 13 = samples [62400, 67200).
       scrubber.onScrubTrackFrame(13);
       expect(scrubber.isArmed, isTrue);
-      expect(await pollUntil(() => device.positionSamples >= 62400), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.positionSamples >= 62400),
+        isTrue,
+      );
       scrubber.onScrubEnd();
     }, skip: skip);
   });
@@ -543,11 +558,11 @@ void main() {
       final scrubber = await scrubbing();
       scrubber.onScrubFrame(1000);
       expect(scrubber.isArmed, isTrue);
-      expect(await pollUntil(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       device.stop(); // and the meter reads silence again
 
       scrubber.onScrubFrame(950);
-      expect(await pollUntil(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
 
       expect(
         device.peakFor(0),
@@ -568,10 +583,10 @@ void main() {
       scrubber.onScrubFrame(1000);
       expect(window.reach, AudioStreamingWindow.scrubbing);
       expect(window.centerSample, 1000 * 4800);
-      expect(await pollUntil(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       // Five seconds on, the device holds nothing to play.
       device.play(startSample: 1050 * 4800, stopSample: 1051 * 4800);
-      expect(await pollUntil(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       expect(
         device.peakFor(0),
         0,

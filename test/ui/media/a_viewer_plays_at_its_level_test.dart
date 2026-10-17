@@ -8,8 +8,8 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/ui/playback/audio_windowed_upload.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
-import '../../helpers/poll_until.dart';
 
 /// 🚨★★★**THE VIEWER'S LEVEL, MEASURED WHERE IT IS HEARD** (F-289).
 ///
@@ -76,7 +76,7 @@ void main() {
       expect(sound.play(tone, gain: gain), isA<OutputArmed>());
       sound.heardAt(); // the run's first look starts the device
       expect(
-        await pollUntil(() => device.positionSamples > 9600),
+        await waitOnTheDevice(device, () => device.positionSamples > 9600),
         isTrue,
         reason: 'fixture: the device is running',
       );

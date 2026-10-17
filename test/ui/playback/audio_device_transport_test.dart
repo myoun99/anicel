@@ -24,8 +24,8 @@ import 'package:anicel/src/ui/playback/audio_device_transport.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
+import '../../helpers/device_paced.dart';
 import '../../helpers/native_engine_path.dart';
-import '../../helpers/poll_until.dart';
 
 // The transport driven for real: miniaudio's null backend runs the actual
 // callback on an actual thread, so arming, the clock, the wait for the
@@ -255,8 +255,11 @@ void main() {
     controller.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isTrue);
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => device.positionSamples > 0), isTrue,
-        reason: 'the callback never ran');
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples > 0),
+      isTrue,
+      reason: 'the callback never ran',
+    );
 
     final status = transport.clockStatus();
     expect(status, isNotNull);
@@ -267,7 +270,7 @@ void main() {
     // What it was really checking — the device follows the controller in and
     // out of playback — is the play/stop pair, which this still covers.
     controller.stop();
-    expect(await pollUntil(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     transport.dispose();
     store.dispose();
   }, skip: skip);
@@ -348,7 +351,10 @@ void main() {
 
     controller.play(scope: PlaybackScope.activeCut);
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => device.positionSamples > 0), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples > 0),
+      isTrue,
+    );
 
     controller.seekToGlobalFrame(7); // frame 7 at 10fps/48k = sample 33600
     // The seek's run starts on its own first look, at the target.
@@ -374,7 +380,10 @@ void main() {
 
     controller.play(scope: PlaybackScope.activeCut);
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => device.positionSamples > 0), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples > 0),
+      isTrue,
+    );
 
     // The ruler is dragged onto a frame whose picture is not there.
     missing.add(7);
@@ -388,7 +397,7 @@ void main() {
           '(sample 33600) and stopped in the same breath, it sounds a blip '
           'of the frame the run is waiting to show',
     );
-    expect(await pollUntil(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     expect(
       transport.clockStatus(),
       isNull,
@@ -402,7 +411,8 @@ void main() {
     transport.clockStatus(); // the clock's first look starts the device
     // Frame 7 at 10fps/48k = sample 33600.
     expect(
-      await pollUntil(
+      await waitOnTheDevice(
+        device,
         () => device.isPlaying && device.positionSamples >= 33600,
       ),
       isTrue,
@@ -432,7 +442,10 @@ void main() {
     missing.clear();
     controller.lookAgain();
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => device.positionSamples > 0), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples > 0),
+      isTrue,
+    );
     controller.stop();
     transport.dispose();
     store.dispose();
@@ -450,7 +463,7 @@ void main() {
     // Start near the end so the run is short (0.2 s + latency).
     controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 8);
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => !device.isPlaying), isTrue,
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue,
         reason: 'the stop point must end the run');
     final status = transport.clockStatus();
     expect(status!.ended, isTrue);
@@ -497,7 +510,10 @@ void main() {
       rig.controller.play(scope: PlaybackScope.allCuts);
       expect(rig.transport.carryingPlayback, isTrue);
       rig.transport.clockStatus(); // the clock's first look starts the device
-      expect(await pollUntil(() => device.peakFor(0) > 0.03), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.peakFor(0) > 0.03),
+        isTrue,
+      );
       rig.controller.stop();
       rig.transport.dispose();
       rig.controller.dispose();
@@ -514,7 +530,7 @@ void main() {
       rig.controller.loopMode = PlaybackLoopMode.once;
       rig.controller.play(scope: PlaybackScope.allCuts, startGlobalFrame: 18);
       rig.transport.clockStatus(); // the clock's first look starts the device
-      expect(await pollUntil(() => !device.isPlaying), isTrue);
+      expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
       final status = rig.transport.clockStatus();
       expect(status!.ended, isTrue);
       expect(status.globalFrame, 19, reason: 'the movie\'s last frame');
@@ -536,19 +552,27 @@ void main() {
     controller.loopMode = PlaybackLoopMode.loop;
     controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 8);
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => device.positionSamples > 0), isTrue);
+    expect(
+      await waitOnTheDevice(device, () => device.positionSamples > 0),
+      isTrue,
+    );
 
     // First pass runs out (it was armed WITHOUT the C loop flag)...
-    expect(await pollUntil(() => !device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => !device.isPlaying), isTrue);
     // ...and the next clock read re-arms from zero, looping.
     final status = transport.clockStatus();
     expect(status!.ended, isFalse);
     expect(status.globalFrame, 0);
-    expect(await pollUntil(() => device.isPlaying), isTrue);
+    expect(await waitOnTheDevice(device, () => device.isPlaying), isTrue);
 
     // The pass after that is the C's own sample-exact wrap: it keeps
-    // playing and never leaves the window.
-    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // playing and never leaves the window — for a tenth of a second of its
+    // own. ↩️Of the wall, which a starved device can sit through.
+    final handed = Handed(device);
+    await waitOnTheDevice(
+      device,
+      () => handed.samples >= 4800 || !device.isPlaying,
+    );
     expect(device.isPlaying, isTrue);
     expect(transport.clockStatus()!.globalFrame, inInclusiveRange(0, 9));
     controller.stop();
@@ -581,8 +605,11 @@ void main() {
     liveController.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isTrue);
     transport.clockStatus(); // the clock's first look starts the device
-    expect(await pollUntil(() => device.peakFor(0) > 0.03), isTrue,
-        reason: 'the 0.05 source should be metering');
+    expect(
+      await waitOnTheDevice(device, () => device.peakFor(0) > 0.03),
+      isTrue,
+      reason: 'the 0.05 source should be metering',
+    );
     final before = device.positionSamples;
 
     // The live edit: the layer fader jumps to 10x (0.05 -> 0.5 on the bus).
@@ -601,7 +628,7 @@ void main() {
 
     expect(device.isPlaying, isTrue, reason: 'the swap must not stop audio');
     expect(
-      await pollUntil(() => device.peakFor(0) > 0.4),
+      await waitOnTheDevice(device, () => device.peakFor(0) > 0.4),
       isTrue,
       reason: 'the fader change must be heard mid-run',
     );
@@ -632,19 +659,24 @@ void main() {
       controller.play(scope: PlaybackScope.activeCut);
       transport.clockStatus(); // the clock's first look starts the device
       expect(
-        await pollUntil(() => device.clockPoint != null),
+        await waitOnTheDevice(device, () => device.clockPoint != null),
         isTrue,
         reason: 'no callback spoke',
       );
 
       // A change of frame with the stair the same BEFORE the reading
       // before it and AFTER this one is a change no step of the stair made.
+      // Each change seen is a chance to catch one: forty of them, an idle
+      // device's four seconds. ↩️Four seconds of the wall — a starved
+      // device went two frames in them (10-17, a land gate under six runs).
       final watch = Stopwatch()..start();
       var stairBefore = device.positionSamples;
       var frame = transport.clockStatus()?.globalFrame;
       var changes = 0;
       var whereTheStairStood = 0;
-      while (watch.elapsedMilliseconds < 4000 && whereTheStairStood < 3) {
+      while (changes < 40 &&
+          whereTheStairStood < 3 &&
+          watch.elapsed < deviceStoppedAfter) {
         final before = device.positionSamples;
         final now = transport.clockStatus()?.globalFrame;
         final after = device.positionSamples;
@@ -683,12 +715,17 @@ void main() {
       // its own count every 48000 samples.
       controller.play(scope: PlaybackScope.activeCut);
       transport.clockStatus(); // the clock's first look starts the device
-      expect(await pollUntil(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
 
       // The frames read in the moments after a wrap: the latest callback
       // the first of a new lap, asked for on time, and less than 10ms old —
       // what is HEARD is then 4ms or more short of the lap's end. For as
-      // many laps as it takes.
+      // many laps as it takes — up to twelve of the device's own, an idle
+      // one's twelve seconds. ↩️Twelve seconds of the wall (10-17: none
+      // landed in them, a lane's run under five and six others).
       //
       // ⚠️ON TIME, OR NOT AT ALL (10-15, TestFlight #73: `[9, 0, 0, 0]`). A
       // callback asked for late lies under the line by its lateness, and
@@ -700,9 +737,12 @@ void main() {
       // latency less a step.
       final lateness = _CallbackLateness(rate: 48000, lap: 48000);
       final justWrapped = <int>[];
+      final handed = Handed(device);
       final watch = Stopwatch()..start();
       var nearTheEnd = false;
-      while (watch.elapsedMilliseconds < 12000 && justWrapped.length < 4) {
+      while (justWrapped.length < 4 &&
+          handed.samples < 12 * 48000 &&
+          watch.elapsed < deviceStoppedAfter) {
         final clock = device.readClock();
         final status = transport.clockStatus();
         final after = device.readClock();
@@ -744,7 +784,7 @@ void main() {
             'wrapped count, the picture was back on frame 0 here',
       );
       expect(
-        await pollUntil(() {
+        await waitOnTheDevice(device, () {
           final frame = transport.clockStatus()?.globalFrame;
           return frame != null && frame >= 1 && frame <= 4;
         }),
@@ -777,7 +817,10 @@ void main() {
 
       controller.play(scope: PlaybackScope.activeCut);
       transport.clockStatus(); // the clock's first look starts the device
-      expect(await pollUntil(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
 
       // Ticks that each read the time of the frame they run in: the gap
       // between that time and the device's clock is followed.
@@ -788,7 +831,20 @@ void main() {
       }
       final frame = frameNow();
       final onTime = transport.clockStatus(frameTime: frame)!.globalFrame;
-      await Future<void>.delayed(const Duration(milliseconds: 450));
+      // Late by the device's own three and a half frames — read off its
+      // count alone, so the transport's following is not touched; past the
+      // most its line stands ahead of its count (its latency, 30ms), three
+      // frames. ↩️450ms of the wall: a starved device went none in them
+      // (10-17, a land gate under six runs).
+      final handed = Handed(device);
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => handed.samples >= 3 * frameSamples + frameSamples ~/ 2,
+        ),
+        isTrue,
+        reason: 'the device stopped',
+      );
       final late = transport.clockStatus(frameTime: frame)!.globalFrame;
       // Read after it: what the clock says NOW is never stepped back from.
       final now = transport.clockStatus()!.globalFrame;
@@ -827,7 +883,10 @@ void main() {
 
       controller.play(scope: PlaybackScope.activeCut);
       transport.clockStatus(); // the clock's first look starts the device
-      expect(await pollUntil(() => device.clockPoint != null), isTrue);
+      expect(
+        await waitOnTheDevice(device, () => device.clockPoint != null),
+        isTrue,
+      );
 
       final before = device.positionSamples;
       final frame = transport.clockStatus()!.globalFrame;
@@ -863,7 +922,8 @@ void main() {
 
       controller.play(scope: PlaybackScope.activeCut);
       expect(
-        await pollUntil(
+        await waitOnTheDevice(
+          device,
           () => (transport.clockStatus()?.globalFrame ?? 0) >= 3,
         ),
         isTrue,
@@ -875,7 +935,7 @@ void main() {
       controller.seekToGlobalFrame(0);
       transport.clockStatus();
       expect(
-        await pollUntil(() {
+        await waitOnTheDevice(device, () {
           final point = device.clockPoint;
           return point != null && point.positionSamples < 2 * frameSamples;
         }),
@@ -913,8 +973,11 @@ void main() {
       controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 7);
       transport.clockStatus(); // the clock's first look starts the device
       final pastTheEnd = <int>[];
+      // Until the device has played it out, however long it takes.
+      // ↩️Three seconds of the wall, which a starved device can spend on
+      // the run's three frames.
       final watch = Stopwatch()..start();
-      while (watch.elapsedMilliseconds < 3000 && device.isPlaying) {
+      while (watch.elapsed < deviceStoppedAfter && device.isPlaying) {
         final before = device.positionSamples;
         final status = transport.clockStatus();
         if (status != null &&
@@ -946,14 +1009,17 @@ void main() {
   // the microphone had taken in when its anchor was heard.
   group('🚨a take\'s head is what the microphone had taken in when its '
       'anchor was HEARD', () {
-    /// A take of the null microphone with a roll under it that starts
-    /// [late] after the microphone, at frame 2; the head of anchor frame 2
-    /// as the clock's looks measure it, and measured again [readAgainAfter]
-    /// later.
-    Future<({int head, int again})> takeWithItsRoll({
+    /// A take of the null microphone with a roll under it that starts, at
+    /// frame 2, once the microphone has taken in [late] by its own count;
+    /// the head of anchor frame 2 as the clock's looks measure it, measured
+    /// again once the roll's device has played [readAgainAfter] more — and
+    /// what the microphone had been given when the roll started.
+    Future<({int head, int again, int startedAt})> takeWithItsRoll({
       Duration late = Duration.zero,
       Duration readAgainAfter = Duration.zero,
     }) async {
+      int samplesOf(Duration span) =>
+          span.inMicroseconds * 48000 ~/ Duration.microsecondsPerSecond;
       final device = openNullDevice();
       final store = _residentStore();
       store.resultFor('tone.wav');
@@ -961,9 +1027,18 @@ void main() {
       final transport = buildTransport(store);
       final recorder = AudioRecorder(device: device);
       expect(recorder.start(sampleRate: 48000, useNullBackend: true), 48000);
-      await Future<void>.delayed(late);
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => device.readCaptureClock().stairSamples >= samplesOf(late),
+        ),
+        isTrue,
+        reason: 'the microphone stopped',
+      );
 
       controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 2);
+      transport.clockStatus(); // the clock's first look starts the device
+      final startedAt = device.readCaptureClock().stairSamples;
       Future<int> measure() async {
         final heads = <int>[];
         transport.measureTakeHead(
@@ -972,7 +1047,7 @@ void main() {
           measured: heads.add,
         );
         expect(
-          await pollUntil(() {
+          await waitOnTheDevice(device, () {
             transport.clockStatus(); // a look, a vsync at a time
             return heads.isNotEmpty;
           }),
@@ -985,14 +1060,22 @@ void main() {
       }
 
       final head = await measure();
-      await Future<void>.delayed(readAgainAfter);
+      final handed = Handed(device);
+      expect(
+        await waitOnTheDevice(
+          device,
+          () => handed.samples >= samplesOf(readAgainAfter),
+        ),
+        isTrue,
+        reason: 'the device stopped',
+      );
       final again = await measure();
 
       recorder.stop();
       controller.stop();
       transport.dispose();
       store.dispose();
-      return (head: head, again: again);
+      return (head: head, again: again, startedAt: startedAt);
     }
 
     // ⚠️FAR APART, AND A QUARTER OF IT TO SPARE (10-15). The null devices
@@ -1010,9 +1093,13 @@ void main() {
         'more on the head', () async {
       final onTime = await takeWithItsRoll();
       final late = await takeWithItsRoll(late: const Duration(seconds: 1));
+      // A second or more: how much more, the microphone says, as the roll
+      // starts. ↩️A second of the wall, taken as read — a busy machine slept
+      // three and a half through it, and the heads stood that far apart,
+      // rightly (10-17, a land gate under six runs).
       expect(
         late.head - onTime.head,
-        closeTo(48000, 12000),
+        closeTo(late.startedAt - onTime.startedAt, 12000),
         reason: '↩️the head was estimated — the output latency, as if the '
             'roll started the instant the microphone did: these two read the '
             'same',
@@ -1042,7 +1129,10 @@ void main() {
       Future<void> takeIn() async {
         expect(recorder.start(sampleRate: 48000, useNullBackend: true), 48000);
         expect(
-          await pollUntil(() => device.readCaptureClock().point != null),
+          await waitOnTheDevice(
+            device,
+            () => device.readCaptureClock().point != null,
+          ),
           isTrue,
           reason: 'fixture: the microphone is taking in',
         );
@@ -1057,7 +1147,8 @@ void main() {
       expect(heads, isEmpty, reason: 'frame 9 is most of a second ahead');
 
       expect(
-        await pollUntil(
+        await waitOnTheDevice(
+          device,
           () => (transport.clockStatus()?.globalFrame ?? 0) >= 3,
         ),
         isTrue,
