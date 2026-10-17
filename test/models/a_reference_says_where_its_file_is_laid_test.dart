@@ -7,8 +7,7 @@ import 'package:anicel/src/models/transform_track.dart';
 
 /// F-374 — a reference says where its file's pixels are LAID apart from
 /// where it was placed ([MediaReference.laid] beside [MediaReference.pose])
-/// only once the two part, and its fx stands the picture still while no
-/// lane holds two keys ([MediaReference.stillPose]).
+/// only once the two part.
 void main() {
   final placedAt = TransformPose(center: CanvasPoint(x: 100, y: 50));
   final elsewhere = TransformPose(
@@ -66,27 +65,5 @@ void main() {
 
     expect(reference().copyWith(pose: moved).laid, moved);
     expect(reference(laid: elsewhere).copyWith(pose: moved).laid, elsewhere);
-  });
-
-  test('its fx stands the picture still while no lane holds two keys — '
-      'where it was placed, or where its one key says — and not once one '
-      'does', () {
-    expect(reference().stillPose, placedAt);
-    expect(
-      reference(
-        fx: positionKeyed({4: CanvasPoint(x: 140, y: 50)}),
-      ).stillPose?.center,
-      CanvasPoint(x: 140, y: 50),
-      reason: 'one key holds on every frame',
-    );
-    expect(
-      reference(
-        fx: positionKeyed({
-          0: CanvasPoint(x: 100, y: 50),
-          4: CanvasPoint(x: 140, y: 50),
-        }),
-      ).stillPose,
-      isNull,
-    );
   });
 }

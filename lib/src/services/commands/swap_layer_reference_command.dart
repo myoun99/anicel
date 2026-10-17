@@ -35,9 +35,9 @@ import '../undo_surface_snapshot.dart';
 /// (`BrushFrameEditingCoordinator._storeMovedPast`), so the canvas shows
 /// what is written here either way.
 ///
-/// I-68: the same step lays the row's OWN file again at another pose — its
-/// reference fx moved — so [reference] may name the file it named, and a
-/// still's picture is baked anew where the pose now stands it.
+/// ↩️I-68 laid the row's OWN file again here at another pose when its
+/// reference fx moved, until F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼
+/// 화면에서 옮긴다」): the canvas moves the picture now.
 class SwapLayerReferenceCommand
     implements
         Command,

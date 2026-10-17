@@ -48,7 +48,6 @@ import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
-import '../../services/project_lookup.dart' show cutWritingRow;
 import '../../services/straight_rgba_image.dart';
 import '../audio/audio_conform_store.dart';
 import '../import/import_file_settings.dart';
@@ -56,7 +55,6 @@ import 'import_landing.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
 import 'render_caches.dart';
-import 'row_written_by_id.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';
 
@@ -1069,9 +1067,9 @@ class ProjectImportDoors {
   /// fit the row was placed with — on a canvas grown since, in its middle.
   ///
   /// Each cel takes the same picture of the new file as it showed of the old
-  /// ([Frame.filePicture]) — the law moving the fx lays it again by (I-68
-  /// 「가」: one law, one cel or many) — so a file that has no such picture
-  /// is not taken, and the answer names the one it lacks
+  /// ([Frame.filePicture]) — the law every row that shows a file is laid by
+  /// (I-68 「가」: one law, one cel or many) — so a file that has no such
+  /// picture is not taken, and the answer names the one it lacks
   /// ([ReferenceLacksPicture] — 유저 2026-10-10 「추천대로가자」).
   ///
   /// [ReferenceLeftAlone] for a row that does not take [path], or that
@@ -1094,52 +1092,20 @@ class ProjectImportDoors {
     );
   }
 
-  /// I-68: [layerId]'s file LAID again at [pose] ([MediaReference.laid]),
-  /// as ONE undo step: a still's picture is baked anew from its file at the
-  /// pose, and a movie's frames are decoded at it as they are shown — or
-  /// why not. [ReferenceLeftAlone] for a row whose pictures are not drawn
-  /// from its file again ([referenceRedrawFor]), the pose they are already
-  /// laid at, or a row that changed while it was being read.
+  /// [layer] — a reference row of the active cut — pointed at [next] and its
+  /// pictures made from that file again ([referenceRedrawFor]), as ONE undo
+  /// step. The picture's own size is the file's as it reads now.
   ///
-  /// ↩️It moved the reference fx itself, which held one value (F-374): the
-  /// fx is keyed now, and where its file is laid is this door's alone.
-  ///
-  /// The row is found where it lives ([RowWrittenById.rowWrittenById]): a
-  /// lane verb edits a row of a cut not stood in where it is (I-89-Q23), and
-  /// its file is laid again there.
-  Future<ReferenceRedraw> layReferenceAt({
-    required LayerId layerId,
-    required TransformPose pose,
-  }) async {
-    final layer = _project.rowWrittenById(layerId);
-    final reference = layer?.mediaReference;
-    if (layer == null || reference == null || reference.laid == pose) {
-      return const ReferenceLeftAlone();
-    }
-    return _drawAgain(
-      layer,
-      reference.copyWith(laid: pose),
-      description: 'Move ${layer.name} reference',
-    );
-  }
-
-  /// [layer] — a reference row, in the cut writing it ([cutWritingRow]: the
-  /// one holding it, stood in or not) — pointed at [next] and its pictures
-  /// made from that file again ([referenceRedrawFor]), as ONE undo step.
-  /// The picture's own size is the file's as it reads now.
-  /// ↩️Always in the cut stood in, until I-89-Q23 let a lane verb reach a
-  /// row of another.
+  /// ↩️A moved reference fx laid its OWN file again here too — I-68's one
+  /// value, then F-374's keys where they stood the picture still — until
+  /// F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼 화면에서 옮긴다」): the
+  /// canvas moves the picture, and only another file is drawn again.
   Future<ReferenceRedraw> _drawAgain(
     Layer layer,
     MediaReference next, {
     required String description,
   }) async {
-    final cutId = cutWritingRow(
-      _project.repository.requireProject(),
-      layer.id,
-      standing: _project.activeCutId,
-    );
-    final cut = cutId == null ? null : _project.cutById(cutId);
+    final cut = _project.activeCutOrNull;
     final redraw = referenceRedrawFor(layer);
     if (cut == null || redraw == null) {
       return const ReferenceLeftAlone();
@@ -1170,7 +1136,7 @@ class ProjectImportDoors {
     _Drawn drawn, {
     required String description,
   }) {
-    if (_project.rowWrittenById(layer.id) != layer) {
+    if (_project.layerById(layer.id) != layer) {
       return const ReferenceLeftAlone();
     }
     _project.historyManager.execute(
@@ -1206,7 +1172,7 @@ class ProjectImportDoors {
   /// first, in the cels' order.
   ///
   /// 🗣️I-68 (유저 2026-10-10 「가」): every row that shows a file is laid
-  /// again by one law — the cel's own picture, at the row's reference fx.
+  /// again by one law — the cel's own picture, where its reference lays it.
   /// ↩️Only a still's one cel could be: a GIF's or a PDF's cels said nowhere
   /// which picture of the file each was.
   Future<_Remade> _filePictures(

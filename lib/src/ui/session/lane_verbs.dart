@@ -1,5 +1,3 @@
-import 'dart:async' show unawaited;
-
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
 import '../../models/cut.dart';
@@ -10,7 +8,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/reference_swap.dart' show ReferenceLaid, ReferenceRedraw;
 import '../../models/property_track.dart'
     show KeyExit, KeyPath, KeySide, KeySidesEdit, KeyTypePick, PropertyKey;
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -112,11 +109,6 @@ class LaneVerbs {
     })
     updateCameraTrack,
     required ({Layer shown, Layer? global}) Function(Layer row) previewFormsOf,
-    required Future<ReferenceRedraw> Function(
-      LayerId layerId,
-      TransformPose pose,
-    )
-    layReferenceAt,
   }) : _project = project,
        _selection = selection,
        _timeline = timeline,
@@ -128,14 +120,7 @@ class LaneVerbs {
        _changes = changes,
        _activeCut = activeCut,
        _updateCameraTrack = updateCameraTrack,
-       _previewFormsOf = previewFormsOf,
-       _layReferenceAt = layReferenceAt;
-
-  /// `ProjectImportDoors.layReferenceAt` — a reference's file laid again at
-  /// a pose (I-68), which only the doors that read files can do: where its
-  /// fx stands still ([_commitReferenceFx]).
-  final Future<ReferenceRedraw> Function(LayerId layerId, TransformPose pose)
-  _layReferenceAt;
+       _previewFormsOf = previewFormsOf;
 
   final EffectsAndFx _effectsAndFx;
   final ChangeSink _changes;
@@ -1040,51 +1025,28 @@ class LaneVerbs {
   });
 
   /// The REFERENCE FX's commit (F-374): its keys written the moment they
-  /// change, as every fx's are — and where they stand the picture still,
-  /// somewhere its file is not laid ([MediaReference.stillPose]), the file
-  /// laid there again and folded into the same undo step once it lands,
-  /// so a picture that does not move is drawn from its file where it
-  /// stands. A row changed in between, or a file that does not read,
-  /// leaves the step as it is: the canvas moves the picture from where it
-  /// was laid.
+  /// change, as every fx's are. The file is not laid again — the canvas
+  /// moves the picture from where it was laid to where the keys stand it
+  /// (`referenceMoveAt`), as a transform fx moves its row.
   ///
-  /// ⛔Folded ONLY while the edit and its laying are the two entries filed
-  /// since the mark, exactly — the guard a text and its cel fold by
-  /// (`_foldWithItsCel`): an edit somebody else filed while the file was
-  /// read, folded in, would be undone with the move. The second of its
-  /// kind: F-377's `HistoryRun` cuts a run where another's step comes
-  /// between, and both move onto it once it lands.
+  /// 🗣️F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼 화면에서 옮긴다」): 「굳이
+  /// 다시 그릴필요도없고 그래봣자 더 선명해지지도않음」. ↩️Where the keys
+  /// stood the picture still, the file was laid there again and folded into
+  /// the same undo step once it landed.
   void _commitReferenceFx(
     Layer layer,
     TransformTrack fx, {
     required String description,
   }) {
-    final reference = layer.mediaReference;
-    if (reference == null) {
+    if (layer.mediaReference == null) {
       return;
     }
-    final gestures = _project.historyManager.gestures;
-    final before = gestures.mark;
     _project.cutCommandCoordinator.updateLayerReferenceFx(
       layerId: layer.id,
       fx: fx,
       description: description,
     );
     _changes.notifyChanged();
-    final still = reference.copyWith(fx: fx).stillPose;
-    if (still == null || still == reference.laid) {
-      return;
-    }
-    unawaited(
-      _layReferenceAt(layer.id, still).then((laid) {
-        final now = gestures.mark;
-        if (laid is ReferenceLaid &&
-            now.pushed - before.pushed == 2 &&
-            now.retracted == before.retracted) {
-          gestures.foldSince(before, description);
-        }
-      }),
-    );
   }
 
   /// [edit] on [layer] as a lane edit in flight shows it — the twin of

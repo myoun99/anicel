@@ -1913,10 +1913,6 @@ class EditorSessionManager extends ChangeNotifier
     updateCameraTrack: (cameraRow, track, {required description}) =>
         camera.updateCameraTrack(cameraRow, track, description: description),
     previewFormsOf: (row) => trackSe.previewFormsOf(row),
-    // A reference's file laid again where its fx stands still (I-68,
-    // F-374) — which only the doors that read files can do.
-    layReferenceAt: (layerId, pose) =>
-        importDoors.layReferenceAt(layerId: layerId, pose: pose),
   );
 
   // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,

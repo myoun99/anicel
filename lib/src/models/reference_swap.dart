@@ -6,8 +6,9 @@ import 'movie_cel.dart';
 /// How a REFERENCE row's pictures are made from its file again — when it
 /// takes another file in place of the one it shows (I-47, 유저 2026-09-25:
 /// 「이미지 레이어의 프레임영역에 떨구면 참조변경 … 기존의 트랜스폼값같은거
-/// 안건들이고 진짜 참조대상만 변경하는느낌」), and when its reference fx moves
-/// (I-68).
+/// 안건들이고 진짜 참조대상만 변경하는느낌」). ↩️And when its reference fx
+/// moved (I-68), until F-374-Q1 (유저 2026-10-17, 「트랜스폼처럼 화면에서
+/// 옮긴다」): the canvas moves the picture now.
 enum ReferenceSwap {
   /// A movie row: its one cel holds no pixels — the movie is decoded as it
   /// is shown — so the reference is all that changes.
@@ -25,7 +26,7 @@ enum ReferenceSwap {
 }
 
 /// What laying a reference row's pictures from a file again came to — the
-/// answer to a swap, and to a move of the reference fx (I-68).
+/// answer to a swap.
 ///
 /// ↩️It was a `bool`, and `false` said every way it did not land: the drop
 /// told a file that read, and only lacked the picture a cel shows, 「could
@@ -35,13 +36,13 @@ sealed class ReferenceRedraw {
   const ReferenceRedraw();
 }
 
-/// Laid: the row shows the file where its reference fx stands it.
+/// Laid: the row shows the file, where its reference lays it.
 final class ReferenceLaid extends ReferenceRedraw {
   const ReferenceLaid();
 }
 
 /// Nothing laid, and nothing to say of it: the row is not one laid again,
-/// it already stands as asked, or it changed while its file was read.
+/// or it changed while its file was read.
 final class ReferenceLeftAlone extends ReferenceRedraw {
   const ReferenceLeftAlone();
 }
@@ -95,7 +96,7 @@ ReferenceSwap? referenceSwapFor(Layer layer, String path) {
 /// picture laid anew, a movie's decoded anew as it is shown — or null when
 /// the row points at no file, or has a cel that does not say which picture
 /// of the file it is ([Frame.filePicture]): that one could not be made
-/// again. Swapping the file and moving the reference fx both draw it again.
+/// again. Swapping the file draws it again.
 ReferenceSwap? referenceRedrawFor(Layer layer) {
   if (layer.mediaReference == null) {
     return null;

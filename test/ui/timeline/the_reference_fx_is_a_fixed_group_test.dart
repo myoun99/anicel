@@ -6,9 +6,11 @@
 // Position · Scale · Rotation in the transform lanes' own words. 10-17
 // (F-374): 「참조fx도 똑같이 fx로서 법 통일. 지금 움직여도 키
 // 안생긴다거나 그런 각종 fx관련 싹 통일. 언두도 가능하게 … 리셋버튼도
-// 안먹힘」 — keyed, undone and reset as a transform's lanes are, and the
-// file laid again where they stand it still. ↩️One value with no keys,
-// written by laying the file again where it now stood.
+// 안먹힘」 — keyed, undone and reset as a transform's lanes are; F-374-Q1
+// 「트랜스폼처럼 화면에서 옮긴다」 — the canvas moves the picture from where
+// its file was laid, and the file is not laid again. ↩️One value with no
+// keys, written by laying the file again where it now stood; then keys,
+// and the file laid again where they stood it still.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -148,22 +150,6 @@ void main() {
           );
   }
 
-  /// Lets a lay-again read and land — [done] asked up to [tries] times —
-  /// then the edit's own timers.
-  Future<void> settle(
-    WidgetTester tester,
-    bool Function() done, {
-    int tries = 100,
-  }) async {
-    for (var tried = 0; tried < tries && !done(); tried += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
-    await tester.pump(const Duration(minutes: 1));
-  }
-
   Future<void> stopTheWarmer(
     WidgetTester tester,
     EditorSessionManager s,
@@ -264,25 +250,6 @@ void main() {
     ),
   );
 
-  test('laying again the file of a row that is not made from it again is '
-      'left alone — nothing read, nothing landed, nothing said', () async {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    final gif = unsaidGif();
-    s.repository.insertLayer(cutId: s.requireActiveCut.id, layer: gif);
-    final canUndo = s.canUndo;
-
-    expect(
-      await s.importDoors.layReferenceAt(
-        layerId: gif.id,
-        pose: TransformPose(center: CanvasPoint(x: 5, y: 5)),
-      ),
-      isA<ReferenceLeftAlone>(),
-    );
-    expect(s.canUndo, canUndo);
-    expect(s.layerById(gif.id), gif);
-  });
-
   test('a row that does not show a file — or shows one with a cel that does '
       'not say which picture of it it is, so is not made from it again — '
       'has no group', () {
@@ -308,8 +275,8 @@ void main() {
   });
 
   testWidgets('🎯a value typed into Position KEYS the fx at the playhead — '
-      'written at once, nothing held on the canvas — and the file laid again '
-      'where it now stands still joins that step: ONE undo puts it all back',
+      'written at once, nothing held on the canvas — and the canvas moves '
+      'the picture there, its file NOT laid again: ONE undo puts it back',
       (tester) async {
     final (s, row) = await placed(tester);
     final before = s.layerById(row.id)!;
@@ -340,25 +307,26 @@ void main() {
       reason: 'the lane reads the key it made',
     );
 
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
-    expect(referenceOf(s, row).laid.center, CanvasPoint(x: 1210, y: 800));
-    expect(shown(s, row), const ui.Rect.fromLTRB(1160, 770, 1260, 830));
-
-    s.undo();
-    expect(s.layerById(row.id), before, reason: 'the key and the laying');
-    expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+    // Time for a read of the file to land, had the edit started one.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
     await tester.pump(const Duration(minutes: 1));
-    await stopTheWarmer(tester, s);
-  });
+    expect(
+      referenceOf(s, row).laid,
+      before.mediaReference!.laid,
+      reason: '「굳이 다시 그릴필요도없고」 — the file stays where it was laid',
+    );
+    expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+    expect(
+      referenceMoveAt(
+        s.layerById(row.id)!,
+        0,
+      )!.apply(CanvasPoint(x: 1170, y: 827)),
+      CanvasPoint(x: 1210, y: 800),
+      reason: 'the canvas moves the picture where the key stands it',
+    );
 
-  testWidgets('the key is undone at once — before its file has been laid '
-      'again — and the laying that comes after lands nothing', (
-    tester,
-  ) async {
-    final (s, row) = await placed(tester);
-    final before = s.layerById(row.id)!;
-
-    typed(s, row, referencePositionLaneId, '1210, 800');
     s.undo();
     expect(
       s.layerById(row.id),
@@ -366,54 +334,6 @@ void main() {
       reason: 'its own step from the moment it was written — 「언두도 '
           '가능하게」',
     );
-
-    // A laying that landed would file a step, and a new step clears redo.
-    await settle(tester, () => !s.canRedo, tries: 25);
-    expect(
-      s.canRedo,
-      isTrue,
-      reason: 'the row changed while its file was read: nothing landed',
-    );
-    expect(s.layerById(row.id), before);
-    await stopTheWarmer(tester, s);
-  });
-
-  testWidgets('⛔an edit filed while the file is read is NOT folded into the '
-      'move — one undo takes the laying back, and the other edit stays', (
-    tester,
-  ) async {
-    final (s, row) = await placed(tester);
-    final drawn = s.requireActiveCut.layers.firstWhere(
-      (layer) =>
-          layer.kind == LayerKind.animation && layer.mediaReference == null,
-    );
-
-    typed(s, row, referencePositionLaneId, '1210, 800');
-    // Before the file has been read: its laying lands after this.
-    s.laneVerbs.setLaneValueAt(
-      drawn.id,
-      'position',
-      0,
-      '10, 10',
-      frameIsGlobal: false,
-      description: 'Edit Position',
-      scaleLinked: false,
-    );
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
-
-    s.undo();
-    expect(
-      referenceOf(s, row).laid.center,
-      CanvasPoint(x: 1170, y: 827),
-      reason: 'the laying, a step of its own',
-    );
-    expect(
-      transformLaneKeyFrames(s.layerById(drawn.id)!.transformTrack, 'position'),
-      {0},
-      reason: 'somebody else\'s edit is not undone with the move',
-    );
-    expect(transformLaneKeyFrames(referenceOf(s, row).fx, 'position'), {0});
-    await tester.pump(const Duration(minutes: 1));
     await stopTheWarmer(tester, s);
   });
 
@@ -433,16 +353,6 @@ void main() {
     expect(keyed.poseAt(0).rotationDegrees, 30);
     expect(transformLaneKeyFrames(keyed.fx, 'scale'), {0});
     expect(transformLaneKeyFrames(keyed.fx, 'rotation'), {0});
-
-    await settle(
-      tester,
-      () => referenceOf(s, row).laid.rotationDegrees == 30,
-    );
-    expect(
-      referenceOf(s, row).laid,
-      keyed.poseAt(0),
-      reason: 'laid once where both keys stand it',
-    );
     await stopTheWarmer(tester, s);
   });
 
@@ -468,7 +378,6 @@ void main() {
       CanvasPoint(x: 3, y: 3),
       reason: 'down was left as shown, so the chain carries it',
     );
-    await settle(tester, () => referenceOf(s, row).laid.scaleX == 3);
     await stopTheWarmer(tester, s);
   });
 
@@ -585,8 +494,8 @@ void main() {
   });
 
   testWidgets('🎯the group\'s Reset puts the fx back where its file was '
-      'PLACED — not in the middle of the canvas — and lays it there again, '
-      'one undo (「참조fx에서 리셋버튼도 안먹힘」)', (tester) async {
+      'PLACED — not in the middle of the canvas — one undo '
+      '(「참조fx에서 리셋버튼도 안먹힘」)', (tester) async {
     final (s, row) = await placed(tester);
     // Grown to the right, the paper stays where it was placed: the
     // canvas's middle is x 1470 now, the paper's 1170.
@@ -595,7 +504,6 @@ void main() {
       anchor: CanvasResizeAnchor.centerLeft,
     );
     typed(s, row, referencePositionLaneId, '1210, 800');
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
 
     expect(s.laneVerbs.resetLaneGroup(row.id, referenceGroupLaneId), isTrue);
 
@@ -605,17 +513,14 @@ void main() {
       {0},
       reason: 'AE\'s reset puts the value back and deletes no key',
     );
-    await settle(tester, () => referenceOf(s, row).laid.center.x == 1170);
-    expect(shown(s, row), const ui.Rect.fromLTRB(1120, 797, 1220, 857));
+    expect(
+      referenceMoveAt(s.layerById(row.id)!, 0),
+      isNull,
+      reason: 'back where its file was laid: nothing to move',
+    );
 
     s.undo();
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1210, y: 800));
-    expect(
-      referenceOf(s, row).laid.center,
-      CanvasPoint(x: 1210, y: 800),
-      reason: 'the laying went with the reset it followed',
-    );
-    await tester.pump(const Duration(minutes: 1));
     await stopTheWarmer(tester, s);
   });
 
@@ -691,9 +596,8 @@ void main() {
     await stopTheWarmer(tester, s);
   });
 
-  testWidgets('🎯a row of a cut NOT stood in is keyed where it is, and its '
-      'file laid again in that cut — the session left where it stands, one '
-      'undo (I-89-Q23)', (tester) async {
+  testWidgets('🎯a row of a cut NOT stood in is keyed where it is — the '
+      'session left where it stands, one undo (I-89-Q23)', (tester) async {
     final (s, row) = await placed(tester);
     final home = s.activeCutId!;
     s.cutVerbs.createCut();
@@ -716,20 +620,10 @@ void main() {
       transformLaneKeyFrames(rowAtHome().mediaReference!.fx, 'position'),
       {0},
     );
-    await settle(
-      tester,
-      () => rowAtHome().mediaReference!.laid.center.x == 1210,
-    );
-    expect(
-      rowAtHome().mediaReference!.laid.center,
-      CanvasPoint(x: 1210, y: 800),
-      reason: 'laid again in the cut that holds the row',
-    );
     expect(s.activeCutId, other, reason: 'the session stays where it stood');
 
     s.undo();
-    expect(rowAtHome(), before, reason: 'the key and its laying, one undo');
-    await tester.pump(const Duration(minutes: 1));
+    expect(rowAtHome(), before, reason: 'the key, one undo');
     await stopTheWarmer(tester, s);
   });
 
@@ -841,7 +735,7 @@ void main() {
   });
 
   test('an fx that moves over the cut moves the picture each frame from '
-      'where its file is laid — and has no still pose to lay it at', () {
+      'where its file is laid', () {
     final reference = MediaReference(
       assetPath: '/paper.png',
       pose: TransformPose(center: CanvasPoint(x: 100, y: 50)),
@@ -859,7 +753,6 @@ void main() {
       mediaReference: reference,
     );
 
-    expect(reference.stillPose, isNull, reason: 'two keys on a lane');
     expect(
       referenceMoveAt(row, 0),
       isNull,
