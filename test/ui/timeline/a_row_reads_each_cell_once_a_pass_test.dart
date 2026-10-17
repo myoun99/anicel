@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/exposure_of.dart';
 import '../../helpers/native_engine_path.dart';
-import '../../helpers/poll_until.dart';
+import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// I-22 ③: A ROW READS EACH CELL ONCE A PASS.
@@ -231,7 +231,7 @@ void main() {
       isNull,
       reason: 'premise: cold',
     );
-    await pollUntil(() => !store.debugBusy);
+    await tileStoreIdle(store);
 
     expect(asked, isNotEmpty, reason: 'premise: the raster read the row');
     expect(
