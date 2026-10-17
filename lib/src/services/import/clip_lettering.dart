@@ -425,23 +425,42 @@ Map<int, ByteData> _parametersOf(Uint8List attributes) {
   return out;
 }
 
-/// Parameter 11: `u32 n`, then each run — `i32 start · u32 length · u32
-/// size` (of the run from its length on) `· u8 style` (1 bold · 2 italic)
-/// `· u8 own` (1 its colour · 2 its scale) `· u16 × 3 colour · f64 scale %
-/// · u16 count + UTF-16LE face`.
-List<_Run> _runsOf(ByteData? data) {
+/// Parameters 11 · 13: `u32 n`, then each item — `i32 start · u32 length
+/// · u32 size` and bytes of its own — read by [read] at its offset; the
+/// next stands [sizeFrom] bytes past this one's start, and its size more.
+/// An item [read] makes nothing of is left out.
+List<T> _sizedItemsOf<T extends Object>(
+  ByteData? data, {
+  required int sizeFrom,
+  required T? Function(ByteData data, int at, int size) read,
+}) {
   if (data == null || data.lengthInBytes < 4) {
-    return const [];
+    return <T>[];
   }
-  final runs = <_Run>[];
+  final items = <T>[];
   var at = 4;
   for (var k = data.getUint32(0, Endian.little); k > 0; k -= 1) {
     final size = data.getUint32(at + 8, Endian.little);
+    if (read(data, at, size) case final item?) {
+      items.add(item);
+    }
+    at += sizeFrom + size;
+  }
+  return items;
+}
+
+/// Parameter 11: each run's size counts from its length on, and after the
+/// header come `u8 style` (1 bold · 2 italic) `· u8 own` (1 its colour · 2
+/// its scale) `· u16 × 3 colour · f64 scale % · u16 count + UTF-16LE face`.
+List<_Run> _runsOf(ByteData? data) => _sizedItemsOf(
+  data,
+  sizeFrom: 4,
+  read: (data, at, _) {
     final style = data.getUint8(at + 12);
     final own = data.getUint8(at + 13);
     final scale = data.getFloat64(at + 20, Endian.little);
     final letters = data.getUint16(at + 28, Endian.little);
-    runs.add((
+    return (
       start: data.getInt32(at, Endian.little),
       length: data.getUint32(at + 4, Endian.little),
       bold: style & 1 != 0,
@@ -459,11 +478,9 @@ List<_Run> _runsOf(ByteData? data) {
               for (var c = 0; c < letters; c += 1)
                 data.getUint16(at + 30 + 2 * c, Endian.little),
             ]),
-    ));
-    at += 4 + size;
-  }
-  return runs;
-}
+    );
+  },
+);
 
 /// Parameters 12 · 16 · 20: `u32 n`, then each stretch — `i32 start · u32
 /// length · u32 · u8 value · u8` — its value read by [valueAt].
@@ -484,28 +501,22 @@ List<_Stretch<T>> _stretchesOf<T>(
   ];
 }
 
-/// Parameter 13: `u32 n`, then each stretch — `i32 start · u32 length · u32
-/// size`, and that many bytes ending in its spacing, an f64 in %.
-List<_Stretch<double>> _spacingsOf(ByteData? data) {
-  if (data == null || data.lengthInBytes < 4) {
-    return const [];
-  }
-  final out = <_Stretch<double>>[];
-  var at = 4;
-  for (var k = data.getUint32(0, Endian.little); k > 0; k -= 1) {
-    final size = data.getUint32(at + 8, Endian.little);
+/// Parameter 13: each stretch's size counts from past its header, and its
+/// bytes end in its spacing, an f64 in %.
+List<_Stretch<double>> _spacingsOf(ByteData? data) => _sizedItemsOf(
+  data,
+  sizeFrom: 12,
+  read: (data, at, size) {
     final spacing = data.getFloat64(at + 12 + size - 8, Endian.little);
-    if (spacing > 0) {
-      out.add((
-        start: data.getInt32(at, Endian.little),
-        length: data.getUint32(at + 4, Endian.little),
-        value: spacing,
-      ));
-    }
-    at += 12 + size;
-  }
-  return out;
-}
+    return spacing > 0
+        ? (
+            start: data.getInt32(at, Endian.little),
+            length: data.getUint32(at + 4, Endian.little),
+            value: spacing,
+          )
+        : null;
+  },
+);
 
 String? _utf8Of(ByteData? data) => data == null || data.lengthInBytes == 0
     ? null
