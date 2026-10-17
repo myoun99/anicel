@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -7,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:anicel/src/ui/text/cel_text_bake.dart';
 
@@ -168,9 +168,11 @@ void main() {
   test('a text this app sets is set once the face it is in — held by the '
       'device and still being read — has reached the engine, as the text '
       'tool waits for it', () async {
-    final reading = Completer<List<Uint8List>>();
     final faces = CanvasLetterFaces(
-      files: (_) => reading.future,
+      // A held face is read when it is first asked for — here by the
+      // import, as it comes to the text — and is on its way from then
+      // until the reading's turn comes round.
+      files: (_) async => [Uint8List(4)],
       register: (_, {required engineFamily}) async {},
     )..setHeld({'Face': 'face-files'});
     final before = CanvasLetterFaces.current;
@@ -185,15 +187,40 @@ void main() {
           arrived.add(!faces.isOnItsWay('Face'));
           return Future.value(markerPlate());
         };
-    unawaited(
-      Future<void>.delayed(
-        const Duration(milliseconds: 50),
-        () => reading.complete([Uint8List(4)]),
-      ),
-    );
     final opened = await openedClip(writeClip());
     addTearDown(opened!.session.dispose);
 
     expect(arrived, [true], reason: 'set in its face, not in a stand-in');
+  });
+
+  test('the import says a text layer is done only once its texts are in '
+      'its cel — the one it sets among them', () async {
+    debugCelTextBaker =
+        (layout, {required canvasSize, required tileSize, previous = const {}}) =>
+            // A turn of the event loop: the engine's bake is not done at
+            // once.
+            Future(markerPlate);
+    late EditorSessionManager session;
+    int? textsInTheCel() {
+      final cut = session.repository.requireProject().tracks.single.cuts.single;
+      final row = cut.layers.singleWhere((layer) => layer.name == 'words');
+      return session.renderCaches.brushFrameStore
+          .bakedSurfaceOrNull(
+            session.brushFrameKeyForCut(cut, row.id, row.frames.single.id),
+          )
+          ?.texts
+          .length;
+    }
+
+    final atProgress = <int?>[];
+    final opened = await openedClip(
+      writeClip(),
+      make: (project) =>
+          session = EditorSessionManager(initialProject: project),
+      onProgress: (_) => atProgress.add(textsInTheCel()),
+    );
+    addTearDown(opened!.session.dispose);
+
+    expect(atProgress, [2], reason: 'both texts, as the layer is said done');
   });
 }
