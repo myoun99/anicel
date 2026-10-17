@@ -449,6 +449,7 @@ void main() {
       expect(indexOfBytes(bytes, [2, 3], 0), 1);
       expect(indexOfBytes(bytes, [2, 3], 2), 4);
       expect(indexOfBytes(bytes, [1, 2, 3, 4], 0), 3);
+      expect(indexOfBytes(bytes, [1, 2], 3), 3, reason: 'right where it looks');
     });
 
     test('a needle must END by the bound — one that only starts inside it '
