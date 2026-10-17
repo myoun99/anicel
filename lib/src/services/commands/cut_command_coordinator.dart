@@ -967,15 +967,15 @@ class CutCommandCoordinator {
   }) {
     // Anywhere lookup, like the audio clips above — SE rows are TRACK
     // fixtures and the cut-scoped read throws for them.
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
+    final layer = _requireLayerAnywhere(layerId);
     if (layer.kind != LayerKind.se) {
       throw StateError('Name tags belong on SE layers only.');
     }
-    if (layer.seNameTag == seNameTag) {
-      return;
-    }
-    historyManager.execute(
-      UpdateSeNameTagCommand(
+    _executeIfChanged(
+      subject: layer,
+      value: seNameTag,
+      read: (layer) => layer.seNameTag,
+      command: (_) => UpdateSeNameTagCommand(
         repository: repository,
         layerId: layerId,
         seNameTag: seNameTag,
@@ -992,16 +992,15 @@ class CutCommandCoordinator {
     required TransformTrack fx,
     String description = 'Edit layer reference',
   }) {
-    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
-    final reference = layer.mediaReference;
-    if (reference == null) {
+    final layer = _requireLayerAnywhere(layerId);
+    if (layer.mediaReference == null) {
       throw StateError('A reference fx belongs on a row that shows a file.');
     }
-    if (reference.fx == fx) {
-      return;
-    }
-    historyManager.execute(
-      UpdateLayerReferenceFxCommand(
+    _executeIfChanged(
+      subject: layer,
+      value: fx,
+      read: (layer) => layer.mediaReference!.fx,
+      command: (_) => UpdateLayerReferenceFxCommand(
         repository: repository,
         layerId: layerId,
         fx: fx,

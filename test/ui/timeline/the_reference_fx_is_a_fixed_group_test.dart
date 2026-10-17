@@ -304,6 +304,11 @@ void main() {
       isNull,
       reason: 'written, so there is nothing to hold meanwhile',
     );
+    expect(
+      lanesOf(s, row)[1].valueLabel!(0),
+      '1210.00, 800.00',
+      reason: 'the lane reads the key it made',
+    );
 
     await settle(tester, () => referenceOf(s, row).laid.center.x == 1210);
     expect(referenceOf(s, row).laid.center, CanvasPoint(x: 1210, y: 800));
@@ -511,6 +516,12 @@ void main() {
       'transform lane\'s does (F-374) — one undo, and again takes the key '
       'away', (tester) async {
     final (s, row) = await placed(tester);
+    // Grown to the right, the paper stays where it was placed: the
+    // canvas's middle is x 1470 now, the paper's 1170.
+    s.cutVerbs.resizeActiveCutCanvas(
+      const CanvasSize(width: 2940, height: 1654),
+      anchor: CanvasResizeAnchor.centerLeft,
+    );
     final before = s.layerById(row.id)!;
     void diamond() => s.laneVerbs.toggleLaneKeyAt(
       row.id,
@@ -523,6 +534,12 @@ void main() {
     diamond();
     final keyed = referenceOf(s, row);
     expect(transformLaneKeyFrames(keyed.fx, 'position'), {0});
+    expect(
+      keyed.poseAt(0).center,
+      CanvasPoint(x: 1170, y: 827),
+      reason: 'frozen where the paper stands — not where an unkeyed layer '
+          'stands, in the canvas\'s middle',
+    );
     expect(
       keyed.poseAt(0),
       keyed.laid,
@@ -614,6 +631,75 @@ void main() {
     keysAt({}, 'deleted');
     s.undo();
     keysAt({0}, 'both given back at once');
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('a span over the group\'s header keys all three of its members '
+      '— the header stands for them, as the transform\'s does', (
+    tester,
+  ) async {
+    final (s, row) = await placed(tester);
+
+    s.laneVerbs.createLaneKeysForSelection(
+      TimelineLaneSelection(
+        layerId: row.id,
+        laneId: referenceGroupLaneId,
+        startIndex: 0,
+        endIndexExclusive: 1,
+      ),
+    );
+
+    final reference = referenceOf(s, row);
+    for (final lane in ['position', 'scale', 'rotation']) {
+      expect(transformLaneKeyFrames(reference.fx, lane), {0}, reason: lane);
+    }
+    expect(
+      reference.poseAt(0),
+      reference.pose,
+      reason: 'frozen where it was placed',
+    );
+    await stopTheWarmer(tester, s);
+  });
+
+  testWidgets('🎯a row of a cut NOT stood in is keyed where it is, and its '
+      'file laid again in that cut — the session left where it stands, one '
+      'undo (I-89-Q23)', (tester) async {
+    final (s, row) = await placed(tester);
+    final home = s.activeCutId!;
+    s.cutVerbs.createCut();
+    final cuts = s.repository.requireProject().tracks.first.cuts;
+    final other = cuts.firstWhere((cut) => cut.id != home).id;
+    s.selectCut(other);
+    Layer rowAtHome() => s.repository
+        .requireProject()
+        .tracks
+        .first
+        .cuts
+        .firstWhere((cut) => cut.id == home)
+        .layers
+        .firstWhere((layer) => layer.id == row.id);
+    final before = rowAtHome();
+
+    typed(s, row, referencePositionLaneId, '1210, 800');
+
+    expect(
+      transformLaneKeyFrames(rowAtHome().mediaReference!.fx, 'position'),
+      {0},
+    );
+    await settle(
+      tester,
+      () => rowAtHome().mediaReference!.laid.center.x == 1210,
+    );
+    expect(
+      rowAtHome().mediaReference!.laid.center,
+      CanvasPoint(x: 1210, y: 800),
+      reason: 'laid again in the cut that holds the row',
+    );
+    expect(s.activeCutId, other, reason: 'the session stays where it stood');
+
+    s.undo();
+    expect(rowAtHome(), before, reason: 'the key and its laying, one undo');
+    await tester.pump(const Duration(minutes: 1));
     await stopTheWarmer(tester, s);
   });
 

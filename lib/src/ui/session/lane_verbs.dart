@@ -1362,42 +1362,62 @@ class LaneVerbs {
   /// cannot disagree about which keys the range covers.
   List<_LaneRangeKey> _laneRangeKeys() {
     final lane = laneVerbRange;
-    if (lane == null) {
-      return const [];
-    }
-    final scope = _laneVerbScope(lane);
-    if (scope == null) {
+    final scope = lane == null ? null : _laneVerbScope(lane);
+    if (lane == null || scope == null) {
       return const [];
     }
     final layer = scope.layer;
-    final targets = scope.targets;
+    return scope.effectLanes
+        ? _effectRangeKeys(layer.effects, scope.targets, lane)
+        : _transformRangeKeys(
+            layer,
+            _laneVerbTargetsFor(layer, scope.targets),
+            lane,
+          );
+  }
+
+  /// [_laneRangeKeys] on an effect chain's parameter lanes of [targets].
+  static List<_LaneRangeKey> _effectRangeKeys(
+    List<LayerEffect> effects,
+    List<String> targets,
+    TimelineLaneSelection lane,
+  ) {
     final keys = <_LaneRangeKey>[];
-    if (scope.effectLanes) {
-      for (final laneId in targets) {
-        final address = parseEffectLaneId(laneId);
-        final parameterId = address?.parameterId;
-        if (address == null || parameterId == null) {
+    for (final laneId in targets) {
+      final address = parseEffectLaneId(laneId);
+      final parameterId = address?.parameterId;
+      if (address == null || parameterId == null) {
+        continue;
+      }
+      for (final effect in effects) {
+        if (effect.id != address.effectId) {
           continue;
         }
-        for (final effect in layer.effects) {
-          if (effect.id != address.effectId) {
-            continue;
-          }
-          final track = effect.parameters[parameterId]?.track;
-          if (track == null) {
-            continue;
-          }
-          for (final entry in track.keys.entries) {
-            if (lane.contains(entry.key)) {
-              // An effect's keys walk no path, so none roves.
-              keys.add((laneId: laneId, key: entry.value, canRove: false));
-            }
+        final track = effect.parameters[parameterId]?.track;
+        if (track == null) {
+          continue;
+        }
+        for (final entry in track.keys.entries) {
+          if (lane.contains(entry.key)) {
+            // An effect's keys walk no path, so none roves.
+            keys.add((laneId: laneId, key: entry.value, canRove: false));
           }
         }
       }
-      return keys;
     }
-    final lanes = transformLanesByHome(_laneVerbTargetsFor(layer, targets));
+    return keys;
+  }
+
+  /// [_laneRangeKeys] on [layer]'s transform lanes of [targets], each on
+  /// the track it lives on ([transformLanesByHome] — a reference fx's
+  /// member on that fx, F-374).
+  List<_LaneRangeKey> _transformRangeKeys(
+    Layer layer,
+    List<String> targets,
+    TimelineLaneSelection lane,
+  ) {
+    final keys = <_LaneRangeKey>[];
+    final lanes = transformLanesByHome(targets);
     for (final (:laneIds, :reference) in [
       (laneIds: lanes.own, reference: false),
       (laneIds: lanes.reference, reference: true),

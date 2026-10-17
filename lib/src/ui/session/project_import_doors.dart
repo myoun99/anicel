@@ -47,6 +47,7 @@ import '../../services/media/movie_bytes.dart';
 import '../../services/media/video_decode_worker.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/media_staging_store.dart';
+import '../../services/project_lookup.dart' show cutWritingRow;
 import '../../services/straight_rgba_image.dart';
 import '../audio/audio_conform_store.dart';
 import '../import/import_file_settings.dart';
@@ -54,6 +55,7 @@ import 'import_landing.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_pool.dart';
 import 'render_caches.dart';
+import 'row_written_by_id.dart';
 import 'session_roles.dart';
 import '../../models/import/import_warning.dart';
 
@@ -1100,11 +1102,15 @@ class ProjectImportDoors {
   ///
   /// ↩️It moved the reference fx itself, which held one value (F-374): the
   /// fx is keyed now, and where its file is laid is this door's alone.
+  ///
+  /// The row is found where it lives ([RowWrittenById.rowWrittenById]): a
+  /// lane verb edits a row of a cut not stood in where it is (I-89-Q23), and
+  /// its file is laid again there.
   Future<ReferenceRedraw> layReferenceAt({
     required LayerId layerId,
     required TransformPose pose,
   }) async {
-    final layer = _project.layerById(layerId);
+    final layer = _project.rowWrittenById(layerId);
     final reference = layer?.mediaReference;
     if (layer == null || reference == null || reference.laid == pose) {
       return const ReferenceLeftAlone();
@@ -1116,15 +1122,23 @@ class ProjectImportDoors {
     );
   }
 
-  /// [layer] — a reference row of the active cut — pointed at [next] and its
-  /// pictures made from that file again ([referenceRedrawFor]), as ONE undo
-  /// step. The picture's own size is the file's as it reads now.
+  /// [layer] — a reference row, in the cut writing it ([cutWritingRow]: the
+  /// one holding it, stood in or not) — pointed at [next] and its pictures
+  /// made from that file again ([referenceRedrawFor]), as ONE undo step.
+  /// The picture's own size is the file's as it reads now.
+  /// ↩️Always in the cut stood in, until I-89-Q23 let a lane verb reach a
+  /// row of another.
   Future<ReferenceRedraw> _drawAgain(
     Layer layer,
     MediaReference next, {
     required String description,
   }) async {
-    final cut = _project.activeCutOrNull;
+    final cutId = cutWritingRow(
+      _project.repository.requireProject(),
+      layer.id,
+      standing: _project.activeCutId,
+    );
+    final cut = cutId == null ? null : _project.cutById(cutId);
     final redraw = referenceRedrawFor(layer);
     if (cut == null || redraw == null) {
       return const ReferenceLeftAlone();
@@ -1155,7 +1169,7 @@ class ProjectImportDoors {
     _Drawn drawn, {
     required String description,
   }) {
-    if (_project.layerById(layer.id) != layer) {
+    if (_project.rowWrittenById(layer.id) != layer) {
       return const ReferenceLeftAlone();
     }
     _project.historyManager.execute(

@@ -1017,6 +1017,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// ⛔[editOf] is the SAME edit for both landings — the release keeps what
   /// the drag showed because it is the drag's own computation, not a second
   /// one that happens to agree.
+  ///
+  /// [reference]: the edit is of the row's REFERENCE FX (F-374) — the
+  /// transform's lanes in their other home, keyed the same way.
   RowBoxLanding<T> _handleLandings<T>(
     EditorSessionManager session,
     LayerId layerId,
@@ -1025,16 +1028,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     )
     editOf, {
     required String description,
+    bool reference = false,
   }) {
     final verbs = session.laneVerbs;
+    final (preview, edit) = reference
+        ? (verbs.previewReferenceFxAtPlayhead, verbs.editReferenceFxAtPlayhead)
+        : (
+            verbs.previewLayerTransformAtPlayhead,
+            verbs.editLayerTransformAtPlayhead,
+          );
     return (
-      changed: (value) =>
-          verbs.previewLayerTransformAtPlayhead(layerId, editOf(value)),
-      committed: (value) => verbs.editLayerTransformAtPlayhead(
-        layerId,
-        editOf(value),
-        description: description,
-      ),
+      changed: (value) => preview(layerId, editOf(value)),
+      committed: (value) =>
+          edit(layerId, editOf(value), description: description),
     );
   }
 
@@ -1199,67 +1205,67 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final back = parent == null ? null : canvasToArtwork(parent);
     CanvasPoint toCanvas(CanvasPoint point) => parent?.apply(point) ?? point;
     CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
-    final verbs = session.laneVerbs;
     final name = row.name;
-    RowBoxLanding<T> landing<T>(
-      TransformTrack Function(TransformTrack track, int frameIndex) Function(
-        T value,
-      )
-      editOf,
-      String description,
-    ) => (
-      changed: (value) =>
-          verbs.previewReferenceFxAtPlayhead(row.id, editOf(value)),
-      committed: (value) => verbs.editReferenceFxAtPlayhead(
-        row.id,
-        editOf(value),
-        description: description,
-      ),
-    );
-    final picture = reference.pictureSize;
     return RowTransformBox(
-      corners: [
-        for (final corner in placedCorners(
-          picturePlacement(pose, picture),
-          Offset.zero &
-              Size(picture.width.toDouble(), picture.height.toDouble()),
-        ))
-          toCanvas(corner),
-      ],
+      corners: _referenceBoxCorners(pose, reference.pictureSize, toCanvas),
       pose: pose.copyWith(center: toCanvas(pose.center)),
       canvasSize: canvasSize,
       viewport: viewport,
       presses: frame.boxPresses,
-      onCancelled: verbs.endLaneEditPreview,
-      move: landing<CanvasPoint>(
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: _handleLandings<CanvasPoint>(
+        session,
+        row.id,
         (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
           track,
           frameIndex: frameIndex,
           position: fromCanvas(dropped),
         ),
-        'Move $name reference',
+        description: 'Move $name reference',
+        reference: true,
       ),
       scale: RowBoxTwoScales(
-        landing<CanvasPoint>(
+        _handleLandings<CanvasPoint>(
+          session,
+          row.id,
           (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
             track,
             frameIndex: frameIndex,
             scale: scale,
           ),
-          'Scale $name reference',
+          description: 'Scale $name reference',
+          reference: true,
         ),
       ),
       turnSpace: fromCanvas,
-      turn: landing<double>(
+      turn: _handleLandings<double>(
+        session,
+        row.id,
         (degrees) => (track, frameIndex) => transformTrackWithRotationDragged(
           track,
           frameIndex: frameIndex,
           rotationDegrees: degrees,
         ),
-        'Rotate $name reference',
+        description: 'Rotate $name reference',
+        reference: true,
       ),
     );
   }
+
+  /// [picture]'s own corners where [pose] lays it, on the canvas through
+  /// [toCanvas] — the reference box's frame, as [_seBoxCorners] is the SE
+  /// box's.
+  static List<CanvasPoint> _referenceBoxCorners(
+    TransformPose pose,
+    CanvasSize picture,
+    CanvasPoint Function(CanvasPoint point) toCanvas,
+  ) => [
+    for (final corner in placedCorners(
+      picturePlacement(pose, picture),
+      Offset.zero & Size(picture.width.toDouble(), picture.height.toDouble()),
+    ))
+      toCanvas(corner),
+  ];
 
   /// An SE row's box (F-222 ②): its name tag, and it only MOVES — the tag
   /// is placed by position alone (a tag has no scale or turn to drive).

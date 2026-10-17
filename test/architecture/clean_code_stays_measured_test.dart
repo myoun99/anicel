@@ -474,7 +474,20 @@ void main() {
   /// the pair every warning of the plan is said with. 🔬`clean_code_diff`
   /// against master (`42ceeb00d`, at 402) named that one added and nothing
   /// gone.
-  const wideSignatures = 403;
+  ///
+  /// ⚠️403 → 404 on 2026-10-17, two named and one gone as the rule above
+  /// asks (F-374 — 유저 2026-10-17: 「참조fx도 똑같이 fx로서 법 통일」).
+  /// `EditorCanvasAreaState._handleLandings` (five) is the one landing every
+  /// canvas box takes, and it says now which home the box keys: the
+  /// reference fx's box kept a copy of it, and lands through it beside the
+  /// layer's, the SE row's and the camera's.
+  /// `LaneVerbs._transformTrackWithKeyToggled` (five) freezes a key where
+  /// the lane's home stands the picture — a reference fx's where its file
+  /// stands, a row's own lanes where the row does — for the ◆ and the range
+  /// Create alike. `poseWithLaneValueEdited` left: a reference lane's value
+  /// is a transform lane's value now. 🔬`clean_code_diff` against master
+  /// (`0df66289b`, at 403) named those two added and that one gone.
+  const wideSignatures = 404;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
