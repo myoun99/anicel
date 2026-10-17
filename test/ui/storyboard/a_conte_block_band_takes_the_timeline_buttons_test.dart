@@ -116,6 +116,7 @@ void main() {
         'shared-paste-linked-button': timeline.canPasteLinkedFrame,
         'blank-exposure-button': timeline.canBlankExposure,
         'toggle-mark-button': timeline.canToggleMark,
+        'mark-every-button': timeline.canMarkEvery,
         'shared-unlink-button': timeline.canUnlink,
       };
       for (final MapEntry(:key, :value) in answers.entries) {
@@ -129,9 +130,14 @@ void main() {
 
     await expectTheTimelinesAnswers();
     expect(
-      [timeline.canCutRun, timeline.canCopyFrame, timeline.canToggleMark],
+      [
+        timeline.canCutRun,
+        timeline.canCopyFrame,
+        timeline.canToggleMark,
+        timeline.canMarkEvery,
+      ],
       everyElement(isTrue),
-      reason: 'LIVENESS: 잘라내기, copy and the mark are lit on the band',
+      reason: 'LIVENESS: 잘라내기, copy and both marks are lit on the band',
     );
 
     // The press is the timeline's too: a copy made HERE is what the two

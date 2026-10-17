@@ -978,9 +978,6 @@ void main() {
     'tlAttachDropsFxTitle': (s) => s.tlAttachDropsFxTitle,
     'tlAttachDropsFxBody': (s) => s.tlAttachDropsFxBody,
     'tlAttachDropsFxRows': (s) => s.tlAttachDropsFxRows,
-    'tlAdd': (s) => s.tlAdd,
-    'tlBlankX': (s) => s.tlBlankX,
-    'tlMark': (s) => s.tlMark,
     'tlSetCommasN': (s) => s.tlSetCommasN,
     'tlSetCommaTemplate': (s) => s.tlSetCommaTemplate,
     'tlProjectAudioRate': (s) => s.tlProjectAudioRate,
@@ -1007,6 +1004,7 @@ void main() {
     'sheetPrintHold': (s) => s.sheetPrintHold,
     'setCommasTitle': (s) => s.setCommasTitle,
     'setCommasField': (s) => s.setCommasField,
+    'markEveryField': (s) => s.markEveryField,
     'frameCountEntryFrames': (s) => s.frameCountEntryFrames,
     'frameCountEntrySecondsPlusFrames': (s) =>
         s.frameCountEntrySecondsPlusFrames,

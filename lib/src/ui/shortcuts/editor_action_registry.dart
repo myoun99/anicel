@@ -815,6 +815,7 @@ abstract final class EditorActionIds {
   static const frameNewDrawing = 'frame-new-drawing';
   static const frameBlankExposure = 'frame-blank-exposure';
   static const frameToggleMark = 'frame-toggle-mark';
+  static const frameMarkEvery = 'frame-mark-every';
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
 
@@ -1780,15 +1781,26 @@ final List<EditorActionDefinition> editorActionDefinitions = [
       SingleActivator(LogicalKeyboardKey.keyN, control: true),
     ],
   ),
+  // 🗣️I-58 (유저 2026-10-18): 「x버튼은 비우기 … 마크 점은 중간나누기
+  // 마크」 — each named for the button it presses. ↩️They read 'Blank
+  // Exposure' and 'Toggle Mark'.
   const EditorActionDefinition(
     id: EditorActionIds.frameBlankExposure,
-    label: 'Blank Exposure',
+    label: 'Clear',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameToggleMark,
-    label: 'Toggle Mark',
+    label: 'In-between Mark',
+    shelf: ShortcutShelf.framePill,
+    defaultActivators: [],
+  ),
+  // 🗣️I-58 (유저 2026-10-01): the ● every n koma, from each block's head —
+  // 「중간나누기 마크 자동추가」. No key was said for it.
+  const EditorActionDefinition(
+    id: EditorActionIds.frameMarkEvery,
+    label: 'Auto-add In-between Marks',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
@@ -1840,9 +1852,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // order: 컷 · 레이어 · 프레임. Each IS its row and is pressed as the row
   // ([EditorActionDefinition.menuRow]) on the panel being worked in. None has
   // a key: no key was ever said for one.
+  // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는 레이어
+  // 추가고 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ
+  // 삭제)」. ↩️It read 'New cut'.
   const EditorActionDefinition(
     id: EditorActionIds.cutNew,
-    label: 'New cut',
+    label: 'Add cut',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
@@ -1992,10 +2007,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     menuRow: true,
   ),
   // The frame pill's standing switch (F-61) — a button, not a row, so the
-  // shell presses what the button presses.
+  // shell presses what the button presses. 🗣️I-58 (유저 2026-10-18): 「빈
+  // 칸에 그리면 프레임 자동 생성은 프레임 자동 생성」. ↩️It read 'Make a
+  // frame where there is none'.
   const EditorActionDefinition(
     id: EditorActionIds.frameAutoCreate,
-    label: 'Make a frame where there is none',
+    label: 'Auto-create Frames',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),

@@ -89,6 +89,11 @@ abstract class ToolbarPanelContext {
   bool get canToggleMark;
   void toggleMark();
 
+  /// The ● every n koma down a block, from its head (I-58) — the
+  /// selection's blocks, else the block under this panel's cursor.
+  bool get canMarkEvery;
+  void markEvery(int every);
+
   /// The 1/2/3/4/N comma press: the selection's blocks, else THE BLOCK
   /// UNDER THIS PANEL'S CURSOR — on the storyboard that is the standing
   /// row's block at the global playhead, cut blocks included (컷블록 위
@@ -383,6 +388,12 @@ class TimelineToolbarPanelContext
   void toggleMark() => session.layerMarks.toggleMarkAtCurrentFrame();
 
   @override
+  bool get canMarkEvery => session.layerMarks.canMarkEvery;
+
+  @override
+  void markEvery(int every) => session.layerMarks.markEvery(every);
+
+  @override
   bool get canSetComma => session.storyboardCursor.canSetCommaForTimelineCursor;
 
   @override
@@ -673,6 +684,12 @@ class StoryboardToolbarPanelContext
 
   @override
   void toggleMark() => _timelinesCells?.toggleMark();
+
+  @override
+  bool get canMarkEvery => _timelinesCells?.canMarkEvery ?? false;
+
+  @override
+  void markEvery(int every) => _timelinesCells?.markEvery(every);
 
   @override
   bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;

@@ -2326,8 +2326,15 @@ class EditorSessionManager extends ChangeNotifier
   // ── the layer marks: their own object, in their own file ────────────
   //
   // A collaborator (session/layer_marks.dart): the ● a row wears at a
-  // frame — one row or every swept one.
-  late final LayerMarks layerMarks = LayerMarks(project: this, selection: this, changes: this, controllers: activeCutControllers, activeCut: _activeCutEdits);
+  // frame — one row or every swept one — and every n koma down a block.
+  late final LayerMarks layerMarks = LayerMarks(
+    project: this,
+    selection: this,
+    changes: this,
+    controllers: activeCutControllers,
+    activeCut: _activeCutEdits,
+    rangeSelections: rangeSelections,
+  );
 
   // ── the instructions: their own object, in their own file ───────────
   //

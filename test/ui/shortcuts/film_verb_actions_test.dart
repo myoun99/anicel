@@ -13,6 +13,7 @@ void main() {
     EditorActionIds.frameNewDrawing,
     EditorActionIds.frameBlankExposure,
     EditorActionIds.frameToggleMark,
+    EditorActionIds.frameMarkEvery,
     EditorActionIds.timelinePushBlocks,
     EditorActionIds.timelinePullBlocks,
   ];
@@ -66,6 +67,28 @@ void main() {
       ids.indexOf(EditorActionIds.layerAdd),
       ids.indexOf(EditorActionIds.frameNewDrawing) + 1,
       reason: 'the shortcut list prints the registry in order',
+    );
+  });
+
+  test('🗣️I-58: the frame pill\'s rows and the cut\'s ＋ read as the user '
+      'named them — 「ㅁㅁ 추가」, 비우기, 프레임 자동 생성, 중간나누기 마크', () {
+    // 유저 2026-10-18: 「컷 추가버튼은 새 컷이고 레이어는 레이어 추가고
+    // 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ 삭제)하고,
+    // x버튼은 비우기, 빈 칸에 그리면 프레임 자동 생성은 프레임 자동 생성, 마크
+    // 점은 중간나누기 마크」.
+    final korean = AppStrings.of(AppLanguage.ko);
+    String label(String id) => korean.shortcutLabel(id, 'unnamed');
+    expect(label(EditorActionIds.cutNew), '컷 추가');
+    expect(label(EditorActionIds.frameBlankExposure), '비우기');
+    expect(label(EditorActionIds.frameAutoCreate), '프레임 자동 생성');
+    expect(label(EditorActionIds.frameToggleMark), '중간나누기 마크');
+    expect(label(EditorActionIds.frameMarkEvery), '중간나누기 마크 자동 추가');
+    final ids = [for (final it in editorActionDefinitions) it.id];
+    expect(
+      ids.indexOf(EditorActionIds.frameMarkEvery),
+      ids.indexOf(EditorActionIds.frameToggleMark) + 1,
+      reason: 'the shortcut list prints the registry in order, and the '
+          'button stands right of the ● (I-58-Q1)',
     );
   });
 

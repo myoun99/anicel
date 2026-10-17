@@ -597,11 +597,8 @@ void main() {
       String tooltip(String key) => tester
           .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
           .tooltip;
-      expect(tooltip('new-cut-button'), 'New cut');
-      expect(
-        tooltip('auto-frame-toggle-button'),
-        'Make a frame where there is none',
-      );
+      expect(tooltip('new-cut-button'), 'Add cut');
+      expect(tooltip('auto-frame-toggle-button'), 'Auto-create Frames');
 
       keys(tester)
         ..setActivators(EditorActionIds.cutNew, const [
@@ -612,11 +609,27 @@ void main() {
         ]);
       await tester.pumpAndSettle();
 
-      expect(tooltip('new-cut-button'), 'New cut (Ctrl+K)');
+      expect(tooltip('new-cut-button'), 'Add cut (Ctrl+K)');
       expect(
         tooltip('auto-frame-toggle-button'),
-        'Make a frame where there is none (Alt+K)',
+        'Auto-create Frames (Alt+K)',
       );
+    });
+
+    // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는 레이어
+    // 추가고 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ
+    // 삭제)하고, x버튼은 비우기 … 마크 점은 중간나누기 마크」. ↩️The frame
+    // pill's ＋ × ● each wore a string of their own.
+    testWidgets('the frame pill\'s ＋ × ● and the n-koma ● wear their '
+        'actions\' names too', (tester) async {
+      await pumpApp(tester);
+      String tooltip(String key) => tester
+          .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
+          .tooltip;
+      expect(tooltip('new-frame-button'), 'Add Frame (Shift+I)');
+      expect(tooltip('blank-exposure-button'), 'Clear');
+      expect(tooltip('toggle-mark-button'), 'In-between Mark');
+      expect(tooltip('mark-every-button'), 'Auto-add In-between Marks');
     });
   });
 

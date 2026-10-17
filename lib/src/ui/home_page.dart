@@ -79,7 +79,7 @@ import 'timeline/instance_editor_commands.dart'
     show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
-    show showTimelineCommaCountDialog;
+    show showMarkEveryDialog, showTimelineCommaCountDialog;
 import 'timeline/timeline_bar_menus.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'text/app_strings.dart';
@@ -1098,6 +1098,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final panel = _workingPanel;
         if (panel.canToggleMark) {
           panel.toggleMark();
+        }
+      // I-58: the ● every n koma — its button's window, on the panel being
+      // worked in.
+      case EditorActionIds.frameMarkEvery:
+        final panel = _workingPanel;
+        if (panel.canMarkEvery) {
+          unawaited(showMarkEveryDialog(context, _session, panel: panel));
         }
       // I-40: the frame pill's standing switch, by key — its button's press.
       case EditorActionIds.frameAutoCreate:

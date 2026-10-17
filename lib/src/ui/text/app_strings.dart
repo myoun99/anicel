@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/app_language.dart';
-import '../../models/frame.dart' show inbetweenMark;
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/timesheet_sheet_kind.dart';
 
@@ -892,16 +891,6 @@ enum AppStrings {
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
   /// ellipsized labels on device. The '…' convention belongs to menu
   /// ENTRIES that open a dialog, not to the buttons themselves.
-
-  String get tlAdd => _s('tlAdd');
-  String get tlBlankX => _s('tlBlankX');
-  String get tlMark => _s('tlMark');
-
-  /// 🚨F-61 — it used to be `brAutoCreateFrame`, in the brush panel. 유저:
-  /// 「프레임 자동생성 버튼 툴 설정에 있는데, **왜 이딴식으로 결정한거지?**
-  /// … 프레임 알약 안, 중간나누기 버튼 오른쪽에 두도록」. The key follows the
-  /// control: this is a timeline string now, and the `br` prefix would have
-  /// pointed the next reader at a panel it no longer lives in.
 
   /// Design D: the rigid shove as a verb. PUSH opens frames at the anchor
   /// and everything after travels with its spacing; PULL closes them and
@@ -1817,6 +1806,9 @@ enum AppStrings {
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
   String get setCommasField => _s('setCommasField');
+
+  /// I-58: how many koma apart the ● goes down a block.
+  String get markEveryField => _s('markEveryField');
 
   /// I-24: the two ways a count of frames is typed (`FrameCountField`).
   String get frameCountEntryFrames => _s('frameCountEntryFrames');
@@ -2988,7 +2980,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
-    'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
     'sbOneStoryboardRowPerCut':
@@ -3009,8 +3000,6 @@ enum AppStrings {
     'sheetPrintPage': 'Page',
     'sheetPrintRepeat': 'REPEAT',
     'sheetPrintHold': 'HOLD',
-    'tlBlankX': 'Blank / X',
-    'tlMark': 'Mark $inbetweenMark',
     'tlSetCommasN': 'Set N commas',
     'tlSetCommaTemplate': 'Set {n} comma exposure',
     'tlProjectAudioRate': 'Project audio sample rate',
@@ -3018,6 +3007,7 @@ enum AppStrings {
     'tlShowCameraRows': 'Show camera rows',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
+    'markEveryField': 'Interval',
     'frameCountEntryFrames': 'Frames',
     'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
     'projectFpsTitle': 'Project frame rate',
@@ -3623,8 +3613,9 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': 'フレームを追加',
     'shortcutAction.layer-add': 'レイヤーを追加',
     'shortcutAction.cut-pin-thumbnail': 'サムネイルのフレームを固定',
-    'shortcutAction.frame-blank-exposure': '中割なし / ×',
-    'shortcutAction.frame-toggle-mark': 'マークを切り替え',
+    'shortcutAction.frame-blank-exposure': '空にする',
+    'shortcutAction.frame-toggle-mark': '中割りマーク',
+    'shortcutAction.frame-mark-every': '中割りマークを自動追加',
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
     'shortcutAction.timeline-pull-blocks': '詰め（コマを詰める）',
     'shortcutAction.timeline-zoom-in': 'タイムラインを拡大',
@@ -3691,7 +3682,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': 'ズームアウト',
     'cutCommands': 'カット操作',
     'cutAddCut': 'カットを追加',
-    'shortcutAction.cut-new': 'カットを新規作成',
+    'shortcutAction.cut-new': 'カットを追加',
     'shortcutAction.cut-duplicate': 'カットを複製',
     'shortcutAction.cut-rename': 'カット名を変更…',
     'shortcutAction.cut-edit-note': 'カットメモを編集…',
@@ -4239,7 +4230,7 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '質感',
     'brGroupCorrection': '補正',
-    'shortcutAction.frame-auto-create': '空のセルに描いたらフレームを作る',
+    'shortcutAction.frame-auto-create': 'フレーム自動生成',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
     'brDualBlend': 'デュアルの合成',
@@ -4568,7 +4559,6 @@ enum AppStrings {
     'tlAttachDropsFxRows': 'fx を失うレイヤー',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
-    'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
     'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
@@ -4588,8 +4578,6 @@ enum AppStrings {
     'sheetPrintPage': 'シート',
     'sheetPrintRepeat': 'リピート',
     'sheetPrintHold': '止め',
-    'tlBlankX': '中割なし / ×',
-    'tlMark': 'マーク $inbetweenMark',
     'tlSetCommasN': 'Nコマに設定',
     'tlSetCommaTemplate': '{n}コマに設定',
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
@@ -4598,6 +4586,7 @@ enum AppStrings {
     'shortcutAction.layer-storyboard': '絵コンテレイヤー',
     'setCommasTitle': 'コマ数の設定',
     'setCommasField': '露光フレーム数',
+    'markEveryField': '間隔',
     'frameCountEntryFrames': 'コマ数',
     'frameCountEntrySecondsPlusFrames': '秒+コマ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
@@ -5196,8 +5185,9 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': '프레임 추가',
     'shortcutAction.layer-add': '레이어 추가',
     'shortcutAction.cut-pin-thumbnail': '썸네일 프레임 고정',
-    'shortcutAction.frame-blank-exposure': '중간 없음 / ×',
-    'shortcutAction.frame-toggle-mark': '마크 토글',
+    'shortcutAction.frame-blank-exposure': '비우기',
+    'shortcutAction.frame-toggle-mark': '중간나누기 마크',
+    'shortcutAction.frame-mark-every': '중간나누기 마크 자동 추가',
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
     'shortcutAction.timeline-pull-blocks': '당기기(칸 닫기)',
     'shortcutAction.timeline-zoom-in': '타임라인 확대',
@@ -5266,7 +5256,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': '축소',
     'cutCommands': '컷 명령',
     'cutAddCut': '컷 추가',
-    'shortcutAction.cut-new': '새 컷',
+    'shortcutAction.cut-new': '컷 추가',
     'shortcutAction.cut-duplicate': '컷 복제',
     'shortcutAction.cut-rename': '컷 이름 변경…',
     'shortcutAction.cut-edit-note': '컷 메모 편집…',
@@ -5804,7 +5794,7 @@ enum AppStrings {
     'brGroupScattering': '살포',
     'brGroupTexture': '질감',
     'brGroupCorrection': '보정',
-    'shortcutAction.frame-auto-create': '빈 칸에 그리면 프레임 자동 생성',
+    'shortcutAction.frame-auto-create': '프레임 자동 생성',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
     'brDualBlend': '듀얼 합성',
@@ -6135,7 +6125,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
-    'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
     'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
@@ -6155,8 +6144,6 @@ enum AppStrings {
     'sheetPrintPage': '시트',
     'sheetPrintRepeat': '리피트',
     'sheetPrintHold': '홀드',
-    'tlBlankX': '중간 없음 / ×',
-    'tlMark': '마크 $inbetweenMark',
     'tlSetCommasN': 'N코마로 설정',
     'tlSetCommaTemplate': '{n}코마로 설정',
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
@@ -6165,6 +6152,7 @@ enum AppStrings {
     'shortcutAction.layer-storyboard': '콘티 레이어',
     'setCommasTitle': '코마 수 설정',
     'setCommasField': '노출 프레임 수',
+    'markEveryField': '간격',
     'frameCountEntryFrames': '프레임',
     'frameCountEntrySecondsPlusFrames': '초+코마',
     'projectFpsTitle': '프로젝트 프레임레이트',
@@ -6807,8 +6795,9 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': 'Ajouter une image',
     'shortcutAction.layer-add': 'Ajouter un calque',
     'shortcutAction.cut-pin-thumbnail': "Épingler l'image de la vignette",
-    'shortcutAction.frame-blank-exposure': 'Vide / X',
-    'shortcutAction.frame-toggle-mark': 'Basculer le repère',
+    'shortcutAction.frame-blank-exposure': 'Vider',
+    'shortcutAction.frame-toggle-mark': "Repère d'intervalle",
+    'shortcutAction.frame-mark-every': "Ajout auto de repères d'intervalle",
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
     'shortcutAction.timeline-pull-blocks': 'Tirer (fermer des images)',
     'shortcutAction.timeline-zoom-in': 'Zoom avant de la timeline',
@@ -6876,7 +6865,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': 'Zoom arrière',
     'cutCommands': 'Commandes de plan',
     'cutAddCut': 'Ajouter un plan',
-    'shortcutAction.cut-new': 'Nouveau plan',
+    'shortcutAction.cut-new': 'Ajouter un plan',
     'shortcutAction.cut-duplicate': 'Dupliquer le plan',
     'shortcutAction.cut-rename': 'Renommer le plan…',
     'shortcutAction.cut-edit-note': 'Modifier la note du plan…',
@@ -7513,7 +7502,7 @@ enum AppStrings {
     'brGroupScattering': 'Dispersion',
     'brGroupTexture': 'Texture',
     'brGroupCorrection': 'Correction',
-    'shortcutAction.frame-auto-create': "Créer une image là où il n'y en a pas",
+    'shortcutAction.frame-auto-create': "Création auto d'images",
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
     'brEditGroup': 'Modifier le groupe',
@@ -7833,7 +7822,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
-    'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
     'sbOneStoryboardRowPerCut':
@@ -7856,8 +7844,6 @@ enum AppStrings {
     'sheetPrintPage': 'Feuille',
     'sheetPrintRepeat': 'RÉPÉT.',
     'sheetPrintHold': 'FIXE',
-    'tlBlankX': 'Vide / X',
-    'tlMark': 'Repère $inbetweenMark',
     'tlSetCommasN': 'Régler sur N commas',
     'tlSetCommaTemplate': 'Régler sur {n} comma',
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
@@ -7866,6 +7852,7 @@ enum AppStrings {
     'shortcutAction.layer-storyboard': 'Calque storyboard',
     'setCommasTitle': 'Définir les commas',
     'setCommasField': "Images d'exposition",
+    'markEveryField': 'Intervalle',
     'frameCountEntryFrames': 'Images',
     'frameCountEntrySecondsPlusFrames': 'Secondes+images',
     'projectFpsTitle': 'Fréquence du projet',
@@ -8427,8 +8414,9 @@ enum AppStrings {
     'shortcutAction.frame-new-drawing': '添加帧',
     'shortcutAction.layer-add': '添加图层',
     'shortcutAction.cut-pin-thumbnail': '固定缩略图帧',
-    'shortcutAction.frame-blank-exposure': '空 / ×',
-    'shortcutAction.frame-toggle-mark': '切换标记',
+    'shortcutAction.frame-blank-exposure': '清空',
+    'shortcutAction.frame-toggle-mark': '中间画标记',
+    'shortcutAction.frame-mark-every': '自动添加中间画标记',
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
     'shortcutAction.timeline-pull-blocks': '拉回（收拢帧）',
     'shortcutAction.timeline-zoom-in': '放大时间轴',
@@ -8495,7 +8483,7 @@ enum AppStrings {
     'shortcutAction.canvas-zoom-out': '缩小',
     'cutCommands': '镜头命令',
     'cutAddCut': '添加镜头',
-    'shortcutAction.cut-new': '新建镜头',
+    'shortcutAction.cut-new': '添加镜头',
     'shortcutAction.cut-duplicate': '复制镜头',
     'shortcutAction.cut-rename': '重命名镜头…',
     'shortcutAction.cut-edit-note': '编辑镜头备注…',
@@ -9016,7 +9004,7 @@ enum AppStrings {
     'brGroupScattering': '散布',
     'brGroupTexture': '纹理',
     'brGroupCorrection': '修正',
-    'shortcutAction.frame-auto-create': '在空单元格上绘制时自动创建帧',
+    'shortcutAction.frame-auto-create': '自动创建帧',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
     'brEditGroup': '编辑分组',
@@ -9309,7 +9297,6 @@ enum AppStrings {
     'tlAttachDropsFxRows': '将失去 fx 的图层',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
-    'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',
     'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
@@ -9331,8 +9318,6 @@ enum AppStrings {
     'sheetPrintPage': '摄影表',
     'sheetPrintRepeat': '重复',
     'sheetPrintHold': '停格',
-    'tlBlankX': '空 / ×',
-    'tlMark': '标记 $inbetweenMark',
     'tlSetCommasN': '设为 N 格',
     'tlSetCommaTemplate': '设为 {n} 格',
     'tlProjectAudioRate': '项目音频采样率',
@@ -9341,6 +9326,7 @@ enum AppStrings {
     'shortcutAction.layer-storyboard': '分镜图层',
     'setCommasTitle': '设置格数',
     'setCommasField': '曝光帧数',
+    'markEveryField': '间隔',
     'frameCountEntryFrames': '帧数',
     'frameCountEntrySecondsPlusFrames': '秒+帧',
     'projectFpsTitle': '项目帧率',

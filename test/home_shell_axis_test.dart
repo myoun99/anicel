@@ -35,14 +35,14 @@ void main() {
       findsOneWidget,
     );
     // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with Shift+I.
-    expect(find.byTooltip('Add (Shift+I)'), findsOneWidget);
+    expect(find.byTooltip('Add Frame (Shift+I)'), findsOneWidget);
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);
 
     // Cut management rides the toolbar's cut group (R-toolbar round): a
     // split new-cut button plus the Cut ▾ flyout with the command set.
-    expect(find.byTooltip('New cut'), findsOneWidget);
+    expect(find.byTooltip('Add cut'), findsOneWidget);
     final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
     await tester.ensureVisible(cutMenu);
     await tester.pumpAndSettle();

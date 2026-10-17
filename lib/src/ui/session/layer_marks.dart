@@ -2,8 +2,10 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'range_selections.dart';
 import 'session_roles.dart';
 
 /// The LAYER MARKS — the mark a layer carries, the frames a selection can
@@ -18,17 +20,20 @@ class LayerMarks {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required ActiveCutEdits activeCut,
+    required RangeSelections rangeSelections,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _activeCut = activeCut;
+       _activeCut = activeCut,
+       _rangeSelections = rangeSelections;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
   final ActiveCutEdits _activeCut;
+  final RangeSelections _rangeSelections;
 
   /// Sets [layerId]'s organizational color mark. One undo step.
   void setLayerMark(LayerId layerId, LayerMark mark) =>
@@ -109,6 +114,93 @@ class LayerMarks {
     }
 
     _controllers.timelineController.toggleMarkForLayer(layerId: layer.id);
+    _changes.notifyChanged();
+  }
+
+  /// 🗣️I-58 (유저 2026-10-01): 「중간나누기 마크 자동추가. 대상은 중간나누기
+  /// 마크가 적용가능한 행의 선택된블록들or현재 인덱스 블록, 각자 현재 블록
+  /// 안에서 블록이 끝날때까지, n코마마다 중간나누기 마크 추가 … 3적고
+  /// 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음. 즉
+  /// 1--------- 이렇게있으면, 1--.--.--.」
+  ///
+  /// The cells [every] koma apart from the head of each block the press
+  /// takes, to the block's end, per row. It climbs the ● ladder
+  /// ([canToggleMarkAtCurrentFrame]) in blocks rather than cells: the
+  /// band's blocks on the rows that take marks — the blocks the comma
+  /// press takes there ([RangeSelections.selectionBlockStarts]) — else the
+  /// block under the playhead on the active row. A ghost is no block of
+  /// its own.
+  Map<LayerId, List<int>> _framesEvery(int every) {
+    final banded = _selection.bandRowsForSelection(
+      _markable,
+      (ids, band) => _withFrames({
+        for (final id in ids)
+          if (_project.rangeLayerById(id) case final layer?)
+            id: [
+              for (final start in _rangeSelections.selectionBlockStarts(
+                layer,
+                band.startIndex,
+                band.endIndexExclusive,
+              ))
+                ..._everyFromTheHead(layer, start, every),
+            ],
+      }),
+    );
+    if (banded.isNotEmpty || _selection.bandNamesRowsThisPressWouldMiss) {
+      return banded;
+    }
+    final layer = _selection.activeLayer;
+    if (layer == null || !_markable(layer)) {
+      return const {};
+    }
+    final block = coveringDrawingBlockAt(
+      layer.timeline,
+      _controllers.timelineController.currentFrameIndex,
+    );
+    if (block == null || block.entry.ghost) {
+      return const {};
+    }
+    return _withFrames({
+      layer.id: [..._everyFromTheHead(layer, block.startIndex, every)],
+    });
+  }
+
+  /// The cells [every] koma apart from the head of [layer]'s block at
+  /// [start], to its end — held cells all, where a mark stands
+  /// ([TimelineController.canToggleMarkAt]).
+  static Iterable<int> _everyFromTheHead(
+    Layer layer,
+    int start,
+    int every,
+  ) sync* {
+    final end = start + (layer.timeline[start]?.length ?? 1);
+    for (var frame = start + every; frame < end; frame += every) {
+      yield frame;
+    }
+  }
+
+  static Map<LayerId, List<int>> _withFrames(
+    Map<LayerId, List<int>> byLayer,
+  ) => {
+    for (final MapEntry(key: id, value: frames) in byLayer.entries)
+      if (frames.isNotEmpty) id: frames,
+  };
+
+  /// Lit while a block the press takes has a cell past its head — what a
+  /// press of 1 would dot.
+  bool get canMarkEvery => _framesEvery(1).isNotEmpty;
+
+  /// Dots the blocks [_framesEvery] names, keeping every mark they carry —
+  /// 「추가」. One undo step.
+  void markEvery(int every) {
+    if (every < 1) {
+      return;
+    }
+    final frames = _framesEvery(every);
+    if (frames.isEmpty) {
+      return;
+    }
+    _controllers.timelineController.setMarksForFrames(frames, marked: true);
     _changes.notifyChanged();
   }
 
