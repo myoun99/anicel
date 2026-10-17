@@ -162,6 +162,18 @@ Future<void> _pumpPanel(
   await tester.pumpAndSettle();
 }
 
+/// [_project] with a chain of one effect on its track — the V row's lanes,
+/// so it draws a twirl: a row with nothing to twirl down draws none, as
+/// every row of the timeline's.
+Project _projectWithAChain() => _project(
+  trackEffects: [
+    LayerEffect.defaults(
+      id: const EffectId('lane-blur'),
+      kind: EffectKind.blur,
+    ),
+  ],
+);
+
 // `_expandVTransform` went with the V row's Transform group: the chevron opens
 // the row's fx chain now, and an effect group opens by its own header.
 
@@ -175,17 +187,7 @@ void main() {
     // A track effect gives the V row lanes: the sweep turns the rows that
     // have some, as the timeline's turns its layers' (F-360 — a twirl is the
     // row's, and one with nothing under it is nothing to write).
-    await _pumpPanel(
-      tester,
-      project: _project(
-        trackEffects: [
-          LayerEffect.defaults(
-            id: const EffectId('lane-blur'),
-            kind: EffectKind.blur,
-          ),
-        ],
-      ),
-    );
+    await _pumpPanel(tester, project: _projectWithAChain());
 
     const laneToggle = ValueKey<String>('legend-lanes-toggle');
     const seLane = ValueKey<String>('storyboard-se-lane-row-0-1-se-audio');
@@ -254,7 +256,7 @@ void main() {
     // The mixed state: with a single S row twirled open by hand, the button
     // must not re-toggle row by row — that would open the V row and close
     // the S row in the same tap, which is what a blind sweep does.
-    await _pumpPanel(tester, project: _project());
+    await _pumpPanel(tester, project: _projectWithAChain());
 
     await tester.tap(
       find.named('storyboard-lane-toggle-lane-se'),
@@ -285,12 +287,19 @@ void main() {
 
   testWidgets('the V row\'s chevron opens its fx chain and NO Transform group '
       '— a track row does not own one', (tester) async {
-    await _pumpPanel(tester, project: _project());
+    await _pumpPanel(tester, project: _projectWithAChain());
     await tester.tap(
       find.named('storyboard-track-lane-toggle-lane-track'),
     );
     await tester.pumpAndSettle();
 
+    expect(
+      find.named(
+        'storyboard-lane-group-toggle-v-track:lane-track-fx-group:lane-blur',
+      ),
+      findsOneWidget,
+      reason: 'its lanes are its fx chain',
+    );
     expect(
       find.named(
         'storyboard-lane-group-toggle-v-track:lane-track-transform-group',

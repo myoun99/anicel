@@ -441,6 +441,23 @@ void main() {
     );
   });
 
+  testWidgets('⛔the V row draws a twirl only while its track has lanes, as '
+      'every row does — the twirl the sweep paints', (tester) async {
+    await pump(tester);
+    expect(
+      find.named('storyboard-track-lane-toggle-t1'),
+      findsOneWidget,
+      reason: 't1 has a chain of two effects to twirl down',
+    );
+    expect(
+      find.named('storyboard-track-lane-toggle-t2'),
+      findsNothing,
+      reason:
+          '↩️it stood on a track with none, turning nothing — a button the '
+          'sweep, by the timeline rows\' law, could not paint',
+    );
+  });
+
   testWidgets('⛔the SHEET column passes the projection heads by — they are '
       'handed no toggle (I-89-Q22)', (tester) async {
     final session = await pump(tester);

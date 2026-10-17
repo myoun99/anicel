@@ -1005,8 +1005,14 @@ class _StoryboardRailRows {
           // The row's verbs ask for the track as the panel holds it at the
           // press: the row is kept while what it shows holds, and it shows
           // nothing of the track's cuts. The twirl is the track's own
-          // (F-360), turned by its lane carrier.
-          onToggleLane: _state.widget.onToggleLayerLanes == null
+          // (F-360), turned by its lane carrier — drawn while the track has
+          // lanes to twirl down, as every row's twirl is ([_trackTwirlOf]),
+          // and as the column sweep paints it. ↩️It stood on a track with
+          // none, turning nothing, since a track row owns no Transform
+          // group ([timelineRowOwnsTransform]).
+          onToggleLane:
+              _state.widget.onToggleLayerLanes == null ||
+                  _trackTwirlOf(track) == null
               ? null
               : () => _state.widget.onToggleLayerLanes?.call(
                   trackTransformLaneCarrierId(track.id),

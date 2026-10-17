@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -518,6 +519,11 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
+    // An effect on the track, so its V row has lanes to twirl down and draws
+    // the twirl — a row with none draws none.
+    session.effectsAndFx.updateTrackEffects(session.activeTrack.id, [
+      LayerEffect(id: const EffectId('glow'), kind: EffectKind.blur),
+    ]);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

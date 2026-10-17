@@ -4757,8 +4757,8 @@ class StoryboardTrackLabelRow extends KeptPiece {
               // like everyone else.
               ...layerRailLeadingCells(
                 // The timeline rows' lane chevron: twirls down the track's
-                // cut-level Transform group (the V-track lanes + fade
-                // strip).
+                // own lanes, its effect chain — none on a track with none
+                // ([onToggleLane] null).
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
