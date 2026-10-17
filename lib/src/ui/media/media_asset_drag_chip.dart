@@ -11,9 +11,16 @@ import 'media_asset_kind_icon.dart';
 /// mockup's drag chip). The chip is every drag's ([DragChip], I-39); what is
 /// the pool's own is the answer it wears.
 ///
-/// [verdict] is the entrance's answer ([MediaDropVerdictScope]); `false`
-/// rings the chip in danger and adds the ban after the name. `true` and
-/// `null` are the same chip — the answer is only ever said when it is no.
+/// [verdict] is the entrance's answer ([MediaDropVerdictScope]); anything
+/// but `true` rings the chip in danger and adds the ban after the name —
+/// `null`, over no entrance at all, as much as `false`: let go there, the
+/// file does nothing either way.
+///
+/// 🗣️F-372 (유저 2026-10-17): 「빈공간에 끌면 금지마크도 안떠서 가능한건가
+/// 싶은데 … 드롭해도 아무 반응없음 … 금지마크가 제대로 금지인상황에 안뜬다
+/// 는 사건이 있었으니 그 부분도 확인」. ↩️`null` was the plain chip — the
+/// answer was only ever said when an entrance said no, so a place with no
+/// entrance looked like a yes.
 class MediaAssetDragChip extends StatelessWidget {
   const MediaAssetDragChip({
     super.key,
@@ -33,7 +40,7 @@ class MediaAssetDragChip extends StatelessWidget {
         ? _chip(refused: false)
         : ValueListenableBuilder<bool?>(
             valueListenable: channel,
-            builder: (context, answer, _) => _chip(refused: answer == false),
+            builder: (context, answer, _) => _chip(refused: answer != true),
           );
   }
 

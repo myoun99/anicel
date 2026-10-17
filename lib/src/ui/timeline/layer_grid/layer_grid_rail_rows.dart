@@ -282,6 +282,11 @@ class _LayerGridRailRows {
               stack: _state.widget.layers,
               child: Stack(
                 children: [
+                  // The rail stands to the foot of the body however few its
+                  // rows, so the layer area's entrance below takes the room
+                  // under the last of them — where ACTION stands on the rail,
+                  // and where an ACTION with no row is (F-372).
+                  SizedBox(height: window.viewportExtent),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

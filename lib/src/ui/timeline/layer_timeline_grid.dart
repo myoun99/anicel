@@ -662,6 +662,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       range: rowWindow,
       rows: windowRows,
       edges: edges,
+      viewportExtent: bodyViewportHeight,
       leadingSpacerHeight: leadingRowSpacerHeight,
       trailingSpacerHeight: trailingRowSpacerHeight,
       pinnedIndex: pinnedIndex,
@@ -1584,6 +1585,7 @@ class _RowWindow {
     required this.range,
     required this.rows,
     required this.edges,
+    required this.viewportExtent,
     required this.leadingSpacerHeight,
     required this.trailingSpacerHeight,
     required this.pinnedIndex,
@@ -1600,6 +1602,10 @@ class _RowWindow {
   /// Where ALL the grid's rows sit — [range] indexes it, as it indexes the
   /// list [rows] was cut from.
   final TimelineRowEdges edges;
+
+  /// How tall the body the rows scroll in is — 0 where no viewport was
+  /// measured.
+  final double viewportExtent;
 
   final double leadingSpacerHeight;
   final double trailingSpacerHeight;

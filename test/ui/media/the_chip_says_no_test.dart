@@ -55,13 +55,22 @@ void main() {
       }
     });
 
-    testWidgets('a NO wears the ban; a yes and no answer are the same chip', (
-      tester,
-    ) async {
+    // 🗣️F-372 (유저 2026-10-17): 「빈공간에 끌면 금지마크도 안떠서 가능한건가
+    // 싶은데 … 드롭해도 아무 반응없음」.
+    testWidgets('only a YES is the plain chip — a no, and no answer at all, '
+        'wear the ban', (tester) async {
       final verdict = ValueNotifier<bool?>(null);
       addTearDown(verdict.dispose);
       await pumpChip(tester, verdict: verdict);
       const ban = ValueKey<String>('drag-chip-ban');
+      expect(
+        find.byKey(ban),
+        findsOneWidget,
+        reason: 'over no entrance, a drop does nothing',
+      );
+
+      verdict.value = true;
+      await tester.pump();
       expect(find.byKey(ban), findsNothing);
 
       verdict.value = false;

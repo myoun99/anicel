@@ -250,11 +250,25 @@ int? modelInsertionForSlot({
 /// it does not land; and it must not split an attach group
 /// ([newRowPlacement] would carry the row past the group, and the line has
 /// to be where the row goes).
+///
+/// A stack with no drawing row still has its drawing section: the one gap
+/// where it stands ([_emptyDrawingSectionSlot]) takes the row, at the foot
+/// of ACTION — under every row the stack has, as a cut's conte row is born
+/// ([conteRowPlacement]).
+/// 🗣️F-372 (유저 2026-10-17): 「액션란에 레이어 하나도 없을때 해당 빈공간에
+/// 끌면 … 이미지 그립한거 드롭해도 아무 반응없음. 해당영역에 넣는거
+/// 가능하게」 — every gap had a non-drawing row on both sides, so none of
+/// them could take the row.
 int? newRowInsertionForSlot({
   required List<Layer> stack,
   required List<Layer> displayRows,
   required int slot,
 }) {
+  if (!stack.any(_standsInTheDrawingSection)) {
+    return slot == _emptyDrawingSectionSlot(displayRows)
+        ? newRowPlacement(stack, 0).index
+        : null;
+  }
   final insertAt = modelInsertionForSlot(
     stack: stack,
     displayRows: displayRows,
@@ -264,11 +278,46 @@ int? newRowInsertionForSlot({
     return null;
   }
   final neighbour = insertAt > 0 ? stack[insertAt - 1] : stack.first;
-  if (timelineSectionForLayerKind(neighbour.kind) != TimelineSection.drawing) {
+  if (!_standsInTheDrawingSection(neighbour)) {
     return null;
   }
   return newRowPlacement(stack, insertAt).index == insertAt ? insertAt : null;
 }
+
+bool _standsInTheDrawingSection(Layer layer) =>
+    timelineSectionForLayerKind(layer.kind) == TimelineSection.drawing;
+
+/// The gap of [displayRows] where a drawing section with no row stands:
+/// at the start of the raw order, which the drawing section opens — the
+/// END of a list drawn reversed (the rail: camera on top, ACTION at the
+/// foot), the START of one drawn as the model runs (the sheet: ACTION at
+/// the left).
+///
+/// Which way the list runs is read off the rows at its two ends, as the
+/// file's header says the direction is read: the sections keep one raw
+/// order ([sectionedLayerOrder]), so the end that stands later in it is the
+/// end the drawing section is not at. ⚠️The ENDS, unlike
+/// [modelInsertionForSlot]'s rows of the stack: a track's rows are no rows
+/// of the cut's stack, and with no drawing row they may be all the list
+/// has. Null where both ends stand in the same place of that order — one
+/// section, which cannot say which way it runs.
+int? _emptyDrawingSectionSlot(List<Layer> displayRows) {
+  if (displayRows.isEmpty) {
+    return 0;
+  }
+  final first = displayRows.first;
+  final last = displayRows.last;
+  if (_standsLaterInRawOrder(first, last)) {
+    return displayRows.length;
+  }
+  return _standsLaterInRawOrder(last, first) ? 0 : null;
+}
+
+/// Whether [a] stands strictly later than [b] in the raw order — asked of
+/// [sectionedLayerOrder], the order's one definition, which keeps two rows
+/// of the same place in the order it is handed them.
+bool _standsLaterInRawOrder(Layer a, Layer b) =>
+    identical(sectionedLayerOrder([a, b]).first, b);
 
 /// The plan for dropping [movingId]'s run at [insertAt] in [stack], or null
 /// when the landing is refused.
