@@ -45,6 +45,16 @@ final class HistoryRun {
     _own += _gestures.mark.pushed - before;
   }
 
+  /// Counts ONE step another hand filed at the run's asking as the run's
+  /// own — the cel a text's press asked for, which the door files as the
+  /// press comes up (`onAutoFrameSettled`), long before the text is set to
+  /// be [write]n with it.
+  ///
+  /// ⛔It stays the run's only while it is all that was filed: anything
+  /// else filed meanwhile leaves the run not whole, and its next step
+  /// begins it again ([write]).
+  void adopt() => _own += 1;
+
   /// Whether a run is under way and nothing but its own steps were pushed
   /// since it began.
   bool get _whole {

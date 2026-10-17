@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/history_run.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
@@ -78,6 +79,19 @@ void main() {
 
   BitmapSurface pictureOf(CelTextCel cel) =>
       cel.coordinator.currentSurfaceOf(cel.key);
+
+  /// What the press that makes a cel for its text leaves: the run it began
+  /// ([CelTextTool.beginRun]), and the step the door then files for the
+  /// cel as the press comes up — stood in for.
+  ({HistoryRun made, _Elsewhere filed}) celFiledFor(
+    CelTextTool tool,
+    _Host host,
+  ) {
+    final made = tool.beginRun()!;
+    final filed = _Elsewhere();
+    host.history.execute(filed);
+    return (made: made, filed: filed);
+  }
 
   List<(int, String)> textsOn(CelTextCel cel) => [
     for (final text in pictureOf(cel).texts) (text.id, text.content.text),
@@ -520,7 +534,7 @@ void main() {
 
       expect(textsOn(cel), [(5, 'zz')]);
       expect(tool.session, isNull);
-      expect(host.ran.single.command.description, 'Delete text');
+      expect(host.ran.single.description, 'Delete text');
 
       host.history.undo();
 
@@ -553,7 +567,7 @@ void main() {
         celSurfaceWithTextsLaid(pictureOf(cel));
 
     List<String> stepsOf(_Host host) => [
-      for (final ran in host.ran) ran.command.description,
+      for (final command in host.ran) command.description,
     ];
 
     /// One pixel of [cel]'s DRAWING at the plate's tile — the stand-in
@@ -583,7 +597,6 @@ void main() {
       expect(tool.holdsAnything, isFalse);
       expect(stepsOf(host), ['Text to drawing']);
       expect(host.setInOf.single, isEmpty, reason: 'it registers no face');
-      expect(host.ran.single.withCelMadeSince, isNull);
 
       host.history.undo();
 
@@ -620,20 +633,21 @@ void main() {
     test('a NEW text is set on its cel — with the cel its press made — and '
         'then turned: the turning takes no cel with it', () async {
       final (:tool, :host, :baker, :cel) = hand();
-      tool.beginText(cel, at, celMadeSince: host.gestures.mark);
+      final (:made, :filed) = celFiledFor(tool, host);
+      tool.beginText(cel, at, celMade: made);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
       tool.turnIntoDrawing();
 
       expect(stepsOf(host), ['Set text', 'Text to drawing']);
-      expect(host.ran.first.withCelMadeSince, isNotNull);
-      expect(host.ran.last.withCelMadeSince, isNull);
+      expect(host.history.undoCount, 2, reason: 'the cel rode the setting');
       expect(textsOn(cel), isEmpty);
       expect(drawnAt(cel, 0, 0), [2, 0, 0, 255]);
 
       host.history.undo();
       expect(textsOn(cel), [(1, 'ab')]);
+      expect(filed.undone, isFalse, reason: 'the turning took no cel');
     });
 
     test('🚨its last want still being set, it stays on the canvas as it was '
@@ -1916,33 +1930,62 @@ void main() {
   });
 
   group('the cel a press made for its text', () {
-    test('rides the text\'s FIRST landing, and no later one', () async {
+    test('🚨rides the text\'s FIRST landing — the two ONE step — and no '
+        'later one', () async {
       final (:tool, :host, :baker, :cel) = hand();
-      final since = tool.historyMark;
-      tool.beginText(cel, at, celMadeSince: since);
+      final (:made, :filed) = celFiledFor(tool, host);
+      tool.beginText(cel, at, celMade: made);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
       tool.stopTyping();
 
-      expect(host.ran.single.withCelMadeSince, since);
+      expect(host.history.undoCount, 1, reason: 'the cel and its text');
 
       tool.changeBox((content) => content.copyWith(letterWidth: 0.5));
       await baker.pending.answer();
 
       expect(host.ran, hasLength(2));
-      expect(host.ran.last.withCelMadeSince, isNull);
+      expect(tool.canStepBack, isTrue, reason: 'the box\'s own step');
+      tool.confirm();
+      expect(host.history.undoCount, 2);
+      host.history.undo();
+      expect(filed.undone, isFalse, reason: 'the box\'s step alone');
+      host.history.undo();
+      expect(filed.undone, isTrue, reason: 'the cel goes with its text');
+      expect(textsOn(cel), isEmpty);
     });
 
-    test('a text begun on a cel that was there hands nothing over', () async {
+    test('⛔with a step filed between the cel and its text, the two stay '
+        'apart: the text\'s undo leaves the cel', () async {
       final (:tool, :host, :baker, :cel) = hand();
+      final (:made, :filed) = celFiledFor(tool, host);
+      host.history.execute(_Elsewhere());
+      tool.beginText(cel, at, celMade: made);
+      typeInto(tool, 'ab');
+      await baker.pending.answer();
+
+      tool.confirm();
+
+      expect(host.history.undoCount, 3);
+      host.history.undo();
+      expect(textsOn(cel), isEmpty);
+      expect(filed.undone, isFalse);
+    });
+
+    test('a text begun on a cel already there takes no step with it', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      final before = _Elsewhere();
+      host.history.execute(before);
       tool.beginText(cel, at);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
       tool.confirm();
 
-      expect(host.ran.single.withCelMadeSince, isNull);
+      expect(host.history.undoCount, 2);
+      host.history.undo();
+      expect(before.undone, isFalse);
     });
   });
 
@@ -2265,16 +2308,20 @@ void main() {
   });
 }
 
-/// A step of somebody else's, written while the hand holds a text.
+/// A step of somebody else's, written while the hand holds a text — or the
+/// one the door files for the cel a press made.
 class _Elsewhere implements Command {
+  /// Whether undo has taken it back.
+  bool undone = false;
+
   @override
   String get description => 'Elsewhere';
 
   @override
-  void execute() {}
+  void execute() => undone = false;
 
   @override
-  void undo() {}
+  void undo() => undone = true;
 }
 
 /// The canvas panel the hand works on, stood in for: real history, and a
@@ -2290,7 +2337,7 @@ class _Host implements CelTextToolHost {
   @override
   int? get brushColour => null;
 
-  final List<({Command command, HistoryMark? withCelMadeSince})> ran = [];
+  final List<Command> ran = [];
 
   /// The families each step was said to be set in, in the order they ran.
   final List<Set<String>> setInOf = [];
@@ -2305,13 +2352,9 @@ class _Host implements CelTextToolHost {
   HistoryGestures get gestures => history.gestures;
 
   @override
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  }) {
+  void run(Command command, {Set<String> setIn = const {}}) {
     setInOf.add(setIn);
-    ran.add((command: command, withCelMadeSince: withCelMadeSince));
+    ran.add(command);
     history.execute(command);
   }
 

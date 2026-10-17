@@ -1462,11 +1462,8 @@ class _Host implements CelTextToolHost {
   HistoryGestures get gestures => history.gestures;
 
   @override
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  }) => history.execute(command);
+  void run(Command command, {Set<String> setIn = const {}}) =>
+      history.execute(command);
 
   /// How often the hand asked for the cel to be drawn again.
   int shown = 0;

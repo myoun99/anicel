@@ -168,11 +168,10 @@ class _CelTextWayOut {
     }
     // The first landing of a text whose press made its cel takes the cel
     // with it; every later one is a step of its own.
-    final celMadeSince = holding.celMadeSince;
-    holding.celMadeSince = null;
+    final celMade = holding.celMade;
+    holding.celMade = null;
     void run() => _tool.host.run(
       command,
-      withCelMadeSince: celMadeSince,
       // What is shown is what lands ([CelTextSession.landing]) — and a
       // text with no letters is in no face.
       setIn: {
@@ -180,7 +179,14 @@ class _CelTextWayOut {
       },
     );
     final boxSteps = holding.boxSteps;
-    if (of == _StepOf.box && boxSteps != null) {
+    if (celMade != null) {
+      // The door filed the cel as the press came up: another hand's step,
+      // and the run's own all the same.
+      celMade
+        ..adopt()
+        ..write(run)
+        ..end('Set text on a new frame');
+    } else if (of == _StepOf.box && boxSteps != null) {
       boxSteps.write(run);
     } else {
       run();

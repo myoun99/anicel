@@ -16,8 +16,7 @@ import '../../../services/cache_invalidation_executor.dart';
 import '../../../services/cel_text_edits.dart';
 import '../../../services/command.dart';
 import '../../../services/commands/cel_text_edit_command.dart';
-import '../../../services/history_manager.dart'
-    show HistoryGestures, HistoryMark;
+import '../../../services/history_manager.dart' show HistoryGestures;
 import '../../../services/history_run.dart';
 import '../../brush/text_tool_options.dart';
 import '../../text/cel_text_bake.dart' show CelTextBaker;
@@ -66,21 +65,11 @@ abstract interface class CelTextToolHost {
 
   /// Runs [command] as one step of history.
   ///
-  /// [withCelMadeSince] is where history stood ([CelTextTool.historyMark])
-  /// when a press made the cel this text is set on: the cel and the text
-  /// are then ONE step, as a stroke and the cel made for it are (I-10, 유저
-  /// 2026-08-30: 「답은 추천대로」 = merged) — while the two are still all
-  /// that history has filed since.
-  ///
   /// [setIn] is the families the letters of a text being SET are written
   /// in — none for a text taken off its cel: whoever keeps the project's
   /// fonts takes the ones the text was set with into the same step
   /// (`ProjectFonts.landingWith`).
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  });
+  void run(Command command, {Set<String> setIn = const {}});
 
   /// The history the text's steps are written in, as a hold writes them
   /// across many events — null where there is none.
@@ -105,7 +94,7 @@ class _Holding {
     this.session,
     this.cel, {
     required HistoryGestures? gestures,
-    this.celMadeSince,
+    this.celMade,
   }) : boxSteps = gestures == null ? null : HistoryRun(gestures);
 
   final CelTextSession session;
@@ -134,11 +123,19 @@ class _Holding {
   /// The box lets go: what it landed is ONE step.
   void closeBoxSteps() => boxSteps?.end('Set text');
 
-  /// For a text begun by the press that MADE its cel: where history stood
-  /// then, until the text first lands — or is let go of with nothing
-  /// typed, and the cel keeps the step of its own a tap leaves it
-  /// (`AutoFrameForStroke.flushAutoFrameForStroke`).
-  HistoryMark? celMadeSince;
+  /// For a text begun by the press that MADE its cel: the run that press
+  /// began ([CelTextTool.beginRun]), which the text's first landing joins
+  /// and ends — the text and its cel ONE step, I-10's answer for a stroke
+  /// (유저 2026-08-30: merged) said of a text: one Ctrl+Z after typing on an
+  /// empty frame leaves the frame empty again.
+  ///
+  /// The cel was filed when the press came up, a step of its own, as a tap
+  /// leaves it (`AutoFrameForStroke.flushAutoFrameForStroke`) — the text is
+  /// typed long after, so it cannot ride the press as a stroke does: the
+  /// run takes that step for its own ([HistoryRun.adopt]). Null once the
+  /// text has first landed; let go of with nothing typed, the cel keeps
+  /// its step.
+  HistoryRun? celMade;
 
   /// How far a hand has carried the box's cross off its middle
   /// ([CelTextTool.crossOffCentre]).
@@ -338,23 +335,26 @@ class CelTextTool extends ChangeNotifier {
 
   // ── taking hold ─────────────────────────────────────────────────────
 
-  /// Where history stands now — what the press that makes a cel for its
-  /// text takes note of first ([beginText]). Null where there is none.
-  HistoryMark? get historyMark => host.gestures?.mark;
+  /// A run of history begun where it stands now — what the press that
+  /// makes a cel for its text begins first ([beginText]). Null where there
+  /// is no history.
+  HistoryRun? beginRun() {
+    final gestures = host.gestures;
+    return gestures == null ? null : (HistoryRun(gestures)..begin());
+  }
 
   /// Starts a text on [cel] at [anchor] and takes it by its letters — as
   /// wide as [wrapWidth] says and at least [minHeight] tall, or growing
   /// with what is typed. Whatever was in hand lands first.
   ///
-  /// [celMadeSince] is [historyMark] as the press that MADE [cel] found
-  /// it: the text and its cel then land as one step
-  /// ([CelTextToolHost.run]).
+  /// [celMade] is the run the press that MADE [cel] began ([beginRun]):
+  /// the text's first landing joins it, and the two are one step.
   void beginText(
     CelTextCel cel,
     CanvasPoint anchor, {
     double? wrapWidth,
     double? minHeight,
-    HistoryMark? celMadeSince,
+    HistoryRun? celMade,
   }) {
     confirm();
     // The text is set in the brush's colour while the tool has none of its
@@ -375,7 +375,7 @@ class CelTextTool extends ChangeNotifier {
         ),
         cel,
         gestures: host.gestures,
-        celMadeSince: celMadeSince,
+        celMade: celMade,
       ),
     );
     typeAt(const TextSelection.collapsed(offset: 0));

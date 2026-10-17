@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../../../models/app_input_settings.dart';
 import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
-import '../../../services/history_manager.dart' show HistoryMark;
+import '../../../services/history_run.dart';
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
 import '../../shortcuts/focused_text_field.dart';
 import '../../text/canvas_letter_faces.dart';
@@ -77,10 +77,10 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   ({CanvasPoint anchor, double? wrapWidth, double? minHeight})?
   _textAwaitingCel;
 
-  /// Where history stood when a press made the cel its text is to be set
-  /// on — until that text begins, and the two land as one step
+  /// The run a press began that made the cel its text is to be set on —
+  /// until that text begins, and the two land as one step
   /// ([CelTextTool.beginText]).
-  HistoryMark? _celMadeSince;
+  HistoryRun? _celMade;
 
   /// The box an empty drag is tracing, on the artwork.
   Rect? _tracedBox;
@@ -163,14 +163,14 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       );
       return;
     }
-    final celMadeSince = _celMadeSince;
-    _celMadeSince = null;
+    final celMade = _celMade;
+    _celMade = null;
     _tool.beginText(
       cel,
       anchor,
       wrapWidth: wrapWidth,
       minHeight: minHeight,
-      celMadeSince: celMadeSince,
+      celMade: celMade,
     );
   }
 
@@ -277,13 +277,13 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       // Nothing to set a text on: ask for a cel, as a stroke's press does
       // (`_BrushEditCelPress`). The press then goes on as the press on
       // nothing it is, and its text begins on the cel once both are here
-      // ([_beginText]). ⚠️History is read AFTER the asking — the door
+      // ([_beginText]). ⚠️The run begins AFTER the asking — the door
       // settles a cel an earlier press left unclaimed before it makes
       // this one.
       if (!(widget.onPressNeedsCel?.call() ?? false)) {
         return;
       }
-      _celMadeSince = _tool.historyMark;
+      _celMade = _tool.beginRun();
     }
     final scene = CelTextScene(
       tool: _tool,

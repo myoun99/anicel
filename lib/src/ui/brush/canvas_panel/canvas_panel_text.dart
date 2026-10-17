@@ -58,14 +58,11 @@ class _CanvasPanelText implements CelTextToolHost {
   HistoryGestures? get gestures => _state.widget.historyManager?.gestures;
 
   @override
-  void run(
-    Command command, {
-    HistoryMark? withCelMadeSince,
-    Set<String> setIn = const {},
-  }) {
+  void run(Command command, {Set<String> setIn = const {}}) {
     final history = _state.widget.historyManager;
     // ONE entry of history either way: the registering of a face rides
-    // INSIDE the text's step, so the fold below still counts two.
+    // INSIDE the text's step, so a run the step is written in counts it
+    // one (`HistoryRun.write`).
     final step =
         _state.widget.textCommands?.landingWith?.call(command, setIn) ??
         command;
@@ -74,30 +71,6 @@ class _CanvasPanelText implements CelTextToolHost {
       return;
     }
     history.execute(step);
-    if (withCelMadeSince != null) {
-      _foldWithItsCel(history, withCelMadeSince);
-    }
-  }
-
-  /// The text just filed and the cel its press made, as ONE step — I-10's
-  /// answer for a stroke (유저 2026-08-30: merged), said of a text: one
-  /// Ctrl+Z after typing on an empty frame leaves the frame empty again.
-  ///
-  /// The cel was filed when the press came up, a step of its own, as a tap
-  /// leaves it (`AutoFrameForStroke.flushAutoFrameForStroke`) — the text is
-  /// typed long after, so it cannot ride the press as a stroke does. The
-  /// two are folded once the text lands ([HistoryGestures.foldSince]).
-  ///
-  /// ⛔ONLY WHILE THEY ARE THE TWO ENTRIES FILED SINCE [since], exactly.
-  /// `foldSince` folds a whole run, and anything filed between the cel and
-  /// its text is somebody else's edit: folded in, one Ctrl+Z would take
-  /// that back with the text. Left apart they are two steps, each still
-  /// undone in the order it was made.
-  void _foldWithItsCel(HistoryManager history, HistoryMark since) {
-    final now = history.gestures.mark;
-    if (now.pushed - since.pushed == 2 && now.retracted == since.retracted) {
-      history.gestures.foldSince(since, 'Set text on a new frame');
-    }
   }
 
   @override

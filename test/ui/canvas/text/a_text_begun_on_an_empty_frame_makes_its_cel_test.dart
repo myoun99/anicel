@@ -160,6 +160,29 @@ void main() {
     expect(celsOfTheRow(tester), hasLength(1));
   });
 
+  testWidgets('a text set after on the cel a text let go of empty made is '
+      'a step of its own: the cel was the other press\'s', (tester) async {
+    final c = await onTheEmptyFrame(tester);
+    final history = sessionOf(tester).historyManager;
+    final steps = history.undoCount;
+    await clickAt(tester, c.dx, c.dy);
+    await clickAt(tester, c.dx + 300, c.dy + 200);
+    expect(history.undoCount, steps + 1, reason: '⛔fixture: the cel alone');
+
+    await clickAt(tester, c.dx, c.dy);
+    await typeText(tester, 'hi');
+    await clickAt(tester, c.dx + 300, c.dy + 200);
+
+    expect(textsUnderTool(tester).single.content.text, 'hi');
+    expect(history.undoCount, steps + 2);
+
+    history.undo();
+    await pumpFrames(tester);
+
+    expect(textsUnderTool(tester), isEmpty);
+    expect(celsOfTheRow(tester), hasLength(2), reason: 'the cel stays');
+  });
+
   testWidgets('⛔with something else filed between the cel and its text, '
       'they stay apart: one undo takes the text back and nothing of '
       'anybody else\'s', (tester) async {
