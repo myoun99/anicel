@@ -28,6 +28,8 @@ import 'package:anicel/src/services/import/clip_placement.dart';
 import 'package:anicel/src/services/import/clip_track_clip.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 
+import 'clip_test_builder.dart';
+
 /// The shape a CLIP STUDIO file opens as (보드 `csp-clip-import-analysis`,
 /// the 10-07 「상담 끝」 memo): every timeline a 겸용 cut, folders as they
 /// are, an animation folder a folder row over a base and the attach rows
@@ -184,6 +186,7 @@ void main() {
     List<ClipTimeline> timelines, {
     Map<String, String> sounds = const {},
     ClipFrame? frame,
+    double resolution = 72,
   }) {
     var layers = 0;
     var frames = 0;
@@ -197,6 +200,7 @@ void main() {
         currentTimeline: 0,
         warnings: const [],
         frame: frame,
+        resolution: resolution,
       ),
       name: 'file',
       trackId: const TrackId('track'),
@@ -1078,7 +1082,6 @@ void main() {
         layer('v', kind: ClipLayerKind.vector, drawn: false),
         // Each declares a render, as the file's do: left out, nothing of
         // them is baked.
-        layer('words', kind: ClipLayerKind.lettering),
         layer('p', kind: ClipLayerKind.paper),
         layer('f', kind: ClipLayerKind.fill),
         // A sound is no row of pictures — and its timeline plays nothing
@@ -1098,14 +1101,13 @@ void main() {
       ],
       [
         ('clipVector', 'v'),
-        ('unsupportedLayerKind', 'words'),
         ('unsupportedLayerKind', 'p'),
         ('unsupportedLayerKind', 'f'),
         ('unsupportedLayerKind', 'o'),
         ('clipBlend', 'odd'),
       ],
     );
-    expect(result.warnings[1], unsupportedLayerKind('words'));
+    expect(result.warnings[1], unsupportedLayerKind('p'));
     expect(names(cut), ['v', 'odd']);
     expect(row(cut, 'odd').blendMode, LayerBlendMode.normal);
     expect(result.bakes.single.source.name, 'odd');
@@ -1131,12 +1133,8 @@ void main() {
         'stands under nothing, and a second paper is a kind not carried', () {
       final result = plan(
         root([
-          // A text layer names a colour too, and is no paper.
-          layer(
-            'words',
-            kind: ClipLayerKind.lettering,
-            mainColour: 0xFF000000,
-          ),
+          // A layer of another kind that names a colour is no paper.
+          layer('fill', kind: ClipLayerKind.fill, mainColour: 0xFF000000),
           paper('sheet', opacity: 100),
           paper('second'),
           layer('BG'),
@@ -1146,7 +1144,7 @@ void main() {
 
       expect(result.paper, const ProjectBackground.color(0x64204060));
       expect(said(result), [
-        ('unsupportedLayerKind', 'words'),
+        ('unsupportedLayerKind', 'fill'),
         ('unsupportedLayerKind', 'second'),
       ]);
       expect(names(result.cuts.single), ['BG']);
@@ -1202,7 +1200,7 @@ void main() {
     final a = animation('A', [
       folder('1', [
         layer('line1'),
-        layer('words', kind: ClipLayerKind.lettering),
+        layer('fill', kind: ClipLayerKind.fill),
       ]),
       folder('2', [layer('line2')]),
     ]);
@@ -1216,13 +1214,90 @@ void main() {
       (layer) => layer.kind == LayerKind.animation,
     );
 
-    expect(names(cut), ['A', 'A'], reason: 'no row for the text');
+    expect(names(cut), ['A', 'A'], reason: 'no row for the fill');
     expect(
       {for (final bake in result.bakes) bake.source.name: bake.frameId},
       {'line1': base.frames[0].id, 'line2': base.frames[1].id},
-      reason: 'cel 1\'s top is the layer under the text',
+      reason: 'cel 1\'s top is the layer under the fill',
     );
     expect(result.warnings, contains(unsupportedLayerKind('A / 1')));
+  });
+
+  group('🎯F-370-Q3: a text layer comes in as the app\'s own texts (유저 '
+      '10-17: 「이제 들인다(앱의 글자로)」)', () {
+    ClipLayer letters(String name, String says, {int opacity = 256}) {
+      nextId += 1;
+      return ClipLayer(
+        id: nextId,
+        name: name,
+        kind: ClipLayerKind.lettering,
+        visibility: 1,
+        opacity: opacity,
+        composite: 0,
+        folderFlags: 0,
+        isAnimationFolder: false,
+        uuid: 'uuid$nextId',
+        left: 0,
+        top: 0,
+        offsetX: 0,
+        offsetY: 0,
+        // A text layer's render is declared and never stored.
+        render: null,
+        original: null,
+        originalTransform: null,
+        texts: [(text: says, attributes: clipTextAttributesBytes())],
+        children: const [],
+      );
+    }
+
+    test('outside the cels: a row of its own, its cel its texts — set at '
+        'the canvas\'s resolution, and nothing said of a kind not '
+        'carried', () {
+      final result = plan(
+        root([layer('BG'), letters('words', 'Hi')]),
+        [timeline(const [])],
+        resolution: 144,
+      );
+
+      expect(names(result.cuts.single), ['BG', 'words']);
+      final bake = result.bakes.singleWhere(
+        (bake) => bake.source.name == 'words',
+      );
+      expect(bake.label, 'words');
+      final content = bake.texts.single.content;
+      expect(content.text, 'Hi');
+      expect(
+        content.spans.single.style.fontSize,
+        24,
+        reason: '12 points at 144 dpi',
+      );
+      expect(content.spans.single.style.color, 0xFF000000);
+      expect(result.warnings, isEmpty);
+    });
+
+    test('in a cel: at the cel\'s opacity its letters are that faint, as '
+        'every picture of a cel is baked (Q5) — and it is named by its '
+        'folder and cel', () {
+      final a = animation('A', [
+        folder('1', [letters('words', 'Hi', opacity: 128)]),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, '1')]),
+        ]),
+      ]);
+
+      final bake = result.bakes.single;
+      expect(bake.alpha, 0.5);
+      expect(bake.texts.single.content.spans.single.style.color, 0x80000000);
+      expect(bake.label, 'A / 1');
+    });
+
+    test('every other layer bakes no text', () {
+      final result = plan(root([layer('BG')]), [timeline(const [])]);
+
+      expect(result.bakes.single.texts, isEmpty);
+    });
   });
 
   test('a vector layer with strokes is baked like any picture — and what its '

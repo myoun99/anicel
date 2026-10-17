@@ -53,6 +53,9 @@
 ///   timeline is not imported (「임포트 안해도 상관없고」), and what there is
 ///   no place for is said, never dropped quietly — a kind of layer this app
 ///   does not carry in every decoder's one word ([unsupportedLayerKind]).
+/// * **A text layer is a cel of the app's own texts** (F-370-Q3, 유저
+///   10-17: 「이제 들인다(앱의 글자로)」), shown as CLIP STUDIO drew them until
+///   one is edited ([clipCelTextsOf]).
 library;
 
 import 'dart:collection';
@@ -88,6 +91,7 @@ import '../editing/default_cut_helpers.dart';
 import '../layer_pose_matrix.dart' show LayerPoseSample;
 import 'camera_track.dart';
 import 'clip_document.dart';
+import 'clip_lettering.dart';
 import 'clip_placement.dart';
 import 'media_import_planner.dart' show ImportIdMint;
 
@@ -143,6 +147,7 @@ final class ClipCelBake {
     required this.source,
     required this.label,
     required this.alpha,
+    this.texts = const [],
   });
 
   /// The cel's address — the CANONICAL member's, the first cut's row, which
@@ -164,6 +169,11 @@ final class ClipCelBake {
   /// times its folders' in the cel — its row stands at 100% (Q5 — 「낮은채로
   /// 구워버려서」).
   final double alpha;
+
+  /// A text layer's texts, set as the app's at [alpha] — what the cel is
+  /// made of, the pictures CLIP STUDIO drew of them to read. None for every
+  /// other layer.
+  final List<ClipCelText> texts;
 }
 
 /// The project a file opens as, before a pixel is read.
@@ -262,6 +272,15 @@ ClipImportPlan planClipImport({
           source: bake.source,
           label: bake.label,
           alpha: bake.alpha,
+          texts: bake.source.kind == ClipLayerKind.lettering
+              ? clipCelTextsOf(
+                  bake.source,
+                  resolution: document.resolution,
+                  name: bake.label,
+                  warnings: warnings,
+                  alpha: bake.alpha,
+                )
+              : const [],
         ),
     ],
     fps: _fpsOf(document, warnings),
@@ -1252,14 +1271,14 @@ final class _Planner {
         }),
         false,
       ),
-      ClipLayerKind.lettering ||
       ClipLayerKind.paper ||
       ClipLayerKind.fill ||
       ClipLayerKind.other => (unsupportedLayerKind(name), false),
       ClipLayerKind.root ||
       ClipLayerKind.folder ||
       ClipLayerKind.raster ||
-      ClipLayerKind.picture => (null, true),
+      ClipLayerKind.picture ||
+      ClipLayerKind.lettering => (null, true),
     };
     if (said != null) {
       warnings.add(said);

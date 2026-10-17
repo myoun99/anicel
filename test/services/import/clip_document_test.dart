@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -370,6 +371,146 @@ void main() {
       [for (final layer in document.root.children) (layer.name, layer.kind)],
       [('words', ClipLayerKind.lettering), ('plain', ClipLayerKind.raster)],
     );
+    expect(
+      document.resolution,
+      72,
+      reason: 'a point a pixel where the file names no resolution',
+    );
+  });
+
+  group('F-370-Q3: a text layer\'s texts', () {
+    /// A file whose layer 2 is a text layer: [texts] its string and
+    /// attributes, then its arrays'; layer 3 a raster beside it. Offscreen
+    /// 300 is its declared render's, 301 its thumbnail, 302 · 303 name it
+    /// alone and 304 names layer 3.
+    String writeTexts(
+      List<(String, Uint8List)> texts, {
+      List<Uint8List>? settings,
+    }) {
+      final strings = [for (final (text, _) in texts) utf8.encode(text)];
+      final attributes = settings ?? [for (final (_, set) in texts) set];
+      final attribute = offscreenAttributeBytes(
+        width: 8,
+        height: 8,
+        columns: 1,
+        rows: 1,
+      );
+      final database = databaseBytes((db) {
+        db.execute(clipSchema);
+        for (final column in [
+          'Layer ADD COLUMN TextLayerType INTEGER',
+          'Layer ADD COLUMN TextLayerString BLOB',
+          'Layer ADD COLUMN TextLayerAttributes BLOB',
+          'Layer ADD COLUMN TextLayerStringArray BLOB',
+          'Layer ADD COLUMN TextLayerAttributesArray BLOB',
+          'Offscreen ADD COLUMN LayerId INTEGER',
+          'Canvas ADD COLUMN CanvasResolution REAL',
+        ]) {
+          db.execute('ALTER TABLE $column');
+        }
+        db
+          ..execute(
+            'CREATE TABLE LayerThumbnail(_PW_ID INTEGER PRIMARY KEY, '
+            'MainId INTEGER, ThumbnailOffscreen INTEGER)',
+          )
+          ..execute(
+            'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+            'CanvasRootFolder, CanvasResolution) VALUES (1, 64, 32, 1, 350)',
+          )
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+            "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+          )
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+            'LayerNextIndex, LayerRenderMipmap, TextLayerType, '
+            'TextLayerString, TextLayerAttributes, TextLayerStringArray, '
+            'TextLayerAttributesArray) '
+            "VALUES (2, 'words', 800, 0, 3, 100, 2, ?, ?, ?, ?)",
+            [
+              strings.first,
+              attributes.first,
+              clipTextArrayBytes(strings.sublist(1)),
+              clipTextArrayBytes(attributes.sublist(1)),
+            ],
+          )
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+            "VALUES (3, 'plain', 1, 0)",
+          )
+          ..execute('''
+            INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES (100, 200);
+            INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+              VALUES (200, 100, 300, 0);
+            INSERT INTO LayerThumbnail(MainId, ThumbnailOffscreen)
+              VALUES (1, 301);
+          ''');
+        final offscreen = db.prepare(
+          'INSERT INTO Offscreen(MainId, LayerId, Attribute, BlockData) '
+          'VALUES (?, ?, ?, ?)',
+        );
+        for (final (id, layer) in [
+          (303, 2),
+          (300, 2),
+          (304, 3),
+          (302, 2),
+          (301, 2),
+        ]) {
+          offscreen.execute([id, layer, attribute, externalId(id)]);
+        }
+        offscreen.close();
+      });
+      return write(database, const {});
+    }
+
+    test('🎯its string and attributes, then each of their arrays\' — its '
+        'pictures the offscreens that name it ALONE, in their order — and '
+        'the canvas\'s resolution the file\'s', () {
+      final one = Uint8List.fromList([1, 0, 0, 0, 0, 0, 0, 0]);
+      final two = Uint8List.fromList([2, 0, 0, 0, 0, 0, 0, 0]);
+      final three = Uint8List.fromList([3, 0, 0, 0, 0, 0, 0, 0]);
+      final document = readClipDocument(
+        writeTexts([('one', one), ('二', two), ('three', three)]),
+        scratch: folder,
+      );
+
+      final words = document.root.children.first;
+      expect(words.kind, ClipLayerKind.lettering);
+      expect([for (final text in words.texts) text.text], [
+        'one',
+        '二',
+        'three',
+      ]);
+      expect([for (final text in words.texts) text.attributes], [
+        one,
+        two,
+        three,
+      ]);
+      expect(
+        [for (final picture in words.textPictures) picture.blocksId],
+        [externalId(302), externalId(303)],
+        reason: 'not its render\'s (300), its thumbnail (301), or another '
+            'layer\'s (304)',
+      );
+      expect(document.root.children.last.texts, isEmpty);
+      expect(document.resolution, 350);
+      expect(document.warnings, isEmpty);
+    });
+
+    test('texts and settings that do not pair are said, and the pairs '
+        'kept', () {
+      final set = Uint8List.fromList([9, 0, 0, 0, 0, 0, 0, 0]);
+      final document = readClipDocument(
+        writeTexts([('a', set), ('b', set)], settings: [set]),
+        scratch: folder,
+      );
+
+      final words = document.root.children.first;
+      expect([for (final text in words.texts) text.text], ['a']);
+      expect(document.warnings, [
+        'text layer 2 holds 2 texts and 1 settings for them',
+      ]);
+    });
   });
 
   test('F-370: a layer\'s colour is its DrawColorMain… — each channel by its '

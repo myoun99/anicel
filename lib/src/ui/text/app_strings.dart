@@ -3868,6 +3868,23 @@ enum AppStrings {
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
     'importWarning.clipNotColour': '{name}: グレー・モノクロのレイヤー — 描画していません。',
     'importWarning.clipTransform': '{name}: 画像の拡大縮小・回転は適用していません。',
+    'importWarning.clipTextUnread': '{name}: 設定を読めないテキスト — 取り込みませんでした。',
+    'importWarning.clipTextItalic':
+        '{name}: 斜体の文字 — CLIP STUDIO が描いたまま表示し、編集すると斜体なしで組み直します。',
+    'importWarning.clipTextUnderline':
+        '{name}: 下線付きの文字 — CLIP STUDIO が描いたまま表示し、編集すると下線なしで組み直します。',
+    'importWarning.clipTextStrike':
+        '{name}: 取り消し線付きの文字 — CLIP STUDIO が描いたまま表示し、編集すると取り消し線なしで組み直します。',
+    'importWarning.clipTextAlign':
+        '{name}: このアプリでは組めない揃え方の行 — CLIP STUDIO が描いたまま表示し、編集すると一つの揃え方で組み直します。',
+    'importWarning.clipTextSpacing':
+        '{name}: 不揃いな行間 — CLIP STUDIO が描いたまま表示し、編集すると均等な行間で組み直します。',
+    'importWarning.clipTextAcross':
+        '{name}: 幅 {percent}% で描かれた文字 — CLIP STUDIO が描いたまま表示し、編集すると本来の幅で組み直します。',
+    'importWarning.clipTextTurned':
+        '{name}: 回転・傾斜したテキスト — CLIP STUDIO が描いたまま表示し、編集するとまっすぐ組み直します。',
+    'importWarning.clipTextSetHere':
+        '{name}: このアプリで組んだテキスト — CLIP STUDIO が描いた画像がファイルにないか、読めませんでした。',
     'importWarning.brushPackUnreadable':
         'このファイルは Anicel のブラシファイルとして読み込めません。',
     'importWarning.brushPackNotOurs': 'このファイルは Anicel のブラシファイルではありません。',
@@ -5400,6 +5417,23 @@ enum AppStrings {
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.clipNotColour': '{name}: 그레이 · 모노크롬 레이어 — 그리지 않았습니다.',
     'importWarning.clipTransform': '{name}: 그림의 크기 · 회전은 적용하지 않았습니다.',
+    'importWarning.clipTextUnread': '{name}: 설정을 읽지 못한 글 — 가져오지 않았습니다.',
+    'importWarning.clipTextItalic':
+        '{name}: 기울임 글자 — CLIP STUDIO가 그린 그대로 보이고, 고치면 기울임 없이 다시 짜입니다.',
+    'importWarning.clipTextUnderline':
+        '{name}: 밑줄 친 글자 — CLIP STUDIO가 그린 그대로 보이고, 고치면 밑줄 없이 다시 짜입니다.',
+    'importWarning.clipTextStrike':
+        '{name}: 취소선 그은 글자 — CLIP STUDIO가 그린 그대로 보이고, 고치면 취소선 없이 다시 짜입니다.',
+    'importWarning.clipTextAlign':
+        '{name}: 이 앱이 짤 수 없는 정렬의 줄 — CLIP STUDIO가 그린 그대로 보이고, 고치면 한 가지 정렬로 다시 짜입니다.',
+    'importWarning.clipTextSpacing':
+        '{name}: 고르지 않은 줄 간격 — CLIP STUDIO가 그린 그대로 보이고, 고치면 고른 줄 간격으로 다시 짜입니다.',
+    'importWarning.clipTextAcross':
+        '{name}: 폭 {percent}%로 그려진 글자 — CLIP STUDIO가 그린 그대로 보이고, 고치면 제 폭으로 다시 짜입니다.',
+    'importWarning.clipTextTurned':
+        '{name}: 회전하거나 기울인 글 — CLIP STUDIO가 그린 그대로 보이고, 고치면 똑바로 다시 짜입니다.',
+    'importWarning.clipTextSetHere':
+        '{name}: 이 앱이 짠 글 — CLIP STUDIO가 그린 그림이 파일에 없거나 읽지 못했습니다.',
     'importWarning.brushPackUnreadable': '이 파일은 Anicel 브러시 파일로 읽을 수 없습니다.',
     'importWarning.brushPackNotOurs': '이 파일은 Anicel 브러시 파일이 아닙니다.',
     'importWarning.brushPackNewer':
@@ -7038,6 +7072,34 @@ enum AppStrings {
         '{name} : calque gris ou monochrome — non dessiné.',
     'importWarning.clipTransform':
         '{name} : l\'échelle ou la rotation de l\'image n\'est pas appliquée.',
+    'importWarning.clipTextUnread':
+        '{name} : un texte dont les réglages sont illisibles — non importé.',
+    'importWarning.clipTextItalic':
+        '{name} : lettres en italique — affichées telles que CLIP STUDIO les '
+        'a dessinées, et composées droites une fois modifiées.',
+    'importWarning.clipTextUnderline':
+        '{name} : lettres soulignées — affichées telles que CLIP STUDIO les a '
+        'dessinées, et composées sans le trait une fois modifiées.',
+    'importWarning.clipTextStrike':
+        '{name} : lettres barrées — affichées telles que CLIP STUDIO les a '
+        'dessinées, et composées sans le trait une fois modifiées.',
+    'importWarning.clipTextAlign':
+        '{name} : lignes alignées d\'une façon que cette application ne sait '
+        'pas composer — affichées telles que CLIP STUDIO les a dessinées, et '
+        'alignées d\'une seule façon une fois modifiées.',
+    'importWarning.clipTextSpacing':
+        '{name} : interlignes inégaux — affichés tels que CLIP STUDIO les a '
+        'dessinés, et égalisés une fois modifiés.',
+    'importWarning.clipTextAcross':
+        '{name} : lettres dessinées à {percent} % de leur largeur — affichées '
+        'telles que CLIP STUDIO les a dessinées, et composées à leur propre '
+        'largeur une fois modifiées.',
+    'importWarning.clipTextTurned':
+        '{name} : texte tourné ou incliné — affiché tel que CLIP STUDIO l\'a '
+        'dessiné, et composé droit une fois modifié.',
+    'importWarning.clipTextSetHere':
+        '{name} : un texte composé par cette application — l\'image qu\'en a '
+        'faite CLIP STUDIO n\'est pas dans le fichier, ou n\'a pas pu être lue.',
     'importWarning.brushPackUnreadable':
         'Ce fichier ne peut pas être lu comme un fichier de brosses Anicel.',
     'importWarning.brushPackNotOurs':
@@ -8529,6 +8591,23 @@ enum AppStrings {
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',
     'importWarning.clipTransform': '{name}：未应用图片的缩放或旋转。',
+    'importWarning.clipTextUnread': '{name}：无法读取设置的文字——未导入。',
+    'importWarning.clipTextItalic':
+        '{name}：斜体文字——按 CLIP STUDIO 绘制的样子显示，编辑后以正体重新排版。',
+    'importWarning.clipTextUnderline':
+        '{name}：带下划线的文字——按 CLIP STUDIO 绘制的样子显示，编辑后去掉下划线重新排版。',
+    'importWarning.clipTextStrike':
+        '{name}：带删除线的文字——按 CLIP STUDIO 绘制的样子显示，编辑后去掉删除线重新排版。',
+    'importWarning.clipTextAlign':
+        '{name}：本应用无法排出的行对齐——按 CLIP STUDIO 绘制的样子显示，编辑后以统一的对齐重新排版。',
+    'importWarning.clipTextSpacing':
+        '{name}：行距不均——按 CLIP STUDIO 绘制的样子显示，编辑后以均匀行距重新排版。',
+    'importWarning.clipTextAcross':
+        '{name}：以 {percent}% 宽度绘制的文字——按 CLIP STUDIO 绘制的样子显示，编辑后以原本宽度重新排版。',
+    'importWarning.clipTextTurned':
+        '{name}：旋转或倾斜的文字——按 CLIP STUDIO 绘制的样子显示，编辑后摆正重新排版。',
+    'importWarning.clipTextSetHere':
+        '{name}：由本应用排版的文字——文件中没有 CLIP STUDIO 绘制的图像，或无法读取。',
     'importWarning.brushPackUnreadable': '无法将此文件读取为 Anicel 画笔文件。',
     'importWarning.brushPackNotOurs': '此文件不是 Anicel 画笔文件。',
     'importWarning.brushPackNewer':

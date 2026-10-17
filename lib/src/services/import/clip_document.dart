@@ -1,3 +1,4 @@
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -67,6 +68,11 @@ typedef ClipSound = ({
   String extension,
 });
 
+/// One text of a text layer as the file keeps it: what it says and the
+/// attribute parameters it is set by (`clip_lettering.dart` reads them —
+/// memory `csp-clip-format-notes` 6-1 §13).
+typedef ClipLettering = ({String text, Uint8List attributes});
+
 /// One layer of a CLIP STUDIO PAINT document's tree.
 final class ClipLayer {
   ClipLayer({
@@ -88,6 +94,8 @@ final class ClipLayer {
     required this.originalTransform,
     this.vectorData = const [],
     this.sounds = const [],
+    this.texts = const [],
+    this.textPictures = const [],
     this.camera,
     this.mainColour,
     required this.children,
@@ -148,6 +156,17 @@ final class ClipLayer {
   /// bytes the file holds the address of.
   final List<ClipSound> sounds;
 
+  /// A text layer's texts, in the file's order: `TextLayerString` with
+  /// `TextLayerAttributes`, then each of their `…Array`s.
+  final List<ClipLettering> texts;
+
+  /// The pictures CLIP STUDIO drew of a text layer's texts — offscreens the
+  /// layer names through `Offscreen.LayerId` alone, no mipmap level and no
+  /// thumbnail (all 16 texts of the samples have one, 10-17), in `MainId`
+  /// order. ⛔Not its [render]: a text layer's is declared and never stored,
+  /// as an image material's is.
+  final List<ClipPictureSource> textPictures;
+
   /// The 2D camera this folder is (`Camera2DResizableImageInfo` — memory
   /// `csp-clip-format-notes` §3), as it stands where no clip of its track
   /// moves it: its picture is the shooting frame, placed by this. Null on
@@ -170,10 +189,13 @@ final class ClipLayer {
   bool get isFolder => folderFlags != 0 || kind == ClipLayerKind.root;
   bool get isCollapsed => folderFlags & 16 != 0;
 
-  /// Whether it has a picture: a render, a dropped picture's original, or
-  /// a vector layer's strokes.
+  /// Whether it has a picture: a render, a dropped picture's original, a
+  /// vector layer's strokes, or a text layer's texts.
   bool get hasPicture =>
-      render != null || original != null || vectorData.isNotEmpty;
+      render != null ||
+      original != null ||
+      vectorData.isNotEmpty ||
+      texts.isNotEmpty;
 
   /// This layer and every layer under it, this one first.
   Iterable<ClipLayer> get everyLayer sync* {
@@ -249,11 +271,17 @@ final class ClipDocument {
     required this.currentTimeline,
     required this.warnings,
     this.frame,
+    this.resolution = 72,
   });
 
   final int width;
   final int height;
   final ClipLayer root;
+
+  /// `CanvasResolution`, dots per inch — what a text's point size is on
+  /// this canvas (`clip_lettering.dart`). 72 — a point a pixel — where the
+  /// file names none.
+  final double resolution;
 
   /// The shooting frame — null when the file has none (the whole canvas).
   final ClipFrame? frame;
@@ -369,6 +397,7 @@ final class _DocumentReader {
     final canvas = _rows('Canvas', [
       'CanvasWidth',
       'CanvasHeight',
+      'CanvasResolution',
       'CanvasRootFolder',
       ..._frameColumns,
     ]).values.firstOrNull;
@@ -385,6 +414,7 @@ final class _DocumentReader {
     ]).values.firstOrNull;
     final width = _num(canvas['CanvasWidth']);
     final height = _num(canvas['CanvasHeight']);
+    final resolution = _num(canvas['CanvasResolution']);
     return ClipDocument(
       width: width.round(),
       height: height.round(),
@@ -393,6 +423,7 @@ final class _DocumentReader {
       currentTimeline: bank == null ? 0 : _int(bank['CurrentIndex']),
       warnings: warnings,
       frame: _frameOf(canvas, width, height),
+      resolution: resolution > 0 ? resolution : 72,
     );
   }
 
@@ -455,6 +486,10 @@ final class _DocumentReader {
     'AudioLayer',
     'GradationFillInfo',
     'TextLayerType',
+    'TextLayerString',
+    'TextLayerAttributes',
+    'TextLayerStringArray',
+    'TextLayerAttributesArray',
     'FirstLayerObject',
     'Camera2DResizableImageInfo',
     ..._mainColourColumns,
@@ -551,6 +586,64 @@ final class _DocumentReader {
   };
   late final _soundBinaries = _rows('CanvasItemBinary', ['ItemBinaryData']);
 
+  /// [layer]'s texts ([ClipLayer.texts]): the one its own columns hold, then
+  /// each of the `…Array` columns' — `u32 LE length + bytes`, again and
+  /// again (one sample layer holds two). A text with no setting to go with
+  /// it is said.
+  List<ClipLettering> _textsOf(Map<String, Object?> layer) {
+    final texts = [
+      if (layer['TextLayerString'] case final Object one) _utf8(one),
+      for (final part in _parts(layer['TextLayerStringArray'])) _utf8(part),
+    ];
+    final settings = [
+      if (layer['TextLayerAttributes'] case final Uint8List one) one,
+      ..._parts(layer['TextLayerAttributesArray']),
+    ];
+    if (texts.length != settings.length) {
+      warnings.add(
+        'text layer ${layer['MainId']} holds ${texts.length} texts and '
+        '${settings.length} settings for them',
+      );
+    }
+    return [
+      for (var i = 0; i < texts.length && i < settings.length; i += 1)
+        (text: texts[i], attributes: settings[i]),
+    ];
+  }
+
+  /// [layer]'s pictures of its texts ([ClipLayer.textPictures]).
+  List<ClipPictureSource> _textPicturesOf(int layer) {
+    const wanted = ['LayerId', 'Attribute', 'BlockData'];
+    if (!_columnsOf('Offscreen').containsAll(wanted)) {
+      return const [];
+    }
+    return [
+      for (final row in database.select(
+        'SELECT MainId, Attribute, BlockData FROM Offscreen '
+        'WHERE LayerId = ? ORDER BY MainId',
+        [layer],
+      ))
+        if (row['Attribute'] case final Uint8List attribute
+            when !_offscreensNamed.contains(row['MainId']))
+          ClipPictureSource(
+            attribute: attribute,
+            blocksId: _text(row['BlockData']),
+          ),
+    ];
+  }
+
+  /// The offscreens a mipmap level or a thumbnail names — any other
+  /// offscreen of a layer is a picture of one of its objects (wamsoft
+  /// `clipparse` · `docs/CLIP_FORMAT.md`, measured on the samples 10-17).
+  late final _offscreensNamed = {
+    for (final info in _rows('MipmapInfo', ['Offscreen']).values)
+      _int(info['Offscreen']),
+    for (final thumbnail in _rows('LayerThumbnail', [
+      'ThumbnailOffscreen',
+    ]).values)
+      _int(thumbnail['ThumbnailOffscreen']),
+  };
+
   /// What every step of the tree walk asks: the layer table, the 100%
   /// pictures, and the layers' vector data.
   late final _layerRows = _rows('Layer', _layerColumns);
@@ -585,6 +678,7 @@ final class _DocumentReader {
     final transform = row['ResizableImageInfo'];
     final camera = row['Camera2DResizableImageInfo'];
     final kind = _kindOf(row, _vectorData.containsKey(id));
+    final lettering = kind == ClipLayerKind.lettering;
     return ClipLayer(
       id: id,
       name: _text(row['LayerName']),
@@ -604,6 +698,8 @@ final class _DocumentReader {
       originalTransform: transform is Uint8List ? transform : null,
       vectorData: _vectorData[id] ?? const [],
       sounds: kind == ClipLayerKind.sound ? _soundsOf(row) : const [],
+      texts: lettering ? _textsOf(row) : const [],
+      textPictures: lettering ? _textPicturesOf(id) : const [],
       camera: camera is Uint8List ? clipPlacementOf(camera) : null,
       mainColour: _mainColourOf(row),
       children: children,
@@ -769,4 +865,31 @@ final class _DocumentReader {
     final Uint8List v => String.fromCharCodes(v),
     _ => '',
   };
+
+  /// A text column the program writes as UTF-8 bytes (`TextLayerString`).
+  static String _utf8(Object value) => switch (value) {
+    final Uint8List v => utf8.decode(v, allowMalformed: true),
+    _ => '$value',
+  };
+
+  /// An `…Array` column's parts: `u32 LE length + bytes`, again and again —
+  /// up to a length that runs past the end.
+  static List<Uint8List> _parts(Object? value) {
+    if (value is! Uint8List) {
+      return const [];
+    }
+    final data = ByteData.sublistView(value);
+    final parts = <Uint8List>[];
+    var at = 0;
+    while (at + 4 <= value.length) {
+      final length = data.getUint32(at, Endian.little);
+      at += 4;
+      if (at + length > value.length) {
+        break;
+      }
+      parts.add(Uint8List.sublistView(value, at, at + length));
+      at += length;
+    }
+    return parts;
+  }
 }

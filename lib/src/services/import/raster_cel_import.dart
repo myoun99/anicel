@@ -327,14 +327,20 @@ void bakeCelTiles(
 ) => bakeCelSurface(
   store,
   key,
-  BitmapSurface(canvasSize: canvas).putTiles([
-    for (final tile in tiles)
-      (
-        coord: TileCoord(x: tile.x, y: tile.y),
-        tile: BitmapTile(size: defaultCelTileSize, pixels: tile.pixels),
-      ),
-  ]),
+  BitmapSurface(canvasSize: canvas, tiles: celTilesOf(tiles)),
 );
+
+/// [tiles] — cut as [bakeCelTiles] takes them — as a cel's own tiles: the
+/// picture of a cel, or a text's plate (`CelText.plate`) that a file drew.
+Map<TileCoord, BitmapTile> celTilesOf(
+  List<({int x, int y, Uint8List pixels})> tiles,
+) => {
+  for (final tile in tiles)
+    TileCoord(x: tile.x, y: tile.y): BitmapTile(
+      size: defaultCelTileSize,
+      pixels: tile.pixels,
+    ),
+};
 
 /// Bakes [surface] as [key]'s cel — the exact donation pair the drawing
 /// commit uses (display cache seeds the frame state, then the baked

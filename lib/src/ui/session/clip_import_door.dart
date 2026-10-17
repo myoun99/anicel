@@ -12,7 +12,10 @@ import 'dart:typed_data';
 
 import '../../core/worker_count.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_text.dart';
 import '../../models/cut.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/media_asset.dart' show normalizedMediaPath;
@@ -20,6 +23,7 @@ import '../../models/project.dart';
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/project_id.dart';
+import '../../models/tile_coord.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_se_migration.dart';
@@ -30,12 +34,16 @@ import '../../services/import/clip_document.dart';
 import '../../services/import/clip_import_planner.dart';
 import '../../services/import/clip_vector_raster.dart' show clipVectorTiles;
 import '../../services/import/media_import_planner.dart' show ImportIdMint;
-import '../../services/import/raster_cel_import.dart' show bakeCelTiles;
+import '../../services/import/raster_cel_import.dart'
+    show bakeCelSurface, bakeCelTiles, celTilesOf;
 import '../../services/persistence/folder_grant.dart'
     show FileArrival, FolderPicker;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
+import '../text/cel_text_bake.dart' show bakeCelTextPlate;
+import '../text/cel_text_layout.dart'
+    show celTextFacesArriving, layoutCelText;
 import 'media_pool.dart';
 import 'project_file.dart';
 import 'project_file_door.dart' show ProjectFileDoor;
@@ -245,14 +253,40 @@ Project _projectOf(String name, ClipDocument document, ClipImportPlan plan) {
   );
 }
 
-/// One picture to bake, the cut it lands in, and where its bytes are — a
-/// stored picture's blocks, or a vector layer's strokes ([picture] null).
+/// One picture to bake, the cut it lands in, what its pixels come out of,
+/// and where that is in the file.
 typedef _ClipWork = ({
   ClipCelBake bake,
   Cut cut,
-  ClipPicture? picture,
+  _ClipSource source,
   List<ClipPlace> places,
 });
+
+/// What a bake's pixels come out of.
+sealed class _ClipSource {
+  const _ClipSource();
+}
+
+/// A stored picture — [_ClipWork.places] is its blocks.
+final class _StoredPicture extends _ClipSource {
+  const _StoredPicture(this.picture);
+
+  final ClipPicture picture;
+}
+
+/// A vector layer's strokes — [_ClipWork.places] is their bodies.
+final class _Strokes extends _ClipSource {
+  const _Strokes();
+}
+
+/// A text layer's texts ([ClipCelBake.texts]) — [_ClipWork.places] is the
+/// blocks of each of [pictures], the pictures CLIP STUDIO drew of them that
+/// the file holds, each naming the text it is of.
+final class _Letters extends _ClipSource {
+  const _Letters(this.pictures);
+
+  final List<({int text, ClipPictureSource picture})> pictures;
+}
 
 /// The CLIP STUDIO door.
 final class ClipImportDoor {
@@ -353,7 +387,7 @@ final class ClipImportDoor {
             _decodeOne(wave[w], windows[w]),
         ]);
         for (var w = 0; w < wave.length; w += 1) {
-          _bakeDecoded(decoded[w], wave[w], warnings);
+          await _bakeDecoded(decoded[w], wave[w], warnings);
           onProgress?.call((at + w + 1) / work.length);
         }
       }
@@ -394,8 +428,27 @@ final class ClipImportDoor {
         work.add((
           bake: bake,
           cut: cut,
-          picture: null,
+          source: const _Strokes(),
           places: [...places.nonNulls],
+        ));
+        continue;
+      }
+      // A text layer is its texts: a text whose picture the file does not
+      // hold is set here when it is baked ([_setLetters]).
+      if (bake.source.kind == ClipLayerKind.lettering) {
+        final drawn = [
+          for (final (i, text) in bake.texts.indexed)
+            if (text.picture case final picture?)
+              if (container.externals[picture.blocksId] case final place?)
+                (text: i, picture: picture, place: place),
+        ];
+        work.add((
+          bake: bake,
+          cut: cut,
+          source: _Letters([
+            for (final one in drawn) (text: one.text, picture: one.picture),
+          ]),
+          places: [for (final one in drawn) one.place],
         ));
         continue;
       }
@@ -417,37 +470,64 @@ final class ClipImportDoor {
           ),
         );
       }
-      work.add((bake: bake, cut: cut, picture: picture, places: [blocks]));
+      work.add((
+        bake: bake,
+        cut: cut,
+        source: _StoredPicture(picture),
+        places: [blocks],
+      ));
     }
     return work;
   }
 
-  /// [item] decoded on a worker of its own out of [bytes] — its blocks, or
-  /// its strokes.
+  /// [item] decoded on a worker of its own out of [bytes] — its blocks, its
+  /// strokes, or its texts' pictures.
   Future<Object?> _decodeOne(_ClipWork item, List<Uint8List> bytes) {
-    final picture = item.picture;
-    final target = (
-      left: picture?.left ?? 0,
-      top: picture?.top ?? 0,
+    ClipCelTarget at(int left, int top) => (
+      left: left,
+      top: top,
       canvasWidth: item.cut.canvasSize.width,
       canvasHeight: item.cut.canvasSize.height,
       alpha: item.bake.alpha,
       tileSize: defaultCelTileSize,
     );
-    if (picture == null) {
-      final layer = item.bake.source;
-      return _drawOnWorker(bytes, (x: layer.offsetX, y: layer.offsetY), target);
-    }
-    return _decodeOnWorker(bytes.single, picture.source.attribute, target);
+    final bake = item.bake;
+    return switch (item.source) {
+      _StoredPicture(:final picture) => _decodeOnWorker(
+        bytes.single,
+        picture.source.attribute,
+        at(picture.left, picture.top),
+      ),
+      _Strokes() => _drawOnWorker(
+        bytes,
+        (x: bake.source.offsetX, y: bake.source.offsetY),
+        at(0, 0),
+      ),
+      _Letters(:final pictures) when pictures.isEmpty => Future.value(
+        const <Object?>[],
+      ),
+      _Letters(:final pictures) => _readOnWorker(
+        bytes,
+        [for (final one in pictures) one.picture.attribute],
+        [
+          for (final one in pictures)
+            at(bake.texts[one.text].left, bake.texts[one.text].top),
+        ],
+      ),
+    };
   }
 
   /// Lands one decoded picture, or says why it could not be landed. No
   /// tiles is a picture with no ink: the cel stays, empty.
-  void _bakeDecoded(
+  Future<void> _bakeDecoded(
     Object? decoded,
     _ClipWork item,
     List<ImportWarning> warnings,
-  ) {
+  ) async {
+    if (item.source case final _Letters letters) {
+      await _setLetters(letters, decoded, item, warnings);
+      return;
+    }
     if (decoded case (
       tiles: final List<ClipCelTile> tiles,
       unread: final int unread,
@@ -488,15 +568,92 @@ final class ClipImportDoor {
     }
     bakeCelTiles(
       _renderCaches.brushFrameStore,
-      _project.brushFrameKeyForCut(
-        item.cut,
-        item.bake.layerId,
-        item.bake.frameId,
-      ),
+      _keyOf(item),
       item.cut.canvasSize,
       tiles,
     );
   }
+
+  /// Lands a text layer's texts as its cel's, each with its plate: the
+  /// picture CLIP STUDIO drew of it, [decoded] in the order of [letters]'
+  /// pictures — or, for a text the file holds no picture of that reads, the
+  /// one this app sets, said.
+  Future<void> _setLetters(
+    _Letters letters,
+    Object? decoded,
+    _ClipWork item,
+    List<ImportWarning> warnings,
+  ) async {
+    final drawn = <int, Map<TileCoord, BitmapTile>>{};
+    if (decoded case final List<Object?> pictures) {
+      for (var k = 0; k < letters.pictures.length; k += 1) {
+        if (pictures[k] case final List<ClipCelTile> tiles) {
+          drawn[letters.pictures[k].text] = celTilesOf(tiles);
+        }
+      }
+    }
+    final texts = <CelText>[];
+    var setHere = false;
+    for (final (i, text) in item.bake.texts.indexed) {
+      var plate = drawn[i];
+      if (plate == null) {
+        setHere = true;
+        try {
+          plate = await _plateSetHere(text.content, item.cut.canvasSize);
+        } on Object catch (error) {
+          warnings.add(_unreadable(item.bake, '$error'));
+          continue;
+        }
+      }
+      texts.add(CelText(id: i + 1, content: text.content, plate: plate));
+    }
+    if (setHere) {
+      warnings.add(
+        ImportWarning(
+          'clipTextSetHere',
+          '{name}: a text is set by this app — CLIP STUDIO\'s picture of it '
+              'is not in the file, or could not be read.',
+          {'name': item.bake.label},
+        ),
+      );
+    }
+    if (texts.isEmpty) {
+      return;
+    }
+    bakeCelSurface(
+      _renderCaches.brushFrameStore,
+      _keyOf(item),
+      BitmapSurface(canvasSize: item.cut.canvasSize, texts: texts),
+    );
+  }
+
+  /// [content]'s plate as this app sets it — once the faces it is set in
+  /// that are on their way have arrived, as the text tool waits for them.
+  Future<Map<TileCoord, BitmapTile>> _plateSetHere(
+    CelTextContent content,
+    CanvasSize canvas,
+  ) async {
+    final arriving = celTextFacesArriving(content);
+    if (arriving != null) {
+      await arriving;
+    }
+    final layout = layoutCelText(content);
+    try {
+      return await bakeCelTextPlate(
+        layout,
+        canvasSize: canvas,
+        tileSize: defaultCelTileSize,
+      );
+    } finally {
+      layout.dispose();
+    }
+  }
+
+  BrushFrameKey _keyOf(_ClipWork item) => _project.brushFrameKeyForCut(
+    item.cut,
+    item.bake.layerId,
+    item.bake.frameId,
+  );
 
   ImportWarning _unreadable(ClipCelBake bake, String detail) => ImportWarning(
     'celUnreadable',
@@ -515,16 +672,32 @@ Future<Object?> _decodeOnWorker(
   Uint8List blocks,
   Uint8List attribute,
   ClipCelTarget target,
-) {
-  return Isolate.run<Object?>(() {
-    try {
-      return clipCelTiles(attribute, blocks, target);
-    } on ClipFormatException catch (error) {
-      return error;
-    } on FormatException catch (error) {
-      return error;
-    }
-  });
+) => Isolate.run<Object?>(() => _tilesOf(attribute, blocks, target));
+
+/// Several pictures — a text layer's — decoded on one worker of its own,
+/// each as [_decodeOnWorker] answers for one. Its own function for the same
+/// reason.
+Future<Object?> _readOnWorker(
+  List<Uint8List> blocks,
+  List<Uint8List> attributes,
+  List<ClipCelTarget> targets,
+) => Isolate.run<Object?>(
+  () => [
+    for (var k = 0; k < blocks.length; k += 1)
+      _tilesOf(attributes[k], blocks[k], targets[k]),
+  ],
+);
+
+/// The tiles a picture's [attribute] and [blocks] make on [target] — null
+/// for a picture that is not colour, or the reason it would not decode.
+Object? _tilesOf(Uint8List attribute, Uint8List blocks, ClipCelTarget target) {
+  try {
+    return clipCelTiles(attribute, blocks, target);
+  } on ClipFormatException catch (error) {
+    return error;
+  } on FormatException catch (error) {
+    return error;
+  }
 }
 
 /// One vector layer drawn on a worker of its own ([clipVectorTiles]) — its

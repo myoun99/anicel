@@ -523,3 +523,164 @@ CmtSpec clipNodeSpec({
 /// A track document holding [clips].
 CmtSpec clipTrackSpec(List<CmtSpec> clips) =>
     CmtSpec('celsysdocument', 'null', children: clips);
+
+/// One run of a text's letters in a style of its own, as
+/// [clipTextAttributesBytes] writes it: [colour] and [scale] its own where
+/// given, [face] where not empty.
+typedef ClipTextRunSpec = ({
+  int start,
+  int length,
+  bool bold,
+  bool italic,
+  (int, int, int)? colour,
+  double? scale,
+  String face,
+});
+
+/// A stretch of a text's letters and the one-byte value parameters 12 · 16
+/// · 20 give it (an alignment, an underline, a strike).
+typedef ClipTextFlagSpec = ({int start, int length, int value});
+
+/// A text's `TextLayerAttributes` the way the format notes lay them out
+/// (memory `csp-clip-format-notes` 6-1 §13): `u32 LE id · u32 LE size ·
+/// bytes`, a parameter each — what `clip_lettering.dart` reads. [box] null
+/// writes none; [corners] null writes the box's own, square.
+Uint8List clipTextAttributesBytes({
+  ({int x0, int y0, int x1, int y1})? box = (x0: 0, y0: 0, x1: 10, y1: 10),
+  double points = 12,
+  (int, int, int) colour = (0, 0, 0),
+  String face = 'Face',
+  ({int width, int height})? boxSize,
+  List<ClipTextRunSpec> runs = const [],
+  List<ClipTextFlagSpec> aligns = const [],
+  List<({int start, int length, double spacing})> spacings = const [],
+  List<ClipTextFlagSpec> underlines = const [],
+  List<ClipTextFlagSpec> strikes = const [],
+  double across = 100,
+  List<int>? corners,
+}) {
+  final out = BytesBuilder();
+  void parameter(int id, Uint8List body) => out
+    ..add(_le32(id))
+    ..add(_le32(body.length))
+    ..add(body);
+  Uint8List flags(List<ClipTextFlagSpec> stretches) {
+    final data = ByteData(4 + 14 * stretches.length)
+      ..setUint32(0, stretches.length, Endian.little);
+    for (final (k, stretch) in stretches.indexed) {
+      data
+        ..setInt32(4 + 14 * k, stretch.start, Endian.little)
+        ..setUint32(8 + 14 * k, stretch.length, Endian.little)
+        ..setUint8(16 + 14 * k, stretch.value);
+    }
+    return data.buffer.asUint8List();
+  }
+
+  if (runs.isNotEmpty) {
+    final body = BytesBuilder()..add(_le32(runs.length));
+    for (final run in runs) {
+      final data = ByteData(32 + 2 * run.face.length)
+        ..setInt32(0, run.start, Endian.little)
+        ..setUint32(4, run.length, Endian.little)
+        ..setUint32(8, 28 + 2 * run.face.length, Endian.little)
+        ..setUint8(12, (run.bold ? 1 : 0) | (run.italic ? 2 : 0))
+        ..setUint8(
+          13,
+          (run.colour == null ? 0 : 1) | (run.scale == null ? 0 : 2),
+        )
+        ..setFloat64(20, run.scale ?? 100, Endian.little)
+        ..setUint16(28, run.face.length, Endian.little);
+      if (run.colour case (final r, final g, final b)) {
+        data
+          ..setUint16(14, r * 257, Endian.little)
+          ..setUint16(16, g * 257, Endian.little)
+          ..setUint16(18, b * 257, Endian.little);
+      }
+      for (final (c, unit) in run.face.codeUnits.indexed) {
+        data.setUint16(30 + 2 * c, unit, Endian.little);
+      }
+      body.add(data.buffer.asUint8List());
+    }
+    parameter(11, body.toBytes());
+  }
+  if (aligns.isNotEmpty) {
+    parameter(12, flags(aligns));
+  }
+  if (spacings.isNotEmpty) {
+    final data = ByteData(4 + 30 * spacings.length)
+      ..setUint32(0, spacings.length, Endian.little);
+    for (final (k, stretch) in spacings.indexed) {
+      data
+        ..setInt32(4 + 30 * k, stretch.start, Endian.little)
+        ..setUint32(8 + 30 * k, stretch.length, Endian.little)
+        ..setUint32(12 + 30 * k, 18, Endian.little)
+        ..setFloat64(26 + 30 * k, stretch.spacing, Endian.little);
+    }
+    parameter(13, data.buffer.asUint8List());
+  }
+  if (underlines.isNotEmpty) {
+    parameter(16, flags(underlines));
+  }
+  if (strikes.isNotEmpty) {
+    parameter(20, flags(strikes));
+  }
+  parameter(
+    26,
+    (ByteData(32)..setFloat64(16, across, Endian.little)).buffer.asUint8List(),
+  );
+  if (face.isNotEmpty) {
+    parameter(31, utf8.encode(face));
+  }
+  parameter(
+    32,
+    (ByteData(4)..setInt32(0, (points * 100).round(), Endian.little)).buffer
+        .asUint8List(),
+  );
+  final (r, g, b) = colour;
+  parameter(
+    34,
+    Uint8List.fromList([
+      for (final channel in [r, g, b]) ..._le32(channel * 0x01010101),
+    ]),
+  );
+  if (box != null) {
+    final data = ByteData(16);
+    for (final (k, value) in [box.x0, box.y0, box.x1, box.y1].indexed) {
+      data.setInt32(4 * k, value, Endian.little);
+    }
+    parameter(42, data.buffer.asUint8List());
+    final size =
+        boxSize ?? (width: box.x1 - box.x0, height: box.y1 - box.y0);
+    parameter(
+      63,
+      (ByteData(8)
+            ..setInt32(0, size.width, Endian.little)
+            ..setInt32(4, size.height, Endian.little))
+          .buffer
+          .asUint8List(),
+    );
+    // Clockwise from the top-left, in hundredths of a pixel.
+    final square = [
+      for (final (x, y) in [
+        (box.x0, box.y0),
+        (box.x1, box.y0),
+        (box.x1, box.y1),
+        (box.x0, box.y1),
+      ]) ...[x * 100, y * 100],
+    ];
+    final data64 = ByteData(32);
+    for (final (k, value) in (corners ?? square).indexed) {
+      data64.setInt32(4 * k, value, Endian.little);
+    }
+    parameter(64, data64.buffer.asUint8List());
+  }
+  return out.toBytes();
+}
+
+/// [parts] as a text layer's `…Array` column keeps its second text on:
+/// `u32 LE length · bytes`, again and again.
+Uint8List clipTextArrayBytes(List<List<int>> parts) => (BytesBuilder()
+      ..add([
+        for (final part in parts) ...[..._le32(part.length), ...part],
+      ]))
+    .toBytes();
