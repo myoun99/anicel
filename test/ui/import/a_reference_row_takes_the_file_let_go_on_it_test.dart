@@ -100,7 +100,7 @@ void main() {
               if (!carryNext)
                 MediaAsset(
                   path: paths.next,
-                  name: 'next',
+                  name: mediaAssetDefaultName(paths.next),
                   kind:
                       mediaAssetKindForPath(paths.next) ?? MediaAssetKind.image,
                 ),
@@ -315,7 +315,8 @@ void main() {
       next: 'broken.png',
       nextBytes: const [1, 2, 3, 4],
     );
-    const said = 'broken.png: could not read the file.';
+    // Named as the pool names it (F-376).
+    const said = 'broken: could not read the file.';
 
     await dragOnto(tester, row, next);
     await settle(tester, () => find.text(said).evaluate().isNotEmpty);
@@ -332,13 +333,13 @@ void main() {
       'drop says THAT, not that the file did not read', (tester) async {
     final (:session, :row, :next) = await open(tester, oldGifFrame: 1);
     expect(row.frames.single.filePicture, 1, reason: 'premise');
-    const said = 'next.png: the file has no picture 2.';
+    const said = 'next: the file has no picture 2.';
 
     await dragOnto(tester, row, next);
     await settle(tester, () => find.text(said).evaluate().isNotEmpty);
 
     expect(find.text(said), findsOneWidget);
-    expect(find.text('next.png: could not read the file.'), findsNothing);
+    expect(find.text('next: could not read the file.'), findsNothing);
     expect(session.layerById(row.id), row);
   });
 

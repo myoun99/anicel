@@ -2060,7 +2060,9 @@ void main() {
         inNotice('2 page(s) failed to render — their cels stay empty. (1)'),
         findsOneWidget,
       );
-      expect(inNotice('conte.pdf'), findsOneWidget);
+      // By the name the pool gave it as it came in (F-376) — the flat
+      // Photoshop file above never came in, so it keeps its file's name.
+      expect(inNotice('conte'), findsOneWidget);
     });
 
     testWidgets('F-370-Q1: a cut folder gone before Import is said as a line '

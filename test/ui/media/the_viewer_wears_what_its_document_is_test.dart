@@ -447,6 +447,17 @@ void main() {
       expect(plate('콘티'), findsOneWidget);
       expect(plate('pages'), findsNothing);
     });
+
+    testWidgets('a change that leaves the name as it was draws nothing: the '
+        'viewer hears the session for its name alone', (tester) async {
+      await openPages(tester, pages: 3, project: inThePool);
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'CONTROL');
+
+      session!.notifyChanged();
+
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(plate('pages'), findsOneWidget);
+    });
   });
 
   testWidgets('the floor\'s viewer keeps its transport clear of the panels '
