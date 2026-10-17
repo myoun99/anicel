@@ -40,7 +40,7 @@ class _CanvasSpy implements Canvas {
   final rects = <Rect>[];
   final rrects = <Rect>[];
   final paths = <Path>[];
-  final pathInks = <Color>[];
+  final pathInks = <int>[];
 
   @override
   void drawLine(Offset p1, Offset p2, Paint paint) =>
@@ -55,7 +55,7 @@ class _CanvasSpy implements Canvas {
   @override
   void drawPath(Path path, Paint paint) {
     paths.add(path);
-    pathInks.add(paint.color);
+    pathInks.add(paint.color.toARGB32());
   }
 
   @override
@@ -332,7 +332,7 @@ void main() {
     const frames = 6;
     const mainExtent = cellExtent * frames;
 
-    Future<({Rect wave, Size strip, List<Color> inks})> painted(
+    Future<({Rect wave, Size strip, List<int> inks})> painted(
       WidgetTester tester,
       Axis axis,
     ) async {
@@ -392,7 +392,7 @@ void main() {
       testWidgets('$axis: a red wave running ALONG the flow, in the middle '
           'of its strip across the row', (tester) async {
         final (:wave, :strip, :inks) = await painted(tester, axis);
-        expect(inks, [AppColors.danger]);
+        expect(inks, [AppColors.danger.toARGB32()]);
         expect(wave.center.dx, closeTo(strip.width / 2, 0.01));
         expect(wave.center.dy, closeTo(strip.height / 2, 0.01));
         final (along, across) = axis == Axis.horizontal
