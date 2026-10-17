@@ -39,6 +39,7 @@ void main() {
     required ValueChanged<int>? onTurnTo,
     TurnedPage? page,
     ThemeData? theme,
+    double width = 400,
   }) => tester.pumpWidget(
     MaterialApp(
       theme: theme,
@@ -55,7 +56,7 @@ void main() {
                 : Center(
                     child: SizedBox(
                       key: const ValueKey<String>('band'),
-                      width: 400,
+                      width: width,
                       height: band.height,
                       child: band.child,
                     ),
@@ -225,23 +226,24 @@ void main() {
     );
   });
 
-  testWidgets('the readout turns one page per 8px of drag, and a typed '
-      '"3/7" or "3" means page three', (tester) async {
+  testWidgets('the readout turns one page per 8px of drag from the page it '
+      'shows, and a typed "3/7" or "3" means page three', (tester) async {
     final turns = <int>[];
-    await pump(tester, pageIndex: 0, pageCount: 7, onTurnTo: turns.add);
+    await pump(tester, pageIndex: 3, pageCount: 7, onTurnTo: turns.add);
 
     // 20px from the first pixel — the readout has no tap left to keep
-    // apart from a drag — at ⅛ page per pixel is two whole pages. The
-    // harness never rebuilds, so each report is a delta off page 0.
+    // apart from a drag — at ⅛ page per pixel is two whole pages on from
+    // page four. The harness never rebuilds, so each report is a delta off
+    // page four.
     await tester.drag(find.byKey(readout), const Offset(20, 0));
     await tester.pumpAndSettle();
-    expect(turns.fold<int>(0, (sum, turn) => sum + turn), 2);
+    expect(turns.fold<int>(0, (sum, turn) => sum + turn - 3), 2);
 
     // A press on the readout that does not move turns nothing.
-    final turned = turns.length;
+    turns.clear();
     await tester.tap(find.byKey(readout));
     await tester.pumpAndSettle();
-    expect(turns, hasLength(turned));
+    expect(turns, isEmpty);
     expect(find.byKey(input), findsNothing);
 
     // Its pencil types one.
@@ -250,14 +252,33 @@ void main() {
     await tester.enterText(find.byKey(input), '3/7');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(turns.last, 2, reason: 'page three is index 2');
+    expect(turns, [2], reason: 'page three is index 2');
 
+    turns.clear();
     await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(input), '5');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(turns.last, 4);
+    expect(turns, [4]);
+  });
+
+  testWidgets('a band narrower than the turner holds the whole of it, '
+      'smaller — no control runs off it', (tester) async {
+    await pump(
+      tester,
+      pageIndex: 0,
+      pageCount: 3,
+      onTurnTo: (_) {},
+      width: 60,
+    );
+    expect(tester.takeException(), isNull);
+    final band = tester.getRect(find.byKey(const ValueKey<String>('band')));
+    for (final key in [prev, readout, next, pencil]) {
+      final rect = tester.getRect(find.byKey(key));
+      expect(rect.left, greaterThanOrEqualTo(band.left - 0.01));
+      expect(rect.right, lessThanOrEqualTo(band.right + 0.01));
+    }
   });
 
   testWidgets('with nowhere to turn to the turner stays MOUNTED and inert: '

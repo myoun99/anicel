@@ -126,6 +126,35 @@ void main() {
               'overflow',
         );
       });
+
+      testWidgets('the colour readout holds every hex and every channel it '
+          'can write — each digit and letter six times over', (tester) async {
+        atTextScale(tester, scale);
+        // 🔬In BIZ UDPGothic C and D stand wider than the digits, and three
+        // digits of a channel wider than the 22 drawn for them.
+        for (final glyph in '0123456789ABCDEF'.split('')) {
+          final hex = '#${glyph * 6}';
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: buildAppTheme(),
+              home: Scaffold(
+                body: Center(
+                  child: SizedBox(
+                    width: 600,
+                    child: ColorStatusBar(
+                      color: int.parse('FF${glyph * 6}', radix: 16),
+                      onColorChanged: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          final readout = find.byType(ColorStatusBar);
+          expect(wordsCutOff(readout), isEmpty, reason: hex);
+          expect(wordsCutAcross(readout), isEmpty, reason: hex);
+        }
+      });
     });
   }
 

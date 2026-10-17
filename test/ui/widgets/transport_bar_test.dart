@@ -5,7 +5,9 @@ import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
+import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/words_cut_off.dart';
 
 /// The shared transport. Two things are pinned here, because every surface
 /// that runs in time relies on them without re-testing them:
@@ -32,9 +34,11 @@ void main() {
     TransportRange? range,
     TransportSound? sound,
     double width = barWidth,
+    ThemeData? theme,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: theme,
         home: Scaffold(
           body: Center(
             child: SizedBox(
@@ -173,6 +177,33 @@ void main() {
       expect(
         TransportBar.heightIn(context, range: true),
         greaterThan(TransportBar.heightIn(context, range: false)),
+      );
+    });
+
+    testWidgets('🚨under a bigger OS text size the row of buttons grows with '
+        'its words — none is cut off, and the bar still stands as tall as '
+        'it says', (tester) async {
+      // text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
+      // 따라 자란다」), in the app's own face: the test font's lines are
+      // other heights. A book's page turner stands in this row's height
+      // (F-383).
+      await loadTheAppFaces();
+      final theme = ThemeData(fontFamily: AppTypography.bundledFamily);
+      await pump(tester, frameCount: 96, range: span(0, 95), theme: theme);
+      final atOne = TransportBar.buttonRowHeightIn(
+        tester.element(find.byType(TransportBar)),
+      );
+
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pump(tester, frameCount: 96, range: span(0, 95), theme: theme);
+      final bar = find.byType(TransportBar);
+      final context = tester.element(bar);
+      expect(TransportBar.buttonRowHeightIn(context), greaterThan(atOne));
+      expect(wordsCutOff(bar), isEmpty);
+      expect(
+        tester.getSize(bar).height,
+        TransportBar.heightIn(context, range: true),
       );
     });
 
