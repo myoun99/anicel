@@ -795,51 +795,65 @@ class ExportCelsBand extends StatelessWidget {
   /// What is laid over the drawing shown, at the band's far end: the
   /// caption, a pill a direction drawing, CAM and 「가이드」 — that one in
   /// [guideInk], the colour the canvas draws the guides in. The caption and
-  /// the pills give width up before the band runs over.
-  Widget _laying(Color guideInk) => Row(
-    mainAxisAlignment: MainAxisAlignment.end,
-    children: [
-      const Flexible(child: _LayDirectionCaption()),
-      const SizedBox(width: 8),
-      // A cut with no direction drawing has nothing to offer here: the
-      // caption keeps the band's shape.
-      if (directions.isNotEmpty)
-        Flexible(
+  /// the direction pills give width up first; CAM and 「가이드」 keep their
+  /// words while the band has the room for them, and give width up last —
+  /// the wider word first — so the band never runs over.
+  ///
+  /// ⚠️In the tests' narrowest window the band's end is 73.8 px wide: CAM
+  /// alone fits it, and with 「가이드」 beside it the two ran 77 px over
+  /// (I-105, 2026-10-17).
+  Widget _laying(Color guideInk) => LayoutBuilder(
+    builder: (context, room) => Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        const Flexible(child: _LayDirectionCaption()),
+        const SizedBox(width: 8),
+        // A cut with no direction drawing has nothing to offer here: the
+        // caption keeps the band's shape.
+        if (directions.isNotEmpty)
+          Flexible(
+            child: PillStrip(
+              items: [
+                for (final direction in directions)
+                  PillItem(
+                    keyValue: direction.keyValue,
+                    label: direction.name,
+                    tooltip: direction.fullName,
+                    selected: direction.laid,
+                    tone: exportLaidDirectionInk,
+                    onTap: direction.onPressed,
+                  ),
+              ],
+            ),
+          ),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          // All the room but the two gaps before it.
+          constraints: BoxConstraints(
+            maxWidth: room.maxWidth > 16 ? room.maxWidth - 16 : 0,
+          ),
           child: PillStrip(
             items: [
-              for (final direction in directions)
-                PillItem(
-                  keyValue: direction.keyValue,
-                  label: direction.name,
-                  tooltip: direction.fullName,
-                  selected: direction.laid,
-                  tone: exportLaidDirectionInk,
-                  onTap: direction.onPressed,
-                ),
+              PillItem(
+                keyValue: 'export-cels-cam',
+                label: 'CAM',
+                tooltip: AppText.strings.tlKindCamera,
+                selected: camera.laid,
+                tone: exportLaidCameraInk,
+                onTap: camera.onPressed,
+              ),
+              PillItem(
+                keyValue: 'export-cels-guides',
+                label: AppText.strings.exLayGuides,
+                selected: guides.laid,
+                tone: guideInk,
+                onTap: guides.onPressed,
+              ),
             ],
           ),
         ),
-      const SizedBox(width: 8),
-      PillStrip(
-        items: [
-          PillItem(
-            keyValue: 'export-cels-cam',
-            label: 'CAM',
-            tooltip: AppText.strings.tlKindCamera,
-            selected: camera.laid,
-            tone: exportLaidCameraInk,
-            onTap: camera.onPressed,
-          ),
-          PillItem(
-            keyValue: 'export-cels-guides',
-            label: AppText.strings.exLayGuides,
-            selected: guides.laid,
-            tone: guideInk,
-            onTap: guides.onPressed,
-          ),
-        ],
-      ),
-    ],
+      ],
+    ),
   );
 }
 

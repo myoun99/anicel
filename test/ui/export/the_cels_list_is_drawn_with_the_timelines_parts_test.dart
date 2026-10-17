@@ -739,11 +739,12 @@ void main() {
       String caption() =>
           tester.widget<Text>(keyed('export-cels-lay-caption')).data!;
 
-      // The band's room as the board had it before its attach column — on
-      // a surface wide enough to hold it.
+      // The band's room as the board had it before its attach column, and
+      // before 「가이드」 stood beside CAM (I-105) — on a surface wide
+      // enough to hold it.
       await tester.binding.setSurfaceSize(const Size(1400, 600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await pumpBoard(tester, width: 800 + ExportCelsBoard.stackWidth);
+      await pumpBoard(tester, width: 1000 + ExportCelsBoard.stackWidth);
       expect(caption(), strings.exLayDirection);
       expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
 

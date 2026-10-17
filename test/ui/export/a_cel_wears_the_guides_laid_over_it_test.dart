@@ -262,11 +262,14 @@ void main() {
       'a mark covers a pixel whole, the guide\'s line does not show through '
       'it', (tester) async {
     await tester.runAsync(() async {
-      // The first key's cross sits on the eye level.
+      // The first key's cross sits on the eye level. It stands half a
+      // pixel across, as do its frame's upright edges: there a line 1.6 or
+      // 1.8 wide covers a column whole, where on a pixel's edge it covers
+      // none.
       final session = sessionOf(
         [shown],
         keys: {
-          0: CameraPose(center: CanvasPoint(x: 200, y: 200)),
+          0: CameraPose(center: CanvasPoint(x: 200.5, y: 200)),
           3: CameraPose(center: CanvasPoint(x: 440, y: 440)),
         },
       );
