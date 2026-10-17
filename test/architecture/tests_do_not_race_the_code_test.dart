@@ -69,24 +69,8 @@ void main() {
     for (final file in testFiles()) {
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i += 1) {
-        final line = lines[i];
-        if (!line.contains('.delayed(')) {
-          continue;
-        }
-        // `await Future.delayed(d)` just waits — the test is not running
-        // while it does, so nothing can race it. What bites is the two-arg
-        // form left unawaited: it hands work to the clock and carries on.
-        final trimmed = line.trimLeft();
-        if (trimmed.startsWith('await ') ||
-            trimmed.startsWith('//') ||
-            trimmed.startsWith('///') ||
-            line.contains('=> Future') ||
-            line.contains('return Future')) {
-          continue;
-        }
-        // The call read whole, however many lines it runs over.
-        if (_delayedTakesAComputation(lines.sublist(i).join('\n'))) {
-          offenders.add('${file.path}:${i + 1}: ${line.trim()}');
+        if (_timerStartsAt(lines, i)) {
+          offenders.add('${file.path}:${i + 1}: ${lines[i].trim()}');
         }
       }
     }
@@ -98,6 +82,46 @@ void main() {
           'the right order. Cause it from inside the seam the code calls '
           'instead — see the doc above this test.',
     );
+  });
+
+  test('premise: the timer scan reads the call whole', () {
+    // Its computation five lines down, past where a window of four lines
+    // stopped; and a comma that only ends the last argument.
+    const late = [
+      'Future<void>.delayed(',
+      '  const Duration(',
+      '    seconds: 0,',
+      '    milliseconds: 8,',
+      '  ),',
+      '  () => landed = true,',
+      ');',
+    ];
+    const plain = [
+      'unawaited(Future<void>.delayed(',
+      '  const Duration(milliseconds: 8),',
+      '));',
+    ];
+    expect(_timerStartsAt(late, 0), isTrue, reason: late.join());
+    expect(_timerStartsAt(plain, 0), isFalse, reason: plain.join());
+  });
+
+  test('premise: the poll scan reads a loop past its header', () {
+    // A closure in the condition is the condition's, not the loop's block;
+    // a `do` opens its block before any call.
+    const counted = [
+      'for (var t = 0; t < 9 && !seen.any((p) { return p; }); t += 1) {',
+      '  await tester.runAsync(() => Future<void>.delayed(beat));',
+      '}',
+    ];
+    const deadline = [
+      'do {',
+      '  tries.add(1);',
+      '  await tester.runAsync(() => Future<void>.delayed(beat));',
+      '  if (DateTime.now().isAfter(until)) break;',
+      '} while (seen.isEmpty);',
+    ];
+    expect(_pollStartsAt(counted, 0), isTrue, reason: counted.first);
+    expect(_pollStartsAt(deadline, 0), isTrue, reason: deadline.first);
   });
 
   /// 🚨**A POLL WAITS BY THE CLOCK, NOT BY A COUNT OF ROUNDS** (card
@@ -288,6 +312,28 @@ bool _ownCeiling(String line) {
   final trimmed = line.trim();
   return !trimmed.startsWith('//') &&
       (trimmed.contains('.timeout(') || trimmed.contains('patience:'));
+}
+
+/// Whether a timer left unawaited starts at [lines]' [at]: a `.delayed(…)`
+/// that hands the clock a computation, read whole however many lines it
+/// runs over.
+bool _timerStartsAt(List<String> lines, int at) {
+  final line = lines[at];
+  if (!line.contains('.delayed(')) {
+    return false;
+  }
+  // `await Future.delayed(d)` just waits — the test is not running while it
+  // does, so nothing can race it. What bites is the two-arg form left
+  // unawaited: it hands work to the clock and carries on.
+  final trimmed = line.trimLeft();
+  if (trimmed.startsWith('await ') ||
+      trimmed.startsWith('//') ||
+      trimmed.startsWith('///') ||
+      line.contains('=> Future') ||
+      line.contains('return Future')) {
+    return false;
+  }
+  return _delayedTakesAComputation(lines.sublist(at).join('\n'));
 }
 
 /// Whether a `.delayed(…)` call passes a SECOND argument — the computation
