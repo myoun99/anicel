@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -10,7 +11,10 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/surface_region_picture.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/cel_text_fixture.dart' show textOf;
@@ -423,6 +427,146 @@ void main() {
           reason: 'the queue had its turn after each of the three runs, '
               'and at no other tile',
         );
+      });
+    });
+  });
+
+  group('made now, for a row that was on screen', () {
+    // The test runner draws its pictures (Skia) and has no upload made
+    // now: the door's own drawing stands in for it.
+    tearDown(() => debugWholePictureUploader = null);
+
+    ({PositionedSurfaceImage deferred, Future<ui.Image>? real}) madeNow(
+      BitmapSurface surface,
+      BitmapTileImageCache reuse,
+    ) => composePositionedSurfaceImageSync(
+      surface,
+      reuse: reuse,
+      makePictures: true,
+      snapshot: true,
+      over: lies,
+    )!;
+
+    Future<Uint8List> rasteredNow(BitmapSurface surface) async {
+      debugRastersPastTheWall = true;
+      final rastered = madeNow(surface, BitmapTileImageCache());
+      debugRastersPastTheWall = false;
+      final kept = await rastered.real!;
+      rastered.deferred.image.dispose();
+      try {
+        return await bytesOf(kept);
+      } finally {
+        kept.dispose();
+      }
+    }
+
+    testWidgets('past the wall it is made from its bytes, in memory of its '
+        'own — the raster\'s picture, no tile pictured, and kept as it is', (
+      tester,
+    ) async {
+      if (engineMissing()) {
+        return;
+      }
+      await tester.runAsync(() async {
+        final surface = pastTheWallWithAText();
+        final shown = celSurfaceWithTextsLaid(surface);
+        Uint8List? premultiplied;
+        debugWholePictureUploader = (bytes) {
+          premultiplied = bytes.readPremultiplied(Uint8List.fromList);
+          return pictureOf(bytes);
+        };
+        final reuse = BitmapTileImageCache();
+
+        final now = madeNow(surface, reuse);
+
+        expect(debugComposesFromBytes, 1);
+        expect(
+          premultiplied,
+          SurfaceRegionBytes(
+            shown,
+            DirtyRegion.wholePixelsOf(lies),
+          ).readPremultiplied(Uint8List.fromList),
+          reason: 'the door\'s bytes, premultiplied where they lie',
+        );
+        expect(
+          shown.tiles.values.where((tile) => reuse.imageFor(tile) != null),
+          isEmpty,
+          reason: 'no tile was pictured for it',
+        );
+        expect(now.deferred.worldRect, lies);
+        final want = await rasteredNow(surface);
+        expect(await bytesOf(now.deferred.image), want);
+        final kept = await now.real!;
+        now.deferred.image.dispose();
+        expect(
+          await bytesOf(kept),
+          want,
+          reason: 'the one kept is the same picture, on a handle of its own',
+        );
+        kept.dispose();
+      });
+    });
+
+    testWidgets('a row that was NOT on screen is not made now past the wall '
+        '— not even with every tile pictured — but inside it, it is', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        for (final (surface, over, made) in [
+          (laid(-48, 64, lies: lies), lies, false),
+          (laid(-16, 32), const ui.Rect.fromLTRB(-16, 0, 32, 16), true),
+        ]) {
+          final reuse = BitmapTileImageCache();
+          for (final tile in surface.tiles.values) {
+            reuse.pictureFor(tile);
+          }
+          final composed = composePositionedSurfaceImageSync(
+            surface,
+            reuse: reuse,
+            makePictures: false,
+            snapshot: false,
+            over: over,
+          );
+          expect(composed != null, made, reason: '$over');
+          composed?.deferred.image.dispose();
+        }
+        expect(debugComposesFromBytes, 0);
+      });
+    });
+
+    testWidgets('an upload refused, or come back another size, is the '
+        'raster, as it always was', (tester) async {
+      await tester.runAsync(() async {
+        final surface = pastTheWallWithAText();
+        final want = await rasteredNow(surface);
+        for (final (refusal, upload) in <(String, ui.Image? Function())>[
+          ('refused', () => null),
+          (
+            'another size',
+            () => pictureOf(
+              SurfaceRegionBytes(
+                surface,
+                DirtyRegion(
+                  left: 0,
+                  top: 0,
+                  rightExclusive: 16,
+                  bottomExclusive: 16,
+                ),
+              ),
+            ),
+          ),
+        ]) {
+          debugComposesFromBytes = 0;
+          debugWholePictureUploader = (_) => upload();
+          final now = madeNow(surface, BitmapTileImageCache());
+
+          expect(debugComposesFromBytes, 1, reason: 'premise: $refusal');
+          expect(await bytesOf(now.deferred.image), want, reason: refusal);
+          final kept = await now.real!;
+          expect(await bytesOf(kept), want, reason: refusal);
+          now.deferred.image.dispose();
+          kept.dispose();
+        }
       });
     });
   });

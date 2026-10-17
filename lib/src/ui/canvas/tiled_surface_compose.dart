@@ -16,6 +16,7 @@ import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
 import '../../models/tiles_covering.dart';
 import '../../core/dev_profile.dart';
+import '../../core/sync_image_upload.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -168,8 +169,8 @@ const Duration tilePictureRun = Duration(milliseconds: 2);
 @visibleForTesting
 int Function()? debugTilePictureClock;
 
-/// How many composes were made from their tiles' bytes
-/// ([_composedFromBytes]) — a test's count.
+/// How many composes set out from their tiles' bytes
+/// ([_composedFromBytes], [_composedFromBytesNow]) — a test's count.
 @visibleForTesting
 int debugComposesFromBytes = 0;
 
@@ -637,10 +638,95 @@ Future<ui.Image?> _uploadedOrRastered(
   return rastered();
 }
 
+/// [surface]'s pixels over [over] made from its tiles' bytes inside the
+/// call — [_composedFromBytes]'s synchronous twin, for a row that was on
+/// screen and may not go blank (`_composeSync`): premultiplied into memory
+/// of its own ([_BytesOfItsOwn]) and uploaded now
+/// ([wholePictureUploadedOrNull]). Null where this engine has no upload of
+/// that kind (Skia), refuses this one, or hands back another size — the
+/// caller rasters, as it always did.
+///
+/// 🚨★★★PAST THE WALL A ROW ON SCREEN IS MADE FROM ITS BYTES TOO (F-374-Q8
+/// ⑦, 2026-10-18). 🔬Measured on the Windows app (Surface Pro 11, profile
+/// build, a throwaway probe), an A3 600dpi scan laid whole (7040×9984,
+/// 4290 tiles): the raster made in the call took 155 ms there and 772 ms
+/// more to be shown, at +3.7 GB — and left 268 MB of tile pictures behind
+/// it, one a tile; made from its bytes, 261 ms and 520 ms at +0.8 GB, with
+/// no tile pictured, the same bytes.
+/// ⚠️IT HAS NO MIP CHAIN — a raster's snapshot has one — and is KEPT as it
+/// is: a cel's picture is drawn at `none` or `low` alone
+/// ([filterQualityForDisplayScale]: the stack, the camera, a group's raster
+/// — `medium` and `high` draw sheets and files' images, never a cel's), and
+/// there the two are the same pixels. A cel's picture drawn at `medium`
+/// would show the difference: make that one from [_composedFromBytes].
+/// ⛔NOT ON THE FREE ROAD ([composePositionedSurfaceImageSync]'s
+/// `makePictures` false): a picture this big is no free compose — its
+/// bytes in the call, or a raster of every tile's picture at 9–15 times
+/// the image — so a row that was not on screen arrives from the
+/// asynchronous road, as such rows always have.
+ui.Image? _composedFromBytesNow(BitmapSurface surface, ui.Rect over) {
+  debugComposesFromBytes += 1;
+  final bytes = SurfaceRegionBytes(
+    _shownBy(surface),
+    DirtyRegion.wholePixelsOf(over),
+  );
+  final image = wholePictureUploadedOrNull(_BytesOfItsOwn(bytes));
+  if (image == null ||
+      image.width == bytes.width && image.height == bytes.height) {
+    return image;
+  }
+  image.dispose();
+  return null;
+}
+
+/// [bytes] premultiplied into memory of this read's own where the engine
+/// premultiplies them — not into its scratch ([SurfaceRegionBytes]'s),
+/// which grows to the biggest picture it ever held and keeps that much.
+class _BytesOfItsOwn implements PictureBytes {
+  _BytesOfItsOwn(this.bytes);
+
+  final SurfaceRegionBytes bytes;
+
+  @override
+  int get width => bytes.width;
+
+  @override
+  int get height => bytes.height;
+
+  @override
+  T readStraight<T>(T Function(Uint8List straight) use) =>
+      bytes.readStraight(use);
+
+  @override
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
+    final native = QaNativeEngine.instance;
+    if (native == null) {
+      return bytes.readPremultiplied(use);
+    }
+    final byteLength = width * height * 4;
+    final target = calloc<Uint8>(byteLength);
+    try {
+      for (final tile in tilesCovering(bytes.surface, bytes.region)) {
+        bytes.premultiplyInto(native, tile, target);
+      }
+      return use(target.asTypedList(byteLength));
+    } finally {
+      calloc.free(target);
+    }
+  }
+}
+
 /// The synchronous positioned compose — the layer stack's, for the frame a
 /// row changes route or content ([_composeSync] says what [makePictures]
-/// and [snapshot] mean; [over] is the async twin's). Null only when
-/// [makePictures] is false and a tile has no picture.
+/// and [snapshot] mean; [over] is the async twin's). Null when
+/// [makePictures] is false and a tile has no picture — and past the wall
+/// whenever it is false.
+///
+/// Past the wall the picture is made from its tiles' bytes
+/// ([_composedFromBytesNow]): no recording is rastered, so what comes back
+/// as "deferred" is a plain picture already, and [snapshot]'s is a handle
+/// of its own on the same picture — the holder's swap retires the handle it
+/// replaces, and nothing else was pinned.
 ({PositionedSurfaceImage deferred, Future<ui.Image>? real})?
 composePositionedSurfaceImageSync(
   BitmapSurface surface, {
@@ -650,6 +736,18 @@ composePositionedSurfaceImageSync(
   ui.Rect? over,
 }) {
   final worldRect = _composedOver(surface, over);
+  if (_reachesPastTheWall(surface, worldRect) && !debugRastersPastTheWall) {
+    if (!makePictures) {
+      return null;
+    }
+    final now = _composedFromBytesNow(surface, worldRect);
+    if (now != null) {
+      return (
+        deferred: PositionedSurfaceImage(image: now, worldRect: worldRect),
+        real: snapshot ? Future.value(now.clone()) : null,
+      );
+    }
+  }
   final composed = _composeSync(
     surface,
     reuse: reuse,
