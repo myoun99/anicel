@@ -34,13 +34,20 @@ class _LinesSetting implements _TextSetting {
   /// press are measured on.
   TextPainter get _fill => _letters.fill;
 
+  /// The lines the letters wear, where they are drawn.
+  late final CanvasLetterLines _lines = canvasLetterLinesOf(
+    _fill,
+    _runsOf(_content),
+    at: _lettersAt,
+  );
+
   @override
   void paintBoxBehind(ui.Canvas canvas, ui.Rect box, int argb) =>
       _letters.paintBoxBehind(canvas, box, argb);
 
   @override
   void paint(ui.Canvas canvas, {required ui.Rect within}) =>
-      _letters.paintAt(canvas, _lettersAt, within: within);
+      _letters.paintAt(canvas, _lettersAt, within: within, lines: _lines);
 
   /// A hairline as tall as its line.
   @override
@@ -120,6 +127,17 @@ _LinesSetting _linesOf(
       ),
     ),
   );
+}
+
+/// [content]'s runs, where each stands in its text.
+List<CanvasLetterRun> _runsOf(CelTextContent content) {
+  final runs = <CanvasLetterRun>[];
+  var at = 0;
+  for (final span in content.spans) {
+    runs.add((start: at, end: at + span.text.length, letters: span.style));
+    at += span.text.length;
+  }
+  return runs;
 }
 
 /// [content]'s letters as the engine sets them, each run in the style

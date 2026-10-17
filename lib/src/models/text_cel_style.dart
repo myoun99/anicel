@@ -20,6 +20,9 @@ class TextLetterStyle {
     this.fontFamily,
     this.fontSize = 48,
     this.bold = false,
+    this.italic = false,
+    this.underline = false,
+    this.strikethrough = false,
     this.letterSpacing = 0,
     this.color = 0xFF000000,
     this.outlineColor,
@@ -37,6 +40,19 @@ class TextLetterStyle {
   final double fontSize;
 
   final bool bold;
+
+  /// Whether the letters LEAN, and whether a line runs under them or
+  /// through them — settings of letters as [bold] is, one run of letters
+  /// at a time.
+  ///
+  /// 🗣️유저 2026-10-17 (card text-letters-lean-and-underline): 「기울임/밑줄
+  /// 같은것도 어차피 넣어야할 기능이니까 넣도록」 — met where a CSP text
+  /// layer comes in and loses what the app could not say once it is edited
+  /// (`clip_lettering.dart`). Q1 (10-17), of how far 「같은 것」 reaches:
+  /// 「일곱 전부」 — these three first.
+  final bool italic;
+  final bool underline;
+  final bool strikethrough;
 
   /// Fixed em tracking in canvas pixels (the SE "fit" distribution is a
   /// different, extent-driven axis and stays out of the style).
@@ -68,6 +84,9 @@ class TextLetterStyle {
     Object? fontFamily = _sentinel,
     double? fontSize,
     bool? bold,
+    bool? italic,
+    bool? underline,
+    bool? strikethrough,
     double? letterSpacing,
     int? color,
     Object? outlineColor = _sentinel,
@@ -80,6 +99,9 @@ class TextLetterStyle {
           : fontFamily as String?,
       fontSize: fontSize ?? this.fontSize,
       bold: bold ?? this.bold,
+      italic: italic ?? this.italic,
+      underline: underline ?? this.underline,
+      strikethrough: strikethrough ?? this.strikethrough,
       letterSpacing: letterSpacing ?? this.letterSpacing,
       color: color ?? this.color,
       outlineColor: identical(outlineColor, _sentinel)
@@ -94,6 +116,9 @@ class TextLetterStyle {
     if (fontFamily != null) 'fontFamily': fontFamily,
     'fontSize': fontSize,
     if (bold) 'bold': bold,
+    if (italic) 'italic': italic,
+    if (underline) 'underline': underline,
+    if (strikethrough) 'strikethrough': strikethrough,
     if (letterSpacing != 0) 'letterSpacing': letterSpacing,
     'color': color,
     if (outlineColor != null) 'outlineColor': outlineColor,
@@ -106,6 +131,9 @@ class TextLetterStyle {
       fontFamily: json['fontFamily'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 48,
       bold: json['bold'] as bool? ?? false,
+      italic: json['italic'] as bool? ?? false,
+      underline: json['underline'] as bool? ?? false,
+      strikethrough: json['strikethrough'] as bool? ?? false,
       letterSpacing: (json['letterSpacing'] as num?)?.toDouble() ?? 0,
       color: json['color'] as int? ?? 0xFF000000,
       outlineColor: json['outlineColor'] as int?,
@@ -120,6 +148,9 @@ class TextLetterStyle {
       other.fontFamily == fontFamily &&
       other.fontSize == fontSize &&
       other.bold == bold &&
+      other.italic == italic &&
+      other.underline == underline &&
+      other.strikethrough == strikethrough &&
       other.letterSpacing == letterSpacing &&
       other.color == color &&
       other.outlineColor == outlineColor &&
@@ -141,6 +172,9 @@ class TextLetterStyle {
     fontFamily,
     fontSize,
     bold,
+    italic,
+    underline,
+    strikethrough,
     letterSpacing,
     color,
     outlineColor,
@@ -163,6 +197,9 @@ class TextCelStyle extends TextLetterStyle {
     super.fontFamily,
     super.fontSize,
     super.bold,
+    super.italic,
+    super.underline,
+    super.strikethrough,
     super.letterSpacing,
     this.align = TextCelAlign.center,
     super.color = 0xFF202020,
@@ -186,6 +223,9 @@ class TextCelStyle extends TextLetterStyle {
     Object? fontFamily = TextLetterStyle._sentinel,
     double? fontSize,
     bool? bold,
+    bool? italic,
+    bool? underline,
+    bool? strikethrough,
     double? letterSpacing,
     TextCelAlign? align,
     int? color,
@@ -200,6 +240,9 @@ class TextCelStyle extends TextLetterStyle {
           : fontFamily as String?,
       fontSize: fontSize ?? this.fontSize,
       bold: bold ?? this.bold,
+      italic: italic ?? this.italic,
+      underline: underline ?? this.underline,
+      strikethrough: strikethrough ?? this.strikethrough,
       letterSpacing: letterSpacing ?? this.letterSpacing,
       align: align ?? this.align,
       color: color ?? this.color,
@@ -219,6 +262,9 @@ class TextCelStyle extends TextLetterStyle {
     if (fontFamily != null) 'fontFamily': fontFamily,
     'fontSize': fontSize,
     if (bold) 'bold': bold,
+    if (italic) 'italic': italic,
+    if (underline) 'underline': underline,
+    if (strikethrough) 'strikethrough': strikethrough,
     if (letterSpacing != 0) 'letterSpacing': letterSpacing,
     'align': align.jsonValue,
     'color': color,
@@ -233,6 +279,9 @@ class TextCelStyle extends TextLetterStyle {
       fontFamily: json['fontFamily'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 48,
       bold: json['bold'] as bool? ?? false,
+      italic: json['italic'] as bool? ?? false,
+      underline: json['underline'] as bool? ?? false,
+      strikethrough: json['strikethrough'] as bool? ?? false,
       letterSpacing: (json['letterSpacing'] as num?)?.toDouble() ?? 0,
       align: TextCelAlign.fromJson(json['align'] as String?),
       color: json['color'] as int? ?? 0xFF202020,

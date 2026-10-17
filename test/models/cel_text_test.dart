@@ -237,7 +237,52 @@ void main() {
       'the outline colour': const TextLetterStyle(outlineColor: 0xFFFFFFFF),
       'the outline width': const TextLetterStyle(outlineWidth: 2),
       'the smoothing': const TextLetterStyle(antialias: false),
+      'the lean': const TextLetterStyle(italic: true),
+      'the line under': const TextLetterStyle(underline: true),
+      'the line through': const TextLetterStyle(strikethrough: true),
     };
+
+    test('🚨an upright, bare letter writes NO word of its lean or its lines: '
+        'what a file written before them says of a letter is what an '
+        'upright, bare one says', () {
+      final json = const TextLetterStyle().toJson();
+      for (final word in ['italic', 'underline', 'strikethrough']) {
+        expect(json.containsKey(word), isFalse, reason: word);
+      }
+      expect(
+        const TextLetterStyle(
+          italic: true,
+          underline: true,
+          strikethrough: true,
+        ).toJson(),
+        {
+          'fontSize': 48.0,
+          'italic': true,
+          'underline': true,
+          'strikethrough': true,
+          'color': 0xFF000000,
+        },
+      );
+    });
+
+    test('a leaning, lined letter stays so through a change of anything '
+        'else', () {
+      const lined = TextLetterStyle(
+        italic: true,
+        underline: true,
+        strikethrough: true,
+      );
+      final bigger = lined.copyWith(fontSize: 12, bold: true);
+
+      expect(
+        (bigger.italic, bigger.underline, bigger.strikethrough),
+        (true, true, true),
+      );
+      expect(
+        lined.copyWith(italic: false, underline: false, strikethrough: false),
+        const TextLetterStyle(),
+      );
+    });
 
     for (final entry in changes.entries) {
       test('${entry.key} — changed, it is another style; written and read '
@@ -286,6 +331,27 @@ void main() {
         const TextCelStyle().toJson().containsKey('antialias'),
         isFalse,
       );
+    });
+
+    test('🚨an SE tag style carries its letters\' lean and lines through a '
+        'copy and through a file, as it carries their weight', () {
+      for (final lined in const [
+        TextCelStyle(italic: true),
+        TextCelStyle(underline: true),
+        TextCelStyle(strikethrough: true),
+      ]) {
+        expect(lined, isNot(const TextCelStyle()));
+        expect(
+          lined.copyWith(fontSize: 72).copyWith(fontSize: lined.fontSize),
+          lined,
+        );
+        expect(TextCelStyle.fromJson(throughJson(lined.toJson())), lined);
+        expect(lined.hashCode, isNot(const TextCelStyle().hashCode));
+      }
+      final json = const TextCelStyle().toJson();
+      for (final word in ['italic', 'underline', 'strikethrough']) {
+        expect(json.containsKey(word), isFalse, reason: word);
+      }
     });
   });
 

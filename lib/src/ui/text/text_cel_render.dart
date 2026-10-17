@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
+import 'canvas_letter_lines.dart';
 import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
 
@@ -30,10 +31,12 @@ class TextCelLayout {
     required this.inkBounds,
     required this.topLeft,
     required CanvasLetterPasses<TextPainter> letters,
+    required CanvasLetterLines lines,
     required this.style,
     required this.pad,
     required this.textSize,
-  }) : _letters = letters;
+  }) : _letters = letters,
+       _lines = lines;
 
   /// The block's painted extent in canvas coordinates — text bounds plus
   /// the background box / outline, snapped to whole pixels so a bake's
@@ -54,6 +57,9 @@ class TextCelLayout {
   /// The letters, set for drawing — stroke under fill, smooth or hard
   /// (the passes a text on a cel is drawn in too).
   final CanvasLetterPasses<TextPainter> _letters;
+
+  /// The lines they wear, where they are drawn.
+  final CanvasLetterLines _lines;
 
   /// Draws at the layout's canvas coordinates — the caller sets up any
   /// viewport/camera transform first.
@@ -79,6 +85,7 @@ class TextCelLayout {
       canvas,
       topLeft,
       within: inkBounds.inflate(style.fontSize),
+      lines: _lines,
     );
   }
 
@@ -165,6 +172,19 @@ TextCelLayout layoutTextCel({
     ),
     topLeft: topLeft,
     letters: passes,
+    // The tag's one run, at the size it is drawn — a shrunk tag's lines
+    // shrink with its letters.
+    lines: canvasLetterLinesOf(
+      passes.fill,
+      [
+        (
+          start: 0,
+          end: content.text.length,
+          letters: style.copyWith(fontSize: drawnSize),
+        ),
+      ],
+      at: topLeft,
+    ),
     style: style,
     pad: pad,
     textSize: textSize,

@@ -32,9 +32,10 @@ import 'tool_settings_section.dart';
 /// like every other tool's (유저: 툴 설정은 툴 설정 패널에).
 ///
 /// The layout is the one 유저 took on 2026-10-06, top to bottom: the text in
-/// hand and its delete · **글자** — face, size, tracking, bold, colour,
-/// outline, outline width, and the smoothing of their edges (유저: 「2차에서
-/// 스위치로 넣음」) · **상자** — the way it is written (가로 · 세로,
+/// hand and its delete · **글자** — face, size, tracking, bold (and beside
+/// it the lean and the two lines, 유저 10-17), colour, outline, outline
+/// width, and the smoothing of their edges (유저: 「2차에서 스위치로 넣음」)
+/// · **상자** — the way it is written (가로 · 세로,
 /// 유저: 「세로쓰기 … 그거 통합하면서 진행」), alignment, box width, line spacing,
 /// background · and at the foot 「래스터라이즈」.
 ///
@@ -326,6 +327,22 @@ typedef _LetterBar = ({
   String unit,
 });
 
+/// A setting of the letters that a switch turns on and off.
+///
+/// 🗣️유저 2026-10-17 (card text-letters-lean-and-underline): 「기울임/밑줄
+/// 같은것도 어차피 넣어야할 기능이니까 넣도록」 — the lean and the two lines
+/// stand beside bold, the setting of their kind.
+enum _LetterSwitch { bold, italic, underline, strikethrough, smoothing }
+
+/// One of those as its switch: what it is called, and how it is read off a
+/// style and written into one.
+typedef _LetterToggle = ({
+  String name,
+  String label,
+  bool Function(TextLetterStyle style) read,
+  TextLetterStyle Function(TextLetterStyle style, bool on) write,
+});
+
 /// The rows of the 글자 group — every one a setting of LETTERS, which
 /// reaches the selected ones or, with none selected, the whole text.
 class _LetterRows extends StatelessWidget {
@@ -360,29 +377,16 @@ class _LetterRows extends StatelessWidget {
       ),
       _bar(_LetterNumber.size),
       _bar(_LetterNumber.tracking),
-      reading.follow(
-        (values) => (
-          bold: values.letter((style) => style.bold),
-          writable: values.writable,
-        ),
-        (shown) => SettingsSwitchRow(
-          tileKey: const ValueKey<String>('text-tool-bold'),
-          label: AppText.strings.textToolBold,
-          value: !shown.bold.mixed && shown.bold.value,
-          mixed: shown.bold.mixed,
-          onChanged: shown.writable
-              ? (on) => reading.now.setLetters(
-                  (style) => style.copyWith(bold: on),
-                )
-              : null,
-        ),
-      ),
+      _switch(_LetterSwitch.bold),
+      _switch(_LetterSwitch.italic),
+      _switch(_LetterSwitch.underline),
+      _switch(_LetterSwitch.strikethrough),
       _colour(),
       _outline(),
       // A width with no colour is no outline: until the letters have one
       // there is nothing for it to be the width of.
       _bar(_LetterNumber.outlineWidth, live: _outlined),
-      _smoothing(),
+      _switch(_LetterSwitch.smoothing),
     ],
   );
 
@@ -392,29 +396,64 @@ class _LetterRows extends StatelessWidget {
     return outlined.mixed || outlined.value;
   }
 
-  /// Whether the letters' edges are smoothed — the switch the shape fill
-  /// and the selection carry, under their word for it.
-  ///
-  /// 🗣️유저 2026-10-06 (asked whether letters need it): 「권장대로. 2차에서
-  /// 스위치로 넣음」 — in this group, so it is a setting of LETTERS: it
-  /// reaches the selected ones or, with none selected, the whole text.
-  Widget _smoothing() => reading.follow(
-    (values) => (
-      smooth: values.letter((style) => style.antialias),
-      writable: values.writable,
+  /// One switch of the letters: on where every letter it speaks for is, and
+  /// 「—」 where they disagree.
+  Widget _switch(_LetterSwitch which) {
+    final toggle = _switchOf(which);
+    return reading.follow(
+      (values) => (on: values.letter(toggle.read), writable: values.writable),
+      (shown) => SettingsSwitchRow(
+        tileKey: ValueKey<String>('text-tool-${toggle.name}'),
+        label: toggle.label,
+        value: !shown.on.mixed && shown.on.value,
+        mixed: shown.on.mixed,
+        onChanged: shown.writable
+            ? (on) => reading.now.setLetters(
+                (style) => toggle.write(style, on),
+              )
+            : null,
+      ),
+    );
+  }
+
+  static _LetterToggle _switchOf(_LetterSwitch which) => switch (which) {
+    _LetterSwitch.bold => (
+      name: 'bold',
+      label: AppText.strings.textToolBold,
+      read: (style) => style.bold,
+      write: (style, on) => style.copyWith(bold: on),
     ),
-    (shown) => SettingsSwitchRow(
-      tileKey: const ValueKey<String>('text-tool-antialias'),
+    _LetterSwitch.italic => (
+      name: 'italic',
+      label: AppText.strings.textToolItalic,
+      read: (style) => style.italic,
+      write: (style, on) => style.copyWith(italic: on),
+    ),
+    _LetterSwitch.underline => (
+      name: 'underline',
+      label: AppText.strings.textToolUnderline,
+      read: (style) => style.underline,
+      write: (style, on) => style.copyWith(underline: on),
+    ),
+    _LetterSwitch.strikethrough => (
+      name: 'strikethrough',
+      label: AppText.strings.textToolStrikethrough,
+      read: (style) => style.strikethrough,
+      write: (style, on) => style.copyWith(strikethrough: on),
+    ),
+    // Whether the letters' edges are smoothed — the switch the shape fill
+    // and the selection carry, under their word for it.
+    //
+    // 🗣️유저 2026-10-06 (asked whether letters need it): 「권장대로. 2차에서
+    // 스위치로 넣음」 — in this group, so it is a setting of LETTERS: it
+    // reaches the selected ones or, with none selected, the whole text.
+    _LetterSwitch.smoothing => (
+      name: 'antialias',
       label: AppText.strings.brAntiAlias,
-      value: !shown.smooth.mixed && shown.smooth.value,
-      mixed: shown.smooth.mixed,
-      onChanged: shown.writable
-          ? (on) => reading.now.setLetters(
-              (style) => style.copyWith(antialias: on),
-            )
-          : null,
+      read: (style) => style.antialias,
+      write: (style, on) => style.copyWith(antialias: on),
     ),
-  );
+  };
 
   /// One number of the letters as a bar: dragged it shows, and where the
   /// hand lets go it lands. [live] says whether it takes a change at all.

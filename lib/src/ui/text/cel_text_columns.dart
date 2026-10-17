@@ -66,7 +66,7 @@ class _ColumnsSetting implements _TextSetting {
     this._measured,
     this._letters,
     this.block,
-  );
+  ) : _lines = _columnLinesOf(_columns);
 
   /// Every cell of the text, in reading order.
   final List<_ColumnCell> _cells;
@@ -82,6 +82,9 @@ class _ColumnsSetting implements _TextSetting {
   /// cell is not that pass's to draw.
   final CanvasLetterPasses<List<_HeldCellPainter?>> _letters;
 
+  /// The lines the letters wear, down their columns.
+  final CanvasLetterLines _lines;
+
   /// The columns' block: as long as the longest column — or as the box, for
   /// a text that wraps — and as wide as its columns.
   @override
@@ -95,6 +98,7 @@ class _ColumnsSetting implements _TextSetting {
   void paint(ui.Canvas canvas, {required ui.Rect within}) => _letters.paint(
     canvas,
     within: within,
+    lines: _lines,
     draw: (painters) {
       for (final (index, cell) in _cells.indexed) {
         final held = painters[index];
@@ -564,6 +568,58 @@ class _ColumnBreaker {
     }
     return _nextLetterStyle;
   }
+}
+
+/// THE LINES OF A TEXT SET IN COLUMNS — down each column, as far as the
+/// letters that wear them run in it: the one under the letters on their
+/// RIGHT, as a column's side line is drawn (傍線, where the marks of the
+/// letters being composed stand too — [_ColumnsSetting.marksBeside]), and
+/// the one through them down the middle. The white space a column ends
+/// with hangs past it bare, as it does past a line's end
+/// (`canvasLetterLinesOf`).
+///
+/// ⚠️THE FACE'S NUMBERS SAY HOW THICK, NOT WHERE. Where a face puts its
+/// lines is said of letters standing on a baseline, and a column has none:
+/// its letters stand centred across it, each in its own way — upright,
+/// lying down, a pair side by side. So the side line hugs the right edge of
+/// a letter's square, outside it, and the strikethrough runs down the
+/// square's middle — each as thick as the face asked for says
+/// ([CanvasLetterFaces.linesOf]).
+CanvasLetterLines _columnLinesOf(List<_Column> columns) {
+  final lines = CanvasLetterLinesBuilder();
+  for (final column in columns) {
+    final inked = column.cells.lastIndexWhere((cell) => !cell.isSpace);
+    for (final cell in column.cells.take(inked + 1)) {
+      final letters = cell.style;
+      if (!letters.underline && !letters.strikethrough) {
+        continue;
+      }
+      final face = CanvasLetterFaces.current.linesOf(letters.fontFamily);
+      final size = letters.fontSize;
+      final room = cell.room;
+      final middle = room.center.dx;
+      if (letters.underline) {
+        final inner = middle + size / 2;
+        lines.under(
+          letters,
+          ui.Rect.fromLTRB(
+            inner,
+            room.top,
+            inner + face.underlineThickness * size,
+            room.bottom,
+          ),
+        );
+      }
+      if (letters.strikethrough) {
+        final half = face.strikethroughThickness * size / 2;
+        lines.through(
+          letters,
+          ui.Rect.fromLTRB(middle - half, room.top, middle + half, room.bottom),
+        );
+      }
+    }
+  }
+  return lines.build();
 }
 
 /// Places [columns] — and their cells — in the text's own frame, and

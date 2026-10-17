@@ -65,6 +65,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v23 (2026-10-18, text-letters-lean-and-underline — 유저 10-17 「기울임/밑줄
+/// 같은것도 어차피 넣어야할 기능이니까 넣도록」): a letter says whether it
+/// leans and whether a line runs under it or through it
+/// (`TextLetterStyle.italic` · `underline` · `strikethrough`, each written
+/// only where it is so). A v22 build reads a letter without the words: it
+/// opens the text upright and bare, and the first edit of it bakes the
+/// letters so and writes them back without the words — and nothing said.
+/// The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a letter that says none of them is an
+/// upright, bare one at THIS version too, so a v22 file is such a document.
+///
 /// v22 (2026-10-18, F-374-Q8 — 유저 「맞춘다 — 참조 그림은 벽 밖까지
 /// 통째로」): a cel says WHERE A FILE'S PICTURE LIES on it, past the
 /// pasteboard when the picture is larger (cel stream v5,
@@ -344,7 +357,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 22;
+const int anicelFormatVersion = 23;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

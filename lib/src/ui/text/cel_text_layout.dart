@@ -10,6 +10,7 @@ import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextBoxDepth;
 import '../timeline/axis_turn.dart' show extentAcross;
 import 'canvas_letter_faces.dart';
+import 'canvas_letter_lines.dart';
 import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
 import 'vertical_writing.dart';

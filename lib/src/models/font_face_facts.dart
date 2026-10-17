@@ -96,3 +96,51 @@ class FontFaceFacts {
       'FontFaceFacts($family, $weight${italic ? ' italic' : ''}, '
       'fsType: $fsType)';
 }
+
+/// WHERE A FACE DRAWS ITS LINES — the one under its letters and the one
+/// through them — as its file says, in ems of its size: how far from the
+/// baseline each line's CENTRE is, and how thick each is.
+///
+/// 🔬THE CENTRE, NOT THE TOP (measured 2026-10-18 against the engine's own
+/// decoration, BIZ UDPGothic and 나눔고딕 at 100 and at 37): the engine
+/// draws each line centred on the file's number — `post.underlinePosition`
+/// under the baseline, `OS/2.yStrikeoutPosition` over it — though the
+/// format calls both the top of the stroke. Read as the engine reads them,
+/// a line falls where the engine itself would draw it in that face.
+class FontLines {
+  const FontLines({
+    required this.underline,
+    required this.underlineThickness,
+    required this.strikethrough,
+    required this.strikethroughThickness,
+  });
+
+  /// How far UNDER the baseline the underline's centre is.
+  final double underline;
+  final double underlineThickness;
+
+  /// How far OVER the baseline the strikethrough's centre is.
+  final double strikethrough;
+  final double strikethroughThickness;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FontLines &&
+      other.underline == underline &&
+      other.underlineThickness == underlineThickness &&
+      other.strikethrough == strikethrough &&
+      other.strikethroughThickness == strikethroughThickness;
+
+  @override
+  int get hashCode => Object.hash(
+    underline,
+    underlineThickness,
+    strikethrough,
+    strikethroughThickness,
+  );
+
+  @override
+  String toString() =>
+      'FontLines(under $underline × $underlineThickness, through '
+      '$strikethrough × $strikethroughThickness)';
+}

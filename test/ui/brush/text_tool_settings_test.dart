@@ -32,8 +32,9 @@ const double _asTallAsTheRows = 900;
 
 /// R9-rest (the text tool): THE ROWS OF ITS SETTINGS — the layout 유저 took
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
-/// face, size, tracking, bold, colour, outline, outline width, the
-/// smoothing of the letters' edges · 상자 — its place (I-95),
+/// face, size, tracking, bold (and beside it the lean and the two lines,
+/// 유저 10-17), colour, outline, outline width, the smoothing of the
+/// letters' edges · 상자 — its place (I-95),
 /// alignment, box width, line spacing, background · and at the foot
 /// 「래스터라이즈」.
 ///
@@ -151,6 +152,10 @@ void main() {
       'size',
       'tracking',
       'bold',
+      // 유저 10-17: beside bold.
+      'italic',
+      'underline',
+      'strikethrough',
       'color',
       'outline',
       'outline-width',
@@ -470,6 +475,94 @@ void main() {
       expect(smoothRing(tester).value, isFalse);
       expect(hand.options.value.letters(brushColour: null).antialias, isFalse);
     });
+
+    // 🗣️유저 2026-10-17 (card text-letters-lean-and-underline): 「기울임/밑줄
+    // 같은것도 어차피 넣어야할 기능이니까 넣도록」 — beside bold, their kind.
+    for (final (name, label, wears) in [
+      (
+        'italic',
+        () => AppText.strings.textToolItalic,
+        (TextLetterStyle style) => style.italic,
+      ),
+      (
+        'underline',
+        () => AppText.strings.textToolUnderline,
+        (TextLetterStyle style) => style.underline,
+      ),
+      (
+        'strikethrough',
+        () => AppText.strings.textToolStrikethrough,
+        (TextLetterStyle style) => style.strikethrough,
+      ),
+    ]) {
+      BooleanDot ring(WidgetTester tester) => tester.widget<BooleanDot>(
+        find.descendant(of: row(name), matching: find.byType(BooleanDot)),
+      );
+
+      testWidgets('🚨the $name switch is OFF for letters as they have always '
+          'been — turned on, every letter of the text in hand wears it, as '
+          'one step, and so will the next text\'s', (tester) async {
+        final hand = await pumpSettings(
+          tester,
+          text: said([run('ab'), run('cd', red)]),
+        );
+        expect(ring(tester).value, isFalse);
+        expect(ring(tester).mixed, isFalse);
+        expect(
+          find.descendant(of: row(name), matching: find.text(label())),
+          findsOneWidget,
+        );
+
+        await tester.ensureVisible(row(name));
+        await tester.pump();
+        await tester.tap(row(name));
+        await tester.pump();
+
+        final spans = landedOn(hand.cel).spans;
+        expect([for (final span in spans) wears(span.style)], [true, true]);
+        expect(
+          [for (final span in spans) span.style.color],
+          [plain.color, red.color],
+          reason: 'and nothing else of them is another',
+        );
+        expect(hand.host.ran, hasLength(1));
+        expect(ring(tester).value, isTrue);
+        expect(wears(hand.options.value.letters(brushColour: null)), isTrue);
+      });
+
+      testWidgets('letters that do not agree on $name show its ring MIXED, '
+          'and a press turns it on for them all', (tester) async {
+        final hand = await pumpSettings(
+          tester,
+          text: said([run('ab'), run('cd', red)]),
+        );
+        await tester.ensureVisible(row(name));
+        await tester.pump();
+        await tester.tap(row(name));
+        await tester.pump();
+        final worn = landedOn(hand.cel);
+        // One run of them bare again, by hand: the two disagree.
+        final bare = await pumpSettings(
+          tester,
+          text: said([
+            worn.spans.first,
+            run('cd', red),
+          ]),
+        );
+        expect(ring(tester).mixed, isTrue);
+        expect(ring(tester).value, isFalse);
+
+        await tester.ensureVisible(row(name));
+        await tester.pump();
+        await tester.tap(row(name));
+        await tester.pump();
+
+        expect(
+          [for (final span in landedOn(bare.cel).spans) wears(span.style)],
+          [true, true],
+        );
+      });
+    }
 
     testWidgets('letters that do not agree on it show its ring MIXED, and a '
         'press smooths them all', (tester) async {

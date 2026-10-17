@@ -1469,6 +1469,9 @@ enum AppStrings {
   String get textToolSize => _s('textToolSize');
   String get textToolTracking => _s('textToolTracking');
   String get textToolBold => _s('textToolBold');
+  String get textToolItalic => _s('textToolItalic');
+  String get textToolUnderline => _s('textToolUnderline');
+  String get textToolStrikethrough => _s('textToolStrikethrough');
   String get textToolColor => _s('textToolColor');
   String get textToolOutline => _s('textToolOutline');
   String get textToolOutlineWidth => _s('textToolOutlineWidth');
@@ -2635,6 +2638,9 @@ enum AppStrings {
     'textToolSize': 'Size',
     'textToolTracking': 'Tracking',
     'textToolBold': 'Bold',
+    'textToolItalic': 'Italic',
+    'textToolUnderline': 'Underline',
+    'textToolStrikethrough': 'Strikethrough',
     'textToolColor': 'Color',
     'textToolOutline': 'Outline',
     'textToolOutlineWidth': 'Outline width',
@@ -4101,6 +4107,9 @@ enum AppStrings {
     'textToolSize': 'サイズ',
     'textToolTracking': '字間',
     'textToolBold': '太字',
+    'textToolItalic': '斜体',
+    'textToolUnderline': '下線',
+    'textToolStrikethrough': '取り消し線',
     'textToolColor': '色',
     'textToolOutline': 'フチ',
     'textToolOutlineWidth': 'フチの太さ',
@@ -5668,6 +5677,9 @@ enum AppStrings {
     'textToolSize': '크기',
     'textToolTracking': '자간',
     'textToolBold': '굵게',
+    'textToolItalic': '기울임',
+    'textToolUnderline': '밑줄',
+    'textToolStrikethrough': '취소선',
     'textToolColor': '색',
     'textToolOutline': '윤곽선',
     'textToolOutlineWidth': '윤곽선 굵기',
@@ -7380,6 +7392,9 @@ enum AppStrings {
     'textToolSize': 'Taille',
     'textToolTracking': 'Interlettrage',
     'textToolBold': 'Gras',
+    'textToolItalic': 'Italique',
+    'textToolUnderline': 'Souligné',
+    'textToolStrikethrough': 'Barré',
     'textToolColor': 'Couleur',
     'textToolOutline': 'Contour',
     'textToolOutlineWidth': 'Épaisseur du contour',
@@ -8887,6 +8902,9 @@ enum AppStrings {
     'textToolSize': '大小',
     'textToolTracking': '字距',
     'textToolBold': '加粗',
+    'textToolItalic': '倾斜',
+    'textToolUnderline': '下划线',
+    'textToolStrikethrough': '删除线',
     'textToolColor': '颜色',
     'textToolOutline': '描边',
     'textToolOutlineWidth': '描边粗细',
