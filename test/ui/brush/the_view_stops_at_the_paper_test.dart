@@ -318,6 +318,28 @@ void main() {
       expectStoreShows(tester, controller);
     });
 
+    testWidgets('🚨a drag back from past the end moves the view at once — '
+        'from where the view stopped, not from where the hand went', (
+      tester,
+    ) async {
+      final controller = await pumpSheet(tester);
+      controller.value = device(tester, CanvasViewport(panX: -100));
+      await tester.pump();
+      await drag(tester, const Offset(-2000, -2000));
+      final end = paperOnScreen(tester);
+      expect(
+        end.bottom,
+        closeTo(windowOf(tester).bottom, 1e-6),
+        reason: '⛔전제: the drag went past the end',
+      );
+
+      await drag(tester, const Offset(100, 100));
+      final back = paperOnScreen(tester);
+      expect(back.right, closeTo(end.right + 100, 1e-6));
+      expect(back.bottom, closeTo(end.bottom + 100, 1e-6));
+      expectStoreShows(tester, controller);
+    });
+
     testWidgets('the very frame a window changes in already shows the '
         'paper over it — not a frame later', (tester) async {
       final controller = await pumpSheet(tester);

@@ -254,6 +254,7 @@ class _PanelBuild {
     final layer = CanvasViewportGestureLayer(
       viewport: _state._viewportState._viewport,
       onViewportChanged: _state._viewportState.setViewport,
+      hold: _state._viewportState._held,
       rotationEnabled: _state.widget.allowViewRotation,
       // I-88: the 「회전」 key turns about the middle the turn buttons use.
       turnAnchor: () => _state._viewportState._viewportCenterAnchor,
