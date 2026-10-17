@@ -30,7 +30,8 @@ import '../../helpers/settle_async.dart';
 ///
 ///  * one that runs in time (its pages advance by themselves, or it
 ///    sounds) stands on the transport;
-///  * a book turns its pages on the left;
+///  * a book turns its pages in the same band — ↩️on the left edge until
+///    F-383 (「알약말고 비디오파일일때 처럼 공간만들고」);
 ///  * a single picture has neither.
 ///
 /// And whatever it is, the file's name is written in one place.
@@ -53,7 +54,7 @@ void main() {
   Finder key(String suffix) => find.byKey(ValueKey<String>(suffix));
 
   const transport = 'canvas-transport';
-  const strip = 'canvas-page-strip';
+  const turner = 'media-viewer-page-readout';
 
   Future<void> pumpViewer(
     WidgetTester tester, {
@@ -154,32 +155,31 @@ void main() {
   }
 
   group('what it wears', () {
-    testWidgets('a document that turns its own pages stands on the '
-        'transport, and has no page strip', (tester) async {
+    testWidgets('a document that turns its own pages stands on its player, '
+        'and has no page turner', (tester) async {
       await openPages(tester, pages: 12, framesPerSecond: 24);
 
       expect(key(transport), findsOneWidget);
-      expect(key(strip), findsNothing, reason: '↩️it wore the left strip');
-      expect(key('media-viewer-previous-page-button'), findsNothing);
+      expect(key(turner), findsNothing, reason: '↩️it wore the page strip');
       expect(bar(tester).frameCount, 12);
       expect(bar(tester).range, isNull, reason: 'a viewer trims nothing');
     });
 
-    testWidgets('a book turns its pages on the left, and has no transport', (
-      tester,
-    ) async {
+    testWidgets('🗣️F-383: a book turns its pages in the band a movie\'s '
+        'player stands in, and has no player', (tester) async {
       await openPages(tester, pages: 3);
 
-      expect(key(strip), findsOneWidget);
+      expect(
+        find.descendant(of: key(transport), matching: key(turner)),
+        findsOneWidget,
+      );
       expect(key('media-viewer-next-page-button'), findsOneWidget);
-      expect(key(transport), findsNothing);
       expect(find.byType(TransportBar), findsNothing);
     });
 
     testWidgets('a single picture has neither', (tester) async {
       await openPages(tester, pages: 1);
 
-      expect(key(strip), findsNothing);
       expect(key(transport), findsNothing);
     });
 
@@ -189,7 +189,7 @@ void main() {
       await openSound(tester);
 
       expect(key(transport), findsOneWidget);
-      expect(key(strip), findsNothing);
+      expect(key(turner), findsNothing);
     });
 
     testWidgets('an empty viewer has neither, and writes no name', (
@@ -198,7 +198,6 @@ void main() {
       session = EditorSessionManager(initialProject: createDefaultProject());
       await pumpViewer(tester);
 
-      expect(key(strip), findsNothing);
       expect(key(transport), findsNothing);
       expect(key('canvas-document-name'), findsNothing);
     });
@@ -493,28 +492,6 @@ void main() {
     expect(capsule.left, greaterThanOrEqualTo(panel.left + cover.left));
     expect(capsule.right, lessThanOrEqualTo(panel.right - cover.right));
     expect(capsule.bottom, lessThanOrEqualTo(panel.bottom - cover.bottom));
-  });
-
-  testWidgets('the floor\'s viewer turns its pages beside a rail lying on '
-      'its left edge, not under it', (tester) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.binding.setSurfaceSize(const Size(1200, 700));
-    const cover = EdgeInsets.only(left: 200);
-    await openPages(
-      tester,
-      pages: 3,
-      onFloor: (child) => CanvasFloorInsets(
-        insets: cover,
-        leftRailBand: (top: 0, bottom: 700),
-        child: child,
-      ),
-    );
-
-    final panel = tester.getRect(key('canvas-editor-panel-shell'));
-    expect(
-      tester.getRect(key(strip)).left,
-      greaterThanOrEqualTo(panel.left + cover.left),
-    );
   });
 
   testWidgets('the floor\'s viewer pans beside a rail lying on its right '

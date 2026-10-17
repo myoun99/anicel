@@ -134,13 +134,16 @@ class TransportBar extends StatelessWidget {
   /// The bar where it is shown, with or without the range row — its rows at
   /// 1× and one line of their words grown under the OS text size
   /// (text-scale-fixed-height-bars).
-  static double heightIn(BuildContext context, {required bool range}) {
-    final growth = _lineGrowthIn(context);
-    return _seekRowHeight +
-        _playRowHeight +
-        growth +
-        (range ? _rangeRowHeight + growth : 0);
-  }
+  static double heightIn(BuildContext context, {required bool range}) =>
+      _seekRowHeight +
+      buttonRowHeightIn(context) +
+      (range ? _rangeRowHeight + _lineGrowthIn(context) : 0);
+
+  /// The player's buttons' row where it is shown — and the band a book
+  /// wears in the transport's place, which is that row alone
+  /// (`PageTurnBar`, F-383).
+  static double buttonRowHeightIn(BuildContext context) =>
+      _playRowHeight + _lineGrowthIn(context);
 
   static const double _inset = 8;
   static const double _gap = 8;
@@ -207,7 +210,7 @@ class TransportBar extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: _playRowHeight + growth,
+          height: buttonRowHeightIn(context),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(_inset, 0, _inset, 4),
             child: CustomMultiChildLayout(

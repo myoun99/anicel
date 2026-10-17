@@ -188,12 +188,12 @@ void main() {
       WidgetTester tester, {
       Rect? limit = paper,
       Size box = const Size(400, 300),
-      List<Widget> pageStrip = const [],
+      CanvasTransportBand? transport,
     }) async {
       final controller = ValueNotifier<CanvasViewport?>(null);
       addTearDown(controller.dispose);
       await tester.pumpWidget(
-        sheetIn(controller, box, limit: limit, pageStrip: pageStrip),
+        sheetIn(controller, box, limit: limit, transport: transport),
       );
       await tester.pumpAndSettle();
       // 🚨The store is in DEVICE units and the painting in logical ones,
@@ -290,22 +290,31 @@ void main() {
       expectStoreShows(tester, controller);
     });
 
-    testWidgets('🗣️F-346: zoomed in on a panel that turns pages, a drag '
-        'past the left end stops with the paper\'s edge beside the page '
-        'strip, as past the top it stops under the pill', (tester) async {
+    testWidgets('🗣️F-346: zoomed in on a panel with a band under it — a '
+        'book\'s page turner, a movie\'s player — a drag past the bottom end '
+        'stops with the paper\'s edge above the band, as past the top it '
+        'stops under the pill', (tester) async {
       final controller = await pumpSheet(
         tester,
-        pageStrip: const [SizedBox(width: 26, height: 40)],
+        transport: const CanvasTransportBand(height: 40, child: SizedBox()),
       );
       controller.value = device(tester, CanvasViewport(panX: -100));
       await tester.pump();
-      final strip = pageStripBandOf(tester);
-      expect(strip, greaterThan(30), reason: '⛔전제: the strip stands');
+      final band = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-transport')),
+      );
+      expect(band.height, greaterThan(40), reason: '⛔전제: the band stands');
+
+      await drag(tester, const Offset(-2000, -2000));
+      expect(
+        paperOnScreen(tester).bottom,
+        closeTo(band.top - AppScrollbarLane.wide, 1e-6),
+        reason: 'above the band, and the bar\'s lane lying on it',
+      );
+      expectStoreShows(tester, controller);
 
       await drag(tester, const Offset(900, 900));
-      final on = paperOnScreen(tester);
-      expect(on.left, closeTo(strip, 1e-6), reason: 'beside the strip');
-      expect(on.top, closeTo(pillBandOf(tester), 1e-6));
+      expect(paperOnScreen(tester).top, closeTo(pillBandOf(tester), 1e-6));
       expectStoreShows(tester, controller);
     });
 
@@ -575,7 +584,7 @@ Widget sheetIn(
   ValueNotifier<CanvasViewport?> controller,
   Size box, {
   Rect? limit = const Rect.fromLTWH(24, 24, 600, 800),
-  List<Widget> pageStrip = const [],
+  CanvasTransportBand? transport,
 }) => MaterialApp(
   home: Align(
     alignment: Alignment.topLeft,
@@ -588,7 +597,7 @@ Widget sheetIn(
         viewportController: controller,
         viewLimit: limit,
         drawingOn: false,
-        pageStrip: pageStrip,
+        transport: transport,
         content: (context, viewport) => const SizedBox.expand(),
       ),
     ),

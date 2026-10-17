@@ -24,9 +24,9 @@ import '../../helpers/sheet_paper_view.dart';
 
 /// THE TIMESHEET'S PAGE VIEW LAYS ITS SHEETS ONE UNDER ANOTHER (F-201,
 /// 유저 2026-09-27 F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
-/// 쌓는다」) — the conte's and the viewer's law: the strip's ▲▼ scroll to a
-/// sheet, the readout reads the sheet you are on, and playback crossing into
-/// a sheet moves the view to it.
+/// 쌓는다」) — the conte's and the viewer's law: the page turner's ◀ ▶ scroll
+/// to a sheet, the readout reads the sheet you are on, and playback crossing
+/// into a sheet moves the view to it.
 ///
 /// ↩️R26 #41 (07-23) showed ONE sheet at a time and swapped the paper under
 /// a view that never moved; its pins stood in this file.
@@ -208,14 +208,14 @@ void main() {
         pillBandOf(tester) +
         layoutOf().pageStack.gap / 2 * painted(tester).zoom;
 
-    testWidgets('the MODE stays in the pill and the PAGES stand on the left '
-        'edge, above / n-N / below', (tester) async {
+    testWidgets('the MODE stays in the pill and the PAGES lie in the band '
+        'under the bars', (tester) async {
       // 유저 확정 ⑥ (2026-08-13) split what used to be one row. The two mode
       // toggles are things you press while reading and stayed in the pill;
-      // turning pages moved to a capsule of its own on the left edge,
-      // because three controls at 44px of the pill's shedding budget were
-      // most of what a rail-width sheet had to spend — and what it spent
-      // them on was losing the lot.
+      // turning pages moved to a seat of its own — the left edge then, the
+      // band under the bars since F-383 — because three controls at 44px of
+      // the pill's shedding budget were most of what a rail-width sheet had
+      // to spend, and what it spent them on was losing the lot.
       await pumpHost(tester);
 
       // R2 #13: the panbar is its own capsule on the top edge now, so what
@@ -228,24 +228,15 @@ void main() {
       final modeX = tester.getCenter(find.byKey(_dataModeKey)).dx;
       expect(modeX, lessThan(fitX));
 
-      // The page cluster reads DOWNWARD in its own capsule, and the whole
-      // capsule sits left of the pill it left.
-      final ys = <Key, double>{
-        for (final key in [_prevKey, _pageLabelKey, _nextKey])
-          key: tester.getCenter(find.byKey(key)).dy,
-      };
-      expect(ys[_prevKey], lessThan(ys[_pageLabelKey]!));
-      expect(ys[_pageLabelKey], lessThan(ys[_nextKey]!));
-      expect(
-        tester
-            .getRect(find.byKey(const ValueKey<String>('canvas-page-strip')))
-            .right,
-        lessThan(
-          tester
-              .getRect(find.byKey(const ValueKey<String>('canvas-view-pill')))
-              .left,
-        ),
-      );
+      for (final key in [_prevKey, _pageLabelKey, _nextKey]) {
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('canvas-transport')),
+            matching: find.byKey(key),
+          ),
+          findsOneWidget,
+        );
+      }
 
       // The status strip is gone entirely (R2 #13) and its commands came
       // with the page cluster into the one pill.
@@ -265,8 +256,8 @@ void main() {
       );
     });
 
-    testWidgets('▼ scrolls to the next sheet — its top half a gap under the '
-        'view\'s — and ▲ comes back; the ends disable', (tester) async {
+    testWidgets('▶ scrolls to the next sheet — its top half a gap under the '
+        'view\'s — and ◀ comes back; the ends disable', (tester) async {
       await pumpHost(tester, render: CanvasViewport());
 
       expect(pageText(tester), '1/2');
@@ -299,7 +290,7 @@ void main() {
         'turns pages, its PENCIL types one', (tester) async {
       await pumpHost(tester);
 
-      // 8px per page (see the strip) — 40px right is well past one page
+      // 8px per page (see the page turner) — 40px right is well past one page
       // but the last sheet clamps it.
       await tester.drag(find.byKey(_pageLabelKey), const Offset(40, 0));
       await tester.pumpAndSettle();

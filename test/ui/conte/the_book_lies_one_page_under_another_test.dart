@@ -39,7 +39,8 @@ import '../../helpers/sheet_paper_view.dart';
 /// pdf같은거 여러페이지 동시에 볼수있게 하고싶음. pdf리더같은거 밑으로 쭉
 /// 존재하잖아. 별개로 왼쪽 알약인 페이지 넘기는 버튼은 동시존재해서 그거로
 /// 다음페이지 스냅」 — the conte's book lies one page under another, and the
-/// page strip scrolls to a page instead of swapping the paper.
+/// page turner (that 왼쪽 알약, in the band under the bars since F-383)
+/// scrolls to a page instead of swapping the paper.
 void main() {
   /// Eight one-cell cuts: five rows a page, so two body pages after the
   /// cover and its blank back.

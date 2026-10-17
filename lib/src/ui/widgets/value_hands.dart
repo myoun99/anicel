@@ -112,17 +112,12 @@ class ValuePencil extends StatelessWidget {
     required this.height,
     required this.enabled,
     required this.onPressed,
-    this.leadingGap = true,
   });
 
   final String keyValue;
   final double height;
   final bool enabled;
   final VoidCallback onPressed;
-
-  /// Whether it stands [_gap] off what comes before it — false where it
-  /// stands UNDER its value (a stood-up column) rather than after it.
-  final bool leadingGap;
 
   static const double width = 18;
   static const double _gap = 3;
@@ -135,7 +130,7 @@ class ValuePencil extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(left: leadingGap ? _gap : 0),
+    padding: const EdgeInsets.only(left: _gap),
     child: AppIconButton(
       keyValue: keyValue,
       tooltip: AppText.strings.valueTypeIn,

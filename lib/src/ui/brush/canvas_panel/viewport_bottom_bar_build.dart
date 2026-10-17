@@ -388,9 +388,10 @@ class _BottomBarBuild {
         const SizedBox(width: CanvasCapsule.barPillEnd),
       ],
     );
-    // 🗣️THE PAGE STRIP'S LAW (`_PageStripSeat`): a panel too narrow for
-    // what the fold kept shows all of it, smaller — never a row that runs
-    // off the capsule, never a control cut away. At the narrowest the pill
+    // 🗣️THE PAGE TURNER'S LAW (`PageTurnBar`, born on the strip that stood
+    // on the left edge): a panel too narrow for what the fold kept shows
+    // all of it, smaller — never a row that runs off the capsule, never a
+    // control cut away. At the narrowest the pill
     // holds Fit and the gear, which never go, and below a 438px window the
     // timesheet's rail is narrower than those two
     // (`canvas-bottom-bar-overflows-at-437`, measured 2026-10-14).

@@ -2798,19 +2798,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
             ? _collapsedRows.collapsedRowHeight()
             : 0,
-        // WHERE each column actually is, not just how
+        // WHERE the right column actually is, not just how
         // wide it is. A rail panel is as tall as it was
         // left at, so a short one covers a band and not
         // an edge — and the scrollbar that stepped
         // aside for the whole edge read as floating for
         // no reason (유저, R3 #5).
-        leftRailBand: _rail.railBand(
-          right: false,
-          stop: frame.leftStop,
-          onTop: frame.onTop,
-          height: frame.constraints.maxHeight,
-          grid: frame.grid,
-        ),
         rightRailBand: _rail.railBand(
           right: true,
           stop: frame.rightStop,

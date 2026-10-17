@@ -29,7 +29,7 @@ class CanvasBook {
       ? 0
       : reading.value.clamp(0, pages.length - 1).toInt();
 
-  /// Turns to [page] — the page strip's ▲▼, its typed page, a playback
+  /// Turns to [page] — the page turner's ◀ ▶, its typed page, a playback
   /// that crossed a page. Past either end it is the end.
   void turnTo(int page) {
     if (pages.length == 0) {
@@ -46,9 +46,9 @@ class CanvasBook {
 ///
 /// ⛔Not the top alone. The last page, shorter than the window, never
 /// reaches the top — the view stops at the paper's end first (F-201) — so
-/// the strip could never read it, and ▼ would turn to it and read the page
-/// before; and a book zoomed out to fit whole moves not at all, so no turn
-/// could change what the strip read.
+/// the page turner could never read it, and ▶ would turn to it and read the
+/// page before; and a book zoomed out to fit whole moves not at all, so no
+/// turn could change what the turner read.
 int pageReadAt(
   PageStack pages, {
   required int current,

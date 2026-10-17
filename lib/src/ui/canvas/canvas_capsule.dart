@@ -6,8 +6,9 @@ import '../theme/app_theme.dart';
 import '../widgets/superellipse_clip.dart';
 
 /// One floating control surface on the canvas: opaque, superellipse,
-/// ringed in the backdrop — the view pill, the page strip, the panbars,
-/// the transport, and the pill a canvas verb wears (`CanvasTargetPill`).
+/// ringed in the backdrop — the view pill, the panbars, the transport (a
+/// book's page turner in its place), and the pill a canvas verb wears
+/// (`CanvasTargetPill`).
 ///
 /// ↩️It was the canvas panel's own (`_capsule`) until the transform box's
 /// 확정/취소 had to wear it too (I-79, 유저 2026-10-06: 「캔버스 내부 알약은

@@ -44,10 +44,9 @@ import 'value_hands.dart';
 /// ([OwningHorizontalDragGestureRecognizer]), so no list around it ever
 /// scrolls; a vertical move scrubs nothing and scrolls nothing.
 class DragValueLabel extends StatefulWidget {
-  /// The bare readout — the number in its own width, its pencil after it
-  /// or, in a stood-up strip, under it ([pencilBelow]); its steps where the
-  /// host has none of its own ([steps]: the canvas bar turns the view with
-  /// its ⟲ ⟳, a page strip with its ↑ ↓).
+  /// The bare readout — the number in its own width, its pencil after it;
+  /// its steps where the host has none of its own ([steps]: the canvas bar
+  /// turns the view with its ⟲ ⟳, the page band with its ◀ ▶).
   const DragValueLabel({
     super.key,
     required this.keyValue,
@@ -65,7 +64,6 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationEnd,
     this.digitsOnly = false,
     this.steps = false,
-    this.pencilBelow = false,
     this.stepBeforePencil,
   }) : name = null,
        turned = false,
@@ -107,7 +105,6 @@ class DragValueLabel extends StatefulWidget {
        textStyle = null,
        textAlign = TextAlign.right,
        steps = true,
-       pencilBelow = false,
        stepBeforePencil = null,
        _face = _Face.box;
 
@@ -116,6 +113,14 @@ class DragValueLabel extends StatefulWidget {
   /// host that budgets its row before it builds it (the canvas pill).
   static double rowWidthOf(double width, {bool steps = false}) =>
       width + ValuePencil.reach + (steps ? ValueSteps.reach : 0);
+
+  /// What a bare readout handed no [textStyle] sets its number in where
+  /// [context] shows it — for a host that makes the readout as wide as the
+  /// widest number it will say (the page band).
+  static TextStyle bareStyleIn(BuildContext context) =>
+      DefaultTextStyle.of(context).style.merge(_bareStyle);
+
+  static const TextStyle _bareStyle = TextStyle(fontSize: 12);
 
   /// What a box says it holds, inside at the left — `X`, a mesh's columns.
   /// Null on the bare readout, and on a box whose row already names it.
@@ -153,14 +158,12 @@ class DragValueLabel extends StatefulWidget {
   /// host has no steps of its own beside it. A box always does.
   final bool steps;
 
-  /// Whether the pencil stands UNDER the number rather than after it — a
-  /// stood-up strip with no room beside it.
-  final bool pencilBelow;
-
-  /// The host's step that stands between the number and its pencil in such
-  /// a strip: a page strip's ↓, so its pencil comes after both of its steps
-  /// as a box's comes after its ± (유저 2026-10-11: 「페이지띠는 아래버튼
-  /// 밑에 연필버튼오도록. 위/페이지/아래 이런건 이어지는게 이쁘잖아」).
+  /// The host's step that stands between the number and its pencil: the
+  /// page band's ▶, so its pencil comes after both of its steps as a box's
+  /// comes after its ± (유저 2026-10-11: 「페이지띠는 아래버튼 밑에
+  /// 연필버튼오도록. 위/페이지/아래 이런건 이어지는게 이쁘잖아」 — said of
+  /// the strip that stood on the left edge; lying in the band since F-383,
+  /// it reads ◀ · page · ▶ and then the pencil).
   final Widget? stepBeforePencil;
 
   /// Stable widget key base: `keyValue` the face, `keyValue`-edit its
@@ -289,8 +292,6 @@ class _DragValueLabelState extends State<DragValueLabel> {
     _step(event.scrollDelta.dy < 0 ? 1 : -1);
   }
 
-  static const TextStyle _bareStyle = TextStyle(fontSize: 12);
-
   /// How tall the bare readout's hands stand.
   static const double _bareHandsHeight = 20;
 
@@ -322,7 +323,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// The bare readout: the number, in its own width — typed in, all of it
   /// the field.
   Widget _bare(BuildContext context) {
-    final base = widget.textStyle ?? _bareStyle;
+    final base = widget.textStyle ?? DragValueLabel._bareStyle;
     final style = widget.enabled
         ? base
         : base.copyWith(
@@ -389,38 +390,29 @@ class _DragValueLabelState extends State<DragValueLabel> {
     );
   }
 
-  /// [face] with its hands: its steps where it carries them, and its pencil
-  /// — after it, or under it in a stood-up strip, after the host's step
-  /// that stands there ([DragValueLabel.stepBeforePencil]).
+  /// [face] with its hands after it: its steps where it carries them, and
+  /// its pencil — after the host's step that stands there
+  /// ([DragValueLabel.stepBeforePencil]).
   Widget _withHands(Widget face) {
     final key = (
       widget.enabled,
       widget.keyValue,
       widget._face,
       widget.steps,
-      widget.pencilBelow,
       // Their tooltips speak the program's language.
       AppText.language,
     );
     final hands = _hands != null && _handsFor == key ? _hands! : _handsNow();
     _hands = hands;
     _handsFor = key;
-    if (widget.pencilBelow) {
-      final step = widget.stepBeforePencil;
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          face,
-          if (step != null) Center(child: step),
-          Center(child: hands),
-        ],
-      );
-    }
     final fills = widget._face == _Face.box;
     return Row(
       mainAxisSize: fills ? MainAxisSize.max : MainAxisSize.min,
-      children: [if (fills) Expanded(child: face) else face, hands],
+      children: [
+        if (fills) Expanded(child: face) else face,
+        ?widget.stepBeforePencil,
+        hands,
+      ],
     );
   }
 
@@ -430,7 +422,6 @@ class _DragValueLabelState extends State<DragValueLabel> {
       height: _handsHeight,
       enabled: widget.enabled,
       onPressed: _beginEdit,
-      leadingGap: !widget.pencilBelow,
     );
     if (!widget.steps) {
       return pencil;

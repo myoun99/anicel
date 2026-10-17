@@ -15,7 +15,7 @@ import '../media/page_rasters.dart';
 import '../media/viewer_pages_and_run.dart';
 import '../media/viewer_sound.dart';
 import '../widgets/empty_state_text.dart';
-import '../widgets/page_turn_strip.dart';
+import '../widgets/page_turn_bar.dart';
 import '../widgets/transport_bar.dart';
 import 'export_preview_document.dart';
 
@@ -237,25 +237,28 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
 
   // --- What the panel wears ------------------------------------------------
 
-  /// The page cluster on the left — a book's.
-  List<Widget> _pageStrip(ExportPreviewDocument? document) =>
-      document == null || document.shape != ExportPreviewShape.book
-      ? const []
-      : pageTurnStrip(
-          keyPrefix: 'export-preview',
-          page: viewerPage(_page, document.pageCount),
-          onTurnTo: widget.enabled ? turnToPage : null,
-        );
-
-  /// The transport under a document that runs — there whatever its length
-  /// (a cut of one frame keeps the rows, with nowhere to go).
+  /// The band under the document: the transport of one that runs
+  /// ([_player]), the page turner of a book, nothing under one picture.
   CanvasTransportBand? _transport(
     BuildContext context,
     ExportPreviewDocument? document,
+  ) => switch (document?.shape) {
+    ExportPreviewShape.runs => _player(context, document!),
+    ExportPreviewShape.book => CanvasTransportBand.ofPages(
+      context,
+      keyPrefix: 'export-preview',
+      page: viewerPage(_page, document!.pageCount),
+      onTurnTo: widget.enabled ? turnToPage : null,
+    ),
+    ExportPreviewShape.single || null => null,
+  };
+
+  /// The transport under a document that runs — there whatever its length
+  /// (a cut of one frame keeps the rows, with nowhere to go).
+  CanvasTransportBand _player(
+    BuildContext context,
+    ExportPreviewDocument document,
   ) {
-    if (document == null || document.shape != ExportPreviewShape.runs) {
-      return null;
-    }
     final rate = widget.session.projectSettings.projectFrameRate;
     final range = widget.range;
     return CanvasTransportBand(
@@ -287,7 +290,6 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       ground: document?.opensAlpha ?? false
           ? ViewportPageGround.checker
           : ViewportPageGround.none,
-      pageStrip: _pageStrip(document),
       transport: _transport(context, document),
       documentName: widget.fileName,
       documentAbsent: widget.fileAbsent,

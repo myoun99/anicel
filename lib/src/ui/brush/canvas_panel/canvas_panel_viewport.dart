@@ -142,7 +142,7 @@ class _CanvasPanelViewport {
   /// window or the limit changed under it.
   ///
   /// The read already shows it held; this makes the store — the value the
-  /// owner reads (a page strip counts its pages from it) — say the same.
+  /// owner reads (a page turner counts its pages from it) — say the same.
   /// A view nobody has framed stays unframed: there is nothing stored.
   ///
   /// ⛔Not before the panel has been laid out once. Until then the window

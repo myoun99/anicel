@@ -18,8 +18,8 @@ import 'viewer_render_tier.dart';
 
 /// A WINDOW'S PREVIEW OF A DOCUMENT — the page stood on, in a canvas-base
 /// panel: its pill (fit, zoom, 1:1), both scrollbars always, 100% a pixel
-/// of the file to a pixel of the screen; a transport under it where the
-/// document runs, a page strip where it is a book.
+/// of the file to a pixel of the screen; under it a transport where the
+/// document runs, a page turner where it is a book.
 ///
 /// 🗣️The export window's preview first (F-289, 유저 2026-10-06), and the
 /// import window's on it (F-282 ④, 유저 2026-10-09: 「임포트창 미리보기도
@@ -38,7 +38,6 @@ class DocumentPreviewPanel extends StatefulWidget {
     required this.page,
     required this.nothing,
     this.ground = ViewportPageGround.none,
-    this.pageStrip = const [],
     this.transport,
     this.documentName,
     this.documentAbsent = false,
@@ -65,10 +64,8 @@ class DocumentPreviewPanel extends StatefulWidget {
   /// or nothing.
   final ViewportPageGround ground;
 
-  /// The page cluster on the left, a book's ([BrushCanvasPanel.pageStrip]).
-  final List<Widget> pageStrip;
-
-  /// The transport under a document that runs ([BrushCanvasPanel.transport]).
+  /// The band under it — the transport of a document that runs, a book's
+  /// page turner ([BrushCanvasPanel.transport]).
   final CanvasTransportBand? transport;
 
   /// The name the page shown is written under.
@@ -156,7 +153,6 @@ class _DocumentPreviewPanelState extends State<DocumentPreviewPanel> {
       // F-315: the viewer's 1:1, where the viewer keeps it.
       oneToOneOnPill: true,
       hasContentToView: document != null,
-      pageStrip: widget.pageStrip,
       transport: widget.transport,
       documentName: document == null ? null : widget.documentName,
       documentAbsent: widget.documentAbsent,

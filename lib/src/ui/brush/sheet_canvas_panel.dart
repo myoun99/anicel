@@ -76,7 +76,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.onViewportChanged,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
-    this.pageStrip = const <Widget>[],
+    this.transport,
     this.bottomBarHostToken,
     this.fitFocusRect,
     this.unframedFit,
@@ -110,7 +110,11 @@ class SheetCanvasPanel extends StatefulWidget {
   /// ([BrushCanvasPanel.bottomBarSettings]) — what the host carries in
   /// [bottomBarHostToken] too, or the memoised bar keeps the old ones.
   final List<PanelFlyoutEntry> bottomBarSettings;
-  final List<Widget> pageStrip;
+
+  /// The band under the sheet — its page turner
+  /// ([CanvasTransportBand.ofPages]), none for a sheet of one page
+  /// ([BrushCanvasPanel.transport]).
+  final CanvasTransportBand? transport;
   final Object? bottomBarHostToken;
   final Rect? fitFocusRect;
 
@@ -241,7 +245,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       canvasBase: true,
       bottomBarLeading: _barLeading,
       bottomBarSettings: widget.bottomBarSettings,
-      pageStrip: widget.pageStrip,
+      transport: widget.transport,
       // The switch is built HERE, so its state joins the host's token here —
       // a host that forgot it would get a switch the memo serves stale.
       // Null stays null: that asks for a bar rebuilt every time.

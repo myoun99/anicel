@@ -19,7 +19,8 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../../services/project_lookup.dart'
     show brushFrameKeyIn, cutPositionOf;
-import '../brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import '../brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasTransportBand;
 import '../brush/sheet_canvas_panel.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
@@ -39,7 +40,7 @@ import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/page_turn_strip.dart';
+import '../widgets/page_turn_bar.dart' show viewerPage;
 import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -223,7 +224,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void initState() {
     super.initState();
     AppInput.settings.addListener(_onInputSettings);
-    // The page strip reads the view; a caller's own view rebuilds this from
+    // The page turner reads the view; a caller's own view rebuilds this from
     // above, this one from here.
     _ownView.addListener(_onInputSettings);
     // And the reader's page, which the panel moves.
@@ -491,7 +492,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
   ];
 
   /// The book on the canvas panel, every page one under another (F-201),
-  /// the page strip reading and turning the page the view is on.
+  /// the page turner reading and turning the page the view is on.
   Widget _panel(List<ContePageLayout> pages) {
     final stack = _stackOf(pages);
     final book = CanvasBook(pages: stack, reading: _reading);
@@ -516,8 +517,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
               onChanged: onBrushAllowedChanged,
               keyPrefix: 'conte',
             ),
-      // The page cluster, on the panel's LEFT edge (유저 확정 ⑥ 2026-08-13).
-      pageStrip: pageTurnStrip(
+      // The page turner, in the band under the book (F-383).
+      transport: CanvasTransportBand.ofPages(
+        context,
         keyPrefix: 'conte',
         page: viewerPage(pageIndex, pages.length),
         onTurnTo: book.turnTo,

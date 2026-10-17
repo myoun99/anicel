@@ -11,7 +11,7 @@ import 'package:anicel/src/ui/timeline/frame_panel_sill_controls.dart';
 /// storyboard docked on its own in a rail, the rail narrowed until the
 /// sill's transport takes nearly all of it; a 340px window — keeps its
 /// overflow button (the one way to its tabs) WHOLE, and shows the sill all
-/// of it, smaller (`KeptTailRow`, the page strip's law).
+/// of it, smaller (`KeptTailRow`, the page turner's law).
 ///
 /// ↩️The button was laid out past the edge, and the strip's Row threw 「A
 /// RenderFlex overflowed by 23 pixels」 (found 2026-09-25 while pinning the

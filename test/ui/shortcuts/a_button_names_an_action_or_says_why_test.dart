@@ -157,9 +157,9 @@ const ledger = <String, Why>{
   'brush/sheet_canvas_panel.dart | '
           "'\${brush.keyPrefix}-brush-toggle-button'":
       Why.declined,
-  "widgets/page_turn_strip.dart | '\$keyPrefix-next-page-button'":
+  "widgets/page_turn_bar.dart | '\$keyPrefix-next-page-button'":
       Why.declined,
-  "widgets/page_turn_strip.dart | '\$keyPrefix-previous-page-button'":
+  "widgets/page_turn_bar.dart | '\$keyPrefix-previous-page-button'":
       Why.declined,
 };
 

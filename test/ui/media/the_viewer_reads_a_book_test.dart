@@ -4,7 +4,8 @@
 // 다음페이지 스냅」.
 //
 // THE VIEWER READS A BOOK: a PDF's pages lie one under another, each drawn
-// where it lies and asked for at the zoom the view has; the strip's ▲▼ snap
+// where it lies and asked for at the zoom the view has; the page turner's
+// ◀ ▶ (the 왼쪽 알약 then, in the band under the bars since F-383) snap
 // the view to a page and the page read is the slot's position; a cut is of
 // the page it lies on. A document that turns its own pages — a movie — shows
 // the page it is on alone.

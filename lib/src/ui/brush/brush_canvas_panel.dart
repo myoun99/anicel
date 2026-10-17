@@ -118,6 +118,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../canvas/canvas_capsule.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/page_turn_bar.dart';
 import '../text/readout_text.dart' show readoutText;
 import '../widgets/panel_flyout.dart';
 import '../shortcuts/editor_action_registry.dart';
@@ -151,14 +152,35 @@ class CanvasAutoFrameRequest {
   final Rect rect;
 }
 
-/// What stands under a canvas panel whose document runs in time — the
-/// transport's rows ([BrushCanvasPanel.transport]).
+/// What stands under a canvas panel whose document you move through — the
+/// transport's rows under one that runs in time, the page turner under a
+/// book ([BrushCanvasPanel.transport]).
 ///
 /// The [height] travels with the widget because the panel has to know it
 /// without laying anything out: its lanes stand on the band, and nothing it
 /// frames may lie under it.
 class CanvasTransportBand {
   const CanvasTransportBand({required this.height, required this.child});
+
+  /// The band under a BOOK, [page] the page it stands on: its page turner
+  /// ([PageTurnBar], F-383). None below two pages — 유저 확정 ⑥ (2026-08-13)
+  /// is about a page turner that could never turn: 「a still image gets no
+  /// strip rather than a permanently disabled one」.
+  static CanvasTransportBand? ofPages(
+    BuildContext context, {
+    required String keyPrefix,
+    required TurnedPage page,
+    required ValueChanged<int>? onTurnTo,
+  }) => page.count <= 1
+      ? null
+      : CanvasTransportBand(
+          height: PageTurnBar.heightIn(context),
+          child: PageTurnBar(
+            keyPrefix: keyPrefix,
+            page: page,
+            onTurnTo: onTurnTo,
+          ),
+        );
 
   final double height;
   final Widget child;
@@ -227,7 +249,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentOverride,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
-    this.floorLeftRailBand,
     this.floorRightRailBand,
     this.floorBottomOverlaySpan = 0,
     this.autoFrame,
@@ -280,7 +301,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.oneToOneOnPill = false,
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
-    this.pageStrip = const <Widget>[],
     this.transport,
     this.documentName,
     this.documentAbsent = false,
@@ -500,7 +520,7 @@ class BrushCanvasPanel extends StatefulWidget {
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// The host's OWN controls, at the head of the pill: the timesheet's
-  /// sheet-mode toggles and page navigation, the conte's, the envelope's.
+  /// sheet-mode toggles, the conte's, the envelope's.
   ///
   /// They used to be split between two places — a status strip across the
   /// top for the toggles and the bottom bar for the page cluster. Both
@@ -524,35 +544,25 @@ class BrushCanvasPanel extends StatefulWidget {
   /// for a command and wrong for a knob.
   final List<PanelFlyoutEntry> bottomBarSettings;
 
-  /// Turning the pages of whatever this panel is showing, stacked in a
-  /// capsule on the LEFT edge (유저 확정 2026-08-13 ⑥: 페이지 넘기기는 왼쪽
-  /// 세로, 그리고 필요한 파일에서만).
-  ///
-  /// ★It is not in the pill because it was the pill's largest tenant —
-  /// three controls, 132px of the shedding budget — so a rail-width panel
-  /// was made to choose between turning pages and looking at the page. On
-  /// an edge of its own it competes with nothing.
-  ///
-  /// Empty means no strip at all: a still image has no pages to turn, and
-  /// a disabled cluster on a permanent capsule is a promise the panel
-  /// cannot keep.
-  ///
-  /// It hides the artwork's left edge as the pill hides the top (F-346), so
-  /// framing keeps out from under it (`_framingInsets`).
-  final List<Widget> pageStrip;
-
-  /// The transport of a document that RUNS IN TIME, under the horizontal
-  /// panbar — a docked panel's band below its lanes, the floor's capsule
-  /// below its bar.
+  /// What moves you through the document, under the horizontal panbar — a
+  /// docked panel's band below its lanes, the floor's capsule below its
+  /// bar: the transport of one that RUNS IN TIME, the page turner of a book
+  /// ([CanvasTransportBand.ofPages]).
   ///
   /// 🗣️F-289 (유저 2026-10-06): 「왼쪽알약말고 제대로 뷰어패널의 가로스크롤바
   /// 아래에 재생버튼같은거 일반적인 미디어플레이어같은거 만들고싶어」, and
   /// then how a panel knows which it wears: 「이 캔버스 베이스패널은 형식에
   /// 따라 나누기로하자. 뷰어패널이라도 pdf면 타임시트나 콘티용지패널이랑 같은
   /// 알약쓰고, 한장짜리면 그 알약조차 없애고, 동영상같은거면 아래에 재생ui
-  /// 넣고」. So a panel wears what its DOCUMENT is — this for one that runs,
-  /// [pageStrip] for one that turns pages, neither for a single picture —
-  /// and the host says which by what it hands over.
+  /// 넣고」. So a panel wears what its DOCUMENT is, and the host says which
+  /// by what it hands over: the transport for one that runs, the turner for
+  /// one that turns pages, nothing for a single picture.
+  ///
+  /// 🗣️F-383 (유저 2026-10-17): the turner stands here too — 「밑에
+  /// 알약말고 비디오파일일때 처럼 공간만들고 거기다 기존 버튼 배치」. ↩️It
+  /// stood in a capsule of its own on the LEFT edge (유저 확정 2026-08-13 ⑥:
+  /// 페이지 넘기기는 왼쪽 세로, 그리고 필요한 파일에서만), out of the pill whose
+  /// largest tenant it had been.
   ///
   /// It hides the artwork as a lane does, so framing keeps out from under
   /// it (`_framingInsets`).
@@ -683,24 +693,25 @@ class BrushCanvasPanel extends StatefulWidget {
   /// which is every canvas surface but the floor.
   ///
   /// The PANELS only. This panel's own capsules are added where framing
-  /// reads the window (`_framingInsets`): the pill and the page strip are
+  /// reads the window (`_framingInsets`): the pill and the transport are
   /// cover there, the panbars float on the drawing.
   /// ↩️None was until 2026-09-30 — a capsule hiding a corner of the artwork
   /// was the price of not spending a strip of the screen on idle chrome.
   /// The user took that back for the pill (「판정을 알약까지 포함해서
-  /// 판정」, [_CanvasEditorPanelShell.pillBandIn]) and then for the strip
-  /// (F-346).
+  /// 판정」, [_CanvasEditorPanelShell.pillBandIn]) and then for the page
+  /// strip that stood on the left edge (F-346).
   final EdgeInsets floorCover;
 
-  /// WHERE the rail on each side edge actually is, vertically — null when
+  /// WHERE the rail on the right edge actually is, vertically — null when
   /// nothing is open there.
   ///
   /// [floorCover] says how much of the edge is unusable, which is the right
   /// question for FRAMING and the wrong one for the control that lives on
-  /// that edge — the vertical panbar on the right, the page strip on the
-  /// left: a short rail panel covers a band, and a control that steps aside
-  /// for a panel nowhere near it reads as floating (유저, R3 #5).
-  final CanvasFloorBand? floorLeftRailBand;
+  /// that edge — the vertical panbar: a short rail panel covers a band, and
+  /// a control that steps aside for a panel nowhere near it reads as
+  /// floating (유저, R3 #5). ↩️The left rail's band was asked the same for
+  /// the page strip on that edge, until the strip went under the bars
+  /// (F-383).
   final CanvasFloorBand? floorRightRailBand;
 
   /// ⑩: what floats over the floor's BOTTOM edge without framing the
@@ -2219,74 +2230,25 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// What is hidden from the artwork: the panels lying on the floor, a
   /// docked panel's own lanes — its panbars stand on the artwork's right and
   /// bottom edges (F-209) — the pill's band across the top edge
-  /// ([_CanvasEditorPanelShell.pillBandIn]), the page strip's down the left
-  /// one ([_CanvasEditorPanelShell.pageStripBandOf]), and the transport
-  /// under a document that runs ([_CanvasEditorPanelShell.transportCover]).
-  /// Framing keeps out from under all of it as it keeps out from under a
-  /// panel.
-  ///
-  /// ⚠️The strip's band adds to the floor's left cover only where the strip
-  /// has stepped past the left rail ([_pageStripBesideRail]). On the box's
-  /// own left edge it is the larger of the two, not their sum: framing
-  /// counts a rail's band as its whole edge, so a rail there already covers
-  /// the strip.
-  EdgeInsets get _framingInsets {
-    final covered =
-        widget.floorCover +
-        (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
-        EdgeInsets.only(
-          top: _pillBand,
-          bottom: _CanvasEditorPanelShell.transportCover(
-            widget.transport,
-            onFloor: _onFloor,
-            floorOverlay: widget.floorBottomOverlaySpan,
-          ),
-        );
-    final strip = _CanvasEditorPanelShell.pageStripBandOf(widget.pageStrip);
-    return covered.copyWith(
-      left: _pageStripBesideRail
-          ? covered.left + strip
-          : math.max(covered.left, strip),
-    );
-  }
-
-  /// Whether the page strip stands past the left rail — what its seat
-  /// decides as it lays the strip out ([_PageStripSeat]), asked again with
-  /// the height the strip was last laid out at, because framing is read
-  /// before the layout that places it. The window is the floor's: off the
-  /// floor no rail is beside anything.
-  bool get _pageStripBesideRail {
-    final cover = widget.floorCover;
-    return _CanvasEditorPanelShell.pageStripBesideRail(
-      widget.floorLeftRailBand,
-      windowTop: cover.top,
-      windowHeight:
-          _viewportState._resolvedEditorViewportSize().height - cover.vertical,
-      height: _pageStripHeight,
-    );
-  }
+  /// ([_CanvasEditorPanelShell.pillBandIn]), and the transport under a
+  /// document you move through ([_CanvasEditorPanelShell.transportCover]) —
+  /// a book's page turner as a movie's player (F-383). Framing keeps out
+  /// from under all of it as it keeps out from under a panel.
+  EdgeInsets get _framingInsets =>
+      widget.floorCover +
+      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
+      EdgeInsets.only(
+        top: _pillBand,
+        bottom: _CanvasEditorPanelShell.transportCover(
+          widget.transport,
+          onFloor: _onFloor,
+          floorOverlay: widget.floorBottomOverlaySpan,
+        ),
+      );
 
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
   late double _pillBand;
-
-  /// How tall the page strip was last laid out ([_PageStripSeat]) — zero
-  /// before it has been.
-  double _pageStripHeight = 0;
-
-  void _rememberPageStripHeight(double height) {
-    if (height == _pageStripHeight) {
-      return;
-    }
-    _pageStripHeight = height;
-    // Learned in a layout, after this frame's build framed the view with
-    // the height before it: the next build frames with this one.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _rebuild(() {});
-      }
-    });
-  }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
@@ -2951,30 +2913,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   static double pillBandIn(BuildContext context) =>
       _capsuleBand(_CanvasViewportBottomBar.heightIn(context));
 
-  /// 🗣️F-346 (유저 2026-10-12): 「왼쪽알약도 동일하게 하나의 기준? 아무튼
-  /// 그쪽도 이동가능해야하는 부분으로서 판정하도록」 — the page strip is cover
-  /// as the pill is ([pillBandIn]): the band it floats in down the left
-  /// edge, its margin either side. Zoomed in, the view goes on until the
-  /// paper's left edge stands beside the strip. Nothing with no strip.
-  static double pageStripBandOf(List<Widget> pageStrip) =>
-      pageStrip.isEmpty ? 0 : _capsuleBand(_pageStripWidth);
-
-  /// Whether the page strip, [height] tall in the middle of a window that
-  /// starts [windowTop] down the floor and is [windowHeight] tall, has the
-  /// left rail's [band] beside it — what the vertical panbar asks of the
-  /// right rail ([_FloorVerticalBarSeat]). The axis law has a control yield
-  /// across the edge it rides (유저, R4), and to the rail's band rather
-  /// than its whole edge (유저, R3 #5).
-  static bool pageStripBesideRail(
-    CanvasFloorBand? band, {
-    required double windowTop,
-    required double windowHeight,
-    required double height,
-  }) {
-    final top = windowTop + (windowHeight - height) / 2;
-    return canvasFloorBandIntrudes(band, top: top, bottom: top + height);
-  }
-
   /// The band a capsule floats in along the edge it rides: its own
   /// [thickness], with [_capsuleMargin] on either side of it.
   static double _capsuleBand(double thickness) =>
@@ -2984,6 +2922,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// band and the rule over it; the floor's capsule, its margin on either
   /// side, and whatever lies on that edge under it ([floorOverlay]).
   /// Nothing with no transport.
+  ///
+  /// 🗣️A book's page turner is cover as a movie's player is — what F-346
+  /// asked of it where it stood on the left edge (유저 2026-10-12: 「왼쪽
+  /// 알약도 동일하게 하나의 기준? 아무튼 그쪽도 이동가능해야하는 부분으로서
+  /// 판정하도록」): zoomed in, the view goes on until the paper's edge stands
+  /// above the band.
   ///
   /// ⚠️The floor's overlay — the collapsed row — frames nothing by itself
   /// ([BrushCanvasPanel.floorBottomOverlaySpan]): it is see-through, and
@@ -3012,14 +2956,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.horizontalStripBar,
     required this.cover,
     required this.onFloor,
-    this.pageStrip = const <Widget>[],
     this.transport,
     this.documentName,
     this.documentAbsent = false,
     this.bottomOverlaySpan = 0,
-    this.leftRailBand,
     this.rightRailBand,
-    required this.onPageStripLaidOut,
   });
 
   final Widget child;
@@ -3033,9 +2974,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// The horizontal panbar: its own capsule on the floor's bottom edge, its
   /// own lane on a docked panel's.
   final Widget horizontalStripBar;
-
-  /// See [BrushCanvasPanel.pageStrip] — empty means no capsule at all.
-  final List<Widget> pageStrip;
 
   /// See [BrushCanvasPanel.transport] — null means nothing under the bars.
   final CanvasTransportBand? transport;
@@ -3070,13 +3008,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// The horizontal bar steps up by it; framing does not.
   final double bottomOverlaySpan;
 
-  /// The vertical bands the rails on the two side edges occupy — see
-  /// [BrushCanvasPanel.floorLeftRailBand].
-  final CanvasFloorBand? leftRailBand;
+  /// The vertical band the rail on the right edge occupies — see
+  /// [BrushCanvasPanel.floorRightRailBand].
   final CanvasFloorBand? rightRailBand;
-
-  /// Told how tall the page strip was laid out ([_PageStripSeat]).
-  final ValueChanged<double> onPageStripLaidOut;
 
   /// How far a floating capsule sits in from the window's edge.
   ///
@@ -3088,12 +3022,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// 14px tall against the pill's 52, not the gap. The gap itself moved
   /// 8 → 6.
   static const double _capsuleMargin = 6;
-
-  /// How wide the page strip's capsule stands (유저 확정 ⑥). Wide enough for
-  /// the shared icon button's 26px minimum and the page readout stacked
-  /// under it, narrow enough to read as an EDGE ornament rather than a
-  /// second rail.
-  static const double _pageStripWidth = 32;
 
   /// What a scrollbar capsule spans — only the floor has capsules — as a
   /// share of the edge it rides: clamped, because the point of a capsule is
@@ -3183,43 +3111,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           bottom: cover.bottom + (onFloor ? 0 : dockedLane + _transportCover),
           child: _FloatingCanvasControls(
             children: [
-              // THE PAGE STRIP, at the LEFT CENTRE (유저 확정 ⑥).
-              //
-              // Same axis law the two bars follow: ALONG the edge it rides
-              // it holds the window's centre, and ACROSS that edge it sits
-              // on the edge — past the left rail where the rail is beside
-              // it, as the vertical bar steps past the right one
-              // ([_PageStripSeat]): under a rail, no page could be turned.
-              // A rail opening on the right is not a reason for the page
-              // you are turning to walk left.
-              if (pageStrip.isNotEmpty)
-                Positioned.fill(
-                  child: CustomSingleChildLayout(
-                    delegate: _PageStripSeat(
-                      railBand: leftRailBand,
-                      windowTop: cover.top,
-                      railSpan: cover.left,
-                      onLaidOut: onPageStripLaidOut,
-                    ),
-                    // A panel shorter than the strip gets the whole strip,
-                    // smaller — never a column that overflows, and never
-                    // one missing a control. Its height is its controls and
-                    // a readout that wraps (「12 / 51」 is two lines in
-                    // 30px), so no floor number can promise it room.
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: CanvasCapsule(
-                        keyValue: 'canvas-page-strip',
-                        width: _pageStripWidth,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: pageStrip,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
               //
               // ⛔It used to take the top corner away from the tool strip
@@ -3293,11 +3184,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// edge left the bar hanging in the middle of nothing.
   ///
   /// 🚨I-57 (10-13): each bar is SEATED where it is laid out
-  /// ([_FloorVerticalBarSeat], [_FloorHorizontalBarSeat]), as the page strip
-  /// is. They were measured in a LayoutBuilder, and a builder runs again
-  /// whenever the panel is built: its layout repainted the shell — the pill
-  /// and everything on it — on every notify and every cut crossed, for
-  /// bars that had not moved.
+  /// ([_FloorVerticalBarSeat], [_FloorHorizontalBarSeat]). They were
+  /// measured in a LayoutBuilder, and a builder runs again whenever the
+  /// panel is built: its layout repainted the shell — the pill and
+  /// everything on it — on every notify and every cut crossed, for bars
+  /// that had not moved.
   Widget _floorCapsules() => Positioned.fill(
     child: Stack(
       children: [
@@ -3479,61 +3370,6 @@ class _CanvasDocumentName extends StatelessWidget {
       ),
     ),
   );
-}
-
-/// Seats the page strip in the middle of the window's left edge — past the
-/// left rail when the rail is beside it
-/// ([_CanvasEditorPanelShell.pageStripBesideRail]) — and reports how tall
-/// it was laid out, which framing needs to ask the same thing before the
-/// next layout (`_framingInsets`).
-class _PageStripSeat extends SingleChildLayoutDelegate {
-  const _PageStripSeat({
-    required this.railBand,
-    required this.windowTop,
-    required this.railSpan,
-    required this.onLaidOut,
-  });
-
-  /// See [_CanvasEditorPanelShell.leftRailBand].
-  final CanvasFloorBand? railBand;
-
-  /// How far down the floor the window the strip stands in starts.
-  final double windowTop;
-
-  /// How far in from the left edge the rail reaches: the strip steps past
-  /// it.
-  final double railSpan;
-
-  final ValueChanged<double> onLaidOut;
-
-  static const double _margin = _CanvasEditorPanelShell._capsuleMargin;
-
-  @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      BoxConstraints(
-        maxHeight: math.max(0.0, constraints.maxHeight - 2 * _margin),
-      );
-
-  @override
-  Offset getPositionForChild(Size size, Size childSize) {
-    onLaidOut(childSize.height);
-    final beside = _CanvasEditorPanelShell.pageStripBesideRail(
-      railBand,
-      windowTop: windowTop,
-      windowHeight: size.height,
-      height: childSize.height,
-    );
-    return Offset(
-      (beside ? railSpan : 0) + _margin,
-      (size.height - childSize.height) / 2,
-    );
-  }
-
-  @override
-  bool shouldRelayout(_PageStripSeat oldDelegate) =>
-      oldDelegate.railBand != railBand ||
-      oldDelegate.windowTop != windowTop ||
-      oldDelegate.railSpan != railSpan;
 }
 
 /// Seats the floor's vertical panbar in the middle of the visible HEIGHT,

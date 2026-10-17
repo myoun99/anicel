@@ -21,7 +21,7 @@ import '../theme/app_theme.dart';
 /// and that is the whole point: the contract is 「give me this page at this
 /// size」, which is exactly what a waveform can answer. Everything the
 /// viewer already does — the zoom tier, the raster budget, the fit, the
-/// pan, the page strip — then works with nothing written twice. That file's
+/// pan, the transport — then works with nothing written twice. That file's
 /// own note says what the alternative costs: the per-medium `if (pdf) …
 /// else if (frames) …` lived in the viewer five times over.
 ///

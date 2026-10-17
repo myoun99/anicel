@@ -3132,9 +3132,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// ([ExportPreviewPanel]) — and under it, on the Cels tab, the list.
   ///
   /// ↩️A scrub bar, a line saying where the playhead stood and a line naming
-  /// the first file stood between the picture and the list. The panel's
-  /// transport and its page cluster turn the picture now, and the file's
-  /// name is on the picture (유저 2026-10-06: 「파일이름 위치도 심플해서
+  /// the first file stood between the picture and the list. The band under
+  /// the panel — a player, a book's page turner — turns the picture now,
+  /// and the file's name is on the picture (유저 2026-10-06: 「파일이름 위치도 심플해서
   /// 좋아」).
   Widget _previewZone(ThemeData theme) {
     final file = _previewFile();

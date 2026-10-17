@@ -1094,13 +1094,10 @@ void main() {
       await pumpDialog(tester, exportSession());
       await switchTab(tester, 'timesheet');
       expect(
-        tester.exportTransportBar,
+        find.byKey(const ValueKey<String>('canvas-transport')),
         findsNothing,
-        reason: 'a cel is one picture: the list\'s band turns the pages',
-      );
-      expect(
-        find.byKey(const ValueKey<String>('canvas-page-strip')),
-        findsNothing,
+        reason: 'a cel is one picture — no player, no page turner: the '
+            'list\'s band turns the pages',
       );
       expect(tester.celsBoardRowIds, ['document-timesheet']);
       expect(tester.celsBoardBlocksOf('document-timesheet'), [('Cut', true)]);

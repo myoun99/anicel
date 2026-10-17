@@ -34,9 +34,9 @@ import '../../helpers/export_preview_probe.dart';
 /// 🗣️F-289 (유저 2026-10-06): the export window's preview is a canvas-base
 /// panel that wears what the tab's file is — the Sequence and the Image tab
 /// stand on the transport (IN and OUT on the Sequence tab alone), the Conte
-/// tab turns its pages on the left, and a cel is one picture — with the
-/// file's name in one place whatever the tab: 「그냥 제안한대로 동영상뷰어던
-/// 뭐던 해당 위치 고정으로 두자」.
+/// tab turns its pages in the same band (F-383), and a cel is one picture —
+/// with the file's name in one place whatever the tab: 「그냥 제안한대로
+/// 동영상뷰어던 뭐던 해당 위치 고정으로 두자」.
 ///
 /// The window's side of it: which document each tab hands the panel, and
 /// the name it writes on the plate.
@@ -47,7 +47,7 @@ void main() {
   const cutId = CutId('cut');
   const size = CanvasSize(width: 8, height: 8);
   const transport = ValueKey<String>('canvas-transport');
-  const strip = ValueKey<String>('canvas-page-strip');
+  const turner = ValueKey<String>('export-preview-page-readout');
   final loading = find.byKey(const ValueKey<String>('export-preview-loading'));
 
   Frame frame(String id, String name) =>
@@ -146,7 +146,7 @@ void main() {
     expect(find.byKey(transport), findsOneWidget);
     expect(tester.exportTransport.frameCount, 3);
     expect(tester.exportTransport.range, isNotNull);
-    expect(find.byKey(strip), findsNothing);
+    expect(find.byKey(turner), findsNothing);
 
     await openTab(tester, 'image');
     expect(tester.exportPreviewDocument!.shape, ExportPreviewShape.runs);
@@ -161,13 +161,13 @@ void main() {
     final book = tester.exportPreviewDocument!;
     expect(book.shape, ExportPreviewShape.book);
     expect(book.pageCount, greaterThan(1), reason: 'LIVENESS — pages to turn');
-    expect(find.byKey(transport), findsNothing);
-    expect(find.byKey(strip), findsOneWidget);
+    expect(find.byKey(transport), findsOneWidget);
+    expect(tester.exportTransportBar, findsNothing);
+    expect(find.byKey(turner), findsOneWidget);
 
     await openTab(tester, 'cels');
     expect(tester.exportPreviewDocument!.shape, ExportPreviewShape.single);
     expect(find.byKey(transport), findsNothing);
-    expect(find.byKey(strip), findsNothing);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

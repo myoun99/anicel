@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart';
 /// smaller; the [head] takes what is left, each in the middle of the row's
 /// height.
 ///
-/// 🗣️THE PAGE STRIP'S LAW, as the canvas pill keeps it
+/// 🗣️THE PAGE TURNER'S LAW, as the canvas pill keeps it
 /// (`canvas-bottom-bar-overflows-at-437`): a panel too narrow for what the
 /// fold kept shows all of it, smaller — never a row that runs off, never a
 /// control cut away. The head is the fold, and the tail is what it keeps.

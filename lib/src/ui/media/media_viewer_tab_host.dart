@@ -49,7 +49,7 @@ import 'viewer_render_tier.dart';
 import 'viewer_sound.dart';
 import 'waveform_marks_painter.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/page_turn_strip.dart';
+import '../widgets/page_turn_bar.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/transport_bar.dart';
 import '../widgets/static_raster.dart';
@@ -962,33 +962,35 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// 타임시트나 콘티용지패널이랑 같은 알약쓰고, 한장짜리면 그 알약조차
   /// 없애고, 동영상같은거면 아래에 재생ui 넣고」): a document that RUNS — its
   /// pages advance by themselves, or it sounds ([MediaRun.canPlay]) — gets
-  /// the transport under it ([_transport]); a book gets the page cluster on
-  /// the left ([_pageStrip]); a single picture gets neither.
+  /// the transport under it ([_player]); a book gets the page turner there
+  /// instead (F-383); a single picture gets neither ([_transport]).
   ///
-  /// ↩️Every document wore the left strip, and one that ran had PLAY at the
-  /// head of it — a movie turned its frames by the page chevrons.
+  /// ↩️Every document wore the strip on the left edge, and one that ran had
+  /// PLAY at the head of it — a movie turned its frames by the page
+  /// chevrons.
   bool get _runs => _run.canPlay;
 
-  /// The page cluster, STACKED for the left strip (유저 확정 ⑥) — a book's,
-  /// and empty unless there is more than one page, because a still image
-  /// has no pages to turn and a strip standing there for it would be a
-  /// permanent disabled promise.
-  List<Widget> _pageStrip(int pageIndex, int pageCount) => _runs
-      ? const []
-      : pageTurnStrip(
+  /// The band under the document stood on — page [pageIndex] of
+  /// [pageCount]: the transport of one that runs, the page turner of a
+  /// book ([CanvasTransportBand.ofPages] — none below two pages).
+  CanvasTransportBand? _transport(
+    BuildContext context,
+    int pageIndex,
+    int pageCount,
+  ) => _runs
+      ? _player(context)
+      : CanvasTransportBand.ofPages(
+          context,
           keyPrefix: widget.viewerId,
           page: viewerPage(pageIndex, pageCount),
           onTurnTo: _turnToPage,
         );
 
-  /// The transport under a document that runs, or null for one that does
-  /// not. What it counts is the run's ([MediaRun.frameCount]): a movie's
-  /// own frames, and a sound's length in the project's frames — the frames
-  /// the import window counts the same sound in.
-  CanvasTransportBand? _transport(BuildContext context) {
-    if (!_runs) {
-      return null;
-    }
+  /// The transport under a document that runs. What it counts is the run's
+  /// ([MediaRun.frameCount]): a movie's own frames, and a sound's length in
+  /// the project's frames — the frames the import window counts the same
+  /// sound in.
+  CanvasTransportBand _player(BuildContext context) {
     final rate = widget.session.projectSettings.projectFrameRate;
     final frameCount = _run.frameCount(rate);
     return CanvasTransportBand(
@@ -1307,12 +1309,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // viewer in a rail is not under the provider. ↩️The floor's viewer was
     // handed none, so its bars stood under the panels lying on it.
     final floor = CanvasFloorInsets.maybeOf(context);
-    final transport = _transport(context);
+    final transport = _transport(context, pageIndex, pageCount);
 
     BrushCanvasPanel panelWith(ValueListenable<BrushToolState>? tool) =>
         BrushCanvasPanel(
       floorCover: floor?.insets ?? EdgeInsets.zero,
-      floorLeftRailBand: floor?.leftRailBand,
       floorRightRailBand: floor?.rightRailBand,
       floorBottomOverlaySpan: floor?.bottomOverlaySpan ?? 0,
       coordinator: null,
@@ -1373,7 +1374,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             onPressed: request == null ? null : close,
           ),
       ],
-      pageStrip: _pageStrip(pageIndex, pageCount),
       transport: transport,
       documentName: _drawnName,
       bottomBarSettings: [

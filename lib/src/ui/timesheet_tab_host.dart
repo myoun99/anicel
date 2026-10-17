@@ -7,7 +7,8 @@ import '../models/cut.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
-import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel;
+import 'brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasTransportBand;
 import 'brush/sheet_canvas_panel.dart';
 import 'text/app_strings.dart';
 import 'brush/brush_edit_cache_invalidation_sink.dart';
@@ -17,7 +18,6 @@ import 'dialogs/dialog_verb.dart';
 import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
-import 'widgets/page_turn_strip.dart';
 import 'shortcuts/editor_action_registry.dart' show EditorActionIds;
 import 'shortcuts/panel_keys.dart';
 import 'timesheet/cut_sheet_document.dart';
@@ -60,8 +60,8 @@ class TimesheetTabHost extends StatefulWidget {
   /// The page the reader is on, the sheets lying one under another
   /// (F-201) — owned above the tab group with the viewport, so a tab
   /// switch doesn't lose the reader's place. The panel keeps it true to the
-  /// view ([CanvasBook]); a write to it is a turn — the strip's ▲▼, and
-  /// playback crossing into a page. Null keeps one of the host's own.
+  /// view ([CanvasBook]); a write to it is a turn — the page turner's ◀ ▶,
+  /// and playback crossing into a page. Null keeps one of the host's own.
   final ValueNotifier<int>? reading;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
@@ -290,10 +290,11 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// deleted (F-252-Q1, 2026-10-08).
   ///
   /// ⛔The page cluster used to follow them here. It moved to the panel's
-  /// left edge (유저 확정 ⑥ 2026-08-13, [_pageStrip]) because three controls
-  /// at 44px of budget each were most of what the pill had to spend, and a
-  /// rail-width sheet was shedding the lot — turning pages and reading the
-  /// page competing for the same row.
+  /// left edge (유저 확정 ⑥ 2026-08-13) because three controls at 44px of
+  /// budget each were most of what the pill had to spend, and a rail-width
+  /// sheet was shedding the lot — turning pages and reading the page
+  /// competing for the same row. It stands under the sheet now
+  /// ([_pageTurner], F-383).
   List<Widget> _bottomBarLeading() {
     return [
       // Notation ↔ DATA sheet (UI-R24 #1): data prints the export-source
@@ -315,17 +316,21 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// Notation ⇄ data — the switch's press, and its key's (I-40).
   void _toggleDataSheet() => widget.onDataSheetChanged?.call(!_dataSheet);
 
-  /// Turning the sheet's pages, on the panel's LEFT edge (유저 확정 ⑥
-  /// 2026-08-13) rather than in the pill.
-  List<Widget> _pageStrip(TimesheetDocumentLayout layout) {
+  /// Turning the sheet's pages, in the band under it (F-383) rather than in
+  /// the pill.
+  CanvasTransportBand? _pageTurner(
+    BuildContext context,
+    TimesheetDocumentLayout layout,
+  ) {
     final book = _bookOf(layout);
-    return pageTurnStrip(
+    return CanvasTransportBand.ofPages(
+      context,
       keyPrefix: 'timesheet',
       page: (
         index: book.page,
         count: layout.document.pages.length,
         // '1/2' — the spelling shared with the printed ページ header (R26 #41).
-        readout: layout.pageLabel(book.page),
+        spell: layout.pageLabel,
       ),
       onTurnTo: book.turnTo,
     );
@@ -431,7 +436,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                       ..._panelActions(),
                       ..._bottomBarLeading(),
                     ],
-                    pageStrip: _pageStrip(layout),
+                    transport: _pageTurner(context, layout),
                     bottomBarHostToken: (
                       _dataSheet,
                       visiblePage,
