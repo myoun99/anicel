@@ -200,6 +200,38 @@ void main() {
       expect(identical(first, second), isTrue);
     });
 
+    test('a tile under the same values twice answers from its memo — by the '
+        'values, not the list they come in', () {
+      final tile = tileWith(origin, {
+        (0, 0): [255, 255, 255, 255],
+      }).tile;
+      ResolvedLayerEffect white() =>
+          key(EffectKind.deleteColor, red: 255, green: 255, blue: 255);
+
+      final first = celTileWithSourceEffects(tile, [white()], 256);
+      final second = celTileWithSourceEffects(tile, [white()], 256);
+
+      expect(identical(first, tile), isFalse, reason: '⛔fixture: keyed');
+      expect(identical(first, second), isTrue);
+    });
+
+    test('the keyed copy the pass holds of a tile is found by the tile — '
+        'and a tile it made none of has none', () {
+      final tile = tileWith(origin, {
+        (0, 0): [255, 255, 255, 255],
+      }).tile;
+      final never = tileWith(origin, {
+        (0, 0): [10, 20, 30, 255],
+      }).tile;
+
+      final keyed = celTileWithSourceEffects(tile, [
+        key(EffectKind.deleteColor, red: 255, green: 255, blue: 255),
+      ], 256);
+
+      expect(identical(keyedCopyOf(tile), keyed), isTrue);
+      expect(keyedCopyOf(never), isNull);
+    });
+
     test('a CHANGED value misses the cache, at the surface grain and at the '
         'tile grain', () {
       // The memo is keyed on identity and VALIDATED by the signature: a
