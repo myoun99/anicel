@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/argb_channels.dart';
 import 'package:anicel/src/core/bounded_memo.dart';
+import 'package:anicel/src/core/byte_needle.dart';
 import 'package:anicel/src/core/contain_rect.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/identity_memo.dart';
@@ -437,6 +438,24 @@ void main() {
       expect(toggledSet(toggledSet(const <String>{'a'}, 'b'), 'b'), <String>{
         'a',
       });
+    });
+  });
+
+  group('indexOfBytes — the byte-needle scan every file reader goes '
+      'through', () {
+    final bytes = Uint8List.fromList([1, 2, 3, 1, 2, 3, 4]);
+
+    test('the first start at or after where it looks', () {
+      expect(indexOfBytes(bytes, [2, 3], 0), 1);
+      expect(indexOfBytes(bytes, [2, 3], 2), 4);
+      expect(indexOfBytes(bytes, [1, 2, 3, 4], 0), 3);
+    });
+
+    test('a needle must END by the bound — one that only starts inside it '
+        'is not found', () {
+      expect(indexOfBytes(bytes, [3, 4], 0, 7), 5);
+      expect(indexOfBytes(bytes, [3, 4], 0, 6), -1);
+      expect(indexOfBytes(bytes, [9], 0), -1);
     });
   });
 }

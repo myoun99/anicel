@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../core/byte_needle.dart';
 import 'tvp_import_model.dart';
 import 'tvpp_key_value_lines.dart';
 import 'import_warning.dart';
@@ -355,34 +356,13 @@ bool _isFourCc(Uint8List bytes, int at) {
 int _u32(Uint8List bytes, int at) =>
     ByteData.sublistView(bytes, at, at + 4).getUint32(0);
 
-/// The first index at or after [from] where [needle] starts, with the
-/// whole needle ending at or before [until] (the file's end by default);
-/// -1 when absent. THE byte-needle scan — a FourCC, a UTF-16BE key, a
-/// property name are all this with a different needle.
-int _find(Uint8List bytes, List<int> needle, int from, [int? until]) {
-  final end = (until ?? bytes.length) - needle.length;
-  for (var i = from; i <= end; i++) {
-    var ok = true;
-    for (var k = 0; k < needle.length; k++) {
-      if (bytes[i + k] != needle[k]) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-/// The LAST index in `[from, until)` where [needle] starts — [_find]
-/// repeated past each hit — or -1.
+/// The LAST index in `[from, until)` where [needle] starts —
+/// [indexOfBytes] repeated past each hit — or -1.
 int _findLast(Uint8List bytes, List<int> needle, int from, int until) {
   var best = -1;
   var scan = from;
   while (true) {
-    final at = _find(bytes, needle, scan, until);
+    final at = indexOfBytes(bytes, needle, scan, until);
     if (at < 0) {
       return best;
     }
@@ -426,7 +406,7 @@ TvppParseResult parseTvppStructure(Uint8List bytes) {
   final clipStarts = <int>[];
   var scan = 0;
   while (true) {
-    final at = _find(bytes, 'DLOC'.codeUnits, scan);
+    final at = indexOfBytes(bytes, 'DLOC'.codeUnits, scan);
     if (at < 0) {
       break;
     }
@@ -469,7 +449,7 @@ int? _projectProperty(Uint8List bytes, String key) {
   }
   final limit = bytes.length < 1 << 20 ? bytes.length : 1 << 20;
   // The value's u16 length must fit under the limit too, hence `limit - 3`.
-  final i = _find(bytes, needle, 0, limit - 3);
+  final i = indexOfBytes(bytes, needle, 0, limit - 3);
   if (i < 0) {
     return null;
   }
