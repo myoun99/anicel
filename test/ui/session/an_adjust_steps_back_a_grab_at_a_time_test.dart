@@ -67,10 +67,13 @@ void main() {
     final adjust = CanvasAdjust()
       ..begin(CanvasEdgesDraft.of(cut, size))
       ..move(edges(120))
-      ..end()
-      ..begin(CanvasEdgesDraft.of(cut, size));
+      ..end();
     addTearDown(adjust.dispose);
-    expect(adjust.canStepBack, isFalse);
+    expect(
+      adjust.canStepBack,
+      isFalse,
+      reason: 'closed, it has nothing an undo could open again',
+    );
 
     adjust
       ..move(edges(120))

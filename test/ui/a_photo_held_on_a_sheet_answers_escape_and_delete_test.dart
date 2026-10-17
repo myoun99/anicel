@@ -140,6 +140,45 @@ void main() {
 
     await pressCtrl(tester, LogicalKeyboardKey.keyZ);
     expect(poseOf(), put, reason: 'one undo takes the hold back whole');
+
+    // Held again with no grab to take back, an undo is the document's — and
+    // lets go of the photo first, as it lands a text in hand.
+    hold.take(at);
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(hold.held, isNull);
+  });
+
+  testWidgets('F-377: a photo taken off after a grab — the grab is one step, '
+      'and taking it off another', (tester) async {
+    final session = await pumpApp(tester);
+    await useAnicelKeys(tester);
+    final at = putPhoto(session);
+    final hold = session.sheetPhotoHold;
+    final store = session.renderCaches.envelopeInkStore;
+    final put = store.bakedSurfaceOrNull(at.key)!.photos.single.reference.pose;
+    final moved = put.copyWith(
+      center: CanvasPoint(x: put.center.x + 30, y: put.center.y),
+    );
+    hold
+      ..take(at)
+      ..land(at, moved)
+      ..land(at, moved.copyWith(rotationDegrees: 30));
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.pump();
+    expect(photosOn(session, at), 0, reason: '⛔전제: taken off');
+
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(
+      store.bakedSurfaceOrNull(at.key)!.photos.single.reference.pose,
+      moved.copyWith(rotationDegrees: 30),
+      reason: 'back on, where the grabs had it',
+    );
+    await pressCtrl(tester, LogicalKeyboardKey.keyZ);
+    expect(
+      store.bakedSurfaceOrNull(at.key)!.photos.single.reference.pose,
+      put,
+      reason: 'and its grabs back whole, in one',
+    );
   });
 
   testWidgets('🚨a text held on the canvas as well: Delete takes the photo '
