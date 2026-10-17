@@ -448,6 +448,22 @@ void main() {
       expect(plate('pages'), findsNothing);
     });
 
+    testWidgets('a session handed over is the one heard: the plate follows '
+        'the pool of the session the viewer stands in now', (tester) async {
+      await openPages(tester, pages: 3, project: inThePool);
+      final first = session!;
+      addTearDown(first.dispose);
+      session = EditorSessionManager(initialProject: inThePool);
+      await pumpViewer(tester);
+      await tester.pumpAndSettle();
+      expect(plate('pages'), findsOneWidget, reason: 'CONTROL');
+
+      session!.mediaPool.renameMediaAsset(pooled, '콘티');
+      await tester.pump();
+
+      expect(plate('콘티'), findsOneWidget);
+    });
+
     testWidgets('a change that leaves the name as it was draws nothing: the '
         'viewer hears the session for its name alone', (tester) async {
       await openPages(tester, pages: 3, project: inThePool);
