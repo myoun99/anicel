@@ -185,19 +185,23 @@ String? _valueNamed(Iterable<String> arguments, String name) {
 /// would otherwise be read from that list's brace.
 String? bodyOf(String source, Pattern signature) {
   final head = signature.allMatches(source).firstOrNull;
-  if (head == null) {
-    return null;
-  }
-  var open = head.end;
-  while (open < source.length) {
-    final past = pastNonCode(source, open);
-    if (past > open) {
-      open = past;
-    } else if (source[open] == '{') {
-      final close = matchingClose(source, open);
-      return close == null ? null : source.substring(open, close + 1);
+  final open = head == null ? null : codeIndexOf(source, '{', head.end);
+  final close = open == null ? null : matchingClose(source, open);
+  return close == null ? null : source.substring(open!, close + 1);
+}
+
+/// The index of the first [char] at or after [from] that is code — not in
+/// a string or a comment — or null.
+int? codeIndexOf(String source, String char, [int from = 0]) {
+  var i = from;
+  while (i < source.length) {
+    final past = pastNonCode(source, i);
+    if (past > i) {
+      i = past;
+    } else if (source[i] == char) {
+      return i;
     } else {
-      open += 1;
+      i += 1;
     }
   }
   return null;

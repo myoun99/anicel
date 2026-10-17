@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
 
 /// 🚨★★★**A TEST MUST NOT SCHEDULE ITS DATA ON A WALL CLOCK.**
@@ -82,8 +84,8 @@ void main() {
             line.contains('return Future')) {
           continue;
         }
-        final tail = lines.sublist(i, (i + 4).clamp(0, lines.length)).join(' ');
-        if (_delayedTakesAComputation(tail)) {
+        // The call read whole, however many lines it runs over.
+        if (_delayedTakesAComputation(lines.sublist(i).join('\n'))) {
           offenders.add('${file.path}:${i + 1}: ${line.trim()}');
         }
       }
@@ -291,31 +293,21 @@ bool _ownCeiling(String line) {
 /// Whether a `.delayed(…)` call passes a SECOND argument — the computation
 /// that makes it a scheduled side effect rather than a plain wait.
 ///
-/// 🚨Counts parentheses instead of matching a pattern. The first version
-/// used `\.delayed\([^)]*,` and that stops at the first `)`, which on the
-/// real call — `.delayed(const Duration(milliseconds: 8), () {…})` — is the
-/// one closing `Duration`. It found nothing and reported green; a mutation
-/// that put the old bug back is what showed it.
+/// 🚨Reads the call's arguments by their brackets instead of matching a
+/// pattern. The first version used `\.delayed\([^)]*,` and that stops at the
+/// first `)`, which on the real call — `.delayed(const Duration(milliseconds:
+/// 8), () {…})` — is the one closing `Duration`. It found nothing and
+/// reported green; a mutation that put the old bug back is what showed it.
+/// ↩️It counted the parentheses itself, in a window of four lines, and a
+/// comma that only ends the last argument read as a second one. The call is
+/// read whole, by the one reading ([callArguments]).
 bool _delayedTakesAComputation(String source) {
   final at = source.indexOf('.delayed(');
   if (at < 0) {
     return false;
   }
-  var depth = 0;
-  for (var i = at + '.delayed'.length; i < source.length; i += 1) {
-    final char = source[i];
-    if (char == '(') {
-      depth += 1;
-    } else if (char == ')') {
-      depth -= 1;
-      if (depth == 0) {
-        return false; // Closed with one argument: a plain wait.
-      }
-    } else if (char == ',' && depth == 1) {
-      return true; // A second argument at the call's own level.
-    }
-  }
-  return false; // Unbalanced within the window — not a claim either way.
+  final arguments = callArguments(source, at + '.delayed'.length);
+  return arguments != null && arguments.length > 1;
 }
 
 /// A counted `for` loop's own line — `for (var i = 0; i < n; …)`.
@@ -394,27 +386,39 @@ List<String> _bodyOf(List<String> loop) =>
 /// brace that closes its block, or to its one statement when it has no
 /// block.
 ///
-/// Reads the loop's block by counting braces, as
-/// [_delayedTakesAComputation] counts parentheses — not a window of so
-/// many lines, which would read a long loop short and a short one into
-/// whatever follows it.
+/// Reads the loop's block by its braces, as [_delayedTakesAComputation]
+/// reads its call by its parentheses — not a window of so many lines, which
+/// would read a long loop short and a short one into whatever follows it.
+/// The block opens past the loop's header — on its own line, or in the one
+/// statement after it (`foo(() {`); the one reading says where it closes
+/// ([matchingClose]). A brace inside the header (`any((p) { … })`) is the
+/// condition's, not the block's.
 List<String> _loopAt(List<String> lines, int at) {
-  var depth = 0;
-  var opened = false;
-  for (var i = at; i < lines.length; i += 1) {
-    for (final unit in lines[i].codeUnits) {
-      if (unit == 0x7B) {
-        depth += 1;
-        opened = true;
-      } else if (unit == 0x7D) {
-        depth -= 1;
-      }
-    }
-    if (opened ? depth <= 0 : i > at) {
-      return lines.sublist(at, i + 1);
-    }
+  final next = (at + 2).clamp(0, lines.length);
+  final head = lines.sublist(at, next).join('\n');
+  final open = codeIndexOf(head, '{', _pastHeader(head));
+  if (open == null) {
+    return lines.sublist(at, next);
   }
-  return lines.sublist(at);
+  final rest = lines.sublist(at).join('\n');
+  final close = matchingClose(rest, open);
+  if (close == null) {
+    return lines.sublist(at);
+  }
+  final last = at + '\n'.allMatches(rest.substring(0, close)).length;
+  return lines.sublist(at, last + 1);
+}
+
+/// Where the header a `for` or a `while` opens with ends in [head] — just
+/// past its `(…)` — or 0 for a `do`, whose block comes first.
+int _pastHeader(String head) {
+  final paren = codeIndexOf(head, '(');
+  final brace = codeIndexOf(head, '{');
+  if (paren == null || (brace != null && brace < paren)) {
+    return 0;
+  }
+  final close = matchingClose(head, paren);
+  return close == null ? head.length : close + 1;
 }
 
 /// [lines] with each loop header dart format broke over lines — `for (`
