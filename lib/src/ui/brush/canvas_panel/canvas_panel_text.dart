@@ -55,8 +55,7 @@ class _CanvasPanelText implements CelTextToolHost {
   int? get brushColour => _state.widget.brushToolState?.value.color;
 
   @override
-  HistoryMark? get historyMark =>
-      _state.widget.historyManager?.gestures.mark;
+  HistoryGestures? get gestures => _state.widget.historyManager?.gestures;
 
   @override
   void run(

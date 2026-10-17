@@ -620,7 +620,7 @@ void main() {
     test('a NEW text is set on its cel — with the cel its press made — and '
         'then turned: the turning takes no cel with it', () async {
       final (:tool, :host, :baker, :cel) = hand();
-      tool.beginText(cel, at, celMadeSince: host.historyMark);
+      tool.beginText(cel, at, celMadeSince: host.gestures.mark);
       typeInto(tool, 'ab');
       await baker.pending.answer();
 
@@ -2044,6 +2044,168 @@ void main() {
     expect(host.redrawn, redrawn);
     expect(told, 0);
   });
+
+  // 🗣️F-377 (유저 2026-10-17): 「변형중 언두가 직전변형 취소라던가. 끝나면
+  // 한번에 취소라던가 하듯이 변형 상태는 모두 기본적으로 그걸 따르도록.
+  // 텍스트 변형이든 뭐든」 — the transform box's law (유저 2026-09-20), for a
+  // text held by its box; a visit to its letters stays a step of its own
+  // (F-377-Q1's recommended 「변형만 묶는다」).
+  group('🗣️F-377: what the box lands while it holds a text', () {
+    /// A hand holding the text 「ab」 its cel carries, by its box.
+    ({CelTextTool tool, _Host host, HeldBaker baker, CelTextCel cel})
+    holdingAb() {
+      final holding = hand(texts: [carried(4, said([run('ab')]))]);
+      holding.tool.takeText(holding.cel, pictureOf(holding.cel).texts.single);
+      return holding;
+    }
+
+    double xOn(CelTextCel cel) => pictureOf(cel).texts.single.content.anchor.x;
+
+    /// The box carries the text in hand [dx] across, and lets go there.
+    void carryBy(CelTextTool tool, int dx) => tool
+      ..carry(dx: dx, dy: 0)
+      ..landEdit();
+
+    test('🚨each step it landed goes back one at a time while it holds the '
+        'text — still in hand, as its cel carries it — and none is left once '
+        'it stands as it was taken', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+      expect(xOn(cel), 15, reason: '⛔전제: carried 7 from 8');
+      expect(host.history.undoCount, 2, reason: '⛔전제: a step a carry');
+
+      expect(tool.canStepBack, isTrue);
+      tool.stepBack();
+
+      expect(xOn(cel), 12);
+      expect(tool.hold, CelTextHold.box, reason: 'still in hand');
+      expect(tool.session!.shown.content.anchor.x, 12);
+      expect(tool.session!.shownAsCarried, isTrue);
+      expect(host.history.undoCount, 1);
+      expect(
+        host.history.canRedo,
+        isFalse,
+        reason: 'a step the hold took back is not one it made',
+      );
+
+      tool.stepBack();
+
+      expect(xOn(cel), 8);
+      expect(tool.canStepBack, isFalse, reason: 'it stands as it was taken');
+    });
+
+    test('🚨let go, what it landed is ONE step — one undo puts the text '
+        'back where it was taken', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+
+      tool.confirm();
+
+      expect(host.history.undoCount, 1);
+      host.history.undo();
+      expect(xOn(cel), 8);
+    });
+
+    test('taking up its letters closes the box\'s steps into one: the visit '
+        'is its own step, and what the box lands after it another', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+
+      tool.typeAt(const TextSelection.collapsed(offset: 2));
+
+      expect(host.history.undoCount, 1, reason: 'the carries are ONE');
+      expect(tool.canStepBack, isFalse, reason: 'the letters answer now');
+
+      typeInto(tool, 'abc');
+      await baker.pending.answer();
+      tool.stopTyping();
+      expect(host.history.undoCount, 2, reason: '⛔전제: the visit');
+      carryBy(tool, 2);
+      carryBy(tool, 2);
+      tool.confirm();
+
+      expect(host.history.undoCount, 3);
+      host.history.undo();
+      expect(xOn(cel), 15, reason: 'the carries after the visit, in one');
+      host.history.undo();
+      expect(pictureOf(cel).texts.single.content.text, 'ab');
+      host.history.undo();
+      expect(xOn(cel), 8);
+    });
+
+    test('🚨one still being set is given up: nothing of it lands, and the '
+        'bake it asked for is never shown', () async {
+      final (:tool, :host, :baker, :cel) = holdingAb();
+      final taken = pictureOf(cel).texts.single;
+      tool.changeBox((content) => content.copyWith(align: TextCelAlign.right));
+      expect(host.history.undoCount, 0, reason: '⛔전제: still being set');
+
+      expect(tool.canStepBack, isTrue);
+      tool.stepBack();
+      expect(tool.canStepBack, isFalse, reason: 'it was the only one');
+
+      await baker.pending.answer();
+
+      expect(
+        tool.session!.shown.content,
+        taken.content,
+        reason: 'shown, it would flash for a frame',
+      );
+      expect(tool.session!.shown.plate, taken.plate);
+      expect(host.history.undoCount, 0, reason: 'nothing landed');
+    });
+
+    test('taken off its cel after the box landed steps: those are ONE, and '
+        'taking it off another', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      carryBy(tool, 3);
+
+      tool.deleteText();
+
+      expect(host.history.undoCount, 2);
+      host.history.undo();
+      expect(xOn(cel), 15, reason: 'back on, where the box had it');
+      host.history.undo();
+      expect(xOn(cel), 8, reason: 'and the box\'s steps back in one');
+    });
+
+    test('⛔a step written elsewhere while it was held stays its own: the box '
+        'takes back and folds only what it landed after it', () {
+      final (:tool, :host, baker: _, :cel) = holdingAb();
+      carryBy(tool, 4);
+      host.history.execute(_Elsewhere());
+      carryBy(tool, 3);
+
+      tool.stepBack();
+
+      expect(xOn(cel), 12);
+      expect(tool.canStepBack, isFalse, reason: 'the step under it is not its');
+
+      carryBy(tool, 3);
+      carryBy(tool, 3);
+      tool.confirm();
+
+      expect(host.history.undoCount, 3, reason: 'a carry, theirs, two in one');
+      host.history.undo();
+      expect(xOn(cel), 12);
+    });
+  });
+}
+
+/// A step of somebody else's, written while the hand holds a text.
+class _Elsewhere implements Command {
+  @override
+  String get description => 'Elsewhere';
+
+  @override
+  void execute() {}
+
+  @override
+  void undo() {}
 }
 
 /// The canvas panel the hand works on, stood in for: real history, and a
@@ -2071,7 +2233,7 @@ class _Host implements CelTextToolHost {
   CelTextCel? cel;
 
   @override
-  HistoryMark? get historyMark => history.gestures.mark;
+  HistoryGestures get gestures => history.gestures;
 
   @override
   void run(

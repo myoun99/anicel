@@ -1459,7 +1459,7 @@ class _Host implements CelTextToolHost {
   CelTextCel? get cel => null;
 
   @override
-  HistoryMark? get historyMark => history.gestures.mark;
+  HistoryGestures get gestures => history.gestures;
 
   @override
   void run(

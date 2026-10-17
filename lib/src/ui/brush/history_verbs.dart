@@ -136,6 +136,12 @@ class HistoryVerbs {
     if (session.sheetPhotoHold.canStepBack) {
       return session.sheetPhotoHold.stepBack;
     }
+    // F-377: and a text held by its box (R9-rest) — what its box landed
+    // goes back a step at a time while it is held, ONE once the box lets
+    // go: its letters taken up, or the text let go of.
+    if (text.canStepBack) {
+      return text.stepBack;
+    }
     // R9-rest: a text being TYPED answers the same way — a step back is a
     // word, a letter taken out, a change of setting — and falls through
     // once its letters stand as they were when the visit began. (Ctrl+Z

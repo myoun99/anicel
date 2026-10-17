@@ -10,8 +10,9 @@ import '../helpers/source_body.dart';
 /// 🗣️유저 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
 /// 된단거야 … **확정하면 변형 하나로서의 언두만 작동**」. The polygon trace
 /// had the same law first (유저 확정, 2026-08), and F-377 (유저 2026-10-17:
-/// 「변형 상태는 모두 기본적으로 그걸 따르도록」) gave it to an adjust on the
-/// canvas and to a photo held on a sheet.
+/// 「변형 상태는 모두 기본적으로 그걸 따르도록. 텍스트 변형이든 뭐든」) gave it
+/// to an adjust on the canvas, a photo held on a sheet and a text held by
+/// its box.
 ///
 /// ⛔**THE BEHAVIOUR IS PINNED ELSEWHERE** — `test/ui/canvas/
 /// ctrl_z_steps_inside_the_open_box_test.dart` presses the real key and the
@@ -29,8 +30,8 @@ import '../helpers/source_body.dart';
 void main() {
   const verbs = 'lib/src/ui/brush/history_verbs.dart';
 
-  test('undo asks the adjust, the polygon, the box and the photo held, then '
-      'the document', () {
+  test('undo asks the adjust, the polygon, the box, the photo held and the '
+      'text held, then the document', () {
     final undo = sourceBodyOf(
       File(verbs).readAsStringSync(),
       'VoidCallback? _undo()',
@@ -41,12 +42,13 @@ void main() {
     const polygon = 'traces.open case final trace?';
     const transform = 'selection.canUndoTransformStep';
     const photo = 'session.sheetPhotoHold.canStepBack';
+    const text = 'text.canStepBack';
     final document = undo.indexOf('session.canUndo');
 
     // ⚠️THE QUESTION IS THE WHOLE CONDITION, not a term inside one. ↩️This
     // pin read positions alone and a mutant that wrote `if (false && …)`
     // kept every position it was reading — it survived (2026-09-22).
-    for (final question in const [adjust, polygon, transform, photo]) {
+    for (final question in const [adjust, polygon, transform, photo, text]) {
       expect(
         undo,
         matches(RegExp('if \\(${RegExp.escape(question)}\\) \\{')),
@@ -66,7 +68,7 @@ void main() {
       greaterThan(undo.indexOf(polygon)),
       reason: 'the polygon is the newer thing on screen and keeps its place',
     );
-    for (final open in const [transform, photo]) {
+    for (final open in const [transform, photo, text]) {
       expect(
         document,
         greaterThan(undo.indexOf(open)),

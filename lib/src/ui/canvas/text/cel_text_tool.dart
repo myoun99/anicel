@@ -16,7 +16,9 @@ import '../../../services/cache_invalidation_executor.dart';
 import '../../../services/cel_text_edits.dart';
 import '../../../services/command.dart';
 import '../../../services/commands/cel_text_edit_command.dart';
-import '../../../services/history_manager.dart' show HistoryMark;
+import '../../../services/history_manager.dart'
+    show HistoryGestures, HistoryMark;
+import '../../../services/history_run.dart';
 import '../../brush/text_tool_options.dart';
 import '../../text/cel_text_bake.dart' show CelTextBaker;
 import '../../text/cel_text_layout.dart'
@@ -64,11 +66,11 @@ abstract interface class CelTextToolHost {
 
   /// Runs [command] as one step of history.
   ///
-  /// [withCelMadeSince] is where history stood ([historyMark]) when a press
-  /// made the cel this text is set on: the cel and the text are then ONE
-  /// step, as a stroke and the cel made for it are (I-10, 유저 2026-08-30:
-  /// 「답은 추천대로」 = merged) — while the two are still all that history
-  /// has filed since.
+  /// [withCelMadeSince] is where history stood ([CelTextTool.historyMark])
+  /// when a press made the cel this text is set on: the cel and the text
+  /// are then ONE step, as a stroke and the cel made for it are (I-10, 유저
+  /// 2026-08-30: 「답은 추천대로」 = merged) — while the two are still all
+  /// that history has filed since.
   ///
   /// [setIn] is the families the letters of a text being SET are written
   /// in — none for a text taken off its cel: whoever keeps the project's
@@ -80,8 +82,9 @@ abstract interface class CelTextToolHost {
     Set<String> setIn = const {},
   });
 
-  /// Where history stands now — null where there is none to stand in.
-  HistoryMark? get historyMark;
+  /// The history the text's steps are written in, as a hold writes them
+  /// across many events — null where there is none.
+  HistoryGestures? get gestures;
 
   /// What the canvas draws for a cel in place of its picture changed — a
   /// text taken or let go of, one let go of set or landed
@@ -91,13 +94,45 @@ abstract interface class CelTextToolHost {
   void shownChanged();
 }
 
+/// Whose step a landing of a text in hand is: the visit to its letters' —
+/// a step of its own — or its BOX's ([_Holding.boxSteps]).
+enum _StepOf { letters, box }
+
 /// A text in the tool's hand, or on its way out of it: the session and the
 /// cel it is on.
 class _Holding {
-  _Holding(this.session, this.cel, {this.celMadeSince});
+  _Holding(
+    this.session,
+    this.cel, {
+    required HistoryGestures? gestures,
+    this.celMadeSince,
+  }) : boxSteps = gestures == null ? null : HistoryRun(gestures);
 
   final CelTextSession session;
   final CelTextCel cel;
+
+  /// The steps landed while the text is held by its BOX — a carry, a turn,
+  /// a corner, a setting come to rest: undo takes them back one at a time
+  /// while it is ([CelTextTool.stepBack]), and they are ONE step once the
+  /// box lets go of it ([closeBoxSteps]) — its letters taken up, or the
+  /// text let go of. Null with no history to write in.
+  ///
+  /// 🗣️F-377 (유저 2026-10-17): 「변형중 언두가 직전변형 취소라던가. 끝나면
+  /// 한번에 취소라던가 하듯이 변형 상태는 모두 기본적으로 그걸 따르도록.
+  /// 텍스트 변형이든 뭐든」. ⚠️A visit to the letters stays a step of its
+  /// own and closes the box's steps before it: F-377-Q1's recommended
+  /// 「변형만 묶는다」, built ahead of its answer on 유저's 「알아서 추천대로
+  /// 작업시작해줘」. ↩️Each step stayed one of its own: a text moved, sized
+  /// and turned took three undos once let go.
+  final HistoryRun? boxSteps;
+
+  /// Whose step the landing this text still owes is — the oldest asked
+  /// for: whatever lands once its last want is set lands in that step.
+  /// Null with none owed.
+  _StepOf? owed;
+
+  /// The box lets go: what it landed is ONE step.
+  void closeBoxSteps() => boxSteps?.end('Set text');
 
   /// For a text begun by the press that MADE its cel: where history stood
   /// then, until the text first lands — or is let go of with nothing
@@ -304,8 +339,8 @@ class CelTextTool extends ChangeNotifier {
   // ── taking hold ─────────────────────────────────────────────────────
 
   /// Where history stands now — what the press that makes a cel for its
-  /// text takes note of first ([beginText]).
-  HistoryMark? get historyMark => host.historyMark;
+  /// text takes note of first ([beginText]). Null where there is none.
+  HistoryMark? get historyMark => host.gestures?.mark;
 
   /// Starts a text on [cel] at [anchor] and takes it by its letters — as
   /// wide as [wrapWidth] says and at least [minHeight] tall, or growing
@@ -339,6 +374,7 @@ class CelTextTool extends ChangeNotifier {
           ),
         ),
         cel,
+        gestures: host.gestures,
         celMadeSince: celMadeSince,
       ),
     );
@@ -357,7 +393,11 @@ class CelTextTool extends ChangeNotifier {
     }
     confirm();
     _hold(
-      _Holding(_sessionOn(cel, standing: text, content: text.content), cel),
+      _Holding(
+        _sessionOn(cel, standing: text, content: text.content),
+        cel,
+        gestures: host.gestures,
+      ),
     );
   }
 
@@ -379,6 +419,8 @@ class CelTextTool extends ChangeNotifier {
     holding.session
       ..addListener(_sessionChanged)
       ..showing.addListener(_sessionShown);
+    // Taken in hand, it is held by its box until its letters are taken.
+    holding.boxSteps?.begin();
     _held = holding;
     _changed();
   }
@@ -386,15 +428,21 @@ class CelTextTool extends ChangeNotifier {
   /// Takes the text in hand by its LETTERS, the caret (or the letters
   /// selected) at [selection].
   void typeAt(TextSelection selection) {
-    final session = _held?.session;
-    if (session == null) {
+    final held = _held;
+    if (held == null) {
       return;
     }
+    final session = held.session;
     final letters = _letters;
     if (letters != null) {
       letters.selection = selection;
       return;
     }
+    // The box lets go of it: its steps are ONE — and whatever it still
+    // owes a landing of is the visit's now, landed when the visit ends.
+    held
+      ..closeBoxSteps()
+      ..owed = null;
     _letters = CelTextEditingController(
       content: session.content,
       nextLetterStyle: session.nextLetterStyle,
@@ -409,7 +457,9 @@ class CelTextTool extends ChangeNotifier {
     if (!_dropLetters()) {
       return;
     }
-    _wayOut.landHeld(thenLetGo: false);
+    _wayOut.landHeld(thenLetGo: false, of: _StepOf.letters);
+    // Held by its box again — after the visit's own step.
+    _held?.boxSteps?.begin();
     _changed();
   }
 
@@ -458,13 +508,15 @@ class CelTextTool extends ChangeNotifier {
   bool _editGoesOn = false;
 
   /// The hand let go of the box, or the setting came to rest: what
-  /// [showEdit] showed lands as one step. While the LETTERS are held it is
-  /// part of that visit instead — one step back there — and lands with it.
+  /// [showEdit] showed lands as one step of the box's — one step back while
+  /// the box holds the text, and ONE with the box's others once it lets go
+  /// ([_Holding.boxSteps]). While the LETTERS are held it is part of that
+  /// visit instead — one step back there — and lands with it.
   void landEdit() {
     _held?.carry = null;
     _editGoesOn = false;
     if (_letters == null) {
-      _wayOut.landHeld(thenLetGo: false);
+      _wayOut.landHeld(thenLetGo: false, of: _StepOf.box);
     }
   }
 
@@ -591,6 +643,45 @@ class CelTextTool extends ChangeNotifier {
     }
   }
 
+  // ── a step back ─────────────────────────────────────────────────────
+
+  /// Whether an undo has a step of the BOX to take back ([stepBack]): the
+  /// text in hand held by its box, with a step landed while it is — or one
+  /// still owed, its last want still being set.
+  bool get canStepBack {
+    final held = _held;
+    return held != null &&
+        _letters == null &&
+        (held.owed == _StepOf.box || (held.boxSteps?.canTakeBack ?? false));
+  }
+
+  /// Takes the box's last step back and keeps the text in hand, as the
+  /// transform tool's box does (F-377): one still owed is given up, and
+  /// otherwise the last one landed is taken back — and no redo's: a step
+  /// the hand took back inside its hold is not one it made. The text then
+  /// stands as its cel carries it, with the very pixels it carries.
+  void stepBack() {
+    final held = _held;
+    if (held == null || !canStepBack) {
+      return;
+    }
+    if (held.owed == _StepOf.box) {
+      held.owed = null;
+    } else {
+      held.boxSteps!.takeBack();
+    }
+    final session = held.session;
+    final standing = held.cel.coordinator
+        .currentSurfaceOf(held.cel.key)
+        .texts
+        .where((text) => text.id == session.textId)
+        .firstOrNull;
+    if (standing != null) {
+      session.standBackOn(standing);
+    }
+    _changed();
+  }
+
   // ── letting go ──────────────────────────────────────────────────────
 
   /// Lands what is in hand and lets go of it.
@@ -598,8 +689,9 @@ class CelTextTool extends ChangeNotifier {
     if (_held == null) {
       return;
     }
+    final of = _stepOfTheHand;
     _dropLetters();
-    _wayOut.landHeld(thenLetGo: true);
+    _wayOut.landHeld(thenLetGo: true, of: of);
     _changed();
   }
 
@@ -612,6 +704,8 @@ class CelTextTool extends ChangeNotifier {
     }
     _dropLetters();
     _held = null;
+    // What the box did to it before is one step, and taking it off another.
+    held.closeBoxSteps();
     final standing = held.session.standing;
     _retire(held.session);
     if (standing != null) {
@@ -675,6 +769,10 @@ class CelTextTool extends ChangeNotifier {
   /// Whether anything is in hand or still owed a landing — what a step of
   /// history asks before it is taken.
   bool get holdsAnything => _held != null || _wayOut.leaving.isNotEmpty;
+
+  /// Whose step a landing of the text in hand is now.
+  _StepOf get _stepOfTheHand =>
+      _letters == null ? _StepOf.box : _StepOf.letters;
 
   void _retire(CelTextSession session) {
     session

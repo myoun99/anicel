@@ -318,6 +318,14 @@ class CelTextSession extends ChangeNotifier {
           layout.dispose();
           return;
         }
+        // 🚨A WANT THAT WENT BACK TO WHAT IS ON SCREEN while this was being
+        // made — a step back given it up ([standBackOn]) — is no want of
+        // it: shown, it would flash for a frame before the screen went
+        // back.
+        if (!_stale && _wanted == _shown.content) {
+          layout.dispose();
+          continue;
+        }
         _show(CelTextShown(content: content, layout: layout, plate: plate));
       }
     } finally {
@@ -477,6 +485,21 @@ class CelTextSession extends ChangeNotifier {
   void standOn(CelText? text) {
     _standing = text;
     _shownOver = null;
+    notifyListeners();
+  }
+
+  /// The cel carries [text] again — a step of the hold taken back, or one
+  /// still being set given up (F-377): the session stands on it and wants
+  /// it, shown with the very pixels the cel carries.
+  void standBackOn(CelText text) {
+    final before = _shown;
+    _standing = text;
+    _shownOver = null;
+    _wanted = text.content;
+    _stale = false;
+    _failure = null;
+    _showing.value = _shownOf(text, text.content, _nextLetterStyle);
+    before.layout.dispose();
     notifyListeners();
   }
 

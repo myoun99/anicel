@@ -133,6 +133,12 @@ class CelTextCommands extends ChangeNotifier {
   /// ([CelTextTool.turnIntoDrawing]).
   void turnIntoDrawing() => _tool?.turnIntoDrawing();
 
+  /// Whether the text held by its box has a step to take back — the box's
+  /// own, while it is held ([CelTextTool.stepBack], F-377).
+  bool get canStepBack => _tool?.canStepBack ?? false;
+
+  void stepBack() => _tool?.stepBack();
+
   /// Whether the letters being typed have a step to take back — and to put
   /// back ([CelTextEditingController]).
   bool get canUndoLetters => _tool?.letters?.canUndo ?? false;

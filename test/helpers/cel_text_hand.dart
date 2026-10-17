@@ -101,7 +101,7 @@ class TextHandHost implements CelTextToolHost {
   CelTextCel? cel;
 
   @override
-  HistoryMark? get historyMark => history.gestures.mark;
+  HistoryGestures get gestures => history.gestures;
 
   @override
   void run(
