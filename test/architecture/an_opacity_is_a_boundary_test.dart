@@ -63,6 +63,14 @@ void main() {
           'locks (the comment beside it says why it is a tween and not an '
           '`AnimatedOpacity`).',
     ),
+    'lib/src/ui/import/import_dialog.dart': (
+      count: 1,
+      why: 'the status line\'s 「경고 N가지」 button HELD AT NOUGHT while '
+          'there is nothing to warn of (F-370-Q1), so the line that turns '
+          'into it moves nothing. At alpha 0 a `RenderOpacity` is no '
+          'boundary and paints nothing, the shown button wears none, and '
+          'the import window stands over the editor, in no panel\'s bake.',
+    ),
     'lib/src/ui/media/media_pool_panel.dart': (
       count: 1,
       why: '`childWhenDragging` — the hole a dragged row leaves behind, for '

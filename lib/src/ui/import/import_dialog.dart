@@ -1432,29 +1432,38 @@ class _ImportDialogState extends State<ImportDialog> {
   Widget _statusLineOf(BuildContext context) {
     final said = _statusLine;
     final warnings = said is _Warnings ? said.lines : const <WarningLine>[];
-    return Stack(
-      key: const ValueKey<String>('import-status-line'),
-      alignment: AlignmentDirectional.centerStart,
-      children: [
-        Visibility(
-          visible: warnings.isNotEmpty,
-          maintainState: true,
-          maintainAnimation: true,
-          maintainSize: true,
-          child: AppWindowActionButton(
-            AppWindowAction(
-              label: AppText.strings.imWarningCount(warnings.length),
-              actionKey: const ValueKey<String>('import-warnings-button'),
-              onPressed: () => unawaited(
+    final button = AppWindowActionButton(
+      AppWindowAction(
+        label: AppText.strings.imWarningCount(warnings.length),
+        actionKey: const ValueKey<String>('import-warnings-button'),
+        onPressed: warnings.isEmpty
+            ? null
+            : () => unawaited(
                 showImportWarnings(
                   context,
                   windowKey: const ValueKey<String>('import-warnings-notice'),
                   warnings: warnings,
                 ),
               ),
+      ),
+    );
+    return Stack(
+      key: const ValueKey<String>('import-status-line'),
+      alignment: AlignmentDirectional.centerStart,
+      children: [
+        if (warnings.isEmpty)
+          // Held for its height only: laid out, never painted, pressed or
+          // read out. ⛔Not a `Visibility`, which takes a slot away
+          // (the_slot_is_reserved_test) — an `Opacity` at nought paints
+          // nothing and composites nothing, and the shown button wears
+          // none.
+          IgnorePointer(
+            child: ExcludeSemantics(
+              child: Opacity(opacity: 0, child: button),
             ),
-          ),
-        ),
+          )
+        else
+          button,
         if (said case _Sentence(:final words))
           Text(
             words,
