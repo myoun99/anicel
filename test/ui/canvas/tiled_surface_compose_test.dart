@@ -339,13 +339,19 @@ void main() {
         expect(part.worldRect, const ui.Rect.fromLTRB(5, 6, 6, 7));
         expect(await bytesOf(part.image), [255, 0, 0, 255]);
 
-        await expectLater(
-          composePositionedSurfaceImage(
-            surface,
-            over: const ui.Rect.fromLTRB(6, 6, 16, 16),
-          ),
-          throwsAssertionError,
-        );
+        // Each side in turn cuts the one inked pixel off.
+        for (final cut in const [
+          ui.Rect.fromLTRB(6, 0, 16, 16),
+          ui.Rect.fromLTRB(0, 7, 16, 16),
+          ui.Rect.fromLTRB(0, 0, 5, 16),
+          ui.Rect.fromLTRB(0, 0, 16, 6),
+        ]) {
+          await expectLater(
+            composePositionedSurfaceImage(surface, over: cut),
+            throwsAssertionError,
+            reason: '$cut',
+          );
+        }
       });
     });
   });
