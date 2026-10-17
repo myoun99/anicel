@@ -1,19 +1,26 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
+import '../../models/dirty_region.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
+import '../../models/tiles_covering.dart';
 import '../../core/dev_profile.dart';
+import '../../native/qa_native_engine.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/cel_text_laying.dart';
+import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
 import 'level_image.dart';
@@ -158,6 +165,16 @@ const Duration tilePictureRun = Duration(milliseconds: 2);
 /// has taken is read off the wall when this is null.
 @visibleForTesting
 int Function()? debugTilePictureClock;
+
+/// How many composes were made from their tiles' bytes
+/// ([_composedFromBytes]) — a test's count.
+@visibleForTesting
+int debugComposesFromBytes = 0;
+
+/// A test's hatch: a compose past the wall rastered as one inside it is,
+/// for the pins that hold the two roads to the same picture.
+@visibleForTesting
+bool debugRastersPastTheWall = false;
 
 /// One turn of the event queue: whatever was waiting in it when this is
 /// called — a pen coming down, a frame — is handled before it completes.
@@ -476,6 +493,8 @@ ui.Image composeTiledSurfaceImageNow(
 /// ([BitmapSurface.laidBounds], F-374-Q8). Each tile lands
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
+///
+/// Past the wall it is made from the tiles' bytes ([_composedFromBytes]).
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
@@ -484,7 +503,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   ui.Rect? over,
 }) async {
   final worldRect = _composedOver(surface, over);
-  final image = await _composeAsync(
+  Future<ui.Image?> rastered() => _composeAsync(
     surface,
     reuse: reuse,
     shouldAbort: shouldAbort,
@@ -492,9 +511,118 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
     over: worldRect,
     deferred: false,
   );
+  final image =
+      _reachesPastTheWall(surface, worldRect) && !debugRastersPastTheWall
+      ? await _composedFromBytes(
+          surface,
+          worldRect,
+          shouldAbort: shouldAbort,
+          rastered: rastered,
+        )
+      : await rastered();
   return image == null
       ? null
       : PositionedSurfaceImage(image: image, worldRect: worldRect);
+}
+
+/// Whether [over] reaches past [surface]'s wall ([pasteboardRect]) — where
+/// only a file's picture laid whole lies (F-374-Q8).
+bool _reachesPastTheWall(BitmapSurface surface, ui.Rect over) {
+  final wall = surface.canvasSize.pasteboardRect;
+  return wall.expandToInclude(over) != wall;
+}
+
+/// [surface]'s pixels over [over] made from its tiles' bytes, not rastered:
+/// the bytes the door reads ([SurfaceRegionBytes]), premultiplied into
+/// memory of this compose's own a run at a time ([tilePictureRun]) and
+/// uploaded off this thread ([uploadRawRgba]). Null when [shouldAbort]
+/// stood it down.
+///
+/// 🚨★★★PAST THE WALL A CEL'S IMAGE IS ITS BYTES, NOT A RASTER (F-374-Q8
+/// ⑦, 2026-10-18). Until a file's picture could be laid whole, the wall
+/// bounded every compose; past it the picture is as big as its file, and
+/// a raster of it held 9–15 times the image while it ran. 🔬Measured on
+/// the Windows app (Surface Pro 11, profile build, a throwaway probe): an
+/// A3 600dpi scan laid whole (7040×9984) rastered in 0.56–3.7 s at
+/// +2.6–3.7 GB, and a raster past 16384 a side came back smaller without a
+/// word (20480×1024 asked, 16384×819 made). Its bytes uploaded: +1.7 GB,
+/// the raster thread free, and the SAME image — 0 bytes apart, and 0 apart
+/// drawn small at `none`, `low`, `medium` and `high`: the decoder makes the
+/// mip chain a snapshot makes. (The synchronous door makes none, and a
+/// `medium` draw of its picture came out up to 125/255 apart.)
+/// ⛔NOT INSIDE THE WALL: there the raster draws the pictures the canvas
+/// keeps for its tiles, so a rebuild costs what changed (F-296) — an
+/// upload would cost the whole cel every time.
+///
+/// An upload that comes back another size — past what this device's
+/// decoder holds: 20000 wide came back 16384, its height kept — is let go,
+/// and the picture [rastered] as it always was.
+Future<ui.Image?> _composedFromBytes(
+  BitmapSurface surface,
+  ui.Rect over, {
+  required bool Function()? shouldAbort,
+  required Future<ui.Image?> Function() rastered,
+}) async {
+  debugComposesFromBytes += 1;
+  final bytes = SurfaceRegionBytes(
+    _shownBy(surface),
+    DirtyRegion.wholePixelsOf(over),
+  );
+  final native = QaNativeEngine.instance;
+  if (native == null) {
+    // No engine, no shared buffer to grow: the door's own bytes, kept.
+    final premultiplied = bytes.readPremultiplied(Uint8List.fromList);
+    return _uploadedOrRastered(premultiplied, bytes, shouldAbort, rastered);
+  }
+  final byteLength = bytes.width * bytes.height * 4;
+  final target = calloc<Uint8>(byteLength);
+  try {
+    final watch = Stopwatch()..start();
+    int now() => debugTilePictureClock?.call() ?? watch.elapsedMicroseconds;
+    var runBegan = now();
+    for (final tile in tilesCovering(bytes.surface, bytes.region)) {
+      if (now() - runBegan >= tilePictureRun.inMicroseconds) {
+        await _giveWay();
+        runBegan = now();
+        if (shouldAbort?.call() ?? false) {
+          return null;
+        }
+      }
+      bytes.premultiplyInto(native, tile, target);
+    }
+    return await _uploadedOrRastered(
+      target.asTypedList(byteLength),
+      bytes,
+      shouldAbort,
+      rastered,
+    );
+  } finally {
+    calloc.free(target);
+  }
+}
+
+/// [premultiplied] — [bytes]'s pixels — uploaded, unless [shouldAbort]
+/// stands it down first; or [rastered] when the upload comes back another
+/// size than [bytes] is.
+Future<ui.Image?> _uploadedOrRastered(
+  Uint8List premultiplied,
+  SurfaceRegionBytes bytes,
+  bool Function()? shouldAbort,
+  Future<ui.Image?> Function() rastered,
+) async {
+  if (shouldAbort?.call() ?? false) {
+    return null;
+  }
+  final image = await uploadRawRgba(
+    premultiplied,
+    width: bytes.width,
+    height: bytes.height,
+  );
+  if (image.width == bytes.width && image.height == bytes.height) {
+    return image;
+  }
+  image.dispose();
+  return rastered();
 }
 
 /// The synchronous positioned compose — the layer stack's, for the frame a

@@ -52,8 +52,7 @@ class SurfaceRegionBytes implements PictureBytes {
       premultiplyRgbaInPlace(bytes);
       return use(bytes);
     }
-    final stride = width * 4;
-    final byteLength = stride * height;
+    final byteLength = width * height * 4;
     final target = native.tilesPictureScratch(byteLength);
     final covered = tilesCovering(surface, region).toList();
     var coveredPixels = 0;
@@ -66,31 +65,43 @@ class SurfaceRegionBytes implements PictureBytes {
       // region is transparent.
       native.zeroBytes(target, byteLength);
     }
-    final tileSize = surface.tileSize;
     for (final tile in covered) {
-      tile.tile.readPixels(
-        (pointer, _) => native.premultiplyRgbaRows(
-          from: (
-            start:
-                pointer +
-                ((tile.top - tile.worldTop) * tileSize +
-                        (tile.left - tile.worldLeft)) *
-                    4,
-            stride: tileSize * 4,
-          ),
-          into: (
-            start:
-                target +
-                ((tile.top - region.top) * width +
-                        (tile.left - region.left)) *
-                    4,
-            stride: stride,
-          ),
-          width: tile.rightExclusive - tile.left,
-          rows: tile.bottomExclusive - tile.top,
-        ),
-      );
+      premultiplyInto(native, tile, target);
     }
     return use(target.asTypedList(byteLength));
+  }
+
+  /// [tile]'s part of the region premultiplied out of its own memory into
+  /// [target] where it lies in the region — its rows, the region's width a
+  /// row. A step of [readPremultiplied], and of a compose past the wall,
+  /// which premultiplies into memory of its own
+  /// (`composePositionedSurfaceImage`).
+  void premultiplyInto(
+    QaNativeEngine native,
+    CoveredTile tile,
+    Pointer<Uint8> target,
+  ) {
+    final tileSize = surface.tileSize;
+    tile.tile.readPixels(
+      (pointer, _) => native.premultiplyRgbaRows(
+        from: (
+          start:
+              pointer +
+              ((tile.top - tile.worldTop) * tileSize +
+                      (tile.left - tile.worldLeft)) *
+                  4,
+          stride: tileSize * 4,
+        ),
+        into: (
+          start:
+              target +
+              ((tile.top - region.top) * width + (tile.left - region.left)) *
+                  4,
+          stride: width * 4,
+        ),
+        width: tile.rightExclusive - tile.left,
+        rows: tile.bottomExclusive - tile.top,
+      ),
+    );
   }
 }
