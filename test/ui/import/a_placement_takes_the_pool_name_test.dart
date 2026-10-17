@@ -155,16 +155,10 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      for (
-        var tries = 0;
-        tries < 100 && importWarningsButton.evaluate().isEmpty;
-        tries += 1
-      ) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-      }
+      await settleAsync(
+        tester,
+        () => importWarningsButton.evaluate().isNotEmpty,
+      );
       s.playbackRig.prerenderScheduler.cancel();
       final notice = await openImportWarnings(tester);
 
