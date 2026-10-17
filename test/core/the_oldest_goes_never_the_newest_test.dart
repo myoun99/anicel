@@ -168,6 +168,15 @@ void main() {
     expect(lru.held, 6, reason: 'what c and d cost — weighed, not counted');
   });
 
+  test('a store bounded neither way is refused — it would hold every value '
+      'it was ever given', () {
+    expect(() => Lru<String, int>(), throwsAssertionError);
+    expect(
+      () => Lru<String, int>(costOf: (cost) => cost),
+      throwsAssertionError,
+    );
+  });
+
   test('🚨what is still being read is passed over as the newest is: the next '
       'least recently used goes in its place — and with nothing else left, '
       'nothing goes until the reading ends', () {

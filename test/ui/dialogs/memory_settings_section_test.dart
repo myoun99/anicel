@@ -270,7 +270,16 @@ void main() {
           )
           .data!;
       expect(line, startsWith('허용치 밖'));
-      for (final outside in ['그리기 엔진 작업 버퍼', '패널 래스터', '엔진·폰트·프레임워크']) {
+      for (final outside in [
+        '그리기 엔진 작업 버퍼',
+        '패널 래스터',
+        '엔진·폰트·프레임워크',
+        // Held by how many, not by bytes (card census-misses-bake-once-
+        // images): counted, and no budget line is their ceiling.
+        '글자 이미지',
+        '스트로크 미리보기',
+        '타임라인 타일 이미지',
+      ]) {
         expect(line, contains(outside), reason: outside);
       }
       // The tile pictures moved inside on 2026-09-16 (render round): a
