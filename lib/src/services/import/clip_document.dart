@@ -6,6 +6,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'clip_cmt.dart';
 import 'clip_container.dart';
+import 'clip_layer_effects.dart';
 import 'clip_placement.dart';
 import 'clip_track_clip.dart';
 
@@ -98,6 +99,8 @@ final class ClipLayer {
     this.textPictures = const [],
     this.camera,
     this.mainColour,
+    this.effectsOn = false,
+    this.clipped = false,
     required this.children,
   });
 
@@ -181,6 +184,20 @@ final class ClipLayer {
   /// copied four times from a value scaled to 32 bits — and the top byte is
   /// the 8-bit value either way.
   final int? mainColour;
+
+  /// Whether CLIP STUDIO draws an effect of the layer's properties over
+  /// its own pixels: one its `LayerEffectInfo` turns on ([clipEffectsOn]),
+  /// or its layer colour — `DrawColorEnable`, the main colour shown in
+  /// place of black and the sub in place of white (the manual's 「Layer
+  /// color」). Two samples' cels wear it on hundreds of layers, in red,
+  /// blue and green (10-17).
+  ///
+  /// ⛔Never a paper's: a paper keeps its own colour in those columns
+  /// ([mainColour]), its `DrawColorEnable` 1 on every sample's.
+  final bool effectsOn;
+
+  /// `LayerClip` — clipped to the layer under it.
+  final bool clipped;
 
   /// Bottom to top, the way the sibling chain runs.
   final List<ClipLayer> children;
@@ -492,6 +509,9 @@ final class _DocumentReader {
     'TextLayerAttributesArray',
     'FirstLayerObject',
     'Camera2DResizableImageInfo',
+    'LayerEffectInfo',
+    'DrawColorEnable',
+    'LayerClip',
     ..._mainColourColumns,
   ];
 
@@ -702,8 +722,17 @@ final class _DocumentReader {
       textPictures: lettering ? _textPicturesOf(id) : const [],
       camera: camera is Uint8List ? clipPlacementOf(camera) : null,
       mainColour: _mainColourOf(row),
+      effectsOn: _effectsOn(row, kind),
+      clipped: _int(row['LayerClip']) != 0,
       children: children,
     );
+  }
+
+  /// [row]'s [ClipLayer.effectsOn].
+  static bool _effectsOn(Map<String, Object?> row, ClipLayerKind kind) {
+    final info = row['LayerEffectInfo'];
+    return (info is Uint8List && clipEffectsOn(info)) ||
+        (kind != ClipLayerKind.paper && _int(row['DrawColorEnable']) != 0);
   }
 
   /// [row]'s [ClipLayer.mainColour].

@@ -236,6 +236,83 @@ Uint8List _section(String name, List<int> fields) => (BytesBuilder()
       ..add(fields))
     .toBytes();
 
+/// A layer's `LayerEffectInfo` in the shape one sample's held (memory
+/// `csp-clip-format-notes` §2 — s12, 10-17): every record it had, each
+/// setting at the sample's value — CLIP STUDIO's defaults, so a word read
+/// one place off lands on one that is not 0 — with the switches of the
+/// effects named in [on] set, and the tone's own settings at
+/// [reflectOpacity] and [posterize].
+Uint8List layerEffectInfoBytes({
+  Set<String> on = const {},
+  int reflectOpacity = 1,
+  int posterize = 0,
+}) {
+  int switchOf(String name) => on.contains(name) ? 1 : 0;
+  // A record's body as words — led by their size, counting itself, when
+  // [sized] (every record but the two oldest).
+  Uint8List record(String name, List<int> body, {bool sized = true}) =>
+      _section(name, [
+        if (sized) ..._be32(4 * (body.length + 1)),
+        for (final word in body) ..._be32(word),
+      ]);
+  List<int> f64(double value) {
+    final bits = ByteData(8)..setFloat64(0, value);
+    return [bits.getUint32(0), bits.getUint32(4)];
+  }
+
+  final records = [
+    record('EffectEdge', [
+      switchOf('EffectEdge'),
+      ...f64(3),
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+    ], sized: false),
+    record('EffectTone', [
+      switchOf('EffectTone'),
+      ...f64(200),
+      1,
+      0,
+      20,
+      ...f64(60),
+      1,
+      0,
+      45,
+      30,
+      ...List.filled(7, 0),
+    ], sized: false),
+    record('EffectTextureMap', [
+      switchOf('EffectTextureMap'),
+      30,
+      0x80808080,
+    ]),
+    record('EffectApplyOpacity', [reflectOpacity]),
+    record('EffectToneAreaColor', [111, 215, 241]),
+    record('EffectTonePosterize', [posterize, 2, 60, 50, 120, 30]),
+    record('EffectWaterEdge', [
+      switchOf('EffectWaterEdge'),
+      ...f64(5),
+      ...f64(50),
+      ...f64(20),
+      ...f64(10),
+    ]),
+    record('EffectLine', [
+      switchOf('EffectLine'),
+      1,
+      0xF0F0F0F0,
+      ...List.filled(25, 0),
+    ]),
+  ];
+  // The sample's three words after the last record, their sense unknown.
+  final tail = [..._be32(0), ..._be32(1), ..._be32(200)];
+  final body = [for (final r in records) ...r, ...tail];
+  return (BytesBuilder()
+        ..add(_be32(8 + body.length))
+        ..add(_be32(2))
+        ..add(body))
+      .toBytes();
+}
+
 /// An `Offscreen.Attribute` for a [width] × [height] picture in a
 /// [columns] × [rows] grid of blocks.
 Uint8List offscreenAttributeBytes({

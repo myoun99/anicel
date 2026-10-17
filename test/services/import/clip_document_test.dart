@@ -550,6 +550,69 @@ void main() {
     );
   });
 
+  test('a layer\'s effects are on where its LayerEffectInfo turns one on or '
+      'its layer colour is — a paper\'s colour is none — and LayerClip '
+      'clips it', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute('ALTER TABLE Layer ADD COLUMN LayerEffectInfo BLOB')
+        ..execute('ALTER TABLE Layer ADD COLUMN DrawColorEnable INTEGER')
+        ..execute('ALTER TABLE Layer ADD COLUMN LayerClip INTEGER')
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder) VALUES (1, 64, 32, 1)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+          "LayerFirstChildIndex) VALUES (1, '', 256, 1, 2)",
+        );
+      final layer = db.prepare(
+        'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+        'LayerNextIndex, LayerEffectInfo, DrawColorEnable, LayerClip, '
+        'DrawColorMainRed, DrawColorMainGreen, DrawColorMainBlue) '
+        'VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)',
+      );
+      const red = [0xFFFFFFFF, 0, 0];
+      layer
+        ..execute([2, 'paper', 1584, 3, null, 1, null, ...red])
+        ..execute([3, 'tinted', 1, 4, null, 1, null, ...red])
+        // A colour once set and switched off again: the file keeps it.
+        ..execute([4, 'untinted', 1, 5, null, null, null, ...red])
+        ..execute([
+          5, 'bordered', 1, 6,
+          layerEffectInfoBytes(on: {'EffectEdge'}), null, null,
+          null, null, null,
+        ])
+        ..execute([
+          6, 'switched off', 1, 7, layerEffectInfoBytes(), null, null,
+          null, null, null,
+        ])
+        ..execute([7, 'clipped', 1, 0, null, null, 1, null, null, null])
+        ..close();
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect(
+      [
+        for (final layer in document.root.children)
+          (layer.name, layer.effectsOn, layer.clipped),
+      ],
+      [
+        ('paper', false, false),
+        ('tinted', true, false),
+        ('untinted', false, false),
+        ('bordered', true, false),
+        ('switched off', false, false),
+        ('clipped', false, true),
+      ],
+    );
+  });
+
   test('🎯a sound layer holds its sound — the chunk its file is in, its name '
       'and extension — and its track\'s clip says what plays from which '
       'second on which frame (memory `csp-clip-format-notes` §3)', () {

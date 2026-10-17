@@ -50,6 +50,8 @@ void main() {
     ClipLayerKind kind = ClipLayerKind.raster,
     List<String> vectorData = const [],
     int? mainColour,
+    bool effects = false,
+    bool clipped = false,
   }) {
     nextId += 1;
     return ClipLayer(
@@ -71,6 +73,8 @@ void main() {
       originalTransform: null,
       vectorData: vectorData,
       mainColour: mainColour,
+      effectsOn: effects,
+      clipped: clipped,
       children: const [],
     );
   }
@@ -85,6 +89,7 @@ void main() {
     bool collapsed = false,
     bool animation = false,
     ClipPlacement? camera,
+    bool effects = false,
   }) {
     nextId += 1;
     return ClipLayer(
@@ -105,12 +110,23 @@ void main() {
       original: null,
       originalTransform: null,
       camera: camera,
+      effectsOn: effects,
       children: children,
     );
   }
 
-  ClipLayer animation(String name, List<ClipLayer> cels, {int composite = 2}) =>
-      folder(name, cels, animation: true, composite: composite);
+  ClipLayer animation(
+    String name,
+    List<ClipLayer> cels, {
+    int composite = 2,
+    bool effects = false,
+  }) => folder(
+    name,
+    cels,
+    animation: true,
+    composite: composite,
+    effects: effects,
+  );
 
   ClipLayer root(List<ClipLayer> children) {
     nextId += 1;
@@ -1298,6 +1314,54 @@ void main() {
 
       expect(result.bakes.single.texts, isEmpty);
     });
+  });
+
+  test('what CLIP STUDIO draws over what comes in — an effect of its '
+      'properties on, or a clip to the layer under it — is said in every '
+      'decoder\'s words: a layer or folder outside the cels by its own '
+      'name, one in a cel (the cel\'s folder too) by its folder and cel, '
+      'and one left out only as left out', () {
+    final a = animation(
+      'A',
+      [
+        folder('1', [layer('trace', effects: true), layer('line1')]),
+        folder('2', [layer('line2', clipped: true)], effects: true),
+      ],
+      effects: true,
+    );
+    final result = plan(
+      root([
+        layer('tinted', effects: true),
+        folder('LO', [layer('clipped', clipped: true)], effects: true),
+        a,
+        layer('f', kind: ClipLayerKind.fill, effects: true, clipped: true),
+      ]),
+      [
+        timeline([
+          keyed(a, [(0, '1'), (6, '2')]),
+        ]),
+      ],
+    );
+
+    expect(
+      [
+        for (final warning in result.warnings)
+          (warning.key, warning.values['name']),
+      ],
+      [
+        ('layerEffectsNotApplied', 'tinted'),
+        ('layerEffectsNotApplied', 'LO'),
+        ('clippingNotApplied', 'clipped'),
+        ('layerEffectsNotApplied', 'A'),
+        ('layerEffectsNotApplied', 'A / 1'),
+        ('layerEffectsNotApplied', 'A / 2'),
+        ('clippingNotApplied', 'A / 2'),
+        ('clipCelLayers', 'A'),
+        ('unsupportedLayerKind', 'f'),
+      ],
+    );
+    expect(result.warnings.first, layerEffectsNotApplied('tinted'));
+    expect(result.warnings[2], clippingNotApplied('clipped'));
   });
 
   test('a vector layer with strokes is baked like any picture — and what its '

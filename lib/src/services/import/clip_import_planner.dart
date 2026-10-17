@@ -821,16 +821,19 @@ final class _Planner {
     }
   }
 
-  _FolderRow _folderRowOf(ClipLayer folder, _FolderRow? parent) => _FolderRow(
-    parent,
-    _ids(),
-    name: folder.name,
-    visible: folder.isShown,
-    opacity: folder.opacity / _fullOpacity,
-    blend: _blendOf(folder, folder.name),
-    collapsed: folder.isCollapsed,
-    move: _moveOf(folder),
-  );
+  _FolderRow _folderRowOf(ClipLayer folder, _FolderRow? parent) {
+    _sayNotApplied(folder, folder.name);
+    return _FolderRow(
+      parent,
+      _ids(),
+      name: folder.name,
+      visible: folder.isShown,
+      opacity: folder.opacity / _fullOpacity,
+      blend: _blendOf(folder, folder.name),
+      collapsed: folder.isCollapsed,
+      move: _moveOf(folder),
+    );
+  }
 
   /// [layer]'s move: its camera's for a 2D camera folder, resting where its
   /// placement says ([ClipLayer.camera]); its own for any other layer a
@@ -1170,6 +1173,7 @@ final class _Planner {
     final out = <_Leaf>[];
     void visit(ClipLayer layer, List<ClipLayer> chain) {
       if (layer.isFolder) {
+        _sayNotApplied(layer, where);
         for (final child in layer.children.reversed) {
           visit(child, [...chain, layer]);
         }
@@ -1253,7 +1257,8 @@ final class _Planner {
 
   /// Whether [layer] comes in — said by [name] when it comes in short, or
   /// not at all. A kind this app does not carry is left out in every
-  /// decoder's one word (유저 10-09); a sound belongs on the SE rows.
+  /// decoder's one word (유저 10-09); a sound belongs on the SE rows; what
+  /// CLIP STUDIO draws over one that comes in is [_sayNotApplied].
   bool _comesIn(ClipLayer layer, String name) {
     final (said, comes) = switch (layer.kind) {
       ClipLayerKind.vector => (
@@ -1283,7 +1288,23 @@ final class _Planner {
     if (said != null) {
       warnings.add(said);
     }
+    if (comes) {
+      _sayNotApplied(layer, name);
+    }
     return comes;
+  }
+
+  /// Names [layer] by [name] where CLIP STUDIO draws it in a way no row
+  /// here does — an effect of its properties on, or clipped to the layer
+  /// under it — in every decoder's words for them: a folder as much as a
+  /// layer, since either can wear them.
+  void _sayNotApplied(ClipLayer layer, String name) {
+    if (layer.effectsOn) {
+      warnings.add(layerEffectsNotApplied(name));
+    }
+    if (layer.clipped) {
+      warnings.add(clippingNotApplied(name));
+    }
   }
 
   /// [layer]'s blend here, said once when there is none. Pass-through is a
