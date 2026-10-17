@@ -11,6 +11,8 @@ import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
 import '../../core/dev_profile.dart';
+import '../../services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import '../../services/cel_text_laying.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
@@ -469,7 +471,9 @@ ui.Image composeTiledSurfaceImageNow(
 /// pasteboard tiles exist).
 ///
 /// [over] rasters part of the content instead: a rect on whole canvas
-/// pixels that holds every tile ([surfaceInkWorldRect]). Each tile lands
+/// pixels that holds all of its ink — every tile ([surfaceInkWorldRect]),
+/// or where a file's picture lies on a cel that holds nothing else
+/// ([BitmapSurface.laidBounds], F-374-Q8). Each tile lands
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
@@ -582,11 +586,20 @@ ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {
     return surfaceContentWorldRect(surface);
   }
   assert(() {
-    final tiles = tileCoordsWorldRect(
-      _tilesShownBy(surface).keys,
-      surface.tileSize,
-    );
-    return tiles == null || over.expandToInclude(tiles) == over;
-  }(), 'a part of the content composed on its own must hold every tile');
+    final shown = _shownBy(surface);
+    final tiles = tileCoordsWorldRect(shown.tiles.keys, surface.tileSize);
+    if (tiles == null || over.expandToInclude(tiles) == over) {
+      return true;
+    }
+    // Past a tile's edge only its ink counts: a file's picture composed
+    // over where it lies (`_celMoved`, F-374-Q8) cuts through the clear
+    // pixels its edge tiles hold.
+    final ink = bitmapSurfaceContentBounds(shown);
+    return ink == null ||
+        ink.left >= over.left &&
+            ink.top >= over.top &&
+            ink.rightExclusive <= over.right &&
+            ink.bottomExclusive <= over.bottom;
+  }(), 'a part of the content composed on its own must hold all of its ink');
   return over;
 }

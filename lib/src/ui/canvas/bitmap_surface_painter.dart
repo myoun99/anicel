@@ -160,9 +160,11 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// ([TilePictureBudget.shown]).
   final TilePictureBudget pictureBudget;
 
-  /// The pasteboard rect in canvas space — the clip this painter works
-  /// within (artwork past the canvas edge stays visible while editing).
-  Rect get pasteboardRect => surface.canvasSize.pasteboardRect;
+  /// Where its surface keeps pixels, in canvas space — the clip this
+  /// painter works within: the pasteboard (artwork past the canvas edge
+  /// stays visible while editing), and a file's picture laid past it
+  /// ([BitmapSurface.storableRect], F-374-Q8).
+  Rect get storableRect => surface.storableRect;
 
   /// 🚨★★★EVERYTHING THIS PAINTER DRAWS, in canvas space — its surface's
   /// content and whatever it draws over that surface this frame: the stroke
@@ -198,7 +200,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// from the canvas (`static_bake_render_parity_test`, 2026-09-15).
   Rect get drawnWorldRect {
     if (!drawsOnlyFromPublishedState) {
-      return pasteboardRect;
+      return storableRect;
     }
     Rect? drawn;
     void add(Rect? rect) {
@@ -236,8 +238,9 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     }
     // The clip is the PASTEBOARD: artwork past the canvas edge stays
     // visible while editing (dimmed below); composite/export raster at
-    // canvas size, so output still crops to the stage.
-    canvas.clipRect(pasteboardRect);
+    // canvas size, so output still crops to the stage. A file's picture
+    // laid past the wall keeps the rest of itself (F-374-Q8).
+    canvas.clipRect(storableRect);
     // The standalone route reads the display law itself: below 100% the
     // committed tiles are drawn as LEVEL TILES ([TilePyramid]) whose
     // residual under the transform lies in (0.5, 1] — the pictures a level
@@ -389,15 +392,16 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// wherever pan/zoom moved the view off the origin.
   ///
   /// The clip is in local space by definition, so it is correct for every
-  /// route including any ancestor transform. Intersecting with the
-  /// pasteboard both keeps the range finite (an unclipped recorder
-  /// reports a giant rect) and matches what the routes clip to anyway.
-  Rect _visibleCanvasRect(Canvas canvas, Rect pasteboardRect) {
+  /// route including any ancestor transform. Intersecting with where the
+  /// surface keeps pixels ([storableRect]) both keeps the range finite (an
+  /// unclipped recorder reports a giant rect) and matches what the routes
+  /// clip to anyway.
+  Rect _visibleCanvasRect(Canvas canvas, Rect storableRect) {
     final clip = canvas.getLocalClipBounds();
-    if (!clip.overlaps(pasteboardRect)) {
+    if (!clip.overlaps(storableRect)) {
       return Rect.zero;
     }
-    return clip.intersect(pasteboardRect);
+    return clip.intersect(storableRect);
   }
 
   @override

@@ -7,6 +7,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
@@ -22,9 +23,18 @@ void main() {
 
   final a = TileCoord(x: 0, y: 0);
   final b = TileCoord(x: 1, y: 0);
+  // Past the wall (the pasteboard ends at -32), where a file lies.
+  final past = TileCoord(x: -6, y: 0);
+  final whereTheFileLies = DirtyRegion(
+    left: -44,
+    top: 0,
+    rightExclusive: 4,
+    bottomExclusive: 8,
+  );
 
-  /// A drawing of two tiles and a text with a plate — every block a laid
-  /// cel holds — and a photo, which holds none.
+  /// A drawing of two tiles, a file's picture laid past the wall over a
+  /// third (F-374-Q8), and a text with a plate — every block a laid cel
+  /// holds — and a photo, which holds none.
   BitmapSurface picture() => drawingOf({
     a: tileOf({
       (1, 1): [9, 9, 9, 255],
@@ -32,7 +42,14 @@ void main() {
     b: tileOf({
       (2, 3): [0, 80, 160, 200],
     }),
-  }).withTexts([
+  }).copyWith(laidBounds: whereTheFileLies).putTiles([
+    (
+      coord: past,
+      tile: tileOf({
+        (5, 1): [7, 7, 7, 255],
+      }),
+    ),
+  ]).withTexts([
     textOf(
       1,
       words: 'laid',
@@ -99,6 +116,12 @@ void main() {
     );
     expect(laid.photos, copied.photos);
     expect(laid.photos, [photoOf(1)], reason: 'fixture: one came across');
+    expect(laid.laidBounds, copied.laidBounds);
+    expect(
+      laid.tiles.keys,
+      contains(past),
+      reason: 'fixture: the tile past the wall came across',
+    );
   });
 
   test('🚨a block it could not get frees every block it got — nothing else '

@@ -65,6 +65,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v22 (2026-10-18, F-374-Q8 — 유저 「맞춘다 — 참조 그림은 벽 밖까지
+/// 통째로」): a cel says WHERE A FILE'S PICTURE LIES on it, past the
+/// pasteboard when the picture is larger (cel stream v5,
+/// `anicelCelBinaryVersion`). A v21 build stops at such a cel with
+/// 「Unsupported cel entry version」 the first time it shows it — one cel at
+/// a time, deep in a session, with the rest of the project open — so the
+/// bump refuses the whole file up front instead, as a newer Anicel's
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape was read for it, and it did not move the floor
+/// ([anicelOldestReadFormatVersion]): a cel no file was laid on says so at
+/// THIS version too, and a v4 cel stream is read as one.
+///
 /// v21 (2026-10-17, F-374 — 유저 「참조fx도 똑같이 fx로서 법 통일 …
 /// 움직여도 키 안생긴다거나」): a reference row's reference fx holds KEYS —
 /// `fx` on its reference (`MediaReference.toJson`), a transform track of
@@ -331,7 +344,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 21;
+const int anicelFormatVersion = 22;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

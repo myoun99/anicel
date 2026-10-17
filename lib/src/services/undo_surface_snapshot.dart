@@ -5,6 +5,7 @@ import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
+import '../models/dirty_region.dart';
 import '../models/tile_coord.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -151,6 +152,7 @@ class UndoSurfaceSnapshot {
     required BitmapSurface? sharedWith,
   }) : _canvasSize = snapshot.canvasSize,
        _tileSize = snapshot.tileSize,
+       _laidBounds = snapshot.laidBounds,
        _surface = snapshot,
        _owned = snapshot.keptTilesNotSharedWith(sharedWith);
 
@@ -160,6 +162,11 @@ class UndoSurfaceSnapshot {
 
   final CanvasSize _canvasSize;
   final int _tileSize;
+
+  /// Where a file's picture lies on it (F-374-Q8), kept with the two sizes
+  /// and for theirs: four numbers, no tile. A picture put back without it
+  /// would refuse its own tiles past the wall.
+  final DirtyRegion? _laidBounds;
 
   /// What each text of the picture SAYS, bottom → top — kept HERE through
   /// a park, with the two sizes above: a picture put back together without
@@ -484,6 +491,7 @@ class UndoSurfaceSnapshot {
           ),
       ],
       photos: _photos ?? const [],
+      laidBounds: _laidBounds,
     );
   }
 

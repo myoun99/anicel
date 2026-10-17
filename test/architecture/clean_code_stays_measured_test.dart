@@ -503,7 +503,19 @@ void main() {
   /// (`_plannedMovieUse`) and bakes them from the door that opened their
   /// files. 🔬`clean_code_diff` against master (`38f473e11`, at 404) named
   /// that one gone and nothing added.
-  const wideSignatures = 403;
+  ///
+  /// ⚠️403 → 404 on 2026-10-18, named as the rule above asks (F-374-Q8 —
+  /// 유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지 통째로」).
+  /// `rasterizeImageToSurface` (five) is five again: the image, the canvas,
+  /// where it goes and the grid — and whether it is a reference's file,
+  /// laid whole past the wall (the reference doors and a movie's frames),
+  /// or a picture a door draws a row of, cut at the wall as a tool's is (a
+  /// cut folder, a PSD expanded, a text's letters). The answer scoped the
+  /// whole lay to reference rows' cels. 🔬`clean_code_diff` against master
+  /// (`b6cbe550e`, at 403) named that one added and nothing gone.
+  /// ⛔Not two functions to fit: the cut is the one line that differs, and
+  /// a second name would be a second copy of the rest.
+  const wideSignatures = 404;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

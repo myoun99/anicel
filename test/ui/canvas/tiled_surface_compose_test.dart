@@ -310,6 +310,44 @@ void main() {
         expect(bytes.sublist(canvasOrigin, canvasOrigin + 4), [0, 0, 0, 0]);
       });
     });
+
+    // F-374-Q8: a file's picture composed over where it lies cuts through
+    // the clear pixels its edge tiles hold — what the part holds is the
+    // ink, and every tile is only the cheap proof of that.
+    testWidgets('a part composed on its own holds all of the ink: it may '
+        'cut through a tile\'s clear pixels, never through its ink', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        // One opaque red pixel at (5, 6), alone in its 16px tile.
+        final pixels = Uint8List(16 * 16 * 4);
+        const at = (6 * 16 + 5) * 4;
+        pixels[at] = 255;
+        pixels[at + 3] = 255;
+        final surface = BitmapSurface(
+          canvasSize: const CanvasSize(width: 32, height: 32),
+          tileSize: 16,
+          tiles: {
+            TileCoord(x: 0, y: 0): BitmapTile(size: 16, pixels: pixels),
+          },
+        );
+
+        final part = (await composePositionedSurfaceImage(
+          surface,
+          over: const ui.Rect.fromLTRB(5, 6, 6, 7),
+        ))!;
+        expect(part.worldRect, const ui.Rect.fromLTRB(5, 6, 6, 7));
+        expect(await bytesOf(part.image), [255, 0, 0, 255]);
+
+        await expectLater(
+          composePositionedSurfaceImage(
+            surface,
+            over: const ui.Rect.fromLTRB(6, 6, 16, 16),
+          ),
+          throwsAssertionError,
+        );
+      });
+    });
   });
 
   testWidgets('shouldAbort stops the compose a picture at a time and '

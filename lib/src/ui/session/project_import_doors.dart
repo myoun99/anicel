@@ -1221,12 +1221,25 @@ class ProjectImportDoors {
   }
 
   /// [cel]'s picture where [move] carries it, on a cel of the same canvas —
-  /// laid as every picture a door bakes is ([rasterizeImageToSurface]).
+  /// laid as every picture a door bakes is ([rasterizeImageToSurface]),
+  /// whole (F-374-Q8).
+  ///
+  /// 🚨Composed over where its FILE lies, not over the cel: the clear canvas
+  /// round a small picture is no part of it, and a move that grows the
+  /// picture grows that too — an 8×8 still fitted ×206 to its canvas asked
+  /// ONE raster 590080×538240 for its 8×8 of ink, and the raster failed. No
+  /// brush reaches a reference row, so where its file lies is all it holds.
+  /// A cel that does not know where its file lies (an older build's, cut at
+  /// the wall) is moved as the picture it is, cut at the wall.
   static Future<BitmapSurface> _celMoved(
     BitmapSurface cel,
     LayerPlacement move,
   ) async {
-    final composed = await composePositionedSurfaceImage(cel);
+    final laid = cel.laidBounds;
+    final composed = await composePositionedSurfaceImage(
+      cel,
+      over: laid?.rect,
+    );
     if (composed == null) {
       throw StateError('The cel did not compose.');
     }
@@ -1237,6 +1250,7 @@ class ProjectImportDoors {
         canvas: cel.canvasSize,
         placement: move.compose(GuideTransform(1, 0, 0, 1, at.dx, at.dy)),
         tileSize: cel.tileSize,
+        whole: laid != null,
       );
     } finally {
       composed.image.dispose();
@@ -1728,6 +1742,10 @@ class ProjectImportDoors {
   /// ([_laid]) — and let go of once laid when it was made for the laying
   /// ([_BakePicture.owned]). How an import bakes each picture, and how a
   /// reference row's pictures are laid again ([_picturesMade]).
+  ///
+  /// Whole, past the wall (F-374-Q8: 「참조 그림은 벽 밖까지 통째로」) — and
+  /// a file baked as it lands is laid so too: placed and then rasterized it
+  /// would be the very same picture.
   static Future<BitmapSurface> _celLaid(
     _BakePicture picture,
     TransformPose pose,
@@ -1738,6 +1756,7 @@ class ProjectImportDoors {
         image: picture.image,
         canvas: canvas,
         placement: _laid(picture, pose),
+        whole: true,
       );
     } finally {
       if (picture.owned) {

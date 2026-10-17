@@ -14,12 +14,15 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -103,6 +106,7 @@ void main() {
     WidgetTester tester, {
     required BitmapSurfacePainter painter,
     SelectionFloatOverlay? float,
+    LayerPlacement? placement,
   }) async {
     final cache = DisplayBufferCache();
     addTearDown(cache.dispose);
@@ -114,9 +118,9 @@ void main() {
               width: view.width,
               height: view.height,
               child: CanvasLayerStackView(
-                nodes: const [
+                nodes: [
                   CompositeLeaf<CanvasStackRow>(
-                    CanvasActiveLayerRow(opacity: 1),
+                    CanvasActiveLayerRow(opacity: 1, placement: placement),
                   ),
                 ],
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
@@ -224,6 +228,123 @@ void main() {
       isTrue,
       reason: 'the view shows that pasteboard spot, and a committed tile '
           'there is part of what the layer covers',
+    );
+  });
+
+  // F-374-Q8 ⑤: the active row is drawn where its picture keeps pixels, so
+  // a pose that brings a file's picture in from past the wall shows all of
+  // it. ⚠️The stage stays the pasteboard — what lands past it on the canvas
+  // is past the view's world as ever.
+  testWidgets('🚨a FILE\'s picture laid past the wall shows where its row\'s '
+      'pose brings it in', (tester) async {
+    final tiles = BitmapTileImageCache();
+    // Tile (-3, 1): the cel's (-48..-32, 16..32), the column past the wall.
+    final surface = BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: {
+        TileCoord(x: -3, y: 1): BitmapTile(size: tileSize, pixels: redRgba()),
+      },
+      laidBounds: DirtyRegion(
+        left: -48,
+        top: 16,
+        rightExclusive: -32,
+        bottomExclusive: 32,
+      ),
+    );
+    await decodeAll(tester, tiles, surface);
+    final stack = await pumpStack(
+      tester,
+      painter: BitmapSurfacePainter(
+        surface: surface,
+        tileImageCache: tiles,
+        showTransparentBackground: false,
+      ),
+      // Sixteen to the right: the cel's (-48..-32) shows at the canvas's
+      // (-32..-16), inside the wall.
+      placement: const GuideTransform(1, 0, 0, 1, 16, 0),
+    );
+
+    expect(
+      await redAt(tester, stack, const Offset(8, 56)),
+      isTrue,
+      reason: 'canvas (-24, 24) shows the cel\'s (-40, 24) — the file\'s, '
+          'past the wall',
+    );
+  });
+
+  // ⚠️And what a tool would land there is a tool's: the stamp ghost over a
+  // file laid past the wall is cut at the wall, as the stamp that lands is.
+  testWidgets('🚨the stamp ghost over a file laid past the wall is cut at '
+      'the wall, and the file is drawn beside it whole', (tester) async {
+    final image = redSquare();
+    addTearDown(image.dispose);
+    final ghost = ValueNotifier<CutStampPreview?>(null);
+    addTearDown(ghost.dispose);
+    final piece = CutPiece(
+      image: BrushStampImage(
+        id: 'ghost',
+        width: tileSize,
+        height: tileSize,
+        rgba: redRgba(),
+      ),
+      originLeft: 0,
+      originTop: 0,
+    );
+    CutStampPreview ghostAt(Rect where) => CutStampPreview(
+      piece: piece,
+      image: image,
+      canvasRect: where,
+      opacity: 1,
+      blendMode: BrushBlendMode.color,
+    );
+    final tiles = BitmapTileImageCache();
+    // The file over the cel's (-48..-32, 16..32), past the wall.
+    final surface = BitmapSurface(
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      tiles: {
+        TileCoord(x: -3, y: 1): BitmapTile(size: tileSize, pixels: redRgba()),
+      },
+      laidBounds: DirtyRegion(
+        left: -48,
+        top: 16,
+        rightExclusive: -32,
+        bottomExclusive: 32,
+      ),
+    );
+    await decodeAll(tester, tiles, surface);
+    final stack = await pumpStack(
+      tester,
+      painter: BitmapSurfacePainter(
+        surface: surface,
+        stampPreview: ghost,
+        tileImageCache: tiles,
+        showTransparentBackground: false,
+      ),
+      placement: const GuideTransform(1, 0, 0, 1, 16, 0),
+    );
+
+    // Past the wall, above the file: the cel's (-48..-32, 0..16).
+    ghost.value = ghostAt(const Rect.fromLTWH(-48, 0, 16, 16));
+    expect(
+      await redAt(tester, stack, const Offset(8, 40)),
+      isFalse,
+      reason: 'the stamp lands nothing past the wall, so its ghost shows '
+          'nothing there',
+    );
+    expect(
+      await redAt(tester, stack, const Offset(8, 56)),
+      isTrue,
+      reason: 'the file beside it is drawn whole, through the buffer a ghost '
+          'puts the row in',
+    );
+
+    ghost.value = ghostAt(const Rect.fromLTWH(-32, 0, 16, 16));
+    expect(
+      await redAt(tester, stack, const Offset(24, 40)),
+      isTrue,
+      reason: 'control: inside the wall the ghost is drawn',
     );
   });
 

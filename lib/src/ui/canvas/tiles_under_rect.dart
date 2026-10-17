@@ -16,13 +16,5 @@ Iterable<CoveredTile> tilesUnderRect(BitmapSurface surface, Rect rect) {
   if (rect.isEmpty) {
     return const [];
   }
-  return tilesCovering(
-    surface,
-    DirtyRegion(
-      left: rect.left.floor(),
-      top: rect.top.floor(),
-      rightExclusive: rect.right.ceil(),
-      bottomExclusive: rect.bottom.ceil(),
-    ),
-  );
+  return tilesCovering(surface, DirtyRegion.wholePixelsOf(rect));
 }

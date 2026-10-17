@@ -1,7 +1,11 @@
+import 'dart:ui' show Rect;
+
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,7 +17,8 @@ import '../helpers/cel_text_fixture.dart';
 /// every surface DERIVED from one — a stroke's commit, an erase, a rebuild —
 /// has to hand them on. A derivation that let them fall would make one
 /// stroke delete every letter on the cel. A sheet's photos live there too
-/// (I-97 — 「사진으로 남게(셀의 텍스트처럼)」), and are asked the same.
+/// (I-97 — 「사진으로 남게(셀의 텍스트처럼)」), and are asked the same, and so
+/// is where a file's picture lies (F-374-Q8).
 void main() {
   final here = TileCoord(x: 0, y: 0);
   final there = TileCoord(x: 1, y: 0);
@@ -262,6 +267,98 @@ void main() {
       expect(read, sheet());
       expect(read.photos.map((photo) => photo.id), [1, 2]);
       expect(picture().toJson().containsKey('photos'), isFalse);
+    });
+  });
+
+  group('where a file\'s picture lies (F-374-Q8)', () {
+    // Twelve pixels past the wall on the left: on the test grid the
+    // pasteboard's first tile is -4, so the file's reaches two beyond it.
+    final laid = DirtyRegion(
+      left: -44,
+      top: 0,
+      rightExclusive: 4,
+      bottomExclusive: 8,
+    );
+    final beyond = TileCoord(x: -6, y: 0);
+    BitmapSurface laidPicture() => BitmapSurface(
+      canvasSize: celTextTestCanvas,
+      tileSize: celTextTestTileSize,
+      tiles: {beyond: ink, here: ink},
+      laidBounds: laid,
+    );
+
+    test('🚨keeps the tiles past the wall it covers — and no other past the '
+        'wall', () {
+      expect(laidPicture().tileAt(beyond), same(ink));
+      expect(
+        () => drawingOf({beyond: ink}),
+        throwsArgumentError,
+        reason: 'no file laid there: the wall',
+      );
+      expect(
+        () => laidPicture().putTiles([
+          (coord: TileCoord(x: -6, y: 1), tile: ink),
+        ]),
+        throwsArgumentError,
+        reason: 'past the wall, beside the file',
+      );
+    });
+
+    test('keeps its pixels in the pasteboard grown to take it in', () {
+      expect(laidPicture().storableRect, const Rect.fromLTRB(-44, -32, 64, 64));
+      expect(
+        drawingOf({here: ink}).storableRect,
+        celTextTestCanvas.pasteboardRect,
+      );
+    });
+
+    test('rides every surface made from the picture', () {
+      final derived = {
+        'tiles put': laidPicture().putTiles([(coord: there, tile: ink)]),
+        'a commit\'s materialized tiles': laidPicture().putMaterializedTiles([
+          (coord: here, tile: BitmapTile.blank(size: celTextTestTileSize)),
+        ]),
+        'a copy-on-write rebuild': laidPicture().withRebuiltTiles({there: ink}),
+        'a copy with another canvas': laidPicture().copyWith(
+          canvasSize: const CanvasSize(width: 64, height: 64),
+        ),
+        'other texts': laidPicture().withTexts(texts),
+        'other photos': laidPicture().withPhotos([photoOf(1)]),
+      };
+
+      for (final MapEntry(key: road, value: next) in derived.entries) {
+        expect(next.laidBounds, laid, reason: road);
+      }
+    });
+
+    test('two pictures with a file laid at another place, or none, are not '
+        'equal', () {
+      final elsewhere = DirtyRegion(
+        left: -44,
+        top: 0,
+        rightExclusive: 5,
+        bottomExclusive: 8,
+      );
+
+      expect(laidPicture(), laidPicture());
+      expect(laidPicture().hashCode, laidPicture().hashCode);
+      expect(
+        laidPicture(),
+        isNot(laidPicture().copyWith(laidBounds: elsewhere)),
+      );
+      expect(
+        drawingOf({here: ink}),
+        isNot(drawingOf({here: ink}).copyWith(laidBounds: laid)),
+      );
+    });
+
+    test('a picture reads back from JSON where its file lies, and one with '
+        'none writes none', () {
+      final read = BitmapSurface.fromJson(throughJson(laidPicture().toJson()));
+
+      expect(read, laidPicture());
+      expect(read.laidBounds, laid);
+      expect(picture().toJson().containsKey('laid'), isFalse);
     });
   });
 }

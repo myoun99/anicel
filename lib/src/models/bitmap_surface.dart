@@ -1,10 +1,12 @@
 import 'dart:collection';
+import 'dart:ui' as ui;
 
 import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
 import 'cel_photo.dart';
 import 'cel_text.dart';
+import 'dirty_region.dart';
 import 'pasteboard_bounds.dart';
 import 'placed_tile.dart';
 import 'tile_coord.dart';
@@ -65,6 +67,9 @@ typedef KeptTilePlace = ({int? text, TileCoord coord});
 /// [photos]) — for the same reason, by the same roads. ⚠️They are no pixels
 /// of the picture: nothing that reads its tiles sees them, and the sheet's
 /// ink is what draws them, from the pool's file.
+///
+/// And where a FILE's picture was laid on it ([laidBounds]) — the one thing
+/// that keeps pixels past the pasteboard — by those roads again.
 class BitmapSurface {
   BitmapSurface({
     required this.canvasSize,
@@ -72,6 +77,7 @@ class BitmapSurface {
     Map<TileCoord, BitmapTile> tiles = const {},
     List<CelText> texts = const [],
     List<CelPhoto> photos = const [],
+    this.laidBounds,
   }) : _tiles = Map<TileCoord, BitmapTile>.unmodifiable(tiles),
        texts = List<CelText>.unmodifiable(texts),
        photos = List<CelPhoto>.unmodifiable(photos) {
@@ -111,7 +117,8 @@ class BitmapSurface {
   /// through here, and a derivation that let the texts fall would make one
   /// stroke delete every letter on the cel. It is `required` for that reason
   /// alone: nobody deriving a surface gets to forget the question. [photos]
-  /// ride for the same reason (I-97): a stroke over a photo keeps it.
+  /// ride for the same reason (I-97): a stroke over a photo keeps it, and
+  /// [laidBounds] (F-374-Q8): a stroke on a laid picture keeps it whole.
   BitmapSurface._derived({
     required this.canvasSize,
     required this.tileSize,
@@ -119,6 +126,7 @@ class BitmapSurface {
     required Iterable<PlacedTile> added,
     required this.texts,
     required this.photos,
+    required this.laidBounds,
   }) : _tiles = UnmodifiableMapView(tiles) {
     for (final placed in added) {
       _validateTileEntry(placed.coord, placed.tile, this);
@@ -133,7 +141,8 @@ class BitmapSurface {
       tileSize = from.tileSize,
       _tiles = from._tiles,
       texts = List<CelText>.unmodifiable(texts),
-      photos = from.photos {
+      photos = from.photos,
+      laidBounds = from.laidBounds {
     for (final text in this.texts) {
       // A text this surface already carried was checked when it came in.
       if (!from.texts.any((kept) => identical(kept, text))) {
@@ -149,7 +158,8 @@ class BitmapSurface {
       tileSize = from.tileSize,
       _tiles = from._tiles,
       texts = from.texts,
-      photos = List<CelPhoto>.unmodifiable(photos);
+      photos = List<CelPhoto>.unmodifiable(photos),
+      laidBounds = from.laidBounds;
 
   final CanvasSize canvasSize;
   final int tileSize;
@@ -163,6 +173,35 @@ class BitmapSurface {
   /// The photos laid UNDER the drawing, bottom → top — a sheet's ink's own
   /// (I-97; 유저 2026-10-15: 「사진으로 남게(셀의 텍스트처럼)」). Read-only.
   final List<CelPhoto> photos;
+
+  /// Where a FILE's picture was laid on this one — the canvas pixels it
+  /// covers, past the pasteboard where it is larger than the wall — or null
+  /// where none was. Tiles are kept there too ([containsTileCoord]).
+  ///
+  /// 🗣️F-374-Q8 (유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지 통째로」,
+  /// asked after 「클튜 사진레이어 … 깔 때 밖부분 어떻게되지? 유지되있나?
+  /// 그쪽에 맞춰서 설계하고싶음」): a reference's file is laid whole, at its
+  /// own size, as Clip Studio's image material and Photoshop's smart object
+  /// keep theirs — so a fit that shrinks it, or a move that brings its edge
+  /// in, shows all of it. ↩️It was cut at the wall (Q4 · Q6 「셀 밖은
+  /// 버린다」), and a fit showed the cut as an empty band.
+  ///
+  /// ⚠️Only a laid file goes past the wall: what a tool writes — a stroke,
+  /// a fill, a paste, a text — is still cut at the pasteboard. And it is the
+  /// picture's own value, as its texts and photos are, so it goes where the
+  /// picture goes: a copy, an undo, a save, a canvas resize (which moves it
+  /// with its pixels and never cuts it) — and a rasterize, which changes no
+  /// pixel (F-374-Q7: what is seen stays as it is seen).
+  final DirtyRegion? laidBounds;
+
+  /// The canvas-space rect this picture keeps pixels in: the pasteboard,
+  /// grown to take in [laidBounds] — what a painter of it clips to and walks
+  /// its tiles under.
+  ui.Rect get storableRect {
+    final pasteboard = canvasSize.pasteboardRect;
+    final laid = laidBounds;
+    return laid == null ? pasteboard : pasteboard.expandToInclude(laid.rect);
+  }
 
   /// This picture with [texts] in place of its own; the drawing is the
   /// same tiles. The surface itself when [texts] is the list it holds.
@@ -310,13 +349,13 @@ class BitmapSurface {
 
   /// Whether [coord] is storable: any tile intersecting the PASTEBOARD
   /// (canvas + one canvas size in every direction), negative coords
-  /// included.
-  bool containsTileCoord(TileCoord coord) {
-    return coord.x >= canvasSize.pasteboardTileXMin(tileSize) &&
-        coord.y >= canvasSize.pasteboardTileYMin(tileSize) &&
-        coord.x < canvasSize.pasteboardTileXEndExclusive(tileSize) &&
-        coord.y < canvasSize.pasteboardTileYEndExclusive(tileSize);
-  }
+  /// included — or the picture a file laid here ([laidBounds]).
+  bool containsTileCoord(TileCoord coord) => pictureKeepsTileAt(
+    coord,
+    canvas: canvasSize,
+    tileSize: tileSize,
+    laid: laidBounds,
+  );
 
   BitmapTile? tileAt(TileCoord coord) => _tiles[coord];
 
@@ -361,6 +400,7 @@ class BitmapSurface {
       added: tilesToPut,
       texts: texts,
       photos: photos,
+      laidBounds: laidBounds,
     );
   }
 
@@ -405,6 +445,7 @@ class BitmapSurface {
       added: kept,
       texts: texts,
       photos: photos,
+      laidBounds: laidBounds,
     );
   }
 
@@ -437,6 +478,7 @@ class BitmapSurface {
     Map<TileCoord, BitmapTile>? tiles,
     List<CelText>? texts,
     List<CelPhoto>? photos,
+    DirtyRegion? laidBounds,
   }) {
     return BitmapSurface(
       canvasSize: canvasSize ?? this.canvasSize,
@@ -444,6 +486,7 @@ class BitmapSurface {
       tiles: tiles ?? _tiles,
       texts: texts ?? this.texts,
       photos: photos ?? this.photos,
+      laidBounds: laidBounds ?? this.laidBounds,
     );
   }
 
@@ -461,6 +504,7 @@ class BitmapSurface {
     if (texts.isNotEmpty) 'texts': [for (final text in texts) text.toJson()],
     if (photos.isNotEmpty)
       'photos': [for (final photo in photos) photo.toJson()],
+    if (laidBounds case final laid?) 'laid': laid.toJson(),
   };
 
   factory BitmapSurface.fromJson(Map<String, dynamic> json) {
@@ -492,6 +536,10 @@ class BitmapSurface {
         for (final photo in json['photos'] as List? ?? const [])
           CelPhoto.fromJson(photo as Map<String, dynamic>),
       ],
+      laidBounds: switch (json['laid']) {
+        final Map<String, dynamic> laid => DirtyRegion.fromJson(laid),
+        _ => null,
+      },
     );
   }
 
@@ -503,7 +551,8 @@ class BitmapSurface {
           other.tileSize == tileSize &&
           mapEquals(other._tiles, _tiles) &&
           listEquals(other.texts, texts) &&
-          listEquals(other.photos, photos);
+          listEquals(other.photos, photos) &&
+          other.laidBounds == laidBounds;
 
   @override
   int get hashCode => Object.hash(
@@ -514,6 +563,7 @@ class BitmapSurface {
     ),
     Object.hashAll(texts),
     Object.hashAll(photos),
+    laidBounds,
   );
 
   @override
@@ -523,6 +573,23 @@ class BitmapSurface {
 }
 
 int _ceilDiv(int value, int divisor) => (value + divisor - 1) ~/ divisor;
+
+/// Whether a picture of [canvas], in tiles of [tileSize], keeps a tile at
+/// [coord]: any tile that touches its pasteboard, or the picture a file
+/// laid on it over [laid] ([BitmapSurface.laidBounds]).
+///
+/// The storability law in ONE spelling — a surface asks it of itself
+/// ([BitmapSurface.containsTileCoord]), and a pass that builds one on
+/// another canvas or at another place (a resize, a move) asks it of the
+/// picture it builds.
+bool pictureKeepsTileAt(
+  TileCoord coord, {
+  required CanvasSize canvas,
+  required int tileSize,
+  required DirtyRegion? laid,
+}) =>
+    tileRangeHolds(canvas.pasteboardTileRange(tileSize), coord) ||
+    (laid != null && tileRangeHolds(laid.tileRange(tileSize: tileSize), coord));
 
 void _validateTileSize(int tileSize) {
   if (tileSize <= 0) {

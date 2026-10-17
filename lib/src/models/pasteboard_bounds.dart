@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import '../core/floor_math.dart';
 import 'canvas_size.dart';
 import 'dirty_region.dart';
+import 'tile_coord.dart';
 
 /// How many whole canvases of pasteboard sit beyond EACH edge.
 ///
@@ -117,4 +118,12 @@ extension PasteboardBounds on CanvasSize {
   /// One past the last tile row that intersects the pasteboard.
   int pasteboardTileYEndExclusive(int tileSize) =>
       ceilDiv(pasteboardBottomExclusive, tileSize);
+
+  /// Every tile that intersects the pasteboard, as a range.
+  TileRange pasteboardTileRange(int tileSize) => (
+    firstX: pasteboardTileXMin(tileSize),
+    lastX: pasteboardTileXEndExclusive(tileSize) - 1,
+    firstY: pasteboardTileYMin(tileSize),
+    lastY: pasteboardTileYEndExclusive(tileSize) - 1,
+  );
 }

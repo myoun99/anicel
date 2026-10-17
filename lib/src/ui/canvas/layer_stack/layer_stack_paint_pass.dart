@@ -991,7 +991,7 @@ class _LayerStackPaintPass {
     // redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
-      into.clipRect(slot.painter.pasteboardRect);
+      into.clipRect(slot.painter.storableRect);
         slot.painter.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -1066,7 +1066,7 @@ class _LayerStackPaintPass {
       if (needsBuffer) {
         canvas.saveLayer(
           effectBufferBounds(
-            slot.painter.pasteboardRect,
+            slot.painter.storableRect,
             activeEffects.outsetPixels,
           ),
           activePaint,

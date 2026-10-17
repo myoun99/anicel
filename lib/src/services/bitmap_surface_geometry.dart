@@ -7,6 +7,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cel_photo.dart';
 import '../models/cel_text.dart';
+import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
@@ -186,23 +187,23 @@ BitmapSurface resizeBitmapSurfaceCanvas(
     return surface;
   }
   final tileSize = surface.tileSize;
-  final tileXMin = canvasSize.pasteboardTileXMin(tileSize);
-  final tileYMin = canvasSize.pasteboardTileYMin(tileSize);
-  final tileXEnd = canvasSize.pasteboardTileXEndExclusive(tileSize);
-  final tileYEnd = canvasSize.pasteboardTileYEndExclusive(tileSize);
+  final laid = _laidMoved(surface, dx: 0, dy: 0);
   return BitmapSurface(
     canvasSize: canvasSize,
     tileSize: tileSize,
     tiles: {
       for (final entry in surface.tiles.entries)
-        if (entry.key.x >= tileXMin &&
-            entry.key.y >= tileYMin &&
-            entry.key.x < tileXEnd &&
-            entry.key.y < tileYEnd)
+        if (pictureKeepsTileAt(
+          entry.key,
+          canvas: canvasSize,
+          tileSize: tileSize,
+          laid: laid,
+        ))
           entry.key: entry.value,
     },
     texts: _textsMoved(surface, dx: 0, dy: 0, canvasSize: canvasSize),
     photos: _photosMoved(surface, dx: 0, dy: 0),
+    laidBounds: laid,
   );
 }
 
@@ -278,6 +279,26 @@ List<CelPhoto> _photosMoved(
     ),
 ];
 
+/// Where [surface]'s laid picture lies ([BitmapSurface.laidBounds]) once a
+/// move of its pixels by ([dx], [dy]) has carried it — the whole of it,
+/// never cut at the new pasteboard (F-374-Q8: 「참조 그림은 벽 밖까지
+/// 통째로」).
+DirtyRegion? _laidMoved(
+  BitmapSurface surface, {
+  required int dx,
+  required int dy,
+}) {
+  final laid = surface.laidBounds;
+  return laid == null || (dx == 0 && dy == 0)
+      ? laid
+      : DirtyRegion(
+          left: laid.left + dx,
+          top: laid.top + dy,
+          rightExclusive: laid.rightExclusive + dx,
+          bottomExclusive: laid.bottomExclusive + dy,
+        );
+}
+
 /// [content] standing ([dx], [dy]) whole pixels from where it stood — the
 /// number its plate's pixels were set from, moved as they are
 /// ([celTextPlateMoved]).
@@ -343,18 +364,18 @@ BitmapSurface translateBitmapSurface(
     // law, applied here too.
     final tileDx = dx ~/ tileSize;
     final tileDy = dy ~/ tileSize;
-    final tileXMin = canvasSize.pasteboardTileXMin(tileSize);
-    final tileYMin = canvasSize.pasteboardTileYMin(tileSize);
-    final tileXEnd = canvasSize.pasteboardTileXEndExclusive(tileSize);
-    final tileYEnd = canvasSize.pasteboardTileYEndExclusive(tileSize);
+    final laid = _laidMoved(surface, dx: dx, dy: dy);
     final rebased = <TileCoord, BitmapTile>{};
     for (final entry in surface.tiles.entries) {
-      final x = entry.key.x + tileDx;
-      final y = entry.key.y + tileDy;
-      if (x < tileXMin || y < tileYMin || x >= tileXEnd || y >= tileYEnd) {
+      final coord = TileCoord(x: entry.key.x + tileDx, y: entry.key.y + tileDy);
+      if (!pictureKeepsTileAt(
+        coord,
+        canvas: canvasSize,
+        tileSize: tileSize,
+        laid: laid,
+      )) {
         continue;
       }
-      final coord = TileCoord(x: x, y: y);
       // 🎯**THE SHIFT IS A KEY REWRITE.** The tile does not know where it
       // sits, so moving it is renaming its map entry — the very same
       // object, which means zero pixels copied AND every decoded picture
@@ -367,79 +388,43 @@ BitmapSurface translateBitmapSurface(
       tiles: rebased,
       texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
       photos: _photosMoved(surface, dx: dx, dy: dy),
+      laidBounds: laid,
     );
   }
 
-  final rowBytes = tileSize * BitmapTile.bytesPerPixel;
-  final buffers = <TileCoord, Uint8List>{};
+  final blit = _MovedBlit(tileSize: tileSize, dx: dx, dy: dy);
 
   // The output is bounded by the TARGET canvas's pasteboard; pixels
   // shifted beyond it clip — the anchored-resize command snapshots baked
   // references for its undo, so nothing is lost across an undo round
   // trip.
-  final outTileXMin = canvasSize.pasteboardTileXMin(tileSize);
-  final outTileYMin = canvasSize.pasteboardTileYMin(tileSize);
-  final outTileXEnd = canvasSize.pasteboardTileXEndExclusive(tileSize);
-  final outTileYEnd = canvasSize.pasteboardTileYEndExclusive(tileSize);
-  final pasteboardLeft = canvasSize.pasteboardLeft;
-  final pasteboardTop = canvasSize.pasteboardTop;
-  Uint8List? bufferFor(int tileX, int tileY) {
-    if (tileX < outTileXMin ||
-        tileY < outTileYMin ||
-        tileX >= outTileXEnd ||
-        tileY >= outTileYEnd) {
-      return null;
-    }
-    return buffers.putIfAbsent(
-      TileCoord(x: tileX, y: tileY),
-      () => Uint8List(tileSize * rowBytes),
+  blit.into(
+    surface.tiles.entries,
+    clip: (
+      left: canvasSize.pasteboardLeft,
+      top: canvasSize.pasteboardTop,
+      rightExclusive: null,
+      bottomExclusive: null,
+    ),
+    keeps: canvasSize.pasteboardTileRange(tileSize),
+  );
+  // A laid picture goes where its pixels went, whole (F-374-Q8: 「참조
+  // 그림은 벽 밖까지 통째로」) — the same blit, into the rect it covers now,
+  // from the tiles that held it.
+  final laid = _laidMoved(surface, dx: dx, dy: dy);
+  final laidBefore = surface.laidBounds;
+  if (laid != null && laidBefore != null) {
+    final held = laidBefore.tileRange(tileSize: tileSize);
+    blit.into(
+      surface.tiles.entries.where((entry) => tileRangeHolds(held, entry.key)),
+      clip: (
+        left: laid.left,
+        top: laid.top,
+        rightExclusive: laid.rightExclusive,
+        bottomExclusive: laid.bottomExclusive,
+      ),
+      keeps: laid.tileRange(tileSize: tileSize),
     );
-  }
-
-  for (final entry in surface.tiles.entries) {
-    final tile = entry.value;
-    final pixels = tile.pixels;
-    final sourceLeft = entry.key.x * tileSize + dx;
-    final sourceTop = entry.key.y * tileSize + dy;
-    for (var row = 0; row < tileSize; row += 1) {
-      final worldY = sourceTop + row;
-      if (worldY < pasteboardTop) {
-        continue;
-      }
-      final tileY = floorDiv(worldY, tileSize);
-      final localY = worldY - tileY * tileSize;
-      // The row lands in up to two horizontal output tiles.
-      var worldX = sourceLeft;
-      var sourceOffset = row * rowBytes;
-      var remaining = tileSize;
-      while (remaining > 0) {
-        if (worldX < pasteboardLeft) {
-          final skip = pasteboardLeft - worldX;
-          final clipped = skip > remaining ? remaining : skip;
-          worldX += clipped;
-          sourceOffset += clipped * BitmapTile.bytesPerPixel;
-          remaining -= clipped;
-          continue;
-        }
-        final tileX = floorDiv(worldX, tileSize);
-        final localX = worldX - tileX * tileSize;
-        final span = (tileSize - localX) < remaining
-            ? (tileSize - localX)
-            : remaining;
-        final target = bufferFor(tileX, tileY);
-        if (target != null) {
-          target.setRange(
-            (localY * tileSize + localX) * BitmapTile.bytesPerPixel,
-            (localY * tileSize + localX + span) * BitmapTile.bytesPerPixel,
-            pixels,
-            sourceOffset,
-          );
-        }
-        worldX += span;
-        sourceOffset += span * BitmapTile.bytesPerPixel;
-        remaining -= span;
-      }
-    }
   }
 
   // The blank ones are dropped by the SAME law the commit tails keep —
@@ -450,8 +435,9 @@ BitmapSurface translateBitmapSurface(
     tileSize: tileSize,
     texts: _textsMoved(surface, dx: dx, dy: dy, canvasSize: canvasSize),
     photos: _photosMoved(surface, dx: dx, dy: dy),
+    laidBounds: laid,
   ).putMaterializedTiles([
-    for (final entry in buffers.entries)
+    for (final entry in blit.buffers.entries)
       (
         coord: entry.key,
         tile: BitmapTile(
@@ -461,3 +447,117 @@ BitmapSurface translateBitmapSurface(
       ),
   ]);
 }
+
+/// Where a moved pixel may land, in canvas pixels: right of [left] and
+/// below [top], and left of and above the other two edges where it has
+/// them — the pasteboard cuts its right and bottom at the tile ([keeps]).
+typedef _BlitClip = ({
+  int left,
+  int top,
+  int? rightExclusive,
+  int? bottomExclusive,
+});
+
+/// The fractional-of-a-tile move of [translateBitmapSurface]: each input
+/// tile's rows blitted into the up to four output tiles they land in,
+/// gathered in [buffers].
+class _MovedBlit {
+  _MovedBlit({required this.tileSize, required this.dx, required this.dy})
+    : _rowBytes = tileSize * BitmapTile.bytesPerPixel;
+
+  final int tileSize;
+  final int dx;
+  final int dy;
+  final int _rowBytes;
+
+  /// The output tiles, by where they sit.
+  final buffers = <TileCoord, Uint8List>{};
+
+  /// [tiles] moved, each pixel kept where it lands inside [clip] on a tile
+  /// [keeps] holds. A pixel two blits keep is written twice, the same bytes
+  /// both times.
+  void into(
+    Iterable<MapEntry<TileCoord, BitmapTile>> tiles, {
+    required _BlitClip clip,
+    required TileRange keeps,
+  }) {
+    final bottom = clip.bottomExclusive;
+    final right = clip.rightExclusive;
+    for (final entry in tiles) {
+      final pixels = entry.value.pixels;
+      final sourceLeft = entry.key.x * tileSize + dx;
+      final sourceTop = entry.key.y * tileSize + dy;
+      final width = right == null || right >= sourceLeft + tileSize
+          ? tileSize
+          : right - sourceLeft;
+      for (var row = 0; row < tileSize; row += 1) {
+        final worldY = sourceTop + row;
+        if (worldY < clip.top || (bottom != null && worldY >= bottom)) {
+          continue;
+        }
+        _row(
+          pixels,
+          (row: row, worldY: worldY, from: sourceLeft, width: width),
+          left: clip.left,
+          keeps: keeps,
+        );
+      }
+    }
+  }
+
+  /// One row of a source tile's [pixels] — its [_SourceRow.width] pixels
+  /// from x [_SourceRow.from], landing at [_SourceRow.worldY] — in up to two
+  /// horizontal output tiles, from [left] on.
+  void _row(
+    Uint8List pixels,
+    _SourceRow source, {
+    required int left,
+    required TileRange keeps,
+  }) {
+    final (:row, :worldY, from: sourceLeft, :width) = source;
+    final tileY = floorDiv(worldY, tileSize);
+    final localY = worldY - tileY * tileSize;
+    var worldX = sourceLeft;
+    var sourceOffset = row * _rowBytes;
+    var remaining = width;
+    while (remaining > 0) {
+      if (worldX < left) {
+        final skip = left - worldX;
+        final clipped = skip > remaining ? remaining : skip;
+        worldX += clipped;
+        sourceOffset += clipped * BitmapTile.bytesPerPixel;
+        remaining -= clipped;
+        continue;
+      }
+      final tileX = floorDiv(worldX, tileSize);
+      final localX = worldX - tileX * tileSize;
+      final span = (tileSize - localX) < remaining
+          ? (tileSize - localX)
+          : remaining;
+      final target = _bufferFor(TileCoord(x: tileX, y: tileY), keeps);
+      if (target != null) {
+        target.setRange(
+          (localY * tileSize + localX) * BitmapTile.bytesPerPixel,
+          (localY * tileSize + localX + span) * BitmapTile.bytesPerPixel,
+          pixels,
+          sourceOffset,
+        );
+      }
+      worldX += span;
+      sourceOffset += span * BitmapTile.bytesPerPixel;
+      remaining -= span;
+    }
+  }
+
+  /// The output tile at [coord], made blank the first time — or null where
+  /// [keeps] holds no tile there.
+  Uint8List? _bufferFor(TileCoord coord, TileRange keeps) =>
+      tileRangeHolds(keeps, coord)
+      ? buffers.putIfAbsent(coord, () => Uint8List(tileSize * _rowBytes))
+      : null;
+}
+
+/// A row of a source tile as [_MovedBlit] lands it: which [row] of the
+/// tile, the canvas row [worldY] it lands on, and the [width] pixels kept
+/// of it from the x it lands at, [from].
+typedef _SourceRow = ({int row, int worldY, int from, int width});

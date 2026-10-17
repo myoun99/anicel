@@ -266,7 +266,7 @@ void main() {
           );
           applyViewportTransform(canvas, viewport);
           canvas.save();
-          canvas.clipRect(painter.pasteboardRect);
+          canvas.clipRect(painter.storableRect);
           painter.paintContentInto(canvas);
           canvas.restore();
           canvas.restore();
@@ -376,6 +376,53 @@ void main() {
         _rgbaAt(screen, width: 8, x: 3, y: 0),
         [0, 0, 0, 0],
         reason: 'canvas x=0 is tile 0, which does not exist',
+      );
+    });
+
+    test('🚨a file\'s picture laid past the wall is drawn there — on the '
+        'painter\'s own route too (F-374-Q8)', () async {
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i] = 255;
+        pixels[i + 3] = 255;
+      }
+      // The 16-wide sheet's pasteboard begins at x -16: tile -5 is past it.
+      final surface = BitmapSurface(
+        canvasSize: const CanvasSize(width: 16, height: 4),
+        tileSize: tileSize,
+        tiles: {
+          TileCoord(x: -5, y: 0): BitmapTile(size: tileSize, pixels: pixels),
+        },
+        laidBounds: DirtyRegion(
+          left: -20,
+          top: 0,
+          rightExclusive: -16,
+          bottomExclusive: 4,
+        ),
+      );
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        viewport: CanvasViewport(panX: 20),
+        showTransparentBackground: false,
+        tileImageCache: await decodedCache(surface),
+      );
+
+      // Canvas x -20..-12 fills the 8-wide view.
+      final screen = await rasterize(
+        (canvas) => painter.paint(canvas, const Size(8, 4)),
+        width: 8,
+        height: 4,
+      );
+
+      expect(
+        _rgbaAt(screen, width: 8, x: 0, y: 0),
+        [255, 0, 0, 255],
+        reason: 'canvas x=-20, past the wall, where the file lies',
+      );
+      expect(
+        _rgbaAt(screen, width: 8, x: 4, y: 0),
+        [0, 0, 0, 0],
+        reason: 'canvas x=-16: nothing there',
       );
     });
 

@@ -22,7 +22,10 @@ import '../helpers/project_scratch_folder.dart';
 /// itself. A new one turns this red and asks its author the question.
 ///
 /// A sheet's PHOTOS live in the same value (I-97) and fall the same way, so
-/// the places that put the texts back put the photos back too.
+/// the places that put the texts back put the photos back too — and where
+/// a file's picture lies (F-374-Q8, `laidBounds`): a picture rebuilt
+/// without it refuses its own tiles past the wall, and one whose file lay
+/// inside the wall shows nothing amiss until a resize or a move cuts it.
 void main() {
   /// Every file under `lib/` that builds a surface fresh, how many times,
   /// and why each may. ⚠️The model's own file is not here: its derivations
@@ -32,7 +35,8 @@ void main() {
       count: 4,
       why:
           'a resize and a move build their result fresh — each passes '
-          '`texts: _textsMoved(…)` and `photos: _photosMoved(…)`; the '
+          '`texts: _textsMoved(…)`, `photos: _photosMoved(…)` and '
+          '`laidBounds: laid`; the '
           'fourth is the ONE wrapping of a text\'s plate as a surface of '
           'its own (`celTextPlateSurface`), so its pixels take the passes '
           'and reads a drawing\'s take',
@@ -42,13 +46,16 @@ void main() {
       why:
           'a snapshot is put back together from the tiles it kept in ONE '
           'place (`_pictureOf`) — the drawing\'s as its tiles, each text it '
-          'pinned with the plate tiles kept for it (`texts: [`), and the '
-          'photos it pinned (`photos: _photos`); what it parks is that same '
-          'picture of the tiles it owns',
+          'pinned with the plate tiles kept for it (`texts: [`), the '
+          'photos it pinned (`photos: _photos`) and where a file lies '
+          '(`laidBounds: _laidBounds`); what it parks is that same picture '
+          'of the tiles it owns',
     ),
     'lib/src/services/persistence/brush_drawing_binary_codec.dart': (
       count: 1,
-      why: 'a saved cel is read back — tiles, `texts:` and `photos:`',
+      why:
+          'a saved cel is read back — tiles, `texts:`, `photos:` and '
+          '`laidBounds:`',
     ),
     'lib/src/services/brush_frame_display_cache_service.dart': (
       count: 2,
@@ -79,7 +86,8 @@ void main() {
     'lib/src/services/import/raster_cel_import.dart': (
       count: 3,
       why:
-          'a picture imported from an image — it begins here; and the cel '
+          'a picture imported from an image — it begins here, laid whole '
+          'where a door asks (`laidBounds: laid`, F-374-Q8); and the cel '
           'a decoding door\'s tiles begin as (`bakeCelTiles` — a .tvpp\'s, '
           'a .clip\'s)',
     ),
@@ -102,19 +110,29 @@ void main() {
     ),
   };
 
-  /// The places that put the texts and the photos back themselves, and how
-  /// many times each says so.
-  const carriers = <String, ({int texts, int photos})>{
-    'lib/src/services/bitmap_surface_geometry.dart': (texts: 3, photos: 3),
-    'lib/src/services/undo_surface_snapshot.dart': (texts: 1, photos: 1),
+  /// The places that put the texts, the photos and where a file lies back
+  /// themselves, and how many times each says so.
+  const carriers = <String, ({int texts, int photos, int laid})>{
+    'lib/src/services/bitmap_surface_geometry.dart': (
+      texts: 3,
+      photos: 3,
+      laid: 3,
+    ),
+    'lib/src/services/undo_surface_snapshot.dart': (
+      texts: 1,
+      photos: 1,
+      laid: 1,
+    ),
     // Read back from an entry, written into one, and laid on a worker for
     // the main isolate to adopt (`layCelEntry`, card
     // `cel-thaw-holds-the-ui-thread`). A photo has no tile to lay, so the
     // worker hands its list on as it came — and the laid cel's record type
-    // will not let it be left out.
+    // will not let it be left out. Where a file lies is four numbers, and
+    // goes the photos' way.
     'lib/src/services/persistence/brush_drawing_binary_codec.dart': (
       texts: 3,
       photos: 2,
+      laid: 5,
     ),
   };
 
@@ -159,8 +177,8 @@ void main() {
     expect(found.values.fold<int>(0, (sum, count) => sum + count), 19);
   });
 
-  test('the places that rebuild a picture from its parts hand the texts '
-      'and the photos back', () {
+  test('the places that rebuild a picture from its parts hand the texts, '
+      'the photos and where a file lies back', () {
     for (final entry in carriers.entries) {
       final source = File(entry.key).readAsStringSync();
       int handedBack(String field) =>
@@ -178,6 +196,14 @@ void main() {
         handedBack('photos'),
         entry.value.photos,
         reason: '${entry.key}: and where its photos come back (I-97)',
+      );
+      // Nothing to build of it — four numbers — so every hand-back is one.
+      expect(
+        'laidBounds: '.allMatches(source).length,
+        entry.value.laid,
+        reason:
+            '${entry.key}: and where a file lies on it comes back '
+            '(F-374-Q8)',
       );
       expect(ledger.containsKey(entry.key), isTrue, reason: 'fixture');
     }

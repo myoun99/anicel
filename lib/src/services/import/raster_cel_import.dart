@@ -8,6 +8,7 @@ import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/dirty_region.dart';
 import '../../models/media_asset.dart' show MediaFitMode;
 import '../../models/media_reference.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -175,15 +176,29 @@ LayerPlacement rectPlacement(
 /// The raster covers what the placed picture covers, clipped to the
 /// pasteboard — fit=none overflow lives on the pasteboard exactly like an
 /// oversized selection drop.
+///
+/// [whole]: a FILE's picture, laid all of it, past the pasteboard where it
+/// is larger than the wall — the surface says where it lies
+/// ([BitmapSurface.laidBounds]). 🗣️F-374-Q8 (유저 2026-10-17): 「맞춘다 —
+/// 참조 그림은 벽 밖까지 통째로」. ⚠️What a tool draws (a text's letters) is
+/// cut at the wall as ever.
 Future<BitmapSurface> rasterizeImageToSurface({
   required ui.Image image,
   required CanvasSize canvas,
   required LayerPlacement placement,
   int tileSize = defaultCelTileSize,
+  bool whole = false,
 }) async {
-  // The pasteboard wall (tiles beyond it are refused by the surface).
-  final wall = canvas.pasteboardRect;
-  final clipped = _placedBounds(placement, image).intersect(wall);
+  final placed = _placedBounds(placement, image);
+  // The pasteboard wall (tiles beyond it are refused by the surface) — or,
+  // laid whole, the picture's own rect on whole pixels, which the surface
+  // keeps tiles over.
+  final laid = whole && !placed.isEmpty
+      ? DirtyRegion.wholePixelsOf(placed)
+      : null;
+  final clipped = laid == null
+      ? placed.intersect(canvas.pasteboardRect)
+      : laid.rect;
   if (clipped.isEmpty) {
     return BitmapSurface(canvasSize: canvas, tileSize: tileSize);
   }
@@ -299,6 +314,7 @@ Future<BitmapSurface> rasterizeImageToSurface({
     return BitmapSurface(
       canvasSize: canvas,
       tileSize: tileSize,
+      laidBounds: laid,
     ).putTiles(tiles);
   } finally {
     raster.dispose();

@@ -218,13 +218,13 @@ void main() {
 
     test('a cel written before texts existed reads as it always did', () {
       // A v2 stream: the header, one tile, and nothing after it — today's
-      // with its photos' zero after its head and its texts' at its end
-      // taken off.
+      // with its photos' zero after its head taken off, and at its end its
+      // texts' and the byte that says no file was laid on it (v5).
       final today = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
       final headEnd = celStreamHeadEnd(key);
       final v2 = Uint8List.fromList([
         ...today.sublist(0, headEnd),
-        ...today.sublist(headEnd + 4, today.length - 4),
+        ...today.sublist(headEnd + 4, today.length - 5),
       ])..[0] = 2;
 
       final read = decodeCelEntry(v2).toSurface();
@@ -237,7 +237,9 @@ void main() {
       final withNone = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
 
       expect(withNone.first, anicelCelBinaryVersion);
-      expect(withNone.sublist(withNone.length - 4), [0, 0, 0, 0]);
+      // Ahead of the one byte that ends it (v5).
+      final textsEnd = withNone.length - 1;
+      expect(withNone.sublist(textsEnd - 4, textsEnd), [0, 0, 0, 0]);
     });
 
     test('a parked cel — the same blob, compressed — comes back with them', () {

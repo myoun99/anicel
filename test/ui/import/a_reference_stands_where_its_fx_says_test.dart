@@ -619,6 +619,119 @@ void main() {
       await stopTheWarmer(tester, s);
     });
 
+    // F-374-Q8 (유저 2026-10-17: 「맞춘다 — 참조 그림은 벽 밖까지 통째로」):
+    // 7200 wide on the 2340 canvas, whose pasteboard is 7020 — laid 1:1 the
+    // paper reaches 90 past the wall on each side.
+    testWidgets('🚨a paper wider than the pasteboard is laid whole — past the '
+        'wall on both sides', (tester) async {
+      final (s, row) = await placed(tester, width: 7200, height: 60);
+
+      expect(shown(s, row), const ui.Rect.fromLTRB(-2430, 797, 4770, 857));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('🚨halved by its fx and baked as it shows, a paper wider than '
+        'the pasteboard is all of it — no band where the wall cut it', (
+      tester,
+    ) async {
+      final (s, row) = await placed(tester, width: 7200, height: 60);
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: halved);
+
+      await tester.runAsync(
+        () => s.importDoors.bakeReferenceAsSeen(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        ),
+      );
+
+      expect(
+        shown(s, rowOf(s, row)),
+        const ui.Rect.fromLTRB(-630, 812, 2970, 842),
+      );
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    // No brush reaches a reference row, so its file's picture is all its
+    // cel holds: a bake moves where the FILE lies, not the cel.
+    testWidgets('🚨grown by its fx and baked as it shows, a small paper is '
+        'laid where IT goes — not the clear canvas round it, grown with it', (
+      tester,
+    ) async {
+      final (s, row) = await placed(tester, width: 8, height: 8);
+      attachToTheDrawing(s, row);
+      posed(
+        s,
+        row,
+        fx: TransformTrack.empty().copyWith(
+          scale: PropertyTrack<CanvasPoint>().withKey(
+            0,
+            CanvasPoint(x: 100, y: 100),
+          ),
+        ),
+      );
+
+      await tester.runAsync(
+        () => s.importDoors.bakeReferenceAsSeen(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        ),
+      );
+
+      // 8×8 at (1166, 823), a hundred times its size about its middle.
+      const where = ui.Rect.fromLTRB(770, 427, 1570, 1227);
+      final baked = rowOf(s, row);
+      expect(baked.mediaReference, isNull);
+      expect(shown(s, baked), where);
+      expect(celOf(s, baked, 0)!.laidBounds!.rect, where);
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
+    testWidgets('a cel that does not know where its file lies — an older '
+        'build laid it, cut at the wall — is baked as the picture it is, '
+        'still cut there', (tester) async {
+      final (s, row) = await placed(tester, width: 7200, height: 60);
+      final whole = celOf(s, row, 0)!;
+      bakeCelSurface(
+        s.renderCaches.brushFrameStore,
+        s.brushFrameKeyForCut(s.requireActiveCut, row.id, row.frames[0].id),
+        BitmapSurface(
+          canvasSize: whole.canvasSize,
+          tileSize: whole.tileSize,
+          tiles: {
+            for (final MapEntry(:key, :value) in whole.tiles.entries)
+              if (pictureKeepsTileAt(
+                key,
+                canvas: whole.canvasSize,
+                tileSize: whole.tileSize,
+                laid: null,
+              ))
+                key: value,
+          },
+        ),
+      );
+      attachToTheDrawing(s, row);
+      posed(s, row, fx: halved);
+
+      await tester.runAsync(
+        () => s.importDoors.bakeReferenceAsSeen(
+          cutId: s.requireActiveCut.id,
+          layerId: row.id,
+        ),
+      );
+
+      final baked = celOf(s, rowOf(s, row), 0)!;
+      expect(baked.laidBounds, isNull);
+      // Its tiles end at 4736, the last that touches the pasteboard (4680):
+      // halved about the middle (1170), 2953 — laid whole it reaches 2970.
+      expect(inkOf(baked), const ui.Rect.fromLTRB(-630, 812, 2953, 842));
+      await tester.pump(const Duration(minutes: 1));
+      await stopTheWarmer(tester, s);
+    });
+
     testWidgets('a still that MOVES on a row whose transform cannot carry '
         'it waits — no rasterize leaves it anything but the reference it '
         'is (F-374-Q9)', (tester) async {
@@ -823,13 +936,18 @@ void main() {
       deleteTempQuietly(tempDir);
     });
 
-    /// A 64×36 take of [fps] placed 1:1 as a reference on the default
+    /// A [width]×36 take of [fps] placed 1:1 as a reference on the default
     /// canvas, the warmer held so what is decoded is the test's asking.
     Future<(EditorSessionManager, Layer, FakeVideoBackend)> placed(
       WidgetTester tester, {
       int fps = 24,
+      int width = 64,
     }) async {
-      final fake = FakeVideoBackend(frameCount: 24, fpsNumerator: fps);
+      final fake = FakeVideoBackend(
+        frameCount: 24,
+        fpsNumerator: fps,
+        width: width,
+      );
       debugVideoDecodeBackend = fake;
       final s = EditorSessionManager(
         initialProject: createDefaultProject(),
@@ -890,6 +1008,18 @@ void main() {
       expect(
         await shownAt(tester, s, row),
         const ui.Rect.fromLTRB(1138, 809, 1202, 845),
+      );
+      await tester.pumpAndSettle();
+    });
+
+    // F-374-Q8: a movie's frame is a file's picture as a still is.
+    testWidgets('🚨a take wider than the pasteboard is decoded whole — past '
+        'the wall on both sides', (tester) async {
+      final (s, row, _) = await placed(tester, width: 7200);
+
+      expect(
+        await shownAt(tester, s, row),
+        const ui.Rect.fromLTRB(-2430, 809, 4770, 845),
       );
       await tester.pumpAndSettle();
     });

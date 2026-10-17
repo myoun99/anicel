@@ -16,6 +16,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cel_photo.dart';
 import '../../models/cel_text.dart';
+import '../../models/dirty_region.dart';
 import '../../models/tile_coord.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
@@ -40,6 +41,7 @@ class AnicelCelEntry {
     required this.tiles,
     this.texts = const [],
     this.photos = const [],
+    this.laidBounds,
   });
 
   factory AnicelCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
@@ -57,6 +59,7 @@ class AnicelCelEntry {
           ),
       ],
       photos: _photoRecordsOf(surface.photos),
+      laidBounds: surface.laidBounds,
     );
   }
 
@@ -73,6 +76,10 @@ class AnicelCelEntry {
   /// The photos the picture carries, bottom → top (I-97 — a sheet's ink).
   final List<AnicelPhotoRecord> photos;
 
+  /// Where a file's picture lies on the cel, past the pasteboard where it
+  /// is larger than the wall (`BitmapSurface.laidBounds`, F-374-Q8).
+  final DirtyRegion? laidBounds;
+
   BitmapSurface toSurface() => _surfaceOf(
     (
       canvasSize: canvasSize,
@@ -80,6 +87,7 @@ class AnicelCelEntry {
       tiles: tiles,
       texts: texts,
       photos: photos,
+      laidBounds: laidBounds,
     ),
     (pixels) => BitmapTile(size: tileSize, pixels: pixels),
   );
@@ -94,8 +102,9 @@ typedef AnicelTileRecord = ({int x, int y, Uint8List pixels});
 typedef AnicelPhotoRecord = ({int id, String reference});
 
 /// A cel's picture in plain parts — where each tile sits with its pixels as
-/// [P], the texts with their plates, and the photos: the shape both sides
-/// of an isolate boundary make a surface of ([_surfaceOf]).
+/// [P], the texts with their plates, the photos, and where a file's picture
+/// lies on it: the shape both sides of an isolate boundary make a surface
+/// of ([_surfaceOf]).
 typedef CelParts<P> = ({
   CanvasSize canvasSize,
   int tileSize,
@@ -103,6 +112,7 @@ typedef CelParts<P> = ({
   List<({int id, String content, List<({int x, int y, P pixels})> plate})>
   texts,
   List<AnicelPhotoRecord> photos,
+  DirtyRegion? laidBounds,
 });
 
 /// A cel laid on a worker ([layCelEntry]): each tile's `pixels` is the
@@ -159,6 +169,7 @@ BitmapSurface _surfaceOf<P>(
         ),
     ],
     photos: [for (final photo in parts.photos) _photoOf(photo)],
+    laidBounds: parts.laidBounds,
   );
 }
 
@@ -206,6 +217,7 @@ AnicelLaidCel layCelEntry(AnicelCelEntry entry, TileBlockHands blocks) {
           (id: text.id, content: text.content, plate: lay(text.plate)),
       ],
       photos: entry.photos,
+      laidBounds: entry.laidBounds,
     );
   } on Object {
     for (final block in got) {
@@ -225,6 +237,13 @@ BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
   ),
 );
 
+/// v5 (2026-10-18, F-374-Q8 — 유저 「맞춘다 — 참조 그림은 벽 밖까지
+/// 통째로」): after the texts comes WHERE A FILE'S PICTURE LIES on the cel
+/// (`BitmapSurface.laidBounds`) — a byte that says whether it is there,
+/// then its left, top, right and bottom as i32. Its tiles may lie past the
+/// pasteboard, and a reader that did not know the rect would refuse them.
+/// A cel no file was laid on writes a zero.
+///
 /// v4 (2026-10-15, a sheet's photos — I-97): the header ends with the
 /// PHOTOS the picture carries — a count, then for each its id and its
 /// reference (JSON: the pool file, where it stands, its own size) — and the
@@ -240,7 +259,7 @@ BitmapSurface laidCelSurface(AnicelLaidCel laid) => _surfaceOf(
 ///
 /// v2 (pasteboard): tile coords are SIGNED i32 — pasteboard tiles sit at
 /// negative coords. v1 files (u32 coords) still decode.
-const int anicelCelBinaryVersion = 4;
+const int anicelCelBinaryVersion = 5;
 
 /// The same bytes [encodeCelEntry] writes, taken straight off the
 /// SURFACE — without the defensive pixel copy per tile that building
@@ -276,6 +295,7 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
     );
     writer.tilesOf(text.plate);
   }
+  writer.celLaid(surface.laidBounds);
   return writer.takeBytes();
 }
 
@@ -297,6 +317,7 @@ Uint8List encodeCelEntry(AnicelCelEntry entry) {
     writer.celTextHeader(text.id, text.content, text.plate.length);
     writer.tileRecords(text.plate);
   }
+  writer.celLaid(entry.laidBounds);
   return writer.takeBytes();
 }
 
@@ -356,6 +377,8 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
               ),
           ],
     photos: photos,
+    // After the texts, so read after them: arguments are read in order.
+    laidBounds: version < 5 ? null : reader.celLaid(),
   );
 }
 
@@ -662,6 +685,22 @@ class _ByteWriter {
     u32(plateTileCount);
   }
 
+  /// Where a file's picture lies on the cel (v5), the end of its stream: a
+  /// byte that says whether it is there, then its four edges. Written in
+  /// ONE place for the header's reason above — two routes write this
+  /// stream.
+  void celLaid(DirtyRegion? laid) {
+    if (laid == null) {
+      u8(0);
+      return;
+    }
+    u8(1);
+    i32(laid.left);
+    i32(laid.top);
+    i32(laid.rightExclusive);
+    i32(laid.bottomExclusive);
+  }
+
   /// The photos of the cel stream (v4): how many, then each one's id and
   /// its reference as JSON — the end of its header.
   void celPhotos(List<AnicelPhotoRecord> photos) {
@@ -808,6 +847,16 @@ class _ByteReader {
       follows: follows(version),
     );
   }
+
+  /// Where a file's picture lies, written by `_ByteWriter.celLaid`.
+  DirtyRegion? celLaid() => u8() == 0
+      ? null
+      : DirtyRegion(
+          left: i32(),
+          top: i32(),
+          rightExclusive: i32(),
+          bottomExclusive: i32(),
+        );
 
   /// Photos written by `_ByteWriter.celPhotos`.
   List<AnicelPhotoRecord> celPhotos() => [

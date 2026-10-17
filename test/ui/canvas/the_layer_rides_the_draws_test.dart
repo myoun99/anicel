@@ -121,10 +121,10 @@ void main() {
     canvas.translate(phase, phase);
     canvas.scale(scale);
     if (buffered) {
-      canvas.saveLayer(painter.pasteboardRect, layerPaint());
+      canvas.saveLayer(painter.storableRect, layerPaint());
     }
     canvas.save();
-    canvas.clipRect(painter.pasteboardRect);
+    canvas.clipRect(painter.storableRect);
     painter.paintContentInto(
       canvas,
       layerPaint: buffered ? null : layerPaint(),

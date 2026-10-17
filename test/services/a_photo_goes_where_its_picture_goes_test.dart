@@ -88,12 +88,13 @@ void main() {
 
     test('a cel written before photos existed reads as it always did', () {
       // A v3 stream: the head, then its tiles and its texts — today's with
-      // its photos' zero taken out.
+      // its photos' zero taken out, and the byte at its end that says no
+      // file was laid on it (v5).
       final withText = drawingOf({a: ink}).withTexts([textOf(1)]);
       final today = encodeCelEntryFromSurface(key, withText);
       final v3 = Uint8List.fromList([
         ...today.sublist(0, headEnd),
-        ...today.sublist(headEnd + 4),
+        ...today.sublist(headEnd + 4, today.length - 1),
       ])..[0] = 3;
 
       final read = decodeCelEntry(v3).toSurface();

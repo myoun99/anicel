@@ -256,6 +256,7 @@ class MovieCelHydrator {
       // Where the row's reference fx stands the frame (I-68). ↩️It was the
       // pool's fit for the file, fitted to the canvas as it was at each
       // decode — so a canvas grown since put the movie in its middle.
+      // Whole, past the wall (F-374-Q8: 「참조 그림은 벽 밖까지 통째로」).
       final surface = await rasterizeImageToSurface(
         image: image,
         canvas: canvas,
@@ -263,6 +264,7 @@ class MovieCelHydrator {
           pose,
           CanvasSize(width: image.width, height: image.height),
         ),
+        whole: true,
       );
       _decoded[at] = WeakReference(surface);
       return surface;
