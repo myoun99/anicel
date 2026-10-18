@@ -23,6 +23,23 @@ const double celTextMinFontSize = 1;
 /// The narrowest a box wraps at, in canvas pixels.
 const double celTextMinWrapWidth = 1;
 
+/// HOW LONG THE BOX IS THAT A TEXT WHICH GROWS IS SET IN, its longest line —
+/// or column — being [longest] long as it is drawn: to the next whole pixel
+/// PAST it. It is the box the text is made when it is made one
+/// (`celTextBoxed`).
+///
+/// 🗣️유저 2026-10-18 (text-letters-lean-and-underline-Q5, of a text that
+/// grows whose paragraphs are aligned unlike): 「글 덩어리 하나가 첫 문단의
+/// 정렬로 기준점에 선다」 — the text is ONE block, a box its longest line
+/// fills, and each paragraph stands in it as its own alignment says. So it
+/// is set in the very box it would be made, and made one no letter moves
+/// (유저 2026-10-06, `cel_text_box_width.dart`).
+///
+/// ⚠️PAST it, and never exactly as long: the engine aligns a line only where
+/// it has room (measured 2026-10-06, `_frameOf` in `cel_text_lines.dart`).
+double celTextBoxLengthPast(double longest) =>
+    math.max(longest.floorToDouble() + 1, celTextMinWrapWidth);
+
 /// [content] with every LENGTH of it [factor] times what it was — the
 /// letters' size, their tracking and their outline, and the box's width
 /// and least height — about [centre], which stays where it is.

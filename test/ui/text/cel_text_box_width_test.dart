@@ -520,6 +520,93 @@ void main() {
     });
   });
 
+  // 🗣️text-letters-lean-and-underline-Q5 (유저 2026-10-18): 「글 덩어리 하나가
+  // 첫 문단의 정렬로 기준점에 선다」 — ONE block, and made a box it moves no
+  // letter: the law of 10-06, for a text whose paragraphs are aligned
+  // unlike.
+  group('🚨paragraphs aligned UNLIKE', () {
+    // Four letters of 20.3, each with 0.37 of tracking: 82.68 long, and
+    // the box past it not a whole pixel more.
+    const odd = TextLetterStyle(fontSize: 20.3, letterSpacing: 0.37);
+
+    CelTextContent saidEach(
+      String words,
+      List<TextCelAlign> aligns, {
+      TextLetterStyle letters = plain,
+      double? wrapWidth,
+      bool vertical = false,
+    }) => CelTextContent(
+      spans: [run(words, letters)],
+      anchor: CanvasPoint(x: 100, y: 50),
+      wrapWidth: wrapWidth,
+      vertical: vertical,
+      paragraphs: [
+        for (final align in aligns)
+          CelTextParagraph(align: align, lineHeight: 1),
+      ],
+    );
+
+    for (final first in TextCelAlign.values) {
+      for (final (named, letters) in [('plain', plain), ('tracked', odd)]) {
+        for (final vertical in [false, true]) {
+          final how =
+              '${first.name} first, $named, '
+              '${vertical ? 'in columns' : 'in lines'}';
+          // The first paragraph, then one aligned each way.
+          final growing = saidEach(
+            vertical ? 'あいうえ\nあい\nあい\nあい' : 'abcd\nab\nab\nab',
+            [first, ...TextCelAlign.values],
+            letters: letters,
+            vertical: vertical,
+          );
+
+          test('a text that grows, made a box: no letter moves ($how)', () {
+            final boxed = celTextBoxed(growing);
+
+            expect(boxed.paragraphs, growing.paragraphs);
+            expectSameLetters(growing, boxed);
+          });
+
+          test('made a box and made to grow again, it is the text it was '
+              '($how)', () {
+            expect(celTextUnboxed(celTextBoxed(growing)), growing);
+          });
+        }
+      }
+    }
+
+    test('⚠️a BOX wider than the one its text grows in comes back with the '
+        'paragraphs aligned as the first where they were, and each other '
+        'moved by what the box was wider — or half of that (put on the '
+        'card 2026-10-18): a text that grows has no width to keep', () {
+      // 「abcd」 is 80 long: its text grows in a box of 81, and this is 120.
+      List<double> leftsOf(CelTextContent content) {
+        final layout = layoutCelText(content);
+        addTearDown(layout.dispose);
+        return [
+          for (final at in [0, 5, 8])
+            layout
+                .toCanvas(layout.selectionRects(at, at + 1).single.topLeft)
+                .dx,
+        ];
+      }
+
+      final box = saidEach('abcd\nab\nab', [
+        TextCelAlign.left,
+        TextCelAlign.center,
+        TextCelAlign.right,
+      ], wrapWidth: 120);
+
+      final grown = celTextUnboxed(box);
+
+      final was = leftsOf(box);
+      final now = leftsOf(grown);
+      expect(now[0], closeTo(was[0], 1e-3), reason: 'aligned as the first');
+      expect(now[1], closeTo(was[1] - (120 - 81) / 2, 1e-3));
+      expect(now[2], closeTo(was[2] - (120 - 81), 1e-3));
+    });
+  });
+
   group('where a line ends for want of room', () {
     List<int> wrapPlaces(CelTextContent content) {
       final layout = layoutCelText(content);

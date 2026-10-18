@@ -94,6 +94,13 @@ void main() {
   List<int> pixel(Uint8List bytes, int width, int x, int y) =>
       bytes.sublist((y * width + x) * 4, (y * width + x) * 4 + 4);
 
+  /// How far along their line the letters of [layout] from [from] up to
+  /// [to] run: from the left of the first's box to the right of the last's.
+  ({double left, double right}) line(CelTextLayout layout, int from, int to) {
+    final boxes = layout.selectionRects(from, to);
+    return (left: boxes.first.left, right: boxes.last.right);
+  }
+
   group('a text that grows', () {
     test('is as wide as its letters and stands ABOUT its anchor, as its '
         'alignment says', () {
@@ -171,11 +178,6 @@ void main() {
       run('abc\n', tracking: 10),
       run('de'),
     ], align: align);
-
-    ({double left, double right}) line(CelTextLayout layout, int from, int to) {
-      final boxes = layout.selectionRects(from, to);
-      return (left: boxes.first.left, right: boxes.last.right);
-    }
 
     test('centred: each line has its middle on the anchor', () {
       final layout = tracked(TextCelAlign.center);
@@ -820,6 +822,169 @@ void main() {
       expect(box.centre, layout.onCanvas.centre);
       expect(box.contains(const ui.Offset(30, 54)), isTrue);
       expect(box.contains(const ui.Offset(30, 56)), isFalse);
+    });
+  });
+
+  // text-letters-lean-and-underline ④ ⑤ (Q1, 유저 2026-10-17: 「일곱 전부」):
+  // 「줄마다 다른 정렬 · 줄마다 다른 줄 간격」 — a paragraph at a time.
+  group('🚨PARAGRAPHS set each their own way', () {
+    const left = CelTextParagraph(align: TextCelAlign.left, lineHeight: 1);
+    const centre = CelTextParagraph(align: TextCelAlign.center, lineHeight: 1);
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 1);
+
+    CelTextLayout setEach(
+      String words,
+      List<CelTextParagraph> paragraphs, {
+      double? wrapWidth,
+      bool underline = false,
+    }) {
+      final layout = layoutCelText(
+        CelTextContent(
+          spans: [
+            CelTextSpan(
+              text: words,
+              style: TextLetterStyle(fontSize: 20, underline: underline),
+            ),
+          ],
+          anchor: CanvasPoint(x: 0, y: 0),
+          wrapWidth: wrapWidth,
+          paragraphs: paragraphs,
+        ),
+      );
+      addTearDown(layout.dispose);
+      return layout;
+    }
+
+    test('in a box, each paragraph\'s lines stand in its width as ITS '
+        'alignment says', () {
+      final boxed = setEach('ab\ncd\nef', [
+        right,
+        left,
+        centre,
+      ], wrapWidth: 100);
+
+      expect(boxed.block, const ui.Rect.fromLTWH(0, 0, 100, 60));
+      expect(line(boxed, 0, 2), (left: 60.0, right: 100.0));
+      expect(line(boxed, 3, 5), (left: 0.0, right: 40.0));
+      expect(line(boxed, 6, 8), (left: 30.0, right: 70.0));
+    });
+
+    // 🗣️Q5 (유저 2026-10-18): 「글 덩어리 하나가 첫 문단의 정렬로 기준점에 선다」.
+    group('🚨a text that GROWS is one block: it stands as its FIRST '
+        'paragraph is aligned, and each paragraph in it as its own says', () {
+      // 「abcd」 is 80 long, so the box the text is set in — the one it
+      // would be made (`celTextBoxLengthPast`) — is 81: a paragraph set to
+      // an end stands at the BOX's, past the block's by what is past it.
+      test('standing by its middle', () {
+        final grown = setEach('abcd\nab\nab', [centre, left, right]);
+
+        expect(grown.block, const ui.Rect.fromLTWH(-40, 0, 80, 60));
+        expect(line(grown, 0, 4), (left: -40.0, right: 40.0));
+        expect(line(grown, 5, 7), (left: -40.5, right: -0.5));
+        expect(line(grown, 8, 10), (left: 0.5, right: 40.5));
+      });
+
+      test('standing by its left end', () {
+        final grown = setEach('ab\nabcd', [left, right]);
+
+        expect(grown.block, const ui.Rect.fromLTWH(0, 0, 80, 40));
+        expect(line(grown, 0, 2), (left: 0.0, right: 40.0));
+        expect(line(grown, 3, 7), (left: 1.0, right: 81.0));
+      });
+
+      test('standing by its right end', () {
+        final grown = setEach('ab\nabcd', [right, left]);
+
+        expect(grown.block, const ui.Rect.fromLTWH(-80, 0, 80, 40));
+        expect(line(grown, 0, 2), (left: -40.0, right: 0.0));
+        expect(line(grown, 3, 7), (left: -81.0, right: -1.0));
+      });
+    });
+
+    // 🗣️Q4 (유저 2026-10-18): 「줄마다 제 칸 — 틈은 두 값의 사이」.
+    group('🚨each line is as tall as ITS paragraph\'s pitch says — between '
+        'two paragraphs as within one', () {
+      const twice = CelTextParagraph(align: TextCelAlign.left, lineHeight: 2);
+
+      test('the lines stack slot on slot', () {
+        final roomy = setEach('ab\ncd', [twice, left]);
+
+        expect(roomy.block, const ui.Rect.fromLTWH(0, 0, 40, 60));
+        expect(roomy.selectionRects(0, 2), [
+          const ui.Rect.fromLTWH(0, 0, 40, 40),
+        ]);
+        expect(roomy.selectionRects(3, 5), [
+          const ui.Rect.fromLTWH(0, 40, 40, 20),
+        ]);
+        expect(
+          roomy.caretRect(const TextPosition(offset: 3)),
+          const ui.Rect.fromLTWH(0, 40, 0, 20),
+        );
+      });
+
+      test('the gap between two paragraphs is between what each pitch '
+          'leaves — nearer the lower one\'s, as the letters stand three '
+          'quarters up their slot', () async {
+        // A letter's ink is the test font's box, 15 above its baseline
+        // and 5 below; at a pitch of 2 its slot is 40, its baseline 30
+        // down it.
+        Future<List<int>> inkDown(List<CelTextParagraph> paragraphs) async {
+          final bytes = await drawn(setEach('ab\ncd', paragraphs), 40, 60);
+          return [
+            for (var y = 0; y < 60; y += 1)
+              if (pixel(bytes, 40, 10, y)[3] != 0) y,
+          ];
+        }
+
+        expect(await inkDown([twice, left]), [
+          for (var y = 15; y < 35; y += 1) y,
+          for (var y = 40; y < 60; y += 1) y,
+        ], reason: 'a gap of 5: the upper slot\'s foot');
+        expect(await inkDown([left, twice]), [
+          for (var y = 0; y < 20; y += 1) y,
+          for (var y = 35; y < 55; y += 1) y,
+        ], reason: 'a gap of 15: the lower slot\'s head');
+      });
+    });
+
+    test('🚨the paragraph a break opens at the END is set as ITSELF: the '
+        'caret on it stands as its alignment says, as tall as its pitch', () {
+      const tall = CelTextParagraph(align: TextCelAlign.center, lineHeight: 2);
+      final boxed = setEach('ab\n', [left, tall], wrapWidth: 100);
+
+      expect(boxed.block, const ui.Rect.fromLTWH(0, 0, 100, 60));
+      expect(
+        boxed.caretRect(const TextPosition(offset: 3)),
+        const ui.Rect.fromLTWH(50, 20, 0, 40),
+      );
+    });
+
+    test('a press lands in the paragraph it is beside, where ITS letters '
+        'stand', () {
+      // 「cd」, set to the right, runs from 60 to 100 on the second line.
+      final boxed = setEach('ab\ncd', [left, right], wrapWidth: 100);
+
+      expect(boxed.positionAt(const ui.Offset(5, 10)).offset, 0);
+      expect(boxed.positionAt(const ui.Offset(65, 30)).offset, 3);
+      expect(boxed.positionAt(const ui.Offset(75, 30)).offset, 4);
+      expect(boxed.positionAt(const ui.Offset(10, 30)).offset, 3);
+    });
+
+    test('a paragraph\'s letters wear their lines where THEY stand', () async {
+      // 「a b」 twice, the second set to the right: its space — where a line
+      // under the letters shows, the test font inking every letter's box —
+      // runs from 60 to 80; the first's from 20 to 40.
+      final bytes = await drawn(
+        setEach('a b\na b', [left, right], wrapWidth: 100, underline: true),
+        100,
+        40,
+      );
+      bool inked(int x, int y) => pixel(bytes, 100, x, y)[3] > 128;
+
+      expect(inked(30, 17), isTrue, reason: 'under the first line\'s space');
+      expect(inked(70, 37), isTrue, reason: 'under the second\'s');
+      expect(inked(30, 37), isFalse, reason: 'no letter of the second there');
+      expect(inked(70, 17), isFalse, reason: 'the first\'s ends at 60');
     });
   });
 

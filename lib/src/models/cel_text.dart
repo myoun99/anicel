@@ -188,12 +188,9 @@ class CelTextContent {
 
   /// Where the text stands. With no [wrapWidth] it is the point its lines
   /// are set about — their left end, their middle or their right end, as
-  /// their paragraph's [CelTextParagraph.align] says — at the first line's
-  /// top. With one it is the box's top left corner, and each paragraph's
-  /// alignment places its lines inside the width.
-  ///
-  /// ⏳How a text that grows stands when its paragraphs are aligned unlike
-  /// is text-letters-lean-and-underline-Q5's to say.
+  /// [standsBy] says — at the first line's top. With one it is the box's
+  /// top left corner, and each paragraph's alignment places its lines
+  /// inside the width.
   ///
   /// Written in columns ([vertical]) it is the same point read the other
   /// way: the point the columns are set about — their top, their middle or
@@ -244,6 +241,18 @@ class CelTextContent {
   /// before it.
   int paragraphAt(int offset) =>
       '\n'.allMatches(text.substring(0, offset)).length;
+
+  /// How a text that GROWS stands about its [anchor] — the left end of its
+  /// lines there, their middle or their right end: as its FIRST paragraph
+  /// is aligned, which every paragraph of a text set as one is. Its
+  /// paragraphs stand inside the box it is set in each as its own says
+  /// (`celTextBoxLengthPast`).
+  ///
+  /// 🗣️유저 2026-10-18 (text-letters-lean-and-underline-Q5): 「글 덩어리
+  /// 하나가 첫 문단의 정렬로 기준점에 선다」 — ONE block, and not each
+  /// paragraph about the anchor by its own (a point text's way): made a
+  /// box, it moves no letter.
+  TextCelAlign get standsBy => paragraphs.first.align;
 
   /// How wide the letters are drawn, as a share of their own width (장평):
   /// 1 for as their face draws them. Only their width changes — not how

@@ -36,44 +36,7 @@ CanvasLetterLines canvasLetterLinesOf(
   TextPainter painter,
   Iterable<CanvasLetterRun> runs, {
   ui.Offset at = ui.Offset.zero,
-}) {
-  final lines = CanvasLetterLinesBuilder();
-  final metrics = painter.computeLineMetrics();
-  for (final run in runs) {
-    final letters = run.letters;
-    if (!letters.underline && !letters.strikethrough) {
-      continue;
-    }
-    final face = CanvasLetterFaces.current.linesOf(letters.fontFamily);
-    for (final (:line, :left, :right) in _reachOf(painter, metrics, run)) {
-      final baseline = line.baseline + at.dy;
-      final size = letters.fontSize;
-      if (letters.underline) {
-        lines.under(
-          letters,
-          _across(
-            left + at.dx,
-            right + at.dx,
-            centre: baseline + face.underline * size,
-            thickness: face.underlineThickness * size,
-          ),
-        );
-      }
-      if (letters.strikethrough) {
-        lines.through(
-          letters,
-          _across(
-            left + at.dx,
-            right + at.dx,
-            centre: baseline - face.strikethrough * size,
-            thickness: face.strikethroughThickness * size,
-          ),
-        );
-      }
-    }
-  }
-  return lines.build();
-}
+}) => (CanvasLetterLinesBuilder()..addLinesOf(painter, runs, at: at)).build();
 
 /// How far [run]'s letters reach along each line they are set on: from the
 /// left of the first to the right of the last — and no further than the
@@ -157,6 +120,49 @@ class CanvasLetterLinesBuilder {
   /// [rect], a line through [letters].
   void through(TextLetterStyle letters, ui.Rect rect) =>
       _add(_through, letters, rect);
+
+  /// The lines of [runs] of [painter]'s letters, [painter] being drawn with
+  /// its corner at [at] ([canvasLetterLinesOf]).
+  void addLinesOf(
+    TextPainter painter,
+    Iterable<CanvasLetterRun> runs, {
+    ui.Offset at = ui.Offset.zero,
+  }) {
+    final metrics = painter.computeLineMetrics();
+    for (final run in runs) {
+      final letters = run.letters;
+      if (!letters.underline && !letters.strikethrough) {
+        continue;
+      }
+      final face = CanvasLetterFaces.current.linesOf(letters.fontFamily);
+      for (final (:line, :left, :right) in _reachOf(painter, metrics, run)) {
+        final baseline = line.baseline + at.dy;
+        final size = letters.fontSize;
+        if (letters.underline) {
+          under(
+            letters,
+            _across(
+              left + at.dx,
+              right + at.dx,
+              centre: baseline + face.underline * size,
+              thickness: face.underlineThickness * size,
+            ),
+          );
+        }
+        if (letters.strikethrough) {
+          through(
+            letters,
+            _across(
+              left + at.dx,
+              right + at.dx,
+              centre: baseline - face.strikethrough * size,
+              thickness: face.strikethroughThickness * size,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   CanvasLetterLines build() => _under.isEmpty && _through.isEmpty
       ? CanvasLetterLines.none

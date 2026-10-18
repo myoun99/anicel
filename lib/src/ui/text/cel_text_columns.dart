@@ -16,8 +16,10 @@ part of 'cel_text_layout.dart';
 /// and the block hangs from it — its TOP RIGHT corner for a box, whose
 /// columns run [CelTextContent.wrapWidth] long; and for a text that grows,
 /// the point its columns are set about: their top, their middle or their
-/// bottom as their paragraph's [CelTextParagraph.align] says (left · centre
-/// · right, read down the column), at the first column's right.
+/// bottom as [CelTextContent.standsBy] says (left · centre · right, read
+/// down the column), at the first column's right. Each column's cells
+/// stand down the box the text is set in ([_placed]) as ITS paragraph's
+/// [CelTextParagraph.align] says.
 ///
 /// ⚠️ONE PAINTER A CELL, A PASS. A cell is drawn turned, shifted or scaled
 /// on its own, so the engine's one paragraph cannot hold them — and making
@@ -384,6 +386,7 @@ class _Column {
     required this.end,
     required this.wrapped,
     required this.width,
+    required this.paragraph,
   });
 
   final List<_ColumnCell> cells;
@@ -399,6 +402,9 @@ class _Column {
 
   /// How wide it is: the pitch of its largest letter.
   final double width;
+
+  /// The paragraph it is a column of: where its cells stand down it.
+  final CelTextParagraph paragraph;
 
   /// How far its cells run down it.
   double get length => cells.fold(0, (sum, cell) => sum + cell.advance);
@@ -560,6 +566,7 @@ class _ColumnBreaker {
         end: end,
         wrapped: wrapped,
         width: largest * _paragraph.lineHeight,
+        paragraph: _paragraph,
       ),
     );
   }
@@ -632,7 +639,10 @@ CanvasLetterLines _columnLinesOf(List<_Column> columns) {
 }
 
 /// Places [columns] — and their cells — in the text's own frame, and
-/// answers their block.
+/// answers their block: each column's cells down it as its paragraph's
+/// alignment says, in the box the text is set in — a box's own, or for a
+/// text that grows the one it would be made ([celTextBoxLengthPast]), so
+/// that swap moves no letter however its paragraphs are aligned.
 ui.Rect _placed(CelTextContent content, List<_Column> columns) {
   final width = columns.fold<double>(0, (sum, column) => sum + column.width);
   final longest = columns.fold<double>(
@@ -641,21 +651,32 @@ ui.Rect _placed(CelTextContent content, List<_Column> columns) {
   );
   final limit = content.wrapWidth;
   final height = limit ?? longest;
+  final boxLength = limit ?? celTextBoxLengthPast(longest);
   // A box hangs from its anchor; a text that grows stands about it.
   final top = limit != null
       ? 0.0
-      : switch (_alignOf(content)) {
+      : switch (content.standsBy) {
           TextCelAlign.left => 0.0,
           TextCelAlign.center => -height / 2,
           TextCelAlign.right => -height,
         };
+  // Its box begins what of it is past the block — or half of that — before
+  // the block does, as the text stands; a box is its block.
+  final boxTop =
+      top -
+      (boxLength - height) *
+          switch (content.standsBy) {
+            TextCelAlign.left => 0,
+            TextCelAlign.center => 0.5,
+            TextCelAlign.right => 1,
+          };
   var right = 0.0;
   for (final column in columns) {
     column.left = right - column.width;
-    final room = height - column.length;
+    final room = boxLength - column.length;
     var down =
-        top +
-        switch (_alignOf(content)) {
+        boxTop +
+        switch (column.paragraph.align) {
           TextCelAlign.left => 0.0,
           TextCelAlign.center => room / 2,
           TextCelAlign.right => room,

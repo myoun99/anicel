@@ -7,7 +7,8 @@ import 'package:flutter/painting.dart';
 import '../../core/lru.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
-import '../../services/cel_text_box_edits.dart' show celTextBoxDepth;
+import '../../services/cel_text_box_edits.dart'
+    show celTextBoxDepth, celTextBoxLengthPast;
 import '../timeline/axis_turn.dart' show extentAcross;
 import 'canvas_letter_faces.dart';
 import 'canvas_letter_lines.dart';
@@ -402,65 +403,73 @@ double _widestOutlineOf(List<TextLetterStyle> letters) => letters.fold(
       : math.max(width, style.outlineWidth),
 );
 
-/// [content]'s letters as the engine is handed them: one span a run — cut
-/// where its paragraphs part, so that each piece is set at its own
-/// paragraph's pitch — each saying its whole style, nested in the style of
+/// [content]'s letters as the engine is handed them, A PARAGRAPH AT A TIME:
+/// one span a paragraph, each holding a span of each run in it — a break
+/// being the last letter of the paragraph it ends — set at that
+/// paragraph's pitch, saying its whole style, and nested in the style of
 /// [paragraphLetters].
-TextSpan _spanOf(
+///
+/// A paragraph with no letters at all — the one a break opens at the
+/// text's end, or a text's only one — is set in that nesting style alone.
+List<TextSpan> _paragraphSpansOf(
   CelTextContent content,
   TextLetterStyle paragraphLetters,
   TextStyle Function(TextLetterStyle letters, double lineHeight) styleOf,
-) => TextSpan(
-  style: canvasLetterTextStyle(
-    paragraphLetters,
-    // A text with no letters is set at its one paragraph's pitch.
-    lineHeight: content.paragraphs.last.lineHeight,
-  ),
-  children: [
-    for (final (:text, :letters, :paragraph) in _piecesOf(content))
-      TextSpan(text: text, style: styleOf(letters, paragraph.lineHeight)),
-  ],
-);
-
-/// [content]'s runs cut where its paragraphs part, each piece with the
-/// paragraph it is in — a break is the last letter of the one it ends.
-List<({String text, TextLetterStyle letters, CelTextParagraph paragraph})>
-_piecesOf(CelTextContent content) {
-  final pieces =
-      <({String text, TextLetterStyle letters, CelTextParagraph paragraph})>[];
+) {
+  final runs = [for (final _ in content.paragraphs) <TextSpan>[]];
   var paragraph = 0;
   for (final span in content.spans) {
     var from = 0;
     while (from < span.text.length) {
       final broken = span.text.indexOf('\n', from);
       final to = broken < 0 ? span.text.length : broken + 1;
-      pieces.add((
-        text: span.text.substring(from, to),
-        letters: span.style,
-        paragraph: content.paragraphs[paragraph],
-      ));
+      runs[paragraph].add(
+        TextSpan(
+          text: span.text.substring(from, to),
+          style: styleOf(span.style, content.paragraphs[paragraph].lineHeight),
+        ),
+      );
       if (broken >= 0) {
         paragraph += 1;
       }
       from = to;
     }
   }
-  return pieces;
+  return [
+    for (final (index, children) in runs.indexed)
+      TextSpan(
+        style: canvasLetterTextStyle(
+          paragraphLetters,
+          lineHeight: content.paragraphs[index].lineHeight,
+        ),
+        children: children,
+      ),
+  ];
 }
 
 /// The letters of [content] as a FIELD is handed them — the very spans the
-/// layout's own fill pass is set from ([layoutCelText]), so a field that
-/// types into a text breaks its lines, and moves its caret up and down
-/// them, where the text on the canvas does.
+/// layout's own fill pass is set from ([layoutCelText]), one paragraph
+/// after the next, so a field that types into a text breaks its lines where
+/// the text on the canvas does.
 TextSpan celTextFieldSpan(
   CelTextContent content, {
   required TextLetterStyle nextLetterStyle,
-}) => _spanOf(
-  content,
-  _paragraphLettersOf(content, nextLetterStyle),
-  (letters, lineHeight) =>
-      canvasLetterTextStyle(letters, lineHeight: lineHeight),
-);
+}) {
+  final paragraphLetters = _paragraphLettersOf(content, nextLetterStyle);
+  return TextSpan(
+    style: canvasLetterTextStyle(
+      paragraphLetters,
+      // A text with no letters is set at its one paragraph's pitch.
+      lineHeight: content.paragraphs.last.lineHeight,
+    ),
+    children: _paragraphSpansOf(
+      content,
+      paragraphLetters,
+      (letters, lineHeight) =>
+          canvasLetterTextStyle(letters, lineHeight: lineHeight),
+    ),
+  );
+}
 
 /// The width a box's lines are SET at: the box's, read before its letters
 /// are drawn as wide as [CelTextContent.letterWidth] says — so a box of
