@@ -348,6 +348,14 @@ void main() {
       closeTo(tag.content.position!.dx, 1e-6),
       reason: 'the box frames the tag where the shot holds it',
     );
+    // And it is the TAG's box — the stand-in a row with no block shows
+    // (F-387) stands at the same centre, the whole shot wide.
+    final tagBox = seNameTagBoxBounds(tag, canvasSize: cut.canvasSize);
+    expect(
+      [corners[2].x - corners[0].x, corners[2].y - corners[0].y],
+      [closeTo(tagBox.width, 1e-6), closeTo(tagBox.height, 1e-6)],
+      reason: 'the box is the tag\'s own, not the shot it stands in',
+    );
 
     final grabbed = box.viewport.canvasToViewportOffset(box.pose.center);
     final letGo = grabbed + const Offset(40, 0);

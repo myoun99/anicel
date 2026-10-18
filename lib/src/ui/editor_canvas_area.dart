@@ -1262,7 +1262,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// [picture]'s own corners where [pose] lays it, on the canvas through
-  /// [toCanvas] — the reference box's frame, as [_seBoxCorners] is the SE
+  /// [toCanvas] — the reference box's frame, as [_seTagBoxOf] is the SE
   /// box's.
   static List<CanvasPoint> _referenceBoxCorners(
     TransformPose pose,
@@ -1276,10 +1276,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       toCanvas(corner),
   ];
 
-  /// An SE row's box (F-222 ②): its name tag, and it only MOVES — the tag
-  /// is placed by position alone (a tag has no scale or turn to drive).
-  /// With no tag under the playhead it frames a stand-in where the tag
-  /// would stand ([_seBoxCorners]), the law for a box with nothing in it.
+  /// An SE row's box (F-222 ②): its name tag ([_seTagBoxOf]), and it only
+  /// MOVES — the tag is placed by position alone (a tag has no scale or
+  /// turn to drive). With no tag under the playhead it frames a stand-in
+  /// where the tag would stand ([_seStandIn]), the law for a box with
+  /// nothing in it.
   ///
   /// The row's position is the SHOT's (I-67-Q1): the box stands where the
   /// shot lies on the canvas and each drag comes back through it, as a
@@ -1300,13 +1301,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final shot = _shownThrough(placement);
     final position = session.layerPoseAtFrame(at.layer, at.frame).center;
     return RowTransformBox(
-      corners: _seBoxCorners(
-        activeLayer,
-        tags,
-        shot: placement,
-        position: position,
-        shotSize: session.camera.cameraFrameSize,
-        canvasSize: canvasSize,
+      corners: placedCorners(
+        placement,
+        _seTagBoxOf(activeLayer, tags, canvasSize) ??
+            _seStandIn(position, session.camera.cameraFrameSize),
       ),
       pose: TransformPose(center: shot.toCanvas(position)),
       canvasSize: canvasSize,
@@ -1330,29 +1328,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  /// [row]'s name tag box among [tags], laid on the canvas through [shot] —
-  /// or, with no tag of the row under the playhead, a stand-in where its
-  /// tag would stand: the shot's own frame, centred on the row's
-  /// [position], so a drag moves it as it moves a tag.
-  ///
-  /// 🗣️F-387 (유저 2026-10-17): 「특히 지금 se행 네임태그 se블록없는곳에서
-  /// 변형 조작되는데 화면엔 안보임」. ↩️The stand-in was the canvas, laid as
-  /// it stood: a drag keyed the row's position and nothing on screen
-  /// moved. A layer's blank cel stands in the same way ([_layerBox]) — the
-  /// whole of the space the row is posed in, placed as its picture is.
-  static List<CanvasPoint> _seBoxCorners(
+  /// [row]'s name tag box among [tags], in its shot — null with no tag of
+  /// the row under the playhead.
+  static Rect? _seTagBoxOf(
     Layer row,
-    List<ResolvedSeNameTag> tags, {
-    required LayerPlacement shot,
-    required CanvasPoint position,
-    required CanvasSize shotSize,
-    required CanvasSize canvasSize,
-  }) {
-    var box = Rect.fromCenter(
-      center: Offset(position.x, position.y),
-      width: shotSize.width.toDouble(),
-      height: shotSize.height.toDouble(),
-    );
+    List<ResolvedSeNameTag> tags,
+    CanvasSize canvasSize,
+  ) {
+    Rect? box;
     for (final tag in tags) {
       final tagBox = tag.layerId == row.id.value
           ? seNameTagBoxBounds(tag, canvasSize: canvasSize)
@@ -1361,8 +1344,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         box = tagBox;
       }
     }
-    return placedCorners(shot, box);
+    return box;
   }
+
+  /// Where an SE row's tag would stand with none under the playhead, in its
+  /// shot: the shot's own frame ([shotSize]), centred on the row's
+  /// [position], so a drag moves it as it moves a tag.
+  ///
+  /// 🗣️F-387 (유저 2026-10-17): 「특히 지금 se행 네임태그 se블록없는곳에서
+  /// 변형 조작되는데 화면엔 안보임」. ↩️The stand-in was the canvas, laid as
+  /// it stood: a drag keyed the row's position and nothing on screen
+  /// moved. A layer's blank cel stands in the same way ([_layerBox]) — the
+  /// whole of the space the row is posed in, placed as its picture is.
+  static Rect _seStandIn(CanvasPoint position, CanvasSize shotSize) =>
+      Rect.fromCenter(
+        center: Offset(position.x, position.y),
+        width: shotSize.width.toDouble(),
+        height: shotSize.height.toDouble(),
+      );
 
   /// The camera row's box ([CameraFrameBox], F-222 ③).
   ///
