@@ -370,11 +370,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   };
 
   /// The presets, as they are when the list OPENS: the three the app ships,
-  /// then the user's own, each with its delete.
+  /// then the user's own.
   ///
   /// 🗣️I-107-Q1 (유저 2026-10-18): 「프리셋 리스트 추가/삭제 가능하게해서
   /// 사용자 입맛대로 추가해서 설정가능하고」 — in the font list's shape: the
   /// ＋ on the heading, a delete at the end of each row that can go.
+  /// 🗣️I-107-Q3 (유저 2026-10-18): 「a + 이름 바꾸기」 · 「프리셋
+  /// 복제버튼도 추가」 — a rename beside the delete, and a duplicate on every
+  /// row.
   List<PanelFlyoutEntry> _presets(BuildContext context) {
     final bindings = widget.bindings;
     final strings = AppText.strings;
@@ -386,48 +389,101 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           icon: Icons.add,
           tooltip: strings.shortcutPresetNew,
           does: PanelFlyoutActionDoes.adds,
-          onPressed: () => unawaited(_addPreset(context)),
+          onPressed: () => unawaited(
+            _duplicatePreset(
+              context,
+              bindings.preset,
+              title: strings.shortcutPresetNew,
+            ),
+          ),
         ),
       ),
-      ...<ShortcutLayout>[...ShortcutPreset.values].asFlyoutValueChoices(
-        current: bindings.preset,
-        choiceOf: (preset) => PanelFlyoutChoice(
-          key: 'shortcut-preset-${preset.id}',
-          label: _presetName(preset),
-        ),
-        onPicked: bindings.setPreset,
-      ),
+      for (final preset in ShortcutPreset.values) _presetRow(context, preset),
       if (bindings.userPresets.isNotEmpty) const PanelFlyoutDivider(),
-      for (final preset in bindings.userPresets)
-        PanelFlyoutItem(
-          keyValue: 'shortcut-preset-${preset.id}',
-          label: preset.name,
-          selected: preset == bindings.preset,
-          onSelected: () => bindings.setPreset(preset),
-          action: PanelFlyoutRowAction(
-            keyValue: 'shortcut-preset-${preset.id}-delete',
+      for (final preset in bindings.userPresets) _presetRow(context, preset),
+    ];
+  }
+
+  /// [preset]'s row: picked, it comes into use. Every row has its
+  /// duplicate, and the user's own their rename and delete beside it.
+  PanelFlyoutItem _presetRow(BuildContext context, ShortcutLayout preset) {
+    final strings = AppText.strings;
+    final key = 'shortcut-preset-${preset.id}';
+    return PanelFlyoutItem(
+      keyValue: key,
+      label: _presetName(preset),
+      selected: preset == widget.bindings.preset,
+      onSelected: () => widget.bindings.setPreset(preset),
+      actions: [
+        if (preset is UserShortcutPreset)
+          PanelFlyoutRowAction(
+            keyValue: '$key-rename',
+            icon: Icons.drive_file_rename_outline,
+            tooltip: strings.shortcutPresetRename,
+            onPressed: () => unawaited(_renamePreset(context, preset)),
+          ),
+        PanelFlyoutRowAction(
+          keyValue: '$key-duplicate',
+          icon: Icons.content_copy,
+          tooltip: strings.shortcutPresetDuplicate,
+          does: PanelFlyoutActionDoes.adds,
+          onPressed: () => unawaited(
+            _duplicatePreset(
+              context,
+              preset,
+              title: strings.shortcutPresetDuplicate,
+            ),
+          ),
+        ),
+        if (preset is UserShortcutPreset)
+          PanelFlyoutRowAction(
+            keyValue: '$key-delete',
             icon: Icons.delete_outline,
             tooltip: strings.shortcutPresetDelete,
             does: PanelFlyoutActionDoes.deletes,
             onPressed: () => unawaited(_deletePreset(context, preset)),
           ),
-        ),
-    ];
+      ],
+    );
   }
 
-  /// The ＋: the layout in use, copied into a preset named as the user says.
-  Future<void> _addPreset(BuildContext context) => askThenCommit<String>(
+  /// [preset] copied into a new preset under the name the user gives — the
+  /// ＋'s copy of the layout in use, and a row's duplicate.
+  Future<void> _duplicatePreset(
+    BuildContext context,
+    ShortcutLayout preset, {
+    required String title,
+  }) => askThenCommit<String>(
     context,
     dialog: (_) => AppPromptDialog.keyed(
-      keyPrefix: 'shortcut-preset-new',
-      title: AppText.strings.shortcutPresetNew,
-      titleIcon: Icons.add,
+      keyPrefix: 'shortcut-preset-copy',
+      title: title,
+      titleIcon: Icons.content_copy,
       fieldLabel: AppText.strings.commonNameField,
-      initialValue: '',
+      initialValue: AppText.strings.shortcutPresetCopyName(
+        _presetName(preset),
+      ),
       confirmLabel: AppText.strings.commonSave,
       emptyError: AppText.strings.shortcutPresetNameEmpty,
     ),
-    commit: widget.bindings.addPreset,
+    commit: (name) => widget.bindings.duplicatePreset(preset, name),
+  );
+
+  Future<void> _renamePreset(
+    BuildContext context,
+    UserShortcutPreset preset,
+  ) => askThenCommit<String>(
+    context,
+    dialog: (_) => AppPromptDialog.keyed(
+      keyPrefix: 'shortcut-preset-rename',
+      title: AppText.strings.shortcutPresetRename,
+      titleIcon: Icons.drive_file_rename_outline,
+      fieldLabel: AppText.strings.commonNameField,
+      initialValue: preset.name,
+      confirmLabel: AppText.strings.commonRename,
+      emptyError: AppText.strings.shortcutPresetNameEmpty,
+    ),
+    commit: (name) => widget.bindings.renamePreset(preset, name),
   );
 
   /// A preset of the user's deleted, once the user says so — it holds a

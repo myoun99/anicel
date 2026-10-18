@@ -1134,6 +1134,10 @@ enum AppStrings {
   String get shortcutPresetDelete => _s('shortcutPresetDelete');
   String shortcutPresetDeleteBody(String name) =>
       _s('shortcutPresetDeleteTemplate').replaceAll('{name}', name);
+  String get shortcutPresetRename => _s('shortcutPresetRename');
+  String get shortcutPresetDuplicate => _s('shortcutPresetDuplicate');
+  String shortcutPresetCopyName(String name) =>
+      _s('shortcutPresetCopyTemplate').replaceAll('{name}', name);
 
   /// A program's shortcut files made into the new [preset] (I-107): how many
   /// of their keys an action took, and how many none did.
@@ -2486,6 +2490,9 @@ enum AppStrings {
     'shortcutPresetNew': 'New preset',
     'shortcutPresetNameEmpty': 'Preset name cannot be empty.',
     'shortcutPresetDelete': 'Delete preset',
+    'shortcutPresetRename': 'Rename preset',
+    'shortcutPresetDuplicate': 'Duplicate preset',
+    'shortcutPresetCopyTemplate': '{name} copy',
     'shortcutPresetDeleteTemplate': 'Delete the preset "{name}"?',
     'shortcutFileUnreadableTemplate':
         '{name}: no shortcuts could be read out of this file.',
@@ -3913,6 +3920,9 @@ enum AppStrings {
     'shortcutPresetNew': '新しいプリセット',
     'shortcutPresetNameEmpty': 'プリセット名を空にはできません。',
     'shortcutPresetDelete': 'プリセットを削除',
+    'shortcutPresetRename': 'プリセット名を変更',
+    'shortcutPresetDuplicate': 'プリセットを複製',
+    'shortcutPresetCopyTemplate': '{name} のコピー',
     'shortcutPresetDeleteTemplate': 'プリセット「{name}」を削除しますか？',
     'shortcutFileUnreadableTemplate':
         '{name}: このファイルから読めるショートカットがありません。',
@@ -5528,6 +5538,9 @@ enum AppStrings {
     'shortcutPresetNew': '새 프리셋',
     'shortcutPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
     'shortcutPresetDelete': '프리셋 삭제',
+    'shortcutPresetRename': '프리셋 이름 바꾸기',
+    'shortcutPresetDuplicate': '프리셋 복제',
+    'shortcutPresetCopyTemplate': '{name} 복사본',
     'shortcutPresetDeleteTemplate': '「{name}」 프리셋을 삭제할까요?',
     'shortcutFileUnreadableTemplate':
         '{name}: 이 파일에서 읽을 단축키가 없습니다.',
@@ -7190,6 +7203,9 @@ enum AppStrings {
     'shortcutPresetNew': 'Nouveau préréglage',
     'shortcutPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
     'shortcutPresetDelete': 'Supprimer le préréglage',
+    'shortcutPresetRename': 'Renommer le préréglage',
+    'shortcutPresetDuplicate': 'Dupliquer le préréglage',
+    'shortcutPresetCopyTemplate': 'Copie de {name}',
     'shortcutPresetDeleteTemplate': 'Supprimer le préréglage « {name} » ?',
     'shortcutFileUnreadableTemplate':
         '{name} : aucun raccourci lisible dans ce fichier.',
@@ -8827,6 +8843,9 @@ enum AppStrings {
     'shortcutPresetNew': '新建预设',
     'shortcutPresetNameEmpty': '预设名称不能为空。',
     'shortcutPresetDelete': '删除预设',
+    'shortcutPresetRename': '重命名预设',
+    'shortcutPresetDuplicate': '复制预设',
+    'shortcutPresetCopyTemplate': '{name} 副本',
     'shortcutPresetDeleteTemplate': '要删除预设“{name}”吗？',
     'shortcutFileUnreadableTemplate': '{name}：此文件中没有可读取的快捷键。',
     'shortcutResetToDefault': '恢复默认',

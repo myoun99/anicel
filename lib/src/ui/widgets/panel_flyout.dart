@@ -131,14 +131,17 @@ class PanelFlyoutLiveFoot {
   final PanelFlyoutRowAction action;
 }
 
-/// The ONE small command a row can carry at its end, beside what choosing
-/// the row does — the delete of one item in a list of items.
+/// A small command a row can carry at its end, beside what choosing the row
+/// does — the delete of one item in a list of items.
 ///
 /// 🗣️유저 2026-10-06, of the text tool's 「선택된 텍스트」 list: 「거기서 다른
 /// 텍스트 선택할수있게 리스트 고르는. 팝오버로 리스트 고를수있게하고 …
 /// 그리고 옆에 삭제버튼 있고」 — and of the layout drawn from it, with a
 /// delete on every row of the list: 「1 ok」. The list is this app's one
 /// picker (F-230), so the button is the picker's to draw.
+/// ➕A row can carry several (I-107-Q3, 유저 2026-10-18: the shortcut
+/// presets' rename and duplicate beside their delete — 「a + 이름 바꾸기」,
+/// 「프리셋 복제버튼도 추가」). ↩️A row carried ONE until then.
 ///
 /// It closes the list, as choosing a row does, and runs after — and it is
 /// pressed INSTEAD of the row: a press on it chooses nothing. In a list
@@ -200,7 +203,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.onSelected,
     this.submenuBuilder,
     this.shortcuts = const [],
-    this.action,
+    this.actions = const [],
     this.warning,
   }) : assert(
          icon == null || swatch == null,
@@ -219,9 +222,9 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   /// a row does is its name's to say. Top-level rows only.
   final String? warning;
 
-  /// The small command at the row's end, if it carries one
+  /// The small commands at the row's end, in this order
   /// ([PanelFlyoutRowAction]). Top-level rows only: a submenu draws none.
-  final PanelFlyoutRowAction? action;
+  final List<PanelFlyoutRowAction> actions;
 
   /// Widget key string — menu items that replaced toolbar buttons reuse the
   /// retired button's key string so tests only gain a menu-open tap.
@@ -1039,8 +1042,8 @@ class _SubmenuLayer extends StatelessWidget {
     assert(
       !request.entries.any(
         (entry) => switch (entry) {
-          PanelFlyoutItem(:final action, :final warning) =>
-            action != null || warning != null,
+          PanelFlyoutItem(:final actions, :final warning) =>
+            actions.isNotEmpty || warning != null,
           PanelFlyoutHeader(:final action) => action != null,
           _ => false,
         },
@@ -1192,10 +1195,11 @@ Widget _itemBody(
       const SizedBox(width: 8),
       BooleanDot(value: on, enabled: entry.enabled, size: 14),
     ],
-    // The row's own command, at its end: pressed INSTEAD of the row.
-    if (entry.action case final action? when onAction != null) ...[
+    // The row's own commands, at its end: each pressed INSTEAD of the row.
+    if (onAction != null && entry.actions.isNotEmpty) ...[
       const SizedBox(width: 8),
-      _actionButton(action, onAction: onAction),
+      for (final action in entry.actions)
+        _actionButton(action, onAction: onAction),
     ],
     // The one glyph a submenu row wears: it says there is another level,
     // which the row cannot say with colour the way «selected» does.

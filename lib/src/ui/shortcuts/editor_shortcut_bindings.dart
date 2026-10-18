@@ -384,11 +384,22 @@ class EditorShortcutBindings extends ChangeNotifier {
         (i) => activatorsEqual(a[i], b[i]),
       );
 
-  /// The ＋ of the window's list (I-107): the layout in use, copied — what it
-  /// was made with and what was recorded over that — into a new preset of
-  /// the user's named [name], which comes into use.
-  UserShortcutPreset addPreset(String name) =>
-      _add(name, _preset.base, {..._preset.ownKeys, ..._overrides});
+  /// [preset] copied — what it was made with and what was recorded over that
+  /// — into a new preset of the user's named [name], which comes into use:
+  /// the layout in use by the ＋ of the window's list (I-107-Q1), any of the
+  /// list's by its row's duplicate (I-107-Q3).
+  UserShortcutPreset duplicatePreset(ShortcutLayout preset, String name) =>
+      _add(name, preset.base, {
+        ...preset.ownKeys,
+        ..._recordedUnder(preset),
+      });
+
+  /// [preset] under [name]. Saves and notifies.
+  void renamePreset(UserShortcutPreset preset, String name) {
+    preset.name = name;
+    _persist();
+    notifyListeners();
+  }
 
   /// [keys] over [base]'s as a new preset of the user's named [name], which
   /// comes into use. Persists and notifies.

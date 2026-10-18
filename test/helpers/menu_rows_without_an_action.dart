@@ -67,7 +67,7 @@ Iterable<String> _callsOf(String callee, String text) sync* {
     if (end == null) return;
     final call = text.substring(at, end + 1);
     // `const PanelFlyoutItem({…})` is the class saying what a row takes,
-    // and `PanelFlyoutItem(:final action) =>` a switch asking what it has.
+    // and `PanelFlyoutItem(:final actions) =>` a switch asking what it has.
     if (call.startsWith('$callee({')) continue;
     if (text.substring(end + 1).trimLeft().startsWith('=>')) continue;
     yield call;

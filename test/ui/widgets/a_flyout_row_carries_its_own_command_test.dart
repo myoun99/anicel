@@ -13,9 +13,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// 「1 ok」.
 ///
 /// The list is the app's one picker (F-230), so what it lacked went INTO it
-/// rather than round it: a row can carry one small command of its own at
-/// its end ([PanelFlyoutRowAction]), and a name as long as its owner likes
-/// stays on one line.
+/// rather than round it: a row can carry small commands of its own at its
+/// end ([PanelFlyoutRowAction]) — several since the shortcut presets'
+/// rename and duplicate came beside their delete (I-107-Q3) — and a name
+/// as long as its owner likes stays on one line.
 void main() {
   const opener = ValueKey<String>('flyout-under-test');
 
@@ -55,25 +56,29 @@ void main() {
           keyValue: 'row-a',
           label: 'a',
           onSelected: () => heard.add('chose a'),
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => heard.add('deleted a'),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () => heard.add('deleted a'),
+            ),
+          ],
         ),
         PanelFlyoutItem(
           keyValue: 'row-b',
           label: 'b',
           onSelected: () => heard.add('chose b'),
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-b-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => heard.add('deleted b'),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-b-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () => heard.add('deleted b'),
+            ),
+          ],
         ),
       ],
     );
@@ -84,6 +89,51 @@ void main() {
 
     expect(heard, ['deleted b']);
     expect(key('row-b'), findsNothing, reason: 'the list closed');
+  });
+
+  testWidgets('a row carries several commands at its end, in the order it '
+      'gives them — each pressed alone, instead of the row', (tester) async {
+    final heard = <String>[];
+    PanelFlyoutRowAction command(String name) => PanelFlyoutRowAction(
+      keyValue: 'row-a-$name',
+      icon: switch (name) {
+        'rename' => Icons.edit_outlined,
+        'copy' => Icons.content_copy,
+        _ => Icons.delete_outline,
+      },
+      tooltip: name,
+      onPressed: () => heard.add(name),
+    );
+    final entries = [
+      PanelFlyoutItem(
+        keyValue: 'row-a',
+        label: 'a',
+        onSelected: () => heard.add('chose a'),
+        actions: [command('rename'), command('copy'), command('delete')],
+      ),
+    ];
+    await pumpList(tester, () => entries);
+
+    final [rename, copy, delete] = [
+      for (final name in ['rename', 'copy', 'delete'])
+        tester.getRect(key('row-a-$name')),
+    ];
+    expect(rename.right, lessThanOrEqualTo(copy.left));
+    expect(copy.right, lessThanOrEqualTo(delete.left));
+    expect(
+      tester.getRect(key('row-a-delete')).right,
+      lessThanOrEqualTo(tester.getRect(key('row-a')).right),
+    );
+
+    await tester.tap(key('row-a-copy'));
+    await tester.pumpAndSettle();
+    expect(heard, ['copy']);
+
+    await tester.tap(find.byKey(opener));
+    await tester.pumpAndSettle();
+    await tester.tap(key('row-a-rename'));
+    await tester.pumpAndSettle();
+    expect(heard, ['copy', 'rename']);
   });
 
   testWidgets('a press on the ROW chooses it, and its command is not run', (
@@ -97,12 +147,14 @@ void main() {
           keyValue: 'row-a',
           label: 'a',
           onSelected: () => heard.add('chose a'),
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            onPressed: () => heard.add('deleted a'),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              onPressed: () => heard.add('deleted a'),
+            ),
+          ],
         ),
       ],
     );
@@ -123,16 +175,18 @@ void main() {
         PanelFlyoutItem(
           keyValue: 'row-a',
           label: 'a',
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            // The list is a route over the page: while it is open there
-            // is one to pop.
-            onPressed: () => listStillOpen = tester
-                .state<NavigatorState>(find.byType(Navigator))
-                .canPop(),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              // The list is a route over the page: while it is open there
+              // is one to pop.
+              onPressed: () => listStillOpen = tester
+                  .state<NavigatorState>(find.byType(Navigator))
+                  .canPop(),
+            ),
+          ],
         ),
       ],
     );
@@ -156,23 +210,27 @@ void main() {
         PanelFlyoutItem(
           keyValue: 'row-a',
           label: 'a',
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () {},
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () {},
+            ),
+          ],
         ),
         PanelFlyoutItem(
           keyValue: 'row-b',
           label: 'b',
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-b-rename',
-            icon: Icons.edit_outlined,
-            tooltip: 'Rename',
-            onPressed: () {},
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-b-rename',
+              icon: Icons.edit_outlined,
+              tooltip: 'Rename',
+              onPressed: () {},
+            ),
+          ],
         ),
       ],
     );

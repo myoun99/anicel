@@ -81,10 +81,10 @@ sealed class ShortcutLayout {
 /// 가능하게해서 사용자 입맛대로 추가해서 설정가능하고, 가져올땐 새
 /// 프리셋으로서 등록」 — made from the list's ＋, out of the layout in use,
 /// or out of a program's shortcut file.
-/// ⚠️Not said by the user — asked on the board (I-107-Q3) and built as its
-/// recommendation (a) while it waits: the three the app ships cannot be
-/// deleted, a new one is the layout in use copied, and its name is given
-/// once, when it is made.
+/// 🗣️I-107-Q3 (유저 2026-10-18): 「a + 이름 바꾸기」 and 「프리셋
+/// 복제버튼도 추가」 — the three the app ships cannot be deleted, the ＋
+/// copies the layout in use, a preset of the user's can be renamed, and any
+/// preset on the list can be duplicated.
 ///
 /// ⚠️MY READING: what the user records while it is in use is a change to it
 /// ([recorded]), as under a preset the app ships — so the window's reset
@@ -102,7 +102,9 @@ final class UserShortcutPreset implements ShortcutLayout {
   @override
   final String id;
 
-  final String name;
+  /// Renamed in place (`EditorShortcutBindings.renamePreset`), as [recorded]
+  /// is recorded into: the preset in use stays the one on the list.
+  String name;
 
   @override
   final ShortcutPreset base;

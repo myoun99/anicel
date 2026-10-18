@@ -266,13 +266,15 @@ class _TextInHandRow extends StatelessWidget {
         label: _nameOf(text.text),
         selected: text.inHand,
         onSelected: () => tool?.list.take(text.id),
-        action: PanelFlyoutRowAction(
-          keyValue: 'text-tool-text-$index-delete',
-          icon: Icons.delete_outline,
-          tooltip: AppText.strings.textToolDeleteText,
-          does: PanelFlyoutActionDoes.deletes,
-          onPressed: () => tool?.list.delete(text.id),
-        ),
+        actions: [
+          PanelFlyoutRowAction(
+            keyValue: 'text-tool-text-$index-delete',
+            icon: Icons.delete_outline,
+            tooltip: AppText.strings.textToolDeleteText,
+            does: PanelFlyoutActionDoes.deletes,
+            onPressed: () => tool?.list.delete(text.id),
+          ),
+        ],
       ),
   ];
 }
@@ -688,13 +690,15 @@ class _FaceRow extends StatelessWidget {
             ? null
             : AppText.strings.textToolFontNotOnThisDevice,
         onSelected: () => _pick(family),
-        action: PanelFlyoutRowAction(
-          keyValue: 'text-tool-project-font-$family-take-out',
-          icon: Icons.remove,
-          tooltip: AppText.strings.textToolFontTakeOut,
-          does: PanelFlyoutActionDoes.deletes,
-          onPressed: () => fonts.takeOutOfProject(family),
-        ),
+        actions: [
+          PanelFlyoutRowAction(
+            keyValue: 'text-tool-project-font-$family-take-out',
+            icon: Icons.remove,
+            tooltip: AppText.strings.textToolFontTakeOut,
+            does: PanelFlyoutActionDoes.deletes,
+            onPressed: () => fonts.takeOutOfProject(family),
+          ),
+        ],
       ),
   ]);
 
@@ -714,13 +718,15 @@ class _FaceRow extends StatelessWidget {
             ? null
             : AppText.strings.textToolFontStaysOnThisDevice,
         onSelected: () => _pick(family.name),
-        action: PanelFlyoutRowAction(
-          keyValue: 'text-tool-font-${family.name}-delete',
-          icon: Icons.delete_outline,
-          tooltip: AppText.strings.textToolFontDelete,
-          does: PanelFlyoutActionDoes.deletes,
-          onPressed: () => unawaited(fonts.delete(family.name)),
-        ),
+        actions: [
+          PanelFlyoutRowAction(
+            keyValue: 'text-tool-font-${family.name}-delete',
+            icon: Icons.delete_outline,
+            tooltip: AppText.strings.textToolFontDelete,
+            does: PanelFlyoutActionDoes.deletes,
+            onPressed: () => unawaited(fonts.delete(family.name)),
+          ),
+        ],
       ),
   ]);
 

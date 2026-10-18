@@ -10,15 +10,17 @@ import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️I-107-Q1 (유저 2026-10-18, 「기타」): 「프리셋 리스트 추가/삭제
 /// 가능하게해서 사용자 입맛대로 추가해서 설정가능하고, 가져올땐 새
-/// 프리셋으로서 등록」. ⚠️The details are asked on the board (I-107-Q3) and
-/// built as its recommendation (a): the three the app ships stay, a new one
-/// is the layout in use copied, and its name is given when it is made.
+/// 프리셋으로서 등록」, and its details (I-107-Q3): 「a + 이름 바꾸기」 ·
+/// 「프리셋 복제버튼도 추가」 — the three the app ships stay, the ＋ copies
+/// the layout in use, the user's own can be renamed, and any can be
+/// duplicated.
 void main() {
   late EditorShortcutBindings bindings;
 
@@ -31,6 +33,10 @@ void main() {
       singleActivatorLabel(key, TargetPlatform.windows),
   ];
 
+  /// The layout in use, copied under [name] — the list's ＋.
+  UserShortcutPreset copyInUse(String name) =>
+      bindings.duplicatePreset(bindings.preset, name);
+
   const f9 = SingleActivator(LogicalKeyboardKey.f9);
   const f2 = SingleActivator(LogicalKeyboardKey.f2);
 
@@ -40,13 +46,13 @@ void main() {
     expect(keysOf(EditorActionIds.cutNew), isNot(['F9']));
   });
 
-  test('＋ copies the layout in use — its keys and what was recorded over '
-      'them — into a preset of the user\'s that comes into use', () {
+  test('a copy of the layout in use holds its keys and what was recorded '
+      'over them, and comes into use', () {
     bindings
       ..setPreset(ShortcutPreset.tvpaint)
       ..setActivators(EditorActionIds.cutNew, const [f9]);
 
-    final mine = bindings.addPreset('Mine');
+    final mine = copyInUse('Mine');
 
     expect(bindings.preset, mine);
     expect(bindings.userPresets, [mine]);
@@ -60,12 +66,40 @@ void main() {
     );
   });
 
+  test('a preset that is NOT in use is duplicated as the user has it', () {
+    bindings
+      ..setPreset(ShortcutPreset.tvpaint)
+      ..setActivators(EditorActionIds.cutNew, const [f9])
+      ..setPreset(ShortcutPreset.anicel);
+
+    final copy = bindings.duplicatePreset(ShortcutPreset.tvpaint, 'Copy');
+
+    expect(bindings.preset, copy);
+    expect(copy.base, ShortcutPreset.tvpaint);
+    expect(keysOf(EditorActionIds.cutNew), ['F9']);
+    expect(keysOf(EditorActionIds.undo), ['Ctrl+Z', 'U']);
+  });
+
+  test('a preset of the user\'s duplicated holds all it holds — what was '
+      'recorded under it too', () {
+    final first = copyInUse('First');
+    bindings
+      ..setActivators(EditorActionIds.undo, const [f2])
+      ..setPreset(ShortcutPreset.anicel);
+
+    final second = bindings.duplicatePreset(first, 'Second');
+
+    expect(second.base, first.base);
+    expect(keysOf(EditorActionIds.undo), ['F2']);
+    expect(bindings.isOverridden(EditorActionIds.undo), isFalse);
+  });
+
   test('what is recorded under a preset of the user\'s stays with it — the '
       'preset it was copied from is left as it was', () {
     bindings
       ..setPreset(ShortcutPreset.tvpaint)
       ..setActivators(EditorActionIds.cutNew, const [f9]);
-    final mine = bindings.addPreset('Mine');
+    final mine = copyInUse('Mine');
 
     bindings.setActivators(EditorActionIds.undo, const [f2]);
     bindings.setPreset(ShortcutPreset.tvpaint);
@@ -76,21 +110,10 @@ void main() {
     expect(keysOf(EditorActionIds.undo), ['F2']);
   });
 
-  test('＋ over a preset of the user\'s copies all it holds', () {
-    final first = bindings.addPreset('First');
-    bindings.setActivators(EditorActionIds.undo, const [f2]);
-
-    final second = bindings.addPreset('Second');
-
-    expect(second.base, first.base);
-    expect(keysOf(EditorActionIds.undo), ['F2']);
-    expect(bindings.isOverridden(EditorActionIds.undo), isFalse);
-  });
-
   test('the window\'s reset takes a preset of the user\'s back to the keys '
       'it was made with', () {
     bindings.setActivators(EditorActionIds.cutNew, const [f9]);
-    bindings.addPreset('Mine');
+    copyInUse('Mine');
     bindings.setActivators(EditorActionIds.cutNew, const [f2]);
 
     bindings.resetAll();
@@ -98,11 +121,26 @@ void main() {
     expect(keysOf(EditorActionIds.cutNew), ['F9']);
   });
 
+  test('a renamed preset is the same preset — still in use, its keys its '
+      'own', () {
+    final mine = copyInUse('Mine');
+    bindings.setActivators(EditorActionIds.undo, const [f2]);
+    var told = 0;
+    bindings.addListener(() => told += 1);
+
+    bindings.renamePreset(mine, 'Ours');
+
+    expect(bindings.userPresets.single.name, 'Ours');
+    expect(bindings.preset, mine);
+    expect(keysOf(EditorActionIds.undo), ['F2']);
+    expect(told, 1);
+  });
+
   test('a deleted preset takes what was recorded under it along; deleted '
       'in use, the preset it stood on comes into use', () {
     bindings.setPreset(ShortcutPreset.tvpaint);
-    final kept = bindings.addPreset('Kept');
-    final gone = bindings.addPreset('Gone');
+    final kept = copyInUse('Kept');
+    final gone = copyInUse('Gone');
     bindings.setActivators(EditorActionIds.undo, const [f2]);
 
     bindings.deletePreset(gone);
@@ -114,8 +152,8 @@ void main() {
 
   test('a preset deleted while another is in use leaves that one in '
       'use', () {
-    final gone = bindings.addPreset('Gone');
-    final kept = bindings.addPreset('Kept');
+    final gone = copyInUse('Gone');
+    final kept = copyInUse('Kept');
 
     bindings.deletePreset(gone);
 
@@ -123,12 +161,23 @@ void main() {
     expect(bindings.userPresets, [kept]);
   });
 
+  test('a preset no longer on the list is not deleted twice', () {
+    final gone = copyInUse('Gone');
+    bindings.deletePreset(gone);
+    var told = 0;
+    bindings.addListener(() => told += 1);
+
+    bindings.deletePreset(gone);
+
+    expect(told, 0);
+  });
+
   test('a new preset never takes the id of one still on the list', () {
-    final first = bindings.addPreset('A');
-    final second = bindings.addPreset('B');
+    final first = copyInUse('A');
+    final second = copyInUse('B');
     bindings.deletePreset(first);
 
-    final third = bindings.addPreset('C');
+    final third = copyInUse('C');
 
     expect(third.id, isNot(second.id));
   });
@@ -142,11 +191,16 @@ void main() {
       path = '${directory.path}/overrides.json';
     });
 
-    Future<EditorShortcutBindings> restored() async {
+    EditorShortcutBindings saving() {
       final held = EditorShortcutBindings(
         store: ShortcutSettingsStore(filePath: path),
       );
       addTearDown(held.dispose);
+      return held;
+    }
+
+    Future<EditorShortcutBindings> restored() async {
+      final held = saving();
       await held.restore();
       return held;
     }
@@ -154,22 +208,21 @@ void main() {
     test('the user\'s presets come back: their names, the keys they were '
         'made with, what was recorded under them, and the one in '
         'use', () async {
-      final saving = EditorShortcutBindings(
-        store: ShortcutSettingsStore(filePath: path),
-      );
-      addTearDown(saving.dispose);
-      saving
+      final saved = saving();
+      saved
         ..setPreset(ShortcutPreset.tvpaint)
-        ..setActivators(EditorActionIds.cutNew, const [f9])
-        ..addPreset('Made')
+        ..setActivators(EditorActionIds.cutNew, const [f9]);
+      final made = saved.duplicatePreset(saved.preset, 'Made');
+      saved
         ..setActivators(EditorActionIds.undo, const [f2])
-        ..addPreset('In use');
-      await saving.pendingPersist;
+        ..renamePreset(made, 'Renamed')
+        ..duplicatePreset(ShortcutPreset.anicel, 'In use');
+      await saved.pendingPersist;
 
       final again = await restored();
 
       expect([for (final preset in again.userPresets) preset.name], [
-        'Made',
+        'Renamed',
         'In use',
       ]);
       expect(again.preset, again.userPresets.last);
@@ -233,24 +286,34 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the three the app ships, then a rule and the user\'s own '
-        '— a delete on each of those alone', (tester) async {
-      final mine = bindings.addPreset('Mine');
+    Future<void> answer(WidgetTester tester, String prefix, String name) async {
+      await tester.enterText(byKey('$prefix-text-field'), name);
+      await tester.tap(byKey('$prefix-ok-button'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the three the app ships, then a rule and the user\'s own; '
+        'every row a duplicate, the user\'s a rename and a delete '
+        'besides', (tester) async {
+      final mine = copyInUse('Mine');
       await pump(tester);
 
       final shown = entries(tester);
       final rows = shown.whereType<PanelFlyoutItem>().toList();
-      expect([for (final row in rows) row.keyValue], [
-        for (final preset in ShortcutPreset.values)
-          'shortcut-preset-${preset.name}',
-        'shortcut-preset-${mine.id}',
-      ]);
-      expect([for (final row in rows) row.action != null], [
-        false,
-        false,
-        false,
-        true,
-      ]);
+      expect(
+        {
+          for (final row in rows)
+            row.keyValue: [
+              for (final action in row.actions)
+                action.keyValue.substring(row.keyValue.length + 1),
+            ],
+        },
+        {
+          for (final preset in ShortcutPreset.values)
+            'shortcut-preset-${preset.name}': ['duplicate'],
+          'shortcut-preset-${mine.id}': ['rename', 'duplicate', 'delete'],
+        },
+      );
       expect(
         shown.indexWhere((entry) => entry is PanelFlyoutDivider),
         shown.indexOf(rows.last) - 1,
@@ -269,8 +332,8 @@ void main() {
       expect(entries(tester).whereType<PanelFlyoutDivider>(), isEmpty);
     });
 
-    testWidgets('the ＋ asks the name, and the layout in use copied under '
-        'it comes into use', (tester) async {
+    testWidgets('the ＋ asks the name — the layout in use\'s, as a copy\'s — '
+        'and the copy comes into use', (tester) async {
       bindings
         ..setPreset(ShortcutPreset.tvpaint)
         ..setActivators(EditorActionIds.cutNew, const [f9]);
@@ -279,18 +342,63 @@ void main() {
 
       await tester.tap(byKey('shortcut-preset-add'));
       await tester.pumpAndSettle();
-      await tester.enterText(byKey('shortcut-preset-new-text-field'), 'Mine');
-      await tester.tap(byKey('shortcut-preset-new-ok-button'));
-      await tester.pumpAndSettle();
+      final field = tester.widget<TextField>(
+        byKey('shortcut-preset-copy-text-field'),
+      );
+      expect(
+        field.controller!.text,
+        AppText.strings.shortcutPresetCopyName(
+          AppText.strings.shortcutPresetName(
+            ShortcutPreset.tvpaint.name,
+            ShortcutPreset.tvpaint.label,
+          ),
+        ),
+      );
+      await answer(tester, 'shortcut-preset-copy', 'Mine');
 
       final mine = bindings.preset as UserShortcutPreset;
       expect((mine.name, mine.base), ('Mine', ShortcutPreset.tvpaint));
       expect(keysOf(EditorActionIds.cutNew), ['F9']);
     });
 
+    testWidgets('a row\'s duplicate copies THAT preset, not the one in '
+        'use', (tester) async {
+      await pump(tester);
+      await openList(tester);
+
+      await tester.tap(byKey('shortcut-preset-tvpaint-duplicate'));
+      await tester.pumpAndSettle();
+      await answer(tester, 'shortcut-preset-copy', 'From TVPaint');
+
+      final copy = bindings.preset as UserShortcutPreset;
+      expect((copy.name, copy.base), ('From TVPaint', ShortcutPreset.tvpaint));
+      expect(keysOf(EditorActionIds.undo), ['Ctrl+Z', 'U']);
+    });
+
+    testWidgets('the pencil renames a preset of the user\'s, its name '
+        'offered to edit', (tester) async {
+      final mine = copyInUse('Mine');
+      await pump(tester);
+      await openList(tester);
+
+      await tester.tap(byKey('shortcut-preset-${mine.id}-rename'));
+      await tester.pumpAndSettle();
+      final field = tester.widget<TextField>(
+        byKey('shortcut-preset-rename-text-field'),
+      );
+      expect(field.controller!.text, 'Mine');
+      await answer(tester, 'shortcut-preset-rename', 'Ours');
+
+      expect(mine.name, 'Ours');
+      expect(
+        tester.widget<PanelFlyoutButton>(byKey('shortcut-preset')).label,
+        'Ours',
+      );
+    });
+
     testWidgets('a preset of the user\'s goes only once the user says '
         'so', (tester) async {
-      final mine = bindings.addPreset('Mine');
+      final mine = copyInUse('Mine');
       await pump(tester);
       await openList(tester);
 
