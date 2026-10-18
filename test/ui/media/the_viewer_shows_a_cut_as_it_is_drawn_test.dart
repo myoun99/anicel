@@ -174,10 +174,18 @@ void main() {
       onScreen(tester, 600, 200),
       onScreen(tester, 600, 500),
     ];
-    for (final vertex in [...vertices, vertices.first]) {
+    for (final vertex in vertices) {
       await tester.tapAt(vertex, kind: PointerDeviceKind.mouse);
       await tester.pump();
     }
+    expect(
+      selection.polygonPoints,
+      hasLength(3),
+      reason: '⛔fixture: tapped out on the channel handed in',
+    );
+
+    await tester.tapAt(vertices.first, kind: PointerDeviceKind.mouse);
+    await tester.pump();
     // The read and the hold land on the microtasks after the close.
     await tester.pump();
 

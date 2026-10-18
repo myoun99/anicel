@@ -509,6 +509,7 @@ void main() {
       required CanvasShapeKind shape,
       required int points,
       CanvasSelectionCommands? commands,
+      CanvasTool tool = CanvasTool.select,
     }) async {
       final channel = commands ?? CanvasSelectionCommands();
       for (var i = 0; i < points; i += 1) {
@@ -517,10 +518,7 @@ void main() {
       await tester.pumpWidget(
         app(
           ToolSettingsPanel(
-            state: BrushToolState.defaults.withShapeKind(
-              shape,
-              forTool: CanvasTool.select,
-            ),
+            state: BrushToolState.defaults.withShapeKind(shape, forTool: tool),
             onChanged: (_) {},
             fillOptions: const FloodFillOptions(),
             onFillOptionsChanged: (_) {},
@@ -585,18 +583,28 @@ void main() {
       );
     });
 
-    testWidgets('closes the trace when pressed', (tester) async {
-      final commands = CanvasSelectionCommands();
-      await pumpSettings(
+    // Every tool that traces a polygon closes it from its own settings.
+    for (final tool in const [
+      CanvasTool.select,
+      CanvasTool.cut,
+      CanvasTool.fillShape,
+    ]) {
+      testWidgets('closes the trace when pressed — under ${tool.name}', (
         tester,
-        shape: CanvasShapeKind.polygon,
-        points: 3,
-        commands: commands,
-      );
-      await tester.tap(find.byKey(buttonKey));
-      await tester.pump();
-      expect(commands.hasOpenPolygon, isFalse);
-    });
+      ) async {
+        final commands = CanvasSelectionCommands();
+        await pumpSettings(
+          tester,
+          shape: CanvasShapeKind.polygon,
+          points: 3,
+          commands: commands,
+          tool: tool,
+        );
+        await tester.tap(find.byKey(buttonKey));
+        await tester.pump();
+        expect(commands.hasOpenPolygon, isFalse);
+      });
+    }
   });
 
   // 🚨I-23 — 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은 부분을
