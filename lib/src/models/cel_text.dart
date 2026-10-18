@@ -258,8 +258,10 @@ class CelTextContent {
   /// 1 for as their face draws them. Only their width changes — not how
   /// tall they are, nor how far apart their lines are.
   ///
-  /// ⏳Written in columns ([vertical]), whether the columns close up with
-  /// the letters is text-letters-lean-and-underline-Q3's to say.
+  /// Written in columns ([vertical]) each letter is drawn so where it
+  /// stands, across its column, and the columns stand as far apart as they
+  /// did — 🗣️유저 2026-10-18 (text-letters-lean-and-underline-Q3): 「글자만
+  /// 좁아지고 열 간격은 그대로」.
   ///
   /// 🗣️Q1 (유저 2026-10-17, 「일곱 전부」) of what a CLIP STUDIO text loses
   /// once edited: ⑥ 「글자 폭(%) — 클튜처럼 글 전체에 하나(상자의 값)」.

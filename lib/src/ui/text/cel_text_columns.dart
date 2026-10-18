@@ -107,6 +107,12 @@ class _ColumnsSetting implements _TextSetting {
         if (held == null) {
           continue;
         }
+        // Drawn as wide as the text says ([_ColumnCell.letterWidth]) WHERE
+        // IT STANDS: the renderer narrows about the frame's x = 0, so the
+        // cell is brought back to its middle.
+        canvas
+          ..save()
+          ..translate((1 - cell.letterWidth) * cell.centre.dx, 0);
         paintVerticalTextCell(
           canvas,
           cell.cell,
@@ -116,7 +122,9 @@ class _ColumnsSetting implements _TextSetting {
           // A cel is paper: its letters are set for its own pixels, never
           // drawn from a bake made for the screen's.
           setWord: paintScaledText,
+          narrowing: (x: cell.letterWidth, y: 1),
         );
+        canvas.restore();
       }
     },
   );
@@ -239,6 +247,7 @@ class _ColumnCell {
     required this.cell,
     required this.start,
     required this.style,
+    required this.letterWidth,
   });
 
   /// Its place among the text's cells — and so among each pass's painters.
@@ -250,6 +259,15 @@ class _ColumnCell {
   final int start;
 
   final TextLetterStyle style;
+
+  /// How wide its letters are drawn ACROSS the column, as a share of how
+  /// they are set — the text's ([CelTextContent.letterWidth]) — in their
+  /// place: the middle of the column, which stands where it does.
+  ///
+  /// 🗣️유저 2026-10-18 (text-letters-lean-and-underline-Q3): 「글자만
+  /// 좁아지고 열 간격은 그대로」 — the letters alone, as a typesetter's
+  /// condensed type is; the columns as far apart as their pitch says.
+  final double letterWidth;
 
   /// Where its letters end in the text.
   int get end => start + cell.text.length;
@@ -320,18 +338,25 @@ class _ColumnCell {
 
   /// How far across the cell the place [offset] stands, for the digits of
   /// a pair set side by side.
-  double _acrossTo(int offset, TextPainter fill) {
-    final width = fill.width * _fit.scale;
-    final from = room.center.dx - width / 2;
-    return from +
-        fill
-                .getOffsetForCaret(
-                  TextPosition(offset: offset - start),
-                  ui.Rect.zero,
-                )
-                .dx *
-            _fit.scale;
-  }
+  double _acrossTo(int offset, TextPainter fill) =>
+      _pairLeft(fill) +
+      fill
+              .getOffsetForCaret(
+                TextPosition(offset: offset - start),
+                ui.Rect.zero,
+              )
+              .dx *
+          _acrossScale;
+
+  /// How wide the digits of a pair set side by side are drawn across the
+  /// column, as a share of how they are set: their fit to it, as wide as
+  /// the text's letters are drawn.
+  double get _acrossScale => _fit.scale * letterWidth;
+
+  /// Where the digits of a pair set side by side begin across the cell:
+  /// centred in it.
+  double _pairLeft(TextPainter fill) =>
+      room.center.dx - fill.width * _acrossScale / 2;
 
   bool get _sideBySide => cell.form == VerticalGlyphForm.tateChuYoko;
 
@@ -381,8 +406,7 @@ class _ColumnCell {
     }
     final inPainter = _sideBySide
         ? ui.Offset(
-            (local.dx - (room.center.dx - fill.width * _fit.scale / 2)) /
-                _fit.scale,
+            (local.dx - _pairLeft(fill)) / _acrossScale,
             fill.height / 2,
           )
         : ui.Offset((local.dy - room.top) / _fit.scale, fill.height / 2);
@@ -449,6 +473,7 @@ List<_ColumnCell> _columnCellsOf(CelTextContent content) {
             cell: cell,
             start: at + within,
             style: span.style,
+            letterWidth: content.letterWidth,
           ),
         );
         within += cell.text.length;
@@ -628,7 +653,8 @@ CanvasLetterLines _columnLinesOf(List<_Column> columns) {
       final room = cell.room;
       final middle = room.center.dx;
       if (letters.underline) {
-        final inner = middle + size / 2;
+        // Outside the letter's square — as wide as it is drawn.
+        final inner = middle + size * cell.letterWidth / 2;
         lines.under(
           letters,
           ui.Rect.fromLTRB(

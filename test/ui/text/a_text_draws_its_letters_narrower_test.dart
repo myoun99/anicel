@@ -129,6 +129,97 @@ void main() {
     });
   });
 
+  // 🗣️Q3 (유저 2026-10-18): 「글자만 좁아지고 열 간격은 그대로」.
+  group('🚨written in COLUMNS: each letter narrower IN ITS PLACE, the '
+      'columns where they stand', () {
+    // 「X」 and 「Y」 a column each, lying down it — solid boxes in the test
+    // font, where 「あ」 is a hollow one — at 20: the first from 80 to 100,
+    // the second from 60 to 80; each letter, at half its width, 10 wide
+    // about its column's middle.
+    CelTextContent columns(
+      String words, {
+      double width = 1,
+      TextLetterStyle style = const TextLetterStyle(fontSize: 20),
+    }) => CelTextContent(
+      spans: [CelTextSpan(text: words, style: style)],
+      anchor: CanvasPoint(x: 100, y: 10),
+      lineHeight: 1,
+      vertical: true,
+      letterWidth: width,
+    );
+
+    /// The columns of pixels [content] inks on the row [y].
+    Future<List<int>> inkedAcross(CelTextContent content, int y) async {
+      final recorder = ui.PictureRecorder();
+      set(content).paint(ui.Canvas(recorder));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(120, 60);
+      picture.dispose();
+      final bytes = (await image.toByteData())!.buffer.asUint8List();
+      image.dispose();
+      return [
+        for (var x = 0; x < 120; x += 1)
+          if (bytes[(y * 120 + x) * 4 + 3] > 128) x,
+      ];
+    }
+
+    List<int> from(int left, int right) => [
+      for (var x = left; x < right; x += 1) x,
+    ];
+
+    test('drawn', () async {
+      expect(await inkedAcross(columns('X\nY', width: 0.5), 20), [
+        ...from(65, 75),
+        ...from(85, 95),
+      ]);
+      expect(
+        await inkedAcross(columns('X\nY'), 20),
+        from(60, 100),
+        reason: '⛔control: at their own width they fill their columns',
+      );
+    });
+
+    test('nothing else moves: the block, a letter\'s place, the caret', () {
+      final narrow = set(columns('あい\nう', width: 0.5));
+      final own = set(columns('あい\nう'));
+
+      expect(narrow.block, own.block);
+      expect(narrow.selectionRects(1, 2), own.selectionRects(1, 2));
+      expect(
+        narrow.caretRect(const TextPosition(offset: 3)),
+        own.caretRect(const TextPosition(offset: 3)),
+      );
+    });
+
+    test('a line beside the letters hugs them as they are drawn', () async {
+      // 「X」 at half its width runs to 95: its side line from there.
+      final lined = await inkedAcross(
+        columns(
+          'X',
+          width: 0.5,
+          style: const TextLetterStyle(fontSize: 20, underline: true),
+        ),
+        20,
+      );
+
+      expect(lined, [...from(85, 95), 95]);
+    });
+
+    test('🚨a press between two digits set side by side finds them where '
+        'they are drawn', () {
+      // 「12」 is one cell: 40 set, fitted to its column at half — so half a
+      // letter tall, 10 to 20 — and drawn half as wide again: 10 wide about
+      // 90. Three before its middle is nearer its start than its middle; at
+      // its own width it was not.
+      int pressedAt(double width) => set(
+        columns('12', width: width),
+      ).positionAt(const ui.Offset(87, 15)).offset;
+
+      expect(pressedAt(0.5), 0);
+      expect(pressedAt(1), 1, reason: '⛔control');
+    });
+  });
+
   group('what is drawn', () {
     const width = 400;
     const height = 120;
