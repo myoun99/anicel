@@ -15,15 +15,17 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_fill_promotion.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
-import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -266,12 +268,10 @@ void main() {
 
   // ⚠️And what a tool would land there is a tool's: the stamp ghost over a
   // file laid past the wall is cut at the wall, as the stamp that lands is.
+  // ↩️It pinned the painter's own ghost (F-374-Q8). Since brush-fidelity-Q9
+  // the ghost IS the landing's result tiles, so those are what this lays.
   testWidgets('🚨the stamp ghost over a file laid past the wall is cut at '
       'the wall, and the file is drawn beside it whole', (tester) async {
-    final image = redSquare();
-    addTearDown(image.dispose);
-    final ghost = ValueNotifier<CutStampPreview?>(null);
-    addTearDown(ghost.dispose);
     final piece = CutPiece(
       image: BrushStampImage(
         id: 'ghost',
@@ -281,13 +281,6 @@ void main() {
       ),
       originLeft: 0,
       originTop: 0,
-    );
-    CutStampPreview ghostAt(Rect where) => CutStampPreview(
-      piece: piece,
-      image: image,
-      canvasRect: where,
-      opacity: 1,
-      blendMode: BrushBlendMode.color,
     );
     final tiles = BitmapTileImageCache();
     // The file over the cel's (-48..-32, 16..32), past the wall.
@@ -305,19 +298,38 @@ void main() {
       ),
     );
     decodeAll(tiles, surface);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize)
+      ..preBlendBase = surface;
+    addTearDown(overlay.dispose);
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(
         surface: surface,
-        stampPreview: ghost,
+        overlayModel: overlay,
         tileImageCache: tiles,
         showTransparentBackground: false,
       ),
       placement: const GuideTransform(1, 0, 0, 1, 16, 0),
     );
+    // What the ghost of a stamp over [where] shows: what it lands.
+    void ghostAt(Rect where) => overlay.showResultTiles(
+      promoteFillDabs(
+        surface: surface,
+        dabs: [
+          buildCutStampDab(
+            piece: piece,
+            center: CanvasPoint(x: where.center.dx, y: where.center.dy),
+          ),
+        ],
+        blendMode: BrushBlendMode.color,
+        selection: null,
+        layerId: const LayerId('row'),
+        frameId: const FrameId('cel'),
+      ),
+    );
 
     // Past the wall, above the file: the cel's (-48..-32, 0..16).
-    ghost.value = ghostAt(const Rect.fromLTWH(-48, 0, 16, 16));
+    ghostAt(const Rect.fromLTWH(-48, 0, 16, 16));
     expect(
       await redAt(tester, stack, const Offset(8, 40)),
       isFalse,
@@ -327,11 +339,10 @@ void main() {
     expect(
       await redAt(tester, stack, const Offset(8, 56)),
       isTrue,
-      reason: 'the file beside it is drawn whole, through the buffer a ghost '
-          'puts the row in',
+      reason: 'the file beside it is drawn whole',
     );
 
-    ghost.value = ghostAt(const Rect.fromLTWH(-32, 0, 16, 16));
+    ghostAt(const Rect.fromLTWH(-32, 0, 16, 16));
     expect(
       await redAt(tester, stack, const Offset(24, 40)),
       isTrue,
@@ -417,43 +428,9 @@ void main() {
     );
   });
 
-  testWidgets('🚨the stamp ghost shows on the pasteboard', (tester) async {
-    final image = redSquare();
-    addTearDown(image.dispose);
-    final ghost = ValueNotifier<CutStampPreview?>(null);
-    addTearDown(ghost.dispose);
-    final piece = CutPiece(
-      image: BrushStampImage(
-        id: 'ghost',
-        width: tileSize,
-        height: tileSize,
-        rgba: redRgba(),
-      ),
-      originLeft: 0,
-      originTop: 0,
-    );
-    final stack = await pumpStack(
-      tester,
-      painter: BitmapSurfacePainter(
-        surface: surfaceWith(const {}),
-        stampPreview: ghost,
-        tileImageCache: BitmapTileImageCache(),
-        showTransparentBackground: false,
-      ),
-    );
-    await expectShownOnThePasteboard(
-      tester,
-      what: 'the stamp ghost',
-      stack: stack,
-      draw: (where) async => ghost.value = CutStampPreview(
-        piece: piece,
-        image: image,
-        canvasRect: where,
-        opacity: 1,
-        blendMode: BrushBlendMode.color,
-      ),
-    );
-  });
+  // ↩️'the stamp ghost shows on the pasteboard' pinned the painter's own
+  // ghost here. Since brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」)
+  // the ghost is laid as a fill's result tiles — the case above.
 
   testWidgets('🚨a transform\'s float shows on the pasteboard', (tester) async {
     final image = redSquare();
@@ -566,28 +543,20 @@ void main() {
   /// rect, and a moved rect is what the scroll carry exists for. It carried
   /// the old ghost along — a smear where the ghost had been — and, moving
   /// back inside, repainted nothing and left the ghost out.
-  testWidgets('🚨the stamp ghost leaves nothing behind when it crosses the '
+  ///
+  /// ↩️It was the stamp's ghost here until brush-fidelity-Q9 (10-18) made the
+  /// ghost the overlay's tiles; the painter's landing preview — the text in
+  /// hand (F-344) — rides the same tokens and the same carry.
+  testWidgets('🚨a landing preview leaves nothing behind when it crosses the '
       'extent edge, either way', (tester) async {
     final image = redSquare();
     addTearDown(image.dispose);
-    final ghost = ValueNotifier<CutStampPreview?>(null);
-    addTearDown(ghost.dispose);
-    final piece = CutPiece(
-      image: BrushStampImage(
-        id: 'ghost',
-        width: tileSize,
-        height: tileSize,
-        rgba: redRgba(),
-      ),
-      originLeft: 0,
-      originTop: 0,
-    );
-    CutStampPreview ghostAt(Rect where) => CutStampPreview(
-      piece: piece,
+    final landing = ValueNotifier<LandingPreview?>(null);
+    addTearDown(landing.dispose);
+    SelectionFloatPaint floatAt(Rect where) => SelectionFloatPaint(
       image: image,
-      canvasRect: where,
-      opacity: 1,
-      blendMode: BrushBlendMode.color,
+      imageLeft: where.left,
+      imageTop: where.top,
     );
     // A committed tile, blank so it draws nothing a probe could read. It was
     // load-bearing when this pin was written — an empty snapshot then read
@@ -603,41 +572,41 @@ void main() {
       tester,
       painter: BitmapSurfacePainter(
         surface: surface,
-        stampPreview: ghost,
+        landingPreview: landing,
         tileImageCache: tiles,
         showTransparentBackground: false,
       ),
     );
     // A third spot inside the page that does not touch the first, so a
-    // carried smear of the first cannot pass for a ghost drawn here.
+    // carried smear of the first cannot pass for a float drawn here.
     const otherPageSpot = Rect.fromLTWH(16, 0, 16, 16);
     const otherPageProbe = Offset(56, 40);
 
-    ghost.value = ghostAt(pageSpot);
+    landing.value = floatAt(pageSpot);
     expect(
       await redAt(tester, stack, pageProbe),
       isTrue,
-      reason: 'control: the ghost inside the page is drawn',
+      reason: 'control: the float inside the page is drawn',
     );
 
-    ghost.value = ghostAt(pasteboardSpot);
+    landing.value = floatAt(pasteboardSpot);
     expect(
       await redAt(tester, stack, pasteboardProbe),
       isTrue,
-      reason: 'control: the ghost moved onto the pasteboard, past the page',
+      reason: 'control: the float moved onto the pasteboard, past the page',
     );
     expect(
       await redAt(tester, stack, pageProbe),
       isFalse,
-      reason: 'where the ghost WAS is repainted, not carried into the grown '
+      reason: 'where the float WAS is repainted, not carried into the grown '
           'buffer',
     );
 
-    ghost.value = ghostAt(otherPageSpot);
+    landing.value = floatAt(otherPageSpot);
     expect(
       await redAt(tester, stack, otherPageProbe),
       isTrue,
-      reason: 'back inside the page the buffer shrinks: the ghost is drawn '
+      reason: 'back inside the page the buffer shrinks: the float is drawn '
           'where it is now, not left out of a carry with nothing to repaint',
     );
     expect(

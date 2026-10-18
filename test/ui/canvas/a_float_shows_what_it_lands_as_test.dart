@@ -6,13 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/brush_blend_mode.dart';
-import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/tile_coord.dart';
-import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
@@ -140,25 +136,20 @@ void main() {
   }
 
   var lineages = 0;
-  BitmapSurfacePainter painterOf(
-    BitmapSurface surface, {
-    ValueListenable<CutStampPreview?>? stampPreview,
-  }) => BitmapSurfacePainter(
+  BitmapSurfacePainter painterOf(BitmapSurface surface) => BitmapSurfacePainter(
     surface: surface,
     showTransparentBackground: false,
     lineage: 'f240-${lineages++}',
-    stampPreview: stampPreview,
   );
 
   /// While it floats and once it has landed, at [level]: the floating
   /// paint, the landed paint, and what the old overlay drew.
   Future<({Uint8List floating, Uint8List landed, Uint8List old})> both(
     int level, {
-    LandingPreview? float,
-    ValueListenable<CutStampPreview?>? stampPreview,
+    required LandingPreview float,
   }) async {
     final cel = surfaceOf(pattern(width, height, 1));
-    final floating = painterOf(cel, stampPreview: stampPreview);
+    final floating = painterOf(cel);
     // What 100% shows with the preview on it is what the landing writes.
     final atFull = await paint(floating, level: 0, float: float);
     final landedCel = surfaceOf(
@@ -167,22 +158,20 @@ void main() {
     atFull.dispose();
     final whileFloating = await paint(floating, level: level, float: float);
     final afterLanding = await paint(painterOf(landedCel), level: level);
-    final oldWay = float == null
-        ? null
-        : await paint(
-            painterOf(cel),
-            level: level,
-            float: float,
-            floatOnTop: true,
-          );
+    final oldWay = await paint(
+      painterOf(cel),
+      level: level,
+      float: float,
+      floatOnTop: true,
+    );
     final result = (
       floating: await bytes(whileFloating),
       landed: await bytes(afterLanding),
-      old: oldWay == null ? Uint8List(0) : await bytes(oldWay),
+      old: await bytes(oldWay),
     );
     whileFloating.dispose();
     afterLanding.dispose();
-    oldWay?.dispose();
+    oldWay.dispose();
     return result;
   }
 
@@ -225,29 +214,9 @@ void main() {
       expect(differing(seen.floating, seen.landed), 0);
     });
 
-    test('a STAMP\'s ghost at $zoom shows the bytes it lands as', () async {
-      final ghostImage = await imageOf(pattern(18, 12, 4), 18, 12);
-      final preview = ValueNotifier<CutStampPreview?>(
-        CutStampPreview(
-          piece: CutPiece(
-            image: BrushStampImage(
-              id: 'ghost',
-              width: 18,
-              height: 12,
-              rgba: pattern(18, 12, 4),
-            ),
-            originLeft: 0,
-            originTop: 0,
-          ),
-          image: ghostImage,
-          canvasRect: const ui.Rect.fromLTWH(21, 15, 18, 12),
-          opacity: 1,
-          blendMode: BrushBlendMode.color,
-        ),
-      );
-      addTearDown(preview.dispose);
-      final seen = await both(level, stampPreview: preview);
-      expect(differing(seen.floating, seen.landed), 0);
-    });
+    // ↩️'a STAMP's ghost at $zoom shows the bytes it lands as' pinned the
+    // painter's own ghost through this same halving. Since brush-fidelity-Q9
+    // (유저 2026-10-18 「통일하면 좋음」) the ghost is the overlay's tiles —
+    // the click's own bytes — so the painter draws no ghost to pin.
   }
 }

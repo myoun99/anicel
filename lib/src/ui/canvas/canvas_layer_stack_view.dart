@@ -2088,11 +2088,10 @@ class _LayerStackPainter extends CustomPainter {
     if (!_liveSurfaceIsSpatiallyStable(nodes)) {
       return null;
     }
-    // F-130: the stamp's ghost is part of what the live surface looks like
-    // (F-33 draws it inside this painter), so it is part of the tokens —
-    // by value, with the rect it covers, so a hover can be patched. F-344:
-    // and so is the text in hand floated over its hole, for a drag.
-    final ghost = surfacePainter.stampPreview?.value;
+    // F-344: the text in hand floated over its hole is part of what the
+    // live surface looks like, so it is part of the tokens — by value, with
+    // the rect it covers, so a drag can be patched. ↩️F-130 put the stamp's
+    // ghost here too; since brush-fidelity-Q9 it is the overlay's tiles.
     final landing = surfacePainter.landingPreview?.value;
     return (
       overlay: <TileCoord, Object>{
@@ -2103,7 +2102,6 @@ class _LayerStackPainter extends CustomPainter {
           entry.key: entry.value,
       },
       previews: [
-        if (ghost != null) (value: ghost, rect: ghost.canvasRect),
         if (landing != null) (value: landing, rect: landing.drawnWorldRect),
       ],
     );
@@ -2157,9 +2155,9 @@ class _LayerStackPainter extends CustomPainter {
       ).followedBy(_movedCoords(kept.tiles, now.tiles)),
       activeSurfacePainter!.surface.tileSize,
     );
-    // F-130: a ghost that moved (or came, or went) dirties where it WAS and
-    // where it IS — the old place has to be repainted without it. So does
-    // any preview the painter draws (F-344).
+    // F-130: a preview that moved (or came, or went) dirties where it WAS
+    // and where it IS — the old place is repainted without it. The stamp's
+    // ghost was the first (now the overlay's tiles); F-344's text in hand.
     final were = kept.previews;
     final are = now.previews;
     if (!listEquals(
@@ -2255,19 +2253,13 @@ class _LayerStackPainter extends CustomPainter {
         live = Object.hash(live, entry.key, identityHashCode(entry.value));
       }
     }
-    // 🚨★★★F-33: the stamp ghost is part of what this buffer would hold, so
-    // it has to be part of the key. Left out, the buffer caches a frame
-    // WITHOUT the ghost and the ghost then stops following the pointer —
-    // the silent failure this whole key exists to prevent.
+    // ↩️F-33: the stamp ghost was part of this key — a buffer cached
+    // without it stopped following the pointer. Since brush-fidelity-Q9 it
+    // is the overlay's tiles, which the key holds already.
     //
-    // Its own `==` is identity on the piece and the image plus value on the
-    // rect and the opacity, which is exactly what a hover changes. F-344:
-    // the text in hand, floated over its hole, for the same reason.
-    live = Object.hash(
-      live,
-      surfacePainter.stampPreview?.value,
-      surfacePainter.landingPreview?.value,
-    );
+    // F-344: the text in hand, floated over its hole, is part of what this
+    // buffer would hold — by its own `==`, which is what a drag changes.
+    live = Object.hash(live, surfacePainter.landingPreview?.value);
     return Object.hash(compositeKey, live);
   }
 

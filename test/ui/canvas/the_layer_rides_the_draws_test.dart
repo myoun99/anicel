@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
@@ -14,10 +13,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
-import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/cut_piece.dart';
-import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -348,7 +344,6 @@ void main() {
     );
 
     BitmapSurfacePainter inkedPainter({
-      ValueListenable<CutStampPreview?>? stampPreview,
       ValueListenable<LandingPreview?>? landingPreview,
     }) {
       final tile = sharedTile;
@@ -359,7 +354,6 @@ void main() {
           tiles: {TileCoord(x: 0, y: 0): tile},
         ),
         showTransparentBackground: false,
-        stampPreview: stampPreview,
         landingPreview: landingPreview,
       );
     }
@@ -374,7 +368,6 @@ void main() {
       double zoom = 1,
       bool disableBuffer = false,
       SelectionFloatOverlay? floatOverlay,
-      ValueListenable<CutStampPreview?>? stampPreview,
       ValueListenable<LandingPreview?>? landingPreview,
       TestRecordingCanvas? recordInto,
       TransformPose? pose,
@@ -408,7 +401,6 @@ void main() {
                   canvasSize: canvasSize,
                   viewport: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
                   activeSurfacePainter: inkedPainter(
-                    stampPreview: stampPreview,
                     landingPreview: landingPreview,
                   ),
                   paintPaper: true,
@@ -510,6 +502,11 @@ void main() {
       // a stamp ghost appearing. If the two routes rasterise the SAME
       // artwork differently, the flip is the shift.
       //
+      // ↩️The ghost was the flip this experiment used until
+      // brush-fidelity-Q9 (10-18) made it the overlay's tiles, which ride;
+      // what the text tool floats over its hole (F-344) flips the route the
+      // same way, so a landing preview stands in for it.
+      //
       // 🚨AND THE ONLY MEASUREMENT ON RECORD COVERS TILES. The painter's own
       // comment says the routes agree to the byte 「with the tile paint this
       // class actually uses (`isAntiAlias = false`, `FilterQuality.none`)
@@ -520,26 +517,13 @@ void main() {
       // ⚠️ZOOM 0.63, one of the values that measurement used, and reduced on
       // purpose: it is where the display law asks for filtering.
       Future<Uint8List> capture({
-        required bool ghost,
+        required bool floating,
         required bool disableBuffer,
       }) async {
-        final preview = ghost
-            ? ValueNotifier<CutStampPreview?>(
-                CutStampPreview(
-                  piece: CutPiece(
-                    image: BrushStampImage(
-                      id: 'ghost',
-                      width: 4,
-                      height: 4,
-                      rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
-                    ),
-                    originLeft: 0,
-                    originTop: 0,
-                  ),
+        final preview = floating
+            ? ValueNotifier<LandingPreview?>(
+                SelectionFloatPaint(
                   image: await tester.runAsync(_decodedSquare),
-                  canvasRect: const Rect.fromLTWH(0, 0, 4, 4),
-                  opacity: 1,
-                  blendMode: BrushBlendMode.color,
                 ),
               )
             : null;
@@ -551,12 +535,12 @@ void main() {
           effects: const [],
           zoom: 0.63,
           disableBuffer: disableBuffer,
-          stampPreview: preview,
+          landingPreview: preview,
         );
         expect(
           debugLiveLayerRodeTheDraws,
-          ghost ? isFalse : isTrue,
-          reason: 'fixture premise: the ghost is what flips the route',
+          floating ? isFalse : isTrue,
+          reason: 'fixture premise: the float is what flips the route',
         );
         final painted = tester
             .widgetList<CustomPaint>(
@@ -604,12 +588,15 @@ void main() {
         isNotNull,
         reason: 'fixture premise: the tile draws from its own picture',
       );
-      final rode = await capture(ghost: false, disableBuffer: disableBuffer);
-      final buffered = await capture(ghost: true, disableBuffer: disableBuffer);
+      final rode = await capture(floating: false, disableBuffer: disableBuffer);
+      final buffered = await capture(
+        floating: true,
+        disableBuffer: disableBuffer,
+      );
 
-      // ⛔ONLY THE PIXELS NEITHER ROUTE WAS ASKED TO CHANGE. The ghost sits
+      // ⛔ONLY THE PIXELS NEITHER ROUTE WAS ASKED TO CHANGE. The float sits
       // at canvas (0,0,4,4); at 0.63 that is a handful of screen pixels in
-      // the top-left, and of course they differ — one render has a ghost in
+      // the top-left, and of course they differ — one render has a float in
       // it. Everything from x = 40 on is the same artwork drawn twice, and
       // it is the only region that can say anything about SAMPLING.
       var differing = 0;
@@ -665,56 +652,14 @@ void main() {
       expect(debugLiveLayerRodeTheDraws, isFalse);
     });
 
-    testWidgets('🚨F-33: a STAMP GHOST takes the buffer, which is how it '
-        'gets the layer at all', (tester) async {
-      // 유저: 「레이어 블렌드모드나 **합성같은게 다** 반영되는」 프리뷰.
-      //
-      // The ghost used to be a `Positioned` widget ON TOP of the canvas,
-      // where the only thing it could honour was the stamp's own opacity.
-      // It is a painter's draw now — and this is the line that makes that
-      // mean something: a ghost overlaps the committed pixels, so the
-      // painter reports NON-disjoint coverage, so the stack assembles the
-      // layer into a buffer and puts the layer's opacity and blend on the
-      // BUFFER. Everything inside it, ghost included, composites as that
-      // layer.
-      //
-      // ⛔If this ever says true the ghost rides the per-draw path with no
-      // layer paint of its own, and F-33 is silently back.
-      final preview = ValueNotifier<CutStampPreview?>(
-        CutStampPreview(
-          piece: CutPiece(
-            image: BrushStampImage(
-              id: 'ghost',
-              width: 4,
-              height: 4,
-              rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
-            ),
-            originLeft: 0,
-            originTop: 0,
-          ),
-          // ⚠️:  goes through the engine
-          // and never completes inside the test's fake-async zone.
-          image: await tester.runAsync(_decodedSquare),
-          canvasRect: const Rect.fromLTWH(8, 8, 4, 4),
-          opacity: 1,
-          blendMode: BrushBlendMode.color,
-        ),
-      );
-      addTearDown(preview.dispose);
-
-      await paintActive(tester, effects: const [], stampPreview: preview);
-      expect(debugLiveLayerRodeTheDraws, isFalse);
-
-      // The other side: with nothing held there is nothing overlapping, so
-      // the cheap path comes back.
-      preview.value = null;
-      await paintActive(tester, effects: const [], stampPreview: preview);
-      expect(
-        debugLiveLayerRodeTheDraws,
-        isTrue,
-        reason: 'a hover that ended must not leave the layer buffered',
-      );
-    });
+    // ↩️🚨F-33 — 'a STAMP GHOST takes the buffer, which is how it gets the
+    // layer at all' (유저: 「레이어 블렌드모드나 **합성같은게 다** 반영되는」
+    // 프리뷰) was pinned here: the painter's ghost overlapped the committed
+    // pixels, so it reported NON-disjoint coverage and the layer's opacity
+    // and blend went on the buffer around it. Since brush-fidelity-Q9 (유저
+    // 2026-10-18 「통일하면 좋음」) the ghost is the overlay's whole-coordinate
+    // tiles, drawn in the layer's paint as a stroke's are, so F-33 holds by
+    // construction and the ghost takes no buffer.
 
     testWidgets('🚨F-344: a LANDING PREVIEW takes the buffer too — the text '
         'in hand floats over its hole as part of the layer', (tester) async {
@@ -748,22 +693,15 @@ void main() {
       // composited the rows ABOVE a second time (the paint pass has the
       // measurement). This VM rasters with Skia and never showed it, so the
       // pin is the ROUTE, not the pixels.
-      final preview = ValueNotifier<CutStampPreview?>(
-        CutStampPreview(
-          piece: CutPiece(
-            image: BrushStampImage(
-              id: 'ghost',
-              width: 4,
-              height: 4,
-              rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
-            ),
-            originLeft: 0,
-            originTop: 0,
-          ),
+      //
+      // ↩️The stamp's ghost buffered the row here — the report was made with
+      // it — until brush-fidelity-Q9 (10-18) made the ghost the overlay's
+      // tiles; a landing preview over the row buffers it the same way.
+      final preview = ValueNotifier<LandingPreview?>(
+        SelectionFloatPaint(
           image: await tester.runAsync(_decodedSquare),
-          canvasRect: const Rect.fromLTWH(8, 8, 4, 4),
-          opacity: 1,
-          blendMode: BrushBlendMode.color,
+          imageLeft: 8,
+          imageTop: 8,
         ),
       );
       addTearDown(preview.dispose);
@@ -777,13 +715,13 @@ void main() {
           effects: const [],
           blendMode: blend,
           disableBuffer: true,
-          stampPreview: preview,
+          landingPreview: preview,
           recordInto: canvas,
         );
         expect(
           debugLiveLayerRodeTheDraws,
           isFalse,
-          reason: '⛔premise: the ghost buffers the row',
+          reason: '⛔premise: the float buffers the row',
         );
         return [for (final call in canvas.invocations) call.invocation];
       }
@@ -1084,119 +1022,21 @@ void main() {
     });
   });
 
-  group('🚨F-243: a piece that blends by itself is held to its own rect', () {
-    // Drawn by itself, a piece in an advanced blend blends past its edges on
-    // the Windows app, as a tile of the row being drawn on did. This VM
-    // rasters with Skia and never shows it, so the pin is the CLIP.
-    testWidgets('a stamp ghost', (tester) async {
-      final image = await tester.runAsync(_decodedSquare);
-      final piece = CutPiece(
-        image: BrushStampImage(
-          id: 'ghost',
-          width: 4,
-          height: 4,
-          rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 200),
-        ),
-        originLeft: 0,
-        originTop: 0,
-      );
-      const box = Rect.fromLTWH(8, 8, 4, 4);
-      for (final (blend, held) in [
-        (BlendMode.multiply, true),
-        (BlendMode.screen, true),
-        (BlendMode.srcOver, false),
-      ]) {
-        final canvas = TestRecordingCanvas();
-        paintCutPiece(canvas, box, piece, image, blendMode: blend);
-        expect(
-          [
-            for (final call in canvas.invocations)
-              if (call.invocation.memberName == #clipRect)
-                call.invocation.positionalArguments[0],
-          ],
-          held ? [box] : isEmpty,
-          reason: '${blend.name}: held to its rect = $held',
-        );
-      }
-    });
-
-    test('a stroke overlay tile', () async {
-      // A host driving the overlay model itself previews a brush blend tile
-      // by tile. (The app pre-blends every stroke on the surface's own grid,
-      // so its tiles replace their coordinates and never come this way.)
-      final surface = inkedSurface();
-      decodeAll(surface);
-
-      Future<List<Invocation>> callsFor(BrushBlendMode blend) async {
-        final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
-        addTearDown(overlay.dispose);
-        overlay.blendMode = blend;
-        final rasterizer = BrushLiveStrokeRasterizer(
-          pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
-        );
-        rasterizer.blendFrom([
-          BrushDab(
-            center: CanvasPoint(x: 4, y: 4),
-            color: 0xFF000000,
-            size: 3,
-            opacity: 1,
-            flow: 1,
-            hardness: 1,
-            tipShape: BrushTipShape.round,
-            pressure: 1,
-            sequence: 0,
-          ),
-        ], from: 0);
-        overlay.updateRegion(
-          source: rasterizer,
-          region: DirtyRegion.fromXYWH(x: 0, y: 0, width: 8, height: 8),
-        );
-        expect(overlay.hasStrokeContent, isTrue, reason: 'fixture');
-        final canvas = _ClippedRecordingCanvas(
-          const Rect.fromLTWH(0, 0, 64, 64),
-        );
-        BitmapSurfacePainter(
-          surface: surface,
-          showTransparentBackground: false,
-          overlayModel: overlay,
-          tileImageCache: cache,
-        ).paintContentInto(canvas);
-        return [for (final call in canvas.invocations) call.invocation];
-      }
-
-      // The clip laid down right before each draw in [mode], if any.
-      List<Object?> heldTo(List<Invocation> calls, BlendMode mode) {
-        Object? clipBefore(int at) =>
-            at > 0 && calls[at - 1].memberName == #clipRect
-            ? calls[at - 1].positionalArguments[0]
-            : null;
-        return [
-          for (var i = 0; i < calls.length; i += 1)
-            if (calls[i].memberName == #drawImage &&
-                (calls[i].positionalArguments[2] as Paint).blendMode == mode)
-              clipBefore(i),
-        ];
-      }
-
-      const tileRect = Rect.fromLTWH(0, 0, 16, 16);
-      for (final (blend, held) in [
-        (BrushBlendMode.multiply, tileRect),
-        (BrushBlendMode.screen, tileRect),
-        (BrushBlendMode.add, null),
-      ]) {
-        expect(
-          heldTo(await callsFor(blend), blend.previewBlendMode),
-          [held],
-          reason: '${blend.name}: the one overlay tile, held to $held',
-        );
-      }
-    });
-  });
+  // ↩️🚨F-243 — 'a piece that blends by itself is held to its own rect'
+  // pinned the CLIP here (a piece in an advanced blend spills past its
+  // edges on the Windows app; this VM rasters with Skia and never shows
+  // it) for 'a stamp ghost' `paintCutPiece` drew in the stamp's composite
+  // and 'a stroke overlay tile' a host driving the overlay model drew in a
+  // brush blend on the GPU (BB-1). brush-fidelity-Q9 (유저 2026-10-18
+  // 「통일하면 좋음」) moved the stamp ghost to the overlay's CPU pre-blended
+  // tiles and took the GPU brush blend out of `_livePreviewPaint` (every
+  // stroke pre-blends, R27 #4): neither draws in a blend now.
 }
-/// A tiny decoded image for the stamp-ghost case.
+/// A tiny decoded image for the cases that only need one to be there — a
+/// float that buffers the row.
 ///
-/// The ghost's own pixels are not what that case measures — the ROUTE is —
-/// so this is the smallest thing that makes `image != null` true.
+/// Its own pixels are not what those cases measure — the ROUTE is — so this
+/// is the smallest thing that makes `image != null` true.
 Future<ui.Image> _decodedSquare() {
   final completer = Completer<ui.Image>();
   ui.decodeImageFromPixels(

@@ -19,7 +19,6 @@ class _OverlayPass {
   final ActiveStrokeOverlayModel _overlay;
 
   Paint get _overlayPaint => _pass._livePreviewPaint(
-    blendMode: _overlay.blendMode,
     erase: _overlay.erase,
     preBlended: _overlay.preBlended,
     replacesCoords: _pass._overlayReplacesCoords,
@@ -35,8 +34,8 @@ class _OverlayPass {
     // stroke draws destination-out instead: the accumulated stroke alpha
     // removes committed pixels exactly like the commit pass will. On a
     // mismatched grid the isolation layer is up and pre-blended tiles
-    // REPLACE (BlendMode.src) instead. The erase/blend paints serve only
-    // overlays that don't pre-blend (hosts driving the model directly).
+    // REPLACE (BlendMode.src) instead. The erase paint serves only overlays
+    // that don't pre-blend (hosts driving the model directly).
     if (_pass._overlayReplacesCoords) {
       return;
     }
@@ -55,11 +54,13 @@ class _OverlayPass {
       )) {
         continue;
       }
-      // 🚨F-243: each tile is one image in the stroke's blend, held to its
-      // own rect ([drawHeldToItsRect]) — tiles never overlapping does not
-      // keep an advanced blend inside them. ⚠️The app never gets here in
-      // such a blend: every stroke and fill pre-blends on the surface's own
-      // grid, and those tiles replace their coordinates (returned above).
+      // 🚨F-243: each tile is one image, held to its own rect wherever its
+      // paint does not blend in place ([drawHeldToItsRect]) — tiles never
+      // overlapping does not keep such a blend inside them. Here that is
+      // `src` (a pre-blended result off the surface's grid) or an eraser's
+      // `dstOut`. ↩️And a brush blend on the GPU (BB-1), for an overlay that
+      // did not pre-blend, until brush-fidelity-Q9 took that road out of
+      // `_livePreviewPaint` with the stamp ghost, its last rider in the app.
       final image = entry.value;
       drawHeldToItsRect(
         _pass._canvas,

@@ -313,8 +313,6 @@ void main() {
       WidgetTester tester,
       CutPiece piece, {
       bool decoded = true,
-      ui.BlendMode blendMode = ui.BlendMode.srcOver,
-      Color? under,
     }) async {
       final bytes = await tester.runAsync(() async {
         ui.Image? image;
@@ -328,16 +326,7 @@ void main() {
         final recorder = ui.PictureRecorder();
         final size = Size(side.toDouble(), side.toDouble());
         final canvas = Canvas(recorder, Offset.zero & size);
-        if (under != null) {
-          canvas.drawRect(Offset.zero & size, Paint()..color = under);
-        }
-        paintCutPiece(
-          canvas,
-          Offset.zero & size,
-          piece,
-          image,
-          blendMode: blendMode,
-        );
+        paintCutPiece(canvas, Offset.zero & size, piece, image);
         final rendered = await recorder.endRecording().toImage(side, side);
         final data = await rendered.toByteData(
           format: ui.ImageByteFormat.rawRgba,
@@ -354,32 +343,13 @@ void main() {
       return pixels.sublist(offset, offset + 4);
     }
 
-    testWidgets('🐛유저 F-69: the blend it is handed is the blend it draws '
-        'with', (tester) async {
-      // The wiring pin (`cut_tool_drag_test`) proves the tool's composite
-      // REACHES the ghost; this proves the ghost then DRAWS with it.
-      // Either one alone passes with the other end broken.
-      //
-      // `dstOut` is the eraser's preview mode, and it is the one that
-      // cannot be mistaken for a plain draw: the piece's own pixels are
-      // gone and what they covered is gone with them.
-      final pixels = await render(
-        tester,
-        pieceWithDot(),
-        blendMode: ui.BlendMode.dstOut,
-        under: const Color(0xFF00FF00),
-      );
-      expect(
-        at(pixels, 37, 3),
-        [0, 0, 0, 0],
-        reason: 'the dot cut a hole in the backdrop',
-      );
-      expect(
-        at(pixels, 0, 0),
-        [0, 255, 0, 255],
-        reason: 'and left the rest of the backdrop alone',
-      );
-    });
+    // ↩️🐛유저 F-69 — 'the blend it is handed is the blend it draws with'
+    // was pinned here: the cursor ghost drew the piece in the stamp's own
+    // composite through `paintCutPiece`, and this proved the draw used it
+    // (the wiring pin, `cut_tool_drag_test`, proves the composite reaches
+    // the ghost). brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved
+    // the stamp ghost to the overlay's CPU pre-blended tiles; this preview
+    // draws only what is HELD.
 
     testWidgets('a single source pixel lands as a single opaque pixel', (
       tester,

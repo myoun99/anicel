@@ -1048,9 +1048,10 @@ class _LayerStackPaintPass {
     // not the opacity riding with it. Blending an IMAGE with the same
     // paint, which every other row and every group already does, did
     // not. The price is this route's, paid only while a buffered row
-    // wears a blend that is not srcOver (a stamp ghost, a lifted float):
-    // a brush or eraser stroke on the same row showed nothing either way
-    // and its frame cost did not move (median UI 1.6 vs 1.4 ms).
+    // wears a blend that is not srcOver (a lifted float, the text in hand;
+    // ↩️a stamp ghost too, until brush-fidelity-Q9 made it the overlay's
+    // tiles): a brush or eraser stroke on the same row showed nothing
+    // either way and its frame cost did not move (median UI 1.6 vs 1.4 ms).
     // ⚠️Since F-243 an advanced blend on the row itself is buffered too
     // (see `needsBuffer`), so a multiply or screen row pays it on every
     // paint — the price of being the one image every other such row is.
@@ -1524,8 +1525,9 @@ class _LayerStackPaintPass {
   ///   the screen clears the pasteboard under it too, and only an opaque
   ///   draw over it puts back exactly what the head was blitted over;
   /// · every draw the recompose makes is a texel copy blended pixel by
-  ///   pixel ([_drawsTexelForTexel]), and no stamp ghost is drawn — it
-  ///   lands where the pointer is, not on the texel grid;
+  ///   pixel ([_drawsTexelForTexel]). ↩️A stamp ghost was the exception —
+  ///   drawn where the pointer was, off the texel grid — until
+  ///   brush-fidelity-Q9 made it the overlay's tiles, on the grid;
   /// · the screen is 8-bit. iOS draws to a wide-gamut surface by default,
   ///   where blending rounds differently from the 8-bit head.
   bool _pictureDrawsTheSame(Rect dirty) {
@@ -1544,9 +1546,7 @@ class _LayerStackPaintPass {
         region.top >= _canvasRect.top &&
         region.right <= _canvasRect.right &&
         region.bottom <= _canvasRect.bottom;
-    return onPaper &&
-        _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
-        _drawsTexelForTexel(_painter.nodes);
+    return onPaper && _drawsTexelForTexel(_painter.nodes);
   }
 
   /// Whether every draw [nodes] make is a texel copy blended pixel by pixel

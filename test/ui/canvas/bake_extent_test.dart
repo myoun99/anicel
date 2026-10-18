@@ -5,17 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
-import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
@@ -26,9 +23,10 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -382,11 +380,15 @@ void main() {
     // F-85 made the buffer cover everything the active slot draws, and the
     // bake's extent followed it: a stamp ghost hovering past the ink dropped
     // every recording and rasterised the whole backdrop again on each move.
+    // ↩️The ghost was that live draw here until brush-fidelity-Q9 (10-18)
+    // made it the overlay's tiles; the painter's landing preview — what the
+    // text tool floats over its hole (F-344) — grows the buffer the same way
+    // and stands in for it.
     //
     // A 32px page seen whole with its pasteboard (origin 32px in), SEVEN rows
     // of ink below the active layer — the raster threshold, as above; a
     // picture replays at any size, so below it nothing could stretch — and a
-    // stamp ghost on the active layer.
+    // landing preview on the active layer.
     const canvasSize = CanvasSize(width: 32, height: 32);
     const view = Size(96, 96);
     const frameKey = BrushFrameKey(
@@ -399,7 +401,7 @@ void main() {
     const inThePage = Rect.fromLTWH(8, 8, 16, 16);
     const onThePasteboard = Rect.fromLTWH(-16, 16, 16, 16);
 
-    final ghostImage = () {
+    final floatImage = () {
       final recorder = ui.PictureRecorder();
       Canvas(recorder).drawRect(
         const Rect.fromLTWH(0, 0, 16, 16),
@@ -410,23 +412,11 @@ void main() {
       picture.dispose();
       return image;
     }();
-    addTearDown(ghostImage.dispose);
-    final piece = CutPiece(
-      image: BrushStampImage(
-        id: 'ghost',
-        width: 16,
-        height: 16,
-        rgba: Uint8List(16 * 16 * 4),
-      ),
-      originLeft: 0,
-      originTop: 0,
-    );
-    CutStampPreview ghostAt(Rect where) => CutStampPreview(
-      piece: piece,
-      image: ghostImage,
-      canvasRect: where,
-      opacity: 1,
-      blendMode: BrushBlendMode.color,
+    addTearDown(floatImage.dispose);
+    SelectionFloatPaint floatAt(Rect where) => SelectionFloatPaint(
+      image: floatImage,
+      imageLeft: where.left,
+      imageTop: where.top,
     );
 
     LayerFrameImageCache cacheWithDab() {
@@ -458,7 +448,7 @@ void main() {
     }
 
     Future<({CustomPainter painter, StaticCompositeBake bake})> pump(
-      ValueNotifier<CutStampPreview?> ghost,
+      ValueNotifier<LandingPreview?> float,
     ) async {
       final cache = cacheWithDab();
       await tester.runAsync(
@@ -498,7 +488,7 @@ void main() {
                       tileSize: 16,
                       tiles: const {},
                     ),
-                    stampPreview: ghost,
+                    landingPreview: float,
                     showTransparentBackground: false,
                   ),
                   paintPaper: true,
@@ -533,9 +523,9 @@ void main() {
       size.height.round(),
     );
 
-    final ghost = ValueNotifier<CutStampPreview?>(ghostAt(inThePage));
-    addTearDown(ghost.dispose);
-    final mounted = await pump(ghost);
+    final float = ValueNotifier<LandingPreview?>(floatAt(inThePage));
+    addTearDown(float.dispose);
+    final mounted = await pump(float);
     await tester.runAsync(() => paintAt(mounted.painter, view));
     expect(
       mounted.bake.rasterCount,
@@ -545,14 +535,14 @@ void main() {
     );
     final recorded = mounted.bake.recordCount;
 
-    ghost.value = ghostAt(onThePasteboard);
+    float.value = floatAt(onThePasteboard);
     final moved = await tester.runAsync(() => paintAt(mounted.painter, view));
     expect(
       mounted.bake.recordCount,
       recorded,
-      reason: 'the ghost grew the BUFFER past the committed extent; nothing '
-          'the bake records draws it, so a hover replays the backdrop '
-          'instead of rasterising it again under the pointer',
+      reason: 'the float grew the BUFFER past the committed extent; nothing '
+          'the bake records draws it, so a carry replays the backdrop '
+          'instead of rasterising it again under the hand',
     );
     // The counter is live: an extent that really moves re-records — once a
     // paint there draws. A narrower view alone is a carry with nothing to
@@ -568,19 +558,19 @@ void main() {
           'depend on — the count above did not stay put by being dead',
     );
 
-    // The same state, painted by a stack that never saw the ghost elsewhere.
-    final settled = ValueNotifier<CutStampPreview?>(ghostAt(onThePasteboard));
+    // The same state, painted by a stack that never saw the float elsewhere.
+    final settled = ValueNotifier<LandingPreview?>(floatAt(onThePasteboard));
     addTearDown(settled.dispose);
     final fresh = await pump(settled);
     final freshBytes = await tester.runAsync(
       () => paintAt(fresh.painter, view),
     );
-    // Screen (24, 56) is canvas (-8, 24): inside the ghost on the pasteboard.
+    // Screen (24, 56) is canvas (-8, 24): inside the float on the pasteboard.
     const probe = ((56 * 96) + 24) * 4;
     expect(
       [freshBytes![probe], freshBytes[probe + 1], freshBytes[probe + 2]],
       [255, 0, 0],
-      reason: 'anchor: the ghost is on the pasteboard, so the buffer really '
+      reason: 'anchor: the float is on the pasteboard, so the buffer really '
           'did grow past the page',
     );
     expect(

@@ -24,11 +24,7 @@ class _CanvasPanelToolCursor {
   /// Centre-anchored, matching where a click actually drops it —
   /// [buildCutPasteDab] centres on `origin + size / 2` and the commit
   /// rounds from there.
-  CutStampPreview _stampPreviewAt(
-    Offset position,
-    CutPiece piece,
-    ui.Image? image,
-  ) {
+  CutStampPreview _stampPreviewAt(Offset position, CutPiece piece) {
     final centre = _state._viewportState._viewport.viewportOffsetToCanvas(
       position,
     );
@@ -36,7 +32,6 @@ class _CanvasPanelToolCursor {
     final height = piece.stampHeight.toDouble();
     return CutStampPreview(
       piece: piece,
-      image: image,
       canvasRect: Rect.fromLTWH(
         centre.x - width / 2,
         centre.y - height / 2,
@@ -271,15 +266,17 @@ class _CanvasPanelToolCursor {
       // footprint: without it the only way to learn where a stamp lands is
       // to drop it and undo. It matters more here — a stamp puts down a
       // whole drawing, not a dot.
-      // 🚨★★★F-33 (유저): the stamp's ghost now rides the SURFACE PAINTER,
-      // not a widget above the canvas — 「레이어 블렌드모드나 **합성같은게
-      // 다** 반영되는」. This branch publishes it and draws nothing; the
-      // painter's `layerPaint` is what makes the layer's opacity, blend and
-      // group buffer reach it.
+      // 🚨★★★F-33 (유저): the stamp's ghost is not a widget above the canvas
+      // — 「레이어 블렌드모드나 **합성같은게 다** 반영되는」. This branch
+      // publishes the AIM and draws nothing; the panel lays the ghost from
+      // it as the click's own bytes on the stroke overlay, which the layer's
+      // paint reaches (brush-fidelity-Q9).
       //
-      // ⛔It still MOUNTS here, because the decoded image belongs to
-      // [CutPieceImageHost] and the publisher drops the reference in the
-      // same dispose that frees it.
+      // ⛔It still MOUNTS here: unmounted with the tool, the publisher clears
+      // the aim and the ghost goes with it. ↩️It mounted for the decoded
+      // image's sake first — [CutPieceImageHost] owned it, and the reference
+      // went in the dispose that freed it — until brush-fidelity-Q9 (유저
+      // 2026-10-18 「통일하면 좋음」) laid the ghost from the piece's bytes.
       if (canvasToolStamps(_state._brush.tool) &&
           _state.widget.cutPieceSlot != null)
         ListenableBuilder(
@@ -300,14 +297,11 @@ class _CanvasPanelToolCursor {
               listenable: brush == null ? aim : Listenable.merge([aim, brush]),
               builder: (context, _) {
                 final position = aim.value;
-                return CutPieceImageHost(
-                  piece: piece,
-                  builder: (context, image) => CutStampPreviewPublisher(
-                    sink: _state._stampPreview,
-                    preview: position == null
-                        ? null
-                        : _stampPreviewAt(position, piece, image),
-                  ),
+                return CutStampPreviewPublisher(
+                  sink: _state._stampPreview,
+                  preview: position == null
+                      ? null
+                      : _stampPreviewAt(position, piece),
                 );
               },
             );

@@ -8,18 +8,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
-import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
@@ -35,7 +32,6 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
@@ -81,10 +77,7 @@ void main() {
 
   /// A stroke inside the tile at [at]: step i has drawn pixels 0…i of a
   /// line through it.
-  List<BitmapSurfacePainter> strokeIn(
-    TileCoord at, {
-    ValueListenable<CutStampPreview?>? ghost,
-  }) {
+  List<BitmapSurfacePainter> strokeIn(TileCoord at) {
     final painters = <BitmapSurfacePainter>[];
     var tile = BitmapTile.blank(size: tileSize);
     for (var step = 0; step <= steps; step += 1) {
@@ -102,7 +95,6 @@ void main() {
             tiles: {at: tile},
           ),
           showTransparentBackground: false,
-          stampPreview: ghost,
         ),
       );
     }
@@ -358,42 +350,6 @@ void main() {
     addTearDown(tester.view.reset);
   }
 
-  /// A stamp ghost over the stroke: a white 4×4 piece through `color`.
-  Future<ValueNotifier<CutStampPreview?>> aGhost(WidgetTester tester) async {
-    final ghostImage = await tester.runAsync(() {
-      final done = Completer<ui.Image>();
-      ui.decodeImageFromPixels(
-        Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
-        4,
-        4,
-        ui.PixelFormat.rgba8888,
-        done.complete,
-      );
-      return done.future;
-    });
-    addTearDown(ghostImage!.dispose);
-    final ghost = ValueNotifier<CutStampPreview?>(
-      CutStampPreview(
-        piece: CutPiece(
-          image: BrushStampImage(
-            id: 'ghost',
-            width: 4,
-            height: 4,
-            rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
-          ),
-          originLeft: 0,
-          originTop: 0,
-        ),
-        image: ghostImage,
-        canvasRect: const Rect.fromLTWH(30.5, 40.25, 4, 4),
-        opacity: 1,
-        blendMode: BrushBlendMode.color,
-      ),
-    );
-    addTearDown(ghost.dispose);
-    return ghost;
-  }
-
   group('a step over the real base draws its picture, and the screen is the '
       "head's, byte for byte", () {
     final viewports = <String, CanvasViewport>{
@@ -591,12 +547,10 @@ void main() {
       );
     });
 
-    testWidgets('with a stamp ghost on the layer', (tester) async {
-      await expectHeads(
-        tester,
-        painters: strokeIn(TileCoord(x: 1, y: 1), ghost: await aGhost(tester)),
-      );
-    });
+    // ↩️'with a stamp ghost on the layer' was pinned here: the painter's
+    // ghost was drawn where the pointer was, off the texel grid, so a step
+    // with one rastered its head. Since brush-fidelity-Q9 (유저 2026-10-18
+    // 「통일하면 좋음」) the ghost is the overlay's tiles, on the grid.
 
     testWidgets('on iOS, whose screen is wide-gamut', (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -723,16 +677,11 @@ void main() {
       }
     }
 
-    testWidgets('a stamp ghost on the live row, whatever the rows wear', (
-      tester,
-    ) async {
-      await expectApart(
-        tester,
-        nodes: [row('below'), activeRow],
-        viewport: CanvasViewport(),
-        painters: strokeIn(TileCoord(x: 1, y: 1), ghost: await aGhost(tester)),
-      );
-    });
+    // ↩️'a stamp ghost on the live row, whatever the rows wear' was pinned
+    // here (10-19): the painter drew the ghost in the stamp's composite
+    // mode, a blend not in place. Since brush-fidelity-Q9 (유저 2026-10-18
+    // 「통일하면 좋음」) the ghost is the overlay's pre-blended tiles and
+    // draws in no blend, so the stroke's own cases above are its cases.
 
     // A region composed apart is an image of what it is given, and a step's
     // dirty rect is the live tiles it changed — which reach past the view.

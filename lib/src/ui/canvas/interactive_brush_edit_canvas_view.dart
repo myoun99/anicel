@@ -90,6 +90,12 @@ Duration shapeShowFrameShare = const Duration(microseconds: 4000);
 /// stamp pieces made one at a time — every call of [pieces] makes them
 /// afresh — under [blend]. [shape] is what the pieces are OF, compared by
 /// value: the same shape asked for again asks for nothing new.
+///
+/// 🚨The pieces come THROUGH the selection already: the maker cuts, the
+/// view lays what it is handed. ↩️The view cut them itself, at the hard
+/// outline — which a held picture's ghost (brush-fidelity-Q9: the ghost is
+/// what lands) would have had cut twice, the door having cut it once at
+/// the selection's softness.
 typedef ShapeArea = ({
   Object shape,
   Iterable<BrushDab> Function() pieces,

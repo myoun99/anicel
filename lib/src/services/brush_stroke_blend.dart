@@ -376,10 +376,32 @@ final class _ChannelMix {
       case BrushBlendMode.chroma:
         b.setAll(0, cs);
         _setLum(b, _lum(cd));
-      default:
-        assert(mode == BrushBlendMode.luminosity, '$mode mixes no channels');
+      case BrushBlendMode.luminosity:
         b.setAll(0, cd);
         _setLum(b, _lum(cs));
+      case BrushBlendMode.color ||
+          BrushBlendMode.behind ||
+          BrushBlendMode.erase ||
+          BrushBlendMode.darken ||
+          BrushBlendMode.multiply ||
+          BrushBlendMode.colorBurn ||
+          BrushBlendMode.linearBurn ||
+          BrushBlendMode.subtract ||
+          BrushBlendMode.lighten ||
+          BrushBlendMode.screen ||
+          BrushBlendMode.colorDodge ||
+          BrushBlendMode.add ||
+          BrushBlendMode.overlay ||
+          BrushBlendMode.softLight ||
+          BrushBlendMode.hardLight ||
+          BrushBlendMode.difference ||
+          BrushBlendMode.vividLight ||
+          BrushBlendMode.linearLight ||
+          BrushBlendMode.pinLight ||
+          BrushBlendMode.hardMix ||
+          BrushBlendMode.exclusion ||
+          BrushBlendMode.divide:
+        throw ArgumentError.value(mode, 'mode', 'mixes no channels');
     }
   }
 

@@ -7,9 +7,10 @@ import 'package:anicel/src/models/separable_blend_mode.dart';
 
 /// The single source of truth this test pins: each separable mode's GPU blend
 /// and English label. BrushBlendMode and LayerBlendMode both resolve their
-/// separable cases through SeparableBlendMode, so these values must reach
-/// both — and a value renamed out of the name-based [forName] link (which
-/// would resolve to null and throw at runtime) fails here first.
+/// separable cases through SeparableBlendMode, so the label must reach both
+/// and the blend the layer's — and a value renamed out of the name-based
+/// [forName] link (which would resolve to null and throw at runtime) fails
+/// here first.
 ///
 /// ↩️This map also pinned each mode's Japanese label, and that every other
 /// language kept the English (the 07-22 rule: ja localized first). 유저
@@ -66,35 +67,33 @@ void main() {
   });
 
   group('BrushBlendMode delegates separable data', () {
+    // ↩️Each also pinned its GPU preview blend (`previewBlendMode`), until
+    // brush-fidelity-Q9 left no brush blend drawn on the GPU.
     const heads = {
-      BrushBlendMode.color: (BlendMode.srcOver, 'Normal'),
-      BrushBlendMode.behind: (BlendMode.dstOver, 'Behind'),
-      BrushBlendMode.erase: (BlendMode.dstOut, 'Erase'),
+      BrushBlendMode.color: 'Normal',
+      BrushBlendMode.behind: 'Behind',
+      BrushBlendMode.erase: 'Erase',
     };
     // The six that mix the three channels — the brush's own.
-    const mixers = <BrushBlendMode, (BlendMode?, String)>{
-      BrushBlendMode.darkerColor: (null, 'Darker Color'),
-      BrushBlendMode.lighterColor: (null, 'Lighter Color'),
-      BrushBlendMode.hue: (BlendMode.hue, 'Hue'),
-      BrushBlendMode.saturation: (BlendMode.saturation, 'Saturation'),
-      BrushBlendMode.chroma: (BlendMode.color, 'Color'),
-      BrushBlendMode.luminosity: (BlendMode.luminosity, 'Luminosity'),
+    const mixers = {
+      BrushBlendMode.darkerColor: 'Darker Color',
+      BrushBlendMode.lighterColor: 'Lighter Color',
+      BrushBlendMode.hue: 'Hue',
+      BrushBlendMode.saturation: 'Saturation',
+      BrushBlendMode.chroma: 'Color',
+      BrushBlendMode.luminosity: 'Luminosity',
     };
 
-    test('heads keep their own blend/labels and are not separable', () {
-      heads.forEach((mode, want) {
-        final (blend, en) = want;
+    test('heads keep their own labels and are not separable', () {
+      heads.forEach((mode, en) {
         expect(mode.separable, isNull, reason: '${mode.name} head');
-        expect(mode.previewBlendMode, blend);
         expect(mode.label, en);
       });
     });
 
-    test('the six that mix the channels keep their own blend/labels', () {
-      mixers.forEach((mode, want) {
-        final (blend, en) = want;
+    test('the six that mix the channels keep their own labels', () {
+      mixers.forEach((mode, en) {
         expect(mode.separable, isNull, reason: '${mode.name} mixes');
-        expect(mode.previewBlendMode, blend, reason: '${mode.name} blend');
         expect(mode.label, en, reason: '${mode.name} en');
       });
     });
@@ -104,8 +103,7 @@ void main() {
         if (heads.containsKey(mode) || mixers.containsKey(mode)) continue;
         final separable = mode.separable;
         expect(separable, isNotNull, reason: '${mode.name} must be separable');
-        expect(mode.previewBlendMode, separable!.blendMode);
-        expect(mode.label, separable.label);
+        expect(mode.label, separable!.label);
       }
       // ...and every separable mode is the brush's.
       for (final separable in SeparableBlendMode.values) {

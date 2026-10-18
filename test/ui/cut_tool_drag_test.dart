@@ -898,9 +898,6 @@ void main() {
     await gesture.addPointer(location: origin + const Offset(120, 160));
     await tester.pump();
     await gesture.moveTo(origin + const Offset(120, 160));
-    // The piece decodes asynchronously ([CutPieceImageHost]); until it
-    // lands there is nothing to publish, which is the same nothing the old
-    // overlay drew.
     await tester.pumpAndSettle();
 
     expect(
@@ -1051,10 +1048,12 @@ void main() {
     await gesture.moveTo(origin + hover);
     await tester.pumpAndSettle();
 
-    // 🚨★★★F-33: the ghost is a PAINTER's now, and it is addressed in
-    // CANVAS pixels — the space the artwork lives in. It used to be a
-    // `Positioned` widget in viewport pixels, which is why it could not be
-    // told about the layer it was landing on.
+    // 🚨★★★F-33: the ghost's aim is addressed in CANVAS pixels — the space
+    // the artwork lives in. It used to be a `Positioned` widget in viewport
+    // pixels, which is why it could not be told about the layer it was
+    // landing on. ↩️F-33 made it a painter's draw; brush-fidelity-Q9 (유저
+    // 2026-10-18 「통일하면 좋음」) lays it as the overlay's CPU pre-blended
+    // tiles, from this aim.
     CutStampPreview published() => tester
         .widget<CutStampPreviewPublisher>(find.byType(CutStampPreviewPublisher))
         .preview!;

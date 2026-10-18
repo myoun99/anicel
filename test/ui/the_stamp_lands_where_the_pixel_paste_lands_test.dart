@@ -34,6 +34,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart'
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -549,6 +550,38 @@ void main() {
       reason: 'the stamp\'s opacity, on the cel you stand on',
     );
     expect(pixel(session, 'c4', 15, 15) >> 8, redRgba >> 8);
+  });
+
+  testWidgets('its own blend whichever tool is in hand when its paste is '
+      'pressed, as its opacity — not the brush\'s', (tester) async {
+    final session = await pump(tester);
+    paint(
+      session,
+      'c4',
+      box: (left: 0, top: 0, right: 60, bottom: 60),
+      rgba: blue,
+    );
+    session.selectFrameIndex(6);
+    await holdStamp(tester, squareOf(red), blend: BrushBlendMode.erase);
+    final brush = workspaceOf(tester).brushTool!;
+    brush.value = brush.value.copyWith(
+      tool: CanvasTool.brush,
+      blendMode: BrushBlendMode.color,
+    );
+    await pumpFrames(tester);
+
+    tester
+        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        .cutPieceSlot!
+        .pasteAtOriginHandler!();
+    await pumpFrames(tester);
+
+    expect(
+      pixel(session, 'c4', 15, 15),
+      0,
+      reason: 'the stamp\'s erase — ↩️the brush in hand painted it red',
+    );
+    expect(pixel(session, 'c4', 35, 35), blueRgba, reason: 'the rest');
   });
 
   testWidgets('확정 lays the stamp down again on the cel you stand on — the '

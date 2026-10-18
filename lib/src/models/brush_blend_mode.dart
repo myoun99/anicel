@@ -1,5 +1,3 @@
-import 'dart:ui' show BlendMode;
-
 import 'separable_blend_mode.dart';
 
 /// The BRUSH's own composite against the cel it paints on (R26 #9, BB-1).
@@ -79,27 +77,6 @@ enum BrushBlendMode {
   /// or [behind]. The six that mix the channels are neither, and a stamp
   /// blending through one would have gone dab by dab as plain colour.
   bool get blendsTheWholeStroke => this != color && this != erase;
-
-  /// The GPU BlendMode this brush mode maps to, or null where the GPU has
-  /// none (seven separable modes and darker/lighter colour).
-  ///
-  /// R27 #4: live STROKES no longer preview through this — every
-  /// non-[color] mode pre-blends its overlay tiles with the commit's own
-  /// CPU kernels (`preBlendStrokeOverlayPixels`), so the pixels on screen
-  /// while drawing ARE the committed pixels, byte for byte. This mapping
-  /// remains for [color]'s plain srcOver and as the identity the painter
-  /// keys its fallback branch on.
-  BlendMode? get previewBlendMode => switch (this) {
-    color => BlendMode.srcOver,
-    behind => BlendMode.dstOver,
-    erase => BlendMode.dstOut,
-    darkerColor || lighterColor => null,
-    hue => BlendMode.hue,
-    saturation => BlendMode.saturation,
-    chroma => BlendMode.color,
-    luminosity => BlendMode.luminosity,
-    _ => separable!.blendMode,
-  };
 
   /// The industry-standard English label.
   ///

@@ -1,23 +1,25 @@
-// A STAMP GHOST THAT MOVES PATCHES THE BUFFER — THE OLD RECT AND THE NEW —
-// INSTEAD OF COMPOSITING THE WHOLE CANVAS AGAIN. AND IT IS DRAWN ON EVERY
-// ROUTE THE ACTIVE SLOT CAN TAKE.
+// A PREVIEW THAT MOVES PATCHES THE BUFFER — THE OLD RECT AND THE NEW —
+// INSTEAD OF COMPOSITING THE WHOLE CANVAS AGAIN.
 //
-// 🚨★★★F-130 measured it (2026-09-15, `cursor_at_os_speed_benchmark_test`,
-// the stamp arm): 25 moves of the held piece, 25 FULL composes of the
-// display buffer, 0 patches — 23ms a frame on the debug bar where the
-// brush's own hover cost 8. The ghost was in the buffer's KEY (F-33: it
-// rides the surface painter, so the buffer holds it) but not in its
-// TOKENS, so a hover was a miss that could not say where it changed and
-// fell through to the full raster. The tokens now carry the ghost, and a
-// move is the union of where it was and where it is.
+// 🚨★★★F-130 measured it on the stamp's ghost (2026-09-15,
+// `cursor_at_os_speed_benchmark_test`, the stamp arm): 25 moves of the held
+// piece, 25 FULL composes of the display buffer, 0 patches — 23ms a frame
+// on the debug bar where the brush's own hover cost 8. The ghost was in the
+// buffer's KEY (F-33: it rode the surface painter, so the buffer held it)
+// but not in its TOKENS, so a hover was a miss that could not say where it
+// changed and fell through to the full raster. The tokens carry the
+// painter's preview, and a move is the union of where it was and where it
+// is. The pixels are pinned equal to a cold composite, including when the
+// preview crosses the edge of the active extent (F-85 sizes the buffer by
+// what the slot draws, so that move changes the buffer's RECT and the carry
+// has to repaint the preview's two places as well as the exposed bands —
+// adversarial review, 2026-09-15).
 //
-// F-33 is untouched on purpose: the ghost still rides the surface painter
-// and composites as the layer — this only changes how much of the buffer
-// is redrawn to move it. The pixels are pinned equal to a cold composite,
-// including when the ghost crosses the edge of the active extent (F-85
-// sizes the buffer by what the slot draws, ghost included, so that move
-// changes the buffer's RECT and the carry has to repaint the ghost's two
-// places as well as the exposed bands — adversarial review, 2026-09-15).
+// ↩️The ghost was the preview these tests moved — F-33 untouched on
+// purpose: it rode the surface painter and composited as the layer — until
+// brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) made it the overlay's
+// tiles, the click's own bytes. What the text tool floats over its hole
+// (F-344) is the painter's preview now.
 //
 // 🪦The two routes that once replaced the walk — the flat projection below
 // the knee, and the first-activation stand-in — never drew the ghost at
@@ -25,7 +27,8 @@
 // each drew it over its own image. Both routes are gone (the projection
 // with the render round, the stand-in on 2026-09-17): the tiles are the
 // one draw the active slot has, so the last test pins the frame the
-// stand-in existed for — activation — with the ghost over the tiles.
+// stand-in existed for — activation (↩️with the ghost over the tiles, until
+// brush-fidelity-Q9).
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -35,17 +38,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
-import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -57,7 +57,6 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -85,22 +84,12 @@ void main() {
     return completer.future;
   }
 
-  CutStampPreview ghostAt(Rect rect, ui.Image image) => CutStampPreview(
-    piece: CutPiece(
-      image: BrushStampImage(
-        id: 'ghost',
-        width: 4,
-        height: 4,
-        rgba: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 255),
-      ),
-      originLeft: 0,
-      originTop: 0,
-    ),
-    image: image,
-    canvasRect: rect,
-    opacity: 1,
-    blendMode: BrushBlendMode.color,
-  );
+  SelectionFloatPaint floatAt(Rect rect, ui.Image image) =>
+      SelectionFloatPaint(
+        image: image,
+        imageLeft: rect.left,
+        imageTop: rect.top,
+      );
 
   Future<void> pumpView(
     WidgetTester tester,
@@ -201,7 +190,7 @@ void main() {
     return bytesNow(tester);
   }
 
-  BitmapSurfacePainter tiledPainter(ValueNotifier<CutStampPreview?> preview) =>
+  BitmapSurfacePainter tiledPainter(ValueNotifier<LandingPreview?> preview) =>
       BitmapSurfacePainter(
         surface: BitmapSurface(
           canvasSize: canvasSize,
@@ -209,45 +198,13 @@ void main() {
           tiles: {TileCoord(x: 0, y: 0): BitmapTile.blank(size: 16)},
         ),
         showTransparentBackground: false,
-        stampPreview: preview,
+        landingPreview: preview,
       );
 
-  testWidgets('a move inside the active extent patches the buffer: no full '
-      'compose, the dirty rect is the two ghost rects, the pixels are the '
-      'cold composite\'s', (tester) async {
-    final cache = DisplayBufferCache();
-    addTearDown(cache.dispose);
-    final image = (await tester.runAsync(decodedSquare))!;
-    addTearDown(image.dispose);
-    const was = Rect.fromLTWH(2, 2, 4, 4);
-    const now = Rect.fromLTWH(10, 8, 4, 4);
-    final preview = ValueNotifier<CutStampPreview?>(ghostAt(was, image));
-    addTearDown(preview.dispose);
-    final painter = tiledPainter(preview);
-    await pumpView(tester, painter, cache);
-    await settle(tester, cache);
-    final before = await bytesNow(tester);
-    expect(alphaAt(before, 3, 3), 0xFF, reason: 'fixture: the ghost is drawn where it was');
-    final fullBefore = cache.fullCount;
-    final patchedBefore = cache.patchedCount;
-
-    // THE HOVER: the ghost moves, nothing else does.
-    preview.value = ghostAt(now, image);
-    await tester.pump();
-
-    expect(cache.fullCount, fullBefore, reason: 'a moved ghost must not recomposite the whole buffer');
-    expect(cache.patchedCount, patchedBefore + 1, reason: 'it is a patch');
-    expect(
-      cache.lastDirtyRect,
-      was.expandToInclude(now).inflate(1),
-      reason: 'the patch is where the ghost was and where it is, one pixel of hairline',
-    );
-
-    final patched = await bytesNow(tester);
-    expect(alphaAt(patched, 3, 3), 0, reason: 'the old place is cleared');
-    expect(alphaAt(patched, 11, 9), 0xFF, reason: 'the new place is inked');
-    expect(patched, await coldBytes(tester, painter), reason: 'byte for byte the cold composite');
-  });
+  // ↩️'a move inside the active extent patches the buffer …' moved the
+  // stamp's ghost, until brush-fidelity-Q9 made it the overlay's tiles. The
+  // F-344 test below pins the same patch — where it was and where it is,
+  // the cold composite's pixels — on the landing preview.
 
   testWidgets('🚨F-344: a LANDING PREVIEW that moves patches the buffer the '
       'same way — where it was and where it is — and is drawn past the '
@@ -318,17 +275,20 @@ void main() {
     expect(patched, await coldBytes(tester, painter));
   });
 
-  testWidgets('a ghost that crosses the edge of the active extent and comes '
-      'back leaves no stale pixels — the buffer rect moves with it and the '
-      'carry repaints both places', (tester) async {
+  testWidgets('a landing preview that crosses the edge of the active extent '
+      'and comes back leaves no stale pixels — the buffer rect moves with it '
+      'and the carry repaints both places', (tester) async {
+    // ↩️The stamp's ghost crossed here until brush-fidelity-Q9 made it the
+    // overlay's tiles; the landing preview rides the same tokens and the
+    // same carry.
     final cache = DisplayBufferCache();
     addTearDown(cache.dispose);
     final image = (await tester.runAsync(decodedSquare))!;
     addTearDown(image.dispose);
-    // The tile covers (0,0)-(16,16); the ghost leaves it and returns.
+    // The tile covers (0,0)-(16,16); the float leaves it and returns.
     const inside = Rect.fromLTWH(2, 2, 4, 4);
     const outside = Rect.fromLTWH(22, 20, 4, 4);
-    final preview = ValueNotifier<CutStampPreview?>(ghostAt(inside, image));
+    final preview = ValueNotifier<LandingPreview?>(floatAt(inside, image));
     addTearDown(preview.dispose);
     final painter = tiledPainter(preview);
     await pumpView(tester, painter, cache);
@@ -339,18 +299,18 @@ void main() {
       ('back', inside, outside),
       ('out again', outside, inside),
     ]) {
-      preview.value = ghostAt(rect, image);
+      preview.value = floatAt(rect, image);
       await tester.pump();
       final shown = await bytesNow(tester);
       expect(
         alphaAt(shown, gone.left.toInt() + 1, gone.top.toInt() + 1),
         0,
-        reason: '$step: the place the ghost left must read clear',
+        reason: '$step: the place the float left must read clear',
       );
       expect(
         alphaAt(shown, rect.left.toInt() + 1, rect.top.toInt() + 1),
         0xFF,
-        reason: '$step: the place the ghost is must read inked',
+        reason: '$step: the place the float is must read inked',
       );
       expect(
         shown,
@@ -414,8 +374,9 @@ void main() {
     expect(cache.fullCount, fullBefore, reason: 'the second step must not raster the whole buffer');
     expect(cache.patchedCount, patchedBefore + 1, reason: 'it patches');
   });
-  testWidgets('on the activation frame the tiles draw themselves and the '
-      'ghost is drawn over them', (tester) async {
+  testWidgets('on the activation frame the tiles draw themselves', (
+    tester,
+  ) async {
     // A file-backed cel shown as a cached image, then promoted with a tile
     // cache that knows none of its fresh tile objects — the frame the
     // first-activation stand-in used to exist for; every tile pictures
@@ -522,20 +483,15 @@ void main() {
     );
     await paintStack();
 
-    // ACTIVATION with a ghost already in hand — the stamp tool was picked
-    // before the layer.
-    final image = (await tester.runAsync(decodedSquare))!;
-    addTearDown(image.dispose);
-    final preview = ValueNotifier<CutStampPreview?>(
-      ghostAt(const Rect.fromLTWH(20, 4, 4, 4), image),
-    );
-    addTearDown(preview.dispose);
+    // ACTIVATION. ↩️It was made with a ghost already in hand — the stamp
+    // tool picked before the layer — and pinned the ghost drawn over the
+    // tiles, until brush-fidelity-Q9 made the ghost the overlay's tiles
+    // rather than this painter's draw.
     final painter = BitmapSurfacePainter(
       surface: store.bakedSurfaceOrNull(key)!,
       showTransparentBackground: false,
       lineage: 'ghost-stand-in-under-test',
       tileImageCache: BitmapTileImageCache(),
-      stampPreview: preview,
     );
     await pumpStack(
       nodes: const [
@@ -545,6 +501,5 @@ void main() {
     );
     final swapFrame = await paintStack();
     expect(rgbaAt(swapFrame, 8, 8), [0, 0, 255, 255], reason: 'the tiles draw the artwork on the activation frame');
-    expect(rgbaAt(swapFrame, 22, 6), [255, 0, 0, 255], reason: 'the ghost is drawn over it');
   });
 }

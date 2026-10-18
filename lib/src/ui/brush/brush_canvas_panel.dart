@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' as ui show Image;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -10,7 +9,7 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
 import '../canvas/view_hand.dart';
-import '../timeline/memo_token.dart' show ByList;
+import '../timeline/memo_token.dart' show ByIdentity, ByList;
 import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
@@ -1149,15 +1148,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     twist: null,
   ));
 
-  /// 🚨★★★F-33: what the surface painter draws as the stamp's ghost.
+  /// 🚨★★★F-33: the stamp's AIM — what a click there would press — which
+  /// the ghost is laid from ([_showStampGhost]). A notifier, so a hover
+  /// re-lays the ghost without rebuilding the panel.
   ///
-  /// A notifier rather than a build-time value so a hover REPAINTS the
-  /// painter without rebuilding it — a fresh painter per pointer position
-  /// would break the memo that keeps the whole stack from recompositing
-  /// ([_activeSurfacePainter]'s token).
-  ///
-  /// ⛔Holds a BORROWED image: [CutStampPreviewPublisher] clears this in
-  /// the same dispose that frees it.
+  /// ↩️It was what the surface painter drew as the ghost — a listenable so a
+  /// hover repainted the painter instead of making a new one per position
+  /// ([_activeSurfacePainter]'s token) — holding an image borrowed from the
+  /// piece, until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved
+  /// the stamp ghost to the overlay's CPU pre-blended tiles.
   final ValueNotifier<CutStampPreview?> _stampPreview =
       ValueNotifier<CutStampPreview?>(null);
 
@@ -1316,7 +1315,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // painter draws in canvas space.
       showTransparentBackground: false,
       lineage: (token.key.layerId, token.key.frameId),
-      stampPreview: _stampPreview,
       landingPreview: _text.float,
     );
   }
@@ -1408,6 +1406,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _saveKeeper?.up(_landWorkInFlight);
     _viewportState.bindViewCommands();
     _hearTheHand();
+    _stampPreview.addListener(_showStampGhost);
+    // The softness is read where it is used, so nothing rebuilds this panel
+    // when it moves — the one thing the ghost is made of that it has to
+    // hear for itself ([_askTheGhostAgain]).
+    widget.selectionMaskOptions?.addListener(_askTheGhostAgain);
     CanvasViewHold.held.addListener(_onViewHoldChanged);
     _line.bind();
     _viewportState._listenedViewport = _viewportState.viewportNotifier
@@ -1586,6 +1589,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
+    _stopAskingTheGhost();
     // What the text tool held lands on the way out, and its channel goes
     // quiet.
     _text.dispose();
@@ -1855,6 +1859,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.selectionCommands,
       _selectionSeat.handleSelectionChannelChanged,
     );
+    rebindListener(
+      oldWidget.selectionMaskOptions,
+      widget.selectionMaskOptions,
+      _askTheGhostAgain,
+    );
     _text.bind();
     // A host can hand over another brush to hear (the viewer's cut tool per
     // shape); the build this update leads to is the rebuild.
@@ -1924,7 +1933,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   // One build of the panel, as its own object (Round 6) — constructed PER
   // BUILD: its fields hold one build's state.
-  Widget build(BuildContext context) => _PanelBuild(this).build(context);
+  Widget build(BuildContext context) {
+    // What rebuilds this panel is what moves the ghost's makings: a cel
+    // written (the pixel signal's rebuild), the marquee (the ants'), the
+    // cel stood on and the rows' placements (the host's).
+    _askTheGhostAgain();
+    return _PanelBuild(this).build(context);
+  }
 
   Positioned _idleSelectionAnts(CanvasSelectionRegion idleSelection) {
     return Positioned.fill(
@@ -2718,6 +2733,136 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     };
   }
 
+  /// Whether the stamp's ghost is what [_shapeShow] shows — so a ghost
+  /// going away takes back only itself, never a shape being dragged.
+  bool _ghostShown = false;
+
+  /// Whether the ghost is to be asked again at the end of this frame
+  /// ([_askTheGhostAgain]) — once however many things ask.
+  bool _ghostAskWaiting = false;
+
+  /// 🚨THE STAMP'S GHOST IS WHAT A CLICK THERE LANDS — on the cel on screen,
+  /// the door's own answer for it ([pieceDabs]), laid by the view as a
+  /// dragged shape is: the last whole ghost stays up until the next is
+  /// whole, while the cursor keeps its own pace.
+  /// 🗣️brush-fidelity-Q9 (유저 2026-10-18): 「통일하면 좋음」 — every mode,
+  /// normal too, pre-blended on the CPU; Q10: the shape tool's law.
+  ///
+  /// ↩️It was drawn on the GPU, `preBlended: false` on purpose: a hover
+  /// ghost has no committed tiles to stand for, so pre-blending (what buys
+  /// a stroke its byte-exact preview, R27 #4) was judged not worth it. That
+  /// drew a mode the GPU has no blend for as normal (brush-fidelity-Q7), and
+  /// a selection not at all.
+  void _showStampGhost() {
+    final show = _shapeShow;
+    final preview = _stampPreview.value;
+    final coordinator = widget.coordinator;
+    if (show == null) {
+      return;
+    }
+    if (preview == null || coordinator == null) {
+      if (_ghostShown) {
+        _ghostShown = false;
+        show.drop();
+      }
+      return;
+    }
+    _ghostShown = true;
+    show.show(_stampGhostArea(preview, coordinator));
+  }
+
+  /// The ghost of [preview] as the area the view lays ([ShapeArea]): the
+  /// door's own answer for the cel on screen ([pieceDabs]), read and cut
+  /// when the view lays it — inside a frame's share, never in the build or
+  /// the hover that asked.
+  ShapeArea _stampGhostArea(
+    CutStampPreview preview,
+    BrushFrameEditingCoordinator coordinator,
+  ) {
+    final store = coordinator.frameStore;
+    final ground = _pieceGround(coordinator);
+    final rect = preview.canvasRect;
+    final onCanvas = CanvasPoint(x: rect.center.dx, y: rect.center.dy);
+    // The aim's own blend: its change is what re-lays the ghost
+    // ([CutStampPreview.blendMode]).
+    final blend = preview.blendMode;
+    final stamp = PieceStamp(
+      // The click's own piece ([_CanvasPanelTap.pieceCentredOn]).
+      onTheRow: _tap.pieceCentredOn(
+        preview.piece,
+        onCanvas,
+        opacity: preview.opacity,
+      ),
+      blend: blend,
+      description: 'Stamp',
+    );
+    final standing = store.canonicalKeyOf(coordinator.activeFrameKey);
+    return (
+      // 🚨EVERYTHING THE GHOST'S BYTES ARE MADE OF — the aim, the cel as it
+      // is now, and every fact of the ground the door reads — so whatever
+      // moves under a resting hand lays it again ([_askTheGhostAgain]),
+      // and nothing else does.
+      shape: (
+        piece: preview.piece,
+        at: onCanvas,
+        opacity: preview.opacity,
+        blend: blend,
+        standing: standing,
+        cel: ByIdentity(coordinator.currentSurfaceOf(standing)),
+        selection: ground.selection,
+        softness: ground.options,
+        ladder: ByList([
+          for (final key in ground.cels)
+            (key, store.canonicalKeyOf(key), ground.placementOf(key)),
+        ]),
+      ),
+      pieces: () sync* {
+        final answer = pieceDabs(
+          coordinator: coordinator,
+          ground: ground,
+          stamp: stamp,
+          only: standing,
+        )[standing];
+        if (answer != null) {
+          yield answer.dab;
+        }
+      },
+      blend: blend,
+    );
+  }
+
+  /// What the stamp's ghost listens to, let go: the aim and the softness
+  /// it is cut at ([_showStampGhost], [_askTheGhostAgain]).
+  void _stopAskingTheGhost() {
+    widget.selectionMaskOptions?.removeListener(_askTheGhostAgain);
+    _stampPreview.removeListener(_showStampGhost);
+  }
+
+  /// 🚨THE GHOST FOLLOWS WHAT IT IS MADE OF, NOT ONLY THE HAND: asks
+  /// [_showStampGhost] again at the end of the frame while a ghost is up —
+  /// the cel under it written (a landing, an undo, a verb pressed on the
+  /// timeline), the marquee or its softness changed, the panel stood on
+  /// another cel. Its shape holds all of that, so a ghost nothing moved
+  /// under asks for nothing.
+  ///
+  /// At the end of the frame, because the drawing view hears a build after
+  /// this panel does: a cel changed under it drops the ghost of the cel
+  /// that went, and one asked for before would be laid on that cel.
+  void _askTheGhostAgain() {
+    if (!_ghostShown || _ghostAskWaiting) {
+      return;
+    }
+    _ghostAskWaiting = true;
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        _ghostAskWaiting = false;
+        if (mounted) {
+          _showStampGhost();
+        }
+      })
+      ..ensureVisualUpdate();
+  }
+
   /// Draw a finished shape-tool drag (I-69) — [copies], the traced path
   /// and every copy the symmetry guide made of it, the original first — as
   /// the tool is set to lay it, and as the drag showed it (Q4ⓒ):
@@ -2841,16 +2986,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShapePart.line => _brush.activeOpacity * line.opacity,
     };
     final blend = _brush.activeBlendMode;
+    // The maker cuts ([ShapeArea]): the selection's hard outline on the row,
+    // as the view's own clip cut it before (brush-fidelity-Q11 asks whether
+    // a shape should take the selection's softness as a held picture does).
+    final selection = switch (widget.selectionCommands?.region) {
+      null => null,
+      final live => _selectionSeat.regionOnTheRow(live),
+    };
     return (
       shape: (region, color, opacity, antiAlias, blend),
       pieces: () => region == null
           ? const <BrushDab>[]
-          : regionFillPieces(
-              region: region,
-              color: color,
-              opacity: opacity,
-              options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
-            ),
+          : [
+              for (final piece in regionFillPieces(
+                region: region,
+                color: color,
+                opacity: opacity,
+                options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
+              ))
+                if (selection == null)
+                  piece
+                else
+                  ?clipStampDabToSelection(piece, region: selection),
+            ],
       blend: blend,
     );
   }
@@ -2970,10 +3128,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null) {
       return;
     }
-    final blend = _brush.activeBlendMode;
+    // The stamp's own, as its opacity is ([pasteCutPieceAtOrigin]) and as
+    // its ghost shows it. ↩️It read the tool in hand — the same number only
+    // while the stamp's own tile was the one pressing.
+    final blend = _brush.cutStampBlendMode;
     final landed = pieceLandings(
       coordinator: coordinator,
-      ground: widget.pieceGround?.call() ?? _pieceGround(coordinator),
+      ground: _pieceGround(coordinator),
       stamp: PieceStamp(
         onTheRow: onTheRow,
         blend: blend,
@@ -3011,12 +3172,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       }
       historyManager.executeAsOneStep('Stamp', landings);
     });
+    // ⛔The ghost is not asked again here: the rebuild above asks, as an
+    // undo's does ([_askTheGhostAgain]) — one road for every write under
+    // it. ↩️It was asked here, a count of stamps landed in its shape: an
+    // undo, or a verb pressed on the timeline, left it showing a cel that
+    // was gone.
   }
 
-  /// The ground for a host with no session behind it
-  /// ([BrushCanvasPanel.pieceGround] null): the cel you stand on, when it
-  /// can be drawn on, through what this panel holds.
+  /// The ground a press reads, and the ghost with it: the host's
+  /// ([BrushCanvasPanel.pieceGround]) — or, with no session behind this
+  /// panel, the cel you stand on, when it can be drawn on, through what
+  /// this panel holds.
   PieceGround _pieceGround(BrushFrameEditingCoordinator coordinator) =>
+      widget.pieceGround?.call() ??
       PieceGround(
         cels: [
           if (widget._editableCoordinator != null) coordinator.activeFrameKey,

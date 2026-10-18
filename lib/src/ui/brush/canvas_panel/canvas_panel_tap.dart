@@ -374,13 +374,32 @@ class _CanvasPanelTap {
   /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
   /// which every row the stamp lands on takes on its own artwork, where
   /// that row shows it ([_BrushCanvasPanelState._landStamp]).
+  void _stampAt(CutPiece piece, CanvasPoint onCanvas) {
+    _state._landStamp(
+      pieceCentredOn(
+        piece,
+        onCanvas,
+        opacity: _state._brush.cutStampOpacity,
+      ),
+    );
+  }
+
+  /// The held [piece] centred on [onCanvas] — a point on the CANVAS — as
+  /// each row a press names takes it, on its own artwork where that row
+  /// shows the point ([PieceStamp.onTheRow]): what a click there lands, and
+  /// so what the ghost there shows
+  /// ([_BrushCanvasPanelState._showStampGhost]).
   ///
   /// One dab per distinct centre: rows are mostly unplaced and a range is
   /// mostly one row, so a posed piece is resampled once and the door cuts
-  /// it once ([PieceStamp.onTheRow]).
-  void _stampAt(CutPiece piece, CanvasPoint onCanvas) {
+  /// it once.
+  BrushDab? Function(LayerPlacement? placement) pieceCentredOn(
+    CutPiece piece,
+    CanvasPoint onCanvas, {
+    required double opacity,
+  }) {
     final atCentre = <CanvasPoint, BrushDab>{};
-    _state._landStamp((placement) {
+    return (placement) {
       final centre = _state._selectionSeat.pointOnARow(onCanvas, placement);
       return centre == null
           ? null
@@ -389,10 +408,10 @@ class _CanvasPanelTap {
               () => buildCutStampDab(
                 piece: piece,
                 center: centre,
-                opacity: _state._brush.cutStampOpacity,
+                opacity: opacity,
               ),
             );
-    });
+    };
   }
 
   /// 🚨★★★A TOUCH TAP RESOLVES ON THE LIFT OR ON THE SLOP, NEVER ON THE

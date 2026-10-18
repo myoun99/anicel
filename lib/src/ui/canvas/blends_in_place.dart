@@ -29,8 +29,9 @@ bool blendsInPlace(ui.BlendMode mode) =>
 /// Runs [draw] — ONE image laid on [rect] with [paint] — held to [rect]
 /// wherever [paint]'s blend does not act in place ([blendsInPlace], which
 /// has the measurement): a layer whose ink reaches the edge of its image
-/// would otherwise stretch that edge across the pasteboard, and a stamp
-/// ghost its border across the row it hovers over.
+/// would otherwise stretch that edge across the pasteboard. ↩️A stamp
+/// ghost was held here too (its border across the row it hovered over),
+/// until brush-fidelity-Q9 moved it to the overlay's CPU pre-blended tiles.
 ///
 /// ⛔NOT when [paint] carries an image filter. A blur paints past [rect] on
 /// purpose, and a clip there cut it — the NO CLIP decision on the sub-tree

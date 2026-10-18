@@ -10,20 +10,21 @@ import 'package:flutter/rendering.dart';
 /// next paint say WHERE the surface changed — see
 /// [DisplayBufferCache.keptTokens].
 ///
-/// 🚨★★★F-130: AND THE STAMP'S GHOST. F-33 put the ghost inside the surface
-/// painter's own draw, so the buffer holds it — and the buffer's KEY knew
-/// (a hover was a miss) while its tokens did not (the miss could not say
-/// where, and fell through to a full raster of the whole canvas, once per
-/// pointer move: measured at 25 full composes for 25 moves). The ghost is
-/// one of [previews]: BY VALUE (its `==` is identity on the piece and the
-/// image, value on the rect, the opacity and the blend — exactly what a
-/// hover changes) beside the rect it covered, so the next paint can patch
-/// where it was and where it is. A record rather than the preview's own
-/// type so this file, which every canvas paint reads, does not import the
-/// brush tool's.
+/// 🚨★★★F-130: AND WHAT THE PAINTER DRAWS OVER THE SURFACE. The buffer holds
+/// it, and a buffer whose KEY knows a preview while its tokens do not
+/// misses without saying where — it fell through to a full raster of the
+/// whole canvas once per pointer move, measured on the stamp's ghost at 25
+/// full composes for 25 moves. A preview is one of [previews]: BY VALUE (its
+/// own `==`, exactly what a move changes) beside the rect it covered, so the
+/// next paint can patch where it was and where it is. A record rather than
+/// the preview's own type so this file, which every canvas paint reads,
+/// does not import a tool's.
 ///
-/// F-344: and the text in hand, floated over its hole by the same painter
-/// (`BitmapSurfacePainter.landingPreview`) — the other preview there is.
+/// F-344: the text in hand, floated over its hole by the same painter
+/// (`BitmapSurfacePainter.landingPreview`) — the one preview there is now.
+/// ↩️The stamp's ghost was the first (F-33 drew it inside the painter),
+/// until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved it to the
+/// overlay's CPU pre-blended tiles, which [overlay] carries.
 typedef LiveSurfaceTokens = ({
   Map<Object, Object> overlay,
   Map<Object, Object> tiles,
