@@ -206,7 +206,10 @@ void main() {
     await pumpCels(tester, session, scope: ExportScopeKind.project);
     String label() => tester
         .widget<Text>(
-          find.byKey(const ValueKey<String>('export-cels-label-text')),
+          find.descendant(
+            of: find.byKey(const ValueKey<String>('export-cels-label-picker')),
+            matching: find.byType(Text),
+          ),
         )
         .data!;
     Map<LayerId, bool> byHand(CutId cut) =>

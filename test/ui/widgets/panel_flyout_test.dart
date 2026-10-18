@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/theme/disabled_ink.dart';
 import 'package:anicel/src/ui/widgets/command_pill.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -58,6 +60,110 @@ void main() {
     await tester.pumpAndSettle();
     expect(picked, 1);
     expect(find.byKey(const ValueKey<String>('flyout-item-a')), findsNothing);
+  });
+
+  /// The chip's own plate — the [ShapeDecoration] it draws its edge with.
+  ShapeDecoration plateOf(WidgetTester tester) => tester
+      .widgetList<DecoratedBox>(
+        find.descendant(
+          of: find.byType(PanelFlyoutButton),
+          matching: find.byType(DecoratedBox),
+        ),
+      )
+      .map((box) => box.decoration)
+      .whereType<ShapeDecoration>()
+      .single;
+
+  testWidgets('🚨a list button wears no ▼ — its border already says it '
+      'opens (law-패널, 유저 2026-10-18 「이거 필요없으니 제거하자. 다른데도 '
+      '마찬가지 확인해서 법 통일」), and its word sits in even padding', (
+    tester,
+  ) async {
+    for (final axis in Axis.values) {
+      await tester.pumpWidget(
+        harness(
+          PanelFlyoutButton(
+            label: 'Multiply',
+            axis: axis,
+            entriesBuilder: () => const [],
+          ),
+        ),
+      );
+      final button = find.byType(PanelFlyoutButton);
+      expect(
+        find.descendant(of: button, matching: find.byType(Icon)),
+        findsNothing,
+        reason: '$axis',
+      );
+      final chip = tester.getRect(button);
+      final word = tester.getRect(
+        find.descendant(
+          of: button,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is Text || widget is VerticalWritingText,
+          ),
+        ),
+      );
+      expect(word.left - chip.left, chip.right - word.right, reason: '$axis');
+      expect(word.top - chip.top, chip.bottom - word.bottom, reason: '$axis');
+    }
+  });
+
+  testWidgets('a plate is its own edge, and a shut one dims whole', (
+    tester,
+  ) async {
+    const plate = Color(0xFFCC3344);
+    for (final enabled in [true, false]) {
+      await tester.pumpWidget(
+        harness(
+          PanelFlyoutButton(
+            label: 'Key',
+            fill: plate,
+            enabled: enabled,
+            entriesBuilder: () => const [],
+          ),
+        ),
+      );
+      final decoration = plateOf(tester);
+      expect(
+        decoration.color,
+        enabled ? plate : plate.withValues(alpha: disabledInkOpacity),
+      );
+      expect(
+        (decoration.shape as OutlinedBorder).side,
+        BorderSide.none,
+        reason: 'a coloured plate draws no hairline around itself',
+      );
+    }
+    await tester.pumpWidget(
+      harness(PanelFlyoutButton(label: 'Key', entriesBuilder: () => const [])),
+    );
+    expect(plateOf(tester).color, isNull);
+    expect(
+      (plateOf(tester).shape as OutlinedBorder).side.color,
+      AppColors.hairline,
+    );
+  });
+
+  testWidgets('a label alone ellipsises in a slot narrower than itself '
+      'instead of overflowing it — the export dialog\'s two pickers share '
+      'one row so', (tester) async {
+    await tester.pumpWidget(
+      harness(
+        SizedBox(
+          width: 60,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: PanelFlyoutButton(
+              label: 'A label far longer than its slot',
+              entriesBuilder: () => const [],
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byType(PanelFlyoutButton)).width, 60);
   });
 
   testWidgets('a swatch row keeps ITS OWN colour where a glyph would be '

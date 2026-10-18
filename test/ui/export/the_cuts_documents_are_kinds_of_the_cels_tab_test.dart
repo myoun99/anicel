@@ -155,6 +155,13 @@ void main() {
   String textOf(WidgetTester tester, String key) =>
       tester.widget<Text>(keyed(key)).data!;
 
+  /// The word a list button shows — the one [Text] it draws.
+  String shown(WidgetTester tester, String key) => tester
+      .widget<Text>(
+        find.descendant(of: keyed(key), matching: find.byType(Text)),
+      )
+      .data!;
+
   /// The files the list says it writes: its bright blocks', top to bottom.
   List<String> listed(WidgetTester tester) => [
     for (final row in tester.celsBoard.rows)
@@ -292,7 +299,7 @@ void main() {
     expect(tester.celsBoardBlocksOf('document-timesheet'), [('301', false)]);
     expect(count(tester), '3 files');
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       isNot(strings.exSelCustom),
     );
     expect(
@@ -336,7 +343,7 @@ void main() {
     expect(count(tester), '3 files');
     expect(listed(tester), ['A1.png', 'A2.png', '_TS301.png']);
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       isNot(AppText.strings.exSelCustom),
     );
     expect(

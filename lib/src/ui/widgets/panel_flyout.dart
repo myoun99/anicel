@@ -7,6 +7,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
 import '../timeline/axis_turn.dart' show alongBox;
 import '../theme/app_theme.dart';
+import '../theme/disabled_ink.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
@@ -1396,8 +1397,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
         // `customBorder` and not `borderRadius`: the splash is a corner like
         // any other and takes the app's superellipse, so this widget adds
         // nothing to the circular-corner debt (`app_shapes_coverage_test`,
-        // which only ever ratchets down). [PanelFlyoutButton] beside it still
-        // hand-types a `circular(4)` on both its border and its splash.
+        // which only ever ratchets down).
         customBorder: AppShapes.container(AppShapes.wellRadius),
         onTap: silentPress(() => showPanelFlyout(context, entries: entriesBuilder())),
         child: Padding(padding: padding, child: child),
@@ -1461,19 +1461,27 @@ class RailFlyoutTrigger extends StatelessWidget {
   }
 }
 
-/// A labeled flyout trigger ('Layer ▾', 'Frame ▾', 'Cut ▾'): compact
-/// bordered chip that opens [showPanelFlyout] with lazily built entries.
+/// A labeled flyout trigger ('Layer', 'Frame', 'Cut'): compact bordered
+/// chip that opens [showPanelFlyout] with lazily built entries.
+///
+/// ↩️It wore a caret (▼) after its label, behind a switch that dropped it
+/// (R28 #2). 유저 2026-10-18: 「그리고 합성모드 옆에 밑화살표 텍스트? 이거
+/// 필요없으니 제거하자. 다른데도 마찬가지 확인해서 법 통일」 — the border
+/// already says the button opens something, so no button that opens a list
+/// wears one (law-패널), and there is no switch left to put it back with.
+/// The chip is its label and its padding, as the x-sheet's blend chip — the
+/// one that had already dropped it — always was.
 class PanelFlyoutButton extends StatelessWidget {
   const PanelFlyoutButton({
     super.key,
     required this.label,
     required this.entriesBuilder,
     this.tooltip,
-    this.showCaret = true,
     this.fontSize = 12,
     this.labelColor,
+    this.fill,
     this.fontWeight,
-    this.padding = const EdgeInsets.fromLTRB(8, 4, 5, 4),
+    this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     this.expand = false,
     this.axis = Axis.horizontal,
     this.enabled = true,
@@ -1487,8 +1495,8 @@ class PanelFlyoutButton extends StatelessWidget {
   /// False = the button says what it holds and refuses to open.
   ///
   /// 유저, R4 #12: 잠궜는데 바꿀 수 있으면 잠금이 아니잖아. A control behind a
-  /// lock has to LOOK shut, not merely be labelled shut — so the ink and the
-  /// caret dim together and the tap stops resolving.
+  /// lock has to LOOK shut, not merely be labelled shut — so the ink, the
+  /// edge and a [fill] dim together and the tap stops resolving.
   final bool enabled;
 
   /// Which way the button READS. Vertical writes its label down the
@@ -1500,16 +1508,19 @@ class PanelFlyoutButton extends StatelessWidget {
   final List<PanelFlyoutEntry> Function() entriesBuilder;
   final String? tooltip;
 
-  /// R28 #2: the caret is optional. Slot-width rails (the layer rail's
-  /// blend column) drop it and keep the text alone — the border still
-  /// says "button", which is the whole point of sharing this widget.
-  final bool showCaret;
-
   final double fontSize;
 
   /// Null = the standard button ink; callers pass a color to carry state
   /// (the layer rail accents a non-normal mode).
   final Color? labelColor;
+
+  /// The button's ground. Null = clear, its edge the hairline; a colour = a
+  /// plate of that colour, which is its own edge (the export dialog's label
+  /// picker wears the picked label's colour — 유저: 「그냥 원화작감이라고
+  /// 심플하게 텍스트 두고, 버튼 색만 색라벨 색 그대로」). The caller passes an
+  /// ink that reads on it as [labelColor].
+  final Color? fill;
+
   final FontWeight? fontWeight;
   final EdgeInsetsGeometry padding;
 
@@ -1536,6 +1547,25 @@ class PanelFlyoutButton extends StatelessWidget {
             textAlign: expand ? TextAlign.center : TextAlign.start,
             style: labelStyle,
           );
+    final glyph = icon;
+    // A label alone is not put in a Flex: outside one it ellipsises in a
+    // slot narrower than itself instead of overflowing it (the export
+    // dialog's label and take pickers share one row so).
+    final line = glyph == null && !expand
+        ? text
+        : Flex(
+            direction: axis,
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (glyph != null) ...[
+                Icon(glyph, size: 16, color: labelStyle.color),
+                alongBox(axis, 6),
+              ],
+              if (expand) Flexible(child: text) else text,
+            ],
+          );
+    final ground = fill;
     final chip = Material(
       color: Colors.transparent,
       child: ControlPressClaim(onPressed: enabled
@@ -1550,40 +1580,23 @@ class PanelFlyoutButton extends StatelessWidget {
             : null),
         child: DecoratedBox(
           decoration: ShapeDecoration(
+            // A plate is a control that IS its ground, so the whole of it
+            // dims ([dimmedIfDisabled]); a clear chip dims its ink and edge.
+            color: ground == null
+                ? null
+                : dimmedIfDisabled(ground, enabled: enabled),
             shape: AppShapes.container(
               AppShapes.wellRadius,
-              side: BorderSide(
-                color: enabled
-                    ? AppColors.hairline
-                    : AppColors.hairline.withValues(alpha: 0.5),
-              ),
+              side: ground != null
+                  ? BorderSide.none
+                  : BorderSide(
+                      color: enabled
+                          ? AppColors.hairline
+                          : AppColors.hairline.withValues(alpha: 0.5),
+                    ),
             ),
           ),
-          child: Padding(
-            padding: padding,
-            child: Flex(
-              direction: axis,
-              mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon case final glyph?) ...[
-                  Icon(glyph, size: 16, color: labelStyle.color),
-                  alongBox(axis, 6),
-                ],
-                if (expand) Flexible(child: text) else text,
-                if (showCaret) ...[
-                  alongBox(axis, 2),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    size: 16,
-                    color: enabled
-                        ? AppColors.textDim
-                        : AppColors.textDim.withValues(alpha: 0.4),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          child: Padding(padding: padding, child: line),
         ),
       )),
     );

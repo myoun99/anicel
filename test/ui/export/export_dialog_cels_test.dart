@@ -43,6 +43,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerTypeButton;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/export_cels_alone.dart';
@@ -274,6 +275,16 @@ void main() {
   String textOf(WidgetTester tester, String key) =>
       tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
 
+  /// The word a list button shows — the one [Text] it draws.
+  String shown(WidgetTester tester, String key) => tester
+      .widget<Text>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(Text),
+        ),
+      )
+      .data!;
+
   /// How many files the export writes, as the band says it.
   String celCount(WidgetTester tester) => textOf(tester, 'export-cels-count');
 
@@ -332,7 +343,7 @@ void main() {
     expect(pill(tester, 'export-cels-select-base').selected, isTrue);
     expect(pill(tester, 'export-cels-select-attach').selected, isTrue);
     expect(pill(tester, 'export-cels-select-sheet').selected, isFalse);
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
     expect(
       find.byKey(const ValueKey<String>('export-cels-select-custom')),
       findsNothing,
@@ -381,7 +392,7 @@ void main() {
     expect(celCount(tester), AppText.strings.exWrittenCount(5));
     expect(tester.celsBoardBlocksOf('b'), [('1', true)]);
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       AppText.strings.exSelCustom,
     );
 
@@ -389,7 +400,7 @@ void main() {
     // rule change.
     await tapKey(tester, 'export-cels-select-sheet');
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
     expect(pill(tester, 'export-cels-select-sheet').selected, isTrue);
     expect(celCount(tester), AppText.strings.exWrittenCount(3));
     expect(
@@ -429,7 +440,7 @@ void main() {
     await tapKey(tester, 'export-cels-switch-b');
     await pressBlock(tester, 'd', 'y1');
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       AppText.strings.exSelCustom,
     );
     expect(deltaOf(session)?.skippedCels, {ref('d', 'y1')});
@@ -437,7 +448,7 @@ void main() {
     await pickTheKeyLabelAgain();
     expect(state.debugSpecs.cels.label, key);
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
     expect(
       deltaOf(session)?.skippedCels,
       {ref('d', 'y1')},
@@ -446,7 +457,7 @@ void main() {
 
     await tapKey(tester, 'export-cels-switch-b');
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       AppText.strings.exSelCustom,
     );
     await tapKey(tester, 'export-cels-take-picker');
@@ -456,7 +467,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
   });
 
   testWidgets('a drawing turned off alone does not make the label read '
@@ -465,7 +476,7 @@ void main() {
     await pumpCels(tester, session);
     await pressBlock(tester, 'd', 'y1');
     expect(deltaOf(session)?.skippedCels, {ref('d', 'y1')});
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
   });
 
   testWidgets('a kind turned off and on again keeps what the hand did to its '
@@ -614,7 +625,7 @@ void main() {
     expect(tester.celsBoardSwitchState('a'), BooleanMix.off);
     expect(tester.celsBoardBlocksOf('a'), [('1', false), ('2', false)]);
     expect(celCount(tester), AppText.strings.exWrittenCount(2));
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
     await standOn(tester, 'a');
     expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
 
@@ -686,7 +697,7 @@ void main() {
     expect(deltaOf(session)?.layerOverrides, {const LayerId('a-color'): false});
     expect(tester.celsStackLines, [('a-color', false), ('a', true)]);
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       AppText.strings.exSelCustom,
     );
     expect(celCount(tester), AppText.strings.exWrittenCount(4));
@@ -867,7 +878,7 @@ void main() {
       findsNothing,
       reason: 'laid over ONE drawing, not its row',
     );
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
 
     // The other drawing: the pill reads that drawing's own answer.
     await tapKey(tester, 'export-cels-next');
@@ -1099,7 +1110,7 @@ void main() {
       (tester) async {
     final state = await pumpCels(tester, celsSession());
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       exportCelLabelText(key),
     );
 
@@ -1109,7 +1120,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.label, LayerMark.none);
     expect(
-      textOf(tester, 'export-cels-label-text'),
+      shown(tester, 'export-cels-label-picker'),
       AppText.strings.tlLayerMarkNone,
     );
     expect(celCount(tester), AppText.strings.exWrittenCount(0));
@@ -1131,13 +1142,19 @@ void main() {
     await tester.pumpAndSettle();
     const layout = LayerMark(process: LayerProcess.layout);
     expect(state.debugSpecs.cels.label, layout);
-    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(layout));
+    expect(
+      shown(tester, 'export-cels-label-picker'),
+      exportCelLabelText(layout),
+    );
   });
 
   testWidgets('the take picker is the timeline\'s flyout plus 「최신」',
       (tester) async {
     final state = await pumpCels(tester, celsSession());
-    expect(textOf(tester, 'export-cels-take-text'), AppText.strings.exTakeLatest);
+    expect(
+      shown(tester, 'export-cels-take-picker'),
+      AppText.strings.exTakeLatest,
+    );
 
     await tapKey(tester, 'export-cels-take-picker');
     await tester.pumpAndSettle();
@@ -1149,7 +1166,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.take, 2);
     expect(
-      textOf(tester, 'export-cels-take-text'),
+      shown(tester, 'export-cels-take-picker'),
       AppText.strings.tlLayerTakeNumber(2),
     );
     // Nothing in the cut is a second take.
@@ -1163,6 +1180,37 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.take, isNull);
     expect(celCount(tester), AppText.strings.exWrittenCount(4));
+  });
+
+  testWidgets('🚨the label and take pickers ARE the app\'s list button — no '
+      '▼ (law-패널, 유저 2026-10-18), the word in even padding, the label '
+      'on its colour', (tester) async {
+    final state = await pumpCels(tester, celsSession());
+    for (final key in const [
+      'export-cels-label-picker',
+      'export-cels-take-picker',
+    ]) {
+      final picker = find.byKey(ValueKey<String>(key));
+      expect(tester.widget(picker), isA<PanelFlyoutButton>(), reason: key);
+      expect(
+        find.descendant(of: picker, matching: find.byType(Icon)),
+        findsNothing,
+        reason: key,
+      );
+      final chip = tester.getRect(picker);
+      final word = tester.getRect(
+        find.descendant(of: picker, matching: find.byType(Text)),
+      );
+      expect(word.left - chip.left, chip.right - word.right, reason: key);
+    }
+    expect(
+      tester
+          .widget<PanelFlyoutButton>(
+            find.byKey(const ValueKey<String>('export-cels-label-picker')),
+          )
+          .fill,
+      layerMarkColor(state.debugSpecs.cels.label),
+    );
   });
 
   testWidgets('내보낼 종류 and 적용 are pills that write the spec', (

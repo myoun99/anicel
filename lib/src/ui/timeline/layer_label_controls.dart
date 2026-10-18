@@ -544,7 +544,6 @@ class LayerBlendModeChip extends StatelessWidget {
             tooltip: isGroup
                 ? AppText.strings.railFolderBlendMode
                 : AppText.strings.railLayerBlendMode,
-            showCaret: false,
             expand: true,
             fontSize: _blendFontSize,
             fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
