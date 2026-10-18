@@ -424,10 +424,14 @@ void main() {
     expect(cellText(tester, 'bake', files['A1']!), AppText.strings.commonOff);
   });
 
-  testWidgets('Import pressed before the run is measured waits for it — the '
-      'run still comes in as one layer', (tester) async {
+  testWidgets('Import pressed before the run is measured waits for it — two '
+      'of its pictures picked together still bring it once', (tester) async {
     final files = await writeFolder(tester);
-    final s = await open(tester, [files['A1']!], runs: const []);
+    final s = await open(
+      tester,
+      [files['A1']!, files['A3']!],
+      runs: const [],
+    );
     expect(
       cellText(tester, 'option', files['A1']!),
       '—',
@@ -436,7 +440,7 @@ void main() {
 
     final added = await place(tester, s);
 
-    expect(added, hasLength(1));
+    expect(added, hasLength(1), reason: 'the run, once');
     expect([for (final frame in added.single.frames) frame.name], ['1', '3']);
   });
 
