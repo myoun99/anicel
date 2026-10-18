@@ -123,5 +123,16 @@ run nothing_here a b >/dev/null
 chk "goes to dart as it is" "$(calls '^jit nothing_here.dart a b')" 1
 chk "and builds nothing" "$(calls '^build nothing_here')" 0
 
+echo "F the stamp's order is the board server's: by byte"
+# ⛔board_server.dart compares this stamp with its own concatenation, in
+# Dart's order (by code unit). An order by walk, or by a collation that
+# ignores `_`, relaunches the server on every request.
+printf "import 'ab.dart';\nimport 'a_b.dart';\n" > "$STAGE/tool/z.dart"
+printf "1\n" > "$STAGE/tool/ab.dart"
+printf "2\n" > "$STAGE/tool/a_b.dart"
+chk "a_b before ab before z" \
+  "$(. "$STAGE/tool/exe_stamp.sh"; sources_of "$STAGE/tool/z.dart" | sed 's|.*/||' | tr '\n' ' ')" \
+  "a_b.dart ab.dart z.dart "
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
