@@ -495,8 +495,12 @@ void main() {
           'the bake records draws it, so a hover replays the backdrop '
           'instead of rasterising it again under the pointer',
     );
-    // The counter is live: an extent that really moves re-records. Painted
+    // The counter is live: an extent that really moves re-records — once a
+    // paint there draws. A narrower view alone is a carry with nothing to
+    // recompose, which composes nothing at all (F-287: no region, no
+    // recompose), so the ghost comes back into the page under it. Painted
     // before the fresh mount below retires this stack's images.
+    ghost.value = ghostAt(inThePage);
     await tester.runAsync(() => paintAt(mounted.painter, const Size(48, 48)));
     expect(
       mounted.bake.recordCount,
