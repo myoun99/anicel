@@ -1,10 +1,13 @@
 import 'dart:collection' show Queue;
 import 'dart:ui' as ui show PointerDataPacket;
 
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'debug/input_inspector.dart';
+import 'input/pen_echoes.dart';
 import 'look_only_frames.dart';
 import 'platform_semantics_gate.dart';
 import 'present_pacing.dart';
@@ -105,10 +108,29 @@ mixin UiScaleViewConfiguration on RendererBinding {
     return raw * (scale.isFinite && scale > 0 ? scale : 1.0);
   }
 
+  /// The pen's echo stays out HERE, where the platform's events come in
+  /// (F-400, [PenEchoes]) — on Windows, the OS that sends it. Ahead of
+  /// every listener in the tree, so the inspector counts what it keeps out
+  /// ([InputInspector.echoes]): a mouse row that stopped coming must be
+  /// told from one the app dropped.
+  final PenEchoes _penEchoes = PenEchoes();
+
+  bool _letIn(PointerEvent event) {
+    if (defaultTargetPlatform != TargetPlatform.windows ||
+        _penEchoes.admit(event)) {
+      return true;
+    }
+    InputInspector.echoes += 1;
+    return false;
+  }
+
   void _handleScaledPointerDataPacket(ui.PointerDataPacket packet) {
     try {
       _pendingScaledPointerEvents.addAll(
-        PointerEventConverter.expand(packet.data, _effectiveRatioOfView),
+        PointerEventConverter.expand(
+          packet.data,
+          _effectiveRatioOfView,
+        ).where(_letIn),
       );
       if (!locked) {
         _flushScaledPointerEvents();
