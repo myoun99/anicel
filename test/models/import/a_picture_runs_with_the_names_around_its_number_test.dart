@@ -110,5 +110,15 @@ void main() {
       expect(sameSizeRunOf(run, '5.png', sizeOf), isNull);
       expect(sameSizeRunOf(run, '4.png', sizeOf), isNull);
     });
+
+    test('the two sides of a stop are two runs though they share a name — '
+        'what the window tells one picked run\'s layer from another by', () {
+      CanvasSize sizeOf(String file) => file == '3.png' ? large : small;
+
+      final before = sameSizeRunOf(run, '1.png', sizeOf)!;
+      final after = sameSizeRunOf(run, '5.png', sizeOf)!;
+      expect(after.name, before.name, reason: '⛔fixture: one name');
+      expect(after, isNot(before));
+    });
   });
 }
