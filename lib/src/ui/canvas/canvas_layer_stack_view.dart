@@ -2364,3 +2364,9 @@ int debugCappedFallbacks = 0;
 /// — the reference a parity test compares the pictures against.
 @visibleForTesting
 bool debugDrawBufferPictures = true;
+
+/// Off, every recompose over carried pixels stands on its clip, as it did
+/// before F-287 — the reference a parity test compares the composite made
+/// apart against, and the engine the device probe measures it beside.
+@visibleForTesting
+bool debugRecomposeApart = true;

@@ -378,7 +378,8 @@ class _LayerStackPaintPass {
         // that works. See [DisplayBufferCache.derivedDepth] and
         // [DisplayBufferCache.promotedCount]. `drawn` — how many of the
         // patches rastered no head ([DisplayBufferCache.drawnCount]) — for
-        // the same reason again.
+        // the same reason again, and `apart` — how many recomposes went
+        // apart ([DisplayBufferCache.composedApartCount]) — too.
         final cadence =
             'full~${cache.fullCount ~/ 8}'
             ' patched~${cache.patchedCount ~/ 32}'
@@ -389,6 +390,7 @@ class _LayerStackPaintPass {
             'buf full=${cache.fullCount}'
             ' patched=${cache.patchedCount}'
             ' drawn=${cache.drawnCount}'
+            ' apart=${cache.composedApartCount}'
             ' carried=${cache.scrolledCount}'
             ' chain=${cache.derivedDepth}'
             ' real=${cache.promotedCount}',
@@ -1736,16 +1738,119 @@ class _LayerStackPaintPass {
   ///
   /// ⛔NO ANTIALIAS on the clip: a soft edge would blend the region into the
   /// carried pixels and leave a seam of its own.
+  ///
+  /// 🚨★★★F-287 — THE CLIP DOES NOT HOLD A BLEND THAT IS NOT IN PLACE (유저
+  /// 2026-10-04 · 10-05 · 10-12, 실기: 「곱하기레이어가 두개이상있을때, 세번째
+  /// 일반 레이어에서 그리면 선을 긋거나 캔버스 줌인 줌아웃할때마다 그림
+  /// 이상한곳이 진해짐. 현재 레이어 바꾸거나 하면 초기화됨 … 이 문제는 고쳐도
+  /// 3번째 발생이니 다양한 각도에서 확인하고 해결」 — the family of F-172 and
+  /// F-243). 🔬Measured on the Windows app (Impeller GLES, 2026-10-08): A and
+  /// B both multiply, every stroke on B patched three times, and each patch
+  /// multiplied B's colour in once more OUTSIDE the patch — wherever B lay
+  /// (f0d060 → c87105 → a73d00 …), A alone and the paper untouched; one
+  /// blend alone changed nothing. The carried pixels already hold the
+  /// composite, so a draw that escapes the clip lays a second copy of itself
+  /// over them, on every patch and every carry until a full composite —
+  /// switching the row — draws it once again.
+  /// ⇒ When anything in the stack does not blend in place, the region is
+  /// composed APART ([_drawComposedApart]): on nothing, in an image of its
+  /// own, and laid onto the carried pixels by a draw that does — what a lost
+  /// clip lets through lands on that image's margin, which is not copied.
+  /// ⛔ONLY THEN. The image is a render pass a step (a snapshot costs the
+  /// same 1.6–2.0 ms whatever its size, measured 2026-09-25), which a stack
+  /// of in-place draws does not need and still draws as a picture
+  /// ([_pictureDrawsTheSame]). The question is [blendsInPlace]'s, the one
+  /// every other site asks of a blend ([_everyDrawBlendsInPlace]) — a mode
+  /// left out costs time, never a pixel.
   void _recomposeOverCarried(Canvas into, List<Rect> region) {
+    // ⛔NO REGION, NO RECOMPOSE: a carry into a rect inside the one it had
+    // — a zoom in on the same level — with nothing live changed has no
+    // band, and the carried pixels are the whole buffer.
+    if (region.isEmpty) {
+      return;
+    }
     final clip = Path();
     for (final part in region) {
       clip.addRect(part);
     }
     into.save();
     into.clipPath(clip, doAntiAlias: false);
-    into.drawPaint(Paint()..blendMode = BlendMode.clear);
-    _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+    if (!debugRecomposeApart || _everyDrawBlendsInPlace()) {
+      into.drawPaint(Paint()..blendMode = BlendMode.clear);
+      _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+    } else {
+      _drawComposedApart(into, region, clip);
+    }
     into.restore();
+  }
+
+  /// [region] composed apart — in an image of its own over the parts'
+  /// bounds, on nothing — and laid onto [into], already held to [clip],
+  /// `src`: where the composite draws nothing the carried pixels go too
+  /// (F-104), with no clear before it.
+  void _drawComposedApart(Canvas into, List<Rect> region, Path clip) {
+    final bounds = region.reduce((a, b) => a.expandToInclude(b));
+    final recorder = ui.PictureRecorder();
+    final apart = Canvas(recorder)
+      ..scale(1 / _levelStep)
+      ..translate(-bounds.left, -bounds.top)
+      // Only to spare the margin's pixels: whatever gets past it lands on
+      // the margin, and the blit leaves the margin behind.
+      ..clipPath(clip, doAntiAlias: false);
+    _paintContent(apart, intoTheBuffer: true, rasterScale: 1 / _levelStep);
+    final picture = recorder.endRecording();
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(
+        (bounds.width / _levelStep).round(),
+        (bounds.height / _levelStep).round(),
+      );
+    } finally {
+      picture.dispose();
+    }
+    into.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      bounds,
+      Paint()
+        ..blendMode = BlendMode.src
+        ..filterQuality = ui.FilterQuality.none
+        ..isAntiAlias = false,
+    );
+    // The recording holds its own reference to what it draws.
+    image.dispose();
+    _painter.bufferCache?.composedApartCount += 1;
+  }
+
+  /// Whether every draw the stack makes blends in place ([blendsInPlace]) —
+  /// what a recompose over carried pixels may stand its clip on. A folder's
+  /// children count although the folder composes them in an image of its
+  /// own, and a stamp ghost counts whatever its blend: a mode left out costs
+  /// time, never a pixel.
+  bool _everyDrawBlendsInPlace() =>
+      _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
+      _nodesBlendInPlace(_painter.nodes);
+
+  bool _nodesBlendInPlace(List<CompositeNode<_PaintRow>> nodes) {
+    for (final node in nodes) {
+      final inPlace = switch (node) {
+        CompositeLeaf(payload: final _PaintImage row) => blendsInPlace(
+          row.blendMode.paintBlendMode,
+        ),
+        CompositeLeaf(payload: final _SurfaceRow row) => blendsInPlace(
+          row.blendMode.paintBlendMode,
+        ),
+        CompositeGroup(:final blendMode, :final children) =>
+          blendsInPlace(blendMode.paintBlendMode) &&
+              _nodesBlendInPlace(children),
+        // Its own passes are `srcOver` and `plus`.
+        CompositeAdjustment(:final children) => _nodesBlendInPlace(children),
+      };
+      if (!inPlace) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Recomposes only [dirty] over the carried [base]: the old pixels are

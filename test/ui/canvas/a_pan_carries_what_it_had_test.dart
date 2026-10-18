@@ -15,6 +15,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
@@ -30,6 +32,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
@@ -63,56 +66,63 @@ void main() {
     frameId: FrameId(id),
   );
 
-  LayerFrameImageCache cacheWithStroke(String id) {
+  // A stroke in each cel, the n-th 3 px to the right of the one before and
+  // in the n-th ink: blue, and a yellow that multiplies it nearly black.
+  const inks = [0xFF0000FF, 0xFFFFC020];
+
+  LayerFrameImageCache cacheWithStrokes(List<String> ids) {
     final store = BrushFrameStore();
-    BrushFrameEditingCoordinator(
-      initialFrameKey: keyFor(id),
-      frameStore: store,
-      sessionStore: BrushFrameEditSessionStore(
-        canvasSize: canvasSize,
-        tileSize: 8,
-      ),
-      historyPolicy: const BrushHistoryPolicy(),
-    ).commitSourceStroke(
-      sourceDabs: [
-        for (var i = 0; i < 4; i += 1)
-          BrushDab(
-            center: CanvasPoint(x: 4.0 + i * 7, y: 5.0 + i * 6),
-            color: 0xFF0000FF,
-            size: 5,
-            opacity: 1,
-            flow: 1,
-            hardness: 1,
-            tipShape: BrushTipShape.round,
-            pressure: 1,
-            sequence: i,
-          ),
-      ],
-    );
+    for (final (n, id) in ids.indexed) {
+      BrushFrameEditingCoordinator(
+        initialFrameKey: keyFor(id),
+        frameStore: store,
+        sessionStore: BrushFrameEditSessionStore(
+          canvasSize: canvasSize,
+          tileSize: 8,
+        ),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(
+        sourceDabs: [
+          for (var i = 0; i < 4; i += 1)
+            BrushDab(
+              center: CanvasPoint(x: 4.0 + i * 7 + n * 3, y: 5.0 + i * 6),
+              color: inks[n],
+              size: 5,
+              opacity: 1,
+              flow: 1,
+              hardness: 1,
+              tipShape: BrushTipShape.round,
+              pressure: 1,
+              sequence: i,
+            ),
+        ],
+      );
+    }
     return LayerFrameImageCache(frameStore: store);
   }
 
-  BitmapSurfacePainter buildLive() {
-    var tile = BitmapTile.blank(size: 8);
-    for (var i = 0; i < 6; i += 1) {
-      tile = writeRgbaColorToBitmapTile(
-        tile: tile,
-        x: i,
-        y: i,
-        color: RgbaColor(r: 255, g: 0, b: 0, a: 255),
+  /// A live layer with [pixels] inked red, [alpha] opaque.
+  BitmapSurfacePainter liveWith(
+    Iterable<(int, int)> pixels, {
+    int alpha = 255,
+  }) {
+    final tiles = <TileCoord, BitmapTile>{};
+    for (final (x, y) in pixels) {
+      final at = TileCoord(x: x ~/ 8, y: y ~/ 8);
+      tiles[at] = writeRgbaColorToBitmapTile(
+        tile: tiles[at] ?? BitmapTile.blank(size: 8),
+        x: x % 8,
+        y: y % 8,
+        color: RgbaColor(r: 255, g: 0, b: 0, a: alpha),
       );
     }
     return BitmapSurfacePainter(
-      surface: BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 8,
-        tiles: {TileCoord(x: 0, y: 0): tile},
-      ),
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 8, tiles: tiles),
       showTransparentBackground: false,
     );
   }
 
-  final live = buildLive();
+  final live = liveWith([for (var i = 0; i < 6; i += 1) (i, i)]);
   final nodes = <CompositeNode<CanvasStackRow>>[
     CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(frameKey: keyFor('under'), opacity: 1),
@@ -120,39 +130,57 @@ void main() {
     const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
   ];
 
-  Future<LayerFrameImageCache> warmCache(WidgetTester tester) async {
-    final cache = cacheWithStroke('under');
-    await tester.runAsync(
-      () => cache.prepare(
-        key: keyFor('under'),
-        canvasSize: canvasSize,
-        quality: PlaybackQuality.full,
-        sourceEffects: const [],
-      ),
-    );
+  /// The cels' images, warmed at [quality] — the one the view asks for at
+  /// its level.
+  Future<LayerFrameImageCache> warmCache(
+    WidgetTester tester, {
+    List<String> ids = const ['under'],
+    PlaybackQuality quality = PlaybackQuality.full,
+  }) async {
+    final cache = cacheWithStrokes(ids);
+    for (final id in ids) {
+      await tester.runAsync(
+        () => cache.prepare(
+          key: keyFor(id),
+          canvasSize: canvasSize,
+          quality: quality,
+          sourceEffects: const [],
+        ),
+      );
+    }
     return cache;
   }
 
+  /// The view of [rows] (the file's two by default) at [viewport], [side]
+  /// logical px square, drawn on over [surface].
   Widget stackAt(
     CanvasViewport viewport,
     LayerFrameImageCache cache,
-    DisplayBufferCache buffers,
-  ) => MaterialApp(
+    DisplayBufferCache buffers, {
+    List<CompositeNode<CanvasStackRow>>? rows,
+    BitmapSurfacePainter? surface,
+    double side = 40,
+  }) => MaterialApp(
     home: Scaffold(
       body: Center(
         child: SizedBox(
           // ⛔SMALL, so a pan actually moves the extent: the extent is
           // CONTENT ∩ VIEW, and a view that holds the whole page never
           // moves it (that case is `a_pan_is_not_a_recomposite_test`).
-          width: 40,
-          height: 40,
+          width: side,
+          height: side,
           child: CanvasLayerStackView(
-            nodes: nodes,
+            // 🚨KEYED BY THE CACHE: the view adopts the cache it is first
+            // built with, so until 2026-10-18 the cold composite the carry
+            // is held against was painted from the warm cache — the carried
+            // image compared with itself.
+            key: ObjectKey(buffers),
+            nodes: rows ?? nodes,
             imageCache: cache,
             debugBufferCache: buffers,
             canvasSize: canvasSize,
             viewport: viewport,
-            activeSurfacePainter: live,
+            activeSurfacePainter: surface ?? live,
             paintPaper: true,
             paperBackground: ProjectBackground.defaultBackground,
           ),
@@ -165,9 +193,21 @@ void main() {
     WidgetTester tester,
     CanvasViewport viewport,
     LayerFrameImageCache cache,
-    DisplayBufferCache buffers,
-  ) async {
-    await tester.pumpWidget(stackAt(viewport, cache, buffers));
+    DisplayBufferCache buffers, {
+    List<CompositeNode<CanvasStackRow>>? rows,
+    BitmapSurfacePainter? surface,
+    double side = 40,
+  }) async {
+    await tester.pumpWidget(
+      stackAt(
+        viewport,
+        cache,
+        buffers,
+        rows: rows,
+        surface: surface,
+        side: side,
+      ),
+    );
     await tester.pumpAndSettle();
     final painted = tester
         .widgetList<CustomPaint>(
@@ -179,11 +219,11 @@ void main() {
         .where((paint) => paint.painter != null)
         .toList();
     expect(painted, isNotEmpty);
-    const size = Size(40, 40);
+    final size = Size(side, side);
     final recorder = ui.PictureRecorder();
     painted.first.painter!.paint(Canvas(recorder, Offset.zero & size), size);
     final picture = recorder.endRecording();
-    final image = picture.toImageSync(40, 40);
+    final image = picture.toImageSync(side.round(), side.round());
     picture.dispose();
     final bytes = await tester.runAsync(
       () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
@@ -211,6 +251,11 @@ void main() {
     final cold = DisplayBufferCache();
     addTearDown(cold.dispose);
     final fresh = await screenAt(tester, moved, cache, cold);
+    expect(
+      cold.fullCount,
+      1,
+      reason: 'the reference was not a cold composite of its own',
+    );
 
     expect(
       carried,
@@ -376,5 +421,227 @@ void main() {
       reason: 'a carry that composites nearly the whole rect is a carry in '
           'name only',
     );
+  });
+
+  // 🚨★★★F-287: a carry over a stack holding a blend that is not in place
+  // is composed APART — the 「캔버스 줌인 줌아웃할때마다」 half of the card,
+  // whose stroke half is `a_stroke_step_draws_its_picture_test`. On the
+  // Windows app the clip a carry stood on did not hold such a blend (the
+  // paint pass's `_recomposeOverCarried` has the measurement); this
+  // engine's clip holds, so what is pinned here is the route, and that the
+  // bands composed apart lay the bytes the clip did.
+  //
+  // ⛔HELD AGAINST THE CLIP, NOT A COLD COMPOSITE. Measured 10-18 on this
+  // runner: with the live row in screen, a carry into a smaller view came
+  // out 1/255 off a cold composite in a few pixels with nothing recomposed
+  // at all — the carry's own, from before this route. (Such a row is
+  // rastered over the page as far as the view sees it, `_slotBufferBounds`,
+  // and an advanced blend rounds by the area it blends through,
+  // `inkCropDrawsTheSame`.) The first test here holds the carry to a cold
+  // composite for a stack that blends in place.
+  group('F-287 — a carry through a blend that is not in place is composed '
+      'apart, and lays the bytes the clip did', () {
+    const ids = ['under', 'over'];
+    const multiplied = LayerBlendMode.multiply;
+    CompositeNode<CanvasStackRow> row(
+      String id, {
+      LayerBlendMode blendMode = LayerBlendMode.normal,
+    }) => CompositeLeaf<CanvasStackRow>(
+      CanvasLayerImageRequest(
+        frameKey: keyFor(id),
+        opacity: 1,
+        blendMode: blendMode,
+      ),
+    );
+    const drawnOn = CompositeLeaf<CanvasStackRow>(
+      CanvasActiveLayerRow(opacity: 1),
+    );
+    final stacks = <String, List<CompositeNode<CanvasStackRow>>>{
+      // The user's: two rows in multiply, a normal row drawn on above.
+      'two rows in multiply under the live row': [
+        row('under', blendMode: multiplied),
+        row('over', blendMode: multiplied),
+        drawnOn,
+      ],
+      'the live row itself in screen': [
+        row('under'),
+        row('over'),
+        const CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, blendMode: LayerBlendMode.screen),
+        ),
+      ],
+      'a folder in overlay': [
+        CompositeGroup<CanvasStackRow>(
+          children: [row('under'), row('over')],
+          opacity: 1,
+          blendMode: LayerBlendMode.overlay,
+        ),
+        drawnOn,
+      ],
+      'a row in multiply inside a normal folder': [
+        CompositeGroup<CanvasStackRow>(
+          children: [row('under'), row('over', blendMode: multiplied)],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+        ),
+        drawnOn,
+      ],
+      'a row in multiply under an adjustment': [
+        CompositeAdjustment<CanvasStackRow>(
+          children: [row('under'), row('over', blendMode: multiplied)],
+          effects: [
+            ResolvedLayerEffect(
+              kind: EffectKind.brightnessContrast,
+              values: const [20, 15],
+            ),
+          ],
+          mix: 1,
+        ),
+        drawnOn,
+      ],
+    };
+    // A red cross through the middle of the page, so every band below
+    // holds some of the live row.
+    final crossed = liveWith([
+      for (var i = 0; i < 32; i += 1) ...[(i, 16), (16, i)],
+    ], alpha: 200);
+    // Each a carry — the extent moves on the level it is on: from where, to
+    // where, in a view `side` logical px square at `ratio` device px to
+    // one, and whether a band is left to compose. At no pan the page's
+    // corner is the view's, so a view moved right and down shows more page.
+    final moves = [
+      // A band down the right and one along the bottom.
+      (
+        name: 'a pan',
+        from: CanvasViewport(zoom: 2),
+        to: CanvasViewport(zoom: 2, panX: -6, panY: -4),
+        side: 40.0,
+        ratio: 3.0,
+        banded: true,
+      ),
+      // The same two bands, the window growing from its corner.
+      (
+        name: 'a zoom out on its level',
+        from: CanvasViewport(zoom: 2.5),
+        to: CanvasViewport(zoom: 2),
+        side: 40.0,
+        ratio: 3.0,
+        banded: true,
+      ),
+      // ⛔The new rect lies inside the old one: no band, and nothing to
+      // compose — apart or on a clip.
+      (
+        name: 'a zoom in on its level',
+        from: CanvasViewport(zoom: 2),
+        to: CanvasViewport(zoom: 2.5),
+        side: 40.0,
+        ratio: 3.0,
+        banded: false,
+      ),
+      // Below 100% the buffer is a level image: the bands lie on its grid,
+      // two level pixels wide, composed apart at its scale.
+      (
+        name: 'a pan below 100%',
+        from: CanvasViewport(zoom: 0.5),
+        to: CanvasViewport(zoom: 0.5, panX: -2, panY: -2),
+        side: 8.0,
+        ratio: 1.0,
+        banded: true,
+      ),
+    ];
+
+    for (final MapEntry(key: stack, value: rows) in stacks.entries) {
+      for (final at in moves) {
+        testWidgets('$stack, ${at.name}', (tester) async {
+          tester.view.devicePixelRatio = at.ratio;
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final level = displayLevelOf(displayScaleOf(at.to.zoom, at.ratio));
+          final cache = await warmCache(
+            tester,
+            ids: ids,
+            quality: PlaybackQuality.forLevel(level),
+          );
+          /// The move made over a cache of its own: the screen after it, and
+          /// the cache that carried it.
+          Future<(Uint8List, DisplayBufferCache)> move() async {
+            final buffers = DisplayBufferCache();
+            addTearDown(buffers.dispose);
+            Future<Uint8List> screen(CanvasViewport viewport) => screenAt(
+              tester,
+              viewport,
+              cache,
+              buffers,
+              rows: rows,
+              surface: crossed,
+              side: at.side,
+            );
+            await screen(at.from);
+            return (await screen(at.to), buffers);
+          }
+
+          final (apart, carried) = await move();
+          expect(carried.lastBufferLevel, level, reason: 'fixture: the level');
+          expect(
+            carried.scrolledCount,
+            1,
+            reason: 'fixture: the move was not carried',
+          );
+          if (at.banded) {
+            expect(carried.lastComposedArea, greaterThan(0));
+            expect(
+              carried.composedApartCount,
+              1,
+              reason: 'a band stood on its clip',
+            );
+          } else {
+            expect(carried.lastComposedArea, 0);
+            expect(carried.composedApartCount, 0);
+          }
+
+          debugRecomposeApart = false;
+          try {
+            final (clipped, reference) = await move();
+            expect(
+              reference.composedApartCount,
+              0,
+              reason: 'the reference went apart',
+            );
+            expect(
+              apart,
+              clipped,
+              reason: 'the bands composed apart and the rest carried — byte '
+                  'for byte the screen the clip made',
+            );
+          } finally {
+            debugRecomposeApart = true;
+          }
+        });
+      }
+    }
+
+    testWidgets('…and a stack that blends in place carries on its clip', (
+      tester,
+    ) async {
+      final cache = await warmCache(tester, ids: ids);
+      final buffers = DisplayBufferCache();
+      addTearDown(buffers.dispose);
+      final rows = [row('under'), row('over'), drawnOn];
+      for (final viewport in [
+        CanvasViewport(zoom: 2),
+        CanvasViewport(zoom: 2, panX: -6, panY: -4),
+      ]) {
+        await screenAt(
+          tester,
+          viewport,
+          cache,
+          buffers,
+          rows: rows,
+          surface: crossed,
+        );
+      }
+      expect(buffers.scrolledCount, 1, reason: 'fixture: a carry');
+      expect(buffers.lastComposedArea, greaterThan(0), reason: 'fixture');
+      expect(buffers.composedApartCount, 0);
+    });
   });
 }
