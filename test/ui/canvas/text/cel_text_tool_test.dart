@@ -2109,6 +2109,10 @@ void main() {
       ..carry(dx: dx, dy: 0)
       ..landEdit();
 
+    /// Set to the right — a setting that lands once its bake is made.
+    CelTextParagraph toTheRight(CelTextParagraph paragraph) =>
+        paragraph.copyWith(align: TextCelAlign.right);
+
     test('🚨each step it landed goes back one at a time while it holds the '
         'text — still in hand, as its cel carries it — and none is left once '
         'it stands as it was taken', () {
@@ -2183,7 +2187,7 @@ void main() {
         'bake it asked for is never shown', () async {
       final (:tool, :host, :baker, :cel) = holdingAb();
       final taken = pictureOf(cel).texts.single;
-      tool.changeBox((content) => content.copyWith(align: TextCelAlign.right));
+      tool.changeParagraphs(toTheRight);
       expect(host.history.undoCount, 0, reason: '⛔전제: still being set');
 
       expect(tool.canStepBack, isTrue);
@@ -2205,7 +2209,7 @@ void main() {
         'taken back, and owed no more', () async {
       final (:tool, :host, :baker, :cel) = holdingAb();
       final taken = pictureOf(cel).texts.single.content;
-      tool.changeBox((content) => content.copyWith(align: TextCelAlign.right));
+      tool.changeParagraphs(toTheRight);
       await baker.pending.answer();
       expect(host.history.undoCount, 1, reason: '⛔전제: landed');
 
@@ -2244,14 +2248,17 @@ void main() {
       typeInto(tool, 'abc');
       tool
         ..stopTyping()
-        ..changeBox((content) => content.copyWith(align: TextCelAlign.right));
+        ..changeParagraphs(toTheRight);
       expect(host.history.undoCount, 0, reason: '⛔전제: nothing set yet');
 
       await baker.pending.answer();
       await baker.pending.answer();
 
       expect(host.history.undoCount, 1, reason: 'one step, the visit');
-      expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
+      expect(
+        pictureOf(cel).texts.single.content.paragraphs.single.align,
+        TextCelAlign.right,
+      );
       expect(tool.canStepBack, isFalse);
     });
 
@@ -2259,7 +2266,7 @@ void main() {
         'visit: while they are held the box has none to take back', () async {
       final (:tool, :host, :baker, :cel) = holdingAb();
       tool
-        ..changeBox((content) => content.copyWith(align: TextCelAlign.right))
+        ..changeParagraphs(toTheRight)
         ..typeAt(const TextSelection.collapsed(offset: 2));
 
       expect(tool.canStepBack, isFalse);
@@ -2267,7 +2274,10 @@ void main() {
       await baker.pending.answer();
       tool.stopTyping();
       expect(host.history.undoCount, 1, reason: 'the visit, the setting in it');
-      expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
+      expect(
+        pictureOf(cel).texts.single.content.paragraphs.single.align,
+        TextCelAlign.right,
+      );
     });
 
     test('taken off its cel after the box landed steps: those are ONE, and '
