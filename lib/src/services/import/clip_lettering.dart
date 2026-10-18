@@ -6,6 +6,7 @@ import '../../models/canvas_point.dart';
 import '../../models/cel_text.dart';
 import '../../models/import/import_warning.dart';
 import '../../models/text_cel_style.dart';
+import '../cel_text_box_edits.dart' show celTextTurnedAbout;
 import 'clip_container.dart' show ClipFormatException;
 import 'clip_document.dart';
 import 'clip_offscreen.dart' show parseClipOffscreenAttribute;
@@ -280,19 +281,25 @@ final class _ClipTextSetting {
     final share = paragraphs.first.align.shareBefore;
     final (width, height) = (box.x1 - box.x0, box.y1 - box.y0);
     final corner = frame.corner;
-    final anchor = columns
-        ? frame.place(
-            corner.x + width - _columnsPast + lead,
-            corner.y + height * share,
-          )
-        : frame.place(corner.x + width * share, corner.y - lead);
-    return CelTextContent(
-      spans: _spansOf(text, size, alpha),
-      anchor: CanvasPoint(x: layer.x + anchor.x, y: layer.y + anchor.y),
-      rotationDegrees: frame.turn * 180 / math.pi,
-      paragraphs: paragraphs,
-      letterWidth: across > 0 && across.isFinite ? across / 100 : 1,
-      vertical: columns,
+    final (x, y) = columns
+        ? (corner.x + width - _columnsPast + lead, corner.y + height * share)
+        : (corner.x + width * share, corner.y - lead);
+    final origin = CanvasPoint(
+      x: (layer.x + frame.origin.x).toDouble(),
+      y: (layer.y + frame.origin.y).toDouble(),
+    );
+    // Set upright in its frame, then turned with the frame about its origin
+    // — as a text the person turns on the canvas is.
+    return celTextTurnedAbout(
+      CelTextContent(
+        spans: _spansOf(text, size, alpha),
+        anchor: CanvasPoint(x: origin.x + x, y: origin.y + y),
+        paragraphs: paragraphs,
+        letterWidth: across > 0 && across.isFinite ? across / 100 : 1,
+        vertical: columns,
+      ),
+      frame.turn * 180 / math.pi,
+      origin,
     );
   }
 
@@ -492,12 +499,6 @@ final class _ClipTextFrame {
 
   /// Whether its corners stand other than square: slanted, or flipped.
   final bool distorted;
-
-  /// The point ([x], [y]) of the frame, on the layer.
-  ({double x, double y}) place(double x, double y) {
-    final (cos, sin) = (math.cos(turn), math.sin(turn));
-    return (x: origin.x + x * cos - y * sin, y: origin.y + x * sin + y * cos);
-  }
 }
 
 /// 🔬A FIT, NOT A READING (F-370-Q4 — the person's sample, 10-18): CLIP

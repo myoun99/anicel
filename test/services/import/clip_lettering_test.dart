@@ -425,15 +425,18 @@ void main() {
       textLayer([
         for (var i = 0; i < 2; i += 1)
           lettering(
-            'abcd',
+            // Two in the first paragraph, one in the second.
+            'abcd\r\nef',
             clipTextAttributesBytes(
               aligns: [
                 (start: 0, length: 2, value: 0),
-                (start: 2, length: 2, value: 2),
+                (start: 2, length: 4, value: 2),
+                (start: 6, length: 2, value: 1),
               ],
               spacings: [
                 (start: 0, length: 2, spacing: 120),
-                (start: 2, length: 2, spacing: 140),
+                (start: 2, length: 4, spacing: 140),
+                (start: 6, length: 2, spacing: 200),
               ],
               corners: slanted,
             ),
@@ -499,6 +502,15 @@ void main() {
             ],
           ),
         ),
+        // A last paragraph with no letters is set as the one before it, so
+        // what the text says it is aligned is never read.
+        lettering(
+          'ab\r\n',
+          clipTextAttributesBytes(
+            aligns: [(start: 0, length: 4, value: 2)],
+            textAlign: 3,
+          ),
+        ),
       ]),
     );
 
@@ -561,20 +573,80 @@ void main() {
   });
 
   test('an alignment of a kind the app does not know is said, and set '
-      'left', () {
-    final result = read(
+      'left — its paragraph\'s, or the text\'s where none covers it', () {
+    for (final attributes in [
+      clipTextAttributesBytes(aligns: [(start: 0, length: 2, value: 3)]),
+      clipTextAttributesBytes(textAlign: 3),
+    ]) {
+      final result = read(textLayer([lettering('ab', attributes)]));
+
+      expect(keysOf(result.warnings), ['clipTextAlign']);
+      expect(
+        result.texts.single.content.paragraphs.single.align,
+        TextCelAlign.left,
+      );
+    }
+  });
+
+  test('a run or a line that runs past the text\'s ends sets only the '
+      'letters it covers', () {
+    final spans = read(
       textLayer([
         lettering(
           'ab',
-          clipTextAttributesBytes(aligns: [(start: 0, length: 2, value: 3)]),
+          clipTextAttributesBytes(
+            runs: [
+              (
+                start: -1,
+                length: 2,
+                bold: true,
+                italic: false,
+                colour: null,
+                scale: null,
+                face: '',
+              ),
+            ],
+            underlines: [(start: 1, length: 9, value: 1)],
+          ),
+        ),
+      ]),
+    ).texts.single.content.spans;
+
+    expect(
+      [
+        for (final span in spans)
+          (span.text, span.style.bold, span.style.underline),
+      ],
+      [('a', true, false), ('b', false, true)],
+    );
+  });
+
+  test('a parameter shorter than its numbers is read as one not there — '
+      'corners too few stand the text upright at its box', () {
+    final text = read(
+      textLayer([
+        lettering(
+          'a',
+          Uint8List.fromList([
+            ...clipTextAttributesBytes(
+              box: (x0: 10, y0: 20, x1: 40, y1: 44),
+              withCorners: false,
+            ),
+            // Parameter 64, sixteen bytes long: four of its eight numbers.
+            ...[64, 0, 0, 0, 16, 0, 0, 0],
+            ...List.filled(16, 1),
+          ]),
         ),
       ]),
     );
 
-    expect(keysOf(result.warnings), ['clipTextAlign']);
+    expect(text.warnings, isEmpty);
     expect(
-      result.texts.single.content.paragraphs.single.align,
-      TextCelAlign.left,
+      (
+        text.texts.single.content.anchor.x,
+        text.texts.single.content.rotationDegrees,
+      ),
+      (10, 0),
     );
   });
 
@@ -823,13 +895,21 @@ void main() {
         pictures: pictures,
       ).picture?.blocksId;
 
-      // Its box turned is 130.90 × 113.92.
+      // Its box turned is 130.90 × 113.92: 'nearer' is 0.92 off, 'farther'
+      // 1.10 — whichever the file holds first.
       expect(
         pictureAmong([
           pictureOf(111, 71, 'the box upright'),
           pictureOf(133, 113, 'two off'),
-          pictureOf(132, 114, 'farther'),
+          pictureOf(132, 115, 'farther'),
           pictureOf(131, 113, 'nearer'),
+        ]),
+        'nearer',
+      );
+      expect(
+        pictureAmong([
+          pictureOf(131, 113, 'nearer'),
+          pictureOf(132, 115, 'farther'),
         ]),
         'nearer',
       );
