@@ -307,13 +307,22 @@ class TextCelStyle extends TextLetterStyle {
 
 /// Horizontal alignment around the content's anchor position.
 enum TextCelAlign {
-  left('left'),
-  center('center'),
-  right('right');
+  left('left', 0),
+  center('center', 0.5),
+  right('right', 1);
 
-  const TextCelAlign(this.jsonValue);
+  const TextCelAlign(this.jsonValue, this.shareBefore);
 
   final String jsonValue;
+
+  /// How much of the room beside its letters this leaves BEFORE them —
+  /// left of a line, above a column: none of it, half of it, all of it.
+  ///
+  /// One answer for every place that asks: where a text stands about its
+  /// anchor, where a paragraph stands in its box, where a box hangs so
+  /// that no letter moves. Ten places each answered it with a switch of
+  /// their own (counted 2026-10-18).
+  final double shareBefore;
 
   static TextCelAlign fromJson(String? value) => switch (value) {
     'left' => TextCelAlign.left,

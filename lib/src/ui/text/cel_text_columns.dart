@@ -691,35 +691,17 @@ ui.Rect _placed(CelTextContent content, List<_Column> columns) {
   final limit = content.wrapWidth;
   final height = limit ?? longest;
   final boxLength = limit ?? celTextBoxLengthPast(longest);
+  final standsBy = content.standsBy.shareBefore;
   // A box hangs from its anchor; a text that grows stands about it.
-  final top = limit != null
-      ? 0.0
-      : switch (content.standsBy) {
-          TextCelAlign.left => 0.0,
-          TextCelAlign.center => -height / 2,
-          TextCelAlign.right => -height,
-        };
+  final top = limit != null ? 0.0 : -height * standsBy;
   // Its box begins what of it is past the block — or half of that — before
   // the block does, as the text stands; a box is its block.
-  final boxTop =
-      top -
-      (boxLength - height) *
-          switch (content.standsBy) {
-            TextCelAlign.left => 0,
-            TextCelAlign.center => 0.5,
-            TextCelAlign.right => 1,
-          };
+  final boxTop = top - (boxLength - height) * standsBy;
   var right = 0.0;
   for (final column in columns) {
     column.left = right - column.width;
     final room = boxLength - column.length;
-    var down =
-        boxTop +
-        switch (column.paragraph.align) {
-          TextCelAlign.left => 0.0,
-          TextCelAlign.center => room / 2,
-          TextCelAlign.right => room,
-        };
+    var down = boxTop + room * column.paragraph.align.shareBefore;
     for (final cell in column.cells) {
       cell.room = ui.Rect.fromLTWH(
         column.left,

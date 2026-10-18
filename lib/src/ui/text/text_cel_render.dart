@@ -150,11 +150,10 @@ TextCelLayout layoutTextCel({
   final anchor =
       content.position ??
       ui.Offset(canvas.width / 2, (canvas.height - textSize.height) / 2);
-  final topLeft = ui.Offset(switch (style.align) {
-    TextCelAlign.left => anchor.dx,
-    TextCelAlign.center => anchor.dx - textSize.width / 2,
-    TextCelAlign.right => anchor.dx - textSize.width,
-  }, anchor.dy);
+  final topLeft = ui.Offset(
+    anchor.dx - textSize.width * style.align.shareBefore,
+    anchor.dy,
+  );
 
   // The pad follows the DRAWN size, so a shrunk tag keeps its proportions.
   final pad = style.backgroundColor == null ? 0.0 : drawnSize * 0.25;

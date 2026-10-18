@@ -69,18 +69,13 @@ CelTextContent celTextBoxed(CelTextContent content) {
 /// stay where they are: its top left corner, or written in columns its top
 /// right.
 Offset _boxCornerOf(CelTextContent content, Rect block, double room) {
+  // It begins what of it is past the block — or half of that — before the
+  // block does, as the text stands: where the letters are set in it.
+  final before = content.standsBy.shareBefore;
   if (content.vertical) {
-    return Offset(block.right, switch (content.standsBy) {
-      TextCelAlign.left => block.top,
-      TextCelAlign.center => block.center.dy - room / 2,
-      TextCelAlign.right => block.bottom - room,
-    });
+    return Offset(block.right, block.top - (room - block.height) * before);
   }
-  return Offset(switch (content.standsBy) {
-    TextCelAlign.left => block.left,
-    TextCelAlign.center => block.center.dx - room / 2,
-    TextCelAlign.right => block.right - room,
-  }, block.top);
+  return Offset(block.left - (room - block.width) * before, block.top);
 }
 
 /// [content] as a text that GROWS and looks the same: a break typed in
@@ -122,11 +117,7 @@ CelTextContent celTextUnboxed(CelTextContent content) {
   }
   // How far along its room the point its letters stand ABOUT is: the head
   // of a line or a column, its middle, or its foot.
-  final along = switch (content.standsBy) {
-    TextCelAlign.left => 0.0,
-    TextCelAlign.center => width / 2,
-    TextCelAlign.right => width,
-  };
+  final along = width * content.standsBy.shareBefore;
   final about = layout.toCanvas(
     offsetAlong(
       celTextLettersAxis(vertical: content.vertical),

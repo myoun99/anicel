@@ -225,13 +225,7 @@ final class _ClipTextSetting {
     return CelTextContent(
       spans: _spansOf(text, size, alpha),
       anchor: CanvasPoint(
-        x:
-            at.x +
-            switch (align) {
-              TextCelAlign.left => 0.0,
-              TextCelAlign.center => (box.x1 - box.x0) / 2,
-              TextCelAlign.right => (box.x1 - box.x0).toDouble(),
-            },
+        x: at.x + (box.x1 - box.x0) * align.shareBefore,
         // ⚠️The box holds the first line's letters, and a line is set
         // [lineHeight] tall about them: its top stands half the leading
         // above the box, so the letters land where CLIP STUDIO set them.

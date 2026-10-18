@@ -445,15 +445,7 @@ double _frameOf(CelTextContent content, double longest) =>
 /// as it stands by its lines' left end, half of it by their middle, all of
 /// it by their right end. None for a box, which is its block.
 ui.Offset _roomBeforeBlock(CelTextContent content, _Paragraphs fill) =>
-    ui.Offset(
-      (fill.frame - fill.width) *
-          switch (content.standsBy) {
-            TextCelAlign.left => 0,
-            TextCelAlign.center => 0.5,
-            TextCelAlign.right => 1,
-          },
-      0,
-    );
+    ui.Offset((fill.frame - fill.width) * content.standsBy.shareBefore, 0);
 
 /// [rect], of letters as the engine SETS them, as they are DRAWN in the
 /// text's own frame: [letterWidth] times as wide about its x = 0
@@ -476,13 +468,8 @@ ui.Rect _drawnRect(ui.Rect rect, double letterWidth) => ui.Rect.fromLTRB(
 /// as they will in the box the text is made.
 ui.Rect _blockOf(CelTextContent content, _Paragraphs fill) {
   final width = fill.width;
-  if (content.wrapWidth != null) {
-    return ui.Rect.fromLTWH(0, 0, width, fill.height);
-  }
-  final left = switch (content.standsBy) {
-    TextCelAlign.left => 0.0,
-    TextCelAlign.center => -width / 2,
-    TextCelAlign.right => -width,
-  };
+  final left = content.wrapWidth != null
+      ? 0.0
+      : -width * content.standsBy.shareBefore;
   return ui.Rect.fromLTWH(left, 0, width, fill.height);
 }
