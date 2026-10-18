@@ -70,7 +70,7 @@ const List<String> _tvpaintExtensions = ['ini', 'cfg', 'txt'];
 /// CLIP STUDIO PAINT's: a shortcut set (`.khc`), a tool palette (`.todb`).
 const List<String> _clipStudioExtensions = ['khc', 'todb'];
 
-/// What [readShortcutFile] reads. 🗣️I-107-Q2 (추천 a): all five.
+/// What [readShortcutFile] reads. 🗣️I-107-Q2 (유저 2026-10-18): 「다섯 다」.
 const List<String> shortcutFileExtensions = [
   ..._tvpaintExtensions,
   ..._clipStudioExtensions,
@@ -93,8 +93,8 @@ ProgramKeymap? readShortcutFile(String name, List<int> bytes) {
 }
 
 /// What TVPaint's shortcut window saves (`.txt`) names each command by:
-/// the name it is shown by, in the interface's language. 🗣️I-107-Q2 (추천
-/// a): the Japanese names first — the file the user sent
+/// the name it is shown by, in the interface's language. 🗣️I-107-Q2 (유저
+/// 2026-10-18, 「다섯 다」): the Japanese names first — the file the user sent
 /// (`tvp_shortcut_default.txt`, TVPaint 12) laid beside the same program's
 /// `config.ini`, key by key. Only the commands a preset row names are here
 /// (a test holds the two together); another language comes in when a file

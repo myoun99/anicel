@@ -129,10 +129,10 @@ enum OpenedAs {
   /// Goes into this device's fonts ([fontFileExtensions]).
   font,
 
-  /// Puts a program's keys on its shortcut preset ([shortcutFileExtensions],
-  /// I-107). ⚠️`.txt` · `.ini` · `.cfg` are names other files use too: what
-  /// is not a program's shortcut file is said so when it is read
-  /// (I-107-Q2's cost, 추천 a).
+  /// Makes a program's keys a preset ([shortcutFileExtensions], I-107).
+  /// ⚠️`.txt` · `.ini` · `.cfg` are names other files use too: what is not
+  /// a program's shortcut file is said so when it is read (the cost
+  /// I-107-Q2 named — 유저 2026-10-18: 「다섯 다」).
   shortcuts,
 }
 
