@@ -424,6 +424,22 @@ void main() {
     expect(cellText(tester, 'bake', files['A1']!), AppText.strings.commonOff);
   });
 
+  testWidgets('Import pressed before the run is measured waits for it — the '
+      'run still comes in as one layer', (tester) async {
+    final files = await writeFolder(tester);
+    final s = await open(tester, [files['A1']!], runs: const []);
+    expect(
+      cellText(tester, 'option', files['A1']!),
+      '—',
+      reason: '⛔fixture: its pictures are not measured yet',
+    );
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1));
+    expect([for (final frame in added.single.frames) frame.name], ['1', '3']);
+  });
+
   testWidgets('two pictures of one run picked together bring it once',
       (tester) async {
     final files = await writeFolder(tester);

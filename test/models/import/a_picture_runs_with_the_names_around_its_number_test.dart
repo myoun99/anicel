@@ -98,8 +98,9 @@ void main() {
     });
 
     test('a picture whose size cannot be read holds none — it stops the run '
-        'as another size does', () {
-      CanvasSize? sizeOf(String file) => file == '4.png' ? null : small;
+        'as another size does, and two of them are no run', () {
+      CanvasSize? sizeOf(String file) =>
+          file == '4.png' || file == '5.png' ? null : small;
 
       expect(filesOf(sameSizeRunOf(run, '2.png', sizeOf)), [
         '1.png',
