@@ -403,8 +403,8 @@ void main() {
     expect(keyedFor(1.5).length, greaterThan(2));
   });
 
-  test('🎯a camera folder\'s anchor is fitted on the path the app walks it '
-      'on: a quarter turn plays back within the pixel', () {
+  test('🎯a camera folder\'s anchor turning a quarter circle plays back '
+      'within the pixel where the app plays it', () {
     // A quarter turn of 200 around (360, 270), over 24 frames.
     final anchors = {
       for (var frame = 0; frame <= 24; frame += 1)
