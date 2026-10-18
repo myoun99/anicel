@@ -406,14 +406,20 @@ class EffectsAndFx {
     _changes.notifyChanged();
   }
 
-  /// The effect chain a lane/fx-header address names: a real layer's, or the
+  /// The effect chain a lane/fx-header address names: a real layer's — the
+  /// row a write of it addresses ([RowWrittenById.rowWrittenById]) — or the
   /// V TRACK's through the carrier id (R4b). Null when neither exists.
+  ///
+  /// 🗣️I-89 ①ⓓ: the conte rail re-orders an S row's chain on every track
+  /// (유저 2026-10-13 「같은 법으로」). ↩️It asked the active cut's rows
+  /// alone, so another track's S row found no chain and its drag did
+  /// nothing — the fx switch's own trap, measured 09-25.
   List<LayerEffect>? effectChainOf(LayerId layerId) {
     final trackId = trackIdOfTransformLaneCarrier(layerId);
     if (trackId != null) {
       return _project.trackById(trackId)?.effects;
     }
-    return _project.layerById(layerId)?.effects;
+    return _project.rowWrittenById(layerId)?.effects;
   }
 
   /// Bypasses or restores EVERY layer's fx — the legend's bulk flyout,

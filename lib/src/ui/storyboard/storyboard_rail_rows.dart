@@ -791,7 +791,7 @@ class _StoryboardRailRows {
       onSelectFrame: _state.widget.onSeekGlobalFrame,
       graphVerbs: _laneGraphVerbs,
     );
-    return _state._rows.selectableLanes(layer.id, lanes, labels);
+    return _state._rows.laneRows(layer.id, lanes, labels, chainId: layer.id);
   }
 
   /// The camera row's lane labels, row for row with its lane strips
@@ -914,7 +914,12 @@ class _StoryboardRailRows {
       // I-89 ①: by the row's own id, which this rail keys its graphs by.
       graphVerbs: _laneGraphVerbs,
     );
-    return _state._rows.selectableLanes(projection.rowId, labels.lanes, rows);
+    return _state._rows.laneRows(
+      projection.rowId,
+      labels.lanes,
+      rows,
+      chainId: stood?.layer.id,
+    );
   }
 
   /// [build] with [cut]'s camera track as the drag channel shows it — a key
@@ -1042,8 +1047,9 @@ class _StoryboardRailRows {
         // substrate. Grabbing a header re-orders the chain, exactly as it does
         // on a layer's rail (the fx-order drag's subject only differs in WHICH
         // chain it names).
-        ..._state._rows.draggableTrackEffectRows(
-          track,
+        ..._state._rows.laneRows(
+          trackTransformLaneCarrierId(track.id),
+          _trackEffectLanes(track),
           _state._rows.laneLabels(
             carrier: _trackLaneCarrier(track),
             // A layer row's own key ([laneGroupKey]), on the lane carrier.
@@ -1088,6 +1094,7 @@ class _StoryboardRailRows {
             onSelectFrame: _state.widget.onSeekGlobalFrame,
             graphVerbs: _laneGraphVerbs,
           ),
+          chainId: trackTransformLaneCarrierId(track.id),
         ),
       ],
     ];

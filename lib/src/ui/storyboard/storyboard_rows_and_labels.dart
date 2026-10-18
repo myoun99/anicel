@@ -14,48 +14,70 @@ class _StoryboardRowsAndLabels {
   /// What the rail keeps of its rows ([_KeptRailRows]).
   final _KeptRailRows _kept = _KeptRailRows();
 
-  /// The V row's fx label rows, with each GROUP HEADER made draggable so the
-  /// chain can be re-ordered here (the layer rail's gesture, one level up).
+  /// A lane list's labels — [rowId]'s lanes, row for row with [lanes] —
+  /// laid as the table lays the lanes ([_laidLanes]), each made to select
+  /// ([selectOnly]) by the address it is stood on, and each fx GROUP HEADER
+  /// made to re-order [chainId]'s chain too: the layer rail's gesture.
+  ///
+  /// 🗣️I-89 ①ⓓ (유저 2026-10-13: 「이런건 다 콘티패널에도 동일하게
+  /// 있어야해. 같은 법으로」): every row this rail twirls down orders its fx
+  /// here as the timeline's rail does — the V row's chain on its lane
+  /// carrier, an S row's on its layer, a projection row's on its layer in the
+  /// cut the session stands in. ↩️The V row alone did
+  /// (`draggableTrackEffectRows`); an S row's and a conte row's headers only
+  /// selected (`selectableLanes`).
+  ///
+  /// A null [chainId] leaves the headers to select like every lane: a
+  /// projection row with nothing stood in edits nothing (I-73 ④). The Audio
+  /// lane keeps no address (no key range lands on it), so it stays as it
+  /// is.
   ///
   /// The pointer counts LANE rows and the chain counts HEADERS, and the two
   /// differ the moment a group is twirled open — which is exactly when
-  /// someone reaches for the order. [effectStepsBetween] converts, the same
+  /// someone reaches for the order. [rowStepsBetween] converts, the same
   /// way the timeline's rail does it.
-  List<Widget> draggableTrackEffectRows(Track track, List<Widget> rows) {
-    final hooks = _state.widget.rowDragHooks;
-    final lanes = _state._railRows._trackEffectLanes(track);
-    final carrierId = trackTransformLaneCarrierId(track.id);
-    if (hooks == null || lanes.length != rows.length) {
-      return _laidLanes(carrierId, lanes, rows);
-    }
-    final headers = <({int rowIndex, EffectId effectId})>[];
-    for (var index = 0; index < lanes.length; index += 1) {
-      final parsed = parseEffectLaneId(lanes[index].laneId);
-      if (parsed != null && parsed.parameterId == null) {
-        headers.add((rowIndex: index, effectId: parsed.effectId));
-      }
-    }
-    return _laidLanes(carrierId, lanes, [
+  List<Widget> laneRows(
+    LayerId rowId,
+    List<PropertyLaneRow> lanes,
+    List<Widget> rows, {
+    required LayerId? chainId,
+  }) {
+    final chain = (
+      rowId: rowId,
+      chainId: chainId,
+      headers: [
+        for (final (index, lane) in lanes.indexed)
+          if (parseEffectLaneId(lane.laneId) case (
+            :final effectId,
+            parameterId: null,
+          ))
+            (rowIndex: index, effectId: effectId),
+      ],
+    );
+    return _laidLanes(rowId, lanes, [
       for (var index = 0; index < rows.length; index += 1)
-        _trackEffectRow(
-          hooks,
-          (carrierId: carrierId, headers: headers),
-          (lane: lanes[index], index: index),
-          rows[index],
-        ),
+        if (index >= lanes.length || laneIsSeAudio(lanes[index]))
+          rows[index]
+        else
+          _laneRow(chain, (lane: lanes[index], index: index), rows[index]),
     ]);
   }
 
-  /// One label of the V row's fx chain at [at]: a group header re-orders
-  /// the chain, and selects; a parameter lane moves nothing, and selects
-  /// like every row.
-  Widget _trackEffectRow(
-    TimelineRowDragHooks hooks,
-    ({LayerId carrierId, List<({int rowIndex, EffectId effectId})> headers})
+  /// One lane label of [chain]'s row at [at]: a group header re-orders the
+  /// chain, and selects; every other lane moves nothing, and selects like
+  /// every row.
+  Widget _laneRow(
+    ({
+      LayerId rowId,
+      LayerId? chainId,
+      List<({int rowIndex, EffectId effectId})> headers,
+    })
     chain,
     ({PropertyLaneRow lane, int index}) at,
     Widget row,
   ) {
+    final hooks = _state.widget.rowDragHooks;
+    final chainId = chain.chainId;
     final displayEffects = [
       for (final header in chain.headers) header.effectId,
     ];
@@ -63,29 +85,27 @@ class _StoryboardRowsAndLabels {
     final slot = parsed == null || parsed.parameterId != null
         ? -1
         : displayEffects.indexOf(parsed.effectId);
-    final extent = _laneExtentOf(chain.carrierId, at.lane);
-    if (slot < 0) {
+    final extent = _laneExtentOf(chain.rowId, at.lane);
+    final address = LaneRowAddress(chain.rowId, at.lane.laneId);
+    if (hooks == null || chainId == null || slot < 0) {
       return selectOnly(
-        LaneRowSubject(chain.carrierId, at.lane.laneId),
+        LaneRowSubject(chain.rowId, at.lane.laneId),
         extent,
         row,
       );
     }
-    final subject = EffectRowSubject(chain.carrierId, parsed!.effectId);
     return LayerRowDragTarget(
-      subject: subject,
+      subject: EffectRowSubject(chainId, parsed!.effectId),
       slotBefore: slot,
       rowExtent: extent,
       // I-89 ③: the room an open graph stands past its lanes is no row.
-      pointerRowsAt: _state._railRows.pointerRowsFrom(
-        LaneRowAddress(chain.carrierId, at.lane.laneId),
-      ),
+      pointerRowsAt: _state._railRows.pointerRowsFrom(address),
       axis: Axis.horizontal,
       hooks: hooks,
       grip: () => [effectRowDragChip(at.lane)],
       isLastRow: slot == displayEffects.length - 1,
       onCrossed: (steps, _, _) => hooks.onEffectUpdate(
-        chain.carrierId,
+        chainId,
         displayEffects,
         slotForSteps(
           slot,
@@ -97,11 +117,10 @@ class _StoryboardRowsAndLabels {
           displayEffects.length,
         ),
       ),
-      // B4-3's select half, as the timeline's chain header has it.
+      // B4-3's select half, as the timeline's chain header has it — from
+      // the row the rail draws, which a projection row's chain is not.
       onSelectCrossed: _spanOnSelect(),
-      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(
-        timelineRowAddressOfDragSubject(subject),
-      ),
+      selectRowDeltaAt: _state._railRows.selectRowDeltaFrom(address),
       child: row,
     );
   }
@@ -218,26 +237,6 @@ class _StoryboardRowsAndLabels {
     final wears? => _wearing(wears, label.piece),
     null => label.piece,
   };
-
-  /// A lane list's labels, each made to select ([selectOnly]) by the address
-  /// it is stood on — [carrierId]'s lane — and laid as the table lays the
-  /// lanes ([_laidLanes]). The Audio lane keeps no address (no key range
-  /// lands on it), so it stays as it is.
-  List<Widget> selectableLanes(
-    LayerId carrierId,
-    List<PropertyLaneRow> lanes,
-    List<Widget> rows,
-  ) => _laidLanes(carrierId, lanes, [
-    for (var index = 0; index < rows.length; index += 1)
-      if (index >= lanes.length || laneIsSeAudio(lanes[index]))
-        rows[index]
-      else
-        selectOnly(
-          LaneRowSubject(carrierId, lanes[index].laneId),
-          _laneExtentOf(carrierId, lanes[index]),
-          rows[index],
-        ),
-  ]);
 
   /// [rows] — [carrierId]'s lane labels, row for row with [lanes] — laid as
   /// the table lays the lanes (I-89 ①, [_StoryboardRailRows._seatedLane]):
