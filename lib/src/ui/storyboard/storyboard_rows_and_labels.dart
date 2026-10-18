@@ -402,7 +402,7 @@ class _StoryboardRowsAndLabels {
       label,
       (layer.id, at, shown.length, extent, _dragInputs),
       (label) => LayerRowDragTarget(
-        subject: LayerRowSubject(layer.id),
+        subject: TrackSeRowSubject(trackId, layer.id),
         slotBefore: at,
         rowExtent: extent,
         axis: Axis.horizontal,

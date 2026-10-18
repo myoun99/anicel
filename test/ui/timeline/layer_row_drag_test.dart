@@ -280,6 +280,86 @@ Project _folderWithMemberProject() {
   );
 }
 
+/// One cut holding [layers] (model order, bottom → top) under a camera.
+Project _stackProject(List<Layer> layers) {
+  return Project(
+    id: const ProjectId('drag-project'),
+    name: 'Drag Project',
+    createdAt: DateTime.utc(2026, 10, 18),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              ...layers,
+              Layer(
+                id: const LayerId('cam'),
+                name: 'Camera',
+                kind: LayerKind.camera,
+                frames: const [],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+/// A folder of two over a loose row. Rail top-down: Camera, X, F, M2, M1, A.
+Project _folderMembersProject() => _stackProject([
+  Layer(id: const LayerId('a'), name: 'A', frames: const []),
+  Layer(
+    id: const LayerId('m1'),
+    name: 'M1',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  Layer(
+    id: const LayerId('m2'),
+    name: 'M2',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  createFolderLayer(id: const LayerId('f'), name: 'F'),
+  Layer(id: const LayerId('x'), name: 'X', frames: const []),
+]);
+
+/// The conte with a row riding it on each side, two loose rows above.
+/// Rail top-down: Camera, B, A, Conte+1, Conte, Conte-1.
+Project _conteGroupProject() => _stackProject([
+  Layer(
+    id: const LayerId('under'),
+    name: 'Conte-1',
+    kind: LayerKind.storyboard,
+    frames: const [],
+    attachedToLayerId: const LayerId('conte'),
+    attachedPlacement: AttachedPlacement.below,
+  ),
+  Layer(
+    id: const LayerId('conte'),
+    name: 'Conte',
+    kind: LayerKind.storyboard,
+    frames: const [],
+  ),
+  Layer(
+    id: const LayerId('over'),
+    name: 'Conte+1',
+    kind: LayerKind.storyboard,
+    frames: const [],
+    attachedToLayerId: const LayerId('conte'),
+  ),
+  Layer(id: const LayerId('a'), name: 'A', frames: const []),
+  Layer(id: const LayerId('b'), name: 'B', frames: const []),
+]);
+
 void main() {
   testWidgets('dragging a rail row up moves it up the stack', (tester) async {
     await _pump(tester);
@@ -840,6 +920,206 @@ void main() {
 
     expect(_order(session), ['q', 'b1', 'b1up', 'p', 'b2down', 'b2']);
     expect(_layerOf(session, 'p').attachedToLayerId, isNull);
+  });
+
+  /// [id], held at its name, its pointer put [fraction] of the way down
+  /// [into]'s row — 0 its top edge, 1 its bottom. A fifth from an edge is a
+  /// line's; the middle of a row is the row's own (R5 #15).
+  Future<TestGesture> lift(WidgetTester tester, String id) async {
+    final grip = _railRowGrip(id);
+    await tester.ensureVisible(grip);
+    await tester.pumpAndSettle();
+    await _selectRow(tester, grip);
+    final gesture = await tester.startGesture(
+      Offset(tester.getCenter(grip).dx, tester.getCenter(_railRow(id)).dy),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+    return gesture;
+  }
+
+  Future<void> pointInto(
+    WidgetTester tester,
+    TestGesture gesture,
+    String into, {
+    required double fraction,
+    required double dx,
+  }) async {
+    final row = tester.getRect(_railRow(into));
+    await gesture.moveTo(Offset(dx, row.top + row.height * fraction));
+    await tester.pump();
+  }
+
+  Finder caretBefore(String id) =>
+      find.byKey(ValueKey<String>('timeline-row-caret-before-$id'));
+
+  final anyCaret = find.byWidgetPredicate(
+    (widget) =>
+        widget.key is ValueKey<String> &&
+        (widget.key! as ValueKey<String>).value.startsWith(
+          'timeline-row-caret-',
+        ),
+  );
+
+  testWidgets('🚨F-312 (10-08): the OUTERMOST attach row lets go where it '
+      'stands — on its own edge, in the half past its group', (tester) async {
+    // 유저: 「가장 바깥에 있는 어태치레이어는 그게 적용안됨. 적용되도록하고 다른
+    // 곳에서도 법 다른거있으면 통일」. B2-1 is B2's outermost row below it,
+    // B1+1 B1's above it, and the line they share is both groups' edge.
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('b2down')).dx;
+
+    var gesture = await lift(tester, 'b2down');
+    await pointInto(tester, gesture, 'b2down', fraction: 0.85, dx: dx);
+    expect(anyCaret, findsNothing, reason: 'in its own row it goes nowhere');
+    await pointInto(tester, gesture, 'b1up', fraction: 0.15, dx: dx);
+    expect(caretBefore('b1up'), findsOneWidget, reason: 'its own edge');
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2down', 'b2', 'p']);
+    expect(_layerOf(session, 'b2down').attachedToLayerId, isNull);
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_layerOf(session, 'b2down').attachedToLayerId, const LayerId('b2'));
+
+    // And B1+1 from below, over the same line.
+    gesture = await lift(tester, 'b1up');
+    await pointInto(tester, gesture, 'b1up', fraction: 0.15, dx: dx);
+    expect(anyCaret, findsNothing, reason: 'in its own row it goes nowhere');
+    await pointInto(tester, gesture, 'b2down', fraction: 0.85, dx: dx);
+    expect(caretBefore('b1up'), findsOneWidget, reason: 'its own edge');
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2down', 'b2', 'p']);
+    expect(_layerOf(session, 'b1up').attachedToLayerId, isNull);
+  });
+
+  testWidgets('🚨F-312 (10-08): a FOLDER\'s bottom line splits the same way '
+      '— in from inside, out from past it, and its last member goes out '
+      'where it stands', (tester) async {
+    await _pump(tester, project: _folderMembersProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+    final out = find.text(AppText.strings.tlDropOutOfFolder);
+
+    var gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'a', fraction: 0.15, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(out, findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'm1', 'm2', 'x']);
+    expect(_layerOf(session, 'm1').folderId, isNull);
+    session.undo();
+    await tester.pumpAndSettle();
+
+    // M2 to the folder's bottom, with the pointer still in M1: it stays in.
+    gesture = await lift(tester, 'm2');
+    await pointInto(tester, gesture, 'm1', fraction: 0.85, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(out, findsNothing, reason: 'still the folder\'s');
+    // …and past M1 into A, the same line lets it out.
+    await pointInto(tester, gesture, 'a', fraction: 0.15, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(out, findsOneWidget);
+    await pointInto(tester, gesture, 'm1', fraction: 0.85, dx: dx);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'm2', 'm1', 'x']);
+    expect(_layerOf(session, 'm2').folderId, const LayerId('f'));
+  });
+
+  testWidgets('the pointer over a row\'s LANES stands in that row — its own '
+      'or a neighbour\'s', (tester) async {
+    await _pump(tester, project: _folderMembersProject());
+    final session = _sessionOf(tester);
+    final rowHeight = tester.getSize(_railRow('m1')).height;
+    session.layerSwitches.toggleLayerLanes(const LayerId('m1'));
+    await tester.pumpAndSettle();
+    final lanes =
+        tester.getRect(_railRow('a')).top -
+        tester.getRect(_railRow('m1')).bottom;
+    expect(lanes, greaterThan(rowHeight), reason: '⛔전제: M1 twirled open');
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+
+    // Over its own last lane, by the line under them: it goes nowhere. Read
+    // as no row at all, that half let it out of its folder.
+    final gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'a', fraction: -0.1, dx: dx);
+    expect(anyCaret, findsNothing);
+    await pointInto(tester, gesture, 'a', fraction: 0.15, dx: dx);
+    expect(caretBefore('a'), findsOneWidget);
+    expect(find.text(AppText.strings.tlDropOutOfFolder), findsOneWidget);
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the pointer over a NEIGHBOUR\'s lanes is past the group: the '
+      'row carried there lets go', (tester) async {
+    await _pump(tester, project: _facingGroupsProject());
+    final session = _sessionOf(tester);
+    final rowHeight = tester.getSize(_railRow('p')).height;
+    session.layerSwitches.toggleLayerLanes(const LayerId('p'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getRect(_railRow('b2')).top -
+          tester.getRect(_railRow('p')).bottom,
+      greaterThan(rowHeight),
+      reason: '⛔전제: P twirled open — or the pointer is in P\'s own row',
+    );
+    final dx = tester.getCenter(_railRowGrip('b2down')).dx;
+
+    // B2-1 carried up past its base, to the line under P's lanes: P's.
+    final gesture = await lift(tester, 'b2down');
+    await pointInto(tester, gesture, 'b2', fraction: -0.1, dx: dx);
+    expect(caretBefore('b2'), findsOneWidget);
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b1', 'b1up', 'b2', 'b2down', 'p']);
+    expect(_layerOf(session, 'b2down').attachedToLayerId, isNull);
+  });
+
+  testWidgets('🚨a row riding the conte, carried past its group, stands at '
+      'the group\'s edge wherever past it the pointer is (결정 6)', (
+    tester,
+  ) async {
+    // It is never let go (I-73-one-head-Q1), so the half past the edge has
+    // only the edge's other meaning to give. ↩️Left to the walk, the line
+    // fell a row INSIDE with the pointer by the edge and came back to the
+    // edge further out (F-393's sweep, 10-18).
+    await _pump(tester, project: _conteGroupProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('under')).dx;
+
+    final gesture = await lift(tester, 'under');
+    for (final (row, fraction) in [
+      ('over', 0.15),
+      ('a', 0.85),
+      ('a', 0.5),
+      ('a', 0.15),
+      ('b', 0.85),
+      ('b', 0.5),
+    ]) {
+      await pointInto(tester, gesture, row, fraction: fraction, dx: dx);
+      expect(
+        [for (final caret in anyCaret.evaluate()) caret.widget.key],
+        [const ValueKey<String>('timeline-row-caret-before-over')],
+        reason: '$row at $fraction',
+      );
+    }
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final moved = session.requireActiveCut.layers;
+    expect(
+      [for (final layer in moved) layer.id.value],
+      ['conte', 'over', 'under', 'a', 'b', 'cam'],
+    );
+    final under = _layerOf(session, 'under');
+    expect(under.attachedToLayerId, const LayerId('conte'));
+    expect(under.attachedPlacement, AttachedPlacement.above);
   });
 
   testWidgets('dragging an attach row clear of its group detaches it', (

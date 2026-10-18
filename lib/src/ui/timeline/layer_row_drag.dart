@@ -58,9 +58,12 @@ final class LayerRowSubject extends LayerRowDragSubject {
   final LayerId layerId;
 
   /// A file over the layer area raises a new row's caret in this lane too.
+  /// A storyboard S row's ([TrackSeRowSubject]) is a lane of its own
+  /// track's, never this one.
   @override
   bool sharesLaneWith(LayerRowDragSubject other) =>
-      other is LayerRowSubject || other is MediaPlacementSubject;
+      (other is LayerRowSubject && other is! TrackSeRowSubject) ||
+      other is MediaPlacementSubject;
 
   @override
   bool operator ==(Object other) =>
@@ -69,6 +72,27 @@ final class LayerRowSubject extends LayerRowDragSubject {
 
   @override
   int get hashCode => Object.hash(LayerRowSubject, layerId);
+}
+
+/// An S row of the STORYBOARD rail: a [LayerRowSubject] to the session —
+/// its drag, plan and commit are an SE row's wherever it is held — and a
+/// caret lane of its own TRACK on the rail.
+///
+/// 🚨F-336 (유저 10-10: 「다양한 각도에서 근본/구조적으로 드래그 가로줄관련
+/// 해결」): the storyboard lays one list of S rows per track, each counted
+/// from 0, and a plain [LayerRowSubject] shares its lane with every layer
+/// row — so a caret at the top of one track's S rows was drawn at the top
+/// of every other track's, and on the timeline's first row too. The
+/// timeline lays its S rows in the one list its layers are in, and keeps
+/// the plain subject.
+final class TrackSeRowSubject extends LayerRowSubject {
+  const TrackSeRowSubject(this.trackId, super.layerId);
+
+  final TrackId trackId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) =>
+      other is TrackSeRowSubject && other.trackId == trackId;
 }
 
 /// A FILE from the pool over the layer area — not a row (유저 2026-09-11:
@@ -123,7 +147,7 @@ final class TrackRowSubject extends LayerRowDragSubject {
 /// law carries it to every cut of the track (`LayerRowDrag`).
 ///
 /// Its own kind, as the V row's is: a caret raised for a seat belongs on its
-/// own track's conte rows, and a [LayerRowSubject] — the S rows' — would
+/// own track's conte rows, and a [LayerRowSubject] — a layer row's — would
 /// raise it among those too.
 final class ConteSeatRowSubject extends LayerRowDragSubject {
   const ConteSeatRowSubject(this.rowId);
@@ -469,7 +493,7 @@ class LayerRowDragTarget extends StatelessWidget {
        grabOffsetWithinRun = 0,
        onGripTaken = null,
        onGripReleased = null,
-       slotBefore = 0,
+       slotBefore = null,
        isLastRow = false,
        onCrossed = _neverCrosses,
        pointerRowsAt = null;
@@ -485,7 +509,13 @@ class LayerRowDragTarget extends StatelessWidget {
   /// The caret slot on this row's LEADING edge; the trailing edge is
   /// [slotBefore] + 1. Stated as a slot rather than an index because a
   /// caret lives between rows, not on one.
-  final int slotBefore;
+  ///
+  /// Null on a [LayerRowDragTarget.selectOnly] row, which stands in no list
+  /// a caret walks. 🚨F-336 (유저 10-10: 「s행의 제일 밑 레이어를 드래그로 s행
+  /// 제일 위로 이동하려하면 카메라섹션의 가로줄이 생김」): it said 0, so every
+  /// caret at the top of ANY list of its lane was drawn on it too — the
+  /// storyboard's camera and transition rows drew the S rows' top line.
+  final int? slotBefore;
 
   /// This row's extent along the rail (its height on the timeline, its
   /// width on the sheet) — the drag counts rows in these, never in an
@@ -630,7 +660,7 @@ class _LayerRowDragBody extends StatefulWidget {
   });
 
   final LayerRowDragSubject subject;
-  final int slotBefore;
+  final int? slotBefore;
   final double rowExtent;
   final double grabOffsetWithinRun;
   final Axis axis;
@@ -956,11 +986,13 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
             showing.onRowTarget != null &&
             widget.subject == LayerRowSubject(showing.onRowTarget!);
         final caretShowing = showing != null && showing.onRowTarget == null;
-        final leading = caretShowing && showing.caretSlot == widget.slotBefore;
+        final slot = widget.slotBefore;
+        final leading = caretShowing && showing.caretSlot == slot;
         final trailing =
             caretShowing &&
             widget.isLastRow &&
-            showing.caretSlot == widget.slotBefore + 1;
+            slot != null &&
+            showing.caretSlot == slot + 1;
         final lifted = drag?.subject == widget.subject || _lifting;
         return Stack(
           clipBehavior: Clip.none,
@@ -1337,7 +1369,7 @@ Widget layerRowDragWrapper({
       // builds that moved no row, so the rows it was built over may carry
       // older layers than the ones the drag lands among.
       final drawn = LayerRowCaret.of(dragRows(), row.layer.id) ?? caret;
-      final slot = drawn.slotFor(steps);
+      final slot = drawn.slotFor(steps, inRow: inRow);
       final target = drawn.onRowLayer(onRow);
       if (target != null) {
         hooks.onRowTarget(drawn.layers, slot, target.id);
@@ -1346,7 +1378,7 @@ Widget layerRowDragWrapper({
       hooks.onUpdate(
         drawn.layers,
         slot,
-        pointerInRow: drawn.onRowLayer(inRow)?.id,
+        pointerInRow: drawn.layerUnder(inRow)?.id,
       );
     },
     onSelectCrossed: hooks?.onSelectBegin == null

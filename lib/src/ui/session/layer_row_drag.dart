@@ -208,9 +208,10 @@ class LayerRowDrag {
     LayerId targetId,
   ) {
     // A conte group's rows hold nothing to drop into (its base carries its
-    // riders already), so a conte row's drag takes the caret alone.
+    // riders already), so a conte row's drag takes the caret alone — with
+    // the pointer still in the row it is over, as the rail's gap hears it.
     if (_conteSeatDrag != null) {
-      updateLayerRowDrag(displayLayers, slot);
+      updateLayerRowDrag(displayLayers, slot, pointerInRow: targetId);
       return;
     }
     _rowOrderDrag?.updateLayerRowDropOnRow(displayLayers, slot, targetId);

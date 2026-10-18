@@ -120,6 +120,7 @@ import 'timeline/layer_row_drag.dart'
         LayerRowSubject,
         TimelineRowDragHooks,
         TrackRowSubject,
+        TrackSeRowSubject,
         effectRowDragChip,
         layerRowDragChips,
         timelineRowAddressOfDragSubject;

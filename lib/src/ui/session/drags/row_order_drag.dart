@@ -296,15 +296,25 @@ class RowOrderDrag {
         displayRows: displayLayers,
         slot: probe,
       );
-      return insertAt == null
-          ? null
-          : resolveLayerDrop(
-              stack: cut.layers,
-              movingId: subject.layerId,
-              insertAt: insertAt,
-              pointerInRow: pointerInRow,
-              alsoMoving: _rowSelectionCarriedBy(subject.layerId),
-            );
+      if (insertAt == null) {
+        return null;
+      }
+      LayerDropPlan? read(LayerId? pointer) => resolveLayerDrop(
+        stack: cut.layers,
+        movingId: subject.layerId,
+        insertAt: insertAt,
+        pointerInRow: pointer,
+        alsoMoving: _rowSelectionCarriedBy(subject.layerId),
+      );
+      // 결정 6 at ONE gap: the half the pointer is in picks a boundary's
+      // meaning (F-31②), and where that meaning is no landing — a row
+      // riding the conte is never let go — the gap's other meaning is the
+      // last place the row can reach that way, read as if the pointer
+      // still stood on the row itself. Left to the walk instead, the caret
+      // fell a row INSIDE while the pointer was at the edge and came back
+      // to the edge once it went further (F-393's sweep, 10-18).
+      return read(pointerInRow) ??
+          (pointerInRow == null ? null : read(subject.layerId));
     });
     final plan = landing?.value;
     _plan = plan;
@@ -331,10 +341,12 @@ class RowOrderDrag {
   /// "illegal caret" state left to hide.
   ///
   /// ⛔The search stops AT the row's own place rather than passing through it.
-  /// A run owns the gaps at both its ends and putting it back there is not a
-  /// landing (④, 2026-08-12) — walking past would let a drag that has gone
+  /// A run owns the gaps at both its ends and putting it back there changes
+  /// nothing (④, 2026-08-12) — walking past would let a drag that has gone
   /// nowhere draw a caret on the far side, which is the announcement ④
   /// removed. So "nothing legal between here and home" still draws nothing.
+  /// (The home gaps are still ASKED: letting go of a group where the row
+  /// stands is a landing — F-312, [resolveLayerDrop].)
   ///
   /// ⚠️It walks one slot at a time because legality is not an interval: a
   /// section boundary, a group that cannot be split and a folder run all
@@ -417,7 +429,11 @@ class RowOrderDrag {
       // because an organizer was FLAT. 유저 2026-08-29 lifted that ban, so
       // the notice went with it: an anwer nobody refuses any more is a
       // sentence that would only confuse whoever reads it next.
-      updateLayerRow(displayLayers, slot);
+      //
+      // The pointer is still IN that row, so the gap hears it: a band with
+      // no say of its own was the one place a boundary's half went unread,
+      // and kept a row in its group from the middle of the row past it.
+      updateLayerRow(displayLayers, slot, pointerInRow: targetId);
       return;
     }
     _plan = plan;
