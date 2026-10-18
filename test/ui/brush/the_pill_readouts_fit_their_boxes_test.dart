@@ -131,13 +131,15 @@ void main() {
     );
   });
 
-  testWidgets('🚨at twice the OS text size the widest zoom still fits its '
-      'box — there the box is what that number measures, past the width '
-      'drawn for it at 1×', (tester) async {
+  testWidgets('🚨at twice the OS text size the widest zoom and the widest '
+      'angle still fit their boxes — there each box is what that number '
+      'measures, past the width drawn for it at 1× — the angle in the '
+      'settings list, which shows its row whole', (tester) async {
     // text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
-    // 따라 자란다」). On a canvas this wide the zoom stays on the pill; the
-    // angle goes to the settings list at this size, whose row is a card of
-    // its own (`canvas-settings-view-row-runs-over-at-2x`).
+    // 따라 자란다」). On a canvas this wide the zoom stays on the pill and
+    // the angle goes to the settings list, whose row of the view's controls
+    // ran 73px past the list at this size
+    // (`canvas-settings-view-row-runs-over-at-2x`).
     tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await pumpPanel(tester, const CanvasSize(width: 1200, height: 900));
@@ -149,6 +151,25 @@ void main() {
       widthOf(widestZoom, zoom.style, zoom.scaler),
       lessThanOrEqualTo(zoom.box),
       reason: '"$widestZoom" does not fit the zoom readout\'s ${zoom.box}px',
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-rotation-label')),
+      findsNothing,
+      reason: '⛔fixture: at this size the angle is in the settings list',
+    );
+    await openViewSettings(tester);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'the view\'s row runs off the settings list',
+    );
+    final angle = readout(tester, 'canvas-viewport-rotation-label');
+    final widestAngle = '-1$widest$widest.$widest$widest°';
+    expect(
+      widthOf(widestAngle, angle.style, angle.scaler),
+      lessThanOrEqualTo(angle.box),
+      reason: '"$widestAngle" does not fit the angle readout\'s ${angle.box}px',
     );
   });
 }
