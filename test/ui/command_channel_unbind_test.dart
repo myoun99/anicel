@@ -77,17 +77,17 @@ void main() {
 
     view.bind(
       oldWorkspace,
-      rotateBy: (_) => calls.add('old'),
+      rotateStep: ({required clockwise}) => calls.add('old'),
       toggleFlipHorizontal: () => calls.add('old'),
     );
     view.bind(
       newWorkspace,
-      rotateBy: (_) => calls.add('new'),
+      rotateStep: ({required clockwise}) => calls.add('new'),
       toggleFlipHorizontal: () => calls.add('new'),
     );
     view.unbind(oldWorkspace);
 
-    view.rotateBy(90);
+    view.rotateStep(clockwise: true);
     expect(calls, ['new']);
   });
 

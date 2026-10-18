@@ -5,8 +5,8 @@ import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_zoom_scale.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_input_settings.dart';
-import '../panels/tool_size_preset_panel.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 import '../text/app_strings.dart';
@@ -249,34 +249,36 @@ class InputSettingsSection extends StatelessWidget {
                     )
                   : null,
             ),
-            _SnapListField(
-              fieldKey: 'settings-snap-rotation',
-              label: strings.inputRotationSnap,
-              text: settings.rotationSnapDegrees.toStringAsFixed(0),
-              onSubmitted: (text) {
-                final value = double.tryParse(text.trim());
-                if (value != null && value > 0) {
-                  session.setInputSettings(
-                    settings.copyWith(rotationSnapDegrees: value),
-                  );
-                }
-              },
+            // 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재가능할거같은데
+            // 그런부분도 하나만 존재하도록 알아서. 쓰기쉽게」 — ONE number, so
+            // the bar every single number in this window is (the pressure and
+            // speed rows'), not the box the lists were typed into. Whole
+            // degrees from 1 to 90: finer than a degree is the free turn, and
+            // past a right angle a turn has one line to land on.
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 2),
+              child: SizedBox(
+                width: 320,
+                height: 24,
+                child: FieldSlider(
+                  key: const ValueKey<String>('settings-snap-rotation'),
+                  value: settings.rotationSnapDegrees,
+                  min: 1,
+                  max: 90,
+                  divisions: 89,
+                  label: strings.inputRotationSnap,
+                  unit: '°',
+                  onChanged: (degrees) => AppInput.settings.value = AppInput
+                      .settings
+                      .value
+                      .copyWith(rotationSnapDegrees: degrees),
+                  onChangeEnd: (degrees) => session.setInputSettings(
+                    settings.copyWith(rotationSnapDegrees: degrees),
+                  ),
+                ),
+              ),
             ),
-            _SnapListField(
-              fieldKey: 'settings-snap-zoom',
-              label: strings.inputZoomSnaps,
-              text: settings.zoomSnapPercents
-                  .map((value) => value.toStringAsFixed(0))
-                  .join(', '),
-              onSubmitted: (text) {
-                final values = _parseDoubleList(text);
-                if (values.isNotEmpty) {
-                  session.setInputSettings(
-                    settings.copyWith(zoomSnapPercents: values),
-                  );
-                }
-              },
-            ),
+            _ZoomSnapsRow(session: session),
             _ZoomCeilingRow(
               on: settings.zoomCeilingOn,
               percent: settings.zoomCeilingPercent,
@@ -286,24 +288,6 @@ class InputSettingsSection extends StatelessWidget {
               onSubmitted: (percent) => session.setInputSettings(
                 settings.copyWith(zoomCeilingPercent: percent),
               ),
-            ),
-            _SnapListField(
-              fieldKey: 'settings-snap-size',
-              label: strings.inputBrushSizeSnaps,
-              // Written as the size panel writes a size, under a pixel too
-              // (size-rack-0-7-under-the-brush-floor) — ↩️each was rounded
-              // to a whole pixel.
-              text: settings.brushSizeSnaps
-                  .map(ToolSizePresetPanel.label)
-                  .join(', '),
-              onSubmitted: (text) {
-                final values = _parseDoubleList(text);
-                if (values.isNotEmpty) {
-                  session.setInputSettings(
-                    settings.copyWith(brushSizeSnaps: values),
-                  );
-                }
-              },
             ),
             // The CSP-style tablet service switch (PEN-2) — Windows
             // only: other platforms have a single native pen path.
@@ -385,11 +369,6 @@ String _dragActionLabel(CanvasTouchDragAction action) {
   };
 }
 
-List<double> _parseDoubleList(String text) => [
-  for (final part in text.split(','))
-    if (double.tryParse(part.trim()) case final value? when value > 0) value,
-];
-
 /// A compact labeled enum choice row (PEN-7b touch settings).
 class _EnumChoiceRow<T extends Enum> extends StatelessWidget {
   const _EnumChoiceRow({
@@ -431,8 +410,6 @@ class _EnumChoiceRow<T extends Enum> extends StatelessWidget {
   }
 }
 
-/// A snap-list text row (PEN-7b): comma-separated values, committed on
-/// submit; invalid input leaves the stored list untouched.
 /// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능」 — the
 /// lock on zooming in: its switch and its number on ONE line, right under
 /// the zoom snaps (I-27-Q1: 「줌 스냅 밑에 한 줄」).
@@ -454,26 +431,6 @@ class _ZoomCeilingRow extends StatelessWidget {
   final ValueChanged<bool> onSwitched;
   final ValueChanged<double> onSubmitted;
 
-  /// A typed number as the lock it can be: inside the range a view can
-  /// stand in, so the field never shows a number the view cannot reach.
-  static double? lockOf(String text) {
-    final value = double.tryParse(text.trim());
-    if (value == null || !value.isFinite) {
-      return null;
-    }
-    return value
-        .clamp(
-          CanvasZoomScale.minDisplayZoom * 100,
-          CanvasZoomScale.maxDisplayZoom * 100,
-        )
-        .toDouble();
-  }
-
-  /// Every digit the lock holds, and no trailing zeros.
-  static String shown(double percent) => percent == percent.roundToDouble()
-      ? percent.toStringAsFixed(0)
-      : percent.toString();
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -492,7 +449,7 @@ class _ZoomCeilingRow extends StatelessWidget {
           child: TextField(
             key: const ValueKey<String>('settings-zoom-ceiling-percent'),
             enabled: on,
-            controller: TextEditingController(text: shown(percent)),
+            controller: TextEditingController(text: _shownPercent(percent)),
             style: const TextStyle(fontSize: 12),
             decoration: const InputDecoration(
               isDense: true,
@@ -500,7 +457,7 @@ class _ZoomCeilingRow extends StatelessWidget {
               border: OutlineInputBorder(),
             ),
             onSubmitted: (text) {
-              final lock = lockOf(text);
+              final lock = _typedPercent(text);
               if (lock != null) {
                 onSubmitted(lock);
               }
@@ -512,42 +469,143 @@ class _ZoomCeilingRow extends StatelessWidget {
   }
 }
 
-class _SnapListField extends StatelessWidget {
-  const _SnapListField({
-    required this.fieldKey,
-    required this.label,
-    required this.text,
-    required this.onSubmitted,
-  });
+/// [percent] as a view can stand in it: inside the range of display zooms,
+/// so this window never writes a zoom no view can reach — the lock's, and
+/// every zoom snap's (F-391).
+double _reachablePercent(double percent) => percent
+    .clamp(
+      CanvasZoomScale.minDisplayZoom * 100,
+      CanvasZoomScale.maxDisplayZoom * 100,
+    )
+    .toDouble();
 
-  final String fieldKey;
-  final String label;
-  final String text;
-  final ValueChanged<String> onSubmitted;
+/// A typed number as the zoom it can be ([_reachablePercent]); null for one
+/// that is no number.
+double? _typedPercent(String text) {
+  final value = double.tryParse(text.trim());
+  if (value == null || !value.isFinite) {
+    return null;
+  }
+  return _reachablePercent(value);
+}
+
+/// Every digit a percent holds, and no trailing zeros.
+String _shownPercent(double percent) => percent == percent.roundToDouble()
+    ? percent.toStringAsFixed(0)
+    : percent.toString();
+
+/// 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거, 지금 너무 숫자
+/// 하나하나 텍스트로 , 이 점 신경써가면서 적는거라 굉장히 불편하니
+/// 리스트팝오버형식으로? 추가/삭제 할수있게?」 — the zoom snaps as a LIST. The
+/// button writes them; opened, they are rows each with its −, and the
+/// number to put in stands at the foot with its ＋ (F-391-Q1 a, the answer
+/// recommended and built while the card waits). A − or the ＋ leaves the
+/// list open, for the next one. ↩️A text field the list was typed into,
+/// commas and all.
+///
+/// Every list it keeps is one a view can walk: in order, each number once,
+/// each one a view can reach ([_reachablePercent]) — and never empty, since
+/// an empty list reads back as the defaults at the next start
+/// ([AppInputSettings.fromJson]).
+class _ZoomSnapsRow extends StatefulWidget {
+  const _ZoomSnapsRow({required this.session});
+
+  final EditorSessionManager session;
+
+  @override
+  State<_ZoomSnapsRow> createState() => _ZoomSnapsRowState();
+}
+
+class _ZoomSnapsRowState extends State<_ZoomSnapsRow> {
+  /// The number at the foot — what the ＋ puts in. It starts where a view
+  /// does, at 100%.
+  final ValueNotifier<double> _toPutIn = ValueNotifier<double>(100);
+
+  @override
+  void dispose() {
+    _toPutIn.dispose();
+    super.dispose();
+  }
+
+  List<double> get _stops => AppInput.settings.value.zoomSnapPercents;
+
+  void _keep(Iterable<double> stops) => widget.session.setInputSettings(
+    AppInput.settings.value.copyWith(
+      zoomSnapPercents: ({...stops}.toList()..sort()),
+    ),
+  );
+
+  List<PanelFlyoutEntry> _entries() {
+    final strings = AppText.strings;
+    return [
+      PanelFlyoutHeader(strings.inputZoomSnaps),
+      PanelFlyoutLiveRows(
+        keyValue: 'settings-zoom-snaps',
+        listenable: Listenable.merge([AppInput.settings, _toPutIn]),
+        rows: () => [
+          for (final stop in _stops)
+            PanelFlyoutItem(
+              keyValue: 'settings-zoom-snap-${_shownPercent(stop)}',
+              label: '${_shownPercent(stop)}%',
+              action: PanelFlyoutRowAction(
+                keyValue: 'settings-zoom-snap-${_shownPercent(stop)}-remove',
+                icon: Icons.remove,
+                tooltip: strings.commonDelete,
+                does: PanelFlyoutActionDoes.deletes,
+                enabled: _stops.length > 1,
+                onPressed: () => _keep(_stops.where((other) => other != stop)),
+              ),
+            ),
+        ],
+        foot: () => PanelFlyoutLiveFoot(
+          control: (_) => DragValueLabel(
+            keyValue: 'settings-zoom-snap-new',
+            text: '${_shownPercent(_toPutIn.value)}%',
+            textStyle: const TextStyle(fontSize: 12),
+            width: 56,
+            onDragDelta: (units) =>
+                _toPutIn.value = _reachablePercent(_toPutIn.value + units),
+            onEditSubmit: (text) {
+              final typed = _typedPercent(text.replaceAll('%', ''));
+              if (typed != null) {
+                _toPutIn.value = typed;
+              }
+            },
+          ),
+          action: PanelFlyoutRowAction(
+            keyValue: 'settings-zoom-snap-add',
+            icon: Icons.add,
+            tooltip: strings.inputZoomSnapAdd,
+            does: PanelFlyoutActionDoes.adds,
+            // A number already in the list puts in nothing.
+            enabled: !_stops.contains(_toPutIn.value),
+            onPressed: () => _keep([..._stops, _toPutIn.value]),
+          ),
+        ),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+          Expanded(
+            child: Text(
+              strings.inputZoomSnaps,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
           SizedBox(
             width: 180,
-            height: 28,
-            child: TextField(
-              key: ValueKey<String>(fieldKey),
-              controller: TextEditingController(text: text),
-              style: const TextStyle(fontSize: 12),
-              decoration: const InputDecoration(
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 4,
-                ),
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: onSubmitted,
+            child: PanelFlyoutButton(
+              key: const ValueKey<String>('settings-snap-zoom'),
+              label: _stops.map(_shownPercent).join(', '),
+              expand: true,
+              entriesBuilder: _entries,
             ),
           ),
         ],

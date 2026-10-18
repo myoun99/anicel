@@ -1149,9 +1149,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.timelineOrientationToggle:
         _workspaceBar.toggleOrientation(_session.workingPanel);
       case EditorActionIds.canvasRotateCcw:
-        _canvasViewCommands.rotateBy(-15);
+        _canvasViewCommands.rotateStep(clockwise: false);
       case EditorActionIds.canvasRotateCw:
-        _canvasViewCommands.rotateBy(15);
+        _canvasViewCommands.rotateStep(clockwise: true);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
       case EditorActionIds.canvasFlipVertical:

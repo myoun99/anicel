@@ -290,9 +290,10 @@ class _CanvasPanelShellBars {
     return _memoBottomBar!;
   }
 
-  void _rotateCcwFromBar() => _state._viewportState._rotateAroundCenter(-15);
+  void _rotateCcwFromBar() =>
+      _state._viewportState._rotateStep(clockwise: false);
 
-  void _rotateCwFromBar() => _state._viewportState._rotateAroundCenter(15);
+  void _rotateCwFromBar() => _state._viewportState._rotateStep(clockwise: true);
 
   void _setViewportDuringPanbarDrag(CanvasViewport viewport) {
     _state._rebuild(() => _state._viewportState._viewport = viewport.clamped());

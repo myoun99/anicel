@@ -6,6 +6,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/input_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// PEN-2: the Input Settings dialog's tablet-service switch (Windows
 /// only — the CSP-style dual backend).
@@ -100,12 +103,8 @@ void main() {
       final snaps = tester.getRect(
         find.byKey(const ValueKey<String>('settings-snap-zoom')),
       );
-      final brushSizes = tester.getRect(
-        find.byKey(const ValueKey<String>('settings-snap-size')),
-      );
       final number = tester.getRect(lockNumber);
       expect(number.top, greaterThan(snaps.bottom - 1));
-      expect(number.bottom, lessThan(brushSizes.top + 1));
       expect(number.left, snaps.left, reason: 'in the column of the fields');
     });
 
@@ -159,6 +158,155 @@ void main() {
         '33.3',
         reason: 'the field shows every digit it holds',
       );
+    });
+  });
+
+  // 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 … 쓰기쉽게」 — one number,
+  // the bar the window's other single numbers are.
+  testWidgets('the rotation snap is ONE number: a bar whose steps move it a '
+      'degree, kept when let go', (tester) async {
+    await pumpDialog(tester);
+    final bar = find.byKey(const ValueKey<String>('settings-snap-rotation'));
+    await tester.ensureVisible(bar);
+    await tester.pumpAndSettle();
+    expect(tester.widget<FieldSlider>(bar).value, 15);
+
+    await tester.tap(
+      find.descendant(
+        of: bar,
+        matching: find.byKey(const ValueKey<String>('field-slider-step-up')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(AppInput.settings.value.rotationSnapDegrees, 16);
+    expect(tester.widget<FieldSlider>(bar).value, 16);
+  });
+
+  // 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거 … 리스트팝오버형식으로?
+  // 추가/삭제 할수있게?」 — F-391-Q1 a: a list that stays open.
+  group('the zoom snaps are a list edited where it opens', () {
+    final button = find.byKey(const ValueKey<String>('settings-snap-zoom'));
+    Finder row(String percent) =>
+        find.byKey(ValueKey<String>('settings-zoom-snap-$percent'));
+    Finder remove(String percent) =>
+        find.byKey(ValueKey<String>('settings-zoom-snap-$percent-remove'));
+    final add = find.byKey(const ValueKey<String>('settings-zoom-snap-add'));
+    final toPutIn = find.byKey(
+      const ValueKey<String>('settings-zoom-snap-new'),
+    );
+
+    Future<void> open(WidgetTester tester) async {
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> typeToPutIn(WidgetTester tester, String text) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('settings-zoom-snap-new-edit')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('settings-zoom-snap-new-input')),
+        text,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    bool canPress(WidgetTester tester, Finder command) =>
+        tester.widget<AppIconButtonFace>(command).onPressed != null;
+
+    testWidgets('the button writes the list, 800 and 1600 at its end', (
+      tester,
+    ) async {
+      await pumpDialog(tester);
+      expect(
+        tester.widget<PanelFlyoutButton>(button).label,
+        '10, 25, 50, 75, 100, 125, 150, 200, 300, 400, 800, 1600',
+      );
+    });
+
+    testWidgets('🚨a − takes its number away and the list stays open for '
+        'the next', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+      expect(row('25'), findsOneWidget);
+
+      await tester.tap(remove('25'));
+      await tester.pumpAndSettle();
+      expect(row('25'), findsNothing, reason: 'the row goes where it stood');
+      expect(row('75'), findsOneWidget, reason: 'and the list is still open');
+
+      await tester.tap(remove('75'));
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomSnapPercents, [
+        10,
+        50,
+        100,
+        125,
+        150,
+        200,
+        300,
+        400,
+        800,
+        1600,
+      ]);
+    });
+
+    testWidgets('🚨the foot puts its number in where it belongs, once — and '
+        'the list stays open', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+      expect(
+        canPress(tester, add),
+        isFalse,
+        reason: 'it starts at 100%, which the list has',
+      );
+
+      await typeToPutIn(tester, '600');
+      expect(
+        find.descendant(of: toPutIn, matching: find.text('600%')),
+        findsOneWidget,
+      );
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      expect(row('600'), findsOneWidget);
+      expect(
+        AppInput.settings.value.zoomSnapPercents.sublist(9),
+        [400, 600, 800, 1600],
+        reason: 'in order, not at the end',
+      );
+      expect(canPress(tester, add), isFalse, reason: 'once');
+    });
+
+    testWidgets('a number no view stands on is put in as the nearest one a '
+        'view can', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+
+      await typeToPutIn(tester, '5');
+      expect(
+        find.descendant(of: toPutIn, matching: find.text('10%')),
+        findsOneWidget,
+      );
+      await typeToPutIn(tester, '33.3');
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomSnapPercents.take(3), [10, 25, 33.3]);
+    });
+
+    testWidgets('the last one cannot be taken away', (tester) async {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        zoomSnapPercents: const [100],
+      );
+      await pumpDialog(tester);
+      await open(tester);
+
+      expect(canPress(tester, remove('100')), isFalse);
     });
   });
 

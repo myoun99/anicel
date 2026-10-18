@@ -60,7 +60,6 @@ class AppInputSettings {
     this.zoomSnapPercents = defaultZoomSnapPercents,
     this.zoomCeilingOn = false,
     this.zoomCeilingPercent = defaultZoomCeilingPercent,
-    this.brushSizeSnaps = defaultBrushSizeSnaps,
   });
 
   /// The finger-count drag slots (PEN-7b), all user-assignable. PEN-12
@@ -125,8 +124,15 @@ class AppInputSettings {
   /// modifier landed on (pure pan+snap-zoom).
   final bool navigationModifierRotationLock;
 
-  /// Snap tables (PEN-7b) — every list user-editable.
+  /// THE rotation step — one number, not a list. 🗣️F-391 (유저 2026-10-17):
+  /// 「회전 스냅은 하나만 존재가능할거같은데 그런부분도 하나만 존재하도록
+  /// 알아서. 쓰기쉽게」. The modifier's twist snaps to its multiples, and the
+  /// view's rotate buttons and keys step to the next one
+  /// ([AppInput.stepOnTheGrid]). ↩️Those two turned a 15° of their own,
+  /// whatever this said.
   final double rotationSnapDegrees;
+
+  /// The zoom snaps (PEN-7b), a list the user edits.
   final List<double> zoomSnapPercents;
 
   /// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능.
@@ -153,11 +159,15 @@ class AppInputSettings {
   /// The percent a locked view may not be zoomed past, or null while the
   /// lock is off.
   double? get zoomCeiling => zoomCeilingOn ? zoomCeilingPercent : null;
-  final List<double> brushSizeSnaps;
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
   /// modifier constraint glues the CURRENT zoom to the nearest entry —
   /// with 50 as the floor, engaging at 30% read as "reset to 50%").
+  ///
+  /// 🗣️F-391 (유저 2026-10-17): 「줌 스냅 저번 기본 캔버스 줌 되도록 800
+  /// 1600% 이런거 추가해주고」 — the zoom buttons multiplied by 1.25 up to
+  /// the view's 1600% before they walked this list (I-19), and the list
+  /// stopped at 400. It reaches the view's end again.
   static const List<double> defaultZoomSnapPercents = [
     10,
     25,
@@ -169,19 +179,8 @@ class AppInputSettings {
     200,
     300,
     400,
-  ];
-
-  /// PEN-15: the doubling ladder continues past 64 (brushes go to 2000).
-  static const List<double> defaultBrushSizeSnaps = [
-    2,
-    4,
-    8,
-    16,
-    32,
-    64,
-    128,
-    256,
-    512,
+    800,
+    1600,
   ];
 
   /// The PREVIOUS default lists (PEN-15): stored settings that still
@@ -189,9 +188,7 @@ class AppInputSettings {
   /// user-customized list persists as-is.
   static const List<List<double>> legacyZoomSnapDefaults = [
     [50, 75, 100, 125, 150, 200, 300, 400],
-  ];
-  static const List<List<double>> legacyBrushSizeSnapDefaults = [
-    [2, 4, 8, 16, 32, 64],
+    [10, 25, 50, 75, 100, 125, 150, 200, 300, 400],
   ];
 
   /// The TEST-CORPUS baseline (see test/flutter_test_config.dart): the
@@ -280,7 +277,6 @@ class AppInputSettings {
     List<double>? zoomSnapPercents,
     bool? zoomCeilingOn,
     double? zoomCeilingPercent,
-    List<double>? brushSizeSnaps,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
@@ -304,7 +300,6 @@ class AppInputSettings {
     zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
     zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
     zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
-    brushSizeSnaps: brushSizeSnaps ?? this.brushSizeSnaps,
   );
 
   Map<String, dynamic> toJson() => {
@@ -327,7 +322,6 @@ class AppInputSettings {
     'zoomSnapPercents': zoomSnapPercents,
     'zoomCeilingOn': zoomCeilingOn,
     'zoomCeilingPercent': zoomCeilingPercent,
-    'brushSizeSnaps': brushSizeSnaps,
   };
 
   /// [json] as a number above zero, or [fallback] — a lock at nothing, or
@@ -418,11 +412,6 @@ class AppInputSettings {
       json['zoomCeilingPercent'],
       defaultZoomCeilingPercent,
     ),
-    brushSizeSnaps: _upgradedList(
-      _doubleList(json['brushSizeSnaps'], defaultBrushSizeSnaps),
-      legacyDefaults: legacyBrushSizeSnapDefaults,
-      current: defaultBrushSizeSnaps,
-    ),
   );
 
   @override
@@ -446,8 +435,7 @@ class AppInputSettings {
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
       other.zoomCeilingOn == zoomCeilingOn &&
-      other.zoomCeilingPercent == zoomCeilingPercent &&
-      listEquals(other.brushSizeSnaps, brushSizeSnaps);
+      other.zoomCeilingPercent == zoomCeilingPercent;
 
   @override
   int get hashCode => Object.hash(
@@ -470,7 +458,6 @@ class AppInputSettings {
     Object.hashAll(zoomSnapPercents),
     zoomCeilingOn,
     zoomCeilingPercent,
-    Object.hashAll(brushSizeSnaps),
   );
 }
 
@@ -696,8 +683,9 @@ abstract final class AppInput {
           PointerDeviceKind.unknown,
         };
 
-  /// Nearest-value snapping against a user-editable list (PEN-7b) —
-  /// shared by the navigate constraints and the brush-size drag.
+  /// Nearest-value snapping against a list (PEN-7b) — shared by the
+  /// navigate constraints (the zoom snaps) and the brush-size drag (the tool
+  /// size panel's rack, F-391).
   static double snapToList(double value, List<double> snaps) {
     if (snaps.isEmpty) {
       return value;
@@ -738,6 +726,29 @@ abstract final class AppInput {
       }
     }
     return next;
+  }
+
+  /// The next multiple of [step] past [value], [up] or down — the grid
+  /// [stepThroughList] would walk if the list were every multiple.
+  ///
+  /// 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재하도록」 — the
+  /// view's rotate buttons and keys step on the rotation snap's grid, as the
+  /// zoom buttons step through the zoom snaps (I-19): from 7° with a 15°
+  /// snap, clockwise lands on 15°, not on 22°.
+  ///
+  /// ⚠️As in [stepThroughList], a value ON a line steps to the next one, and
+  /// "on" is relative — an angle comes back through the readout's grid.
+  static double stepOnTheGrid(
+    double value,
+    double step, {
+    required bool up,
+  }) {
+    const tolerance = 1e-6;
+    final lines = value / step;
+    final next = up
+        ? (lines + tolerance).floor() + 1
+        : (lines - tolerance).ceil() - 1;
+    return next * step;
   }
 
   /// The pen pressure response curve (PEN-3): output = input^gamma.

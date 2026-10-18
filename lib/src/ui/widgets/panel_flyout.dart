@@ -84,6 +84,53 @@ class PanelFlyoutRow extends PanelFlyoutEntry {
   final double height;
 }
 
+/// Rows that change while the list is OPEN — a list edited in place: each
+/// row with its own command, and at the foot a control with one command of
+/// its own (what to put in, and the putting in).
+///
+/// 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거 … 리스트팝오버형식으로?
+/// 추가/삭제 할수있게?」 — the zoom snaps, each with its −, and the number to
+/// put in under them (F-391-Q1 a, the answer recommended and built first).
+///
+/// ★A KIND OF ITS OWN BECAUSE A LIST IS BUILT ONCE. Its entries are laid
+/// out when it opens, so a row's command there closes the list and the next
+/// open shows what it did. Here [rows] is read again whenever [listenable]
+/// says, so a change shows where it was made — and every command runs AT
+/// ONCE and leaves the list open, for the next row and the one after.
+///
+/// Its rows are not chosen: a press on one does nothing, its command is all
+/// it does. Top level only, as [PanelFlyoutRow] is.
+class PanelFlyoutLiveRows extends PanelFlyoutEntry {
+  const PanelFlyoutLiveRows({
+    required this.keyValue,
+    required this.listenable,
+    required this.rows,
+    this.foot,
+  });
+
+  final String keyValue;
+
+  /// What the rows are a reading of.
+  final Listenable listenable;
+
+  /// The rows as they stand — read again at every change of [listenable].
+  final List<PanelFlyoutItem> Function() rows;
+
+  /// The foot as it stands — read with the rows, since whether its command
+  /// can run is a reading too (a number already in the list puts in
+  /// nothing).
+  final PanelFlyoutLiveFoot Function()? foot;
+}
+
+/// The foot of [PanelFlyoutLiveRows]: [control] where a row's words stand,
+/// and [action] where every row's command does.
+class PanelFlyoutLiveFoot {
+  const PanelFlyoutLiveFoot({required this.control, required this.action});
+
+  final WidgetBuilder control;
+  final PanelFlyoutRowAction action;
+}
+
 /// The ONE small command a row can carry at its end, beside what choosing
 /// the row does — the delete of one item in a list of items.
 ///
@@ -94,7 +141,9 @@ class PanelFlyoutRow extends PanelFlyoutEntry {
 /// picker (F-230), so the button is the picker's to draw.
 ///
 /// It closes the list, as choosing a row does, and runs after — and it is
-/// pressed INSTEAD of the row: a press on it chooses nothing.
+/// pressed INSTEAD of the row: a press on it chooses nothing. In a list
+/// that shows its change while open ([PanelFlyoutLiveRows]) it runs at once
+/// and the list stays.
 class PanelFlyoutRowAction {
   const PanelFlyoutRowAction({
     required this.keyValue,
@@ -102,25 +151,31 @@ class PanelFlyoutRowAction {
     required this.tooltip,
     required this.onPressed,
     this.does = PanelFlyoutActionDoes.other,
+    this.enabled = true,
   });
 
   final String keyValue;
   final IconData icon;
   final String tooltip;
 
-  /// Runs AFTER the flyout closes.
+  /// Runs AFTER the flyout closes — at once in [PanelFlyoutLiveRows].
   final VoidCallback onPressed;
 
   /// What the command does to the list — which is what colours its glyph.
   final PanelFlyoutActionDoes does;
+
+  /// Whether it can run now. Dim where it cannot, and in its place: the
+  /// last zoom snap cannot be taken away (F-391), and its − stays where
+  /// every row's stands.
+  final bool enabled;
 
   /// The glyph's colour: the two the app keeps for these two acts wherever
   /// they appear (`AppColors.addGlyph`, `AppColors.deleteGlyph` — 유저
   /// 2026-08-12: 「+버튼은 강조색이라는 공통규칙있는데, 딜리트는 지금처럼
   /// 빨간색 공통규칙두자」), and the row's own ink for any other.
   Color? get glyphColor => switch (does) {
-    PanelFlyoutActionDoes.adds => AppColors.addGlyph(enabled: true),
-    PanelFlyoutActionDoes.deletes => AppColors.deleteGlyph(enabled: true),
+    PanelFlyoutActionDoes.adds => AppColors.addGlyph(enabled: enabled),
+    PanelFlyoutActionDoes.deletes => AppColors.deleteGlyph(enabled: enabled),
     PanelFlyoutActionDoes.other => null,
   };
 }
@@ -569,6 +624,60 @@ Future<void> showPanelFlyout(
                 ],
               ),
             ),
+          // Disabled for the reason a knob row is: the rows take no tap and
+          // never close the list — their commands do the work, at once.
+          PanelFlyoutLiveRows(:final listenable, :final rows, :final foot) =>
+            PopupMenuItem<PanelFlyoutItem>(
+              key: ValueKey<String>(entry.keyValue),
+              enabled: false,
+              height: flyoutRowHeight,
+              padding: EdgeInsets.zero,
+              child: _ControlsAtFullStrength(
+                child: ListenableBuilder(
+                  listenable: listenable,
+                  builder: (context, _) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final row in rows())
+                        _HoverReporter(
+                          // By the row's own key: a row taken away takes its
+                          // state with it, not its neighbour's.
+                          key: ValueKey<String>(row.keyValue),
+                          entry: row,
+                          open: open,
+                          depth: 0,
+                          child: flyoutRowSurface(
+                            _itemBody(
+                              row,
+                              bindings: bindings,
+                              onAction: _runAtOnce,
+                            ),
+                          ),
+                        ),
+                      if (foot?.call() case final shown?)
+                        flyoutRowSurface(
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: shown.control(context),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _actionButton(
+                                shown.action,
+                                onAction: _runAtOnce,
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           PanelFlyoutItem() => PopupMenuItem<PanelFlyoutItem>(
             key: ValueKey<String>(entry.keyValue),
             value: entry,
@@ -661,6 +770,10 @@ double _entryHeight(PanelFlyoutEntry entry) => switch (entry) {
   PanelFlyoutHeader() => _headerHeight,
   PanelFlyoutDivider() => 6.0,
   PanelFlyoutRow(:final height) => height,
+  // As many rows as stand when the list opens — and all this sum is asked
+  // is whether the list opens upward.
+  PanelFlyoutLiveRows(:final rows, :final foot) =>
+    flyoutRowHeight * (rows().length + (foot == null ? 0 : 1)),
   // ⚠️A row with a warning is as tall as its sentence turns out to need,
   // which is not known before it is laid out: two lines of it are counted
   // here. Only the top-level list draws one, and all that list asks of
@@ -743,6 +856,7 @@ class _OpenSubmenu {
 /// submenu standing over a stage nobody was looking at.
 class _HoverReporter extends StatelessWidget {
   const _HoverReporter({
+    super.key,
     required this.entry,
     required this.open,
     required this.depth,
@@ -909,10 +1023,14 @@ class _SubmenuLayer extends StatelessWidget {
     //
     // ⛔[PanelFlyoutRow] stays out, loudly: it carries a builder and a
     // listenable, and rendering it here would be a second implementation of
-    // what the parent's `showMenu` does for it. No caller passes one.
+    // what the parent's `showMenu` does for it. No caller passes one — nor
+    // [PanelFlyoutLiveRows], for the same reason.
     assert(
-      !request.entries.any((entry) => entry is PanelFlyoutRow),
-      'a submenu cannot draw a PanelFlyoutRow — put it on the top level',
+      !request.entries.any(
+        (entry) => entry is PanelFlyoutRow || entry is PanelFlyoutLiveRows,
+      ),
+      'a submenu cannot draw a PanelFlyoutRow or PanelFlyoutLiveRows — put '
+      'it on the top level',
     );
     // ⛔Nor a command — a row's own or a header's: it closes the ROUTE the
     // top list is, and a level down there is none of its own to close. Nor
@@ -991,7 +1109,8 @@ class _SubmenuLayer extends StatelessWidget {
                     ),
                   ),
                   PanelFlyoutDivider() => const Divider(height: 6),
-                  PanelFlyoutRow() => const SizedBox.shrink(),
+                  PanelFlyoutRow() ||
+                  PanelFlyoutLiveRows() => const SizedBox.shrink(),
                   // ★THE PARENT LIST'S REPORTER, one level down: a row here
                   // with a child of its own opens it beside this level, and
                   // a plain row closes whatever this level had open.
@@ -1097,8 +1216,12 @@ Widget _actionButton(
   tooltip: action.tooltip,
   size: AppIconButtonSize.dense,
   icon: Icon(action.icon, color: action.glyphColor),
-  onPressed: () => onAction(action),
+  onPressed: action.enabled ? () => onAction(action) : null,
 );
+
+/// What a command in [PanelFlyoutLiveRows] does when pressed: its work, now
+/// — the list it stands in shows the change and stays open.
+void _runAtOnce(PanelFlyoutRowAction action) => action.onPressed();
 
 /// What a row wears before its label: its swatch, or else its glyph, and
 /// the gap after either — nothing at all for a row with neither.

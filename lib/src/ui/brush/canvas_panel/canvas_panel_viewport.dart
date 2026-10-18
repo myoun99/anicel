@@ -211,7 +211,7 @@ class _CanvasPanelViewport {
   void bindViewCommands() {
     _state.widget.viewCommands?.bind(
       _state,
-      rotateBy: _rotateAroundCenter,
+      rotateStep: _rotateStep,
       toggleFlipHorizontal: _toggleFlipHorizontal,
       toggleFlipVertical: _toggleFlipVertical,
       resetRotation: _resetRotation,
@@ -444,14 +444,34 @@ class _CanvasPanelViewport {
   /// now (F-122, 2026-09-17), so dust cannot outlive a verb on ANY road, not
   /// only this one — and a second rule for 「is this angle zero」 would have
   /// said 0° where the pill's grid says 0.01°.
-  void _rotateAroundCenter(double degrees) {
+  void _rotateAroundCenter(double degrees) => _rotateToAroundCenter(
+    _viewport.rotationDegrees + degrees,
+  );
+
+  void _rotateToAroundCenter(double degrees) {
     setViewport(
       _viewport.rotatedAround(
-        nextRotationDegrees: _viewport.rotationDegrees + degrees,
+        nextRotationDegrees: degrees,
         anchor: _viewportCenterAnchor,
       ),
     );
   }
+
+  /// One press of the pill's ⟲ / ⟳ — and of the rotate keys, which press
+  /// the same step ([CanvasViewCommands.rotateStep]).
+  ///
+  /// 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재가능할거같은데
+  /// 그런부분도 하나만 존재하도록」 — the step is the rotation snap, and it
+  /// lands on its grid as the zoom buttons land on the zoom snaps (I-19):
+  /// from 7° with a 15° snap, clockwise goes to 15°. ↩️The buttons and the
+  /// keys each turned a 15° of their own, whatever the setting said.
+  void _rotateStep({required bool clockwise}) => _rotateToAroundCenter(
+    AppInput.stepOnTheGrid(
+      _viewport.rotationDegrees,
+      AppInput.settings.value.rotationSnapDegrees,
+      up: clockwise,
+    ),
+  );
 
   void _toggleFlipHorizontal() {
     setViewport(_viewport.flippedAround(anchor: _viewportCenterAnchor));
@@ -463,14 +483,7 @@ class _CanvasPanelViewport {
 
   /// Straightens the rotation to 0° around the viewport center, keeping
   /// zoom/pan/flips (UI-R18 #20).
-  void _resetRotation() {
-    setViewport(
-      _viewport.rotatedAround(
-        nextRotationDegrees: 0,
-        anchor: _viewportCenterAnchor,
-      ),
-    );
-  }
+  void _resetRotation() => _rotateToAroundCenter(0);
 
   /// The angle-label drag (UI-R18 #21): one degree per pixel, anchored to
   /// the viewport center.

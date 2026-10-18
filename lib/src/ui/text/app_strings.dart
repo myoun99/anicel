@@ -607,8 +607,8 @@ enum AppStrings {
   String get inputRotationLockHelp => _s('inputRotationLockHelp');
   String get inputRotationSnap => _s('inputRotationSnap');
   String get inputZoomSnaps => _s('inputZoomSnaps');
+  String get inputZoomSnapAdd => _s('inputZoomSnapAdd');
   String get inputZoomCeiling => _s('inputZoomCeiling');
-  String get inputBrushSizeSnaps => _s('inputBrushSizeSnaps');
   String get inputTabletHeading => _s('inputTabletHeading');
   String get inputTabletStandard => _s('inputTabletStandard');
   String get inputTabletStandardHelp => _s('inputTabletStandardHelp');
@@ -2173,10 +2173,10 @@ enum AppStrings {
     'inputRotationLockHelp':
         'ON: the extra finger FREEZES the angle (pure pan + snapped zoom). '
         'OFF (default): it snaps the angle.',
-    'inputRotationSnap': 'Rotation snap (°)',
+    'inputRotationSnap': 'Rotation snap',
     'inputZoomSnaps': 'Zoom snaps (%)',
+    'inputZoomSnapAdd': 'Add zoom snap',
     'inputZoomCeiling': 'Max zoom lock (%)',
-    'inputBrushSizeSnaps': 'Brush size snaps (px)',
     'inputTabletHeading': 'Tablet service',
     'inputTabletStandard': 'Standard (default)',
     'inputTabletStandardHelp':
@@ -3462,10 +3462,10 @@ enum AppStrings {
     'inputRotationLockHelp':
         'ON：追加指が角度を固定します（移動＋スナップズームのみ）。'
         'OFF（既定）：角度をスナップします。',
-    'inputRotationSnap': '回転スナップ（°）',
+    'inputRotationSnap': '回転スナップ',
     'inputZoomSnaps': 'ズームスナップ（%）',
+    'inputZoomSnapAdd': 'ズームスナップを追加',
     'inputZoomCeiling': '最大ズームをロック（%）',
-    'inputBrushSizeSnaps': 'ブラシサイズのスナップ（px）',
     'inputTabletHeading': 'タブレットサービス',
     'inputTabletStandard': '標準（既定）',
     'inputTabletStandardHelp': 'OSのポインタ経路（Windows Ink）— 最新ドライバや内蔵ペンに適します。',
@@ -5065,10 +5065,10 @@ enum AppStrings {
     'inputRotationLockHelp':
         'ON: 추가 손가락이 각도를 고정합니다(순수 이동 + 스냅 줌). '
         'OFF(기본): 각도를 스냅합니다.',
-    'inputRotationSnap': '회전 스냅 (°)',
+    'inputRotationSnap': '회전 스냅',
     'inputZoomSnaps': '줌 스냅 (%)',
+    'inputZoomSnapAdd': '줌 스냅 추가',
     'inputZoomCeiling': '최대 줌 잠금 (%)',
-    'inputBrushSizeSnaps': '브러시 크기 스냅 (px)',
     'inputTabletHeading': '태블릿 서비스',
     'inputTabletStandard': '표준 (기본)',
     'inputTabletStandardHelp': 'OS 포인터 경로(Windows Ink) — 최신 드라이버와 내장 펜에 적합합니다.',
@@ -6681,10 +6681,10 @@ enum AppStrings {
     'inputRotationLockHelp':
         "ACTIVÉ : le doigt supplémentaire FIGE l'angle (déplacement pur + "
         "zoom par crans). DÉSACTIVÉ (par défaut) : il aligne l'angle.",
-    'inputRotationSnap': 'Cran de rotation (°)',
+    'inputRotationSnap': 'Cran de rotation',
     'inputZoomSnaps': 'Crans de zoom (%)',
+    'inputZoomSnapAdd': 'Ajouter un cran de zoom',
     'inputZoomCeiling': 'Verrou de zoom max (%)',
-    'inputBrushSizeSnaps': 'Crans de taille de pinceau (px)',
     'inputTabletHeading': 'Service tablette',
     'inputTabletStandard': 'Standard (par défaut)',
     'inputTabletStandardHelp':
@@ -8361,10 +8361,10 @@ enum AppStrings {
     'inputTwoFingerRotationHelp': '关闭：导航手势只做平移和缩放（旋转按钮与快捷键保留）。',
     'inputRotationLock': '修饰键锁定旋转',
     'inputRotationLockHelp': '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
-    'inputRotationSnap': '旋转吸附（°）',
+    'inputRotationSnap': '旋转吸附',
     'inputZoomSnaps': '缩放吸附（%）',
+    'inputZoomSnapAdd': '添加缩放吸附',
     'inputZoomCeiling': '锁定最大缩放（%）',
-    'inputBrushSizeSnaps': '笔刷大小吸附（px）',
     'inputTabletHeading': '数位板服务',
     'inputTabletStandard': '标准（默认）',
     'inputTabletStandardHelp': '系统指针通道（Windows Ink）— 适合新版驱动和内置笔。',
