@@ -8,6 +8,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/tools_panel.dart' show RailButton;
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
@@ -40,8 +41,8 @@ void main() {
   final viewer = find.byKey(const ValueKey<String>('media-viewer-panel'));
 
   /// ⛔Not `pumpAndSettle`: the marching ants of an open trace never settle.
-  Future<void> pumpFrames(WidgetTester tester) async {
-    for (var i = 0; i < 6; i += 1) {
+  Future<void> pumpFrames(WidgetTester tester, [int frames = 6]) async {
+    for (var i = 0; i < frames; i += 1) {
       await tester.pump(const Duration(milliseconds: 16));
     }
   }
@@ -56,6 +57,17 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  /// Whether the rail's button [keyValue] is lit.
+  bool lit(WidgetTester tester, String keyValue) =>
+      tester
+          .widget<RailButton>(
+            find.byWidgetPredicate(
+              (widget) => widget is RailButton && widget.keyValue == keyValue,
+            ),
+          )
+          .onPressed !=
+      null;
 
   /// The app with [reference] open in the main viewer, the cut on the
   /// polygon in hand, and three vertices tapped out on the page: the
@@ -104,6 +116,9 @@ void main() {
       cutShape: CanvasShapeKind.polygon,
     );
     await pumpFrames(tester);
+    for (final button in const ['rail-confirm-button', 'undo-button']) {
+      expect(lit(tester, button), isFalse, reason: '⛔fixture: $button');
+    }
 
     // About the middle of the viewer's top: docks float over its sides,
     // and the timeline over its lower half.
@@ -121,8 +136,9 @@ void main() {
     return trace;
   }
 
-  testWidgets('확정 closes it', (tester) async {
+  testWidgets('확정 closes it — the rail lights its ↵ for it', (tester) async {
     final trace = await tapOutATrace(tester);
+    expect(lit(tester, 'rail-confirm-button'), isTrue);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await pumpFrames(tester);
@@ -130,14 +146,37 @@ void main() {
     expect(trace.hasOpenPolygon, isFalse);
   });
 
-  testWidgets('↶ takes its last vertex back, and ↷ puts it back', (
-    tester,
-  ) async {
+  testWidgets("…and so does the tool settings' 닫기", (tester) async {
     final trace = await tapOutATrace(tester);
+    // The tool settings ship closed, under the library's sub-strip button.
+    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-L2')));
+    await pumpFrames(tester, 40);
+    final tab = find.byKey(const ValueKey<String>('panel-tab-brush-settings'));
+    await tester.ensureVisible(tab);
+    await pumpFrames(tester, 40);
+    await tester.tap(tab);
+    await pumpFrames(tester, 40);
+    final close = find.byKey(
+      const ValueKey<String>('selection-close-polygon-button'),
+    );
+    await tester.ensureVisible(close);
+    await pumpFrames(tester, 40);
+
+    await tester.tap(close);
+    await pumpFrames(tester);
+
+    expect(trace.hasOpenPolygon, isFalse);
+  });
+
+  testWidgets('↶ takes its last vertex back, and ↷ puts it back — each lit '
+      'for it', (tester) async {
+    final trace = await tapOutATrace(tester);
+    expect(lit(tester, 'undo-button'), isTrue);
 
     await pressCtrl(tester, LogicalKeyboardKey.keyZ);
     await pumpFrames(tester);
     expect(trace.polygonPoints, hasLength(2));
+    expect(lit(tester, 'redo-button'), isTrue);
 
     await pressCtrl(tester, LogicalKeyboardKey.keyY);
     await pumpFrames(tester);

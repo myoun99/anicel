@@ -566,6 +566,25 @@ void main() {
       );
     });
 
+    testWidgets('comes alive as the third goes down', (tester) async {
+      final commands = CanvasSelectionCommands();
+      await pumpSettings(
+        tester,
+        shape: CanvasShapeKind.polygon,
+        points: 2,
+        commands: commands,
+      );
+
+      commands.addPolygonPoint(CanvasPoint(x: 40, y: 0));
+      // The channel tells of it on a microtask; the frame comes after.
+      await tester.pump(Duration.zero);
+
+      expect(
+        tester.toolSettingAction(find.byKey(buttonKey)).onPressed,
+        isNotNull,
+      );
+    });
+
     testWidgets('closes the trace when pressed', (tester) async {
       final commands = CanvasSelectionCommands();
       await pumpSettings(
