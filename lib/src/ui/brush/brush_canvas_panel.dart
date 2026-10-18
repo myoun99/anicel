@@ -45,6 +45,7 @@ import '../../models/shape_tool_options.dart';
 import '../../services/canvas_flood_fill.dart'
     show FloodFillOptions, regionFillPieces;
 import '../../services/plain_line_region.dart';
+import '../../services/mark_under_a_pixel.dart';
 import '../../models/canvas_size.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/drawing_guide.dart';
@@ -2593,12 +2594,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// I-69-Q8: 「일반은 브러시랑 전혀 관계없는 독립적인것임」 · Q9: 「채움은
   /// 타입과 무관하다」).
   ShapeArea _tracedArea(List<DrawnShapePath> onTheRow) {
+    final antiAlias = _brush.shapeOptions.antiAlias;
+    final line = markUnderAPixel(
+      _brush.shapeOptions.size,
+      antiAliased: antiAlias,
+    );
     final region = CanvasSelectionRegion.unionOf([
-      for (final path in onTheRow) ?_shapeToolArea(path),
+      for (final path in onTheRow) ?_shapeToolArea(path, lineWidth: line.width),
     ]);
     final color = _brush.color;
-    final opacity = _brush.activeOpacity;
-    final antiAlias = _brush.shapeOptions.antiAlias;
+    final opacity = switch (_brush.shapePart) {
+      // An outline's inside has no width for a pixel to hold.
+      ShapePart.fill => _brush.activeOpacity,
+      ShapePart.line => _brush.activeOpacity * line.opacity,
+    };
     final blend = _brush.activeBlendMode;
     return (
       shape: (region, color, opacity, antiAlias, blend),
@@ -2621,20 +2630,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// - 「채움」 (유저 답 I-69-Q7 메모): the shape's inside. Only a shape that
   ///   HAS one gets here ([BrushToolState.shapePart]), and its path is its
   ///   outline;
-  /// - a line of the 「일반」 type: the line's own area, as wide as the tool
-  ///   says and turning as it says ([plainLineRegion]).
-  CanvasSelectionRegion? _shapeToolArea(DrawnShapePath onTheRow) =>
-      switch (_brush.shapePart) {
-        ShapePart.fill => CanvasSelectionRegion.shape(
-          CanvasSelectionShape(onTheRow.points),
-        ),
-        ShapePart.line => plainLineRegion(
-          points: onTheRow.points,
-          closed: onTheRow.closed,
-          width: _brush.shapeOptions.size,
-          corners: _brush.shapeOptions.corners,
-        ),
-      };
+  /// - a line of the 「일반」 type: the line's own area, [lineWidth] across
+  ///   and turning as the tool says ([plainLineRegion]).
+  CanvasSelectionRegion? _shapeToolArea(
+    DrawnShapePath onTheRow, {
+    required double lineWidth,
+  }) => switch (_brush.shapePart) {
+    ShapePart.fill => CanvasSelectionRegion.shape(
+      CanvasSelectionShape(onTheRow.points),
+    ),
+    ShapePart.line => plainLineRegion(
+      points: onTheRow.points,
+      closed: onTheRow.closed,
+      width: lineWidth,
+      corners: _brush.shapeOptions.corners,
+    ),
+  };
 
   /// Paint a finished shape-fill outline — with every copy the symmetry
   /// guide made of it, as one region — filled as ONE area, as a selection

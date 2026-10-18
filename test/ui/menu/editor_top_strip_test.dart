@@ -433,6 +433,18 @@ void main() {
         same(ToolSizePresetPanel.presets),
         reason: 'the rack itself, not a copy of it',
       );
+
+      // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-17): 「브러시
+      // 사이즈 조절 1px밑으로 안내려가는데」.
+      tool.value = tool.value.withActiveSize(1);
+      await tester.pumpAndSettle();
+      await tester.tap(hand('field-slider-step-down'));
+      await tester.pumpAndSettle();
+      expect(
+        tool.value.activeSize,
+        0.7,
+        reason: 'the rack\'s first — ↩️the floor at 1 held the − there',
+      );
     });
 
     testWidgets('opacity is per tool: the fill keeps its own', (tester) async {

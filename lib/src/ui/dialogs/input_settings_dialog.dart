@@ -5,6 +5,7 @@ import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_zoom_scale.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_input_settings.dart';
+import '../panels/tool_size_preset_panel.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
@@ -289,8 +290,11 @@ class InputSettingsSection extends StatelessWidget {
             _SnapListField(
               fieldKey: 'settings-snap-size',
               label: strings.inputBrushSizeSnaps,
+              // Written as the size panel writes a size, under a pixel too
+              // (size-rack-0-7-under-the-brush-floor) — ↩️each was rounded
+              // to a whole pixel.
               text: settings.brushSizeSnaps
-                  .map((value) => value.toStringAsFixed(0))
+                  .map(ToolSizePresetPanel.label)
                   .join(', '),
               onSubmitted: (text) {
                 final values = _parseDoubleList(text);

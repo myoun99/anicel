@@ -7,6 +7,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/brush_tip_shape.dart';
 import 'brush_dab_tip_geometry.dart';
+import 'mark_under_a_pixel.dart';
 
 /// The prerendered tip-stamp cache (R20-B — the CSP/Photoshop brush
 /// architecture): every ANALYTIC tip renders ONCE per quantized parameter
@@ -68,12 +69,14 @@ class BrushTipStampCache {
   int get residentBytes => _masks.held;
   int get entryCount => _masks.length;
 
-  /// Rewrites an analytic [dab] to its cached-stamp form: quantized size,
-  /// the prerendered mask, `angleDegrees: 0`, `roundness: 1` (both baked
-  /// into the mask). A dab that already carries a mask — a raster tip, or
-  /// one this cache resolved — and a stamp dab (lift/fill pixels) pass
-  /// through untouched.
-  BrushDab resolveDab(BrushDab dab) {
+  /// Rewrites an analytic [raw] dab to its cached-stamp form: quantized
+  /// size, the prerendered mask, `angleDegrees: 0`, `roundness: 1` (both
+  /// baked into the mask). A dab that already carries a mask — a raster
+  /// tip, or one this cache resolved — and a stamp dab (lift/fill pixels)
+  /// pass through untouched, but for a size under a pixel
+  /// ([liftedToOnePixel] — every dab a stroke lays comes through here).
+  BrushDab resolveDab(BrushDab raw) {
+    final dab = liftedToOnePixel(raw);
     if (dab.stamp != null || dab.tipMask != null) {
       return dab;
     }

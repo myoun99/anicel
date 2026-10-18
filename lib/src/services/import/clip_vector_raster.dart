@@ -14,6 +14,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../brush_commit_builder.dart';
 import '../brush_dab_interpolator.dart';
+import '../mark_under_a_pixel.dart';
 import '../brush_pressure_dynamics.dart' show applyBrushInputDynamics;
 import '../brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'clip_cel_raster.dart';
@@ -274,5 +275,8 @@ List<BrushDab> _dabsAlong(ClipVectorStroke stroke, ({int x, int y}) offset) {
       previous = laid.last;
     }
   }
-  return [for (final dab in dabs) applyBrushInputDynamics(dab, shape: _pen)];
+  return [
+    for (final dab in dabs)
+      liftedToOnePixel(applyBrushInputDynamics(dab, shape: _pen)),
+  ];
 }

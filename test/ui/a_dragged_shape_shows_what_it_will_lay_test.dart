@@ -126,8 +126,15 @@ void main() {
 
   /// What laying the traced rectangle straight onto [base] lands — the
   /// shape tool's own area, by the builder and the commit, with nothing
-  /// shown first.
-  BitmapSurface laidStraight(BitmapSurface base, double right, double bottom) {
+  /// shown first: [plain]'s, or a line [width] across at [opacity].
+  BitmapSurface laidStraight(
+    BitmapSurface base,
+    double right,
+    double bottom, {
+    double? width,
+    double? opacity,
+    bool antiAlias = false,
+  }) {
     final region = plainLineRegion(
       points: CanvasSelectionShape.rect(
         left: 50,
@@ -136,7 +143,7 @@ void main() {
         bottom: bottom,
       ).points,
       closed: true,
-      width: plain.size,
+      width: width ?? plain.size,
       corners: plain.corners,
     )!;
     return brushCommitResultForBrushDabSequenceOnBitmapSurface(
@@ -145,8 +152,8 @@ void main() {
         buildRegionFillDabs(
           region: region,
           color: BrushToolState.defaults.color,
-          opacity: plain.opacity,
-          options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+          opacity: opacity ?? plain.opacity,
+          options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
         ),
       ),
       layerId: const LayerId('oracle'),
@@ -201,6 +208,45 @@ void main() {
       reason: 'what landed is the shape tool\'s own area, exactly',
     );
   });
+
+  // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-17 「다른부분
+  // 발견되는거있으면 법 통일」): a line under a pixel lands as the brush's
+  // does — a pixel across, lighter by the width it lacks (`markUnderAPixel`).
+  for (final antiAlias in [true, false]) {
+    final how = antiAlias
+        ? 'lighter by its width'
+        : 'whole with anti-aliasing off (H39)';
+    testWidgets('a plain line under a pixel lands as the one-pixel line, '
+        '$how', (tester) async {
+      final env = await pumpPanel(
+        tester,
+        options: plain.copyWith(size: 0.3, antiAlias: antiAlias),
+      );
+      final before = celOf(env.coordinator);
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await gesture.up();
+      await tester.pump();
+
+      expect(
+        firstDifference(
+          celOf(env.coordinator),
+          laidStraight(
+            before,
+            330,
+            250,
+            width: 1,
+            opacity: antiAlias ? plain.opacity * 0.3 : plain.opacity,
+            antiAlias: antiAlias,
+          ),
+        ),
+        isNull,
+        reason: '↩️a 0.3px band landed whole where it crossed a pixel '
+            'centre and nothing where it did not',
+      );
+    });
+  }
 
   testWidgets('a shape is shown WHOLE or not at all: one piece a frame, the '
       'overlay stays as it was until the last is laid', (tester) async {

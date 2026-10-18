@@ -51,6 +51,16 @@ void main() {
       );
     });
 
+    // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-12 「브러시
+    // 사이즈 최소치만 0.1까지 내림」, 10-17 「1px밑으로 안내려가는데」).
+    test('a brush reaches a tenth of a pixel, and a size under one is kept '
+        'as it is set', () {
+      expect(BrushToolState.minSize, 0.1);
+      expect(BrushToolState(size: 0.7).size, 0.7, reason: 'the rack\'s first');
+      expect(BrushToolState.defaults.withActiveSize(0.3).size, 0.3);
+      expect(BrushToolState.defaults.withActiveSize(0.05).size, 0.1);
+    });
+
     test('public constructor always stores clamped opacity', () {
       expect(BrushToolState(opacity: -1).opacity, 0);
       expect(BrushToolState(opacity: 2).opacity, 1);

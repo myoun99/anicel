@@ -623,7 +623,13 @@ class BrushToolState {
   static double clampSignedUnit(double value) =>
       !value.isFinite ? 0.0 : value.clamp(-1.0, 1.0).toDouble();
 
-  static const double minSize = 1.0;
+  /// 🗣️유저 2026-10-12 (size-rack-0-7-under-the-brush-floor-Q1): 「브러시
+  /// 사이즈 최소치만 0.1까지 내림. 프리셋은 지금이랑 그대로」 — and again
+  /// 10-17 「1px밑으로 안내려가는데」. ↩️1.0 came in with the first
+  /// implementation (Phase 302) with no reason given, and kept the size
+  /// panel's own 0.7 out of reach. A mark under a pixel — a dab, the
+  /// shape tool's plain line — lands by `markUnderAPixel`.
+  static const double minSize = 0.1;
   // CSP-parity ceiling; the settings slider maps this range exponentially so
   // the small sizes keep their precision.
   static const double maxSize = 2000.0;
