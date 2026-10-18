@@ -46,11 +46,28 @@ class TimelineFrameRangeSelection {
   /// so nothing reads differently than it did before rows existed.
   final List<TimelineRowAddress> rows;
 
-  /// The layers this selection covers, anchor-only selections included.
-  List<LayerId> get spanLayerIds => layerIds.isEmpty ? [layerId] : layerIds;
+  /// The layers whose BLOCKS this selection covers, anchor-only selections
+  /// included.
+  ///
+  /// 🚨F-87: off [rows] whenever the drag swept them — the LAYER rows among
+  /// them ([TimelineRowAddress.blockLayerId]) and nothing else. A swept lane
+  /// is its own row and holds its own keys; its layer's blocks are covered
+  /// when the layer's row is. ↩️The anchor stood in when no layer row was
+  /// swept, and the drag's own derivation counted every lane as its layer:
+  /// a band over one fx row deleted the frames of a row it never lit.
+  List<LayerId> get spanLayerIds => rows.isNotEmpty
+      ? [
+          ...{for (final row in rows) ?row.blockLayerId},
+        ]
+      : layerIds.isEmpty
+      ? [layerId]
+      : layerIds;
 
-  bool coversLayer(LayerId id) =>
-      layerIds.isEmpty ? id == layerId : layerIds.contains(id);
+  bool coversLayer(LayerId id) => rows.isNotEmpty
+      ? rows.any((row) => row.blockLayerId == id)
+      : layerIds.isEmpty
+      ? id == layerId
+      : layerIds.contains(id);
 
   /// Whether THIS row — of any kind — is in the swept run.
   ///

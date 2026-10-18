@@ -82,8 +82,17 @@ Project _project() => Project(
           id: _se2,
           name: 'S2',
           kind: LayerKind.se,
-          frames: const [],
-          timeline: const {},
+          frames: [
+            Frame(
+              id: const FrameId('se-two'),
+              duration: 3,
+              name: 'Two!',
+              strokes: const [],
+            ),
+          ],
+          timeline: const {
+            2: TimelineExposure.drawing(FrameId('se-two'), length: 3),
+          },
         ),
       ],
     ),
@@ -123,6 +132,20 @@ void main() {
         reason: 'a cut row belongs to no layer: its blocks are cuts',
       );
     });
+
+    // F-87 (유저 2026-10-18): 「fx를 넘어서 뭐든 선택된 대상으로」 — what a
+    // SELECTION holds on a row is the other question, and a lane's answer
+    // to it is never its layer.
+    test('and whose BLOCKS it holds: a lane holds none', () {
+      expect(const LayerRowAddress(_se1).blockLayerId, _se1);
+      expect(
+        const LaneRowAddress(_se1, 'position').blockLayerId,
+        isNull,
+        reason: 'a lane holds keys — its layer\'s sounds are its layer '
+            'row\'s',
+      );
+      expect(const TrackRowAddress(_trackId).blockLayerId, isNull);
+    });
   });
 
   group('a band anchored on a LANE row still moves', () {
@@ -139,12 +162,17 @@ void main() {
         session.rangeMove.beginTrackRangeMoveDrag(_se1),
         isTrue,
         reason:
-            'the anchor is a lane row of S1, so the move machine reads '
-            'S1. Refusing here is the silent re-select',
+            'the anchor is a lane row of S1 and the band holds S2\'s '
+            'sound. Refusing here is the silent re-select',
       );
     });
 
-    test('and the lane row does not cost the span its own layer', () {
+    // ↩️It read 「the lane row does not cost the span its own layer」 and
+    // asserted that S1's sound slid: a band over S1's LANE moved S1's
+    // sound, which no row of the band holds. H20 (유저 2026-08-23):
+    // 「선택한 곳만 움직이게하라고」, and F-87 (10-18).
+    test('and what it moves is what its rows hold — the lane is not its '
+        'layer\'s sound', () {
       final session = sessionFor();
       selectLaneAnchoredBand(session);
 
@@ -152,19 +180,21 @@ void main() {
       session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _se1);
       session.rangeMove.endFrameRangeMoveDrag();
 
-      final se1 = session.repository
+      Layer row(LayerId id) => session.repository
           .requireProject()
           .tracks
           .single
           .seLayers
-          .firstWhere((layer) => layer.id == _se1);
+          .firstWhere((layer) => layer.id == id);
       expect(
-        se1.timeline.keys.toList(),
+        row(_se2).timeline.keys.toList(),
         [3],
-        reason:
-            'S1 owns the sound, the anchor row is one of S1 lanes, and '
-            'the move slid it a frame. A dropped lane row leaves the sound '
-            'where it was',
+        reason: 'S2\'s row was swept, and its sound slid a frame',
+      );
+      expect(
+        row(_se1).timeline.keys.toList(),
+        [2],
+        reason: 'only S1\'s LANE was swept — its sound stays where it was',
       );
     });
   });
@@ -213,13 +243,20 @@ void main() {
 
     test('$builder asks the address, never its type', () {
       final text = source(builder);
+      // ↩️F-87: isInSelection asks the ROW itself now — the band's
+      // `coversRow`, the law the storyboard's rail presses by — so a swept
+      // lane is inside the band whether or not its layer's row was swept.
       expect(
         RegExp(r'row\.owningLayerId').allMatches(text).length,
-        greaterThanOrEqualTo(3),
+        greaterThanOrEqualTo(2),
         reason:
-            'isInSelection, onSelectUpdate and onMoveBegin each need '
-            'it — a builder that keeps one type test keeps one third of the '
-            'bug',
+            'onSelectUpdate and onMoveBegin each need it — a builder that '
+            'keeps one type test keeps half of the bug',
+      );
+      expect(
+        text,
+        contains('selection.coversRow(row)'),
+        reason: 'isInSelection asks the row, not its layer',
       );
       expect(
         text,

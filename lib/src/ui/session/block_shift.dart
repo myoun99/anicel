@@ -76,10 +76,11 @@ class BlockShift {
   FrameShiftScope? frameShiftScope({TimelineRowAddress? currentRow}) {
     final trackSelection = _selection.trackFrameRangeSelection.value;
     if (trackSelection != null) {
+      // The rows whose BLOCKS were swept — a lane holds keys (F-87).
       final rows = <LayerId>[
         ...{
           for (final row in trackSelection.spanRows)
-            if (row.owningLayerId case final id?
+            if (row.blockLayerId case final id?
                 when _project.trackSeGlobalLayerById(id) != null)
               id,
         },

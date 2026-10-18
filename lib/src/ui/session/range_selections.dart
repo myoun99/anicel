@@ -635,11 +635,8 @@ class RangeSelections {
     String? headLaneId,
     List<TimelineRowAddress> spanRows = const [],
   }) {
-    if (!rangeSelectionEligible(layerId)) {
-      return;
-    }
-    final layer = _project.rangeLayerById(layerId);
-    if (layer == null) {
+    if (!rangeSelectionEligible(layerId) ||
+        _project.rangeLayerById(layerId) == null) {
       return;
     }
     // A lane TAIL only exists on the anchor layer's own group: the lane
@@ -652,52 +649,37 @@ class RangeSelections {
     // final for THIS drag: a mixed span below re-sets it, which is the one
     // case where a cell drag ends up owning lane state too.
     claimSelection(TimelineSelectionKind.cells);
-    final base = snapFrameRangeToBlocks(
-      layer: layer,
-      anchorIndex: anchorIndex,
-      headIndex: headIndex,
-      aggregateRuns: _rowSpans.aggregateRunsForRow(layer),
-    );
-    if (base == null) {
-      _selection.frameRangeSelection.value = null;
-      return;
-    }
     // The layer half of what was swept, in display order — derived from the
     // rows rather than rebuilt, so the two can never disagree.
     // Deduped in display order: a layer row and its own lane rows are
     // several rows of ONE layer. Asking the ADDRESS which layer it belongs
     // to (rather than testing its type) is what keeps a span that runs
     // cell → lane → lane → cell from losing the rows in the middle.
-    final spanIds = spanRows.isEmpty
+    //
+    // ↩️🚨F-87 (유저 2026-10-18): the address is asked WHOSE BLOCKS the row
+    // holds ([TimelineRowAddress.blockLayerId]) — a lane holds its keys,
+    // never its layer's blocks. Asked which layer it belongs to, a band over
+    // an fx row alone held that layer's frames: the delete took them, and
+    // with none it went grey.
+    final blockIds = spanRows.isEmpty
         ? _selectionSpanLayerIds(layerId, headLayerId ?? layerId)
         : <LayerId>[
-            ...{for (final row in spanRows) ?row.owningLayerId},
+            ...{for (final row in spanRows) ?row.blockLayerId},
           ];
-    if (spanIds.length <= 1) {
-      _selection.frameRangeSelection.value = spanRows.isEmpty
-          ? base
-          : TimelineFrameRangeSelection(
-              layerId: base.layerId,
-              startIndex: base.startIndex,
-              endIndexExclusive: base.endIndexExclusive,
-              rows: spanRows,
-            );
-      _applySelectionLaneTail(
-        layerId: layerId,
-        headLaneId: laneTail,
-        startIndex: base.startIndex,
-        endIndexExclusive: base.endIndexExclusive,
-      );
+    // Union-snap over those rows alone, from the raw span: expand until no
+    // swept row's block is cut. A lane's keys are points — raw cells, the
+    // lane domain's own rule — so a span of lanes alone IS the raw span.
+    // Each pass can only grow the range, so the loop terminates.
+    var start = math.max(0, math.min(anchorIndex, headIndex));
+    var end = math.max(anchorIndex, headIndex) + 1;
+    if (end <= start) {
+      _selection.frameRangeSelection.value = null;
       return;
     }
-    // Union-snap: expand until no spanned layer's block is cut. Each pass
-    // can only grow the range, so the loop terminates.
-    var start = base.startIndex;
-    var end = base.endIndexExclusive;
     var changed = true;
     while (changed) {
       changed = false;
-      for (final id in spanIds) {
+      for (final id in blockIds) {
         final spanned = _project.rangeLayerById(id);
         if (spanned == null) {
           continue;
@@ -719,10 +701,15 @@ class RangeSelections {
       }
     }
     _selection.frameRangeSelection.value = TimelineFrameRangeSelection(
-      layerId: layerId,
+      // The row a single-row flow reads: the drag's own when its blocks were
+      // swept, else the first row whose were. A span of lanes alone keeps
+      // the drag's — it holds no blocks ([spanLayerIds] is empty).
+      layerId: blockIds.isEmpty || blockIds.contains(layerId)
+          ? layerId
+          : blockIds.first,
       startIndex: start,
       endIndexExclusive: end,
-      layerIds: spanIds,
+      layerIds: blockIds.length > 1 ? blockIds : const [],
       rows: spanRows,
     );
     _applySelectionLaneTail(
@@ -920,7 +907,10 @@ class RangeSelections {
       // The row's OWNING layer (C3-lane-move): a lane row is one of its
       // layer's rows, and the map keys by layer anyway, so a repeat is a
       // no-op rather than something to filter out by type.
-      final rowLayerId = row.owningLayerId;
+      // ↩️F-87: the layer whose BLOCKS the row holds — a swept lane holds
+      // its keys (the lane verbs take those), never its layer's sounds;
+      // keyed by the owner, a band over an S row's lane deleted them.
+      final rowLayerId = row.blockLayerId;
       if (rowLayerId == null) {
         continue;
       }

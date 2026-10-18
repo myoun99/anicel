@@ -182,20 +182,31 @@ int _commitOffsetFor(
 /// band that advertised a move quietly became a re-select — the move
 /// machine got a null span and the press fell through to the select path,
 /// with nothing on screen to say so.
+///
+/// ↩️F-87: the rows it plans are the ones whose BLOCKS were swept
+/// ([TimelineRowAddress.blockLayerId]); a lane row holds its keys, never
+/// its layer's sounds (유저 H20: 「선택한 곳만 움직이게하라고」). The anchor
+/// is the drag's own row when that is one of them, else the first of them.
 TimelineFrameRangeSelection? _spanOfTrackSelection(
   TrackFrameRangeSelection? live,
 ) {
-  final anchorLayerId = live?.anchorRow.owningLayerId;
-  if (live == null || anchorLayerId == null) {
+  if (live == null) {
+    return null;
+  }
+  // Deduped in display order: a layer row and its own lane rows are
+  // several rows of ONE layer, and the move machine plans per layer.
+  final blockIds = [
+    ...{for (final row in live.spanRows) ?row.blockLayerId},
+  ];
+  final anchorLayerId = live.anchorRow.blockLayerId;
+  if (blockIds.isEmpty) {
     return null;
   }
   return TimelineFrameRangeSelection(
-    layerId: anchorLayerId,
+    layerId: blockIds.contains(anchorLayerId) ? anchorLayerId! : blockIds.first,
     startIndex: live.startFrame,
     endIndexExclusive: live.endFrameExclusive,
-    // Deduped in display order: a layer row and its own lane rows are
-    // several rows of ONE layer, and the move machine plans per layer.
-    layerIds: {for (final row in live.spanRows) ?row.owningLayerId}.toList(),
+    layerIds: blockIds,
   );
 }
 
@@ -218,9 +229,12 @@ _castTrackSources(
   // through to a silent re-select. The `seen` set is the other half: a
   // layer row and its own lane rows are several rows of ONE layer, and
   // sourcing that layer twice would plan its slide twice.
+  // ↩️F-87: keyed by the layer whose BLOCKS the row holds. A swept lane
+  // holds its keys, not its layer's sounds — keyed by the owner, a band
+  // over an S row's lane slid sounds nobody swept (H20).
   final seen = <LayerId>{};
   for (final row in live.spanRows) {
-    final rowLayerId = row.owningLayerId;
+    final rowLayerId = row.blockLayerId;
     if (rowLayerId == null || !seen.add(rowLayerId)) {
       continue;
     }

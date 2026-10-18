@@ -1844,22 +1844,127 @@ class LaneVerbs {
   /// Whether [laneVerbRange] holds a key to delete, on a lane of any home.
   bool get laneVerbRangeHasKeys {
     final lane = laneVerbRange;
+    return lane != null && _laneSpanHasKeys(lane);
+  }
+
+  /// Whether [lane] holds a key, on a lane of any home.
+  bool _laneSpanHasKeys(TimelineLaneSelection lane) {
     // The same layer the verb will act on, or the answer is about a
     // different set of keys than the one Delete is about to remove: a
     // track-SE row's clone holds only this cut's, on this cut's numbers,
     // and the span is stated globally.
-    final scope = lane == null ? null : _laneVerbScope(lane);
-    return lane != null &&
-        scope != null &&
-        rowLaneHomesKeyedWhere(scope.homes, lane.contains);
+    final scope = _laneVerbScope(lane);
+    return scope != null && rowLaneHomesKeyedWhere(scope.homes, lane.contains);
   }
 
   /// Whether the one Delete has something to take from [laneVerbRange]: a key
   /// under it, or — on a live RANGE — an fx header it names (F-87).
   bool get laneVerbRangeHasSomethingToDelete {
     final lane = laneVerbRange;
-    return laneVerbRangeHasKeys ||
-        (lane != null && _effectsNamedByHeaderRange(lane).isNotEmpty);
+    return lane != null &&
+        _laneSpanHasSomethingToDelete(lane, range: _laneRangeIsLive);
+  }
+
+  /// Whether [lane] holds what the one Delete takes: a key under it, or — a
+  /// RANGE's — an fx header it names.
+  bool _laneSpanHasSomethingToDelete(
+    TimelineLaneSelection lane, {
+    required bool range,
+  }) =>
+      _laneSpanHasKeys(lane) ||
+      (range && _effectsNamedByHeaders(lane).isNotEmpty);
+
+  /// Whether the span [laneVerbRange] answers with is the live lane RANGE —
+  /// not the row stood on, nor the camera row's band.
+  bool get _laneRangeIsLive => _selection.laneRangeSelection.value != null;
+
+  /// 🚨F-87 — the LANES a live band holds, and only those that hold what the
+  /// one Delete takes: one span per layer, over the band's frames on each
+  /// row's own axis — every lane row it swept, and the CAMERA row, which IS
+  /// its transform header (F-17/F-84, 유저 2026-09-11: 「트랜스폼이나 카메라나
+  /// 똑같으니까 법 싹 하나로 통일해줘」).
+  ///
+  /// 유저 (2026-10-18): 「fx를 넘어서 뭐든 선택된 대상으로 버튼의 대상이
+  /// 바껴야하는데 법 통일해서 해결하도록」 — and 08-12's 「선택 객체 하나가
+  /// 종류 섞인 행들을 담고, 각 동사가 행 종류별로 알아서 처리」. A band's lane
+  /// row is deleted the way a range over it is: an fx header takes its fx,
+  /// every other lane its keys ([deleteForBandLanes]). ↩️Its rows were read
+  /// as their layers' blocks, so a band over an fx row deleted the layer's
+  /// frames and, with none, left the button grey.
+  ///
+  /// ⚠️A lane of a row no lane verb resolves — a storyboard projection
+  /// row's, whose layer is a different cut's at every frame — holds nothing
+  /// here: no single span names it.
+  List<TimelineLaneSelection> get bandLanesToDelete => [
+    for (final lane in _bandLaneSpans())
+      if (_laneSpanHasSomethingToDelete(lane, range: true)) lane,
+  ];
+
+  /// The band's lane rows as spans ([bandLanesToDelete]) — the cut's band on
+  /// its rows' own axes, the track's on the track's.
+  List<TimelineLaneSelection> _bandLaneSpans() {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      return _laneSpansOver(
+        // A band no drag swept — a move's landing — names its layer rows
+        // alone, the camera's among them.
+        inCut.rows.isNotEmpty
+            ? inCut.rows
+            : [for (final id in inCut.spanLayerIds) LayerRowAddress(id)],
+        inCut.startIndex,
+        inCut.endIndexExclusive,
+        frameIsGlobal: false,
+      );
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack != null) {
+      return _laneSpansOver(
+        onTrack.spanRows,
+        onTrack.startFrame,
+        onTrack.endFrameExclusive,
+        frameIsGlobal: true,
+      );
+    }
+    return const [];
+  }
+
+  /// The lanes among [rows], gathered per layer in display order, over
+  /// [start]..[endExclusive] as each layer's own lanes key it.
+  List<TimelineLaneSelection> _laneSpansOver(
+    List<TimelineRowAddress> rows,
+    int start,
+    int endExclusive, {
+    required bool frameIsGlobal,
+  }) {
+    final lanesByLayer = <LayerId, List<String>>{};
+    void add(LayerId layerId, String laneId) =>
+        (lanesByLayer[layerId] ??= []).add(laneId);
+    for (final row in rows) {
+      switch (row) {
+        case LaneRowAddress() when projectionRowUnder(row) != null:
+          break;
+        case LaneRowAddress(:final layerId, :final laneId)
+            when laneVerbLayerFor(layerId) != null:
+          add(layerId, laneId);
+        case LayerRowAddress(:final layerId) when _isCameraRow(layerId):
+          add(layerId, transformGroupHeaderLane.laneId);
+        case LaneRowAddress() || LayerRowAddress() || TrackRowAddress():
+          break;
+      }
+    }
+    int onAxis(LayerId layerId, int frame) =>
+        _laneVerbFrameAt(layerId, frame, frameIsGlobal: frameIsGlobal);
+    return [
+      for (final MapEntry(key: layerId, value: laneIds)
+          in lanesByLayer.entries)
+        TimelineLaneSelection(
+          layerId: layerId,
+          laneId: laneIds.first,
+          startIndex: onAxis(layerId, start),
+          endIndexExclusive: onAxis(layerId, endExclusive),
+          laneIds: laneIds,
+        ),
+    ];
   }
 
   /// 🚨F-87 — THE ONE DELETE ON A LANE ROW (유저 2026-09-12: 「공용 삭제버튼을
@@ -1874,8 +1979,21 @@ class LaneVerbs {
   /// press does nothing — never the cel of the layer the lane belongs to.
   /// Standing on a header is not a range: it takes the keys at the playhead,
   /// as it always did. One undo for the whole press.
-  void deleteForLaneSelection(TimelineLaneSelection lane) {
-    final removed = _effectsNamedByHeaderRange(lane);
+  void deleteForLaneSelection(TimelineLaneSelection lane) =>
+      _deleteForLaneSpan(lane, range: _laneRangeIsLive);
+
+  /// The band's lanes ([bandLanesToDelete]), each deleted the way a RANGE
+  /// over it is — inside the caller's one step, beside the band's blocks.
+  void deleteForBandLanes(List<TimelineLaneSelection> lanes) {
+    for (final lane in lanes) {
+      _deleteForLaneSpan(lane, range: true);
+    }
+  }
+
+  /// THE delete of one lane span ([deleteForLaneSelection]'s law): a RANGE's
+  /// fx headers take their effects, and every lane left loses its keys.
+  void _deleteForLaneSpan(TimelineLaneSelection lane, {required bool range}) {
+    final removed = range ? _effectsNamedByHeaders(lane) : const <EffectId>[];
     if (removed.isEmpty) {
       removeLaneKeysForSelection(lane);
       return;
@@ -1895,10 +2013,11 @@ class LaneVerbs {
 
   /// The effects a live lane RANGE names by their HEADER rows — none for the
   /// span of the row being stood on, which is not a range.
-  List<EffectId> _effectsNamedByHeaderRange(TimelineLaneSelection lane) {
-    if (_selection.laneRangeSelection.value == null) {
-      return const [];
-    }
+  ///
+  /// ↩️It read the live range itself to tell the two apart; a band's lanes
+  /// are ranges too and live in no lane range, so the caller says which
+  /// ([_deleteForLaneSpan]'s `range`).
+  List<EffectId> _effectsNamedByHeaders(TimelineLaneSelection lane) {
     final layer = laneVerbLayerFor(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return const [];

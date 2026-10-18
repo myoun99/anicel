@@ -949,10 +949,17 @@ class StoryboardToolbarPanelContext
     session.storyboardCursor.deleteBlockAtStoryboardCursor();
   }
 
-  /// A cell band, or one of this rail's own.
+  /// A cell band, or one of this rail's own — or a LANE range.
+  ///
+  /// ↩️F-87: the lane range was not among them. A range over an S row's lane
+  /// stands the rail on that ROW, so with no key under it the press fell to
+  /// the cursor and deleted the row's sound — the lane's layer answering for
+  /// the lane, the bug the timeline's ladder closed on 09-16
+  /// ([CellVerbs.canDeleteCellAtCurrentFrame]).
   bool get _bandClaimsThePress =>
       session.cells.cellSelectionClaimsSubject ||
-      session.trackFrameRangeSelection.value != null;
+      session.trackFrameRangeSelection.value != null ||
+      session.laneRangeSelection.value != null;
 
   /// A band of this rail that does not cover the row the press lands on.
   bool get _bandMissesTheStandingRow {
