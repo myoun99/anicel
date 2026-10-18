@@ -105,6 +105,31 @@ void main() {
     expect(position().keyAt(4)!.path, KeyPath.auto);
   });
 
+  test('an anchor point\'s keys take the row too, and the roving one — they '
+      'walk a path as a position\'s do (anchor-walks-a-path)', () {
+    final layer = session.activeLayer!;
+    var anchor = layer.transformTrack.anchorPoint;
+    for (final frame in [0, 4, 8]) {
+      anchor = anchor.withKey(frame, p(frame * 10, 0));
+    }
+    laneVerbs.updateLayerTransformTrack(
+      layer.id,
+      layer.transformTrack.copyWith(anchorPoint: anchor),
+    );
+    select(['anchor-point'], 0, 9);
+    expect(laneVerbs.laneKeyPathsForSelection, hasLength(3));
+    expect(
+      laneVerbs.laneKeyRovingForSelection,
+      [false],
+      reason: 'the key between the first and the last',
+    );
+    laneVerbs.setLaneKeyTypeForSelection(const KeyTypePick(curved: true));
+    expect(
+      session.activeLayer!.transformTrack.anchorPoint.keyAt(4)!.path,
+      KeyPath.auto,
+    );
+  });
+
   test('a name hands the bend to every key it links', () {
     keyPositionAndScale();
     select(['position'], 0, 1);

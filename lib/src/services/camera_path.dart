@@ -11,12 +11,13 @@ import '../models/key_range_move.dart' show transformKeyAgreedNames;
 import '../models/property_track.dart';
 import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
-import '../models/transform_track.dart' show positionKeySpace;
+import '../models/transform_track.dart' show pathKeySpace;
 import 'camera_frame_corners.dart';
 
 /// One key of a camera's path: its frame on the canvas, the colour its place
 /// among all the camera's keys gives it, and the name its lanes agree on —
-/// on a layer's position path, the point it stands at and its own name.
+/// on a layer's position or anchor path, the point it stands at and its
+/// own name.
 typedef CameraPathKey = ({
   int frameIndex,
   List<Offset> corners,
@@ -26,8 +27,8 @@ typedef CameraPathKey = ({
 
 /// A camera's path over its cut's canvas (I-89 ④): its frame at every key,
 /// and at any frame from the first key to the last as playback shows it.
-/// A layer's position walks one by the same code, a point where the camera
-/// has its frame ([CameraPath.ofPosition]).
+/// A layer's position and its anchor point walk one by the same code, a
+/// point where the camera has its frame ([CameraPath.ofLane]).
 class CameraPath {
   CameraPath._(this._shownAt, this.keys)
     : _frames = List<List<Offset>?>.filled(
@@ -73,12 +74,13 @@ class CameraPath {
     );
   }
 
-  /// [position] — a layer's position lane — as a path of points in its own
-  /// pose space (I-89-Q9, 유저 2026-10-12 「같은 코드로 레이어 위치
-  /// 레인에도」): its value at every key, and at any time between where its
-  /// walk takes it. A surface lays it as it lays a camera's frames; there
-  /// is no frame to draw. Null while it walks nowhere: one key or none, or
-  /// every key at one place.
+  /// [lane] — a layer's lane whose keys walk a path, its position or its
+  /// anchor point (`walksAPath`) — as a path of points in the lane's own
+  /// space (I-89-Q9, 유저 2026-10-12 「같은 코드로 레이어 위치 레인에도」 ·
+  /// anchor-walks-a-path): its value at every key, and at any time between
+  /// where its walk takes it. A surface lays it as it lays a camera's
+  /// frames; there is no frame to draw. Null while it walks nowhere: one
+  /// key or none, or every key at one place.
   ///
   /// A key stands at its value — a roving key too, on the path where the
   /// walk passes it — and is called by the cell it stands on, as a
@@ -86,11 +88,11 @@ class CameraPath {
   ///
   /// The lane's frames run [axisOffset] ahead of the cut's — a track-SE
   /// row's keys stand on the track's — and the path's are the cut's.
-  static CameraPath? ofPosition(
-    PropertyTrack<CanvasPoint> position, {
+  static CameraPath? ofLane(
+    PropertyTrack<CanvasPoint> lane, {
     int axisOffset = 0,
   }) {
-    final keys = position.keys;
+    final keys = lane.keys;
     if (keys.length < 2) {
       return null;
     }
@@ -102,10 +104,10 @@ class CameraPath {
     return CameraPath._(
       (time) => [
         pointOf(
-          position.resolveAtTime(
+          lane.resolveAtTime(
             time: time + axisOffset,
             orElse: () => first,
-            space: positionKeySpace,
+            space: pathKeySpace,
           ),
         ),
       ],
@@ -213,7 +215,7 @@ class CameraPath {
 ///
 /// A label is the key's name, else the frame it stands on
 /// ([cameraKeyLabel]; 「사각형있는건 A가 왼쪽위인거처럼 24f도
-/// 사각형존재하게 되니까 왼쪽위」). On a layer's position path, where a key
+/// 사각형존재하게 되니까 왼쪽위」). On a layer's position or anchor path, where a key
 /// is a point with no frame, it stands beside the key's cross off the path
 /// either side of it (I-89-Q9).
 ///

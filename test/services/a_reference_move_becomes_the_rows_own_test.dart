@@ -185,11 +185,13 @@ void main() {
 
     expect(valuesOf(track.anchorPoint), {0: offMiddle});
     expect(valuesOf(track.position), {0: CanvasPoint(x: 160, y: 120)});
-    expect(
-      track.position.keys[0]!.path,
-      KeyPath.auto,
-      reason: 'written as every new Position key is (`positionLaneKeyed`)',
-    );
+    for (final lane in [track.anchorPoint, track.position]) {
+      expect(
+        lane.keys[0]!.path,
+        KeyPath.auto,
+        reason: 'written as every new key on a path is (`pathLaneKeyed`)',
+      );
+    }
     expect(valuesOf(track.scale), {0: CanvasPoint(x: 1.5, y: 1.5)});
     expect(valuesOf(track.rotation), {0: 30.0});
     expect(strayed(row, track, frames(4)), lessThan(1e-9));

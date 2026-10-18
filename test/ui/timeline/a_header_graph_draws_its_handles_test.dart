@@ -576,7 +576,7 @@ void main() {
       );
       final position = bent.transformTrack.position;
       final lengths = [
-        for (final from in [0, 8]) position.wayFrom(from, positionKeySpace)!,
+        for (final from in [0, 8]) position.wayFrom(from, pathKeySpace)!,
       ];
       expect(lengths.first.length, greaterThan(80), reason: '⛔전제: bent');
       expect(lengths.last.length, greaterThan(60), reason: '⛔전제: bent');
@@ -596,53 +596,57 @@ void main() {
       }
     });
 
-    test('a run through roving keys is one segment: its handles are its '
-        'timed ends\', paced by the whole way', () {
-      const ease = EaseSide(influence: 0.5, speed: 1);
-      final roving = withTrack(
-        TransformTrack.empty().copyWith(
-          position: PropertyTrack<CanvasPoint>()
-              .withKey(0, CanvasPoint(x: 0, y: 0), outgoing: ease)
-              .withKey(
-                8,
-                CanvasPoint(x: 80, y: 0),
-                incoming: ease,
-                outgoing: ease,
-              )
-              .withKey(16, CanvasPoint(x: 80, y: 60), incoming: ease)
-              .withKeysRoving(frames: {8}, roving: true),
-        ),
-      );
-      final painter = speedOf(lineOf('position', on: roving));
-      final handles = painter.handlesIn(size);
-      expect(
-        [
-          for (final handle in handles)
-            (handle.frame, handle.leaving, handle.frames),
-        ],
-        [(0, true, (from: 0, to: 16)), (16, false, (from: 0, to: 16))],
-        reason: 'none on the roving key',
-      );
-      expect(
-        readOf(handles.first.at, Axis.horizontal).across,
-        closeTo(acrossAt(painter, (80 + 60) / 16), 1e-9),
-      );
-    });
+    // An anchor point's keys walk a path too (anchor-walks-a-path).
+    for (final laneId in ['position', 'anchor-point']) {
+      test('a run through roving keys is one segment: its handles are its '
+          'timed ends\', paced by the whole way — $laneId', () {
+        const ease = EaseSide(influence: 0.5, speed: 1);
+        final keys = PropertyTrack<CanvasPoint>()
+            .withKey(0, CanvasPoint(x: 0, y: 0), outgoing: ease)
+            .withKey(
+              8,
+              CanvasPoint(x: 80, y: 0),
+              incoming: ease,
+              outgoing: ease,
+            )
+            .withKey(16, CanvasPoint(x: 80, y: 60), incoming: ease)
+            .withKeysRoving(frames: {8}, roving: true);
+        final roving = withTrack(
+          laneId == 'position'
+              ? TransformTrack.empty().copyWith(position: keys)
+              : TransformTrack.empty().copyWith(anchorPoint: keys),
+        );
+        final painter = speedOf(lineOf(laneId, on: roving));
+        final handles = painter.handlesIn(size);
+        expect(
+          [
+            for (final handle in handles)
+              (handle.frame, handle.leaving, handle.frames),
+          ],
+          [(0, true, (from: 0, to: 16)), (16, false, (from: 0, to: 16))],
+          reason: 'none on the roving key',
+        );
+        expect(
+          readOf(handles.first.at, Axis.horizontal).across,
+          closeTo(acrossAt(painter, (80 + 60) / 16), 1e-9),
+        );
+      });
+    }
 
     test('a pair of numbers that walks no path averages the line between '
-        'its keys — an anchor\'s', () {
-      final anchored = withTrack(
+        'its keys — a scale\'s, as it reads them', () {
+      final scaled = withTrack(
         TransformTrack.empty().copyWith(
-          anchorPoint: PropertyTrack<CanvasPoint>()
+          scale: PropertyTrack<CanvasPoint>()
               .withKey(
                 0,
-                CanvasPoint(x: 0, y: 0),
+                CanvasPoint(x: 1, y: 1),
                 outgoing: const EaseSide(influence: 0.5, speed: 1),
               )
-              .withKey(10, CanvasPoint(x: 30, y: 40)),
+              .withKey(10, CanvasPoint(x: 1.3, y: 1.4)),
         ),
       );
-      final painter = speedOf(lineOf('anchor-point', on: anchored));
+      final painter = speedOf(lineOf('scale', on: scaled));
       expect(
         readOf(painter.handlesIn(size).single.at, Axis.horizontal).across,
         closeTo(acrossAt(painter, 50 / 10), 1e-9),

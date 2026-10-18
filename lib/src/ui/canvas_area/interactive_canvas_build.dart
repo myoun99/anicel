@@ -299,12 +299,12 @@ class _InteractiveCanvasBuild {
       crossGrabbable: crossGrabbable,
       referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
-      walksAPath: switch (standingLane) {
+      pathLane: switch (standingLane) {
         final lane? => switch (transformPropertyOfLaneId(lane)) {
-          final property? => walksAPath(property),
-          null => false,
+          final property? when walksAPath(property) => property,
+          _ => null,
         },
-        null => false,
+        null => null,
       },
     );
     return MainCanvasBrushHost(
@@ -865,8 +865,8 @@ class _InteractiveCanvasBuild {
               context,
               throughCamera: shot != null,
             ),
-          if (editing && frame.walksAPath)
-            _state._positionPath(frame, viewport),
+          if (frame.pathLane case final property? when editing)
+            _state._rowPath(frame, property, viewport, _canvasSize),
           if (editing) _state._cameraPath(frame, viewport),
           if (editing && _cameraOverlayVisible)
             _state._cameraOverlay(frame.session, viewport),
@@ -1084,7 +1084,7 @@ class _HostFrame {
     required this.crossGrabbable,
     required this.referenceBox,
     required this.isCameraLayerActive,
-    required this.walksAPath,
+    required this.pathLane,
   });
 
   final EditorSessionManager session;
@@ -1113,10 +1113,11 @@ class _HostFrame {
   inkBounds;
   final bool isCameraLayerActive;
 
-  /// One stands on the active layer's lane whose keys walk a path — its
-  /// position — where the box that moves its keys is: the path is drawn,
-  /// and its handles worked (I-89-Q9).
-  final bool walksAPath;
+  /// The active layer's lane one stands on, where its keys walk a path —
+  /// its position or its anchor point — and the box that moves its keys
+  /// is: its path is drawn, and its handles worked (I-89-Q9). Null on any
+  /// other lane.
+  final TransformPropertyId? pathLane;
 
   /// Which presses on the canvas the row's box takes: every one, or its
   /// cross, corners and a path's knobs alone ([RowTransformBox.presses]).

@@ -36,6 +36,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// standing on its position lane, where the box that moves its keys is,
 /// laid where the layer's position shows — through its folders, or an SE
 /// row's shot — and its curved keys' handles worked there, one undo each.
+/// Its anchor point's path by the same code, standing on that lane, laid
+/// on its picture as it stands now (anchor-walks-a-path-Q1 A).
 void main() {
   void reset() =>
       CameraPathSettings.settings.value = const CameraPathSettings();
@@ -56,8 +58,13 @@ void main() {
   final b = CanvasPoint(x: centre.x + 200, y: centre.y);
   final c = CanvasPoint(x: centre.x + 200, y: centre.y + 150);
 
-  /// The row in a folder standing at [folderPose].
-  EditorSessionManager sessionIn(TransformPose folderPose) {
+  /// The row in a folder standing at [folderPose], its transform [track]
+  /// (the position above by default), standing on its lane [lane].
+  EditorSessionManager sessionIn(
+    TransformPose folderPose, {
+    TransformTrack? track,
+    String lane = 'position',
+  }) {
     final project = Project(
       id: const ProjectId('lp-project'),
       name: 'Path',
@@ -83,12 +90,14 @@ void main() {
                   timeline: const {
                     0: TimelineExposure.drawing(cel, length: 12),
                   },
-                  transformTrack: TransformTrack.empty().copyWith(
-                    position: PropertyTrack<CanvasPoint>()
-                        .withKey(0, a)
-                        .withKey(5, b, path: KeyPath.auto)
-                        .withKey(10, c),
-                  ),
+                  transformTrack:
+                      track ??
+                      TransformTrack.empty().copyWith(
+                        position: PropertyTrack<CanvasPoint>()
+                            .withKey(0, a)
+                            .withKey(5, b, path: KeyPath.auto)
+                            .withKey(10, c),
+                      ),
                 ),
                 createFolderLayer(id: folder, name: 'F').copyWith(
                   transformTrack: TransformTrack(keyframes: {0: folderPose}),
@@ -102,7 +111,7 @@ void main() {
     final s = EditorSessionManager(initialProject: project);
     s.selectLayer(row);
     s.selectFrameIndex(0);
-    s.standOnRow(const LaneRowAddress(row, 'position'));
+    s.standOnRow(LaneRowAddress(row, lane));
     return s;
   }
 
@@ -275,6 +284,71 @@ void main() {
     s.undo();
     await tester.pump();
     expect(pathAt5(s), KeyPath.auto, reason: 'one undo');
+
+    await drain(tester);
+  });
+
+  testWidgets('standing on its anchor point\'s lane the canvas draws the '
+      'path the anchor walks, laid on the picture as it stands now — and a '
+      'curved key\'s handle carried there bends the anchor\'s key, one '
+      'undo', (tester) async {
+    // Twice as large about where its anchor stands at 0: the canvas's
+    // centre, where its position stands too.
+    TransformTrack rowTrack(EditorSessionManager s) =>
+        s.requireActiveCut.layers.byId(row)!.transformTrack;
+    final s = sessionIn(
+      TransformPose(center: centre),
+      track: TransformTrack.empty().copyWith(
+        anchorPoint: PropertyTrack<CanvasPoint>()
+            .withKey(0, a)
+            .withKey(5, b, path: KeyPath.auto)
+            .withKey(10, c),
+        scale: PropertyTrack<CanvasPoint>().withKey(0, CanvasPoint(x: 2, y: 2)),
+      ),
+      lane: 'anchor-point',
+    );
+    addTearDown(s.dispose);
+    await pumpArea(tester, s);
+    CanvasPoint shown(double dx, double dy) =>
+        CanvasPoint(x: centre.x + 2 * dx, y: centre.y + 2 * dy);
+
+    expect(path(), findsOneWidget);
+    final view = overlay(tester).viewport;
+    final crosses = keyCrosses(tester);
+    expect(crosses, hasLength(6), reason: '⛔전제: two arms a key');
+    for (final (index, (dx, dy)) in [(0.0, 0.0), (200.0, 0.0), (200.0, 150.0)]
+        .indexed) {
+      final at = view.canvasToViewportOffset(shown(dx, dy));
+      for (final arm in [crosses[2 * index], crosses[2 * index + 1]]) {
+        expect(arm.dx, closeTo(at.dx, 1e-6), reason: 'key $index');
+        expect(arm.dy, closeTo(at.dy, 1e-6), reason: 'key $index');
+      }
+    }
+
+    final handle = box(tester).tangents.single;
+    expectNear(handle.at, shown(200 + 40, 30), 'ahead');
+    handle.landing.committed(shown(250, 50));
+    await tester.pump();
+    final bent = rowTrack(s).anchorPoint.keyAt(5)!.path;
+    expect(bent, isA<HandledPath>());
+    expectNear(
+      (bent as HandledPath).tangent,
+      CanvasPoint(x: 50, y: 50),
+      'the tangent, on the picture',
+    );
+    expect(rowTrack(s).position.keys, isEmpty, reason: 'the anchor\'s key');
+
+    s.undo();
+    await tester.pump();
+    expect(
+      rowTrack(s).anchorPoint.keyAt(5)!.path,
+      KeyPath.auto,
+      reason: 'one undo',
+    );
+
+    s.standOnRow(const LaneRowAddress(row, 'position'));
+    await tester.pump();
+    expect(path(), findsNothing, reason: 'a position keyed nowhere');
 
     await drain(tester);
   });

@@ -37,13 +37,17 @@ TransformTrack? transformTrackWithLaneKeyToggled(
         return null;
       }
       return track.copyWith(
-        anchorPoint: track.anchorPoint.withKey(frameIndex, resolvedAnchorPoint),
+        anchorPoint: pathLaneKeyed(
+          track.anchorPoint,
+          frameIndex,
+          resolvedAnchorPoint,
+        ),
       );
     case 'position':
       return track.copyWith(
         position: track.position.keyAt(frameIndex) != null
             ? track.position.withoutKey(frameIndex)
-            : positionLaneKeyed(
+            : pathLaneKeyed(
                 track.position,
                 frameIndex,
                 resolvedPose.center,
@@ -141,10 +145,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         return null;
       }
       return track.copyWith(
-        anchorPoint: track.anchorPoint.withKey(
-          frameIndex,
-          point,
-        ),
+        anchorPoint: pathLaneKeyed(track.anchorPoint, frameIndex, point),
       );
     case 'position':
       final point = _parsePoint(input);
@@ -152,7 +153,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
         return null;
       }
       return track.copyWith(
-        position: positionLaneKeyed(track.position, frameIndex, point),
+        position: pathLaneKeyed(track.position, frameIndex, point),
       );
     case 'scale':
       // What the lane shows at the frame is what the typed value is read
@@ -206,22 +207,32 @@ TransformTrack transformTrackWithPositionDragged(
   required CanvasPoint position,
 }) {
   return track.copyWith(
-    position: positionLaneKeyed(track.position, frameIndex, position),
+    position: pathLaneKeyed(track.position, frameIndex, position),
   );
 }
 
 /// A path's knob carried on the canvas (I-89 ④-Q4 A: 「캔버스에서 끈 접선 —
-/// 반대쪽은 거울」): the position key at [frameIndex] bends along [tangent],
-/// how far the knob stands from the key — its mirror behind it. The key's
-/// value, sides and name stay as they are, and where no position key stands
-/// nothing changes.
-TransformTrack transformTrackWithPositionHandle(
+/// 반대쪽은 거울」): the key at [frameIndex] of lane [property] — one whose
+/// keys walk a path ([walksAPath]) — bends along [tangent], how far the
+/// knob stands from the key — its mirror behind it. The key's value, sides
+/// and name stay as they are, and where no such key stands nothing
+/// changes.
+TransformTrack transformTrackWithPathHandle(
   TransformTrack track, {
+  required TransformPropertyId property,
   required int frameIndex,
   required CanvasPoint tangent,
 }) {
-  final bent = track.position.withKeyPath(frameIndex, HandledPath(tangent));
-  return bent == null ? track : track.copyWith(position: bent);
+  final bent = transformPathLaneOf(
+    track,
+    property,
+  )?.withKeyPath(frameIndex, HandledPath(tangent));
+  if (bent == null) {
+    return track;
+  }
+  return property == TransformPropertyId.anchorPoint
+      ? track.copyWith(anchorPoint: bent)
+      : track.copyWith(position: bent);
 }
 
 /// The transform box's SCALE release (R5 #10): ONE key at the playhead on
@@ -259,10 +270,7 @@ TransformTrack transformTrackWithAnchorDragged(
   required CanvasPoint anchorPoint,
 }) {
   return track.copyWith(
-    anchorPoint: track.anchorPoint.withKey(
-      frameIndex,
-      anchorPoint,
-    ),
+    anchorPoint: pathLaneKeyed(track.anchorPoint, frameIndex, anchorPoint),
   );
 }
 
@@ -337,8 +345,8 @@ TransformTrack? transformTrackWithGroupReset(
     return next == lane ? null : next;
   }
 
-  final anchor = reset(track.anchorPoint, defaultAnchorPoint);
-  final position = reset(track.position, identity.center, positionLaneKeyed);
+  final anchor = reset(track.anchorPoint, defaultAnchorPoint, pathLaneKeyed);
+  final position = reset(track.position, identity.center, pathLaneKeyed);
   final scale = reset(track.scale, identity.scale);
   final rotation = reset(track.rotation, identity.rotationDegrees);
   final opacity = reset(track.opacity, 1.0);

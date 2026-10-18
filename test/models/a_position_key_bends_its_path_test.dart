@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/cubic_curve.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/position_path.dart';
+import 'package:anicel/src/models/key_path_walk.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
@@ -286,7 +286,7 @@ void main() {
       expect(at(track, 15).x, greaterThan(100), reason: 'and the way out');
       expect(
         at(track, 5),
-        positionPathBetween(SplayTreeMap.of(keys), 0, 10).at(0.5),
+        keyPathBetween(SplayTreeMap.of(keys), 0, 10).at(0.5),
       );
     });
 
@@ -298,7 +298,7 @@ void main() {
         inverseLerp: CanvasPoint.inverseLerp,
         walk: (keys, from, to) {
           laid.add(from);
-          return positionPathBetween(keys, from, to);
+          return keyPathBetween(keys, from, to);
         },
       );
       CanvasPoint along(PropertyTrack<CanvasPoint> track, int frame) =>
@@ -327,7 +327,7 @@ void main() {
       expect(edited.keyAt(10)!.path, KeyPath.auto, reason: '⛔전제');
       expect(
         along(edited, 5),
-        positionPathBetween(SplayTreeMap.of(edited.keys), 0, 10).at(0.5),
+        keyPathBetween(SplayTreeMap.of(edited.keys), 0, 10).at(0.5),
       );
       expect(laid, [0, 10, 0]);
     });
@@ -350,7 +350,7 @@ void main() {
         at(moving(line), 3),
       );
       expect(progress, isNot(closeTo(0.3, 0.01)), reason: '⛔전제: eased');
-      final expected = positionPathBetween(SplayTreeMap.of(bent), 0, 10).at(
+      final expected = keyPathBetween(SplayTreeMap.of(bent), 0, 10).at(
         progress,
       );
       final actual = at(moving(bent), 3);

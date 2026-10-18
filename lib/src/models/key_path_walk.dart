@@ -6,10 +6,11 @@ import 'canvas_point.dart';
 import 'property_track.dart';
 
 /// The walk along the segment from the key at frame [from] to the key at
-/// frame [to] of a position lane's [keys]: along the path the two keys'
+/// frame [to] of the [keys] of a lane that walks a path (`walksAPath`):
+/// along the path the two keys'
 /// handles bend ([keyPathHandle]), by distance ([CubicWalk]) — the line
 /// between them where neither bends (I-89 ④).
-SegmentWalk<CanvasPoint> positionPathBetween(
+SegmentWalk<CanvasPoint> keyPathBetween(
   SplayTreeMap<int, PropertyKey<CanvasPoint>> keys,
   int from,
   int to,

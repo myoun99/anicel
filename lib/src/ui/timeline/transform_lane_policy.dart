@@ -195,6 +195,7 @@ List<PropertyLaneRow> transformPropertyLanes(
         ),
         scrubValue: (label, delta) =>
             scrubTransformLaneValue('anchor-point', label, delta),
+        walks: pathKeySpace,
       ),
     _lane(
       laneIdOf('position'),
@@ -208,7 +209,7 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
       scrubValue: (label, delta) =>
           scrubTransformLaneValue('position', label, delta),
-      walks: positionKeySpace,
+      walks: pathKeySpace,
     ),
     _lane(
       laneIdOf('scale'),

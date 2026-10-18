@@ -464,14 +464,10 @@ class _StillLanes {
   TransformTrack get _row => layer.transformTrack;
 
   PropertyTrack<CanvasPoint> anchorPoint(CanvasPoint value) =>
-      _held(_row.anchorPoint, value, centre, _keyed);
+      _held(_row.anchorPoint, value, centre, _pathKeyed);
 
-  PropertyTrack<CanvasPoint> position(CanvasPoint value) => _held(
-    _row.position,
-    value,
-    centre,
-    (value) => positionLaneKeyed(PropertyTrack.empty(), start, value),
-  );
+  PropertyTrack<CanvasPoint> position(CanvasPoint value) =>
+      _held(_row.position, value, centre, _pathKeyed);
 
   PropertyTrack<CanvasPoint> scale(CanvasPoint value) =>
       _held(_row.scale, value, uniformScale(1), _keyed);
@@ -506,6 +502,11 @@ class _StillLanes {
 
   PropertyTrack<T> _keyed<T>(T value) =>
       PropertyTrack(keys: {start: PropertyKey(value)});
+
+  /// [_keyed] on a lane whose keys walk a path: its one write
+  /// ([pathLaneKeyed]).
+  PropertyTrack<CanvasPoint> _pathKeyed(CanvasPoint value) =>
+      pathLaneKeyed(PropertyTrack.empty(), start, value);
 }
 
 /// The two moves frame by frame ([transformCarryingReferenceMove]).

@@ -22,7 +22,7 @@ void main() {
       .withKey(20, p(200, 100));
 
   CameraPath pathOf(PropertyTrack<CanvasPoint> lane, {int axisOffset = 0}) =>
-      CameraPath.ofPosition(lane, axisOffset: axisOffset)!;
+      CameraPath.ofLane(lane, axisOffset: axisOffset)!;
 
   const sizes = CameraMarkSizes(
     frameWidth: 1.8,
@@ -207,16 +207,16 @@ void main() {
   test('one that walks nowhere has no path: one key, or none, or every key '
       'at one place', () {
     expect(
-      CameraPath.ofPosition(
+      CameraPath.ofLane(
         PropertyTrack<CanvasPoint>().withKey(0, p(5, 5)).withKey(9, p(5, 5)),
       ),
       isNull,
     );
     expect(
-      CameraPath.ofPosition(PropertyTrack<CanvasPoint>().withKey(0, p(5, 5))),
+      CameraPath.ofLane(PropertyTrack<CanvasPoint>().withKey(0, p(5, 5))),
       isNull,
     );
-    expect(CameraPath.ofPosition(PropertyTrack<CanvasPoint>()), isNull);
-    expect(CameraPath.ofPosition(lane), isNotNull, reason: '⛔전제');
+    expect(CameraPath.ofLane(PropertyTrack<CanvasPoint>()), isNull);
+    expect(CameraPath.ofLane(lane), isNotNull, reason: '⛔전제');
   });
 }
