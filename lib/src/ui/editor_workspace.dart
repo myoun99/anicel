@@ -1430,10 +1430,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _views.unbindSession(session);
     _foldedStoryboard.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
-    // What a project behind keeps of its files is what it was left at.
-    for (final MapEntry(key: viewer, value: slot) in _viewerSlots.entries) {
-      slot.keepIn(null, viewer: viewer);
-    }
     session.removeListener(_syncViewersWithProject);
     session.removeListener(_followTimelineZoomToCut);
     session.removeListener(_followProjectFonts);

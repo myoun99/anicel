@@ -165,8 +165,8 @@ class MediaViewerSlot {
   String _viewer = '';
 
   /// From now on this viewer keeps what it shows in [views], as [viewer]
-  /// — the project that came on screen's, or nothing as one goes.
-  void keepIn(MediaFileViews? views, {required String viewer}) {
+  /// — the project that came on screen's.
+  void keepIn(MediaFileViews views, {required String viewer}) {
     _views = views;
     _viewer = viewer;
   }
