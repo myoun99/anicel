@@ -3623,6 +3623,62 @@ void main() {
     expect(env.history.undoCount, entriesBefore);
   });
 
+  // ⛔The pins above ask `hasSelection`, and an implicit shape answers null
+  // to it whether it is gone or left standing (F-108) — so they cannot
+  // tell 「back to no selection」 from 「the picture as it was, still the
+  // shape」. A shape left standing is what the next press takes hold of,
+  // and whatever was drawn since is left behind (mutants of the two
+  // `_setRegion(null)` lived, 2026-10-19).
+  for (final (ending, end) in [
+    ('확정', (CanvasSelectionCommands commands) => commands.confirmPendingMove()),
+    ('취소', (CanvasSelectionCommands commands) => commands.cancelTransform()),
+  ]) {
+    testWidgets('R26 #13: after the implicit session\'s $ending the next move '
+        'takes the picture as it is THEN — ink drawn since comes along', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+      );
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(36.5, 36.5),
+        byCanvas: const Offset(10, 5),
+      );
+      expect(env.commands.movePending, isTrue, reason: '⛔전제: 세션이 열림');
+      end(env.commands);
+      await tester.pump();
+      expect(env.commands.movePending, isFalse);
+
+      // Drawn after the session ended, well away from the picture it took.
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+      await env.setTool(CanvasTool.move);
+
+      // Inside the box over the whole picture as it now stands, and clear
+      // of its grips at zoom 3.
+      await moveAtZoom(
+        tester,
+        zoom: 3,
+        grabCanvas: const Offset(60, 50),
+        byCanvas: const Offset(10, 5),
+      );
+      env.commands.confirmPendingMove();
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 130, 125),
+        isNonZero,
+        reason:
+            '「선택하지 않은 상황이어도 그림 전체를 이동」 — what was drawn '
+            'after the $ending is part of the picture',
+      );
+      expect(inkAt(env.coordinator, 120, 120), 0, reason: 'moved, not copied');
+    });
+  }
+
   testWidgets('Escape after grabbing a HANDLE of the implicit box ends the '
       'whole session — the grab is what opened it', (tester) async {
     // ⛔The pin above grabs INSIDE the box and reverts by name. A handle

@@ -352,14 +352,10 @@ enum _SessionEnd {
 /// One open move session, as ONE value.
 ///
 /// ⛔Its floats' stamps and [moved] are mutable because a drag changes them
-/// while the session stays the same session; [token] and [startShape] are
-/// what the session IS and cannot change without it being a different one.
+/// while the session stays the same session; [token] is what the session
+/// IS and cannot change without it being a different one.
 class _MoveSession {
-  _MoveSession({
-    required this.token,
-    required this.floats,
-    required this.startShape,
-  });
+  _MoveSession({required this.token, required this.floats});
 
   /// The lift command owning this selection's pixels (R15-④).
   final int token;
@@ -377,10 +373,6 @@ class _MoveSession {
   /// the range's other cels are to be put through — and one flag answering
   /// two is how a third writer breaks one of them.
   bool get holdsAChange => floats.any((float) => float.holdsAChange);
-
-  /// The region as the session found it — the revert restores it, and the
-  /// transform draws it as the green 「before」 outline (I-38).
-  final CanvasSelectionRegion? startShape;
 
   /// True once the session actually MOVED.
   bool moved = false;
@@ -649,9 +641,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// confirm (green = confirmed / untouched).
   bool get _moveSessionDirty => _session?.moved ?? false;
 
-  /// The region as the session found it — the revert restores it.
-  CanvasSelectionRegion? get _moveSessionStartShape => _session?.startShape;
-
   bool get _movePending => _session != null;
 
   /// 🚨★★★**THE ONLY PLACE A SESSION ENDS.** Whatever the reason — a
@@ -727,8 +716,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// REVERT (R17-①): the pixels — and the ants — return exactly to where
   /// the session found them; nothing lands in history.
+  ///
+  /// ↩️It put the session's start shape back as well, from when a drag's
+  /// release moved the region (R17, 07-13). The move is the box's now and
+  /// only the landing moves the region ([_foldOpenBox]), so a revert finds
+  /// the outline where the session found it — the put-back wrote the shape
+  /// over itself, and a mutant deleting it lived (2026-10-19).
   void _revertMoveSession() {
-    final startShape = _moveSessionStartShape;
     if (_endSession(_SessionEnd.revert) == null) {
       return;
     }
@@ -738,8 +732,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // selection — the user never selected anything.
         if (_shapeIsImplicitWholePicture) {
           _setRegion(null);
-        } else if (startShape != null) {
-          _setRegion(startShape);
         }
       });
     }
@@ -2195,7 +2187,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     into.session = _MoveSession(
       token: lift.liftToken,
       floats: [for (final lifted in lift.floats) _floatOf(lifted)],
-      startShape: region,
     );
     return true;
   }
