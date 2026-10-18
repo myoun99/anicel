@@ -1041,7 +1041,11 @@ void main() {
     final lanes =
         tester.getRect(_railRow('a')).top -
         tester.getRect(_railRow('m1')).bottom;
-    expect(lanes, greaterThan(rowHeight), reason: '⛔전제: M1 twirled open');
+    expect(
+      lanes,
+      greaterThanOrEqualTo(rowHeight),
+      reason: '⛔전제: M1 twirled open — a lane row at least',
+    );
     final dx = tester.getCenter(_railRowGrip('m1')).dx;
 
     // Over its own last lane, by the line under them: it goes nowhere. Read
@@ -1066,8 +1070,9 @@ void main() {
     expect(
       tester.getRect(_railRow('b2')).top -
           tester.getRect(_railRow('p')).bottom,
-      greaterThan(rowHeight),
-      reason: '⛔전제: P twirled open — or the pointer is in P\'s own row',
+      greaterThanOrEqualTo(rowHeight),
+      reason: '⛔전제: P twirled open — a lane row at least, or the pointer '
+          'is in P\'s own row',
     );
     final dx = tester.getCenter(_railRowGrip('b2down')).dx;
 
