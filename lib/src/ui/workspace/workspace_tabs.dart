@@ -177,6 +177,7 @@ class _WorkspaceTabs {
           onRequestClosed: () => slot.open(null),
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
+          keptFraming: slot.keptFramingOf,
           loudness: slot.loudness,
           selection: _state.widget.viewerSelections?[tabId],
           onSwapViewers: () => _state._swapViewers(fromTabId: tabId),

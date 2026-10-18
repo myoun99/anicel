@@ -144,12 +144,22 @@ part 'canvas_panel/canvas_panel_build.dart';
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
 /// [rect] (canvas space) — the media viewer's framing of a document it
-/// opens.
+/// opens — or, given a [view], stands there instead.
 class CanvasAutoFrameRequest {
-  const CanvasAutoFrameRequest({required this.token, required this.rect});
+  const CanvasAutoFrameRequest({
+    required this.token,
+    required this.rect,
+    this.view,
+  });
 
   final Object token;
   final Rect rect;
+
+  /// The view the owner kept for this document, in DEVICE pixels as the
+  /// owner's notifier holds it (F-382: the view a viewer left a file at).
+  /// In a book it stands at the page the reader is on: a page turned since
+  /// the view was kept is a turn, at the zoom the view was kept at.
+  final CanvasViewport? view;
 }
 
 /// What stands under a canvas panel whose document you move through — the

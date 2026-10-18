@@ -103,6 +103,7 @@ import 'timeline/timeline_frame_ruler_painter.dart'
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
+import 'session/media_file_views.dart';
 import 'session/media_fingerprint_ledger.dart';
 import 'session/media_grant_ledger.dart';
 import 'session/media_pool.dart';
@@ -858,6 +859,12 @@ class EditorSessionManager extends ChangeNotifier
   /// Where this project's panels were left — the conte's zoom and each frame
   /// panel's scroll (F-267) — held here for the zoom's reason (I-7).
   late final PanelViewMemory panelViews = PanelViewMemory();
+
+  /// The page and the framing each file was left at in the viewers (F-382)
+  /// — held here, not on the window that holds the viewers, for the zoom's
+  /// reason (I-7): what a project's references were left at is that
+  /// project's.
+  late final MediaFileViews mediaFileViews = MediaFileViews();
 
   /// Where this project's CANVAS is framed — its zoom, pan and turn; null
   /// until something frames it, which the canvas resolves to the identity
@@ -3554,6 +3561,7 @@ class EditorSessionManager extends ChangeNotifier
     timelineZoom: timelineZoom,
     panelViews: panelViews,
     laneGraphs: railView.laneGraphs,
+    mediaFileViews: mediaFileViews,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

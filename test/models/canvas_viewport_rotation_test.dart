@@ -134,11 +134,11 @@ void main() {
       rotationDegrees: -30,
       flipHorizontal: true,
     );
-    final restored = CanvasViewport.fromJson(viewport.toJson());
+    final restored = CanvasViewport.fromJson(viewport.toJson())!;
     expect(restored, viewport);
 
     // A legacy payload (no rotation keys) loads level and unflipped.
-    final legacy = CanvasViewport.fromJson({'zoom': 2.0, 'panX': 3.0});
+    final legacy = CanvasViewport.fromJson({'zoom': 2.0, 'panX': 3.0})!;
     expect(legacy.rotationDegrees, 0);
     expect(legacy.flipHorizontal, isFalse);
   });

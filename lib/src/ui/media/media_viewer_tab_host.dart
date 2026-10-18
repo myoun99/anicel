@@ -37,6 +37,7 @@ import '../brush/cut_into_the_hand.dart';
 import '../editor_session_manager.dart';
 import '../input/os_file_drop.dart';
 import '../playback/playback_transport.dart';
+import '../session/media_file_views.dart';
 import '../dialogs/open_file_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -82,6 +83,11 @@ class MediaViewerRequest {
 /// never change what the other is showing, which is the entire reason
 /// there are two.
 class MediaViewerSlot {
+  MediaViewerSlot() {
+    position.addListener(_keepPage);
+    viewport.addListener(_keepFraming);
+  }
+
   final ValueNotifier<MediaViewerRequest?> request = ValueNotifier(null);
 
   /// See [MediaViewerTabHost.position] — one slot, whatever the kind.
@@ -115,24 +121,22 @@ class MediaViewerSlot {
     const ViewerLoudness(),
   );
 
-  /// Points this viewer at a document. The position goes back to the
-  /// start, because "page 37" of the file you just left means nothing in
-  /// the one you just opened.
+  /// Points this viewer at a document — at the page that FILE was last seen
+  /// at, in either viewer, or its first when it never was turned (F-382,
+  /// [keepIn]). "Page 37" of the file you just left means nothing in the
+  /// one you just opened: the page is always the arriving file's. Null
+  /// empties the viewer, which is also what a reference the app can no
+  /// longer reach comes back as (유저 확정 ⑭: quietly).
+  ///
+  /// ↩️A project's remembered documents came back through a door of their
+  /// own, the one that did not go back to the start; with the page the
+  /// file's, every open is that door.
   ///
   /// A SWAP deliberately does not come through here — it carries each
   /// file's own page across with it (see [swapWith]).
   void open(MediaViewerRequest? next) {
     request.value = next;
-    position.value = 0;
-  }
-
-  /// Puts back a document the project remembered, at the page it
-  /// remembered — the one path that sets a request WITHOUT going back to
-  /// the start. Null empties the viewer, which is what a reference the
-  /// app can no longer reach comes back as (유저 확정 ⑭: quietly).
-  void restore(MediaViewerRequest? request, {int position = 0}) {
-    this.request.value = request;
-    this.position.value = request == null || position < 0 ? 0 : position;
+    position.value = next == null ? 0 : (_views?.pageOf(next.path) ?? 0);
   }
 
   /// Trades documents with the other viewer: 유저 확정 ⑪⑯⑰ — the verb is
@@ -142,7 +146,8 @@ class MediaViewerSlot {
   ///
   /// The page travels WITH its file (page 37 of the conte is still page
   /// 37 when it lands on the floor). The viewport does not: the two
-  /// panels are different widths, so each re-frames what arrives.
+  /// panels are different widths, so each frames what arrives for itself
+  /// — as it last framed that file, or fitted ([keptFramingOf]).
   void swapWith(MediaViewerSlot other) {
     final request = this.request.value;
     final position = this.position.value;
@@ -150,6 +155,46 @@ class MediaViewerSlot {
     this.position.value = other.position.value;
     other.request.value = request;
     other.position.value = position;
+  }
+
+  /// What this viewer keeps of each file it shows — the page it was left
+  /// at and how it was framed (F-382) — and its panel id, the framing's
+  /// key. The project on screen's ([keepIn]); with none, every file opens
+  /// at its first page, fitted.
+  MediaFileViews? _views;
+  String _viewer = '';
+
+  /// From now on this viewer keeps what it shows in [views], as [viewer]
+  /// — the project that came on screen's, or nothing as one goes.
+  void keepIn(MediaFileViews? views, {required String viewer}) {
+    _views = views;
+    _viewer = viewer;
+  }
+
+  /// The view this viewer left [path] framed at — null when it never
+  /// framed it, and the file is fitted ([MediaViewerTabHost.keptFraming]).
+  CanvasViewport? keptFramingOf(String path) =>
+      _views?.framingOf(path, viewer: _viewer);
+
+  /// The file the page and the view belong to now — none while the viewer
+  /// is between files ([framedFor] still names the last one): what moves
+  /// then is the last document's view, or the next one's page on its way,
+  /// and keeping it would hand one file another's.
+  String? get _seen {
+    final path = request.value?.path;
+    return path != null && framedFor.value == path ? path : null;
+  }
+
+  void _keepPage() {
+    if (_seen case final path?) {
+      _views?.rememberPage(path, position.value);
+    }
+  }
+
+  void _keepFraming() {
+    if ((_seen, viewport.value) case (final path?, final framing?)) {
+      _views?.rememberFraming(path, viewer: _viewer, framing: framing);
+    }
   }
 
   void dispose() {
@@ -189,6 +234,7 @@ class MediaViewerTabHost extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.framedFor,
+    this.keptFraming,
     this.loudness,
     this.selection,
     this.filePicker,
@@ -272,6 +318,12 @@ class MediaViewerTabHost extends StatefulWidget {
   /// framed for. Null in hosts that own no slot; then every load frames, which
   /// is the old behaviour and correct when there is nothing to preserve.
   final ValueNotifier<Object?>? framedFor;
+
+  /// [MediaViewerSlot.keptFramingOf] — the view this viewer left a file
+  /// framed at (F-382). A document it has framed before comes back framed
+  /// so, at the page its file was last seen at, rather than fitted. Null in
+  /// hosts that own no slot: every document is fitted.
+  final CanvasViewport? Function(String path)? keptFraming;
   final ValueChanged<CanvasViewport>? onViewportChanged;
 
   /// [MediaViewerSlot.loudness] — how loud this viewer plays its sound.
@@ -1312,10 +1364,15 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // minted a fresh one and the fit ran again over a view the user had
     // set. What the slot remembers is what makes 「once per document」 true
     // across a close.
+    // F-382: and a file this viewer has framed before stands as it left it.
     final framing = paper != null && _loadedToken != null && _needsFraming
         ? CanvasAutoFrameRequest(
             token: _loadedToken!,
             rect: book?.pageRect(pageIndex) ?? paper,
+            view: switch (request) {
+              final shown? => widget.keptFraming?.call(shown.path),
+              null => null,
+            },
           )
         : null;
     // The pages wait for the fit: it lands after this frame, and the build

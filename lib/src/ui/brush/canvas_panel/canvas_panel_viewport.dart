@@ -222,6 +222,10 @@ class _CanvasPanelViewport {
   }
 
   void _autoFrame(CanvasAutoFrameRequest request) {
+    if (request.view case final kept?) {
+      _standAt(kept);
+      return;
+    }
     final next = _state._fittedInto(
       _resolvedVisibleRect(),
       canvasRect: request.rect,
@@ -230,6 +234,19 @@ class _CanvasPanelViewport {
       return;
     }
     setViewport(next);
+  }
+
+  /// Stands at [kept] ([CanvasAutoFrameRequest.view]) at the page the
+  /// reader is on. The view reads its own page back as it lands (F-201), so
+  /// a page turned since the view was kept — in the other viewer, say
+  /// (F-382) — is turned to again: at the kept zoom, as every turn is.
+  void _standAt(CanvasViewport kept) {
+    final book = _state.widget.book;
+    final reading = book?.page;
+    setViewport(_state._zoomScale.fromDevice(kept));
+    if (book != null && reading != null && book.page != reading) {
+      book.turnTo(reading);
+    }
   }
 
   void rememberEditorViewportSize(Size size) {

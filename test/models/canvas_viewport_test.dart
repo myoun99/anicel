@@ -51,7 +51,26 @@ void main() {
     test('toJson/fromJson round-trips', () {
       final viewport = CanvasViewport(zoom: 1.5, panX: -10.25, panY: 20.5);
 
-      expectJsonRoundTrip(viewport, CanvasViewport.fromJson);
+      expectJsonRoundTrip(viewport, (json) => CanvasViewport.fromJson(json)!);
+    });
+
+    test('a view it cannot read is none — a part it does not name stands at '
+        'its default (F-382: a view kept beside a project)', () {
+      for (final json in <Object?>[
+        null,
+        'wide',
+        {'zoom': 'wide'},
+        {'zoom': 0},
+        {'zoom': -2},
+        {'zoom': 1, 'panX': double.infinity},
+        {'zoom': 1, 'panY': '4'},
+        {'zoom': 1, 'rotation': 'left'},
+        {'zoom': 1, 'flipH': 'yes'},
+        {'zoom': 1, 'flipV': 1},
+      ]) {
+        expect(CanvasViewport.fromJson(json), isNull, reason: '$json');
+      }
+      expect(CanvasViewport.fromJson({'panY': 4}), CanvasViewport(panY: 4));
     });
 
     test('canvasToViewport applies zoom only', () {

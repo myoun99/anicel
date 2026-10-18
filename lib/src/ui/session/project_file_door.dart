@@ -57,6 +57,7 @@ import '../timeline/property_lane_model.dart' show parseLaneGroupKey;
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
+import 'media_file_views.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
 import 'panel_view_memory.dart';
@@ -137,11 +138,13 @@ class ProjectFileDoor {
     required TimelineZoomMemory timelineZoom,
     required PanelViewMemory panelViews,
     required ValueNotifier<LaneGraphsView> laneGraphs,
+    required MediaFileViews mediaFileViews,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
        _panelViews = panelViews,
        _laneGraphs = laneGraphs,
+       _mediaFileViews = mediaFileViews,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -176,6 +179,10 @@ class ProjectFileDoor {
   /// Whose header graphs and pinned lanes a save keeps and an open puts
   /// back ([ProjectResume.laneGraphs]) — the rail's (`RailView.laneGraphs`).
   final ValueNotifier<LaneGraphsView> _laneGraphs;
+
+  /// Whose files' pages and framings in the viewers a save keeps and an
+  /// open puts back ([ProjectResume.mediaFileViews], F-382).
+  final MediaFileViews _mediaFileViews;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -906,6 +913,7 @@ class ProjectFileDoor {
       _panelViews.layerAxisOffsets,
     ),
     laneGraphs: _laneGraphs.value,
+    mediaFileViews: _mediaFileViews.views,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1194,6 +1202,9 @@ class ProjectFileDoor {
     // session, skipping only the ids in use, so a graph kept for a row
     // deleted since would open on the next row minted with its id.
     _laneGraphs.value = _graphsOnRowsOf(project, resume.laneGraphs);
+    // Each file the viewers showed, at the page and the framing it was left
+    // at (F-382) — set before a viewer is seeded from the project.
+    _mediaFileViews.standAt(resume.mediaFileViews);
   }
 }
 

@@ -1071,22 +1071,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// conte. Null while nothing is seeded, or while seeding.
   ProjectId? _viewersSeededFrom;
 
-  /// Puts each viewer back where the project left it (유저 확정 ⑤㉑).
+  /// Puts each viewer back where the project left it (유저 확정 ⑤㉑) — its
+  /// file at the page and the framing that file was left at (F-382).
   void _syncViewersWithProject() {
     final project = widget.session.repository.currentProject;
     if (project == null || project.id == _viewersSeededFrom) {
       return;
     }
-    // Nothing is written back while the two are being filled: restoring the
+    // Nothing is written back while the two are being filled: opening the
     // first viewer writes BOTH back, and the second still holds the last
-    // project's document until its own restore.
+    // project's document until it is opened too.
     _viewersSeededFrom = null;
-    for (final entry in _viewerSlots.entries) {
-      final bookmark = project.mediaViewerBookmarks[entry.key];
-      entry.value.restore(
-        _requestForBookmark(bookmark, project),
-        position: bookmark?.position ?? 0,
-      );
+    for (final MapEntry(key: viewer, value: slot) in _viewerSlots.entries) {
+      // What a viewer keeps of the files it shows is the project's (I-7) —
+      // handed as it is seeded, so the file opens at it.
+      slot
+        ..keepIn(widget.session.mediaFileViews, viewer: viewer)
+        ..open(
+          _requestForBookmark(project.mediaViewerBookmarks[viewer], project),
+        );
     }
     _viewersSeededFrom = project.id;
   }
@@ -1133,7 +1136,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             entry.key: MediaViewerBookmark(
               path: request.path,
               kind: request.kind,
-              position: entry.value.position.value,
             ),
       },
     );
@@ -1247,7 +1249,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
       slot.request.addListener(_writeViewerBookmarks);
-      slot.position.addListener(_writeViewerBookmarks);
     }
     _bindSession(widget.session);
   }
@@ -1429,6 +1430,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _views.unbindSession(session);
     _foldedStoryboard.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
+    // What a project behind keeps of its files is what it was left at.
+    for (final MapEntry(key: viewer, value: slot) in _viewerSlots.entries) {
+      slot.keepIn(null, viewer: viewer);
+    }
     session.removeListener(_syncViewersWithProject);
     session.removeListener(_followTimelineZoomToCut);
     session.removeListener(_followProjectFonts);
@@ -1738,7 +1743,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _panelFlash.dispose();
     for (final slot in _viewerSlots.values) {
       slot.request.removeListener(_writeViewerBookmarks);
-      slot.position.removeListener(_writeViewerBookmarks);
     }
     _mainViewer.dispose();
     _subViewer.dispose();

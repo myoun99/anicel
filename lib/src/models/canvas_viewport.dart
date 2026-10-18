@@ -382,16 +382,47 @@ class CanvasViewport {
     if (flipVertical) 'flipV': flipVertical,
   };
 
-  factory CanvasViewport.fromJson(Map<String, dynamic> json) {
+  /// The view [json] holds — a part it does not name at its default — or
+  /// null for anything that is not one: a view saved beside a project
+  /// (F-382, `MediaFileViews`) that a hand-edited file spoils is lost
+  /// alone, and the open goes on.
+  static CanvasViewport? fromJson(Object? json) {
+    if (json is! Map) {
+      return null;
+    }
+    final zoom = _numberIn(json['zoom'], absent: 1.0);
+    final panX = _numberIn(json['panX'], absent: 0.0);
+    final panY = _numberIn(json['panY'], absent: 0.0);
+    final rotation = _numberIn(json['rotation'], absent: 0.0);
+    final flipH = json['flipH'] ?? false;
+    final flipV = json['flipV'] ?? false;
+    if (zoom == null ||
+        zoom <= 0 ||
+        panX == null ||
+        panY == null ||
+        rotation == null ||
+        flipH is! bool ||
+        flipV is! bool) {
+      return null;
+    }
     return CanvasViewport(
-      zoom: (json['zoom'] as num?)?.toDouble() ?? 1.0,
-      panX: (json['panX'] as num?)?.toDouble() ?? 0.0,
-      panY: (json['panY'] as num?)?.toDouble() ?? 0.0,
-      rotationDegrees: (json['rotation'] as num?)?.toDouble() ?? 0.0,
-      flipHorizontal: json['flipH'] as bool? ?? false,
-      flipVertical: json['flipV'] as bool? ?? false,
+      zoom: zoom,
+      panX: panX,
+      panY: panY,
+      rotationDegrees: rotation,
+      flipHorizontal: flipH,
+      flipVertical: flipV,
     );
   }
+
+  /// [value] as a finite number — [absent] when there is none, null when it
+  /// is something else.
+  static double? _numberIn(Object? value, {required double absent}) =>
+      switch (value) {
+        null => absent,
+        final num number when number.isFinite => number.toDouble(),
+        _ => null,
+      };
 
   @override
   bool operator ==(Object other) =>
