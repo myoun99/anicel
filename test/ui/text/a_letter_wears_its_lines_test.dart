@@ -228,6 +228,41 @@ void main() {
     }
   });
 
+  for (final (align, share) in [
+    (TextCelAlign.center, 0.5),
+    (TextCelAlign.right, 1.0),
+  ]) {
+    testWidgets('a text set to the ${align.name} wears its lines under its '
+        'letters, as one set from the left does', (tester) async {
+      await tester.runAsync(() async {
+        const lined = TextLetterStyle(
+          fontSize: 64,
+          underline: true,
+          strikethrough: true,
+        );
+        final left = said([run('Abd', lined)]);
+        final layout = layoutCelText(left);
+        final along = layout.block.width;
+        layout.dispose();
+        CelTextContent setAt(TextLetterStyle letters) => CelTextContent(
+          spans: [run('Abd', letters)],
+          anchor: CanvasPoint(x: anchor.x + along * share, y: anchor.y),
+          lineHeight: 1.2,
+          align: align,
+        );
+        const bare = TextLetterStyle(fontSize: 64);
+        final set = await textDrawn(setAt(lined));
+
+        expect(
+          apart(set, await textDrawn(setAt(bare))),
+          isNotEmpty,
+          reason: 'they ARE drawn',
+        );
+        expect(apart(set, await textDrawn(left)), isEmpty);
+      });
+    });
+  }
+
   testWidgets('🚨an outlined letter\'s line is outlined with it — outline '
       'over and under its fill', (tester) async {
     await tester.runAsync(() async {

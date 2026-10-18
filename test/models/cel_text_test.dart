@@ -335,20 +335,32 @@ void main() {
 
     test('🚨an SE tag style carries its letters\' lean and lines through a '
         'copy and through a file, as it carries their weight', () {
-      for (final lined in const [
-        TextCelStyle(italic: true),
-        TextCelStyle(underline: true),
-        TextCelStyle(strikethrough: true),
+      const plain = TextCelStyle();
+      for (final (lined, turned) in [
+        (
+          const TextCelStyle(italic: true),
+          (TextCelStyle style, bool on) => style.copyWith(italic: on),
+        ),
+        (
+          const TextCelStyle(underline: true),
+          (TextCelStyle style, bool on) => style.copyWith(underline: on),
+        ),
+        (
+          const TextCelStyle(strikethrough: true),
+          (TextCelStyle style, bool on) => style.copyWith(strikethrough: on),
+        ),
       ]) {
-        expect(lined, isNot(const TextCelStyle()));
+        expect(lined, isNot(plain));
         expect(
           lined.copyWith(fontSize: 72).copyWith(fontSize: lined.fontSize),
           lined,
         );
+        expect(turned(plain, true), lined, reason: 'a copy turns it on');
+        expect(turned(lined, false), plain, reason: 'and off');
         expect(TextCelStyle.fromJson(throughJson(lined.toJson())), lined);
-        expect(lined.hashCode, isNot(const TextCelStyle().hashCode));
+        expect(lined.hashCode, isNot(plain.hashCode));
       }
-      final json = const TextCelStyle().toJson();
+      final json = plain.toJson();
       for (final word in ['italic', 'underline', 'strikethrough']) {
         expect(json.containsKey(word), isFalse, reason: word);
       }

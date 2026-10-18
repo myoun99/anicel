@@ -141,6 +141,6 @@ class FontLines {
 
   @override
   String toString() =>
-      'FontLines(under $underline × $underlineThickness, through '
-      '$strikethrough × $strikethroughThickness)';
+      'FontLines(under $underline, $underlineThickness thick; through '
+      '$strikethrough, $strikethroughThickness thick)';
 }

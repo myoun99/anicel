@@ -73,17 +73,16 @@ class CanvasLetterLines {
 
   final List<CanvasLetterLine> _lines;
 
-  /// Draws the lines of the letters [pass] draws, each in what paints its
-  /// letters in it.
+  /// Draws each line in what paints its letters in [pass] — which, for
+  /// letters that are not the pass's, draws nothing
+  /// ([CanvasLetterPass.paintOf]).
   void paintIn(ui.Canvas canvas, CanvasLetterPass pass) {
     for (final line in _lines) {
-      if (pass.draws(line.letters)) {
-        canvas.drawRect(
-          line.rect,
-          pass.paintOf(line.letters) ??
-              (ui.Paint()..color = line.letters.colorValue),
-        );
-      }
+      canvas.drawRect(
+        line.rect,
+        pass.paintOf(line.letters) ??
+            (ui.Paint()..color = line.letters.colorValue),
+      );
     }
   }
 }
