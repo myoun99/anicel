@@ -160,7 +160,7 @@ class _RailWords {
   /// The Transform header and its five members, top to bottom.
   final List<String> transform;
 
-  /// The Name Tag header and its seven members, top to bottom.
+  /// The Name Tag header and its ten members, top to bottom.
   final List<String> nameTag;
 
   final String audio;
@@ -184,6 +184,9 @@ const _rail = <AppLanguage, _RailWords>{
       'Size',
       'Tracking',
       'Bold',
+      'Italic',
+      'Underline',
+      'Strikethrough',
       'Name Ink',
       'Box Colour',
       'Dialogue Ink',
@@ -209,6 +212,9 @@ const _rail = <AppLanguage, _RailWords>{
       'サイズ',
       '字間',
       '太字',
+      '斜体',
+      '下線',
+      '取り消し線',
       '名前の色',
       'ボックスの色',
       'セリフの色',
@@ -229,7 +235,19 @@ const _rail = <AppLanguage, _RailWords>{
   ),
   AppLanguage.ko: _RailWords(
     transform: ['변형', '기준점', '위치', '비율', '회전', '불투명도'],
-    nameTag: ['이름표', '크기', '자간', '굵게', '이름 잉크', '박스 색', '대사 잉크', '대사 표시'],
+    nameTag: [
+      '이름표',
+      '크기',
+      '자간',
+      '굵게',
+      '기울임',
+      '밑줄',
+      '취소선',
+      '이름 잉크',
+      '박스 색',
+      '대사 잉크',
+      '대사 표시',
+    ],
     audio: '오디오',
     effects: [
       '흐림 효과',
@@ -258,6 +276,9 @@ const _rail = <AppLanguage, _RailWords>{
       'Taille',
       'Interlettrage',
       'Gras',
+      'Italique',
+      'Souligné',
+      'Barré',
       'Encre du nom',
       'Couleur de la boîte',
       'Encre du dialogue',
@@ -278,7 +299,19 @@ const _rail = <AppLanguage, _RailWords>{
   ),
   AppLanguage.zhHans: _RailWords(
     transform: ['变换', '锚点', '位置', '缩放', '旋转', '不透明度'],
-    nameTag: ['名字条', '大小', '字距', '加粗', '名字颜色', '底框颜色', '台词颜色', '显示台词'],
+    nameTag: [
+      '名字条',
+      '大小',
+      '字距',
+      '加粗',
+      '倾斜',
+      '下划线',
+      '删除线',
+      '名字颜色',
+      '底框颜色',
+      '台词颜色',
+      '显示台词',
+    ],
     audio: '音频',
     effects: ['模糊', '模糊宽度', '模糊高度', '删除颜色', '键色红', '键色绿', '键色蓝', '容差', '数量'],
   ),
