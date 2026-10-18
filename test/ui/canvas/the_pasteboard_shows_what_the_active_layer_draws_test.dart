@@ -243,7 +243,7 @@ void main() {
         bottomExclusive: 32,
       ),
     );
-    await decodeAll(tester, tiles, surface);
+    decodeAll(tiles, surface);
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(
@@ -304,7 +304,7 @@ void main() {
         bottomExclusive: 32,
       ),
     );
-    await decodeAll(tester, tiles, surface);
+    decodeAll(tiles, surface);
     final stack = await pumpStack(
       tester,
       painter: BitmapSurfacePainter(

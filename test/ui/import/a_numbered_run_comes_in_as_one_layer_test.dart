@@ -92,7 +92,6 @@ void main() {
         () => (runs ?? paths).every(
           (path) => cellText(tester, 'option', path) != '—',
         ),
-        attempts: 200,
         step: const Duration(milliseconds: 50),
       ),
       isTrue,
