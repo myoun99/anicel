@@ -183,17 +183,22 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Material(
-            child: SizedBox(
-              width: 480,
-              height: 40,
-              child: TimelineLaneFrameRow(
-                layer: layer,
-                lane: lane,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: 40,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                metrics: narrow,
+            // Its row's height: under the root's tight constraints it would
+            // fill the screen, and the screen's middle is no row's.
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 480,
+                height: narrow.layerRowHeight,
+                child: TimelineLaneFrameRow(
+                  layer: layer,
+                  lane: lane,
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: 40,
+                  leadingFrameSpacerWidth: 0,
+                  trailingFrameSpacerWidth: 0,
+                  metrics: narrow,
+                ),
               ),
             ),
           ),
