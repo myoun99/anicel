@@ -6,6 +6,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/input_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart'
+    show DragVerbClaim;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -181,6 +183,29 @@ void main() {
 
     expect(AppInput.settings.value.rotationSnapDegrees, 16);
     expect(tester.widget<FieldSlider>(bar).value, 16);
+  });
+
+  // The window's bars are one code (`_SettingsBar`): what one does while
+  // held, they all do. Its let-go is `a_setting_survives_a_restart_test`'s.
+  testWidgets('a bar moves its setting while it is held, before it is let '
+      'go', (tester) async {
+    await pumpDialog(tester);
+    final bar = find.descendant(
+      of: find.byKey(const ValueKey<String>('settings-snap-rotation')),
+      matching: find.byType(DragVerbClaim),
+    );
+    await tester.ensureVisible(bar);
+    await tester.pumpAndSettle();
+    expect(AppInput.settings.value.rotationSnapDegrees, 15);
+
+    final hand = await tester.startGesture(tester.getCenter(bar));
+    await hand.moveBy(const Offset(30, 0));
+    await hand.moveBy(const Offset(30, 0));
+    await tester.pump();
+    expect(AppInput.settings.value.rotationSnapDegrees, isNot(15));
+
+    await hand.up();
+    await tester.pumpAndSettle();
   });
 
   // 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거 … 리스트팝오버형식으로?

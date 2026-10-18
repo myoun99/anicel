@@ -39,36 +39,23 @@ class InputSettingsSection extends StatelessWidget {
               strings.inputPressureHeading,
               style: Theme.of(context).textTheme.labelLarge,
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 2),
-              // Fixed box: FieldSlider builds through a LayoutBuilder,
-              // which cannot answer the AlertDialog's intrinsic-size
-              // probes — tight constraints shield it.
-              child: SizedBox(
-                width: 320,
-                height: 24,
-                child: FieldSlider(
-                  key: const ValueKey<String>('settings-pressure-curve'),
-                  value: settings.pressureCurveGamma,
-                  min: 0.25,
-                  max: 4.0,
-                  scale: FieldSliderScale.exponential,
-                  label: strings.inputPressureSoftHard,
-                  // ⚠️An exception to the bar's own number, twice over: the
-                  // neutral gamma is a WORD, and a curve exponent is read to
-                  // the hundredth (×1.05 and ×1.1 are different pens).
-                  valueTextBuilder: (gamma, _) => gamma == 1.0
-                      ? strings.inputPressureLinear
-                      : '×${gamma.toStringAsFixed(2)}',
-                  onChanged: (gamma) => AppInput.settings.value = AppInput
-                      .settings
-                      .value
-                      .copyWith(pressureCurveGamma: gamma),
-                  onChangeEnd: (gamma) => session.setInputSettings(
-                    settings.copyWith(pressureCurveGamma: gamma),
-                  ),
-                ),
-              ),
+            _SettingsBar(
+              keyValue: 'settings-pressure-curve',
+              session: session,
+              settings: settings,
+              value: settings.pressureCurveGamma,
+              withValue: (settings, gamma) =>
+                  settings.copyWith(pressureCurveGamma: gamma),
+              min: 0.25,
+              max: 4.0,
+              scale: FieldSliderScale.exponential,
+              label: strings.inputPressureSoftHard,
+              // ⚠️An exception to the bar's own number, twice over: the
+              // neutral gamma is a WORD, and a curve exponent is read to
+              // the hundredth (×1.05 and ×1.1 are different pens).
+              valueTextBuilder: (gamma, _) => gamma == 1.0
+                  ? strings.inputPressureLinear
+                  : '×${gamma.toStringAsFixed(2)}',
             ),
             // 速度 needs a ceiling and no file format supplies one, so the
             // user owns it (유저 확정 2026-09-08). Same block as the
@@ -80,34 +67,21 @@ class InputSettingsSection extends StatelessWidget {
               strings.inputSpeedHeading,
               style: Theme.of(context).textTheme.labelLarge,
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 2),
-              child: SizedBox(
-                width: 320,
-                height: 24,
-                child: FieldSlider(
-                  key: const ValueKey<String>('settings-speed-reference'),
-                  value: settings.speedReferencePixelsPerSecond,
-                  min: 200,
-                  max: 8000,
-                  scale: FieldSliderScale.exponential,
-                  label: strings.inputSpeedReference,
-                  // F-9/F-34: the bar writes its own number — a local
-                  // `.round()` here is a display decision the call site does
-                  // not get to make.
-                  unit: ' px/s',
-                  onChanged: (reference) =>
-                      AppInput.settings.value = AppInput.settings.value
-                          .copyWith(
-                            speedReferencePixelsPerSecond: reference,
-                          ),
-                  onChangeEnd: (reference) => session.setInputSettings(
-                    settings.copyWith(
-                      speedReferencePixelsPerSecond: reference,
-                    ),
-                  ),
-                ),
-              ),
+            _SettingsBar(
+              keyValue: 'settings-speed-reference',
+              session: session,
+              settings: settings,
+              value: settings.speedReferencePixelsPerSecond,
+              withValue: (settings, reference) =>
+                  settings.copyWith(speedReferencePixelsPerSecond: reference),
+              min: 200,
+              max: 8000,
+              scale: FieldSliderScale.exponential,
+              label: strings.inputSpeedReference,
+              // F-9/F-34: the bar writes its own number — a local
+              // `.round()` here is a display decision the call site does
+              // not get to make.
+              unit: ' px/s',
             ),
             // PEN-7a: the CANVAS mappings for standard secondary
             // inputs — pen side/barrel + S-Pen button + mouse right
@@ -255,28 +229,18 @@ class InputSettingsSection extends StatelessWidget {
             // speed rows'), not the box the lists were typed into. Whole
             // degrees from 1 to 90: finer than a degree is the free turn, and
             // past a right angle a turn has one line to land on.
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 2),
-              child: SizedBox(
-                width: 320,
-                height: 24,
-                child: FieldSlider(
-                  key: const ValueKey<String>('settings-snap-rotation'),
-                  value: settings.rotationSnapDegrees,
-                  min: 1,
-                  max: 90,
-                  divisions: 89,
-                  label: strings.inputRotationSnap,
-                  unit: '°',
-                  onChanged: (degrees) => AppInput.settings.value = AppInput
-                      .settings
-                      .value
-                      .copyWith(rotationSnapDegrees: degrees),
-                  onChangeEnd: (degrees) => session.setInputSettings(
-                    settings.copyWith(rotationSnapDegrees: degrees),
-                  ),
-                ),
-              ),
+            _SettingsBar(
+              keyValue: 'settings-snap-rotation',
+              session: session,
+              settings: settings,
+              value: settings.rotationSnapDegrees,
+              withValue: (settings, degrees) =>
+                  settings.copyWith(rotationSnapDegrees: degrees),
+              min: 1,
+              max: 90,
+              divisions: 89,
+              label: strings.inputRotationSnap,
+              unit: '°',
             ),
             _ZoomSnapsRow(session: session),
             _ZoomCeilingRow(
@@ -367,6 +331,78 @@ String _dragActionLabel(CanvasTouchDragAction action) {
     CanvasTouchDragAction.draw => strings.dragActionDraw,
     CanvasTouchDragAction.none => strings.commonNone,
   };
+}
+
+/// One number of these settings on a bar (PEN-3): the setting follows the
+/// bar while it moves, and is kept when the bar is let go — one write for
+/// the whole drag (F-191). The pressure curve's, the speed reference's and
+/// the rotation snap's (F-391) are each one.
+class _SettingsBar extends StatelessWidget {
+  const _SettingsBar({
+    required this.keyValue,
+    required this.session,
+    required this.settings,
+    required this.value,
+    required this.withValue,
+    required this.min,
+    required this.max,
+    required this.label,
+    this.scale = FieldSliderScale.linear,
+    this.divisions,
+    this.unit = '',
+    this.valueTextBuilder,
+  });
+
+  final String keyValue;
+  final EditorSessionManager session;
+
+  /// The settings the window was built over — what a let-go keeps.
+  final AppInputSettings settings;
+
+  final double value;
+
+  /// [settings] with this bar's number at [value].
+  final AppInputSettings Function(AppInputSettings settings, double value)
+  withValue;
+
+  final double min;
+  final double max;
+  final String label;
+  final FieldSliderScale scale;
+  final int? divisions;
+  final String unit;
+  final String Function(double value, String derived)? valueTextBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      // Fixed box: FieldSlider builds through a LayoutBuilder, which cannot
+      // answer the AlertDialog's intrinsic-size probes — tight constraints
+      // shield it.
+      child: SizedBox(
+        width: 320,
+        height: 24,
+        child: FieldSlider(
+          key: ValueKey<String>(keyValue),
+          value: value,
+          min: min,
+          max: max,
+          scale: scale,
+          divisions: divisions,
+          label: label,
+          unit: unit,
+          valueTextBuilder: valueTextBuilder,
+          onChanged: (value) => AppInput.settings.value = withValue(
+            AppInput.settings.value,
+            value,
+          ),
+          onChangeEnd: (value) =>
+              session.setInputSettings(withValue(settings, value)),
+        ),
+      ),
+    );
+  }
 }
 
 /// A compact labeled enum choice row (PEN-7b touch settings).
