@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/input/modifier_keys.dart';
+import '../../services/shortcuts/program_keymap.dart';
 import '../debug/key_trace.dart';
+import '../text/app_strings.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
@@ -342,6 +344,14 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// Replaces [actionId]'s activators; a value equal to the defaults
   /// clears the override. Persists and notifies.
   void setActivators(String actionId, List<SingleActivator> activators) {
+    _record(actionId, activators);
+    _persist();
+    notifyListeners();
+  }
+
+  /// [activators] as [actionId]'s — a change to the preset in use only
+  /// where they are not what it ships the action with.
+  void _record(String actionId, List<SingleActivator> activators) {
     final defaults = defaultActivatorsFor(actionId);
     final matchesDefaults =
         activators.length == defaults.length &&
@@ -353,6 +363,51 @@ class EditorShortcutBindings extends ChangeNotifier {
       _overrides.remove(actionId);
     } else {
       _overrides[actionId] = List.unmodifiable(activators);
+    }
+  }
+
+  /// Brings in the shortcut file [name], holding [bytes], as
+  /// [importProgramKeys] does — what to say of it.
+  String importShortcutFile(String name, List<int> bytes) {
+    final file = readShortcutFile(name, bytes);
+    if (file == null) {
+      return AppText.strings.shortcutFileUnreadable(name);
+    }
+    importProgramKeys(file);
+    final counted = countFileKeys(file);
+    return AppText.strings.shortcutFileImported(
+      name,
+      AppText.strings.shortcutPresetName(_preset.name, _preset.label),
+      counted.taken,
+      counted.skipped,
+    );
+  }
+
+  /// Puts what [file] says on its program's preset, and brings that preset
+  /// into use (I-107). 🗣️I-107-Q1 (추천 a): 「그 프로그램 기반 프리셋으로」
+  /// — recorded as the preset's changes, so the window's reset takes it
+  /// back off ([resetAll]).
+  ///
+  /// The presets' law ([ProgramKeys]) with the file as the program: an
+  /// action the file gives keys takes those and no other, and every other
+  /// action keeps what it holds, less any key the file gave another.
+  /// ⚠️MY READING of the option's 「파일이 말하지 않은 동작은 프리셋 키
+  /// 그대로」: an action the file gives no key is one it does not speak of
+  /// — CLIP STUDIO PAINT keeps its tools' keys in another file than its
+  /// menus', and either may come in first.
+  void importProgramKeys(ProgramKeymap file) {
+    _preset = presetOf(file.program);
+    final law = ProgramKeys({
+      for (final MapEntry(key: actionId, value: keys)
+          in fileKeysOf(file).entries)
+        actionId: [for (final key in keys) platformActivator(key)],
+    });
+    final held = {
+      for (final definition in definitions)
+        definition.id: law.of(definition.id, activatorsFor(definition.id)),
+    };
+    for (final MapEntry(key: actionId, value: keys) in held.entries) {
+      _record(actionId, keys);
     }
     _persist();
     notifyListeners();

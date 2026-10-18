@@ -13,9 +13,10 @@ import '../../helpers/temp_dir.dart';
 /// F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로」 — every door
 /// hands what it holds to ONE door, and one judgement says where each goes:
 /// a project to a tab, media and a folder to the import window, a brush to
-/// the library, a font to this device's fonts — and what nothing opens is
-/// named. ↩️A drop let anything into the window, and the window registered
-/// what it could not name as a picture.
+/// the library, a font to this device's fonts, a program's shortcut file
+/// onto its preset (I-107) — and what nothing opens is named. ↩️A drop let
+/// anything into the window, and the window registered what it could not
+/// name as a picture.
 void main() {
   late Directory folder;
 
@@ -35,6 +36,7 @@ void main() {
   late List<ProjectPick> projectsGot;
   late Map<String, Uint8List> brushesGot;
   late List<Uint8List> fontsGot;
+  late Map<String, Uint8List> shortcutsGot;
 
   OpenedFilesDoor door() {
     windowGot = [];
@@ -42,6 +44,7 @@ void main() {
     projectsGot = [];
     brushesGot = {};
     fontsGot = [];
+    shortcutsGot = {};
     return OpenedFilesDoor(
       openProjects: (picks) async {
         done.add('projects');
@@ -61,6 +64,11 @@ void main() {
         done.add('font');
         fontsGot.add(bytes);
         return 'a font';
+      },
+      bringShortcuts: (name, bytes) async {
+        done.add('shortcuts');
+        shortcutsGot[name] = bytes;
+        return 'keys from $name';
       },
     );
   }
@@ -117,15 +125,25 @@ void main() {
     final picture = fileNamed('A1.png');
     final brush = fileNamed('Pack.abr', [7, 7]);
     final font = fileNamed('Face.otf', [9]);
+    final keys = fileNamed('default.khc', [4]);
 
-    await knock(tester, [project, picture, brush, font]);
+    await knock(tester, [project, keys, picture, brush, font]);
 
-    expect(done, ['brushes', 'font', 'notice', 'window', 'projects']);
+    expect(done, [
+      'brushes',
+      'font',
+      'shortcuts',
+      'notice',
+      'window',
+      'projects',
+    ]);
     expect([for (final grant in windowGot) grant.path], [picture.path]);
     expect([for (final pick in projectsGot) pick.path], [project.path]);
     expect(brushesGot.keys, ['Pack.abr']);
     expect(brushesGot['Pack.abr'], [7, 7]);
     expect(fontsGot.single, [9]);
+    expect(shortcutsGot.keys, ['default.khc']);
+    expect(shortcutsGot['default.khc'], [4]);
   });
 
   testWidgets('what the libraries said is said once, together', (
@@ -134,13 +152,13 @@ void main() {
     String? message;
     await knock(
       tester,
-      [fileNamed('Pack.abr'), fileNamed('Face.ttf')],
+      [fileNamed('Pack.abr'), fileNamed('config.ini'), fileNamed('Face.ttf')],
       onNotice: () => message = tester
           .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
           .message,
     );
 
-    expect(message, 'brushes from Pack.abr\na font');
+    expect(message, 'brushes from Pack.abr\na font\nkeys from config.ini');
     expect(done.where((step) => step == 'notice'), hasLength(1));
   });
 
@@ -149,7 +167,7 @@ void main() {
     List<String>? named;
     await knock(
       tester,
-      [fileNamed('notes.txt'), fileNamed('A1.png')],
+      [fileNamed('notes.docx'), fileNamed('A1.png')],
       onNotice: () => named ??= tester
           .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
           .details
@@ -159,7 +177,7 @@ void main() {
 
     expect(
       named,
-      ['${folder.path}/notes.txt'],
+      ['${folder.path}/notes.docx'],
       reason: 'named as every pick names a refusal — a file by its path',
     );
     expect(

@@ -20,18 +20,21 @@ typedef SortedOpen = ({
   List<FolderGrant> media,
   List<FolderGrant> brushes,
   List<FolderGrant> fonts,
+  List<FolderGrant> shortcuts,
   List<String> refused,
 });
 
 /// [handed] sorted by the one judgement: a project opens in a tab, a
 /// picture · movie · sound · PDF and a FOLDER (a cut folder) come in
-/// through the import window, a brush goes to the brush library and a font
-/// to this device's fonts — and what nothing opens is named.
+/// through the import window, a brush goes to the brush library, a font
+/// to this device's fonts and a program's shortcut file onto its preset —
+/// and what nothing opens is named.
 SortedOpen sortOpened(List<FolderGrant> handed) {
   final projects = <ProjectPick>[];
   final media = <FolderGrant>[];
   final brushes = <FolderGrant>[];
   final fonts = <FolderGrant>[];
+  final shortcuts = <FolderGrant>[];
   final refused = <String>[];
   for (final grant in handed) {
     final named = grant.document?.uri ?? grant.path;
@@ -51,6 +54,8 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
         brushes.add(grant);
       case OpenedAs.font:
         fonts.add(grant);
+      case OpenedAs.shortcuts:
+        shortcuts.add(grant);
       case null:
         // Named as every pick's refusal names it: a file by its path, a
         // document by its own name (its URI says nothing).
@@ -62,6 +67,7 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
     media: media,
     brushes: brushes,
     fonts: fonts,
+    shortcuts: shortcuts,
     refused: refused,
   );
 }
@@ -120,6 +126,7 @@ final class OpenedFilesDoor {
     required this.importWindow,
     required this.bringBrushes,
     required this.bringFont,
+    required this.bringShortcuts,
   });
 
   /// Opens each pick in a tab of its own — the shell's Open door, which
@@ -140,6 +147,10 @@ final class OpenedFilesDoor {
   /// say of it.
   final Future<String?> Function(Uint8List bytes) bringFont;
 
+  /// Puts the keys of the shortcut file [name], holding [bytes], on its
+  /// program's preset (I-107) — what to say of it.
+  final Future<String?> Function(String name, Uint8List bytes) bringShortcuts;
+
   /// Takes [handed] in, each where the judgement sends it.
   Future<void> open(
     BuildContext context,
@@ -157,6 +168,7 @@ final class OpenedFilesDoor {
       for (final grant in sorted.brushes) await _bring(grant, bringBrushes),
       for (final grant in sorted.fonts)
         await _bring(grant, (_, bytes) => bringFont(bytes)),
+      for (final grant in sorted.shortcuts) await _bring(grant, bringShortcuts),
     ].nonNulls.toList();
     if (!context.mounted) {
       return;

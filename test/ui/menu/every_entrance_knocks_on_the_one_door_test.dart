@@ -151,7 +151,7 @@ void main() {
 
   testWidgets('a file the ＋ is handed that nothing opens is named — and no '
       'window opens on it', (tester) async {
-    final notes = spelled('${folder.path}/notes.txt');
+    final notes = spelled('${folder.path}/notes.docx');
     File(notes).writeAsStringSync('x');
     await pumpApp(tester);
     pickerAnswers([granted(notes)]);

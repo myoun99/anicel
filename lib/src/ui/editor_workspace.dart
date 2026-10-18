@@ -2186,8 +2186,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       osFileDropPlaceAt(globalPosition, View.of(context).viewId);
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
-  /// shell's Open door for projects, the import window, the brush library
-  /// and the fonts.
+  /// shell's Open door for projects, the import window, the brush library,
+  /// the fonts and the shortcut presets.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
@@ -2207,6 +2207,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return _fonts.noticeOf(outcome) ??
           (family == null ? null : AppText.strings.fontBrought(family));
     },
+    bringShortcuts: (name, bytes) async =>
+        EditorShortcutScope.peek(context)?.importShortcutFile(name, bytes),
   );
 
   /// The top strip's 「파일 열기…」 — and the media panel's ＋, which

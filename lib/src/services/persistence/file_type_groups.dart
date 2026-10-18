@@ -37,6 +37,7 @@ import '../../models/media_asset.dart'
         pdfFileExtensions,
         videoFileExtensions;
 import '../brush_pack_file.dart';
+import '../shortcuts/program_keymap.dart' show shortcutFileExtensions;
 import 'anicel_project_archive.dart';
 import 'provider_documents.dart';
 
@@ -127,6 +128,12 @@ enum OpenedAs {
 
   /// Goes into this device's fonts ([fontFileExtensions]).
   font,
+
+  /// Puts a program's keys on its shortcut preset ([shortcutFileExtensions],
+  /// I-107). ⚠️`.txt` · `.ini` · `.cfg` are names other files use too: what
+  /// is not a program's shortcut file is said so when it is read
+  /// (I-107-Q2's cost, 추천 a).
+  shortcuts,
 }
 
 /// What the file [pathOrUri] names opens as — null for a file nothing in the
@@ -150,6 +157,9 @@ OpenedAs? openedAs(String pathOrUri) {
   if (fontFileExtensions.contains(extension)) {
     return OpenedAs.font;
   }
+  if (shortcutFileExtensions.contains(extension)) {
+    return OpenedAs.shortcuts;
+  }
   return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
 }
 
@@ -163,6 +173,7 @@ const List<String> openableExtensions = [
   ...pdfFileExtensions,
   ...brushFileExtensions,
   ...fontFileExtensions,
+  ...shortcutFileExtensions,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has

@@ -371,21 +371,21 @@ void main() {
         expect(bindings.conflictedActionIds, isEmpty);
       });
 
-      test('${preset.name} names only actions the registry has', () {
+      test('${preset.name} has rows only for actions the registry has', () {
         final registry = {
           for (final definition in editorActionDefinitions) definition.id,
         };
         expect(
-          presetNamedActionIds(preset).where((id) => !registry.contains(id)),
+          presetRows(preset).keys.where((id) => !registry.contains(id)),
           isEmpty,
         );
       });
     }
 
     test('⛔fixture premise: the program\'s preset does name actions', () {
-      expect(presetNamedActionIds(ShortcutPreset.clipStudio), isNotEmpty);
-      expect(presetNamedActionIds(ShortcutPreset.tvpaint), isNotEmpty);
-      expect(presetNamedActionIds(ShortcutPreset.anicel), isEmpty);
+      expect(presetRows(ShortcutPreset.clipStudio), isNotEmpty);
+      expect(presetRows(ShortcutPreset.tvpaint), isNotEmpty);
+      expect(presetRows(ShortcutPreset.anicel), isEmpty);
     });
 
     test('a settings file\'s word finds its preset, and a word no build '
