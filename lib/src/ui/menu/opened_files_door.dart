@@ -8,6 +8,7 @@ import '../../services/persistence/app_documents.dart'
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/provider_documents.dart';
+import '../brush/picked_file.dart' show PickedFile;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/open_file_flow.dart' show noticeUnsupportedFiles;
@@ -27,7 +28,7 @@ typedef SortedOpen = ({
 /// [handed] sorted by the one judgement: a project opens in a tab, a
 /// picture · movie · sound · PDF and a FOLDER (a cut folder) come in
 /// through the import window, a brush goes to the brush library, a font
-/// to this device's fonts and a program's shortcut file onto its preset —
+/// to this device's fonts and a program's shortcut files into a preset —
 /// and what nothing opens is named.
 SortedOpen sortOpened(List<FolderGrant> handed) {
   final projects = <ProjectPick>[];
@@ -147,9 +148,10 @@ final class OpenedFilesDoor {
   /// say of it.
   final Future<String?> Function(Uint8List bytes) bringFont;
 
-  /// Puts the keys of the shortcut file [name], holding [bytes], on its
-  /// program's preset (I-107) — what to say of it.
-  final Future<String?> Function(String name, Uint8List bytes) bringShortcuts;
+  /// Makes the shortcut files [files] into presets (I-107) — what to say of
+  /// them. All at once: one program's files that come in together make one
+  /// preset.
+  final Future<List<String>> Function(List<PickedFile> files) bringShortcuts;
 
   /// Takes [handed] in, each where the judgement sends it.
   Future<void> open(
@@ -164,11 +166,20 @@ final class OpenedFilesDoor {
         return;
       }
     }
+    final shortcuts = [
+      for (final grant in sorted.shortcuts) await _read(grant),
+    ];
     final said = [
       for (final grant in sorted.brushes) await _bring(grant, bringBrushes),
       for (final grant in sorted.fonts)
         await _bring(grant, (_, bytes) => bringFont(bytes)),
-      for (final grant in sorted.shortcuts) await _bring(grant, bringShortcuts),
+      for (final (:name, :bytes) in shortcuts)
+        if (bytes == null) AppText.strings.imUnreadable(name),
+      if (shortcuts.any((file) => file.bytes != null))
+        ...await bringShortcuts([
+          for (final (:name, :bytes) in shortcuts)
+            if (bytes != null) (name: name, bytes: bytes),
+        ]),
     ].nonNulls.toList();
     if (!context.mounted) {
       return;
@@ -201,15 +212,24 @@ final class OpenedFilesDoor {
     FolderGrant grant,
     Future<String?> Function(String name, Uint8List bytes) bring,
   ) async {
+    final (:name, :bytes) = await _read(grant);
+    return bytes == null
+        ? AppText.strings.imUnreadable(name)
+        : bring(name, bytes);
+  }
+
+  /// [grant]'s bytes under the file's own name — none where it could not be
+  /// read.
+  static Future<({String name, Uint8List? bytes})> _read(
+    FolderGrant grant,
+  ) async {
     final named = grant.document?.uri ?? grant.path!;
     final name = ProviderDocuments.nameOf(named);
-    final Uint8List bytes;
     try {
-      bytes = await _bytesOf(grant);
+      return (name: name, bytes: await _bytesOf(grant));
     } on Object {
-      return AppText.strings.imUnreadable(name);
+      return (name: name, bytes: null);
     }
-    return bring(name, bytes);
   }
 
   /// What [grant] holds: the file at its path, or — a document with no

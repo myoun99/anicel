@@ -7,14 +7,15 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
+import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로」 — every door
 /// hands what it holds to ONE door, and one judgement says where each goes:
 /// a project to a tab, media and a folder to the import window, a brush to
-/// the library, a font to this device's fonts, a program's shortcut file
-/// onto its preset (I-107) — and what nothing opens is named. ↩️A drop let
+/// the library, a font to this device's fonts, a program's shortcut files
+/// into a preset (I-107) — and what nothing opens is named. ↩️A drop let
 /// anything into the window, and the window registered what it could not
 /// name as a picture.
 void main() {
@@ -65,10 +66,10 @@ void main() {
         fontsGot.add(bytes);
         return 'a font';
       },
-      bringShortcuts: (name, bytes) async {
+      bringShortcuts: (files) async {
         done.add('shortcuts');
-        shortcutsGot[name] = bytes;
-        return 'keys from $name';
+        shortcutsGot = {for (final (:name, :bytes) in files) name: bytes};
+        return ['keys from ${[for (final file in files) file.name]}'];
       },
     );
   }
@@ -146,6 +147,35 @@ void main() {
     expect(shortcutsGot['default.khc'], [4]);
   });
 
+  testWidgets('a program\'s shortcut files are handed over together, once '
+      '— one program\'s make one preset — and one that cannot be read is '
+      'named', (tester) async {
+    final menus = fileNamed('default.khc', [4]);
+    final tools = fileNamed('EditImageTool.todb', [5]);
+    final gone = fileNamed('config.ini');
+    File(gone.path!).deleteSync();
+    String? message;
+
+    await knock(
+      tester,
+      [menus, gone, tools],
+      onNotice: () => message = tester
+          .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
+          .message,
+    );
+
+    expect(done.where((step) => step == 'shortcuts'), hasLength(1));
+    expect(shortcutsGot, {
+      'default.khc': [4],
+      'EditImageTool.todb': [5],
+    });
+    expect(
+      message,
+      '${AppText.strings.imUnreadable('config.ini')}\n'
+      'keys from [default.khc, EditImageTool.todb]',
+    );
+  });
+
   testWidgets('what the libraries said is said once, together', (
     tester,
   ) async {
@@ -158,7 +188,7 @@ void main() {
           .message,
     );
 
-    expect(message, 'brushes from Pack.abr\na font\nkeys from config.ini');
+    expect(message, 'brushes from Pack.abr\na font\nkeys from [config.ini]');
     expect(done.where((step) => step == 'notice'), hasLength(1));
   });
 

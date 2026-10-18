@@ -1128,18 +1128,20 @@ enum AppStrings {
   String get shortcutConflictBanner => _s('shortcutConflictBanner');
   String get shortcutRecordingHint => _s('shortcutRecordingHint');
 
-  /// A program's shortcut file put on [preset] (I-107): how many of its keys
-  /// an action took, and how many none did.
-  String shortcutFileImported(
-    String name,
-    String preset,
-    int taken,
-    int skipped,
-  ) => _s('shortcutFileImportedTemplate')
-      .replaceAll('{name}', name)
-      .replaceAll('{preset}', preset)
-      .replaceAll('{taken}', '$taken')
-      .replaceAll('{skipped}', '$skipped');
+  String get shortcutPresets => _s('shortcutPresets');
+  String get shortcutPresetNew => _s('shortcutPresetNew');
+  String get shortcutPresetNameEmpty => _s('shortcutPresetNameEmpty');
+  String get shortcutPresetDelete => _s('shortcutPresetDelete');
+  String shortcutPresetDeleteBody(String name) =>
+      _s('shortcutPresetDeleteTemplate').replaceAll('{name}', name);
+
+  /// A program's shortcut files made into the new [preset] (I-107): how many
+  /// of their keys an action took, and how many none did.
+  String shortcutFileImported(String preset, int taken, int skipped) =>
+      _s('shortcutFileImportedTemplate')
+          .replaceAll('{preset}', preset)
+          .replaceAll('{taken}', '$taken')
+          .replaceAll('{skipped}', '$skipped');
   String shortcutFileUnreadable(String name) =>
       _s('shortcutFileUnreadableTemplate').replaceAll('{name}', name);
 
@@ -2478,8 +2480,13 @@ enum AppStrings {
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutFileImportedTemplate':
-        '{name}: {taken} shortcuts brought into {preset} '
+        '{taken} shortcuts brought into the new preset "{preset}" '
         '({skipped} with nothing to go on here).',
+    'shortcutPresets': 'Presets',
+    'shortcutPresetNew': 'New preset',
+    'shortcutPresetNameEmpty': 'Preset name cannot be empty.',
+    'shortcutPresetDelete': 'Delete preset',
+    'shortcutPresetDeleteTemplate': 'Delete the preset "{name}"?',
     'shortcutFileUnreadableTemplate':
         '{name}: no shortcuts could be read out of this file.',
     'shortcutResetToDefault': 'Reset to default',
@@ -3900,8 +3907,13 @@ enum AppStrings {
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutFileImportedTemplate':
-        '{name}: ショートカット {taken} 件を「{preset}」に取り込みました'
-        '（対応なし {skipped} 件）。',
+        'ショートカット {taken} 件を新しいプリセット「{preset}」に'
+        '取り込みました（対応なし {skipped} 件）。',
+    'shortcutPresets': 'プリセット',
+    'shortcutPresetNew': '新しいプリセット',
+    'shortcutPresetNameEmpty': 'プリセット名を空にはできません。',
+    'shortcutPresetDelete': 'プリセットを削除',
+    'shortcutPresetDeleteTemplate': 'プリセット「{name}」を削除しますか？',
     'shortcutFileUnreadableTemplate':
         '{name}: このファイルから読めるショートカットがありません。',
     'shortcutResetToDefault': '既定に戻す',
@@ -5510,8 +5522,13 @@ enum AppStrings {
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutFileImportedTemplate':
-        '{name}: 단축키 {taken}개를 「{preset}」에 가져왔습니다'
+        '단축키 {taken}개를 새 프리셋 「{preset}」에 가져왔습니다'
         '(대응 없음 {skipped}개).',
+    'shortcutPresets': '프리셋',
+    'shortcutPresetNew': '새 프리셋',
+    'shortcutPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
+    'shortcutPresetDelete': '프리셋 삭제',
+    'shortcutPresetDeleteTemplate': '「{name}」 프리셋을 삭제할까요?',
     'shortcutFileUnreadableTemplate':
         '{name}: 이 파일에서 읽을 단축키가 없습니다.',
     'shortcutResetToDefault': '기본값으로',
@@ -7167,8 +7184,13 @@ enum AppStrings {
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutFileImportedTemplate':
-        '{name} : {taken} raccourcis importés dans « {preset} » '
-        '({skipped} sans équivalent ici).',
+        '{taken} raccourcis importés dans le nouveau préréglage '
+        '« {preset} » ({skipped} sans équivalent ici).',
+    'shortcutPresets': 'Préréglages',
+    'shortcutPresetNew': 'Nouveau préréglage',
+    'shortcutPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
+    'shortcutPresetDelete': 'Supprimer le préréglage',
+    'shortcutPresetDeleteTemplate': 'Supprimer le préréglage « {name} » ?',
     'shortcutFileUnreadableTemplate':
         '{name} : aucun raccourci lisible dans ce fichier.',
     'shortcutResetToDefault': 'Rétablir le défaut',
@@ -8800,7 +8822,12 @@ enum AppStrings {
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutFileImportedTemplate':
-        '{name}：已将 {taken} 个快捷键导入“{preset}”（{skipped} 个无对应）。',
+        '已将 {taken} 个快捷键导入新预设“{preset}”（{skipped} 个无对应）。',
+    'shortcutPresets': '预设',
+    'shortcutPresetNew': '新建预设',
+    'shortcutPresetNameEmpty': '预设名称不能为空。',
+    'shortcutPresetDelete': '删除预设',
+    'shortcutPresetDeleteTemplate': '要删除预设“{name}”吗？',
     'shortcutFileUnreadableTemplate': '{name}：此文件中没有可读取的快捷键。',
     'shortcutResetToDefault': '恢复默认',
     'shortcutUnassign': '移除快捷键',

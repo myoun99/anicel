@@ -28,7 +28,7 @@ import 'shortcut_activator_codec.dart';
 /// key the user proposes is the registry's, anicel's; each program's table
 /// takes that program's own key for the same command, from the program's
 /// own references, or names none for it.
-enum ShortcutPreset {
+enum ShortcutPreset implements ShortcutLayout {
   /// The registry's own keys.
   anicel('Anicel'),
 
@@ -44,13 +44,82 @@ enum ShortcutPreset {
   /// (`AppStrings.shortcutPresetName` holds the other languages).
   final String label;
 
+  @override
+  String get id => name;
+
+  @override
+  ShortcutPreset get base => this;
+
+  /// None: it is [base].
+  @override
+  Map<String, List<SingleActivator>> get ownKeys => const {};
+
   /// The preset a settings file names, or null for a name no build knows.
   static ShortcutPreset? named(Object? name) =>
       values.where((preset) => preset.name == name).firstOrNull;
 }
 
-/// The preset a program's shortcut file goes on: that program's own.
-/// 🗣️I-107-Q1 (추천 a) — 「그 프로그램 기반 프리셋으로」.
+/// A layout the keys can be put in: one of the presets the app ships, or
+/// one of the user's own.
+sealed class ShortcutLayout {
+  /// What the settings file names it by.
+  String get id;
+
+  /// The preset the app ships that it stands on: what it holds for an
+  /// action it has no keys of its own for.
+  ShortcutPreset get base;
+
+  /// The keys it holds of its own where they are not [base]'s, as this
+  /// platform presses them.
+  Map<String, List<SingleActivator>> get ownKeys;
+}
+
+/// A preset the user made (I-107): a name, and the keys it was made with
+/// over the preset the app ships that it stands on.
+///
+/// 🗣️I-107-Q1 (유저 2026-10-18, 「기타」): 「프리셋 리스트 추가/삭제
+/// 가능하게해서 사용자 입맛대로 추가해서 설정가능하고, 가져올땐 새
+/// 프리셋으로서 등록」 — made from the list's ＋, out of the layout in use,
+/// or out of a program's shortcut file.
+/// ⚠️Not said by the user — asked on the board (I-107-Q3) and built as its
+/// recommendation (a) while it waits: the three the app ships cannot be
+/// deleted, a new one is the layout in use copied, and its name is given
+/// once, when it is made.
+///
+/// ⚠️MY READING: what the user records while it is in use is a change to it
+/// ([recorded]), as under a preset the app ships — so the window's reset
+/// takes it back to the keys it was made with, not to its [base]'s.
+final class UserShortcutPreset implements ShortcutLayout {
+  UserShortcutPreset({
+    required this.id,
+    required this.name,
+    required this.base,
+    required Map<String, List<SingleActivator>> keys,
+    Map<String, List<SingleActivator>>? recorded,
+  }) : ownKeys = Map.unmodifiable(keys),
+       recorded = recorded ?? {};
+
+  @override
+  final String id;
+
+  final String name;
+
+  @override
+  final ShortcutPreset base;
+
+  @override
+  final Map<String, List<SingleActivator>> ownKeys;
+
+  /// What the user recorded while it was in use, kept with it — so it goes
+  /// when it does.
+  final Map<String, List<SingleActivator>> recorded;
+}
+
+/// The preset the app ships that a program's shortcut file stands on: that
+/// program's own. 🗣️I-107-Q1 (유저 2026-10-18): 「가져올땐 새 프리셋으로서
+/// 등록」 — the file's keys make a preset of the user's over it. ↩️They were
+/// put on the program's preset itself until that answer (추천 a, built while
+/// the question waited).
 ShortcutPreset presetOf(KeymapProgram program) => switch (program) {
   KeymapProgram.tvpaint => ShortcutPreset.tvpaint,
   KeymapProgram.clipStudio => ShortcutPreset.clipStudio,
@@ -80,7 +149,7 @@ final class ProgramRow {
 /// A preset asks it with its own program's keys over the OTHER program's
 /// ([presetActivators], F-417); a program's shortcut file with the file's
 /// keys over what each action holds (I-107,
-/// `EditorShortcutBindings.importProgramKeys`).
+/// `EditorShortcutBindings.importShortcutFiles`).
 final class ProgramKeys {
   ProgramKeys(this.named)
     : _taken = {
@@ -169,40 +238,50 @@ ProgramKeys _shippedOf(Map<String, ProgramRow> rows) => ProgramKeys({
     if (row.keys.isNotEmpty) actionId: row.keys,
 });
 
-/// The keys [file] gives each action of its program's table: every key on
-/// the row's commands, once, in the row's order — and an action whose
-/// commands it gives none is not here.
-Map<String, List<SingleActivator>> fileKeysOf(ProgramKeymap file) => {
-  for (final MapEntry(key: actionId, value: row)
-      in presetRows(presetOf(file.program)).entries)
-    if (_chordsOf(row, file) case final chords when chords.isNotEmpty)
-      actionId: [
-        for (final chord in chords)
-          SingleActivator(
-            chord.key,
-            control: chord.control,
-            shift: chord.shift,
-            alt: chord.alt,
-          ),
-      ],
-};
+/// The keys [files] give each action of their program's table: every key on
+/// the row's commands, once, in the files' order and then the row's — and
+/// an action whose commands they give none is not here.
+Map<String, List<SingleActivator>> fileKeysOf(Iterable<ProgramKeymap> files) {
+  final chordsByAction = <String, Set<ProgramChord>>{};
+  for (final file in files) {
+    for (final MapEntry(key: actionId, value: row)
+        in presetRows(presetOf(file.program)).entries) {
+      chordsByAction.putIfAbsent(actionId, () => {}).addAll([
+        for (final command in row.commands) ...?file.keys[command],
+      ]);
+    }
+  }
+  return {
+    for (final MapEntry(key: actionId, value: chords)
+        in chordsByAction.entries)
+      if (chords.isNotEmpty)
+        actionId: [
+          for (final chord in chords)
+            SingleActivator(
+              chord.key,
+              control: chord.control,
+              shift: chord.shift,
+              alt: chord.alt,
+            ),
+        ],
+  };
+}
 
-Set<ProgramChord> _chordsOf(ProgramRow row, ProgramKeymap file) => {
-  for (final command in row.commands) ...?file.keys[command],
-};
-
-/// How many of [file]'s keys an action takes, and how many none does: a key
+/// How many of [files]' keys an action takes, and how many none does: a key
 /// on a command the app has no action for, or one that is no key here.
-({int taken, int skipped}) countFileKeys(ProgramKeymap file) {
-  final rows = presetRows(presetOf(file.program)).values;
-  final commands = {for (final row in rows) ...row.commands};
+({int taken, int skipped}) countFileKeys(Iterable<ProgramKeymap> files) {
   var taken = 0;
-  var skipped = file.unread;
-  for (final MapEntry(key: command, value: chords) in file.keys.entries) {
-    if (commands.contains(command)) {
-      taken += chords.length;
-    } else {
-      skipped += chords.length;
+  var skipped = 0;
+  for (final file in files) {
+    final rows = presetRows(presetOf(file.program)).values;
+    final commands = {for (final row in rows) ...row.commands};
+    skipped += file.unread;
+    for (final MapEntry(key: command, value: chords) in file.keys.entries) {
+      if (commands.contains(command)) {
+        taken += chords.length;
+      } else {
+        skipped += chords.length;
+      }
     }
   }
   return (taken: taken, skipped: skipped);

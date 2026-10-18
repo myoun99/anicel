@@ -4,8 +4,10 @@ import '../../services/persistence/app_support_path.dart';
 import 'shortcut_presets.dart';
 
 /// Loads and saves the user's shortcut settings: the preset in use, the keys
-/// recorded under each preset ({preset: {actionId: [activator json]}}) and
-/// the touch gestures. Editor/app state like the workspace layout: an
+/// recorded under each preset ({preset: {actionId: [activator json]}}), the
+/// presets the user made (I-107: [{id, name, base, keys}] — a build before
+/// them passes the list over) and the touch gestures. Editor/app state like
+/// the workspace layout: an
 /// app-support JSON file; missing or corrupt files simply yield no overrides
 /// (the registry defaults win).
 class ShortcutSettingsStore {

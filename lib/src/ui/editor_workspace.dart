@@ -2207,8 +2207,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return _fonts.noticeOf(outcome) ??
           (family == null ? null : AppText.strings.fontBrought(family));
     },
-    bringShortcuts: (name, bytes) async =>
-        EditorShortcutScope.peek(context)?.importShortcutFile(name, bytes),
+    bringShortcuts: (files) async =>
+        EditorShortcutScope.peek(context)?.importShortcutFiles(files) ??
+        const [],
   );
 
   /// The top strip's 「파일 열기…」 — and the media panel's ＋, which

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +8,9 @@ import '../../models/brush_group.dart';
 import '../../services/input/modifier_keys.dart';
 import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart';
+import '../dialogs/app_confirm_dialog.dart';
+import '../dialogs/app_prompt_dialog.dart';
+import '../dialogs/dialog_verb.dart';
 import '../input/control_press_claim.dart'
     show ControlPressClaim, silentPress;
 import '../timeline/layer_label_controls.dart' show layerLaneToggleSlotWidth;
@@ -354,10 +359,96 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     ),
   );
 
-  /// A preset's name in the program language — the app's own name in every
-  /// one.
-  static String _presetName(ShortcutPreset preset) =>
-      AppText.strings.shortcutPresetName(preset.name, preset.label);
+  /// A preset's name: one the app ships in the program language — the app's
+  /// own name in every one — and the user's as it was given.
+  static String _presetName(ShortcutLayout preset) => switch (preset) {
+    ShortcutPreset() => AppText.strings.shortcutPresetName(
+      preset.name,
+      preset.label,
+    ),
+    UserShortcutPreset(:final name) => name,
+  };
+
+  /// The presets, as they are when the list OPENS: the three the app ships,
+  /// then the user's own, each with its delete.
+  ///
+  /// 🗣️I-107-Q1 (유저 2026-10-18): 「프리셋 리스트 추가/삭제 가능하게해서
+  /// 사용자 입맛대로 추가해서 설정가능하고」 — in the font list's shape: the
+  /// ＋ on the heading, a delete at the end of each row that can go.
+  List<PanelFlyoutEntry> _presets(BuildContext context) {
+    final bindings = widget.bindings;
+    final strings = AppText.strings;
+    return [
+      PanelFlyoutHeader(
+        strings.shortcutPresets,
+        action: PanelFlyoutRowAction(
+          keyValue: 'shortcut-preset-add',
+          icon: Icons.add,
+          tooltip: strings.shortcutPresetNew,
+          does: PanelFlyoutActionDoes.adds,
+          onPressed: () => unawaited(_addPreset(context)),
+        ),
+      ),
+      ...<ShortcutLayout>[...ShortcutPreset.values].asFlyoutValueChoices(
+        current: bindings.preset,
+        choiceOf: (preset) => PanelFlyoutChoice(
+          key: 'shortcut-preset-${preset.id}',
+          label: _presetName(preset),
+        ),
+        onPicked: bindings.setPreset,
+      ),
+      if (bindings.userPresets.isNotEmpty) const PanelFlyoutDivider(),
+      for (final preset in bindings.userPresets)
+        PanelFlyoutItem(
+          keyValue: 'shortcut-preset-${preset.id}',
+          label: preset.name,
+          selected: preset == bindings.preset,
+          onSelected: () => bindings.setPreset(preset),
+          action: PanelFlyoutRowAction(
+            keyValue: 'shortcut-preset-${preset.id}-delete',
+            icon: Icons.delete_outline,
+            tooltip: strings.shortcutPresetDelete,
+            does: PanelFlyoutActionDoes.deletes,
+            onPressed: () => unawaited(_deletePreset(context, preset)),
+          ),
+        ),
+    ];
+  }
+
+  /// The ＋: the layout in use, copied into a preset named as the user says.
+  Future<void> _addPreset(BuildContext context) => askThenCommit<String>(
+    context,
+    dialog: (_) => AppPromptDialog.keyed(
+      keyPrefix: 'shortcut-preset-new',
+      title: AppText.strings.shortcutPresetNew,
+      titleIcon: Icons.add,
+      fieldLabel: AppText.strings.commonNameField,
+      initialValue: '',
+      confirmLabel: AppText.strings.commonSave,
+      emptyError: AppText.strings.shortcutPresetNameEmpty,
+    ),
+    commit: widget.bindings.addPreset,
+  );
+
+  /// A preset of the user's deleted, once the user says so — it holds a
+  /// whole layout of keys.
+  Future<void> _deletePreset(
+    BuildContext context,
+    UserShortcutPreset preset,
+  ) => confirmThenCommit(
+    context,
+    dialog: (context) => confirmWindow(
+      context,
+      ConfirmQuestion(
+        keys: confirmDialogKeys('shortcut-preset-delete'),
+        title: AppText.strings.shortcutPresetDelete,
+        titleIcon: Icons.delete_outline,
+        message: AppText.strings.shortcutPresetDeleteBody(preset.name),
+      ),
+      accept: ConfirmChoice(AppText.strings.commonDelete),
+    ),
+    commit: () => widget.bindings.deletePreset(preset),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -393,12 +484,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 child: PanelFlyoutButton(
                   key: const ValueKey<String>('shortcut-preset'),
                   label: _presetName(bindings.preset),
-                  entriesBuilder: () => ShortcutPreset.values.asFlyoutChoices(
-                    current: bindings.preset,
-                    keyPrefix: 'shortcut-preset-',
-                    labelOf: _presetName,
-                    onPicked: bindings.setPreset,
-                  ),
+                  entriesBuilder: () => _presets(context),
                 ),
               ),
               const SizedBox(height: 8),
