@@ -169,6 +169,7 @@ void main() {
       'align',
       'box-width',
       'line-height',
+      'letter-width',
       'background',
       // 유저 2026-10-06: at the foot of the settings.
       'into-drawing',
@@ -207,6 +208,7 @@ void main() {
           ),
           align: TextCelAlign.center,
           lineHeight: 1.5,
+          letterWidth: 0.8,
         ),
       );
 
@@ -229,6 +231,7 @@ void main() {
       expect(pill(tester, 'align-center').selected, isTrue);
       expect(pill(tester, 'align-left').selected, isFalse);
       expect(written('line-height', '150%'), findsOneWidget);
+      expect(written('letter-width', '80%'), findsOneWidget);
       expect(swatch(tester, 'background').color, isNull);
     });
 
@@ -854,6 +857,28 @@ void main() {
       expect(written('line-height', '250%'), findsOneWidget);
     });
 
+    testWidgets('🗣️the letters\' width (장평, text-letters-lean-and-underline '
+        '⑥) reads as a share of their own, and a press on its bar sets it', (
+      tester,
+    ) async {
+      final hand = await pumpSettings(tester, text: said([run('ab')]));
+
+      expect(written('letter-width', '100%'), findsOneWidget);
+
+      // Half the way along its track — the bar less the hands at its end.
+      final width = tester.getRect(row('letter-width'));
+      await tester.tapAt(
+        width.centerLeft +
+            Offset((width.width - FieldSlider.handsReach) * 0.5, 0),
+      );
+      await tester.pump();
+
+      // From 10% to 400%: halfway is 205%.
+      expect(landedOn(hand.cel).letterWidth, closeTo(2.05, 1e-9));
+      expect(hand.host.ran, hasLength(1));
+      expect(written('letter-width', '205%'), findsOneWidget);
+    });
+
     testWidgets('🚨the delete beside its name takes the text off its cel', (
       tester,
     ) async {
@@ -1188,6 +1213,11 @@ void main() {
       (line.min, line.max, line.divisions, line.displayScale, line.unit),
       (0.5, 3.0, 50, 100.0, '%'),
     );
+    final width = bar(tester, 'letter-width');
+    expect(
+      (width.min, width.max, width.divisions, width.displayScale, width.unit),
+      (0.1, 4.0, 390, 100.0, '%'),
+    );
   });
 
   testWidgets('🚨in the tool settings PANEL the colour window\'s 「현재 색 '
@@ -1247,6 +1277,7 @@ void main() {
     expect(written('size', '48.0 px'), findsOneWidget);
     expect(bar(tester, 'size').onChanged, isNull);
     expect(bar(tester, 'line-height').onChanged, isNull);
+    expect(bar(tester, 'letter-width').onChanged, isNull);
     expect(pill(tester, 'align-left').onTap, isNull);
     expect(pill(tester, 'writing-columns').onTap, isNull);
     expect(tester.widget<PanelFlyoutButton>(row('font')).enabled, isFalse);

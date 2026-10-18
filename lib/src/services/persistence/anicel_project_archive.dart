@@ -65,6 +65,15 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v24 (2026-10-18, text-letters-lean-and-underline ⑥ — Q1 「일곱 전부」):
+/// a text says how wide its letters are drawn (`CelTextContent
+/// .letterWidth`, written only where it is not 1). A v23 build reads the
+/// text without it: it opens the letters at their own width, and the
+/// first edit bakes them so and writes the text back without it — and
+/// nothing said. The bump turns that into a refusal; no older shape was
+/// read for it, and the floor stays where it is: a text that says none is
+/// drawn at its letters' own width at this version too.
+///
 /// v23 (2026-10-18, text-letters-lean-and-underline — 유저 10-17 「기울임/밑줄
 /// 같은것도 어차피 넣어야할 기능이니까 넣도록」): a letter says whether it
 /// leans and whether a line runs under it or through it
@@ -359,7 +368,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 23;
+const int anicelFormatVersion = 24;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

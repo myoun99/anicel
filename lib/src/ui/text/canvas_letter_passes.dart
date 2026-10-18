@@ -269,29 +269,40 @@ class CanvasLetterPasses<T extends Object> {
   /// draws its own over a run. [within] holds everything they can draw, in
   /// the canvas's own space: the hard letters are cut just past it
   /// ([_drawHard]).
+  ///
+  /// [letterWidth] draws the letters and their lines that many times as
+  /// wide about the frame's x = 0 (`CelTextContent.letterWidth`) — INSIDE
+  /// each pass, under the hard ones' cut: [within] is still the canvas's
+  /// own space, so a hard pass is cut as far past its letters, in the
+  /// canvas's pixels, at every width.
   void paint(
     ui.Canvas canvas, {
     required ui.Rect within,
     required void Function(T set) draw,
     CanvasLetterLines lines = CanvasLetterLines.none,
+    double letterWidth = 1,
   }) {
+    void drawIn(T set, CanvasLetterPass pass) {
+      canvas
+        ..save()
+        ..scale(letterWidth, 1);
+      draw(set);
+      lines.paintIn(canvas, pass);
+      canvas.restore();
+    }
+
     void hard(_HardPass<T> pass) => _drawHard(
       canvas,
       pass.argb,
       within: within,
-      cover: () {
-        draw(pass.cover);
-        lines.paintIn(canvas, pass.pass);
-      },
+      cover: () => drawIn(pass.cover, pass.pass),
     );
     final stroke = _stroke;
     if (stroke != null) {
-      draw(stroke);
-      lines.paintIn(canvas, _outlinePass);
+      drawIn(stroke, _outlinePass);
     }
     _hardStrokes.forEach(hard);
-    draw(fill);
-    lines.paintIn(canvas, _fillPass);
+    drawIn(fill, _fillPass);
     _hardFills.forEach(hard);
   }
 
@@ -323,17 +334,20 @@ CanvasLetterPasses<TextPainter> canvasLetterPainterPasses(
 /// Drawing the passes of a text whose every setting is one painter.
 extension CanvasLetterPainterPasses on CanvasLetterPasses<TextPainter> {
   /// Draws the letters with their box's corner at [at] ([paint]) — and
-  /// [lines], which stand where the letters are drawn.
+  /// [lines], which stand where the letters are drawn — [letterWidth] times
+  /// as wide as they are set.
   void paintAt(
     ui.Canvas canvas,
     ui.Offset at, {
     required ui.Rect within,
     CanvasLetterLines lines = CanvasLetterLines.none,
+    double letterWidth = 1,
   }) => paint(
     canvas,
     within: within,
     draw: (painter) => painter.paint(canvas, at),
     lines: lines,
+    letterWidth: letterWidth,
   );
 }
 

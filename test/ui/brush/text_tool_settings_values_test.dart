@@ -34,6 +34,7 @@ void main() {
     double? wrapWidth,
     TextCelAlign align = TextCelAlign.left,
     double lineHeight = CelTextContent.defaultLineHeight,
+    double letterWidth = 1,
     int? background,
     double turned = 0,
   }) => CelTextContent(
@@ -42,6 +43,7 @@ void main() {
     wrapWidth: wrapWidth,
     align: align,
     lineHeight: lineHeight,
+    letterWidth: letterWidth,
     backgroundColor: background,
     rotationDegrees: turned,
   );
@@ -87,6 +89,7 @@ void main() {
               letters: red,
               align: TextCelAlign.right,
               lineHeight: 2,
+              letterWidth: 0.6,
               backgroundColor: 0xFF00FF00,
             ),
           );
@@ -97,6 +100,7 @@ void main() {
       ));
       expect(values.align, TextCelAlign.right);
       expect(values.lineHeight, 2);
+      expect(values.letterWidth, 0.6);
       expect(values.backgroundColor, 0xFF00FF00);
     });
 
@@ -107,11 +111,13 @@ void main() {
         ..setLetters((style) => style.copyWith(fontSize: 30))
         ..setAlign(TextCelAlign.center)
         ..setLineHeight(1.5)
+        ..setLetterWidth(1.4)
         ..setBackgroundColor(0xFF112233);
 
       expect(options.value.letters(brushColour: null).fontSize, 30);
       expect(options.value.align, TextCelAlign.center);
       expect(options.value.lineHeight, 1.5);
+      expect(options.value.letterWidth, 1.4);
       expect(options.value.backgroundColor, 0xFF112233);
       expect(host.ran, isEmpty);
     });
@@ -140,6 +146,7 @@ void main() {
               [run('ab', large)],
               align: TextCelAlign.center,
               lineHeight: 2,
+              letterWidth: 0.7,
             ),
             next: const TextToolOptions(
               letters: plain,
@@ -153,6 +160,7 @@ void main() {
       ));
       expect(values.align, TextCelAlign.center);
       expect(values.lineHeight, 2);
+      expect(values.letterWidth, 0.7);
       // ⚠️None is a VALUE: this text has no box behind it, and the next
       // text's green is not shown in its place.
       expect(values.backgroundColor, isNull);
@@ -357,6 +365,25 @@ void main() {
       values.setLineHeight(1.75, settled: false);
 
       expect(options.value.lineHeight, 1.75);
+    });
+
+    test('the letters\' width dragged is the next text\'s as it goes, and '
+        'lands on the text only once it comes to rest', () async {
+      final (:values, :options, tool: _, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+
+      values.setLetterWidth(0.5, settled: false);
+      await baker.pending.answer();
+
+      expect(options.value.letterWidth, 0.5);
+      expect(host.ran, isEmpty);
+      expect(landed(cel).letterWidth, 1);
+
+      values.setLetterWidth(0.5);
+
+      expect(host.ran, hasLength(1));
+      expect(landed(cel).letterWidth, 0.5);
     });
   });
 

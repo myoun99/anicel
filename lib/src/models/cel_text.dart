@@ -51,6 +51,7 @@ class CelTextContent {
     this.rotationDegrees = 0,
     this.align = TextCelAlign.left,
     this.lineHeight = defaultLineHeight,
+    this.letterWidth = 1,
     this.backgroundColor,
     this.vertical = false,
   }) : spans = List.unmodifiable(_settled(spans)) {
@@ -61,6 +62,7 @@ class CelTextContent {
     _requireLength(wrapWidth, 'wrapWidth');
     _requireLength(minHeight, 'minHeight');
     _requireLength(lineHeight, 'lineHeight');
+    _requireLength(letterWidth, 'letterWidth');
     if (minHeight != null && wrapWidth == null) {
       throw ArgumentError.value(
         minHeight,
@@ -139,6 +141,17 @@ class CelTextContent {
   final TextCelAlign align;
   final double lineHeight;
 
+  /// How wide the letters are drawn, as a share of their own width (장평):
+  /// 1 for as their face draws them. Only their width changes — not how
+  /// tall they are, nor how far apart their lines are.
+  ///
+  /// ⏳Written in columns ([vertical]), whether the columns close up with
+  /// the letters is text-letters-lean-and-underline-Q3's to say.
+  ///
+  /// 🗣️Q1 (유저 2026-10-17, 「일곱 전부」) of what a CLIP STUDIO text loses
+  /// once edited: ⑥ 「글자 폭(%) — 클튜처럼 글 전체에 하나(상자의 값)」.
+  final double letterWidth;
+
   /// The box filled behind the letters, ARGB; null for none.
   final int? backgroundColor;
 
@@ -187,6 +200,7 @@ class CelTextContent {
     double? rotationDegrees,
     TextCelAlign? align,
     double? lineHeight,
+    double? letterWidth,
     Object? backgroundColor = _sentinel,
     bool? vertical,
   }) => CelTextContent(
@@ -203,6 +217,7 @@ class CelTextContent {
     rotationDegrees: rotationDegrees ?? this.rotationDegrees,
     align: align ?? this.align,
     lineHeight: lineHeight ?? this.lineHeight,
+    letterWidth: letterWidth ?? this.letterWidth,
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
         : backgroundColor as int?,
@@ -217,6 +232,7 @@ class CelTextContent {
     if (rotationDegrees != 0) 'rotationDegrees': rotationDegrees,
     'align': align.jsonValue,
     'lineHeight': lineHeight,
+    if (letterWidth != 1) 'letterWidth': letterWidth,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
     if (vertical) 'vertical': vertical,
   };
@@ -232,6 +248,7 @@ class CelTextContent {
     rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ?? 0,
     align: TextCelAlign.fromJson(json['align'] as String?),
     lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? defaultLineHeight,
+    letterWidth: (json['letterWidth'] as num?)?.toDouble() ?? 1,
     backgroundColor: json['backgroundColor'] as int?,
     vertical: json['vertical'] as bool? ?? false,
   );
@@ -247,6 +264,7 @@ class CelTextContent {
           other.rotationDegrees == rotationDegrees &&
           other.align == align &&
           other.lineHeight == lineHeight &&
+          other.letterWidth == letterWidth &&
           other.backgroundColor == backgroundColor &&
           other.vertical == vertical;
 
@@ -259,6 +277,7 @@ class CelTextContent {
     rotationDegrees,
     align,
     lineHeight,
+    letterWidth,
     backgroundColor,
     vertical,
   );

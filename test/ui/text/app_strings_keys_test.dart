@@ -684,6 +684,7 @@ void main() {
     'textToolWidthAuto': (s) => s.textToolWidthAuto,
     'textToolWidthFixed': (s) => s.textToolWidthFixed,
     'textToolLineHeight': (s) => s.textToolLineHeight,
+    'textToolLetterWidth': (s) => s.textToolLetterWidth,
     'textToolBackground': (s) => s.textToolBackground,
     'textToolIntoDrawing': (s) => s.textToolIntoDrawing,
     'textToolWriting': (s) => s.textToolWriting,

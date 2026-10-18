@@ -77,6 +77,7 @@ void main() {
       'the turn': base.copyWith(rotationDegrees: 30),
       'the alignment': base.copyWith(align: TextCelAlign.right),
       'the line height': base.copyWith(lineHeight: 2),
+      'the letters\' width': base.copyWith(letterWidth: 0.75),
       'the box behind it': base.copyWith(backgroundColor: 0xFFFFFF00),
       'the way it is written': base.copyWith(vertical: true),
     };
@@ -102,6 +103,18 @@ void main() {
       expect(base.vertical, isFalse);
       expect(base.toJson().containsKey('vertical'), isFalse);
       expect(base.copyWith(vertical: true).toJson()['vertical'], isTrue);
+    });
+
+    test('🚨letters at their own width write NO word of it: what a file '
+        'written before they could be drawn narrower says is letters at '
+        'their own width', () {
+      expect(base.letterWidth, 1);
+      expect(base.toJson().containsKey('letterWidth'), isFalse);
+      final narrow = base.copyWith(letterWidth: 0.75);
+      expect(narrow.toJson()['letterWidth'], 0.75);
+      expect(narrow.hashCode, isNot(base.hashCode));
+      expect(narrow.copyWith(lineHeight: 2).letterWidth, 0.75);
+      expect(narrow.copyWith(letterWidth: 1), base);
     });
 
     test('a text in columns stays one through a change of anything else, '
@@ -157,9 +170,9 @@ void main() {
       );
     });
 
-    test('🚨a box of no width, a pitch of nothing and a turn that is not a '
-        'number are refused where the content is MADE — not set, baked and '
-        'kept', () {
+    test('🚨a box of no width, a pitch of nothing, letters of no width and a '
+        'turn that is not a number are refused where the content is MADE — '
+        'not set, baked and kept', () {
       for (final width in [0.0, -1.0, double.infinity, double.nan]) {
         expect(
           () => base.copyWith(wrapWidth: width),
@@ -188,9 +201,17 @@ void main() {
           reason: 'turned by $turn',
         );
       }
+      for (final width in [0.0, -1.0, double.infinity, double.nan]) {
+        expect(
+          () => base.copyWith(letterWidth: width),
+          throwsArgumentError,
+          reason: 'letters $width as wide as they are',
+        );
+      }
       expect(base.copyWith(wrapWidth: 0.5).wrapWidth, 0.5);
       expect(base.copyWith(wrapWidth: 1, minHeight: 0.5).minHeight, 0.5);
       expect(base.copyWith(lineHeight: 0.5).lineHeight, 0.5);
+      expect(base.copyWith(letterWidth: 0.1).letterWidth, 0.1);
       expect(base.copyWith(rotationDegrees: -725).rotationDegrees, -725);
     });
   });

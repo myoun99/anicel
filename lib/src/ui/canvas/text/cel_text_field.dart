@@ -92,10 +92,11 @@ class CelTextField extends StatelessWidget {
   );
 
   /// The field itself, its letters set as the canvas sets them: the very
-  /// spans, no strut, and for a box the box's own width.
+  /// spans, no strut, and for a box the width the canvas sets its lines at
+  /// ([celTextSetWidth]).
   Widget _field() {
     final content = letters.content;
-    final wrapWidth = content.wrapWidth;
+    final wrapWidth = celTextSetWidth(content);
     final field = EditableText(
       key: const ValueKey<String>('cel-text-field'),
       controller: letters,
@@ -143,8 +144,9 @@ class CelTextField extends StatelessWidget {
   }
 
   /// The text's own frame — its letters' block — on the panel: from the
-  /// block's top left corner along its lines, or — in columns — from its
-  /// top right corner down them.
+  /// block's top left corner along its lines, as wide as their letters are
+  /// drawn ([CelTextContent.letterWidth]), or — in columns — from its top
+  /// right corner down them.
   Matrix4 get _frame {
     final content = letters.content;
     final frame = stage.artworkOnPanel
@@ -155,7 +157,9 @@ class CelTextField extends StatelessWidget {
         ..translateByDouble(shown.block.right, shown.block.top, 0, 1)
         ..rotateZ(math.pi / 2);
     }
-    return frame..translateByDouble(shown.block.left, shown.block.top, 0, 1);
+    return frame
+      ..translateByDouble(shown.block.left, shown.block.top, 0, 1)
+      ..scaleByDouble(content.letterWidth, 1, 1, 1);
   }
 
   static void _keepTheKeyboard(PointerEvent event) {}

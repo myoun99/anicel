@@ -11,24 +11,29 @@ class _LinesSetting implements _TextSetting {
     CanvasLetterPasses<TextPainter> letters,
   ) => _LinesSetting._(content, letters, _blockOf(content, letters.fill));
 
-  _LinesSetting._(this._content, this._letters, this.block)
-    : _lettersAt = block.topLeft - _roomBeforeBlock(_content);
+  _LinesSetting._(this._content, this._letters, ui.Rect set)
+    : block = _drawnRect(set, _content.letterWidth),
+      _lettersAt = set.topLeft - _roomBeforeBlock(_content);
 
   final CelTextContent _content;
 
   /// The letters, set for drawing — stroke under fill, smooth or hard.
   final CanvasLetterPasses<TextPainter> _letters;
 
-  /// The lines' block: as wide as the longest line — or as the box, for a
-  /// text that wraps — and as tall as its lines.
+  /// The lines' block as they are drawn: as wide as the longest line — or
+  /// as the box, for a text that wraps — and as tall as its lines.
   @override
   final ui.Rect block;
 
-  /// Where the engine's own box of the letters stands in the text's frame.
-  /// It is the block's corner but for a text set with room to spare
-  /// ([_roomToAlign]), whose letters' box begins that room — or half of it
-  /// — before the block does.
+  /// Where the engine's own box of the letters stands as they are SET —
+  /// in the text's frame before they are drawn as wide as
+  /// [CelTextContent.letterWidth] says ([_drawnRect]). It is the block's
+  /// corner but for a text set with room to spare ([_roomToAlign]), whose
+  /// letters' box begins that room — or half of it — before the block does.
   final ui.Offset _lettersAt;
+
+  /// How wide the letters are drawn, as a share of how they are set.
+  double get _width => _content.letterWidth;
 
   /// The letters as the engine sets them: what the caret, a selection and a
   /// press are measured on.
@@ -46,18 +51,26 @@ class _LinesSetting implements _TextSetting {
       _letters.paintBoxBehind(canvas, box, argb);
 
   @override
-  void paint(ui.Canvas canvas, {required ui.Rect within}) =>
-      _letters.paintAt(canvas, _lettersAt, within: within, lines: _lines);
+  void paint(ui.Canvas canvas, {required ui.Rect within}) => _letters.paintAt(
+    canvas,
+    _lettersAt,
+    within: within,
+    lines: _lines,
+    letterWidth: _width,
+  );
 
   /// A hairline as tall as its line.
   @override
   ui.Rect caretRect(TextPosition position) {
     final at = _lettersAt + _fill.getOffsetForCaret(position, ui.Rect.zero);
-    return ui.Rect.fromLTWH(
-      at.dx,
-      at.dy,
-      0,
-      _fill.getFullHeightForCaret(position, ui.Rect.zero),
+    return _drawnRect(
+      ui.Rect.fromLTWH(
+        at.dx,
+        at.dy,
+        0,
+        _fill.getFullHeightForCaret(position, ui.Rect.zero),
+      ),
+      _width,
     );
   }
 
@@ -68,7 +81,7 @@ class _LinesSetting implements _TextSetting {
       TextSelection(baseOffset: start, extentOffset: end),
       boxHeightStyle: ui.BoxHeightStyle.max,
     ))
-      box.toRect().shift(_lettersAt),
+      _drawnRect(box.toRect().shift(_lettersAt), _width),
   ];
 
   /// Under the letters, as a field underlines what is being composed.
@@ -79,8 +92,9 @@ class _LinesSetting implements _TextSetting {
   ];
 
   @override
-  TextPosition positionAt(ui.Offset local) =>
-      _fill.getPositionForOffset(local - _lettersAt);
+  TextPosition positionAt(ui.Offset local) => _fill.getPositionForOffset(
+    ui.Offset(local.dx / _width, local.dy) - _lettersAt,
+  );
 
   /// 🔬Measured 2026-10-06: a line that wraps at a space takes the space
   /// with it, hanging past its end, and the next line begins after it.
@@ -148,7 +162,7 @@ TextPainter _painterOf(
   TextLetterStyle nextLetterStyle,
   TextStyle Function(TextLetterStyle letters) styleOf,
 ) {
-  final wrapWidth = content.wrapWidth;
+  final wrapWidth = celTextSetWidth(content);
   final painter = TextPainter(
     text: _spanOf(
       content,
@@ -215,7 +229,18 @@ ui.Offset _roomBeforeBlock(CelTextContent content) => ui.Offset(
   0,
 );
 
-/// The lines' block in the text's own frame, [fill] being its letters set:
+/// [rect], of letters as the engine SETS them, as they are DRAWN in the
+/// text's own frame: [letterWidth] times as wide about its x = 0
+/// ([CelTextContent.letterWidth]) — the anchor a text that grows is set
+/// about, the left edge of a box.
+ui.Rect _drawnRect(ui.Rect rect, double letterWidth) => ui.Rect.fromLTRB(
+  rect.left * letterWidth,
+  rect.top,
+  rect.right * letterWidth,
+  rect.bottom,
+);
+
+/// The lines' block as the engine sets them, [fill] being its letters set:
 /// a growing text stands ABOUT its anchor, a box hangs from it.
 ui.Rect _blockOf(CelTextContent content, TextPainter fill) {
   if (content.wrapWidth != null) {

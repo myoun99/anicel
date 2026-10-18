@@ -732,6 +732,19 @@ class _RectsCanvas implements ui.Canvas {
   @override
   void drawRect(ui.Rect rect, ui.Paint paint) => rects.add(rect);
 
+  // Each pass is drawn as narrow as its letters are (장평) — here, as their
+  // face draws them: no turn of the canvas at all, so a rect kept is where
+  // it falls.
+  @override
+  void save() {}
+
+  @override
+  void scale(double sx, [double? sy]) =>
+      expect((sx, sy), (1.0, 1.0), reason: 'letters at their own width');
+
+  @override
+  void restore() {}
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

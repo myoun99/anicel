@@ -37,6 +37,7 @@ void main() {
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
     bool vertical = false,
+    double letterWidth = 1,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: x, y: y),
@@ -45,6 +46,7 @@ void main() {
     align: align,
     lineHeight: 1,
     vertical: vertical,
+    letterWidth: letterWidth,
   );
 
   CelTextSpan run(String words, [TextLetterStyle style = small]) =>
@@ -138,6 +140,43 @@ void main() {
 
     expect(layout.block.height, 16, reason: '⛔fixture: two lines');
     expect(field.size.height, layout.block.height);
+  });
+
+  testWidgets('🚨a box of letters drawn at HALF their width breaks its lines '
+      'where the canvas breaks them: it holds twice as many a line '
+      '(text-letters-lean-and-underline ⑥)', (tester) async {
+    // 「abcd」 is 32 wide at its own width, 16 at half of it: one line in a
+    // box 16 wide — where at its own width it is two.
+    final (:field, :layout, log: _) = await pumpField(
+      tester,
+      said([run('abcd')], wrapWidth: 16, letterWidth: 0.5),
+    );
+
+    expect(layout.block.height, 8, reason: '⛔fixture: one line');
+    expect(field.size.height, layout.block.height);
+  });
+
+  testWidgets('a letter of a text drawn at half its width is half as wide on '
+      'the panel: the IME composes beside the caret the canvas shows', (
+    tester,
+  ) async {
+    final (:field, layout: _, log: _) = await pumpField(
+      tester,
+      said([run('ab')], x: 6, y: 9, letterWidth: 0.5),
+    );
+
+    final origin = MatrixUtils.transformPoint(
+      field.getTransformTo(null),
+      Offset.zero,
+    );
+    expect(origin.dx, closeTo(6 * 2 + 10, 1e-9));
+    // 「ab」 is set 16 wide and drawn 8: sixteen screen pixels at a zoom of
+    // two.
+    final right = MatrixUtils.transformPoint(
+      field.getTransformTo(null),
+      const Offset(16, 0),
+    );
+    expect(right.dx - origin.dx, closeTo(16, 1e-9));
   });
 
   testWidgets('a text that grows is not forced to the width it is given: '

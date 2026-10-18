@@ -105,6 +105,8 @@ class TextToolSettingsValues {
 
   double get lineHeight => _inHand?.lineHeight ?? _next.lineHeight;
 
+  double get letterWidth => _inHand?.letterWidth ?? _next.letterWidth;
+
   /// The colour of the box behind the letters — null for none, which is a
   /// value: a text in hand with no box shows none whatever the next text's
   /// is.
@@ -142,6 +144,12 @@ class TextToolSettingsValues {
   void setLineHeight(double lineHeight, {bool settled = true}) => _setBox(
     onText: (text) => text.copyWith(lineHeight: lineHeight),
     onNext: (next) => next.copyWith(lineHeight: lineHeight),
+    settled: settled,
+  );
+
+  void setLetterWidth(double letterWidth, {bool settled = true}) => _setBox(
+    onText: (text) => text.copyWith(letterWidth: letterWidth),
+    onNext: (next) => next.copyWith(letterWidth: letterWidth),
     settled: settled,
   );
 

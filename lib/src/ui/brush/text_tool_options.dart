@@ -24,6 +24,7 @@ class TextToolOptions {
     this.takesTheBrushColour = false,
     this.align = TextCelAlign.left,
     this.lineHeight = CelTextContent.defaultLineHeight,
+    this.letterWidth = 1,
     this.backgroundColor,
     this.vertical = false,
   }) : _letters = letters;
@@ -54,6 +55,9 @@ class TextToolOptions {
 
   /// A line's pitch, as a multiple of its letters' size.
   final double lineHeight;
+
+  /// How wide the next text's letters are drawn ([CelTextContent.letterWidth]).
+  final double letterWidth;
 
   /// The box filled behind the next text, ARGB; null for none.
   final int? backgroundColor;
@@ -98,6 +102,7 @@ class TextToolOptions {
     takesTheBrushColour: takesTheBrushColour,
     align: align,
     lineHeight: lineHeight,
+    letterWidth: letterWidth,
     backgroundColor: backgroundColor,
     vertical: vertical,
   );
@@ -116,6 +121,7 @@ class TextToolOptions {
     minHeight: minHeight,
     align: align,
     lineHeight: lineHeight,
+    letterWidth: letterWidth,
     backgroundColor: backgroundColor,
     vertical: vertical,
   );
@@ -124,6 +130,7 @@ class TextToolOptions {
   TextToolOptions copyWith({
     TextCelAlign? align,
     double? lineHeight,
+    double? letterWidth,
     Object? backgroundColor = _sentinel,
     bool? vertical,
   }) => TextToolOptions(
@@ -131,6 +138,7 @@ class TextToolOptions {
     takesTheBrushColour: takesTheBrushColour,
     align: align ?? this.align,
     lineHeight: lineHeight ?? this.lineHeight,
+    letterWidth: letterWidth ?? this.letterWidth,
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
         : backgroundColor as int?,
@@ -145,6 +153,7 @@ class TextToolOptions {
           other.takesTheBrushColour == takesTheBrushColour &&
           other.align == align &&
           other.lineHeight == lineHeight &&
+          other.letterWidth == letterWidth &&
           other.backgroundColor == backgroundColor &&
           other.vertical == vertical;
 
@@ -154,6 +163,7 @@ class TextToolOptions {
     takesTheBrushColour,
     align,
     lineHeight,
+    letterWidth,
     backgroundColor,
     vertical,
   );

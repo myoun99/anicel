@@ -365,10 +365,15 @@ CelTextLayout layoutCelText(
   final pad = celTextBoxPad(largest);
   // Only a box behind the letters draws its room.
   final drawnPad = content.backgroundColor == null ? 0.0 : pad;
+  // A letter drawn wider reaches past its line's box as much farther.
+  final wider = math.max(1.0, content.letterWidth);
   return CelTextLayout._(
     content: content,
     pad: pad,
-    reach: drawnPad + _widestOutlineOf(letters) / 2 + largest * _glyphReach,
+    reach:
+        drawnPad +
+        _widestOutlineOf(letters) / 2 * wider +
+        largest * _glyphReach * wider,
     setting: content.vertical
         ? _ColumnsSetting(content, nextLetterStyle)
         : _linesOf(content, nextLetterStyle),
@@ -425,6 +430,18 @@ TextSpan celTextFieldSpan(
   _paragraphLettersOf(content, nextLetterStyle),
   (letters) => canvasLetterTextStyle(letters, lineHeight: content.lineHeight),
 );
+
+/// The width a box's lines are SET at: the box's, read before its letters
+/// are drawn as wide as [CelTextContent.letterWidth] says — so a box of
+/// narrower letters holds more of them a line — and null for a text that
+/// grows. Written in columns it is the box's own: how long a column runs,
+/// which the letters' width is across.
+double? celTextSetWidth(CelTextContent content) {
+  final wrapWidth = content.wrapWidth;
+  return wrapWidth == null || content.vertical
+      ? wrapWidth
+      : wrapWidth / content.letterWidth;
+}
 
 /// The letters the PARAGRAPH is set in — the style [content]'s runs are
 /// nested in. What no run sets is set by it: how tall a text with NO

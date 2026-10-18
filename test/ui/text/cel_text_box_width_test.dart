@@ -31,6 +31,7 @@ void main() {
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
     bool vertical = false,
+    double letterWidth = 1,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: x, y: y),
@@ -39,6 +40,7 @@ void main() {
     align: align,
     lineHeight: 1,
     vertical: vertical,
+    letterWidth: letterWidth,
   );
 
   CelTextSpan run(String words, [TextLetterStyle style = plain]) =>
@@ -452,6 +454,47 @@ void main() {
       expect(celTextWrittenAs(lines, vertical: false), same(lines));
       expect(celTextWrittenAs(columns, vertical: true), same(columns));
     });
+  });
+
+  // text-letters-lean-and-underline ⑥: the swap reads the letters where
+  // they are DRAWN, and a box's width is the width it shows.
+  group('🚨letters drawn narrower or wider: no swap moves one', () {
+    for (final width in [0.5, 1.5]) {
+      for (final align in TextCelAlign.values) {
+        final named = '${width * 100}%, ${align.name}';
+
+        test('a text that grows, made a box as wide as its lines are drawn '
+            '($named)', () {
+          // 「abcd」 is 80 wide set, and drawn that times [width].
+          final growing = said(
+            [run('abcd\nef')],
+            align: align,
+            letterWidth: width,
+          );
+
+          final boxed = celTextBoxed(growing);
+
+          expect(boxed.wrapWidth, (80 * width).floorToDouble() + 1);
+          expect(boxed.letterWidth, width);
+          expectSameLetters(growing, boxed);
+        });
+
+        test('a box made to grow: a break where a line wrapped ($named)', () {
+          // Set 70 wide, 「ab cd」 wraps after its space.
+          final box = said(
+            [run('ab cd')],
+            wrapWidth: 70 * width,
+            align: align,
+            letterWidth: width,
+          );
+
+          final growing = celTextUnboxed(box);
+
+          expect(growing.text, 'ab \ncd');
+          expectSameLetters(box, growing);
+        });
+      }
+    }
   });
 
   group('there and back', () {

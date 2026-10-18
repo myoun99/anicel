@@ -776,6 +776,12 @@ class _BoxRows extends StatelessWidget {
   static const double _loosest = 3;
   static const double _pitchStep = 0.05;
 
+  /// The letter widths set from here, as shares of the letters' own width,
+  /// and the step between two of them.
+  static const double _narrowest = 0.1;
+  static const double _widest = 4;
+  static const double _widthStep = 0.01;
+
   /// What a centring presses, button or key: the text in hand stood on the
   /// canvas's middle line [across] (or down), through the values as they
   /// stand at the press — nothing while none is in hand.
@@ -794,6 +800,7 @@ class _BoxRows extends StatelessWidget {
       _alignment(),
       _boxWidth(),
       _linePitch(),
+      _letterWidth(),
       _background(),
     ],
   );
@@ -997,6 +1004,29 @@ class _BoxRows extends StatelessWidget {
             ? (pitch) => reading.now.setLineHeight(pitch, settled: false)
             : null,
         onChangeEnd: (pitch) => reading.now.setLineHeight(pitch),
+      ),
+    ),
+  );
+
+  /// How wide the letters are drawn, read as a share of their own width
+  /// (장평).
+  Widget _letterWidth() => ToolSettingRow.bar(
+    label: AppText.strings.textToolLetterWidth,
+    bar: reading.follow(
+      (values) => (width: values.letterWidth, writable: values.writable),
+      (shown) => FieldSlider.cell(
+        key: const ValueKey<String>('text-tool-letter-width'),
+        label: AppText.strings.textToolLetterWidth,
+        min: _narrowest,
+        max: _widest,
+        divisions: ((_widest - _narrowest) / _widthStep).round(),
+        displayScale: 100,
+        unit: '%',
+        value: shown.width.clamp(_narrowest, _widest),
+        onChanged: shown.writable
+            ? (width) => reading.now.setLetterWidth(width, settled: false)
+            : null,
+        onChangeEnd: (width) => reading.now.setLetterWidth(width),
       ),
     ),
   );
