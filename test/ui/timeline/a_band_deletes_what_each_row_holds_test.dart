@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -11,17 +12,25 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
+    show StoryboardToolbarPanelContext;
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
+    show transformLaneKeyFrames;
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -47,11 +56,24 @@ const _b = LayerId('band-b');
 const _s1 = LayerId('band-s1');
 const _s2 = LayerId('band-s2');
 
-/// A row holding one three-frame block from frame 0.
-Layer _row(LayerId id, {LayerKind kind = LayerKind.animation}) => Layer(
+/// A row holding one three-frame block from frame 0 — and a Position key at
+/// each of [positionKeys].
+Layer _row(
+  LayerId id, {
+  LayerKind kind = LayerKind.animation,
+  List<int> positionKeys = const [],
+}) => Layer(
   id: id,
   name: id.value,
   kind: kind,
+  transformTrack: positionKeys.isEmpty
+      ? null
+      : TransformTrack.empty().copyWith(
+          position: positionKeys.fold<PropertyTrack<CanvasPoint>>(
+            PropertyTrack<CanvasPoint>.empty(),
+            (track, frame) => track.withKey(frame, CanvasPoint(x: 1, y: 1)),
+          ),
+        ),
   frames: [
     Frame(
       id: FrameId('${id.value}-f'),
@@ -65,7 +87,7 @@ Layer _row(LayerId id, {LayerKind kind = LayerKind.animation}) => Layer(
   },
 );
 
-Project _project() => Project(
+Project _project({List<int> aPositionKeys = const []}) => Project(
   id: const ProjectId('band-project'),
   name: 'Band',
   createdAt: DateTime.utc(2026, 10, 18),
@@ -79,12 +101,57 @@ Project _project() => Project(
           name: '1',
           duration: 12,
           canvasSize: const CanvasSize(width: 32, height: 32),
-          layers: [_row(_a), _row(_b)],
+          layers: [_row(_a, positionKeys: aPositionKeys), _row(_b)],
         ),
       ],
       seLayers: [
         _row(_s1, kind: LayerKind.se),
         _row(_s2, kind: LayerKind.se),
+      ],
+    ),
+  ],
+);
+
+const _cel2 = LayerId('band-cel-2');
+
+/// Cut 1 is frames 0..10, cut 2 is 10..20, and S1 holds a Position key in
+/// each — 4 and 14 on the track — so a band in cut 2 names S1's keys on
+/// numbers that are not the band's own. In cut 1 the two coincide, and a
+/// band read on the wrong axis passes there.
+Project _twoCuts() => Project(
+  id: const ProjectId('band-two-cuts'),
+  name: 'Two',
+  createdAt: DateTime.utc(2026, 10, 18),
+  tracks: [
+    Track(
+      id: const TrackId('band-track'),
+      name: 'V',
+      cuts: [
+        for (final (cut, cel) in [
+          ('band-cut-1', const LayerId('band-cel-1')),
+          ('band-cut-2', _cel2),
+        ])
+          Cut(
+            id: CutId(cut),
+            name: cut,
+            duration: 10,
+            canvasSize: const CanvasSize(width: 32, height: 32),
+            layers: [_row(cel)],
+          ),
+      ],
+      seLayers: [
+        Layer(
+          id: _s1,
+          name: 'S1',
+          kind: LayerKind.se,
+          frames: const [],
+          timeline: const {},
+          transformTrack: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>.empty()
+                .withKey(4, CanvasPoint(x: 1, y: 1))
+                .withKey(14, CanvasPoint(x: 2, y: 2)),
+          ),
+        ),
       ],
     ),
   ],
@@ -186,10 +253,189 @@ void main() {
         reason: 'only S1\'s lane was — its sound stays',
       );
     });
+
+    List<int> positionKeysOf(Layer layer) =>
+        layer.transformTrack.position.keys.keys.toList();
+
+    // R27 #14: a cell drag that reaches its anchor's own transform lanes
+    // publishes them as a lane range too — the TAIL. Asked before the band,
+    // the tail took the keys and left the blocks.
+    test('a band reaching its own transform lanes takes the blocks AND the '
+        'keys — the tail it publishes does not take the press', () {
+      final session = EditorSessionManager(
+        initialProject: _project(aPositionKeys: [1]),
+      );
+      addTearDown(session.dispose);
+      session.updateFrameRangeSelectionDrag(
+        layerId: _a,
+        anchorIndex: 0,
+        headIndex: 2,
+        headLayerId: _a,
+        headLaneId: 'position',
+        spanRows: const [
+          LayerRowAddress(_a),
+          LaneRowAddress(_a, 'anchor-point'),
+          LaneRowAddress(_a, 'position'),
+        ],
+      );
+      expect(
+        session.laneRangeSelection.value,
+        isNotNull,
+        reason: 'fixture: the tail is published',
+      );
+
+      session.cells.deleteCellAtCurrentFrame();
+
+      expect(row(session, _a).timeline, isEmpty, reason: 'A\'s row swept');
+      expect(
+        positionKeysOf(row(session, _a)),
+        isEmpty,
+        reason: 'A\'s Position lane swept',
+      );
+      expect(
+        session.laneRangeSelection.value,
+        isNull,
+        reason: 'the tail went with the band it was half of',
+      );
+    });
+
+    // The press's order, said of the gate too: a band up claims it, so the
+    // lane stood on answers nothing — neither the button nor the delete.
+    test('with a band up, the lane stood on does not answer for it', () {
+      final session = EditorSessionManager(
+        initialProject: _project(aPositionKeys: [1]),
+      );
+      addTearDown(session.dispose);
+      session.standOnRow(const LaneRowAddress(_a, 'position'), frameIndex: 1);
+      session.updateFrameRangeSelectionDrag(
+        layerId: _b,
+        anchorIndex: 5,
+        headIndex: 6,
+        headLayerId: _b,
+        spanRows: const [LayerRowAddress(_b)],
+      );
+      expect(
+        session.cells.canDeleteCellAtCurrentFrame,
+        isFalse,
+        reason: 'the band holds nothing, and the key under the lane stood '
+            'on is no row of it',
+      );
+
+      session.cells.deleteCellAtCurrentFrame();
+
+      expect(positionKeysOf(row(session, _a)), [1]);
+    });
+
+    // F-17/F-84 (유저 2026-09-11): the camera row IS its transform header —
+    // swept by a band it is deleted as that header is, alone or beside a
+    // drawing row.
+    for (final withDrawing in [false, true]) {
+      test('a band over the camera row takes its keys'
+          '${withDrawing ? ' beside a drawing row' : ''}', () {
+        final session = EditorSessionManager(
+          initialProject: createDefaultProject(),
+        );
+        addTearDown(session.dispose);
+        LayerId rowOf(LayerKind kind) =>
+            session.layers.firstWhere((layer) => layer.kind == kind).id;
+        final camera = rowOf(LayerKind.camera);
+        for (final frame in [1, 5]) {
+          session.standOnRow(LayerRowAddress(camera), frameIndex: frame);
+          session.camera.setCameraKeyframeAtCurrentFrame(
+            session.camera.cameraPoseAtCurrentFrame,
+          );
+        }
+        final drawing = rowOf(LayerKind.animation);
+        session.updateFrameRangeSelectionDrag(
+          layerId: camera,
+          anchorIndex: 0,
+          headIndex: 2,
+          headLayerId: withDrawing ? drawing : camera,
+          spanRows: [
+            LayerRowAddress(camera),
+            if (withDrawing) LayerRowAddress(drawing),
+          ],
+        );
+        expect(
+          session.cells.canDeleteCellAtCurrentFrame,
+          isTrue,
+          reason: 'the band holds the camera\'s key at 1',
+        );
+
+        session.cells.deleteCellAtCurrentFrame();
+
+        expect(
+          transformLaneKeyFrames(
+            session.requireActiveCut.camera.track,
+            'position',
+          ),
+          {5},
+          reason: 'the key at 1 was under the band; the one at 5 was not',
+        );
+      });
+    }
+
+    test('a band\'s lane is read on its row\'s own axis — an S row\'s keys '
+        'live on the track\'s frames', () {
+      final session = EditorSessionManager(initialProject: _twoCuts());
+      addTearDown(session.dispose);
+      session.selectCut(session.activeTrack.cuts[1].id);
+      session.updateFrameRangeSelectionDrag(
+        layerId: _cel2,
+        anchorIndex: 3,
+        headIndex: 5,
+        headLayerId: _s1,
+        spanRows: const [
+          LayerRowAddress(_cel2),
+          LaneRowAddress(_s1, 'position'),
+        ],
+      );
+
+      session.cells.deleteCellAtCurrentFrame();
+
+      expect(
+        positionKeysOf(session.activeTrack.seLayers.single),
+        [4],
+        reason: 'cut 2\'s frames 3..5 are the track\'s 13..15 — the key at '
+            '14 goes, and the one at 4, in cut 1, stays',
+      );
+    });
+
+    test('the storyboard: a lane RANGE claims the press — with no key under '
+        'it, the sound under the cursor stays', () {
+      final session = sessionWithAnFxOnA();
+      session.selectFrameIndex(1);
+      session.updateLaneRangeSelectionDrag(
+        layerId: _s1,
+        laneId: 'position',
+        anchorIndex: 0,
+        headIndex: 2,
+        spanLaneIds: const [],
+        panel: WorkingPanel.storyboard,
+      );
+      final panel = StoryboardToolbarPanelContext(session);
+      expect(
+        panel.deleteSubject,
+        PillSubject.nothing,
+        reason: 'the range holds nothing to delete, so the button is dark',
+      );
+
+      panel.deleteSelectionSubject();
+
+      expect(
+        session.activeTrack.seLayers.first.timeline.keys,
+        [0],
+        reason: 'S1\'s sound is its ROW\'s, which the range never swept',
+      );
+    });
   });
 
+  /// The app with its bottom dock pulled up — far enough that the X-sheet,
+  /// whose rail stands over its frames, still shows a dozen frames: a sweep
+  /// ending near the frames' edge pans the sheet under the finger, and the
+  /// band reaches a frame further than the finger was put (measured 10-18).
   Future<EditorSessionManager> openTheSheet(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1200));
+    await tester.binding.setSurfaceSize(const Size(1400, 2000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),
@@ -197,7 +443,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(
       find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -520),
+      const Offset(0, -1200),
     );
     await tester.pumpAndSettle();
     return tester
@@ -248,7 +494,9 @@ void main() {
             );
             await tester.pumpAndSettle();
           }
-          final toggle = find.named('timeline-lane-toggle-${layer.id.value}');
+          final toggle = find.named(
+            '${vertical ? 'xsheet' : 'timeline'}-lane-toggle-${layer.id.value}',
+          );
           await tester.ensureVisible(toggle);
           await tester.pumpAndSettle();
           await tester.tap(toggle);
@@ -295,11 +543,25 @@ void main() {
           await finger.up();
           await tester.pumpAndSettle();
 
+          if (kind == LayerKind.animation) {
+            expect(
+              (
+                session.frameRangeSelection.value?.startIndex,
+                session.frameRangeSelection.value?.endIndexExclusive,
+              ),
+              (0, 3),
+              reason: '$where: the premise — the band is frames 0..2, short '
+                  'of the drawing at 3',
+            );
+          }
           expect(
             session.frameRangeSelection.value?.rows,
-            [LayerRowAddress(layer.id), LaneRowAddress(layer.id, headerLane)],
+            unorderedEquals([
+              LayerRowAddress(layer.id),
+              LaneRowAddress(layer.id, headerLane),
+            ]),
             reason: '$where: the premise — ONE band over the row and its fx, '
-                'in the order the rail draws them',
+                'in whichever order this surface draws the two',
           );
           expect(
             tester.appIconButton(deleteButton).onPressed,

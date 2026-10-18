@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
@@ -36,6 +37,26 @@ import '../../helpers/library_source.dart';
 const _trackId = TrackId('lane-track');
 const _se1 = LayerId('lane-se-1');
 const _se2 = LayerId('lane-se-2');
+const _se3 = LayerId('lane-se-3');
+const _celA = LayerId('cel');
+const _celB = LayerId('cel-b');
+
+/// A cut row holding one three-frame drawing from frame 0.
+Layer _cel(LayerId id) => Layer(
+  id: id,
+  name: id.value,
+  frames: [
+    Frame(
+      id: FrameId('${id.value}-f'),
+      duration: 3,
+      name: '',
+      strokes: const [],
+    ),
+  ],
+  timeline: {
+    0: TimelineExposure.drawing(FrameId('${id.value}-f'), length: 3),
+  },
+);
 
 Project _project() => Project(
   id: const ProjectId('lane-project'),
@@ -51,14 +72,7 @@ Project _project() => Project(
           name: '1',
           duration: 12,
           canvasSize: const CanvasSize(width: 32, height: 32),
-          layers: [
-            Layer(
-              id: const LayerId('cel'),
-              name: 'A',
-              frames: const [],
-              timeline: const {},
-            ),
-          ],
+          layers: [_cel(_celA), _cel(_celB)],
         ),
       ],
       seLayers: [
@@ -94,6 +108,13 @@ Project _project() => Project(
             2: TimelineExposure.drawing(FrameId('se-two'), length: 3),
           },
         ),
+        Layer(
+          id: _se3,
+          name: 'S3',
+          kind: LayerKind.se,
+          frames: const [],
+          timeline: const {},
+        ),
       ],
     ),
   ],
@@ -105,6 +126,18 @@ void main() {
     addTearDown(session.dispose);
     return session;
   }
+
+  /// Where an S row's sounds start, on the track.
+  List<int> soundStarts(EditorSessionManager session, LayerId id) => session
+      .repository
+      .requireProject()
+      .tracks
+      .single
+      .seLayers
+      .firstWhere((layer) => layer.id == id)
+      .timeline
+      .keys
+      .toList();
 
   void selectLaneAnchoredBand(EditorSessionManager session) {
     session.updateTrackRowRangeSelectionByFrame(
@@ -180,22 +213,97 @@ void main() {
       session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1, targetLayerId: _se1);
       session.rangeMove.endFrameRangeMoveDrag();
 
-      Layer row(LayerId id) => session.repository
-          .requireProject()
-          .tracks
-          .single
-          .seLayers
-          .firstWhere((layer) => layer.id == id);
       expect(
-        row(_se2).timeline.keys.toList(),
+        soundStarts(session, _se2),
         [3],
-        reason: 'S2\'s row was swept, and its sound slid a frame',
+        reason: 'S2\'s row was swept, and its sound slid a frame — along '
+            'its own row: the hand never left the row it grabbed',
       );
       expect(
-        row(_se1).timeline.keys.toList(),
+        soundStarts(session, _se1),
         [2],
         reason: 'only S1\'s LANE was swept — its sound stays where it was',
       );
+    });
+
+    // The push is the move's other verb: it shoves what the rows hold.
+    test('and what it pushes is what its rows hold', () {
+      final session = sessionFor();
+      selectLaneAnchoredBand(session);
+
+      session.blockShift.pushFrames(1);
+
+      expect(
+        soundStarts(session, _se2),
+        [3],
+        reason: 'S2\'s row was swept: its sound is shoved a frame',
+      );
+      expect(
+        soundStarts(session, _se1),
+        [2],
+        reason: 'only S1\'s LANE was swept — its sound stays',
+      );
+    });
+
+    // F-87: the band is grabbed by a row that is not the row it moves, so
+    // the hop is the HAND's — measured from the row it grabbed (R27 #8)
+    // and carried to the band's row, not read as where that row lands.
+    test('a hand moved one row down carries the band\'s row one row down',
+        () {
+      final session = sessionFor();
+      selectLaneAnchoredBand(session);
+
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_se1), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: _se2,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      expect(
+        soundStarts(session, _se3),
+        [2],
+        reason: 'the hand went from S1 down to S2, so S2\'s sound goes one '
+            'row down too — onto S3',
+      );
+      expect(soundStarts(session, _se2), isEmpty);
+      expect(soundStarts(session, _se1), [2], reason: 'never in the band');
+    });
+
+    test('on the cut too: grabbed by A\'s lane, B\'s block slides along B',
+        () {
+      final session = sessionFor();
+      session.updateFrameRangeSelectionDrag(
+        layerId: _celA,
+        anchorIndex: 0,
+        headIndex: 2,
+        headLayerId: _celB,
+        spanRows: const [
+          LaneRowAddress(_celA, 'position'),
+          LayerRowAddress(_celB),
+        ],
+      );
+
+      expect(session.rangeMove.beginFrameRangeMoveDrag(_celA), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 1,
+        targetLayerId: _celA,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      List<int> blockStarts(LayerId id) => [
+        for (final block in drawingBlocks(
+          session.commitLayerById(id)!.timeline,
+        ))
+          block.startIndex,
+      ];
+      expect(
+        blockStarts(_celB),
+        [1],
+        reason: 'B\'s row was swept: its block slides a frame along B — '
+            'not onto A, the row the hand grabbed',
+      );
+      expect(blockStarts(_celA), [0], reason: 'only A\'s LANE was swept');
     });
   });
 
