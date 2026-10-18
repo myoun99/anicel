@@ -756,6 +756,10 @@ class _InteractiveBrushEditCanvasViewState
   /// Rolled from the stroke's press, as [_dualPhaseRandom] is.
   math.Random _spacingRandom = math.Random();
 
+  /// The ランダム row's dice for every per-dab setting (F-176-Q2), rolled
+  /// from the stroke's press like the others.
+  math.Random _inputRandom = math.Random();
+
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
     final surface = widget.celNow();

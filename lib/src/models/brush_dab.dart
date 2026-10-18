@@ -113,8 +113,8 @@ class BrushDab {
   /// upright pen used to arrive as the same number, so an imported brush with
   /// a 0% tilt minimum drew nothing at all on a mouse and the screen could
   /// not say why. Absence makes `brushInputValue` answer null, and
-  /// `_factorFor` skips a source it cannot answer for — the contribution is
-  /// exactly 1.0 and the brush draws at its base.
+  /// `brushInputFactor` skips a source it cannot answer for — the
+  /// contribution is exactly 1.0 and the brush draws at its base.
   final double? tiltAltitude;
 
   final int sequence;

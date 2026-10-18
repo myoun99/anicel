@@ -271,8 +271,6 @@ void main() {
       angleDegrees: 60,
       tipMask: maskFor('tip'),
       rotationMode: BrushTipRotationMode.direction,
-      sizeJitter: 0.2,
-      opacityJitter: 0.3,
       angleJitter: 0.4,
       scatterRadiusRatio: 0.5,
       scatterCount: 3,
@@ -310,8 +308,6 @@ void main() {
       expect(input.angleDegrees, state.angleDegrees);
       expect(input.tipMask, state.tipMask);
       expect(input.rotationMode, state.rotationMode);
-      expect(input.sizeJitter, state.sizeJitter);
-      expect(input.opacityJitter, state.opacityJitter);
       expect(input.angleJitter, state.angleJitter);
       expect(input.scatterRadiusRatio, state.scatterRadiusRatio);
       expect(input.scatterCount, state.scatterCount);

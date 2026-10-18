@@ -23,7 +23,7 @@ void main() {
           body: Center(
             child: PressureCurveButton(
               keyValue: 'test-pressure-button',
-              title: 'Size',
+              target: BrushPressureTarget.size,
               curves: {BrushInputSource.pressure: curve},
               onChanged: (bySource) =>
                   onChanged(bySource[BrushInputSource.pressure]),
@@ -75,7 +75,7 @@ void main() {
                 key: const ValueKey<String>('mini-curve-capture'),
                 child: PressureCurveButton(
                   keyValue: 'test-pressure-button',
-                  title: 'Size',
+                  target: BrushPressureTarget.size,
                   curves: {BrushInputSource.pressure: curve},
                   onChanged: (_) {},
                 ),
@@ -158,7 +158,7 @@ void main() {
                 key: const ValueKey<String>('mini-curve-capture'),
                 child: PressureCurveButton(
                   keyValue: 'test-pressure-button',
-                  title: 'Size',
+                  target: BrushPressureTarget.size,
                   curves: {BrushInputSource.pressure: curve},
                   onChanged: (_) {},
                 ),

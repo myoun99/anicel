@@ -15,6 +15,7 @@ import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
 
@@ -143,6 +144,26 @@ void main() {
       expect(hardness.evaluate(1.0), lessThan(hardness.evaluate(0.0)));
     });
 
+    test('🚨and its mark follows the pen, long as it lies down', () {
+      // F-176-Q4 (유저 2026-10-18): 「세워서그리면 얇은선, 눕혀서 그리면
+      // 연필처럼 dab이 길어지는? … 펜 실제 각도에 따라 dab 각도 바뀌는건가
+      // 했는데 그거조차도아님. 가능하도록」.
+      final tilted = byId('builtin-shading-pencil').settings;
+      expect(tilted.rotationMode, BrushTipRotationMode.penTilt);
+      final curves = tilted.shape.curves;
+      final size = curves[(BrushPressureTarget.size, BrushInputSource.tilt)]!;
+      final roundness =
+          curves[(BrushPressureTarget.roundness, BrushInputSource.tilt)]!;
+      // Upright: the plain round lead.
+      expect(size.evaluate(0.0), 1.0);
+      expect(roundness.evaluate(0.0), closeTo(1.0, 1e-12));
+      // Flat: as long as it is wide, four times over.
+      expect(
+        size.evaluate(1.0) / (size.evaluate(1.0) * roundness.evaluate(1.0)),
+        closeTo(4.0, 1e-9),
+      );
+    });
+
     test('one watercolour carries paper, and it is cold-press', () {
       // 「질감 있다면 그냥 수채가아니라 아날로그 수채라던가 … 진짜 아날로그
       // 질감 종이질감」.
@@ -221,11 +242,13 @@ void main() {
       s.spacing,
       s.rotationMode.name,
       s.antiAlias.name,
-      // The curve SHAPES, which the preview's synthetic stroke draws.
-      s.sizePressureCurve?.points.toString() ?? '-',
-      s.opacityPressureCurve?.points.toString() ?? '-',
-      s.flowPressureCurve?.points.toString() ?? '-',
-      s.hardnessPressureCurve?.points.toString() ?? '-',
+      // The curves — shape, floor and ceiling — which the preview's
+      // synthetic stroke draws. ↩️The shapes alone, while a floor still lived
+      // in the points; F-176-Q2 moved it out to Clip Studio's 最小値.
+      s.sizePressureCurve?.toString() ?? '-',
+      s.opacityPressureCurve?.toString() ?? '-',
+      s.flowPressureCurve?.toString() ?? '-',
+      s.hardnessPressureCurve?.toString() ?? '-',
     ].join('|');
 
     final seen = <String, String>{};

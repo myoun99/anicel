@@ -1,6 +1,5 @@
 import '../brush_preset_id_mint.dart';
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
@@ -264,44 +263,29 @@ BrushSettings _settingsFromVariant(
   final thicknessPercent = _doubleOf(variant['BrushThickness']) ?? 100.0;
   final rotation = _doubleOf(variant['BrushRotation']) ?? 0.0;
 
-  // BB-3: effectors map to pressure CURVES — the CSP minimum value is the
-  // size curve's left endpoint. Opacity and flow effectors now import as
-  // their own channels (they used to be OR-merged into one opacity bool).
+  // BB-3: effectors map to response CURVES — each source's 最小値 is its
+  // curve's own minimum. Opacity and flow effectors import as their own
+  // channels (they used to be OR-merged into one opacity bool).
   // ⛔EVERY enabled source, not just pressure. A Clip Studio brush can drive
   // one setting from several inputs at once, and each has its own curve block
   // in the effector's tail; reading only the first one imported a tilt brush
   // as a plain one.
+  // ★Thickness IS roundness here and Interval IS spacing, so their effectors
+  // land on those settings' rows (F-176-Q2) — ランダム included, which is what
+  // stops a textured stamp brush looking stamped and breaks up the even beat
+  // of its dabs.
   final curves = <BrushDynamicsKey, BrushPressureCurve>{
-    for (final entry in _effectorCurves(variant['BrushSizeEffector']).entries)
-      (BrushPressureTarget.size, entry.key): entry.value,
-    for (final entry
-        in _effectorCurves(variant['BrushOpacityEffector']).entries)
-      (BrushPressureTarget.opacity, entry.key): entry.value,
-    for (final entry in _effectorCurves(variant['BrushFlowEffector']).entries)
-      (BrushPressureTarget.flow, entry.key): entry.value,
+    for (final (target, column) in const [
+      (BrushPressureTarget.size, 'BrushSizeEffector'),
+      (BrushPressureTarget.opacity, 'BrushOpacityEffector'),
+      (BrushPressureTarget.flow, 'BrushFlowEffector'),
+      (BrushPressureTarget.roundness, 'BrushThicknessEffector'),
+      (BrushPressureTarget.spacing, 'BrushIntervalEffector'),
+    ])
+      for (final entry in _effectorCurves(variant[column]).entries)
+        (target, entry.key): entry.value,
   };
 
-  // Random input source (flag 0x80) drives the jitters. The engine shakes a
-  // value DOWNWARD from its full setting (`v *= 1 - jitter * random`), which
-  // is exactly Clip Studio's effector minimum: the value wanders between
-  // 최소치% and 100%, so the amplitude is the complement of that floor.
-  final sizeJitter = _effectorRandomJitter(variant['BrushSizeEffector']);
-  // No flow jitter exists on the engine; flow randomness folds into opacity,
-  // the same approximation the ABR importer makes.
-  final opacityJitter = math.max(
-    _effectorRandomJitter(variant['BrushOpacityEffector']),
-    _effectorRandomJitter(variant['BrushFlowEffector']),
-  );
-  // Thickness IS roundness here, so its random source squashes the tip per
-  // dab — what stops a textured stamp brush from looking stamped.
-  final roundnessJitter = _effectorRandomJitter(
-    variant['BrushThicknessEffector'],
-  );
-  // The interval effector's random source breaks up the even beat of a
-  // stamped brush.
-  final spacingJitter = _effectorRandomJitter(
-    variant['BrushIntervalEffector'],
-  );
   // Spray mode scatters dabs around the stroke — and it is also the gate on
   // WHICH pair of rotation columns describes the tip's spin, so it is read
   // before either of them.
@@ -373,11 +357,7 @@ BrushSettings _settingsFromVariant(
     angleDegrees: rotation.isFinite ? ((rotation % 180.0) + 180.0) % 180.0 : 0,
     curves: curves,
     tipMask: mask,
-    sizeJitter: sizeJitter,
-    opacityJitter: opacityJitter,
     angleJitter: angleJitter,
-    roundnessJitter: roundnessJitter,
-    spacingJitter: spacingJitter,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
     dualMask: dualMask,
@@ -711,6 +691,17 @@ Map<BrushInputSource, BrushPressureCurve> _effectorCurves(Object? effector) {
     }
     block += 1;
   }
+  // ランダム is the highest bit, so whatever block it may own comes last and
+  // shifts nothing above. Clip Studio's panel gives it no graph — a tick and
+  // a 最小値 — and that is all it is read as (F-176-Q2).
+  if (flags & BrushInputSource.random.effectorFlagBit != 0) {
+    curves[BrushInputSource.random] = BrushPressureCurve.linearFrom(
+      _effectorMinimumRatio(
+        effector,
+        BrushInputSource.random.effectorMinimumIndex,
+      ),
+    );
+  }
   return curves;
 }
 
@@ -729,51 +720,43 @@ BrushPressureCurve? _effectorSourceCurve(
   final minimum = _effectorMinimumRatio(
     effector,
     source.effectorMinimumIndex,
-  );
+  ).clamp(0.0, 1.0).toDouble();
   final maximum = source == BrushInputSource.tilt
       ? _effectorTiltMaximum(effector)
       : 1.0;
-  // 🚨THE FLOOR IS DIVIDED BY THE CEILING, and getting this wrong is silent.
-  //
-  // The panel says the response runs from 최소치% to 최대치%. Our curve stores
-  // a SHAPE in [0, 1] and `evaluate` returns `shape * maximum`, so for the
-  // output to land on 최소치 at no input the shape has to start at
-  // `minimum / maximum` — not at `minimum`, which would come out
-  // maximum-times too high. With no maximum (every source but 傾き) the
-  // division is by 1.0 and this is exactly what it always was.
-  final floor = (minimum / maximum).clamp(0.0, 1.0).toDouble();
+  // The panel says the response runs from 最小値% to 最大値% as the graph
+  // runs from 0 to 1 — which is what a curve's own [BrushPressureCurve.minimum]
+  // and [BrushPressureCurve.maximum] mean, so the graph comes in as it is.
+  // ↩️The floor used to be folded into the points (divided by the ceiling
+  // first — 「THE FLOOR IS DIVIDED BY THE CEILING」), from before a curve
+  // could hold one apart; the popup now shows it as its own slider.
   final stored = effector is Uint8List
       ? _effectorCurvePoints(effector, blockIndex)
       : null;
   if (stored == null || stored.isEmpty) {
-    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
-  final points = <BrushCurvePoint>[BrushCurvePoint(0.0, floor)];
+  final points = <BrushCurvePoint>[const BrushCurvePoint(0.0, 0.0)];
   for (final point in stored) {
     // The engine wants strictly increasing x inside the unit square; Clip
     // Studio pads unused slots by repeating the last point.
     if (point.x <= points.last.x || point.x > 1.0) {
       continue;
     }
-    points.add(
-      BrushCurvePoint(
-        point.x,
-        (floor + (1.0 - floor) * point.y).clamp(0.0, 1.0).toDouble(),
-      ),
-    );
+    points.add(BrushCurvePoint(point.x, point.y.clamp(0.0, 1.0).toDouble()));
   }
   if (points.last.x < 1.0) {
     points.add(const BrushCurvePoint(1.0, 1.0));
   }
   if (points.length < 2) {
-    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
   try {
-    return BrushPressureCurve(points, maximum: maximum);
+    return BrushPressureCurve(points, minimum: minimum, maximum: maximum);
   } on ArgumentError {
     // Never fail an import over a curve; the straight line is the honest
     // fallback the file already implies through its minimum.
-    return BrushPressureCurve.linearFrom(floor, maximum: maximum);
+    return BrushPressureCurve.linearFrom(minimum, maximum: maximum);
   }
 }
 
@@ -845,24 +828,6 @@ List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob, int blockIndex) {
   return null;
 }
 
-/// Jitter amplitude for an effector driven by the random input source.
-///
-/// Clip Studio wanders the value between its 최소치% and 100%; the engine
-/// shakes downward by `jitter * random`, so the amplitude is the complement
-/// of the minimum. An effector without the random bit contributes nothing.
-double _effectorRandomJitter(Object? effector) {
-  if (!_usesRandom(_effectorFlags(effector))) {
-    return 0.0;
-  }
-  return (1.0 -
-          _effectorMinimumRatio(
-            effector,
-            BrushInputSource.randomEffectorMinimumIndex,
-          ))
-      .clamp(0.0, 1.0)
-      .toDouble();
-}
-
 /// One source's 최소치 percentage — the floor that source's curve lifts to.
 ///
 /// 🚨**THERE ARE FOUR OF THESE, NOT ONE.** The blob stores a minimum per
@@ -873,7 +838,7 @@ double _effectorRandomJitter(Object? effector) {
 ///
 /// ⛔This used to read `int[3]` for everybody and call it "the pressure
 /// floor". That was harmless for pressure and WRONG for random, which took
-/// pressure's number as its jitter amplitude (see [_effectorRandomJitter]).
+/// pressure's number as its own 最小値 (see [_effectorCurves]).
 /// The fixtures could not catch it: `sut_decoder_test`'s `effector()` wrote
 /// only `setInt32(12, …)`, so every synthetic blob had its four slots
 /// collapsed into one and any index read the same value.

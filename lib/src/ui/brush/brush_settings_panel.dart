@@ -175,7 +175,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
         (null, null) => true,
         (final PressureCurveButton a, final PressureCurveButton b) =>
           a.keyValue == b.keyValue &&
-              a.title == b.title &&
+              a.target == b.target &&
               a.enabled == b.enabled &&
               mapEquals(a.curves, b.curves),
         _ => false,
@@ -183,10 +183,10 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
 
   /// The CSP-style per-setting pressure button (BB-3): sits at the right
   /// of each pressure-capable slider row and opens the shared curve popup.
-  Widget _pressureButton(BrushPressureTarget target, String title) {
+  Widget _pressureButton(BrushPressureTarget target) {
     return PressureCurveButton(
       keyValue: 'brush-tool-pressure-${target.name}',
-      title: title,
+      target: target,
       curves: state.targetCurves(target),
       onChanged: (curves) => onChanged(state.withTargetCurves(target, curves)),
     );
@@ -222,10 +222,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               max: 1,
               keyValue: 'brush-tool-flow-slider',
               onChanged: (value) => onChanged(state.copyWith(flow: value)),
-              trailing: _pressureButton(
-                BrushPressureTarget.flow,
-                AppText.strings.brFlow,
-              ),
+              trailing: _pressureButton(BrushPressureTarget.flow),
             ),
             ToolSettingsGroupHeader(AppText.strings.brGroupTip),
             BrushTipPickerRow(
@@ -251,10 +248,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               max: 1,
               keyValue: 'brush-tool-hardness-slider',
               onChanged: (value) => onChanged(state.copyWith(hardness: value)),
-              trailing: _pressureButton(
-                BrushPressureTarget.hardness,
-                AppText.strings.brHardness,
-              ),
+              trailing: _pressureButton(BrushPressureTarget.hardness),
             ),
             // Beside hardness on purpose: hardness sets how WIDE the coverage
             // ramp is, this sets how hard its edge cuts. Two halves of one
@@ -272,6 +266,7 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               max: 1,
               keyValue: 'brush-tool-roundness-slider',
               onChanged: (value) => onChanged(state.copyWith(roundness: value)),
+              trailing: _pressureButton(BrushPressureTarget.roundness),
             ),
             _PanelSlider(
               label: AppText.strings.brAngle,
@@ -283,46 +278,14 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
               onChanged: (value) =>
                   onChanged(state.copyWith(angleDegrees: value)),
             ),
-            _PanelSlider(
-              label: AppText.strings.brSpacing,
-              unit: '%',
-              displayScale: 100,
-              value: BrushToolState.clampSpacing(state.spacing),
-              min: BrushShape.minSpacing,
-              max: BrushShape.maxSpacing,
-              scale: FieldSliderScale.exponential,
-              keyValue: 'brush-tool-spacing-slider',
-              onChanged: (value) => onChanged(state.copyWith(spacing: value)),
-            ),
+            // 向き is ONE setting — the angle above, the base it turns from
+            // and its random turn (F-176-Q1 「클튜처럼 — 「방향」 하나: 기준 +
+            // 랜덤」) — so the three sit together. ↩️The random turn was the
+            // 「무작위」 group's angle slider, the base a row of its own below
+            // spacing.
             _RotationModeRow(state: state, onChanged: onChanged),
-            // P20 shipped placement dynamics into the engine and left them
-            // unreachable: only a preset or an import could set them. These
-            // are those knobs.
-            ToolSettingsGroupHeader(AppText.strings.brGroupRandomness),
             _PanelSlider(
-              label: AppText.strings.brSizeJitter,
-              unit: '%',
-              displayScale: 100,
-              value: BrushToolState.clampZeroToOne(state.sizeJitter),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-size-jitter-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(sizeJitter: value)),
-            ),
-            _PanelSlider(
-              label: AppText.strings.brOpacityJitter,
-              unit: '%',
-              displayScale: 100,
-              value: BrushToolState.clampZeroToOne(state.opacityJitter),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-opacity-jitter-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(opacityJitter: value)),
-            ),
-            _PanelSlider(
-              label: AppText.strings.brAngleJitter,
+              label: AppText.strings.curveSourceRandom,
               unit: '%',
               displayScale: 100,
               value: BrushToolState.clampZeroToOne(state.angleJitter),
@@ -333,26 +296,16 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                   onChanged(state.copyWith(angleJitter: value)),
             ),
             _PanelSlider(
-              label: AppText.strings.brRoundnessJitter,
+              label: AppText.strings.brSpacing,
               unit: '%',
               displayScale: 100,
-              value: BrushToolState.clampZeroToOne(state.roundnessJitter),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-roundness-jitter-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(roundnessJitter: value)),
-            ),
-            _PanelSlider(
-              label: AppText.strings.brSpacingJitter,
-              unit: '%',
-              displayScale: 100,
-              value: BrushToolState.clampZeroToOne(state.spacingJitter),
-              min: 0,
-              max: 1,
-              keyValue: 'brush-tool-spacing-jitter-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(spacingJitter: value)),
+              value: BrushToolState.clampSpacing(state.spacing),
+              min: BrushShape.minSpacing,
+              max: BrushShape.maxSpacing,
+              scale: FieldSliderScale.exponential,
+              keyValue: 'brush-tool-spacing-slider',
+              onChanged: (value) => onChanged(state.copyWith(spacing: value)),
+              trailing: _pressureButton(BrushPressureTarget.spacing),
             ),
             ToolSettingsGroupHeader(AppText.strings.brGroupMixing),
             SettingsSwitchRow(
@@ -613,6 +566,7 @@ class _RotationModeRow extends StatelessWidget {
   String _labelFor(BrushTipRotationMode mode) => switch (mode) {
     BrushTipRotationMode.fixed => AppText.strings.brRotationFixed,
     BrushTipRotationMode.direction => AppText.strings.brRotationDirection,
+    BrushTipRotationMode.penTilt => AppText.strings.brRotationPenTilt,
   };
 
   @override

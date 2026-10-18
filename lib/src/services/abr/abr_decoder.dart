@@ -6,6 +6,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
@@ -349,7 +350,7 @@ BrushPreset? _presetFromBrushDescriptor(
   // useTipDynamics / usePaintDynamics switches. Control type ('bVTy')
   // 2 = pen pressure; 6/7 = initial direction / direction.
   BrushPressureCurve? sizePressureCurve;
-  var sizeJitter = 0.0;
+  var sizeRandom = 0.0;
   var rotationMode = BrushTipRotationMode.fixed;
   var angleJitter = 0.0;
   if (entry['useTipDynamics'] == true) {
@@ -363,9 +364,15 @@ BrushPreset? _presetFromBrushDescriptor(
             .toDouble(),
       );
     }
-    sizeJitter = _jitterOf(sizeVariance, cap: 1.0);
+    sizeRandom = _jitterOf(sizeVariance, cap: 1.0);
     final angleVariance = entry.childDescriptor('angleDynamics');
     final angleControl = _controlOf(angleVariance);
+    // Photoshop's control list runs Off · Fade · Pen Pressure · Pen Tilt ·
+    // Stylus Wheel · Rotation · Initial Direction · Direction, so 3 is the
+    // pen's lean — Clip Studio's ペンの方向 (F-176-Q1).
+    if (angleControl == 3) {
+      rotationMode = BrushTipRotationMode.penTilt;
+    }
     if (angleControl == 6 || angleControl == 7) {
       rotationMode = BrushTipRotationMode.direction;
     }
@@ -373,7 +380,8 @@ BrushPreset? _presetFromBrushDescriptor(
   }
   BrushPressureCurve? opacityPressureCurve;
   BrushPressureCurve? flowPressureCurve;
-  var opacityJitter = 0.0;
+  var opacityRandom = 0.0;
+  var flowRandom = 0.0;
   if (entry['usePaintDynamics'] == true) {
     final opacityVariance = entry.childDescriptor('opVr');
     final flowVariance = entry.childDescriptor('prVr');
@@ -385,10 +393,10 @@ BrushPreset? _presetFromBrushDescriptor(
     if (_controlOf(flowVariance) == 2) {
       flowPressureCurve = BrushPressureCurve.identity();
     }
-    opacityJitter = math.max(
-      _jitterOf(opacityVariance, cap: 1.0),
-      _jitterOf(flowVariance, cap: 1.0),
-    );
+    // Each jitter is its own setting's ランダム row now (F-176-Q2) — flow
+    // used to fold into opacity's for want of a row of its own.
+    opacityRandom = _jitterOf(opacityVariance, cap: 1.0);
+    flowRandom = _jitterOf(flowVariance, cap: 1.0);
   }
   // Dual brush: the nested second tip combines with the primary coverage.
   // The dual tip's own spacing/scatter is still approximated by the per-dab
@@ -534,8 +542,9 @@ BrushPreset? _presetFromBrushDescriptor(
       sizePressureCurve: sizePressureCurve,
       opacityPressureCurve: opacityPressureCurve,
       flowPressureCurve: flowPressureCurve,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
+      sizeRandom: sizeRandom,
+      opacityRandom: opacityRandom,
+      flowRandom: flowRandom,
       angleJitter: angleJitter,
       rotationMode: rotationMode,
       scatterRadiusRatio: scatterRadiusRatio,
@@ -620,8 +629,9 @@ BrushSettings _settingsForTip(
   BrushPressureCurve? sizePressureCurve,
   BrushPressureCurve? opacityPressureCurve,
   BrushPressureCurve? flowPressureCurve,
-  double sizeJitter = 0.0,
-  double opacityJitter = 0.0,
+  double sizeRandom = 0.0,
+  double opacityRandom = 0.0,
+  double flowRandom = 0.0,
   double angleJitter = 0.0,
   BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
   double scatterRadiusRatio = 0.0,
@@ -654,8 +664,17 @@ BrushSettings _settingsForTip(
     sizePressureCurve: sizePressureCurve,
     opacityPressureCurve: opacityPressureCurve,
     flowPressureCurve: flowPressureCurve,
-    sizeJitter: sizeJitter,
-    opacityJitter: opacityJitter,
+    curves: {
+      for (final (target, amount) in [
+        (BrushPressureTarget.size, sizeRandom),
+        (BrushPressureTarget.opacity, opacityRandom),
+        (BrushPressureTarget.flow, flowRandom),
+      ])
+        if (amount > 0.0)
+          (target, BrushInputSource.random): BrushPressureCurve.linearFrom(
+            1.0 - amount,
+          ),
+    },
     angleJitter: angleJitter,
     rotationMode: rotationMode,
     scatterRadiusRatio: scatterRadiusRatio,

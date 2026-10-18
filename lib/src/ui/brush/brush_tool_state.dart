@@ -327,11 +327,7 @@ class BrushToolState {
     double angleDegrees = defaultAngleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double sizeJitter = 0.0,
-    double opacityJitter = 0.0,
     double angleJitter = 0.0,
-    double roundnessJitter = 0.0,
-    double spacingJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
@@ -376,11 +372,7 @@ class BrushToolState {
       angleDegrees: angleDegrees,
       tipMask: tipMask,
       rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
       angleJitter: angleJitter,
-      roundnessJitter: roundnessJitter,
-      spacingJitter: spacingJitter,
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
@@ -488,11 +480,7 @@ class BrushToolState {
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
-    double? roundnessJitter,
-    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -544,11 +532,7 @@ class BrushToolState {
         angleDegrees: angleDegrees ?? defaultAngleDegrees,
         tipMask: tipMask,
         rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
-        sizeJitter: sizeJitter ?? 0.0,
-        opacityJitter: opacityJitter ?? 0.0,
         angleJitter: angleJitter ?? 0.0,
-        roundnessJitter: roundnessJitter ?? 0.0,
-        spacingJitter: spacingJitter ?? 0.0,
         scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
         scatterCount: scatterCount ?? 1,
         scatterBothAxes: scatterBothAxes ?? true,
@@ -598,11 +582,7 @@ class BrushToolState {
     flow: clampUnit(s.flow),
     roundness: clampRoundness(s.roundness),
     angleDegrees: clampAngleDegrees(s.angleDegrees),
-    sizeJitter: clampZeroToOne(s.sizeJitter),
-    opacityJitter: clampZeroToOne(s.opacityJitter),
     angleJitter: clampZeroToOne(s.angleJitter),
-    roundnessJitter: clampZeroToOne(s.roundnessJitter),
-    spacingJitter: clampZeroToOne(s.spacingJitter),
     paintAmount: clampZeroToOne(s.paintAmount),
     paintDensity: clampZeroToOne(s.paintDensity),
     colorStretch: clampZeroToOne(s.colorStretch),
@@ -692,15 +672,11 @@ class BrushToolState {
   /// it so slider tweaks keep the textured tip.
   BrushTipMask? get tipMask => shape.tipMask;
 
-  /// Placement dynamics carried from presets/imports (no panel controls
-  /// yet, pending the unified UI pass): see the same-named fields on
+  /// The tip's 向き — the base it turns from and its random turn, the
+  /// rows under the panel's angle (F-176-Q1): see the same-named fields on
   /// `BrushShape`.
   BrushTipRotationMode get rotationMode => shape.rotationMode;
-  double get sizeJitter => shape.sizeJitter;
-  double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
-  double get roundnessJitter => shape.roundnessJitter;
-  double get spacingJitter => shape.spacingJitter;
 
   /// How this brush composites — see [BrushShape.blendMode].
   BrushBlendMode get blendMode => shape.blendMode;
@@ -1147,11 +1123,7 @@ class BrushToolState {
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
-    double? roundnessJitter,
-    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -1208,11 +1180,7 @@ class BrushToolState {
           angleDegrees: angleDegrees,
           tipMask: tipMask,
           rotationMode: rotationMode,
-          sizeJitter: sizeJitter,
-          opacityJitter: opacityJitter,
           angleJitter: angleJitter,
-          roundnessJitter: roundnessJitter,
-          spacingJitter: spacingJitter,
           scatterRadiusRatio: scatterRadiusRatio,
           scatterCount: scatterCount,
           scatterBothAxes: scatterBothAxes,

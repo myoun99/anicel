@@ -8,8 +8,9 @@ import '../../models/brush_pressure_curve.dart';
 import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import 'anchored_popup.dart';
+import 'field_slider.dart';
+import 'kept_tail_row.dart';
 import 'axis_bar_gesture.dart' show OwningPanGestureRecognizer;
-import '../text/readout_text.dart' show readoutText;
 import '../text/app_strings.dart' show AppText;
 import '../repaint_props.dart';
 
@@ -29,7 +30,7 @@ class PressureCurveButton extends StatelessWidget {
   const PressureCurveButton({
     super.key,
     required this.keyValue,
-    required this.title,
+    required this.target,
     required this.curves,
     required this.onChanged,
     this.enabled = true,
@@ -44,8 +45,8 @@ class PressureCurveButton extends StatelessWidget {
   /// Widget key string for the trigger button ('brush-tool-pressure-size').
   final String keyValue;
 
-  /// Popup header label (the setting's name, e.g. 'Size').
-  final String title;
+  /// The setting these curves drive — see [showPressureCurvePopup].
+  final BrushPressureTarget target;
 
   /// Every input source's curve for this setting; an absent or null entry is
   /// a source that does not drive it.
@@ -114,7 +115,7 @@ class PressureCurveButton extends StatelessWidget {
           onPressed: enabled
               ? () => showPressureCurvePopup(
                   context,
-                  title: title,
+                  target: target,
                   initialCurves: curves,
                   onChanged: onChanged,
                 )
@@ -126,7 +127,7 @@ class PressureCurveButton extends StatelessWidget {
               enabled
                   ? () => showPressureCurvePopup(
                       context,
-                      title: title,
+                      target: target,
                       initialCurves: curves,
                       onChanged: onChanged,
                     )
@@ -256,20 +257,56 @@ Path pressureCurvePath(
 /// Popup geometry. The WIDTH is frozen at 248 (유저 확정 2026-09-08 ⑧); the
 /// height is the axis that gives.
 const double _popupWidth = 248;
-const double _popupHeight = 316;
 
-/// One source's row: the 60px name column beside the curve strip.
-const double _rowHeight = 84;
-const double _sourceColumnWidth = 60;
-const double _sourceColumnGap = 6;
-const double _rowGap = 6;
+/// The layout after Clip Studio's 影響元設定 (F-176-Q2, 유저 2026-10-18
+/// 「첨부한 클튜 팝업창 최대한 참고해서 구현」): a row per input — its tick and
+/// its 最小値, 傾き's 最大値 under it — and the graphs side by side beneath.
 const double _headerHeight = 24;
+const double _nameWidth = 56;
+const double _nameGap = 6;
+const double _rowGap = 4;
+const double _sectionGap = 8;
+const double _graphGap = 6;
+const double _graphTitleHeight = 16;
+const double _axisHeight = 12;
+
+/// The inputs that have a graph — every one but ランダム, which Clip Studio
+/// gives only a 最小値.
+const List<BrushInputSource> _graphed = [
+  BrushInputSource.pressure,
+  BrushInputSource.tilt,
+  BrushInputSource.speed,
+];
+
+double get _innerWidth =>
+    _popupWidth - AnchoredPopupText.bodyPadding.horizontal;
+
+double get _graphSide =>
+    (_innerWidth - _graphGap * (_graphed.length - 1)) / _graphed.length;
+
+/// 🚨The declared popup height and the drawn height are the same number BY
+/// CONSTRUCTION: this sums exactly the boxes [_PressureCurveEditorState.build]
+/// stacks, so the window is placed for the body it draws.
+double _popupHeightFor({required bool ceiling}) {
+  final rows = BrushInputSource.values.length + (ceiling ? 1 : 0);
+  return AnchoredPopupText.bodyPadding.vertical +
+      _headerHeight +
+      AnchoredPopupText.titleGap +
+      rows * FieldSlider.defaultHeight +
+      (rows - 1) * _rowGap +
+      _sectionGap +
+      _graphTitleHeight +
+      _graphSide +
+      _axisHeight;
+}
 
 /// Shows the anchored curve editor next to [anchorContext]'s widget.
 ///
 /// [initialCurves] is every input source's curve for ONE setting, and
 /// [onChanged] hands back every source's curve for that setting — the whole
-/// target, every time.
+/// target, every time. [target] names the setting in the header, and offers
+/// 傾き's 最大値 only where it can go past its base at all
+/// ([BrushPressureTarget.canPassItsBase]).
 ///
 /// 🚨IT IS THE WHOLE TARGET ON PURPOSE, and the reason replaced a comment
 /// that said the opposite. This used to read "the popup keeps its own working
@@ -282,7 +319,7 @@ const double _headerHeight = 24;
 /// tilt back. One call, one base.
 Future<void> showPressureCurvePopup(
   BuildContext anchorContext, {
-  required String title,
+  required BrushPressureTarget target,
   required Map<BrushInputSource, BrushPressureCurve?> initialCurves,
   required ValueChanged<Map<BrushInputSource, BrushPressureCurve?>> onChanged,
 }) {
@@ -293,9 +330,9 @@ Future<void> showPressureCurvePopup(
     anchorContext,
     label: 'pressure-curve-popup',
     width: _popupWidth,
-    height: _popupHeight,
+    height: _popupHeightFor(ceiling: target.canPassItsBase),
     builder: (context, _) => _PressureCurveEditor(
-      title: title,
+      target: target,
       initialCurves: initialCurves,
       onChanged: onChanged,
     ),
@@ -304,12 +341,12 @@ Future<void> showPressureCurvePopup(
 
 class _PressureCurveEditor extends StatefulWidget {
   const _PressureCurveEditor({
-    required this.title,
+    required this.target,
     required this.initialCurves,
     required this.onChanged,
   });
 
-  final String title;
+  final BrushPressureTarget target;
   final Map<BrushInputSource, BrushPressureCurve?> initialCurves;
   final ValueChanged<Map<BrushInputSource, BrushPressureCurve?>> onChanged;
 
@@ -317,19 +354,18 @@ class _PressureCurveEditor extends StatefulWidget {
   State<_PressureCurveEditor> createState() => _PressureCurveEditorState();
 }
 
-/// One source's working curve while the popup is open.
-///
-/// The shape and the ceiling are kept apart because the model keeps them
-/// apart: points live in the unit square and `evaluate` multiplies by
-/// [maximum] afterwards, so the graph physically cannot draw the ceiling.
+/// One source's working curve while the popup is open — the three facts
+/// the model keeps apart: the shape (the graph), the floor and the ceiling.
 class _SourceDraft {
   _SourceDraft({
     required this.points,
+    required this.minimum,
     required this.maximum,
     required this.enabled,
   });
 
   List<BrushCurvePoint> points;
+  double minimum;
   double maximum;
   bool enabled;
 }
@@ -342,8 +378,8 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   /// restores it within this popup session.
   final Map<BrushInputSource, _SourceDraft> _drafts = {};
 
-  /// The grabbed point during a drag, and WHICH ROW it belongs to. A grabbed
-  /// middle point dragged far outside is REMOVED but stays "in hand"
+  /// The grabbed point during a drag, and WHICH GRAPH it belongs to. A
+  /// grabbed middle point dragged far outside is REMOVED but stays "in hand"
   /// ([_dragRemoved]) so dragging back in re-adds it.
   BrushInputSource? _dragSource;
   int? _dragIndex;
@@ -356,6 +392,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
       final curve = widget.initialCurves[source];
       _drafts[source] = _SourceDraft(
         points: List.of((curve ?? BrushPressureCurve.identity()).points),
+        minimum: curve?.minimum ?? 0.0,
         maximum: curve?.maximum ?? 1.0,
         enabled: curve != null,
       );
@@ -370,6 +407,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
         source: _drafts[source]!.enabled
             ? BrushPressureCurve(
                 List.of(_drafts[source]!.points),
+                minimum: _drafts[source]!.minimum,
                 maximum: _drafts[source]!.maximum,
               )
             : null,
@@ -384,11 +422,19 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     _commit();
   }
 
+  void _setRange(BrushInputSource source, {double? minimum, double? maximum}) {
+    setState(() {
+      final draft = _drafts[source]!;
+      draft.minimum = minimum ?? draft.minimum;
+      draft.maximum = maximum ?? draft.maximum;
+    });
+    _commit();
+  }
+
   void _reset(BrushInputSource source) {
     setState(() {
-      // ⛔The ceiling is NOT reset with the shape: the model keeps them apart
-      // deliberately, and a reset that silently dropped an imported 最大値
-      // would throw away the one fact the graph cannot show.
+      // ⛔The floor and the ceiling are NOT reset with the shape: the model
+      // keeps them apart deliberately, and they have sliders of their own.
       _drafts[source]!.points = BrushPressureCurve.identity().points.toList();
       _endDragState();
     });
@@ -406,90 +452,97 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     // ⛔No `Material` of its own. The surface, the corner and the lift are
     // the anchored popup's now (R4 #8) — this window is where that shell was
     // designed, and it was the last thing the shell did not own.
+    final rows = <Widget>[
+      for (final source in BrushInputSource.values) ...[
+        _buildSourceRow(source),
+        // 傾き's 最大値 sits under its 最小値, as Clip Studio lays it.
+        if (widget.target.canPassItsBase && source == BrushInputSource.tilt)
+          _buildMaximumRow(source),
+      ],
+    ];
     return Padding(
       key: const ValueKey<String>('pressure-curve-popup'),
       padding: AnchoredPopupText.bodyPadding,
-      // 🚨The declared popup height and the drawn height are the same number
-      // BY CONSTRUCTION, not by arithmetic that has to be kept in step. The
-      // declared height decides where the window is placed and which way it
-      // flips, so a body that drew short used to hang that far off its anchor.
-      child: SizedBox(
-        height:
-            _popupHeight -
-            AnchoredPopupText.bodyPadding.top -
-            AnchoredPopupText.bodyPadding.bottom,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ⛔NO master switch here any more. One switch above three rows is
-            // one control answering three questions; each row owns its own.
-            SizedBox(
-              height: _headerHeight,
-              child: AnchoredPopupHeader(
-                title: '${widget.title} — ${AppText.strings.brushDynamicsTitle}',
-              ),
-            ),
-            const SizedBox(height: AnchoredPopupText.titleGap),
-            for (final source in BrushInputSource.values) ...[
-              if (source != BrushInputSource.values.first)
-                const SizedBox(height: _rowGap),
-              _buildRow(source),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 🚨ALL THREE SOURCES ARE VISIBLE AT ONCE, and that is the design, not a
-  /// layout convenience. A tab or a segmented selector would put a source
-  /// BEHIND a click — and the whole reason this axis exists is that the .sut
-  /// importer already builds tilt and speed curves the user cannot see. A
-  /// picker that hides two of three would leave that gap open by a different
-  /// door.
-  Widget _buildRow(BrushInputSource source) {
-    final draft = _drafts[source]!;
-    return SizedBox(
-      height: _rowHeight,
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ⛔NO master switch here any more. One switch above the rows is
+          // one control answering four questions; each row owns its own.
           SizedBox(
-            width: _sourceColumnWidth,
-            child: _buildSourceColumn(source, draft),
+            height: _headerHeight,
+            child: AnchoredPopupHeader(
+              title:
+                  '${_titleOf(widget.target)} — '
+                  '${AppText.strings.brushDynamicsTitle}',
+            ),
           ),
-          const SizedBox(width: _sourceColumnGap),
-          Expanded(child: _buildStrip(source, draft)),
+          const SizedBox(height: AnchoredPopupText.titleGap),
+          for (final (i, row) in rows.indexed) ...[
+            if (i > 0) const SizedBox(height: _rowGap),
+            SizedBox(height: FieldSlider.defaultHeight, child: row),
+          ],
+          const SizedBox(height: _sectionGap),
+          // 🚨EVERY INPUT IS VISIBLE AT ONCE, and that is the design, not a
+          // layout convenience. A tab or a segmented selector would put a
+          // source BEHIND a click — and the whole reason this axis exists is
+          // that the .sut importer already builds tilt and speed curves the
+          // user could not see.
+          SizedBox(
+            height: _graphTitleHeight + _graphSide + _axisHeight,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (i, source) in _graphed.indexed) ...[
+                  if (i > 0) const SizedBox(width: _graphGap),
+                  SizedBox(width: _graphSide, child: _buildGraph(source)),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSourceColumn(BrushInputSource source, _SourceDraft draft) {
-    final label = switch (source) {
-      BrushInputSource.pressure => AppText.strings.curveSourcePressure,
-      BrushInputSource.tilt => AppText.strings.curveSourceTilt,
-      BrushInputSource.speed => AppText.strings.curveSourceSpeed,
-    };
-    return Column(
+  /// The setting's name, as its slider row says it.
+  String _titleOf(BrushPressureTarget target) => switch (target) {
+    BrushPressureTarget.size => AppText.strings.brSize,
+    BrushPressureTarget.opacity => AppText.strings.brOpacity,
+    BrushPressureTarget.flow => AppText.strings.brFlow,
+    BrushPressureTarget.hardness => AppText.strings.brHardness,
+    BrushPressureTarget.roundness => AppText.strings.brRoundness,
+    BrushPressureTarget.spacing => AppText.strings.brSpacing,
+  };
+
+  String _nameOf(BrushInputSource source) => switch (source) {
+    BrushInputSource.pressure => AppText.strings.curveSourcePressure,
+    BrushInputSource.tilt => AppText.strings.curveSourceTilt,
+    BrushInputSource.speed => AppText.strings.curveSourceSpeed,
+    BrushInputSource.random => AppText.strings.curveSourceRandom,
+  };
+
+  /// A source's tick and its 最小値.
+  Widget _buildSourceRow(BrushInputSource source) {
+    final draft = _drafts[source]!;
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        // The NAME is the toggle — 「선택 표시는 색상만」, so on and off differ
-        // in ink and in nothing else. Fires on release inside the button:
-        // this is not a rail row, so it is not a tap-down.
         SizedBox(
-          height: 40,
+          width: _nameWidth,
+          // The NAME is the toggle — 「선택 표시는 색상만」, so on and off
+          // differ in ink and in nothing else. Fires on release inside the
+          // button: this is not a rail row, so it is not a tap-down.
           child: ControlPressClaim(
             onPressed: () => _setEnabled(source, !draft.enabled),
             child: InkWell(
               key: ValueKey<String>('curve-source-${source.name}'),
               customBorder: AppShapes.container(AppShapes.wellRadius),
               onTap: silentPress(() => _setEnabled(source, !draft.enabled)),
-              child: Center(
+              child: Align(
+                alignment: Alignment.centerLeft,
                 child: Text(
-                  label,
+                  _nameOf(source),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -503,47 +556,88 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
             ),
           ),
         ),
-        const SizedBox(height: 2),
-        // The ceiling, READ-ONLY and ALWAYS drawn — at ×1 too, because a
-        // readout that appears when the value leaves its default is UI that
-        // pops into existence.
-        //
-        // ⛔It is not editable, and not because a control would be hard: the
-        // ceiling only means anything on SIZE (the other three targets are
-        // clamped back into [0,1] downstream), so nine of the twelve cells
-        // would be a live control that does nothing. It arrives from an
-        // imported 最大値 and this says so.
-        SizedBox(
-          height: 18,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              // A ceiling read to the tenth, always: `×1` beside `×1.5` was
-              // the same digit-count flicker F-34 named on the bars.
-              '×${readoutText(draft.maximum, decimals: 1)}',
-              key: ValueKey<String>('curve-maximum-${source.name}'),
-              style: AnchoredPopupText.caption,
-            ),
+        const SizedBox(width: _nameGap),
+        Expanded(
+          child: FieldSlider(
+            key: ValueKey<String>('curve-minimum-${source.name}'),
+            label: AppText.strings.curveMinimum,
+            value: draft.minimum,
+            min: 0,
+            max: 1,
+            divisions: 100,
+            unit: '%',
+            displayScale: 100,
+            onChanged: (value) => _setRange(source, minimum: value),
           ),
         ),
-        const SizedBox(height: 2),
+      ],
+    );
+  }
+
+  /// 傾き's 最大値 — up to 1000%, Clip Studio's range.
+  ///
+  /// ↩️This was a READ-ONLY `×max` readout, kept so because "nine of the
+  /// twelve cells would be a live control that does nothing": only size
+  /// could go past its base. The popup now offers the slider where the
+  /// setting can ([BrushPressureTarget.canPassItsBase] — size and spacing),
+  /// the way Clip Studio's own panel does, and nowhere else.
+  Widget _buildMaximumRow(BrushInputSource source) {
+    final draft = _drafts[source]!;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(width: _nameWidth + _nameGap),
+        Expanded(
+          child: FieldSlider(
+            key: ValueKey<String>('curve-maximum-${source.name}'),
+            label: AppText.strings.curveMaximum,
+            value: draft.maximum,
+            min: 1,
+            max: 10,
+            divisions: 900,
+            unit: '%',
+            displayScale: 100,
+            onChanged: (value) => _setRange(source, maximum: value),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// One input's graph: its name and reset above, the graph, and — for
+  /// 傾き — the ends of its axis beneath.
+  ///
+  /// 🚨傾き IS DRAWN MIRRORED, 水平 on the left and 垂直 on the right, because
+  /// that is how Clip Studio draws it. The curve itself runs the other way —
+  /// lean, 0 upright to 1 flat, which is how a .sut stores it — so the flip
+  /// is the drawing's alone: [Transform.flip] turns the strip's paint and
+  /// its pointer together, and nothing it writes changes.
+  Widget _buildGraph(BrushInputSource source) {
+    final draft = _drafts[source]!;
+    final strip = _buildStrip(source, draft);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         SizedBox(
-          height: 22,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: ControlPressClaim(
-              onPressed: draft.enabled ? () => _reset(source) : null,
-              child: InkWell(
-                key: ValueKey<String>('curve-reset-${source.name}'),
-                onTap: silentPress(
-                  draft.enabled ? () => _reset(source) : null,
+          height: _graphTitleHeight,
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _nameOf(source),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AnchoredPopupText.caption,
                 ),
-                customBorder: AppShapes.container(3),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
+              ),
+              ControlPressClaim(
+                onPressed: draft.enabled ? () => _reset(source) : null,
+                child: InkWell(
+                  key: ValueKey<String>('curve-reset-${source.name}'),
+                  onTap: silentPress(
+                    draft.enabled ? () => _reset(source) : null,
                   ),
+                  customBorder: AppShapes.container(3),
                   child: Text(
                     AppText.strings.commonReset,
                     style: TextStyle(
@@ -555,8 +649,38 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
                   ),
                 ),
               ),
-            ),
+            ],
           ),
+        ),
+        SizedBox(
+          height: _graphSide,
+          child: source == BrushInputSource.tilt
+              ? Transform.flip(flipX: true, child: strip)
+              : strip,
+        ),
+        SizedBox(
+          height: _axisHeight,
+          // ↩️A `Row` with a `Spacer`, which ran off the graph wherever its
+          // two words outgrew it (a language's words, a wide font — 41px in
+          // the test font). Both ends at their own size where they fit.
+          child: source == BrushInputSource.tilt
+              ? KeptTailRow(
+                  // Two glyphs: a CJK end word whole.
+                  headKeeps: AnchoredPopupText.caption.fontSize! * 2,
+                  head: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      AppText.strings.curveTiltFlat,
+                      style: AnchoredPopupText.caption,
+                    ),
+                  ),
+                  tail: Text(
+                    AppText.strings.curveTiltUpright,
+                    style: AnchoredPopupText.caption,
+                  ),
+                )
+              : null,
         ),
       ],
     );

@@ -10,16 +10,21 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 void main() {
   Map<BrushInputSource, BrushPressureCurve?>? committed;
 
   Future<void> open(
     WidgetTester tester,
-    Map<BrushInputSource, BrushPressureCurve?> initial,
-  ) async {
+    Map<BrushInputSource, BrushPressureCurve?> initial, {
+    BrushPressureTarget target = BrushPressureTarget.opacity,
+  }) async {
     committed = null;
+    // A fresh tree: a popup the last open left standing goes with it.
+    await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -29,7 +34,7 @@ void main() {
                 key: const ValueKey<String>('open-curve'),
                 onPressed: () => showPressureCurvePopup(
                   context,
-                  title: 'Size',
+                  target: target,
                   initialCurves: initial,
                   onChanged: (bySource) => committed = bySource,
                 ),
@@ -53,13 +58,19 @@ void main() {
     await open(tester, const {});
 
     for (final source in BrushInputSource.values) {
+      // ランダム has a tick and a 最小値 and no graph — Clip Studio's own row.
       expect(
         find.byKey(ValueKey<String>('pressure-curve-graph-${source.name}')),
-        findsOneWidget,
+        source == BrushInputSource.random ? findsNothing : findsOneWidget,
         reason: source.name,
       );
       expect(
         find.byKey(ValueKey<String>('curve-source-${source.name}')),
+        findsOneWidget,
+        reason: source.name,
+      );
+      expect(
+        find.byKey(ValueKey<String>('curve-minimum-${source.name}')),
         findsOneWidget,
         reason: source.name,
       );
@@ -142,12 +153,82 @@ void main() {
       BrushPressureCurve.identity().points,
       reason: 'reset restores the SHAPE, and only the shape',
     );
+  });
 
-    // And it is on screen, at ×4.0, drawn whether or not it is the default.
-    // ⚠️The tenth is always written (F-34): `×1` beside `×1.5` was the same
-    // digit-count flicker the bars were carrying.
-    expect(find.text('×4.0'), findsOneWidget);
-    expect(find.text('×1.0'), findsNWidgets(2));
+  testWidgets('🚨a floor survives a reset — it is a slider, not the graph', (
+    tester,
+  ) async {
+    // F-176-Q2: Clip Studio's 最小値 sits beside the graph, so the model
+    // keeps it apart from the points; a reset that folded it back into them
+    // would move the slider the user set.
+    await open(tester, {
+      BrushInputSource.pressure: BrushPressureCurve.linearFrom(0.48),
+    });
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('curve-reset-pressure')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(committed![BrushInputSource.pressure]!.minimum, 0.48);
+    expect(
+      tester
+          .widget<FieldSlider>(
+            find.byKey(const ValueKey<String>('curve-minimum-pressure')),
+          )
+          .value,
+      0.48,
+    );
+  });
+
+  testWidgets('🚨傾き\'s 最大値 is a slider only where a setting can pass its '
+      'base', (tester) async {
+    const passes = {BrushPressureTarget.size, BrushPressureTarget.spacing};
+    for (final target in BrushPressureTarget.values) {
+      await open(tester, const {}, target: target);
+      expect(
+        find.byKey(const ValueKey<String>('curve-maximum-tilt')),
+        passes.contains(target) ? findsOneWidget : findsNothing,
+        reason: '${target.name}: a size and a spacing grow; an opacity '
+            'cannot be 300% — a live control there does nothing',
+      );
+    }
+
+    await open(tester, {
+      BrushInputSource.tilt: BrushPressureCurve.linearFrom(1.0, maximum: 4.0),
+    }, target: BrushPressureTarget.size);
+    final maximum = find.byKey(const ValueKey<String>('curve-maximum-tilt'));
+    expect(tester.widget<FieldSlider>(maximum).value, 4.0);
+
+    tester.widget<FieldSlider>(maximum).onChanged!(5.0);
+    await tester.pump();
+
+    expect(committed![BrushInputSource.tilt]!.maximum, 5.0);
+    expect(
+      committed![BrushInputSource.tilt]!.minimum,
+      1.0,
+      reason: 'the ceiling moves alone',
+    );
+  });
+
+  testWidgets('the popup is headed by the setting it drives, as its row '
+      'names it', (tester) async {
+    final names = {
+      BrushPressureTarget.size: AppText.strings.brSize,
+      BrushPressureTarget.opacity: AppText.strings.brOpacity,
+      BrushPressureTarget.flow: AppText.strings.brFlow,
+      BrushPressureTarget.hardness: AppText.strings.brHardness,
+      BrushPressureTarget.roundness: AppText.strings.brRoundness,
+      BrushPressureTarget.spacing: AppText.strings.brSpacing,
+    };
+    for (final MapEntry(key: target, value: name) in names.entries) {
+      await open(tester, const {}, target: target);
+      expect(
+        find.text('$name — ${AppText.strings.brushDynamicsTitle}'),
+        findsOneWidget,
+        reason: target.name,
+      );
+    }
   });
 
   testWidgets('a point dragged to the right EDGE is not deleted', (

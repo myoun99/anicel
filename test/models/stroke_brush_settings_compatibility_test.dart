@@ -31,7 +31,11 @@ void main() {
       expect(brushJson['flow'], 0.6);
       expect(brushJson['hardness'], 0.5);
       expect(brushJson['spacing'], 0.25);
-      expect(brushJson['sizePressureCurve'], [0.0, 0.2, 1.0, 1.0]);
+      // A floor is Clip Studio's 最小値, kept apart from the shape (F-176-Q2).
+      expect(brushJson['sizePressureCurve'], {
+        'points': [0.0, 0.0, 1.0, 1.0],
+        'minimum': 0.2,
+      });
       expect(brushJson['opacityPressureCurve'], [0.0, 0.0, 1.0, 1.0]);
     });
 

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
@@ -29,7 +30,7 @@ void _writeBrVr(
 }
 
 /// Sampled + computed brush descriptor payload (`desc` section).
-Uint8List _descPayload({required String sampledUuid}) {
+Uint8List _descPayload({required String sampledUuid, int angleControl = 6}) {
   final desc = AbrBytes();
   desc.i32(16); // descriptor version
   desc.unicode(''); // root class name
@@ -90,7 +91,7 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.key('minimumDiameter');
   desc.untf('#Prc', 65);
   _writeBrVr(desc, 'szVr', control: 2, jitterPercent: 30);
-  _writeBrVr(desc, 'angleDynamics', control: 6, jitterPercent: 10);
+  _writeBrVr(desc, 'angleDynamics', control: angleControl, jitterPercent: 10);
   desc.key('usePaintDynamics');
   desc.asciiChars('bool');
   desc.u8(1);
@@ -255,6 +256,7 @@ Uint8List _fixtureAbr({
   bool includeDesc = true,
   bool corruptDesc = false,
   bool patternsMissing = false,
+  int angleControl = 6,
 }) {
   final samp = AbrBytes();
   writeSampEntry(
@@ -307,7 +309,7 @@ Uint8List _fixtureAbr({
   if (includeDesc) {
     final payload = corruptDesc
         ? Uint8List.fromList([0, 0, 0, 99, 1, 2, 3])
-        : _descPayload(sampledUuid: 'tip-one-uuid');
+        : _descPayload(sampledUuid: 'tip-one-uuid', angleControl: angleControl);
     write8bimSection(file, 'desc', payload);
   }
   return file.bytes;
@@ -315,6 +317,17 @@ Uint8List _fixtureAbr({
 
 void main() {
   group('decodeAbrBrushFile', () {
+    test('the Pen Tilt angle control turns the tip with the pen', () {
+      // Photoshop's list: Off · Fade · Pen Pressure · Pen Tilt · … — 3 is the
+      // lean, Clip Studio's ペンの方向 (F-176-Q1).
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(angleControl: 3),
+        sourceName: 'fixture',
+      );
+      final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
+      expect(chalk.settings.rotationMode, BrushTipRotationMode.penTilt);
+    });
+
     test('imports sampled and computed brushes with their parameters', () {
       final result = decodeAbrBrushFile(_fixtureAbr(), sourceName: 'fixture');
 
@@ -339,7 +352,13 @@ void main() {
         chalk.settings.sizePressureCurve,
         BrushPressureCurve.linearFrom(0.65),
       );
-      expect(chalk.settings.sizeJitter, closeTo(0.3, 1e-9));
+      // The size jitter is the size row's ランダム 最小値 now (F-176-Q2).
+      expect(
+        chalk.settings.shape
+            .curveFor(BrushPressureTarget.size, BrushInputSource.random)!
+            .minimum,
+        closeTo(0.7, 1e-9),
+      );
       expect(
         chalk.settings.opacityPressureCurve,
         BrushPressureCurve.identity(),

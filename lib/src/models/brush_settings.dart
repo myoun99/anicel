@@ -28,8 +28,6 @@ class BrushSettings {
     double angleDegrees = 0.0,
     BrushTipMask? tipMask,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double sizeJitter = 0.0,
-    double opacityJitter = 0.0,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
@@ -44,8 +42,6 @@ class BrushSettings {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
-    double roundnessJitter = 0.0,
-    double spacingJitter = 0.0,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     bool mixesGroundColor = false,
@@ -72,8 +68,6 @@ class BrushSettings {
          angleDegrees: angleDegrees,
          tipMask: tipMask,
          rotationMode: rotationMode,
-         sizeJitter: sizeJitter,
-         opacityJitter: opacityJitter,
          angleJitter: angleJitter,
          scatterRadiusRatio: scatterRadiusRatio,
          scatterCount: scatterCount,
@@ -88,8 +82,6 @@ class BrushSettings {
          textureContrast: textureContrast,
          textureScale: textureScale,
          textureDensity: textureDensity,
-         roundnessJitter: roundnessJitter,
-         spacingJitter: spacingJitter,
          blendMode: blendMode,
          antiAlias: antiAlias,
          mixesGroundColor: mixesGroundColor,
@@ -133,8 +125,6 @@ class BrushSettings {
   double get angleDegrees => shape.angleDegrees;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
-  double get sizeJitter => shape.sizeJitter;
-  double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
@@ -157,8 +147,6 @@ class BrushSettings {
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
 
-  double get roundnessJitter => shape.roundnessJitter;
-  double get spacingJitter => shape.spacingJitter;
 
   /// How this brush composites — see [BrushShape.blendMode].
   BrushBlendMode get blendMode => shape.blendMode;
@@ -197,8 +185,6 @@ class BrushSettings {
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
@@ -213,8 +199,6 @@ class BrushSettings {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
-    double? roundnessJitter,
-    double? spacingJitter,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     bool? mixesGroundColor,
@@ -248,8 +232,6 @@ class BrushSettings {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
       rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
@@ -264,8 +246,6 @@ class BrushSettings {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
-      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
-      spacingJitter: spacingJitter ?? this.spacingJitter,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
@@ -300,11 +280,7 @@ class BrushSettings {
     'angleDegrees': angleDegrees,
     if (withMasks && tipMask != null) 'tipMask': tipMask!.toJson(),
     'rotationMode': rotationMode.toJson(),
-    'sizeJitter': sizeJitter,
-    'opacityJitter': opacityJitter,
     'angleJitter': angleJitter,
-    if (roundnessJitter > 0.0) 'roundnessJitter': roundnessJitter,
-    if (spacingJitter > 0.0) 'spacingJitter': spacingJitter,
     // 通常 is the default, so it writes nothing — presets saved before every
     // brush carried a blend round-trip byte-identically.
     if (blendMode != BrushBlendMode.color) 'blendMode': blendMode.name,
@@ -340,7 +316,7 @@ class BrushSettings {
     // minimumSizeRatio floor), opacity ON was plain `p`.
     BrushPressureCurve? curveOf(String key) => json[key] == null
         ? null
-        : BrushPressureCurve.fromJson(json[key] as List<dynamic>);
+        : BrushPressureCurve.fromJson(json[key]);
     var sizeCurve = curveOf('sizePressureCurve');
     if (sizeCurve == null && json['pressureSize'] == true) {
       sizeCurve = BrushPressureCurve.linearFrom(
@@ -369,11 +345,7 @@ class BrushSettings {
           ? null
           : BrushTipMask.fromJson(json['tipMask'] as Map<String, dynamic>),
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
-      sizeJitter: (json['sizeJitter'] as num?)?.toDouble() ?? 0.0,
-      opacityJitter: (json['opacityJitter'] as num?)?.toDouble() ?? 0.0,
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
-      roundnessJitter: (json['roundnessJitter'] as num?)?.toDouble() ?? 0.0,
-      spacingJitter: (json['spacingJitter'] as num?)?.toDouble() ?? 0.0,
       // The legacy `lockedBlendMode` key reads straight in: a preset that
       // PINNED a blend now simply has it.
       blendMode: BrushBlendMode.fromJson(
@@ -449,11 +421,7 @@ void _validateShape(BrushShape shape) {
   _validatePositive(shape.spacing, 'spacing');
   _validateRoundness(shape.roundness);
   _validateFinite(shape.angleDegrees, 'angleDegrees');
-  _validateUnitInterval(shape.sizeJitter, 'sizeJitter');
-  _validateUnitInterval(shape.opacityJitter, 'opacityJitter');
   _validateUnitInterval(shape.angleJitter, 'angleJitter');
-  _validateUnitInterval(shape.roundnessJitter, 'roundnessJitter');
-  _validateUnitInterval(shape.spacingJitter, 'spacingJitter');
   _validateNonNegativeFinite(shape.scatterRadiusRatio, 'scatterRadiusRatio');
   if (shape.scatterCount < 1) {
     throw ArgumentError.value(
@@ -556,7 +524,7 @@ Map<BrushDynamicsKey, BrushPressureCurve> _curvesFromJson(Object? json) {
   final out = <BrushDynamicsKey, BrushPressureCurve>{};
   for (final entry in json.entries) {
     final parts = '${entry.key}'.split('.');
-    if (parts.length != 2 || entry.value is! List) {
+    if (parts.length != 2 || (entry.value is! List && entry.value is! Map)) {
       continue;
     }
     final target = BrushPressureTarget.values
@@ -568,9 +536,7 @@ Map<BrushDynamicsKey, BrushPressureCurve> _curvesFromJson(Object? json) {
     if (target == null || source == null) {
       continue;
     }
-    out[(target, source)] = BrushPressureCurve.fromJson(
-      entry.value as List<dynamic>,
-    );
+    out[(target, source)] = BrushPressureCurve.fromJson(entry.value);
   }
   return out;
 }

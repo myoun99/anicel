@@ -207,6 +207,7 @@ class _BrushEditStroke {
         : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
     _state._spacingRandom = math.Random(dice);
     _state._dualPhaseRandom = math.Random(dice + 1);
+    _state._inputRandom = math.Random(dice + 3);
     _state._strokeDynamics = BrushStrokeDynamics(
       settings: strokeSettings,
       random: math.Random(dice + 2),
@@ -252,14 +253,10 @@ class _BrushEditStroke {
   /// The stroke's FIRST dab, under the press.
   void _paintPress(CanvasPoint canvasPosition) {
     final initialDabs = _state._pressure.withPressureDynamics(
-      const BrushDabInterpolator().interpolate(
-        previous: null,
-        nextRaw: _state._dabFromPosition(
-          canvasPosition,
-          sequence: _state._nextSequence,
-        ),
-        firstSequence: _state._nextSequence,
-        spacingRatio: activeStrokeSpacing,
+      _interpolateTo(
+        null,
+        canvasPosition,
+        sequence: _state._nextSequence,
       ),
     );
     if (initialDabs.isNotEmpty) {
@@ -361,14 +358,10 @@ class _BrushEditStroke {
             _state._breakCurrentVisibleSegment ||
             _state._previousBaseDab == null
         ? _state._pressure.withPressureDynamics(
-            const BrushDabInterpolator().interpolate(
-              previous: null,
-              nextRaw: _state._dabFromPosition(
-                clippedSegment.start,
-                sequence: _state._nextSequence,
-              ),
-              firstSequence: _state._nextSequence,
-              spacingRatio: activeStrokeSpacing,
+            _interpolateTo(
+              null,
+              clippedSegment.start,
+              sequence: _state._nextSequence,
             ),
           )
         : const <BrushDab>[];
@@ -377,14 +370,10 @@ class _BrushEditStroke {
         ? segmentStartDabs.last
         : previousDab;
     final segmentEndDabs = _state._pressure.withPressureDynamics(
-      const BrushDabInterpolator().interpolate(
-        previous: endPrevious,
-        nextRaw: _state._dabFromPosition(
-          clippedSegment.end,
-          sequence: firstEndSequence,
-        ),
-        firstSequence: firstEndSequence,
-        spacingRatio: activeStrokeSpacing,
+      _interpolateTo(
+        endPrevious,
+        clippedSegment.end,
+        sequence: firstEndSequence,
       ),
     );
     final baseDabs = <BrushDab>[...segmentStartDabs, ...segmentEndDabs];
@@ -555,23 +544,36 @@ class _BrushEditStroke {
     _state._overlay.resetOverlay();
   }
 
-  /// Spacing for the segment about to be interpolated.
+  /// The base dabs from [previous] to a reading at [at], stepped by the
+  /// spacing that reading asks for ([spacingAt]).
+  List<BrushDab> _interpolateTo(
+    BrushDab? previous,
+    CanvasPoint at, {
+    required int sequence,
+  }) {
+    final reading = _state._dabFromPosition(at, sequence: sequence);
+    return const BrushDabInterpolator().interpolate(
+      previous: previous,
+      nextRaw: reading,
+      firstSequence: sequence,
+      spacingRatio: spacingAt(reading),
+    );
+  }
+
+  /// Spacing for the segment that ends at [reading] ([brushSpacingFor]),
+  /// thrown with the stroke's spacing dice.
   ///
   /// Clip Studio rolls its interval randomness per dab. The interpolator is
   /// pure and shared, and a segment between two pointer samples almost
   /// always yields one or two dabs (it returns nothing at all when the move
   /// is shorter than one step), so rolling once per segment lands in the
   /// same place without threading a random source through it.
-  double get activeStrokeSpacing {
-    final settings =
-        _state._activeStrokeInputSettings ?? _state.widget.inputSettings();
-    final jitter = settings.spacingJitter;
-    if (jitter <= 0.0) {
-      return settings.spacing;
-    }
-    return settings.spacing *
-        (1.0 - jitter * _state._spacingRandom.nextDouble());
-  }
+  double spacingAt(BrushDab reading) => brushSpacingFor(
+    reading,
+    (_state._activeStrokeInputSettings ?? _state.widget.inputSettings())
+        .shape,
+    random: _state._spacingRandom,
+  );
 
   void endStrokeInput() {
     _state.widget.onActiveStrokeChanged?.call(false);

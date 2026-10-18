@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
@@ -83,14 +84,9 @@ void main() {
     }
   });
 
-  test('jitters only reduce size and opacity, within bounds', () {
-    final settings = BrushEditCanvasInputSettings(
-      sizeJitter: 0.5,
-      opacityJitter: 0.5,
-      angleJitter: 0.25,
-    );
+  test('the angle\'s random turn stays within its half turn', () {
     final dynamics = BrushStrokeDynamics(
-      settings: settings,
+      settings: BrushEditCanvasInputSettings(angleJitter: 0.25),
       random: math.Random(3),
     );
     final emitted = dynamics.apply(
@@ -99,10 +95,6 @@ void main() {
       directionDegrees: 0,
     );
     for (final dab in emitted) {
-      expect(dab.size, lessThanOrEqualTo(10.0));
-      expect(dab.size, greaterThanOrEqualTo(5.0 - 1e-9));
-      expect(dab.opacity, lessThanOrEqualTo(0.8));
-      expect(dab.opacity, greaterThanOrEqualTo(0.4 - 1e-9));
       // angle 30 +- 45 degrees, normalized into [0, 360).
       final angle = dab.angleDegrees > 180
           ? dab.angleDegrees - 360
@@ -112,36 +104,105 @@ void main() {
     }
   });
 
-  test('roundness jitter squashes the tip without degenerating it', () {
+  group('🚨the ランダム row (F-176-Q2)', () {
+    BrushShape randomRows(double minimum) => BrushShape(
+      curves: {
+        for (final target in BrushPressureTarget.values)
+          (target, BrushInputSource.random): BrushPressureCurve.linearFrom(
+            minimum,
+          ),
+      },
+    );
+
+    test('throws every per-dab setting between its floor and its base', () {
+      final random = math.Random(3);
+      final dabs = [
+        for (var i = 0; i < 32; i += 1)
+          applyBrushInputDynamics(
+            _dab(sequence: i),
+            shape: randomRows(0.5),
+            random: random,
+          ),
+      ];
+      for (final dab in dabs) {
+        expect(dab.size, inInclusiveRange(5.0 - 1e-9, 10.0));
+        expect(dab.opacity, inInclusiveRange(0.4 - 1e-9, 0.8));
+        expect(dab.flow, inInclusiveRange(0.5 - 1e-9, 1.0));
+        expect(dab.hardness, inInclusiveRange(0.5 - 1e-9, 1.0));
+        expect(dab.roundness, inInclusiveRange(0.5 - 1e-9, 1.0));
+      }
+      expect(
+        dabs.map((dab) => dab.size).toSet().length,
+        greaterThan(1),
+        reason: 'thrown per dab',
+      );
+    });
+
+    test('a 0% floor squashes the tip without degenerating it', () {
+      final random = math.Random(7);
+      final dabs = [
+        for (var i = 0; i < 64; i += 1)
+          applyBrushInputDynamics(
+            _dab(sequence: i),
+            shape: randomRows(0.0),
+            random: random,
+          ),
+      ];
+      // A ratio in (0, 1]: even at a 0% floor the tip keeps a hair of
+      // width, because a zero-width ellipse has no coverage to rasterize.
+      for (final dab in dabs) {
+        expect(dab.roundness, inInclusiveRange(0.01, 1.0));
+      }
+    });
+
+    test('without dice the row is skipped, not guessed at', () {
+      // A still thumbnail has no stroke to own a throw: the brush draws at
+      // its base, the way a mouse skips 傾き.
+      final dab = applyBrushInputDynamics(_dab(), shape: randomRows(0.0));
+      expect(dab.size, 10.0);
+      expect(dab.opacity, 0.8);
+      expect(dab.roundness, 1.0);
+    });
+  });
+
+  group('🚨ペンの方向 — the tip turns with the pen (F-176-Q4)', () {
     final dynamics = BrushStrokeDynamics(
-      settings: BrushEditCanvasInputSettings(roundnessJitter: 1.0),
-      random: math.Random(7),
+      settings: BrushEditCanvasInputSettings(
+        rotationMode: BrushTipRotationMode.penTilt,
+      ),
+      random: math.Random(1),
     );
+    BrushDab leaning({double? altitude, double azimuth = 0}) => _dab()
+        .copyWith(tiltAltitude: altitude, tiltAzimuthDegrees: azimuth);
 
-    final emitted = dynamics.apply(
-      [for (var i = 0; i < 32; i += 1) _dab(sequence: i)],
-      firstSequence: 0,
-      directionDegrees: 0,
-    );
+    test('a leaning pen adds its lean, clockwise turned counterclockwise', () {
+      final [dab] = dynamics.apply(
+        [leaning(altitude: 0.4, azimuth: 70)],
+        firstSequence: 0,
+      );
+      // base 30, lean 70° clockwise from +x = −70° as a dab angle.
+      expect(dab.angleDegrees, closeTo(320.0, 1e-9));
+    });
 
-    // A ratio in (0, 1]: even at full jitter the tip keeps a hair of width,
-    // because a zero-width ellipse has no coverage to rasterize.
-    for (final dab in emitted) {
-      expect(dab.roundness, greaterThanOrEqualTo(0.01));
-      expect(dab.roundness, lessThanOrEqualTo(1.0));
-    }
-    expect(
-      emitted.map((dab) => dab.roundness).toSet().length,
-      greaterThan(1),
-      reason: 'the squash is rolled per dab',
-    );
+    test('no tilt, or an upright pen, leaves the base angle', () {
+      final [mouse] = dynamics.apply([_dab()], firstSequence: 0);
+      final [upright] = dynamics.apply(
+        [leaning(altitude: 1.0)],
+        firstSequence: 0,
+      );
+      expect(mouse.angleDegrees, 30.0);
+      expect(upright.angleDegrees, 30.0);
+    });
+
+    test('it does not wait for the stroke\'s direction', () {
+      expect(dynamics.readsDirection, isFalse);
+    });
   });
 
   test('same seed reproduces the same emission', () {
     final settings = BrushEditCanvasInputSettings(
       scatterRadiusRatio: 1.0,
       scatterCount: 3,
-      sizeJitter: 0.4,
       angleJitter: 0.3,
     );
     final first = BrushStrokeDynamics(

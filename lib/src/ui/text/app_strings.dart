@@ -1051,6 +1051,11 @@ enum AppStrings {
   String get curveSourcePressure => _s('curveSourcePressure');
   String get curveSourceTilt => _s('curveSourceTilt');
   String get curveSourceSpeed => _s('curveSourceSpeed');
+  String get curveSourceRandom => _s('curveSourceRandom');
+  String get curveMinimum => _s('curveMinimum');
+  String get curveMaximum => _s('curveMaximum');
+  String get curveTiltFlat => _s('curveTiltFlat');
+  String get curveTiltUpright => _s('curveTiltUpright');
   String get onionCurrentDrawing => _s('onionCurrentDrawing');
   String get audioLevelMeter => _s('audioLevelMeter');
   String get panelMedia => _s('panelMedia');
@@ -1595,11 +1600,6 @@ enum AppStrings {
   String get brAngle => _s('brAngle');
   String get brRoundness => _s('brRoundness');
   String get brScale => _s('brScale');
-  String get brSizeJitter => _s('brSizeJitter');
-  String get brOpacityJitter => _s('brOpacityJitter');
-  String get brAngleJitter => _s('brAngleJitter');
-  String get brRoundnessJitter => _s('brRoundnessJitter');
-  String get brSpacingJitter => _s('brSpacingJitter');
   String get brScatter => _s('brScatter');
   String get brScatterCount => _s('brScatterCount');
   String get brScatterBothAxes => _s('brScatterBothAxes');
@@ -1617,10 +1617,10 @@ enum AppStrings {
   String get brTipRotation => _s('brTipRotation');
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
+  String get brRotationPenTilt => _s('brRotationPenTilt');
   String get brStabilizer => _s('brStabilizer');
   String get brGroupInk => _s('brGroupInk');
   String get brGroupTip => _s('brGroupTip');
-  String get brGroupRandomness => _s('brGroupRandomness');
   String get brGroupMixing => _s('brGroupMixing');
   String get brGroupScattering => _s('brGroupScattering');
   String get brGroupTexture => _s('brGroupTexture');
@@ -2365,6 +2365,11 @@ enum AppStrings {
     'curveSourcePressure': 'Pressure',
     'curveSourceTilt': 'Tilt',
     'curveSourceSpeed': 'Speed',
+    'curveSourceRandom': 'Random',
+    'curveMinimum': 'Min',
+    'curveMaximum': 'Max',
+    'curveTiltFlat': 'Flat',
+    'curveTiltUpright': 'Upright',
     'onionCurrentDrawing': 'Current drawing',
     'audioLevelMeter': 'audio level meter',
     'panelColorRgb': 'RGB',
@@ -2735,17 +2740,13 @@ enum AppStrings {
     'brAngle': 'Angle',
     'brRoundness': 'Roundness',
     'brScale': 'Scale',
-    'brSizeJitter': 'Size Jitter',
-    'brOpacityJitter': 'Opacity Jitter',
-    'brAngleJitter': 'Angle Jitter',
-    'brRoundnessJitter': 'Roundness Jitter',
-    'brSpacingJitter': 'Spacing Jitter',
     'brScatter': 'Scatter',
     'brScatterCount': 'Count',
     'brScatterBothAxes': 'Both Axes',
-    'brTipRotation': 'Rotation',
-    'brRotationFixed': 'Fixed',
-    'brRotationDirection': 'Direction',
+    'brTipRotation': 'Direction',
+    'brRotationFixed': 'None',
+    'brRotationDirection': 'Line Direction',
+    'brRotationPenTilt': 'Pen Direction',
     'brBrushTip': 'Brush Tip',
     'brTipNone': 'None',
     'brDualTip': 'Dual Tip',
@@ -2760,7 +2761,6 @@ enum AppStrings {
     'brStabilizer': 'Stabilizer',
     'brGroupInk': 'Ink',
     'brGroupTip': 'Brush tip',
-    'brGroupRandomness': 'Randomness',
     'brGroupMixing': 'Mixing',
     'brGroupScattering': 'Scattering',
     'brGroupTexture': 'Texture',
@@ -3747,6 +3747,11 @@ enum AppStrings {
     'curveSourcePressure': '筆圧',
     'curveSourceTilt': '傾き',
     'curveSourceSpeed': '速度',
+    'curveSourceRandom': 'ランダム',
+    'curveMinimum': '最小値',
+    'curveMaximum': '最大値',
+    'curveTiltFlat': '水平',
+    'curveTiltUpright': '垂直',
     'onionCurrentDrawing': '現在の絵',
     'audioLevelMeter': '音声レベルメーター',
     'panelColorRgb': 'RGB',
@@ -4201,17 +4206,13 @@ enum AppStrings {
     'brAngle': '角度',
     'brRoundness': '真円率',
     'brScale': '拡大率',
-    'brSizeJitter': 'サイズのランダム',
-    'brOpacityJitter': '不透明度のランダム',
-    'brAngleJitter': '角度のランダム',
-    'brRoundnessJitter': '真円率のランダム',
-    'brSpacingJitter': '間隔のランダム',
     'brScatter': '散布',
     'brScatterCount': '個数',
     'brScatterBothAxes': '両軸',
-    'brTipRotation': '回転',
-    'brRotationFixed': '固定',
-    'brRotationDirection': '進行方向',
+    'brTipRotation': '向き',
+    'brRotationFixed': 'なし',
+    'brRotationDirection': '線の方向',
+    'brRotationPenTilt': 'ペンの方向',
     'brBrushTip': 'ブラシ先端',
     'brTipNone': 'なし',
     'brDualTip': 'デュアル先端',
@@ -4226,7 +4227,6 @@ enum AppStrings {
     'brStabilizer': '手ブレ補正',
     'brGroupInk': 'インク',
     'brGroupTip': 'ブラシ先端',
-    'brGroupRandomness': 'ランダム',
     'brGroupMixing': '混色',
     'brGroupScattering': '散布',
     'brGroupTexture': '質感',
@@ -5321,6 +5321,11 @@ enum AppStrings {
     'curveSourcePressure': '필압',
     'curveSourceTilt': '기울기',
     'curveSourceSpeed': '속도',
+    'curveSourceRandom': '랜덤',
+    'curveMinimum': '최소값',
+    'curveMaximum': '최대값',
+    'curveTiltFlat': '수평',
+    'curveTiltUpright': '수직',
     'onionCurrentDrawing': '현재 그림',
     'audioLevelMeter': '오디오 레벨 미터',
     'panelColorRgb': 'RGB',
@@ -5765,17 +5770,13 @@ enum AppStrings {
     'brAngle': '각도',
     'brRoundness': '원형률',
     'brScale': '배율',
-    'brSizeJitter': '크기 랜덤',
-    'brOpacityJitter': '불투명도 랜덤',
-    'brAngleJitter': '각도 랜덤',
-    'brRoundnessJitter': '원형률 랜덤',
-    'brSpacingJitter': '간격 랜덤',
     'brScatter': '살포',
     'brScatterCount': '개수',
     'brScatterBothAxes': '양축',
-    'brTipRotation': '회전',
-    'brRotationFixed': '고정',
-    'brRotationDirection': '진행방향',
+    'brTipRotation': '방향',
+    'brRotationFixed': '없음',
+    'brRotationDirection': '선 방향',
+    'brRotationPenTilt': '펜 방향',
     'brBrushTip': '브러시 끝',
     'brTipNone': '없음',
     'brDualTip': '듀얼 끝',
@@ -5790,7 +5791,6 @@ enum AppStrings {
     'brStabilizer': '손떨림 보정',
     'brGroupInk': '잉크',
     'brGroupTip': '브러시 끝',
-    'brGroupRandomness': '랜덤',
     'brGroupMixing': '혼색',
     'brGroupScattering': '살포',
     'brGroupTexture': '질감',
@@ -6939,6 +6939,11 @@ enum AppStrings {
     'curveSourcePressure': 'Pression',
     'curveSourceTilt': 'Inclinaison',
     'curveSourceSpeed': 'Vitesse',
+    'curveSourceRandom': 'Aléatoire',
+    'curveMinimum': 'Min',
+    'curveMaximum': 'Max',
+    'curveTiltFlat': 'À plat',
+    'curveTiltUpright': 'Droit',
     'onionCurrentDrawing': 'Dessin actuel',
     'audioLevelMeter': 'vumètre audio',
     'panelColorRgb': 'RVB',
@@ -7476,17 +7481,13 @@ enum AppStrings {
     'brAngle': 'Angle',
     'brRoundness': 'Rondeur',
     'brScale': 'Échelle',
-    'brSizeJitter': 'Variation de taille',
-    'brOpacityJitter': "Variation d'opacité",
-    'brAngleJitter': "Variation d'angle",
-    'brRoundnessJitter': 'Variation de rondeur',
-    'brSpacingJitter': "Variation d'espacement",
     'brScatter': 'Dispersion',
     'brScatterCount': 'Nombre',
     'brScatterBothAxes': 'Deux axes',
-    'brTipRotation': 'Rotation',
-    'brRotationFixed': 'Fixe',
-    'brRotationDirection': 'Direction',
+    'brTipRotation': 'Orientation',
+    'brRotationFixed': 'Aucune',
+    'brRotationDirection': 'Sens du trait',
+    'brRotationPenTilt': 'Sens du stylet',
     'brBrushTip': 'Pointe',
     'brTipNone': 'Aucune',
     'brDualTip': 'Pointe double',
@@ -7498,7 +7499,6 @@ enum AppStrings {
     'brStabilizer': 'Stabilisateur',
     'brGroupInk': 'Encre',
     'brGroupTip': 'Pointe',
-    'brGroupRandomness': 'Variation',
     'brGroupMixing': 'Mélange',
     'brGroupScattering': 'Dispersion',
     'brGroupTexture': 'Texture',
@@ -8545,6 +8545,11 @@ enum AppStrings {
     'curveSourcePressure': '笔压',
     'curveSourceTilt': '倾斜',
     'curveSourceSpeed': '速度',
+    'curveSourceRandom': '随机',
+    'curveMinimum': '最小值',
+    'curveMaximum': '最大值',
+    'curveTiltFlat': '水平',
+    'curveTiltUpright': '垂直',
     'onionCurrentDrawing': '当前画面',
     'audioLevelMeter': '音频电平表',
     'panelColorRgb': 'RGB',
@@ -8978,17 +8983,13 @@ enum AppStrings {
     'brAngle': '角度',
     'brRoundness': '圆度',
     'brScale': '缩放',
-    'brSizeJitter': '大小抖动',
-    'brOpacityJitter': '不透明度抖动',
-    'brAngleJitter': '角度抖动',
-    'brRoundnessJitter': '圆度抖动',
-    'brSpacingJitter': '间隔抖动',
     'brScatter': '散布',
     'brScatterCount': '数量',
     'brScatterBothAxes': '双轴',
-    'brTipRotation': '旋转',
-    'brRotationFixed': '固定',
-    'brRotationDirection': '前进方向',
+    'brTipRotation': '方向',
+    'brRotationFixed': '无',
+    'brRotationDirection': '线条方向',
+    'brRotationPenTilt': '笔的方向',
     'brBrushTip': '笔尖',
     'brTipNone': '无',
     'brDualTip': '双重笔尖',
@@ -9000,7 +9001,6 @@ enum AppStrings {
     'brStabilizer': '防抖',
     'brGroupInk': '墨水',
     'brGroupTip': '笔尖',
-    'brGroupRandomness': '随机',
     'brGroupMixing': '混色',
     'brGroupScattering': '散布',
     'brGroupTexture': '纹理',

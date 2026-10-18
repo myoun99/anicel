@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_hand_settings.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -64,7 +65,14 @@ void main() {
         s.copyWith(opacityPressureCurve: BrushPressureCurve.identity()),
     'the blend': (s) => s.copyWith(blendMode: BrushBlendMode.multiply),
     'the edge': (s) => s.copyWith(antiAlias: BrushAntiAlias.none),
-    'the size jitter': (s) => s.copyWith(sizeJitter: 0.4),
+    // A row with a floor of its own: the curve's object form (F-176-Q2).
+    'the size random row': (s) => BrushSettings.fromShape(
+      s.shape.withCurve(
+        BrushPressureTarget.size,
+        BrushInputSource.random,
+        BrushPressureCurve.linearFrom(0.6),
+      ),
+    ),
   };
   for (final MapEntry(key: what, value: edit) in edits.entries) {
     test('🚨$what comes back with its brush', () {

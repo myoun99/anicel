@@ -19,7 +19,7 @@ void main() {
           body: Center(
             child: PressureCurveButton(
               keyValue: 'slot-probe',
-              title: 'Size',
+              target: BrushPressureTarget.size,
               curves: const {},
               onChanged: (_) {},
             ),
@@ -45,7 +45,7 @@ void main() {
           body: Center(
             child: PressureCurveButton(
               keyValue: 'slot-probe',
-              title: 'Size',
+              target: BrushPressureTarget.size,
               curves: {
                 BrushInputSource.pressure: BrushPressureCurve.identity(),
               },

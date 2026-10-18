@@ -6,10 +6,16 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
 import '../helpers/temp_dir.dart';
+
+/// The 最小値 of [s]'s ランダム row for [target], or null when it has none.
+double? randomFloor(BrushSettings s, BrushPressureTarget target) =>
+    s.shape.curveFor(target, BrushInputSource.random)?.minimum;
 
 /// Builds synthetic Clip Studio brush databases mirroring the real layout
 /// (verified against CSP 1.x/3.x exports): `Node` tool entries, `Variant`
@@ -35,7 +41,7 @@ void main() {
   /// ⛔This used to write `minimumPercent` to `int[3]` and nothing else, so
   /// every synthetic blob had its four slots collapsed into one — and a
   /// decoder reading the WRONG slot read the right number anyway. That is
-  /// exactly how `_effectorRandomJitter` took pressure's floor as random's
+  /// exactly how the decoder once took pressure's floor as random's
   /// amplitude and no test complained. A fixture that cannot express the
   /// defect cannot catch it.
   Uint8List effector(
@@ -381,8 +387,9 @@ void main() {
 
   test('the effector response curve imports as a curve', () async {
     // Clip Studio keeps the 筆압설정 graph in the effector's tail. The
-    // minimum is a SEPARATE control that lifts the curve's floor, so the
-    // stored y of 0 lands on the minimum and the stored 1 lands on full.
+    // minimum is a SEPARATE control — a slider beside the graph — so the
+    // graph comes in as it is stored and the floor rides beside it
+    // (F-176-Q2), landing the stored y of 0 on the minimum and 1 on full.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorMinimum: 40,
@@ -394,11 +401,13 @@ void main() {
     )).presets.first.settings.sizePressureCurve!;
 
     expect(curve.points, [
-      const BrushCurvePoint(0.0, 0.4),
-      const BrushCurvePoint(0.25, 0.4 + 0.6 * 0.1),
-      const BrushCurvePoint(0.75, 0.4 + 0.6 * 0.9),
+      const BrushCurvePoint(0.0, 0.0),
+      const BrushCurvePoint(0.25, 0.1),
+      const BrushCurvePoint(0.75, 0.9),
       const BrushCurvePoint(1.0, 1.0),
     ]);
+    expect(curve.minimum, 0.4);
+    expect(curve.evaluate(0.0), closeTo(0.4, 1e-12));
   });
 
   test('an untouched graph still reduces to the straight line', () async {
@@ -439,8 +448,8 @@ void main() {
     // int[6] and pressure's at int[3]; before 2026-09-09 the decoder read
     // int[3] for both, and this test could not tell because the fixture
     // wrote one number into every slot. Now the two disagree on purpose —
-    // if the reader slips back to pressure's slot, the amplitudes come out
-    // 0.93 / 0.55 instead of 0.8 / 0.96 and this fails.
+    // if the reader slips back to pressure's slot, the floors come out
+    // 0.07 / 0.45 instead of 0.2 / 0.04 and this fails.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorFlags: 0x80,
@@ -460,15 +469,20 @@ void main() {
       sourceName: 'fixture',
     )).presets.first.settings;
 
-    // Clip Studio wanders between 최소치% and 100%; the engine shakes
-    // downward, so the amplitude is the complement of the floor.
-    expect(s.sizeJitter, closeTo(0.8, 1e-9));
-    // No flow jitter on the engine — flow randomness folds into opacity.
-    expect(s.opacityJitter, closeTo(0.96, 1e-9));
+    // Clip Studio wanders between 최소치% and 100% — its ランダム row, which is
+    // each setting's own row here, floor and all (F-176-Q2).
+    expect(randomFloor(s, BrushPressureTarget.size), closeTo(0.2, 1e-9));
+    // Flow has a row of its own — it used to fold into opacity's jitter.
+    expect(randomFloor(s, BrushPressureTarget.flow), closeTo(0.04, 1e-9));
+    expect(randomFloor(s, BrushPressureTarget.opacity), isNull);
     // The rotation effector is a bare int carrying the same 0x80 bit.
     expect(s.angleJitter, closeTo(0.45, 1e-9));
     // Thickness IS roundness, so its random source squashes the tip.
-    expect(s.roundnessJitter, 0.0, reason: 'inert without the random bit');
+    expect(
+      randomFloor(s, BrushPressureTarget.roundness),
+      isNull,
+      reason: 'inert without the random bit',
+    );
     // The random bit does not imply a pressure curve.
     expect(s.sizePressureCurve, isNull);
   });
@@ -635,7 +649,10 @@ void main() {
       sourceName: 'fixture',
     )).presets.first.settings;
 
-    expect(s.roundnessJitter, closeTo(0.65, 1e-9));
+    expect(
+      randomFloor(s, BrushPressureTarget.roundness),
+      closeTo(0.35, 1e-9),
+    );
   });
 
   test('the interval effector random source breaks up the beat', () async {
@@ -651,7 +668,7 @@ void main() {
       sourceName: 'fixture',
     )).presets.first.settings;
 
-    expect(s.spacingJitter, closeTo(0.8, 1e-9));
+    expect(randomFloor(s, BrushPressureTarget.spacing), closeTo(0.2, 1e-9));
   });
 
   test('a non-normal composite mode travels with the brush', () async {

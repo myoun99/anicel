@@ -453,44 +453,41 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the jitter sliders reach the engine', (tester) async {
-      // These have existed in the engine since P20 with no way to touch
-      // them: only a preset or an import could turn them on.
+    testWidgets('the angle\'s random turn reaches the engine', (tester) async {
       final read = await pumpPanel(tester);
 
-      for (final key in [
-        'brush-tool-size-jitter-slider',
-        'brush-tool-opacity-jitter-slider',
-        'brush-tool-angle-jitter-slider',
-      ]) {
-        final slider = find.byKey(ValueKey<String>(key));
-        await tester.ensureVisible(slider);
-        await tester.drag(slider, const Offset(60, 0));
-        await tester.pumpAndSettle();
-      }
+      final slider = find.byKey(
+        const ValueKey<String>('brush-tool-angle-jitter-slider'),
+      );
+      await tester.ensureVisible(slider);
+      await tester.drag(slider, const Offset(60, 0));
+      await tester.pumpAndSettle();
 
-      expect(read().sizeJitter, greaterThan(0));
-      expect(read().opacityJitter, greaterThan(0));
       expect(read().angleJitter, greaterThan(0));
     });
 
-    testWidgets('the roundness and spacing jitters reach the engine', (
+    testWidgets('🚨no 「무작위」 group — chance is each setting\'s row', (
       tester,
     ) async {
-      final read = await pumpPanel(tester);
+      // F-176-Q2 (유저 2026-10-18 「클튜식 — 팝업에 랜덤 줄, 「무작위」 묶음
+      // 없앰」): the jitters are the ランダム row of each setting's curve
+      // popup, and roundness and spacing carry that popup like the others.
+      await pumpPanel(tester);
 
-      for (final key in [
-        'brush-tool-roundness-jitter-slider',
-        'brush-tool-spacing-jitter-slider',
-      ]) {
-        final slider = find.byKey(ValueKey<String>(key));
-        await tester.ensureVisible(slider);
-        await tester.drag(slider, const Offset(60, 0));
-        await tester.pumpAndSettle();
+      for (final gone in ['size', 'opacity', 'roundness', 'spacing']) {
+        expect(
+          find.byKey(ValueKey<String>('brush-tool-$gone-jitter-slider')),
+          findsNothing,
+          reason: gone,
+        );
       }
-
-      expect(read().roundnessJitter, greaterThan(0));
-      expect(read().spacingJitter, greaterThan(0));
+      for (final target in ['roundness', 'spacing']) {
+        expect(
+          find.byKey(ValueKey<String>('brush-tool-pressure-$target')),
+          findsOneWidget,
+          reason: target,
+        );
+      }
     });
 
     // The blend lock moved to the top strip with the blend button; its

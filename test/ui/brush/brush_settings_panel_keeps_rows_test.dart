@@ -10,9 +10,9 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 /// pick rebuilt every row of this panel, the ones two brushes share included.
 void main() {
   const flowKey = ValueKey<String>('brush-tool-flow-slider');
-  const jitterKey = ValueKey<String>('brush-tool-size-jitter-slider');
+  const jitterKey = ValueKey<String>('brush-tool-angle-jitter-slider');
 
-  final a = BrushToolState.defaults.copyWith(flow: 0.5, sizeJitter: 0.2);
+  final a = BrushToolState.defaults.copyWith(flow: 0.5, angleJitter: 0.2);
 
   /// The panel the way the workspace drives it: the state it is handed is
   /// whatever the notifier holds, and a row's write lands in the notifier.
@@ -77,7 +77,7 @@ void main() {
 
     jitter.onChanged!(0.4);
 
-    expect(written.last.sizeJitter, 0.4);
+    expect(written.last.angleJitter, 0.4);
     expect(
       written.last.flow,
       0.9,

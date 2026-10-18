@@ -5,14 +5,19 @@ import '../models/brush_tip_rotation_mode.dart';
 import '../models/canvas_point.dart';
 import '../models/brush_edit_canvas_input_settings.dart';
 
-/// Applies placement-time stroke dynamics — scatter, size/opacity/angle
-/// jitter, and direction-following tip rotation — to interpolated dabs.
+/// Applies placement-time stroke dynamics — scatter, the tip's 向き (a fixed
+/// angle, the stroke's direction or the pen's, plus its random turn) — to
+/// interpolated dabs.
 ///
 /// Dynamics run once, when dabs are GENERATED: the emitted dabs carry their
 /// final randomized values, and since committed source dabs are the durable
 /// source of truth, re-rendering (commit, undo/redo) replays exactly the
 /// pixels that were on screen. The rasterizers and their parity guarantees
 /// are untouched by design.
+///
+/// ↩️Size, opacity and roundness jitter used to be thrown here too. They are
+/// the ランダム row of each setting's curves now (F-176-Q2), thrown where the
+/// other inputs are read (`applyBrushInputDynamics`).
 class BrushStrokeDynamics {
   BrushStrokeDynamics({required this.settings, math.Random? random})
     : _random = random ?? math.Random();
@@ -24,10 +29,7 @@ class BrushStrokeDynamics {
   /// dabs pass through untouched.
   bool get isActive =>
       settings.rotationMode != BrushTipRotationMode.fixed ||
-      settings.sizeJitter > 0.0 ||
-      settings.opacityJitter > 0.0 ||
       settings.angleJitter > 0.0 ||
-      settings.roundnessJitter > 0.0 ||
       (settings.scatterRadiusRatio > 0.0 || settings.scatterCount > 1);
 
   /// Whether a dab's placement turns on the stroke's DIRECTION — a tip that
@@ -70,36 +72,22 @@ class BrushStrokeDynamics {
         }
 
         var angle = dab.angleDegrees;
-        if (settings.rotationMode == BrushTipRotationMode.direction &&
-            directionDegrees != null) {
-          angle = dab.angleDegrees + directionDegrees;
+        final turn = switch (settings.rotationMode) {
+          BrushTipRotationMode.fixed => null,
+          BrushTipRotationMode.direction => directionDegrees,
+          BrushTipRotationMode.penTilt => penDirectionDegrees(dab),
+        };
+        if (turn != null) {
+          angle += turn;
         }
         if (settings.angleJitter > 0.0) {
           angle +=
               (_random.nextDouble() * 2.0 - 1.0) * settings.angleJitter * 180.0;
         }
 
-        var size = dab.size;
-        if (settings.sizeJitter > 0.0) {
-          size *= 1.0 - settings.sizeJitter * _random.nextDouble();
-        }
-        var opacity = dab.opacity;
-        if (settings.opacityJitter > 0.0) {
-          opacity *= 1.0 - settings.opacityJitter * _random.nextDouble();
-        }
-        var roundness = dab.roundness;
-        if (settings.roundnessJitter > 0.0) {
-          roundness *= 1.0 - settings.roundnessJitter * _random.nextDouble();
-        }
-
         emitted.add(
           dab.copyWith(
             center: center,
-            size: size,
-            opacity: opacity.clamp(0.0, 1.0).toDouble(),
-            // Roundness is a ratio in (0, 1]; a fully-squashed tip would be
-            // a degenerate zero-width ellipse, so it keeps a hair of width.
-            roundness: roundness.clamp(0.01, 1.0).toDouble(),
             angleDegrees: _normalizeAngle(angle),
             sequence: sequence,
           ),
@@ -158,4 +146,23 @@ double? strokeDirectionDegrees({
     return null;
   }
   return math.atan2(-dy, dx) * 180.0 / math.pi;
+}
+
+/// Which way the pen leans, as a dab angle — visual counterclockwise degrees
+/// from the horizontal, the way [BrushDab.angleDegrees] runs — or `null`
+/// when the pen cannot say: a device with no tilt, or a pen held upright,
+/// which leans nowhere ([BrushDab.tiltAzimuthDegrees] is meaningless there).
+///
+/// 🚨THE SIGN FLIPS. The azimuth runs CLOCKWISE from +x (`PenLean`) and a
+/// dab's angle counterclockwise, so the same lean is the negated number.
+///
+/// 유저 2026-10-18 (F-176-Q4, of the tilted pencil): 「펜 실제 각도에 따라
+/// dab 각도 바뀌는건가했는데 그거조차도아님. 가능하도록」 — Clip Studio's
+/// 向き 「ペンの方向」.
+double? penDirectionDegrees(BrushDab dab) {
+  final altitude = dab.tiltAltitude;
+  if (altitude == null || altitude >= 1.0) {
+    return null;
+  }
+  return -dab.tiltAzimuthDegrees;
 }

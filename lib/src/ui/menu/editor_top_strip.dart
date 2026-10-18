@@ -1255,10 +1255,10 @@ class _BrushValueBars extends StatelessWidget {
         final sizeOn = state.supports(ToolParameter.size);
         final opacityOn = state.supports(ToolParameter.opacity);
         final pressureOn = state.supports(ToolParameter.pressure);
-        Widget pressure(BrushPressureTarget target, String title) {
+        Widget pressure(BrushPressureTarget target) {
           return PressureCurveButton(
             keyValue: 'brush-tool-pressure-${target.name}',
-            title: title,
+            target: target,
             curves: state.targetCurves(target),
             enabled: pressureOn,
             onChanged: (curves) => brushTool.value = brushTool.value
@@ -1281,7 +1281,7 @@ class _BrushValueBars extends StatelessWidget {
             ),
           ),
           const SizedBox(width: _gap),
-          pressure(BrushPressureTarget.size, AppText.strings.brSize),
+          pressure(BrushPressureTarget.size),
         ];
         final opacityLine = [
           SizedBox(
@@ -1300,7 +1300,7 @@ class _BrushValueBars extends StatelessWidget {
             ),
           ),
           const SizedBox(width: _gap),
-          pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+          pressure(BrushPressureTarget.opacity),
         ];
         if (axis == Axis.horizontal) {
           return Row(

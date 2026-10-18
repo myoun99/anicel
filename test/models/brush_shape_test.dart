@@ -12,7 +12,7 @@ BrushTipMask _maskFor(String id) => BrushTipMask(
   alpha: Uint8List.fromList(const [10, 20, 30, 40]),
 );
 
-/// Every one of the 26 parameters at a NON-default value, so that any field a
+/// Every one of the parameters at a NON-default value, so that any field a
 /// copy/compare drops flips back to its default and the assertion below fails
 /// loudly (the same trap-proof shape the converter round-trip test uses).
 BrushShape _everyFieldNonDefault() => BrushShape(
@@ -32,8 +32,6 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   angleDegrees: 60,
   tipMask: _maskFor('tip'),
   rotationMode: BrushTipRotationMode.direction,
-  sizeJitter: 0.2,
-  opacityJitter: 0.3,
   angleJitter: 0.4,
   scatterRadiusRatio: 0.5,
   scatterCount: 3,
@@ -76,8 +74,6 @@ void main() {
         base.copyWith(rotationMode: BrushTipRotationMode.fixed),
         isNot(base),
       );
-      expect(base.copyWith(sizeJitter: 0), isNot(base));
-      expect(base.copyWith(opacityJitter: 0), isNot(base));
       expect(base.copyWith(angleJitter: 0), isNot(base));
       expect(base.copyWith(scatterRadiusRatio: 0), isNot(base));
       expect(base.copyWith(scatterCount: 1), isNot(base));

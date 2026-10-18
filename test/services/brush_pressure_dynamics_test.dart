@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
@@ -72,7 +74,7 @@ void main() {
       expect(result.opacity, closeTo(0.4, 1e-9));
     });
 
-    test('scales every channel when all four are driven', () {
+    test('scales every channel when every target is driven', () {
       var shape = const BrushShape();
       for (final target in BrushPressureTarget.values) {
         shape = shape.withCurve(
@@ -89,6 +91,7 @@ void main() {
       expect(result.opacity, closeTo(0.15, 1e-9));
       expect(result.flow, 0.25);
       expect(result.hardness, 0.25);
+      expect(result.roundness, 0.25);
     });
 
     test('full pressure is a no-op on values', () {
@@ -292,6 +295,41 @@ void main() {
           ),
         ).opacity,
         1.0,
+      );
+    });
+  });
+
+  group('brushSpacingFor — 間隔 through its curves (F-176-Q2)', () {
+    final shape = const BrushShape(spacing: 0.2).withCurve(
+      BrushPressureTarget.spacing,
+      BrushInputSource.pressure,
+      BrushPressureCurve.identity(),
+    );
+
+    test('the reading\'s pressure scales the spacing', () {
+      expect(brushSpacingFor(_dab(pressure: 1.0), shape), closeTo(0.2, 1e-12));
+      expect(brushSpacingFor(_dab(pressure: 0.5), shape), closeTo(0.1, 1e-12));
+    });
+
+    test('🚨never below the 1% floor, however low the curve goes', () {
+      expect(
+        brushSpacingFor(_dab(pressure: 0.0), shape),
+        BrushShape.minSpacing,
+      );
+    });
+
+    test('no curve, no change — and no dice is no throw', () {
+      const plain = BrushShape(spacing: 0.3);
+      expect(brushSpacingFor(_dab(), plain), 0.3);
+      final random = const BrushShape(spacing: 0.3).withCurve(
+        BrushPressureTarget.spacing,
+        BrushInputSource.random,
+        BrushPressureCurve.linearFrom(0.5),
+      );
+      expect(brushSpacingFor(_dab(), random), 0.3);
+      expect(
+        brushSpacingFor(_dab(), random, random: math.Random(1)),
+        inInclusiveRange(0.15, 0.3),
       );
     });
   });

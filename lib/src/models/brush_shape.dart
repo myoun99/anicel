@@ -14,7 +14,7 @@ typedef BrushDynamicsKey = (BrushPressureTarget, BrushInputSource);
 /// Which of the three sampled-mask slots a write targets.
 enum BrushMaskSlot { tip, dual, texture }
 
-/// The 26 brush parameters shared, byte-for-byte, by every settings bag in the
+/// The brush parameters shared, byte-for-byte, by every settings bag in the
 /// stroke chain: the UI's `BrushToolState`, the preset payload `BrushSettings`,
 /// and the canvas input `BrushEditCanvasInputSettings`. Each of those HOLDS one
 /// of these and exposes the fields through forwarding getters; the converters
@@ -29,7 +29,7 @@ enum BrushMaskSlot { tip, dual, texture }
 ///
 /// The per-dab resolved unit (`BrushDab`) is deliberately NOT built on this: it
 /// carries a different, smaller set (the pressure curves are baked into scalar
-/// values, spacing/scatter/jitter are resolved away) plus its own per-stamp
+/// values, spacing/scatter/chance are resolved away) plus its own per-stamp
 /// fields, so it is a downstream shape, not another copy of these parameters.
 class BrushShape {
   const BrushShape({
@@ -44,8 +44,6 @@ class BrushShape {
     this.angleDegrees = 0.0,
     this.tipMask,
     this.rotationMode = BrushTipRotationMode.fixed,
-    this.sizeJitter = 0.0,
-    this.opacityJitter = 0.0,
     this.angleJitter = 0.0,
     this.scatterRadiusRatio = 0.0,
     this.scatterCount = 1,
@@ -60,8 +58,6 @@ class BrushShape {
     this.textureContrast = 0.0,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
-    this.roundnessJitter = 0.0,
-    this.spacingJitter = 0.0,
     this.antiAlias = BrushAntiAlias.high,
     this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
@@ -143,13 +139,10 @@ class BrushShape {
   /// How dab angles are chosen at placement time.
   final BrushTipRotationMode rotationMode;
 
-  /// Random per-dab size reduction, 0..1 of the base size.
-  final double sizeJitter;
-
-  /// Random per-dab opacity reduction, 0..1 of the base opacity.
-  final double opacityJitter;
-
-  /// Random per-dab tip rotation, 0..1 of a half turn in each direction.
+  /// The random turn of 向き: 0..1 of a half turn either way, thrown per
+  /// dab on top of the base the rotation mode picks (F-176-Q1 「기준 +
+  /// 랜덤」). Unlike the other settings' ランダム row it ADDS — an angle
+  /// has no base to scale.
   final double angleJitter;
 
   /// Scatter radius as a ratio of the dab size; 0 disables scattering.
@@ -221,12 +214,6 @@ class BrushShape {
   final double textureScale;
   final double textureDensity;
 
-  /// Random per-dab roundness reduction, 0..1 — Clip Studio drives this from
-  /// its thickness effector's random input source. The tip squashes by a
-  /// different amount on every dab, which is how a textured stamp brush
-  /// stops looking stamped.
-  final double roundnessJitter;
-
   /// How this brush composites. Every brush states one; [BrushBlendMode.color]
   /// IS 通常, so "normal" is a value here rather than an absence.
   ///
@@ -249,11 +236,6 @@ class BrushShape {
   /// Defaults to [BrushAntiAlias.high], the ramp the engine drew before this
   /// existed, so a preset that says nothing draws exactly as it always did.
   final BrushAntiAlias antiAlias;
-
-  /// Random per-segment spacing reduction, 0..1 — Clip Studio drives this
-  /// from its interval effector's random input source, which breaks up the
-  /// even beat of a stamped brush.
-  final double spacingJitter;
 
   /// Whether the brush mixes with the colour already on the cel — Clip
   /// Studio's 밑바탕 혼색, Photoshop's Mixer Brush. The gate: with it off the
@@ -367,8 +349,6 @@ class BrushShape {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
-      roundnessJitter: roundnessJitter,
-      spacingJitter: spacingJitter,
       blendMode: blendMode,
       antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
@@ -376,8 +356,6 @@ class BrushShape {
       paintDensity: paintDensity,
       colorStretch: colorStretch,
       rotationMode: rotationMode,
-      sizeJitter: sizeJitter,
-      opacityJitter: opacityJitter,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
@@ -409,8 +387,6 @@ class BrushShape {
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
@@ -425,8 +401,6 @@ class BrushShape {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
-    double? roundnessJitter,
-    double? spacingJitter,
     bool? mixesGroundColor,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
@@ -446,8 +420,6 @@ class BrushShape {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
       rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
@@ -462,8 +434,6 @@ class BrushShape {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
-      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
-      spacingJitter: spacingJitter ?? this.spacingJitter,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
@@ -488,8 +458,6 @@ class BrushShape {
           other.angleDegrees == angleDegrees &&
           other.tipMask == tipMask &&
           other.rotationMode == rotationMode &&
-          other.sizeJitter == sizeJitter &&
-          other.opacityJitter == opacityJitter &&
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
           other.scatterCount == scatterCount &&
@@ -504,8 +472,6 @@ class BrushShape {
           other.textureContrast == textureContrast &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
-          other.roundnessJitter == roundnessJitter &&
-          other.spacingJitter == spacingJitter &&
           other.blendMode == blendMode &&
           other.antiAlias == antiAlias &&
           other.mixesGroundColor == mixesGroundColor &&
@@ -528,8 +494,6 @@ class BrushShape {
     angleDegrees,
     tipMask,
     rotationMode,
-    sizeJitter,
-    opacityJitter,
     angleJitter,
     scatterRadiusRatio,
     scatterCount,
@@ -543,8 +507,6 @@ class BrushShape {
     textureContrast,
     textureScale,
     textureDensity,
-    roundnessJitter,
-    spacingJitter,
     blendMode,
     antiAlias,
     mixesGroundColor,
@@ -559,8 +521,7 @@ class BrushShape {
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'curves: $curves, '
       'roundness: $roundness, angleDegrees: $angleDegrees, tipMask: $tipMask, '
-      'rotationMode: $rotationMode, sizeJitter: $sizeJitter, '
-      'opacityJitter: $opacityJitter, angleJitter: $angleJitter, '
+      'rotationMode: $rotationMode, angleJitter: $angleJitter, '
       'scatterRadiusRatio: $scatterRadiusRatio, scatterCount: $scatterCount, '
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
       'dualMaskScale: $dualMaskScale, '

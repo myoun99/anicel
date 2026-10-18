@@ -26,11 +26,7 @@ class BrushEditCanvasInputSettings {
     double angleDegrees = 0.0,
     BrushTipMask? tipMask,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
-    double sizeJitter = 0.0,
-    double opacityJitter = 0.0,
     double angleJitter = 0.0,
-    double roundnessJitter = 0.0,
-    double spacingJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
@@ -112,11 +108,7 @@ class BrushEditCanvasInputSettings {
         angleDegrees: angleDegrees,
         tipMask: tipMask,
         rotationMode: rotationMode,
-        sizeJitter: sizeJitter,
-        opacityJitter: opacityJitter,
         angleJitter: angleJitter,
-        roundnessJitter: roundnessJitter,
-        spacingJitter: spacingJitter,
         scatterRadiusRatio: scatterRadiusRatio,
         scatterCount: scatterCount,
         scatterBothAxes: scatterBothAxes,
@@ -211,11 +203,7 @@ class BrushEditCanvasInputSettings {
   double get angleDegrees => shape.angleDegrees;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
-  double get sizeJitter => shape.sizeJitter;
-  double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
-  double get roundnessJitter => shape.roundnessJitter;
-  double get spacingJitter => shape.spacingJitter;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -270,11 +258,7 @@ class BrushEditCanvasInputSettings {
     double? angleDegrees,
     BrushTipMask? tipMask,
     BrushTipRotationMode? rotationMode,
-    double? sizeJitter,
-    double? opacityJitter,
     double? angleJitter,
-    double? roundnessJitter,
-    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -318,11 +302,7 @@ class BrushEditCanvasInputSettings {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tipMask: tipMask ?? this.tipMask,
       rotationMode: rotationMode ?? this.rotationMode,
-      sizeJitter: sizeJitter ?? this.sizeJitter,
-      opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
-      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
-      spacingJitter: spacingJitter ?? this.spacingJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,

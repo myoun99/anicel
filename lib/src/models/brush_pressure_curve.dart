@@ -1,18 +1,38 @@
-/// BB-3 (R26 #11): per-setting pen-pressure response curves.
+/// BB-3 (R26 #11): per-setting input response curves.
 ///
-/// A curve maps normalized input pressure (0..1) to a multiplier (0..1)
-/// applied to one brush setting's base value — the CSP 筆圧設定 model.
-/// `null` curve = the setting ignores pressure (no allocation on the
-/// no-pressure hot path), replacing the old pressureSize/pressureOpacity
-/// booleans. The old minimum-size floor is now simply the curve's left
-/// endpoint: the legacy `min + (1 - min) * pressure` formula IS the
-/// two-point line (0, min)-(1, 1).
+/// A curve maps one normalized input (0..1) to a multiplier applied to one
+/// brush setting's base value — Clip Studio's 影響元設定 model: a SHAPE (the
+/// graph), a 最小値 and, on 傾き, a 最大値. `null` curve = the setting
+/// ignores that input (no allocation on the plain hot path).
+///
+/// ↩️The floor used to live in the shape — "the legacy `min + (1 - min) *
+/// pressure` formula IS the two-point line (0, min)-(1, 1)". That held until
+/// the popup was rebuilt after Clip Studio's (F-176-Q2 「첨부한 클튜 팝업창
+/// 최대한 참고해서 구현」, 2026-10-18), whose 最小値 is a slider beside the
+/// graph: a floor folded into the points cannot be read back out of them, so
+/// the slider would have had nothing to show. [minimum] is that slider.
 library;
 
 import 'dart:math' as math;
 
-/// Which brush setting a pressure curve drives (the v1 four).
-enum BrushPressureTarget { size, opacity, flow, hardness }
+/// Which brush setting a curve drives.
+///
+/// [roundness] and [spacing] joined size, opacity, flow and hardness with
+/// F-176-Q2 (「그래프 버튼이 붙는 설정도 넓힌다」) — Clip Studio's 厚さ and
+/// 間隔 carry the same 影響元 as its size does.
+enum BrushPressureTarget {
+  size,
+  opacity,
+  flow,
+  hardness,
+  roundness,
+  spacing;
+
+  /// Whether a curve on this setting may go PAST its base — 傾き's 最大値.
+  /// Clip Studio offers it where the base is not already the most there is
+  /// (F-176-Q2): a size and a spacing grow, an opacity cannot pass 100%.
+  bool get canPassItsBase => this == size || this == spacing;
+}
 
 /// One control point of a [BrushPressureCurve]; both coordinates in [0, 1].
 class BrushCurvePoint {
@@ -33,21 +53,31 @@ class BrushCurvePoint {
   String toString() => 'BrushCurvePoint($x, $y)';
 }
 
-/// An editable pressure→multiplier curve through control points.
+/// An editable input→multiplier response: a shape through control points,
+/// laid between [minimum] and [maximum].
 ///
 /// Interpolation is monotone cubic Hermite (Fritsch–Carlson): smooth like
 /// the CSP editor's spline, but it never overshoots the control points'
-/// range — the multiplier stays inside [0, 1] by construction — and a
-/// two-point curve evaluates as the EXACT straight line, so migrated
-/// legacy toggles reproduce the old linear response bit-for-bit.
+/// range — the shape stays inside [0, 1] by construction — and a
+/// two-point curve evaluates as the EXACT straight line.
 class BrushPressureCurve {
-  BrushPressureCurve(List<BrushCurvePoint> points, {this.maximum = 1.0})
-    : points = List.unmodifiable(points) {
+  BrushPressureCurve(
+    List<BrushCurvePoint> points, {
+    this.minimum = 0.0,
+    this.maximum = 1.0,
+  }) : points = List.unmodifiable(points) {
     if (!maximum.isFinite || maximum < 1.0) {
       throw ArgumentError.value(
         maximum,
         'maximum',
         'BrushPressureCurve.maximum must be finite and at least 1.0.',
+      );
+    }
+    if (!minimum.isFinite || minimum < 0.0 || minimum > 1.0) {
+      throw ArgumentError.value(
+        minimum,
+        'minimum',
+        'BrushPressureCurve.minimum must lie in [0, 1].',
       );
     }
     if (points.length < 2) {
@@ -91,21 +121,31 @@ class BrushPressureCurve {
 
   /// The straight 1:1 response — what the old boolean toggle meant.
   factory BrushPressureCurve.identity({double maximum = 1.0}) =>
-      BrushPressureCurve(const [
-        BrushCurvePoint(0.0, 0.0),
-        BrushCurvePoint(1.0, 1.0),
-      ], maximum: maximum);
+      BrushPressureCurve.linearFrom(0.0, maximum: maximum);
 
-  /// The legacy minimum-floor line (0, [minimum])-(1, 1): the old
-  /// `min + (1 - min) * pressure` size response.
-  factory BrushPressureCurve.linearFrom(double minimum, {double maximum = 1.0}) =>
-      BrushPressureCurve([
-        BrushCurvePoint(0.0, minimum.clamp(0.0, 1.0).toDouble()),
-        const BrushCurvePoint(1.0, 1.0),
-      ], maximum: maximum);
+  /// The straight shape laid from [minimum] up — the old
+  /// `min + (1 - min) * pressure` size response when [maximum] is 1.
+  factory BrushPressureCurve.linearFrom(
+    double minimum, {
+    double maximum = 1.0,
+  }) => BrushPressureCurve(
+    const [BrushCurvePoint(0.0, 0.0), BrushCurvePoint(1.0, 1.0)],
+    minimum: minimum.clamp(0.0, 1.0).toDouble(),
+    maximum: maximum,
+  );
 
   /// Ascending-x control points; first at x=0, last at x=1.
   final List<BrushCurvePoint> points;
+
+  /// What no input at all gives, as a multiplier — Clip Studio's 最小値
+  /// (0–100%, so 0.0–1.0 here). The response runs from here to [maximum] as
+  /// the shape runs from 0 to 1, which is how Clip Studio's own panel reads
+  /// a 傾き row of 最小値 100 · 最大値 500: upright draws at the base, laid
+  /// flat at five times it.
+  ///
+  /// ⚠️0.0 — the default — is the old formula exactly (`shape * maximum`),
+  /// so a curve that never had a floor of its own evaluates as it always did.
+  final double minimum;
 
   /// How far past the base value a full input may push, as a multiplier —
   /// Clip Studio's 最大値, which it offers on 傾き alone (100–1000%, so
@@ -125,9 +165,10 @@ class BrushPressureCurve {
 
   late final List<double> _tangents;
 
-  /// The multiplier for [pressure] (input clamped to [0, 1]).
-  double evaluate(double pressure) {
-    final x = pressure.isFinite ? pressure.clamp(0.0, 1.0).toDouble() : 1.0;
+  /// The multiplier for [input] (clamped to [0, 1]): the shape laid between
+  /// [minimum] and [maximum].
+  double evaluate(double input) {
+    final x = input.isFinite ? input.clamp(0.0, 1.0).toDouble() : 1.0;
     var i = points.length - 2;
     for (var k = 0; k < points.length - 1; k += 1) {
       if (x <= points[k + 1].x) {
@@ -146,45 +187,83 @@ class BrushPressureCurve {
         (t3 - 2 * t2 + t) * h * _tangents[i] +
         (-2 * t3 + 3 * t2) * p1.y +
         (t3 - t2) * h * _tangents[i + 1];
-    return value.clamp(0.0, 1.0).toDouble() * maximum;
+    final shape = value.clamp(0.0, 1.0).toDouble();
+    if (minimum == 0.0) {
+      return shape * maximum;
+    }
+    return minimum + (maximum - minimum) * shape;
   }
 
   /// Whether this is the plain 1:1 line (the migrated "toggle ON" shape).
   ///
-  /// ⚠️A raised [maximum] disqualifies it: the line may be 1:1 but the curve
-  /// no longer means "pressure scales the value up to its base and no
-  /// further", which is what every reader of this getter is asking.
+  /// ⚠️A raised [maximum] or a [minimum] disqualifies it: the line may be
+  /// 1:1 but the curve no longer means "the input scales the value from
+  /// nothing up to its base", which is what every reader of this getter is
+  /// asking.
   bool get isIdentity =>
+      minimum == 0.0 &&
       maximum == 1.0 &&
       points.length == 2 &&
       points.first.y == 0.0 &&
       points.last.y == 1.0;
 
-  /// The x,y pairs, and — only when it is not the default — [maximum] as a
-  /// single trailing value.
+  /// The x,y pairs and — only when it is not the default — [maximum] as a
+  /// single trailing value; a curve with a [minimum] is an object instead.
   ///
   /// ⚠️THE ODD TAIL IS THE ENCODING, and it is deliberate: [fromJson]'s pair
-  /// loop already stops before a lone final element, so a curve saved by a
-  /// build that knows about maximums still loads on one that does not (it
-  /// reads the shape and ignores the ceiling) — and a curve at the default
-  /// writes the exact same bytes it always did.
-  List<double> toJson() => [
-    for (final point in points) ...[point.x, point.y],
-    if (maximum != 1.0) maximum,
-  ];
+  /// loop already stops before a lone final element, so a curve at the
+  /// default writes the exact same bytes it always did.
+  ///
+  /// 🚨THE OBJECT FORM IS FOR THE FLOOR ALONE (F-176-Q2, 2026-10-18). A list
+  /// has one spare slot and the ceiling already holds it, so a floor cannot
+  /// ride as a second tail without reading as a point. Every curve saved
+  /// before floors existed is the list form and stays exactly that — the
+  /// brush library is not renumbered (유저 2026-09-24: their own brushes are
+  /// in it), so those files are read as they are, not migrated.
+  Object toJson() {
+    final pairs = [for (final point in points) ...[point.x, point.y]];
+    if (minimum == 0.0) {
+      return [...pairs, if (maximum != 1.0) maximum];
+    }
+    return {
+      'points': pairs,
+      'minimum': minimum,
+      if (maximum != 1.0) 'maximum': maximum,
+    };
+  }
 
-  factory BrushPressureCurve.fromJson(List<dynamic> json) {
+  /// Reads either form [toJson] writes.
+  factory BrushPressureCurve.fromJson(Object? json) {
+    if (json is Map) {
+      return BrushPressureCurve(
+        _pointsOf(json['points'] as List<dynamic>),
+        minimum: (json['minimum'] as num?)?.toDouble() ?? 0.0,
+        maximum: (json['maximum'] as num?)?.toDouble() ?? 1.0,
+      );
+    }
+    final list = json! as List<dynamic>;
     return BrushPressureCurve(
-      [
-        for (var i = 0; i + 1 < json.length; i += 2)
-          BrushCurvePoint(
-            (json[i] as num).toDouble(),
-            (json[i + 1] as num).toDouble(),
-          ),
-      ],
-      maximum: json.length.isOdd ? (json.last as num).toDouble() : 1.0,
+      _pointsOf(list),
+      maximum: list.length.isOdd ? (list.last as num).toDouble() : 1.0,
     );
   }
+
+  static List<BrushCurvePoint> _pointsOf(List<dynamic> pairs) => [
+    for (var i = 0; i + 1 < pairs.length; i += 2)
+      BrushCurvePoint(
+        (pairs[i] as num).toDouble(),
+        (pairs[i + 1] as num).toDouble(),
+      ),
+  ];
+
+  /// This curve with its floor and ceiling replaced — what the popup's
+  /// 最小値 and 最大値 sliders write.
+  BrushPressureCurve withRange({double? minimum, double? maximum}) =>
+      BrushPressureCurve(
+        points,
+        minimum: minimum ?? this.minimum,
+        maximum: maximum ?? this.maximum,
+      );
 
   @override
   bool operator ==(Object other) {
@@ -193,6 +272,7 @@ class BrushPressureCurve {
     }
     if (other is! BrushPressureCurve ||
         other.points.length != points.length ||
+        other.minimum != minimum ||
         other.maximum != maximum) {
       return false;
     }
@@ -205,11 +285,13 @@ class BrushPressureCurve {
   }
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(points), maximum);
+  int get hashCode => Object.hash(Object.hashAll(points), minimum, maximum);
 
   @override
   String toString() =>
-      'BrushPressureCurve($points${maximum == 1.0 ? '' : ', max: $maximum'})';
+      'BrushPressureCurve($points'
+      '${minimum == 0.0 ? '' : ', min: $minimum'}'
+      '${maximum == 1.0 ? '' : ', max: $maximum'})';
 }
 
 /// Fritsch–Carlson monotone tangents: interior slopes average the
