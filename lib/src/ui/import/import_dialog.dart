@@ -1143,6 +1143,9 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) report,
   ) async {
     final count = paths.length;
+    // The window counts from its first frame (F-282-Q1) — the wait below
+    // included, for nothing is placed until it is over.
+    report(0);
     // A run is what its measured pictures say ([_runOf]), so the press
     // waits out the reads the rows asked for ([_probeRun]).
     await _pixelSizeReads;
