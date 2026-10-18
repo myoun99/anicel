@@ -210,5 +210,20 @@ void main() {
       }, reason: 'a page nobody can read, a framing nobody can read, a file '
           'with nothing left or with no name — each falls alone');
     });
+
+    test('two views are one only where each viewer framed the file alike — '
+        'what the two above stand on', () {
+      MediaFileView framed(Map<String, double> zooms) => MediaFileView(
+        framings: {
+          for (final MapEntry(key: viewer, value: zoom) in zooms.entries)
+            viewer: CanvasViewport(zoom: zoom),
+        },
+      );
+      final atTwo = framed({'media-viewer': 2});
+      expect(atTwo, framed({'media-viewer': 2}));
+      expect(atTwo, isNot(framed({'media-viewer': 3})));
+      expect(atTwo, isNot(framed({'media-viewer-sub': 2})));
+      expect(atTwo, isNot(framed({'media-viewer': 2, 'media-viewer-sub': 2})));
+    });
   });
 }
