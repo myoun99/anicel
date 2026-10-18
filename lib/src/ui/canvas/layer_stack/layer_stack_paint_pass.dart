@@ -1823,15 +1823,7 @@ class _LayerStackPaintPass {
     } finally {
       picture.dispose();
     }
-    into.drawImageRect(
-      image,
-      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      bounds,
-      Paint()
-        ..blendMode = BlendMode.src
-        ..filterQuality = ui.FilterQuality.none
-        ..isAntiAlias = false,
-    );
+    _layLevelPixels(into, image, bounds, blendMode: BlendMode.src);
     // The recording holds its own reference to what it draws.
     image.dispose();
     _painter.bufferCache?.composedApartCount += 1;
@@ -1886,16 +1878,34 @@ class _LayerStackPaintPass {
   /// on a large canvas one past the side the buffer itself is capped at
   /// ([_LayerStackPainter._maxBufferSide]).
   void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
+    _layLevelPixels(into, base, rect);
+    final part = wholeLevelPixelsOutward(dirty, _level).intersect(rect);
+    _recomposeOverCarried(into, [if (!part.isEmpty) part]);
+  }
+
+  /// Lays [image] — pixels made at this buffer's level, the whole of it or
+  /// its [source] — onto [target] one texel to a pixel: the patch's base,
+  /// the scroll carry's overlap and a region composed apart (F-287) are
+  /// all laid so. A COPY, so `none` — a filter would resample what is
+  /// already aligned — and no antialias at edges that lie on the level's
+  /// grid. `src` lays it in place of what is there.
+  void _layLevelPixels(
+    Canvas into,
+    ui.Image image,
+    Rect target, {
+    Rect? source,
+    BlendMode blendMode = BlendMode.srcOver,
+  }) {
     into.drawImageRect(
-      base,
-      Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
-      rect,
+      image,
+      source ??
+          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      target,
       Paint()
+        ..blendMode = blendMode
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    final part = wholeLevelPixelsOutward(dirty, _level).intersect(rect);
-    _recomposeOverCarried(into, [if (!part.isEmpty) part]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
@@ -1904,21 +1914,19 @@ class _LayerStackPaintPass {
   double _blitScrolled(Canvas into, _Base scroll, Rect rect, Rect? dirty) {
     final was = scroll.rect;
     final overlap = was.intersect(rect);
-    into.drawImageRect(
+    _layLevelPixels(
+      into,
       scroll.image,
+      overlap,
       // The overlap in the OLD image's own pixels: the offset between the
       // two rects, in buffer pixels — both rects lie on the same level's
       // grid (the level is in the key), so it is whole.
-      Rect.fromLTWH(
+      source: Rect.fromLTWH(
         (overlap.left - was.left) / _levelStep,
         (overlap.top - was.top) / _levelStep,
         overlap.width / _levelStep,
         overlap.height / _levelStep,
       ),
-      overlap,
-      Paint()
-        ..filterQuality = ui.FilterQuality.none
-        ..isAntiAlias = false,
     );
     // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
     // the old one did not reach — plus the live dirty rect, because the

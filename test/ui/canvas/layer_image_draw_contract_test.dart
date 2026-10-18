@@ -289,7 +289,14 @@ void main() {
 /// and halved (F-240). The 1:1 blit class, owning `FilterQuality.none` on
 /// its own Paint, and `BlendMode.src`: it replaces what the hole shows
 /// there.
-const int _knownRawDraws = 30;
+/// **29** on 2026-10-19 (board `F-287`, 유저 「다른 합성모드도 똑같으니
+/// 완벽하게 검사」): −1 in canvas/layer_stack/layer_stack_paint_pass — a
+/// region composed apart is laid onto the carried pixels as the patch lays
+/// its base and the scroll carry its overlap, the level's pixels one texel
+/// to a pixel; that would have been the third draw of one copy, and the
+/// three are one now (`_layLevelPixels`), owning `FilterQuality.none` on
+/// its Paint.
+const int _knownRawDraws = 29;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
