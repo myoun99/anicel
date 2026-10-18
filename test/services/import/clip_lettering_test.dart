@@ -118,6 +118,15 @@ void main() {
       reason: 'the line\'s top, half its leading over the letters\' box',
     );
     expect(text.content.wrapWidth, isNull, reason: 'it breaks where typed');
+    expect(
+      (
+        text.content.rotationDegrees,
+        text.content.vertical,
+        text.content.letterWidth,
+      ),
+      (0, false, 1),
+      reason: 'upright, across, its letters as wide as they are',
+    );
     expect(text.picture, isNull, reason: 'the layer holds none');
     expect(result.warnings, isEmpty);
   });
@@ -247,12 +256,119 @@ void main() {
     ));
   });
 
-  group('its lines stand as most of its letters say', () {
-    ({double x, double y, TextCelAlign align, double lineHeight}) standOf(
+  group('each paragraph is set as most of its letters say', () {
+    List<(TextCelAlign, double)> setOf(
+      String text,
+      List<ClipTextFlagSpec> aligns, {
+      List<({int start, int length, double spacing})> spacings = const [],
+      int? textAlign,
+    }) => [
+      for (final paragraph in read(
+        textLayer([
+          lettering(
+            text,
+            clipTextAttributesBytes(
+              aligns: aligns,
+              spacings: spacings,
+              textAlign: textAlign,
+            ),
+          ),
+        ]),
+      ).texts.single.content.paragraphs)
+        (paragraph.align, paragraph.lineHeight),
+    ];
+
+    test('a paragraph runs from one break to the next, its break with it — '
+        'a CR LF one break, and a CR or an LF alone one', () {
+      expect(
+        setOf(
+          'a\r\nbc\rde\nf',
+          [
+            // The letter is centred, its CR LF right: two units to one.
+            (start: 0, length: 1, value: 2),
+            (start: 1, length: 2, value: 1),
+            (start: 3, length: 3, value: 2),
+            (start: 6, length: 3, value: 0),
+            (start: 9, length: 1, value: 1),
+          ],
+          spacings: [
+            (start: 0, length: 3, spacing: 100),
+            (start: 3, length: 3, spacing: 150),
+            (start: 6, length: 3, spacing: 200),
+            (start: 9, length: 1, spacing: 250),
+          ],
+        ),
+        [
+          (TextCelAlign.right, 1.0),
+          (TextCelAlign.center, 1.5),
+          (TextCelAlign.left, 2.0),
+          (TextCelAlign.right, 2.5),
+        ],
+      );
+    });
+
+    test('of two, the one most of its letters take; of two alike, the '
+        'smaller', () {
+      expect(
+        setOf('abcd', [
+          (start: 0, length: 3, value: 2),
+          (start: 3, length: 1, value: 1),
+        ]).single.$1,
+        TextCelAlign.center,
+      );
+      expect(
+        setOf('abcd', [
+          (start: 0, length: 2, value: 1),
+          (start: 2, length: 2, value: 2),
+        ]).single.$1,
+        TextCelAlign.right,
+        reason: '1 is the smaller of the two values',
+      );
+      expect(
+        setOf(
+          'abcd',
+          const [],
+          spacings: [
+            (start: 0, length: 1, spacing: 200),
+            (start: 1, length: 3, spacing: 100),
+          ],
+        ).single.$2,
+        1.0,
+      );
+    });
+
+    test('one no stretch covers is aligned as the text says, at CLIP '
+        'STUDIO\'s own spacing', () {
+      expect(
+        setOf(
+          'ab\r\ncd',
+          [(start: 0, length: 4, value: 2)],
+          spacings: [(start: 0, length: 4, spacing: 150)],
+          textAlign: 1,
+        ),
+        [(TextCelAlign.center, 1.5), (TextCelAlign.right, 1.2)],
+      );
+    });
+
+    test('a last one with no letters is set as the one before it', () {
+      expect(
+        setOf(
+          'ab\r\n',
+          [(start: 0, length: 4, value: 2)],
+          spacings: [(start: 0, length: 4, spacing: 150)],
+          textAlign: 1,
+        ),
+        List.filled(2, (TextCelAlign.center, 1.5)),
+      );
+    });
+  });
+
+  group('it stands by its first paragraph where its box does', () {
+    ({double x, double y}) anchorOf(
       List<ClipTextFlagSpec> aligns, {
       List<({int start, int length, double spacing})> spacings = const [],
     }) {
-      final content = read(
+      final anchor = read(
         textLayer([
           lettering(
             'one\r\ntwo',
@@ -264,87 +380,53 @@ void main() {
             ),
           ),
         ]),
-      ).texts.single.content;
-      expect(content.paragraphs.toSet(), hasLength(1), reason: 'set alike');
-      final paragraph = content.paragraphs.first;
-      return (
-        x: content.anchor.x,
-        y: content.anchor.y,
-        align: paragraph.align,
-        lineHeight: paragraph.lineHeight,
-      );
+      ).texts.single.content.anchor;
+      return (x: anchor.x, y: anchor.y);
     }
 
-    test('centred about the box\'s middle, right at its right end', () {
-      expect(standOf([(start: 0, length: 8, value: 2)]), (
-        x: 130.0,
-        y: 50 - (1.2 - 1) * 24 / 2,
-        align: TextCelAlign.center,
-        lineHeight: 1.2,
-      ));
-      final right = standOf([(start: 0, length: 8, value: 1)]);
-      expect((right.x, right.align), (160.0, TextCelAlign.right));
+    test('centred about the box\'s middle, right at its right end — as its '
+        'first paragraph is, whatever the next', () {
+      expect(
+        anchorOf([
+          (start: 0, length: 5, value: 2),
+          (start: 5, length: 3, value: 1),
+        ]),
+        (x: 130.0, y: 50 - (1.2 - 1) * 24 / 2),
+      );
+      expect(
+        anchorOf([
+          (start: 0, length: 5, value: 1),
+          (start: 5, length: 3, value: 0),
+        ]).x,
+        160.0,
+      );
     });
 
     test('a spacing is the pitch, and its leading stands half above', () {
-      final stand = standOf(
-        const [],
-        spacings: [(start: 0, length: 8, spacing: 150)],
-      );
-      expect((stand.lineHeight, stand.y), (1.5, 50 - 0.5 * 24 / 2));
-    });
-
-    test('of two, the one most letters take; of two alike, the smaller', () {
       expect(
-        standOf([
-          (start: 0, length: 5, value: 2),
-          (start: 5, length: 3, value: 1),
-        ]).align,
-        TextCelAlign.center,
-      );
-      expect(
-        standOf([
-          (start: 0, length: 4, value: 1),
-          (start: 4, length: 4, value: 2),
-        ]).align,
-        TextCelAlign.right,
-        reason: '1 is the smaller of the two values',
-      );
-      expect(
-        standOf(
+        anchorOf(
           const [],
           spacings: [
-            (start: 0, length: 2, spacing: 200),
-            (start: 2, length: 6, spacing: 100),
+            (start: 0, length: 5, spacing: 150),
+            (start: 5, length: 3, spacing: 300),
           ],
-        ).lineHeight,
-        1.0,
+        ).y,
+        50 - 0.5 * 24 / 2,
       );
     });
   });
 
   test('🎯what the app cannot set is said by the layer\'s name, once a layer '
-      'however many of its texts it is true of', () {
-    final turned = [0, 0, 1000, 500, 500, 1500, -500, 1000];
+      'however many of its texts it is true of — two alignments or two '
+      'spacings in one paragraph, a frame not square', () {
+    // Its top edge runs straight across, and its left edge leans.
+    final slanted = [0, 0, 1000, 0, 1200, 1000, 200, 1000];
     final result = read(
       textLayer([
         for (var i = 0; i < 2; i += 1)
           lettering(
             'abcd',
             clipTextAttributesBytes(
-              runs: [
-                (
-                  start: 0,
-                  length: 1,
-                  bold: false,
-                  italic: true,
-                  colour: null,
-                  scale: null,
-                  face: '',
-                ),
-              ],
-              underlines: [(start: 0, length: 4, value: 1)],
-              strikes: [(start: 0, length: 4, value: 1)],
               aligns: [
                 (start: 0, length: 2, value: 0),
                 (start: 2, length: 2, value: 2),
@@ -353,35 +435,40 @@ void main() {
                 (start: 0, length: 2, spacing: 120),
                 (start: 2, length: 2, spacing: 140),
               ],
-              across: 99.48,
-              corners: turned,
+              corners: slanted,
             ),
           ),
       ]),
     );
 
     expect(keysOf(result.warnings), [
-      'clipTextItalic',
-      'clipTextUnderline',
-      'clipTextStrike',
       'clipTextAlign',
       'clipTextSpacing',
-      'clipTextAcross',
-      'clipTextTurned',
+      'clipTextDistorted',
     ]);
     expect({for (final w in result.warnings) w.values['name']}, {'words'});
-    expect(
-      result.warnings
-          .singleWhere((w) => w.key == 'clipTextAcross')
-          .values['percent'],
-      '99.48',
-    );
     expect(result.texts, hasLength(2), reason: 'both still come in');
+  });
+
+  test('a frame flipped is not square; one only turned is', () {
+    List<String> keysFor(List<int> corners) => keysOf(
+      read(
+        textLayer([
+          lettering('a', clipTextAttributesBytes(corners: corners)),
+        ]),
+      ).warnings,
+    );
+
+    expect(keysFor([1000, 0, 0, 0, 0, 1000, 1000, 1000]), [
+      'clipTextDistorted',
+    ]);
+    expect(keysFor([0, 0, 1000, 500, 500, 1500, -500, 1000]), isEmpty);
   });
 
   test('⛔what the file writes as set to nothing, or as the same, is not '
       'said — an underline of 0, one alignment, an even spacing that differs '
-      'in its last bits, a width of 100', () {
+      'in its last bits, a width of 100, and two paragraphs each aligned '
+      'and spaced its own way', () {
     final result = read(
       textLayer([
         lettering(
@@ -399,9 +486,77 @@ void main() {
             ],
           ),
         ),
+        lettering(
+          'ab\r\ncd',
+          clipTextAttributesBytes(
+            aligns: [
+              (start: 0, length: 4, value: 2),
+              (start: 4, length: 2, value: 1),
+            ],
+            spacings: [
+              (start: 0, length: 4, spacing: 120),
+              (start: 4, length: 2, spacing: 200),
+            ],
+          ),
+        ),
       ]),
     );
 
+    expect(result.warnings, isEmpty);
+    expect(
+      [
+        for (final span in result.texts.first.content.spans)
+          (span.style.underline, span.style.strikethrough),
+      ],
+      [(false, false)],
+    );
+  });
+
+  test('🎯what CLIP STUDIO sets the app now sets too — letters leaning, '
+      'lined under and through, drawn narrower — and says nothing of it', () {
+    final result = read(
+      textLayer([
+        lettering(
+          'abcd',
+          clipTextAttributesBytes(
+            runs: [
+              (
+                start: 0,
+                length: 2,
+                bold: false,
+                italic: true,
+                colour: null,
+                scale: null,
+                face: '',
+              ),
+            ],
+            underlines: [(start: 1, length: 2, value: 1)],
+            strikes: [(start: 2, length: 2, value: 1)],
+            across: 99.48,
+          ),
+        ),
+      ]),
+    );
+
+    final content = result.texts.single.content;
+    expect(
+      [
+        for (final span in content.spans)
+          (
+            span.text,
+            span.style.italic,
+            span.style.underline,
+            span.style.strikethrough,
+          ),
+      ],
+      [
+        ('a', true, false, false),
+        ('b', true, true, false),
+        ('c', false, true, true),
+        ('d', false, false, true),
+      ],
+    );
+    expect(content.letterWidth, closeTo(0.9948, 1e-12));
     expect(result.warnings, isEmpty);
   });
 
@@ -423,15 +578,17 @@ void main() {
     );
   });
 
-  test('a width\'s percent is said to two places, its trailing zeros '
-      'dropped', () {
-    String percentOf(double across) => read(
+  test('a width is a share of the letters\' own — and one that is none, '
+      'their own', () {
+    double widthOf(double across) => read(
       textLayer([lettering('a', clipTextAttributesBytes(across: across))]),
-    ).warnings.single.values['percent']!;
+    ).texts.single.content.letterWidth;
 
-    expect(percentOf(100.5), '100.5');
-    expect(percentOf(150), '150');
-    expect(percentOf(99.484), '99.48');
+    expect(widthOf(150), 1.5);
+    expect(widthOf(0), 1);
+    expect(widthOf(-20), 1);
+    expect(widthOf(double.nan), 1);
+    expect(widthOf(double.infinity), 1);
   });
 
   test('a text whose setting does not read is said and left out; one that '
@@ -483,6 +640,268 @@ void main() {
       [for (final text in result.texts) text.picture?.blocksId],
       ['first', 'second', null],
     );
+  });
+
+  group('🎯turned and in columns it stands where CLIP STUDIO set it — '
+      'pinned to the person\'s sample (F-370-Q4, 10-18; its numbers only: '
+      'where each picture stands is where the sample\'s PNG shows it)', () {
+    // 15 pt at 144 dpi: 30 px letters, a 3 px half-leading at 120 %.
+    ClipCelText textOf({
+      required ({int x0, int y0, int x1, int y1}) box,
+      required ({int width, int height}) boxSize,
+      required List<int> corners,
+      required (int, int)? offset,
+      required List<ClipPictureSource> pictures,
+      int align = 0,
+      int textFlags = 0,
+    }) => read(
+      textLayer(
+        [
+          lettering(
+            'ab\r\ncd',
+            clipTextAttributesBytes(
+              box: box,
+              boxSize: boxSize,
+              points: 15,
+              corners: corners,
+              pictureOffset: offset,
+              aligns: [(start: 0, length: 6, value: align)],
+              textFlags: textFlags,
+            ),
+          ),
+        ],
+        pictures: pictures,
+      ),
+      resolution: 144,
+    ).texts.single;
+
+    void expectStands(
+      ClipCelText text, {
+      required String picture,
+      required (int, int) at,
+      required (double, double) anchor,
+      required double turn,
+      required bool vertical,
+    }) {
+      expect(text.picture?.blocksId, picture);
+      expect((text.left, text.top), at);
+      expect(text.content.anchor.x, closeTo(anchor.$1, 1e-6));
+      expect(text.content.anchor.y, closeTo(anchor.$2, 1e-6));
+      expect(text.content.rotationDegrees, closeTo(turn, 1e-6));
+      expect(text.content.vertical, vertical);
+    }
+
+    const acrossBox = (x0: 402, y0: 259, x1: 512, y1: 325);
+    const acrossSize = (width: 110, height: 70);
+    const turnedAcross = [-185, 354, 9569, 5439, 6518, 11292, -3236, 6207];
+    const columnsBox = (x0: 402, y0: 259, x1: 469, y1: 416);
+    const columnsSize = (width: 67, height: 157);
+    const turnedColumns = [-5521, -3618, 83, 54, -8522, 13186, -14126, 9514];
+
+    test('across, upright: at its box, the line\'s top half the leading '
+        'above it', () {
+      expectStands(
+        textOf(
+          box: acrossBox,
+          boxSize: acrossSize,
+          corners: const [0, 400, 11000, 400, 11000, 7000, 0, 7000],
+          offset: (0, -4),
+          pictures: [pictureOf(111, 71, 'upright')],
+        ),
+        picture: 'upright',
+        at: (402, 259),
+        anchor: (402, 256),
+        turn: 0,
+        vertical: false,
+      );
+    });
+
+    test('across, turned: its picture where the frame\'s origin says, and '
+        'its anchor turned with the frame — left, centred or right', () {
+      for (final (align, anchor) in [
+        (0, (424.537723, 233.886736)),
+        (2, (473.308178, 259.311973)),
+        (1, (522.078633, 284.737210)),
+      ]) {
+        expectStands(
+          textOf(
+            box: acrossBox,
+            boxSize: acrossSize,
+            corners: turnedAcross,
+            offset: (35, -4),
+            pictures: [pictureOf(131, 113, 'turned')],
+            align: align,
+          ),
+          picture: 'turned',
+          at: (390, 237),
+          anchor: anchor,
+          turn: 27.534139,
+          vertical: false,
+        );
+      }
+      expectStands(
+        textOf(
+          box: (x0: 402, y0: 259, x1: 513, y1: 325),
+          boxSize: (width: 111, height: 70),
+          corners: const [-185, 354, 9657, 5485, 6607, 11338, -3236, 6207],
+          offset: (35, -4),
+          pictures: [pictureOf(132, 114, 'leaning')],
+          align: 1,
+        ),
+        picture: 'leaning',
+        at: (391, 237),
+        anchor: (523.964854, 285.200453),
+        turn: 27.534704,
+        vertical: false,
+      );
+    });
+
+    test('in columns: at its first column\'s right, half the leading past '
+        'its letters — at its head, middle or foot, upright or turned', () {
+      for (final (align, upright, turned) in [
+        (0, (471.0, 259.0), (508.509298, 290.644208)),
+        (2, (471.0, 337.5), (465.485845, 356.304185)),
+        (1, (471.0, 416.0), (422.462392, 421.964161)),
+      ]) {
+        expectStands(
+          textOf(
+            box: columnsBox,
+            boxSize: columnsSize,
+            corners: const [-6600, 0, 100, 0, 100, 15700, -6600, 15700],
+            offset: (66, 0),
+            pictures: [pictureOf(68, 158, 'upright')],
+            align: align,
+            textFlags: 16,
+          ),
+          picture: 'upright',
+          at: (402, 259),
+          anchor: upright,
+          turn: 0,
+          vertical: true,
+        );
+        expectStands(
+          textOf(
+            box: columnsBox,
+            boxSize: columnsSize,
+            corners: turnedColumns,
+            offset: (142, 36),
+            pictures: [pictureOf(144, 169, 'turned')],
+            align: align,
+            textFlags: 16,
+          ),
+          picture: 'turned',
+          at: (364, 253),
+          anchor: turned,
+          turn: 33.234671,
+          vertical: true,
+        );
+      }
+    });
+
+    test('parameter 33 writes it in columns by its 16 — its 1 and 2 are '
+        'bold and italic', () {
+      bool verticalOf(int flags) => textOf(
+        box: acrossBox,
+        boxSize: acrossSize,
+        corners: const [0, 400, 11000, 400, 11000, 7000, 0, 7000],
+        offset: null,
+        pictures: const [],
+        textFlags: flags,
+      ).content.vertical;
+
+      expect(verticalOf(1 | 2), isFalse);
+      expect(verticalOf(16 | 1 | 2), isTrue);
+    });
+
+    test('a turned text\'s picture is the one nearest its box turned, '
+        'within a pixel and a half', () {
+      String? pictureAmong(List<ClipPictureSource> pictures) => textOf(
+        box: acrossBox,
+        boxSize: acrossSize,
+        corners: turnedAcross,
+        offset: (35, -4),
+        pictures: pictures,
+      ).picture?.blocksId;
+
+      // Its box turned is 130.90 × 113.92.
+      expect(
+        pictureAmong([
+          pictureOf(111, 71, 'the box upright'),
+          pictureOf(133, 113, 'two off'),
+          pictureOf(132, 114, 'farther'),
+          pictureOf(131, 113, 'nearer'),
+        ]),
+        'nearer',
+      );
+      expect(pictureAmong([pictureOf(131, 116, 'two off')]), isNull);
+    });
+
+    test('one that does not say where its picture stands is set by the '
+        'app — its picture taken out all the same, and not another\'s', () {
+      final attributes = [
+        for (final offset in [null, (35, -4)])
+          clipTextAttributesBytes(
+            box: acrossBox,
+            boxSize: acrossSize,
+            points: 15,
+            corners: turnedAcross,
+            pictureOffset: offset,
+          ),
+      ];
+      final result = read(
+        textLayer(
+          [
+            lettering('a', attributes.first),
+            lettering('b', attributes.last),
+          ],
+          pictures: [
+            pictureOf(131, 113, 'first'),
+            pictureOf(131, 113, 'second'),
+          ],
+        ),
+        resolution: 144,
+      );
+
+      expect(
+        [for (final text in result.texts) text.picture?.blocksId],
+        [null, 'second'],
+      );
+    });
+
+    test('upright, it stands at its box wherever its frame\'s origin is — '
+        'one that names no offset, or no corners, too', () {
+      for (final (corners, withCorners) in [
+        (const [0, 400, 11000, 400, 11000, 7000, 0, 7000], true),
+        // The box's own square, measured from the canvas's top-left.
+        (null, true),
+        (null, false),
+      ]) {
+        final text = read(
+          textLayer(
+            [
+              lettering(
+                'a',
+                clipTextAttributesBytes(
+                  box: acrossBox,
+                  boxSize: acrossSize,
+                  points: 15,
+                  corners: corners,
+                  withCorners: withCorners,
+                ),
+              ),
+            ],
+            pictures: [pictureOf(111, 71, 'upright')],
+          ),
+          resolution: 144,
+        ).texts.single;
+        expect(
+          (text.picture?.blocksId, text.left, text.top),
+          ('upright', 402, 259),
+        );
+        expect(text.content.anchor.x, 402);
+        expect(text.content.anchor.y, closeTo(256, 1e-9));
+      }
+    });
   });
 
   test('at an opacity, every letter\'s colour is that faint', () {

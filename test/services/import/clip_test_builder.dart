@@ -633,7 +633,9 @@ typedef ClipTextFlagSpec = ({int start, int length, int value});
 /// A text's `TextLayerAttributes` the way the format notes lay them out
 /// (memory `csp-clip-format-notes` 6-1 §13): `u32 LE id · u32 LE size ·
 /// bytes`, a parameter each — what `clip_lettering.dart` reads. [box] null
-/// writes none; [corners] null writes the box's own, square.
+/// writes none; [corners] null writes the box's own, square, measured from
+/// the canvas's top-left, and [withCorners] false none; [textAlign]
+/// (parameter 35) and [pictureOffset] (72) null write none.
 Uint8List clipTextAttributesBytes({
   ({int x0, int y0, int x1, int y1})? box = (x0: 0, y0: 0, x1: 10, y1: 10),
   double points = 12,
@@ -647,6 +649,10 @@ Uint8List clipTextAttributesBytes({
   List<ClipTextFlagSpec> strikes = const [],
   double across = 100,
   List<int>? corners,
+  bool withCorners = true,
+  int textFlags = 0,
+  int? textAlign,
+  (int, int)? pictureOffset,
 }) {
   final out = BytesBuilder();
   void parameter(int id, Uint8List body) => out
@@ -727,6 +733,7 @@ Uint8List clipTextAttributesBytes({
     (ByteData(4)..setInt32(0, (points * 100).round(), Endian.little)).buffer
         .asUint8List(),
   );
+  parameter(33, _le32(textFlags));
   final (r, g, b) = colour;
   parameter(
     34,
@@ -735,6 +742,19 @@ Uint8List clipTextAttributesBytes({
       for (final channel in [r, g, b]) ..._le32(channel << 24 | 0x123456),
     ]),
   );
+  if (textAlign != null) {
+    parameter(35, _le32(textAlign));
+  }
+  if (pictureOffset case (final x, final y)) {
+    parameter(
+      72,
+      (ByteData(8)
+            ..setInt32(0, x, Endian.little)
+            ..setInt32(4, y, Endian.little))
+          .buffer
+          .asUint8List(),
+    );
+  }
   if (box != null) {
     final data = ByteData(16);
     for (final (k, value) in [box.x0, box.y0, box.x1, box.y1].indexed) {
@@ -764,7 +784,9 @@ Uint8List clipTextAttributesBytes({
     for (final (k, value) in (corners ?? square).indexed) {
       data64.setInt32(4 * k, value, Endian.little);
     }
-    parameter(64, data64.buffer.asUint8List());
+    if (withCorners) {
+      parameter(64, data64.buffer.asUint8List());
+    }
   }
   return out.toBytes();
 }
