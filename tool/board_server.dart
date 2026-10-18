@@ -2551,12 +2551,12 @@ var S = {view: remember('view') || 'me', q: '', owner: null, area: null,
          sel: null, more: {}, picked: new Set(), old: null};
 
 var STATUS = {triage:'분류 대기', backlog:'백로그', discussion:'대화 중',
-  todo:'할 일', doing:'진행 중', verify:'검증', known:'알려진 문제', done:'완료',
-  canceled:'취소'};
+  todo:'할 일', doing:'진행 중', verify:'검증', known:'알려진 문제', records:'기록',
+  done:'완료', canceled:'취소'};
 var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
 var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
   ['discussion','대화 중'], ['backlog','백로그'], ['triage','분류 대기'],
-  ['known','알려진 문제'], ['done','완료'], ['letters','전달'],
+  ['known','알려진 문제'], ['records','기록'], ['done','완료'], ['letters','전달'],
   ['system','시스템']];
 var PAGE = 60;
 
@@ -2669,8 +2669,8 @@ function groupsFor(view){
         return live(c) && c.status !== 'triage' && c.me; }).sort(oldest('updated'))},
     ];
   }
-  if (view === 'known') {
-    return [{t:'알려진 문제', rows: pool.filter(function(c){ return c.status === 'known'; }).sort(newest('updated'))}];
+  if (view === 'known' || view === 'records') {
+    return [{t: STATUS[view], rows: pool.filter(function(c){ return c.status === view; }).sort(newest('updated'))}];
   }
   if (view === 'done') {
     return [
@@ -3234,6 +3234,7 @@ font-variant-numeric:tabular-nums}
 .s-discussion{background:transparent;box-shadow:inset 0 0 0 1.5px var(--run)}
 .s-doing{background:var(--live)}.s-verify{background:var(--run)}
 .s-known{background:var(--bad)}.s-done{background:var(--ok)}
+.s-records{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line2)}
 .s-canceled{background:var(--line2)}.s-system{background:var(--line2)}
 .s-letters{background:var(--live)}
 .facet h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;color:var(--ink3);font-weight:600}

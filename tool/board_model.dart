@@ -778,6 +778,13 @@ const kSection = <String, String>{
   // 거기 격리하자. 계속 파악은 하고싶어」. Not 나중에: that is work put off;
   // this is a behaviour accepted as it is, watched rather than scheduled.
   '알려진 문제': 'known',
+  // 🆕2026-10-16 — 유저: 「기록용은 따로 백로그말고 항목두는게 나아보이는데」.
+  // Roadmaps, handovers and the session notes are read, not done: in the
+  // columns of work they stood as work nobody would ever start.
+  // ⚠️A card here keeps its place against the habit of writing 하는 중 on a
+  // roadmap — by refusing that line before it is written (Q1 「쓰기 전에
+  // 막는다」, `recordCardRefusal`), not by an exception in this fold.
+  '기록': 'records',
   // 🆕THE REDESIGN'S STATUS WORDS (유저 2026-10-02: 「최대한 프로들이랑
   // 똑같으면되」) — the same places under the names a tracker uses, so a
   // writer can say 백로그 instead of 나중에. ⚠️Aliases, not replacements: a
@@ -1269,6 +1276,7 @@ enum BoardStatus {
   doing,
   verify,
   known,
+  records,
   done,
   canceled,
 }
@@ -1282,6 +1290,7 @@ const kStatusName = <BoardStatus, String>{
   BoardStatus.doing: '진행 중',
   BoardStatus.verify: '검증',
   BoardStatus.known: '알려진 문제',
+  BoardStatus.records: '기록',
   BoardStatus.done: '완료',
   BoardStatus.canceled: '취소',
 };
@@ -1296,13 +1305,21 @@ const kStatusWord = <BoardStatus, String>{
   BoardStatus.doing: '진행 중',
   BoardStatus.verify: '검증',
   BoardStatus.known: '알려진 문제',
+  BoardStatus.records: '기록',
   BoardStatus.done: '완료',
   BoardStatus.canceled: '취소',
 };
 
+/// Whether [word] stands a card somewhere — a 대분류 other than the two that
+/// are no longer places: 유저 (the user spoke, so the move is mine) and 질문
+/// (a question, so the move is theirs).
+bool isPlaceWord(String word) {
+  final section = kSection[word];
+  return section != null && section != 'ask' && word != '유저';
+}
+
 /// The place word [statusOf] stands the card on, or '' when the story names
-/// none — read past the two words that are no longer places: 유저 (the user
-/// spoke, so the move is mine) and 질문 (a question, so the move is theirs).
+/// none — read past the words that are not places ([isPlaceWord]).
 /// ⚠️하는 중 keeps the shelf life [lastSection] gives it.
 String placeWordOf(BoardCard e) {
   var spoke = '';
@@ -1313,7 +1330,7 @@ String placeWordOf(BoardCard e) {
       spoke = name;
       continue;
     }
-    if (section == null || section == 'ask') continue;
+    if (!isPlaceWord(name)) continue;
     if (section == 'wip' && wentQuiet(e)) continue;
     // 🚨AN ENDING THE USER ANSWERED IS NOT AN ENDING. Their words after it say
     // something is still wrong — H24, F-28, F-22-rest and R27-rest were lost
@@ -1335,6 +1352,7 @@ BoardStatus? _statusOfSection(String? section) => switch (section) {
       'wip' || 'mine' => BoardStatus.doing,
       'hands' => BoardStatus.verify,
       'known' => BoardStatus.known,
+      'records' => BoardStatus.records,
       'archived' || 'deleted' => BoardStatus.done,
       _ => null,
     };

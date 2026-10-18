@@ -308,6 +308,43 @@ String? endedCardRefusal(
       '`"at":"정정"` 을 붙이세요.';
 }
 
+/// The cards that stand in 기록.
+Set<String> recordCards(List<BoardCard> cards) => {
+      for (final c in cards)
+        if (statusOf(c) == BoardStatus.records) c.id,
+    };
+
+/// What is wrong with writing this record onto a card filed in 기록, or null
+/// if there is nothing wrong.
+///
+/// 🚨A RECORD CARD IS NOT MOVED BY A WORD OF WORK. 유저 2026-10-18,
+/// record-cards-get-their-own-place-Q1: 「기록 카드엔 칸 말을 쓰기 전에
+/// 막는다」. Sessions write 하는 중 on their roadmaps out of habit — the seven
+/// cards that went to 기록 held 73 such lines — and by the fold's own law the
+/// last place word wins, so the next one would carry the card back into the
+/// columns of work.
+/// ⚠️Refused HERE rather than excepted in the fold, by the user's choice: the
+/// fold keeps 「the last place word wins」, and a move from the board
+/// (`/move`) does not come through this writer at all.
+/// ⚠️What passes is everything that does not move the card: 기록 itself, an
+/// ending (완료 · 취소), a 소분류 and a line with no `at`.
+String? recordCardRefusal(
+  Map<String, dynamic> json,
+  int lineNo,
+  Set<String> records,
+) {
+  final id = '${json['id'] ?? ''}';
+  if (!records.contains(id)) return null;
+  final at = '${json['at'] ?? ''}'.trim();
+  if (!isPlaceWord(at)) return null;
+  final section = kSection[at];
+  if (section == 'records' || section == 'archived') return null;
+  return '$lineNo번째 줄: 「$id」 는 기록 칸의 카드입니다 — 「$at」 을 '
+      '적으면 일의 칸으로 옮겨 갑니다.\n'
+      '  ⇒ 기록 카드에는 `at` 없이 `note` 로 적으세요(작업 기록 같은 '
+      '소분류 · 완료 · 취소는 됩니다). 일로 되돌리는 것은 보드에서 옮깁니다.';
+}
+
 /// What a new law `care` would LOSE, as a warning — or null when it loses
 /// nothing it can be measured to lose.
 ///
@@ -352,6 +389,7 @@ Map<String, String> lawCares(List<BoardCard> cards) => {
   List<String> lines,
   DateTime now, {
   Map<String, String> ended = const {},
+  Set<String> inRecords = const {},
   Map<String, String> lawCare = const {},
   Map<String, Map<String, BoardLog>> letters = const {},
   Set<String> holders = const {},
@@ -377,6 +415,7 @@ Map<String, String> lawCares(List<BoardCard> cards) => {
     }
     final why = recordRefusal(json, lineNo) ??
         endedCardRefusal(json, lineNo, ended) ??
+        recordCardRefusal(json, lineNo, inRecords) ??
         readMarkRefusal(json, lineNo, letters);
     if (why != null) {
       return (refusal: why, bytes: null, warnings: const <String>[]);
@@ -434,6 +473,7 @@ BoardSaid sayToRecords(File records, List<String> lines, DateTime now) {
     lines,
     now,
     ended: endedCards(cards),
+    inRecords: recordCards(cards),
     lawCare: lawCares(cards),
     letters: lettersByStamp(cards),
     holders: cardHolders(cards),
