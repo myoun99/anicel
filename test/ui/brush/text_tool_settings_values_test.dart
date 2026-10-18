@@ -122,6 +122,42 @@ void main() {
       expect(host.ran, isEmpty);
     });
 
+    test('🚨a text begun holds every value of the box the next text holds — '
+        'and so it does once the next text\'s letters are changed after', () {
+      const next = TextToolOptions(
+        align: TextCelAlign.center,
+        lineHeight: 1.6,
+        letterWidth: 0.6,
+        backgroundColor: 0xFF102030,
+        vertical: true,
+      );
+      (TextCelAlign, double, double, int?, bool) boxOf(TextToolOptions of) {
+        final begun = of.newTextAt(CanvasPoint(x: 3, y: 4));
+        return (
+          begun.align,
+          begun.lineHeight,
+          begun.letterWidth,
+          begun.backgroundColor,
+          begun.vertical,
+        );
+      }
+
+      for (final (changed, after) in [
+        ('nothing', next),
+        (
+          'the letters',
+          next.withLetters((style) => style.copyWith(bold: true)),
+        ),
+        ('the colour', next.withColour(0xFF405060)),
+      ]) {
+        expect(
+          boxOf(after),
+          (TextCelAlign.center, 1.6, 0.6, 0xFF102030, true),
+          reason: changed,
+        );
+      }
+    });
+
     test('🚨whether the next text grows or wraps is not a setting: the '
         'hand says, by a click or a drag', () {
       final (:values, :options, tool: _, :host, baker: _, cel: _) = settings();

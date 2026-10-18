@@ -394,6 +394,37 @@ void main() {
       expect(hand.options.value.letters(brushColour: null).fontSize, shown);
     });
 
+    for (final (name, of) in <(String, double Function(CelTextContent))>[
+      ('line-height', (text) => text.lineHeight),
+      ('letter-width', (text) => text.letterWidth),
+    ]) {
+      testWidgets('🚨a bar of the BOX dragged shows as it goes and lands '
+          'once, where the hand lets go ($name)', (tester) async {
+        final hand = await pumpSettings(tester, text: said([run('ab')]));
+        final before = of(landedOn(hand.cel));
+
+        final drag = await tester.startGesture(
+          tester.getRect(row(name)).center,
+        );
+        await tester.pump();
+        await drag.moveBy(const Offset(30, 0));
+        await tester.pump();
+        await drag.moveBy(const Offset(30, 0));
+        await tester.pump();
+
+        final shown = of(hand.tool.session!.shown.content);
+        expect(shown, isNot(before), reason: 'the text on screen follows');
+        expect(hand.host.ran, isEmpty, reason: 'nothing lands mid-drag');
+        expect(of(landedOn(hand.cel)), before);
+
+        await drag.up();
+        await tester.pump();
+
+        expect(hand.host.ran, hasLength(1));
+        expect(of(landedOn(hand.cel)), shown);
+      });
+    }
+
     testWidgets('🚨each bar reads and sets its OWN number of the letters: '
         'the tracking theirs, the outline\'s width its', (tester) async {
       const outlined = TextLetterStyle(

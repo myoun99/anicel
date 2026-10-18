@@ -291,6 +291,21 @@ void main() {
       expect(along.dy - origin.dy, closeTo(32, 1e-9));
     });
 
+    testWidgets('🚨a box of them breaks its field\'s lines where a column '
+        'ends — at the box\'s own length, however wide its letters are drawn '
+        '(text-letters-lean-and-underline ⑥)', (tester) async {
+      // 「あい」 fills a column 16 long, and 「う」 starts the next: the
+      // letters' width is ACROSS a column, never along it. (Letters a
+      // column may part between: it never parts a word of Latin ones.)
+      final (:field, :layout, log: _) = await pumpField(
+        tester,
+        said([run('あいう')], wrapWidth: 16, vertical: true, letterWidth: 0.5),
+      );
+
+      expect(layout.wrapPlaces, [2], reason: '⛔fixture: two columns');
+      expect(field.size.height, 16, reason: 'two lines of 8');
+    });
+
     /// 「あい」 in the first column, 「うえ」 in the one to its left.
     Future<void> pumpTwoColumns(WidgetTester tester, {int caret = 0}) async {
       await pumpField(tester, said([run('あい\nうえ')], vertical: true));
