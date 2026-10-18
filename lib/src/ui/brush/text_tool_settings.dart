@@ -589,7 +589,7 @@ class _FaceRow extends StatelessWidget {
   static String _nameOf(String? family) =>
       family ?? AppTypography.bundledFamily;
 
-  static ShownLetterSetting<String?> _faceOf(TextToolSettingsValues values) =>
+  static ShownTextSetting<String?> _faceOf(TextToolSettingsValues values) =>
       values.letter((style) => style.fontFamily);
 
   @override
@@ -922,12 +922,12 @@ class _BoxRows extends StatelessWidget {
   /// Where the letters stand along their way: the three answers keep their
   /// values and are NAMED by what they are on screen — the left, the middle
   /// and the right of a line; the top, the middle and the bottom of a
-  /// column.
+  /// column. A setting of PARAGRAPHS: paragraphs aligned unlike light none.
   Widget _alignment() {
     final strings = AppText.strings;
     return reading.follow(
       (values) => (
-        align: values.align,
+        align: values.paragraph((paragraph) => paragraph.align),
         columns: values.vertical,
         writable: values.writable,
       ),
@@ -935,7 +935,7 @@ class _BoxRows extends StatelessWidget {
         tool: 'text-tool',
         name: 'align',
         label: strings.textToolAlign,
-        current: shown.align,
+        current: shown.align.mixed ? null : shown.align.value,
         answers: [
           for (final (align, label) in [
             (
@@ -954,8 +954,11 @@ class _BoxRows extends StatelessWidget {
           ])
             (value: align, key: align.name, label: label),
         ],
-        onPick: (align) =>
-            shown.writable ? () => reading.now.setAlign(align) : null,
+        onPick: (align) => shown.writable
+            ? () => reading.now.setParagraphs(
+                (paragraph) => paragraph.copyWith(align: align),
+              )
+            : null,
       ),
     );
   }
@@ -986,27 +989,39 @@ class _BoxRows extends StatelessWidget {
     );
   }
 
-  /// A line's pitch, read as a share of its letters' size.
-  Widget _linePitch() => ToolSettingRow.bar(
-    label: AppText.strings.textToolLineHeight,
-    bar: reading.follow(
-      (values) => (pitch: values.lineHeight, writable: values.writable),
-      (shown) => FieldSlider.cell(
-        key: const ValueKey<String>('text-tool-line-height'),
-        label: AppText.strings.textToolLineHeight,
-        min: _tightest,
-        max: _loosest,
-        divisions: ((_loosest - _tightest) / _pitchStep).round(),
-        displayScale: 100,
-        unit: '%',
-        value: shown.pitch.clamp(_tightest, _loosest),
-        onChanged: shown.writable
-            ? (pitch) => reading.now.setLineHeight(pitch, settled: false)
-            : null,
-        onChangeEnd: (pitch) => reading.now.setLineHeight(pitch),
+  /// A line's pitch, read as a share of its letters' size — a setting of
+  /// PARAGRAPHS.
+  Widget _linePitch() {
+    void set(double pitch, {required bool settled}) =>
+        reading.now.setParagraphs(
+          (paragraph) => paragraph.copyWith(lineHeight: pitch),
+          settled: settled,
+        );
+    return ToolSettingRow.bar(
+      label: AppText.strings.textToolLineHeight,
+      bar: reading.follow(
+        (values) => (
+          pitch: values.paragraph((paragraph) => paragraph.lineHeight),
+          writable: values.writable,
+        ),
+        (shown) => FieldSlider.cell(
+          key: const ValueKey<String>('text-tool-line-height'),
+          label: AppText.strings.textToolLineHeight,
+          min: _tightest,
+          max: _loosest,
+          divisions: ((_loosest - _tightest) / _pitchStep).round(),
+          displayScale: 100,
+          unit: '%',
+          value: shown.pitch.value.clamp(_tightest, _loosest),
+          valueTextBuilder: shown.pitch.mixed ? (_, _) => _mixed : null,
+          onChanged: shown.writable
+              ? (pitch) => set(pitch, settled: false)
+              : null,
+          onChangeEnd: (pitch) => set(pitch, settled: true),
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   /// How wide the letters are drawn, read as a share of their own width
   /// (장평).

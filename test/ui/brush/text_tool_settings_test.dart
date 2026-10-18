@@ -891,6 +891,42 @@ void main() {
       expect(written('line-height', '250%'), findsOneWidget);
     });
 
+    // text-letters-lean-and-underline ④⑤: each paragraph is set its own,
+    // and read as the letters are — 「—」 where they disagree.
+    testWidgets('🚨paragraphs aligned unlike light no answer, and pitched '
+        'unlike read 「—」 — an answer pressed sets every one of them', (
+      tester,
+    ) async {
+      const apart = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+      final hand = await pumpSettings(
+        tester,
+        text: CelTextContent(
+          spans: [run('ab\ncd')],
+          anchor: CanvasPoint(x: 8, y: 8),
+          paragraphs: const [CelTextParagraph(), apart],
+        ),
+      );
+
+      for (final answer in TextCelAlign.values) {
+        expect(
+          pill(tester, 'align-${answer.name}').selected,
+          isFalse,
+          reason: answer.name,
+        );
+      }
+      expect(written('line-height', '—'), findsOneWidget);
+
+      await tester.tap(row('align-center'));
+      await tester.pump();
+
+      expect(landedOn(hand.cel).paragraphs, const [
+        CelTextParagraph(align: TextCelAlign.center),
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 2),
+      ]);
+      expect(pill(tester, 'align-center').selected, isTrue);
+      expect(written('line-height', '—'), findsOneWidget);
+    });
+
     testWidgets('🗣️the letters\' width (장평, text-letters-lean-and-underline '
         '⑥) reads as a share of their own, and a press on its bar sets it', (
       tester,

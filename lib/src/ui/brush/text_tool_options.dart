@@ -3,7 +3,8 @@ import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 
 /// What the NEXT text set with the text tool starts as (R9-rest): the
-/// letters' style, and the values of the whole box.
+/// letters' style, how its paragraph is set, and the values of the whole
+/// box.
 ///
 /// The app's, like every tool's settings — not the project's and not a
 /// text's: a text that is selected shows ITS values in the tool settings
@@ -93,6 +94,18 @@ class TextToolOptions {
   TextToolOptions withLetters(
     TextLetterStyle Function(TextLetterStyle letters) change,
   ) => _with(change(_letters), takesTheBrushColour: takesTheBrushColour);
+
+  /// How the next text's one paragraph is set.
+  CelTextParagraph get paragraph =>
+      CelTextParagraph(align: align, lineHeight: lineHeight);
+
+  /// These with [change] made on the next text's paragraph.
+  TextToolOptions withParagraph(
+    CelTextParagraph Function(CelTextParagraph paragraph) change,
+  ) {
+    final changed = change(paragraph);
+    return copyWith(align: changed.align, lineHeight: changed.lineHeight);
+  }
 
   TextToolOptions _with(
     TextLetterStyle letters, {

@@ -505,7 +505,8 @@ class CelTextTool extends ChangeNotifier {
   /// ones, or with none selected every letter ([celTextLettersSpokenFor],
   /// 유저 2026-10-02 · 10-06). What the settings SHOW
   /// ([letterStylesSpokenFor]) and what a change of one is MADE ON
-  /// ([changeLetters]) are this one range.
+  /// ([changeLetters]) are this one range — and a paragraph setting's are
+  /// its paragraphs ([changeParagraphs]).
   CelTextRange _lettersSpokenFor(CelTextContent content) {
     final selection = _letters?.selection;
     return celTextLettersSpokenFor(
@@ -530,6 +531,33 @@ class CelTextTool extends ChangeNotifier {
         : celTextStylesOf(content, _lettersSpokenFor(content));
   }
 
+  /// A change of a PARAGRAPH setting — the alignment, the line pitch — made
+  /// on the text in hand: it reaches the paragraphs of the letters a letter
+  /// setting speaks for ([celTextParagraphsOf]) — those the selection
+  /// touches, or with none selected every one.
+  void changeParagraphs(
+    CelTextParagraph Function(CelTextParagraph paragraph) change, {
+    bool settled = true,
+  }) => changeBox(
+    (content) => celTextReparagraphed(
+      content,
+      range: celTextParagraphsOf(content, _lettersSpokenFor(content)),
+      change: change,
+    ),
+    settled: settled,
+  );
+
+  /// How the paragraphs a paragraph setting speaks for are set now, in
+  /// reading order ([changeParagraphs]). Null with nothing in hand.
+  List<CelTextParagraph>? get paragraphsSpokenFor {
+    final content = contentInHand;
+    if (content == null) {
+      return null;
+    }
+    final range = celTextParagraphsOf(content, _lettersSpokenFor(content));
+    return content.paragraphs.sublist(range.first, range.last + 1);
+  }
+
   /// The text in hand as a setting finds it — null with none.
   CelTextContent? get contentInHand {
     final session = _held?.session;
@@ -547,8 +575,8 @@ class CelTextTool extends ChangeNotifier {
   CelTextContent _contentInHand(CelTextSession session) =>
       _letters?.content ?? session.content;
 
-  /// A change of a setting of the WHOLE TEXT — its alignment, its width,
-  /// its line pitch, the box behind it — made on the text in hand.
+  /// A change of a setting of the WHOLE TEXT — its width, how wide its
+  /// letters are drawn, the box behind it — made on the text in hand.
   void changeBox(
     CelTextContent Function(CelTextContent content) change, {
     bool settled = true,

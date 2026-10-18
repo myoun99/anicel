@@ -1091,6 +1091,81 @@ void main() {
     });
   });
 
+  group('a PARAGRAPH setting changed on the text in hand', () {
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+    const apart = CelTextParagraph(align: TextCelAlign.center, lineHeight: 3);
+    // 「ab」 set to the right, then 「cd」 set apart.
+    final two = CelTextContent(
+      spans: [run('ab\ncd')],
+      anchor: CanvasPoint(x: 8, y: 8),
+      paragraphs: const [right, apart],
+    );
+    CelTextParagraph centred(CelTextParagraph paragraph) =>
+        paragraph.copyWith(align: TextCelAlign.center);
+
+    test('🚨held by its BOX it reaches every paragraph, each keeping what '
+        'the change leaves alone — one step, the text still in hand', () async {
+      final (:tool, :host, :baker, :cel) = hand(texts: [carried(4, two)]);
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      tool.changeParagraphs(centred);
+      await baker.pending.answer();
+
+      expect(host.ran, hasLength(1));
+      expect(pictureOf(cel).texts.single.content.paragraphs, const [
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 2),
+        apart,
+      ]);
+      expect(tool.hold, CelTextHold.box);
+
+      host.history.undo();
+
+      expect(pictureOf(cel).texts.single.content, two);
+    });
+
+    test('🚨with letters SELECTED it reaches the paragraphs they are in '
+        'alone; with a caret and none selected, every one', () {
+      final (:tool, host: _, baker: _, :cel) = hand(texts: [carried(4, two)]);
+      tool
+        ..takeText(cel, pictureOf(cel).texts.single)
+        ..typeAt(const TextSelection(baseOffset: 4, extentOffset: 3))
+        ..changeParagraphs((paragraph) => paragraph.copyWith(lineHeight: 5));
+
+      expect(tool.letters!.content.paragraphs, const [
+        right,
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 5),
+      ]);
+
+      tool
+        ..typeAt(const TextSelection.collapsed(offset: 1))
+        ..changeParagraphs((paragraph) => paragraph.copyWith(lineHeight: 4));
+
+      expect([
+        for (final paragraph in tool.letters!.content.paragraphs)
+          paragraph.lineHeight,
+      ], [4, 4]);
+    });
+
+    test('what it shows is how those paragraphs are set — the selection\'s, '
+        'or with none selected every one', () {
+      final (:tool, host: _, baker: _, :cel) = hand(texts: [carried(4, two)]);
+
+      expect(tool.paragraphsSpokenFor, isNull, reason: 'nothing in hand');
+
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      expect(tool.paragraphsSpokenFor, [right, apart]);
+
+      tool.typeAt(const TextSelection(baseOffset: 0, extentOffset: 3));
+
+      expect(tool.paragraphsSpokenFor, [right], reason: '「ab」 and its break');
+
+      tool.typeAt(const TextSelection(baseOffset: 1, extentOffset: 4));
+
+      expect(tool.paragraphsSpokenFor, [right, apart]);
+    });
+  });
+
   group('a setting of the WHOLE TEXT', () {
     test('reaches the text in hand as one step', () async {
       final (:tool, :host, :baker, :cel) = hand(

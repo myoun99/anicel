@@ -81,6 +81,13 @@ void main() {
 
   CelTextContent landed(CelTextCel cel) => landedOn(cel);
 
+  /// A paragraph setting's change: each paragraph it reaches set to
+  /// [align], or to lines [pitch] apart.
+  CelTextParagraph Function(CelTextParagraph) aligned(TextCelAlign align) =>
+      (paragraph) => paragraph.copyWith(align: align);
+  CelTextParagraph Function(CelTextParagraph) pitched(double pitch) =>
+      (paragraph) => paragraph.copyWith(lineHeight: pitch);
+
   group('with NO text in hand', () {
     test('it shows what the next text will start as', () {
       final (:values, options: _, tool: _, host: _, baker: _, cel: _) =
@@ -98,8 +105,14 @@ void main() {
         value: 0xFFFF0000,
         mixed: false,
       ));
-      expect(values.align, TextCelAlign.right);
-      expect(values.lineHeight, 2);
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.right,
+        mixed: false,
+      ));
+      expect(values.paragraph((it) => it.lineHeight), (
+        value: 2.0,
+        mixed: false,
+      ));
       expect(values.letterWidth, 0.6);
       expect(values.backgroundColor, 0xFF00FF00);
     });
@@ -109,8 +122,8 @@ void main() {
 
       values
         ..setLetters((style) => style.copyWith(fontSize: 30))
-        ..setAlign(TextCelAlign.center)
-        ..setLineHeight(1.5)
+        ..setParagraphs(aligned(TextCelAlign.center))
+        ..setParagraphs(pitched(1.5))
         ..setLetterWidth(1.4)
         ..setBackgroundColor(0xFF112233);
 
@@ -194,8 +207,14 @@ void main() {
         value: 16.0,
         mixed: false,
       ));
-      expect(values.align, TextCelAlign.center);
-      expect(values.lineHeight, 2);
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.center,
+        mixed: false,
+      ));
+      expect(values.paragraph((it) => it.lineHeight), (
+        value: 2.0,
+        mixed: false,
+      ));
       expect(values.letterWidth, 0.7);
       // ⚠️None is a VALUE: this text has no box behind it, and the next
       // text's green is not shown in its place.
@@ -270,6 +289,46 @@ void main() {
       ]);
     });
 
+    test('🚨a PARAGRAPH setting shows the paragraphs the selected letters are '
+        'in, and reaches those alone — with none, every one', () async {
+      const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+      final (:values, :options, :tool, host: _, :baker, :cel) = settings(
+        text: CelTextContent(
+          spans: [run('ab\ncd')],
+          anchor: CanvasPoint(x: 8, y: 8),
+          paragraphs: const [CelTextParagraph(), right],
+        ),
+      );
+
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.left,
+        mixed: true,
+      ));
+
+      tool.typeAt(const TextSelection(baseOffset: 3, extentOffset: 5));
+
+      // 「cd」 alone: its one paragraph, nothing mixed.
+      expect(values.paragraph((it) => it.align), (
+        value: TextCelAlign.right,
+        mixed: false,
+      ));
+      expect(values.paragraph((it) => it.lineHeight), (
+        value: 2.0,
+        mixed: false,
+      ));
+
+      values.setParagraphs(aligned(TextCelAlign.center));
+      tool.stopTyping();
+      await baker.pending.answer();
+
+      expect(landed(cel).paragraphs, const [
+        CelTextParagraph(),
+        CelTextParagraph(align: TextCelAlign.center, lineHeight: 2),
+      ]);
+      expect(options.value.align, TextCelAlign.center);
+      expect(options.value.lineHeight, CelTextContent.defaultLineHeight);
+    });
+
     test('a text with NO letters shows what its first letter will wear, and '
         'a change sets that', () {
       final (:values, :options, :tool, host: _, baker: _, :cel) = settings(
@@ -289,12 +348,13 @@ void main() {
       expect(values.letter((style) => style.color).value, 0xFF0000FF);
     });
 
-    test('a setting of the WHOLE text reaches the text and the next one', () async {
+    test('a setting of the paragraphs, and one of the WHOLE text, reaches '
+        'the text and the next one', () async {
       final (:values, :options, tool: _, :host, :baker, :cel) = settings(
         text: said([run('ab')]),
       );
 
-      values.setAlign(TextCelAlign.right);
+      values.setParagraphs(aligned(TextCelAlign.right));
       await baker.pending.answer();
       values.setBackgroundColor(0xFF445566);
       await baker.pending.answer();
@@ -376,13 +436,13 @@ void main() {
       expect(host.ran, hasLength(1), reason: 'nothing more to land');
     });
 
-    test('a setting of the WHOLE text dragged does not land either, until '
+    test('a setting of the paragraphs dragged does not land either, until '
         'it comes to rest', () async {
       final (:values, options: _, tool: _, :host, :baker, :cel) = settings(
         text: said([run('ab')]),
       );
 
-      values.setLineHeight(2, settled: false);
+      values.setParagraphs(pitched(2), settled: false);
       await baker.pending.answer();
 
       expect(host.ran, isEmpty);
@@ -391,7 +451,7 @@ void main() {
         CelTextContent.defaultLineHeight,
       );
 
-      values.setLineHeight(2);
+      values.setParagraphs(pitched(2));
 
       expect(host.ran, hasLength(1));
       expect(landed(cel).paragraphs.single.lineHeight, 2);
@@ -401,7 +461,7 @@ void main() {
       final (:values, :options, tool: _, host: _, baker: _, cel: _) =
           settings();
 
-      values.setLineHeight(1.75, settled: false);
+      values.setParagraphs(pitched(1.75), settled: false);
 
       expect(options.value.lineHeight, 1.75);
     });
@@ -733,12 +793,15 @@ void main() {
         value: TextToolOptions.defaults.letters(brushColour: null).fontSize,
         mixed: false,
       ));
-      expect(nowhere.align, TextToolOptions.defaults.align);
+      expect(nowhere.paragraph((it) => it.align), (
+        value: TextToolOptions.defaults.align,
+        mixed: false,
+      ));
 
       // And saying one anyway is nobody's.
       nowhere
         ..setLetters((style) => style.copyWith(bold: true))
-        ..setAlign(TextCelAlign.right)
+        ..setParagraphs(aligned(TextCelAlign.right))
         ..setWraps(true)
         ..carryBy(dx: 1)
         ..setBoxCentre(x: 1)

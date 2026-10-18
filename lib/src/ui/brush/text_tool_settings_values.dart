@@ -9,10 +9,10 @@ import '../canvas/text/cel_text_tool.dart';
 import '../text/cel_text_box_width.dart';
 import 'text_tool_options.dart';
 
-/// One setting of the letters as the tool settings show it: its value on
-/// the first run the setting speaks for, and whether the runs disagree —
-/// which shows as 「—」 (유저 2026-10-06).
-typedef ShownLetterSetting<T> = ({T value, bool mixed});
+/// One setting of a text as the tool settings show it: its value on the
+/// first run — or paragraph — the setting speaks for, and whether they
+/// disagree — which shows as 「—」 (유저 2026-10-06).
+typedef ShownTextSetting<T> = ({T value, bool mixed});
 
 /// WHAT THE TEXT TOOL'S SETTINGS READ AND WRITE (R9-rest) — the one law
 /// every row of the panel keeps, so that no row can keep another.
@@ -25,6 +25,7 @@ typedef ShownLetterSetting<T> = ({T value, bool mixed});
 ///
 /// · READ: the text in hand when there is one — its letters by the range a
 ///   letter setting speaks for ([CelTextTool.letterStylesSpokenFor]), its
+///   paragraphs by that range's ([CelTextTool.paragraphsSpokenFor]), its
 ///   box as it is — and with none in hand what the NEXT text will start as
 ///   ([TextToolOptions]).
 /// · WRITE: on BOTH — the text in hand, by that same range, and the next
@@ -62,18 +63,13 @@ class TextToolSettingsValues {
   // ── the letters ─────────────────────────────────────────────────────
 
   /// One setting of the letters, read by [of].
-  ShownLetterSetting<T> letter<T>(T Function(TextLetterStyle style) of) {
-    final values = [
-      for (final style
-          in tool?.letterStylesSpokenFor ??
-              [_next.letters(brushColour: brushColour)])
-        of(style),
-    ];
-    return (
-      value: values.first,
-      mixed: values.any((value) => value != values.first),
-    );
-  }
+  ShownTextSetting<T> letter<T>(T Function(TextLetterStyle style) of) =>
+      _shown([
+        for (final style
+            in tool?.letterStylesSpokenFor ??
+                [_next.letters(brushColour: brushColour)])
+          of(style),
+      ]);
 
   /// Makes [change] on the letters the setting speaks for, and on the next
   /// text's.
@@ -99,14 +95,28 @@ class TextToolSettingsValues {
     _setNext((next) => next.withColour(color));
   }
 
+  // ── the paragraphs ──────────────────────────────────────────────────
+
+  /// One setting of the paragraphs — the alignment, the line pitch — read
+  /// by [of].
+  ShownTextSetting<T> paragraph<T>(
+    T Function(CelTextParagraph paragraph) of,
+  ) => _shown([
+    for (final paragraph in tool?.paragraphsSpokenFor ?? [_next.paragraph])
+      of(paragraph),
+  ]);
+
+  /// Makes [change] on the paragraphs the setting speaks for, and on the
+  /// next text's.
+  void setParagraphs(
+    CelTextParagraph Function(CelTextParagraph paragraph) change, {
+    bool settled = true,
+  }) {
+    tool?.changeParagraphs(change, settled: settled);
+    _setNext((next) => next.withParagraph(change));
+  }
+
   // ── the box ─────────────────────────────────────────────────────────
-
-  /// ⏳The text in hand's FIRST paragraph's — every paragraph's, while
-  /// nothing sets them apart (text-letters-lean-and-underline ④⑤).
-  TextCelAlign get align => _inHand?.paragraphs.first.align ?? _next.align;
-
-  double get lineHeight =>
-      _inHand?.paragraphs.first.lineHeight ?? _next.lineHeight;
 
   double get letterWidth => _inHand?.letterWidth ?? _next.letterWidth;
 
@@ -138,18 +148,6 @@ class TextToolSettingsValues {
     return inHand != null &&
         (!wraps || !inHand.isEmpty || inHand.wrapWidth != null);
   }
-
-  void setAlign(TextCelAlign align) => _setBox(
-    onText: (text) => _everyParagraph(text, (it) => it.copyWith(align: align)),
-    onNext: (next) => next.copyWith(align: align),
-  );
-
-  void setLineHeight(double lineHeight, {bool settled = true}) => _setBox(
-    onText: (text) =>
-        _everyParagraph(text, (it) => it.copyWith(lineHeight: lineHeight)),
-    onNext: (next) => next.copyWith(lineHeight: lineHeight),
-    settled: settled,
-  );
 
   void setLetterWidth(double letterWidth, {bool settled = true}) => _setBox(
     onText: (text) => text.copyWith(letterWidth: letterWidth),
@@ -255,14 +253,11 @@ class TextToolSettingsValues {
     _setNext(onNext);
   }
 
-  /// ⏳[text] with every paragraph set as [change] makes of how it was set
-  /// — until a paragraph setting speaks for the paragraphs the selection
-  /// touches (text-letters-lean-and-underline ④⑤).
-  static CelTextContent _everyParagraph(
-    CelTextContent text,
-    CelTextParagraph Function(CelTextParagraph paragraph) change,
-  ) => text.copyWith(
-    paragraphs: [for (final paragraph in text.paragraphs) change(paragraph)],
+  /// [values] as a setting shows them: the first, and whether any other
+  /// differs from it.
+  static ShownTextSetting<T> _shown<T>(List<T> values) => (
+    value: values.first,
+    mixed: values.any((value) => value != values.first),
   );
 
   void _setNext(TextToolOptions Function(TextToolOptions next) change) {
