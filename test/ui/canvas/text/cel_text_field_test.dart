@@ -654,17 +654,19 @@ void main() {
         ),
       );
 
+      // ⚠️A ranged selection reads the affinity of its end off its
+      // direction, so which line the first press landed on is told by the
+      // second: from the first line's end it goes to the text's start —
+      // from the second line's head it would stay where it is.
       mounted.selection = const TextSelection.collapsed(offset: 9);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection.extentOffset, 3);
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
       expect(
         mounted.selection,
-        const TextSelection(
-          baseOffset: 9,
-          extentOffset: 3,
-          affinity: TextAffinity.upstream,
-        ),
+        const TextSelection(baseOffset: 9, extentOffset: 0),
       );
     });
 

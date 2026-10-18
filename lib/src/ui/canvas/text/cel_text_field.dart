@@ -222,7 +222,7 @@ class CelTextField extends StatelessWidget {
       return false;
     }
     letters.selection = ModifierKeys.isShiftPressed
-        ? selection.copyWith(extentOffset: to.offset, affinity: to.affinity)
+        ? selection.copyWith(extentOffset: to.offset)
         : TextSelection.fromPosition(to);
     return true;
   }
@@ -264,18 +264,18 @@ class CelTextField extends StatelessWidget {
   /// ([CelTextEditingController.arrowAim]). With no line on that side, the
   /// text's end, or its start.
   TextPosition _onTheLineBeside(TextPosition from, {required bool after}) {
-    final at = TextPosition(
-      offset: math.min(from.offset, shown.content.text.length),
-      affinity: from.affinity,
-    );
     final aim = letters.arrowAim;
-    final along = aim != null && aim.landed == from.offset
-        ? aim.along
-        : _alongOf(at);
+    final goesOn = aim != null && aim.landed.offset == from.offset;
+    final stands = goesOn ? aim.landed : from;
+    final at = TextPosition(
+      offset: math.min(stands.offset, shown.content.text.length),
+      affinity: stands.affinity,
+    );
+    final along = goesOn ? aim.along : _alongOf(at);
     final to =
         shown.placeBeside(at, after: after, along: along) ??
         TextPosition(offset: after ? letters.text.length : 0);
-    letters.arrowAim = (landed: to.offset, along: along);
+    letters.arrowAim = (landed: to, along: along);
     return to;
   }
 

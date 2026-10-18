@@ -62,7 +62,13 @@ class CelTextEditingController extends TextEditingController {
   /// the longer ones as it set out — as a field's own up and down do
   /// (`CelTextField`, which answers those arrows itself). From anywhere
   /// else an arrow aims where the caret stands.
-  ({int landed, double along})? arrowAim;
+  ///
+  /// ⚠️The place WITH its affinity: where a line wrapped, the end of the
+  /// line above and the head of the one below are one offset, and a
+  /// selection does not keep which — the end of one reads as whichever its
+  /// direction says (`TextSelection.extent`). So an arrow with Shift goes
+  /// on from the line it landed on.
+  ({TextPosition landed, double along})? arrowAim;
 
   final List<_Step> _stepsBack = [];
   final List<_Step> _stepsForward = [];
