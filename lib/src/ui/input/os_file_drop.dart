@@ -19,7 +19,8 @@ import 'hit_path.dart';
 /// ([osFileDropPlaceAt]), as a press is found: the place on top takes it,
 /// and a place under a dialog or behind another panel does not.
 abstract interface class OsFileDropPlace {
-  /// A drag from the OS is over this place, or no longer is.
+  /// A drag from the OS has come over this place, or has left it — told
+  /// only as that changes.
   void hover({required bool over});
 
   /// Files dropped here, as the OS handed them over.
@@ -58,7 +59,7 @@ class _OsFileDropEntranceState extends State<OsFileDropEntrance>
 
   @override
   void hover({required bool over}) {
-    if (mounted && over != _over) {
+    if (mounted) {
       setState(() => _over = over);
     }
   }

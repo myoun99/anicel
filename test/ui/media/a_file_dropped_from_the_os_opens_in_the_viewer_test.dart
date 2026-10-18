@@ -7,6 +7,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/input/os_file_drop.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import '../../helpers/os_file_drop.dart';
@@ -165,5 +166,28 @@ void main() {
       reason: 'let go, it is out',
     );
     await settleLoadedPages(tester);
+  });
+
+  testWidgets('a place lays out what it is over as it would be with none', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      Center(
+        child: SizedBox(
+          width: 200,
+          height: 100,
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: OsFileDropEntrance(
+              onDrop: (_) {},
+              // As small as it is let be: loosened, it would shrink.
+              child: const ColoredBox(color: Color(0xFF000000)),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.getSize(find.byType(ColoredBox)), const Size(200, 100));
   });
 }

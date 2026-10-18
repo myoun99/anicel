@@ -904,10 +904,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   @override
   ValueListenable<bool> get isActiveListenable => _run.playingFlips;
 
-  /// The pill's 「파일 열기」: what is picked opens here — picked by the
-  /// dialog, or by [picker] in its place (files dropped here,
-  /// [_openDropped]).
-  Future<void> _openLooseFile({LooseFilePicker? picker}) async {
+  /// What [picker] picks opens here — the dialog with none. Each way in
+  /// names its own: the pill's 「파일 열기」 the widget's [filePicker], and
+  /// files dropped here the files ([_openDropped]).
+  Future<void> _openLooseFile(LooseFilePicker? picker) async {
     // 🚨EVERY PICKER SHOWS EVERY FILE (유저 2026-08-29) — the refusal is a
     // notice after the pick, not a greyed-out file in the dialog. The
     // widget's own [filePicker] seam answers in place of the dialog, and
@@ -920,7 +920,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final path = await openSupportedFile(
       context,
       supportedExtensions: FileTypeGroups.poolMedia.extensions ?? [],
-      picker: picker ?? widget.filePicker,
+      picker: picker,
     );
     if (path == null || !mounted) {
       return;
@@ -935,7 +935,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   /// Files dropped here from the OS ([OsFileDropEntrance]), opened as the
   /// 「파일 열기」 opens what it picks.
   void _openDropped(List<String> paths) =>
-      unawaited(_openLooseFile(picker: () async => paths));
+      unawaited(_openLooseFile(() async => paths));
 
   /// Whether the file on screen can still be added to the media pool —
   /// false for one already in it, and for nothing at all.
@@ -1372,7 +1372,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
             tooltip: strings.mediaViewerOpenFile,
             icon: const Icon(Icons.file_open_outlined),
             size: AppIconButtonSize.strip,
-            onPressed: _openLooseFile,
+            onPressed: () => unawaited(_openLooseFile(widget.filePicker)),
           ),
         if (widget.onRequestClosed case final close?)
           AppIconButton(
