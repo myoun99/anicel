@@ -2135,7 +2135,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// viewer, either one — opens there instead ([OsFileDropPlace]). It
   /// went through the door wherever it landed until then.
   void _onOsFilesDropped(DropDoneDetails details) {
-    _osDragIsOver(null);
     final paths = [for (final file in details.files) file.path];
     final place = _osFileDropPlaceAt(details.globalPosition);
     if (place != null) {
@@ -2148,7 +2147,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   /// The place a drag from the OS is over now, lit while it is
-  /// ([OsFileDropPlace.hover]).
+  /// ([OsFileDropPlace.hover]). A drop is left first: the plugin says the
+  /// drag has gone before it says what was let go.
   OsFileDropPlace? _osDragOver;
 
   void _onOsDragMoved(DropEventDetails details) =>

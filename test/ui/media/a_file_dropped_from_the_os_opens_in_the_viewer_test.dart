@@ -75,18 +75,20 @@ void main() {
       .value
       ?.path;
 
-  /// Whether [viewer] is lit as a place a drop is over.
-  bool litIn(WidgetTester tester, String viewer) => tester
-      .widgetList<DropEntranceFrame>(
-        find.descendant(
+  /// Whether [viewer] is lit as a place a drop is over: its frame drawn.
+  bool litIn(WidgetTester tester, String viewer) => find
+      .descendant(
+        of: find.descendant(
           of: find.ancestor(
             of: panelOf(viewer),
             matching: find.byType(OsFileDropEntrance),
           ),
           matching: find.byType(DropEntranceFrame),
         ),
+        matching: find.byType(DecoratedBox),
       )
-      .any((frame) => frame.lit);
+      .evaluate()
+      .isNotEmpty;
 
   testWidgets('🎯a picture dropped on either viewer opens in THAT one — and '
       'the import window never comes up', (tester) async {

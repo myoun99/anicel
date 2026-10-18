@@ -37,8 +37,7 @@ OsFileDropPlace? osFileDropPlaceAt(Offset globalPosition, int viewId) =>
 
 /// A place over all of [child] that files dropped from the OS open in —
 /// [onDrop] — lit while a drag from the OS is over it, as it is for a pool
-/// row ([DropEntranceFrame]). With no [onDrop] it is no place at all, and
-/// a drop there goes on to the door.
+/// row ([DropEntranceFrame]).
 class OsFileDropEntrance extends StatefulWidget {
   const OsFileDropEntrance({
     super.key,
@@ -46,7 +45,7 @@ class OsFileDropEntrance extends StatefulWidget {
     required this.child,
   });
 
-  final void Function(List<String> paths)? onDrop;
+  final void Function(List<String> paths) onDrop;
   final Widget child;
 
   @override
@@ -65,11 +64,11 @@ class _OsFileDropEntranceState extends State<OsFileDropEntrance>
   }
 
   @override
-  void take(List<String> paths) => widget.onDrop?.call(paths);
+  void take(List<String> paths) => widget.onDrop(paths);
 
   @override
   Widget build(BuildContext context) => MetaData(
-    metaData: widget.onDrop == null ? null : this,
+    metaData: this,
     // TRANSLUCENT: on the path of whatever it covers, taking nothing from
     // it — every press keeps going where it went.
     behavior: HitTestBehavior.translucent,
@@ -79,9 +78,7 @@ class _OsFileDropEntranceState extends State<OsFileDropEntrance>
       fit: StackFit.passthrough,
       children: [
         widget.child,
-        Positioned.fill(
-          child: IgnorePointer(child: DropEntranceFrame(lit: _over)),
-        ),
+        Positioned.fill(child: DropEntranceFrame(lit: _over)),
       ],
     ),
   );

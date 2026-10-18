@@ -21,6 +21,7 @@ Future<void> _pump(
   required VoidCallback onTapUnder,
   VoidCallback? onLeave,
   bool Function(MediaAssetDragData data, Offset globalPosition)? accepts,
+  bool framed = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -74,6 +75,7 @@ Future<void> _pump(
                       onDrop: onDrop,
                       onLeave: onLeave,
                       accepts: accepts,
+                      framed: framed,
                     ),
                   ),
                 ],
@@ -201,5 +203,37 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(events, ['ended'], reason: 'let go elsewhere: nothing landed here');
+  });
+
+  testWidgets('it is lit while a file is over it — not for another payload, '
+      'and not when it answers with a light of its own', (tester) async {
+    bool lit() => find
+        .descendant(
+          of: find.byKey(_targetKey),
+          matching: find.byType(DecoratedBox),
+        )
+        .evaluate()
+        .isNotEmpty;
+
+    Future<void> standOver(ValueKey<String> source, bool expected) async {
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(source)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveTo(tester.getCenter(find.byKey(_targetKey)));
+      await tester.pump();
+      expect(lit(), expected, reason: '$source over it');
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(lit(), isFalse, reason: 'let go, it is out');
+    }
+
+    for (final framed in [true, false]) {
+      await _pump(tester, onDrop: (_, _) {}, onTapUnder: () {}, framed: framed);
+      expect(lit(), isFalse);
+      await standOver(_otherSourceKey, false);
+      // The layer area answers with the rail's caret instead.
+      await standOver(_sourceKey, framed);
+    }
   });
 }

@@ -1531,7 +1531,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     // 메인뷰어던」): a file dropped here from the OS opens here, as the
     // pill's 「파일 열기」 opens one — and is refused as it would be.
     return OsFileDropEntrance(
-      onDrop: widget.onRequestPicked == null ? null : _openDropped,
+      onDrop: _openDropped,
       child: _poolEntrance(surface),
     );
   }
