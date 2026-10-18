@@ -402,4 +402,37 @@ void main() {
     expect(keyedFor(0.6), [0, 24]);
     expect(keyedFor(1.5).length, greaterThan(2));
   });
+
+  test('🎯a camera folder\'s anchor is fitted on the path the app walks it '
+      'on: a quarter turn plays back within the pixel', () {
+    // A quarter turn of 200 around (360, 270), over 24 frames.
+    final anchors = {
+      for (var frame = 0; frame <= 24; frame += 1)
+        frame: CanvasPoint(
+          x: 360 + 200 * math.cos(math.pi / 2 * frame / 24),
+          y: 270 + 200 * math.sin(math.pi / 2 * frame / 24),
+        ),
+    };
+    final lane = transformTrackOfFramePoses(
+      {
+        for (final MapEntry(key: frame, value: anchor) in anchors.entries)
+          frame: (
+            pose: TransformPose(center: CanvasPoint(x: 360, y: 270)),
+            anchorPoint: anchor,
+          ),
+      },
+      keyedOn: (
+        anchorPoint: const [],
+        position: const [],
+        scale: const [],
+        rotation: const [],
+      ),
+    ).anchorPoint;
+
+    anchors.forEach((frame, anchor) {
+      final shown = resolveAnchorTrackAtTime(lane, frame.toDouble())!;
+      expect(shown.x, closeTo(anchor.x, 1), reason: '$frame');
+      expect(shown.y, closeTo(anchor.y, 1), reason: '$frame');
+    });
+  });
 }
