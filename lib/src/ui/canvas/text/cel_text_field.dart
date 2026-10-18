@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../services/input/modifier_keys.dart';
 import '../../text/canvas_letter_style.dart';
 import '../../text/cel_text_layout.dart';
+import '../../timeline/axis_turn.dart' show partAlong;
 import 'cel_text_editing_controller.dart';
 import 'cel_text_stage.dart';
 
@@ -281,8 +282,8 @@ class CelTextField extends StatelessWidget {
 
   /// How far along the lines the caret at [position] stands, as it is
   /// shown: its middle.
-  double _alongOf(TextPosition position) {
-    final caret = shown.caretRect(position);
-    return letters.content.vertical ? caret.center.dy : caret.center.dx;
-  }
+  double _alongOf(TextPosition position) => partAlong(
+    celTextLettersAxis(vertical: letters.content.vertical),
+    shown.caretRect(position).center,
+  );
 }

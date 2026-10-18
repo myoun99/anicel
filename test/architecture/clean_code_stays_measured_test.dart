@@ -986,7 +986,18 @@ void main() {
   /// 🔬`clean_code_diff` against master (`4c997b9cc`) names this one and no
   /// other class. ⛔Not split to fit: a column is asked for in the one list
   /// the row is read by, and read off that row beside the others.
-  const longClasses = 68;
+  ///
+  /// ⚠️68 → 69 on 2026-10-18, ONE name: `CelTextTool` crossed (590 → 618)
+  /// in text-letters-lean-and-underline ④⑤ — a text's paragraphs are set
+  /// each their own way, and the alignment and the line pitch in the tool's
+  /// settings are made on the paragraphs of the letters a letter setting
+  /// speaks for: `changeParagraphs` beside `changeLetters`,
+  /// `paragraphsSpokenFor` beside `letterStylesSpokenFor`, both through the
+  /// one range (`_lettersSpokenFor`). 🔬`clean_code_diff` against master
+  /// (`17f66740b`) names this one and no other class. ⛔Not split to fit:
+  /// what a paragraph setting speaks for is what a letter setting does, and
+  /// the two are read in one place.
+  const longClasses = 69;
 
   late CleanCodeScan scan;
   setUpAll(() {
