@@ -4,6 +4,9 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/transform_track.dart'
     show lerpArgb, lerpBoolHold;
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show PropertyLaneValueKind;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 
@@ -278,5 +281,180 @@ void main() {
         isNull,
       );
     });
+  });
+
+  group('🗣️the letter switches — bold, the lean, the lines under and '
+      'through — are each ONE lane on both runs '
+      '(text-letters-lean-and-underline-Q1, 유저 2026-10-17: 「일곱 전부」)', () {
+    TextCelStyle allOff(TextCelStyle run) => run.copyWith(
+      bold: false,
+      italic: false,
+      underline: false,
+      strikethrough: false,
+    );
+    List<bool> switches(TextCelStyle run) => [
+      run.bold,
+      run.italic,
+      run.underline,
+      run.strikethrough,
+    ];
+    // Every switch off, so a verb that reads or writes another switch than
+    // its own is seen.
+    final off = SeNameTag(
+      style: allOff(SeNameTag.defaultStyle),
+      lineStyle: allOff(SeNameTag.defaultLineStyle),
+    );
+
+    for (final (laneId, label, read, write, lane) in [
+      (
+        seNameTagBoldLaneId,
+        () => AppText.strings.seNameTagBoldLabel,
+        (TextCelStyle run) => run.bold,
+        (TextCelStyle run, bool on) => run.copyWith(bold: on),
+        (SeNameTagTrack keys) => keys.bold,
+      ),
+      (
+        seNameTagItalicLaneId,
+        () => AppText.strings.seNameTagItalicLabel,
+        (TextCelStyle run) => run.italic,
+        (TextCelStyle run, bool on) => run.copyWith(italic: on),
+        (SeNameTagTrack keys) => keys.italic,
+      ),
+      (
+        seNameTagUnderlineLaneId,
+        () => AppText.strings.seNameTagUnderlineLabel,
+        (TextCelStyle run) => run.underline,
+        (TextCelStyle run, bool on) => run.copyWith(underline: on),
+        (SeNameTagTrack keys) => keys.underline,
+      ),
+      (
+        seNameTagStrikethroughLaneId,
+        () => AppText.strings.seNameTagStrikethroughLabel,
+        (TextCelStyle run) => run.strikethrough,
+        (TextCelStyle run, bool on) => run.copyWith(strikethrough: on),
+        (SeNameTagTrack keys) => keys.strikethrough,
+      ),
+    ]) {
+      // Only this switch on, on both runs.
+      final lit = off.copyWith(
+        style: write(off.style, true),
+        lineStyle: write(off.lineStyle, true),
+      );
+
+      test('$laneId: a key freezes what it shows, HELD, and toggles away', () {
+        final keyedTag = seNameTagWithLaneKeyToggled(
+          lit,
+          laneId: laneId,
+          frameIndex: 4,
+        )!;
+        final key = lane(keyedTag.track!).keyAt(4)!;
+        expect(key.value, isTrue);
+        expect(key.outgoing, KeyExit.hold);
+
+        final cleared = seNameTagWithLaneKeyToggled(
+          keyedTag,
+          laneId: laneId,
+          frameIndex: 4,
+        )!;
+        expect(lane(cleared.track!).isEmpty, isTrue);
+      });
+
+      test('$laneId: keyed, it drives BOTH runs', () {
+        final keyedTag = seNameTagWithLaneKeyToggled(
+          lit,
+          laneId: laneId,
+          frameIndex: 0,
+        )!;
+        final resolved = keyedTag
+            .copyWith(style: off.style, lineStyle: off.lineStyle)
+            .resolveAt(3);
+
+        expect(switches(resolved.style), switches(lit.style));
+        expect(switches(resolved.lineStyle), switches(lit.lineStyle));
+      });
+
+      test('$laneId: typed into while unkeyed, it is both runs\' plain '
+          'value — and keys none', () {
+        final edited = seNameTagWithLaneValueEdited(
+          off,
+          laneId: laneId,
+          frameIndex: 6,
+          input: 'on',
+        )!;
+
+        expect(switches(edited.style), switches(lit.style));
+        expect(switches(edited.lineStyle), switches(lit.lineStyle));
+        expect(edited.track, isNull);
+      });
+
+      test('$laneId: typed into while keyed, it keys at the playhead, '
+          'HELD', () {
+        final keyedTag = seNameTagWithLaneKeyToggled(
+          off,
+          laneId: laneId,
+          frameIndex: 0,
+        )!;
+        final edited = seNameTagWithLaneValueEdited(
+          keyedTag,
+          laneId: laneId,
+          frameIndex: 6,
+          input: 'on',
+        )!;
+        final key = lane(edited.track!).keyAt(6)!;
+
+        expect(key.value, isTrue);
+        expect(key.outgoing, KeyExit.hold);
+        expect(edited.style, off.style, reason: 'the plain value stays');
+      });
+
+      test('$laneId: the Reset takes it back to what a new tag has — the '
+          'plain value on both runs, a key at the playhead, HELD', () {
+        final fresh = read(SeNameTag.defaultStyle);
+        final away = SeNameTag(
+          style: write(SeNameTag.defaultStyle, !fresh),
+          lineStyle: write(
+            SeNameTag.defaultLineStyle,
+            !read(SeNameTag.defaultLineStyle),
+          ),
+        );
+
+        final reset = seNameTagWithGroupReset(away, frameIndexes: const [0])!;
+        expect(reset.style, SeNameTag.defaultStyle);
+        expect(reset.lineStyle, SeNameTag.defaultLineStyle);
+
+        final keyed = seNameTagWithGroupReset(
+          seNameTagWithLaneKeyToggled(away, laneId: laneId, frameIndex: 0)!,
+          frameIndexes: const [5],
+        )!;
+        final key = lane(keyed.track!).keyAt(5)!;
+        expect(key.value, fresh);
+        expect(key.outgoing, KeyExit.hold);
+        expect(
+          lane(keyed.track!).keyAt(0)!.value,
+          !fresh,
+          reason: 'no key deleted',
+        );
+      });
+
+      test('$laneId: keyed, the tag is another one, and comes back from its '
+          'file', () {
+        final keyed = seNameTagWithLaneKeyToggled(
+          lit,
+          laneId: laneId,
+          frameIndex: 3,
+        )!;
+
+        expect(keyed.track, isNot(SeNameTagTrack.empty()));
+        expect(keyed.track!.hashCode, isNot(SeNameTagTrack.empty().hashCode));
+        expect(SeNameTag.fromJson(keyed.toJson()), keyed);
+      });
+
+      test('$laneId: reads on or off, takes a switch, and has its name', () {
+        expect(formatSeNameTagLaneValue(laneId, lit.resolveAt(0)), 'on');
+        expect(formatSeNameTagLaneValue(laneId, off.resolveAt(0)), 'off');
+        expect(seNameTagLaneValueKind(laneId), PropertyLaneValueKind.boolean);
+        expect(seNameTagLaneLabel(laneId), label());
+      });
+    }
   });
 }

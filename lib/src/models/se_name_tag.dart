@@ -28,14 +28,23 @@ import 'transform_track.dart'
 /// here overrides it once one exists. Keying is additive — nothing about an
 /// untouched tag changes, and its JSON does not grow a field.
 ///
-/// Seven members, in the user's own grouping: size, tracking and bold are
-/// SHARED by both runs (one lane drives the name and the line together);
-/// the three inks and the dialogue switch are per-run.
+/// Ten members, in the user's own grouping: size, tracking and the letter
+/// switches — bold, the lean, the lines under and through — are SHARED by
+/// both runs (one lane drives the name and the line together); the three
+/// inks and the dialogue switch are per-run.
+///
+/// 🗣️The lean and the two lines came with the text tool's
+/// (text-letters-lean-and-underline-Q1, 유저 2026-10-17: 「일곱 전부」, on
+/// the cost the question named: 「SE 이름표도 같은 글자 모양을 쓰므로 거기도
+/// 생깁니다」) — and shared as bold is, being switches of the same letters.
 class SeNameTagTrack {
   SeNameTagTrack({
     PropertyTrack<double>? fontSize,
     PropertyTrack<double>? letterSpacing,
     PropertyTrack<bool>? bold,
+    PropertyTrack<bool>? italic,
+    PropertyTrack<bool>? underline,
+    PropertyTrack<bool>? strikethrough,
     PropertyTrack<int>? nameInk,
     PropertyTrack<int>? boxColor,
     PropertyTrack<int>? lineInk,
@@ -43,6 +52,9 @@ class SeNameTagTrack {
   }) : fontSize = fontSize ?? PropertyTrack<double>.empty(),
        letterSpacing = letterSpacing ?? PropertyTrack<double>.empty(),
        bold = bold ?? PropertyTrack<bool>.empty(),
+       italic = italic ?? PropertyTrack<bool>.empty(),
+       underline = underline ?? PropertyTrack<bool>.empty(),
+       strikethrough = strikethrough ?? PropertyTrack<bool>.empty(),
        nameInk = nameInk ?? PropertyTrack<int>.empty(),
        boxColor = boxColor ?? PropertyTrack<int>.empty(),
        lineInk = lineInk ?? PropertyTrack<int>.empty(),
@@ -53,6 +65,9 @@ class SeNameTagTrack {
   final PropertyTrack<double> fontSize;
   final PropertyTrack<double> letterSpacing;
   final PropertyTrack<bool> bold;
+  final PropertyTrack<bool> italic;
+  final PropertyTrack<bool> underline;
+  final PropertyTrack<bool> strikethrough;
   final PropertyTrack<int> nameInk;
   final PropertyTrack<int> boxColor;
   final PropertyTrack<int> lineInk;
@@ -62,27 +77,25 @@ class SeNameTagTrack {
       fontSize.isEmpty &&
       letterSpacing.isEmpty &&
       bold.isEmpty &&
+      italic.isEmpty &&
+      underline.isEmpty &&
+      strikethrough.isEmpty &&
       nameInk.isEmpty &&
       boxColor.isEmpty &&
       lineInk.isEmpty &&
       showLine.isEmpty;
 
-  /// Every frame any member keys — the group header's key union, the same
-  /// summary the Transform header shows.
-  Set<int> get keyedFrames => {
-    ...fontSize.keys.keys,
-    ...letterSpacing.keys.keys,
-    ...bold.keys.keys,
-    ...nameInk.keys.keys,
-    ...boxColor.keys.keys,
-    ...lineInk.keys.keys,
-    ...showLine.keys.keys,
-  };
+  // ↩️`keyedFrames` — every frame any member keys — summed the group
+  // header's keys until the header read its members' marks through the
+  // lane table (`seNameTagPropertyLanes`); nobody read it after.
 
   SeNameTagTrack copyWith({
     PropertyTrack<double>? fontSize,
     PropertyTrack<double>? letterSpacing,
     PropertyTrack<bool>? bold,
+    PropertyTrack<bool>? italic,
+    PropertyTrack<bool>? underline,
+    PropertyTrack<bool>? strikethrough,
     PropertyTrack<int>? nameInk,
     PropertyTrack<int>? boxColor,
     PropertyTrack<int>? lineInk,
@@ -91,6 +104,9 @@ class SeNameTagTrack {
     fontSize: fontSize ?? this.fontSize,
     letterSpacing: letterSpacing ?? this.letterSpacing,
     bold: bold ?? this.bold,
+    italic: italic ?? this.italic,
+    underline: underline ?? this.underline,
+    strikethrough: strikethrough ?? this.strikethrough,
     nameInk: nameInk ?? this.nameInk,
     boxColor: boxColor ?? this.boxColor,
     lineInk: lineInk ?? this.lineInk,
@@ -102,6 +118,10 @@ class SeNameTagTrack {
     if (letterSpacing.isNotEmpty)
       'letterSpacing': letterSpacing.toJson((v) => v),
     if (bold.isNotEmpty) 'bold': bold.toJson((v) => v),
+    if (italic.isNotEmpty) 'italic': italic.toJson((v) => v),
+    if (underline.isNotEmpty) 'underline': underline.toJson((v) => v),
+    if (strikethrough.isNotEmpty)
+      'strikethrough': strikethrough.toJson((v) => v),
     if (nameInk.isNotEmpty) 'nameInk': nameInk.toJson((v) => v),
     if (boxColor.isNotEmpty) 'boxColor': boxColor.toJson((v) => v),
     if (lineInk.isNotEmpty) 'lineInk': lineInk.toJson((v) => v),
@@ -121,6 +141,9 @@ class SeNameTagTrack {
       fontSize: number('fontSize'),
       letterSpacing: number('letterSpacing'),
       bold: flag('bold'),
+      italic: flag('italic'),
+      underline: flag('underline'),
+      strikethrough: flag('strikethrough'),
       nameInk: argb('nameInk'),
       boxColor: argb('boxColor'),
       lineInk: argb('lineInk'),
@@ -135,6 +158,9 @@ class SeNameTagTrack {
           other.fontSize == fontSize &&
           other.letterSpacing == letterSpacing &&
           other.bold == bold &&
+          other.italic == italic &&
+          other.underline == underline &&
+          other.strikethrough == strikethrough &&
           other.nameInk == nameInk &&
           other.boxColor == boxColor &&
           other.lineInk == lineInk &&
@@ -145,6 +171,9 @@ class SeNameTagTrack {
     fontSize,
     letterSpacing,
     bold,
+    italic,
+    underline,
+    strikethrough,
     nameInk,
     boxColor,
     lineInk,
@@ -186,7 +215,7 @@ class SeNameTag {
       orElse: () => fallback,
       space: doubleKeySpace,
     );
-    bool weight(bool fallback) => keys.bold.resolveAt(
+    bool flag(PropertyTrack<bool> lane, bool fallback) => lane.resolveAt(
       frameIndex: frameIndex,
       orElse: () => fallback,
       space: boolHoldKeySpace,
@@ -196,30 +225,28 @@ class SeNameTag {
       orElse: () => fallback,
       space: argbKeySpace,
     );
+    // Size, tracking and the letter switches are ONE lane driving both runs
+    // (the user's grouping), so the line follows the name rather than
+    // carrying a second set nobody asked to key.
+    TextCelStyle shared(TextCelStyle run) => run.copyWith(
+      fontSize: size(run.fontSize),
+      letterSpacing: tracking(run.letterSpacing),
+      bold: flag(keys.bold, run.bold),
+      italic: flag(keys.italic, run.italic),
+      underline: flag(keys.underline, run.underline),
+      strikethrough: flag(keys.strikethrough, run.strikethrough),
+    );
     return SeNameTag(
-      style: style.copyWith(
-        fontSize: size(style.fontSize),
-        letterSpacing: tracking(style.letterSpacing),
-        bold: weight(style.bold),
+      style: shared(style).copyWith(
         color: ink(keys.nameInk, style.color),
         backgroundColor: keys.boxColor.isEmpty
             ? style.backgroundColor
             : ink(keys.boxColor, style.backgroundColor ?? 0),
       ),
-      lineStyle: lineStyle.copyWith(
-        // Size, tracking and bold are ONE lane driving both runs (the
-        // user's grouping), so the line follows the name rather than
-        // carrying a second set nobody asked to key.
-        fontSize: size(lineStyle.fontSize),
-        letterSpacing: tracking(lineStyle.letterSpacing),
-        bold: weight(lineStyle.bold),
-        color: ink(keys.lineInk, lineStyle.color),
-      ),
-      showLine: keys.showLine.resolveAt(
-        frameIndex: frameIndex,
-        orElse: () => showLine,
-        space: boolHoldKeySpace,
-      ),
+      lineStyle: shared(
+        lineStyle,
+      ).copyWith(color: ink(keys.lineInk, lineStyle.color)),
+      showLine: flag(keys.showLine, showLine),
       track: keys,
     );
   }

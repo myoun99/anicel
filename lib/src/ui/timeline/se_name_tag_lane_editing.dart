@@ -5,6 +5,7 @@
 
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
+import '../../models/text_cel_style.dart' show TextCelStyle;
 import 'se_name_tag_lane_policy.dart';
 
 /// Adds a key at [frameIndex] holding the member's RESOLVED value there
@@ -77,6 +78,24 @@ SeNameTag? seNameTagWithLaneKeyToggled(
         keys.bold,
         resolved.style.bold,
         (lane) => keys.copyWith(bold: lane),
+      );
+    case seNameTagItalicLaneId:
+      return toggleFlag(
+        keys.italic,
+        resolved.style.italic,
+        (lane) => keys.copyWith(italic: lane),
+      );
+    case seNameTagUnderlineLaneId:
+      return toggleFlag(
+        keys.underline,
+        resolved.style.underline,
+        (lane) => keys.copyWith(underline: lane),
+      );
+    case seNameTagStrikethroughLaneId:
+      return toggleFlag(
+        keys.strikethrough,
+        resolved.style.strikethrough,
+        (lane) => keys.copyWith(strikethrough: lane),
       );
     case seNameTagNameInkLaneId:
       return toggleArgb(
@@ -186,33 +205,46 @@ SeNameTag? seNameTagWithLaneValueEdited(
     );
   }
 
+  // A member both runs share writes both ([SeNameTagTrack]).
+  SeNameTag bothRuns(TextCelStyle Function(TextCelStyle run) edit) =>
+      tag.copyWith(style: edit(tag.style), lineStyle: edit(tag.lineStyle));
+
   switch (laneId) {
     case seNameTagSizeLaneId:
       return number(
         keys.fontSize,
-        (value) => tag.copyWith(
-          style: tag.style.copyWith(fontSize: value),
-          lineStyle: tag.lineStyle.copyWith(fontSize: value),
-        ),
+        (value) => bothRuns((run) => run.copyWith(fontSize: value)),
         (lane) => keys.copyWith(fontSize: lane),
       );
     case seNameTagTrackingLaneId:
       return number(
         keys.letterSpacing,
-        (value) => tag.copyWith(
-          style: tag.style.copyWith(letterSpacing: value),
-          lineStyle: tag.lineStyle.copyWith(letterSpacing: value),
-        ),
+        (value) => bothRuns((run) => run.copyWith(letterSpacing: value)),
         (lane) => keys.copyWith(letterSpacing: lane),
       );
     case seNameTagBoldLaneId:
       return flag(
         keys.bold,
-        (value) => tag.copyWith(
-          style: tag.style.copyWith(bold: value),
-          lineStyle: tag.lineStyle.copyWith(bold: value),
-        ),
+        (value) => bothRuns((run) => run.copyWith(bold: value)),
         (lane) => keys.copyWith(bold: lane),
+      );
+    case seNameTagItalicLaneId:
+      return flag(
+        keys.italic,
+        (value) => bothRuns((run) => run.copyWith(italic: value)),
+        (lane) => keys.copyWith(italic: lane),
+      );
+    case seNameTagUnderlineLaneId:
+      return flag(
+        keys.underline,
+        (value) => bothRuns((run) => run.copyWith(underline: value)),
+        (lane) => keys.copyWith(underline: lane),
+      );
+    case seNameTagStrikethroughLaneId:
+      return flag(
+        keys.strikethrough,
+        (value) => bothRuns((run) => run.copyWith(strikethrough: value)),
+        (lane) => keys.copyWith(strikethrough: lane),
       );
     case seNameTagNameInkLaneId:
       return argb(
@@ -303,23 +335,27 @@ SeNameTag? seNameTagWithGroupReset(
     return track;
   }
 
+  // Booleans hold by nature, as the toggle keys them.
+  PropertyTrack<bool> held(PropertyTrack<bool> lane, bool value) =>
+      keyed(lane, value, out: KeyExit.hold);
+
+  // A member both runs share goes back to what each run of a new tag has.
+  TextCelStyle shared(TextCelStyle run, TextCelStyle fresh) => run.copyWith(
+    fontSize: keys.fontSize.isEmpty ? fresh.fontSize : null,
+    letterSpacing: keys.letterSpacing.isEmpty ? fresh.letterSpacing : null,
+    bold: keys.bold.isEmpty ? fresh.bold : null,
+    italic: keys.italic.isEmpty ? fresh.italic : null,
+    underline: keys.underline.isEmpty ? fresh.underline : null,
+    strikethrough: keys.strikethrough.isEmpty ? fresh.strikethrough : null,
+  );
+
   final ink = fresh.style.backgroundColor;
   final next = tag.copyWith(
-    style: tag.style.copyWith(
-      fontSize: keys.fontSize.isEmpty ? fresh.style.fontSize : null,
-      letterSpacing: keys.letterSpacing.isEmpty
-          ? fresh.style.letterSpacing
-          : null,
-      bold: keys.bold.isEmpty ? fresh.style.bold : null,
+    style: shared(tag.style, fresh.style).copyWith(
       color: keys.nameInk.isEmpty ? fresh.style.color : null,
       backgroundColor: keys.boxColor.isEmpty ? ink : tag.style.backgroundColor,
     ),
-    lineStyle: tag.lineStyle.copyWith(
-      fontSize: keys.fontSize.isEmpty ? fresh.lineStyle.fontSize : null,
-      letterSpacing: keys.letterSpacing.isEmpty
-          ? fresh.lineStyle.letterSpacing
-          : null,
-      bold: keys.bold.isEmpty ? fresh.lineStyle.bold : null,
+    lineStyle: shared(tag.lineStyle, fresh.lineStyle).copyWith(
       color: keys.lineInk.isEmpty ? fresh.lineStyle.color : null,
     ),
     showLine: keys.showLine.isEmpty ? fresh.showLine : null,
@@ -328,12 +364,14 @@ SeNameTag? seNameTagWithGroupReset(
         : keys.copyWith(
             fontSize: keyed(keys.fontSize, fresh.style.fontSize),
             letterSpacing: keyed(keys.letterSpacing, fresh.style.letterSpacing),
-            // Booleans hold by nature, as the toggle keys them.
-            bold: keyed(keys.bold, fresh.style.bold, out: KeyExit.hold),
+            bold: held(keys.bold, fresh.style.bold),
+            italic: held(keys.italic, fresh.style.italic),
+            underline: held(keys.underline, fresh.style.underline),
+            strikethrough: held(keys.strikethrough, fresh.style.strikethrough),
             nameInk: keyed(keys.nameInk, fresh.style.color),
             boxColor: ink == null ? null : keyed(keys.boxColor, ink),
             lineInk: keyed(keys.lineInk, fresh.lineStyle.color),
-            showLine: keyed(keys.showLine, fresh.showLine, out: KeyExit.hold),
+            showLine: held(keys.showLine, fresh.showLine),
           ),
   );
   return next == tag ? null : next;

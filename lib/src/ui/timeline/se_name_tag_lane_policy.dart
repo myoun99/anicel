@@ -19,15 +19,23 @@ const String seNameTagGroupLaneId = 'name-tag-group';
 const String seNameTagSizeLaneId = 'name-tag:size';
 const String seNameTagTrackingLaneId = 'name-tag:tracking';
 const String seNameTagBoldLaneId = 'name-tag:bold';
+const String seNameTagItalicLaneId = 'name-tag:italic';
+const String seNameTagUnderlineLaneId = 'name-tag:underline';
+const String seNameTagStrikethroughLaneId = 'name-tag:strikethrough';
 const String seNameTagNameInkLaneId = 'name-tag:name-ink';
 const String seNameTagBoxColorLaneId = 'name-tag:box-color';
 const String seNameTagLineInkLaneId = 'name-tag:line-ink';
 const String seNameTagShowLineLaneId = 'name-tag:show-line';
 
+/// ⚠️The letter switches stand where the text tool's do — bold, then the
+/// lean, the line under and the line through (`text_tool_settings.dart`).
 const List<String> seNameTagLaneDisplayOrder = [
   seNameTagSizeLaneId,
   seNameTagTrackingLaneId,
   seNameTagBoldLaneId,
+  seNameTagItalicLaneId,
+  seNameTagUnderlineLaneId,
+  seNameTagStrikethroughLaneId,
   seNameTagNameInkLaneId,
   seNameTagBoxColorLaneId,
   seNameTagLineInkLaneId,
@@ -41,7 +49,7 @@ List<String> get seNameTagLaneSelectionOrder => [
 ];
 
 /// Whether [laneId] belongs to the name-tag group (header included) — the
-/// predicate every routing switch asks instead of matching seven strings.
+/// predicate every routing switch asks instead of matching every member's.
 bool laneIsSeNameTag(String? laneId) =>
     laneId == seNameTagGroupLaneId ||
     (laneId != null && laneId.startsWith('name-tag:'));
@@ -59,14 +67,21 @@ String formatSeNameTagLaneValue(String laneId, SeNameTag resolved) {
     seNameTagTrackingLaneId => columnValueText(
       resolved.style.letterSpacing,
     ),
-    seNameTagBoldLaneId => resolved.style.bold ? 'on' : 'off',
+    seNameTagBoldLaneId => _onOff(resolved.style.bold),
+    seNameTagItalicLaneId => _onOff(resolved.style.italic),
+    seNameTagUnderlineLaneId => _onOff(resolved.style.underline),
+    seNameTagStrikethroughLaneId => _onOff(resolved.style.strikethrough),
     seNameTagNameInkLaneId => hex(resolved.style.color),
     seNameTagBoxColorLaneId => hex(resolved.style.backgroundColor),
     seNameTagLineInkLaneId => hex(resolved.lineStyle.color),
-    seNameTagShowLineLaneId => resolved.showLine ? 'on' : 'off',
+    seNameTagShowLineLaneId => _onOff(resolved.showLine),
     _ => '',
   };
 }
+
+/// A switch's readout — the words the value editor reads back
+/// (`parseBoolInput`).
+String _onOff(bool on) => on ? 'on' : 'off';
 
 /// The name-tag family's lane table: where each member lane lives on the
 /// track — the name-tag twin of `transformLaneLens`, and the family's arm
@@ -86,6 +101,18 @@ PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
       seNameTagBoldLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
         get: (keys) => keys.bold,
         set: (keys, lane) => keys.copyWith(bold: lane),
+      ),
+      seNameTagItalicLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.italic,
+        set: (keys, lane) => keys.copyWith(italic: lane),
+      ),
+      seNameTagUnderlineLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.underline,
+        set: (keys, lane) => keys.copyWith(underline: lane),
+      ),
+      seNameTagStrikethroughLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
+        get: (keys) => keys.strikethrough,
+        set: (keys, lane) => keys.copyWith(strikethrough: lane),
       ),
       seNameTagNameInkLaneId => PropertyLaneLens<SeNameTagTrack, int>(
         get: (keys) => keys.nameInk,
@@ -211,6 +238,9 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
 /// where it is not. So all three are circles and the rule is one rule.
 PropertyLaneValueKind seNameTagLaneValueKind(String laneId) => switch (laneId) {
   seNameTagBoldLaneId ||
+  seNameTagItalicLaneId ||
+  seNameTagUnderlineLaneId ||
+  seNameTagStrikethroughLaneId ||
   seNameTagShowLineLaneId => PropertyLaneValueKind.boolean,
   seNameTagNameInkLaneId ||
   seNameTagBoxColorLaneId ||
@@ -238,6 +268,9 @@ String seNameTagLaneLabel(String laneId) => switch (laneId) {
   seNameTagSizeLaneId => AppText.strings.seNameTagSizeLabel,
   seNameTagTrackingLaneId => AppText.strings.seNameTagTrackingLabel,
   seNameTagBoldLaneId => AppText.strings.seNameTagBoldLabel,
+  seNameTagItalicLaneId => AppText.strings.seNameTagItalicLabel,
+  seNameTagUnderlineLaneId => AppText.strings.seNameTagUnderlineLabel,
+  seNameTagStrikethroughLaneId => AppText.strings.seNameTagStrikethroughLabel,
   seNameTagNameInkLaneId => AppText.strings.seNameTagNameInkLabel,
   seNameTagBoxColorLaneId => AppText.strings.seNameTagBoxColorLabel,
   seNameTagLineInkLaneId => AppText.strings.seNameTagLineInkLabel,

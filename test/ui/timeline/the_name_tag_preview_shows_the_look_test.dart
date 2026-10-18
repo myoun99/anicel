@@ -89,6 +89,53 @@ void main() {
     expect(styleOf(tester, '名前').fontWeight, FontWeight.w700);
   });
 
+  testWidgets('🗣️the LEAN carries through, on both runs '
+      '(text-letters-lean-and-underline-Q1: 「일곱 전부」)', (tester) async {
+    await pump(tester);
+    expect(styleOf(tester, '名前').fontStyle, FontStyle.normal);
+
+    await pump(
+      tester,
+      tag: const SeNameTag(
+        style: TextCelStyle(italic: true),
+        lineStyle: TextCelStyle(italic: true),
+      ),
+    );
+    expect(styleOf(tester, '名前').fontStyle, FontStyle.italic);
+    expect(styleOf(tester, 'セリフ').fontStyle, FontStyle.italic);
+  });
+
+  testWidgets('🗣️the LINES its letters wear are drawn over each run — under '
+      'it, and through its middle, in its ink', (tester) async {
+    await pump(tester);
+    expect(_linesOver(tester, '名前'), isNot(paints..rect()));
+
+    await pump(
+      tester,
+      tag: const SeNameTag(
+        style: TextCelStyle(underline: true, color: 0xFF00FF00),
+        lineStyle: TextCelStyle(strikethrough: true, color: 0xFFFF0000),
+      ),
+    );
+    final name = tester.getSize(find.text('名前'));
+    final line = tester.getSize(find.text('セリフ'));
+
+    expect(
+      _linesOver(tester, '名前'),
+      paints..rect(
+        rect: Rect.fromLTWH(0, name.height - 1, name.width, 1),
+        color: const Color(0xFF00FF00),
+      ),
+    );
+    expect(
+      _linesOver(tester, 'セリフ'),
+      paints..rect(
+        rect: Rect.fromLTWH(0, (line.height - 1) / 2, line.width, 1),
+        color: const Color(0xFFFF0000),
+      ),
+    );
+  });
+
   testWidgets('the INK carries through', (tester) async {
     await pump(
       tester,
@@ -192,6 +239,46 @@ void main() {
       expect(nameBox.width, lessThanOrEqualTo(23));
     });
 
+    testWidgets('🗣️a line under the letters runs DOWN the column on its '
+        'RIGHT, as the canvas sets one (傍線), and one through them down its '
+        'middle', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 23,
+                height: 160,
+                child: SeNameTagLanePreview(
+                  name: '名前',
+                  line: 'セリフ',
+                  tag: SeNameTag(
+                    style: TextCelStyle(underline: true),
+                    lineStyle: TextCelStyle(strikethrough: true),
+                  ),
+                  axis: Axis.vertical,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final name = tester.getSize(find.byWidget(written(tester, '名前')));
+      final line = tester.getSize(find.byWidget(written(tester, 'セリフ')));
+
+      expect(
+        _linesOver(tester, '名前'),
+        paints..rect(rect: Rect.fromLTWH(name.width - 1, 0, 1, name.height)),
+      );
+      expect(
+        _linesOver(tester, 'セリフ'),
+        paints..rect(
+          rect: Rect.fromLTWH((line.width - 1) / 2, 0, 1, line.height),
+        ),
+      );
+    });
+
     testWidgets('🚨in the real sheet, the S row\'s name-tag group header '
         'holds its preview inside its column', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -265,6 +352,24 @@ void main() {
     expect(box.center.dy, moreOrLessEquals(slots.center.dy, epsilon: 0.5));
   });
 }
+
+/// What draws the lines over the run of the preview that reads [text] —
+/// along a row or down a column.
+RenderObject _linesOver(WidgetTester tester, String text) =>
+    tester.renderObject(
+      find.ancestor(
+        of: find.byWidgetPredicate(
+          (widget) =>
+              (widget is Text && widget.data == text) ||
+              (widget is VerticalWritingText && widget.text == text),
+        ),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint &&
+              widget.foregroundPainter is SeNameTagPreviewLines,
+        ),
+      ),
+    );
 
 const _seId = LayerId('tag-se');
 

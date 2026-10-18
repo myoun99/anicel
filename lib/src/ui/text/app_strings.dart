@@ -837,6 +837,9 @@ enum AppStrings {
   String get seNameTagNameInkLabel => _s('seNameTagNameInkLabel');
   String get seNameTagBoxColorLabel => _s('seNameTagBoxColorLabel');
   String get seNameTagBoldLabel => _s('seNameTagBoldLabel');
+  String get seNameTagItalicLabel => _s('seNameTagItalicLabel');
+  String get seNameTagUnderlineLabel => _s('seNameTagUnderlineLabel');
+  String get seNameTagStrikethroughLabel => _s('seNameTagStrikethroughLabel');
 
   /// The name-tag preview's FIXED samples (R5 #7) — it shows the look, not
   /// the block's own text, so these never change with the playhead.
@@ -2953,6 +2956,9 @@ enum AppStrings {
     'seNameTagNameInkLabel': 'Name Ink',
     'seNameTagBoxColorLabel': 'Box Colour',
     'seNameTagBoldLabel': 'Bold',
+    'seNameTagItalicLabel': 'Italic',
+    'seNameTagUnderlineLabel': 'Underline',
+    'seNameTagStrikethroughLabel': 'Strikethrough',
     'seNameTagPreviewName': 'Name',
     'seNameTagPreviewLine': 'Line',
     'tlLayerCommands': 'Layer commands',
@@ -4527,6 +4533,9 @@ enum AppStrings {
     'seNameTagNameInkLabel': '名前の色',
     'seNameTagBoxColorLabel': 'ボックスの色',
     'seNameTagBoldLabel': '太字',
+    'seNameTagItalicLabel': '斜体',
+    'seNameTagUnderlineLabel': '下線',
+    'seNameTagStrikethroughLabel': '取り消し線',
     'seNameTagPreviewName': '名前',
     'seNameTagPreviewLine': 'セリフ',
     'tlKindInstruction': 'ディレクション',
@@ -6095,6 +6104,9 @@ enum AppStrings {
     'seNameTagNameInkLabel': '이름 잉크',
     'seNameTagBoxColorLabel': '박스 색',
     'seNameTagBoldLabel': '굵게',
+    'seNameTagItalicLabel': '기울임',
+    'seNameTagUnderlineLabel': '밑줄',
+    'seNameTagStrikethroughLabel': '취소선',
     'seNameTagPreviewName': '이름',
     'seNameTagPreviewLine': '대사',
     'tlKindInstruction': '디렉션',
@@ -7800,6 +7812,9 @@ enum AppStrings {
     'seNameTagNameInkLabel': 'Encre du nom',
     'seNameTagBoxColorLabel': 'Couleur de la boîte',
     'seNameTagBoldLabel': 'Gras',
+    'seNameTagItalicLabel': 'Italique',
+    'seNameTagUnderlineLabel': 'Souligné',
+    'seNameTagStrikethroughLabel': 'Barré',
     'seNameTagPreviewName': 'Nom',
     'seNameTagPreviewLine': 'Réplique',
     'shortcutAction.layer-attach-free-above': 'Calque attaché libre au-dessus',
@@ -9275,6 +9290,9 @@ enum AppStrings {
     'seNameTagNameInkLabel': '名字颜色',
     'seNameTagBoxColorLabel': '底框颜色',
     'seNameTagBoldLabel': '加粗',
+    'seNameTagItalicLabel': '倾斜',
+    'seNameTagUnderlineLabel': '下划线',
+    'seNameTagStrikethroughLabel': '删除线',
     'seNameTagPreviewName': '名字',
     'seNameTagPreviewLine': '台词',
     // 🚨A TRADE TERM, not a general word (user 2026-08-12: 「현장용어만

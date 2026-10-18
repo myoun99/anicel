@@ -69,10 +69,12 @@ String projectDisplayName(String path) {
 /// 같은것도 어차피 넣어야할 기능이니까 넣도록」): a letter says whether it
 /// leans and whether a line runs under it or through it
 /// (`TextLetterStyle.italic` · `underline` · `strikethrough`, each written
-/// only where it is so). A v22 build reads a letter without the words: it
-/// opens the text upright and bare, and the first edit of it bakes the
-/// letters so and writes them back without the words — and nothing said.
-/// The bump turns that into a refusal ([decodeAnicelProjectDocument]).
+/// only where it is so), and an SE row's name tag keys the three as it
+/// keys bold (`SeNameTagTrack`). A v22 build reads a letter without the
+/// words: it opens the text upright and bare, and the first edit of it
+/// bakes the letters so and writes them back without the words — and
+/// nothing said. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
 ///
 /// ⚠️No older shape was read for it, and it did not move the floor
 /// ([anicelOldestReadFormatVersion]): a letter that says none of them is an
