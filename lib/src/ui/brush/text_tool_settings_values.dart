@@ -101,9 +101,12 @@ class TextToolSettingsValues {
 
   // ── the box ─────────────────────────────────────────────────────────
 
-  TextCelAlign get align => _inHand?.align ?? _next.align;
+  /// ⏳The text in hand's FIRST paragraph's — every paragraph's, while
+  /// nothing sets them apart (text-letters-lean-and-underline ④⑤).
+  TextCelAlign get align => _inHand?.paragraphs.first.align ?? _next.align;
 
-  double get lineHeight => _inHand?.lineHeight ?? _next.lineHeight;
+  double get lineHeight =>
+      _inHand?.paragraphs.first.lineHeight ?? _next.lineHeight;
 
   double get letterWidth => _inHand?.letterWidth ?? _next.letterWidth;
 
@@ -137,12 +140,13 @@ class TextToolSettingsValues {
   }
 
   void setAlign(TextCelAlign align) => _setBox(
-    onText: (text) => text.copyWith(align: align),
+    onText: (text) => _everyParagraph(text, (it) => it.copyWith(align: align)),
     onNext: (next) => next.copyWith(align: align),
   );
 
   void setLineHeight(double lineHeight, {bool settled = true}) => _setBox(
-    onText: (text) => text.copyWith(lineHeight: lineHeight),
+    onText: (text) =>
+        _everyParagraph(text, (it) => it.copyWith(lineHeight: lineHeight)),
     onNext: (next) => next.copyWith(lineHeight: lineHeight),
     settled: settled,
   );
@@ -250,6 +254,16 @@ class TextToolSettingsValues {
     tool?.changeBox(onText, settled: settled);
     _setNext(onNext);
   }
+
+  /// ⏳[text] with every paragraph set as [change] makes of how it was set
+  /// — until a paragraph setting speaks for the paragraphs the selection
+  /// touches (text-letters-lean-and-underline ④⑤).
+  static CelTextContent _everyParagraph(
+    CelTextContent text,
+    CelTextParagraph Function(CelTextParagraph paragraph) change,
+  ) => text.copyWith(
+    paragraphs: [for (final paragraph in text.paragraphs) change(paragraph)],
+  );
 
   void _setNext(TextToolOptions Function(TextToolOptions next) change) {
     final options = this.options;

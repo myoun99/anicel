@@ -10,7 +10,8 @@ import 'dart:ui' show Color, Offset;
 /// 도구설정에서 폰트바꾸면 해당 텍스트박스 설정 자동으로 바꿈 … 텍스트를
 /// 선택하고 조절하면 일부만 텍스트 조절」. A text on a cel is therefore runs
 /// of letters, each run wearing one of these ([CelTextSpan]), and what belongs
-/// to the whole box — its alignment, the box behind it — is not in here.
+/// to a paragraph — its alignment, its pitch ([CelTextParagraph]) — or to
+/// the whole box — the box behind it — is not in here.
 ///
 /// The SE name tag's [TextCelStyle] IS one of these plus the two values of
 /// its one block, which is why the fields are declared here and nowhere

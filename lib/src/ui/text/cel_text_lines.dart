@@ -125,7 +125,6 @@ _LinesSetting _linesOf(
   CelTextContent content,
   TextLetterStyle nextLetterStyle,
 ) {
-  final lineHeight = content.lineHeight;
   return _LinesSetting(
     content,
     canvasLetterPainterPasses(
@@ -133,7 +132,7 @@ _LinesSetting _linesOf(
       (pass) => _painterOf(
         content,
         nextLetterStyle,
-        (letters) => canvasLetterTextStyle(
+        (letters, lineHeight) => canvasLetterTextStyle(
           letters,
           lineHeight: lineHeight,
           foreground: pass.paintOf(letters),
@@ -160,7 +159,7 @@ List<CanvasLetterRun> _runsOf(CelTextContent content) {
 TextPainter _painterOf(
   CelTextContent content,
   TextLetterStyle nextLetterStyle,
-  TextStyle Function(TextLetterStyle letters) styleOf,
+  TextStyle Function(TextLetterStyle letters, double lineHeight) styleOf,
 ) {
   final wrapWidth = celTextSetWidth(content);
   final painter = TextPainter(
@@ -169,7 +168,7 @@ TextPainter _painterOf(
       _paragraphLettersOf(content, nextLetterStyle),
       styleOf,
     ),
-    textAlign: canvasTextAlign(content.align),
+    textAlign: canvasTextAlign(_alignOf(content)),
     textDirection: TextDirection.ltr,
   );
   if (wrapWidth != null) {
@@ -192,6 +191,12 @@ TextPainter _painterOf(
   return painter;
 }
 
+/// ⏳How a text in lines is aligned until its lines are set a paragraph at
+/// a time (text-letters-lean-and-underline ④): as its FIRST paragraph is —
+/// as every paragraph of it is, while nothing sets them apart.
+TextCelAlign _alignOf(CelTextContent content) =>
+    content.paragraphs.first.align;
+
 /// THE ROOM A TEXT THAT GROWS IS SET IN, PAST ITS LONGEST LINE — one pixel,
 /// when its lines are centred or set to the right; none otherwise.
 ///
@@ -213,7 +218,7 @@ TextPainter _painterOf(
 /// without a letter moving (`cel_text_box_width.dart`): in a box every line
 /// that does not fill it has room too.
 double _roomToAlign(CelTextContent content) =>
-    content.wrapWidth == null && content.align != TextCelAlign.left ? 1 : 0;
+    content.wrapWidth == null && _alignOf(content) != TextCelAlign.left ? 1 : 0;
 
 /// How far before the block the engine's box of [content]'s letters begins,
 /// in the text's own frame: the share of the [_roomToAlign] the alignment
@@ -221,7 +226,7 @@ double _roomToAlign(CelTextContent content) =>
 /// right.
 ui.Offset _roomBeforeBlock(CelTextContent content) => ui.Offset(
   _roomToAlign(content) *
-      switch (content.align) {
+      switch (_alignOf(content)) {
         TextCelAlign.left => 0,
         TextCelAlign.center => 0.5,
         TextCelAlign.right => 1,
@@ -248,7 +253,7 @@ ui.Rect _blockOf(CelTextContent content, TextPainter fill) {
   }
   // As wide as its longest line: what it was set in, less the room.
   final width = fill.width - _roomToAlign(content);
-  final left = switch (content.align) {
+  final left = switch (_alignOf(content)) {
     TextCelAlign.left => 0.0,
     TextCelAlign.center => -width / 2,
     TextCelAlign.right => -width,

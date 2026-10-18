@@ -121,6 +121,62 @@ void main() {
     });
   });
 
+  group('🚨the paragraphs typing makes and takes', () {
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+    const apart = CelTextParagraph(align: TextCelAlign.center, lineHeight: 3);
+
+    /// 「ab」 set to the right, then 「cd」 set apart.
+    final two = CelTextContent(
+      spans: [run('ab\ncd')],
+      anchor: CanvasPoint(x: 3, y: 4),
+      paragraphs: const [right, apart],
+    );
+
+    test('a break typed into a paragraph splits it into two set as it '
+        'was', () {
+      expect(typed(two, 1, 1, '\n').paragraphs, [right, right, apart]);
+      expect(typed(two, 4, 4, '\n').paragraphs, [right, apart, apart]);
+    });
+
+    test('a place between two belongs to the one it begins — or ends, at '
+        'a break', () {
+      expect(typed(two, 3, 3, '\n').paragraphs, [right, apart, apart]);
+      expect(typed(two, 2, 2, '\n').paragraphs, [right, right, apart]);
+      expect(typed(two, 5, 5, '\n').paragraphs, [right, apart, apart]);
+    });
+
+    test('a break taken out joins two as the first was set', () {
+      final joined = typed(two, 2, 3, '');
+
+      expect(joined.text, 'abcd');
+      expect(joined.paragraphs, [right]);
+    });
+
+    test('typed over letters of several, what is typed is set as the first '
+        '— a paragraph of it for each break it has', () {
+      expect(typed(two, 1, 4, 'X').paragraphs, [right]);
+      expect(typed(two, 1, 4, 'X\nY\nZ').paragraphs, [right, right, right]);
+      expect(typed(two, 0, 5, '').paragraphs, [right]);
+    });
+
+    test('letters typed with no break leave every paragraph as it was', () {
+      expect(typed(two, 0, 0, 'X').paragraphs, [right, apart]);
+      expect(typed(two, 4, 4, 'X').paragraphs, [right, apart]);
+      expect(typed(two, 4, 5, 'XY').paragraphs, [right, apart]);
+    });
+
+    test('a text with no letters has one paragraph — and what is typed into '
+        'it is set as that one', () {
+      final empty = CelTextContent(
+        spans: const [],
+        anchor: CanvasPoint(x: 3, y: 4),
+        paragraphs: const [apart],
+      );
+
+      expect(typed(empty, 0, 0, 'a\nb').paragraphs, [apart, apart]);
+    });
+  });
+
   group('setting letters', () {
     CelTextContent coloured(CelTextContent content, int start, int end) =>
         celTextRestyled(

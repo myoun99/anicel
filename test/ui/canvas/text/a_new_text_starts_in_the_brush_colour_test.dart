@@ -117,7 +117,10 @@ void main() {
       beginAText(hand);
 
       expect(hand.tool.letterStylesSpokenFor!.single.fontSize, 30);
-      expect(hand.tool.contentInHand!.align, TextCelAlign.center);
+      expect(
+        hand.tool.contentInHand!.paragraphs.single.align,
+        TextCelAlign.center,
+      );
       expect(hand.tool.letterStylesSpokenFor!.single.color, blue);
     });
 

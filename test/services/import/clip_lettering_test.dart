@@ -103,10 +103,12 @@ void main() {
       color: 0xFFC80000,
     ));
     expect((text.left, text.top), (15, 27), reason: 'box + layer offset');
-    expect(text.content.align, TextCelAlign.left);
     expect(
-      text.content.lineHeight,
-      1.2,
+      text.content.paragraphs,
+      List.filled(
+        2,
+        const CelTextParagraph(align: TextCelAlign.left, lineHeight: 1.2),
+      ),
       reason: 'CLIP STUDIO\'s own spacing where the text names none',
     );
     expect(text.content.anchor.x, 15);
@@ -263,11 +265,13 @@ void main() {
           ),
         ]),
       ).texts.single.content;
+      expect(content.paragraphs.toSet(), hasLength(1), reason: 'set alike');
+      final paragraph = content.paragraphs.first;
       return (
         x: content.anchor.x,
         y: content.anchor.y,
-        align: content.align,
-        lineHeight: content.lineHeight,
+        align: paragraph.align,
+        lineHeight: paragraph.lineHeight,
       );
     }
 
@@ -413,7 +417,10 @@ void main() {
     );
 
     expect(keysOf(result.warnings), ['clipTextAlign']);
-    expect(result.texts.single.content.align, TextCelAlign.left);
+    expect(
+      result.texts.single.content.paragraphs.single.align,
+      TextCelAlign.left,
+    );
   });
 
   test('a width\'s percent is said to two places, its trailing zeros '

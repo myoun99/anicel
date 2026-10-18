@@ -107,7 +107,7 @@ void main() {
 
       expect(boxed.wrapWidth, 81);
       expect(boxed.anchor, CanvasPoint(x: 59.5, y: 50));
-      expect(boxed.align, TextCelAlign.center);
+      expect(boxed.paragraphs, growing.paragraphs);
       expectSameLetters(growing, boxed);
     });
 
@@ -206,7 +206,7 @@ void main() {
         expect(growing.wrapWidth, isNull);
         expect(growing.text, 'ab \ncd');
         expect(growing.anchor, CanvasPoint(x: x, y: 50));
-        expect(growing.align, align);
+        expect(growing.paragraphs, List.filled(2, box.paragraphs.single));
         expectSameLetters(box, growing);
       });
 

@@ -395,7 +395,7 @@ void main() {
     });
 
     for (final (name, of) in <(String, double Function(CelTextContent))>[
-      ('line-height', (text) => text.lineHeight),
+      ('line-height', (text) => text.paragraphs.single.lineHeight),
       ('letter-width', (text) => text.letterWidth),
     ]) {
       testWidgets('🚨a bar of the BOX dragged shows as it goes and lands '
@@ -675,7 +675,7 @@ void main() {
       await tester.tap(row('align-right'));
       await tester.pump();
 
-      expect(landedOn(hand.cel).align, TextCelAlign.right);
+      expect(landedOn(hand.cel).paragraphs.single.align, TextCelAlign.right);
     });
 
     testWidgets('a mixed ring pressed turns every letter on', (tester) async {
@@ -883,7 +883,10 @@ void main() {
       await tester.pump();
 
       // From 50% to 300%: four fifths of the way is 250%.
-      expect(landedOn(hand.cel).lineHeight, closeTo(2.5, 1e-9));
+      expect(
+        landedOn(hand.cel).paragraphs.single.lineHeight,
+        closeTo(2.5, 1e-9),
+      );
       expect(hand.host.ran, hasLength(1));
       expect(written('line-height', '250%'), findsOneWidget);
     });

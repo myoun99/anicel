@@ -198,7 +198,7 @@ void main() {
     final landed = celOf(tester).texts.single.content;
     expect(landed.text, 'his');
     expect(landed.spans.single.style.bold, isTrue);
-    expect(landed.align, TextCelAlign.center);
+    expect(landed.paragraphs.single.align, TextCelAlign.center);
   });
 
   group('the keyboard, while a text is typed into', () {

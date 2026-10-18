@@ -45,6 +45,10 @@ CelTextRange celTextLettersSpokenFor(
 /// it replaces; between letters, the one before it — at the very start,
 /// the first. Only a text with NO letters has nothing to go by, and there
 /// they wear [nextLetterStyle].
+///
+/// And the paragraphs it makes are set as the one it is typed into — where
+/// [range] begins: a break typed splits that paragraph into two set alike,
+/// and a break taken out joins two as the first of them was set.
 CelTextContent celTextWithLetters(
   CelTextContent content, {
   required CelTextRange range,
@@ -61,11 +65,19 @@ CelTextContent celTextWithLetters(
   } else {
     style = _styleAt(content, range.start == 0 ? 0 : range.start - 1);
   }
+  final first = content.paragraphAt(range.start);
+  final last = content.paragraphAt(range.end);
   return content.copyWith(
     spans: [
       ..._cut(content.spans, 0, range.start),
       CelTextSpan(text: letters, style: style),
       ..._cut(content.spans, range.end, length),
+    ],
+    paragraphs: [
+      ...content.paragraphs.take(first),
+      for (var made = 0; made <= '\n'.allMatches(letters).length; made++)
+        content.paragraphs[first],
+      ...content.paragraphs.skip(last + 1),
     ],
   );
 }

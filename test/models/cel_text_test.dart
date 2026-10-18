@@ -64,6 +64,8 @@ void main() {
       spans: const [CelTextSpan(text: 'ab', style: red)],
       anchor: CanvasPoint(x: 10, y: 20),
     );
+    // Its one paragraph's lines twice as far apart.
+    const pitched = [CelTextParagraph(lineHeight: 2)];
 
     final changes = <String, CelTextContent>{
       'the letters': base.copyWith(
@@ -75,8 +77,10 @@ void main() {
       'the anchor': base.copyWith(anchor: CanvasPoint(x: 11, y: 20)),
       'the wrap width': base.copyWith(wrapWidth: 200.5),
       'the turn': base.copyWith(rotationDegrees: 30),
-      'the alignment': base.copyWith(align: TextCelAlign.right),
-      'the line height': base.copyWith(lineHeight: 2),
+      'the alignment': base.copyWith(
+        paragraphs: const [CelTextParagraph(align: TextCelAlign.right)],
+      ),
+      'the line height': base.copyWith(paragraphs: pitched),
       'the letters\' width': base.copyWith(letterWidth: 0.75),
       'the box behind it': base.copyWith(backgroundColor: 0xFFFFFF00),
       'the way it is written': base.copyWith(vertical: true),
@@ -113,7 +117,7 @@ void main() {
       final narrow = base.copyWith(letterWidth: 0.75);
       expect(narrow.toJson()['letterWidth'], 0.75);
       expect(narrow.hashCode, isNot(base.hashCode));
-      expect(narrow.copyWith(lineHeight: 2).letterWidth, 0.75);
+      expect(narrow.copyWith(paragraphs: pitched).letterWidth, 0.75);
       expect(narrow.copyWith(letterWidth: 1), base);
     });
 
@@ -121,7 +125,7 @@ void main() {
         'and is turned back', () {
       final columns = base.copyWith(vertical: true);
 
-      expect(columns.copyWith(lineHeight: 2).vertical, isTrue);
+      expect(columns.copyWith(paragraphs: pitched).vertical, isTrue);
       expect(columns.copyWith(vertical: false), base);
       expect(columns.hashCode, isNot(base.hashCode));
     });
@@ -154,7 +158,7 @@ void main() {
       expect(boxed.toJson().containsKey('minHeight'), isFalse);
       expect(boxed.copyWith(minHeight: 40).minHeight, 40.0);
       expect(tall.copyWith(minHeight: null).minHeight, isNull);
-      expect(tall.copyWith(lineHeight: 2).minHeight, 40.5);
+      expect(tall.copyWith(paragraphs: pitched).minHeight, 40.5);
     });
 
     test('🚨a text that GROWS has no box to be tall: a least height without '
@@ -189,7 +193,9 @@ void main() {
       }
       for (final pitch in [0.0, -1.25, double.infinity, double.nan]) {
         expect(
-          () => base.copyWith(lineHeight: pitch),
+          () => base.copyWith(
+            paragraphs: [CelTextParagraph(lineHeight: pitch)],
+          ),
           throwsArgumentError,
           reason: 'lines $pitch apart',
         );
@@ -210,9 +216,102 @@ void main() {
       }
       expect(base.copyWith(wrapWidth: 0.5).wrapWidth, 0.5);
       expect(base.copyWith(wrapWidth: 1, minHeight: 0.5).minHeight, 0.5);
-      expect(base.copyWith(lineHeight: 0.5).lineHeight, 0.5);
+      const close = [CelTextParagraph(lineHeight: 0.5)];
+      expect(base.copyWith(paragraphs: close).paragraphs, close);
       expect(base.copyWith(letterWidth: 0.1).letterWidth, 0.1);
       expect(base.copyWith(rotationDegrees: -725).rotationDegrees, -725);
+    });
+  });
+
+  group('a text set a paragraph at a time', () {
+    const right = CelTextParagraph(align: TextCelAlign.right, lineHeight: 2);
+    const apart = CelTextParagraph(align: TextCelAlign.center, lineHeight: 3);
+
+    CelTextContent saying(String words, {List<CelTextParagraph>? each}) =>
+        CelTextContent(
+          spans: [CelTextSpan(text: words, style: red)],
+          anchor: CanvasPoint(x: 10, y: 20),
+          paragraphs: each,
+        );
+
+    test('has a paragraph for each break and one more — so one with no '
+        'break, and one with no letters, has one', () {
+      expect(contentOf(const []).paragraphs, [const CelTextParagraph()]);
+      expect(saying('ab').paragraphs, [const CelTextParagraph()]);
+      expect(saying('a\n\nb\n').paragraphs, hasLength(4));
+    });
+
+    test('made set as one, every paragraph is set so', () {
+      final content = CelTextContent(
+        spans: const [CelTextSpan(text: 'a\nb\nc', style: red)],
+        anchor: CanvasPoint(x: 10, y: 20),
+        align: TextCelAlign.right,
+        lineHeight: 2,
+      );
+
+      expect(content.paragraphs, List.filled(3, right));
+    });
+
+    test('🚨is refused set both ways at once, or with a paragraph too few or '
+        'too many', () {
+      CelTextContent both({TextCelAlign? align, double? lineHeight}) =>
+          CelTextContent(
+            spans: const [CelTextSpan(text: 'a\nb', style: red)],
+            anchor: CanvasPoint(x: 10, y: 20),
+            paragraphs: const [right, apart],
+            align: align,
+            lineHeight: lineHeight,
+          );
+
+      expect(() => both(align: TextCelAlign.left), throwsArgumentError);
+      expect(() => both(lineHeight: 2), throwsArgumentError);
+      expect(both().paragraphs, [right, apart]);
+      expect(() => saying('a\nb', each: const [right]), throwsArgumentError);
+      expect(
+        () => saying('a\nb', each: const [right, apart, right]),
+        throwsArgumentError,
+      );
+    });
+
+    test('a caret stands in the paragraph of as many breaks as come before '
+        'it', () {
+      final content = saying('ab\n\ncd');
+
+      expect([
+        for (var at = 0; at <= content.text.length; at++)
+          content.paragraphAt(at),
+      ], [0, 0, 0, 1, 2, 2, 2]);
+    });
+
+    test('🚨set alike, its paragraphs write what a text set as one always '
+        'wrote — and so it reads back, every paragraph as it was', () {
+      final alike = saying('a\nb', each: const [right, right]);
+      final json = alike.toJson();
+
+      expect(json['align'], 'right');
+      expect(json['lineHeight'], 2);
+      expect(json.containsKey('paragraphs'), isFalse);
+      expect(CelTextContent.fromJson(throughJson(json)), alike);
+    });
+
+    test('set apart, it writes each paragraph and no setting of its own — '
+        'and reads back as it was', () {
+      final mixed = saying('a\nb', each: const [right, apart]);
+      final json = mixed.toJson();
+
+      expect(json.containsKey('align'), isFalse);
+      expect(json.containsKey('lineHeight'), isFalse);
+      expect(json['paragraphs'], [right.toJson(), apart.toJson()]);
+      expect(CelTextContent.fromJson(throughJson(json)), mixed);
+    });
+
+    test('a paragraph set otherwise is another content', () {
+      final mixed = saying('a\nb', each: const [right, apart]);
+      final alike = saying('a\nb', each: const [right, right]);
+
+      expect(mixed, isNot(alike));
+      expect(mixed.hashCode, isNot(alike.hashCode));
+      expect(alike.copyWith(paragraphs: const [right, apart]), mixed);
     });
   });
 

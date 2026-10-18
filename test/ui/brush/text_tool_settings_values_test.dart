@@ -134,8 +134,8 @@ void main() {
       (TextCelAlign, double, double, int?, bool) boxOf(TextToolOptions of) {
         final begun = of.newTextAt(CanvasPoint(x: 3, y: 4));
         return (
-          begun.align,
-          begun.lineHeight,
+          begun.paragraphs.single.align,
+          begun.paragraphs.single.lineHeight,
           begun.letterWidth,
           begun.backgroundColor,
           begun.vertical,
@@ -299,7 +299,7 @@ void main() {
       values.setBackgroundColor(0xFF445566);
       await baker.pending.answer();
 
-      expect(landed(cel).align, TextCelAlign.right);
+      expect(landed(cel).paragraphs.single.align, TextCelAlign.right);
       expect(landed(cel).backgroundColor, 0xFF445566);
       expect(host.ran, hasLength(2));
       expect(options.value.align, TextCelAlign.right);
@@ -386,12 +386,15 @@ void main() {
       await baker.pending.answer();
 
       expect(host.ran, isEmpty);
-      expect(landed(cel).lineHeight, CelTextContent.defaultLineHeight);
+      expect(
+        landed(cel).paragraphs.single.lineHeight,
+        CelTextContent.defaultLineHeight,
+      );
 
       values.setLineHeight(2);
 
       expect(host.ran, hasLength(1));
-      expect(landed(cel).lineHeight, 2);
+      expect(landed(cel).paragraphs.single.lineHeight, 2);
     });
 
     test('a line pitch dragged is the next text\'s as it goes', () {

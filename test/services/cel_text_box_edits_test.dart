@@ -78,8 +78,10 @@ void main() {
 
       expect(scaled.text, 'abc');
       expect(scaled.spans[0].style.outlineColor, 0xFFFF0000);
-      expect(scaled.align, TextCelAlign.right);
-      expect(scaled.lineHeight, 1.5);
+      expect(
+        scaled.paragraphs.single,
+        const CelTextParagraph(align: TextCelAlign.right, lineHeight: 1.5),
+      );
       expect(scaled.rotationDegrees, 30);
       expect(scaled.backgroundColor, 0xFF00FF00);
       expect(scaled.wrapWidth, isNull, reason: 'a text that grows has none');

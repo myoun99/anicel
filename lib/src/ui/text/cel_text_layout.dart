@@ -342,7 +342,8 @@ CelTextBox _boxSetFor(CelTextContent content) {
 /// A text with a [CelTextContent.wrapWidth] is set in a box that wide and
 /// wraps at it (유저 2026-10-06: 「폭이 정해진 상자(자동 줄바꿈)」); one
 /// without grows with its letters and breaks only at the breaks typed into
-/// it, its lines standing about the anchor as [CelTextContent.align] says.
+/// it, its lines standing about the anchor as their paragraph's
+/// [CelTextParagraph.align] says.
 ///
 /// [nextLetterStyle] is what the first letter typed into a text with NO
 /// letters will wear — such a text has no run to say how tall its caret is.
@@ -401,22 +402,51 @@ double _widestOutlineOf(List<TextLetterStyle> letters) => letters.fold(
       : math.max(width, style.outlineWidth),
 );
 
-/// [content]'s letters as the engine is handed them: one span a run, each
-/// saying its whole style, nested in the style of [paragraphLetters].
+/// [content]'s letters as the engine is handed them: one span a run — cut
+/// where its paragraphs part, so that each piece is set at its own
+/// paragraph's pitch — each saying its whole style, nested in the style of
+/// [paragraphLetters].
 TextSpan _spanOf(
   CelTextContent content,
   TextLetterStyle paragraphLetters,
-  TextStyle Function(TextLetterStyle letters) styleOf,
+  TextStyle Function(TextLetterStyle letters, double lineHeight) styleOf,
 ) => TextSpan(
   style: canvasLetterTextStyle(
     paragraphLetters,
-    lineHeight: content.lineHeight,
+    // A text with no letters is set at its one paragraph's pitch.
+    lineHeight: content.paragraphs.last.lineHeight,
   ),
   children: [
-    for (final span in content.spans)
-      TextSpan(text: span.text, style: styleOf(span.style)),
+    for (final (:text, :letters, :paragraph) in _piecesOf(content))
+      TextSpan(text: text, style: styleOf(letters, paragraph.lineHeight)),
   ],
 );
+
+/// [content]'s runs cut where its paragraphs part, each piece with the
+/// paragraph it is in — a break is the last letter of the one it ends.
+List<({String text, TextLetterStyle letters, CelTextParagraph paragraph})>
+_piecesOf(CelTextContent content) {
+  final pieces =
+      <({String text, TextLetterStyle letters, CelTextParagraph paragraph})>[];
+  var paragraph = 0;
+  for (final span in content.spans) {
+    var from = 0;
+    while (from < span.text.length) {
+      final broken = span.text.indexOf('\n', from);
+      final to = broken < 0 ? span.text.length : broken + 1;
+      pieces.add((
+        text: span.text.substring(from, to),
+        letters: span.style,
+        paragraph: content.paragraphs[paragraph],
+      ));
+      if (broken >= 0) {
+        paragraph += 1;
+      }
+      from = to;
+    }
+  }
+  return pieces;
+}
 
 /// The letters of [content] as a FIELD is handed them — the very spans the
 /// layout's own fill pass is set from ([layoutCelText]), so a field that
@@ -428,7 +458,8 @@ TextSpan celTextFieldSpan(
 }) => _spanOf(
   content,
   _paragraphLettersOf(content, nextLetterStyle),
-  (letters) => canvasLetterTextStyle(letters, lineHeight: content.lineHeight),
+  (letters, lineHeight) =>
+      canvasLetterTextStyle(letters, lineHeight: lineHeight),
 );
 
 /// The width a box's lines are SET at: the box's, read before its letters

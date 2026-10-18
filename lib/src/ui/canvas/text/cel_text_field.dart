@@ -121,7 +121,9 @@ class CelTextField extends StatelessWidget {
       forceLine: false,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
-      textAlign: canvasTextAlign(content.align),
+      // ⏳Its first paragraph's, until a text's lines are set a paragraph at
+      // a time (text-letters-lean-and-underline ④).
+      textAlign: canvasTextAlign(content.paragraphs.first.align),
       textDirection: TextDirection.ltr,
       rendererIgnoresPointer: true,
       autocorrect: false,

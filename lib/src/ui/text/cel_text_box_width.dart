@@ -72,18 +72,26 @@ CelTextContent celTextBoxed(CelTextContent content) {
 /// right.
 Offset _boxCornerOf(CelTextContent content, Rect block, double room) {
   if (content.vertical) {
-    return Offset(block.right, switch (content.align) {
+    return Offset(block.right, switch (_standsBy(content)) {
       TextCelAlign.left => block.top,
       TextCelAlign.center => block.center.dy - room / 2,
       TextCelAlign.right => block.bottom - room,
     });
   }
-  return Offset(switch (content.align) {
+  return Offset(switch (_standsBy(content)) {
     TextCelAlign.left => block.left,
     TextCelAlign.center => block.center.dx - room / 2,
     TextCelAlign.right => block.right - room,
   }, block.top);
 }
+
+/// The alignment a text that grows stands about its anchor by.
+///
+/// ⏳Its first paragraph's — every paragraph's, while nothing sets them
+/// apart. Of a text that grows whose paragraphs are aligned unlike,
+/// text-letters-lean-and-underline-Q5 has to say.
+TextCelAlign _standsBy(CelTextContent content) =>
+    content.paragraphs.first.align;
 
 /// [content] as a text that GROWS and looks the same: a break typed in
 /// wherever a line had wrapped for want of room, and the anchor moved from
@@ -116,7 +124,7 @@ CelTextContent celTextUnboxed(CelTextContent content) {
   }
   // How far along its room the point its letters stand ABOUT is: the head
   // of a line or a column, its middle, or its foot.
-  final along = switch (content.align) {
+  final along = switch (_standsBy(content)) {
     TextCelAlign.left => 0.0,
     TextCelAlign.center => width / 2,
     TextCelAlign.right => width,

@@ -163,8 +163,8 @@ void main() {
 
       final content = tool.session!.content;
       expect(content.spans, [run('a', big)]);
-      expect(content.align, TextCelAlign.center);
-      expect(content.lineHeight, 2);
+      expect(content.paragraphs.single.align, TextCelAlign.center);
+      expect(content.paragraphs.single.lineHeight, 2);
       expect(content.backgroundColor, 0xFF00FF00);
       expect(content.wrapWidth, 24);
     });
@@ -1071,12 +1071,12 @@ void main() {
 
       tool
         ..changeLetters((style) => style.copyWith(bold: true))
-        ..changeBox((content) => content.copyWith(lineHeight: 2));
+        ..changeBox((content) => content.copyWith(letterWidth: 0.5));
 
       final held = tool.letters!.content;
       expect(held.text, 'abc');
       expect(held.spans.single.style.bold, isTrue);
-      expect(held.lineHeight, 2);
+      expect(held.letterWidth, 0.5);
     });
 
     test('with nothing in hand it changes nothing', () {
@@ -1084,7 +1084,7 @@ void main() {
 
       tool
         ..changeLetters((style) => style.copyWith(fontSize: 16))
-        ..changeBox((content) => content.copyWith(lineHeight: 3));
+        ..changeBox((content) => content.copyWith(letterWidth: 0.5));
 
       expect(host.ran, isEmpty);
       expect(baker.asked, isEmpty);
@@ -1098,11 +1098,11 @@ void main() {
       );
       tool
         ..takeText(cel, pictureOf(cel).texts.single)
-        ..changeBox((content) => content.copyWith(align: TextCelAlign.right));
+        ..changeBox((content) => content.copyWith(letterWidth: 0.5));
       await baker.pending.answer();
 
       expect(host.ran, hasLength(1));
-      expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
+      expect(pictureOf(cel).texts.single.content.letterWidth, 0.5);
     });
 
     test('a value still being dragged is shown and does not land; the one '
@@ -1111,37 +1111,37 @@ void main() {
         texts: [carried(4, said([run('ab')]))],
       );
       tool.takeText(cel, pictureOf(cel).texts.single);
-      double pitchOf(BitmapSurface surface) =>
-          surface.texts.single.content.lineHeight;
-      final before = pitchOf(pictureOf(cel));
+      double widthOf(BitmapSurface surface) =>
+          surface.texts.single.content.letterWidth;
+      final before = widthOf(pictureOf(cel));
 
       tool.changeBox(
-        (content) => content.copyWith(lineHeight: 2),
+        (content) => content.copyWith(letterWidth: 0.5),
         settled: false,
       );
       await baker.pending.answer();
       tool.changeBox(
-        (content) => content.copyWith(lineHeight: 2.5),
+        (content) => content.copyWith(letterWidth: 0.75),
         settled: false,
       );
       await baker.pending.answer();
 
       expect(host.ran, isEmpty);
-      expect(pitchOf(shownFor(tool, cel)!), 2.5);
-      expect(pitchOf(pictureOf(cel)), before);
+      expect(widthOf(shownFor(tool, cel)!), 0.75);
+      expect(widthOf(pictureOf(cel)), before);
 
-      tool.changeBox((content) => content.copyWith(lineHeight: 3));
+      tool.changeBox((content) => content.copyWith(letterWidth: 0.25));
 
       expect(host.ran, isEmpty, reason: 'not baked yet');
 
       await baker.pending.answer();
 
       expect(host.ran, hasLength(1));
-      expect(pitchOf(pictureOf(cel)), 3);
+      expect(widthOf(pictureOf(cel)), 0.25);
 
       host.history.undo();
 
-      expect(pitchOf(pictureOf(cel)), before);
+      expect(widthOf(pictureOf(cel)), before);
     });
 
     test('while the letters are held it is set on what is being TYPED, and '
@@ -1154,10 +1154,10 @@ void main() {
         ..typeAt(const TextSelection.collapsed(offset: 2));
       typeInto(tool, 'abc');
 
-      tool.changeBox((content) => content.copyWith(lineHeight: 2));
+      tool.changeBox((content) => content.copyWith(letterWidth: 0.5));
 
       expect(tool.letters!.content.text, 'abc');
-      expect(tool.letters!.content.lineHeight, 2);
+      expect(tool.letters!.content.letterWidth, 0.5);
       expect(host.ran, isEmpty);
 
       await baker.asked[0].answer();
@@ -1166,7 +1166,7 @@ void main() {
 
       final landed = pictureOf(cel).texts.single.content;
       expect(host.ran, hasLength(1));
-      expect((landed.text, landed.lineHeight), ('abc', 2));
+      expect((landed.text, landed.letterWidth), ('abc', 0.5));
     });
   });
 
@@ -1852,7 +1852,7 @@ void main() {
 
       expect(host.ran.single.withCelMadeSince, since);
 
-      tool.changeBox((content) => content.copyWith(lineHeight: 2));
+      tool.changeBox((content) => content.copyWith(letterWidth: 0.5));
       await baker.pending.answer();
 
       expect(host.ran, hasLength(2));

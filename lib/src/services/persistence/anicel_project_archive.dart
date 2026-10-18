@@ -65,6 +65,18 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v25 (2026-10-18, text-letters-lean-and-underline ④⑤ — Q1 「일곱 전부」):
+/// each paragraph of a text says how it is aligned and how far apart its
+/// lines are (`CelTextContent.paragraphs`). A text whose paragraphs are all
+/// set alike is written as it was, its `align` and `lineHeight` on the
+/// text; only one set apart writes a `paragraphs` list. A v24 build reads
+/// that text without them: it opens every paragraph centred — what it
+/// reads where a text names no alignment — at the pitch a text has by
+/// default, and the first edit bakes them so and writes the text back
+/// without them — and nothing said. The bump turns that into a refusal; no
+/// older shape was read for it, and the floor stays where it is: a text
+/// that says no paragraphs is set alike at this version too.
+///
 /// v24 (2026-10-18, text-letters-lean-and-underline ⑥ — Q1 「일곱 전부」):
 /// a text says how wide its letters are drawn (`CelTextContent
 /// .letterWidth`, written only where it is not 1). A v23 build reads the
@@ -368,7 +380,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 24;
+const int anicelFormatVersion = 25;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

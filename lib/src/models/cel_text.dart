@@ -32,6 +32,61 @@ class CelTextSpan {
   String toString() => 'CelTextSpan($text)';
 }
 
+/// How one PARAGRAPH of a cel text is set — its letters from one break to
+/// the next: where its lines stand along their way, and how far apart they
+/// are.
+///
+/// 🗣️Q1 (유저 2026-10-17, 「일곱 전부」) ④⑤ of what a CLIP STUDIO text loses
+/// once edited: 「줄마다 다른 정렬 · 줄마다 다른 줄 간격」 — a CLIP STUDIO text
+/// holds both a paragraph (its parameters 12 and 13).
+class CelTextParagraph {
+  const CelTextParagraph({
+    this.align = TextCelAlign.left,
+    this.lineHeight = CelTextContent.defaultLineHeight,
+  });
+
+  /// Where its lines stand along their way — in a box, across its width.
+  ///
+  /// ⚠️Written in columns it keeps its three names and is read along the
+  /// letters: left is the head of a column, right its foot.
+  final TextCelAlign align;
+
+  /// Its lines' pitch, as a multiple of their letters' size.
+  final double lineHeight;
+
+  CelTextParagraph copyWith({TextCelAlign? align, double? lineHeight}) =>
+      CelTextParagraph(
+        align: align ?? this.align,
+        lineHeight: lineHeight ?? this.lineHeight,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'align': align.jsonValue,
+    'lineHeight': lineHeight,
+  };
+
+  factory CelTextParagraph.fromJson(Map<String, dynamic> json) =>
+      CelTextParagraph(
+        align: TextCelAlign.fromJson(json['align'] as String?),
+        lineHeight:
+            (json['lineHeight'] as num?)?.toDouble() ??
+            CelTextContent.defaultLineHeight,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CelTextParagraph &&
+          other.align == align &&
+          other.lineHeight == lineHeight;
+
+  @override
+  int get hashCode => Object.hash(align, lineHeight);
+
+  @override
+  String toString() => 'CelTextParagraph(${align.name}, $lineHeight)';
+}
+
 /// What a text on a cel SAYS and how it is set — every value the person
 /// chose, in canvas pixels, and nothing derived from them.
 ///
@@ -49,19 +104,44 @@ class CelTextContent {
     this.wrapWidth,
     this.minHeight,
     this.rotationDegrees = 0,
-    this.align = TextCelAlign.left,
-    this.lineHeight = defaultLineHeight,
+    List<CelTextParagraph>? paragraphs,
+    TextCelAlign? align,
+    double? lineHeight,
     this.letterWidth = 1,
     this.backgroundColor,
     this.vertical = false,
-  }) : spans = List.unmodifiable(_settled(spans)) {
+  }) : spans = List.unmodifiable(_settled(spans)),
+       paragraphs = List.unmodifiable(
+         paragraphs ??
+             List.filled(
+               _paragraphCountOf(spans),
+               CelTextParagraph(
+                 align: align ?? TextCelAlign.left,
+                 lineHeight: lineHeight ?? defaultLineHeight,
+               ),
+             ),
+       ) {
+    if (paragraphs != null && (align != null || lineHeight != null)) {
+      throw ArgumentError(
+        'A text is set paragraph by paragraph, or all alike — not both.',
+      );
+    }
+    if (this.paragraphs.length != _paragraphCountOf(spans)) {
+      throw ArgumentError.value(
+        this.paragraphs.length,
+        'paragraphs',
+        'A text is set a paragraph at a time: one for each.',
+      );
+    }
     // ⚠️Refused HERE, where a content is made, and not where one is set:
     // the engine lays a box of no width out as one letter a line and a
     // pitch of nothing as no lines at all, and a plate baked from either
     // is a picture nobody asked for that the cel then keeps.
     _requireLength(wrapWidth, 'wrapWidth');
     _requireLength(minHeight, 'minHeight');
-    _requireLength(lineHeight, 'lineHeight');
+    for (final paragraph in this.paragraphs) {
+      _requireLength(paragraph.lineHeight, 'lineHeight');
+    }
     _requireLength(letterWidth, 'letterWidth');
     if (minHeight != null && wrapWidth == null) {
       throw ArgumentError.value(
@@ -78,6 +158,14 @@ class CelTextContent {
       );
     }
   }
+
+  /// How many paragraphs [spans] hold: one more than their breaks.
+  static int _paragraphCountOf(List<CelTextSpan> spans) =>
+      1 +
+      spans.fold(
+        0,
+        (breaks, span) => breaks + '\n'.allMatches(span.text).length,
+      );
 
   static void _requireLength(double? value, String name) {
     if (value != null && !(value > 0 && value.isFinite)) {
@@ -100,8 +188,12 @@ class CelTextContent {
 
   /// Where the text stands. With no [wrapWidth] it is the point its lines
   /// are set about — their left end, their middle or their right end, as
-  /// [align] says — at the first line's top. With one it is the box's top
-  /// left corner, and [align] places the lines inside the width.
+  /// their paragraph's [CelTextParagraph.align] says — at the first line's
+  /// top. With one it is the box's top left corner, and each paragraph's
+  /// alignment places its lines inside the width.
+  ///
+  /// ⏳How a text that grows stands when its paragraphs are aligned unlike
+  /// is text-letters-lean-and-underline-Q5's to say.
   ///
   /// Written in columns ([vertical]) it is the same point read the other
   /// way: the point the columns are set about — their top, their middle or
@@ -138,8 +230,20 @@ class CelTextContent {
   /// Clockwise, in canvas degrees, about [anchor].
   final double rotationDegrees;
 
-  final TextCelAlign align;
-  final double lineHeight;
+  /// How each PARAGRAPH is set, in reading order: one from the first letter
+  /// to the first break, one from each break to the next, one from the last
+  /// break to the end — so a text with no break, or no letters, has one.
+  ///
+  /// [align] and [lineHeight], given to make a content, set every paragraph
+  /// alike — a text set as one; [paragraphs] sets each its own. A break
+  /// typed in splits a paragraph into two set as it was, and one taken out
+  /// joins two as the first was set (`celTextWithLetters`).
+  final List<CelTextParagraph> paragraphs;
+
+  /// Which paragraph a caret at [offset] stands in: how many breaks come
+  /// before it.
+  int paragraphAt(int offset) =>
+      '\n'.allMatches(text.substring(0, offset)).length;
 
   /// How wide the letters are drawn, as a share of their own width (장평):
   /// 1 for as their face draws them. Only their width changes — not how
@@ -163,8 +267,8 @@ class CelTextContent {
   /// x시트에서 가로쓰기/세로표기같은거 한거 많으니 그거 통합하면서
   /// 진행해도될듯」.
   ///
-  /// ⚠️[align] keeps its three names and is read along the letters: left
-  /// is the head of a column, right its foot.
+  /// ⚠️A paragraph's alignment keeps its three names and is read along the
+  /// letters ([CelTextParagraph.align]).
   final bool vertical;
 
   /// Every letter, as one string.
@@ -198,8 +302,7 @@ class CelTextContent {
     Object? wrapWidth = _sentinel,
     Object? minHeight = _sentinel,
     double? rotationDegrees,
-    TextCelAlign? align,
-    double? lineHeight,
+    List<CelTextParagraph>? paragraphs,
     double? letterWidth,
     Object? backgroundColor = _sentinel,
     bool? vertical,
@@ -215,8 +318,7 @@ class CelTextContent {
         ? this.minHeight
         : (minHeight as num?)?.toDouble(),
     rotationDegrees: rotationDegrees ?? this.rotationDegrees,
-    align: align ?? this.align,
-    lineHeight: lineHeight ?? this.lineHeight,
+    paragraphs: paragraphs ?? this.paragraphs,
     letterWidth: letterWidth ?? this.letterWidth,
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
@@ -224,34 +326,54 @@ class CelTextContent {
     vertical: vertical ?? this.vertical,
   );
 
-  Map<String, dynamic> toJson() => {
-    'spans': [for (final span in spans) span.toJson()],
-    'anchor': anchor.toJson(),
-    if (wrapWidth != null) 'wrapWidth': wrapWidth,
-    if (minHeight != null) 'minHeight': minHeight,
-    if (rotationDegrees != 0) 'rotationDegrees': rotationDegrees,
-    'align': align.jsonValue,
-    'lineHeight': lineHeight,
-    if (letterWidth != 1) 'letterWidth': letterWidth,
-    if (backgroundColor != null) 'backgroundColor': backgroundColor,
-    if (vertical) 'vertical': vertical,
-  };
+  /// ⚠️A text whose paragraphs are all set alike writes them as it always
+  /// wrote its one setting — two words of its own ([CelTextParagraph.toJson])
+  /// — and only one set paragraph by paragraph writes a list. So a file
+  /// written before paragraphs were set apart reads as it was written.
+  Map<String, dynamic> toJson() {
+    final first = paragraphs.first;
+    return {
+      'spans': [for (final span in spans) span.toJson()],
+      'anchor': anchor.toJson(),
+      if (wrapWidth != null) 'wrapWidth': wrapWidth,
+      if (minHeight != null) 'minHeight': minHeight,
+      if (rotationDegrees != 0) 'rotationDegrees': rotationDegrees,
+      if (paragraphs.every((paragraph) => paragraph == first))
+        ...first.toJson()
+      else
+        'paragraphs': [for (final paragraph in paragraphs) paragraph.toJson()],
+      if (letterWidth != 1) 'letterWidth': letterWidth,
+      if (backgroundColor != null) 'backgroundColor': backgroundColor,
+      if (vertical) 'vertical': vertical,
+    };
+  }
 
-  factory CelTextContent.fromJson(Map<String, dynamic> json) => CelTextContent(
-    spans: [
+  factory CelTextContent.fromJson(Map<String, dynamic> json) {
+    final spans = [
       for (final span in json['spans'] as List? ?? const [])
         CelTextSpan.fromJson(span as Map<String, dynamic>),
-    ],
-    anchor: CanvasPoint.fromJson(json['anchor'] as Map<String, dynamic>),
-    wrapWidth: (json['wrapWidth'] as num?)?.toDouble(),
-    minHeight: (json['minHeight'] as num?)?.toDouble(),
-    rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ?? 0,
-    align: TextCelAlign.fromJson(json['align'] as String?),
-    lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? defaultLineHeight,
-    letterWidth: (json['letterWidth'] as num?)?.toDouble() ?? 1,
-    backgroundColor: json['backgroundColor'] as int?,
-    vertical: json['vertical'] as bool? ?? false,
-  );
+    ];
+    final each = json['paragraphs'] as List?;
+    return CelTextContent(
+      spans: spans,
+      anchor: CanvasPoint.fromJson(json['anchor'] as Map<String, dynamic>),
+      wrapWidth: (json['wrapWidth'] as num?)?.toDouble(),
+      minHeight: (json['minHeight'] as num?)?.toDouble(),
+      rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ?? 0,
+      paragraphs: each == null
+          ? List.filled(
+              _paragraphCountOf(spans),
+              CelTextParagraph.fromJson(json),
+            )
+          : [
+              for (final paragraph in each)
+                CelTextParagraph.fromJson(paragraph as Map<String, dynamic>),
+            ],
+      letterWidth: (json['letterWidth'] as num?)?.toDouble() ?? 1,
+      backgroundColor: json['backgroundColor'] as int?,
+      vertical: json['vertical'] as bool? ?? false,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -262,8 +384,7 @@ class CelTextContent {
           other.wrapWidth == wrapWidth &&
           other.minHeight == minHeight &&
           other.rotationDegrees == rotationDegrees &&
-          other.align == align &&
-          other.lineHeight == lineHeight &&
+          listEquals(other.paragraphs, paragraphs) &&
           other.letterWidth == letterWidth &&
           other.backgroundColor == backgroundColor &&
           other.vertical == vertical;
@@ -275,8 +396,7 @@ class CelTextContent {
     wrapWidth,
     minHeight,
     rotationDegrees,
-    align,
-    lineHeight,
+    Object.hashAll(paragraphs),
     letterWidth,
     backgroundColor,
     vertical,
