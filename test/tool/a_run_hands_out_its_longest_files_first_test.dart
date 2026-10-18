@@ -69,6 +69,26 @@ void main() {
       expect(fileTimes(report, root: root), {'test/ui/a_test.dart': 4000});
     });
 
+    test("a root spelled in another case is the same root — Windows' drive "
+        'letter', () {
+      final report = [
+        event({
+          'type': 'suite',
+          'suite': {'id': 0, 'path': r'C:\repo\lane\test\a_test.dart'},
+          'time': 0,
+        }),
+        event({
+          'type': 'testStart',
+          'test': {'id': 1, 'suiteID': 0, 'name': 'it draws'},
+          'time': 10,
+        }),
+        event({'type': 'testDone', 'testID': 1, 'time': 30}),
+      ].join('\n');
+      expect(fileTimes(report, root: r'c:\repo\lane'), {
+        'test/a_test.dart': 20,
+      });
+    });
+
     test('⛔a file that never started a test has no time', () {
       final report = event({
         'type': 'suite',
