@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/words_cut_off.dart';
 
 const pill = ValueKey<String>('canvas-brush-pill');
@@ -179,25 +180,18 @@ void main() {
     // IO whose steps complete in real time and continue on the fake clock.
     await tester.pump(const Duration(milliseconds: 900));
     Object? saved;
-    for (var tries = 0; tries < 40 && saved == null; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
+    await settleAsync(tester, () async {
       final payload = await tester.runAsync<Map<String, Object?>?>(store.load);
       saved = payload?['brushValuesOnStrip'];
-    }
+      return saved != null;
+    });
     expect(saved, isTrue, reason: 'the row is the change that saved');
 
     // A restart: the old workspace goes, a new one reads the same file.
     await tester.pumpWidget(const SizedBox.shrink());
     await pumpHome(tester, store: store);
-    for (var tries = 0; tries < 40 && tester.any(find.byKey(pill)); tries++) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pumpAndSettle();
-    }
+    await settleAsync(tester, () => !tester.any(find.byKey(pill)));
+    await tester.pumpAndSettle();
     expectOnTheStrip('the restored layout');
 
     await tapPanelsDrawerRow(tester, 'menu-window-reset-layout');
