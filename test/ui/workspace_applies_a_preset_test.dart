@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../helpers/brush_values_on_strip.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
 
@@ -107,6 +108,9 @@ void main() {
           shown.selectedPresetId != null;
     });
     await tester.pumpAndSettle();
+    // The size bar these sequences drag is the strip's (I-34: by default
+    // the canvas's pill holds the bars).
+    await standBrushValuesOnStrip(tester);
   }
 
   BrushPresetPanel panel(WidgetTester tester) =>

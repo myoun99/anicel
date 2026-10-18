@@ -211,6 +211,20 @@ class CanvasTransportBand {
   final Widget child;
 }
 
+/// What stands on a canvas panel's LEFT edge, in the middle of the room
+/// there ([BrushCanvasPanel.leftPill]) — the brush's values on the
+/// drawing (I-34).
+///
+/// The [width] travels with the widget for [CanvasTransportBand.height]'s
+/// reason: nothing the panel frames may lie under it, and framing is read
+/// before anything is laid out.
+class CanvasEdgePill {
+  const CanvasEdgePill({required this.width, required this.child});
+
+  final double width;
+  final Widget child;
+}
+
 /// Reusable Brush canvas panel for the production main-canvas brush route.
 ///
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
@@ -277,6 +291,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentTakesPressAt,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
+    this.floorLeftRailBand,
     this.floorRightRailBand,
     this.floorBottomOverlaySpan = 0,
     this.autoFrame,
@@ -332,6 +347,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.transport,
+    this.leftPill,
     this.documentName,
     this.documentAbsent = false,
     this.bottomBarHostToken,
@@ -606,6 +622,16 @@ class BrushCanvasPanel extends StatefulWidget {
   /// it (`_framingInsets`).
   final CanvasTransportBand? transport;
 
+  /// What stands on the LEFT edge: the brush's values on the drawing panel
+  /// (I-34, 유저 2026-10-18: 「캔버스 패널의 왼쪽 중앙 알약 만들어서 거기로
+  /// 이동」). Null stands nothing there.
+  ///
+  /// It is seated as the page strip that stood on this edge was
+  /// ([_LeftEdgeSeat]): in the middle of the room between the pill's band
+  /// and the file's name, and past the left rail where the rail is beside
+  /// it. It is cover to framing as that strip was (F-346).
+  final CanvasEdgePill? leftPill;
+
   /// The name of the FILE shown, written at the artwork's lower left over
   /// the horizontal panbar. Null writes nothing.
   ///
@@ -743,8 +769,8 @@ class BrushCanvasPanel extends StatefulWidget {
   /// which is every canvas surface but the floor.
   ///
   /// The PANELS only. This panel's own capsules are added where framing
-  /// reads the window (`_framingInsets`): the pill and the transport are
-  /// cover there, the panbars float on the drawing.
+  /// reads the window (`_framingInsets`): the pill, the transport and the
+  /// left pill are cover there, the panbars float on the drawing.
   /// ↩️None was until 2026-09-30 — a capsule hiding a corner of the artwork
   /// was the price of not spending a strip of the screen on idle chrome.
   /// The user took that back for the pill (「판정을 알약까지 포함해서
@@ -752,16 +778,20 @@ class BrushCanvasPanel extends StatefulWidget {
   /// strip that stood on the left edge (F-346).
   final EdgeInsets floorCover;
 
-  /// WHERE the rail on the right edge actually is, vertically — null when
+  /// WHERE the rail on each side edge actually is, vertically — null when
   /// nothing is open there.
   ///
   /// [floorCover] says how much of the edge is unusable, which is the right
   /// question for FRAMING and the wrong one for the control that lives on
-  /// that edge — the vertical panbar: a short rail panel covers a band, and
-  /// a control that steps aside for a panel nowhere near it reads as
-  /// floating (유저, R3 #5). ↩️The left rail's band was asked the same for
-  /// the page strip on that edge, until the strip went under the bars
-  /// (F-383).
+  /// that edge — the vertical panbar on the right, the [leftPill] on the
+  /// left: a short rail panel covers a band, and a control that steps aside
+  /// for a panel nowhere near it reads as floating (유저, R3 #5).
+  /// ↩️The left rail's band was asked for the page strip on that edge, gone
+  /// with the strip under the bars (F-383), and asked again for the brush
+  /// pill there (I-34).
+  final CanvasFloorBand? floorLeftRailBand;
+
+  /// See [floorLeftRailBand].
   final CanvasFloorBand? floorRightRailBand;
 
   /// ⑩: what floats over the floor's BOTTOM edge without framing the
@@ -2271,23 +2301,58 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// bottom edges (F-209) — the pill's band across the top edge
   /// ([_CanvasEditorPanelShell.pillBandIn]), and the transport under a
   /// document you move through ([_CanvasEditorPanelShell.transportCover]) —
-  /// a book's page turner as a movie's player (F-383). Framing keeps out
-  /// from under all of it as it keeps out from under a panel.
-  EdgeInsets get _framingInsets =>
-      widget.floorCover +
-      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
-      EdgeInsets.only(
-        top: _pillBand,
-        bottom: _CanvasEditorPanelShell.transportCover(
-          widget.transport,
-          onFloor: _onFloor,
-          floorOverlay: widget.floorBottomOverlaySpan,
-        ),
-      );
+  /// a book's page turner as a movie's player (F-383) — and the left pill's
+  /// band down the left edge ([_CanvasEditorPanelShell.leftPillBandOf]).
+  /// Framing keeps out from under all of it as it keeps out from under a
+  /// panel.
+  ///
+  /// ⚠️The left pill's band adds to the floor's left cover only where the
+  /// pill has stepped past the left rail ([_leftPillBesideRail]). On the
+  /// box's own left edge it is the larger of the two, not their sum:
+  /// framing counts a rail's band as its whole edge, so a rail there
+  /// already covers the pill — the page strip's law on that edge.
+  EdgeInsets get _framingInsets {
+    final covered =
+        widget.floorCover +
+        (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
+        EdgeInsets.only(
+          top: _pillBand,
+          bottom: _CanvasEditorPanelShell.transportCover(
+            widget.transport,
+            onFloor: _onFloor,
+            floorOverlay: widget.floorBottomOverlaySpan,
+          ),
+        );
+    final pill = _CanvasEditorPanelShell.leftPillBandOf(widget.leftPill);
+    return covered.copyWith(
+      left: _leftPillBesideRail
+          ? covered.left + pill
+          : math.max(covered.left, pill),
+    );
+  }
 
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
   late double _pillBand;
+
+  /// Whether the left pill stood past the left rail when it was last laid
+  /// out — what its seat decided ([_LeftEdgeSeat]), kept because framing is
+  /// read before the layout that places it.
+  bool _leftPillBesideRail = false;
+
+  void _rememberLeftPillBeside(bool beside) {
+    if (beside == _leftPillBesideRail) {
+      return;
+    }
+    _leftPillBesideRail = beside;
+    // Learned in a layout, after this frame's build framed the view with
+    // the answer before it: the next build frames with this one.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _rebuild(() {});
+      }
+    });
+  }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
@@ -3263,6 +3328,15 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// The hairline between a docked panel's lanes and the band under them.
   static const double _transportRule = 1;
 
+  /// 🗣️F-346 (유저 2026-10-12): 「왼쪽알약도 동일하게 하나의 기준? 아무튼
+  /// 그쪽도 이동가능해야하는 부분으로서 판정하도록」 — what stands on the left
+  /// edge is cover as the pill is ([pillBandIn]): the band it floats in down
+  /// that edge, its margin either side. Zoomed in, the view goes on until
+  /// the paper's left edge stands beside it. Nothing with nothing there.
+  /// ↩️Asked of the page strip; the brush pill took the edge (I-34).
+  static double leftPillBandOf(CanvasEdgePill? pill) =>
+      pill == null ? 0 : _capsuleBand(pill.width);
+
   const _CanvasEditorPanelShell({
     required this.child,
     required this.bottomBar,
@@ -3271,10 +3345,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.cover,
     required this.onFloor,
     this.transport,
+    this.leftPill,
     this.documentName,
     this.documentAbsent = false,
     this.bottomOverlaySpan = 0,
+    this.leftRailBand,
     this.rightRailBand,
+    required this.onLeftPillLaidOut,
   });
 
   final Widget child;
@@ -3291,6 +3368,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   /// See [BrushCanvasPanel.transport] — null means nothing under the bars.
   final CanvasTransportBand? transport;
+
+  /// See [BrushCanvasPanel.leftPill] — null means nothing on the left edge.
+  final CanvasEdgePill? leftPill;
+
+  /// Told whether the left pill was laid out past the left rail
+  /// ([_LeftEdgeSeat]).
+  final ValueChanged<bool> onLeftPillLaidOut;
 
   /// See [BrushCanvasPanel.documentName].
   final String? documentName;
@@ -3322,8 +3406,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// The horizontal bar steps up by it; framing does not.
   final double bottomOverlaySpan;
 
-  /// The vertical band the rail on the right edge occupies — see
-  /// [BrushCanvasPanel.floorRightRailBand].
+  /// The vertical bands the rails on the two side edges occupy — see
+  /// [BrushCanvasPanel.floorLeftRailBand].
+  final CanvasFloorBand? leftRailBand;
   final CanvasFloorBand? rightRailBand;
 
   /// How far a floating capsule sits in from the window's edge.
@@ -3412,7 +3497,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           _floorCapsules()
         else
           ..._dockedLanes(colorScheme),
-        if (documentName case final name?) _documentName(name),
+        if (documentName != null || leftPill != null) _leftEdge(context),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
           // R4): it holds the window's centre across the axis it sits on,
@@ -3569,16 +3654,49 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     ),
   );
 
-  /// Where the file's name stands ([_CanvasDocumentName]): the artwork's
-  /// lower left, over the horizontal bar — a docked panel's lane, the
-  /// floor's capsule — and inside what the side panels leave.
-  Widget _documentName(String name) => Positioned(
-    left: (onFloor ? cover.left : 0) + _capsuleMargin,
-    right: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
-    bottom: onFloor
-        ? _floorBarBottom + AppScrollbarLane.thin + _capsuleMargin
-        : _transportCover + dockedLane + _capsuleMargin,
-    child: _CanvasDocumentName(name, absent: documentAbsent),
+  /// What stands on the left edge, seated together ([_LeftEdgeSeat]): the
+  /// file's name ([_CanvasDocumentName]) and the left pill over it.
+  Widget _leftEdge(BuildContext context) => Positioned.fill(
+    child: CustomMultiChildLayout(
+      delegate: _LeftEdgeSeat(
+        cover: cover,
+        onFloor: onFloor,
+        top: cover.top + pillBandIn(context),
+        nameBottom: onFloor
+            ? _floorBarBottom + AppScrollbarLane.thin + _capsuleMargin
+            : _transportCover + dockedLane + _capsuleMargin,
+        nameRight: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
+        railBand: leftRailBand,
+        onPillLaidOut: onLeftPillLaidOut,
+      ),
+      children: [
+        if (documentName case final name?)
+          LayoutId(
+            id: _LeftEdgeSlot.name,
+            child: _CanvasDocumentName(name, absent: documentAbsent),
+          ),
+        if (leftPill case final pill?)
+          LayoutId(
+            id: _LeftEdgeSlot.pill,
+            // ★Its own layer: its bars repaint through every frame of a
+            // drag, and without a boundary each one re-records the
+            // furniture around it — the pill, the panbars — that has not
+            // changed (I-57's lesson about this shell).
+            child: RepaintBoundary(
+              key: const ValueKey<String>('canvas-left-pill'),
+              // A panel shorter than the pill gets the whole pill, smaller
+              // — never a column that overflows, and never one missing a
+              // control: the page strip's law on this edge, and the page
+              // turner's under the bars.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: pill.child,
+              ),
+            ),
+          ),
+      ],
+    ),
   );
 
   /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
@@ -3684,6 +3802,107 @@ class _CanvasDocumentName extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// What stands on the left edge ([_LeftEdgeSeat]).
+enum _LeftEdgeSlot { name, pill }
+
+/// Seats what stands on the LEFT edge: the file's name at the artwork's
+/// lower left ([BrushCanvasPanel.documentName]) — over the horizontal bar
+/// and inside what the side panels leave — and the left pill
+/// ([BrushCanvasPanel.leftPill]) in the middle of the room between the
+/// pill's band and the name.
+///
+/// The axis law the two bars follow (유저, R4): ALONG the edge it rides the
+/// left pill holds the room's centre, and ACROSS that edge it sits on the
+/// edge — past the left rail where the rail's band is beside it, as the
+/// vertical bar steps past the right one ([_FloorVerticalBarSeat]): under
+/// a rail nothing on it could be reached, and a control that steps aside
+/// for a panel nowhere near it reads as floating (유저, R3 #5). It was the
+/// page strip's seat on this edge, gone with the strip under the bars
+/// (F-383). It reports which it did, for framing (`_framingInsets`).
+///
+/// The room ends over the name (I-34): a column this tall would otherwise
+/// stand on it. With no name written it ends where the name would stand.
+class _LeftEdgeSeat extends MultiChildLayoutDelegate {
+  _LeftEdgeSeat({
+    required this.cover,
+    required this.onFloor,
+    required this.top,
+    required this.nameBottom,
+    required this.nameRight,
+    required this.railBand,
+    required this.onPillLaidOut,
+  });
+
+  /// See [_CanvasEditorPanelShell.cover].
+  final EdgeInsets cover;
+
+  /// See [_CanvasEditorPanelShell.onFloor].
+  final bool onFloor;
+
+  /// How far down the box the room starts: under the pill's band.
+  final double top;
+
+  /// How far up the box the name stands.
+  final double nameBottom;
+
+  /// How far in from the right edge the name may run.
+  final double nameRight;
+
+  /// See [_CanvasEditorPanelShell.leftRailBand].
+  final CanvasFloorBand? railBand;
+
+  final ValueChanged<bool> onPillLaidOut;
+
+  static const double _margin = _CanvasEditorPanelShell._capsuleMargin;
+
+  @override
+  void performLayout(Size size) {
+    final nameLeft = (onFloor ? cover.left : 0) + _margin;
+    var roomBottom = size.height - nameBottom;
+    if (hasChild(_LeftEdgeSlot.name)) {
+      final name = layoutChild(
+        _LeftEdgeSlot.name,
+        BoxConstraints(
+          maxWidth: math.max(0.0, size.width - nameLeft - nameRight),
+        ),
+      );
+      positionChild(
+        _LeftEdgeSlot.name,
+        Offset(nameLeft, roomBottom - name.height),
+      );
+      roomBottom -= name.height + _margin;
+    }
+    if (!hasChild(_LeftEdgeSlot.pill)) {
+      return;
+    }
+    final room = math.max(0.0, roomBottom - top);
+    final pill = layoutChild(
+      _LeftEdgeSlot.pill,
+      BoxConstraints(maxHeight: room),
+    );
+    final pillTop = top + (room - pill.height) / 2;
+    final beside = canvasFloorBandIntrudes(
+      railBand,
+      top: pillTop,
+      bottom: pillTop + pill.height,
+    );
+    onPillLaidOut(beside);
+    positionChild(
+      _LeftEdgeSlot.pill,
+      Offset((beside ? cover.left : 0) + _margin, pillTop),
+    );
+  }
+
+  @override
+  bool shouldRelayout(_LeftEdgeSeat oldDelegate) =>
+      oldDelegate.cover != cover ||
+      oldDelegate.onFloor != onFloor ||
+      oldDelegate.top != top ||
+      oldDelegate.nameBottom != nameBottom ||
+      oldDelegate.nameRight != nameRight ||
+      oldDelegate.railBand != railBand;
 }
 
 /// Seats the floor's vertical panbar in the middle of the visible HEIGHT,

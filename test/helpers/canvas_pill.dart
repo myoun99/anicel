@@ -65,6 +65,25 @@ double pillBandOf(WidgetTester tester, {Finder? of}) {
   return margin + pill.height + margin;
 }
 
+/// How much of a canvas panel's left edge the left pill's band takes from
+/// what the panel frames — the pill with its margin either side (F-346:
+/// it is cover as the pill is). Read off the left pill as it lies, as
+/// [pillBandOf] reads the pill.
+///
+/// ⚠️For a left pill on the box's own edge: one that stepped past a rail
+/// beside it would read the rail as margin.
+double leftPillBandOf(WidgetTester tester, {Finder? of}) {
+  Finder inPanel(String key) {
+    final finder = find.byKey(ValueKey<String>(key));
+    return of == null ? finder : find.descendant(of: of, matching: finder);
+  }
+
+  final shell = tester.getRect(inPanel('canvas-editor-panel-shell').first);
+  final pill = tester.getRect(inPanel('canvas-left-pill').first);
+  final margin = pill.left - shell.left;
+  return margin + pill.width + margin;
+}
+
 /// How much of a DOCKED canvas panel's bottom edge the band under its lanes
 /// takes from what the panel frames — a book's page turner, a movie's
 /// player (F-383) — read off the band as it lies, as [pillBandOf] reads the

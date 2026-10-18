@@ -49,6 +49,8 @@ import 'brush/brush_library_look.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
+import 'brush/brush_canvas_panel.dart' show CanvasEdgePill;
+import 'brush/brush_value_group.dart' show BrushValuesPill;
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
 import 'theme/app_theme.dart';
@@ -1214,7 +1216,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
-      relay: _layout,
+      // The brush's place too: the strip shows the brush's values or not
+      // by it, where the region's place is read only when its row opens.
+      relay: Listenable.merge([_layout, _brushValuesOnStrip]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
@@ -1235,6 +1239,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           return;
         }
         setState(() => _regionOnTop = onTop);
+        _layoutPersistence.scheduleLayoutSave();
+      },
+      brushValuesOnStrip: () => _brushValuesOnStrip.value,
+      brushValuesMover: (onStrip) {
+        if (_brushValuesOnStrip.value == onStrip) {
+          return;
+        }
+        _brushValuesOnStrip.value = onStrip;
         _layoutPersistence.scheduleLayoutSave();
       },
       regionFolder: _toggleRegionFolded,
@@ -1771,6 +1783,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.doorCommands?.unbind(this);
     widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
+    // After the bridge lets go: its relay listens to it.
+    _brushValuesOnStrip.dispose();
     _layoutPersistence._layoutSaveTimer?.cancel();
     _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
     _layout.extentRevision.removeListener(_layoutPersistence.scheduleLayoutSave);
@@ -2056,6 +2070,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// to whichever side is against the frame. One flag, and the law does the
   /// rest.
   bool _regionOnTop = false;
+
+  /// Whether the brush's values stand in the top strip — false, the
+  /// default, stands them in the canvas's pill
+  /// ([WorkspacePanelsMenuController.brushValuesOnStrip]).
+  ///
+  /// ↩️09-16 had the strip as the default; 유저 2026-10-18 (I-34): 「그리고
+  /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
+  /// workspace and the canvas inside it both follow it.
+  final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
 
   /// How close to the rail's width counts as "the same", so the edge lands on
   /// the pass-through boundary instead of just beside it.
@@ -2884,12 +2907,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
             ? _collapsedRows.collapsedRowHeight()
             : 0,
-        // WHERE the right column actually is, not just how
+        // WHERE each column actually is, not just how
         // wide it is. A rail panel is as tall as it was
         // left at, so a short one covers a band and not
         // an edge — and the scrollbar that stepped
         // aside for the whole edge read as floating for
-        // no reason (유저, R3 #5).
+        // no reason (유저, R3 #5). The left one is for
+        // the brush pill on that edge (I-34).
+        leftRailBand: _rail.railBand(
+          right: false,
+          stop: frame.leftStop,
+          onTop: frame.onTop,
+          height: frame.constraints.maxHeight,
+          grid: frame.grid,
+        ),
         rightRailBand: _rail.railBand(
           right: true,
           stop: frame.rightStop,

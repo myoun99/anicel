@@ -78,6 +78,23 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   bool Function()? _regionOnTop;
   void Function(bool onTop)? _regionMover;
 
+  /// Whether the brush's values — its blend, size and opacity — stand in
+  /// the top strip rather than in the canvas's pill.
+  ///
+  /// 🗣️I-34 (유저 2026-10-18): 「그리고 기본값은 알약으로 두는걸 기본값으로.
+  /// 그리고 이름도 브러시 값을 상단띠로로 바꾸자. 기본이 알약이다라는걸
+  /// 암묵적으로 표시하려고」 — the pill is the default, and the switch is
+  /// named for the other place. It rides the layout, as the region's does.
+  bool get brushValuesOnStrip => _brushValuesOnStrip?.call() ?? false;
+
+  bool get canMoveBrushValues => _brushValuesMover != null;
+
+  void setBrushValuesOnStrip(bool onStrip) =>
+      _brushValuesMover?.call(onStrip);
+
+  bool Function()? _brushValuesOnStrip;
+  void Function(bool onStrip)? _brushValuesMover;
+
   /// The floating region's fold — its chevron's press, and its key's (I-40).
   void toggleRegionFolded() => _regionFolder?.call();
 
@@ -97,6 +114,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     void Function(String tabId)? floorTabSelector,
     bool Function()? regionOnTop,
     void Function(bool onTop)? regionMover,
+    bool Function()? brushValuesOnStrip,
+    void Function(bool onStrip)? brushValuesMover,
     VoidCallback? regionFolder,
   }) {
     _relay?.removeListener(notifyListeners);
@@ -110,6 +129,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabSelector = floorTabSelector;
     _regionOnTop = regionOnTop;
     _regionMover = regionMover;
+    _brushValuesOnStrip = brushValuesOnStrip;
+    _brushValuesMover = brushValuesMover;
     _regionFolder = regionFolder;
     _relay = relay..addListener(notifyListeners);
     // Attach runs inside the workspace's initState — mid-build. The menu
@@ -136,6 +157,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabSelector = null;
     _regionOnTop = null;
     _regionMover = null;
+    _brushValuesOnStrip = null;
+    _brushValuesMover = null;
     _regionFolder = null;
   }
 }

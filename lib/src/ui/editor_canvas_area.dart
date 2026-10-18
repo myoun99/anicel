@@ -41,7 +41,8 @@ import 'brush/canvas_view_commands.dart';
 import 'canvas/display_resample.dart' show displayScaleOf;
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
-import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel, CanvasFloats;
+import 'brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasEdgePill, CanvasFloats;
 import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
@@ -205,6 +206,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.eyedropperSource,
     this.onInvokeAction,
     this.flipHud,
+    this.leftPill,
   });
 
   final EditorSessionManager session;
@@ -216,6 +218,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The flip HUD's state (shell-owned), forwarded to the panel that
   /// mounts the window.
   final FlipHudController? flipHud;
+
+  /// What stands on the canvas's left edge, forwarded to its panel — see
+  /// [BrushCanvasPanel.leftPill].
+  final CanvasEdgePill? leftPill;
 
   /// The active brush tool + settings (workspace-owned; the tools and
   /// brush-settings panels write it).

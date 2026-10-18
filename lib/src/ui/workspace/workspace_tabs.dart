@@ -281,6 +281,33 @@ class _WorkspaceTabs {
     );
   }
 
+  /// The drawing canvas, [leftPill] on its left edge.
+  Widget _canvasArea({required CanvasEdgePill? leftPill}) => EditorCanvasArea(
+    key: _state._canvasAreaKey,
+    onInvokeAction: _state.widget.onInvokeAction,
+    session: _state.widget.session,
+    brushToolState: _state._brushTool,
+    onBrushToolStateChanged: (state) => _state._brushTool.value = state,
+    canvasViewCommands: _state.widget.canvasViewCommands,
+    navigationRegionKey: _state.widget.canvasNavigationRegionKey,
+    canvasSelectionCommands: _state.widget.canvasSelectionCommands,
+    canvasTextCommands: _state.widget.canvasTextCommands,
+    textToolOptions: _state._views._textToolOptions,
+    cutPieceSlot: _state._cutPieceSlot,
+    lastStroke: _state.widget.lastStroke,
+    toolHold: _state.widget.toolHold,
+    // F-363: the project's camera row's eye and opacity.
+    cameraViewEnabled: _state.widget.session.cameraViewMode.enabled,
+    cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
+    expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds,
+    fillOptions: _state._views._fillOptions,
+    selectionMaskOptions: _state._views._selectionMaskOptions,
+    transformOptions: _state._transformOptions,
+    eyedropperSource: _state._views._eyedropperSource,
+    flipHud: _state.widget.flipHud,
+    leftPill: leftPill,
+  );
+
   /// [tabId]'s tab, built for the project on screen.
   ///
   /// 🚨★★★EVERY PANEL IS BUILT FOR ONE PROJECT (I-7, a project per tab). A
@@ -371,32 +398,20 @@ class _WorkspaceTabs {
               // ([_panelHost]), on a layer of its own. The expanding stack is
               // what makes the layer's constraints tight.
               TickLayer.host(
-                child: EditorCanvasArea(
-                  key: _state._canvasAreaKey,
-                  onInvokeAction: _state.widget.onInvokeAction,
-                  session: _state.widget.session,
-                  brushToolState: _state._brushTool,
-                  onBrushToolStateChanged: (state) =>
-                      _state._brushTool.value = state,
-                  canvasViewCommands: _state.widget.canvasViewCommands,
-                  navigationRegionKey: _state.widget.canvasNavigationRegionKey,
-                  canvasSelectionCommands: _state.widget.canvasSelectionCommands,
-                  canvasTextCommands: _state.widget.canvasTextCommands,
-                  textToolOptions: _state._views._textToolOptions,
-                  cutPieceSlot: _state._cutPieceSlot,
-                  lastStroke: _state.widget.lastStroke,
-                  toolHold: _state.widget.toolHold,
-                  // F-363: the project's camera row's eye and opacity.
-                  cameraViewEnabled:
-                      _state.widget.session.cameraViewMode.enabled,
-                  cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
-                  expandedLaneLayerIds:
-                      _state.widget.session.railView.expandedLaneLayerIds,
-                  fillOptions: _state._views._fillOptions,
-                  selectionMaskOptions: _state._views._selectionMaskOptions,
-                  transformOptions: _state._transformOptions,
-                  eyedropperSource: _state._views._eyedropperSource,
-                  flipHud: _state.widget.flipHud,
+                // I-34: the brush's values stand on the drawing unless the
+                // workspace stands them on the top strip.
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _state._brushValuesOnStrip,
+                  builder: (context, onStrip, _) => _canvasArea(
+                    leftPill: onStrip
+                        ? null
+                        : CanvasEdgePill(
+                            width: BrushValuesPill.widthIn(context),
+                            child: BrushValuesPill(
+                              brushTool: _state._brushTool,
+                            ),
+                          ),
+                  ),
                 ),
               ),
               // A pool row dropped on the STAGE (§7): the cut and the layer

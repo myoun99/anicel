@@ -525,6 +525,7 @@ class _InteractiveCanvasBuild {
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
+      leftPill: _state.widget.leftPill,
       // P6 fill: the flood region as stamp pieces; the panel commits them
       // through the stroke funnel onto the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,

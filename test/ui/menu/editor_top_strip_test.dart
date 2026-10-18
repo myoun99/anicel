@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/brush_values_on_strip.dart';
 import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
@@ -30,12 +31,14 @@ void main() {
   /// The strip with its brush group standing as bars — the test window
   /// wider by the two bars' pencils (tool-settings-panel-tidy, 2026-10-10):
   /// at 800 the test font's words fold the group into its button since.
+  /// The group is the strip's by the setting (I-34).
   Future<void> pumpHomeWithBars(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(
       const Size(800 + 2 * ValuePencil.reach, 600),
     );
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
+    await standBrushValuesOnStrip(tester);
     expect(
       find.byKey(const ValueKey<String>('top-strip-size-bar')),
       findsOneWidget,

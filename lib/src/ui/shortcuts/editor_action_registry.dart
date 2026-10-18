@@ -907,6 +907,10 @@ abstract final class EditorActionIds {
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
 
+  /// Where the brush's values stand — the top strip, or the canvas's pill
+  /// (I-34).
+  static const brushValuesOnStrip = 'window-brush-values-on-strip';
+
   /// The window's full screen (I-103-Q2) — the desktops' only.
   static const fullScreen = 'window-full-screen';
 
@@ -2188,6 +2192,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.regionOnTop,
     label: 'Timeline region on top',
+    shelf: ShortcutShelf.panels,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // 🗣️I-34 (유저 2026-10-18): named for the place that is NOT the default
+  // — 「이름도 브러시 값을 상단띠로로 바꾸자. 기본이 알약이다라는걸
+  // 암묵적으로 표시하려고」.
+  const EditorActionDefinition(
+    id: EditorActionIds.brushValuesOnStrip,
+    label: 'Brush values on the top strip',
     shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,

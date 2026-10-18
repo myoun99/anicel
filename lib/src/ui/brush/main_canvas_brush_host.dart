@@ -98,6 +98,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onBrushSizeDragUpdate,
     this.onBrushSizeDragEnd,
     this.flipHud,
+    this.leftPill,
     this.onEyedropperPick,
     this.fillDabsAt,
     this.shapeFillDabsFor,
@@ -282,6 +283,10 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// The flip HUD's state, threaded down to the panel that mounts it.
   final FlipHudController? flipHud;
+
+  /// See [BrushCanvasPanel.leftPill] — the brush's values, where the
+  /// workspace stands them on the drawing.
+  final CanvasEdgePill? leftPill;
   final ValueChanged<int>? onEyedropperPick;
   final List<BrushDab> Function(
     CanvasPoint point,
@@ -531,6 +536,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // opened in a rail column or the bottom panel is simply not under the
       // provider, and nothing lies on it.
       floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
+      floorLeftRailBand: CanvasFloorInsets.maybeOf(context)?.leftRailBand,
       floorRightRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
       // ⑩: what a control on the bottom edge has to clear.
       floorBottomOverlaySpan:
@@ -593,6 +599,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onBrushSizeDragUpdate: widget.onBrushSizeDragUpdate,
       onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
       flipHud: widget.flipHud,
+      leftPill: widget.leftPill,
       onEyedropperPick: widget.onEyedropperPick,
       fillDabsAt: widget.fillDabsAt,
       shapeFillDabsFor: widget.shapeFillDabsFor,

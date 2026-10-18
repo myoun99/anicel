@@ -324,7 +324,13 @@ void main() {
   /// answered in the other four languages by id
   /// (`shortcutAction.edit-binarize`). The ceiling stood at the count (137)
   /// when it came.
-  const untranslatedElsewhere = 138;
+  ///
+  /// 139 (I-34, the brush's values on the canvas, 2026-10-18): the English
+  /// row of one new registry action, 「Brush values on the top strip」 —
+  /// answered in the other four languages by id
+  /// (`shortcutAction.window-brush-values-on-strip`). The ceiling stood at
+  /// the count (138) when it came.
+  const untranslatedElsewhere = 139;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

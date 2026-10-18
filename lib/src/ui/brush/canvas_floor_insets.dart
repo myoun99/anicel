@@ -33,6 +33,7 @@ class CanvasFloorInsets extends InheritedWidget {
   const CanvasFloorInsets({
     super.key,
     required this.insets,
+    this.leftRailBand,
     this.rightRailBand,
     this.bottomOverlaySpan = 0,
     required super.child,
@@ -44,15 +45,17 @@ class CanvasFloorInsets extends InheritedWidget {
   /// because framing cannot put half a picture behind a panel.
   final EdgeInsets insets;
 
-  /// WHERE the right column actually is, vertically.
+  /// WHERE the side columns actually are, vertically.
   ///
   /// A rail panel keeps the height it was left at, so an open rail covers a
   /// band rather than an edge. Something deciding whether the rail is in the
   /// way of one small floating control has to ask about the band: stepping
   /// aside for the whole edge is what made the vertical scrollbar drift
   /// inward beside a short panel that was nowhere near it (유저, R3 #5).
-  /// ↩️The left column's was published too, for the page strip on that
-  /// edge — gone under the bars (F-383).
+  /// ↩️The left column's was published for the page strip on that edge,
+  /// went with it under the bars (F-383), and is published again for the
+  /// brush pill there (I-34).
+  final CanvasFloorBand? leftRailBand;
   final CanvasFloorBand? rightRailBand;
 
   /// ⑩ (user, 2026-08-12): 「캔버스 패널 가로 스크롤바가 간편 오버레이와
@@ -65,8 +68,8 @@ class CanvasFloorInsets extends InheritedWidget {
   /// ⚠️Deliberately NOT part of [insets]. That one deflates the window the
   /// artist looks through, and adding this to it would shift the picture
   /// every time the panel folded. A control that must not be buried asks
-  /// this instead — the same distinction [rightRailBand] draws for the side
-  /// column: where something IS, versus what the framing owes it.
+  /// this instead — the same distinction [leftRailBand] draws for the side
+  /// columns: where something IS, versus what the framing owes it.
   final double bottomOverlaySpan;
 
   /// The cover for the floor [context] sits on, or null when it is not the
@@ -97,6 +100,7 @@ class CanvasFloorInsets extends InheritedWidget {
   @override
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>
       oldWidget.insets != insets ||
+      oldWidget.leftRailBand != leftRailBand ||
       oldWidget.rightRailBand != rightRailBand ||
       oldWidget.bottomOverlaySpan != bottomOverlaySpan;
 }
