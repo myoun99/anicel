@@ -82,6 +82,14 @@ class _LinesSetting implements _TextSetting {
   TextPosition positionAt(ui.Offset local) =>
       _fill.positionAt(ui.Offset(local.dx / _width, local.dy) - _lettersAt);
 
+  /// From its line's top to its bottom — the whole line's, which a caret
+  /// beside a small letter in it is not.
+  @override
+  ({double from, double to}) lineAcross(TextPosition position) {
+    final (:top, :bottom) = _fill.lineAround(position);
+    return (from: _lettersAt.dy + top, to: _lettersAt.dy + bottom);
+  }
+
   @override
   List<int> get wrapPlaces => _fill.wrapPlaces;
 
@@ -230,10 +238,7 @@ class _Paragraphs {
   ui.Rect caretAt(TextPosition position) {
     final index = _content.paragraphAt(position.offset);
     final painter = _painters[index];
-    final inIt = TextPosition(
-      offset: position.offset - _starts[index],
-      affinity: position.affinity,
-    );
+    final inIt = _inParagraph(index, position);
     final at = painter.getOffsetForCaret(inIt, ui.Rect.zero);
     return ui.Rect.fromLTWH(
       at.dx,
@@ -242,6 +247,36 @@ class _Paragraphs {
       painter.getFullHeightForCaret(inIt, ui.Rect.zero),
     );
   }
+
+  /// The top and the bottom of the line [position] stands on, down the
+  /// page: the line the engine stacks there, as tall as its tallest letter
+  /// at its paragraph's pitch.
+  ({double top, double bottom}) lineAround(TextPosition position) {
+    final index = _content.paragraphAt(position.offset);
+    final painter = _painters[index];
+    final caret = painter.getOffsetForCaret(
+      _inParagraph(index, position),
+      ui.Rect.zero,
+    );
+    // A paragraph with no letters is its one line.
+    var top = 0.0;
+    var bottom = painter.height;
+    for (final line in painter.computeLineMetrics()) {
+      bottom = top + line.height;
+      if (caret.dy < bottom) {
+        break;
+      }
+      top = bottom;
+    }
+    return (top: _tops[index] + top, bottom: _tops[index] + bottom);
+  }
+
+  /// [position], a place in the text, as a place in the letters of its
+  /// paragraph — the one at [index].
+  TextPosition _inParagraph(int index, TextPosition position) => TextPosition(
+    offset: position.offset - _starts[index],
+    affinity: position.affinity,
+  );
 
   /// The boxes of the letters from [start] up to [end]: one per line they
   /// run over, each as tall as its line.

@@ -126,6 +126,25 @@ class _ColumnsSetting implements _TextSetting {
   @override
   ui.Rect caretRect(TextPosition position) {
     final offset = position.offset;
+    final column = _columnOf(offset);
+    for (final cell in column.cells) {
+      if (offset >= cell.start && offset < cell.end) {
+        return cell.caretAt(offset, _fillOf(cell));
+      }
+    }
+    return ui.Rect.fromLTWH(column.left, column.endsAt, column.width, 0);
+  }
+
+  /// From its column's left to its right — the whole column's, which a
+  /// caret between two digits set side by side is not.
+  @override
+  ({double from, double to}) lineAcross(TextPosition position) {
+    final column = _columnOf(position.offset);
+    return (from: column.left, to: column.left + column.width);
+  }
+
+  /// The column a caret at [offset] stands in.
+  _Column _columnOf(int offset) {
     for (final column in _columns) {
       if (offset < column.start || offset > column.end) {
         continue;
@@ -135,15 +154,9 @@ class _ColumnsSetting implements _TextSetting {
       if (offset == column.end && column.wrapped) {
         continue;
       }
-      for (final cell in column.cells) {
-        if (offset >= cell.start && offset < cell.end) {
-          return cell.caretAt(offset, _fillOf(cell));
-        }
-      }
-      return ui.Rect.fromLTWH(column.left, column.endsAt, column.width, 0);
+      return column;
     }
-    final last = _columns.last;
-    return ui.Rect.fromLTWH(last.left, last.endsAt, last.width, 0);
+    return _columns.last;
   }
 
   /// One box per cell the letters run over — the whole of its place down

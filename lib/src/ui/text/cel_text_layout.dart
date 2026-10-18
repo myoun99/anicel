@@ -181,6 +181,33 @@ class CelTextLayout {
   TextPosition positionAt(ui.Offset point) =>
       _setting.positionAt(toLocal(point));
 
+  /// The place on the line AFTER the one [position] stands on — or the one
+  /// before it — nearest [along], how far along the lines it is in the
+  /// text's own frame: the line below, in lines, and in columns the column
+  /// to the LEFT. Null with no line on that side.
+  ///
+  /// What an arrow across the lines goes to (`CelTextField`), read off the
+  /// letters where they stand: a field's own idea of the line above is set
+  /// by ONE alignment, and only in lines.
+  TextPosition? placeBeside(
+    TextPosition position, {
+    required bool after,
+    required double along,
+  }) {
+    final (:from, :to) = _setting.lineAcross(position);
+    final letters = _setting.block;
+    if (content.vertical) {
+      final x = after ? from - 0.5 : to + 0.5;
+      return x < letters.left || x > letters.right
+          ? null
+          : _setting.positionAt(ui.Offset(x, along));
+    }
+    final y = after ? to + 0.5 : from - 0.5;
+    return y < letters.top || y > letters.bottom
+        ? null
+        : _setting.positionAt(ui.Offset(along, y));
+  }
+
   /// Where a line of the text — or a column — ends for want of ROOM: the
   /// first letter of the one after, counted from the text's start. The
   /// places a box broke its text at, never the ones a break was typed at.
@@ -216,6 +243,11 @@ abstract interface class _TextSetting {
   /// The place between letters nearest [local], a point of the text's own
   /// frame.
   TextPosition positionAt(ui.Offset local);
+
+  /// The band ACROSS the lines that the line [position] stands on takes,
+  /// in the text's own frame: its top and its bottom — or, in columns, the
+  /// column's left and its right.
+  ({double from, double to}) lineAcross(TextPosition position);
   List<int> get wrapPlaces;
   void dispose();
 }
