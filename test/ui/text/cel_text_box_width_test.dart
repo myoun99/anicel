@@ -533,6 +533,7 @@ void main() {
       String words,
       List<TextCelAlign> aligns, {
       TextLetterStyle letters = plain,
+      double letterWidth = 1,
       double? wrapWidth,
       bool vertical = false,
     }) => CelTextContent(
@@ -540,6 +541,7 @@ void main() {
       anchor: CanvasPoint(x: 100, y: 50),
       wrapWidth: wrapWidth,
       vertical: vertical,
+      letterWidth: letterWidth,
       paragraphs: [
         for (final align in aligns)
           CelTextParagraph(align: align, lineHeight: 1),
@@ -547,7 +549,13 @@ void main() {
     );
 
     for (final first in TextCelAlign.values) {
-      for (final (named, letters) in [('plain', plain), ('tracked', odd)]) {
+      for (final (named, letters, width) in [
+        ('plain', plain, 1.0),
+        ('tracked', odd, 1.0),
+        // Drawn narrower: the box past the longest line is a pixel past it
+        // AS DRAWN, which set is not a whole pixel past it.
+        ('tracked and narrowed', odd, 0.73),
+      ]) {
         for (final vertical in [false, true]) {
           final how =
               '${first.name} first, $named, '
@@ -557,6 +565,7 @@ void main() {
             vertical ? 'あいうえ\nあい\nあい\nあい' : 'abcd\nab\nab\nab',
             [first, ...TextCelAlign.values],
             letters: letters,
+            letterWidth: width,
             vertical: vertical,
           );
 

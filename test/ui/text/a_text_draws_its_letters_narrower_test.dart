@@ -209,14 +209,15 @@ void main() {
         'they are drawn', () {
       // 「12」 is one cell: 40 set, fitted to its column at half — so half a
       // letter tall, 10 to 20 — and drawn half as wide again: 10 wide about
-      // 90. Three before its middle is nearer its start than its middle; at
-      // its own width it was not.
-      int pressedAt(double width) => set(
-        columns('12', width: width),
-      ).positionAt(const ui.Offset(87, 15)).offset;
+      // 90, 「1」 from 85 to 90: a press at 87 is nearer its start, one at
+      // 88.5 nearer its end. At its own width 「1」 runs from 80 to 90, and
+      // 87 is nearer its end.
+      int pressedAt(double width, double x) =>
+          set(columns('12', width: width)).positionAt(ui.Offset(x, 15)).offset;
 
-      expect(pressedAt(0.5), 0);
-      expect(pressedAt(1), 1, reason: '⛔control');
+      expect(pressedAt(0.5, 87), 0);
+      expect(pressedAt(0.5, 88.5), 1);
+      expect(pressedAt(1, 87), 1, reason: '⛔control');
     });
   });
 

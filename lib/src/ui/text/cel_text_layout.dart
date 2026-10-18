@@ -482,7 +482,16 @@ List<TextSpan> _paragraphSpansOf(
 /// The letters of [content] as a FIELD is handed them — the very spans the
 /// layout's own fill pass is set from ([layoutCelText]), one paragraph
 /// after the next, so a field that types into a text breaks its lines where
-/// the text on the canvas does.
+/// the text on the canvas does, and sets them as tall.
+///
+/// ⚠️All but one: the paragraph a break opens at the END, while it has no
+/// letter. The canvas sets it at its own pitch; a field's one painter sets
+/// an empty last line at the pitch of the letters before the break — the
+/// paragraph the break ends — and no style without letters reaches that
+/// line (measured 2026-10-18: a run of no letters, an empty span — neither;
+/// the break in a run of its own sets the line it ends instead). Only the
+/// IME's window, opened under the field's caret, stands that much off, and
+/// only until a letter is typed there.
 TextSpan celTextFieldSpan(
   CelTextContent content, {
   required TextLetterStyle nextLetterStyle,
@@ -492,7 +501,7 @@ TextSpan celTextFieldSpan(
     style: canvasLetterTextStyle(
       paragraphLetters,
       // A text with no letters is set at its one paragraph's pitch.
-      lineHeight: content.paragraphs.last.lineHeight,
+      lineHeight: content.paragraphs.first.lineHeight,
     ),
     children: _paragraphSpansOf(
       content,

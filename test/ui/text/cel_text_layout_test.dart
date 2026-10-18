@@ -959,6 +959,28 @@ void main() {
       );
     });
 
+    test('a run of letters that BEGINS with a break opens the paragraph '
+        'after it, as one that ends with it would', () {
+      final layout = layoutCelText(
+        CelTextContent(
+          spans: const [
+            CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 20)),
+            CelTextSpan(
+              text: '\ncd',
+              style: TextLetterStyle(fontSize: 20, color: 0xFFFF0000),
+            ),
+          ],
+          anchor: CanvasPoint(x: 0, y: 0),
+          wrapWidth: 100,
+          paragraphs: const [left, right],
+        ),
+      );
+      addTearDown(layout.dispose);
+
+      expect(line(layout, 0, 2), (left: 0.0, right: 40.0));
+      expect(line(layout, 3, 5), (left: 60.0, right: 100.0));
+    });
+
     test('a press lands in the paragraph it is beside, where ITS letters '
         'stand', () {
       // 「cd」, set to the right, runs from 60 to 100 on the second line.

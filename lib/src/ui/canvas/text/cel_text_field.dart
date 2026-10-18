@@ -103,10 +103,9 @@ class CelTextField extends StatelessWidget {
   Widget _field() {
     final content = letters.content;
     final wrapWidth = celTextSetWidth(content);
-    final caret = math.min(
-      math.max(letters.selection.extentOffset, 0),
-      content.text.length,
-    );
+    // A field with no caret yet (−1, a field's own 「no selection」) is
+    // aligned as its first paragraph.
+    final caret = math.max(letters.selection.extentOffset, 0);
     final field = EditableText(
       key: const ValueKey<String>('cel-text-field'),
       controller: letters,

@@ -313,6 +313,28 @@ void main() {
       expect(mixed.hashCode, isNot(alike.hashCode));
       expect(alike.copyWith(paragraphs: const [right, apart]), mixed);
     });
+
+    test('a paragraph\'s copy takes what it is given and keeps the rest', () {
+      expect(
+        right.copyWith(align: TextCelAlign.left),
+        const CelTextParagraph(lineHeight: 2),
+      );
+      expect(
+        right.copyWith(lineHeight: 3),
+        const CelTextParagraph(align: TextCelAlign.right, lineHeight: 3),
+      );
+    });
+
+    test('a paragraph that says nothing of itself reads as a text that says '
+        'nothing does: centred, at the pitch a text has by default', () {
+      expect(
+        CelTextParagraph.fromJson(const {}),
+        const CelTextParagraph(
+          align: TextCelAlign.center,
+          lineHeight: CelTextContent.defaultLineHeight,
+        ),
+      );
+    });
   });
 
   group('a letter style', () {

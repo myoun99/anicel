@@ -420,6 +420,29 @@ void main() {
       expect(letter(grown, 5), at(-40, -40.5, 20, 20));
       expect(letter(grown, 8), at(-60, 0.5, 20, 20));
     });
+
+    // 🗣️Q4 (유저 2026-10-18): 「줄마다 제 칸」 — a column is a line.
+    test('each column as wide as ITS paragraph\'s pitch says, and the next '
+        'one on from there', () {
+      final layout = layoutCelText(
+        CelTextContent(
+          spans: [run('あ\nい\nう')],
+          anchor: CanvasPoint(x: 0, y: 0),
+          vertical: true,
+          paragraphs: const [
+            CelTextParagraph(lineHeight: 1),
+            CelTextParagraph(lineHeight: 2),
+            CelTextParagraph(lineHeight: 1),
+          ],
+        ),
+      );
+      addTearDown(layout.dispose);
+
+      expect(layout.block, at(-80, 0, 80, 20));
+      expect(letter(layout, 0), at(-20, 0, 20, 20));
+      expect(letter(layout, 2), at(-60, 0, 40, 20));
+      expect(letter(layout, 4), at(-80, 0, 20, 20));
+    });
   });
 
   group('the letter under a press', () {
