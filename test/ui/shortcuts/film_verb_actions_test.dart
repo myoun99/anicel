@@ -44,23 +44,25 @@ void main() {
     }
   });
 
-  test('🗣️I-63 ③: the two ＋ rows read as the user named them — 「프레임 '
-      '추가」 (it was 「새 그림」) and 「레이어 추가」 beside it', () {
+  test('🗣️I-63 ③ · I-58: the two ＋ rows read as the user named them — '
+      '「새 프레임」 and 「새 레이어」 beside it', () {
     // 유저 2026-10-03: 「프레임 추가랑 레이어 추가버튼도 단축키 기본값
-    // 등록하고싶음. 프레임추가는 이름이 새 그림인데 그게아니라 프레임 추가로」.
+    // 등록하고싶음. 프레임추가는 이름이 새 그림인데 그게아니라 프레임 추가로」 —
+    // then I-58 (10-18 12:31): 「ㅁㅁ 추가말고 새 ㅁㅁ로 하자」. ↩️They read
+    // 「프레임 추가」 (it was 「새 그림」) and 「레이어 추가」.
     final korean = AppStrings.of(AppLanguage.ko);
     expect(
       korean.shortcutLabel(EditorActionIds.frameNewDrawing, 'unnamed'),
-      '프레임 추가',
+      '새 프레임',
     );
     expect(
       definitionFor(EditorActionIds.frameNewDrawing).label,
-      'Add Frame',
+      'New Frame',
       reason: 'the registry\'s wording IS the English row',
     );
     expect(
       korean.shortcutLabel(EditorActionIds.layerAdd, 'unnamed'),
-      '레이어 추가',
+      '새 레이어',
     );
     final ids = [for (final it in editorActionDefinitions) it.id];
     expect(
@@ -71,14 +73,15 @@ void main() {
   });
 
   test('🗣️I-58: the frame pill\'s rows and the cut\'s ＋ read as the user '
-      'named them — 「ㅁㅁ 추가」, 비우기, 프레임 자동 생성, 중간나누기 마크', () {
+      'named them — 「새 ㅁㅁ」, 비우기, 프레임 자동 생성, 중간나누기 마크', () {
     // 유저 2026-10-18: 「컷 추가버튼은 새 컷이고 레이어는 레이어 추가고
     // 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ 삭제)하고,
     // x버튼은 비우기, 빈 칸에 그리면 프레임 자동 생성은 프레임 자동 생성, 마크
-    // 점은 중간나누기 마크」.
+    // 점은 중간나누기 마크」 — and at 12:31, 「ㅁㅁ 추가말고 새 ㅁㅁ로 하자」.
+    // ↩️The cut's ＋ read 「컷 추가」.
     final korean = AppStrings.of(AppLanguage.ko);
     String label(String id) => korean.shortcutLabel(id, 'unnamed');
-    expect(label(EditorActionIds.cutNew), '컷 추가');
+    expect(label(EditorActionIds.cutNew), '새 컷');
     expect(label(EditorActionIds.frameBlankExposure), '비우기');
     expect(label(EditorActionIds.frameAutoCreate), '프레임 자동 생성');
     expect(label(EditorActionIds.frameToggleMark), '중간나누기 마크');

@@ -355,7 +355,7 @@ const addLayerKinds = [
 
 /// The English of [EditorActionIds.layerAdd], which the kinds' names are
 /// composed over as well.
-const _addLayerLabel = 'Add Layer';
+const _addLayerLabel = 'New Layer';
 
 /// The add menu's kinds as actions, one per kind it offers.
 ///
@@ -1465,14 +1465,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // I-40: the guide list's two ＋ — one a kind of guide.
   const EditorActionDefinition(
     id: EditorActionIds.guideAddSymmetry,
-    label: 'Add symmetry guide',
+    label: 'New symmetry guide',
     shelf: ShortcutShelf.guides,
     defaultActivators: [],
     panelButton: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.guideAddPerspective,
-    label: 'Add perspective guide',
+    label: 'New perspective guide',
     shelf: ShortcutShelf.guides,
     defaultActivators: [],
     panelButton: true,
@@ -1765,7 +1765,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // next frame, the nearest key that program gives the verb.
   const EditorActionDefinition(
     id: EditorActionIds.frameNewDrawing,
-    label: 'Add Frame',
+    label: 'New Frame',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyI, shift: true)],
   ),
@@ -1854,10 +1854,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // a key: no key was ever said for one.
   // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는 레이어
   // 추가고 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ
-  // 삭제)」. ↩️It read 'New cut'.
+  // 삭제)」 — and at 12:31, the one form chosen: 「ㅁㅁ 추가말고 새 ㅁㅁ로
+  // 하자」. Every verb that makes a thing reads 「새 ㅁㅁ」 (New …), its pair
+  // 「ㅁㅁ 삭제」. ↩️It read 'New cut', then 'Add cut' (the first half, before
+  // the form was chosen).
   const EditorActionDefinition(
     id: EditorActionIds.cutNew,
-    label: 'Add cut',
+    label: 'New cut',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,

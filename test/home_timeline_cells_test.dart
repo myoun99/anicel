@@ -237,7 +237,7 @@ void main() {
         const ValueKey<String>('toggle-mark-button'),
       );
       expect(markButton, findsOneWidget);
-      expect(find.byTooltip('Mark ●'), findsOneWidget);
+      expect(find.byTooltip('In-between Mark'), findsOneWidget);
 
       // Dots are block-owned (UI-R9 #8): an empty cell offers no toggle.
       expect(

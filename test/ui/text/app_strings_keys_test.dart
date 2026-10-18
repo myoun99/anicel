@@ -170,7 +170,6 @@ void main() {
     'convertLinkedCutResizeFirst': (s) => s.convertLinkedCutResizeFirst,
     'guideKindSymmetry': (s) => s.guideKindSymmetry,
     'guideKindPerspective': (s) => s.guideKindPerspective,
-    'guideAdd': (s) => s.guideAdd,
     'guideDelete': (s) => s.guideDelete,
     'guideShow': (s) => s.guideShow,
     'guideActsOn': (s) => s.guideActsOn,

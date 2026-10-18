@@ -308,7 +308,7 @@ void main() {
       );
       expect(
         editorActionLabel(EditorActionIds.guideAddSymmetry),
-        '대칭 가이드 추가',
+        '새 대칭 가이드',
       );
       expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트…');
       expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식…');
@@ -331,7 +331,7 @@ void main() {
           '원래 위치에 붙여넣기',
           '스탬프 초기화',
           '팁으로 등록…',
-          '소실점 추가',
+          '새 소실점',
           '래스터라이즈',
           '가로 가운데',
           '세로 가운데',

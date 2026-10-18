@@ -19,6 +19,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/pill_strip.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../shortcuts/panel_keys.dart';
 import 'brush_tool_state.dart' show CanvasTool;
 import 'tool_setting_rows.dart';
@@ -306,7 +307,7 @@ class _GuideGroupHeader extends StatelessWidget {
           ),
           AppIconButton(
             keyValue: addKey,
-            tooltip: AppText.strings.guideAdd,
+            tooltip: editorActionLabel(action),
             shortcuts: [action],
             // The ＋ carries the accent, not the button around it.
             icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),

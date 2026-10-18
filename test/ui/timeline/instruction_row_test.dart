@@ -174,7 +174,7 @@ void main() {
     // Double-tap on the EMPTY cell creates a default-vocabulary event
     // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
     await _doubleTapCell(tester, 'inst-cam', 4);
-    expect(find.text('Add instruction'), findsNothing);
+    expect(find.text('New instruction'), findsNothing);
     var event = _camLayer(repository).instructions[4]!;
     expect(event.length, 1, reason: 'new instances are one frame long');
 

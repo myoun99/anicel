@@ -167,15 +167,15 @@ void main() {
         'language the two parts are said in', () {
       expect(
         editorActionLabel(addLayerKindActionId(LayerKind.animation)),
-        'Add Layer: Animation',
+        'New Layer: Animation',
       );
       expect(
         addLayerKindActionLabel(LayerKind.animation, AppLanguage.ko),
-        '레이어 추가: 애니메이션',
+        '새 레이어: 애니메이션',
       );
       expect(
         addLayerKindActionLabel(LayerKind.folder, AppLanguage.ja),
-        'レイヤーを追加: フォルダー',
+        '新規レイヤー: フォルダー',
       );
       expect(
         editorActionLabel(addEffectActionId(EffectKind.blur)),
@@ -195,7 +195,7 @@ void main() {
 
       expect(
         editorActionLabel(addLayerKindActionId(LayerKind.animation)),
-        '레이어 추가: 애니메이션',
+        '새 레이어: 애니메이션',
       );
       expect(layerKindDisplayName(LayerKind.folder), '폴더');
       expect(
@@ -597,7 +597,7 @@ void main() {
       String tooltip(String key) => tester
           .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
           .tooltip;
-      expect(tooltip('new-cut-button'), 'Add cut');
+      expect(tooltip('new-cut-button'), 'New cut');
       expect(tooltip('auto-frame-toggle-button'), 'Auto-create Frames');
 
       keys(tester)
@@ -609,7 +609,7 @@ void main() {
         ]);
       await tester.pumpAndSettle();
 
-      expect(tooltip('new-cut-button'), 'Add cut (Ctrl+K)');
+      expect(tooltip('new-cut-button'), 'New cut (Ctrl+K)');
       expect(
         tooltip('auto-frame-toggle-button'),
         'Auto-create Frames (Alt+K)',
@@ -618,15 +618,16 @@ void main() {
 
     // 🗣️I-58 (유저 2026-10-18): 「컷 추가버튼은 새 컷이고 레이어는 레이어
     // 추가고 프레임은 추가임 … 통일(레이어 추가 이런식으로 ㅁㅁ 추가. ㅁㅁ
-    // 삭제)하고, x버튼은 비우기 … 마크 점은 중간나누기 마크」. ↩️The frame
-    // pill's ＋ × ● each wore a string of their own.
+    // 삭제)하고, x버튼은 비우기 … 마크 점은 중간나누기 마크」 — then 「ㅁㅁ
+    // 추가말고 새 ㅁㅁ로 하자」. ↩️The frame pill's ＋ × ● each wore a string
+    // of their own.
     testWidgets('the frame pill\'s ＋ × ● and the n-koma ● wear their '
         'actions\' names too', (tester) async {
       await pumpApp(tester);
       String tooltip(String key) => tester
           .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
           .tooltip;
-      expect(tooltip('new-frame-button'), 'Add Frame (Shift+I)');
+      expect(tooltip('new-frame-button'), 'New Frame (Shift+I)');
       expect(tooltip('blank-exposure-button'), 'Clear');
       expect(tooltip('toggle-mark-button'), 'In-between Mark');
       expect(tooltip('mark-every-button'), 'Auto-add In-between Marks');

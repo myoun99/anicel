@@ -70,7 +70,7 @@ void main() {
       ('tool-select-button', 'Select Tool'),
       ('tool-move-button', 'Transform Tool'),
       // 🗣️I-63-Q4 (유저 2026-10-09): Add Frame ships with TVPaint's key.
-      ('new-frame-button', 'Add (Shift+I)'),
+      ('new-frame-button', 'New Frame (Shift+I)'),
     ]) {
       expect(_tooltip(tester, _button(key)), tooltip, reason: key);
     }
@@ -105,17 +105,17 @@ void main() {
       SingleActivator(LogicalKeyboardKey.keyN),
     ]);
     await tester.pumpAndSettle();
-    expect(_tooltip(tester, _button('new-frame-button')), 'Add (N)');
+    expect(_tooltip(tester, _button('new-frame-button')), 'New Frame (N)');
 
     // The layer pill's ＋ is a strap — its body wears its action's name and
     // reads the same bindings (I-63 ③).
     const addLayer = 'timeline-toolbar-add-layer-button';
-    expect(_tooltip(tester, _button(addLayer)), 'Add Layer (Ctrl+N)');
+    expect(_tooltip(tester, _button(addLayer)), 'New Layer (Ctrl+N)');
     bindings.setActivators(EditorActionIds.layerAdd, const [
       SingleActivator(LogicalKeyboardKey.keyN, shift: true),
     ]);
     await tester.pumpAndSettle();
-    expect(_tooltip(tester, _button(addLayer)), 'Add Layer (Shift+N)');
+    expect(_tooltip(tester, _button(addLayer)), 'New Layer (Shift+N)');
 
     // And a control that is not an AppIconButton reads the same bindings.
     String commaTooltip() => tester

@@ -112,7 +112,7 @@ void main() {
     // ↩️The one reader was `layerKindDisplayName` itself, in
     // layer_label_controls.dart. It asks `LayerKindWords.labelFor` now — the
     // table moved beside the other names the models own, because the
-    // shortcut list composes 「레이어 추가: 애니메이션」 in a GIVEN language
+    // shortcut list composes 「새 레이어: 애니메이션」 in a GIVEN language
     // and cannot import a timeline widget's file for a word (I-40,
     // 2026-10-08). Still one reader, and the function is still the door
     // every surface uses.
