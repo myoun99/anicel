@@ -68,6 +68,20 @@ void main() {
     );
   });
 
+  test('a quarter turn lays its steps exactly — the one table\'s, never the '
+      'library\'s 6e-17 (a-point-turned-by-an-angle-is-spelled-in-many-'
+      'places)', () {
+    for (final (turn, along, down) in [
+      (90.0, const ui.Offset(0, 1), const ui.Offset(-1, 0)),
+      (180.0, const ui.Offset(-1, 0), const ui.Offset(0, -1)),
+      (270.0, const ui.Offset(0, -1), const ui.Offset(1, 0)),
+    ]) {
+      final frame = frameOf(turn: turn);
+      expect(frame.xStep, along, reason: 'along the lines, turned $turn');
+      expect(frame.yStep, down, reason: 'down them, turned $turn');
+    }
+  });
+
   test('🚨a point of the canvas is read back where the frame laid it — a '
       'travel too — turned, leaned and mirrored', () {
     final frame = frameOf(turn: 33, lean: -20, flipped: true);
