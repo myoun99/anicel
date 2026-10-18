@@ -618,13 +618,14 @@ void main() {
   group('F-287 — a step through a blend that is not in place is composed '
       'apart, and lays the bytes the clip did', () {
     const multiplied = LayerBlendMode.multiply;
+    // The user's: two rows in multiply, a normal row drawn on above.
+    final usersStack = <CompositeNode<CanvasStackRow>>[
+      row('below', blendMode: multiplied),
+      row('aside', blendMode: multiplied),
+      activeRow,
+    ];
     final stacks = <String, List<CompositeNode<CanvasStackRow>>>{
-      // The user's: two rows in multiply, a normal row drawn on above.
-      'two rows in multiply under the live row': [
-        row('below', blendMode: multiplied),
-        row('aside', blendMode: multiplied),
-        activeRow,
-      ],
+      'two rows in multiply under the live row': usersStack,
       'the live row itself in screen': [
         row('below'),
         const CompositeLeaf<CanvasStackRow>(
@@ -743,7 +744,7 @@ void main() {
       final made = await stroke(
         tester,
         viewport: CanvasViewport(zoom: 2),
-        nodes: stacks['two rows in multiply under the live row']!,
+        nodes: usersStack,
         painters: strokeIn(TileCoord(x: 3, y: 3)),
       );
       expect(
