@@ -60,6 +60,60 @@ void main() {
     expect(find.byKey(const ValueKey<String>('flyout-item-a')), findsNothing);
   });
 
+  // F-391: a list edited while open is as tall as the rows it opens with —
+  // which is all the list asks of its height: whether to open upward.
+  testWidgets('a list taller than the room under its button opens above it '
+      '— a live list counted by its rows', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(400, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final rows = ValueNotifier<int>(10);
+    addTearDown(rows.dispose);
+    const button = ValueKey<String>('flyout-under-test');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                left: 20,
+                // Room under it for a few rows, not for ten.
+                bottom: 150,
+                child: PanelFlyoutButton(
+                  key: button,
+                  label: 'Test',
+                  entriesBuilder: () => [
+                    PanelFlyoutLiveRows(
+                      keyValue: 'flyout-live',
+                      listenable: rows,
+                      rows: () => [
+                        for (var row = 0; row < rows.value; row += 1)
+                          PanelFlyoutItem(
+                            keyValue: 'flyout-live-$row',
+                            label: 'Row $row',
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(button));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('flyout-live-9')))
+          .bottom,
+      lessThanOrEqualTo(tester.getRect(find.byKey(button)).top),
+    );
+  });
+
   testWidgets('a swatch row keeps ITS OWN colour where a glyph would be '
       'tinted — a list may ink a symbol, never a colour it is naming', (
     tester,

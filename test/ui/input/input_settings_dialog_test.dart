@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart'
     show DragVerbClaim;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -244,6 +245,10 @@ void main() {
     bool canPress(WidgetTester tester, Finder command) =>
         tester.widget<AppIconButtonFace>(command).onPressed != null;
 
+    Color? glyphOf(WidgetTester tester, Finder command) => tester
+        .widget<Icon>(find.descendant(of: command, matching: find.byType(Icon)))
+        .color;
+
     testWidgets('the button writes the list, 800 and 1600 at its end', (
       tester,
     ) async {
@@ -306,6 +311,25 @@ void main() {
         reason: 'in order, not at the end',
       );
       expect(canPress(tester, add), isFalse, reason: 'once');
+      expect(
+        glyphOf(tester, add),
+        AppColors.addGlyph(enabled: false),
+        reason: 'and dim, where it stands',
+      );
+    });
+
+    testWidgets('a drag on the number to put in stops where a view can '
+        'stand', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+
+      await tester.drag(toPutIn, const Offset(-300, 0));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(of: toPutIn, matching: find.text('10%')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('a number no view stands on is put in as the nearest one a '
@@ -332,6 +356,11 @@ void main() {
       await open(tester);
 
       expect(canPress(tester, remove('100')), isFalse);
+      expect(
+        glyphOf(tester, remove('100')),
+        AppColors.deleteGlyph(enabled: false),
+        reason: 'dim, where every row\'s − stands',
+      );
     });
   });
 

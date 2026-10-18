@@ -87,6 +87,18 @@ void main() {
     expect(viewOf(tester).rotationDegrees, 0);
   });
 
+  // F-391: the keys press the pill's ⟲ / ⟳ step, each its own way.
+  testWidgets('⟲ and ⟳, by key, turn the way their buttons do', (
+    tester,
+  ) async {
+    await pumpEditor(tester);
+
+    await pressKeyOf(tester, EditorActionIds.canvasRotateCcw);
+    expect(viewOf(tester).rotationDegrees, -15);
+    await pressKeyOf(tester, EditorActionIds.canvasRotateCw);
+    expect(viewOf(tester).rotationDegrees, 0);
+  });
+
   testWidgets('fit and 1:1, by key, land where their buttons land', (
     tester,
   ) async {
