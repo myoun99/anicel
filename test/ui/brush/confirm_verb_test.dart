@@ -140,6 +140,30 @@ void main() {
     expect(applied, 0);
   });
 
+  test("a viewer's trace is heard by the doors that show 확정 (F-380)", () async {
+    final viewer = CanvasSelectionCommands();
+    final withAViewer = ConfirmVerb(
+      selection: selection,
+      traces: CanvasTraces([selection, viewer]),
+      text: CelTextCommands(),
+      lastStroke: lastStroke,
+      tool: tool,
+      transformOptions: options,
+      canvasAdjust: () => adjust,
+      landCanvasAdjust: () {},
+    );
+    // A channel tells on a microtask: what the canvas's had on its way is
+    // told before anything is listened for.
+    await Future<void>.delayed(Duration.zero);
+    var told = false;
+    withAViewer.changes.addListener(() => told = true);
+
+    viewer.addPolygonPoint(CanvasPoint(x: 0, y: 0));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(told, isTrue);
+  });
+
   test('🚨a text in hand is what a confirm lets go of — before 적용, before '
       'the last stroke: neither is laid down under it', () {
     final text = CelTextCommands();
