@@ -164,6 +164,22 @@ void main() {
       isNull,
       reason: 'the view\'s row runs off the settings list',
     );
+    // And it is shown whole: its first control and its last stand inside
+    // the list's row, not past where the list ends.
+    final row = tester.getRect(
+      find.byKey(const ValueKey<String>('canvas-settings-view-row')),
+    );
+    for (final key in const [
+      'canvas-viewport-rotate-ccw',
+      'canvas-viewport-flip-vertical',
+    ]) {
+      final control = tester.getRect(find.byKey(ValueKey<String>(key)));
+      expect(
+        control.left >= row.left - 0.5 && control.right <= row.right + 0.5,
+        isTrue,
+        reason: '$key ($control) stands past the list\'s row ($row)',
+      );
+    }
     final angle = readout(tester, 'canvas-viewport-rotation-label');
     final widestAngle = '-1$widest$widest.$widest$widest°';
     expect(
