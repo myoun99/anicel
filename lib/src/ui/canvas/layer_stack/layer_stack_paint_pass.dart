@@ -1752,6 +1752,20 @@ class _LayerStackPaintPass {
   /// composite, so a draw that escapes the clip lays a second copy of itself
   /// over them, on every patch and every carry until a full composite —
   /// switching the row — draws it once again.
+  /// 🔬Again on the same app (2026-10-19), on dark paper so that any mode
+  /// could show it, each stroke's dabs counted: a stroke on a NORMAL row
+  /// above both blends or between them — the user's case — laid B in three
+  /// times more, as one on B did, while one on A, or over a single blend,
+  /// did nothing. A notch of the wheel OUT within a level laid it in once
+  /// more, at levels 2, 1 and 0 alike (multiply and screen; the notch back
+  /// in, and a notch out of the fitted view with the whole page in sight,
+  /// changed nothing). Every mode that shows being laid twice did it —
+  /// multiply, color burn, screen, color dodge, overlay, soft and hard
+  /// light, difference, exclusion; darken and lighten laid twice are what
+  /// they are laid once. Composed apart, not one of them moved a pixel. The
+  /// same draws on the engine alone (200+ stacks, the clip and all) never
+  /// escaped, so WHERE the app lets them out is still not known — and
+  /// composing apart does not need to know it.
   /// ⇒ When anything in the stack does not blend in place, the region is
   /// composed APART ([_drawComposedApart]): on nothing, in an image of its
   /// own, and laid onto the carried pixels by a draw that does — what a lost
