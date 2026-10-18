@@ -165,9 +165,16 @@ void main() {
       reason: 'the view\'s row runs off the settings list',
     );
     // And it is shown whole: its first control and its last stand inside
-    // the list's row, not past where the list ends.
-    final row = tester.getRect(
-      find.byKey(const ValueKey<String>('canvas-settings-view-row')),
+    // the room the list gives the row. ⚠️Not merely inside the row — at
+    // this size a row drawn past its room, centred on it, still stands
+    // inside the list's padding (found by mutation).
+    final room = tester.getRect(
+      find
+          .descendant(
+            of: find.byKey(const ValueKey<String>('canvas-settings-view-row')),
+            matching: find.byType(FittedBox),
+          )
+          .first,
     );
     for (final key in const [
       'canvas-viewport-rotate-ccw',
@@ -175,9 +182,9 @@ void main() {
     ]) {
       final control = tester.getRect(find.byKey(ValueKey<String>(key)));
       expect(
-        control.left >= row.left - 0.5 && control.right <= row.right + 0.5,
+        control.left >= room.left - 0.5 && control.right <= room.right + 0.5,
         isTrue,
-        reason: '$key ($control) stands past the list\'s row ($row)',
+        reason: '$key ($control) stands past the row\'s room ($room)',
       );
     }
     final angle = readout(tester, 'canvas-viewport-rotation-label');
