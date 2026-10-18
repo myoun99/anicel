@@ -32,6 +32,35 @@ double turnSin(double degrees) {
       : _quarterSin[quarter];
 }
 
+/// A turn of the plane about its origin, [degrees] clockwise where y runs
+/// down (a canvas's, a viewport's): its cosine and sine from the one table
+/// above, and what it does to a point.
+///
+/// ⛔ONE FORMULA, as there is one table. `x·cos − y·sin, x·sin + y·cos`
+/// and its way back were written out by hand wherever something turned —
+/// the viewport's two conversions, the transform box's affine (three), its
+/// resample fold and its scale solve (two), a text's turn about its cross,
+/// its frame and the way its letters run, the brush cursor's two axes, a
+/// guide's symmetry — and half of them read `math.cos` instead of the
+/// table, so a text turned 90° kept a 6e-17 that the box's affine did not
+/// (board `a-point-turned-by-an-angle-is-spelled-in-many-places`;
+/// `a_point_is_turned_in_one_place_test` holds the rest to it).
+final class PlaneTurn {
+  PlaneTurn(double degrees) : cos = turnCos(degrees), sin = turnSin(degrees);
+
+  const PlaneTurn._(this.cos, this.sin);
+
+  final double cos;
+  final double sin;
+
+  /// The same turn the other way: what takes a turned point back.
+  PlaneTurn get back => PlaneTurn._(cos, -sin);
+
+  /// The point ([x], [y]) turned.
+  ({double x, double y}) apply(double x, double y) =>
+      (x: x * cos - y * sin, y: x * sin + y * cos);
+}
+
 /// 0/1/2/3 for an exact 0/90/180/270, null for anything in between.
 int? _exactQuarterTurn(double degrees) {
   if (degrees % 90 != 0 || !degrees.isFinite) {

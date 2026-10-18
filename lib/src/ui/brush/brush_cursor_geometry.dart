@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
+import '../../core/turn_trig.dart';
 import '../../models/canvas_viewport.dart';
 
 /// The brush cursor's on-screen footprint: the tip ellipse's two HALF-axis
@@ -51,20 +52,17 @@ BrushCursorShape? brushCursorShape({
     return null;
   }
   final radius = size / 2;
-  final radians = angleDegrees * math.pi / 180;
-  final cos = math.cos(radians);
-  final sin = math.sin(radians);
   // Tip space (P15): u runs along the major axis, v across it, and a
   // POSITIVE angle points the major axis visually up-right in y-down
-  // coordinates — hence the negated dy.
-  final major = viewport.canvasDeltaToViewportDelta(
-    dx: radius * cos,
-    dy: -radius * sin,
-  );
+  // coordinates — the other way from a canvas's turn, hence [PlaneTurn.back].
+  final tip = PlaneTurn(angleDegrees).back;
+  final along = tip.apply(radius, 0);
+  final major = viewport.canvasDeltaToViewportDelta(dx: along.x, dy: along.y);
   final minorRadius = radius * roundness.clamp(0.0, 1.0);
+  final across = tip.apply(0, minorRadius);
   final minor = viewport.canvasDeltaToViewportDelta(
-    dx: minorRadius * sin,
-    dy: minorRadius * cos,
+    dx: across.x,
+    dy: across.y,
   );
 
   final shape = BrushCursorShape(

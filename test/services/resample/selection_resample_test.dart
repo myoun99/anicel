@@ -77,8 +77,8 @@ void main() {
           outTop: outTop,
         );
 
-        final cos = affine.cosTheta;
-        final sin = affine.sinTheta;
+        final cos = affine.turn.cos;
+        final sin = affine.turn.sin;
         final invSx = 1 / affine.sx;
         final invSy = 1 / affine.sy;
         for (var i = 0; i < 5; i += 1) {
@@ -113,8 +113,8 @@ void main() {
           pivot: CanvasPoint(x: 8, y: 8),
           rotationDegrees: degrees,
         );
-        expect(affine.cosTheta.abs(), anyOf(0.0, 1.0), reason: '$degrees');
-        expect(affine.sinTheta.abs(), anyOf(0.0, 1.0), reason: '$degrees');
+        expect(affine.turn.cos.abs(), anyOf(0.0, 1.0), reason: '$degrees');
+        expect(affine.turn.sin.abs(), anyOf(0.0, 1.0), reason: '$degrees');
         final folded = selectionAffineResampleTransform(
           affine: affine,
           srcLeft: 4,
@@ -134,7 +134,7 @@ void main() {
         pivot: CanvasPoint(x: 8, y: 8),
         rotationDegrees: 89.999,
       );
-      expect(near.cosTheta, isNot(0.0));
+      expect(near.turn.cos, isNot(0.0));
     });
   });
 

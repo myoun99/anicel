@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/turn_trig.dart';
 import '../core/unit_direction.dart';
 import '../models/canvas_point.dart';
 import '../models/drawing_guide.dart';
@@ -90,16 +91,15 @@ class GuideTransform {
   /// A rotation of [degrees] (clockwise-positive, matching the transform
   /// lanes) about [origin].
   factory GuideTransform.rotation(CanvasPoint origin, double degrees) {
-    final radians = degrees * math.pi / 180;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
+    final turn = PlaneTurn(degrees);
+    final turned = turn.apply(origin.x, origin.y);
     return GuideTransform(
-      cos,
-      sin,
-      -sin,
-      cos,
-      origin.x - cos * origin.x + sin * origin.y,
-      origin.y - sin * origin.x - cos * origin.y,
+      turn.cos,
+      turn.sin,
+      -turn.sin,
+      turn.cos,
+      origin.x - turned.x,
+      origin.y - turned.y,
     );
   }
 

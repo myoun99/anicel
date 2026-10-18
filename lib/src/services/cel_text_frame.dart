@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
+import '../core/turn_trig.dart';
 import '../models/cel_text.dart';
 
 /// THE FRAME A TEXT IS SET IN: its origin at the text's anchor, its x along
@@ -18,20 +19,22 @@ import '../models/cel_text.dart';
 /// another does not.
 class CelTextFrame {
   factory CelTextFrame.of(CelTextContent content) {
-    final radians = content.rotationDegrees * math.pi / 180;
-    final cos = radians == 0 ? 1.0 : math.cos(radians);
-    final sin = radians == 0 ? 0.0 : math.sin(radians);
+    final turn = PlaneTurn(content.rotationDegrees);
     final mirror = content.flipped ? -1.0 : 1.0;
     // As italic letters lean: a point stands further along the lines the
     // HIGHER it stands, and the frame's y runs down.
     final lean = content.skewDegrees == 0
         ? 0.0
         : -math.tan(content.skewDegrees * math.pi / 180);
+    // The two steps leaned and mirrored, then turned as a point is
+    // ([PlaneTurn]).
+    final along = turn.apply(mirror, 0);
+    final down = turn.apply(mirror * lean, 1);
     return CelTextFrame._(
       anchor: ui.Offset(content.anchor.x, content.anchor.y),
-      xStep: ui.Offset(mirror * cos, mirror * sin),
-      yStep: ui.Offset(mirror * lean * cos - sin, mirror * lean * sin + cos),
-      radians: radians,
+      xStep: ui.Offset(along.x, along.y),
+      yStep: ui.Offset(down.x, down.y),
+      radians: content.rotationDegrees * math.pi / 180,
       mirror: mirror,
       lean: lean,
     );

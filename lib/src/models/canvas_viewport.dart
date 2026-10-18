@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/turn_trig.dart';
 import 'canvas_point.dart';
 import 'viewport_point.dart';
 
@@ -318,15 +319,10 @@ class CanvasViewport {
   /// the canvas is turned. The inverse pair shares [_rotatedFlipped] for
   /// the same reason.
   ViewportPoint _rotatedFlippedScaled(double cx, double cy) {
-    final x = flipHorizontal ? -cx : cx;
-    final y = flipVertical ? -cy : cy;
-    final radians = rotationRadians;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-    return ViewportPoint(
-      x: (x * cos - y * sin) * zoom,
-      y: (x * sin + y * cos) * zoom,
-    );
+    final turned = PlaneTurn(
+      rotationDegrees,
+    ).apply(flipHorizontal ? -cx : cx, flipVertical ? -cy : cy);
+    return ViewportPoint(x: turned.x * zoom, y: turned.y * zoom);
   }
 
   /// The rotation and flip half of both viewport→canvas conversions,
@@ -338,14 +334,10 @@ class CanvasViewport {
   /// one of them and not the other is a drag that fights the pointer only
   /// while the canvas is turned.
   CanvasPoint _rotatedFlipped(double ux, double uy) {
-    final radians = rotationRadians;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-    final rx = ux * cos + uy * sin;
-    final ry = -ux * sin + uy * cos;
+    final back = PlaneTurn(rotationDegrees).back.apply(ux, uy);
     return CanvasPoint(
-      x: flipHorizontal ? -rx : rx,
-      y: flipVertical ? -ry : ry,
+      x: flipHorizontal ? -back.x : back.x,
+      y: flipVertical ? -back.y : back.y,
     );
   }
 

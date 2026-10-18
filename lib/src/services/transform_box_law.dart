@@ -115,22 +115,20 @@ abstract final class TransformBoxLaw {
         y: start.pivot.y + anchorLocal.y,
       ),
     );
-    final radians = start.rotationDegrees * math.pi / 180;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
+    final turn = start.turn;
     // v = R(−θ)·(pointer − anchor): the pointer in the box's local frame.
-    final dx = pointer.x - anchorCanvas.x;
-    final dy = pointer.y - anchorCanvas.y;
-    final vx = dx * cos + dy * sin;
-    final vy = -dx * sin + dy * cos;
+    final v = turn.back.apply(
+      pointer.x - anchorCanvas.x,
+      pointer.y - anchorCanvas.y,
+    );
 
     var sx = start.sx;
     var sy = start.sy;
     if (grabbed.x != anchorLocal.x) {
-      sx = vx / (grabbed.x - anchorLocal.x);
+      sx = v.x / (grabbed.x - anchorLocal.x);
     }
     if (grabbed.y != anchorLocal.y) {
-      sy = vy / (grabbed.y - anchorLocal.y);
+      sy = v.y / (grabbed.y - anchorLocal.y);
     }
     if (uniform && grabbed.x != anchorLocal.x && grabbed.y != anchorLocal.y) {
       // One factor for both axes, chosen as the least-squares projection of
@@ -164,7 +162,7 @@ abstract final class TransformBoxLaw {
       // picture to 1%.
       final hx = start.sx * (grabbed.x - anchorLocal.x);
       final hy = start.sy * (grabbed.y - anchorLocal.y);
-      final factor = (vx * hx + vy * hy) / (hx * hx + hy * hy);
+      final factor = (v.x * hx + v.y * hy) / (hx * hx + hy * hy);
       sx = start.sx * factor;
       sy = start.sy * factor;
     }
@@ -172,13 +170,15 @@ abstract final class TransformBoxLaw {
     sy = clampScale(sy);
 
     // Anchor compensation: R·(S_old∘o − S_new∘o) folds into t.
-    final dLocalX = start.sx * anchorLocal.x - sx * anchorLocal.x;
-    final dLocalY = start.sy * anchorLocal.y - sy * anchorLocal.y;
+    final shift = turn.apply(
+      start.sx * anchorLocal.x - sx * anchorLocal.x,
+      start.sy * anchorLocal.y - sy * anchorLocal.y,
+    );
     return start.copyWith(
       sx: sx,
       sy: sy,
-      tx: start.tx + dLocalX * cos - dLocalY * sin,
-      ty: start.ty + dLocalX * sin + dLocalY * cos,
+      tx: start.tx + shift.x,
+      ty: start.ty + shift.y,
     );
   }
 
