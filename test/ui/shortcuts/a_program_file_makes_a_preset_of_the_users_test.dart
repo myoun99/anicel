@@ -5,8 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/services/shortcuts/program_keymap.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/brush/picked_file.dart';
+import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
@@ -147,8 +150,9 @@ void main() {
 
   test('CLIP STUDIO\'s two files — its menus\' keys and its tools\' — '
       'opened together make ONE preset, named for both', () {
-    bindings.importShortcutFiles([menus(), tools()]);
+    final said = bindings.importShortcutFiles([menus(), tools()]);
 
+    expect(said, [AppText.strings.shortcutFileImported(inUse().name, 4, 0)]);
     expect(bindings.userPresets, [inUse()]);
     expect(
       inUse().name,
@@ -178,6 +182,29 @@ void main() {
       expect(keysOf(EditorActionIds.redo, held), ['Shift+Y']);
       expect(keysOf(EditorActionIds.toolBrush, held), ['N', 'V']);
     }
+  });
+
+  test('a key recorded for a brush the list does not show yet rides into '
+      'the new preset — recorded over the layout in use, or one it was '
+      'made with', () {
+    final maru = brushPresetActionId(
+      CanvasTool.brush,
+      const BrushPresetId('maru'),
+    );
+    bindings
+      ..setPreset(ShortcutPreset.tvpaint)
+      ..setActivators(maru, const [SingleActivator(LogicalKeyboardKey.f9)]);
+    expect(bindings.definitionFor(maru), isNull, reason: '⛔fixture premise');
+
+    bindings.importShortcutFiles([
+      configIni(['ctrl z=Undo']),
+    ]);
+    expect(keysOf(maru), ['F9']);
+
+    bindings.importShortcutFiles([
+      configIni(['ctrl z=Undo']),
+    ]);
+    expect(keysOf(maru), ['F9']);
   });
 
   test('two programs\' files opened together make a preset each', () {
