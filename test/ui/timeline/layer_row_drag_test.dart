@@ -1087,6 +1087,40 @@ void main() {
     expect(_layerOf(session, 'b2down').attachedToLayerId, isNull);
   });
 
+  testWidgets('the MIDDLE of a row that takes no drop is still that row: '
+      'past the group, the outermost row lets go where it stands', (
+    tester,
+  ) async {
+    // Rail top-down: Camera, B+1, B, Q. Nothing goes ON the camera row, so
+    // its middle hands the drag back to the gap — with the pointer still
+    // in the camera's row, past B's group. ↩️Handed no row there, the gap
+    // read the closed interval and kept B+1 in its group.
+    await _pump(
+      tester,
+      project: _stackProject([
+        Layer(id: const LayerId('q'), name: 'Q', frames: const []),
+        Layer(id: const LayerId('b'), name: 'B', frames: const []),
+        Layer(
+          id: const LayerId('bup'),
+          name: 'B+1',
+          frames: const [],
+          attachedToLayerId: const LayerId('b'),
+        ),
+      ]),
+    );
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('bup')).dx;
+
+    final gesture = await lift(tester, 'bup');
+    await pointInto(tester, gesture, 'cam', fraction: 0.5, dx: dx);
+    expect(caretBefore('bup'), findsOneWidget, reason: 'its own edge');
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['q', 'b', 'bup']);
+    expect(_layerOf(session, 'bup').attachedToLayerId, isNull);
+  });
+
   testWidgets('🚨a row riding the conte, carried past its group, stands at '
       'the group\'s edge wherever past it the pointer is (결정 6)', (
     tester,
