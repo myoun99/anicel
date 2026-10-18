@@ -337,4 +337,56 @@ void main() {
     );
     await drain(tester);
   });
+
+  testWidgets('another SE row\'s tag under the playhead is not this row\'s — '
+      'with no block of its own the row still stands the shot', (
+    tester,
+  ) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    final cut = s.requireActiveCut;
+    final tagged = s.activeTrack.seLayers.first;
+    final bare = s.activeTrack.seLayers.last;
+    s.selectLayer(tagged.id);
+    s.selectFrameIndex(0);
+    s.seEntries.createSeEntryAtCurrentFrame(name: '쿵', seName: 'A');
+    final panned = CameraPose(
+      center: CanvasPoint(
+        x: cut.canvasSize.width / 2 + 300,
+        y: cut.canvasSize.height / 2,
+      ),
+    );
+    s.cutCommandCoordinator.setCutCameraKeyframe(
+      cutId: cut.id,
+      frameIndex: 0,
+      pose: panned,
+    );
+    s.selectLayer(bare.id);
+    s.standOnRow(LaneRowAddress(bare.id, 'position'));
+    await pumpArea(tester, s);
+    expect(
+      [
+        for (final tag in s.seEntries.seNameTagsForCutFrame(
+          s.requireActiveCut,
+          0,
+        ))
+          tag.layerId,
+      ],
+      [tagged.id.value],
+      reason: '⛔premise: the one tag under the playhead is the other row\'s',
+    );
+
+    final shot = [
+      for (final corner in cameraFrameCornersInCanvas(
+        pose: panned,
+        cameraFrameSize: s.camera.cameraFrameSize,
+      ))
+        CanvasPoint(x: corner.dx, y: corner.dy),
+    ];
+    expectCorners(
+      boxOf(tester).corners,
+      shot,
+      'the stand-in is where this row\'s own tag would stand',
+    );
+    await drain(tester);
+  });
 }
