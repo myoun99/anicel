@@ -78,6 +78,7 @@ Widget floorPillHarness({
   CanvasEdgePill? leftPill,
   EdgeInsets floorCover = EdgeInsets.zero,
   CanvasFloorBand? floorLeftRailBand,
+  String? documentName,
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
@@ -87,6 +88,7 @@ Widget floorPillHarness({
     floorCover: floorCover,
     floorLeftRailBand: floorLeftRailBand,
     leftPill: leftPill,
+    documentName: documentName,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
     unframedFit: unframedFit,
@@ -475,6 +477,31 @@ void main() {
     // A short rail panel: its band ends far above the left pill, which
     // stands in the middle of its room.
     const above = (top: 0.0, bottom: 120.0);
+
+    testWidgets('a left pill stands above a file name on the same edge, '
+        'never over it', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1000, 600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: true,
+          documentName: 'cut_012.tvpp',
+          leftPill: const CanvasEdgePill(
+            width: 28,
+            child: SizedBox(width: 28, height: 600),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final name = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-document-name')),
+      );
+      expect(
+        tester.getRect(leftCapsule).bottom,
+        lessThanOrEqualTo(name.top - 6 + 0.01),
+      );
+    });
 
     testWidgets('F-346: a rail that is not beside the left pill leaves it on '
         'the box\'s own left edge, so Fit pays the rail or the pill, '

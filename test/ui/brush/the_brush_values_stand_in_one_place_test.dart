@@ -16,11 +16,15 @@ import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
+import '../../helpers/words_cut_off.dart';
 
 const pill = ValueKey<String>('canvas-brush-pill');
 const row = 'menu-window-brush-values-on-strip';
@@ -198,5 +202,97 @@ void main() {
 
     await tapPanelsDrawerRow(tester, 'menu-window-reset-layout');
     expectInThePill('the reset');
+  });
+
+  testWidgets('the pill as it was drawn (시안 판 6): 28 across, every part 20 '
+      'across and centred in it, the two bars one length — each its number '
+      'alone — and the blend as long as their tracks, written down it', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    final box = tester.getRect(find.byKey(pill));
+    expect(box.width, 28);
+    Rect part(String key) => tester.getRect(inPill(key));
+    for (final key in [
+      ...parts,
+      'brush-pill-size-bar',
+      'brush-pill-opacity-bar',
+    ]) {
+      expect(part(key).width, 20, reason: '$key across');
+      expect(
+        part(key).center.dx,
+        closeTo(box.center.dx, 0.01),
+        reason: '$key centred',
+      );
+    }
+    final size = part('brush-pill-size-bar');
+    expect(part('brush-pill-opacity-bar').height, size.height);
+    for (final (bar, name) in [
+      ('brush-pill-size-bar', AppText.strings.brSize),
+      ('brush-pill-opacity-bar', AppText.strings.brOpacity),
+    ]) {
+      expect(
+        find.descendant(of: inPill(bar), matching: find.text(name)),
+        findsNothing,
+        reason: '$bar: the number alone (I-34-Q3 「숫자만」)',
+      );
+    }
+    expect(
+      part('brush-tool-blend-menu-button').height,
+      size.height - FieldSlider.handsReach,
+    );
+    expect(
+      find.descendant(
+        of: inPill('brush-tool-blend-menu-button'),
+        matching: find.byType(VerticalWritingText),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: find.byKey(pill), matching: find.byType(Divider)),
+      findsOneWidget,
+      reason: 'the rule between the blend and the bars lies across',
+    );
+
+    // The eraser's blend is fixed — its box stands as the button does.
+    await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
+    await tester.pumpAndSettle();
+    final locked = inPill('brush-tool-blend-locked');
+    expect(tester.getRect(locked).width, 20);
+    expect(
+      find.descendant(of: locked, matching: find.byType(VerticalWritingText)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the pill\'s bars write their widest numbers whole — at twice '
+      'the OS text too: the two one length, the longer one\'s', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    await tester.tap(
+      find.descendant(
+        of: inPill('brush-pill-size-bar'),
+        matching: find.byKey(const ValueKey<String>('field-slider-type')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('field-slider-type-input')),
+      '2000',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    for (final bar in ['brush-pill-size-bar', 'brush-pill-opacity-bar']) {
+      expect(wordsCutOff(inPill(bar)), isEmpty, reason: bar);
+      expect(wordsCutAcross(inPill(bar)), isEmpty, reason: bar);
+    }
   });
 }

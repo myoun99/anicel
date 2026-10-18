@@ -42,6 +42,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerTypeButton;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -449,6 +450,17 @@ void main() {
     expect(state.debugSpecs.cels.label, key);
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
     expect(shown(tester, 'export-cels-label-picker'), exportCelLabelText(key));
+    final label = find.byKey(
+      const ValueKey<String>('export-cels-label-picker'),
+    );
+    expect(
+      tester
+          .widget<Text>(find.descendant(of: label, matching: find.byType(Text)))
+          .style
+          ?.color,
+      timelineTextOnColor(layerMarkColor(state.debugSpecs.cels.label)),
+      reason: 'the word on its colour',
+    );
     expect(
       deltaOf(session)?.skippedCels,
       {ref('d', 'y1')},

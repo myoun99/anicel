@@ -114,7 +114,10 @@ void main() {
     expect((minus.left, plus.right), (bar.left, bar.right));
     expect((minus.width, plus.width), (10.0, 10.0));
     expect(pen.top, greaterThan(plus.bottom));
-    expect((pen.left, pen.right, pen.bottom), (bar.left, bar.right, 200.0));
+    expect(
+      (pen.left, pen.right, pen.bottom),
+      (bar.left, bar.right, bar.bottom),
+    );
     // The number at the foot of its track, where a lying bar writes it at
     // its right end.
     expect(
@@ -136,6 +139,52 @@ void main() {
     final editable = tester.getRect(find.byType(EditableText));
     expect(editable.height, greaterThan(editable.width));
     expect(editable.width, lessThanOrEqualTo(20));
+  });
+
+  testWidgets('a stood bar\'s ± stand inside their cells (유저 2026-10-18: '
+      '「더 작게해도되니까 안에 들어가도록하자」)', (tester) async {
+    await pumpStood(tester, label: 'Size');
+    for (final cell in [down, up]) {
+      final glyph = tester.getRect(
+        find.descendant(of: cell, matching: find.byType(Icon)),
+      );
+      final room = tester.getRect(cell);
+      expect(glyph.width, lessThan(room.width));
+      expect(room.contains(glyph.topLeft), isTrue);
+      expect(
+        room.contains(glyph.bottomRight - const Offset(0.01, 0.01)),
+        isTrue,
+      );
+    }
+  });
+
+  testWidgets('a name a bar does not write takes no room in it', (
+    tester,
+  ) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (built) {
+            context = built;
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+    double narrowest(String label) => FieldSlider(
+      value: 0.5,
+      min: 0,
+      max: 1,
+      label: label,
+      unit: '%',
+      height: 20,
+      axis: Axis.vertical,
+      nameInside: false,
+      onChanged: (_) {},
+    ).narrowestIn(context);
+
+    expect(narrowest('A much longer name than the number'), narrowest('S'));
   });
 
   testWidgets('a DISABLED bar keeps the slot — the row must not resize when '

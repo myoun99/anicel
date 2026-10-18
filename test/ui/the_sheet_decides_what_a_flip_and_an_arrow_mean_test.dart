@@ -89,22 +89,30 @@ void main() {
     // The fingers land where the CANVAS answers a touch. Its centre sits
     // under the turned X-sheet on this layout — measured: not hit-testable
     // there, so three fingers on it were the sheet's gesture and the flip
-    // never locked, on the old code and the new alike.
+    // never locked, on the old code and the new alike. Every one of the
+    // three, not the first alone: a finger on what stands over the canvas
+    // is that thing's, and the canvas hears fewer than three.
     final canvas = find.byType(CanvasViewportGestureLayer).first;
-    final at = [
+    final box = tester.getRect(canvas);
+    List<Alignment> fingersFrom(Alignment first) => [
+      for (var finger = 0; finger < 3; finger += 1)
+        first + Alignment(finger * 20.0 / (box.width / 2), 0),
+    ];
+    final places = [
       Alignment.center,
       const Alignment(-0.6, -0.6),
       const Alignment(0.6, -0.6),
       const Alignment(-0.6, 0.6),
       const Alignment(0.6, 0.6),
-    ].firstWhere(
-      (alignment) => canvas.hitTestable(at: alignment).evaluate().isNotEmpty,
+    ].map(fingersFrom).firstWhere(
+      (three) => three.every(
+        (place) => canvas.hitTestable(at: place).evaluate().isNotEmpty,
+      ),
     );
-    final origin = at.withinRect(tester.getRect(canvas));
     final fingers = <TestGesture>[
-      for (var finger = 0; finger < 3; finger += 1)
+      for (final place in places)
         await tester.startGesture(
-          origin + Offset(finger * 20.0, 0),
+          place.withinRect(box),
           kind: PointerDeviceKind.touch,
         ),
     ];

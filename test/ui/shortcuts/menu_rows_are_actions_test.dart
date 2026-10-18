@@ -104,7 +104,7 @@ void main() {
           EditorActionIds.fileExport,
         ],
       );
-      expect(menuActions, hasLength(30));
+      expect(menuActions, hasLength(31));
       expect(
         editorActionDefinitions.last.shelf,
         ShortcutShelf.panels,
@@ -298,8 +298,8 @@ void main() {
   });
 
   group('the shortcut window', () {
-    testWidgets('lists the panels under ONE heading: the three of the '
-        'registry, then the workspace\'s', (tester) async {
+    testWidgets('lists the panels under ONE heading: the registry\'s, then '
+        'the workspace\'s', (tester) async {
       final bindings = EditorShortcutBindings()
         ..setPanelActions(
           panelActionsOf(const [
@@ -323,6 +323,7 @@ void main() {
       for (final id in [
         EditorActionIds.toolRailOnRight,
         EditorActionIds.regionOnTop,
+        EditorActionIds.brushValuesOnStrip,
         EditorActionIds.resetLayout,
         'panel-timesheet',
       ]) {
