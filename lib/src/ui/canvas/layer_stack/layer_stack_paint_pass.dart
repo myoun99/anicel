@@ -1765,7 +1765,8 @@ class _LayerStackPaintPass {
   void _recomposeOverCarried(Canvas into, List<Rect> region) {
     // ⛔NO REGION, NO RECOMPOSE: a carry into a rect inside the one it had
     // — a zoom in on the same level — with nothing live changed has no
-    // band, and the carried pixels are the whole buffer.
+    // band, a patch whose change lies wholly outside the buffer has no part
+    // in it, and the carried pixels are the whole buffer.
     if (region.isEmpty) {
       return;
     }
@@ -1862,6 +1863,14 @@ class _LayerStackPaintPass {
   /// dirty rect is grown to whole buffer pixels first — a level pixel the
   /// stroke touched by a third would otherwise be kept as it was, its
   /// centre outside the clip.
+  ///
+  /// ⛔HELD TO [rect], as the carry's bands are: the dirty rect is the live
+  /// tiles a step changed, and those reach past the view — by up to a tile
+  /// for a dab at its edge, by the whole canvas for a fill or an undo made
+  /// zoomed in. A region composed apart (F-287) is an image of what it is
+  /// given, every pixel of which outside [rect] would be thrown away — and
+  /// on a large canvas one past the side the buffer itself is capped at
+  /// ([_LayerStackPainter._maxBufferSide]).
   void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
     into.drawImageRect(
       base,
@@ -1871,7 +1880,8 @@ class _LayerStackPaintPass {
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    _recomposeOverCarried(into, [wholeLevelPixelsOutward(dirty, _level)]);
+    final part = wholeLevelPixelsOutward(dirty, _level).intersect(rect);
+    _recomposeOverCarried(into, [if (!part.isEmpty) part]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]

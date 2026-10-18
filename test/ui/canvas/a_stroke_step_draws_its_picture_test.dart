@@ -733,6 +733,27 @@ void main() {
       );
     });
 
+    // A region composed apart is an image of what it is given, and a step's
+    // dirty rect is the live tiles it changed — which reach past the view.
+    testWidgets('a step that changes only what lies past the view composes '
+        'nothing apart: the region is held to the buffer', (tester) async {
+      useView(tester);
+      // At 200% the view holds the canvas's top-left quarter; the stroke
+      // is in its bottom-right tile, a tile away from it.
+      final made = await stroke(
+        tester,
+        viewport: CanvasViewport(zoom: 2),
+        nodes: stacks['two rows in multiply under the live row']!,
+        painters: strokeIn(TileCoord(x: 3, y: 3)),
+      );
+      expect(
+        made.patched,
+        greaterThanOrEqualTo(steps),
+        reason: 'the steps did not patch, so nothing here was asked',
+      );
+      expect(made.apart, 0, reason: 'a step composed apart past the buffer');
+    });
+
     testWidgets('…and a stack that blends in place stands on its clip, its '
         'steps still drawn as their pictures', (tester) async {
       useView(tester);
