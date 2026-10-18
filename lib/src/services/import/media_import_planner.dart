@@ -263,7 +263,7 @@ SequenceLayerImportPlan planSequenceLayer({
   List<int>? sourceFrameIndices,
 
   /// Each position's cel NAME, when the source names its pictures — a
-  /// numbered run's cel labels, as the cut folder names its cels
+  /// numbered run's numbers (`pictureRunOf`), or the cut folder's cel labels
   /// ([planCutFolderImport]). A folded run of duplicates takes its first
   /// position's name.
   List<String>? frameNames,

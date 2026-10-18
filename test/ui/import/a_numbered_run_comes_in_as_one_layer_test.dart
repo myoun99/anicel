@@ -5,9 +5,11 @@
 // 통일」 · I-76-Q1 (10-08): 「창의 그 파일 줄에서 고른다(기본: 함께)」 —
 // 「A1-A3 이렇게 한 레이어의 세 프레임으로 인식하는 느낌」.
 //
-// The run is read with the cut folder's grammar, and it lands the way an
-// animated picture does: one layer, a picture the one before it showed
-// folding into that one's exposure.
+// F-392 (10-17): 「그냥 A면 이라는거 없이 숫자면 연속되도록」 · 「중간에
+// 해상도 다른거만나면 항목으로서 독립시키도록」 — a run is the pictures named
+// the same but for their last number (`pictureRunOf`), as far as they hold
+// one size, and it lands the way an animated picture does: one layer, a
+// picture the one before it showed folding into that one's exposure.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -50,10 +52,27 @@ void main() {
         };
       }))!;
 
+  /// What a cell reads — a button's word, or the dash of a question that
+  /// does not apply.
+  String cellText(WidgetTester tester, String column, String path) {
+    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
+    final widget = tester.widget(cell);
+    if (widget is Text) {
+      return widget.data!;
+    }
+    return tester
+        .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
+        .data!;
+  }
+
+  /// The window on [paths], once the pictures each of [runs] runs with are
+  /// measured — every picked path, unless the test names fewer: a run is
+  /// known when its sizes are (F-392).
   Future<EditorSessionManager> open(
     WidgetTester tester,
-    List<String> paths,
-  ) async {
+    List<String> paths, {
+    List<String>? runs,
+  }) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -67,20 +86,19 @@ void main() {
       ),
     );
     await tester.pump();
+    expect(
+      await settleAsync(
+        tester,
+        () => (runs ?? paths).every(
+          (path) => cellText(tester, 'option', path) != '—',
+        ),
+        attempts: 200,
+        step: const Duration(milliseconds: 50),
+      ),
+      isTrue,
+      reason: '⛔fixture: each run is measured',
+    );
     return s;
-  }
-
-  /// What a cell reads — a button's word, or the dash of a question that
-  /// does not apply.
-  String cellText(WidgetTester tester, String column, String path) {
-    final cell = find.byKey(ValueKey<String>('import-cell-$column-$path'));
-    final widget = tester.widget(cell);
-    if (widget is Text) {
-      return widget.data!;
-    }
-    return tester
-        .widget<Text>(find.descendant(of: cell, matching: find.byType(Text)))
-        .data!;
   }
 
   /// Places what the window holds, and answers the layers that brought —
@@ -109,13 +127,88 @@ void main() {
   testWidgets('the row says the run it would bring, and a picture alone in '
       'its symbol says nothing', (tester) async {
     final files = await writeFolder(tester);
-    await open(tester, [files['A1']!, files['B1']!]);
+    await open(
+      tester,
+      [files['A1']!, files['B1']!],
+      runs: [files['A1']!],
+    );
 
     expect(
       cellText(tester, 'option', files['A1']!),
       AppText.strings.imRunSpan('A1', 'A3', 3),
     );
     expect(cellText(tester, 'option', files['B1']!), '—');
+  });
+
+  testWidgets('numbers alone run too: `1` · `2` come in as one layer named by '
+      'their folder, its frames by their numbers (F-392)', (tester) async {
+    final files = (await tester.runAsync(() async {
+      final folder = await Directory(
+        '${tempDir.path}${Platform.pathSeparator}walk',
+      ).create();
+      return [
+        await writeSolidPng(folder, '1.png', rgba: 0x112233FF),
+        await writeSolidPng(folder, '2.png', rgba: 0x445566FF),
+      ];
+    }))!;
+    final s = await open(tester, [files.first]);
+    expect(
+      cellText(tester, 'option', files.first),
+      AppText.strings.imRunSpan('1', '2', 2),
+    );
+
+    final added = await place(tester, s);
+
+    expect(added, hasLength(1));
+    expect(added.single.name, 'walk');
+    expect([for (final frame in added.single.frames) frame.name], ['1', '2']);
+  });
+
+  testWidgets('🚨a picture of another size stops the run: each side of it '
+      'comes in as its own layer, and it alone (F-392: 「중간에 해상도 '
+      '다른거만나면 항목으로서 독립시키도록」)', (tester) async {
+    final files = (await tester.runAsync(() async {
+      return {
+        for (final (index, name) in ['A1', 'A2', 'A3', 'A4', 'A5'].indexed)
+          name: await writeSolidPng(
+            tempDir,
+            '$name.png',
+            width: name == 'A3' ? 16 : 8,
+            rgba: 0x10203000 + index * 0x10 + 0xF,
+          ),
+      };
+    }))!;
+    final s = await open(
+      tester,
+      [files['A1']!, files['A3']!, files['A5']!],
+      runs: [files['A1']!, files['A5']!],
+    );
+    expect(
+      cellText(tester, 'option', files['A1']!),
+      AppText.strings.imRunSpan('A1', 'A2', 2),
+    );
+    expect(
+      cellText(tester, 'option', files['A5']!),
+      AppText.strings.imRunSpan('A4', 'A5', 2),
+    );
+    expect(cellText(tester, 'option', files['A3']!), '—');
+
+    final added = await place(tester, s);
+
+    expect(
+      [for (final layer in added) (layer.name, layer.frames.length)],
+      unorderedEquals([('A', 2), ('A', 2), ('A3', 1)]),
+    );
+    expect(
+      [
+        for (final layer in added)
+          if (layer.name == 'A') [for (final frame in layer.frames) frame.name],
+      ],
+      unorderedEquals([
+        ['1', '2'],
+        ['4', '5'],
+      ]),
+    );
   });
 
   testWidgets('a run\'s word is never cut — its column is as wide as the '

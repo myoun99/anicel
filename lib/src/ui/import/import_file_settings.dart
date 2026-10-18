@@ -130,8 +130,8 @@ class ImportFileSettings {
   /// Which pictures of a NUMBERED RUN come in — the run's IN/OUT, picked on
   /// the preview's transport as a movie's span is, the run's pictures its
   /// pages; [runOut] null means to the run's last picture. Read only of a
-  /// picture that is part of a run (`celRunOf`). Two or more come in as one
-  /// layer's frames; one comes in alone.
+  /// picture that is part of a run (`pictureRunOf`). Two or more come in as
+  /// one layer's frames; one comes in alone.
   ///
   /// 🗣️F-282 (유저 2026-10-09, 시안 ③ · ④): 「연번은 들어갈 범위만(A2–A3) —
   /// 미리보기의 IN/OUT, 동영상과 같은 법」 · 한 장만 = IN 과 OUT 이 같은 장.
@@ -365,7 +365,7 @@ ImportFileSettings resolvedImportSettings(
   ImportLayerSpot? spot,
 
   /// How many pictures the numbered run [settings]' file is part of holds
-  /// (`celRunOf`) — null for a file in none.
+  /// (`pictureRunOf`) — null for a file in none.
   int? runLength,
 }) {
   final psd = importPsdLocked(spot) ? PsdPlaceMode.merge : settings.psd;

@@ -400,12 +400,12 @@ class ProjectImportDoors {
     return true;
   }
 
-  /// A NUMBERED RUN of pictures — `A1` · `A2` · `A3` … of one folder
-  /// (`celRunOf`) — as ONE layer's frames, the way an animated picture comes
-  /// in ([planSequenceLayer]): a picture the one before it already showed
-  /// folds into that one's exposure. [files] are in the run's order, each
-  /// with its cel's label, which names its frame as the cut folder names
-  /// its cels; the layer is [name].
+  /// A NUMBERED RUN of pictures — `1` · `2` · `3`, `A1` · `A2` … of one
+  /// folder (`pictureRunOf`) — as ONE layer's frames, the way an animated
+  /// picture comes in ([planSequenceLayer]): a picture the one before it
+  /// already showed folds into that one's exposure. [files] are in the
+  /// run's order, each with its number, which names its frame; the layer is
+  /// [name].
   ///
   /// 🗣️I-76 (유저 2026-10-06 · I-76-Q1 10-08): 「A1-A3 이렇게 한 레이어의 세
   /// 프레임으로 인식하는 느낌」.

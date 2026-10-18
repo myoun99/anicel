@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../text/app_strings.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/import/import_warning.dart';
+import '../../models/import/picture_run.dart';
 import '../../services/import/cut_folder_listing.dart';
 import '../../models/canvas_size.dart';
 import '../../models/media_asset.dart';
@@ -202,7 +203,7 @@ final class _RunSpan {
 /// row's IN/OUT keep, and the two answers the door reads — where the layer
 /// goes and how it fits. Rows that hand it the same bring one layer.
 typedef _RunLayer = ({
-  ParsedCelLayer run,
+  PictureRun run,
   int first,
   int last,
   ImportDestination into,
@@ -287,7 +288,7 @@ class _ImportDialogState extends State<ImportDialog> {
       hasActiveCut: widget.session.activeCutOrNull != null,
       lasting: _lasting(path),
       spot: widget.spot,
-      runLength: _runOf(path)?.cells.length,
+      runLength: _runOf(path)?.pictures.length,
     ).copyWith(intoPool: _registersOnly(path));
     // A file the pool already holds has answered the pool's question: the
     // window does not ask it again, and no answer pressed here stands in
@@ -341,58 +342,94 @@ class _ImportDialogState extends State<ImportDialog> {
   /// changed under a press in another.
   ImportFileSettings get _seed => seedImportSettings(spot: widget.spot);
 
-  /// The folders the picked pictures live in, each read ONCE, as the
-  /// preview reads a dropped folder ([_folderEntries]) — under the parse
-  /// config they were read with ([_runConfig]).
-  final Map<String, CutFolderParseResult?> _runFolders = {};
-  CutFolderParseConfig? _runConfig;
+  /// The file names of each folder a picked picture lives in, read ONCE.
+  final Map<String, List<String>?> _folderNames = {};
 
-  /// The numbered run [path] is part of (`celRunOf`), when its row is
-  /// placed — null for a file in none.
-  ///
-  /// 🗣️I-76 (유저 2026-10-06): 「A1 임포트하면 A2,A3같은 파일들 인식해서」 —
-  /// the folder is read with the cut folder's own grammar and knobs
-  /// ([_parseConfig]), so a run is what the folder import would call that
-  /// picture's layer.
-  ParsedCelLayer? _runOf(String path) {
-    if (!_placing(path) ||
-        mediaAssetKindForPath(path) != MediaAssetKind.image) {
+  /// Each listed picture's run by its names alone ([pictureRunOf]), by its
+  /// pool key — before a size has been asked of it.
+  final Map<String, PictureRun?> _namedRuns = {};
+
+  /// Each listed picture's run once every picture of it is measured — by
+  /// its pool key, as [_namedRuns] — which nothing changes after.
+  final Map<String, PictureRun?> _measuredRuns = {};
+
+  /// [path]'s run as its folder names it ([pictureRunOf]) — null for a file
+  /// that is no picture, or runs with none.
+  PictureRun? _namedRunOf(String path) {
+    if (mediaAssetKindForPath(path) != MediaAssetKind.image) {
       return null;
     }
-    if (_runConfig != _parseConfig) {
-      _runFolders.clear();
-      _runConfig = _parseConfig;
+    return _namedRuns.putIfAbsent(normalizedMediaPath(path), () {
+      final folder = File(path).parent.path;
+      final names = _folderNames.putIfAbsent(folder, () {
+        try {
+          return [
+            for (final entry in Directory(folder).listSync())
+              if (entry is File) mediaFileName(entry.path),
+          ];
+        } on FileSystemException {
+          return null;
+        }
+      });
+      return names == null
+          ? null
+          : pictureRunOf(
+              mediaFileName(path),
+              names,
+              folderName: mediaParentFolderName(path),
+            );
+    });
+  }
+
+  /// The numbered run [path] is part of, when its row is placed — null for
+  /// a file in none, and for one whose pictures are still being measured
+  /// ([_probeRun]): the run stops where the size changes ([sameSizeRunOf]).
+  ///
+  /// 🗣️I-76 (유저 2026-10-06): 「A1 임포트하면 A2,A3같은 파일들 인식해서」 ·
+  /// F-392 (10-17): 「그냥 A면 이라는거 없이 숫자면 연속되도록」 · 「중간에
+  /// 해상도 다른거만나면 항목으로서 독립시키도록」.
+  PictureRun? _runOf(String path) {
+    if (!_placing(path)) {
+      return null;
+    }
+    final key = normalizedMediaPath(path);
+    if (_measuredRuns.containsKey(key)) {
+      return _measuredRuns[key];
+    }
+    final named = _namedRunOf(path);
+    if (named == null) {
+      return null;
     }
     final folder = File(path).parent.path;
-    final parsed = _runFolders.putIfAbsent(folder, () {
-      try {
-        return parseCutFolderAt(
-          folder,
-          entries: cutFolderEntriesFrom(folder, Directory(folder).listSync()),
-          config: _parseConfig,
-        );
-      } on FileSystemException {
-        return null;
-      }
-    });
-    return parsed == null ? null : celRunOf(mediaFileName(path), parsed);
+    final sizeKeys = {
+      for (final picture in named.pictures)
+        picture.file: normalizedMediaPath('$folder/${picture.file}'),
+    };
+    if (!sizeKeys.values.every(_pixelSizes.containsKey)) {
+      return null;
+    }
+    return _measuredRuns[key] = sameSizeRunOf(
+      named,
+      mediaFileName(path),
+      (file) => _pixelSizes[sizeKeys[file]],
+    );
   }
 
   /// The pictures of [path]'s run its span keeps — the run's IN/OUT,
   /// picked on the preview ([ImportFileSettings.runIn]) — or null for a
   /// file in none.
-  List<ParsedCel>? _runKeptOf(String path) {
+  List<RunPicture>? _runKeptOf(String path) {
     final run = _runOf(path);
     if (run == null) {
       return null;
     }
-    final span = importRunSpan(_settingsFor(path), run.cells.length);
-    return run.cells.sublist(span.first, span.last + 1);
+    final span = importRunSpan(_settingsFor(path), run.pictures.length);
+    return run.pictures.sublist(span.first, span.last + 1);
   }
 
   /// [path]'s run when its span keeps two pictures or more: they come in as
   /// one layer's frames. One comes in alone ([_placeRun]).
-  ParsedCelLayer? _togetherRunOf(String path) =>
+  PictureRun? _togetherRunOf(String path) =>
       (_runKeptOf(path)?.length ?? 0) > 1 ? _runOf(path) : null;
 
   /// The layer [path]'s row brings of its run ([_RunLayer]) — null for a
@@ -403,7 +440,7 @@ class _ImportDialogState extends State<ImportDialog> {
       return null;
     }
     final settings = _settingsFor(path);
-    final span = importRunSpan(settings, run.cells.length);
+    final span = importRunSpan(settings, run.pictures.length);
     return (
       run: run,
       first: span.first,
@@ -420,15 +457,29 @@ class _ImportDialogState extends State<ImportDialog> {
     final folder = File(path).parent.path;
     return run == null
         ? null
-        : [for (final cel in run.cells) '$folder/${cel.file}'];
+        : [for (final picture in run.pictures) '$folder/${picture.file}'];
   }
 
   /// What the window asks of a file the moment it is listed: whether its
-  /// movie has a sound ([_movieSound]), and its size in pixels
-  /// ([_pixelSizes]).
+  /// movie has a sound ([_movieSound]), its size in pixels ([_pixelSizes]),
+  /// and the sizes of the pictures it runs with ([_probeRun]).
   void _probe(String path) {
     _probeMovieSound(path);
     _readPixelSize(path);
+    _probeRun(path);
+  }
+
+  /// The size of every picture [path] runs with by name ([_namedRunOf]),
+  /// asked in the one line of reads — its run stops where the size changes
+  /// ([_runOf]), and a press of Import waits for them ([_placeFiles]).
+  void _probeRun(String path) {
+    final folder = File(path).parent.path;
+    for (final picture in _namedRunOf(path)?.pictures ?? const <RunPicture>[]) {
+      _readPixelSize(
+        '$folder/${picture.file}',
+        wanted: () => _files.contains(path),
+      );
+    }
   }
 
   /// Whether each MOVIE in the batch has a sound, by its pool key — the
@@ -452,9 +503,10 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
-  /// Each listed file's size at 1:1 once it is read ([readMediaPixelSize])
-  /// — null for one that has none, a sound, or that could not be read. A
-  /// file not here is still waiting its turn (F-375).
+  /// Each listed file's size at 1:1 once it is read ([readMediaPixelSize]),
+  /// and each picture's it runs with ([_probeRun]), by pool key — null for
+  /// one that has none, a sound, or that could not be read. A file not here
+  /// is still waiting its turn (F-375).
   final Map<String, CanvasSize?> _pixelSizes = {};
 
   /// The reads, ONE AT A TIME in the order the files were listed: a
@@ -462,9 +514,14 @@ class _ImportDialogState extends State<ImportDialog> {
   /// at once would hold every file of it together.
   Future<void> _pixelSizeReads = Future<void>.value();
 
-  void _readPixelSize(String path) {
+  /// [path]'s size read in its turn, while [wanted] — while it is listed,
+  /// unless a caller says otherwise.
+  void _readPixelSize(String path, {bool Function()? wanted}) {
+    final key = normalizedMediaPath(path);
     _pixelSizeReads = _pixelSizeReads.then((_) async {
-      if (!mounted || _pixelSizes.containsKey(path) || !_files.contains(path)) {
+      if (!mounted ||
+          _pixelSizes.containsKey(key) ||
+          !(wanted?.call() ?? _files.contains(path))) {
         return;
       }
       final kind = mediaAssetKindForPath(path);
@@ -476,7 +533,7 @@ class _ImportDialogState extends State<ImportDialog> {
               widget.session.projectFile.holdMediaBytes,
             );
       if (mounted) {
-        _pixelSizes[path] = size;
+        _pixelSizes[key] = size;
         _showPixelSizesSoon();
       }
     });
@@ -501,10 +558,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// [path]'s row word for its size: nothing until it is read, a dash for
   /// a file with none.
   String _resolutionOf(String path) {
-    if (!_pixelSizes.containsKey(path)) {
+    final key = normalizedMediaPath(path);
+    if (!_pixelSizes.containsKey(key)) {
       return '';
     }
-    final size = _pixelSizes[path];
+    final size = _pixelSizes[key];
     return size == null ? '—' : pixelSizeLabel(size.width, size.height);
   }
 
@@ -1085,6 +1143,12 @@ class _ImportDialogState extends State<ImportDialog> {
     void Function(double) report,
   ) async {
     final count = paths.length;
+    // A run is what its measured pictures say ([_runOf]), so the press
+    // waits out the reads the rows asked for ([_probeRun]).
+    await _pixelSizeReads;
+    if (!mounted) {
+      return false;
+    }
     // A run two of its own pictures were picked from comes in once when
     // their rows would bring the same layer of it ([_RunLayer]) — the
     // second row is already in. A row that keeps another span, or puts it
@@ -1314,14 +1378,14 @@ class _ImportDialogState extends State<ImportDialog> {
   /// left out.
   Future<bool> _placeRun(
     String path,
-    List<ParsedCel> kept,
+    List<RunPicture> kept,
     _ImportTally tally,
     _FileReport fileReport,
   ) async {
     final folder = File(path).parent.path;
     final files = <({String path, String label})>[];
-    for (final cel in kept) {
-      final file = '$folder/${cel.file}';
+    for (final picture in kept) {
+      final file = '$folder/${picture.file}';
       // Every picture of the run reads before it is placed, the law the
       // picked one already went through ([_readsForPlacement]).
       if (!mounted) {
@@ -1331,7 +1395,7 @@ class _ImportDialogState extends State<ImportDialog> {
           !await _readsForPlacement(file, tally)) {
         continue;
       }
-      files.add((path: file, label: cel.label));
+      files.add((path: file, label: picture.number));
     }
     final settings = _settingsFor(path);
     if (files.length == 1) {
@@ -1339,7 +1403,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     return widget.session.importDoors.importPictureRun(
       files: files,
-      name: _runOf(path)!.symbol,
+      name: _runOf(path)!.name,
       settings: settings,
       spot: widget.spot,
       onRenderProgress: fileReport.rendered,
@@ -1965,17 +2029,15 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 🗣️I-76-Q1: 「「A1–A3 (3장)」 처럼 이어지는 그림의 수가 보이고」 · F-282
   /// 시안 ④: 「연번은 들어갈 범위만(A2–A3)」.
   String? _runSpanWord(String path) {
-    final run = _runOf(path);
     final kept = _runKeptOf(path);
-    if (run == null || kept == null) {
+    if (kept == null) {
       return null;
     }
-    String name(ParsedCel cel) => '${run.symbol}${cel.label}';
     return kept.length == 1
-        ? name(kept.single)
+        ? kept.single.shown
         : AppText.strings.imRunSpan(
-            name(kept.first),
-            name(kept.last),
+            kept.first.shown,
+            kept.last.shown,
             kept.length,
           );
   }
