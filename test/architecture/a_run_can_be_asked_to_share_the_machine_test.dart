@@ -22,4 +22,12 @@ void main() {
       ['test', '--no-pub', 'test/a_test.dart'],
     );
   });
+
+  test('handed a report, it leaves its times there beside the console', () {
+    // 2026-10-18: the times `longestFirst` orders the next run by.
+    expect(
+      flutterTestArguments(['test/a_test.dart'], report: 'r.json'),
+      ['test', '--no-pub', '--file-reporter=json:r.json', 'test/a_test.dart'],
+    );
+  });
 }

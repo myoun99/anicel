@@ -30,6 +30,7 @@ import 'dart:io';
 
 import 'import_graph.dart';
 import 'native_engine_provenance.dart';
+import 'test_seconds.dart';
 
 /// Changing one of these means the graph cannot answer, so we do not ask it.
 ///
@@ -237,9 +238,58 @@ Future<void> main(List<String> args) async {
 
   _report('${present.length} of ${tests.length} test files reach the '
       '${changed.length} changed file(s).');
+  final known = _knownTimes();
+  _report('longest first, by this machine\'s times '
+      '(${present.where(known.containsKey).length} of ${present.length} '
+      'files timed before).');
   exit(
-    await _runTests(present, listOnly: listOnly, concurrency: concurrency),
+    await _runTests(
+      longestFirst(present, known),
+      listOnly: listOnly,
+      concurrency: concurrency,
+    ),
   );
+}
+
+/// The file [machineCacheFolder] keeps the times in.
+File? _timesFile() {
+  final folder = machineCacheFolder(Platform.environment);
+  return folder == null ? null : File('$folder/test_times.tsv');
+}
+
+Map<String, int> _knownTimes() {
+  try {
+    final file = _timesFile();
+    return file != null && file.existsSync()
+        ? readTimes(file.readAsStringSync())
+        : const {};
+  } on FileSystemException {
+    return const {};
+  }
+}
+
+/// Lays the times in a batch's [report] over the machine's record. Read
+/// again just before the write, and written whole and renamed into place,
+/// so two runs that finish together lose at most a time, never the file.
+void _recordTimes(File report) {
+  final file = _timesFile();
+  if (file == null || !report.existsSync()) return;
+  try {
+    final measured = fileTimes(
+      report.readAsStringSync(),
+      root: Directory.current.path,
+    );
+    if (measured.isEmpty) return;
+    file.parent.createSync(recursive: true);
+    final known = file.existsSync()
+        ? readTimes(file.readAsStringSync())
+        : const <String, int>{};
+    final part = File('${file.path}.$pid.part')
+      ..writeAsStringSync(writeTimes(merged(known, measured)));
+    part.renameSync(file.path);
+  } on FileSystemException catch (e) {
+    _report('the times of this batch were not kept: ${e.message}');
+  }
 }
 
 String? _flagValue(List<String> args, String name) {
@@ -372,10 +422,19 @@ List<List<String>> _batches(List<String> files) {
 /// 「부하 좀 강도? 낮출수없나. pc가 너무느린데」): left out, `flutter test`
 /// runs as many suites as there are cores, and a run of a thousand files
 /// takes the whole machine for half an hour.
-List<String> flutterTestArguments(List<String> files, {int? concurrency}) => [
+///
+/// [report] is where the batch leaves a JSON report beside its console —
+/// the times [longestFirst] orders the next run by. The console a session
+/// reads is the same.
+List<String> flutterTestArguments(
+  List<String> files, {
+  int? concurrency,
+  String? report,
+}) => [
   'test',
   '--no-pub',
   if (concurrency != null) '--concurrency=$concurrency',
+  if (report != null) '--file-reporter=json:$report',
   ...files,
 ];
 
@@ -427,15 +486,27 @@ Future<int> _runTests(
   var skipped = 0;
   final failed = <int>[];
   final neverRan = <int>[];
+  final reports = Directory.systemTemp.createTempSync('affected-times');
   for (var i = 0; i < batches.length; i++) {
     if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-    final result = await _flutterTest(batches[i], concurrency: concurrency);
+    final report = File('${reports.path}/batch$i.json');
+    final result = await _flutterTest(
+      batches[i],
+      concurrency: concurrency,
+      report: report.path,
+    );
+    _recordTimes(report);
     skipped += result.skipped;
     if (result.exitCode != 0) {
       failed.add(i + 1);
       if (!result.ranTests) neverRan.add(i + 1);
       if (worst == 0) worst = result.exitCode;
     }
+  }
+  try {
+    reports.deleteSync(recursive: true);
+  } on FileSystemException {
+    // A report still held open is the system temp folder's to clear.
   }
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
@@ -586,10 +657,11 @@ final _testOutput = RegExp(r'\+\d+|All tests passed|Some tests failed');
 Future<_BatchResult> _flutterTest(
   List<String> files, {
   required int? concurrency,
+  required String report,
 }) async {
   final process = await Process.start(
     Platform.isWindows ? 'flutter.bat' : 'flutter',
-    flutterTestArguments(files, concurrency: concurrency),
+    flutterTestArguments(files, concurrency: concurrency, report: report),
     runInShell: true,
   );
   var ranTests = false;
