@@ -556,7 +556,17 @@ void main() {
   /// 🔬`clean_code_diff` against master (`37cd01b30`, at 407) named that
   /// one added and nothing gone. ⛔Not split to fit: a second name for the
   /// `src` lay would be a second copy of the rest.
-  const wideSignatures = 408;
+  ///
+  /// ⚠️408 → 409 on 2026-10-19, named as the rule above asks (I-58 — 유저
+  /// 2026-10-01: 「버튼누르면 창 열려서 숫자만 입력가능한창」). `_askFrameCount`
+  /// (six) is the one window that asks for a count of frames, the N commas'
+  /// and the ● every n koma's: the context, the session it reads the frames
+  /// a second from and keeps the last entry in, and what the window is
+  /// keyed, titled, iconned and its field called. The N commas asked
+  /// inline; the ● asks the same, so the window is one. 🔬`clean_code_diff`
+  /// against master (`11209d525`, at 407) named that one added and nothing
+  /// gone; stood on F-287's 408 above when the lane was rebased onto it.
+  const wideSignatures = 409;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
