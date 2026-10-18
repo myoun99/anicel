@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart' show AppColors;
+import '../widgets/drop_entrance_frame.dart';
 import 'media_asset_drag_data.dart';
 import 'media_drop_verdict.dart';
 
@@ -94,13 +94,8 @@ class MediaAssetDropTarget extends StatelessWidget {
       // absorbs no hit test — so the surface underneath (a brush stroke, a
       // cell tap, a range pan, a rail row's grip) keeps every pointer the
       // rest of the time.
-      builder: (context, candidates, _) => candidates.isEmpty || !framed
-          ? const SizedBox.expand()
-          : DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: AppColors.accent, width: 2),
-              ),
-            ),
+      builder: (context, candidates, _) =>
+          DropEntranceFrame(lit: candidates.isNotEmpty && framed),
     );
   }
 }

@@ -191,6 +191,7 @@ import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet_tab_host.dart';
 import 'input/control_press_claim.dart';
+import 'input/os_file_drop.dart';
 
 part 'workspace/workspace_collapsed_rows.dart';
 part 'workspace/workspace_folded_storyboard.dart';
@@ -2121,19 +2122,51 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ? railSpan
       : inset;
 
-  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, what it
-  /// holds goes through the one door — never an instant import. Folders
-  /// drop too (the cut-folder parser's entrance).
+  /// OS drag-and-drop (§6-i, confirmed): what the drop holds goes through
+  /// the one door — never an instant import. Folders drop too (the
+  /// cut-folder parser's entrance).
   ///
   /// ↩️F-247 (유저 2026-09-30): 「anicel이면 배치창이아니라 새 프로젝트로
   /// 열도록. tvpp도 똑같이」 — a file 「열기」 opens is not imported: it opens
   /// in a tab of its own, once the import window has closed
   /// ([OpenedFilesDoor]).
-  void _onOsFilesDropped(DropDoneDetails details) => unawaited(
-    _door.open(context, [
-      for (final file in details.files) handedPath(file.path),
-    ]),
-  );
+  ///
+  /// ↩️F-378 (유저 2026-10-17): a drop on a place that opens files — a
+  /// viewer, either one — opens there instead ([OsFileDropPlace]). It
+  /// went through the door wherever it landed until then.
+  void _onOsFilesDropped(DropDoneDetails details) {
+    _osDragIsOver(null);
+    final paths = [for (final file in details.files) file.path];
+    final place = _osFileDropPlaceAt(details.globalPosition);
+    if (place != null) {
+      place.take(paths);
+      return;
+    }
+    unawaited(
+      _door.open(context, [for (final path in paths) handedPath(path)]),
+    );
+  }
+
+  /// The place a drag from the OS is over now, lit while it is
+  /// ([OsFileDropPlace.hover]).
+  OsFileDropPlace? _osDragOver;
+
+  void _onOsDragMoved(DropEventDetails details) =>
+      _osDragIsOver(_osFileDropPlaceAt(details.globalPosition));
+
+  void _onOsDragLeft(DropEventDetails details) => _osDragIsOver(null);
+
+  void _osDragIsOver(OsFileDropPlace? place) {
+    if (identical(place, _osDragOver)) {
+      return;
+    }
+    _osDragOver?.hover(over: false);
+    _osDragOver = place;
+    place?.hover(over: true);
+  }
+
+  OsFileDropPlace? _osFileDropPlaceAt(Offset globalPosition) =>
+      osFileDropPlaceAt(globalPosition, View.of(context).viewId);
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
   /// shell's Open door for projects, the import window, the brush library
@@ -2229,6 +2262,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   Widget build(BuildContext context) {
     return DropTarget(
+      onDragEntered: _onOsDragMoved,
+      onDragUpdated: _onOsDragMoved,
+      onDragExited: _onOsDragLeft,
       onDragDone: _onOsFilesDropped,
       // THE STAGE'S OUTER SURFACES, SAID ONCE (유저, R4 #2). Every canvas
       // panel in the app is somewhere under here — the drawing floor, the

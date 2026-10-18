@@ -1,6 +1,8 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'hit_path.dart';
+
 /// 🚨★★A PAN MOVES WHAT IT STARTED ON — over a sheet's layer area, the
 /// layer area: its layers, and its own window along the rail. The frames
 /// beside it stay where they are.
@@ -35,22 +37,10 @@ abstract interface class PanSlide {
 /// alone, for a pan that holds what is under it out of the hit test while
 /// it pans ([PanelPanDriver]'s gate).
 PanSlide? panSlideUnder(PointerEvent event, {RenderBox? within}) {
-  final result = BoxHitTestResult();
-  if (within == null) {
-    RendererBinding.instance.hitTestInView(
-      result,
-      event.position,
-      event.viewId,
-    );
-  } else {
-    within.hitTest(result, position: within.globalToLocal(event.position));
-  }
-  for (final entry in result.path) {
-    if (entry.target case RenderPanSlideRegion(:final slide)) {
-      return slide;
-    }
-  }
-  return null;
+  final path = within == null
+      ? hitPathInView(event.position, event.viewId)
+      : hitPathWithin(within, event.position);
+  return path.whereType<RenderPanSlideRegion>().firstOrNull?.slide;
 }
 
 /// Whether a pan that landed on [slide] moves [position]: every scroller of

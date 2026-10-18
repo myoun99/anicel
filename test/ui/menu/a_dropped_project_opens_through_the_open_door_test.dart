@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
@@ -14,6 +13,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/os_file_drop.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// F-247 (유저 2026-09-30): 「드래그앤드롭으로 외부파일 임포트시 확장자?에
@@ -78,22 +78,9 @@ void main() {
     return tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).projects;
   }
 
-  /// [paths] dropped on the middle of the window, as the plugin hears it.
-  Future<void> drop(WidgetTester tester, List<String> paths) async {
-    final at = tester.getCenter(find.byType(EditorWorkspace));
-    const codec = StandardMethodCodec();
-    Future<void> hear(String method, Object arguments) =>
-        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          'desktop_drop',
-          codec.encodeMethodCall(MethodCall(method, arguments)),
-          (_) {},
-        );
-    await hear('entered', <double>[at.dx, at.dy]);
-    await hear('updated', <double>[at.dx, at.dy]);
-    await hear('performOperation', paths);
-    await tester.pump();
-    await tester.pump();
-  }
+  /// [paths] dropped on the middle of the window — the drawing floor.
+  Future<void> drop(WidgetTester tester, List<String> paths) =>
+      osDrop(tester, paths, at: tester.getCenter(find.byType(EditorWorkspace)));
 
   const patience = Duration(seconds: 60);
 
