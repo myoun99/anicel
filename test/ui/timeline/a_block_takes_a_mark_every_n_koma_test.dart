@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -34,6 +35,7 @@ void main() {
   const idA = LayerId('every-a');
   const idB = LayerId('every-b');
   const idC = LayerId('every-c');
+  const idD = LayerId('every-d');
 
   Frame cel(String id, int duration) =>
       Frame(id: FrameId(id), duration: duration, strokes: const []);
@@ -221,6 +223,61 @@ void main() {
     for (final (id, start) in [(idA, 0), (idB, 0), (idB, 4)]) {
       expect(marksAt(session, id, start), isEmpty);
     }
+  });
+
+  /// [rig] with D beside A: a SYNCED attach row of A — a row whose cell
+  /// marks are its base's, never its own: D reads A's.
+  EditorSessionManager rigWithSyncedRow() {
+    final film = project();
+    final track = film.tracks.single;
+    final cut = track.cuts.single;
+    final d = Layer(
+      id: idD,
+      name: 'D',
+      kind: LayerKind.animation,
+      attachedToLayerId: idA,
+      attachedMode: AttachedMode.synced,
+      frames: [cel('d1', 6)],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('d1'), length: 6),
+      },
+    );
+    final session = EditorSessionManager(
+      initialProject: film.copyWith(
+        tracks: [
+          track.copyWith(
+            cuts: [
+              cut.copyWith(
+                layers: [cut.layers.first, d, ...cut.layers.skip(1)],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(session.dispose);
+    return session;
+  }
+
+  test('a band over a row that keeps no marks of its own takes nothing '
+      'there: alone it lights nothing, beside A it dots A\'s block', () {
+    final session = rigWithSyncedRow();
+    standOn(session, idA, 0);
+    sweep(session, [idD], from: 0, toExclusive: 6);
+    expect(session.layerMarks.canMarkEvery, isFalse);
+
+    sweep(session, [idA, idD], from: 0, toExclusive: 6);
+    session.layerMarks.markEvery(3);
+    expect(marksAt(session, idA, 0), [3, 6, 9]);
+  });
+
+  test('the playhead on a row that keeps no marks of its own lights nothing '
+      'and dots nothing — the band\'s one predicate', () {
+    final session = rigWithSyncedRow();
+    standOn(session, idD, 2);
+    expect(session.layerMarks.canMarkEvery, isFalse);
+    session.layerMarks.markEvery(2);
+    expect(marksAt(session, idD, 0), isEmpty);
   });
 
   test('nothing to dot stays dark and lands nothing: a hold\'s ghost is no '
