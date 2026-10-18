@@ -13,6 +13,7 @@ import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/canvas_traces.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_press.dart';
@@ -524,6 +525,7 @@ void main() {
             fillOptions: const FloodFillOptions(),
             onFillOptionsChanged: (_) {},
             selectionCommands: channel,
+            canvasTraces: CanvasTraces([channel]),
           ),
         ),
       );

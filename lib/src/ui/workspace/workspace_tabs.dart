@@ -178,6 +178,7 @@ class _WorkspaceTabs {
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
           loudness: slot.loudness,
+          selection: _state.widget.viewerSelections?[tabId],
           onSwapViewers: () => _state._swapViewers(fromTabId: tabId),
           // I-14: the cut tool reaches the viewer, and a cut there lands in
           // the piece the canvas's cuts fill.
@@ -700,6 +701,8 @@ class _WorkspaceTabs {
                                           selectionCommands: _state
                                               .widget
                                               .canvasSelectionCommands,
+                                          canvasTraces:
+                                              _state.widget.canvasTraces,
                                           textOptions:
                                               _state._views._textToolOptions,
                                           textCommands:

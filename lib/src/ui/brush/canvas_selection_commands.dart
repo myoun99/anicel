@@ -68,6 +68,15 @@ final class CanvasSelectionDocument {
   /// Vertices taken back by undo, newest first — the redo side. Cleared by
   /// the next real vertex, the way every redo stack is.
   final List<CanvasPoint> _polygonRedo = [];
+
+  /// When the trace was last added to or taken back from, on one clock for
+  /// every document: which of the open traces is the newest (`CanvasTraces`
+  /// — a viewer keeps a trace of its own).
+  int _traceTouchedAt = 0;
+
+  static int _traceClock = 0;
+
+  void _touchTrace() => _traceTouchedAt = ++_traceClock;
 }
 
 /// The imperative selection channel (P9): the app-level shortcuts
@@ -163,9 +172,13 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// answers by acting, asked without acting.
   bool get canRedoPolygonPoint => _document._polygonRedo.isNotEmpty;
 
+  /// When the trace was last added to or taken back from — later is larger.
+  int get traceTouchedAt => _document._traceTouchedAt;
+
   void addPolygonPoint(CanvasPoint point) {
     _document._polygonPoints.add(point);
     _document._polygonRedo.clear();
+    _document._touchTrace();
     notifySessionChanged();
   }
 
@@ -177,6 +190,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       return false;
     }
     _document._polygonRedo.add(_document._polygonPoints.removeLast());
+    _document._touchTrace();
     notifySessionChanged();
     return true;
   }
@@ -186,6 +200,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       return false;
     }
     _document._polygonPoints.add(_document._polygonRedo.removeLast());
+    _document._touchTrace();
     notifySessionChanged();
     return true;
   }
@@ -344,8 +359,22 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _notifyScheduled = true;
     scheduleMicrotask(() {
       _notifyScheduled = false;
-      notifyListeners();
+      if (!_disposed) {
+        notifyListeners();
+      }
     });
+  }
+
+  /// ⚠️A ping can be on its way when the channel goes: the layer unbinds as
+  /// it is let go of, and a viewer handed no channel lets go of its own
+  /// (`MediaViewerTabHost.selection`) in the same unmount.
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    liveTransformValues.dispose();
+    super.dispose();
   }
 
   /// Adopts a committed region — the selection history command's

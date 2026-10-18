@@ -30,6 +30,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/canvas_book.dart';
 import '../brush/canvas_floor_insets.dart';
+import '../brush/canvas_selection_commands.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/cut_into_the_hand.dart';
@@ -189,6 +190,7 @@ class MediaViewerTabHost extends StatefulWidget {
     this.onViewportChanged,
     this.framedFor,
     this.loudness,
+    this.selection,
     this.filePicker,
     this.sound,
     this.brushTool,
@@ -276,6 +278,12 @@ class MediaViewerTabHost extends StatefulWidget {
   /// Null in hosts that own no slot: the panel keeps a level of its own for
   /// as long as it is mounted.
   final ValueNotifier<ViewerLoudness>? loudness;
+
+  /// This viewer's selection channel, the window's for it (F-380 —
+  /// `HomePage`): where the cut's polygon trace is tapped out. Null in a
+  /// host handed none: the panel keeps a channel of its own for as long as
+  /// it is mounted.
+  final CanvasSelectionCommands? selection;
 
   /// Injectable loose-file picker (tests): answers in place of the dialog.
   final LooseFilePicker? filePicker;
@@ -571,6 +579,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       widget.viewerId,
     );
     _run.dispose();
+    _ownSelection?.dispose();
     super.dispose();
   }
 
@@ -874,6 +883,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
 
   /// The level of a host that handed none ([MediaViewerTabHost.loudness]).
   ViewerLoudness _ownLoudness = const ViewerLoudness();
+
+  /// The selection channel this viewer's canvas panel runs the cut on —
+  /// the one handed in, or one of its own ([MediaViewerTabHost.selection]).
+  CanvasSelectionCommands get _selection =>
+      widget.selection ?? (_ownSelection ??= CanvasSelectionCommands());
+
+  CanvasSelectionCommands? _ownSelection;
 
   void _setLoudness(ViewerLoudness next) => setState(() {
     final held = widget.loudness;
@@ -1358,6 +1374,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       // F-315: a file is looked at a pixel to a pixel.
       oneToOneOnPill: true,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
+      // F-380: the cut runs on a channel as the canvas's does — a polygon's
+      // vertices are kept there ([MediaViewerTabHost.selection]).
+      selectionCommands: _selection,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays
       // on the pill. Register and swap are a session's worth of taps

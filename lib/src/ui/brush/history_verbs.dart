@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../debug/key_trace.dart';
 import '../editor_session_manager.dart';
 import 'canvas_selection_commands.dart';
+import 'canvas_traces.dart';
 import 'cel_text_commands.dart';
 
 /// 🚨★★★**UNDO AND REDO — ONE verb each, and every door opens the same
@@ -24,12 +25,16 @@ import 'cel_text_commands.dart';
 class HistoryVerbs {
   HistoryVerbs({
     required this.selection,
+    required this.traces,
     required this.text,
     required this.session,
     required this.contactIsDown,
   });
 
   final CanvasSelectionCommands selection;
+
+  /// Every canvas's polygon trace — the canvas's and each viewer's (F-380).
+  final CanvasTraces traces;
 
   /// The text the canvas holds (R9-rest).
   final CelTextCommands text;
@@ -60,8 +65,12 @@ class HistoryVerbs {
   final bool Function() contactIsDown;
 
   /// Everything [canUndo] and [canRedo] depend on.
-  Listenable get changes =>
-      Listenable.merge([selection, text, session.historyManager]);
+  Listenable get changes => Listenable.merge([
+    selection,
+    traces.changes,
+    text,
+    session.historyManager,
+  ]);
 
   bool get canUndo => _undo() != null;
 
@@ -97,8 +106,8 @@ class HistoryVerbs {
   /// the document is LAST: asked first, it would land an open session and
   /// undo somebody else's edit while the user was still transforming.
   VoidCallback? _undo() {
-    if (selection.hasOpenPolygon) {
-      return selection.undoPolygonPoint;
+    if (traces.open case final trace?) {
+      return trace.undoPolygonPoint;
     }
     // 🚨★★★**AN OPEN TRANSFORM BOX TAKES UNDO THE SAME WAY** — 유저
     // 2026-09-20: 「**변형도구 사용시 변형에 대한 조작마다 언두로 기록**
@@ -126,8 +135,8 @@ class HistoryVerbs {
   /// the document's redo. A transform box has no redo of its own — 유저 asked
   /// for its undo only.
   VoidCallback? _redo() {
-    if (selection.canRedoPolygonPoint) {
-      return selection.redoPolygonPoint;
+    if (traces.toRedo case final trace?) {
+      return trace.redoPolygonPoint;
     }
     if (text.canRedoLetters) {
       return text.redoLetters;

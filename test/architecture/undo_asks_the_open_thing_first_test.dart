@@ -32,17 +32,22 @@ void main() {
       File(verbs).readAsStringSync(),
       'VoidCallback? _undo()',
     );
-    final polygon = undo.indexOf('selection.hasOpenPolygon');
+    // ↩️F-380: the trace is asked of every canvas's (`CanvasTraces`) — a
+    // viewer keeps one of its own — where it was the window's channel's.
+    final polygon = undo.indexOf('traces.open');
     final transform = undo.indexOf('selection.canUndoTransformStep');
     final document = undo.indexOf('session.canUndo');
 
     // ⚠️THE QUESTION IS THE WHOLE CONDITION, not a term inside one. ↩️This
     // pin read positions alone and a mutant that wrote `if (false && …)`
     // kept every position it was reading — it survived (2026-09-22).
-    for (final question in const ['hasOpenPolygon', 'canUndoTransformStep']) {
+    for (final question in const [
+      r'traces\.open case final trace\?',
+      r'selection\.canUndoTransformStep',
+    ]) {
       expect(
         undo,
-        matches(RegExp('if \\(selection\\.$question\\) \\{')),
+        matches(RegExp('if \\($question\\) \\{')),
         reason: '$question decides on its own answer, ungated',
       );
     }
@@ -70,10 +75,10 @@ void main() {
     );
     expect(
       redo,
-      matches(RegExp(r'if \(selection\.canRedoPolygonPoint\) \{')),
+      matches(RegExp(r'if \(traces\.toRedo case final trace\?\) \{')),
     );
     expect(
-      redo.indexOf('canRedoPolygonPoint'),
+      redo.indexOf('traces.toRedo'),
       lessThan(redo.indexOf('session.canRedo')),
     );
   });

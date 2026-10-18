@@ -57,6 +57,7 @@ import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/canvas_traces.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/text_tool_options.dart';
 import 'brush/confirm_verb.dart';
@@ -239,6 +240,8 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
+    this.viewerSelections,
+    this.canvasTraces,
     this.canvasTextCommands,
     this.lastStroke,
     this.toolHold,
@@ -291,6 +294,14 @@ class EditorWorkspace extends StatefulWidget {
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// Each viewer's selection channel, by its tab (F-380) — shell-owned, as
+  /// the canvas's is: the window's verbs ask after the trace on it.
+  final Map<String, CanvasSelectionCommands>? viewerSelections;
+
+  /// Every canvas's polygon trace — the tool settings' 닫기 closes the one
+  /// the user is in the middle of, as 확정 does.
+  final CanvasTraces? canvasTraces;
 
   /// The shell-owned text channel (R9-rest): the canvas binds the text it
   /// holds, and the tool settings show and change it.

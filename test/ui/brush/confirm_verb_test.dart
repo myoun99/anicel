@@ -12,6 +12,7 @@ import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/last_stroke_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/canvas_traces.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/confirm_verb.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
@@ -36,6 +37,7 @@ void main() {
   var landed = 0;
   final verb = ConfirmVerb(
     selection: selection,
+    traces: CanvasTraces([selection]),
     text: CelTextCommands(),
     lastStroke: lastStroke,
     tool: tool,
@@ -154,6 +156,7 @@ void main() {
     text.bind(hand.tool);
     final withAText = ConfirmVerb(
       selection: selection,
+      traces: CanvasTraces([selection]),
       text: text,
       lastStroke: lastStroke,
       tool: tool,

@@ -24,6 +24,7 @@ import 'tool_setting_rows.dart';
 import 'tool_settings_section.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
+import 'canvas_traces.dart';
 import 'cel_text_commands.dart';
 import 'text_tool_options.dart';
 import 'text_tool_settings.dart';
@@ -60,6 +61,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
     this.selectionCommands,
+    this.canvasTraces,
     this.textOptions,
     this.textCommands,
     this.textFonts,
@@ -130,6 +132,10 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// Every canvas's polygon trace: 닫기 closes the one the user is in the
+  /// middle of, as 확정 does (F-380).
+  final CanvasTraces? canvasTraces;
 
   /// The text tool's own (R9-rest): the next text's values, and the channel
   /// to the text the canvas holds. Null in a host that owns neither.
@@ -266,7 +272,7 @@ class ToolSettingsPanel extends StatelessWidget {
       options: fillOptions,
       onChanged: onFillOptionsChanged,
       shapeKind: state.activeShapeKind,
-      selectionCommands: selectionCommands,
+      traces: canvasTraces,
     ),
     // I-69: what the shape tool lays and what lays its line. A line of
     // the brush type is drawn by the brush in hand — its size and
@@ -288,6 +294,7 @@ class ToolSettingsPanel extends StatelessWidget {
       maskOptions: selectionMaskOptions,
       onMaskOptionsChanged: onSelectionMaskOptionsChanged,
       selectionCommands: selectionCommands,
+      traces: canvasTraces,
       canvasSize: canvasSize,
       language: language,
     ),
@@ -296,7 +303,7 @@ class ToolSettingsPanel extends StatelessWidget {
     CanvasTool.cut => _CutGrabSettings(
       state: state,
       onChanged: onChanged,
-      selectionCommands: selectionCommands,
+      traces: canvasTraces,
     ),
     CanvasTool.cutStamp => _CutStampSettings(
       slot: cutPieceSlot,
@@ -340,13 +347,13 @@ class _ShapeFillSettings extends StatelessWidget {
     required this.options,
     required this.onChanged,
     required this.shapeKind,
-    required this.selectionCommands,
+    required this.traces,
   });
 
   final FloodFillOptions options;
   final ValueChanged<FloodFillOptions> onChanged;
   final CanvasShapeKind? shapeKind;
-  final CanvasSelectionCommands? selectionCommands;
+  final CanvasTraces? traces;
 
   @override
   Widget build(BuildContext context) {
@@ -363,10 +370,7 @@ class _ShapeFillSettings extends StatelessWidget {
         ToolSettingActions(
           lines: [
             [
-              _ClosePolygonButton(
-                shapeKind: shapeKind,
-                selectionCommands: selectionCommands,
-              ),
+              _ClosePolygonButton(shapeKind: shapeKind, traces: traces),
             ],
           ],
         ),
@@ -512,12 +516,12 @@ class _CutGrabSettings extends StatelessWidget {
   const _CutGrabSettings({
     required this.state,
     required this.onChanged,
-    required this.selectionCommands,
+    required this.traces,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
-  final CanvasSelectionCommands? selectionCommands;
+  final CanvasTraces? traces;
 
   @override
   Widget build(BuildContext context) {
@@ -537,7 +541,7 @@ class _CutGrabSettings extends StatelessWidget {
             [
               _ClosePolygonButton(
                 shapeKind: state.activeShapeKind,
-                selectionCommands: selectionCommands,
+                traces: traces,
               ),
             ],
           ],
@@ -564,13 +568,10 @@ class _CutGrabSettings extends StatelessWidget {
 /// so it names 확정 rather than an action of its own (I-40): Enter is its
 /// key.
 class _ClosePolygonButton extends StatelessWidget {
-  const _ClosePolygonButton({
-    required this.shapeKind,
-    required this.selectionCommands,
-  });
+  const _ClosePolygonButton({required this.shapeKind, required this.traces});
 
   final CanvasShapeKind? shapeKind;
-  final CanvasSelectionCommands? selectionCommands;
+  final CanvasTraces? traces;
 
   Widget _button(VoidCallback? close) => ToolSettingAction(
     keyValue: 'selection-close-polygon-button',
@@ -581,14 +582,18 @@ class _ClosePolygonButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final commands = selectionCommands;
-    if (shapeKind != CanvasShapeKind.polygon || commands == null) {
+    final traces = this.traces;
+    if (shapeKind != CanvasShapeKind.polygon || traces == null) {
       return _button(null);
     }
     return ListenableBuilder(
-      listenable: commands,
-      builder: (context, _) =>
-          _button(commands.canClosePolygon ? commands.closePolygon : null),
+      listenable: traces.changes,
+      builder: (context, _) {
+        final trace = traces.open;
+        return _button(
+          trace != null && trace.canClosePolygon ? trace.closePolygon : null,
+        );
+      },
     );
   }
 }
@@ -766,6 +771,7 @@ class _SelectionSettings extends StatelessWidget {
     required this.maskOptions,
     required this.onMaskOptionsChanged,
     required this.selectionCommands,
+    required this.traces,
     required this.canvasSize,
     required this.language,
   });
@@ -775,6 +781,7 @@ class _SelectionSettings extends StatelessWidget {
   final SelectionMaskOptions maskOptions;
   final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
   final CanvasSelectionCommands? selectionCommands;
+  final CanvasTraces? traces;
   final CanvasSize? canvasSize;
   final AppLanguage language;
 
@@ -852,7 +859,7 @@ class _SelectionSettings extends StatelessWidget {
             [
               _ClosePolygonButton(
                 shapeKind: state.activeShapeKind,
-                selectionCommands: commands,
+                traces: traces,
               ),
               // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
               // 선택툴일때의 툴설정. 버튼.」 In its place whatever is

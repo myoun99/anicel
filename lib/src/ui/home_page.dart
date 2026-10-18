@@ -53,6 +53,7 @@ import 'input/contact_census.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/canvas_traces.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'cut_command_group.dart' show landCanvasAdjust;
@@ -301,6 +302,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
+  /// Each viewer's selection channel, by its tab: where the cut's polygon
+  /// trace is tapped out on a page, as the canvas's is on the window's.
+  ///
+  /// 🗣️F-380 (유저 2026-10-17): 「뷰어패널에서 잘라내기쓸때 개미행렬 라이브가
+  /// 안보임. 법 통일해서 보이도록」 — a viewer handed its canvas panel no
+  /// channel, so a polygon's taps landed nowhere: no vertex, no band, no
+  /// ring, no cut. ⚠️Each its own, not the canvas's: that one shows the
+  /// project's selection, and a trace on a page is not the canvas's. Up
+  /// here because the window's verbs ask after it ([_traces]).
+  final Map<String, CanvasSelectionCommands> _viewerSelections = {
+    EditorWorkspace.mediaViewerTabId: CanvasSelectionCommands(),
+    EditorWorkspace.mediaViewerSubTabId: CanvasSelectionCommands(),
+  };
+
+  /// Every canvas's polygon trace, as 확정, ↶ ↷ and Escape ask after the
+  /// one the user is in the middle of.
+  late final CanvasTraces _traces = CanvasTraces([
+    _canvasSelectionCommands,
+    ..._viewerSelections.values,
+  ]);
+
   /// The text tool's channel (R9-rest): the keys, a step of history about
   /// to be taken and a project going off screen reach the text the canvas
   /// is holding through here. The WINDOW's, as the selection's is.
@@ -313,6 +335,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 확정 — Enter here, and the rail's ↵ and 적용 in the workspace.
   late final ConfirmVerb _confirm = ConfirmVerb(
     selection: _canvasSelectionCommands,
+    traces: _traces,
     text: _canvasTextCommands,
     lastStroke: _lastStroke,
     tool: _brushTool,
@@ -650,6 +673,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _canvasSelectionCommands.document = session.canvasSelection;
     _history = HistoryVerbs(
       selection: _canvasSelectionCommands,
+      traces: _traces,
       text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
@@ -1263,8 +1287,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _session.canvasAdjust.end();
       return;
     }
-    if (_canvasSelectionCommands.hasOpenPolygon) {
-      _canvasSelectionCommands.abandonPolygon();
+    if (_traces.open case final trace?) {
+      trace.abandonPolygon();
       return;
     }
     // R9-rest: Esc lets go of a text held by its box — what a click away
@@ -1466,6 +1490,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                           _canvasNavigationRegionKey,
                                       canvasSelectionCommands:
                                           _canvasSelectionCommands,
+                                      viewerSelections: _viewerSelections,
+                                      canvasTraces: _traces,
                                       canvasTextCommands: _canvasTextCommands,
                                       lastStroke: _lastStroke,
                                       toolHold: _toolHold,
