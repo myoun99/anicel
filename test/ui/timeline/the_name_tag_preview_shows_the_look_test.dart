@@ -136,6 +136,34 @@ void main() {
     );
   });
 
+  testWidgets('a line turned off is drawn away — the run is painted again '
+      'though not one of its letters changed', (tester) async {
+    Widget preview({required bool underline}) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 200,
+          height: 24,
+          child: SeNameTagLanePreview(
+            name: '名前',
+            line: 'セリフ',
+            tag: SeNameTag(style: TextCelStyle(underline: underline)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(preview(underline: true));
+    final lines = _linesOver(tester, '名前');
+    expect(lines.debugNeedsPaint, isFalse, reason: '⛔premise: painted');
+
+    await tester.pumpWidget(
+      preview(underline: false),
+      phase: EnginePhase.layout,
+    );
+
+    expect(lines.debugNeedsPaint, isTrue);
+    await tester.pump();
+  });
+
   testWidgets('the INK carries through', (tester) async {
     await pump(
       tester,
