@@ -51,10 +51,10 @@ class _LinesSetting implements _TextSetting {
       _letters.paintBoxBehind(canvas, box, argb);
 
   @override
-  void paint(ui.Canvas canvas, {required ui.Rect within}) => _letters.paintAt(
+  void paint(ui.Canvas canvas, {required ui.Rect within}) => _letters.paint(
     canvas,
-    _lettersAt,
     within: within,
+    draw: (painter) => painter.paint(canvas, _lettersAt),
     lines: _lines,
     letterWidth: _width,
   );

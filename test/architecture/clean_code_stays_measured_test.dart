@@ -515,7 +515,22 @@ void main() {
   /// (`b6cbe550e`, at 403) named that one added and nothing gone.
   /// ⛔Not two functions to fit: the cut is the one line that differs, and
   /// a second name would be a second copy of the rest.
-  const wideSignatures = 404;
+  ///
+  /// ⚠️404 → 405 on 2026-10-18, named as the rule above asks
+  /// (text-letters-lean-and-underline ⑥ — 유저 2026-10-17 「일곱 전부」:
+  /// a text's letters drawn as wide as its horizontal scale says).
+  /// `CanvasLetterPasses.paint` (five) takes how wide the letters are
+  /// drawn beside where the hard ones are cut, what draws a setting, and
+  /// the lines they wear: the width is laid on INSIDE each pass, under the
+  /// hard passes' cut, so that a hard letter is cut as far past itself in
+  /// the canvas's pixels at every width. ⛔Not the caller's to lay on: a
+  /// canvas narrowed before the passes narrows the cut with the letters,
+  /// and a draw that narrows itself leaves the lines it wears as wide as
+  /// they were. `paintAt` keeps its four — the one setting that narrows
+  /// (a text in lines) asks `paint` itself. 🔬`clean_code_diff` against
+  /// the lane under it (`17f66740b`, at 404) named that one added and
+  /// nothing gone.
+  const wideSignatures = 405;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

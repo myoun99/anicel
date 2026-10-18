@@ -334,20 +334,17 @@ CanvasLetterPasses<TextPainter> canvasLetterPainterPasses(
 /// Drawing the passes of a text whose every setting is one painter.
 extension CanvasLetterPainterPasses on CanvasLetterPasses<TextPainter> {
   /// Draws the letters with their box's corner at [at] ([paint]) — and
-  /// [lines], which stand where the letters are drawn — [letterWidth] times
-  /// as wide as they are set.
+  /// [lines], which stand where the letters are drawn.
   void paintAt(
     ui.Canvas canvas,
     ui.Offset at, {
     required ui.Rect within,
     CanvasLetterLines lines = CanvasLetterLines.none,
-    double letterWidth = 1,
   }) => paint(
     canvas,
     within: within,
     draw: (painter) => painter.paint(canvas, at),
     lines: lines,
-    letterWidth: letterWidth,
   );
 }
 
