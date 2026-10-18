@@ -396,7 +396,7 @@ if [ -n "$cardless" ]; then
 $cardless
 출구는 전부 카드입니다 — 카드 없는 착지는 보드에 영어 PR 제목 한 줄로 떠서 「무엇을 볼지」를 못 말합니다.
 ⇒ board.jsonl 에 그 착지의 구현 공정을 한 줄 적으세요: at=구현 · pr=번호 · note=무엇을 왜 바꿨나 · how=이렇게 확인한다.
-⚠️남의 세션 착지면(계정이 하나라 구분이 안 됩니다) 번호를 이유와 함께 ack 하고 유저에게 말하세요: dart run tool/board_ack.dart \"\$ANICEL_BOARD\" <번호> <이유> — 내 것이면 카드 없이 넘어갈 길은 없습니다.
+⚠️남의 세션 착지면(계정이 하나라 구분이 안 됩니다) 번호를 이유와 함께 ack 하고 유저에게 말하세요: bash tool/run.sh board_ack \"\$ANICEL_BOARD\" <번호> <이유> — 내 것이면 카드 없이 넘어갈 길은 없습니다.
 "
 fi
 if [ -n "$reds" ]; then

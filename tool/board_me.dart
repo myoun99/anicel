@@ -1,7 +1,7 @@
 // Says which 담당 this session answers to.
 //
-//   dart run tool/board_me.dart <담당>     this session answers to <담당>
-//   dart run tool/board_me.dart            which 담당 this session is
+//   bash tool/run.sh board_me <담당>     this session answers to <담당>
+//   bash tool/run.sh board_me            which 담당 this session is
 //
 // 유저 2026-10-07 (the-board-is-one-server-for-both-machines-Q2: 「글은
 // 카드의 흐름에 적고, 「전달」 보기는 그것을 모아 보여 주기만 한다」): one
@@ -47,7 +47,7 @@ void main(List<String> args) {
     final name = sessionNameOf(Platform.environment);
     if (name == null) {
       stdout.writeln('board_me: 이 세션은 담당 이름을 등록하지 않았습니다 — '
-          'dart run tool/board_me.dart <담당>');
+          'bash tool/run.sh board_me <담당>');
       exit(1);
     }
     stdout.writeln(name);

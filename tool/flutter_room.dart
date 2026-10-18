@@ -1,12 +1,14 @@
 // Is there room on this machine for one more Flutter run?
 //
-//   dart tool/flutter_room.dart          runs=<n> free_gb=<n> room=<yes|no>
-//   dart tool/flutter_room.dart --land   the same, asked for a land's gates
-//   dart tool/flutter_room.dart --list   … and every run there is, with
-//                                        whose it is
+//   bash tool/run.sh flutter_room          runs=<n> free_gb=<n> room=<yes|no>
+//   bash tool/run.sh flutter_room --land   the same, asked for a land's gates
+//   bash tool/run.sh flutter_room --list   … and every run there is, with
+//                                          whose it is
 //
-// `dart`, not `dart run`: nothing here comes from a package, so it starts
-// without resolving any — the lane script asks before every gate.
+// Through `tool/run.sh`, which runs it as an exe built once per machine: a
+// waiting lane asks every twenty seconds, and by JIT each ask compiled this
+// file again — 16.5s on 2026-10-18 under load (card tests-crowd-the-machine).
+// `dart tool/flutter_room.dart` still gives the same answer, slowly.
 //
 // THE RULE IT MEASURES is CLAUDE.md's 「Flutter 실행은 여유만큼」 (유저
 // 2026-09-26 · 10-01): before a run is launched, 4GB of commit headroom
@@ -335,7 +337,7 @@ int? _landHolder() {
       'rev-parse',
       '--path-format=absolute',
       '--git-common-dir',
-    ], workingDirectory: File.fromUri(Platform.script).parent.path);
+    ], workingDirectory: _toolDir());
     if (git.exitCode != 0) return null;
     final pid = File('${(git.stdout as String).trim()}/$kLandTurn/pid');
     return int.tryParse(pid.readAsStringSync().trim());
@@ -345,6 +347,14 @@ int? _landHolder() {
     return null;
   }
 }
+
+/// This file's folder. ⚠️As an exe built by `tool/run.sh` the script is the
+/// exe, in the machine's cache and outside any repository — git asked from
+/// there finds no land, and every land would count against the others. The
+/// launcher says where the exe was built from.
+String _toolDir() =>
+    Platform.environment['ANICEL_TOOL_DIR'] ??
+    File.fromUri(Platform.script).parent.path;
 
 Future<void> main(List<String> args) async {
   const known = {'--land', '--list'};

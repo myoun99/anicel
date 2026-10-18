@@ -349,7 +349,7 @@ Iterable<String> _stampsTheFileContradicts(
       '🧪C-t11·C-t12 가 그랬습니다: 제가 14:10 을 지어냈고 유저는 01:34 에 '
       '완료를 눌렀는데, 완료가 앞으로 정렬돼 **카드가 안 사라졌습니다.**\n'
       '⇒ 그 줄의 `ts` 를 이웃 줄 사이의 값으로 고치세요. '
-      '⛔그리고 앞으로는 `dart run tool/board_say.dart` 로 적으세요 — '
+      '⛔그리고 앞으로는 `bash tool/run.sh board_say` 로 적으세요 — '
       '`ts` 를 직접 쓰지 않으면 이 일이 아예 안 생깁니다.';
 }
 
@@ -963,7 +963,7 @@ String? _ackKeyOf(String raw) {
 // (`tool/board_ack.dart`) runs here and the server runs for everybody else.
 
 /// The command a complaint names as its exit — the same on every machine.
-const kAckCommand = r'dart run tool/board_ack.dart "$ANICEL_BOARD"';
+const kAckCommand = r'bash tool/run.sh board_ack "$ANICEL_BOARD"';
 
 /// Why [key] cannot be left alone for [why], or null if it can.
 String? ackRefusal(String key, String why) {

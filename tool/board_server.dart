@@ -127,19 +127,28 @@ List<File>? _liveSources;
 /// previous one. No rebuild, no notice, nothing to look at. That is exactly
 /// the failure the self-replace above was written to end, one level down.
 ///
-/// ⚠️ONE LEVEL is the whole graph here: each entry imports `board_model.dart`
-/// and that imports nothing of ours. Derived rather than listed, because a
-/// listed name is a word somebody has to remember — and this file has spent
-/// the day removing those.
+/// 🆕EVERY LEVEL, NOT ONE (2026-10-18, card tests-crowd-the-machine). One
+/// level was the whole graph only for the two board exes; `tool/run.sh` now
+/// builds any tool, and `board_ack` reaches `board_model` through
+/// `board_check`. The imports are followed until nothing new turns up.
+/// Derived rather than listed, because a listed name is a word somebody has
+/// to remember.
 ///
-/// ⛔THE SAME RULE LIVES IN `board_up.sh` (`sources_of`), because that is what
-/// WRITES the stamp. Two spellings of one rule: change both or neither.
+/// ⛔THE SAME RULE LIVES IN `tool/exe_stamp.sh` (`sources_of`), because that
+/// is what WRITES the stamp. Two spellings of one rule: change both or
+/// neither — the order included (theirs is `LC_ALL=C sort`, by byte).
 List<File> sourcesOfEntry(File entry) {
-  final dir = entry.parent.path;
+  final dir = entry.parent.path.replaceAll('\\', '/');
+  final imports = RegExp(r"^import '([A-Za-z0-9_]+\.dart)'", multiLine: true);
   final out = <String>{entry.path.replaceAll('\\', '/')};
-  final imports = RegExp(r"^import '([A-Za-z0-9_]+\.dart)';", multiLine: true);
-  for (final m in imports.allMatches(entry.readAsStringSync())) {
-    out.add('${dir.replaceAll('\\', '/')}/${m.group(1)}');
+  final open = [...out];
+  while (open.isNotEmpty) {
+    final file = File(open.removeLast());
+    if (!file.existsSync()) continue;
+    for (final m in imports.allMatches(file.readAsStringSync())) {
+      final path = '$dir/${m.group(1)}';
+      if (out.add(path)) open.add(path);
+    }
   }
   final paths = out.toList()..sort();
   return [for (final p in paths) File(p)];

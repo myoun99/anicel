@@ -675,7 +675,7 @@ ENGINE_STAMP=build/native_standalone/.built-from
 # goes to stderr, because `open` prints the lane's path as its only output.
 ensure_engine() {
   local c="$1" out rc
-  out="$(dart "$ROOT/tool/native_engine_provenance.dart" check "$c")"
+  out="$(bash "$ROOT/tool/run.sh" native_engine_provenance check "$c")"
   rc=$?
   [ "$rc" -eq 0 ] && return 0
   [ "$rc" -eq 1 ] || {
@@ -812,7 +812,7 @@ HELD_TURN=
 room_first() {
   local flag= seen rc told=
   [ "$1" = land ] && flag=--land
-  until seen="$(dart "$ROOT/tool/flutter_room.dart" ${flag:+"$flag"} 2>&1)"; do
+  until seen="$(bash "$ROOT/tool/run.sh" flutter_room ${flag:+"$flag"} 2>&1)"; do
     rc=$?
     [ "$rc" -eq 1 ] || die "the machine's room could not be measured — nothing was launched
   $seen"

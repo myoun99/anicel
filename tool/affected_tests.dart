@@ -17,11 +17,11 @@
 // direction for a tool like this to be wrong in.
 //
 // Usage:
-//   dart run tool/affected_tests.dart            # run them
-//   dart run tool/affected_tests.dart --list     # print them, run nothing
-//   dart run tool/affected_tests.dart --all      # the escape hatch
-//   dart run tool/affected_tests.dart --base HEAD~3
-//   dart run tool/affected_tests.dart --concurrency 4   # a machine in use
+//   bash tool/run.sh affected_tests            # run them
+//   bash tool/run.sh affected_tests --list     # print them, run nothing
+//   bash tool/run.sh affected_tests --all      # the escape hatch
+//   bash tool/run.sh affected_tests --base HEAD~3
+//   bash tool/run.sh affected_tests --concurrency 4   # a machine in use
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 

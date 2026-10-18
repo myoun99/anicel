@@ -922,37 +922,51 @@ void main() {
   });
 
   group('an exe is rebuilt when ANY file it is made of changes', () {
-    // `board_up.sh` and [sourcesOfEntry] follow an entry's imports ONE
-    // level. The tools import each other now, so a file reached only
-    // through another file would change without anything being rebuilt.
+    // `tool/exe_stamp.sh` and [sourcesOfEntry] follow an entry's imports to
+    // every level (2026-10-18). The tools import each other, so a file
+    // reached only through another file would otherwise change without
+    // anything being rebuilt — `board_ack` reaches `board_model` that way.
     Set<String> importsOf(String name) => {
       for (final m in RegExp(
-        r"^import '([A-Za-z0-9_]+\.dart)';",
+        r"^import '([A-Za-z0-9_]+\.dart)'",
         multiLine: true,
       ).allMatches(File('tool/$name').readAsStringSync()))
         m.group(1)!,
     };
 
-    for (final entry in const ['board_server.dart', 'board_check.dart']) {
-      test('🚨everything $entry is made of is one import away from it', () {
-        final near = importsOf(entry);
-        expect(near, isNotEmpty, reason: '⛔premise: the scan reads imports');
-        final all = <String>{...near};
-        final open = [...near];
+    for (final entry in const [
+      'board_server.dart',
+      'board_check.dart',
+      'board_ack.dart',
+    ]) {
+      test('🚨everything $entry is made of is in its stamp', () {
+        final all = {entry};
+        final open = [entry];
         while (open.isNotEmpty) {
           for (final further in importsOf(open.removeLast())) {
             if (all.add(further)) open.add(further);
           }
         }
-        expect(all.difference({...near, entry}), isEmpty);
+        expect(all.length, greaterThan(1), reason: '⛔premise: it imports');
         expect(
           {
             for (final file in sourcesOfEntry(File('tool/$entry')))
               file.uri.pathSegments.last,
           },
-          {...near, entry},
+          all,
         );
       });
     }
+
+    test('⛔premise: board_ack is made of a file it does not import', () {
+      expect(importsOf('board_ack.dart'), isNot(contains('board_model.dart')));
+      expect(
+        {
+          for (final file in sourcesOfEntry(File('tool/board_ack.dart')))
+            file.uri.pathSegments.last,
+        },
+        contains('board_model.dart'),
+      );
+    });
   });
 }

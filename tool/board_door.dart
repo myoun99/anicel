@@ -15,10 +15,6 @@
 // long enough to be one — so there is no order of flags, edits or restarts
 // in which the board listens beyond this machine without asking who is
 // there.
-//
-// ⚠️Imports nothing of ours: `board_up.sh` and `sourcesOfEntry` follow an
-// entry's imports ONE level, so a file an entry imports must not hide a
-// second level behind it.
 import 'dart:convert';
 import 'dart:io';
 

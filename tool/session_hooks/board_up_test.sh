@@ -3,8 +3,9 @@
 # process.
 #
 # 🚨IT RUNS A STAGED COPY AGAINST STAND-INS, never the hook where it stands:
-# the real one ends a server and starts another. The stage holds the hook and
-# two empty sources; `powershell`, `dart` and `git` are stand-ins first on
+# the real one ends a server and starts another. The stage holds the hook,
+# the stamp law it reads (tool/exe_stamp.sh) and two empty sources;
+# `powershell`, `dart` and `git` are stand-ins first on
 # PATH, so no process is ended, nothing listens and nothing is built.
 #
 # The stand-in for PowerShell keeps ONE fact — the exe of whatever listens on
@@ -25,6 +26,7 @@ STAGE="$TMP/stage"
 BIN="$TMP/bin"
 mkdir -p "$STAGE/tool/session_hooks" "$BIN"
 cp "$HERE/board_up.sh" "$STAGE/tool/session_hooks/"
+cp "$HERE/../exe_stamp.sh" "$STAGE/tool/"
 printf '// the server\n' > "$STAGE/tool/board_server.dart"
 printf '// the gate\n' > "$STAGE/tool/board_check.dart"
 

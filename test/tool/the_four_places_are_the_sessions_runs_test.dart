@@ -312,7 +312,7 @@ void main() {
 
       expect(law, contains('커밋 여유 ${kHeadroomGb}GB'));
       expect(law, contains('최대 $kFlutterPlaces개'));
-      expect(law, contains('dart tool/flutter_room.dart'));
+      expect(law, contains('bash tool/run.sh flutter_room'));
     });
   });
 

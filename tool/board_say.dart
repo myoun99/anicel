@@ -15,8 +15,8 @@
 // stamped 14:10 sorted after their tick and stayed the last 대분류.
 //
 // Usage:
-//   dart run tool/board_say.dart <board.jsonl> <lines.jsonl>
-//   dart run tool/board_say.dart <http://host:4321> <lines.jsonl>
+//   bash tool/run.sh board_say <board.jsonl> <lines.jsonl>
+//   bash tool/run.sh board_say <http://host:4321> <lines.jsonl>
 //
 // 🆕The second form (유저 2026-10-07, card
 // the-board-is-one-server-for-both-machines) is for a machine that holds no
@@ -31,7 +31,7 @@
 // (「모두」 for every one): `{"id":"<card>","to":"타임라인/콘티","note":…}`.
 // It is an ordinary line of that card, shown to the session it names at the
 // start and the end of its turn, and signed here with the 담당 THIS session
-// registered (`dart run tool/board_me.dart <담당>`). See [BoardLog.to].
+// registered (`bash tool/run.sh board_me <담당>`). See [BoardLog.to].
 //
 // ⛔It refuses rather than writes: an unknown field, an unknown `kind`, a
 // missing `id`, or a `ts` of your own. Refusing costs one message; a bad line
@@ -156,7 +156,7 @@ String? letterRefusal(Map<String, dynamic> json, int lineNo) {
   if (from.isEmpty) {
     return '$lineNo번째 줄: 전달에 보낸 담당(`from`)이 없습니다 — 세션이 '
         '담당 이름을 등록해 두면 이 도구가 채웁니다: '
-        'dart run tool/board_me.dart <담당>';
+        'bash tool/run.sh board_me <담당>';
   }
   if (from == to) {
     return '$lineNo번째 줄: 「$to」 가 자기 앞으로 보내는 전달입니다 — 자기 '

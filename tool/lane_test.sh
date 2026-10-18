@@ -106,8 +106,11 @@ AW="$E/away/.claude/worktrees"; HW="$E/home/.claude/worktrees"
 git init -q --bare "$E/mirror.git"
 git init -q -b master "$E/home" 2>/dev/null
 mkdir -p "$E/home/tool"; cp "$SCRIPT" "$E/home/tool/lane.sh"; echo one > "$E/home/a.txt"
+# The launcher the gates ask the room through, and the stamp law it reads.
+# No tool sources beside them, so it hands every call to the stand-in `dart`.
+cp "$(dirname "${BASH_SOURCE[0]}")/run.sh" "$(dirname "${BASH_SOURCE[0]}")/exe_stamp.sh" "$E/home/tool/"
 printf '.claude/\nbuild/\n' > "$E/home/.gitignore"
-git -C "$E/home" add -f tool/lane.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
+git -C "$E/home" add -f tool/lane.sh tool/run.sh tool/exe_stamp.sh a.txt .gitignore 2>/dev/null; git -C "$E/home" commit -q -m first
 git -C "$E/home" remote add backup "$E/mirror.git"
 quiet "$E/home" backup
 git clone -q -o backup "$E/mirror.git" "$E/away"
