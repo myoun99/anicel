@@ -90,6 +90,12 @@ const ledger = <String, Why>{
   'widgets/value_hands.dart | '
           "'\$keyPrefix-\${direction > 0 ? 'up' : 'down'}'":
       Why.aSetting,
+  // The text tool's mirror (text-letters-lean-and-underline ⑦): a switch
+  // of the held box's own `flipped`, the next text's when none is held.
+  // The transform tool's flip names its action: it flips a selection,
+  // not a value the tool keeps.
+  "brush/text_tool_settings.dart | 'text-tool-flip-horizontal'":
+      Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
   // A value's pencil: it opens the value's typed field and runs nothing.
