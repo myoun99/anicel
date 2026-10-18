@@ -319,9 +319,10 @@ class CanvasViewport {
   /// the canvas is turned. The inverse pair shares [_rotatedFlipped] for
   /// the same reason.
   ViewportPoint _rotatedFlippedScaled(double cx, double cy) {
-    final turned = PlaneTurn(
-      rotationDegrees,
-    ).apply(flipHorizontal ? -cx : cx, flipVertical ? -cy : cy);
+    final turned = PlaneTurn(rotationDegrees).apply(
+      flipHorizontal ? -cx : cx,
+      flipVertical ? -cy : cy,
+    );
     return ViewportPoint(x: turned.x * zoom, y: turned.y * zoom);
   }
 
