@@ -1358,16 +1358,21 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// ONE metric law for every marker on this axis — see
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
   /// Build-time is correct HERE: the band rebuilds on zoom.
-  double get _markerSize => timelineLaneKeyMarkerSizeOf(
+  Size get _markerSize => timelineLaneKeyMarkerSizeOf(
     _crossExtent,
     frameCellExtent: _cellExtent,
     heads: lane.isGroupHeader,
   );
-  /// The floor yields to the room, as a mark's does ([_squareInCell]): a
-  /// lane the enlarged graph folds is thinner than it (I-89 ③D).
-  double get _hitSize => (_markerSize + 8)
-      .clamp(math.min(14.0, _crossExtent), _crossExtent)
-      .toDouble();
+
+  /// The mark's box grown by 4px each side, either way held to the row —
+  /// the floor yields to the room, as a mark's does ([_markInCell]): a lane
+  /// the enlarged graph folds is thinner than it (I-89 ③D).
+  Size get _hitSize {
+    double grown(double side) => (side + 8)
+        .clamp(math.min(14.0, _crossExtent), _crossExtent)
+        .toDouble();
+    return Size(grown(_markerSize.width), grown(_markerSize.height));
+  }
 
   bool _inWindow(int frame) =>
       frame >= frameStartIndex && frame < frameEndIndexExclusive;
@@ -1473,10 +1478,10 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final hit = _hitSize;
     return placedAlong(
       axis,
-      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit / 2,
-      across: _crossExtent / 2 - hit / 2,
-      alongExtent: hit,
-      acrossExtent: hit,
+      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit.width / 2,
+      across: _crossExtent / 2 - hit.height / 2,
+      alongExtent: hit.width,
+      acrossExtent: hit.height,
       child: TimelineLaneKeyMarker(
         key: ValueKey<String>(
           '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
@@ -1630,21 +1635,29 @@ class _LaneKeyName extends StatelessWidget {
 /// 텍스트/엣지처럼 줌에 따라 작아지게」 — and a mark that fills its cell
 /// does it by being the cell. ↩️The row's share ran through
 /// [timelineFittedGlyphFontSize] while the marks were sized off the row.
-double timelineLaneKeyMarkerSize(
+///
+/// A box as the timeline lays it — its width along the frame axis, its
+/// height across ([keyMarkPath]).
+Size timelineLaneKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) => _squareInCell(
-  _cellRoom(crossExtent, frameCellExtent) / _unionStep,
+}) => _markInCell(
+  timelineLaneUnionKeyMarkerSize(
+        crossExtent,
+        frameCellExtent: frameCellExtent,
+      ) /
+      _unionStep,
   crossExtent: crossExtent,
   frameCellExtent: frameCellExtent,
 );
 
-/// The UNION mark's size — the whole of its cell (F-367): the square the
-/// tighter of the row and the frame cell allows (D39-2).
-double timelineLaneUnionKeyMarkerSize(
+/// The UNION mark's box — the whole of its cell (F-367): as high as the
+/// row, and as wide as the cell where the cell is the narrower
+/// (F-367-Q4) — never wider than it is high.
+Size timelineLaneUnionKeyMarkerSize(
   double crossExtent, {
   required double frameCellExtent,
-}) => _cellRoom(crossExtent, frameCellExtent);
+}) => Size(math.min(crossExtent, frameCellExtent), crossExtent);
 
 /// How much bigger a union is than a member's key: half again (㉗).
 const double _unionStep = 1.5;
@@ -1654,7 +1667,7 @@ const double _unionStep = 1.5;
 /// ([timelineLaneKeyMarkerSize]) — the band's one answer, wherever a lane's
 /// keys are drawn ([TimelineLaneFrameRow], the storyboard's camera rows
 /// through [timelineLaneKeySpan], the flip window's slots).
-double timelineLaneKeyMarkerSizeOf(
+Size timelineLaneKeyMarkerSizeOf(
   double crossExtent, {
   required double frameCellExtent,
   required bool heads,
@@ -1665,39 +1678,45 @@ double timelineLaneKeyMarkerSizeOf(
       )
     : timelineLaneKeyMarkerSize(crossExtent, frameCellExtent: frameCellExtent);
 
-/// 🚨D39-2 (유저 스크린샷 3장, 2026-08-22) — **A KEY MARK IS A SQUARE, SO
-/// IT IS CAPPED BY THE TIGHTER AXIS OF ITS CELL.**
+/// 🚨F-367-Q4 (유저 2026-10-18 「세로 유지 · 가로만 줄임(프레임 블록처럼)」,
+/// asked at 00:39 「내가 타임라인등 줌 줄이면 프레임블록등이랑 같은 규칙으로
+/// 세로길이 최대한 유지한채 가로만 줄이라고 하지않았나?」) — **A KEY MARK
+/// KEEPS ITS HEIGHT AND NARROWS WITH ITS CELL**, as a frame block's word
+/// does: the row says how high it stands, the cell how wide.
 ///
-/// > 「1-일반상태, 2-**다이아몬드가 종횡비가 이상해지기 시작**, 3-이상해짐.
-/// > 크기가 종횡비 유지한채로 작아지는게아니라 **한 변만 작아지는** 느낌」
+/// ↩️🚨D39-2 (유저 스크린샷 3장, 2026-08-22) made it a SQUARE capped by the
+/// tighter axis of its cell: 「1-일반상태, 2-**다이아몬드가 종횡비가
+/// 이상해지기 시작**, 3-이상해짐. 크기가 종횡비 유지한채로 작아지는게아니라
+/// **한 변만 작아지는** 느낌」. What those screenshots stepped through was one
+/// `Container` rotated 45° (the halves came with I-89 ②): asked for more
+/// than the cell is wide, the parent's constraint squeezed the WIDTH while
+/// the height held — a rectangle, and a rotated rectangle is a lozenge, not
+/// a diamond. The shapes are DRAWN in their box now ([keyMarkPath]), so a
+/// narrowed diamond keeps a point on each of the box's four edges.
 ///
-/// [TimelineLaneKeyMarker] asks for a box of an explicit width AND height.
-/// ↩️It was one `Container` rotated 45° (the halves came with I-89 ②): ask
-/// for more than the cell is wide and the parent's constraint squeezed the
-/// WIDTH while the height held — a rectangle, and a rotated rectangle is a
-/// lozenge, not a diamond. That is exactly the degradation the three
-/// screenshots step through.
+/// The rule is still said in ONE place rather than as a patch on whichever
+/// caller showed it first: [TimelineLaneKeyMarker] asks for a box of an
+/// explicit width AND height, and no mark outgrows its cell or its row.
+/// (↩️Two sizes had escaped the glyph fit the member ran through: the fit's
+/// own 4px floor, and the union's ×1.5 on top.)
 ///
-/// The rule is "a mark never outgrows its cell", said in ONE place rather
-/// than as a patch on whichever caller showed it first. (↩️Two sizes had
-/// escaped the glyph fit the member ran through: the fit's own 4px floor,
-/// and the union's ×1.5 on top.)
-///
-/// ⚠️The floor yields to the room. A 3px cell gets a 3px mark, because a
-/// square that does not fit is not a smaller square.
-double _squareInCell(
-  double wanted, {
+/// ⚠️The floor yields to the room. A 3px cell gets a mark 3px wide, because
+/// a mark that does not fit is not a smaller mark.
+Size _markInCell(
+  Size wanted, {
   required double crossExtent,
   required double frameCellExtent,
-}) {
-  final room = _cellRoom(crossExtent, frameCellExtent);
+}) => Size(
+  _heldIn(wanted.width, frameCellExtent),
+  _heldIn(wanted.height, crossExtent),
+);
+
+/// [wanted] held inside [room], and above the floor while there is room
+/// for it.
+double _heldIn(double wanted, double room) {
   final floor = _keyMarkerFloor < room ? _keyMarkerFloor : room;
   return wanted.clamp(floor, room).toDouble();
 }
-
-/// The side of the largest square a cell holds — the tighter of its two.
-double _cellRoom(double crossExtent, double frameCellExtent) =>
-    crossExtent < frameCellExtent ? crossExtent : frameCellExtent;
 
 /// The smallest a key mark may be drawn while it still has room — the same
 /// floor [timelineFittedGlyphFontSize] holds every other mark to.
@@ -1809,15 +1828,10 @@ TimelineFrameSpan timelineLaneKeySpan({
     ),
     child: LayoutBuilder(
       builder: (context, constraints) {
-        // The tighter box dimension is the cell's zoom-driven extent on
-        // either axis (the fit takes the min of both anyway).
-        final cellExtent = math.min(
-          constraints.maxWidth,
-          constraints.maxHeight,
-        );
+        // The box along the frame axis is the cell's zoom-driven extent.
         final markerSize = timelineLaneKeyMarkerSizeOf(
           crossExtent,
-          frameCellExtent: cellExtent,
+          frameCellExtent: extentAlong(axis, constraints.biggest),
           heads: lane.isGroupHeader,
         );
         final marker = TimelineLaneKeyMarker(
@@ -2090,11 +2104,11 @@ List<({double from, double to})> timelineKeysLineGaps(
   final cell = _cellAlong(line, along);
   ({double from, double to}) gapAt(TimelineKeysLineRing ring) {
     final middle = (ring.cell + 0.5) * cell;
-    final size = timelineLaneUnionKeyMarkerSize(
+    final wide = timelineLaneUnionKeyMarkerSize(
       across * ring.band,
       frameCellExtent: cell,
-    );
-    return (from: middle - size / 2, to: middle + size / 2);
+    ).width;
+    return (from: middle - wide / 2, to: middle + wide / 2);
   }
 
   return [for (final ring in line.rings) gapAt(ring)];
@@ -2227,7 +2241,9 @@ class TimelineLaneKeyMarker extends StatelessWidget {
   /// half arriving at the key toward the frames before it ([paintKeyMark]).
   final Axis axis;
 
-  final double markerSize;
+  /// The mark's box as the timeline lays it — its width along the frame
+  /// axis, its height across ([timelineLaneKeyMarkerSizeOf]).
+  final Size markerSize;
 
   /// The row's COLOUR LABEL, exactly as its frame blocks take it (유저
   /// 2026-09-12: 「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로.
@@ -2245,7 +2261,7 @@ class TimelineLaneKeyMarker extends StatelessWidget {
     return IgnorePointer(
       child: Center(
         child: CustomPaint(
-          size: Size.square(markerSize),
+          size: axis == Axis.vertical ? markerSize.flipped : markerSize,
           painter: _KeyMarkPainter(
             mark: mark,
             standing: axis == Axis.vertical,
@@ -2287,7 +2303,7 @@ class _KeyMarkPainter extends CustomPainter with RepaintOnProps {
     canvas,
     mark,
     center: size.center(Offset.zero),
-    size: size.shortestSide,
+    box: standing ? size.flipped : size,
     standing: standing,
     color: color,
     ring: ring,

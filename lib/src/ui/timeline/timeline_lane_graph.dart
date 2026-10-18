@@ -1403,7 +1403,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
         canvas,
         mark,
         center: at,
-        size: keySize,
+        box: keySize,
         standing: axis == Axis.vertical,
         color: color,
       );

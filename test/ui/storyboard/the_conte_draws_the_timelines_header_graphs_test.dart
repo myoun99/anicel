@@ -650,7 +650,7 @@ void main() {
     final seKey = laneGroupKey(s1, transform);
     final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
     final blurX = blurred.parameters['blurX']!;
-    final seen = <double>{};
+    final seen = <Size>{};
     for (final pixelsPerFrame in const [12.0, 40.0]) {
       await pump(
         tester,
@@ -701,19 +701,22 @@ void main() {
           .widget<CustomPaint>(paint)
           .painter!
           .paint(canvas, tester.getSize(paint));
-      // How wide each key's mark is drawn — the whole of its box across the
-      // frames, whatever its shape, to a float's precision: a path keeps
-      // its points in floats.
+      // Each key's mark as drawn — the whole of its box, whatever its
+      // shape, to a float's precision: a path keeps its points in floats.
       final marks = [
         for (final call in canvas.invocations)
           if (call.invocation.memberName == #drawPath &&
               (call.invocation.positionalArguments[1] as Paint).style ==
                   PaintingStyle.fill)
-            (call.invocation.positionalArguments[0] as Path).getBounds().width,
+            (call.invocation.positionalArguments[0] as Path).getBounds().size,
       ];
       expect(marks, hasLength(2), reason: '⛔전제: the rotation\'s keys');
-      for (final width in marks) {
-        expect(width, closeTo(member, 1e-3), reason: '$pixelsPerFrame');
+      for (final mark in marks) {
+        expect(
+          mark,
+          within(distance: 1e-3, from: member),
+          reason: '$pixelsPerFrame',
+        );
       }
       await tester.pumpWidget(const SizedBox());
     }

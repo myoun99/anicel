@@ -9,6 +9,7 @@ import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/key_mark_glyph.dart' show keyMarkPath;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
@@ -215,13 +216,15 @@ void main() {
   group('what it draws', () {
     const labelColor = Color(0xFF123456);
 
-    /// The marker's painting, at a 12px box — the mark's own 12-unit grid,
-    /// so a point below is a point of the drawing.
+    /// The marker's painting, at a 12px box unless [box] says otherwise —
+    /// the mark's own 12-unit grid, so a point below is a point of the
+    /// drawing.
     Future<RenderObject> pumpMarker(
       WidgetTester tester,
       KeyMark mark, {
       bool selected = false,
       Axis axis = Axis.horizontal,
+      Size box = const Size.square(12),
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -233,7 +236,7 @@ void main() {
                 child: TimelineLaneKeyMarker(
                   mark: mark,
                   axis: axis,
-                  markerSize: 12,
+                  markerSize: box,
                   color: labelColor,
                   selected: selected,
                 ),
@@ -383,6 +386,67 @@ void main() {
         reason: 'the hold leaves DOWN the sheet; the straight side arrives '
             'from above',
       );
+    });
+
+    // 🗣️F-367-Q4 (유저 2026-10-18 「세로 유지 · 가로만 줄임(프레임 블록처럼)」):
+    // a box narrows along the frames and keeps its height across them.
+    testWidgets('a box narrowed along the frames stands narrowed DOWN the '
+        'sheet, its height across it kept', (tester) async {
+      Size painted() => tester.getSize(
+        find.descendant(
+          of: find.byType(TimelineLaneKeyMarker),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      const box = Size(8, 12);
+      final lying = await pumpMarker(tester, _heldOut, box: box);
+      expect(painted(), box);
+      expect(
+        lying,
+        paints
+          ..path(
+            includes: const [Offset(7, 1), Offset(7, 11), Offset(1, 6)],
+            excludes: const [Offset(1, 1), Offset(1, 11)],
+          ),
+        reason: 'a diamond\'s half narrowed, its point on the box\'s edge',
+      );
+      final standing = await pumpMarker(
+        tester,
+        _heldOut,
+        box: box,
+        axis: Axis.vertical,
+      );
+      expect(painted(), box.flipped);
+      expect(
+        standing,
+        paints
+          ..path(
+            includes: const [Offset(1, 7), Offset(11, 7), Offset(6, 1)],
+            excludes: const [Offset(1, 1), Offset(11, 1)],
+          ),
+        reason: 'the same mark turned a quarter, in the box turned with it',
+      );
+    });
+
+    test('🚨and EVERY mark fills its narrowed box, edge to edge — no shape '
+        'keeps a square of its own inside it', () {
+      const box = Size(8, 12);
+      for (final mark in [
+        for (final incoming in [
+          KeySideKind.linear,
+          KeySideKind.ease,
+          KeySideKind.fast,
+          KeySideKind.auto,
+        ])
+          for (final outgoing in KeySideKind.values) sides(incoming, outgoing),
+        KeyMark.mixed,
+      ]) {
+        expect(
+          keyMarkPath(mark, box).getBounds(),
+          rectMoreOrLessEquals(Offset.zero & box, epsilon: 1e-5),
+          reason: '$mark',
+        );
+      }
     });
 
     testWidgets('a straight key is a DIAMOND — two halves meeting', (

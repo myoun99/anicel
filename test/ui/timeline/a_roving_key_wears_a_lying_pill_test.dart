@@ -54,11 +54,16 @@ void main() {
 
   test('the pill is the box\'s width and six tenths of its height, lying '
       'in its middle with round ends, filled', () {
-    final pill = keyMarkPath(KeyMark.roving, 12);
+    final pill = keyMarkPath(KeyMark.roving, const Size.square(12));
     expect(
       pill.getBounds(),
       // A path keeps its points in 32 bits.
       rectMoreOrLessEquals(const Rect.fromLTWH(0, 2.4, 12, 7.2), epsilon: 1e-5),
+    );
+    // F-367-Q4: a narrowed box keeps the pill's height and shortens it.
+    expect(
+      keyMarkPath(KeyMark.roving, const Size(8, 12)).getBounds(),
+      rectMoreOrLessEquals(const Rect.fromLTWH(0, 2.4, 8, 7.2), epsilon: 1e-5),
     );
     expect(pill.contains(const Offset(6, 6)), isTrue, reason: 'its middle');
     expect(

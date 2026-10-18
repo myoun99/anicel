@@ -163,15 +163,14 @@ void main() {
 
     // The Blur's width, its group's graph shut: a member lane marking its
     // key at 0 itself.
-    double memberMark() => tester
+    Size memberMark() => tester
         .widget<TimelineLaneKeyMarker>(
           find.byKey(ValueKey<String>('timeline-lane-key-draw-$_blurWidth-0')),
         )
         .markerSize;
-    // How wide each key's mark is drawn — the whole of its box across the
-    // frames, whatever its shape, to a float's precision: a path keeps its
-    // points in floats.
-    List<double> graphMarks() {
+    // Each key's mark as drawn — the whole of its box, whatever its shape,
+    // to a float's precision: a path keeps its points in floats.
+    List<Size> graphMarks() {
       final canvas = TestRecordingCanvas();
       _painter(tester).paint(canvas, tester.getSize(_picture('timeline')));
       return [
@@ -179,21 +178,25 @@ void main() {
           if (call.invocation.memberName == #drawPath &&
               (call.invocation.positionalArguments[1] as Paint).style ==
                   PaintingStyle.fill)
-            (call.invocation.positionalArguments[0] as Path).getBounds().width,
+            (call.invocation.positionalArguments[0] as Path).getBounds().size,
       ];
     }
 
     // Zoomed in, a frame's cell is wider than a lane's row is tall and the
     // row is the tighter of the two; zoomed out, the cell is.
     await _tap(tester, 'timeline-zoom-in-button');
-    final seen = <double>{};
+    final seen = <Size>{};
     for (var step = 0; step < 3; step += 1) {
       final member = memberMark();
       seen.add(member);
       final marks = graphMarks();
       expect(marks, hasLength(2 * 2), reason: '⛔전제: Position\'s keys');
-      for (final width in marks) {
-        expect(width, closeTo(member, 1e-3), reason: 'zoom step $step');
+      for (final mark in marks) {
+        expect(
+          mark,
+          within(distance: 1e-3, from: member),
+          reason: 'zoom step $step',
+        );
       }
       await _tap(tester, 'timeline-zoom-out-button');
     }

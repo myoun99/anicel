@@ -12,19 +12,25 @@ import '../../models/key_side.dart' show KeySideKind;
 /// 반반등은 검증된 업계기준이라 아주 마음에들어」): the LEFT half is the side
 /// arriving at the key, the RIGHT half the side leaving it — and a star's
 /// point for 「급하게」, which AE has no shape of its own for. 🗣️Every shape
-/// shares ONE [size]-square box (유저 10-10 「모양의 크기는 동일한 느낌이
-/// 좋으니 찬성」), so a diamond's points touch the box's edges — the halves
-/// of two shapes could not meet down the middle otherwise.
+/// shares ONE box (유저 10-10 「모양의 크기는 동일한 느낌이 좋으니 찬성」), so
+/// a diamond's points touch the box's edges — the halves of two shapes
+/// could not meet down the middle otherwise.
+///
+/// [box] is laid as the timeline lays it: its width along the frame axis,
+/// its height across. 🗣️F-367-Q4 (유저 2026-10-18 「세로 유지 · 가로만
+/// 줄임(프레임 블록처럼)」): the box keeps its height and narrows with the
+/// cell, so every shape narrows with it — a diamond's points still touch
+/// its edges, a disc stands as an oval. ↩️It was a square.
 ///
 /// ONE outline round both halves — down the left from the top of the
 /// middle, back up the right — so there is no edge down the middle where
 /// the halves meet: the fill has no seam, and the selection's ring is a
 /// thin stroke of the SILHOUETTE (UI-R23 #4), not a bar between the halves.
-Path keyMarkPath(KeyMark mark, double size) {
-  final unit = size / 12;
+Path keyMarkPath(KeyMark mark, Size box) {
+  final unit = box / 12;
   switch (mark) {
     case SidesKeyMark(:final incoming, :final outgoing):
-      final path = Path()..moveTo(6 * unit, 0);
+      final path = Path()..moveTo(6 * unit.width, 0);
       _walkHalf(path, incoming, right: false, unit: unit);
       _walkHalf(path, outgoing, right: true, unit: unit);
       return path..close();
@@ -33,27 +39,30 @@ Path keyMarkPath(KeyMark mark, double size) {
     case MixedKeyMark():
       return Path()
         ..fillType = PathFillType.evenOdd
-        ..addOval(Rect.fromLTWH(0, 0, size, size))
-        ..addOval(_middleCircle(size, _mixedGap))
-        ..addOval(_middleCircle(size, _mixedCore));
+        ..addOval(Offset.zero & box)
+        ..addOval(_middleOval(box, _mixedGap))
+        ..addOval(_middleOval(box, _mixedCore));
     // A roving key (I-89 ④ · F-367): a pill lying along the frame axis —
     // as wide as any key, lower than all of them, so 「부드럽게 지나감」's
     // whole disc stays its own.
     case RovingKeyMark():
-      final low = size * _rovingHeight;
+      final low = box.height * _rovingHeight;
       return Path()..addRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, (size - low) / 2, size, low),
+          Rect.fromLTWH(0, (box.height - low) / 2, box.width, low),
           Radius.circular(low / 2),
         ),
       );
   }
 }
 
-/// The circle about the middle of the [size]-square box whose radius is
-/// [share] of the box.
-Rect _middleCircle(double size, double share) =>
-    Rect.fromCircle(center: Offset(size / 2, size / 2), radius: size * share);
+/// The oval about the middle of [box] whose radii are [share] of the box's
+/// two sides.
+Rect _middleOval(Size box, double share) => Rect.fromCenter(
+  center: box.center(Offset.zero),
+  width: box.width * share * 2,
+  height: box.height * share * 2,
+);
 
 /// Where a mixed mark's cut ring runs: from its core's edge out to this
 /// radius, as a share of its box — a gap of 0.08 of the box.
@@ -83,14 +92,16 @@ const double _rovingHeight = 0.6;
 /// (`strokeKeysLineClearOf`).
 bool keyMarkIsHollow(KeyMark mark) => mark is MixedKeyMark;
 
-/// A quarter turn clockwise of the [size]-square box about its middle —
-/// (x, y) to (size − y, x), its left edge onto its top.
-Float64List _quarterTurn(double size) =>
-    Float64List.fromList([0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, size, 0, 0, 1]);
+/// A quarter turn clockwise of [box] — (x, y) to (height − y, x), its left
+/// edge onto its top, so it stands [box] `.flipped`.
+Float64List _quarterTurn(Size box) => Float64List.fromList(
+  [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, box.height, 0, 0, 1],
+);
 
-/// [mark] filled with [color] in the [size]-square box centred on
-/// [center] — rung inside its edge with [ring] when that is given, the
-/// lane selection's accent, as a plate's border is laid inside it.
+/// [mark] filled with [color] in [box] — laid as the timeline lays it
+/// ([keyMarkPath]) — centred on [center], rung inside its edge with [ring]
+/// when that is given, the lane selection's accent, as a plate's border is
+/// laid inside it.
 ///
 /// [standing] turns it a quarter clockwise, as the X-sheet is the timeline
 /// turned on its side: the half for the side arriving faces the frames
@@ -100,14 +111,15 @@ void paintKeyMark(
   Canvas canvas,
   KeyMark mark, {
   required Offset center,
-  required double size,
+  required Size box,
   required bool standing,
   required Color color,
   ({Color color, double width})? ring,
 }) {
-  final laid = keyMarkPath(mark, size);
-  final path = (standing ? laid.transform(_quarterTurn(size)) : laid).shift(
-    center - Offset(size / 2, size / 2),
+  final laid = keyMarkPath(mark, box);
+  final stood = standing ? box.flipped : box;
+  final path = (standing ? laid.transform(_quarterTurn(box)) : laid).shift(
+    center - stood.center(Offset.zero),
   );
   canvas.drawPath(path, Paint()..color = color);
   if (ring == null) {
@@ -128,16 +140,17 @@ void paintKeyMark(
 }
 
 /// [path] carried round one half's edge on the 12-unit grid the mark is
-/// drawn on, from one end of the middle line to the other: the left half
-/// top to bottom, the right half — its mirror — bottom to top.
+/// drawn on — a [unit] a twelfth of its box each way — from one end of the
+/// middle line to the other: the left half top to bottom, the right half —
+/// its mirror — bottom to top.
 void _walkHalf(
   Path path,
   KeySideKind kind, {
   required bool right,
-  required double unit,
+  required Size unit,
 }) {
   Offset at(double x, double y) =>
-      Offset((right ? 12 - x : x) * unit, y * unit);
+      Offset((right ? 12 - x : x) * unit.width, y * unit.height);
   final end = at(6, right ? 0 : 12);
   void through(List<Offset> corners) {
     for (final corner in right ? corners.reversed : corners) {
@@ -160,7 +173,7 @@ void _walkHalf(
       // Round the outside, whichever way the half walks.
       path.arcToPoint(
         end,
-        radius: Radius.circular(6 * unit),
+        radius: Radius.elliptical(6 * unit.width, 6 * unit.height),
         clockwise: false,
       );
     case KeySideKind.hold:

@@ -762,7 +762,7 @@ class FlipHudPainter extends CustomPainter
         canvas,
         mark,
         center: rect.center,
-        size: _keyMarkSizeIn(row, rect.size),
+        box: _keyMarkSizeIn(row, rect.size),
         // In the timeline's layout: a standing window turns all of it.
         standing: false,
         color: timelineDrawingHeldColor,
@@ -856,8 +856,8 @@ class FlipHudPainter extends CustomPainter
           if (run.keyMark case final mark? when keyMarkIsHollow(mark))
             Rect.fromCenter(
               center: Offset(centreOf(run.startIndex), strip.centre),
-              width: box,
-              height: box,
+              width: box.width,
+              height: box.height,
             ),
       ],
       () => canvas.drawLine(
@@ -876,7 +876,7 @@ class FlipHudPainter extends CustomPainter
   ///
   /// ↩️A fixed 9px box — the one the diamond and the square stood in before
   /// the halves, and a second answer beside the panels'.
-  static double _keyMarkSizeIn(FlipHudRow row, Size slot) =>
+  static Size _keyMarkSizeIn(FlipHudRow row, Size slot) =>
       timelineLaneKeyMarkerSizeOf(
         slot.height,
         frameCellExtent: slot.width,

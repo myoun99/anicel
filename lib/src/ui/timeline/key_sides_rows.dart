@@ -222,7 +222,7 @@ class _KeySidePainter extends CustomPainter with RepaintOnProps {
       canvas,
       SidesKeyMark(incoming: kind, outgoing: kind),
       center: size.center(Offset.zero),
-      size: size.shortestSide,
+      box: Size.square(size.shortestSide),
       // A window's row reads left to right, as the timeline does.
       standing: false,
       color: timelineDrawingHeldColor,

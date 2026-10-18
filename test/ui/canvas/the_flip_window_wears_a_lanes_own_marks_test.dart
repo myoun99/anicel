@@ -111,15 +111,18 @@ void main() {
       'panels\' does (I-89 ②)', () {
     final calls = paintedWith(KeyMark.mixed);
     // The ring is the one key's path, a header's, with a gap round its
-    // middle (F-367-Q2).
+    // middle (F-367-Q2) — the gap as tall as the box is, not as wide
+    // (F-367-Q4). The box is a float path's, hence the 1e-3.
     final ring = [
       for (final call in calls)
         if (call.memberName == #drawPath)
           call.positionalArguments[0] as Path,
     ].singleWhere((path) {
       final box = path.getBounds();
-      return (box.width - union).abs() < 1e-6 &&
-          !path.contains(box.center + Offset(box.width * 0.36, 0));
+      return (box.width - union.width).abs() < 1e-3 &&
+          (box.height - union.height).abs() < 1e-3 &&
+          !path.contains(box.center + Offset(box.width * 0.36, 0)) &&
+          !path.contains(box.center + Offset(0, box.height * 0.36));
     });
     final clip = calls.indexWhere(clearing);
     expect(clip, isNot(-1), reason: 'the line is kept out of the ring');
@@ -171,17 +174,22 @@ void main() {
           call.invocation.positionalArguments[0] as Path,
     ].singleWhere((path) {
       final box = path.getBounds();
-      return (box.width - member).abs() < 1e-6 &&
-          (box.height - member).abs() < 1e-6;
+      return (box.width - member.width).abs() < 1e-3 &&
+          (box.height - member.height).abs() < 1e-3;
     });
-    final middle = mark.getBounds().center;
+    // A fifth of the box in from either of its upper corners.
+    final box = mark.getBounds();
+    Offset corner(double side) => box.center.translate(
+      side * box.width * 0.3,
+      -box.height * 0.3,
+    );
     expect(
-      mark.contains(middle + const Offset(3.5, -3.5)),
+      mark.contains(corner(1)),
       isTrue,
       reason: 'the side leaving holds: its half is a square',
     );
     expect(
-      mark.contains(middle + const Offset(-3.5, -3.5)),
+      mark.contains(corner(-1)),
       isFalse,
       reason: 'the side arriving is straight: its half is a diamond\'s',
     );
