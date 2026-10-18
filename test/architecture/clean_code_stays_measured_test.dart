@@ -543,7 +543,20 @@ void main() {
   /// writes it. 🔬`clean_code_diff` against master (`9a7a8e3de`, at 404)
   /// named those two added and nothing gone; stood on ⑥'s 405 above when
   /// the lane was rebased onto it (10-19).
-  const wideSignatures = 407;
+  ///
+  /// ⚠️407 → 408 on 2026-10-19, named as the rule above asks (board
+  /// `F-287`, 유저 「다른 합성모드도 똑같으니 완벽하게 검사」).
+  /// `LayerStackPaintPass._layLevelPixels` (five) is the one lay of a
+  /// level's pixels one texel to a pixel: the patch's base, the scroll
+  /// carry's overlap and a region composed apart were three draws of one
+  /// copy, which the raw image draw ratchet caught at the third. Its five
+  /// are the draw's own — the canvas, the image, where it lands, which part
+  /// of the image (the scroll carry's overlap; the other two lay it whole)
+  /// and `src` for a region laid in place of the carried pixels.
+  /// 🔬`clean_code_diff` against master (`37cd01b30`, at 407) named that
+  /// one added and nothing gone. ⛔Not split to fit: a second name for the
+  /// `src` lay would be a second copy of the rest.
+  const wideSignatures = 408;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
