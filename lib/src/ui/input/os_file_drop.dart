@@ -69,9 +69,6 @@ class _OsFileDropEntranceState extends State<OsFileDropEntrance>
   @override
   Widget build(BuildContext context) => MetaData(
     metaData: this,
-    // TRANSLUCENT: on the path of whatever it covers, taking nothing from
-    // it — every press keeps going where it went.
-    behavior: HitTestBehavior.translucent,
     // PASSTHROUGH: [child] is laid out as it would be with no place around
     // it — a loose stack would hand a panel room it could shrink in.
     child: Stack(

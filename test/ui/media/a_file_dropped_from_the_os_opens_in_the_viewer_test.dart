@@ -1,14 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
-import 'package:anicel/src/ui/input/os_file_drop.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
-import 'package:anicel/src/ui/widgets/drop_entrance_frame.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import '../../helpers/os_file_drop.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -75,20 +75,25 @@ void main() {
       .value
       ?.path;
 
-  /// Whether [viewer] is lit as a place a drop is over: its frame drawn.
-  bool litIn(WidgetTester tester, String viewer) => find
-      .descendant(
-        of: find.descendant(
-          of: find.ancestor(
-            of: panelOf(viewer),
-            matching: find.byType(OsFileDropEntrance),
-          ),
-          matching: find.byType(DropEntranceFrame),
-        ),
-        matching: find.byType(DecoratedBox),
-      )
-      .evaluate()
-      .isNotEmpty;
+  /// Whether [viewer] is lit as a place a drop is over — the light as it is
+  /// SEEN: the panel's top edge drawn in the accent, over whatever the
+  /// panel draws there.
+  Future<bool> litIn(WidgetTester tester, String viewer) async {
+    final edge = tester.getRect(panelOf(viewer)).topCenter.translate(0, 1);
+    final screen = tester.layers.first as OffsetLayer;
+    final pixel = await tester.runAsync(() async {
+      final image = await screen.toImage(
+        Rect.fromLTWH(edge.dx, edge.dy, 1, 1),
+      );
+      try {
+        return (await image.toByteData())!;
+      } finally {
+        image.dispose();
+      }
+    });
+    final [r, g, b, a] = pixel!.buffer.asUint8List(pixel.offsetInBytes, 4);
+    return Color.fromARGB(a, r, g, b) == AppColors.accent;
+  }
 
   testWidgets('🎯a picture dropped on either viewer opens in THAT one — and '
       'the import window never comes up', (tester) async {
@@ -139,21 +144,26 @@ void main() {
       'alone — and none once it has gone or been let go', (tester) async {
     final pose = await picture(tester, 'pose.png');
     await pumpViewers(tester);
-    expect(litIn(tester, mainViewer), isFalse);
+    expect(await litIn(tester, mainViewer), isFalse);
 
-    await osDragOver(tester, onScreenIn(tester, mainViewer));
-    expect(litIn(tester, mainViewer), isTrue);
-    expect(litIn(tester, subViewer), isFalse);
+    // Lit as it comes in, before it has moved at all.
+    await osDragEnters(tester, onScreenIn(tester, mainViewer));
+    expect(await litIn(tester, mainViewer), isTrue);
+    expect(await litIn(tester, subViewer), isFalse);
 
     await osDragMovesTo(tester, onScreenIn(tester, subViewer));
-    expect(litIn(tester, mainViewer), isFalse);
-    expect(litIn(tester, subViewer), isTrue);
+    expect(await litIn(tester, mainViewer), isFalse);
+    expect(await litIn(tester, subViewer), isTrue);
 
     await osDragLeaves(tester);
-    expect(litIn(tester, subViewer), isFalse);
+    expect(await litIn(tester, subViewer), isFalse);
 
     await osDrop(tester, [pose], at: onScreenIn(tester, subViewer));
-    expect(litIn(tester, subViewer), isFalse, reason: 'let go, it is out');
+    expect(
+      await litIn(tester, subViewer),
+      isFalse,
+      reason: 'let go, it is out',
+    );
     await settleLoadedPages(tester);
   });
 }

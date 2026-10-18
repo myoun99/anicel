@@ -10,9 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// gives its view one device pixel to a logical one
 /// (`tester.view.devicePixelRatio = 1`) and the point means the same on
 /// every platform.
-Future<void> osDragOver(WidgetTester tester, Offset at) async {
+///
+/// This is the drag coming into the window, at [at].
+Future<void> osDragEnters(WidgetTester tester, Offset at) async {
   await _hear(tester, 'entered', <double>[at.dx, at.dy]);
-  await osDragMovesTo(tester, at);
+  await tester.pump();
 }
 
 /// The drag from the OS, already over the window, moved on to [at].
@@ -21,13 +23,14 @@ Future<void> osDragMovesTo(WidgetTester tester, Offset at) async {
   await tester.pump();
 }
 
-/// [paths] dragged from the OS to [at] and let go there ([osDragOver]).
+/// [paths] dragged from the OS to [at] and let go there ([osDragEnters]).
 Future<void> osDrop(
   WidgetTester tester,
   List<String> paths, {
   required Offset at,
 }) async {
-  await osDragOver(tester, at);
+  await osDragEnters(tester, at);
+  await osDragMovesTo(tester, at);
   await _hear(tester, 'performOperation', paths);
   await tester.pump();
   await tester.pump();
