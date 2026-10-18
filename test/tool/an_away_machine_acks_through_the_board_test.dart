@@ -219,7 +219,9 @@ void main() {
       expect(said, contains('$kAckCommand <id> <이유>'));
       expect(said, contains('$kAckCommand --drop <번호>'));
       expect(said, isNot(contains('.gate-ack')), reason: 'not the file');
-      final tool = kAckCommand.split(' ')[2];
+      final words = kAckCommand.split(' ');
+      expect(words.take(2), ['bash', 'tool/run.sh'], reason: kAckCommand);
+      final tool = 'tool/${words[2]}.dart';
       expect(File(tool).existsSync(), isTrue, reason: tool);
     });
 

@@ -839,23 +839,40 @@ at_idle() {
 # lane as it stands: the same lines, so a stamp vouches for exactly what a
 # land would have measured. $3 says which of the two is asking, for the
 # room alone.
+# ⚡ANALYZE AND THE ARCHITECTURE TESTS RUN TOGETHER (유저 2026-10-18,
+# tests-crowd-the-machine-Q2 「착지 게이트만 예외로 동시에」 — the one
+# exception to CLAUDE.md's 「같은 워크트리 동시 금지」). Measured on the idle
+# main PC that night: analyze held about one core for 77s, and the
+# architecture tests queued on one compiler for 93s. One after the other a
+# land paid both; side by side it pays the longer. They share no file:
+# analyze writes nothing under build/, and the gates run on a furnished tree.
+# Each one's output is KEPT, so a red one is shown without being run again
+# — the old shape ran a red gate a second time just to print it.
 gates() {
-  local name="$1" p="$2"
+  local name="$1" p="$2" out analyze architecture analyzed tested
   room_first "${3:-}"
   at_idle
-  echo "lane: flutter analyze (no arguments)"
-  (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
-    (cd "$p" && flutter analyze) | tail -20 >&2
+  out="$(mktemp -d "${TMPDIR:-/tmp}/lane-gates.XXXXXX")"
+  echo "lane: flutter analyze (no arguments) and flutter test test/architecture, together"
+  (cd "$p" && flutter analyze) > "$out/analyze" 2>&1 &
+  analyze=$!
+  (cd "$p" && flutter test test/architecture) > "$out/architecture" 2>&1 &
+  architecture=$!
+  wait "$analyze"; analyzed=$?
+  wait "$architecture"; tested=$?
+  if [ "$analyzed" -ne 0 ]; then
+    tail -20 "$out/analyze" >&2
+    rm -rf "$out"
     die "analyze is not clean — this is refusal 3"
-  }
-
-  echo "lane: flutter test test/architecture"
-  (cd "$p" && flutter test test/architecture) >/dev/null 2>&1 || {
-    (cd "$p" && flutter test test/architecture) | grep -A4 '\[E\]' | head -20 >&2
+  fi
+  if [ "$tested" -ne 0 ]; then
+    grep -A4 '\[E\]' "$out/architecture" | head -20 >&2
+    rm -rf "$out"
     die "the architecture gate is red
   A 'grew past' failure is the lane's. A 'ceiling is slack' failure is the
   trunk's: land the lane, then lower the ceiling to the measured number."
-  }
+  fi
+  rm -rf "$out"
 
   # Refusal 5. Only a lane that touched the C pays for it.
   if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
