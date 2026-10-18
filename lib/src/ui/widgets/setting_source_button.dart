@@ -63,7 +63,13 @@ class SettingSourceButton extends StatelessWidget {
   /// either.
   /// ⚠️Two doubles rather than a `Size`: `Size.width` is not a constant
   /// expression, and [slotWidth] has to be one.
-  static const double _glyphWidth = 22;
+  ///
+  /// ↩️The mark was 22 wide. 유저 2026-10-18 (I-34, the canvas's brush
+  /// pill): 「압력버튼 특히 그냥 정사각형이어도 문제없겟는데」 — square, so
+  /// the button is as wide as the pill's bars are thick (20), and as it is
+  /// one button, the strip's, the settings rows' and the angle's are square
+  /// with it.
+  static const double _glyphWidth = 14;
   static const double _glyphHeight = 14;
   static const Size _glyphSize = Size(_glyphWidth, _glyphHeight);
   static const double _padding = 3;

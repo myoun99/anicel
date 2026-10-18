@@ -67,7 +67,7 @@ class PressureCurveButton extends StatelessWidget {
     glyph: (ink) => _MiniCurvePainter(
       // The thumbnail draws PRESSURE — the source every device has. A
       // thumbnail that tried to show three would be three unreadable lines
-      // at 22x14.
+      // at 14x14.
       curve: curves[BrushInputSource.pressure],
       color: ink,
     ),

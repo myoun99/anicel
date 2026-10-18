@@ -26,10 +26,10 @@ const double valueHandsReach = ValueSteps.reach + ValuePencil.reach;
 /// 결정 (「`+1` = 휠과 같은 걸음」). A second implementation would be one
 /// question with two answers.
 ///
-/// The two cells split the value's height, so a row is exactly as tall with
-/// the steps as without them and nothing below shifts. ↩️It was the settings
-/// bar's own (`_FieldSliderStepper`) until the number box took the same
-/// pair (2026-10-10).
+/// The two cells split the value's thickness, so a row is exactly as tall
+/// with the steps as without them and nothing below shifts. ↩️It was the
+/// settings bar's own (`_FieldSliderStepper`) until the number box took the
+/// same pair (2026-10-10).
 class ValueSteps extends StatelessWidget {
   const ValueSteps({
     super.key,
@@ -37,16 +37,25 @@ class ValueSteps extends StatelessWidget {
     required this.height,
     required this.enabled,
     required this.onStep,
+    this.axis = Axis.horizontal,
   });
 
   /// `<keyPrefix>-up` and `<keyPrefix>-down` key the two cells.
   final String keyPrefix;
+
+  /// The value's thickness — its height lying down, its width stood up.
   final double height;
   final bool enabled;
   final ValueChanged<int> onStep;
 
+  /// Which way the value runs. A stood value (the canvas's brush pill,
+  /// I-34) has the pair UNDER it, turned with it: − then +, side by side,
+  /// the cells splitting its width as they split a lying one's height.
+  final Axis axis;
+
   /// Narrow on purpose: this sits in panels already budgeted to the pixel,
   /// and it is a nudge, not a target you aim at from across the screen.
+  /// Stood, it is how tall the pair lies.
   static const double width = 14;
 
   /// The gap to the value, so the buttons never look like part of it.
@@ -57,42 +66,52 @@ class ValueSteps extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final half = height / 2;
+    final stood = axis == Axis.vertical;
+    // 🚨THE PLUS WEARS THE ACCENT, like every other ＋ in the app (유저 확정
+    // 2026-08-10: 「＋가있는 모든곳. 공통적으로」). The MINUS does not: the
+    // accent rule is the plus's alone, and its twin — the red one — is for
+    // DELETE, which this is not. The pair looking uneven is the law's own
+    // shape, not an oversight.
+    final up = _cell(
+      Icons.add,
+      1,
+      color: AppColors.addGlyph(enabled: enabled),
+    );
+    final down = _cell(Icons.remove, -1);
     return Padding(
-      padding: const EdgeInsets.only(left: _gap),
+      padding: stood
+          ? const EdgeInsets.only(top: _gap)
+          : const EdgeInsets.only(left: _gap),
       child: SizedBox(
-        width: width,
-        height: height,
-        child: Column(
-          children: [
-            // 🚨THE PLUS WEARS THE ACCENT, like every other ＋ in the app
-            // (유저 확정 2026-08-10: 「＋가있는 모든곳. 공통적으로」). The
-            // MINUS does not: the accent rule is the plus's alone, and its
-            // twin — the red one — is for DELETE, which this is not. The
-            // pair looking uneven is the law's own shape, not an oversight.
-            _cell(
-              Icons.add,
-              1,
-              half,
-              color: AppColors.addGlyph(enabled: enabled),
-            ),
-            _cell(Icons.remove, -1, half),
-          ],
-        ),
+        width: stood ? height : width,
+        height: stood ? width : height,
+        child: stood
+            ? Row(children: [down, up])
+            : Column(children: [up, down]),
       ),
     );
   }
 
-  Widget _cell(IconData icon, int direction, double half, {Color? color}) =>
-      AppIconButton(
-        keyValue: '$keyPrefix-${direction > 0 ? 'up' : 'down'}',
-        tooltip: direction > 0
-            ? AppText.strings.stepUp
-            : AppText.strings.stepDown,
-        size: AppIconButtonBox(width: width, height: half, iconSize: half - 2),
-        icon: Icon(icon, color: color),
-        onPressed: enabled ? () => onStep(direction) : null,
-      );
+  /// One cell: half the value's thickness, the glyph inside it — 1 short
+  /// of the cell's edge on each side, lying or stood (유저 2026-10-18 of
+  /// the pill's: 「+-버튼은 … 더 작게해도되니까 안에 들어가도록하자」).
+  Widget _cell(IconData icon, int direction, {Color? color}) {
+    final half = height / 2;
+    final stood = axis == Axis.vertical;
+    return AppIconButton(
+      keyValue: '$keyPrefix-${direction > 0 ? 'up' : 'down'}',
+      tooltip: direction > 0
+          ? AppText.strings.stepUp
+          : AppText.strings.stepDown,
+      size: AppIconButtonBox(
+        width: stood ? half : width,
+        height: stood ? width : half,
+        iconSize: half - 2,
+      ),
+      icon: Icon(icon, color: color),
+      onPressed: enabled ? () => onStep(direction) : null,
+    );
+  }
 }
 
 /// The PENCIL that opens a value's typed field — the number alone
@@ -112,13 +131,21 @@ class ValuePencil extends StatelessWidget {
     required this.height,
     required this.enabled,
     required this.onPressed,
+    this.axis = Axis.horizontal,
   });
 
   final String keyValue;
+
+  /// The value's thickness, as [ValueSteps.height].
   final double height;
   final bool enabled;
   final VoidCallback onPressed;
 
+  /// Which way the value runs — stood, the pencil is under it, as
+  /// [ValueSteps.axis].
+  final Axis axis;
+
+  /// Stood, how tall the pencil lies.
   static const double width = 18;
   static const double _gap = 3;
 
@@ -129,14 +156,23 @@ class ValuePencil extends StatelessWidget {
   static const double _glyph = 14;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(left: _gap),
-    child: AppIconButton(
-      keyValue: keyValue,
-      tooltip: AppText.strings.valueTypeIn,
-      size: AppIconButtonBox(width: width, height: height, iconSize: _glyph),
-      icon: const Icon(Icons.edit_outlined),
-      onPressed: enabled ? onPressed : null,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final stood = axis == Axis.vertical;
+    return Padding(
+      padding: stood
+          ? const EdgeInsets.only(top: _gap)
+          : const EdgeInsets.only(left: _gap),
+      child: AppIconButton(
+        keyValue: keyValue,
+        tooltip: AppText.strings.valueTypeIn,
+        size: AppIconButtonBox(
+          width: stood ? height : width,
+          height: stood ? width : height,
+          iconSize: _glyph,
+        ),
+        icon: const Icon(Icons.edit_outlined),
+        onPressed: enabled ? onPressed : null,
+      ),
+    );
+  }
 }
