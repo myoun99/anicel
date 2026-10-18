@@ -9,6 +9,7 @@ import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart'
     show celTextBoxDepth, celTextBoxLengthPast;
+import '../../services/cel_text_frame.dart';
 import '../timeline/axis_turn.dart' show extentAcross;
 import 'canvas_letter_faces.dart';
 import 'canvas_letter_lines.dart';
@@ -118,16 +119,11 @@ class CelTextLayout {
   /// How far past [block] anything of the text is drawn, in its own frame.
   final double _reach;
 
-  late final _TextFrame _frame = _TextFrame.of(content);
+  late final CelTextFrame _frame = CelTextFrame.of(content);
 
   /// Sets [canvas] — which is in canvas space — up for drawing in the
   /// text's own frame. The caller saves and restores around it.
-  void applyFrame(ui.Canvas canvas) {
-    canvas.translate(content.anchor.x, content.anchor.y);
-    if (content.rotationDegrees != 0) {
-      canvas.rotate(_frame.radians);
-    }
-  }
+  void applyFrame(ui.Canvas canvas) => _frame.applyTo(canvas);
 
   /// [local], a point of the text's own frame, on the canvas.
   ui.Offset toCanvas(ui.Offset local) => _frame.toCanvas(local);
@@ -252,23 +248,6 @@ abstract interface class _TextSetting {
   void dispose();
 }
 
-/// The frame a text is set in: its origin at the text's anchor, its x along
-/// the lines — turned as the text is.
-class _TextFrame {
-  _TextFrame.of(CelTextContent content)
-    : anchor = ui.Offset(content.anchor.x, content.anchor.y),
-      radians = content.rotationDegrees * math.pi / 180;
-
-  final ui.Offset anchor;
-  final double radians;
-
-  /// [local], a point of the frame, on the canvas.
-  ui.Offset toCanvas(ui.Offset local) => _turned(local, radians) + anchor;
-
-  /// [point], a point of the canvas, in the frame.
-  ui.Offset toLocal(ui.Offset point) => _turned(point - anchor, -radians);
-}
-
 /// WHERE A TEXT'S BOX STANDS ON THE CANVAS: the frame a person sees the
 /// text by and takes it by, turned as the text is — and nothing of its
 /// letters.
@@ -282,7 +261,7 @@ class _TextFrame {
 class CelTextBox {
   const CelTextBox._(this._frame, this._rect);
 
-  final _TextFrame _frame;
+  final CelTextFrame _frame;
 
   /// The box in the text's own frame.
   final ui.Rect _rect;
@@ -298,8 +277,8 @@ class CelTextBox {
   /// Where the box's CROSS stands, carried [offCentre] from its middle: the
   /// point a hand outside the box turns the text about.
   ///
-  /// 🚨[offCentre] IS ALONG THE TEXT'S OWN LINES, in canvas pixels — a
-  /// displacement, and zero is the middle, so a cross nobody carried needs
+  /// 🚨[offCentre] IS IN THE TEXT'S OWN FRAME, along its lines and down
+  /// them ([CelTextFrame]) — a displacement, and zero is the middle, so a cross nobody carried needs
   /// no case of its own (the anchor point's law, `TransformValues.anchorX`:
   /// 「기본값 상자안의 자리에서 **얼마나 이동됬나**」). Kept that way it rides
   /// every edit the box takes: a move and a scale leave it as far from the
@@ -311,8 +290,7 @@ class CelTextBox {
   /// [travel], a hand's travel on the canvas, along the text's own lines —
   /// what carrying the cross that far adds to how far it stands off the
   /// middle ([crossAt]).
-  ui.Offset alongItsLines(ui.Offset travel) =>
-      _turned(travel, -_frame.radians);
+  ui.Offset alongItsLines(ui.Offset travel) => _frame.inFrame(travel);
 
   /// Whether [point], on the canvas, is inside the box.
   bool contains(ui.Offset point) => _rect.contains(_frame.toLocal(point));
@@ -569,19 +547,5 @@ ui.Rect _wholePixelsAround(List<ui.Offset> points) {
     top.floorToDouble(),
     right.ceilToDouble(),
     bottom.ceilToDouble(),
-  );
-}
-
-/// [point] turned by [radians] about the origin — clockwise on a canvas,
-/// whose y runs down.
-ui.Offset _turned(ui.Offset point, double radians) {
-  if (radians == 0) {
-    return point;
-  }
-  final cos = math.cos(radians);
-  final sin = math.sin(radians);
-  return ui.Offset(
-    point.dx * cos - point.dy * sin,
-    point.dx * sin + point.dy * cos,
   );
 }

@@ -28,6 +28,9 @@ class TextToolOptions {
     this.letterWidth = 1,
     this.backgroundColor,
     this.vertical = false,
+    this.rotationDegrees = 0,
+    this.skewDegrees = 0,
+    this.flipped = false,
   }) : _letters = letters;
 
   /// What the tool starts as in a run of the app: the app's face at 48, no
@@ -66,6 +69,15 @@ class TextToolOptions {
   /// Whether the next text is written in columns
   /// ([CelTextContent.vertical]).
   final bool vertical;
+
+  /// How far the next text is turned ([CelTextContent.rotationDegrees]).
+  final double rotationDegrees;
+
+  /// How far the next text leans ([CelTextContent.skewDegrees]).
+  final double skewDegrees;
+
+  /// Whether the next text is mirrored ([CelTextContent.flipped]).
+  final bool flipped;
 
   /// The letters of the next text — in [brushColour] while the tool takes
   /// the brush's. Null where there is no brush to read: the colour they
@@ -118,6 +130,9 @@ class TextToolOptions {
     letterWidth: letterWidth,
     backgroundColor: backgroundColor,
     vertical: vertical,
+    rotationDegrees: rotationDegrees,
+    skewDegrees: skewDegrees,
+    flipped: flipped,
   );
 
   /// A text with no letters yet, standing at [anchor] — as wide as
@@ -137,6 +152,9 @@ class TextToolOptions {
     letterWidth: letterWidth,
     backgroundColor: backgroundColor,
     vertical: vertical,
+    rotationDegrees: rotationDegrees,
+    skewDegrees: skewDegrees,
+    flipped: flipped,
   );
 
   /// These with the box's values given — the letters are [withLetters]'.
@@ -146,6 +164,9 @@ class TextToolOptions {
     double? letterWidth,
     Object? backgroundColor = _sentinel,
     bool? vertical,
+    double? rotationDegrees,
+    double? skewDegrees,
+    bool? flipped,
   }) => TextToolOptions(
     letters: _letters,
     takesTheBrushColour: takesTheBrushColour,
@@ -156,6 +177,9 @@ class TextToolOptions {
         ? this.backgroundColor
         : backgroundColor as int?,
     vertical: vertical ?? this.vertical,
+    rotationDegrees: rotationDegrees ?? this.rotationDegrees,
+    skewDegrees: skewDegrees ?? this.skewDegrees,
+    flipped: flipped ?? this.flipped,
   );
 
   @override
@@ -168,7 +192,10 @@ class TextToolOptions {
           other.lineHeight == lineHeight &&
           other.letterWidth == letterWidth &&
           other.backgroundColor == backgroundColor &&
-          other.vertical == vertical;
+          other.vertical == vertical &&
+          other.rotationDegrees == rotationDegrees &&
+          other.skewDegrees == skewDegrees &&
+          other.flipped == flipped;
 
   @override
   int get hashCode => Object.hash(
@@ -179,6 +206,9 @@ class TextToolOptions {
     letterWidth,
     backgroundColor,
     vertical,
+    rotationDegrees,
+    skewDegrees,
+    flipped,
   );
 
   static const Object _sentinel = Object();

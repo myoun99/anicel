@@ -4,6 +4,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/cel_text_box_edits.dart';
+import 'package:anicel/src/services/cel_text_frame.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// R9-rest (the text tool): what a hand on a text's box does to it — its
@@ -178,6 +179,59 @@ void main() {
 
       expect(turned.spans, before.spans);
       expect(turned.wrapWidth, 120);
+    });
+  });
+
+  group('⑦ the lean and the mirror', () {
+    /// Where [point] falls on [content], in its own frame.
+    Offset onText(CelTextContent content, CanvasPoint point) =>
+        CelTextFrame.of(content).toLocal(Offset(point.x, point.y));
+
+    test('🚨each goes about the point it is given, which stays where it '
+        'was — the turn\'s law', () {
+      final before = said(turn: 30);
+      final still = CanvasPoint(x: 140, y: 70);
+
+      for (final (name, after) in [
+        ('leaned', celTextLeanedAbout(before, 25, still)),
+        ('mirrored', celTextFlippedAbout(before, still, flipped: true)),
+      ]) {
+        final at = CelTextFrame.of(after).toCanvas(onText(before, still));
+        expect(at.dx, closeTo(140, 1e-9), reason: name);
+        expect(at.dy, closeTo(70, 1e-9), reason: name);
+        expect(after.rotationDegrees, 30, reason: '$name, still turned');
+      }
+    });
+
+    test('a lean is set, not added, and a mirror twice is none', () {
+      final still = CanvasPoint(x: 140, y: 70);
+      final leaned = celTextLeanedAbout(said(), 25, still);
+
+      expect(celTextLeanedAbout(leaned, 10, still).skewDegrees, 10);
+      final back = celTextFlippedAbout(
+        celTextFlippedAbout(leaned, still, flipped: true),
+        still,
+        flipped: false,
+      );
+      expect(back.flipped, isFalse);
+      expect(back.anchor, near(leaned.anchor.x, leaned.anchor.y));
+    });
+
+    test('🚨a hand\'s travel is read in the text\'s own frame: straight down '
+        'a leaned box\'s side it is all stacking, and along a mirrored '
+        'text\'s lines it runs them backwards', () {
+      final leaned = said(wrapWidth: 120).copyWith(skewDegrees: 30);
+      final down = CelTextFrame.of(leaned).onCanvas(const Offset(0, 10));
+
+      final travel = celTextTravelAlong(leaned, down);
+      expect(travel.letters, closeTo(0, 1e-9));
+      expect(travel.stacking, closeTo(10, 1e-9));
+
+      final mirrored = said(wrapWidth: 120).copyWith(flipped: true);
+      expect(
+        celTextTravelAlong(mirrored, const Offset(10, 0)).letters,
+        closeTo(-10, 1e-9),
+      );
     });
   });
 

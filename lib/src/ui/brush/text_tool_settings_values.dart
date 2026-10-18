@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 import '../../models/canvas_point.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
+import '../../services/cel_text_box_edits.dart'
+    show celTextFlippedAbout, celTextLeanedAbout, celTextTurnedAbout;
+import '../canvas/text/cel_text_press.dart' show celTextCrossOf;
 import '../canvas/text/cel_text_tool.dart';
 import '../text/cel_text_box_width.dart';
 import 'text_tool_options.dart';
@@ -238,6 +241,78 @@ class TextToolSettingsValues {
     } else {
       setBoxCentre(y: canvas.height / 2);
     }
+  }
+
+  // ── its turn, lean and mirror (⑦) ───────────────────────────────────
+
+  double get rotationDegrees =>
+      _inHand?.rotationDegrees ?? _next.rotationDegrees;
+
+  double get skewDegrees => _inHand?.skewDegrees ?? _next.skewDegrees;
+
+  /// The text in hand turned to [degrees] — about its cross, as a hand
+  /// outside its box turns it ([celTextCrossOf]) — and the next text
+  /// turned so.
+  ///
+  /// 🗣️⑦ (text-letters-lean-and-underline-Q6, 유저 2026-10-18): 「앱에서도
+  /// 만들게 — 회전 · 기울임 · 뒤집기를 텍스트 도구에」 — the angle the hand
+  /// turned it to, shown and set.
+  void setRotation(double degrees, {bool settled = true}) => _setFrame(
+    onText: (text, cross) =>
+        celTextTurnedAbout(text, degrees - text.rotationDegrees, cross),
+    onNext: (next) => next.copyWith(rotationDegrees: degrees),
+    settled: settled,
+  );
+
+  /// The text in hand leaning by [degrees] ([CelTextContent.skewDegrees])
+  /// about its cross, and the next text leaning so — short of a quarter
+  /// turn either way, which would lay the box flat.
+  void setSkew(double degrees, {bool settled = true}) {
+    final lean = degrees.clamp(-maxSkewDegrees, maxSkewDegrees).toDouble();
+    _setFrame(
+      onText: (text, cross) => celTextLeanedAbout(text, lean, cross),
+      onNext: (next) => next.copyWith(skewDegrees: lean),
+      settled: settled,
+    );
+  }
+
+  /// The text in hand mirrored left to right about its cross — or back —
+  /// as the transform tool's 좌우반전 mirrors its box about its own, and
+  /// the next text so.
+  void flipHorizontal() => _setFrame(
+    onText: (text, cross) =>
+        celTextFlippedAbout(text, cross, flipped: !text.flipped),
+    onNext: (next) => next.copyWith(flipped: !next.flipped),
+  );
+
+  /// The steepest lean a setting gives: a degree short of the quarter turn
+  /// a content refuses ([CelTextContent.skewDegrees]).
+  static const double maxSkewDegrees = 89;
+
+  /// A change to how the text in hand's FRAME stands, kept still at its
+  /// cross: a turn about any other point would move the cross, and the
+  /// cross is the point the box's frame is changed about.
+  void _setFrame({
+    required CelTextContent Function(CelTextContent text, CanvasPoint cross)
+    onText,
+    required TextToolOptions Function(TextToolOptions next) onNext,
+    bool settled = true,
+  }) {
+    final tool = this.tool;
+    final layout = tool?.session?.shown.layout;
+    // ⚠️Read off the text SHOWN, which may stand a step behind the one in
+    // hand — and that is the same point: a turn, a lean and a mirror about
+    // the cross all leave it where it is.
+    final cross = tool == null || layout == null
+        ? null
+        : celTextCrossOf(tool, layout);
+    _setBox(
+      onText: (text) => cross == null
+          ? text
+          : onText(text, CanvasPoint(x: cross.dx, y: cross.dy)),
+      onNext: onNext,
+      settled: settled,
+    );
   }
 
   /// A value that was being dragged — a colour, picked in a window that

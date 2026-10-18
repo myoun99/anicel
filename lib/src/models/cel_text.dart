@@ -104,6 +104,8 @@ class CelTextContent {
     this.wrapWidth,
     this.minHeight,
     this.rotationDegrees = 0,
+    this.skewDegrees = 0,
+    this.flipped = false,
     List<CelTextParagraph>? paragraphs,
     TextCelAlign? align,
     double? lineHeight,
@@ -155,6 +157,15 @@ class CelTextContent {
         rotationDegrees,
         'rotationDegrees',
         'A text turns by a finite angle.',
+      );
+    }
+    // A lean of a quarter turn lays the box flat: its lines would have no
+    // height between them.
+    if (!(skewDegrees.abs() < 90)) {
+      throw ArgumentError.value(
+        skewDegrees,
+        'skewDegrees',
+        'A text leans by less than a quarter turn.',
       );
     }
   }
@@ -226,6 +237,21 @@ class CelTextContent {
 
   /// Clockwise, in canvas degrees, about [anchor].
   final double rotationDegrees;
+
+  /// How far the box LEANS, in degrees, as italic letters lean: its lines
+  /// stay level in its own frame, and each point of it stands further
+  /// along them the higher it stands — 0 upright, and less than a quarter
+  /// turn either way. About [anchor], before the text is mirrored
+  /// ([flipped]) and turned ([rotationDegrees]): the frame `CelTextFrame`
+  /// works out.
+  ///
+  /// 🗣️⑦ (text-letters-lean-and-underline-Q6, 유저 2026-10-18): 「앱에서도
+  /// 만들게 — 회전 · 기울임 · 뒤집기를 텍스트 도구에」.
+  final double skewDegrees;
+
+  /// Whether the text is MIRRORED left to right in its own frame — about
+  /// [anchor], after it leans and before it turns.
+  final bool flipped;
 
   /// How each PARAGRAPH is set, in reading order: one from the first letter
   /// to the first break, one from each break to the next, one from the last
@@ -313,6 +339,8 @@ class CelTextContent {
     Object? wrapWidth = _sentinel,
     Object? minHeight = _sentinel,
     double? rotationDegrees,
+    double? skewDegrees,
+    bool? flipped,
     List<CelTextParagraph>? paragraphs,
     double? letterWidth,
     Object? backgroundColor = _sentinel,
@@ -329,6 +357,8 @@ class CelTextContent {
         ? this.minHeight
         : (minHeight as num?)?.toDouble(),
     rotationDegrees: rotationDegrees ?? this.rotationDegrees,
+    skewDegrees: skewDegrees ?? this.skewDegrees,
+    flipped: flipped ?? this.flipped,
     paragraphs: paragraphs ?? this.paragraphs,
     letterWidth: letterWidth ?? this.letterWidth,
     backgroundColor: identical(backgroundColor, _sentinel)
@@ -349,6 +379,8 @@ class CelTextContent {
       if (wrapWidth != null) 'wrapWidth': wrapWidth,
       if (minHeight != null) 'minHeight': minHeight,
       if (rotationDegrees != 0) 'rotationDegrees': rotationDegrees,
+      if (skewDegrees != 0) 'skewDegrees': skewDegrees,
+      if (flipped) 'flipped': flipped,
       if (paragraphs.every((paragraph) => paragraph == first))
         ...first.toJson()
       else
@@ -371,6 +403,8 @@ class CelTextContent {
       wrapWidth: (json['wrapWidth'] as num?)?.toDouble(),
       minHeight: (json['minHeight'] as num?)?.toDouble(),
       rotationDegrees: (json['rotationDegrees'] as num?)?.toDouble() ?? 0,
+      skewDegrees: (json['skewDegrees'] as num?)?.toDouble() ?? 0,
+      flipped: json['flipped'] as bool? ?? false,
       paragraphs: each == null
           ? List.filled(
               _paragraphCountOf(spans),
@@ -395,6 +429,8 @@ class CelTextContent {
           other.wrapWidth == wrapWidth &&
           other.minHeight == minHeight &&
           other.rotationDegrees == rotationDegrees &&
+          other.skewDegrees == skewDegrees &&
+          other.flipped == flipped &&
           listEquals(other.paragraphs, paragraphs) &&
           other.letterWidth == letterWidth &&
           other.backgroundColor == backgroundColor &&
@@ -407,6 +443,8 @@ class CelTextContent {
     wrapWidth,
     minHeight,
     rotationDegrees,
+    skewDegrees,
+    flipped,
     Object.hashAll(paragraphs),
     letterWidth,
     backgroundColor,

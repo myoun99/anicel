@@ -170,6 +170,10 @@ void main() {
       'box-width',
       'line-height',
       'letter-width',
+      // ⑦: the box's frame, under its letters' width.
+      'rotation',
+      'skew',
+      'flip-horizontal',
       'background',
       // 유저 2026-10-06: at the foot of the settings.
       'into-drawing',
@@ -209,6 +213,8 @@ void main() {
           align: TextCelAlign.center,
           lineHeight: 1.5,
           letterWidth: 0.8,
+          rotationDegrees: 12.5,
+          skewDegrees: -8,
         ),
       );
 
@@ -232,6 +238,8 @@ void main() {
       expect(pill(tester, 'align-left').selected, isFalse);
       expect(written('line-height', '150%'), findsOneWidget);
       expect(written('letter-width', '80%'), findsOneWidget);
+      expect(written('rotation', '12.50°'), findsOneWidget);
+      expect(written('skew', '-8.00°'), findsOneWidget);
       expect(swatch(tester, 'background').color, isNull);
     });
 
@@ -283,12 +291,15 @@ void main() {
       await tester.pump();
       await tester.tap(row('align-right'));
       await tester.pump();
+      await tester.tap(row('flip-horizontal'));
+      await tester.pump();
       await tester.tap(row('writing-columns'));
       await tester.pump();
 
       expect(hand.options.value.letters(brushColour: null).bold, isTrue);
       expect(hand.options.value.align, TextCelAlign.right);
       expect(hand.options.value.vertical, isTrue);
+      expect(hand.options.value.flipped, isTrue);
       expect(hand.host.ran, isEmpty);
       expect(pill(tester, 'align-right').selected, isTrue);
     });

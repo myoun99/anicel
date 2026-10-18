@@ -1489,6 +1489,7 @@ enum AppStrings {
   String get textToolWidthFixed => _s('textToolWidthFixed');
   String get textToolLineHeight => _s('textToolLineHeight');
   String get textToolLetterWidth => _s('textToolLetterWidth');
+  String get textToolSkew => _s('textToolSkew');
   String get textToolBackground => _s('textToolBackground');
   String get textToolIntoDrawing => _s('textToolIntoDrawing');
   String get textToolWriting => _s('textToolWriting');
@@ -2659,6 +2660,7 @@ enum AppStrings {
     'textToolWidthFixed': 'Fixed',
     'textToolLineHeight': 'Line spacing',
     'textToolLetterWidth': 'Horizontal scale',
+    'textToolSkew': 'Skew',
     'textToolBackground': 'Background',
     'textToolIntoDrawing': 'Rasterize',
     'textToolWriting': 'Direction',
@@ -4124,6 +4126,7 @@ enum AppStrings {
     'textToolWidthFixed': '固定',
     'textToolLineHeight': '行間',
     'textToolLetterWidth': '水平比率',
+    'textToolSkew': '傾き',
     'textToolBackground': '背景',
     'textToolIntoDrawing': 'ラスタライズ',
     'textToolWriting': '文字方向',
@@ -5690,6 +5693,7 @@ enum AppStrings {
     'textToolWidthFixed': '고정',
     'textToolLineHeight': '줄 간격',
     'textToolLetterWidth': '장평',
+    'textToolSkew': '기울임',
     'textToolBackground': '배경',
     'textToolIntoDrawing': '래스터라이즈',
     'textToolWriting': '쓰기 방향',
@@ -7396,6 +7400,7 @@ enum AppStrings {
     'textToolWidthFixed': 'Fixe',
     'textToolLineHeight': 'Interligne',
     'textToolLetterWidth': 'Échelle horizontale',
+    'textToolSkew': 'Inclinaison',
     'textToolBackground': 'Fond',
     'textToolIntoDrawing': 'Pixelliser',
     'textToolWriting': 'Direction',
@@ -8902,6 +8907,7 @@ enum AppStrings {
     'textToolWidthFixed': '固定',
     'textToolLineHeight': '行距',
     'textToolLetterWidth': '水平缩放',
+    'textToolSkew': '倾斜',
     'textToolBackground': '背景',
     'textToolIntoDrawing': '栅格化',
     'textToolWriting': '文字方向',

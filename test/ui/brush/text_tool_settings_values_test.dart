@@ -3,6 +3,8 @@ import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings_values.dart';
+import 'package:anicel/src/ui/canvas/text/cel_text_press.dart'
+    show celTextCrossOf;
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/cel_text_box_width.dart';
 import 'package:flutter/widgets.dart';
@@ -81,6 +83,14 @@ void main() {
 
   CelTextContent landed(CelTextCel cel) => landedOn(cel);
 
+  /// Every bake asked for, answered — the newest want is asked for only
+  /// once the one before it is made.
+  Future<void> allMade(HeldBaker baker) async {
+    while (baker.asked.any((bake) => !bake.answered)) {
+      await baker.pending.answer();
+    }
+  }
+
   /// A paragraph setting's change: each paragraph it reaches set to
   /// [align], or to lines [pitch] apart.
   CelTextParagraph Function(CelTextParagraph) aligned(TextCelAlign align) =>
@@ -143,8 +153,13 @@ void main() {
         letterWidth: 0.6,
         backgroundColor: 0xFF102030,
         vertical: true,
+        rotationDegrees: 10,
+        skewDegrees: 15,
+        flipped: true,
       );
-      (TextCelAlign, double, double, int?, bool) boxOf(TextToolOptions of) {
+      (TextCelAlign, double, double, int?, bool, double, double, bool) boxOf(
+        TextToolOptions of,
+      ) {
         final begun = of.newTextAt(CanvasPoint(x: 3, y: 4));
         return (
           begun.paragraphs.single.align,
@@ -152,6 +167,9 @@ void main() {
           begun.letterWidth,
           begun.backgroundColor,
           begun.vertical,
+          begun.rotationDegrees,
+          begun.skewDegrees,
+          begun.flipped,
         );
       }
 
@@ -165,7 +183,7 @@ void main() {
       ]) {
         expect(
           boxOf(after),
-          (TextCelAlign.center, 1.6, 0.6, 0xFF102030, true),
+          (TextCelAlign.center, 1.6, 0.6, 0xFF102030, true, 10, 15, true),
           reason: changed,
         );
       }
@@ -601,15 +619,89 @@ void main() {
 
   // 🗣️I-95 (유저 2026-10-12): 「텍스트도구에도 변형도구처럼 위치값 존재」 —
   // I-95-Q1 (10-14): 「상자의 가운데 — 캔버스 왼쪽 위에서 잰 픽셀」.
-  group('its place: where the middle of its box stands', () {
-    /// Every bake asked for, answered — the newest want is asked for only
-    /// once the one before it is made.
-    Future<void> allMade(HeldBaker baker) async {
-      while (baker.asked.any((bake) => !bake.answered)) {
-        await baker.pending.answer();
-      }
-    }
+  group('its frame: its turn, its lean, its mirror (⑦)', () {
+    test('it shows the text in hand\'s turn and lean, and with none the next '
+        'text\'s', () {
+      expect(
+        (
+          settings(
+            next: const TextToolOptions(rotationDegrees: 12, skewDegrees: 5),
+          ).values.rotationDegrees,
+          settings(
+            next: const TextToolOptions(rotationDegrees: 12, skewDegrees: 5),
+          ).values.skewDegrees,
+        ),
+        (12, 5),
+      );
+      final (:values, options: _, tool: _, host: _, baker: _, cel: _) =
+          settings(text: said([run('ab')], turned: 30));
+      expect((values.rotationDegrees, values.skewDegrees), (30, 0));
+    });
 
+    test('🚨a turn, a lean and a mirror set here go about the box\'s CROSS, '
+        'which stays where it was — one step each — and the next text takes '
+        'each', () async {
+      final (:values, :options, :tool, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+      Offset cross() => celTextCrossOf(tool, tool.session!.shown.layout);
+      final before = cross();
+
+      values.setRotation(30);
+      await allMade(baker);
+      expect(landed(cel).rotationDegrees, 30);
+      expect(cross(), offsetMoreOrLessEquals(before), reason: 'turned');
+
+      values.setSkew(20);
+      await allMade(baker);
+      expect(landed(cel).skewDegrees, 20);
+      expect(cross(), offsetMoreOrLessEquals(before), reason: 'leaned');
+
+      values.flipHorizontal();
+      await allMade(baker);
+      expect(landed(cel).flipped, isTrue);
+      expect(cross(), offsetMoreOrLessEquals(before), reason: 'mirrored');
+
+      expect(host.ran, hasLength(3));
+      expect(
+        (
+          options.value.rotationDegrees,
+          options.value.skewDegrees,
+          options.value.flipped,
+        ),
+        (30, 20, true),
+      );
+    });
+
+    test('a turn dragged lands nothing until it comes to rest', () async {
+      final (:values, options: _, tool: _, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+
+      values
+        ..setRotation(10, settled: false)
+        ..setRotation(20, settled: false);
+      await allMade(baker);
+      expect(host.ran, isEmpty);
+
+      values.settle();
+      await allMade(baker);
+      expect(host.ran, hasLength(1));
+      expect(landed(cel).rotationDegrees, 20);
+    });
+
+    test('a lean stops a degree short of the quarter turn a text refuses', () {
+      final (:values, :options, tool: _, host: _, baker: _, cel: _) =
+          settings();
+
+      values.setSkew(120);
+      expect(options.value.skewDegrees, TextToolSettingsValues.maxSkewDegrees);
+      values.setSkew(-120);
+      expect(options.value.skewDegrees, -TextToolSettingsValues.maxSkewDegrees);
+    });
+  });
+
+  group('its place: where the middle of its box stands', () {
     test('🚨is the middle of the box as it stands on the canvas — a turned '
         'text\'s too — and with none in hand there is none', () {
       expect(settings().values.boxCentre, isNull);

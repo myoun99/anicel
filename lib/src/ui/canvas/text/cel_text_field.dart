@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/cel_text_frame.dart';
 import '../../../services/input/modifier_keys.dart';
 import '../../text/canvas_letter_style.dart';
 import '../../text/cel_text_layout.dart';
@@ -166,9 +167,8 @@ class CelTextField extends StatelessWidget {
   /// right corner down them.
   Matrix4 get _frame {
     final content = letters.content;
-    final frame = stage.artworkOnPanel
-      ..translateByDouble(content.anchor.x, content.anchor.y, 0, 1)
-      ..rotateZ(content.rotationDegrees * math.pi / 180);
+    final frame = stage.artworkOnPanel;
+    CelTextFrame.of(content).applyToMatrix(frame);
     if (content.vertical) {
       return frame
         ..translateByDouble(shown.block.right, shown.block.top, 0, 1)

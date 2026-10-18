@@ -505,8 +505,8 @@ final class _ScalePress extends _BoxEditPress {
 }
 
 /// On an edge of a box its letters run between: its room, in whole pixels,
-/// by how far the hand has gone along the letters' own way
-/// ([celTextLettersWay]).
+/// by how far the hand has gone along the letters' own way, read in the
+/// text's own frame ([celTextTravelAlong]).
 final class _WidthPress extends _BoxEditPress {
   _WidthPress(
     super.event,
@@ -520,10 +520,7 @@ final class _WidthPress extends _BoxEditPress {
 
   @override
   void _move(CelTextScene scene, Offset local, Offset artwork) {
-    final way = celTextLettersWay(start);
-    final along =
-        (artwork.dx - this.artwork.dx) * way.dx +
-        (artwork.dy - this.artwork.dy) * way.dy;
+    final along = celTextTravelAlong(start, artwork - this.artwork).letters;
     final width = start.wrapWidth!;
     scene.tool.showEdit(
       celTextBoxWidened(
@@ -537,7 +534,7 @@ final class _WidthPress extends _BoxEditPress {
 
 /// On an edge of a box its lines stack between: how tall it is at least, in
 /// whole pixels, by how far the hand has gone the way they stack
-/// ([celTextStackingWay]) — never less than its lines, [lettersDepth] tall
+/// ([celTextTravelAlong]) — never less than its lines, [lettersDepth] tall
 /// (F-317).
 final class _DepthPress extends _BoxEditPress {
   _DepthPress(
@@ -554,10 +551,7 @@ final class _DepthPress extends _BoxEditPress {
 
   @override
   void _move(CelTextScene scene, Offset local, Offset artwork) {
-    final way = celTextStackingWay(start);
-    final along =
-        (artwork.dx - this.artwork.dx) * way.dx +
-        (artwork.dy - this.artwork.dy) * way.dy;
+    final along = celTextTravelAlong(start, artwork - this.artwork).stacking;
     final height = celTextBoxDepth(start, lettersDepth: lettersDepth);
     scene.tool.showEdit(
       celTextBoxDeepened(

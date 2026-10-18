@@ -801,8 +801,73 @@ class _BoxRows extends StatelessWidget {
       _boxWidth(),
       _linePitch(),
       _letterWidth(),
+      ..._turnLeanAndMirror(),
       _background(),
     ],
+  );
+
+  /// How the box's frame stands (⑦): its turn and its lean in the transform
+  /// tool's own boxes — a scrub a degree a step, one step back a scrub; a
+  /// number typed sets it — and its mirror in the transform tool's 좌우반전
+  /// glyph. Of the text in hand about its cross, and of the next text.
+  ///
+  /// 🗣️⑦ (text-letters-lean-and-underline-Q6, 유저 2026-10-18): 「앱에서도
+  /// 만들게 — 회전 · 기울임 · 뒤집기를 텍스트 도구에」.
+  List<Widget> _turnLeanAndMirror() {
+    final strings = AppText.strings;
+    return [
+      ToolSettingRow.bar(
+        label: strings.trRotation,
+        bar: _angleBox(
+          keyValue: 'text-tool-rotation',
+          read: (values) => values.rotationDegrees,
+          write: (degrees, {required settled}) =>
+              reading.now.setRotation(degrees, settled: settled),
+        ),
+      ),
+      ToolSettingRow.bar(
+        label: strings.textToolSkew,
+        bar: _angleBox(
+          keyValue: 'text-tool-skew',
+          read: (values) => values.skewDegrees,
+          write: (degrees, {required settled}) =>
+              reading.now.setSkew(degrees, settled: settled),
+        ),
+      ),
+      ToolSettingRow.bar(
+        label: '',
+        bar: reading.follow(
+          (values) => values.writable,
+          (writable) => ToolSettingAction.glyph(
+            keyValue: 'text-tool-flip-horizontal',
+            label: strings.trFlipHorizontal,
+            glyph: const Icon(Icons.flip),
+            onPressed: writable ? () => reading.now.flipHorizontal() : null,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _angleBox({
+    required String keyValue,
+    required double Function(TextToolSettingsValues values) read,
+    required void Function(double degrees, {required bool settled}) write,
+  }) => reading.follow(
+    (values) => (degrees: read(values), writable: values.writable),
+    (shown) => DragValueLabel.box(
+      keyValue: keyValue,
+      text: '${columnValueText(shown.degrees)}°',
+      enabled: shown.writable,
+      onDragDelta: (units) => write(read(reading.now) + units, settled: false),
+      onOperationEnd: () => reading.now.settle(),
+      onEditSubmit: (raw) {
+        final typed = double.tryParse(raw.replaceAll('°', '').trim());
+        if (typed != null) {
+          write(typed, settled: true);
+        }
+      },
+    ),
   );
 
   /// Where the middle of the text in hand's box stands (I-95,

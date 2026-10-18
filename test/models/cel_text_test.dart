@@ -77,6 +77,8 @@ void main() {
       'the anchor': base.copyWith(anchor: CanvasPoint(x: 11, y: 20)),
       'the wrap width': base.copyWith(wrapWidth: 200.5),
       'the turn': base.copyWith(rotationDegrees: 30),
+      'the lean': base.copyWith(skewDegrees: -12.5),
+      'the mirror': base.copyWith(flipped: true),
       'the alignment': base.copyWith(
         paragraphs: const [CelTextParagraph(align: TextCelAlign.right)],
       ),
@@ -107,6 +109,15 @@ void main() {
       expect(base.vertical, isFalse);
       expect(base.toJson().containsKey('vertical'), isFalse);
       expect(base.copyWith(vertical: true).toJson()['vertical'], isTrue);
+    });
+
+    test('🚨an upright text, unmirrored, writes NO word of its lean or its '
+        'mirror: what a file written before a text could lean says is an '
+        'upright one', () {
+      expect(base.toJson().containsKey('skewDegrees'), isFalse);
+      expect(base.toJson().containsKey('flipped'), isFalse);
+      expect(base.copyWith(skewDegrees: 10).toJson()['skewDegrees'], 10);
+      expect(base.copyWith(flipped: true).toJson()['flipped'], isTrue);
     });
 
     test('🚨letters at their own width write NO word of it: what a file '
@@ -175,8 +186,8 @@ void main() {
     });
 
     test('🚨a box of no width, a pitch of nothing, letters of no width and a '
-        'turn that is not a number are refused where the content is MADE — '
-        'not set, baked and kept', () {
+        'turn that is not a number — and a lean of a quarter turn — are '
+        'refused where the content is MADE — not set, baked and kept', () {
       for (final width in [0.0, -1.0, double.infinity, double.nan]) {
         expect(
           () => base.copyWith(wrapWidth: width),
@@ -207,6 +218,13 @@ void main() {
           reason: 'turned by $turn',
         );
       }
+      for (final lean in [90.0, -90.0, double.infinity, double.nan]) {
+        expect(
+          () => base.copyWith(skewDegrees: lean),
+          throwsArgumentError,
+          reason: 'leaning by $lean',
+        );
+      }
       for (final width in [0.0, -1.0, double.infinity, double.nan]) {
         expect(
           () => base.copyWith(letterWidth: width),
@@ -220,6 +238,7 @@ void main() {
       expect(base.copyWith(paragraphs: close).paragraphs, close);
       expect(base.copyWith(letterWidth: 0.1).letterWidth, 0.1);
       expect(base.copyWith(rotationDegrees: -725).rotationDegrees, -725);
+      expect(base.copyWith(skewDegrees: 89.9).skewDegrees, 89.9);
     });
   });
 
