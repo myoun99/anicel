@@ -284,12 +284,13 @@ void main() {
         setOf(
           'a\r\nbc\rde\nf',
           [
-            // The letter is centred, its CR LF right: two units to one.
-            (start: 0, length: 1, value: 2),
-            (start: 1, length: 2, value: 1),
-            (start: 3, length: 3, value: 2),
+            // The letter is right, its CR LF centred: two units to one — and
+            // of one each, 1 would be the smaller.
+            (start: 0, length: 1, value: 1),
+            (start: 1, length: 2, value: 2),
+            (start: 3, length: 3, value: 1),
             (start: 6, length: 3, value: 0),
-            (start: 9, length: 1, value: 1),
+            (start: 9, length: 1, value: 2),
           ],
           spacings: [
             (start: 0, length: 3, spacing: 100),
@@ -299,10 +300,10 @@ void main() {
           ],
         ),
         [
-          (TextCelAlign.right, 1.0),
-          (TextCelAlign.center, 1.5),
+          (TextCelAlign.center, 1.0),
+          (TextCelAlign.right, 1.5),
           (TextCelAlign.left, 2.0),
-          (TextCelAlign.right, 2.5),
+          (TextCelAlign.center, 2.5),
         ],
       );
     });
