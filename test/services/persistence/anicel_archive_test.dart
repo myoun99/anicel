@@ -252,6 +252,19 @@ void main() {
     );
   });
 
+  // F-382 (format 26 — F-382-Q1 「법 그대로 — 바닥을 26 으로 올린다」): a
+  // v25 file's viewer bookmarks each say the page the viewer was at, which
+  // this build no longer reads — refused by its number rather than opened
+  // with every viewer at its first page, which the next save would write as
+  // the truth.
+  test('🚨a v25 file is refused by its number — its viewers would open at '
+      'their first pages', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(25)),
+      refusesNaming('format 25,'),
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),

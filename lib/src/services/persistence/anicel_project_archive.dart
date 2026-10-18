@@ -65,6 +65,27 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v26 (2026-10-18, F-382 — 유저 10-17 「뷰어패널에서 파일을 마지막에
+/// 봣던 상태를 기억하게하고싶음」): the page a viewer was at is the FILE's,
+/// kept beside the project with the framing each viewer left it at
+/// (`ProjectResume.mediaFileViews`, by the file's path), and a viewer's
+/// bookmark says its file and no longer its page (`MediaViewerBookmark` —
+/// its `position` is neither written nor read). A v25 build reads such a
+/// bookmark as one at the first page, and its next save writes the resume
+/// back without the views. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⛔A bookmark's page is NOT read here (the save law), and with it goes
+/// every file older than this one ([anicelOldestReadFormatVersion]) — 🗣️유저
+/// 10-18 (F-382-Q1): 「법 그대로 — 바닥을 26 으로 올린다」, over keeping
+/// every older file open with its viewers at their first pages. What to
+/// carry when one is asked for: in the document, each
+/// `mediaViewerBookmarks` entry's `position` becomes the `page` of its
+/// `path` under `resume` → `mediaFileViews` (a file two viewers held at
+/// two pages keeps either — a file has one page now), and the entry loses
+/// the word. Nothing else: no version from v14 to v25 moved the floor, so
+/// a v13 document is a v25 one.
+///
 /// v25 (2026-10-18, text-letters-lean-and-underline ④⑤ — Q1 「일곱 전부」):
 /// each paragraph of a text says how it is aligned and how far apart its
 /// lines are (`CelTextContent.paragraphs`). A text whose paragraphs are all
@@ -380,7 +401,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 25;
+const int anicelFormatVersion = 26;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -403,7 +424,8 @@ const int anicelFormatVersion = 25;
 /// 12: a reference that does not say where it stands is no longer read
 /// (v12 above).
 /// 13: a key's one interpolation is no longer read (v13 above).
-const int anicelOldestReadFormatVersion = 13;
+/// 26: a viewer bookmark's page is no longer read (v26 above).
+const int anicelOldestReadFormatVersion = 26;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the
