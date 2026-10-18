@@ -150,20 +150,6 @@ void main() {
     ),
   );
 
-  /// [rowId]'s Blur header dragged down past its Hue — one lane row of
-  /// travel, the step the layer rail commits on.
-  Future<void> dragPastTheNext(WidgetTester tester, Object rowId) async {
-    final from = header(rowId, blur);
-    final past = header(rowId, hue);
-    await tester.ensureVisible(from);
-    await tester.pumpAndSettle();
-    expect(from, findsOneWidget, reason: '⛔전제: $rowId shows its Blur');
-    expect(past, findsOneWidget, reason: '⛔전제: $rowId shows its Hue');
-    final step = tester.getCenter(past).dy - tester.getCenter(from).dy;
-    await tester.drag(from, Offset(0, step));
-    await tester.pumpAndSettle();
-  }
-
   List<EffectId> chainOf(EditorSessionManager session, LayerId layerId) {
     for (final track in session.repository.requireProject().tracks) {
       for (final layer in [
@@ -178,6 +164,35 @@ void main() {
     throw StateError('no $layerId');
   }
 
+  /// [rowId]'s Blur header dragged down past its Hue — one lane row of
+  /// travel, the step the layer rail commits on — TWICE, as the host's own
+  /// hooks have it: the first drag SELECTS and moves nothing (⑨'s law,
+  /// `storyboard_track_reorder_test`), the second, started inside the
+  /// selection, moves. [layerId]'s chain is read between the two.
+  Future<void> dragPastTheNext(
+    WidgetTester tester,
+    EditorSessionManager session,
+    Object rowId,
+    LayerId layerId,
+  ) async {
+    final from = header(rowId, blur);
+    final past = header(rowId, hue);
+    await tester.ensureVisible(from);
+    await tester.pumpAndSettle();
+    expect(from, findsOneWidget, reason: '⛔전제: $rowId shows its Blur');
+    expect(past, findsOneWidget, reason: '⛔전제: $rowId shows its Hue');
+    final step = tester.getCenter(past).dy - tester.getCenter(from).dy;
+    await tester.drag(from, Offset(0, step));
+    await tester.pumpAndSettle();
+    expect(
+      chainOf(session, layerId),
+      [blur, hue],
+      reason: 'the first drag selected and moved nothing',
+    );
+    await tester.drag(from, Offset(0, step));
+    await tester.pumpAndSettle();
+  }
+
   /// Drains the prerender scheduler's debounced warming — the established
   /// idiom for a test that commits through the session.
   Future<void> settle(WidgetTester tester) async {
@@ -188,7 +203,7 @@ void main() {
   testWidgets('an S row\'s fx header re-orders its chain, as the timeline\'s '
       'rail does', (tester) async {
     final session = await pumpHost(tester, twirl: 's1');
-    await dragPastTheNext(tester, 's1');
+    await dragPastTheNext(tester, session, 's1', const LayerId('s1'));
     expect(chainOf(session, const LayerId('s1')), [hue, blur]);
     session.undo();
     expect(chainOf(session, const LayerId('s1')), [blur, hue]);
@@ -198,7 +213,7 @@ void main() {
   testWidgets('and an S row on a track the session does not stand on — the '
       'row is the track\'s, wherever the session stands', (tester) async {
     final session = await pumpHost(tester, twirl: 's2');
-    await dragPastTheNext(tester, 's2');
+    await dragPastTheNext(tester, session, 's2', const LayerId('s2'));
     expect(chainOf(session, const LayerId('s2')), [hue, blur]);
     await settle(tester);
   });
@@ -207,7 +222,12 @@ void main() {
       'the cut the session stands in — and the head every conte of the '
       'track wears takes the order (I-73)', (tester) async {
     final session = await pumpHost(tester, twirl: 'a-conte');
-    await dragPastTheNext(tester, conteRow);
+    await dragPastTheNext(
+      tester,
+      session,
+      conteRow,
+      const LayerId('a-conte'),
+    );
     expect(chainOf(session, const LayerId('a-conte')), [hue, blur]);
     expect(chainOf(session, const LayerId('b-conte')), [hue, blur]);
     session.undo();
@@ -223,7 +243,12 @@ void main() {
       twirl: 'a-conte',
       standIn: const CutId('c'),
     );
-    await dragPastTheNext(tester, conteRow);
+    await dragPastTheNext(
+      tester,
+      session,
+      conteRow,
+      const LayerId('a-conte'),
+    );
     expect(chainOf(session, const LayerId('a-conte')), [blur, hue]);
     expect(chainOf(session, const LayerId('b-conte')), [blur, hue]);
     await settle(tester);
