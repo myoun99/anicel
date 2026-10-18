@@ -1372,7 +1372,8 @@ void main() {
     );
   });
 
-  testWidgets('reset action restores the identity viewport', (tester) async {
+  testWidgets('🗣️1:1 changes the zoom ALONE, about the middle of what you '
+      'see (F-381: 「같은 페이지,상태에서 바껴야하는건데」)', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -1400,28 +1401,47 @@ void main() {
     );
     await tester.pump();
 
+    CanvasViewport view() => tester
+        .widget<InteractiveBrushEditCanvasView>(
+          find.byType(InteractiveBrushEditCanvasView),
+        )
+        .viewport;
+    // Fit stands the artwork's middle in the middle of what you see — the
+    // point a 1:1 about that middle must leave where it is.
+    final middle = CanvasPoint(x: 50, y: 25);
     await tester.tap(find.byKey(const ValueKey<String>('canvas-viewport-fit')));
     await tester.pump();
-    // 1:1 is a COMMAND in the settings list, so pressing it closes the list
-    // — one tap to open, one to press, exactly like the browser's row menu.
-    await tapInViewSettings(tester, 'canvas-viewport-reset');
-
-    final canvas = tester.widget<InteractiveBrushEditCanvasView>(
-      find.byType(InteractiveBrushEditCanvasView),
+    // Turned and mirrored too, so that ALONE has something to keep. Those
+    // two are knobs and leave the list open; 1:1 is a COMMAND in it, so
+    // pressing it closes the list, exactly like the browser's row menu.
+    await openViewSettings(tester);
+    for (final knob in const [
+      'canvas-viewport-rotate-cw',
+      'canvas-viewport-flip',
+    ]) {
+      await tester.tap(find.byKey(ValueKey<String>(knob)));
+      await tester.pumpAndSettle();
+    }
+    final before = view();
+    expect(before.rotationDegrees, isNot(0));
+    expect(before.flipHorizontal, isTrue);
+    final seen = before.canvasToViewport(middle);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
     );
+    await tester.pumpAndSettle();
 
     // 1:1 means one artwork pixel per DEVICE pixel (유저 확정 2026-08-21),
     // so the render zoom it lands on is the inverse of the effective ratio
     // — ⛔NOT a bare `CanvasViewport()`, which is one artwork pixel per
     // LOGICAL pixel and drew at 300% on this 3× test view while the button
     // beside it said "1:1".
-    expect(
-      canvas.viewport.zoom,
-      closeTo(1 / tester.view.devicePixelRatio, 1e-12),
-    );
-    expect(canvas.viewport.panX, CanvasViewport().panX);
-    expect(canvas.viewport.panY, CanvasViewport().panY);
-    expect(canvas.viewport.rotationDegrees, 0);
+    expect(view().zoom, closeTo(1 / tester.view.devicePixelRatio, 1e-12));
+    final still = view().canvasToViewport(middle);
+    expect(still.x, closeTo(seen.x, 1e-6), reason: 'where you were looking');
+    expect(still.y, closeTo(seen.y, 1e-6));
+    expect(view().rotationDegrees, before.rotationDegrees, reason: 'the turn');
+    expect(view().flipHorizontal, isTrue, reason: 'the mirror');
     expect(find.text('100.00%'), findsOneWidget);
   });
 

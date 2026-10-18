@@ -237,13 +237,9 @@ class CanvasZoomScale {
         100,
   );
 
-  /// The identity view: artwork 1px = device 1px, whatever the monitor and
-  /// the UI scale are.
-  ///
-  /// This is what "reset" means now. ⛔It is NOT `CanvasViewport()`: a bare
-  /// 1.0 is one artwork pixel per LOGICAL pixel, which on a 1.5 display put
-  /// the artwork at 150% and called it 100%.
-  CanvasViewport get identityViewport => CanvasViewport(zoom: render(1));
+  // ↩️`identityViewport` — 1:1 at the artwork's corner, unturned — was what
+  // the 1:1 button put the view back to, until F-381 made it a zoom about
+  // the middle of what you see (`render(1)` — artwork 1px = device 1px).
 
   /// The view measured in DEVICE pixels — the form it is STORED in.
   ///

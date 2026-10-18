@@ -33,20 +33,18 @@ void main() {
         // The render zoom that shows "100%" puts `ratio` logical pixels of
         // artwork into `ratio` device pixels — one each.
         expect(scale.render(1.0), closeTo(1 / ratio, 1e-12));
-        expect(scale.identityViewport.zoom, closeTo(1 / ratio, 1e-12));
-        expect(scale.display(scale.identityViewport.zoom), closeTo(1, 1e-12));
       }
     });
 
-    test('⛔the identity view is NOT a bare CanvasViewport()', () {
+    test('⛔100% is NOT a bare CanvasViewport()\'s zoom', () {
       // The regression this exists for: `CanvasViewport()` is one artwork
       // pixel per LOGICAL pixel, which on a 1.5 display drew at 150% while
       // the readout said 100%.
       expect(
-        const CanvasZoomScale(1.5).identityViewport.zoom,
+        const CanvasZoomScale(1.5).render(1),
         isNot(CanvasViewport().zoom),
       );
-      expect(const CanvasZoomScale(1.0).identityViewport.zoom, 1.0);
+      expect(const CanvasZoomScale(1.0).render(1), 1.0);
     });
 
     test('a hostile ratio degrades to 1 rather than to infinity', () {
@@ -80,7 +78,10 @@ void main() {
         // value that was WRONG in render units. Storing the view in these
         // units is what makes "nothing has framed this yet" and "one
         // artwork pixel per device pixel" the same object.
-        expect(scale.toDevice(scale.identityViewport).zoom, closeTo(1, 1e-12));
+        expect(
+          scale.toDevice(CanvasViewport(zoom: scale.render(1))).zoom,
+          closeTo(1, 1e-12),
+        );
         // And the device zoom IS the percentage, with no conversion left.
         expect(
           scale.toDevice(view).zoom,

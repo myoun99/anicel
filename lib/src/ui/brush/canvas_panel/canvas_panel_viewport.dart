@@ -341,10 +341,7 @@ class _CanvasPanelViewport {
   }
 
   void _zoomToAroundCenter(double nextZoom) {
-    // The centre of what you can SEE, not of the box: anchoring on the box
-    // walks the picture toward a covered edge one press at a time.
-    final center = _resolvedVisibleRect().center;
-    final anchor = ViewportPoint(x: center.dx, y: center.dy);
+    final anchor = _viewportCenterAnchor;
     _state._rebuild(() {
       // ⛔The clamp is in DISPLAY units, and it is the same one for every
       // absolute zoom verb. The ± buttons used to stop at the model's
@@ -399,15 +396,24 @@ class _CanvasPanelViewport {
   Rect _resolvedVisibleRect() =>
       canvasVisibleRect(_resolvedEditorViewportSize(), _state._framingInsets);
 
-  /// The 1:1 button. ⛔NOT `CanvasViewport()`: a bare zoom of 1.0 is one
-  /// artwork pixel per LOGICAL pixel, which on a 1.5 display drew the
-  /// artwork at 150% while the readout said 100%. The button's own glyph
-  /// says "1:1" and now it means it — one artwork pixel, one device pixel,
-  /// whatever the monitor and the UI scale are.
+  /// The 1:1 button. ⛔NOT a zoom of 1.0: that is one artwork pixel per
+  /// LOGICAL pixel, which on a 1.5 display drew the artwork at 150% while
+  /// the readout said 100%. The button's own glyph says "1:1" and now it
+  /// means it — one artwork pixel, one device pixel, whatever the monitor
+  /// and the UI scale are.
+  ///
+  /// 🗣️F-381 (유저 2026-10-17): 「1:1버튼누르면 페이지가 초기화되서 98페이지에서
+  /// 1페이지로 초기화됨. 같은 페이지,상태에서 바껴야하는건데」 — so it changes the
+  /// zoom ALONE, about the middle of what you see, as a zoom step does: the
+  /// page, the place, the turn and the flips stay. ↩️It put the whole view
+  /// back to the identity — the artwork's corner, unturned.
   void _resetView() {
-    setViewport(_state._zoomScale.identityViewport);
+    _zoomToAroundCenter(_state._zoomScale.render(1));
   }
 
+  /// The point every view verb holds still: the centre of what you can SEE,
+  /// not of the box — anchoring on the box walks the picture toward a
+  /// covered edge one press at a time.
   ViewportPoint get _viewportCenterAnchor {
     final center = _resolvedVisibleRect().center;
     return ViewportPoint(x: center.dx, y: center.dy);

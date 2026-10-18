@@ -1682,9 +1682,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     zoomsView: true,
   ),
+  // ↩️F-381: 1:1 put the whole view back, and was named for it; it lands the
+  // zoom alone now. ⛔The id keeps the old words — saved shortcuts are bound
+  // to the id, not to the label.
   const EditorActionDefinition(
     id: EditorActionIds.canvasResetView,
-    label: 'Reset Canvas View (100%)',
+    label: 'Reset Canvas Zoom (100%)',
     shelf: ShortcutShelf.view,
     defaultActivators: [],
     zoomsView: true,

@@ -218,6 +218,38 @@ void main() {
     );
   });
 
+  // 🗣️F-381 (유저 2026-10-17): 「뷰어패널에서 1:1버튼누르면 페이지가 초기화되서
+  // 98페이지에서 1페이지로 초기화됨. 같은 페이지,상태에서 바껴야하는건데」.
+  testWidgets('🗣️1:1 on a page past the first keeps you on that page', (
+    tester,
+  ) async {
+    final fake = FakePdfDocument(
+      pageSizes: List<ui.Size>.filled(4, const ui.Size(595, 842)),
+    );
+    PdfRenderService.debugOpenerOverride = (_) async => fake;
+    await pumpViewer(tester);
+    slot.request.value = const MediaViewerRequest(
+      path: 'C:/work/conte.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    await tester.pumpAndSettle();
+    for (var page = 1; page < 3; page += 1) {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('media-viewer-next-page-button')),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('3 / 4'), findsOneWidget, reason: '⛔premise');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('canvas-viewport-reset')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('100.00%'), findsOneWidget, reason: 'it IS 1:1');
+    expect(find.text('3 / 4'), findsOneWidget);
+  });
+
   // 🗣️F-315 (유저 2026-10-08): 「준비안된상태면 … 로딩창같은거 해당패널중앙에
   // 위젯 띄우도록 … 준비안된장이 그냥 흰색장인채로 보인다던가」.
   testWidgets('🗣️a page on screen not drawn yet stands the loading widget in '
