@@ -957,13 +957,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// its path's points alike.
   _ShownSpace _positionSpaceOf(EditorSessionManager session, Layer layer) =>
       layer.kind == LayerKind.se
-      ? _shownThrough(
-          session.seEntries.shotForCutFrame(
-            session.requireActiveCut,
-            session.currentFrameIndex,
-          ),
-        )
+      ? _shownThrough(_shotAtThePlayhead(session))
       : _parentSpaceOf(session, layer);
+
+  /// Where the active cut's SHOT lies on the canvas at the playhead — the
+  /// space an SE row's position is in (I-67-Q1).
+  static LayerPlacement _shotAtThePlayhead(EditorSessionManager session) =>
+      session.seEntries.shotForCutFrame(
+        session.requireActiveCut,
+        session.currentFrameIndex,
+      );
 
   /// [layer] as the canvas shows it — the drag in flight on it, if one is
   /// (F-195, canvas-follows-block-moves), so a handle stands where the
@@ -1091,12 +1094,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       anchorPoint: anchorPoint,
     ), canvasSize);
     final shown = parent.placement?.compose(ownPlacement) ?? ownPlacement;
+    // 🗣️F-387 (유저 2026-10-17): 「그림이나 소재 … 가 없을때 변형에 서면
+    // 움직여지는데 기준점은 움직이는게 안보인다던가 하는 문제 해결. 위치
+    // 변형하듯 무언가 변형되는 박스를 임시로 만들어서 조작중임을 표시하도록」
+    // — a cel that shows nothing has its box drawn under the cross alone
+    // too: the anchor's drag moves it as it moves a picture.
+    final framed = box || frame.inkBounds == null;
     return RowTransformBox(
       // The box frames the layer's PICTURE (the user chose that on the
       // mockup: 「레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고?
       // 그렇게하자」) — and a blank cel's box is the canvas, the transform
       // tool's own rule for a picture with nothing in it.
-      corners: box
+      corners: framed
           ? [
               for (final point in CanvasSelectionShape.wholePicture(
                 canvasSize,
@@ -1269,8 +1278,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
 
   /// An SE row's box (F-222 ②): its name tag, and it only MOVES — the tag
   /// is placed by position alone (a tag has no scale or turn to drive).
-  /// With no tag under the playhead the box is the canvas, the law for a
-  /// box with nothing in it.
+  /// With no tag under the playhead it frames a stand-in where the tag
+  /// would stand ([_seBoxCorners]), the law for a box with nothing in it.
   ///
   /// The row's position is the SHOT's (I-67-Q1): the box stands where the
   /// shot lies on the canvas and each drag comes back through it, as a
@@ -1287,14 +1296,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
-    final shot = _positionSpaceOf(session, activeLayer);
+    final placement = _shotAtThePlayhead(session);
+    final shot = _shownThrough(placement);
+    final position = session.layerPoseAtFrame(at.layer, at.frame).center;
     return RowTransformBox(
-      corners: _seBoxCorners(activeLayer, tags, shot.toCanvas, canvasSize),
-      pose: TransformPose(
-        center: shot.toCanvas(
-          session.layerPoseAtFrame(at.layer, at.frame).center,
-        ),
+      corners: _seBoxCorners(
+        activeLayer,
+        tags,
+        shot: placement,
+        position: position,
+        shotSize: session.camera.cameraFrameSize,
+        canvasSize: canvasSize,
       ),
+      pose: TransformPose(center: shot.toCanvas(position)),
       canvasSize: canvasSize,
       viewport: viewport,
       presses: frame.boxPresses,
@@ -1317,39 +1331,37 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// [row]'s name tag box among [tags], laid on the canvas through [shot] —
-  /// or the canvas, with no tag of the row under the playhead.
+  /// or, with no tag of the row under the playhead, a stand-in where its
+  /// tag would stand: the shot's own frame, centred on the row's
+  /// [position], so a drag moves it as it moves a tag.
+  ///
+  /// 🗣️F-387 (유저 2026-10-17): 「특히 지금 se행 네임태그 se블록없는곳에서
+  /// 변형 조작되는데 화면엔 안보임」. ↩️The stand-in was the canvas, laid as
+  /// it stood: a drag keyed the row's position and nothing on screen
+  /// moved. A layer's blank cel stands in the same way ([_layerBox]) — the
+  /// whole of the space the row is posed in, placed as its picture is.
   static List<CanvasPoint> _seBoxCorners(
     Layer row,
-    List<ResolvedSeNameTag> tags,
-    CanvasPoint Function(CanvasPoint point) shot,
-    CanvasSize canvasSize,
-  ) {
-    final bounds = canvasSize.canvasRect;
-    var box = [
-      bounds.topLeft,
-      bounds.topRight,
-      bounds.bottomRight,
-      bounds.bottomLeft,
-    ];
-    var through = (CanvasPoint point) => point;
+    List<ResolvedSeNameTag> tags, {
+    required LayerPlacement shot,
+    required CanvasPoint position,
+    required CanvasSize shotSize,
+    required CanvasSize canvasSize,
+  }) {
+    var box = Rect.fromCenter(
+      center: Offset(position.x, position.y),
+      width: shotSize.width.toDouble(),
+      height: shotSize.height.toDouble(),
+    );
     for (final tag in tags) {
       final tagBox = tag.layerId == row.id.value
           ? seNameTagBoxBounds(tag, canvasSize: canvasSize)
           : Rect.zero;
       if (!tagBox.isEmpty) {
-        box = [
-          tagBox.topLeft,
-          tagBox.topRight,
-          tagBox.bottomRight,
-          tagBox.bottomLeft,
-        ];
-        through = shot;
+        box = tagBox;
       }
     }
-    return [
-      for (final corner in box)
-        through(CanvasPoint(x: corner.dx, y: corner.dy)),
-    ];
+    return placedCorners(shot, box);
   }
 
   /// The camera row's box ([CameraFrameBox], F-222 ③).

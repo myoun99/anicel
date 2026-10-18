@@ -276,11 +276,15 @@ class _InteractiveCanvasBuild {
         ? const <CanvasManipulator>{}
         : canvasManipulatorsForLane(standingLane);
     final boxGrabbable = manipulators.contains(CanvasManipulator.transformBox);
+    final crossGrabbable = manipulators.contains(
+      CanvasManipulator.anchorPoint,
+    );
     // The box frames the layer's INK — or, on a blank cel, the canvas
-    // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]).
+    // (the transform tool's own rule, [CanvasSelectionShape.wholePicture]),
+    // which stands in for the picture under the cross as well (F-387).
     // Resolved only when something will use it: the scan is memoized on
     // the surface, but asking at all costs a frame lookup.
-    final inkBounds = boxGrabbable && activeLayer != null
+    final inkBounds = (boxGrabbable || crossGrabbable) && activeLayer != null
         ? session.renderCaches.layerContentBoundsAt(
             activeLayer,
             session.currentFrameIndex,
@@ -292,7 +296,7 @@ class _InteractiveCanvasBuild {
       activeLayer: activeLayer,
       boxGrabbable: boxGrabbable,
       inkBounds: inkBounds,
-      crossGrabbable: manipulators.contains(CanvasManipulator.anchorPoint),
+      crossGrabbable: crossGrabbable,
       referenceBox: _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
       walksAPath: switch (standingLane) {
@@ -1103,7 +1107,8 @@ class _HostFrame {
   /// file it shows, where its reference says (`_referenceBoxShown`).
   final bool referenceBox;
 
-  /// The active layer's ink at the playhead, while [boxGrabbable].
+  /// The active layer's ink at the playhead, while [boxGrabbable] or
+  /// [crossGrabbable] — null on a cel that shows nothing.
   final ({int left, int top, int rightExclusive, int bottomExclusive})?
   inkBounds;
   final bool isCameraLayerActive;
