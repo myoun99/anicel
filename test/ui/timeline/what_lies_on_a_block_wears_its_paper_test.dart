@@ -219,19 +219,17 @@ void main() {
     testWidgets('a block the chip takes whole is round at both ends ($axis)', (
       tester,
     ) async {
-      // One frame of 8, short of the chip's 16: the chip stops at the
-      // block's end, its name narrowed into it.
       final shot = await shoot(
         tester,
         axis,
         timelineRowSeLabelOverlays(
-          layer: named(0, 1),
+          layer: named(0, 2),
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
           axis: axis,
         ),
       );
-      final paper = paperOf(axis, 0, 1);
+      final paper = paperOf(axis, 0, 2);
       expect(shot.alphaAt(paper.center), greaterThan(0), reason: '⛔전제');
       expect(shot.painted, paper, reason: 'the chip is the whole block');
       expect(shot.cornersOf(paper), (0, 0, 0, 0));
@@ -384,7 +382,7 @@ void main() {
           Color.alphaBlend(
             AppColors.accent.withValues(alpha: 0.3),
             layerMarkColor(mark),
-          ),
+          ).toARGB32(),
         ],
         reason: 'opaque: the dark row under it does not show through',
       );
@@ -414,8 +412,9 @@ class _PaperSpy implements Canvas {
   final rects = <Rect>[];
   final rrects = <RRect>[];
 
-  /// The colour each of [rrects] is laid in.
-  final colors = <Color>[];
+  /// The colour each of [rrects] is laid in, as 32-bit ARGB: a paint holds
+  /// its colour in single precision.
+  final colors = <int>[];
 
   @override
   void clipRRect(RRect rrect, {bool doAntiAlias = true}) => clips.add(rrect);
@@ -426,12 +425,13 @@ class _PaperSpy implements Canvas {
   @override
   void drawRRect(RRect rrect, Paint paint) {
     rrects.add(rrect);
-    colors.add(paint.color);
+    colors.add(paint.color.toARGB32());
   }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
 class _Shot {
   _Shot(this._bytes, this._ratio);
 

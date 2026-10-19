@@ -22,7 +22,7 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
-    show SeSpanVisual, seNameBoxExtent;
+    show SeSpanVisual;
 
 import '../helpers/named_finders.dart';
 
@@ -195,17 +195,22 @@ void main() {
     final perFrame = tester
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
         .pixelsPerFrame;
-    expect(perFrame, lessThan(seNameBoxExtent), reason: '⛔전제: one is short');
-    expect(2 * perFrame, greaterThanOrEqualTo(seNameBoxExtent));
     Finder span(int start) => find.byKey(
       ValueKey<String>('storyboard-se-span-se-row-1-$start'),
     );
     Rect chipOf(String name) =>
         tester.getRect(find.bySemanticsLabel('SE name $name'));
 
-    // [1, 4) has one free frame before it, [6, 10) two, [10, 12) none.
+    // [1, 4) has one free frame before it, [6, 10) two, [10, 12) none. The
+    // chip narrows with its words (F-224), and the room is asked of the
+    // chip it is: a frame holds 「One」's whole.
     expect(
-      chipOf('One').left,
+      chipOf('One').width,
+      lessThanOrEqualTo(perFrame),
+      reason: '⛔전제: narrowed, the chip fits the one free frame',
+    );
+    expect(
+      chipOf('One').right,
       moreOrLessEquals(tester.getRect(span(1)).left, epsilon: 0.01),
     );
     expect(
@@ -234,7 +239,7 @@ void main() {
       Color.alphaBlend(
         AppColors.accent.withValues(alpha: 0.3),
         layerMarkColor(mark),
-      ),
+      ).toARGB32(),
     ], reason: 'the colour the tint gives the paper of a row of that mark');
   });
 
@@ -427,10 +432,12 @@ void main() {
 
 /// The colours a painter lays its rounded shapes in.
 class _GroundSpy implements Canvas {
-  final colors = <Color>[];
+  /// As 32-bit ARGB: a paint holds its colour in single precision.
+  final colors = <int>[];
 
   @override
-  void drawRRect(RRect rrect, Paint paint) => colors.add(paint.color);
+  void drawRRect(RRect rrect, Paint paint) =>
+      colors.add(paint.color.toARGB32());
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

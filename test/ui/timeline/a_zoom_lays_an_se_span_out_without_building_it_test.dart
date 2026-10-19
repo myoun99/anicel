@@ -187,6 +187,15 @@ void main() {
     expect(tester.getRect(chip).right, closeTo(40, 1e-6));
   });
 
+  testWidgets('a block shorter than the chip, with no room before it, gives '
+      'the chip all of itself and no more', (tester) async {
+    // No words to narrow it: the chip would be its whole 16.
+    await mount(tester, width: 10, frames: 1, words: '');
+    final chip = tester.getRect(find.bySemanticsLabel('SE name ドア'));
+    expect(chip.left, closeTo(0, 1e-6));
+    expect(chip.width, closeTo(10, 1e-6), reason: 'the block\'s end');
+  });
+
   testWidgets('with no room before its block, the chip lies over the words\' '
       'head and paints over them', (tester) async {
     await mount(tester, width: 100, frames: 10, words: 'あい');

@@ -326,8 +326,14 @@ void main() {
     final b = none.buffer.asUint8List();
     final width = size.width.toInt();
     var above = 0;
-    // The band right over the half's first row line (two pixels of slack).
-    for (var y = 60 - 16; y < 60 - 2; y += 1) {
+    // The band over the half's first row line, short of the glyph whose
+    // centre is this half's: a glyph shows WHOLE in the window holding its
+    // centre (F-358, 10-17), and laid over the whole span (10-19 「대사가
+    // 1코마부터」) the eighth one's centre falls on the line itself (25
+    // glyphs over 240 rows: 9.6 a glyph), so half of it stands over it.
+    // What may not stand here is the earlier half's share. ↩️The band ran
+    // to two pixels over the line while the words began under the name box.
+    for (var y = 60 - 16; y < 60 - 8; y += 1) {
       for (var x = 0; x < width; x += 1) {
         final i = (y * width + x) * 4;
         if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2]) {

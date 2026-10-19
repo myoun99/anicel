@@ -132,7 +132,9 @@ class _Paragraphs implements Canvas {
 
   @override
   void drawRect(Rect rect, Paint paint) {
-    if (paint.color == AppColors.accent.withValues(alpha: 0.3)) {
+    // As 32-bit ARGB: a paint holds its colour in single precision.
+    final tint = AppColors.accent.withValues(alpha: 0.3).toARGB32();
+    if (paint.color.toARGB32() == tint) {
       rects.add(rect);
     }
   }
