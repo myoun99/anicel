@@ -559,6 +559,8 @@ void main() {
       'width: wide ? a : b,\nheight: wide ? b : a,',
       // A decision that quotes the old spelling.
       '// width: horizontal ? a : b,\n// height: horizontal ? b : a,',
+      // One answer picked twice — nothing turns.
+      'width: horizontal ? 0 : 0,\nheight: horizontal ? 0 : 0,',
     ];
     for (final line in notOne) {
       expect(swappedPicksIn(line), isEmpty, reason: line);
