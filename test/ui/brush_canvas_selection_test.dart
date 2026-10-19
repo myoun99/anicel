@@ -3616,7 +3616,7 @@ void main() {
     await moveBoxBy(tester, const Offset(10, 5));
     expect(env.commands.movePending, isTrue);
 
-    env.commands.revertPendingMove();
+    env.commands.cancelTransform();
     await tester.pump();
     expect(inkAt(env.coordinator, 30, 30), isNonZero);
     expect(env.commands.hasSelection, isFalse);
@@ -5131,8 +5131,8 @@ void main() {
     expect(currentSurface(env.coordinator), equals(beforeLift));
   });
 
-  testWidgets('REVERT puts the pixels back exactly and records nothing '
-      '(R17-①: the prompt\'s 되돌리기)', (tester) async {
+  testWidgets('취소 puts the pixels back exactly and records nothing '
+      '(Escape: the session reverts whole)', (tester) async {
     final env = await pumpSelectionPanel(tester);
     final beforeLift = currentSurface(env.coordinator);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
@@ -5142,7 +5142,7 @@ void main() {
     await moveBoxBy(tester, const Offset(15, 15));
     expect(env.commands.movePending, isTrue);
 
-    env.commands.revertPendingMove();
+    env.commands.cancelTransform();
     await tester.pump();
 
     expect(env.commands.movePending, isFalse);
@@ -5260,7 +5260,7 @@ void main() {
   /// have passed for the wrong reason here. 🔬Measured 2026-09-17 on this
   /// very fixture: `bytesNotSharedWith` = 0, because the marquee covers the
   /// whole stroke and the erased tile is dropped rather than rebuilt.
-  for (final ending in const ['확정', '되돌리기']) {
+  for (final ending in const ['확정', '취소']) {
     testWidgets('a memory warning mid-session gives the picture back, and '
         '$ending still lands correctly', (tester) async {
       final env = await pumpSelectionPanel(tester);
@@ -5301,7 +5301,7 @@ void main() {
           reason: 'and the pixels are where the move put them',
         );
       } else {
-        env.commands.revertPendingMove();
+        env.commands.cancelTransform();
         await tester.pump();
         expect(env.commands.movePending, isFalse);
         expect(

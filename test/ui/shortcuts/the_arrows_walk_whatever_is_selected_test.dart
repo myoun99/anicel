@@ -104,7 +104,7 @@ void main() {
     CanvasSelectionCommands commands,
   ) async {
     if (commands.movePending) {
-      commands.revertPendingMove();
+      commands.cancelTransform();
       await tester.pump();
     }
     commands.deselect();

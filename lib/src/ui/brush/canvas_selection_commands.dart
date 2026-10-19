@@ -303,7 +303,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   void Function(CanvasSelectionRegion? region)? _applyRegion;
   bool Function()? _movePending;
   VoidCallback? _confirmPendingMove;
-  VoidCallback? _revertPendingMove;
   TransformValues? Function()? _transformValues;
   void Function(TransformValues Function(TransformValues now) change)?
   _editTransformValues;
@@ -332,7 +331,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     void Function(CanvasSelectionRegion? region)? applyRegion,
     bool Function()? movePending,
     VoidCallback? confirmPendingMove,
-    VoidCallback? revertPendingMove,
     TransformValues? Function()? transformValues,
     void Function(TransformValues Function(TransformValues now) change)?
     editTransformValues,
@@ -360,7 +358,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _applyRegion = applyRegion;
     _movePending = movePending;
     _confirmPendingMove = confirmPendingMove;
-    _revertPendingMove = revertPendingMove;
     _transformValues = transformValues;
     _editTransformValues = editTransformValues;
     _undoTransformStep = undoTransformStep;
@@ -383,7 +380,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _applyRegion = null;
     _movePending = null;
     _confirmPendingMove = null;
-    _revertPendingMove = null;
     _transformValues = null;
     _editTransformValues = null;
     _undoTransformStep = null;
@@ -533,11 +529,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// hook, and [applyTransform] when the session holds changes. No-op
   /// without a session.
   void confirmPendingMove() => _confirmPendingMove?.call();
-
-  /// Reverts the pending move: the pixels return EXACTLY to where the
-  /// session found them (a fresh lift disappears entirely), no history
-  /// entry. The "되돌리기" choice in the R17-① confirm prompt.
-  void revertPendingMove() => _revertPendingMove?.call();
 
   /// The open transform box's values, or null when no box is up (the
   /// settings fields then show the identity).

@@ -458,7 +458,7 @@ void main() {
     // ⚠️Closed before the test ends: a box left open lands as the workspace
     // unmounts, a frame after the history it writes to has gone
     // (a-box-left-open-lands-after-its-history-is-gone).
-    commands.revertPendingMove();
+    commands.cancelTransform();
     await pumpFrames(tester);
   });
 }

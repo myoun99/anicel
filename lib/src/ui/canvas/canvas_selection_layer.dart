@@ -1206,7 +1206,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // movePending false, a ghost float painter still mounted, and Escape
       // the only way out.
       confirmPendingMove: _confirmSession,
-      revertPendingMove: _revertMoveSession,
       transformValues: _transformValuesNow,
       editTransformValues: _editTransformValues,
       undoTransformStep: _undoTransformStep,
