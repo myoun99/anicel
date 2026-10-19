@@ -21,7 +21,7 @@
 //   bash tool/run.sh affected_tests --list     # print them, run nothing
 //   bash tool/run.sh affected_tests --all      # the escape hatch
 //   bash tool/run.sh affected_tests --base HEAD~3
-//   bash tool/run.sh affected_tests --concurrency 4   # fewer than a place holds
+//   bash tool/run.sh affected_tests --concurrency 4   # fewer than its turn gives
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -489,15 +489,17 @@ Future<int> _runTests(
   final neverRan = <int>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
-  // machine-Q1): the batches run in this run's turn, each at the suites a
-  // place holds — fewer when the run asked for fewer.
-  await inTurn('affected_tests', say: _report, () async {
+  // machine-Q1): the batches run in this run's turn, each at the suites the
+  // line gives it — ten alone, five beside another, fewer when asked.
+  await inTurn('affected_tests', say: _report, asked: concurrency, (
+    suites,
+  ) async {
     for (var i = 0; i < batches.length; i++) {
       if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
       final report = File('${reports.path}/batch$i.json');
       final result = await _flutterTest(
         batches[i],
-        concurrency: suitesFor(concurrency),
+        concurrency: suites,
         report: report.path,
       );
       _recordTimes(report);

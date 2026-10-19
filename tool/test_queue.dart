@@ -1,7 +1,8 @@
-// ONE LINE OF TEST RUNS FOR THE WHOLE MACHINE: a fixed number of places,
-// each running a fixed number of suites at once, taken in the order asked.
+// ONE LINE OF TEST RUNS FOR THE WHOLE MACHINE, and ten suites at once
+// between all of them, taken in the order asked.
 //
 //   bash tool/run.sh test_queue flutter test <files…>   run it in its turn
+//   bash tool/run.sh test_queue timeout 300 flutter test <files…>
 //   bash tool/run.sh test_queue --list                  who runs, who waits
 //
 // `affected_tests` takes its turn here by itself — a session that runs it
@@ -12,7 +13,8 @@
 // 2개 × 동시 8) 세션들이 일을 넣으면 하나의 실행기가 차례로 돌린다 — 20초마다
 // 묻는 폴링이 없어지고, 코어를 넘겨 나눠 먹지 않아 전체 처리량이 오른다」. And
 // 10-19: 「기계가 비엇는지? 레인이 비엇는지 일일이 감시로 손으로 확인하는거말고
-// ci로해서 자원 안쓰게한다」.
+// ci로해서 자원 안쓰게한다」, then 「최대가 10만되게 할수있나. 지금상태면
+// 단독진행일때 5개제한이잖아」.
 //
 // WHY, measured on the main PC (20 logical cores) on 2026-10-18 · 19: one
 // run fills the CPU at about ten suites at once, and ten is what every run
@@ -30,10 +32,12 @@
 // a run that is gone. That is the law `SessionScratch._runHasEnded` keeps
 // for the app's per-run rooms — two places, not three: change both or
 // neither. A run that waits lists the folder every two seconds and
-// launches nothing. The run at the head of the line asks the machine once
-// whether there is room (CLAUDE.md's four places and 4GB — what the queue
+// launches nothing. A run whose turn has come asks the machine once
+// whether there is room (CLAUDE.md's four places and 4GB — what the line
 // does not hold, a session's app or analyze, still takes a place), and asks
-// again only while there is none.
+// again only while there is none. How many suites it takes ([suitesToRun])
+// is decided under one lock for the whole line, so two runs deciding in the
+// same instant cannot both take the machine.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -41,21 +45,23 @@ import 'dart:io';
 import 'flutter_room.dart';
 import 'test_seconds.dart';
 
-/// The test runs the line lets go at once.
-const kQueuePlaces = 2;
+/// The suites every run in the line holds between them. ⚖️TEN, AS
+/// MEASURED: one run filled the CPU at ten, and two runs side by side were
+/// fastest at ten between them (145s at five each, 155s at ten each).
+/// 🪦It was two places of six for a morning — twelve, on a guess — and then
+/// two of five, which kept a run alone in the line at five (유저 10-19:
+/// 「최대가 10만되게 할수있나. 지금상태면 단독진행일때 5개제한이잖아」).
+const kMachineSuites = 10;
 
-/// The suites each of them holds at once. ⚖️Two places of six, not the
-/// example's two of eight (Q1's own 「예」): one run filled the CPU at ten,
-/// and two runs side by side were fastest at ten between them (145s at five
-/// each against 155s at ten each) — twelve keeps the tail of one run
-/// overlapped by the other without paying for twenty.
-const kSuitesAPlace = 6;
+/// What a run takes when another is in line: half, so two run side by side
+/// and the tail of one is filled by the other.
+const kSharedSuites = kMachineSuites ~/ 2;
 
 /// How often a run that waits looks at the line again.
 const kLookAgain = Duration(seconds: 2);
 
-/// How long the head of the line waits to ask the machine again when there
-/// was no room — the twenty seconds `lane.sh` waits between asks.
+/// How long a run whose turn has come waits to ask the machine again when
+/// there was no room — the twenty seconds `lane.sh` waits between asks.
 const kAskAgain = Duration(seconds: 20);
 
 /// A ticket younger than this is not asked whether its run has ended: it
@@ -74,40 +80,83 @@ Directory? queueFolder(Map<String, String> environment) {
 String ticketName(int microseconds, int processId) =>
     '${microseconds.toString().padLeft(17, '0')}-$processId.ticket';
 
-/// Whether the ticket named [mine] may run: it stands among the first
-/// [places] of the [held] tickets, in the order their names sort.
-bool isMyTurn(String mine, Iterable<String> held, {int places = kQueuePlaces}) {
-  final line = held.toList()..sort();
-  final at = line.indexOf(mine);
-  return at >= 0 && at < places;
+/// One held ticket as the line reads it: the suites its run holds, or null
+/// while it waits.
+typedef Standing = ({String name, int? suites});
+
+/// The suites the run holding [mine] may start with now, or null while it
+/// waits.
+///
+/// · In turn: every ticket ahead of it is already running.
+/// · Alone in the line it takes the machine ([kMachineSuites]); with
+///   anyone else in it — ahead or behind — half ([kSharedSuites]). Never
+///   more than it [asked] for.
+/// · And only while what is running leaves that much of [kMachineSuites]:
+///   a run that started alone with all ten is waited out, not joined.
+int? suitesToRun(String mine, List<Standing> line, {int? asked}) {
+  final sorted = [...line]..sort((a, b) => a.name.compareTo(b.name));
+  final at = sorted.indexWhere((standing) => standing.name == mine);
+  if (at < 0) return null;
+  if (sorted.take(at).any((ahead) => ahead.suites == null)) return null;
+  final share = sorted.length == 1 ? kMachineSuites : kSharedSuites;
+  final suites = asked == null || asked > share ? share : asked;
+  final running = sorted.fold(0, (sum, s) => sum + (s.suites ?? 0));
+  return running + suites <= kMachineSuites ? suites : null;
 }
 
-/// The suites a run holds at once: what it asked for, and never more than
-/// a place has.
-int suitesFor(int? asked) =>
-    asked == null || asked > kSuitesAPlace ? kSuitesAPlace : asked;
-
-/// [command] as a place runs it: a `flutter test` holds [suitesFor] its
-/// own ask; any other command runs as it was given.
-List<String> placed(List<String> command) {
-  if (command.length < 2 || command[0] != 'flutter' || command[1] != 'test') {
-    return command;
-  }
+/// How many suites [command] asks for, if it is a `flutter test` that says.
+int? askedSuites(List<String> command) {
+  final at = _flutterTestAt(command);
+  if (at == null) return null;
   int? asked;
-  final rest = <String>[];
-  for (var i = 2; i < command.length; i++) {
+  for (var i = at + 2; i < command.length; i++) {
     final word = command[i];
-    if (word == '-j' || word == '--concurrency') {
-      if (i + 1 < command.length) asked = int.tryParse(command[++i]);
+    if ((word == '-j' || word == '--concurrency') && i + 1 < command.length) {
+      asked = int.tryParse(command[++i]);
     } else if (word.startsWith('--concurrency=')) {
       asked = int.tryParse(word.substring('--concurrency='.length));
     } else if (word.startsWith('-j') && int.tryParse(word.substring(2)) != null) {
       asked = int.parse(word.substring(2));
-    } else {
+    }
+  }
+  return asked;
+}
+
+/// [command] as its turn runs it: a `flutter test` holds [suites] suites,
+/// whatever it said; any other command runs as it was given.
+///
+/// The `flutter test` may come after words of its own — `timeout 300
+/// flutter test …`. 🚨That is where a run's own time limit belongs: one put
+/// around `test_queue` counts the wait in line too, and a mutant that only
+/// waited is read as killed (브러시/렌더링 found it on the line's first
+/// morning, 10-19).
+List<String> placed(List<String> command, int suites) {
+  final at = _flutterTestAt(command);
+  if (at == null) return command;
+  final rest = <String>[];
+  for (var i = at + 2; i < command.length; i++) {
+    final word = command[i];
+    if (word == '-j' || word == '--concurrency') {
+      i++;
+    } else if (!word.startsWith('--concurrency=') &&
+        !(word.startsWith('-j') && int.tryParse(word.substring(2)) != null)) {
       rest.add(word);
     }
   }
-  return ['flutter', 'test', '--concurrency=${suitesFor(asked)}', ...rest];
+  return [
+    ...command.take(at),
+    'flutter',
+    'test',
+    '--concurrency=$suites',
+    ...rest,
+  ];
+}
+
+int? _flutterTestAt(List<String> command) {
+  for (var i = 0; i + 1 < command.length; i++) {
+    if (command[i] == 'flutter' && command[i + 1] == 'test') return i;
+  }
+  return null;
 }
 
 /// The tickets in [line] whose runs are alive, by name — [mine] among them
@@ -141,6 +190,22 @@ List<String> heldTickets(
     _deleteQuietly(File('${entity.path}.json'));
   }
   return held;
+}
+
+/// The suites the run holding the ticket [name] in [line] said it holds,
+/// or null while it waits — or when it has said nothing readable, which
+/// keeps everyone behind it waiting rather than over the machine.
+int? suitesOf(Directory line, String name) {
+  try {
+    final about = jsonDecode(
+      File('${line.path}/$name.json').readAsStringSync(),
+    );
+    return about is Map && about['state'] == 'running'
+        ? about['suites'] as int?
+        : null;
+  } on Object {
+    return null;
+  }
 }
 
 /// Whether the run that holds [ticket] is gone — asked by TAKING its lock,
@@ -181,14 +246,14 @@ class Ticket {
     // It has content on purpose, written under the lock: an empty ticket
     // would hide a probe that opened it the truncating way.
     lock.writeStringSync('$pid\n');
-    final about = {
+    final about = <String, Object>{
       'pid': pid,
       'what': what,
       'where': Directory.current.path,
       'asked': DateTime.now().toIso8601String(),
     };
     final ticket = Ticket._(file, lock, about);
-    ticket._tell('waiting');
+    ticket._tell({'state': 'waiting'});
     return ticket;
   }
 
@@ -198,19 +263,18 @@ class Ticket {
 
   String get name => file.uri.pathSegments.last;
 
-  /// What `--list` reads: the lock itself cannot be read on Windows while
-  /// it is held, so who and what go in a file beside it.
-  void _tell(String state) {
+  /// What `--list` and the rest of the line read: the lock itself cannot be
+  /// read on Windows while it is held, so who, what and how many suites go
+  /// in a file beside it.
+  void _tell(Map<String, Object> now) {
     try {
-      File('${file.path}.json').writeAsStringSync(
-        jsonEncode({..._about, 'state': state}),
-      );
+      File('${file.path}.json').writeAsStringSync(jsonEncode({..._about, ...now}));
     } on FileSystemException {
-      // `--list` shows the ticket without it.
+      // The line reads this ticket as waiting; nobody behind it starts.
     }
   }
 
-  void running() => _tell('running');
+  void running(int suites) => _tell({'state': 'running', 'suites': suites});
 
   void giveBack() {
     try {
@@ -232,12 +296,33 @@ void _deleteQuietly(File file) {
   }
 }
 
-/// Runs [run] in its turn in the machine's line: when its ticket is among
-/// the first [kQueuePlaces] and the machine has [room]. [say] hears where
-/// it stands; nothing is said while nothing changes.
+/// [decide] with the whole line's decision lock held: one run at a time
+/// reads the line and says what it takes.
+T _deciding<T>(Directory line, T Function() decide) {
+  final lock = File('${line.path}/deciding.lock').openSync(
+    mode: FileMode.append,
+  );
+  try {
+    lock.lockSync(FileLock.blockingExclusive);
+    return decide();
+  } finally {
+    try {
+      lock.unlockSync();
+    } on Object {
+      // Released with the handle below.
+    }
+    lock.closeSync();
+  }
+}
+
+/// Runs [run] in its turn in the machine's line, handing it the suites it
+/// may hold ([suitesToRun] — never more than [asked]), once the machine has
+/// [room]. [say] hears where it stands; nothing is said while nothing
+/// changes.
 Future<T> inTurn<T>(
   String what,
-  Future<T> Function() run, {
+  Future<T> Function(int suites) run, {
+  int? asked,
   Directory? line,
   Future<bool> Function()? room,
   bool Function(File ticket) ended = runHasEnded,
@@ -246,8 +331,15 @@ Future<T> inTurn<T>(
   Duration askAgain = kAskAgain,
 }) async {
   final folder = line ?? queueFolder(Platform.environment);
-  if (folder == null) return run(); // No machine folder: no line to stand in.
+  if (folder == null) {
+    // No machine folder: no line to stand in, and the machine is its own.
+    return run(asked == null || asked > kMachineSuites ? kMachineSuites : asked);
+  }
   var ticket = Ticket.take(folder, what);
+  List<Standing> standings() => [
+    for (final name in heldTickets(folder, mine: ticket.name, ended: ended))
+      (name: name, suites: name == ticket.name ? null : suitesOf(folder, name)),
+  ];
   try {
     int? stood;
     var roomless = false;
@@ -255,9 +347,20 @@ Future<T> inTurn<T>(
       // A ticket swept in the instant between being made and being locked
       // stands nowhere; it takes another at the back.
       if (!ticket.file.existsSync()) ticket = Ticket.take(folder, what);
-      final held = heldTickets(folder, mine: ticket.name, ended: ended);
-      if (isMyTurn(ticket.name, held)) {
-        if (await (room ?? machineHasRoom)()) break;
+      final line = standings();
+      if (suitesToRun(ticket.name, line, asked: asked) != null) {
+        if (await (room ?? machineHasRoom)()) {
+          // Asked again under the lock: the line may have moved while the
+          // machine was measured, and what is taken is said before the lock
+          // goes.
+          final suites = _deciding(folder, () {
+            final now = suitesToRun(ticket.name, standings(), asked: asked);
+            if (now != null) ticket.running(now);
+            return now;
+          });
+          if (suites != null) return await run(suites);
+          continue;
+        }
         if (!roomless) {
           say('test_queue: my turn, and the machine has no room — asking '
               'again every ${askAgain.inSeconds}s');
@@ -266,16 +369,16 @@ Future<T> inTurn<T>(
         await Future<void>.delayed(askAgain);
         continue;
       }
-      final at = (held..sort()).indexOf(ticket.name) + 1;
+      final at = (line.map((s) => s.name).toList()..sort())
+              .indexOf(ticket.name) +
+          1;
       if (at != stood) {
-        say('test_queue: number $at in line, behind $kQueuePlaces places — '
-            'waiting (nothing runs while it waits)');
+        say('test_queue: number $at in line — waiting for $kMachineSuites '
+            'suites between the runs (nothing runs while it waits)');
         stood = at;
       }
       await Future<void>.delayed(lookAgain);
     }
-    ticket.running();
-    return await run();
   } finally {
     ticket.giveBack();
   }
@@ -284,7 +387,7 @@ Future<T> inTurn<T>(
 /// Whether this machine has room for one more run, by `flutter_room`'s own
 /// measure. ⛔One that cannot be measured has none — 「no answer」 is not
 /// 「room」 (`lane.sh`'s room_first). Off Windows there is nothing to
-/// measure with, and the line's places are the whole bound.
+/// measure with, and the line's suites are the whole bound.
 Future<bool> machineHasRoom() async {
   if (!Platform.isWindows) return true;
   final measured = await measureRoom(aLand: false);
@@ -309,8 +412,9 @@ String _about(File ticket) {
   try {
     final about = jsonDecode(File('${ticket.path}.json').readAsStringSync())
         as Map<String, dynamic>;
-    return '${about['state']} · pid ${about['pid']} · since ${about['asked']}'
-        ' · ${about['what']} · ${about['where']}';
+    final suites = about['suites'] == null ? '' : ' ${about['suites']} suites';
+    return '${about['state']}$suites · pid ${about['pid']} · since '
+        '${about['asked']} · ${about['what']} · ${about['where']}';
   } on Object {
     return ticket.uri.pathSegments.last;
   }
@@ -331,14 +435,18 @@ Future<void> main(List<String> args) async {
     exitCode = 2;
     return;
   }
-  final command = placed(args);
-  exitCode = await inTurn(command.join(' '), () async {
-    final started = await Process.start(
-      command.first,
-      command.skip(1).toList(),
-      mode: ProcessStartMode.inheritStdio,
-      runInShell: Platform.isWindows,
-    );
-    return started.exitCode;
-  });
+  exitCode = await inTurn(
+    args.join(' '),
+    asked: askedSuites(args),
+    (suites) async {
+      final command = placed(args, suites);
+      final started = await Process.start(
+        command.first,
+        command.skip(1).toList(),
+        mode: ProcessStartMode.inheritStdio,
+        runInShell: Platform.isWindows,
+      );
+      return started.exitCode;
+    },
+  );
 }
