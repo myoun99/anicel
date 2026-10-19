@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/repaint_cause.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
+import '../../helpers/settle_async.dart';
 import '../brush_canvas_test_helpers.dart';
 
 /// 🗣️I-54 (유저 2026-09-30): 「브러시 커서, 여러 커서 옵션으로 고를수있게. 지금처럼
@@ -449,20 +450,9 @@ void main() {
     Iterable<MethodCall> named(String method) =>
         calls.where((call) => call.method == method);
 
-    /// Lets the picture be made: `toImage` and `toByteData` finish on the
-    /// real event loop, and what follows them in the fake one.
-    Future<void> settle(
-      WidgetTester tester,
-      bool Function() done, {
-      int rounds = 50,
-    }) async {
-      for (var i = 0; i < rounds && !done(); i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 20)),
-        );
-        await tester.pump();
-      }
-    }
+    // The picture is made by `toImage` and `toByteData`, which finish on the
+    // real event loop, and what follows them in the fake one: [settleAsync]
+    // lends it both clocks.
 
     testWidgets('🚨its pixels are handed over once a size, and named after '
         'that; the app draws nothing of its own', (tester) async {
@@ -474,7 +464,10 @@ void main() {
       expect(drawn(tester, pen), isFalse);
       expect(drawn(tester, outline), isFalse);
 
-      await settle(tester, () => named('setCustomCursor/windows').isNotEmpty);
+      await settleAsync(
+        tester,
+        () => named('setCustomCursor/windows').isNotEmpty,
+      );
       final made = named('createCustomCursor/windows').single;
       final arguments = made.arguments as Map<Object?, Object?>;
       // 22 logical px at the test view's 3 screen px each.
@@ -495,7 +488,10 @@ void main() {
       await tester.pump();
       choose(DrawingCursor.pen);
       await tester.pump();
-      await settle(tester, () => named('setCustomCursor/windows').length > 1);
+      await settleAsync(
+        tester,
+        () => named('setCustomCursor/windows').length > 1,
+      );
       expect(named('setCustomCursor/windows'), hasLength(2));
       expect(named('createCustomCursor/windows'), hasLength(1));
     }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
@@ -517,12 +513,12 @@ void main() {
       await tester.pump();
       expect(shown(), SystemMouseCursors.precise);
 
-      await settle(
+      await settleAsync(
         tester,
         () => named('createCustomCursor/windows').isNotEmpty,
       );
       // Time for a set to follow the making, were one coming.
-      await settle(tester, () => false, rounds: 10);
+      await lendBothClocks(tester, rounds: 10);
       expect(
         named('createCustomCursor/windows'),
         hasLength(1),
