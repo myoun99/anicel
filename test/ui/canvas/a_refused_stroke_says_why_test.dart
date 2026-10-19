@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -38,10 +39,13 @@ void main() {
   }
 
   /// A pen press and a short drag, and what the cursor said on the way.
-  Future<({bool hidden, bool noFrame})> pressAndSay(WidgetTester tester) async {
+  Future<({bool hidden, bool noFrame})> pressAndSay(
+    WidgetTester tester, {
+    PointerDeviceKind kind = PointerDeviceKind.stylus,
+  }) async {
     final press = await tester.startGesture(
       visibleCanvasPoint(tester),
-      kind: PointerDeviceKind.stylus,
+      kind: kind,
     );
     await tester.pump();
     // ⚠️By hand, not settled: the notice is transient.
@@ -96,6 +100,37 @@ void main() {
 
     expect(said.hidden, isTrue);
     expect(said.noFrame, isFalse);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️I-15 follow-up (유저 2026-09-11): 「스페이스바 하고 클릭하면 이거는
+  // 드로잉로직이 아니라 프레임이 존재하지 않는다는 메시지 안뜨도록」 — nor
+  // that the row is hidden: a press the pan takes is no stroke refused.
+  // ↩️Pinned on a hidden row: since F-171 the stack stands on the cel a
+  // press will make, so on a shown row a layer hears the press and the
+  // guard under it is never asked (F-377's N3 lived through the old pin).
+  testWidgets('a press the held 「이동」 takes on a hidden row says nothing',
+      (tester) async {
+    final session = await openApp(tester);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+    session.layerSwitches.toggleLayerVisibility(session.activeLayerId!);
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
+    final panned = await pressAndSay(tester, kind: PointerDeviceKind.mouse);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
+    await tester.pumpAndSettle();
+
+    expect(panned.hidden, isFalse, reason: 'the press pans: none refused');
+    expect(panned.noFrame, isFalse);
+    expect(
+      (await pressAndSay(tester, kind: PointerDeviceKind.mouse)).hidden,
+      isTrue,
+      reason: 'LIVENESS — the same press without the key would draw, and '
+          'says why it cannot',
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 
