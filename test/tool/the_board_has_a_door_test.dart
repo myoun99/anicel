@@ -159,8 +159,40 @@ void main() {
 
     test('🚨the address is the door\'s: loopback alone, or every interface',
         () {
-      expect(doorListensOn(const LoopbackDoor()).isLoopback, isTrue);
-      expect(doorListensOn(const LanDoor(secret)), InternetAddress.anyIPv4);
+      expect(doorListensOn(const LoopbackDoor()).every((a) => a.isLoopback),
+          isTrue);
+      expect(doorListensOn(const LanDoor(secret)).first,
+          InternetAddress.anyIPv4);
+      for (final door in const [LoopbackDoor(), LanDoor(secret)]) {
+        expect(doorListensOn(door).skip(1), [InternetAddress.loopbackIPv6],
+            reason: 'localhost is ::1 first on this machine, and a browser '
+                'waits 300ms on an address nobody listens at');
+      }
+    });
+
+    test('every address a door names is heard, at one port and in one line',
+        () async {
+      final v6 = await ServerSocket.bind(InternetAddress.loopbackIPv6, 0)
+          .then((s) => s.close().then((_) => true), onError: (_) => false);
+      if (!v6) return markTestSkipped('no IPv6 loopback on this machine');
+      final heard = await listenAt(
+        [InternetAddress.loopbackIPv4, InternetAddress.loopbackIPv6],
+        0,
+      );
+      final paths = <String>[];
+      final listening = heard.requests.listen((request) {
+        paths.add(request.uri.path);
+        unawaited(request.response.close());
+      });
+      final client = HttpClient();
+      for (final (host, name) in [('127.0.0.1', 'v4'), ('[::1]', 'v6')]) {
+        final request = await client
+            .getUrl(Uri.parse('http://$host:${heard.port}/$name'));
+        await (await request.close()).drain<void>();
+      }
+      client.close();
+      await listening.cancel();
+      expect(paths, ['/v4', '/v6']);
     });
   });
 

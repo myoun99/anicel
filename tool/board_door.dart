@@ -79,11 +79,23 @@ const kDoorCookie = 'board';
   return (door: LanDoor(secret), complaint: null);
 }
 
-/// The address a server behind [door] listens on: every interface of this
-/// machine for the network door, loopback alone for the other.
-InternetAddress doorListensOn(BoardDoor door) => switch (door) {
-  LoopbackDoor() => InternetAddress.loopbackIPv4,
-  LanDoor() => InternetAddress.anyIPv4,
+/// The addresses a server behind [door] listens on: every interface of this
+/// machine for the network door, loopback alone for the other — the first is
+/// the door, the rest only this machine's other spelling of itself.
+///
+/// 🧪IPv6 LOOPBACK TOO (10-19, card the-board-answers-from-memory): this
+/// machine resolves `localhost` to `::1` first, and nothing listened there,
+/// so a browser waited on it 300ms before it tried `127.0.0.1` — 309ms of
+/// connecting before a 58ms answer, on every new connection, and the page
+/// polls nothing, so a submit after two quiet minutes opened one.
+/// ⛔Not every IPv6 interface for the network door: the home network was let
+/// in over IPv4 (유저 10-07), and `::1` reaches no other machine.
+List<InternetAddress> doorListensOn(BoardDoor door) => switch (door) {
+  LoopbackDoor() => [
+    InternetAddress.loopbackIPv4,
+    InternetAddress.loopbackIPv6,
+  ],
+  LanDoor() => [InternetAddress.anyIPv4, InternetAddress.loopbackIPv6],
 };
 
 /// The one value a header says — or, when it was sent more than once with

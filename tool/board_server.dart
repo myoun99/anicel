@@ -290,10 +290,10 @@ Future<void> main(List<String> args) async {
     gitRoot: _flag(args, '--git') ?? Directory.current.path,
     door: asked.door,
   );
-  HttpServer server;
+  Stream<HttpRequest> requests;
   try {
-    // ⚠️The address is the door's and is worked out nowhere else.
-    server = await HttpServer.bind(doorListensOn(asked.door), port);
+    // ⚠️The addresses are the door's and are worked out nowhere else.
+    requests = (await listenAt(doorListensOn(asked.door), port)).requests;
   } on SocketException catch (e) {
     stderr.writeln('port $port is not available (${e.osError?.message}). '
         'Another board server is probably already running.');
@@ -314,7 +314,7 @@ Future<void> main(List<String> args) async {
   _board();
   unawaited(_prs());
   unawaited(_checkouts());
-  await answerAll(server);
+  await answerAll(requests);
 }
 
 /// Makes this isolate the server of the board in [records], behind [door].
@@ -340,12 +340,43 @@ void boardIs({
   _findOwnSource();
 }
 
-/// Answers [server]'s requests, one at a time and in the order they came.
+/// Listens at every one of [addresses] on one port — [port], or the one the
+/// first was given when [port] is 0 — and hands back their requests as one
+/// stream, for [answerAll] to take one at a time whichever door they came by.
+///
+/// ⚠️Only the first must be had: the rest are this machine's other spellings
+/// of the same door ([doorListensOn]), and a machine without them loses a
+/// slower connect, not the board.
+Future<({int port, Stream<HttpRequest> requests})> listenAt(
+  List<InternetAddress> addresses,
+  int port,
+) async {
+  final first = await HttpServer.bind(addresses.first, port);
+  final servers = [first];
+  for (final address in addresses.skip(1)) {
+    try {
+      servers.add(await HttpServer.bind(address, first.port));
+    } on SocketException catch (e) {
+      stderr.writeln('board: not listening at ${address.address} too '
+          '(${e.osError?.message})');
+    }
+  }
+  final requests = StreamController<HttpRequest>(
+    onCancel: () =>
+        Future.wait([for (final s in servers) s.close(force: true)]),
+  );
+  for (final server in servers) {
+    server.listen(requests.add, onError: requests.addError);
+  }
+  return (port: first.port, requests: requests.stream);
+}
+
+/// Answers [requests], one at a time and in the order they came.
 ///
 /// ⚠️ONE AT A TIME is why a record written here cannot land inside another:
 /// each request is answered whole before the next is taken.
-Future<void> answerAll(HttpServer server) async {
-  await for (final request in server) {
+Future<void> answerAll(Stream<HttpRequest> requests) async {
+  await for (final request in requests) {
     final took = Stopwatch()..start();
     try {
       await _handle(request);
