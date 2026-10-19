@@ -7,6 +7,7 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/camera_path_settings.dart';
+import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_camera_path_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_frame_count_settings_store.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/services/persistence/app_onion_skin_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_pixel_verb_settings_store.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/services/persistence/app_ui_scale_store.dart';
 import 'package:anicel/src/services/persistence/app_workspace_colors_store.dart';
@@ -60,6 +62,7 @@ void main() {
     AppFrameGridSettings.settings.value = const AppFrameGridSettings();
     AppFrameCountSettings.settings.value = const AppFrameCountSettings();
     CameraPathSettings.settings.value = const CameraPathSettings();
+    PixelVerbSettings.settings.value = const PixelVerbSettings();
   }
 
   setUp(resetAppWideDefaults);
@@ -82,6 +85,7 @@ void main() {
       'grid',
       'count',
       'campath',
+      'pixelverbs',
     ];
     String path(String name) => '${directory.path}/$name.json';
 
@@ -111,6 +115,9 @@ void main() {
         ),
         cameraPathSettingsStore: AppCameraPathSettingsStore(
           filePath: path('campath'),
+        ),
+        pixelVerbSettingsStore: AppPixelVerbSettingsStore(
+          filePath: path('pixelverbs'),
         ),
       )..restore();
       addTearDown(settings.dispose);
@@ -193,6 +200,15 @@ void main() {
         around: 4,
       ),
     );
+    // What the colour edit list's knobs hold (I-13-Q2 = a, 「기억한다」) —
+    // every field off its default.
+    appSettingsOf(first).setPixelVerbSettings(
+      const PixelVerbSettings(
+        binarizeThreshold: 179,
+        deleteColourTolerance: 4,
+        keepColourTolerance: 9,
+      ),
+    );
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
     await pollUntil(
@@ -235,6 +251,7 @@ void main() {
           AppFrameCountSettings.settings.value.lastEntry ==
               FrameCountEntry.secondsPlusFrames &&
           CameraPathSettings.settings.value.tickEvery == 6 &&
+          PixelVerbSettings.settings.value.binarizeThreshold == 179 &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
     );
 
@@ -258,6 +275,14 @@ void main() {
         range: CameraPathRange.aroundPlayhead,
         tickEvery: 6,
         around: 4,
+      ),
+    );
+    expect(
+      PixelVerbSettings.settings.value,
+      const PixelVerbSettings(
+        binarizeThreshold: 179,
+        deleteColourTolerance: 4,
+        keepColourTolerance: 9,
       ),
     );
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_pixel_verb_settings_store.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart'
@@ -11,6 +13,8 @@ import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+
+import '../../helpers/draw_on_current_frame.dart';
 
 /// 🗣️F-191 (유저 2026-09-27): 「환경설정에서 필압곡선이나 속도곡선이 앱
 /// 재기동하면 초기화되있음. 앱 설정으로서 저장하게하고 설정창 등
@@ -23,9 +27,16 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 void main() {
   tearDown(() => AppInput.settings.value = AppInputSettings.testCorpusBaseline);
 
-  /// A run: the app's settings on [store], restored, and a session on them.
-  EditorSessionManager run(_RecordingInputStore store) {
-    final settings = EditorAppSettings(inputSettingsStore: store)..restore();
+  /// A run: the app's settings on [store] (and [pixelVerbs]), restored, and
+  /// a session on them.
+  EditorSessionManager run(
+    _RecordingInputStore store, {
+    AppPixelVerbSettingsStore? pixelVerbs,
+  }) {
+    final settings = EditorAppSettings(
+      inputSettingsStore: store,
+      pixelVerbSettingsStore: pixelVerbs,
+    )..restore();
     addTearDown(settings.dispose);
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
@@ -65,6 +76,35 @@ void main() {
       ),
     );
     await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+  }
+
+  /// The timeline's toolbar on [session], on a window wide enough for it.
+  Future<void> pumpTheToolbar(
+    WidgetTester tester,
+    EditorSessionManager session,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: Row(
+            children: [
+              TimelineActionToolbar(
+                session: session,
+                panelContext: TimelineToolbarPanelContext(session),
+                onAddLayer: () {},
+                onRenameLayer: () {},
+                onDeleteLayer: () {},
+                onEditInstance: () {},
+                onCreateInstance: () {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -129,29 +169,7 @@ void main() {
     tester,
   ) async {
     final store = _RecordingInputStore();
-    final session = run(store);
-    await tester.binding.setSurfaceSize(const Size(1600, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Material(
-          child: Row(
-            children: [
-              TimelineActionToolbar(
-                session: session,
-                panelContext: TimelineToolbarPanelContext(session),
-                onAddLayer: () {},
-                onRenameLayer: () {},
-                onDeleteLayer: () {},
-                onEditInstance: () {},
-                onCreateInstance: () {},
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpTheToolbar(tester, run(store));
     final before = AppInput.settings.value.autoCreateFrameOnDraw;
 
     await tester.tap(
@@ -165,6 +183,49 @@ void main() {
 
     await restart(tester, store);
     expect(AppInput.settings.value.autoCreateFrameOnDraw, !before);
+  });
+
+  /// 🗣️I-13-Q2 (유저 2026-10-16): 「기억한다(앱 설정에 저장)」 — the knob in
+  /// 2치화's row of the 색 편집 list, which previews its drag through the
+  /// live value exactly as the Preferences sliders do.
+  testWidgets('2치화\'s cut turned in the 색 편집 list is the one the next '
+      'run opens with', (tester) async {
+    addTearDown(
+      () => PixelVerbSettings.settings.value = const PixelVerbSettings(),
+    );
+    final pixelVerbs = _RecordingPixelVerbStore();
+    final session = run(_RecordingInputStore(), pixelVerbs: pixelVerbs);
+    // The list opens on a cel with a drawing in it.
+    drawOnCurrentFrame(session);
+    await pumpTheToolbar(tester, session);
+    final head = find.byKey(
+      const ValueKey<String>('shared-colour-edit-button'),
+    );
+    await tester.ensureVisible(head);
+    await tester.pumpAndSettle();
+    await tester.tap(head);
+    await tester.pumpAndSettle();
+
+    final drag = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(const ValueKey<String>('shared-binarize-cut')),
+      ),
+    );
+    await drag.moveBy(const Offset(-30, 0));
+    await tester.pump();
+    final turned = PixelVerbSettings.settings.value.binarizeThreshold;
+    expect(turned, lessThan(128), reason: 'the drag previews as it goes');
+    expect(pixelVerbs.saves, 0, reason: 'and writes nothing until let go');
+
+    await drag.up();
+    await tester.pumpAndSettle();
+    expect(pixelVerbs.saved?.binarizeThreshold, turned);
+    expect(pixelVerbs.saves, 1, reason: 'ONE write for the drag');
+
+    PixelVerbSettings.settings.value = const PixelVerbSettings();
+    run(_RecordingInputStore(), pixelVerbs: pixelVerbs);
+    await tester.pump();
+    expect(PixelVerbSettings.settings.value.binarizeThreshold, turned);
   });
 }
 
@@ -181,6 +242,24 @@ class _RecordingInputStore extends AppInputSettingsStore {
 
   @override
   Future<void> save(AppInputSettings settings) async {
+    saved = settings;
+    saves += 1;
+  }
+}
+
+/// [_RecordingInputStore] for the colour edit list's knobs.
+class _RecordingPixelVerbStore extends AppPixelVerbSettingsStore {
+  _RecordingPixelVerbStore()
+    : super(filePath: 'unused/pixel_verb_settings.json');
+
+  PixelVerbSettings? saved;
+  int saves = 0;
+
+  @override
+  Future<PixelVerbSettings?> load() async => saved;
+
+  @override
+  Future<void> save(PixelVerbSettings settings) async {
     saved = settings;
     saves += 1;
   }

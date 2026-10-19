@@ -8,12 +8,14 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
 
@@ -168,7 +170,7 @@ void main() {
   );
 
   testWidgets(
-    'the 색 편집 head opens a popover holding all four colour verbs',
+    'the 색 편집 head opens a popover holding every pixel verb',
     (tester) async {
       final session = await pump(tester);
       final row = session.layers.firstWhere(
@@ -179,8 +181,8 @@ void main() {
       await tester.pumpAndSettle();
 
       // ⛔The head itself runs nothing — 색 편집 is a category, so a press
-      // that also did one of the four would be one button answering two
-      // questions. It opens, and the four are inside.
+      // that also did one of the verbs would be one button answering two
+      // questions. It opens, and the verbs are inside.
       await pressTheHead(tester);
 
       for (final key in [
@@ -190,6 +192,8 @@ void main() {
         'shared-clear-pixels-button',
         'shared-delete-colour-button',
         'shared-keep-colour-button',
+        // I-13.
+        'shared-binarize-button',
       ]) {
         expect(
           find.byKey(ValueKey<String>(key)),
@@ -212,14 +216,15 @@ void main() {
       session.selectFrameIndex(0);
       await tester.pumpAndSettle();
 
-      // Clear Pixels ships Backspace on the registry's keys; the other three
-      // are bound here the way the shortcut list binds them.
+      // Clear Pixels ships Backspace on the registry's keys; the others are
+      // bound here the way the shortcut list binds them.
       await useAnicelKeys(tester);
       final bindings = appShortcuts(tester);
       for (final (id, key) in const [
         (EditorActionIds.editReplaceColour, LogicalKeyboardKey.digit7),
         (EditorActionIds.editDeleteColour, LogicalKeyboardKey.digit8),
         (EditorActionIds.editKeepColour, LogicalKeyboardKey.digit9),
+        (EditorActionIds.editBinarize, LogicalKeyboardKey.digit6),
       ]) {
         bindings.setActivators(id, [SingleActivator(key)]);
       }
@@ -231,6 +236,7 @@ void main() {
         ('shared-clear-pixels-button', 'Backspace'),
         ('shared-delete-colour-button', '8'),
         ('shared-keep-colour-button', '9'),
+        ('shared-binarize-button', '6'),
       ]) {
         expect(
           find.descendant(
@@ -419,6 +425,96 @@ void main() {
         reason: 'the block cannot re-ask 「이 칸에 그림이 있나」 if its own '
             'revision never moves',
       );
+    },
+  );
+
+  /// 🗣️I-13 (유저 2026-09-11, 10-16): 2치화's row and the colour verbs'
+  /// rows carry the value they run with at their end — 「버튼 안에 공간을
+  /// 두개로 나눠서」: the name runs, the knob turns.
+  testWidgets(
+    '🚨I-13: a knob in the 색 편집 list turns without running its row or '
+    'closing the list — and the row\'s name then runs it',
+    (tester) async {
+      addTearDown(
+        () => PixelVerbSettings.settings.value = const PixelVerbSettings(),
+      );
+      final session = await pump(tester);
+      final row = session.layers.firstWhere(
+        (l) => layerAcceptsBrushInput(l) && l.frames.isNotEmpty,
+      );
+      session.selectLayer(row.id);
+      // Frame 1 for the timeline case's reason above.
+      session.selectFrameIndex(1);
+      await tester.pumpAndSettle();
+      expect(session.canUndo, isFalse, reason: '⛔fixture');
+
+      await pressTheHead(tester);
+      final binarize = find.byKey(
+        const ValueKey<String>('shared-binarize-button'),
+      );
+      final cut = find.byKey(const ValueKey<String>('shared-binarize-cut'));
+      expect(cut, findsOneWidget, reason: 'the cut stands in 2치화\'s row');
+      for (final reach in [
+        'shared-delete-colour-tolerance',
+        'shared-keep-colour-tolerance',
+      ]) {
+        expect(
+          find.byKey(ValueKey<String>(reach)),
+          findsOneWidget,
+          reason: 'each colour verb carries its own reach',
+        );
+      }
+      // 🗣️I-13-Q5 (유저 2026-10-17): 「손잡이도 0~255 로」 — every byte is a
+      // step of each knob, on the scale fx 「색 제거」 has, and the bar
+      // reads the byte.
+      for (final (knob, lowest) in [
+        ('shared-binarize-cut', PixelVerbSettings.lowestBinarizeThreshold),
+        ('shared-delete-colour-tolerance', 0),
+        ('shared-keep-colour-tolerance', 0),
+      ]) {
+        final bar = tester.widget<FieldSlider>(
+          find.byKey(ValueKey<String>(knob)),
+        );
+        expect(
+          (bar.min, bar.max, bar.divisions),
+          (lowest.toDouble(), 255.0, 255 - lowest),
+          reason: knob,
+        );
+      }
+      expect(
+        find.descendant(of: cut, matching: find.text('128')),
+        findsOneWidget,
+        reason: 'the cut at rest reads its byte',
+      );
+
+      await tester.drag(cut, const Offset(-30, 0));
+      await tester.pumpAndSettle();
+      expect(
+        PixelVerbSettings.settings.value.binarizeThreshold,
+        lessThan(128),
+        reason: 'the knob turned the setting',
+      );
+      expect(session.canUndo, isFalse, reason: 'turning it ran nothing');
+      expect(binarize, findsOneWidget, reason: 'and the list stayed open');
+
+      await tester.drag(cut, const Offset(-1000, 0));
+      await tester.pumpAndSettle();
+      expect(
+        PixelVerbSettings.settings.value.binarizeThreshold,
+        PixelVerbSettings.lowestBinarizeThreshold,
+        reason: 'the knob stops where the cut does — at 0 the paper would '
+            'turn into drawing',
+      );
+
+      await tester.tapAt(tester.getRect(cut).centerLeft + const Offset(4, 0));
+      await tester.pumpAndSettle();
+      expect(session.canUndo, isFalse, reason: 'a click on it is its own');
+      expect(binarize, findsOneWidget);
+
+      await tester.tapAt(tester.getTopLeft(binarize) + const Offset(24, 16));
+      await tester.pumpAndSettle();
+      expect(session.canUndo, isTrue, reason: 'the row\'s name runs 2치화');
+      expect(binarize, findsNothing, reason: 'and closes the list');
     },
   );
 }

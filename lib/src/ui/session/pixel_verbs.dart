@@ -5,6 +5,7 @@ import '../../models/cut_piece.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../models/pixel_verb_settings.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -100,7 +101,7 @@ class PixelVerbs {
   /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
   PixelVerbCanvas Function()? pixelVerbCanvas;
 
-  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
+  /// WHICH cels the PIXEL verbs would act on — see [PixelVerbSubject].
   PixelVerbSubject get pixelVerbSubject {
     if (pixelVerbCellKeys().isEmpty) {
       return PixelVerbSubject.nothing;
@@ -308,13 +309,13 @@ class PixelVerbs {
   ///
   /// ⛔The head RUNS NOTHING (I-8-Q3/Q4), so it opens when any of its rows
   /// could. Since I-55 the list holds two kinds of verb, and a head that
-  /// read the four overwrite verbs alone would lock the clipboard rows out
+  /// read the overwrite verbs alone would lock the clipboard rows out
   /// of a blank cel — which is exactly where a paste goes.
   bool get canOpenColourEdit =>
       canRunPixelVerb || _standingDrawing() != null || _canPastePixels;
 
-  /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
-  /// operation with the channel swapped, which is why they are one method.
+  /// A pixel verb of the colour edit list ([CelPixelVerb]) — one operation
+  /// with the channel, the value and the pixels swapped, so one method.
   ///
   /// 🚨The colour's ALPHA is ignored, RGB only (유저 확정): 「알파만 남기고
   /// 색을 그대로 바꿔버리는거야. 그냥 진짜 색을 변환. 해당색으로. **문답무용**」.
@@ -354,14 +355,17 @@ class PixelVerbs {
         // have got.
         argb: canvas?.argb ?? 0xFF000000,
         // 🚨THE SELECTION'S SOFTNESS TRAVELS WITH IT. A Ctrl+T lift on the
-        // same marquee already honoured 확장·페더·AA and these four verbs
-        // did not, so one outline meant two things. Read at the press for
+        // same marquee already honoured 확장·페더·AA and these verbs did
+        // not, so one outline meant two things. Read at the press for
         // the same reason the colour is (the panel can change it while the
         // popover is open). ⛔The fallback is `none`, which is also every
         // option's own default — a host with nothing wired behaves exactly
         // as it did. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` = 가).
         options:
             canvas?.mask ?? SelectionMaskOptions.none,
+        // What the list's knobs hold (I-13) — read at the press too, since
+        // a knob turns while the list is open.
+        settings: PixelVerbSettings.settings.value,
       ),
     );
   }

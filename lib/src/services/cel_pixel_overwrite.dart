@@ -8,7 +8,7 @@ import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'cel_source_effect_pass.dart';
 
-/// The four PIXEL VERBS the timeline's 색 편집 popover runs.
+/// The five PIXEL VERBS the timeline's 색 편집 popover runs.
 ///
 /// 🚨THE VERB IS ITS OWN FIELD, not the channel. It used to be:
 /// `runPixelVerb(CelPixelChannel)`, where `.colour` meant 색 변환 and
@@ -22,6 +22,15 @@ enum CelPixelVerb {
 
   /// Empty the drawing: alpha to 0 everywhere the region covers.
   clearPixels(CelPixelChannel.alpha),
+
+  /// 2치화: alpha at or over the cut to 255, under it to 0 — the drawing's
+  /// colour left as it is, its soft edge made hard.
+  ///
+  /// 🗣️I-13 (유저 2026-09-09): 「알파값을 없애는게 목적. 그림은 그대로지만
+  /// 알파값없애서 RGB로서 재구현하는느낌」; the cut is the user's to set
+  /// (09-11 「임계값 유저가 설정할수있게」), and the row stands right under
+  /// 픽셀 비우기 (Q1 = a) — this enum's order is the list's.
+  binarize(CelPixelChannel.alpha),
 
   /// Empty only the pixels that ARE the current colour.
   deleteColour(CelPixelChannel.alpha),
@@ -38,8 +47,8 @@ enum CelPixelVerb {
       this == CelPixelVerb.deleteColour || this == CelPixelVerb.keepColour;
 
   /// Whether this verb works with the current colour — writes it (색 변환)
-  /// or picks its pixels by it ([selectsByColour]). 픽셀 비우기 does
-  /// neither: it empties whatever the region covers.
+  /// or picks its pixels by it ([selectsByColour]). 픽셀 비우기 and 2치화
+  /// do neither: they rewrite whatever alpha the region covers.
   ///
   /// 🗣️I-90 (유저 2026-10-10): 「픽셀비우기 버튼 위치가 색관련 버튼이랑
   /// 같이있는게 신경쓰임. 아래 픽셀쪽으로 이동. 위치는 해당항목 제일위」 — the
@@ -47,19 +56,20 @@ enum CelPixelVerb {
   bool get usesTheColour =>
       this == CelPixelVerb.replaceColour || selectsByColour;
 
-  /// The selector for [argb], or null for the verbs that take everything.
+  /// The selector for [argb] reaching [tolerance] bytes either side of it
+  /// ([CelColorKey.tolerance]), or null for the verbs that take everything.
   ///
   /// ★THE SAME [CelColorKey] THE FX USES, on purpose. 유저 I-8 asked for one
   /// operation in two places — a button and an effect — and this is the
   /// single definition of "which pixels does that colour name", so the two
   /// cannot drift into two answers.
   ///
-  /// ⛔TOLERANCE 0, and that is the button's whole design. 유저 2026-08-27
+  /// ↩️TOLERANCE 0 WAS THE BUTTON'S WHOLE DESIGN until I-13-Q4 (유저
+  /// 2026-10-16: 「색 삭제 · 색 유지의 허용차(지금 0 = 색이 똑같을 때만)」 —
+  /// as a knob in the row, as 2치화's cut is). It had been 유저 2026-08-27
   /// (I-8-Q2): 「허용차 같은 고급설정은 fx의 색 제거 이펙트에서 하라하고
-  /// 여기서는 간편하게만 하고싶음. 그러니 허용차 설정 없애고 색이 같을때만
-  /// 삭제하면 필요없을거같은데」. A tolerance knob beside the button would be
-  /// the same number in two places.
-  CelColorKey? selectorFor(int argb) {
+  /// 여기서는 간편하게만 하고싶음」. The knob's 0 is still that exact match.
+  CelColorKey? selectorFor(int argb, {required int tolerance}) {
     if (!selectsByColour) {
       return null;
     }
@@ -67,7 +77,7 @@ enum CelPixelVerb {
       red: argbRed(argb),
       green: argbGreen(argb),
       blue: argbBlue(argb),
-      tolerance: 0,
+      tolerance: tolerance,
       amount: 1,
       keepsMatches: this == CelPixelVerb.keepColour,
     );
@@ -749,6 +759,12 @@ typedef CelPixelWalk =
 /// Passing a [restore] instead replays an earlier pass's original values —
 /// that is the undo, and it runs through this very function so the two
 /// directions cannot drift apart.
+///
+/// [threshold], forward only, is 2치화's cut: 0 writes [value] to every
+/// pixel that takes part; otherwise a channel byte at or over it takes
+/// [value] and one under it takes 0. ⛔It never decides WHICH pixels take
+/// part — [celPixelParticipates] reads no alpha, and that is what lets the
+/// undo walk the same pixels after the alpha has changed.
 ({BitmapSurface surface, CelPixelRestore? restore}) overwriteCelPixels({
   required BitmapSurface surface,
   required CelPixelChannel channel,
@@ -756,6 +772,7 @@ typedef CelPixelWalk =
   Uint8List? value,
   CelPixelRestore? restore,
   CelColorKey? selector,
+  int threshold = 0,
 }) {
   assert(
     (value == null) != (restore == null),
@@ -766,6 +783,10 @@ typedef CelPixelWalk =
     value == null || value.length == channel.byteCount,
     'value must carry exactly the channel bytes.',
   );
+  assert(
+    threshold == 0 || restore == null,
+    'an undo assigns its recipe — a cut has nothing to say to it.',
+  );
   final builder = value == null ? null : _RestoreBuilder(channel.byteCount);
   final pass = (
     channel: channel,
@@ -773,6 +794,7 @@ typedef CelPixelWalk =
     value: value,
     restore: restore,
     selector: selector,
+    threshold: threshold,
     builder: builder,
   );
   final engine = QaNativeEngine.instance;
@@ -817,13 +839,22 @@ typedef _Pass = ({
   Uint8List? value,
   CelPixelRestore? restore,
   CelColorKey? selector,
+  int threshold,
   _RestoreBuilder? builder,
 });
 
 /// The pass in Dart: the reference `cel_pixel_pass_parity_test.dart`
 /// compares the C pass against byte for byte, and what runs with no engine.
 _TileRewrite _dartTileRewrite(_Pass pass) {
-  final (:channel, :tileSize, :value, :restore, :selector, :builder) = pass;
+  final (
+    :channel,
+    :tileSize,
+    :value,
+    :restore,
+    :selector,
+    :threshold,
+    :builder,
+  ) = pass;
   final byteCount = channel.byteCount;
   final original = Uint8List(byteCount);
   final incoming = Uint8List(byteCount);
@@ -875,6 +906,11 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
       index += 1;
       out ??= Uint8List.fromList(view);
       for (var byte = 0; byte < byteCount; byte += 1) {
+        // 2치화: under the cut takes 0 — [overwriteCelPixels]' threshold,
+        // which an undo is never handed.
+        final target = threshold > 0 && original[byte] < threshold
+            ? 0
+            : incoming[byte];
         out[offset + channel.byteOffset(byte)] =
             // 🚨UNDO WRITES, IT DOES NOT BLEND. The recipe already holds
             // what the pixel was, so putting it back is a plain assignment
@@ -884,11 +920,11 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
             // [55, 61, 67] rather than [10, 20, 30], and a second undo
             // would have drifted again.
             recipe != null || maskValue == 255
-            ? incoming[byte]
+            ? target
             // Forward, partial coverage blends the VALUE, so a feathered
             // edge fades between the old colour and the new one while the
             // drawing's own alpha — its shape — is left alone.
-            : _blend(original[byte], incoming[byte], maskValue);
+            : _blend(original[byte], target, maskValue);
       }
     }
     return out;
@@ -904,7 +940,15 @@ _TileRewrite _dartTileRewrite(_Pass pass) {
 /// fork ②: C speaks the bytes, Dart compresses). An undo hands C the recipe
 /// the way [CelPixelRestore.streamFor] lays it out.
 _TileRewrite _nativeTileRewrite(QaNativeEngine engine, _Pass pass) {
-  final (:channel, :tileSize, :value, :restore, :selector, :builder) = pass;
+  final (
+    :channel,
+    :tileSize,
+    :value,
+    :restore,
+    :selector,
+    :threshold,
+    :builder,
+  ) = pass;
   final byteCount = channel.byteCount;
   final base = channel.byteOffset(0);
   final stride = byteCount == 1 ? 0 : channel.byteOffset(1) - base;
@@ -937,6 +981,7 @@ _TileRewrite _nativeTileRewrite(QaNativeEngine engine, _Pass pass) {
               tolerance: selector.tolerance,
               keepsMatches: selector.keepsMatches,
             ),
+      threshold: threshold,
     ),
   );
   var index = 0;

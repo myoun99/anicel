@@ -125,6 +125,7 @@ const List<String> appSettingsEntries = <String>[
   'language_settings.json',
   'memory_settings.json',
   'onion_skin_settings.json',
+  'pixel_verb_settings.json',
   'recent_projects.json',
   'save_settings.json',
   'shortcut_overrides.json',

@@ -803,7 +803,7 @@ class TimelineActionToolbar extends StatelessWidget {
         // 색변환이랑 픽셀삭제 그 버튼 안에 들어가는거 잊지말고」.
         //
         // The head RUNS NOTHING. 색 편집 is a category, not a verb, so a
-        // press that also did one of the four would be one button answering
+        // press that also did one of its verbs would be one button answering
         // two questions. The retired buttons' key strings live on as the
         // menu items', so tests only gain a menu-open tap.
         Builder(

@@ -860,12 +860,15 @@ abstract final class EditorActionIds {
   /// 🗣️I-45 — 링크 독립, the shared pill's button beside the linked paste.
   static const editUnlink = 'edit-unlink';
 
-  /// The colour edit list's four verbs, in its order — every one an action
+  /// The colour edit list's five verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
   static const editDeleteColour = 'edit-delete-colour';
   static const editKeepColour = 'edit-keep-colour';
   static const editClearPixels = 'edit-clear-pixels';
+
+  /// 2치화 (I-13).
+  static const editBinarize = 'edit-binarize';
 
   /// Its clipboard rows — 픽셀 잘라내기 (I-90), 픽셀 복사 and the two pastes
   /// (I-55).
@@ -1257,7 +1260,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   // 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야.
   // 버튼이면 왠만해선 숏컷 지정 가능하게 리스트로 올리는걸 기본으로 두고
-  // 싶어」 — the colour edit list's four rows, in its order; Backspace is the
+  // 싶어」 — the colour edit list's rows, in its order; Backspace is the
   // one key the list ships with.
   const EditorActionDefinition(
     id: EditorActionIds.editReplaceColour,
@@ -1289,6 +1292,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.colourEdit,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
     pixelVerb: CelPixelVerb.clearPixels,
+    menuRow: true,
+  ),
+  // 🗣️I-13 (유저 2026-10-16): 2치화, under 픽셀 비우기 (Q1 = a). No key
+  // ships with it: none was named.
+  const EditorActionDefinition(
+    id: EditorActionIds.editBinarize,
+    label: 'Binarize',
+    shelf: ShortcutShelf.colourEdit,
+    defaultActivators: [],
+    pixelVerb: CelPixelVerb.binarize,
     menuRow: true,
   ),
   // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule

@@ -18,6 +18,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
+import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/pixel_verb_subject.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -323,32 +324,44 @@ void main() {
   /// names — but the press itself reads `coordinator.currentSurfaceOf`,
   /// which answers with an empty 256-tile surface for the same key. A pin
   /// on the PIXELS has to put the drawing where the verb will look.
-  void inkThroughCoordinator(EditorSessionManager session) {
+  ///
+  /// White and opaque, but for the [pixels] named — tile-local (x, y) to
+  /// their RGBA.
+  void inkThroughCoordinator(
+    EditorSessionManager session, {
+    Map<(int, int), List<int>> pixels = const {},
+  }) {
     final key = pixelVerbsOf(session).pixelVerbCellKeys().single;
     final coordinator = session.pixelEditing.coordinator!;
     final base = coordinator.currentSurfaceOf(key);
     final bytes = base.tileSize * base.tileSize * 4;
+    final ink = Uint8List(bytes)..fillRange(0, bytes, 0xFF);
+    for (final MapEntry(key: (x, y), value: rgba) in pixels.entries) {
+      final at = (y * base.tileSize + x) * 4;
+      ink.setRange(at, at + 4, rgba);
+    }
     coordinator.restoreSurfaceSnapshot(
       key,
       base.putTiles([
         (
           coord: TileCoord(x: 0, y: 0),
-          tile: BitmapTile(
-            size: base.tileSize,
-            pixels: Uint8List(bytes)..fillRange(0, bytes, 0xFF),
-          ),
+          tile: BitmapTile(size: base.tileSize, pixels: ink),
         ),
       ]),
     );
   }
 
-  int alphaAt(EditorSessionManager session, int x, int y) {
+  List<int> pixelAt(EditorSessionManager session, int x, int y) {
     final key = pixelVerbsOf(session).pixelVerbCellKeys().single;
     final tile = session.pixelEditing.coordinator!
         .currentSurfaceOf(key)
         .tileAt(TileCoord(x: 0, y: 0))!;
-    return tile.pixels[tile.byteOffsetForPixel(x: x, y: y) + 3];
+    final at = tile.byteOffsetForPixel(x: x, y: y);
+    return tile.pixels.sublist(at, at + 4);
   }
+
+  int alphaAt(EditorSessionManager session, int x, int y) =>
+      pixelAt(session, x, y)[3];
 
   /// 🚨★★★**THE SELECTION'S SOFTNESS IS PART OF THE SELECTION.** A Ctrl+T
   /// lift on a marquee honoured 확장·페더·AA; these four verbs ran on a hard
@@ -418,6 +431,69 @@ void main() {
         reason: '⛔the whole round: the press used to ignore this and both '
             'runs came out identical',
       );
+    });
+  });
+
+  /// 🗣️I-13 — what the colour edit list's knobs hold is read at the PRESS,
+  /// as the colour and the marquee are: a knob turns while the list is open.
+  group('the knobs reach the press (I-13)', () {
+    tearDown(
+      () => PixelVerbSettings.settings.value = const PixelVerbSettings(),
+    );
+
+    testWidgets('🚨2치화 cuts at the byte the knob holds when it is '
+        'pressed', (tester) async {
+      final session = await pump(tester);
+      await drawableRow(tester, session);
+      inkThroughCoordinator(
+        session,
+        pixels: {
+          (0, 0): [10, 20, 30, 127],
+          (1, 0): [10, 20, 30, 128],
+        },
+      );
+
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.binarize);
+      await tester.pump();
+      expect(pixelAt(session, 0, 0), [10, 20, 30, 0], reason: 'under half');
+      expect(pixelAt(session, 1, 0), [10, 20, 30, 255]);
+
+      session.historyManager.undo();
+      await tester.pump();
+      expect(pixelAt(session, 0, 0), [10, 20, 30, 127], reason: 'fixture');
+
+      PixelVerbSettings.settings.value = const PixelVerbSettings(
+        binarizeThreshold: 127,
+      );
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.binarize);
+      await tester.pump();
+      expect(
+        pixelAt(session, 0, 0),
+        [10, 20, 30, 255],
+        reason: '⛔the press read the knob as it stands, not the 128 it was',
+      );
+    });
+
+    testWidgets('색 삭제 reaches as far as its own knob says', (tester) async {
+      final session = await pump(tester);
+      await drawableRow(tester, session);
+      inkThroughCoordinator(session, pixels: {(0, 0): [2, 2, 2, 255]});
+      session.pixelVerbs.pixelVerbCanvas = () => (
+        region: null,
+        argb: 0xFF000000,
+        mask: SelectionMaskOptions.none,
+      );
+
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.deleteColour);
+      await tester.pump();
+      expect(alphaAt(session, 0, 0), 255, reason: 'at 0 two off is not it');
+
+      PixelVerbSettings.settings.value = const PixelVerbSettings(
+        deleteColourTolerance: 2,
+      );
+      pixelVerbsOf(session).runPixelVerb(CelPixelVerb.deleteColour);
+      await tester.pump();
+      expect(alphaAt(session, 0, 0), 0, reason: 'at 2 it is');
     });
   });
 

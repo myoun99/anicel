@@ -188,6 +188,36 @@ class PanelFlyoutRowAction {
 /// command is never both a plus and a delete.
 enum PanelFlyoutActionDoes { adds, deletes, other }
 
+/// The KNOB a command row carries at its end: the value its command runs
+/// with, turned without running it.
+///
+/// 🗣️I-13 (유저 2026-09-11, of 2치화's cut): 「임계값 유저가 설정할수있게
+/// 해당 팝오버 내에서 설정하게한다던가 하고싶은데. 버튼 안에 공간을 두개로
+/// 나눠서. 뭐 임계값 슬라이더라던가 텍스트 드래그 ui라던가 재사용해서?」 —
+/// the row is split in two: its name runs the command and closes the list,
+/// the knob turns and does neither. The list is this app's one picker, so
+/// the knob went INTO its row rather than beside the list.
+class PanelFlyoutKnob {
+  const PanelFlyoutKnob({
+    required this.builder,
+    this.listenable,
+    this.width = 96,
+  });
+
+  /// Built lazily and rebuilt on [listenable] — [PanelFlyoutRow.builder]'s
+  /// reason, the same one: a list is built once, when it opens, and a knob
+  /// that cannot show its own turn is a knob nobody can read.
+  final WidgetBuilder builder;
+
+  /// What the knob is ABOUT.
+  final Listenable? listenable;
+
+  /// ⚠️FIXED, and the box answers for the knob: the list sizes itself by its
+  /// rows' intrinsic widths, which a bar laid out through a LayoutBuilder
+  /// cannot answer (the dialogs shield theirs the same way).
+  final double width;
+}
+
 /// A selectable command.
 class PanelFlyoutItem extends PanelFlyoutEntry {
   const PanelFlyoutItem({
@@ -205,10 +235,15 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.shortcuts = const [],
     this.actions = const [],
     this.warning,
+    this.knob,
   }) : assert(
          icon == null || swatch == null,
          'a row has ONE leading mark: a glyph or a colour, not both',
        );
+
+  /// The value this row's command runs with, turned at the row's end
+  /// ([PanelFlyoutKnob]). Top-level rows only: a submenu draws none.
+  final PanelFlyoutKnob? knob;
 
   /// What a person should know before choosing this row, written under its
   /// name in the warning colour — the row is as tall as the sentence needs.
@@ -614,14 +649,7 @@ Future<void> showPanelFlyout(
                     // (`canvas-settings-view-row-runs-over-at-2x`).
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: _ControlsAtFullStrength(
-                        child: listenable == null
-                            ? Builder(builder: builder)
-                            : ListenableBuilder(
-                                listenable: listenable,
-                                builder: (context, _) => builder(context),
-                              ),
-                      ),
+                      child: _liveControls(builder, listenable),
                     ),
                   ),
                 ],
@@ -712,11 +740,14 @@ Future<void> showPanelFlyout(
               child: _warnedBelow(
                 entry,
                 flyoutRowSurface(
-                  _itemBody(
+                  _knobbed(
                     entry,
-                    bindings: bindings,
-                    hasSubmenu: entry.submenuBuilder != null,
-                    onAction: pressAction,
+                    _itemBody(
+                      entry,
+                      bindings: bindings,
+                      hasSubmenu: entry.submenuBuilder != null,
+                      onAction: pressAction,
+                    ),
                   ),
                 ),
               ),
@@ -818,6 +849,55 @@ Widget _warnedBelow(PanelFlyoutItem entry, Widget row) {
     ],
   );
 }
+
+/// [builder]'s controls, rebuilt on [listenable] where there is one, and at
+/// full strength in a row the list has disabled — a knobs row's, and a
+/// command row's knob.
+Widget _liveControls(WidgetBuilder builder, Listenable? listenable) =>
+    _ControlsAtFullStrength(
+      child: listenable == null
+          ? Builder(builder: builder)
+          : ListenableBuilder(
+              listenable: listenable,
+              builder: (context, _) => builder(context),
+            ),
+    );
+
+/// [row] with [entry]'s knob at its end ([PanelFlyoutKnob]) — [row] itself
+/// where there is none.
+///
+/// 🚨★★A PRESS ON THE KNOB IS THE KNOB'S (CLAUDE.md: 「컨트롤 위에서 시작한
+/// 제스처는 그 컨트롤의 것이다」). The row is one tap over its whole width,
+/// and a bar takes no tap of its own — it answers one from its drag
+/// recogniser, which stands down when the pointer lifts unmoved — so a
+/// click on the bar would fall through to the row and run the command. The
+/// knob's column holds a silent tap BELOW the row's, and the deepest tap
+/// wins the arena's sweep: the row-end command's face wins it the same way
+/// ([silentPress]). Opaque over the row's height, so a press beside the bar
+/// in its own column is not the command's either.
+Widget _knobbed(PanelFlyoutItem entry, Widget row) {
+  final knob = entry.knob;
+  if (knob == null) {
+    return row;
+  }
+  return Row(
+    children: [
+      Expanded(child: row),
+      const SizedBox(width: 8),
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: () {},
+        child: SizedBox(
+          width: knob.width,
+          height: flyoutRowHeight,
+          child: Center(child: _liveControls(knob.builder, knob.listenable)),
+        ),
+      ),
+    ],
+  );
+}
+
 const EdgeInsets flyoutRowPadding = EdgeInsets.symmetric(horizontal: 16);
 
 /// A row laid out so its ink and its hit area are the WHOLE row.

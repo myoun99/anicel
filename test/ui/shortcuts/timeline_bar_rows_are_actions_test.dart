@@ -329,10 +329,12 @@ void main() {
 
     // 🗣️I-90 (유저 2026-10-10): 「픽셀 잘라내기 버튼 신설. 복사버튼 위」 ·
     // 「픽셀비우기 버튼 위치가 색관련 버튼이랑 같이있는게 신경쓰임. 아래
-    // 픽셀쪽으로 이동. 위치는 해당항목 제일위」.
+    // 픽셀쪽으로 이동. 위치는 해당항목 제일위」 — and I-13-Q1 (10-16): 2치화
+    // 「픽셀 묶음에서 「픽셀 비우기」 바로 아래」.
     testWidgets('the colour edit list: the colour verbs, then — past the '
-        'divider — 픽셀 비우기 heading the pixel rows, 픽셀 잘라내기 over 픽셀 '
-        '복사; and the shortcut list in the same order', (tester) async {
+        'divider — 픽셀 비우기 heading the pixel rows with 2치화 under it, '
+        '픽셀 잘라내기 over 픽셀 복사; and the shortcut list in the same '
+        'order', (tester) async {
       await pumpApp(tester);
       final order = [
         for (final entry in TimelineBarMenus(
@@ -352,6 +354,7 @@ void main() {
         EditorActionIds.editKeepColour,
         '—',
         EditorActionIds.editClearPixels,
+        EditorActionIds.editBinarize,
         EditorActionIds.editCutPixels,
         EditorActionIds.editCopyPixels,
         EditorActionIds.editPastePixelsAbove,

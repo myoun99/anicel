@@ -2134,7 +2134,8 @@ class QaNativeEngine {
       ..isUndo = stage.isUndo ? 1 : 0
       ..tileSize = stage.tileSize
       ..incomingCount = stage.incomingCount
-      ..incomingStep = stage.incomingStep;
+      ..incomingStep = stage.incomingStep
+      ..threshold = stage.threshold;
     final incoming = stage.incoming;
     final staged = _celIncoming.ensure(incoming.isEmpty ? 1 : incoming.length);
     staged.asTypedList(incoming.length).setAll(0, incoming);
@@ -2770,7 +2771,7 @@ final class QaDabSpecStruct extends Struct {
 /// Mirror of the C `qa_cel_pixel_spec` (ABI 34) — field order/types must
 /// match EXACTLY; the loader cross-checks `qa_cel_pixel_spec_sizeof`.
 ///
-/// Eleven int32s and nothing else, so there is no padding to get wrong:
+/// Int32s and nothing else, so there is no padding to get wrong:
 /// the whole struct is the cel pixel pass's per-PASS constants, staged once
 /// and read by every tile.
 final class QaCelPixelSpecStruct extends Struct {
@@ -2819,6 +2820,10 @@ final class QaCelPixelSpecStruct extends Struct {
   external int incomingCount;
   @Int32()
   external int incomingStep;
+
+  /// ABI 50: 2치화's cut, or 0 — [CelPixelStage.threshold].
+  @Int32()
+  external int threshold;
 }
 
 /// The per-PASS constants of a cel pixel pass (ABI 34), handed to
@@ -2839,6 +2844,7 @@ final class CelPixelStage {
     required this.incomingCount,
     required this.incomingStep,
     this.selector,
+    this.threshold = 0,
   });
 
   final int byteCount;
@@ -2859,4 +2865,8 @@ final class CelPixelStage {
   /// The colour key, or null for the verbs that take every pixel.
   final ({int red, int green, int blue, int tolerance, bool keepsMatches})?
   selector;
+
+  /// Forward only: 0, or the byte at and over which a channel byte takes
+  /// the incoming one — a byte under it takes 0 (2치화, ABI 50).
+  final int threshold;
 }

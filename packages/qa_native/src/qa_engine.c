@@ -6170,6 +6170,13 @@ typedef struct {
   // laid out at all.
   int32_t incoming_count;
   int32_t incoming_step;
+  // 2치화 (ABI 50): 0 = off. Otherwise a channel byte at or above it takes
+  // the incoming byte and one below it takes 0 — alpha at or over the cut
+  // goes opaque, the rest empty. ⛔It shapes the VALUE written, never
+  // whether a pixel takes part: that reads R, G and B only, so the undo
+  // walks the same pixels after the alpha has changed. Forward only — an
+  // undo assigns its recipe, and is sent 0 (the Dart side asserts it).
+  int32_t threshold;
 } qa_cel_pixel_spec;
 
 QA_EXPORT int32_t qa_cel_pixel_spec_sizeof(void) {
@@ -6254,6 +6261,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
   const int32_t stride = spec->byte_offset_stride;
   const int64_t incoming_count = spec->incoming_count;
   const ptrdiff_t incoming_step = spec->incoming_step;
+  const int32_t threshold = spec->threshold;
   int32_t copied = 0;
   int32_t runs = 0;
   int64_t index = start_index;
@@ -6302,12 +6310,14 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
         spec->is_undo ? incoming + index * incoming_step : incoming;
     for (int32_t byte = 0; byte < bytes; byte += 1) {
       const ptrdiff_t at = offset + base + (ptrdiff_t)byte * stride;
+      const uint8_t target =
+          threshold > 0 && in_pixels[at] < threshold ? 0 : source[byte];
       // 🚨UNDO WRITES, IT DOES NOT BLEND — the same law the Dart loop's
       // comment states at length: running the recipe through the blend only
       // converges toward the original and never reaches it.
       out_pixels[at] = (spec->is_undo || mask_value == 255)
-                           ? source[byte]
-                           : qa_cel_pixel_blend(in_pixels[at], source[byte],
+                           ? target
+                           : qa_cel_pixel_blend(in_pixels[at], target,
                                                 mask_value);
     }
     index += 1;
@@ -6406,4 +6416,6 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // and Clip Studio add (linear burn ... divide), which the dual mask reads
 // too, and six that mix the three channels (qa_stroke_blend_triple). An
 // older engine would take an id it does not know for exclusion.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 51; }
+// v52: qa_cel_pixel_spec gains threshold - 2치화: a byte under it is written
+// 0 and the rest the incoming byte, forward only. Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 52; }

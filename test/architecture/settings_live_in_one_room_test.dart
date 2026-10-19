@@ -110,6 +110,7 @@ const _builtOnlyOutsideTests = <String, String>{
   'language_settings.json': 'HomePage, _unlessTesting',
   'memory_settings.json': 'HomePage, _unlessTesting',
   'onion_skin_settings.json': 'HomePage, _unlessTesting',
+  'pixel_verb_settings.json': 'HomePage, _unlessTesting',
   'save_settings.json': 'HomePage, _unlessTesting',
   'shortcut_overrides.json': 'HomePage, _unlessTesting',
   'ui_scale.json': 'HomePage, _unlessTesting — and the two main()s',

@@ -8,12 +8,14 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../models/pixel_verb_settings.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
 import 'rasterize_reference_rows.dart';
@@ -379,10 +381,13 @@ class TimelineBarMenus {
   /// groups are the verbs' own answer ([CelPixelVerb.usesTheColour]), not a
   /// list of rows kept here.
   ///
-  /// ⛔NO TOLERANCE KNOB HERE. 유저 2026-08-27 (I-8-Q2): 「허용차 같은
-  /// 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
-  /// 하고싶음」 — the buttons match the colour exactly, and the graded
-  /// version is the Delete Color / Keep Color EFFECT.
+  /// ↩️NO TOLERANCE KNOB HERE — until I-13-Q4 (유저 2026-10-16: 「색 삭제 ·
+  /// 색 유지의 허용차(지금 0 = 색이 똑같을 때만)」 as a knob in the row, the
+  /// shape 2치화's cut has). It had been 유저 2026-08-27 (I-8-Q2): 「허용차
+  /// 같은 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
+  /// 하고싶음」 — the buttons matched the colour exactly, and the graded
+  /// version was the Delete Color / Keep Color EFFECT. A knob's 0 is still
+  /// that exact match.
   ///
   /// ↩️The four were live whenever the head was — one gate for all of them.
   /// I-55 put a second kind of verb in the list, so the head opens when any
@@ -421,12 +426,13 @@ class TimelineBarMenus {
       ),
   ];
 
-  /// One of the four overwrite verbs' rows.
+  /// One of the overwrite verbs' rows, with the knob its verb runs by.
   PanelFlyoutItem _pixelVerbRow(CelPixelVerb verb) => PanelFlyoutItem(
     keyValue: switch (verb) {
       // The retired buttons' own key strings, kept.
       CelPixelVerb.replaceColour => 'shared-replace-colour-button',
       CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
+      CelPixelVerb.binarize => 'shared-binarize-button',
       CelPixelVerb.deleteColour => 'shared-delete-colour-button',
       CelPixelVerb.keepColour => 'shared-keep-colour-button',
     },
@@ -438,11 +444,63 @@ class TimelineBarMenus {
     icon: switch (verb) {
       CelPixelVerb.replaceColour => Icons.format_color_fill,
       CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
+      CelPixelVerb.binarize => Icons.contrast,
       CelPixelVerb.deleteColour => Icons.format_color_reset,
       CelPixelVerb.keepColour => Icons.colorize_outlined,
     },
     shortcuts: [pixelVerbActionIdFor(verb)],
     enabled: session.pixelVerbs.canRunPixelVerb,
     onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+    // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
+    // in its own row — the value the row's command runs with.
+    knob: switch (verb) {
+      CelPixelVerb.binarize => _byteKnob(
+        'shared-binarize-cut',
+        lowest: PixelVerbSettings.lowestBinarizeThreshold,
+        read: (settings) => settings.binarizeThreshold,
+        write: (settings, byte) => settings.copyWith(binarizeThreshold: byte),
+      ),
+      CelPixelVerb.deleteColour => _byteKnob(
+        'shared-delete-colour-tolerance',
+        lowest: 0,
+        read: (settings) => settings.deleteColourTolerance,
+        write: (settings, byte) =>
+            settings.copyWith(deleteColourTolerance: byte),
+      ),
+      CelPixelVerb.keepColour => _byteKnob(
+        'shared-keep-colour-tolerance',
+        lowest: 0,
+        read: (settings) => settings.keepColourTolerance,
+        write: (settings, byte) => settings.copyWith(keepColourTolerance: byte),
+      ),
+      CelPixelVerb.replaceColour || CelPixelVerb.clearPixels => null,
+    },
   );
+
+  /// A byte from [lowest] to 255 that a row's verb runs with: the live
+  /// value follows the bar as it goes, and the app's settings keep it when
+  /// it is let go — a drag is not a disk write per step.
+  PanelFlyoutKnob _byteKnob(
+    String keyValue, {
+    required int lowest,
+    required int Function(PixelVerbSettings settings) read,
+    required PixelVerbSettings Function(PixelVerbSettings settings, int byte)
+    write,
+  }) {
+    PixelVerbSettings at(double value) =>
+        write(PixelVerbSettings.settings.value, value.round());
+    return PanelFlyoutKnob(
+      listenable: PixelVerbSettings.settings,
+      builder: (_) => FieldSlider(
+        key: ValueKey<String>(keyValue),
+        value: read(PixelVerbSettings.settings.value).toDouble(),
+        min: lowest.toDouble(),
+        max: 255,
+        divisions: 255 - lowest,
+        onChanged: (value) => PixelVerbSettings.settings.value = at(value),
+        onChangeEnd: (value) =>
+            session.appSettings.setPixelVerbSettings(at(value)),
+      ),
+    );
+  }
 }

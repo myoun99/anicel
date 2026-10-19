@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../core/argb_channels.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/pixel_verb_settings.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../cache_invalidation_executor.dart';
 import '../canvas_selection.dart' show SelectionMaskOptions;
@@ -28,8 +29,8 @@ class CelPixelTarget {
   final CanvasSelectionRegion? region;
 }
 
-/// 색 변환 and 픽셀 비우기 as one undoable step across every cel the
-/// scope ladder named.
+/// A pixel verb of the colour edit list ([CelPixelVerb]) as one undoable
+/// step across every cel the scope ladder named.
 ///
 /// ⛔RETAINS RECIPES, NOT SURFACES. Every other pixel command on the stack
 /// keeps a pre-surface and a post-surface ([BrushStrokeHistoryCommand]),
@@ -51,6 +52,7 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     required Uint8List value,
     required this.description,
     this.selector,
+    this.threshold = 0,
     this.options = SelectionMaskOptions.none,
     this.cacheInvalidationSink,
   }) : _value = Uint8List.fromList(value),
@@ -59,20 +61,24 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
          'value must carry exactly the channel bytes.',
        );
 
-  /// The ONE place a verb becomes a channel, a value and a selector.
+  /// The ONE place a verb becomes a channel, a value, a selector and a cut.
   ///
-  /// ⛔Four verbs, one translation. 색 삭제 and 픽셀 삭제 are both alpha
+  /// ⛔Five verbs, one translation. 색 삭제 and 픽셀 삭제 are both alpha
   /// writes of zero and differ only in which pixels they take, so anything
-  /// deciding that per call site would be deciding it four times.
+  /// deciding that per call site would be deciding it five times.
   ///
   /// [argb]'s alpha is deliberately dropped throughout — 색 변환 keeps the
   /// drawing's own shape (유저 확정: "RGB만 쓰는거 ok"), and the colour verbs
   /// COMPARE against RGB, where a swatch's own transparency means nothing.
+  ///
+  /// [settings] is what the list's knobs hold (I-13): 2치화's cut and the
+  /// colour verbs' reach, each read only by the verbs it is for.
   factory CelPixelOverwriteCommand.forVerb({
     required BrushFrameEditingCoordinator coordinator,
     required List<CelPixelTarget> targets,
     required CelPixelVerb verb,
     required int argb,
+    PixelVerbSettings settings = const PixelVerbSettings(),
     SelectionMaskOptions options = SelectionMaskOptions.none,
     CacheInvalidationSink? cacheInvalidationSink,
   }) => CelPixelOverwriteCommand(
@@ -85,21 +91,39 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
     // Switching on the channel instead would demand a case here for every
     // channel that exists, including ones no verb has, and each of those
     // cases would be unreachable — a false alarm the next author has to
-    // work out. Adding a fifth VERB is what must stop here, and does.
+    // work out. Adding a sixth VERB is what must stop here, and does.
     value: switch (verb) {
       CelPixelVerb.replaceColour => Uint8List.fromList([
         argbRed(argb),
         argbGreen(argb),
         argbBlue(argb),
       ]),
+      CelPixelVerb.binarize => Uint8List.fromList([255]),
       CelPixelVerb.clearPixels ||
       CelPixelVerb.deleteColour ||
       CelPixelVerb.keepColour => Uint8List.fromList([0]),
     },
-    selector: verb.selectorFor(argb),
+    selector: verb.selectorFor(
+      argb,
+      tolerance: switch (verb) {
+        CelPixelVerb.deleteColour => settings.deleteColourTolerance,
+        CelPixelVerb.keepColour => settings.keepColourTolerance,
+        CelPixelVerb.replaceColour ||
+        CelPixelVerb.clearPixels ||
+        CelPixelVerb.binarize => 0,
+      },
+    ),
+    threshold: switch (verb) {
+      CelPixelVerb.binarize => settings.binarizeThreshold,
+      CelPixelVerb.replaceColour ||
+      CelPixelVerb.clearPixels ||
+      CelPixelVerb.deleteColour ||
+      CelPixelVerb.keepColour => 0,
+    },
     description: switch (verb) {
       CelPixelVerb.replaceColour => 'Replace colour',
       CelPixelVerb.clearPixels => 'Clear pixels',
+      CelPixelVerb.binarize => 'Binarize',
       CelPixelVerb.deleteColour => 'Delete colour',
       CelPixelVerb.keepColour => 'Keep colour',
     },
@@ -148,6 +172,10 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
   /// See [celPixelParticipates] for why a colour selector is safe on an
   /// alpha write and an alpha-reading one would not be.
   final CelColorKey? selector;
+
+  /// 2치화's cut, or 0 — [overwriteCelPixels]' threshold. The forward pass
+  /// reads it; the undo does not, since a recipe is assigned as it is.
+  final int threshold;
   final SelectionMaskOptions options;
   final CacheInvalidationSink? cacheInvalidationSink;
   final Uint8List _value;
@@ -205,6 +233,7 @@ class CelPixelOverwriteCommand implements Command, RetainedBytesCommand {
         ),
         value: _value,
         selector: selector,
+        threshold: threshold,
       );
       final restore = result.restore;
       if (restore == null) {

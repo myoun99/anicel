@@ -28,6 +28,7 @@ import '../services/persistence/app_camera_path_settings_store.dart';
 import '../services/persistence/app_frame_count_settings_store.dart';
 import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
+import '../services/persistence/app_pixel_verb_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
@@ -227,6 +228,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
     frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
     cameraPathSettingsStore: _unlessTesting(AppCameraPathSettingsStore.new),
+    pixelVerbSettingsStore: _unlessTesting(AppPixelVerbSettingsStore.new),
   )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();

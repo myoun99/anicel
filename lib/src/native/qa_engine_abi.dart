@@ -271,7 +271,11 @@ import '../core/on_a_worker.dart';
 ///   mask reads too, and the six that mix the three channels
 ///   (`strokeBlendModeNativeId`, board brush-fidelity). An older engine
 ///   would take an id it does not know for exclusion.
-const int kQaEngineAbiVersion = 51;
+/// - v52: `qa_cel_pixel_spec` gains `threshold` — 2치화, the colour edit
+///   list's fifth pixel verb: a byte under it is written 0 and the rest the
+///   incoming byte, forward only (`CelPixelStage.threshold`, board I-13).
+///   Sizeof moves.
+const int kQaEngineAbiVersion = 52;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///
