@@ -198,7 +198,8 @@ void main() {
         ]);
       expect(fields, containsAll(['title', 'log', 'prs', 'owner', 'options']),
           reason: '⛔premise: the scan found the fields');
-      final copy = RegExp(r'BoardCard copy\(\) => BoardCard\(id, kind\)([\s\S]*?);\n')
+      // ⚠️`\r?`: a Windows checkout is CRLF once git has touched the file.
+      final copy = RegExp(r'BoardCard copy\(\) => BoardCard\(id, kind\)([\s\S]*?);\r?\n')
           .firstMatch(source)!
           .group(1)!;
       for (final field in fields) {
