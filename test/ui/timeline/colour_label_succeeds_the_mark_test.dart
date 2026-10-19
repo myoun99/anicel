@@ -19,6 +19,7 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizedAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import '../../helpers/app_faces.dart';
@@ -232,9 +233,10 @@ void _axisAgreement() {
           home: Scaffold(
             body: Align(
               alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: axis == Axis.horizontal ? layerLabelSlotWidth : 28,
-                height: axis == Axis.horizontal ? 28 : layerLabelSlotWidth,
+              child: sizedAlong(
+                axis,
+                along: layerLabelSlotWidth,
+                across: 28,
                 child: LayerMarkChip(
                   keyPrefix: 'probe',
                   layerId: const LayerId('a'),

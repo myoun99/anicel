@@ -463,4 +463,143 @@ void main() {
       reason: 'reach for flipAxis, or for the axis itself',
     );
   });
+
+  // ── Two picks, their arms swapped (card box-sized-by-two-picks) ────────
+  //
+  // A value turned as TWO picks of one axis question, the second's arms the
+  // first's swapped — `width: horizontal ? a : b, height: horizontal ? b :
+  // a` — is the same turn with no `Size(` in either arm, and the builds
+  // above never heard it. On 2026-10-17 it sized a box in nineteen places in
+  // lib and fourteen in the tests, and set the sides of four Positioneds, a
+  // getter pair and a render box's intrinsic sizes. The home says each —
+  // [sizedAlong], [alongBox], [acrossBox], [sizeAlong], [stripAlong],
+  // [stripAcross] — and this is a ban, with the ledger below.
+
+  /// An arm of a pick: no `,` `;` `?` `:` of its own, a call as deep as two.
+  const pickArm = r'(?:[^,;()?:{}\[\]]|\((?:[^()]|\([^()]*\))*\))+?';
+
+  /// One pick by the axis asked by name — the whole question, so a pick of
+  /// `axis` and one of `_axis` are two questions.
+  final pick = RegExp(
+    r'((?:[\w.]+\s*==\s*)?[\w.]*?(?:\w*(?:[Hh]orizontal|[Vv]ertical)'
+    '|across|along))\\s*\\?\\s*($pickArm)\\s*:\\s*($pickArm)'
+    r'(?=\s*[,;)\]}])',
+  );
+
+  /// Two swapped picks with no home to say them, each with why — counted,
+  /// and the counts only fall.
+  const swappedByHand = <String, int>{
+    // The caret's badge, pinned at one end along the rail and left to the
+    // stack's alignment across it — one of its kind.
+    'lib/src/ui/timeline/layer_row_drag.dart': 1,
+    // A tile's pixel counts, ints and not a box — and the test that reads
+    // them back.
+    'lib/src/ui/timeline/timeline_grid_tile_store.dart': 1,
+    'test/ui/timeline/timeline_grid_tile_store_test.dart': 1,
+    // A line on a raster, by its pixel index — no widget's axis.
+    'test/services/fill_gap_close_test.dart': 1,
+  };
+
+  /// Lines where a pick's arms come back swapped in the next pick of the
+  /// same question, within a statement's reach.
+  List<int> swappedPicksIn(String source) {
+    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    final picks = pick.allMatches(code).toList();
+    String question(RegExpMatch m) => m[1]!.replaceAll(RegExp(r'\s+'), '');
+    final lines = <int>[];
+    final paired = <int>{};
+    for (var i = 0; i < picks.length; i += 1) {
+      final a = picks[i];
+      if (paired.contains(i) || a[2]!.trim() == a[3]!.trim()) continue;
+      for (var j = i + 1; j < picks.length; j += 1) {
+        final b = picks[j];
+        if (b.start - a.end > 240) break;
+        if (paired.contains(j) || question(a) != question(b)) continue;
+        if (a[2]!.trim() != b[3]!.trim() || a[3]!.trim() != b[2]!.trim()) {
+          continue;
+        }
+        paired.addAll([i, j]);
+        lines.add('\n'.allMatches(code.substring(0, a.start)).length + 1);
+        break;
+      }
+    }
+    return lines;
+  }
+
+  test('premise: the scan sees the home turn by two picks', () {
+    // alongBox · acrossBox, the strips' sides and extents, and the reads.
+    expect(swappedPicksIn(File(home).readAsStringSync()), hasLength(11));
+  });
+
+  test('premise: the scan sees every pair the card took out', () {
+    // Lines as they stood on 2026-10-17, one of each shape.
+    const pairs = [
+      'width: horizontal ? layerMarkSlotWidth : null,\n'
+          'height: horizontal ? null : layerMarkSlotWidth,',
+      'height: isHorizontal ? 14 : double.infinity,\n'
+          'width: isHorizontal ? double.infinity : 14,',
+      'width: axis == Axis.horizontal ? slot : across,\n'
+          'height: axis == Axis.horizontal ? across : slot,',
+      'double get _width =>\n'
+          '    _horizontal ? _mainExtent : metrics.layerRowHeight;\n'
+          'double get _height =>\n'
+          '    _horizontal ? metrics.layerRowHeight : _mainExtent;',
+      'left: vertical ? null : 0,\nright: 0,\ntop: vertical ? 0 : null,',
+    ];
+    for (final pair in pairs) {
+      expect(swappedPicksIn(pair), hasLength(1), reason: pair);
+    }
+    const notOne = [
+      // Two answers by the axis, not one value turned.
+      'width: horizontal ? 20 : 28,\nheight: horizontal ? 16 : 20,',
+      // Two questions.
+      'width: axis == Axis.horizontal ? a : b,\n'
+          'height: _axis == Axis.horizontal ? b : a,',
+      // A pick not by the axis.
+      'width: wide ? a : b,\nheight: wide ? b : a,',
+      // A decision that quotes the old spelling.
+      '// width: horizontal ? a : b,\n// height: horizontal ? b : a,',
+    ];
+    for (final line in notOne) {
+      expect(swappedPicksIn(line), isEmpty, reason: line);
+    }
+  });
+
+  test('no file swaps two picks by hand but the ledger', () {
+    final files = [...dartFilesUnder('lib'), ...dartFilesUnder('test')];
+    final over = <String>[];
+    final heard = <String>{};
+    for (final file in files) {
+      final path = file.path.replaceAll(r'\', '/');
+      // The home says each once; this file spells the old pairs out.
+      if (path == home || path.endsWith('one_axis_turn_test.dart')) continue;
+      final found = swappedPicksIn(file.readAsStringSync());
+      if (found.isNotEmpty) heard.add(path);
+      if (found.length > (swappedByHand[path] ?? 0)) {
+        over.add('$path:${found.join(',')}');
+      }
+    }
+    expect(
+      heard,
+      containsAll(swappedByHand.keys),
+      reason: '⛔premise: the ban reads both trees — it hears the ledger\'s '
+          'pairs where they stand',
+    );
+    expect(
+      over,
+      isEmpty,
+      reason:
+          'reach for sizedAlong / alongBox / acrossBox / sizeAlong / '
+          'stripAlong / stripAcross',
+    );
+  });
+
+  test('the ledger holds no pair that has gone', () {
+    final paid = <String>[
+      for (final MapEntry(key: path, value: count) in swappedByHand.entries)
+        if (swappedPicksIn(File(path).readAsStringSync()).length < count)
+          path,
+    ];
+    expect(paid, isEmpty, reason: 'lower or delete these in swappedByHand');
+  });
 }

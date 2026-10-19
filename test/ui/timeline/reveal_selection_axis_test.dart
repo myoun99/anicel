@@ -1,3 +1,4 @@
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizedAlong;
 import 'package:anicel/src/ui/timeline/timeline_edge_auto_pan.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:flutter/material.dart';
@@ -58,9 +59,10 @@ void main() {
                   child: SingleChildScrollView(
                     scrollDirection: axis,
                     controller: controllers[axis],
-                    child: SizedBox(
-                      width: axis == Axis.horizontal ? content : viewport,
-                      height: axis == Axis.horizontal ? viewport : content,
+                    child: sizedAlong(
+                      axis,
+                      along: content,
+                      across: viewport,
                     ),
                   ),
                 ),

@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizedAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -79,9 +80,10 @@ void main() {
         home: Material(
           child: Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: axis == Axis.horizontal ? 480 : 40,
-              height: axis == Axis.horizontal ? 40 : 480,
+            child: sizedAlong(
+              axis,
+              along: 480,
+              across: 40,
               child: TimelineLaneFrameRow(
                 layer: layer,
                 lane: lane,
@@ -361,9 +363,10 @@ void main() {
           home: Material(
             child: Align(
               alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: axis == Axis.horizontal ? 20 * cell : rowExtent,
-                height: axis == Axis.horizontal ? rowExtent : 20 * cell,
+              child: sizedAlong(
+                axis,
+                along: 20 * cell,
+                across: rowExtent,
                 child: TimelineFixedFrameSpanLayer(
                   geometry: const TimelineFrameGeometry(
                     frameCellExtent: cell,

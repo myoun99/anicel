@@ -98,9 +98,10 @@ void main() {
           home: Align(
             alignment: Alignment.topLeft,
             child: StatefulBuilder(
-              builder: (context, setState) => SizedBox(
-                width: axis == Axis.horizontal ? laneSize : 14,
-                height: axis == Axis.horizontal ? 14 : laneSize,
+              builder: (context, setState) => sizedAlong(
+                axis,
+                along: laneSize,
+                across: 14,
                 child: AppScrollbar(
                   key: const ValueKey<String>('app-scrollbar-under-test'),
                   axis: axis,

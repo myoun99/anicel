@@ -13,7 +13,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
-    show endAcross, offsetAlong, rectAlong, startAcross, startAlong;
+    show endAcross, offsetAlong, rectAlong, sizeAlong, startAcross, startAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
@@ -152,6 +152,7 @@ void main() {
     Axis axis,
     List<Widget> overlays,
   ) async {
+    final box = sizeAlong(axis, along: frames * cell, across: row);
     await pumpSurface(
       tester,
       TimelineFixedFrameSpanLayer(
@@ -165,8 +166,8 @@ void main() {
         children: overlays,
       ),
       left: origin.dx,
-      width: axis == Axis.horizontal ? frames * cell : row,
-      height: axis == Axis.horizontal ? row : frames * cell,
+      width: box.width,
+      height: box.height,
     );
     await tester.pump();
     return _Shot(await captureBytes(tester), tester.view.devicePixelRatio);

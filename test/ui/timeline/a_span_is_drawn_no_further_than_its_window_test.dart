@@ -23,8 +23,6 @@ void main() {
   final windowed = content.windowed(originPx: 200, extentPx: 300);
 
   for (final axis in Axis.values) {
-    final horizontal = axis == Axis.horizontal;
-
     Future<Rect> clipSeenBy(
       WidgetTester tester,
       TimelineFrameGeometry geometry, {
@@ -38,9 +36,10 @@ void main() {
           textDirection: TextDirection.ltr,
           child: Align(
             alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: horizontal ? main : 40,
-              height: horizontal ? 40 : main,
+            child: sizedAlong(
+              axis,
+              along: main,
+              across: 40,
               child: TimelineFrameSpanLayout(
                 geometry: ValueNotifier(geometry),
                 crossAxisExtent: 40,

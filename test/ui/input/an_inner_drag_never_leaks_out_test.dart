@@ -11,7 +11,8 @@ import 'package:anicel/src/ui/input/two_axis_drag.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
-import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, sizedAlong;
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 /// 🗣️F-202 (유저 2026-09-27): 「띠가 스크롤되는거, 같은상황에서 뷰어패널
@@ -104,11 +105,11 @@ void main() {
     /// An [AppScrollbar] over three viewports of content, its offset kept.
     Widget scrollbar(Axis axis, List<double> offsets) {
       var offset = 0.0;
-      final horizontal = axis == Axis.horizontal;
       return StatefulBuilder(
-        builder: (context, setState) => SizedBox(
-          width: horizontal ? 300 : 16,
-          height: horizontal ? 16 : 300,
+        builder: (context, setState) => sizedAlong(
+          axis,
+          along: 300,
+          across: 16,
           child: AppScrollbar(
             axis: axis,
             offset: offset,
@@ -228,15 +229,15 @@ void main() {
     }) async {
       final list = ScrollController();
       addTearDown(list.dispose);
-      final horizontal = axis == Axis.horizontal;
       Widget tile(int i) => SizedBox.square(
         dimension: 100,
         child: GestureDetector(onTap: onTileTap, child: Text('$i')),
       );
-      final panel = SizedBox(
+      final panel = sizedAlong(
+        axis,
         key: listKey,
-        width: horizontal ? 300 : 120,
-        height: horizontal ? 120 : 300,
+        along: 300,
+        across: 120,
         child: ListView(
           controller: list,
           scrollDirection: axis,

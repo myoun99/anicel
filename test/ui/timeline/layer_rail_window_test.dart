@@ -4,6 +4,7 @@ import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show acrossBox;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 
@@ -149,11 +150,13 @@ void main() {
                 axis: axis,
                 rail: rail,
                 naturalExtent: 400,
-                child: Container(
-                  key: const ValueKey<String>('rail-content'),
-                  width: axis == Axis.horizontal ? null : 60,
-                  height: axis == Axis.horizontal ? 60 : null,
-                  color: const Color(0xFF00FF00),
+                child: acrossBox(
+                  axis,
+                  60,
+                  child: Container(
+                    key: const ValueKey<String>('rail-content'),
+                    color: const Color(0xFF00FF00),
+                  ),
                 ),
               ),
             ),

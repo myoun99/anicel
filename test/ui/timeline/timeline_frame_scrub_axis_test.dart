@@ -1,5 +1,6 @@
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, sizedAlong;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_scrub.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -26,7 +27,6 @@ void main() {
 
   /// A strip that scrolls along [axis], its viewport carrying [key].
   Widget strip(Axis axis, GlobalKey key, ScrollController controller) {
-    final horizontal = axis == Axis.horizontal;
     return SizedBox(
       width: stripExtent,
       height: stripExtent,
@@ -34,9 +34,10 @@ void main() {
         key: key,
         scrollDirection: axis,
         controller: controller,
-        child: SizedBox(
-          width: horizontal ? stripExtent * 10 : stripExtent,
-          height: horizontal ? stripExtent : stripExtent * 10,
+        child: sizedAlong(
+          axis,
+          along: stripExtent * 10,
+          across: stripExtent,
         ),
       ),
     );
