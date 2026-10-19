@@ -236,7 +236,16 @@ void main() {
     await tapKey(tester, 'project-tab-0');
     expect(projects.active, isNot(same(opened)), reason: 'CONTROL');
 
-    await openDocument(tester, projects, drive, done: () => false);
+    // Waits for either answer — the tab shown, or a second one opened.
+    // ↩️It waited for nothing (`() => false`), which ran the whole patience
+    // out every time: sixty seconds of a seventy-second file (10-19).
+    await openDocument(
+      tester,
+      projects,
+      drive,
+      done: () =>
+          identical(projects.active, opened) || projects.sessions.length > 2,
+    );
 
     expect(projects.sessions, hasLength(2), reason: 'one writer per document');
     expect(projects.active, same(opened));

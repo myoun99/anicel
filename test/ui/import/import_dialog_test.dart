@@ -886,7 +886,13 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
       await pumpPastTheWaitWindow(tester);
-      await settleAsync(tester, () => !tester.any(find.text('Importing…')));
+      // Waits for what landed, as every run here does. ↩️It waited for
+      // 「Importing…」 to go, which a run that imported never does: it ends
+      // in a pop, the window is no route in this test, and the line is left
+      // as it was — sixty seconds of patience run out every time (10-19).
+      Object? onSe1() => session.activeTrack.seLayers.first
+          .timeline[session.activeCutGlobalStartFrame];
+      await settleAsync(tester, () => onSe1() != null);
       await tester.pumpAndSettle();
 
       expect(
@@ -894,12 +900,7 @@ void main() {
         isNotEmpty,
         reason: 'the sound registered as it placed',
       );
-      expect(
-        session.activeTrack.seLayers.first
-            .timeline[session.activeCutGlobalStartFrame],
-        isNotNull,
-        reason: 'it landed on SE1 from the cut start',
-      );
+      expect(onSe1(), isNotNull, reason: 'it landed on SE1 from the cut start');
       expect(
         find.text('Nothing imported.'),
         findsNothing,
