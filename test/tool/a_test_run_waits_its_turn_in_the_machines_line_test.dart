@@ -103,7 +103,7 @@ void main() {
       expect(suitesToRun('b', line), isNull);
       // ⛔A short run waiting ahead holds no long run's turn.
       expect(
-        suitesToRun('b', [waiting('s', files: 1), waiting('b')], asked: 9),
+        suitesToRun('b', [waiting('a', files: 1), waiting('b')], asked: 9),
         9,
       );
     });
