@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
+import '../widgets/app_scrollbar.dart'
+    show AppScrollbarLane, AppScrollbarLaneScope;
 import '../widgets/app_window.dart';
 import 'accent_settings_dialog.dart' show AccentSettingsSection;
 import 'audio_settings_section.dart';
@@ -107,6 +109,14 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
   @override
   Widget build(BuildContext context) {
     const sections = PreferencesSection.values;
+    // F-409 (유저): 「환경설정창은 다 두꺼운 스크롤바 사용」.
+    return AppScrollbarLaneScope(
+      lane: AppScrollbarLane.thick,
+      child: _window(sections),
+    );
+  }
+
+  Widget _window(List<PreferencesSection> sections) {
     return AppWindow(
       windowKey: const ValueKey<String>('preferences-dialog'),
       title: AppText.strings.prefsTitle,

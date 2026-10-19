@@ -269,7 +269,7 @@ void main() {
     }
 
     // The harness panel is 900 × 420.
-    const lane = AppScrollbarLane.wide;
+    const lane = AppScrollbarLane.thin;
     final (down, across, panel) = await barsWhen(onFloor: false);
     expect(
       down,
@@ -336,7 +336,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         // The harness panel is `width` × 420; the artwork is 300 × 300.
-        final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
+        final lane = onFloor ? 0.0 : AppScrollbarLane.thin;
         final band = pillBandOf(tester);
         final where = '${onFloor ? 'floor' : 'docked'} at ${width}px';
         expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
@@ -406,7 +406,7 @@ void main() {
             find.byType(CanvasViewportGestureLayer),
           )
           .viewport;
-      final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
+      final lane = onFloor ? 0.0 : AppScrollbarLane.thin;
       final band = pillBandOf(tester);
       final top = painted.canvasToViewport(CanvasPoint(x: 150, y: 0));
       final centre = painted.canvasToViewport(CanvasPoint(x: 150, y: 150));

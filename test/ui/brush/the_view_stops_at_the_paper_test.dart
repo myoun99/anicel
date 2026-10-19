@@ -235,8 +235,8 @@ void main() {
       return Rect.fromLTRB(
         0,
         pillBandOf(tester),
-        box.width - AppScrollbarLane.wide,
-        box.height - AppScrollbarLane.wide,
+        box.width - AppScrollbarLane.thin,
+        box.height - AppScrollbarLane.thin,
       );
     }
 
@@ -308,7 +308,7 @@ void main() {
       await drag(tester, const Offset(-2000, -2000));
       expect(
         paperOnScreen(tester).bottom,
-        closeTo(band.top - AppScrollbarLane.wide, 1e-6),
+        closeTo(band.top - AppScrollbarLane.thin, 1e-6),
         reason: 'above the band, and the bar\'s lane lying on it',
       );
       expectStoreShows(tester, controller);
@@ -461,7 +461,7 @@ void main() {
       // the window's.
       expect(
         controller.value!.panY / _ratio,
-        closeTo(-(24 + 500 - (300 - AppScrollbarLane.wide)), 1e-6),
+        closeTo(-(24 + 500 - (300 - AppScrollbarLane.thin)), 1e-6),
       );
     });
 

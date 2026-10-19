@@ -137,13 +137,16 @@ const double timelineSectionLabelGutterWidth = 0;
 /// The timeline moved it to the far left so the splitter could have that
 /// gap; the x-sheet's column now carries two bars, the rail's above the
 /// splitter and the frame's below it.
-const double timelineVerticalScrollbarWidth = AppScrollbarLane.wide;
+///
+/// F-409 (유저): 「프레임영역의 세로 스크롤바. 지금보다 살짝 더 두꺼운 스크롤바
+/// 사용」 — the thick bar ([AppScrollbarLane.thick]).
+const double timelineVerticalScrollbarWidth = AppScrollbarLane.thick;
 
 /// The horizontal scrollbar rail closing the bottom of a grid. Both grids
 /// declared it privately (R10 R6 found the third copy while deriving the
 /// x-sheet's header against it); a number two surfaces subtract from the
 /// same viewport belongs to neither of them.
-const double timelineBottomScrollbarRailHeight = AppScrollbarLane.wide;
+const double timelineBottomScrollbarRailHeight = AppScrollbarLane.thin;
 
 /// The paper-timesheet stride LADDER a frame axis thins its marks on (user
 /// rule, R-toolbar slim round): every frame, then every 3rd (1, 4, 7, …),

@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -110,6 +112,27 @@ void main() {
       find.byKey(const ValueKey<String>('system-status-section')),
       findsOneWidget,
     );
+  });
+
+  // F-409 (user, 2026-10-19): 「환경설정창은 다 두꺼운 스크롤바 사용」.
+  testWidgets('every bar in the window is the thick one', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpPreferences(tester);
+    final bars = find.descendant(
+      of: find.byKey(const ValueKey<String>('preferences-dialog')),
+      matching: find.byType(AppControllerScrollbar),
+    );
+    expect(bars, findsWidgets, reason: '⛔전제: the section overflows');
+    for (final bar in bars.evaluate()) {
+      expect(
+        tester.getSize(find.byWidget(bar.widget)).width,
+        AppScrollbarLane.thick,
+      );
+    }
   });
 
   testWidgets('🚨F-1: the Autosave section is ONE switch and ONE slider', (

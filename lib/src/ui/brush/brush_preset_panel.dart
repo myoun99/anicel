@@ -962,7 +962,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       // was no bar at all.
       width:
           (_railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent) +
-          AppScrollbarLane.wide,
+          AppScrollbarLane.thin,
       child: ContentScrollbar(
         controller: _railController,
         builder: (context, controller) => ReorderableListView.builder(

@@ -301,8 +301,8 @@ void main() {
       );
       final band = pillBandOf(tester);
       final window = Size(
-        box.width - AppScrollbarLane.wide,
-        box.height - AppScrollbarLane.wide - band,
+        box.width - AppScrollbarLane.thin,
+        box.height - AppScrollbarLane.thin - band,
       );
       expect(
         CanvasViewport.fitToView(

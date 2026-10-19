@@ -3121,7 +3121,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 class _CanvasEditorPanelShell extends StatelessWidget {
   /// The strip holds exactly one thing — the vertical panbar — so its
   /// width IS that bar's hit lane.
-  static const double rightStripWidth = AppScrollbarLane.medium;
+  static const double rightStripWidth = AppScrollbarLane.thin;
 
   /// 🗣️F-209 (유저 2026-09-28): 「도킹시 스크롤바는 어차피 창 최대크기로
   /// 되어있으니까 그냥 알약이아니라 패널로서 공간 차지해서? 두자. 뒤에 캔버스
@@ -3133,7 +3133,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// neither's. The artwork runs on behind them, and framing keeps out from
   /// under them as it does from under a panel (`_framingInsets`). A lane in
   /// a column of its own is the timeline rails' width.
-  static const double dockedLane = AppScrollbarLane.wide;
+  static const double dockedLane = AppScrollbarLane.thin;
 
   static const EdgeInsets dockedLanes = EdgeInsets.only(
     right: dockedLane,
@@ -3453,7 +3453,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             delegate: _FloorHorizontalBarSeat(bottom: _floorBarBottom),
             child: CanvasCapsule(
               keyValue: 'canvas-panbar-horizontal',
-              height: AppScrollbarLane.medium,
+              height: AppScrollbarLane.thin,
               child: horizontalStripBar,
             ),
           ),
@@ -3499,7 +3499,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     left: (onFloor ? cover.left : 0) + _capsuleMargin,
     right: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
     bottom: onFloor
-        ? _floorBarBottom + AppScrollbarLane.medium + _capsuleMargin
+        ? _floorBarBottom + AppScrollbarLane.thin + _capsuleMargin
         : _transportCover + dockedLane + _capsuleMargin,
     child: _CanvasDocumentName(name, absent: documentAbsent),
   );
@@ -3694,7 +3694,7 @@ class _FloorHorizontalBarSeat extends SingleChildLayoutDelegate {
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       BoxConstraints.tightFor(
         width: _CanvasEditorPanelShell._capsuleTrack(constraints.maxWidth),
-        height: AppScrollbarLane.medium,
+        height: AppScrollbarLane.thin,
       );
 
   @override
@@ -4186,7 +4186,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
             : 'canvas-viewport-vertical-scrollbar',
       ),
       along: double.infinity,
-      across: 14,
+      across: AppScrollbarLane.thin,
       child: AppScrollbar(
         axis: axis,
         offset: metrics.scrollOffset,

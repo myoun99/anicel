@@ -488,8 +488,8 @@ void main() {
     );
     final down = tester.getRect(keyed('export-cels-board-vertical-lane'));
     final across = tester.getRect(keyed('export-cels-board-horizontal-lane'));
-    expect(down.width, AppScrollbarLane.wide);
-    expect(across.height, AppScrollbarLane.wide);
+    expect(down.width, AppScrollbarLane.thin);
+    expect(across.height, AppScrollbarLane.thin);
     expect(
       down.left,
       board.left +

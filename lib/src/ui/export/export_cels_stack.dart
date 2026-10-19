@@ -80,7 +80,7 @@ class _ExportCelsStackState extends State<ExportCelsStack> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(
-                width: AppScrollbarLane.wide,
+                width: AppScrollbarLane.thin,
                 child: AppControllerScrollbar(
                   controller: _down,
                   axis: Axis.vertical,

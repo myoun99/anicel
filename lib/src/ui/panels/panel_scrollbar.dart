@@ -10,7 +10,7 @@ import '../widgets/app_scrollbar.dart';
 /// This is the app's SHOWS-WHEN-IT-OVERFLOWS bar: it appears only while
 /// there is something to scroll and it reserves NO width, so a panel that
 /// fits pays nothing for it. That is the whole point on surfaces where
-/// width is the scarce axis — the tool rail cannot spend 12px to announce
+/// width is the scarce axis — the tool rail cannot spend a lane to announce
 /// a scrollbar it does not need.
 ///
 /// The other kind — always visible, in its own reserved lane — is not a
@@ -98,6 +98,7 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
   @override
   Widget build(BuildContext context) {
     final axis = widget.axis;
+    final lane = AppScrollbarLaneScope.of(context);
     _built = _shapeOf(_position);
     return NotificationListener<ScrollMetricsNotification>(
       onNotification: (notification) {
@@ -162,14 +163,17 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
               across: 0,
               fromEnd: true,
               // The lane is laid OVER the content, so this width costs the
-              // panel nothing — it is reach for the pointer, not layout.
-              acrossExtent: AppScrollbarLane.narrow,
+              // panel nothing.
+              //
+              // ㉔ (user, 2026-08-12): 「넘칠 때 뜨는 스크롤바의 아래 패딩을
+              // 없애고 영역 바닥에 딱 붙인다 (…) 겹치는 건 문제없음」 — the lane
+              // is pinned to the edge, and the thumb fills it (F-409), so the
+              // bar is flush with it. ↩️A 4px thumb in a 12px lane sat on the
+              // lane's far edge to get there.
+              acrossExtent: lane,
               child: AppControllerScrollbar(
                 controller: widget.controller,
                 axis: axis,
-                // ㉔: flush with the edge it is pinned to. This lane is
-                // reach, not geometry — see [AppScrollbarThumbSeat.endEdge].
-                thumbSeat: AppScrollbarThumbSeat.endEdge,
               ),
             ),
         ],

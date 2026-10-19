@@ -26,18 +26,14 @@ class TimelineHorizontalScrollbarRail extends KeptPiece {
 
   @override
   Widget buildKept(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
+    return SizedBox(
       key: const ValueKey<String>('timeline-bottom-scrollbar-rail'),
       height: height,
-      // The top hairline separates the rail from the rows above; the fill it
-      // wore went at F-73 ② (유저 2026-09-11: 「타임라인패널의 스크롤바도 배경이
+      // No fill (F-73 ②, 유저 2026-09-11: 「타임라인패널의 스크롤바도 배경이
       // 검정색이니까. 그냥 투명하게 할수는없나?」) — the lane is the panel's own
-      // surface, and the thumb alone marks it.
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
-      ),
+      // surface, and the thumb alone marks it. And no hairline over it
+      // (F-409, 유저 2026-10-19: 「프레임 영역에만 가로스크롤바 위에 선 있는데
+      // 삭제」) — the rail's own bar beside it never had one.
       child: AppControllerScrollbar(
         controller: controller,
         axis: Axis.horizontal,

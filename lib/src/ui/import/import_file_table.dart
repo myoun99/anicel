@@ -176,7 +176,7 @@ class ImportFileTable extends StatefulWidget {
   /// stand beside the rows only, so every fixed column of a row sat 16px
   /// left of the header naming it (유저 2026-09-11: 「열끼리 길이 어긋났거든?
   /// 크기랑 실제 크기 쪽이랑 규격이 달라」).
-  static const double laneWidth = 16;
+  static const double laneWidth = AppScrollbarLane.thin;
 
   static const double _sidePadding = 8;
 

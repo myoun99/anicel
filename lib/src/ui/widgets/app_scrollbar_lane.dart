@@ -1,26 +1,26 @@
-/// The hit-lane widths a surface reserves around a scrollbar thumb.
+/// How thick a scrollbar is — its lane, and the thumb that fills it.
 ///
-/// The thumb itself is one thickness everywhere (see `AppScrollbar`); what
-/// differs between surfaces is how much room the pointer gets to grab it.
-/// Three named steps, so a lane width is a decision with a name instead of
-/// a literal repeated per call site.
+/// 🚨F-409 (유저 2026-10-19): 「실제 인식되는 범위보다 스크롤바가 작은데 이런거
+/// 개선. 조작 가능한 만큼 위젯의 모양새가 위치하도록」 — the thumb is as thick
+/// as the lane the pointer can grab it in (`AppScrollbar`), so a lane width
+/// is the bar's width. And the two words are theirs: 「지금의 일반적으로 쓰이는
+/// 타임라인패널등의 스크롤바를 얇은 스크롤바로서 명명하고, 방금 말한 프레임영역은
+/// 두꺼운 스크롤바로서 명명. 그러고 환경설정창은 다 두꺼운 스크롤바 사용」.
+///
+/// ↩️Three lane steps (16 · 14 · 12) under a 4px thumb, which drew them all
+/// the same; the 14 (the floor's panbar capsules) and the 12 (the bars laid
+/// over a panel while it overflows) were mine, and are the thin bar now.
 ///
 /// Deliberately free of any widget import: the grid metrics that subtract
 /// a lane from a viewport are calculation-only files, and they must be
 /// able to say WHICH lane without pulling Flutter in behind them.
 abstract final class AppScrollbarLane {
-  /// Timeline rails — the lanes a finger sweeps along most often — and a
-  /// docked canvas panel's panbars: the lanes that stand in a reserved
-  /// column of their own, always visible.
-  static const double wide = 16;
+  /// Every bar but the two the thick one is for.
+  static const double thin = 16;
 
-  /// The floor's canvas panbars, in capsules on the artwork.
-  static const double medium = 14;
-
-  /// The tool rail and the panel docks, where width is the scarce axis.
-  /// These lanes are laid OVER content and only while it overflows, so
-  /// this number is pointer reach rather than layout.
-  static const double narrow = 12;
+  /// The frame area's vertical bar, and every bar in the preferences
+  /// window — 「지금보다 살짝 더 두꺼운」.
+  static const double thick = 20;
 }
 
 /// How short a scrollbar thumb is allowed to get.

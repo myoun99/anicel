@@ -23,7 +23,7 @@ import '../../helpers/device_viewport.dart';
 void main() {
   const panelSize = Size(900, 420);
   const bandHeight = 53.0;
-  const lane = AppScrollbarLane.wide;
+  const lane = AppScrollbarLane.thin;
 
   /// What the shell keeps a floating control in from an edge — read off the
   /// pill, so the number is the shell's and not this file's.

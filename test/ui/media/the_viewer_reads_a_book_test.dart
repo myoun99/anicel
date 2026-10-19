@@ -149,8 +149,8 @@ void main() {
     final window = Rect.fromLTRB(
       0,
       pillBandOf(tester),
-      box.width - AppScrollbarLane.wide,
-      box.height - AppScrollbarLane.wide - bandCoverOf(tester),
+      box.width - AppScrollbarLane.thin,
+      box.height - AppScrollbarLane.thin - bandCoverOf(tester),
     );
     final top = page.top * view.zoom + view.panY;
     final height = page.height * view.zoom;

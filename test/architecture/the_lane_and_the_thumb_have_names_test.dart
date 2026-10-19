@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
+    show timelineVerticalScrollbarWidth;
 import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import '../helpers/dart_sources.dart';
 
@@ -17,15 +19,17 @@ import '../helpers/dart_sources.dart';
 /// the values themselves are pinned so a change has to be deliberate.
 void main() {
   test('the values are the ones CLAUDE.md names', () {
-    expect(AppScrollbarLane.wide, 16, reason: '레인 16px');
+    expect(AppScrollbarLane.thin, 16, reason: '레인 16px');
     expect(AppScrollbarThumb.minimum, 32, reason: '썸 최소 32px');
   });
 
-  test('the three lane steps are ordered, and distinct — a step that '
-      'collapsed into its neighbour would be a vocabulary with a word '
-      'that means nothing', () {
-    expect(AppScrollbarLane.wide, greaterThan(AppScrollbarLane.medium));
-    expect(AppScrollbarLane.medium, greaterThan(AppScrollbarLane.narrow));
+  test('the thick bar is thicker than the thin one — F-409: 「지금보다 살짝 '
+      '더 두꺼운」', () {
+    expect(AppScrollbarLane.thick, greaterThan(AppScrollbarLane.thin));
+  });
+
+  test('the frame area\'s vertical bar is the thick one (F-409)', () {
+    expect(timelineVerticalScrollbarWidth, AppScrollbarLane.thick);
   });
 
   test('🚨every minThumbExtent in lib/ reads the shared constant — three '

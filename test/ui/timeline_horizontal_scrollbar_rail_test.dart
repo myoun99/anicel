@@ -84,6 +84,20 @@ void main() {
     expect(find.byKey(thumbKey), findsOneWidget);
   });
 
+  // F-409 (user, 2026-10-19): no line over the frame area's bar, and the
+  // bar as thick as the lane that takes the pointer.
+  testWidgets('no line over the rail: the bar is its whole height, and the '
+      'thumb fills it', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+
+    await pumpRail(tester, controller: controller);
+
+    final rail = tester.getRect(find.byKey(railKey));
+    expect(tester.getRect(find.byKey(trackKey)), rail);
+    expect(tester.getRect(find.byKey(thumbKey)).height, rail.height);
+  });
+
   testWidgets('thumb is visible when content is wider than viewport', (
     tester,
   ) async {
