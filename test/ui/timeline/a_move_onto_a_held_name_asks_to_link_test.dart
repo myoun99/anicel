@@ -196,6 +196,7 @@ void main() {
     final (:a, :b, :a1, a2: _, :b1) = heldOverB(s);
     await releaseAnswering('cancel');
     expect(rowIn(s, a).timeline[0]?.frameId, a1, reason: 'Cancel');
+    expect(s.dragPreview.value, isNull, reason: 'the drag is let go of');
 
     s.updateFrameRangeSelectionDrag(layerId: a, anchorIndex: 0, headIndex: 1);
     expect(s.rangeMove.beginFrameRangeMoveDrag(a), isTrue);
