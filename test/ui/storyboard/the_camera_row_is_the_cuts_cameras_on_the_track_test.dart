@@ -478,6 +478,25 @@ void main() {
       }
     });
 
+    testWidgets('🚨a mark keeps the row\'s height and narrows with its cell, '
+        'as the band\'s do (F-367-Q4)', (tester) async {
+      await pumpPanel(tester);
+      final span = key(
+        'storyboard-camera-lane-key-span-a-cam-transform-group-12',
+      );
+      final drawn = tester.getRect(
+        find.descendant(of: span, matching: find.byType(CustomPaint)),
+      );
+      final cell = ppf(tester);
+      expect(tester.getRect(span).height, greaterThan(cell), reason: '⛔전제');
+      expect(drawn.width, moreOrLessEquals(cell), reason: 'the cell\'s width');
+      expect(
+        drawn.height,
+        moreOrLessEquals(tester.getRect(span).height),
+        reason: 'the row\'s height',
+      );
+    });
+
     testWidgets('🚨an O.L splits the row — the leaving cut above, the arriving '
         'below, each のりしろ washed on its own half', (tester) async {
       await pumpPanel(tester, transitions: ol);
