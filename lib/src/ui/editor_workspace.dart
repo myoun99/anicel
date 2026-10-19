@@ -78,6 +78,7 @@ import 'editor_session_manager.dart';
 import 'session/session_row_button_presses.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
+import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
 import 'menu/opened_files_door.dart';
@@ -2207,9 +2208,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return _fonts.noticeOf(outcome) ??
           (family == null ? null : AppText.strings.fontBrought(family));
     },
-    bringShortcuts: (files) async =>
-        EditorShortcutScope.peek(context)?.importShortcutFiles(files) ??
-        const [],
+    bringShortcuts: (files) async => switch (EditorShortcutScope.peek(context)) {
+      final bindings? => importShortcutFiles(bindings, files),
+      null => const [],
+    },
   );
 
   /// The top strip's 「파일 열기…」 — and the media panel's ＋, which

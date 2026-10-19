@@ -163,6 +163,33 @@ final Map<String, String> _tvpaintCommandsByShownName = {
   for (final MapEntry(:key, :value) in tvpaintShownNames.entries) value: key,
 };
 
+/// [program]'s keymap out of what one of its files binds, in the file's
+/// order: each command and the key it is on — null for a key not known
+/// here, which is counted ([ProgramKeymap.unread]) rather than dropped. A
+/// command is on a key once, however many times the file says so (a tool
+/// palette's nodes of one kind each carry their kind's key).
+///
+/// ONE fold for the three files read: TVPaint's, and CLIP STUDIO PAINT's
+/// shortcut set and tool palette.
+ProgramKeymap _keymapOf(
+  KeymapProgram program,
+  Iterable<(String, ProgramChord?)> bound,
+) {
+  final keys = <String, List<ProgramChord>>{};
+  var unread = 0;
+  for (final (command, chord) in bound) {
+    if (chord == null) {
+      unread += 1;
+      continue;
+    }
+    final held = keys.putIfAbsent(command, () => []);
+    if (!held.contains(chord)) {
+      held.add(chord);
+    }
+  }
+  return ProgramKeymap(program: program, keys: keys, unread: unread);
+}
+
 /// Reads TVPaint's keymap out of [text]: the `[keyboard]` section of its
 /// `config.ini` or of a keymap `.cfg`, or the text its shortcut window
 /// saves. Null for text that is none of them — or a saved text whose
@@ -173,21 +200,9 @@ ProgramKeymap? readTvpaintKeymap(String text) {
   if (bound == null) {
     return null;
   }
-  final keys = <String, List<ProgramChord>>{};
-  var unread = 0;
-  for (final (name, command) in bound) {
-    final chord = _tvpaintChord(name);
-    if (chord == null) {
-      unread += 1;
-    } else {
-      keys.putIfAbsent(command, () => []).add(chord);
-    }
-  }
-  return ProgramKeymap(
-    program: KeymapProgram.tvpaint,
-    keys: keys,
-    unread: unread,
-  );
+  return _keymapOf(KeymapProgram.tvpaint, [
+    for (final (name, command) in bound) (command, _tvpaintChord(name)),
+  ]);
 }
 
 /// Each `key=command` under `[keyboard]`, to the next section — the
@@ -318,31 +333,23 @@ ProgramKeymap? readClipStudioShortcuts(List<int> bytes) {
 
 /// Each of the set's keys, in its order. A command left without one reads
 /// `NULL` — written out, not left empty.
-ProgramKeymap _clipStudioMenus(Database database) {
-  final keys = <String, List<ProgramChord>>{};
-  var unread = 0;
-  for (final row in database.select(
-    'SELECT menucommand, shortcut, modifier FROM shortcutmenu '
-    'ORDER BY _PW_ID',
-  )) {
-    final (command, name) = (row['menucommand'], row['shortcut']);
-    if (command is! String || name is! String || name == 'NULL') {
-      continue;
-    }
-    final modifiers = row['modifier'];
-    final chord = _clipStudioChord(name, modifiers is int ? modifiers : 0);
-    if (chord == null) {
-      unread += 1;
-    } else {
-      keys.putIfAbsent(command, () => []).add(chord);
-    }
-  }
-  return ProgramKeymap(
-    program: KeymapProgram.clipStudio,
-    keys: keys,
-    unread: unread,
-  );
-}
+ProgramKeymap _clipStudioMenus(Database database) =>
+    _keymapOf(KeymapProgram.clipStudio, [
+      for (final row in database.select(
+        'SELECT menucommand, shortcut, modifier FROM shortcutmenu '
+        'ORDER BY _PW_ID',
+      ))
+        if ((row['menucommand'], row['shortcut'])
+            case (final String command, final String name)
+            when name != 'NULL')
+          (
+            command,
+            _clipStudioChord(name, switch (row['modifier']) {
+              final int bits => bits,
+              _ => 0,
+            }),
+          ),
+    ]);
 
 /// The set's modifier bits, read off the program's own keys: Save As is on
 /// Shift+Alt+S · Ctrl+Shift+S · Ctrl+Alt+S, which the set writes 3 · 6 · 5,
@@ -370,31 +377,21 @@ ProgramChord? _clipStudioChord(String name, int modifiers) {
 
 /// Each kind of tool the palette holds, with the keys of its nodes. A node
 /// of no kind of its own (`0`) is no command here.
-ProgramKeymap _clipStudioTools(Database database) {
-  final keys = <String, List<ProgramChord>>{};
-  var unread = 0;
-  for (final row in database.select(
-    'SELECT NodeDefaultIdentifier, NodeShortCutKey FROM Node '
-    'WHERE NodeDefaultIdentifier > 0 AND NodeShortCutKey > 0 '
-    'ORDER BY _PW_ID',
-  )) {
-    final key = _clipStudioToolKey(row['NodeShortCutKey'] as int);
-    if (key == null) {
-      unread += 1;
-      continue;
-    }
-    final command = clipStudioTool(row['NodeDefaultIdentifier'] as int);
-    final held = keys.putIfAbsent(command, () => []);
-    if (!held.contains(ProgramChord(key))) {
-      held.add(ProgramChord(key));
-    }
-  }
-  return ProgramKeymap(
-    program: KeymapProgram.clipStudio,
-    keys: keys,
-    unread: unread,
-  );
-}
+ProgramKeymap _clipStudioTools(Database database) =>
+    _keymapOf(KeymapProgram.clipStudio, [
+      for (final row in database.select(
+        'SELECT NodeDefaultIdentifier, NodeShortCutKey FROM Node '
+        'WHERE NodeDefaultIdentifier > 0 AND NodeShortCutKey > 0 '
+        'ORDER BY _PW_ID',
+      ))
+        (
+          clipStudioTool(row['NodeDefaultIdentifier'] as int),
+          switch (_clipStudioToolKey(row['NodeShortCutKey'] as int)) {
+            final key? => ProgramChord(key),
+            null => null,
+          },
+        ),
+    ]);
 
 /// A tool's key as the palette numbers it: A to Z are 1 to 26, read off the
 /// program's own palettes (Gradient G is 7, the shipped Pen's P 16); `/`,

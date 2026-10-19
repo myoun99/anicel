@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_file_import.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
@@ -84,7 +85,7 @@ void main() {
       'gives keys takes those and no other', () {
     expect(bindings.preset, ShortcutPreset.clipStudio);
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
 
@@ -102,7 +103,7 @@ void main() {
         SingleActivator(LogicalKeyboardKey.f9),
       ]);
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['braquet=ZoomIn', 'f9=Undo']),
     ]);
 
@@ -120,7 +121,7 @@ void main() {
         SingleActivator(LogicalKeyboardKey.f9),
       ]);
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
 
@@ -140,7 +141,7 @@ void main() {
         SingleActivator(LogicalKeyboardKey.f8),
       ]);
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
 
@@ -150,7 +151,7 @@ void main() {
 
   test('CLIP STUDIO\'s two files — its menus\' keys and its tools\' — '
       'opened together make ONE preset, named for both', () {
-    final said = bindings.importShortcutFiles([menus(), tools()]);
+    final said = importShortcutFiles(bindings, [menus(), tools()]);
 
     expect(said, [AppText.strings.shortcutFileImported(inUse().name, 4, 0)]);
     expect(bindings.userPresets, [inUse()]);
@@ -173,7 +174,7 @@ void main() {
       final held = EditorShortcutBindings();
       addTearDown(held.dispose);
       for (final file in order) {
-        held.importShortcutFiles([file]);
+        importShortcutFiles(held, [file]);
       }
       expect(held.userPresets, hasLength(2));
       expect(keysOf(EditorActionIds.canvasFlipHorizontal, held), [
@@ -196,19 +197,19 @@ void main() {
       ..setActivators(maru, const [SingleActivator(LogicalKeyboardKey.f9)]);
     expect(bindings.definitionFor(maru), isNull, reason: '⛔fixture premise');
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
     expect(keysOf(maru), ['F9']);
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
     expect(keysOf(maru), ['F9']);
   });
 
   test('two programs\' files opened together make a preset each', () {
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       menus(),
       configIni(['ctrl z=Undo']),
     ]);
@@ -225,7 +226,7 @@ void main() {
 
   test('what the file brought is the keys the preset was made with: the '
       'window\'s reset takes back only what was recorded over them', () {
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
     expect(bindings.isOverridden(EditorActionIds.undo), isFalse);
@@ -241,7 +242,7 @@ void main() {
   });
 
   test('the TVPaint preset itself is left as it was', () {
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
 
@@ -255,7 +256,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
 
-    bindings.importShortcutFiles([
+    importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo']),
     ]);
 
@@ -265,7 +266,7 @@ void main() {
 
   test('what is said: the new preset, how many keys came and how many had '
       'nothing to go on', () {
-    final said = bindings.importShortcutFiles([
+    final said = importShortcutFiles(bindings, [
       configIni(['ctrl z=Undo', 'a=ZoomShake', 'ctrl wheel up=ZoomIn']),
     ]);
 
@@ -274,7 +275,7 @@ void main() {
 
   test('a file no keys can be read out of is said so, and makes no '
       'preset', () {
-    final said = bindings.importShortcutFiles([
+    final said = importShortcutFiles(bindings, [
       (name: 'notes.txt', bytes: utf8.encode('메모')),
     ]);
 

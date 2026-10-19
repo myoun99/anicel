@@ -151,7 +151,7 @@ final class ProgramRow {
 /// A preset asks it with its own program's keys over the OTHER program's
 /// ([presetActivators], F-417); a program's shortcut file with the file's
 /// keys over what each action holds (I-107,
-/// `EditorShortcutBindings.importShortcutFiles`).
+/// `EditorShortcutBindings.presetOfFiles`).
 final class ProgramKeys {
   ProgramKeys(this.named)
     : _taken = {
