@@ -122,13 +122,29 @@ class _WorkspaceTabs {
   /// frame panels too — they build their host again on every edit, and bare,
   /// every commit (a comma drag's release) laid the dock out again and
   /// repainted the page's root around the panel.
+  ///
+  /// A host that says what it prints of the session ([printed]) hears the
+  /// session only when that changes. 🔬The conte and the envelope heard all
+  /// of it in [listenable] and rebuilt — 107 and 108 elements — for a guide
+  /// picked on the canvas or the onion switched on, news neither prints
+  /// (session-news-rebuilds-unsliced, 2026-10-20). The timesheet hears it
+  /// inside its host, through its document's memo key; the frame panels
+  /// still hear it all, what they show of it being their rows' facts
+  /// (F-244).
   Widget _panelHost({
     required Listenable listenable,
+    Object? Function()? printed,
     required WidgetBuilder host,
   }) => TickLayer.host(
     child: ListenableBuilder(
       listenable: listenable,
-      builder: (context, _) => host(context),
+      builder: (context, _) => printed == null
+          ? host(context)
+          : SlicedListenableBuilder<Object?>(
+              listenable: _state.widget.session,
+              slice: printed,
+              builder: (context, _) => host(context),
+            ),
     ),
   );
 
@@ -1160,7 +1176,6 @@ class _WorkspaceTabs {
           // ink overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
-              _state.widget.session,
               _state._views._conteViewport,
               _state._views._conteBrushAllowed,
               _state._views._conteInk,
@@ -1170,6 +1185,7 @@ class _WorkspaceTabs {
               // The locale reprints the sheet chrome (labels/tooltips).
               _state.widget.session.languageSettings,
             ]),
+            printed: () => ConteTabHost.printedBy(_state.widget.session),
             host: (context) => ConteTabHost(
               session: _state.widget.session,
               // A landed thumbnail render repaints the page painter
@@ -1208,7 +1224,6 @@ class _WorkspaceTabs {
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
-              _state.widget.session,
               _state._views._envelopeViewport,
               _state._views._envelopeBrushAllowed,
               _state._views._envelopeInk,
@@ -1217,6 +1232,7 @@ class _WorkspaceTabs {
               _state.widget.session.cutUnderPlayhead.listenable,
               _state.widget.session.languageSettings,
             ]),
+            printed: () => CutEnvelopeTabHost.printedBy(_state.widget.session),
             host: (context) => CutEnvelopeTabHost(
               session: _state.widget.session,
               // The work's choice, written back to the work — one undo.

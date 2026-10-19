@@ -36,6 +36,7 @@ import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../dialogs/conte_format_window.dart';
 import '../dialogs/dialog_verb.dart';
 import '../text/app_strings.dart';
@@ -124,6 +125,16 @@ class ConteTabHost extends StatefulWidget {
   // under the page when a cell was selected, a row that did not flex. The
   // ACTION is edited on the page now, and the panel mounts nothing under
   // the shell (the envelope's case).
+
+  /// What the conte prints of [session], to the panel host that hears the
+  /// session through it: the project — its cuts, their cels and the camera
+  /// they are shot through — and the active cut's canvas, which the next
+  /// cut a stroke makes is planned from ([_ConteTabHostState._brushPageOf]).
+  /// The models are immutable, so a new one is the only way either moves.
+  static Object printedBy(EditorSessionManager session) => (
+    project: ByIdentity(session.repository.requireProject()),
+    activeCanvas: session.activeCutOrNull?.canvasSize,
+  );
 
   @override
   State<ConteTabHost> createState() => _ConteTabHostState();

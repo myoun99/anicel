@@ -18,6 +18,7 @@ import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/panel_keys.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart';
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../widgets/app_icon_button.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
@@ -94,6 +95,14 @@ class CutEnvelopeTabHost extends StatefulWidget {
   // conte's case too — so the panel's own floor is the whole story. Stating
   // a larger number here would only raise the bottom dock's minimum for
   // every tab beside it.
+
+  /// What the envelope prints of [session], to the panel host that hears
+  /// the session through it: the project — the cut it is the envelope of
+  /// and the work's form among it. The model is immutable, so a new one is
+  /// the only way it moves. Which cut that is, the one under the playhead
+  /// (F-90), turns it over through the host's own listenable.
+  static Object printedBy(EditorSessionManager session) =>
+      ByIdentity(session.repository.requireProject());
 
   @override
   State<CutEnvelopeTabHost> createState() => _CutEnvelopeTabHostState();
