@@ -93,7 +93,6 @@ void main() {
           controller: vertical,
           viewportHeight: 300,
           contentHeight: 1200,
-          width: 16,
         ),
         size: const Size(16, 300),
         at: const Offset(0, 298),

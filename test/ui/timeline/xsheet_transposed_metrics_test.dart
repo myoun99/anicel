@@ -289,6 +289,25 @@ void main() {
         XSheetTimelineGrid.defaultMetrics.verticalScrollbarWidth,
       );
       expect(railBar.left, closeTo(frameBar.left, 0.01));
+      // F-409 (user, 2026-10-19): 「세로 스크롤바를 프레임 영역. 즉 제일
+      // 오른쪽으로 이동. 초+코마 버튼 위치도 그에맞춰서 이동」 — the column at
+      // the sheet's far right, and the corner over it at the end of the
+      // top strip.
+      final sheet = tester.getRect(find.byType(XSheetTimelineGrid));
+      expect(frameBar.right, closeTo(sheet.right, 0.01));
+      final corner = tester.getRect(
+        find.byKey(const ValueKey<String>('xsheet-time-display-toggle-button')),
+      );
+      expect(
+        [corner.left, corner.right, corner.top, corner.bottom],
+        [
+          closeTo(railBar.left, 0.01),
+          closeTo(sheet.right, 0.01),
+          closeTo(sheetTop, 0.01),
+          closeTo(railBar.top, 0.01),
+        ],
+      );
+      expect(layerAxisBar.right, closeTo(corner.left, 0.01));
       // The splitter starts after the frame-number rail: that column is
       // the FRAME axis's and the splitter has nothing to say about it.
       expect(

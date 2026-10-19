@@ -1,22 +1,20 @@
 import 'package:flutter/material.dart';
 
-/// The one Row that puts a grid's layer-axis scrollbar, its rail window,
-/// the splitter's reserved slot and the frame cells in that order.
+/// The one Row that puts a grid's rail window, the splitter's reserved slot
+/// and the frame cells in that order.
 ///
 /// The rail and the cells stay in the SAME vertical scroll body — that is
 /// what makes row alignment free, and no amount of rail chrome may split
-/// them into two scrollables.
+/// them into two scrollables. The layer-axis bar is not in it: it stands
+/// beside the scroll body, at the frame area's far right
+/// (`timeline_grid_frame.dart`).
 class TimelineLayerFrameBodyLayout extends StatelessWidget {
   const TimelineLayerFrameBodyLayout({
     super.key,
-    required this.layerAxisScrollbarSlot,
     required this.layerControlsRail,
     required this.railSplitterSlot,
     required this.frameGridArea,
   });
-
-  /// Reserves the left EDGE column the layer-axis scrollbar floats over.
-  final Widget layerAxisScrollbarSlot;
 
   final Widget layerControlsRail;
 
@@ -29,12 +27,7 @@ class TimelineLayerFrameBodyLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        layerAxisScrollbarSlot,
-        layerControlsRail,
-        railSplitterSlot,
-        frameGridArea,
-      ],
+      children: [layerControlsRail, railSplitterSlot, frameGridArea],
     );
   }
 }

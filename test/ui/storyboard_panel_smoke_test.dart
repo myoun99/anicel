@@ -209,20 +209,25 @@ void main() {
         ),
         findsOneWidget,
       );
-      // MIDDLE: the timeline's pinned rail — on the panel's LEFT EDGE
-      // now, because the gap it used to fill between the labels and the
-      // strips is the rail splitter's.
+      // MIDDLE: the timeline's pinned rail — at the frame area's far
+      // right, the corner over it (F-409: 「타임라인/콘티패널 동일함」).
       final verticalRail = find.byKey(
         const ValueKey<String>('storyboard-vertical-scrollbar'),
       );
       expect(verticalRail, findsOneWidget);
-      final panelLeft = tester
-          .getTopLeft(find.byKey(const ValueKey<String>('storyboard-panel')))
-          .dx;
+      final panel = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-panel')),
+      );
+      final bar = tester.getRect(verticalRail);
+      expect(bar.right, panel.right, reason: 'the layer-axis bar');
       expect(
-        tester.getTopLeft(verticalRail).dx,
-        panelLeft,
-        reason: 'the layer-axis bar is the grid edge now',
+        tester.getRect(
+          find.byKey(
+            const ValueKey<String>('storyboard-time-display-toggle-button'),
+          ),
+        ),
+        Rect.fromLTRB(bar.left, panel.top, bar.right, bar.top),
+        reason: 'the corner over it',
       );
       final splitter = find.byKey(
         const ValueKey<String>('storyboard-rail-splitter'),
@@ -230,11 +235,10 @@ void main() {
       expect(splitter, findsOneWidget);
       expect(
         tester.getTopLeft(splitter).dx,
-        panelLeft + 16 + 519,
+        panel.left + 519,
         reason:
-            'the splitter follows the 16px lane and the 519px rail — '
-            'the timeline\'s number since 2026-08-04, though still this '
-            'panel\'s own constant',
+            'the splitter follows the 519px rail — the timeline\'s number '
+            'since 2026-08-04, though still this panel\'s own constant',
       );
       expect(
         find.byKey(const ValueKey<String>('storyboard-rail-scrollbar')),
@@ -255,11 +259,17 @@ void main() {
         ),
         findsNothing,
       );
-      expect(
+      final room = tester.getRect(
         find.byKey(
-          const ValueKey<String>('storyboard-bottom-scrollbar-left-spacer'),
+          const ValueKey<String>(
+            'storyboard-vertical-scrollbar-bottom-spacer',
+          ),
         ),
-        findsOneWidget,
+      );
+      expect(
+        [room.left, room.right],
+        [bar.left, bar.right],
+        reason: 'the room under the bar closes the bottom row',
       );
     });
   });

@@ -834,7 +834,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       controller: _frameScrollController,
       viewportHeight: bodyViewportHeight,
       contentHeight: totalFrameContentHeight,
-      width: _metrics.verticalScrollbarWidth,
     );
   }
 
@@ -1192,22 +1191,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                 Column(
                   children: [
                     // The LAYER axis runs across the sheet, so its scrollbar is
-                    // the strip along the top — and the corner beside it holds
-                    // the seconds toggle, off the command bar.
+                    // the strip along the top — and the corner at its end, over
+                    // the frame axis's bar (F-409), holds the seconds toggle.
                     SizedBox(
                       height: layerAxisScrollbarExtent,
                       child: Row(
                         children: [
                           SizedBox(width: _metrics.layerControlsWidth),
-                          TimelineSecondsToggleCorner(
-                            key: const ValueKey<String>(
-                              'xsheet-time-display-toggle-button',
-                            ),
-                            width: _metrics.verticalScrollbarWidth,
-                            height: layerAxisScrollbarExtent,
-                            showSeconds: widget.hooks.showSeconds,
-                            onChanged: widget.hooks.onShowSecondsChanged,
-                          ),
                           Expanded(
                             child: LayoutBuilder(
                               builder: (context, constraints) =>
@@ -1227,6 +1217,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                                     height: layerAxisScrollbarExtent,
                                   ),
                             ),
+                          ),
+                          TimelineSecondsToggleCorner(
+                            key: const ValueKey<String>(
+                              'xsheet-time-display-toggle-button',
+                            ),
+                            width: _metrics.verticalScrollbarWidth,
+                            height: layerAxisScrollbarExtent,
+                            showSeconds: widget.hooks.showSeconds,
+                            onChanged: widget.hooks.onShowSecondsChanged,
                           ),
                         ],
                       ),
@@ -1264,31 +1263,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                               ],
                             ),
                           ),
-                          // ONE 16px column, split by the splitter: the RAIL's
-                          // own bar above it, the FRAME axis's below. The
-                          // column was already here at 14px carrying only the
-                          // frame bar — widening it and halving it is the whole
-                          // change (the user saw this before I did).
-                          SizedBox(
-                            width: _metrics.verticalScrollbarWidth,
-                            child: Column(
-                              children: [
-                                LayerRailScrollbar(
-                                  axis: Axis.vertical,
-                                  rail: _railExtent,
-                                  naturalExtent: naturalHeaderBlockExtent,
-                                  availableExtent: availableHeaderExtent,
-                                  laneExtent:
-                                      _metrics.verticalScrollbarWidth,
-                                  keyPrefix: 'xsheet',
-                                ),
-                                SizedBox(height: splitterSlotExtent),
-                                Expanded(
-                                  child: _buildVerticalScrollbar(geometry),
-                                ),
-                              ],
-                            ),
-                          ),
                           Expanded(
                             child: widget.layers.isEmpty
                                 ? Padding(
@@ -1322,6 +1296,35 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                                       ),
                                     ),
                                   ),
+                          ),
+                          // ONE column, split by the splitter: the RAIL's
+                          // own bar above it, the FRAME axis's below. The
+                          // column was already here at 14px carrying only the
+                          // frame bar — widening it and halving it was the
+                          // whole change (the user saw this before I did).
+                          // It stands at the frame area's far right (F-409:
+                          // 「세로 스크롤바를 프레임 영역. 즉 제일 오른쪽으로」);
+                          // ↩️it stood between the frame-number rail and the
+                          // cells.
+                          SizedBox(
+                            width: _metrics.verticalScrollbarWidth,
+                            child: Column(
+                              children: [
+                                LayerRailScrollbar(
+                                  axis: Axis.vertical,
+                                  rail: _railExtent,
+                                  naturalExtent: naturalHeaderBlockExtent,
+                                  availableExtent: availableHeaderExtent,
+                                  laneExtent:
+                                      _metrics.verticalScrollbarWidth,
+                                  keyPrefix: 'xsheet',
+                                ),
+                                SizedBox(height: splitterSlotExtent),
+                                Expanded(
+                                  child: _buildVerticalScrollbar(geometry),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

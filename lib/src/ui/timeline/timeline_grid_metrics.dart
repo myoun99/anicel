@@ -134,9 +134,10 @@ const double timelineSectionLabelGutterWidth = 0;
 ///
 /// 14 → 16 (rail-window round): the lane has to be comfortable to grab
 /// because it stopped being a leftover gap between the rail and the cells.
-/// The timeline moved it to the far left so the splitter could have that
-/// gap; the x-sheet's column now carries two bars, the rail's above the
-/// splitter and the frame's below it.
+/// It went to the far left so the splitter could have that gap, and it
+/// stands at the frame area's far right since F-409 (`timeline_grid_frame`);
+/// the x-sheet's column carries two bars, the rail's above the splitter
+/// and the frame's below it.
 ///
 /// F-409 (유저): 「프레임영역의 세로 스크롤바. 지금보다 살짝 더 두꺼운 스크롤바
 /// 사용」 — the thick bar ([AppScrollbarLane.thick]).
@@ -261,8 +262,8 @@ class TimelineGridMetrics {
   /// Height of each layer row and the frame header row.
   final double layerRowHeight;
 
-  /// Width reserved for the visible vertical scrollbar between the layer rail
-  /// and frame grid area.
+  /// Width of the layer-axis bar's column, at the frame area's far right
+  /// ([timelineVerticalScrollbarWidth]).
   final double verticalScrollbarWidth;
 
   /// The section-bracket gutter leading the layer rail (the timesheet's

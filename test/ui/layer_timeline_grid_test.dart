@@ -322,11 +322,12 @@ void main() {
       greaterThan(tester.getTopLeft(frameGridArea).dy),
     );
 
-    // The rail-window arrangement, left to right:
-    //   [16 layer-axis bar][rail window][5 splitter][frame cells]
-    // — with the bar on the grid's EDGE, where it stopped occupying the
-    // one gap a splitter could live in.
-    final gridLeft = tester.getRect(scrollbarArea).left;
+    // The frame, left to right:
+    //   [rail window][5 splitter][frame cells][layer-axis bar]
+    // — F-409 (user, 2026-10-19): 「세로 스크롤바를 프레임 영역. 즉 제일
+    // 오른쪽으로 이동. 초+코마 버튼 위치도 그에맞춰서 이동」.
+    final grid = tester.getRect(scrollbarArea);
+    final gridLeft = grid.left;
     final railRect = tester.getRect(rail);
     final frameGridAreaRect = tester.getRect(frameGridArea);
     final railScrollbarRect = tester.getRect(railScrollbar);
@@ -337,14 +338,33 @@ void main() {
     final verticalBottomSpacerRect = tester.getRect(
       verticalScrollbarBottomSpacer,
     );
+    final corner = tester.getRect(
+      find.byKey(
+        const ValueKey<String>('timeline-time-display-toggle-button'),
+      ),
+    );
+    final bar = _testMetrics.verticalScrollbarWidth;
 
-    expect(verticalScrollbarRect.left, moreOrLessEquals(gridLeft));
-    expect(verticalScrollbarRect.width, moreOrLessEquals(16));
-    expect(verticalBottomSpacerRect.left, moreOrLessEquals(gridLeft));
-    expect(verticalBottomSpacerRect.width, moreOrLessEquals(16));
+    expect(verticalScrollbarRect.right, moreOrLessEquals(grid.right));
+    expect(verticalScrollbarRect.width, moreOrLessEquals(bar));
+    expect(
+      frameGridAreaRect.right,
+      moreOrLessEquals(verticalScrollbarRect.left),
+    );
+    expect(
+      [corner.left, corner.right, corner.bottom],
+      [
+        moreOrLessEquals(verticalScrollbarRect.left),
+        moreOrLessEquals(grid.right),
+        moreOrLessEquals(verticalScrollbarRect.top),
+      ],
+      reason: 'the corner over the bar',
+    );
+    expect(verticalBottomSpacerRect.right, moreOrLessEquals(grid.right));
+    expect(verticalBottomSpacerRect.width, moreOrLessEquals(bar));
     // Untouched, the rail window is the rail's NATURAL width — nothing is
     // cut until the user drags the splitter.
-    expect(railRect.left, moreOrLessEquals(gridLeft + 16));
+    expect(railRect.left, moreOrLessEquals(gridLeft));
     expect(railRect.width, moreOrLessEquals(classicRailWidth));
     expect(splitterRect.left, moreOrLessEquals(railRect.right));
     expect(splitterRect.width, moreOrLessEquals(5));
@@ -362,6 +382,11 @@ void main() {
     expect(
       horizontalScrollbarRect.width,
       moreOrLessEquals(bottomRailRect.width),
+    );
+    expect(
+      horizontalScrollbarRect.right,
+      moreOrLessEquals(verticalBottomSpacerRect.left),
+      reason: 'the room under the bar closes the bottom row',
     );
     expect(
       tester.getRect(horizontalScrollbarTrack).width,
