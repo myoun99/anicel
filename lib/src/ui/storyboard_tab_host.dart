@@ -22,6 +22,7 @@ import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
 import 'brush/transform_tool_options.dart';
 import 'editor_session_manager.dart';
+import 'range_move_asking_first.dart';
 import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
@@ -821,7 +822,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                               frameDelta: frameDelta,
                               targetLayerId: targetLayerId,
                             ),
-                        onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                        onEnd: () => unawaited(
+                          releaseRangeMoveAskingFirst(context, _session),
+                        ),
                         onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
                       ),
                     ),
@@ -1083,7 +1086,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                               frameDelta: frameDelta,
                               targetLayerId: targetLayerId,
                             ),
-                        onEnd: _session.rangeMove.endFrameRangeMoveDrag,
+                        onEnd: () => unawaited(
+                          releaseRangeMoveAskingFirst(context, _session),
+                        ),
                         onCancel: _session.rangeMove.cancelFrameRangeMoveDrag,
                       ),
                     ),

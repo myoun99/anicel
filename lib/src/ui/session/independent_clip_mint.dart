@@ -206,18 +206,29 @@ Map<FrameId, FrameId> drawingsHeldUnderTheNamesOf(
   Layer layer,
   ({TimelineClipRow clip, List<Frame> cels}) row,
 ) {
-  // A name is held ONCE on a row whose names are identities, so which
-  // holder a second would be is not a question this has to answer.
-  final holders = <String, FrameId>{
-    for (final frame in layer.frames) ?frame.name: frame.id,
-  };
   final shown = {
     for (final exposure in row.clip.exposures.values) ?exposure.frameId,
   };
-  return {
+  return celsHeldUnderTheirNames(layer.frames, [
     for (final cel in row.cels)
-      if (shown.contains(cel.id)) cel.id: ?holders[cel.name],
+      if (shown.contains(cel.id)) cel,
+  ]);
+}
+
+/// The drawings of [bank] already answering to the names [cels] carry —
+/// each named cel to the one of [bank]'s that holds its name. The question
+/// a cel arriving on a row asks, pasted ([drawingsHeldUnderTheNamesOf]) or
+/// moved there (F-413).
+Map<FrameId, FrameId> celsHeldUnderTheirNames(
+  Iterable<Frame> bank,
+  Iterable<Frame> cels,
+) {
+  // A name is held ONCE on a row whose names are identities, so which
+  // holder a second would be is not a question this has to answer.
+  final holders = <String, FrameId>{
+    for (final frame in bank) ?frame.name: frame.id,
   };
+  return {for (final cel in cels) cel.id: ?holders[cel.name]};
 }
 
 /// WHAT A CLIP BECOMES WHEN IT LANDS ON [layer] — the linked branch and

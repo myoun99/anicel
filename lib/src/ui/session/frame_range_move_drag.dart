@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
-import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
+import '../timeline/timeline_drag_preview.dart'
+    show BlockMoveDragPreview, TimelineDragPreview;
 import 'dart:collection';
 
+import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
@@ -11,6 +13,7 @@ import 'camera.dart';
 import 'drags/frame_range_move_drag.dart';
 import 'drawing_block_move_drag.dart';
 import 'folders_and_attachments.dart';
+import 'independent_clip_mint.dart' show celsHeldUnderTheirNames;
 import 'range_selections.dart';
 import 'row_spans.dart';
 import 'session_roles.dart';
@@ -154,10 +157,40 @@ class FrameRangeMoveDragVerbs {
 
   /// Commits the range move as ONE undo step (layer updates + the brush
   /// re-key on cross-layer carries), mirroring the block-move commit.
-  void endFrameRangeMoveDrag() {
+  ///
+  /// 🚨F-413 (유저 2026-10-19): 「A의 1,2라는 프레임이있고, B의 3,1이라는
+  /// 프레임있을때, A1,A2를 B행으로 옮기면 1이라는 이름의 그림이 두개존재함.
+  /// 그래서 B행에 이동하고 손 뗄 때 링크프레임 창 작동시키도록」. A drawing
+  /// carried onto a row that already holds its name would be the row's
+  /// second drawing of one name — so where the drag would land one and
+  /// [joinTakenNames] was not given, this writes NOTHING, keeps the drag in
+  /// flight for the answer, and hands back what it would join: the linked
+  /// paste's contract (I-71). Joined, each carried drawing's blocks show the
+  /// row's own drawing of its name — the rename's join
+  /// ([TimelineController.nameFramesForLayer]) — in the move's one step.
+  CarriedNameJoins? endFrameRangeMoveDrag({bool joinTakenNames = false}) {
     final drag = _drag;
+    if (drag == null) {
+      return null;
+    }
+    final joins = _carriedNamesHeld(_roles.dragPreview.value);
+    if (joins.isNotEmpty && !joinTakenNames) {
+      return joins;
+    }
     _drag = null;
-    drag?.commit();
+    _project.historyManager.runAsOneStep('Move frame range', () {
+      drag.commit();
+      for (final row in joins) {
+        _controllers.timelineController.nameFramesForLayer(
+          layerId: row.onto,
+          joins: row.held,
+        );
+      }
+    });
+    if (joins.isNotEmpty) {
+      _changes.notifyChanged();
+    }
+    return null;
   }
 
   /// Drops an in-flight range-move preview, restoring the selection.
@@ -297,4 +330,45 @@ class FrameRangeMoveDragVerbs {
     }
     return found;
   }
+}
+
+/// What a range move would JOIN on letting go, by the row each drawing is
+/// carried from and the row it lands on: each carried drawing to the one of
+/// its name the landing row already holds
+/// ([FrameRangeMoveDragVerbs.endFrameRangeMoveDrag]).
+typedef CarriedNameJoins =
+    List<({LayerId from, LayerId onto, Map<FrameId, FrameId> held})>;
+
+/// [CarriedNameJoins] of the move [preview] shows — the drawings its
+/// release carries onto another row ([BlockMoveDragPreview.rekeys]) where
+/// that row's names are its drawings' identities and already hold theirs.
+/// Empty when it carries none so.
+///
+/// Asked of the PREVIEW because the preview is what lands: the release
+/// re-keys the very list it shows.
+CarriedNameJoins _carriedNamesHeld(TimelineDragPreview? preview) {
+  if (preview is! BlockMoveDragPreview) {
+    return const [];
+  }
+  final carried = <(LayerId, LayerId), Set<FrameId>>{};
+  for (final rekey in preview.rekeys) {
+    (carried[(rekey.from, rekey.to)] ??= {}).add(rekey.frameId);
+  }
+  return [
+    for (final MapEntry(key: (from, onto), value: ids) in carried.entries)
+      if (preview.previewLayers[onto] case final landed?
+          when landed.kind.celNameIsIdentity)
+        if (celsHeldUnderTheirNames(
+              [
+                for (final frame in landed.frames)
+                  if (!ids.contains(frame.id)) frame,
+              ],
+              [
+                for (final frame in landed.frames)
+                  if (ids.contains(frame.id)) frame,
+              ],
+            )
+            case final held when held.isNotEmpty)
+          (from: from, onto: onto, held: held),
+  ];
 }
