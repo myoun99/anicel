@@ -378,25 +378,56 @@ Future<({int port, Stream<HttpRequest> requests})> listenAt(
 ///
 /// ⚠️ONE AT A TIME is why a record written here cannot land inside another:
 /// each request is answered whole before the next is taken.
-Future<void> answerAll(Stream<HttpRequest> requests) async {
-  await for (final request in requests) {
-    final took = Stopwatch()..start();
-    try {
-      await _handle(request);
-    } on Object catch (e) {
-      stderr.writeln('board: request failed: $e');
-      _noteFailed(request, e);
-      request.response.statusCode = 500;
-      await request.response.close();
-    }
-    if (took.elapsed > _kSlowRequest) {
-      noteRequestFailure(
-        File('${File(_recordsPath).parent.path}/$kSlowRequestLog'),
-        '${DateTime.now().toIso8601String()} ${request.method} '
-        '${request.uri.path} ${took.elapsedMilliseconds}ms',
-      );
-    }
+Future<void> answerAll(Stream<HttpRequest> requests) =>
+    inLine(requests, _answer);
+
+Future<void> _answer(HttpRequest request) async {
+  final took = Stopwatch()..start();
+  try {
+    await _handle(request);
+  } on Object catch (e) {
+    stderr.writeln('board: request failed: $e');
+    _noteFailed(request, e);
+    request.response.statusCode = 500;
+    await request.response.close();
   }
+  if (took.elapsed > _kSlowRequest) {
+    noteRequestFailure(
+      File('${File(_recordsPath).parent.path}/$kSlowRequestLog'),
+      '${DateTime.now().toIso8601String()} ${request.method} '
+      '${request.uri.path} ${took.elapsedMilliseconds}ms',
+    );
+  }
+}
+
+/// Takes [items] one at a time, in the order they came: [handle] finishes
+/// one before the next is taken — unless it steps out of the line
+/// ([outOfLine]) to wait on something that is not the line's.
+Future<void> inLine<T>(
+  Stream<T> items,
+  Future<void> Function(T item) handle,
+) async {
+  await for (final item in items) {
+    final out = Completer<void>();
+    await Future.any([
+      runZoned(() => handle(item), zoneValues: {_stepOut: out}),
+      out.future,
+    ]);
+  }
+}
+
+final _stepOut = Object();
+
+/// [slow], waited on out of the line ([inLine]): the items behind it are
+/// taken meanwhile. 🧪10-19: right after a rebuild the first page waited
+/// 4.4s on the first `git` of thirty-one checkouts, and every submit and
+/// every session's gate stood behind it — 2.9s for an answer that takes 2ms.
+/// ⚠️Only for a wait that writes no record after it: what follows runs
+/// between the line's own awaits.
+Future<T> outOfLine<T>(Future<T> slow) {
+  final out = Zone.current[_stepOut] as Completer<void>?;
+  if (out != null && !out.isCompleted) out.complete();
+  return slow;
 }
 
 /// Past this a request leaves a line in [kSlowRequestLog]. Every request
@@ -839,7 +870,7 @@ Future<void> _handle(HttpRequest req) async {
       case '/purge':
         _purge('${body['id']}');
       case '/refresh':
-        await _ghStale.force();
+        await outOfLine(_ghStale.force());
       case '/shot':
         _saveShot(body);
       default:
@@ -1324,10 +1355,11 @@ class _Stale<T> {
   bool _busy = false;
 
   /// Only the FIRST callers of all ever wait — on one fetch, which [main]
-  /// starts before the first request comes.
+  /// starts before the first request comes, and out of the line
+  /// ([outOfLine]).
   Future<T> get() async {
     final held = _value;
-    if (held == null) return _store(await (_first ??= _fetch()));
+    if (held == null) return _store(await outOfLine(_first ??= _fetch()));
     if (DateTime.now().difference(_at).inSeconds >= _ghCacheSeconds) _refresh();
     return held;
   }

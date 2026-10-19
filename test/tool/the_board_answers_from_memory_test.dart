@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/board_model.dart';
+import '../../tool/board_server.dart' show inLine, outOfLine;
 import '../helpers/temp_dir.dart';
 
 /// 🚨★★★THE BOARD IS READ ON FROM WHERE IT STOPPED, NOT AGAIN FROM THE TOP
@@ -288,6 +290,40 @@ void main() {
     });
   });
 
+  group('the line', () {
+    Future<List<int>> twoBehindASlowOne(
+        Future<void> Function(Future<void> slow) firstWaits) async {
+      final items = StreamController<int>();
+      final slow = Completer<void>();
+      final done = <int>[];
+      final line = inLine(items.stream, (int n) async {
+        if (n == 1) await firstWaits(slow.future);
+        done.add(n);
+      });
+      items
+        ..add(1)
+        ..add(2);
+      await pumpEventQueue();
+      final whileSlow = [...done];
+      slow.complete();
+      await pumpEventQueue();
+      expect(done, unorderedEquals([1, 2]));
+      await items.close();
+      await line;
+      return whileSlow;
+    }
+
+    test('takes one at a time — the next waits for the one before', () async {
+      expect(await twoBehindASlowOne((slow) => slow), isEmpty);
+    });
+
+    test('🚨a wait out of the line holds no one behind it', () async {
+      expect(await twoBehindASlowOne(outOfLine), [2],
+          reason: 'right after a rebuild the first page waits seconds on '
+              'git, and a submit or a gate behind it must not');
+    });
+  });
+
   test('🚨the server runs no process and reads no file whole inside a '
       'request — every request waits for the ones before it', () {
     final server = File('tool/board_server.dart').readAsStringSync();
@@ -299,6 +335,10 @@ void main() {
     expect(server, contains('.keepOpen()'),
         reason: 'and through a handle kept open: opening the file just after '
             'a write cost 16~35ms');
+    for (final wait in ['outOfLine(_first', 'outOfLine(_ghStale.force()']) {
+      expect(server, contains(wait),
+          reason: 'gh and git are waited on out of the line');
+    }
     final model = File('tool/board_model.dart').readAsStringSync();
     expect('readAsLinesSync('.allMatches(model), hasLength(1),
         reason: 'one whole read of the records: the rewrite (`/purge`)');
