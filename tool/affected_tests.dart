@@ -489,19 +489,26 @@ Future<int> _runTests(
   final neverRan = <int>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
-  // machine-Q1): the batches run in this run's turn, each at the suites the
-  // line gives it — ten alone, five beside another, fewer when asked.
-  await inTurn('affected_tests', say: _report, asked: concurrency, (
-    suites,
+  // machine-Q1 · Q3): this run keeps one place in it, and every batch takes
+  // the suites the line gives it then — ten alone, five beside another long
+  // run, its files when it names two or fewer, fewer when asked.
+  await standInLine('affected_tests', say: _report, asked: concurrency, (
+    turn,
   ) async {
     for (var i = 0; i < batches.length; i++) {
       if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
       final report = File('${reports.path}/batch$i.json');
-      final result = await _flutterTest(
-        batches[i],
-        concurrency: suites,
-        report: report.path,
-      );
+      final suites = await turn.take(files: filesNamed(batches[i]));
+      final _BatchResult result;
+      try {
+        result = await _flutterTest(
+          batches[i],
+          concurrency: suites,
+          report: report.path,
+        );
+      } finally {
+        turn.putDown();
+      }
       _recordTimes(report);
       skipped += result.skipped;
       if (result.exitCode != 0) {
