@@ -378,6 +378,37 @@ void main() {
       expect(first.existsSync(), isFalse);
     });
 
+    test('🚨the line moved while the machine was measured: it reads the line '
+        'again under the lock before it starts', () async {
+      final events = <String>[];
+      File? took;
+      var looks = 0;
+      await inTurn(
+        'a run',
+        (suites) async => events.add('ran at $suites'),
+        line: line,
+        room: () async {
+          events.add('room measured');
+          // Another run took all ten while this one measured.
+          took ??= runningBefore(1, 10);
+          return true;
+        },
+        say: (_) => events.add('waits'),
+        lookAgain: Duration.zero,
+        ended: (file) {
+          if (nameOf(file) != nameOf(took!)) return false;
+          looks++;
+          final gone = looks == 3;
+          if (gone) events.add('given back');
+          return gone;
+        },
+      );
+      expect(events, [
+        'room measured', 'waits', 'given back', //
+        'room measured', 'ran at 10',
+      ]);
+    });
+
     test('at its turn with no room it asks again, and runs once there is '
         'room', () async {
       final events = <String>[];
@@ -413,6 +444,7 @@ void main() {
     test('a run of many batches keeps its place, says what each holds, and '
         'is decided afresh at every batch', () async {
       late File behind;
+      Standing? whileWaiting;
       final seen = await standInLine(
         'a run',
         (turn) async {
@@ -433,9 +465,15 @@ void main() {
           );
         },
         line: line,
-        room: () async => true,
+        room: () async {
+          // What the rest of the line reads of a run deciding its batch.
+          whileWaiting ??= standingOf(line, (tickets()..sort()).first);
+          return true;
+        },
         ended: (_) => false,
       );
+      expect(whileWaiting!.suites, isNull);
+      expect(whileWaiting!.files, 40);
       expect(seen.$1, 10);
       expect(seen.$2.suites, 10);
       expect(seen.$2.files, 40);
