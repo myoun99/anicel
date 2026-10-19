@@ -1059,7 +1059,7 @@ void main() {
       controller.loopMode = PlaybackLoopMode.loop;
       controller.play(scope: PlaybackScope.activeCut, startGlobalFrame: 8);
       transport.clockStatus(); // the clock's first look starts the device
-      expect(await _waitFor(() => !device.isPlaying), isTrue);
+      expect(await pollUntil(() => !device.isPlaying), isTrue);
 
       final status = transport.clockStatus(
         frameTime: shownIn(device, const Duration(milliseconds: 300)),
