@@ -50,6 +50,9 @@ const kEveryTestReadsUnder = ['assets/', 'shaders/', 'packages/'];
 
 const kTestConfig = 'test/flutter_test_config.dart';
 
+/// The board card the flaky files are put on.
+const kFlakyCard = 'flaky-tests';
+
 /// The records in [machineCacheFolder]: the green files by their keys, and
 /// the flaky files by their own ids.
 File? greenRecord(Map<String, String> environment) =>
@@ -276,6 +279,21 @@ Map<String, String> greensAfter(
   return after;
 }
 
+/// Whether a batch that went red holds the verdict back: unless its report
+/// said what every file in it did ([runs]) and every red one is [forgiven]
+/// — flaky in this run, or quarantined.
+bool holdsVerdictBack(
+  List<SuiteRun> runs,
+  bool Function(String file) forgiven,
+) {
+  if (runs.isEmpty || runs.any((run) => run.green == null)) return true;
+  final reds = [
+    for (final run in runs)
+      if (run.green == false) run.path,
+  ];
+  return reds.isEmpty || !reds.every(forgiven);
+}
+
 /// Whether [file] is quarantined in the [flaky] record: kept there with
 /// its own id, and not changed since — 🗣️「고칠 때까지」, and a fix to a
 /// flaky test is a change to it.
@@ -284,3 +302,70 @@ bool quarantined(
   Map<String, String> flaky,
   Map<String, String> ids,
 ) => flaky[file] != null && flaky[file] == ids[file];
+
+/// This machine's records for the checkout at [root], keyed as the
+/// checkout is now.
+class ResultCache {
+  ResultCache._(this.greens, this.flaky, this.ids, this.inputs, this._shared);
+
+  /// The cache for the checkout at [root] whose Dart files import each
+  /// other as [imports] — or null when no key can be made: no machine
+  /// folder, git that cannot say, or Flutter or the engine unread.
+  static ResultCache? open(
+    String root,
+    Map<String, String> environment,
+    Map<String, Set<String>> imports,
+  ) {
+    final greens = greenRecord(environment);
+    final flaky = flakyRecord(environment);
+    final outside = outsideInputs(root, environment);
+    if (greens == null || flaky == null || outside == null) return null;
+    final ids = contentIds(root);
+    if (ids == null) return null;
+    final inputs = Inputs(
+      imports: imports,
+      files: ids.keys,
+      read: (path) => File('$root/$path').readAsStringSync(),
+    );
+    final every = keyOf(inputs.everyTest, ids, outside: '');
+    return ResultCache._(greens, flaky, ids, inputs, '$outside\n$every');
+  }
+
+  final File greens;
+  final File flaky;
+  final Map<String, String> ids;
+  final Inputs inputs;
+  final String _shared;
+  final _keys = <String, String>{};
+
+  String keyFor(String test) => _keys.putIfAbsent(
+    test,
+    () => keyOf(inputs.of(test), ids, outside: _shared),
+  );
+
+  Map<String, String> _read(File record) {
+    try {
+      return record.existsSync()
+          ? readPairs(record.readAsStringSync())
+          : const {};
+    } on FileSystemException {
+      return const {};
+    }
+  }
+
+  /// The [files] green on this machine with the inputs they have now.
+  Set<String> stillGreenAmong(Iterable<String> files) =>
+      stillGreen(files, _read(greens), keyFor);
+
+  /// Lays what [runs] say over the green record ([greensAfter]).
+  void keep(List<SuiteRun> runs) =>
+      updatePairs(greens, (known) => greensAfter(known, runs, keyFor));
+
+  bool isQuarantined(String file) => quarantined(file, _read(flaky), ids);
+
+  /// Quarantines [files] as they are now.
+  void quarantine(Iterable<String> files) => updatePairs(flaky, (known) => {
+    ...known,
+    for (final file in files) file: ?ids[file],
+  });
+}

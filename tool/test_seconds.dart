@@ -143,10 +143,9 @@ List<SuiteRun> suiteRuns(String report, {required String root}) {
   ];
 }
 
-/// Each test file's time in a `json` report ([suiteRuns]).
-Map<String, int> fileTimes(String report, {required String root}) => {
-  for (final run in suiteRuns(report, root: root))
-    if (run.ms != null) run.path: run.ms!,
+/// Each test file's time among [runs] ([suiteRuns]).
+Map<String, int> timesOf(List<SuiteRun> runs) => {
+  for (final run in runs) run.path: ?run.ms,
 };
 
 /// [known] with [measured] laid over it: a file measured again keeps the

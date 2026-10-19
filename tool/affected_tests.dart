@@ -22,6 +22,12 @@
 //   bash tool/run.sh affected_tests --all      # the escape hatch
 //   bash tool/run.sh affected_tests --base HEAD~3
 //   bash tool/run.sh affected_tests --concurrency 4   # fewer than its turn gives
+//   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
+//
+// A file green on this machine with byte-for-byte the inputs it has now is
+// not run again, and a red file is run once more: green the second time,
+// it is flaky — quarantined until it changes, and on the board
+// (`test_results.dart`, 유저 tests-crowd-the-machine-Q4).
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -31,6 +37,7 @@ import 'dart:io';
 import 'import_graph.dart';
 import 'native_engine_provenance.dart';
 import 'test_queue.dart';
+import 'test_results.dart';
 import 'test_seconds.dart';
 
 /// Changing one of these means the graph cannot answer, so we do not ask it.
@@ -182,6 +189,7 @@ Future<void> main(List<String> args) async {
     stderr.writeln('--concurrency takes a whole number of suites, 1 or more.');
     exit(2);
   }
+  final useCache = !args.contains('--no-cache');
   _atIdle();
 
   final root = _repoRoot();
@@ -198,6 +206,8 @@ Future<void> main(List<String> args) async {
         const [],
         listOnly: listOnly,
         concurrency: concurrency,
+        cache: _openCache(),
+        useCache: useCache,
       ),
     );
   }
@@ -217,6 +227,8 @@ Future<void> main(List<String> args) async {
         const [],
         listOnly: listOnly,
         concurrency: concurrency,
+        cache: _openCache(),
+        useCache: useCache,
       ),
     );
   }
@@ -248,8 +260,26 @@ Future<void> main(List<String> args) async {
       longestFirst(present, known),
       listOnly: listOnly,
       concurrency: concurrency,
+      cache: _openCache(),
+      useCache: useCache,
     ),
   );
+}
+
+/// This machine's result records for this checkout ([ResultCache]), keyed
+/// through every import there is — `tool/` too, which the selection's graph
+/// leaves out: a tool test's result depends on what its tool imports.
+ResultCache? _openCache() {
+  final cache = ResultCache.open(
+    Directory.current.path,
+    Platform.environment,
+    buildImportGraph(roots: const ['lib', 'test', 'tool']),
+  );
+  if (cache == null) {
+    _report('no result record this time — the machine folder, git, Flutter '
+        "or the engine's stamp could not be read — so every file runs.");
+  }
+  return cache;
 }
 
 /// The file [machineCacheFolder] keeps the times in.
@@ -269,21 +299,28 @@ Map<String, int> _knownTimes() {
   }
 }
 
-/// Lays the times in a batch's [report] over the machine's record
-/// ([updatePairs]).
-void _recordTimes(File report) {
-  final file = _timesFile();
-  if (file == null || !report.existsSync()) return;
+/// What a batch's [report] says of each file ([suiteRuns]), with its times
+/// and greens laid over the machine's records ([updatePairs]).
+List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
+  if (!report.existsSync()) return const [];
+  final List<SuiteRun> runs;
   try {
-    final measured = fileTimes(
-      report.readAsStringSync(),
-      root: Directory.current.path,
-    );
-    if (measured.isEmpty) return;
-    updatePairs(file, (known) => merged(timesIn(known), measured));
+    runs = suiteRuns(report.readAsStringSync(), root: Directory.current.path);
   } on FileSystemException catch (e) {
-    _report('the times of this batch were not kept: ${e.message}');
+    _report('the report of this batch could not be read: ${e.message}');
+    return const [];
   }
+  final file = _timesFile();
+  final measured = timesOf(runs);
+  try {
+    if (file != null && measured.isNotEmpty) {
+      updatePairs(file, (known) => merged(timesIn(known), measured));
+    }
+    cache?.keep(runs);
+  } on FileSystemException catch (e) {
+    _report('what this batch said was not kept: ${e.message}');
+  }
+  return runs;
 }
 
 String? _flagValue(List<String> args, String name) {
@@ -436,12 +473,24 @@ Future<int> _runTests(
   List<String> files, {
   required bool listOnly,
   int? concurrency,
+  ResultCache? cache,
+  bool useCache = true,
 }) async {
+  final selected = useCache && cache != null
+      ? _withoutStillGreen(files, cache)
+      : files;
+  if (selected == null) {
+    _report(listOnly
+        ? 'nothing to run — every file was green with these inputs.'
+        : 'PASSED (no batch — every file was green with these inputs, '
+            'exit 0)');
+    return 0;
+  }
   // The collector-waiting pins go last and by themselves, a whole suite
   // included — see [runPlan].
   final plan = runPlan(
-    selected: files,
-    suite: files.isEmpty ? _suiteFiles() : const [],
+    selected: selected,
+    suite: selected.isEmpty ? _suiteFiles() : const [],
     read: (path) => File(path).readAsStringSync(),
     batches: _batches,
   );
@@ -476,10 +525,11 @@ Future<int> _runTests(
         'Each batch pays the resident compiler\'s cold start again.');
   }
 
-  var worst = 0;
   var skipped = 0;
-  final failed = <int>[];
+  final exits = <int, int>{};
   final neverRan = <int>[];
+  final runsOf = <int, List<SuiteRun>>{};
+  final flaky = <String>{};
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3): this run keeps one place in it, and every batch takes
@@ -488,26 +538,53 @@ Future<int> _runTests(
   await standInLine('affected_tests', say: _report, asked: concurrency, (
     turn,
   ) async {
-    for (var i = 0; i < batches.length; i++) {
-      if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-      final report = File('${reports.path}/batch$i.json');
-      final suites = await turn.take(files: filesNamed(batches[i]));
-      final _BatchResult result;
+    Future<_BatchResult> launch(List<String> batch, File report) async {
+      final suites = await turn.take(files: filesNamed(batch));
       try {
-        result = await _flutterTest(
-          batches[i],
+        return await _flutterTest(
+          batch,
           concurrency: suites,
           report: report.path,
         );
       } finally {
         turn.putDown();
       }
-      _recordTimes(report);
+    }
+
+    for (var i = 0; i < batches.length; i++) {
+      if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
+      final report = File('${reports.path}/batch$i.json');
+      final result = await launch(batches[i], report);
+      runsOf[i] = _recordBatch(report, cache);
       skipped += result.skipped;
       if (result.exitCode != 0) {
-        failed.add(i + 1);
+        exits[i] = result.exitCode;
         if (!result.ranTests) neverRan.add(i + 1);
-        if (worst == 0) worst = result.exitCode;
+      }
+    }
+
+    // 🗣️Q4 b: a red file runs once more with the same inputs; green the
+    // second time, it is flaky.
+    final reds = {
+      for (final runs in runsOf.values)
+        for (final run in runs)
+          if (run.green == false) run.path,
+    };
+    if (reds.isEmpty) return;
+    _report('${reds.length} red file(s) — running them once more, to tell a '
+        'flaky one from a real red.');
+    final again = runPlan(
+      selected: reds.toList()..sort(),
+      suite: const [],
+      read: (path) => File(path).readAsStringSync(),
+      batches: _batches,
+    );
+    final retried = [...again.crowd, if (again.alone.isNotEmpty) again.alone];
+    for (var i = 0; i < retried.length; i++) {
+      final report = File('${reports.path}/again$i.json');
+      await launch(retried[i], report);
+      for (final run in _recordBatch(report, cache)) {
+        if (run.green == true && reds.contains(run.path)) flaky.add(run.path);
       }
     }
   });
@@ -515,6 +592,27 @@ Future<int> _runTests(
     reports.deleteSync(recursive: true);
   } on FileSystemException {
     // A report still held open is the system temp folder's to clear.
+  }
+
+  if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
+  final held = <String>{};
+  bool forgiven(String file) {
+    if (flaky.contains(file)) return true;
+    final kept = cache?.isQuarantined(file) ?? false;
+    if (kept) held.add(file);
+    return kept;
+  }
+
+  // A batch that went red is forgiven only when the report said what every
+  // file in it did, and every red one was flaky or is quarantined.
+  final failed = [
+    for (final MapEntry(key: i, value: _) in exits.entries)
+      if (holdsVerdictBack(runsOf[i] ?? const [], forgiven)) i + 1,
+  ]..sort();
+  final worst = failed.isEmpty ? 0 : exits[failed.first - 1]!;
+  if (held.isNotEmpty) {
+    _report('⚠️quarantined, and red again — flaky before and unchanged '
+        'since, so it holds no verdict back: ${(held.toList()..sort()).join(', ')}');
   }
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
@@ -544,6 +642,66 @@ Future<int> _runTests(
   _reportSkips(skipped);
   if (engine != null) _report(engine);
   return worst;
+}
+
+/// [files] — the whole suite when empty — without those green on this
+/// machine with the inputs they have now ([ResultCache.stillGreenAmong]),
+/// or null when none is left. The whole suite stays one command that names
+/// no files while none of it is green.
+List<String>? _withoutStillGreen(List<String> files, ResultCache cache) {
+  final asked = files.isEmpty ? _suiteFiles() : files;
+  final green = cache.stillGreenAmong(asked);
+  if (green.isEmpty) return files;
+  _report('${green.length} of ${asked.length} file(s) were green on this '
+      'machine with the inputs they have now — not run again (--no-cache '
+      'runs them).');
+  final left = [
+    for (final file in asked)
+      if (!green.contains(file)) file,
+  ];
+  if (left.isEmpty) return null;
+  return files.isEmpty ? longestFirst(left, _knownTimes()) : left;
+}
+
+/// Quarantines the [flaky] files on this machine and puts them on the
+/// board — 🗣️Q4 b 「「불안정」으로 표시해 따로 모으고 보드에 올린다」.
+void _quarantine(List<String> flaky, ResultCache? cache) {
+  _report('⚠️FLAKY — red, then green with the same inputs: '
+      '${flaky.join(', ')}. Quarantined on this machine until the file '
+      'changes: a red from it holds no verdict back.');
+  try {
+    cache?.quarantine(flaky);
+  } on FileSystemException catch (e) {
+    _report('the quarantine was not kept: ${e.message}');
+  }
+  final line = jsonEncode({
+    'id': kFlakyCard,
+    'note': '⚠️**불안정 — 같은 입력으로 빨강 → 초록**(affected_tests, 기계 '
+        '`${Platform.localHostname}`): '
+        '${flaky.map((file) => '`$file`').join(' · ')}. 그 파일이 바뀔 '
+        '때까지 이 기계에서 격리 — 빨강이 판정을 안 막는다.',
+  });
+  final board = Platform.environment['ANICEL_BOARD'];
+  if (board == null || board.isEmpty) {
+    _report('no board named here — record it with board_say: $line');
+    return;
+  }
+  final lines = File('${Directory.systemTemp.path}/affected-flaky-$pid.jsonl')
+    ..writeAsStringSync('$line\n');
+  try {
+    final said = Process.runSync('bash', [
+      'tool/run.sh', 'board_say', board, lines.path, //
+    ]);
+    if (said.exitCode != 0) {
+      _report('the board did not take it — record it with board_say: $line');
+    }
+  } finally {
+    try {
+      lines.deleteSync();
+    } on FileSystemException {
+      // The temp folder's to clear.
+    }
+  }
 }
 
 /// What to say when the engine the suites load was not built from the C in

@@ -66,7 +66,9 @@ void main() {
         event({'type': 'testDone', 'testID': 2, 'time': 4100}),
         'not json at all',
       ].join('\n');
-      expect(fileTimes(report, root: root), {'test/ui/a_test.dart': 4000});
+      expect(timesOf(suiteRuns(report, root: root)), {
+        'test/ui/a_test.dart': 4000,
+      });
     });
 
     test("a root spelled in another case is the same root — Windows' drive "
@@ -84,7 +86,7 @@ void main() {
         }),
         event({'type': 'testDone', 'testID': 1, 'time': 30}),
       ].join('\n');
-      expect(fileTimes(report, root: r'c:\repo\lane'), {
+      expect(timesOf(suiteRuns(report, root: r'c:\repo\lane')), {
         'test/a_test.dart': 20,
       });
     });
@@ -95,7 +97,7 @@ void main() {
         'suite': {'id': 0, 'path': r'C:\repo\lane\test\b_test.dart'},
         'time': 5,
       });
-      expect(fileTimes(report, root: root), isEmpty);
+      expect(timesOf(suiteRuns(report, root: root)), isEmpty);
     });
   });
 

@@ -98,7 +98,9 @@ void main() {
         done(1, 25),
         ended,
       ].join('\n');
-      expect(fileTimes(report, root: root), {'test/a_test.dart': 15});
+      expect(timesOf(suiteRuns(report, root: root)), {
+        'test/a_test.dart': 15,
+      });
     });
   });
 
@@ -234,6 +236,39 @@ void main() {
         ),
         {'test/a_test.dart': 'k1', 'test/c_test.dart': 'k3'},
       );
+    });
+
+    test('a red batch is let through only when every file in it was said '
+        'and every red one is forgiven', () {
+      SuiteRun said(String path, bool? green) =>
+          (path: path, ms: 1, green: green);
+      bool forgiven(String file) => file == 'test/flaky_test.dart';
+      expect(
+        holdsVerdictBack([
+          said('test/a_test.dart', true),
+          said('test/flaky_test.dart', false),
+        ], forgiven),
+        isFalse,
+      );
+      expect(
+        holdsVerdictBack([
+          said('test/flaky_test.dart', false),
+          said('test/real_test.dart', false),
+        ], forgiven),
+        isTrue,
+      );
+      // ⛔A file the report could not say, a report with nothing in it, or
+      // a red batch with no red file in it holds it back.
+      expect(
+        holdsVerdictBack([
+          said('test/flaky_test.dart', false),
+          said('test/killed_test.dart', null),
+        ], forgiven),
+        isTrue,
+      );
+      expect(holdsVerdictBack(const [], forgiven), isTrue);
+      expect(holdsVerdictBack([said('test/a_test.dart', true)], forgiven),
+          isTrue);
     });
 
     test('a flaky file is quarantined until it changes', () {
