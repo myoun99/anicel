@@ -219,17 +219,19 @@ void main() {
     testWidgets('a block the chip takes whole is round at both ends ($axis)', (
       tester,
     ) async {
+      // One frame of 8, short of the chip's 16: the chip stops at the
+      // block's end, its name narrowed into it.
       final shot = await shoot(
         tester,
         axis,
         timelineRowSeLabelOverlays(
-          layer: named(0, 2),
+          layer: named(0, 1),
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
           axis: axis,
         ),
       );
-      final paper = paperOf(axis, 0, 2);
+      final paper = paperOf(axis, 0, 1);
       expect(shot.alphaAt(paper.center), greaterThan(0), reason: '⛔전제');
       expect(shot.painted, paper, reason: 'the chip is the whole block');
       expect(shot.cornersOf(paper), (0, 0, 0, 0));

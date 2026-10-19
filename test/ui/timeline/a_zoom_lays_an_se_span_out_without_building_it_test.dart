@@ -156,6 +156,37 @@ void main() {
     expect(rebuilt.where((type) => '$type' == '_SeNameBox'), isEmpty);
   });
 
+  testWidgets('the block before it moved away: the room is asked again, and '
+      'the chip goes out', (tester) async {
+    Widget at(int framesFreeBefore) => MaterialApp(
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 40),
+            child: SizedBox(
+              width: 100,
+              height: row,
+              child: SeSpanVisual(
+                axis: Axis.horizontal,
+                frames: 10,
+                dialogue: 'あい',
+                seName: 'ドア',
+                framesFreeBefore: framesFreeBefore,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final chip = find.bySemanticsLabel('SE name ドア');
+    await tester.pumpWidget(at(0));
+    expect(tester.getRect(chip).left, closeTo(40, 1e-6), reason: '⛔premise');
+
+    await tester.pumpWidget(at(2));
+    expect(tester.getRect(chip).right, closeTo(40, 1e-6));
+  });
+
   testWidgets('with no room before its block, the chip lies over the words\' '
       'head and paints over them', (tester) async {
     await mount(tester, width: 100, frames: 10, words: 'あい');
