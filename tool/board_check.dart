@@ -21,6 +21,13 @@ import 'board_model.dart';
 /// style round tags are not PRs.
 final _prInProse = RegExp(r'#\d{4}\b');
 
+// What the gate reads off a card's whole story, kept on the card. A card no
+// write reached is the same object from one reading to the next
+// ([BoardRecords]), so the gate, asked at the end of every session's turn,
+// reads only the stories that moved (10-19: these two were 24 of its 40ms).
+final _prInItsProse = Expando<bool>();
+final _refsToNothing = Expando<List<String>>();
+
 /// Words that describe a CHECK rather than work. Used on `rest` only.
 final _checkWords = RegExp('실기|재확인|확인한다|확인해|검증|눌러 ?본|봐야');
 
@@ -259,11 +266,14 @@ Iterable<String> _pointersToNothing(
   final dangling = <String>[];
   for (final c in cards) {
     if (acks.contains(c.id)) continue;
-    final stamps = {for (final l in c.log) l.ts};
-    for (final l in c.log) {
-      if (l.ref.isEmpty || stamps.contains(l.ref)) continue;
-      dangling.add('${c.id}: ref→${l.ref}');
-    }
+    dangling.addAll(_refsToNothing[c] ??= () {
+      final stamps = {for (final l in c.log) l.ts};
+      return [
+        for (final l in c.log)
+          if (l.ref.isNotEmpty && !stamps.contains(l.ref))
+            '${c.id}: ref→${l.ref}',
+      ];
+    }());
     if (cardAsks(c)) {
       final (of, _) = asksOf(c);
       if (of.isNotEmpty && !byId.containsKey(of)) {
@@ -592,8 +602,8 @@ Iterable<String> _workThatShipped(
       }
       if (!_saysSomething(c)) bare.add(c.id);
     } else if (_recent(c, since) &&
-        c.log.any((l) =>
-            !l.byUser && l.pr == null && _prInProse.hasMatch(l.text))) {
+        (_prInItsProse[c] ??= c.log.any((l) =>
+            !l.byUser && l.pr == null && _prInProse.hasMatch(l.text)))) {
       // 🚨★★★THE STORY, NOT THE HEAD — the last piece of `board-one-stream`
       // (「note·said·title 은 아직 마지막값이 이기는 필드다 — 항목으로 접는
       // 것이 이 개편의 마지막 조각이다」).

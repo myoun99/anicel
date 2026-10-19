@@ -133,6 +133,16 @@ void main() {
       line('L', {'kind': 'law', 'tag': '보드', 'care': 'read first', 'ts': '2026-10-01T10:00:00'}),
       line('T', {'at': '완료', 'ts': '2026-10-01T11:00:00'}),
       line('C-2', {'kind': 'check', 'under': 7, 'how': 'after the end', 'ts': '2026-10-01T12:00:00'}),
+      // The roads move: a question to another card, a PR to a later claimant,
+      // a check to another PR — each leaves a card that must drop what it held.
+      line('Q-move', {'kind': 'decision', 'of': 'T', 'title': 'moves', 'options': [{'label': 'x'}], 'ts': '2026-10-01T13:00:00'}),
+      line('Q-move', {'of': 'U', 'ts': '2026-10-01T14:00:00'}),
+      line('U', {'pr': 9, 'note': 'U shipped 9', 'ts': '2026-10-01T15:00:00'}),
+      line('C-3', {'kind': 'check', 'under': 9, 'how': 'see 9', 'ts': '2026-10-01T16:00:00'}),
+      line('W', {'kind': 'item', 'title': 'later claimant', 'pr': 9, 'note': 'also 9', 'at': '할 일', 'ts': '2026-10-01T17:00:00'}),
+      line('C-3', {'under': 7, 'ts': '2026-10-01T18:00:00'}),
+      line('U', {'note': 'from the future', 'ts': '2026-10-05T00:00:00'}),
+      line('W', {'at': '하는 중', 'ts': '2026-10-01T19:00:00'}),
     ];
 
     String canon(List<BoardCard> cards) => jsonEncode([
@@ -164,21 +174,48 @@ void main() {
         final cards = readBoard(grown, now: now);
         expect(canon(cards), canon(readBoard(whole, now: now)),
             reason: 'after line $n');
+        String? into(String id) =>
+            cards.firstWhere((c) => c.id == id).foldedInto;
+        // ⛔premises: the story takes every road there is, and moves them.
         if (n == 8) {
-          expect(cards.firstWhere((c) => c.id == 'C-1').foldedInto, 'T',
-              reason: '⛔premise: the story folds a check into its host');
-          expect(cards.firstWhere((c) => c.id == 'T-Q1').foldedInto, 'T',
-              reason: '⛔premise: and a question into the card it asks for');
+          expect(into('C-1'), 'T', reason: 'a check folds into its host');
+          expect(into('T-Q1'), 'T', reason: 'a question into its card');
         }
+        if (n == 15) expect(into('Q-move'), 'U', reason: 'a question moved');
+        if (n == 17) expect(into('C-3'), 'U');
+        if (n == 18) expect(into('C-3'), 'W', reason: 'a later claimant');
       }
       expect(
           readBoard(grown, now: now)
               .where((c) => c.kind == 'check')
               .map((c) => c.foldedInto),
-          [null, null],
+          [null, null, null],
           reason: '⛔premise: and stands the checks alone once the host '
               'ended — the passes run again on the lines, not on the last '
               'reading');
+    });
+
+    test('🚨a write folds again only the cards it reaches — the rest are the '
+        'very objects of the reading before', () {
+      final now = DateTime.utc(2026, 10, 2);
+      final f = File('${dir.path}/board.jsonl')
+        ..writeAsStringSync(story.map((l) => '$l\n').join());
+      Map<String, BoardCard> read() =>
+          {for (final c in readBoard(f, now: now)) c.id: c};
+      final before = read();
+      f.writeAsStringSync(
+          '${line('T-Q1', {'note': 'more', 'ts': '2026-10-01T20:00:00'})}\n',
+          mode: FileMode.append);
+      final after = read();
+      expect(after['T-Q1'], isNot(same(before['T-Q1'])),
+          reason: 'the card written to');
+      expect(after['T'], isNot(same(before['T'])),
+          reason: 'and the card its question folds into');
+      expect(after['C-1'], isNot(same(before['C-1'])),
+          reason: 'and the checks under that card\'s PR');
+      for (final id in ['L', 'U', 'W', 'Q-move']) {
+        expect(after[id], same(before[id]), reason: '🚨and nothing else: $id');
+      }
     });
 
     test('🚨the copy the passes work on carries every field of a card — read '
@@ -209,6 +246,48 @@ void main() {
     });
   });
 
+  group('the clock moves the board with no line written', () {
+    test('a stamp from the future joins the story when its time comes', () {
+      final f = File('${dir.path}/board.jsonl')
+        ..writeAsStringSync([
+          line('A', {'at': '백로그', 'ts': '2026-10-01T10:00:00'}),
+          line('A', {'at': '검증', 'ts': '2026-10-01T12:00:00'}),
+          line('A', {'at': '할 일', 'ts': '2026-10-01T11:00:00'}),
+        ].map((l) => '$l\n').join());
+      // Before noon the 검증 line has not happened: it keeps its place in the
+      // file, and 할 일 is the last word.
+      expect(statusOf(readBoard(f, now: DateTime(2026, 10, 1, 11, 30)).single),
+          BoardStatus.todo);
+      expect(statusOf(readBoard(f, now: DateTime(2026, 10, 1, 12, 30)).single),
+          BoardStatus.verify);
+      expect(statusOf(readBoard(f, now: DateTime(2026, 10, 1, 11, 30)).single),
+          BoardStatus.todo, reason: 'and leaves it again on a clock set back');
+    });
+
+    test('🚨a claim lapses a day after its last word', () async {
+      final wall = DateTime.now();
+      final f = File('${dir.path}/board.jsonl')
+        ..writeAsStringSync([
+          line('A', {
+            'at': '할 일',
+            'ts': wall.subtract(const Duration(days: 2)).toIso8601String(),
+          }),
+          line('A', {
+            'at': '하는 중',
+            'ts': wall
+                .subtract(kClaimLasts)
+                .add(const Duration(seconds: 3))
+                .toIso8601String(),
+          }),
+        ].map((l) => '$l\n').join());
+      // ⚠️`state`, not [statusOf]: the status asks the clock itself each time;
+      // the folded place is what a reading keeps.
+      expect(readBoard(f, now: DateTime.now()).single.state, 'wip');
+      await Future<void>.delayed(const Duration(milliseconds: 3500));
+      expect(readBoard(f, now: DateTime.now()).single.state, 'open');
+    });
+  });
+
   test('🚨the server runs no process and reads no file whole inside a '
       'request — every request waits for the ones before it', () {
     final server = File('tool/board_server.dart').readAsStringSync();
@@ -217,6 +296,9 @@ void main() {
     expect(server, isNot(contains('readAsLinesSync(')),
         reason: 'the records are read through BoardRecords, on from where '
             'the last request stopped');
+    expect(server, contains('.keepOpen()'),
+        reason: 'and through a handle kept open: opening the file just after '
+            'a write cost 16~35ms');
     final model = File('tool/board_model.dart').readAsStringSync();
     expect('readAsLinesSync('.allMatches(model), hasLength(1),
         reason: 'one whole read of the records: the rewrite (`/purge`)');

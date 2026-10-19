@@ -552,14 +552,29 @@ class BoardRecords {
   /// where it is.
   List<String> textOf(bool Function(BoardLine line) wanted) {
     _catchUp();
+    return _reading((file) => [
+          for (final line in _fold.lines)
+            if (wanted(line))
+              utf8.decode((file..setPositionSync(line.start))
+                  .readSync(line.length)).trim(),
+        ]);
+  }
+
+  /// Keeps the file open between readings — for the process that reads it
+  /// all its life, the board server. 🧪10-19: opening the 18.8MB file just
+  /// after a write took 16~35ms, the OS looking over what had changed, and
+  /// every write is followed by a reading; through a handle already open it
+  /// is under a millisecond. ⚠️Not for a test's file: Windows will not
+  /// delete a folder while a handle in it is open.
+  void keepOpen() => _held ??= _file.openSync();
+  RandomAccessFile? _held;
+
+  T _reading<T>(T Function(RandomAccessFile file) read) {
+    final held = _held;
+    if (held != null) return read(held);
     final file = _file.openSync();
     try {
-      return [
-        for (final line in _fold.lines)
-          if (wanted(line))
-            utf8.decode((file..setPositionSync(line.start))
-                .readSync(line.length)).trim(),
-      ];
+      return read(file);
     } finally {
       file.closeSync();
     }
@@ -583,8 +598,7 @@ class BoardRecords {
 
   void _catchUp() {
     final size = _file.lengthSync();
-    final file = _file.openSync();
-    try {
+    _reading((file) {
       if (size < _read ||
           (_openEnded && size > _read) ||
           !_onlyAppended(file)) {
@@ -593,9 +607,7 @@ class BoardRecords {
       if (size > _read) {
         _foldBytes((file..setPositionSync(_read)).readSync(size - _read));
       }
-    } finally {
-      file.closeSync();
-    }
+    });
   }
 
   bool _onlyAppended(RandomAccessFile file) {
@@ -726,6 +738,7 @@ class _Fold {
       return;
     }
     final e = byId.putIfAbsent(id, () => BoardCard(id, kind));
+    _touch(e);
     if (kind.isNotEmpty) e.kind = kind;
     final ts = '${json['ts'] ?? ''}';
     // 🚨A 읽음 IS A MARK ON THE LETTER IT NAMES, and nothing of the card's:
@@ -946,13 +959,154 @@ class _Fold {
         return option;
       }).toList();
     }
+    _tie(e);
+  }
+
+  // 🚨★★★WHICH CARDS FOLD INTO WHICH — the only roads by which one card's
+  // lines reach another card's reading: a question into the card it asks for
+  // ([foldQuestionsIntoCards]), a check into the card that claimed its PR
+  // ([foldChecksIntoCards]). A set of cards no road leaves reads the same
+  // whether the passes run over it alone or over the whole board, so after a
+  // write only the cards it reached are folded again (유저 10-19: 「남은
+  // 비용도 개선가능한가?」 — a fold of all 2,469 cards was 40ms a write).
+  final _asking = <String, Set<String>>{};
+  final _claiming = <int, Set<String>>{};
+  final _checking = <int, Set<String>>{};
+  final _ties = <String, _Ties>{};
+
+  /// The cards as the board last showed them, and which of them a line has
+  /// touched since.
+  final _shown = <String, BoardCard>{};
+  final _dirty = <String>{};
+
+  /// When each shown card could read differently with no line written: the
+  /// first of its stamps still in the future of the clock it was read at
+  /// ([sortByTime]), and the first claim of its to lapse ([wentQuiet]).
+  final _wakes = <String, ({DateTime clock, DateTime wall})>{};
+  DateTime? _clock;
+
+  _Ties _tiesOf(BoardCard e) {
+    final asks = cardAsks(e) ? asksOf(e).$1 : '';
+    return (
+      asks: asks.isEmpty ? null : asks,
+      under: e.kind == 'check' ? e.under : null,
+      prs: List.unmodifiable(e.prs),
+    );
+  }
+
+  /// Every card one road away from card [id].
+  Set<String> _tiedTo(String id) {
+    final ties = _ties[id];
+    return {
+      ...?_asking[id],
+      ?ties?.asks,
+      if (ties?.under case final under?) ...?_claiming[under],
+      for (final n in ties?.prs ?? const <int>[]) ...[
+        ...?_claiming[n],
+        ...?_checking[n],
+      ],
+    };
+  }
+
+  /// A line is about to change card [e]: it and every card it reaches now
+  /// are folded again — the roads it is about to stop taking among them.
+  void _touch(BoardCard e) {
+    if (_shown.isEmpty) return;
+    _dirty
+      ..add(e.id)
+      ..addAll(_tiedTo(e.id));
+  }
+
+  /// The roads card [e] takes after its line.
+  void _tie(BoardCard e) {
+    final was = _ties[e.id];
+    final now = _tiesOf(e);
+    if (was != null &&
+        was.asks == now.asks &&
+        was.under == now.under &&
+        _sameList(was.prs, now.prs)) {
+      return;
+    }
+    void file(_Ties? ties, bool keep) {
+      if (ties == null) return;
+      void at<K>(Map<K, Set<String>> map, K key) =>
+          keep ? (map[key] ??= {}).add(e.id) : map[key]?.remove(e.id);
+      if (ties.asks case final asks?) at(_asking, asks);
+      if (ties.under case final under?) at(_checking, under);
+      for (final n in ties.prs) {
+        at(_claiming, n);
+      }
+    }
+
+    file(was, false);
+    file(now, true);
+    _ties[e.id] = now;
   }
 
   /// The cards as the board shows them: the lines' cards, folded into one
-  /// another. ⚠️On COPIES — the lines' cards are read on after the next write
-  /// ([BoardRecords]), and these passes add to the cards they fold into.
+  /// another. ⚠️The SAME objects for the cards nothing reached — a reader may
+  /// keep what it worked out per card.
   List<BoardCard> cards(DateTime? now) {
-    final byId = {for (final e in this.byId.values) e.id: e.copy()};
+    final clock = now ?? DateTime.now();
+    final wall = DateTime.now();
+    final was = _clock;
+    final again = _shown.isEmpty || was == null || clock.isBefore(was)
+        ? byId.keys.toSet()
+        : _reached({
+            ..._dirty,
+            for (final MapEntry(key: id, value: wake) in _wakes.entries)
+              if (!wake.clock.isAfter(clock) || !wake.wall.isAfter(wall)) id,
+          });
+    if (again.isNotEmpty) {
+      final copies = {
+        for (final e in byId.values)
+          if (again.contains(e.id)) e.id: e.copy(),
+      };
+      _foldTogether(copies, now);
+      _shown.addAll(copies);
+      for (final e in copies.values) {
+        _wakes[e.id] = _wakeOf(e, clock, wall);
+      }
+    }
+    _dirty.clear();
+    _clock = clock;
+    return [for (final id in byId.keys) _shown[id]!];
+  }
+
+  /// [seed] and every card a road leads to from any of them.
+  Set<String> _reached(Set<String> seed) {
+    final out = <String>{};
+    final open = [...seed];
+    while (open.isNotEmpty) {
+      final id = open.removeLast();
+      if (!out.add(id)) continue;
+      open.addAll(_tiedTo(id).where((t) => !out.contains(t)));
+    }
+    return out;
+  }
+
+  static final _never = DateTime.utc(9999);
+
+  /// When [e], read at [clock] and [wall], could first read differently with
+  /// no line written. ⚠️Every entry counts, not only the one each rule looks
+  /// at: early is only a fold too many, late is a wrong board.
+  static ({DateTime clock, DateTime wall}) _wakeOf(
+      BoardCard e, DateTime clock, DateTime wall) {
+    var future = _never;
+    var lapse = _never;
+    for (final entry in e.log) {
+      final t = entry.time;
+      if (t == null) continue;
+      if (t.isAfter(clock) && t.isBefore(future)) future = t;
+      final ends = t.add(kClaimLasts);
+      if (!ends.isBefore(wall) && ends.isBefore(lapse)) lapse = ends;
+    }
+    return (clock: future, wall: lapse);
+  }
+
+  /// The passes that fold [byId]'s cards into one another — on copies, which
+  /// they change.
+  static void _foldTogether(Map<String, BoardCard> byId, DateTime? now) {
     // ⚠️Drop the bare 「PR #N」 placeholder once a real 구현 for that same PR has
     // arrived. A line that claims a PR and says nothing still deserves a stage —
     // it happened — but the moment someone writes what it DID, keeping both
@@ -997,8 +1151,18 @@ class _Fold {
     for (final e in byId.values) {
       placeByStory(e);
     }
-    return byId.values.toList();
   }
+}
+
+/// The roads one card takes to others — see [_Fold._asking].
+typedef _Ties = ({String? asks, int? under, List<int> prs});
+
+bool _sameList(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
 }
 
 /// 🚨★★★THE SECTION A STAGE NAME PUTS THE CARD IN — the one place a written

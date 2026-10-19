@@ -307,8 +307,10 @@ Future<void> main(List<String> args) async {
   stdout.writeln('records:   $_recordsPath');
   stdout.writeln('shots:     $_shotsDir');
 
-  // What the first page needs, read before anyone asks: the records, and the
-  // two slow answers ([_Stale]) on their way.
+  // What the first page needs, read before anyone asks: the records — kept
+  // open, this process reads them all its life ([BoardRecords.keepOpen]) —
+  // and the two slow answers ([_Stale]) on their way.
+  BoardRecords.of(File(_recordsPath)).keepOpen();
   _board();
   unawaited(_prs());
   unawaited(_checkouts());
@@ -834,7 +836,7 @@ Future<void> _handle(HttpRequest req) async {
     req.response
       ..headers.contentType = ContentType.json
       ..headers.set('Cache-Control', 'no-store')
-      ..write(jsonEncode(data));
+      ..write(_listText(data));
     await req.response.close();
     return;
   }
@@ -1772,22 +1774,23 @@ Future<Map<String, Object?>> _boardJson() async {
   final entries = _board();
   final gh = await _prs();
   final gits = await _checkouts();
+  // One clock for the whole list, to the minute — see [_rowOf].
+  final now = DateTime.fromMillisecondsSinceEpoch(
+      DateTime.now().millisecondsSinceEpoch ~/ 60000 * 60000);
+  final key = (entries, gh, gits, now);
+  final held = _list;
+  if (held != null && held.key == key) return held.list;
   _prepare(entries, gh);
   final openPrs = {
     for (final pr in gh.prs)
       if (pr.state == 'OPEN') pr.number,
   };
-  final since = DateTime.now().subtract(_doneShows);
-  final heads = <Map<String, Object?>>[];
-  for (final e in [...entries.where(_isCard), ..._standIns(entries, gh)]) {
-    if (_ended(statusOf(e))) {
-      final at = DateTime.tryParse(e.updated);
-      if (at == null || at.isBefore(since)) continue;
-    }
-    heads.add(_headOf(e, openPrs));
-  }
-  return {
-    'cards': heads,
+  final since = now.subtract(_doneShows);
+  final list = {
+    'cards': [
+      for (final e in [...entries.where(_isCard), ..._standIns(entries, gh)])
+        ?_rowOf(e, gh, openPrs, since),
+    ],
     'builds': [
       for (final b in buildsOf(entries)) {'ts': b.ts, 'commit': b.commit},
     ],
@@ -1814,9 +1817,45 @@ Future<Map<String, Object?>> _boardJson() async {
     ],
     'ghOk': gh.ok,
     'bad': badLines,
-    'letters': lettersShown(entries, DateTime.now()),
+    'letters': lettersShown(entries, now),
   };
+  _list = (key: key, list: list);
+  return list;
 }
+
+/// The list as last worked out — the same while the board, the PRs and the
+/// checkouts are the same readings and the minute has not turned.
+({Object key, Map<String, Object?> list})? _list;
+
+/// [list] as the page reads it, encoded once per list.
+String _listText(Map<String, Object?> list) =>
+    _encoded[list] ??= jsonEncode(list);
+final _encoded = Expando<String>();
+
+/// A card's row in the list, or null for a finished card past its two weeks
+/// — kept on the card itself. 🚨A card no write reached is the SAME object
+/// from one reading to the next ([BoardRecords]), so its row is too, and the
+/// list works out only the rows that moved (유저 10-19: 「남은 비용도
+/// 개선가능한가?」). ⚠️Per PR answer and per minute as well: a row reads
+/// the PRs' states and the clock.
+Map<String, Object?>? _rowOf(
+  BoardCard e,
+  _Gh gh,
+  Set<int> openPrs,
+  DateTime since,
+) {
+  final key = (gh, since);
+  final held = _rows[e];
+  if (held != null && held.key == key) return held.row;
+  final at = DateTime.tryParse(e.updated);
+  final gone =
+      _ended(statusOf(e)) && (at == null || at.isBefore(since));
+  final row = gone ? null : _headOf(e, openPrs);
+  _rows[e] = (key: key, row: row);
+  return row;
+}
+
+final _rows = Expando<({Object key, Map<String, Object?>? row})>();
 
 /// What the 「전달」 view reads: every letter still waiting for the 담당 it
 /// names, and the others of the last two weeks.
@@ -1830,8 +1869,16 @@ Future<Map<String, Object?>> _boardJson() async {
 /// something the board knows. Its readers are listed instead.
 List<Map<String, Object?>> lettersShown(List<BoardCard> entries, DateTime now) {
   final since = now.subtract(_doneShows);
-  return [
-    for (final letter in lettersOf(entries))
+  return [for (final card in entries) ..._lettersOn(card, since)];
+}
+
+/// One card's rows of [lettersShown], kept on the card the way [_rowOf]
+/// keeps its row.
+List<Map<String, Object?>> _lettersOn(BoardCard card, DateTime since) {
+  final held = _letters[card];
+  if (held != null && held.since == since) return held.rows;
+  final rows = [
+    for (final letter in lettersOf([card]))
       if (_letterShows(letter.entry, since))
         {
           'card': letter.card.foldedInto ?? letter.card.id,
@@ -1847,7 +1894,11 @@ List<Map<String, Object?>> lettersShown(List<BoardCard> entries, DateTime now) {
           ],
         },
   ];
+  _letters[card] = (since: since, rows: rows);
+  return rows;
 }
+
+final _letters = Expando<({DateTime since, List<Map<String, Object?>> rows})>();
 
 bool _letterWaits(BoardLog letter) =>
     letter.to != kEveryone && !letter.readBy.containsKey(letter.to);
@@ -1967,7 +2018,7 @@ String _article(BoardCard e, Set<int> openPrs) {
 /// are drawn by the script from [_boardJson] and `/card`.
 String _shell(Map<String, Object?> boot) {
   // `</` would end the script tag; `<\/` is the same string to JSON.
-  final data = jsonEncode(boot).replaceAll('</', r'<\/');
+  final data = _listText(boot).replaceAll('</', r'<\/');
   return '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
       '<meta name="viewport" content="width=device-width,initial-scale=1">'
       '<title>Anicel 보드</title><style>${_css()}</style></head><body>'
