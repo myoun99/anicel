@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 
 /// SE globalization: the cut-internal timeline's track-SE rows are
 /// open-ended on the right — the runway past the cut end shows the
@@ -205,5 +207,60 @@ void main() {
       reason: 'the block before the anchor never moves',
     );
     expect(global.timeline[6]!.length, 4);
+  });
+
+  // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+  // 엔드라인)」 — every view of the row reads the line the cut is DRAWN to.
+  const sound = ValueKey<String>('timeline-se-label-se-row-1-6');
+  const mark = ValueKey<String>('timeline-se-crossing-se-row-1-end');
+
+  /// The timeline with an O.L over cut 1's end at 8: the cut is drawn to
+  /// 10, where the crossing sound ends.
+  Future<EditorSessionManager> openWithAnOl(WidgetTester tester) async {
+    final session = await _openTimeline(tester);
+    session.transitions.updateTransitionInstructions({
+      6: const InstructionEvent(instructionId: 'ol', length: 4),
+    });
+    await tester.pumpAndSettle();
+    expect(session.activeCutSpan.activeCutDrawnFrameCount, 10, reason: '⛔전제');
+    return session;
+  }
+
+  testWidgets('🚨a sound ending in the のりしろ an O.L gives the cut crosses '
+      'nothing — on the panel\'s row and the X-sheet\'s', (tester) async {
+    await openWithAnOl(tester);
+    expect(find.byKey(sound), findsOneWidget, reason: '⛔전제: the panel');
+    expect(find.byKey(mark), findsNothing, reason: 'the panel');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-se-label-se-row-1-6')),
+      findsOneWidget,
+      reason: '⛔전제: the X-sheet',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('xsheet-se-crossing-se-row-1-end')),
+      findsNothing,
+      reason: 'the X-sheet',
+    );
+  });
+
+  testWidgets('🚨and on the folded row', (tester) async {
+    final session = await openWithAnOl(tester);
+    session.selectLayer(const LayerId('se-row-1'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('floating-bottom-collapse')),
+    );
+    await tester.pumpAndSettle();
+    Finder folded(ValueKey<String> key) => find.descendant(
+      of: find.byType(CollapsedRowOverlay),
+      matching: find.byKey(key),
+    );
+    expect(folded(sound), findsOneWidget, reason: '⛔전제');
+    expect(folded(mark), findsNothing);
   });
 }

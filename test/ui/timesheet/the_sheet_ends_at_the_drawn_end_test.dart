@@ -306,5 +306,21 @@ void main() {
       expect(redNear(raster, mark.translate(3, -3.5)), isTrue);
       expect(redNear(raster, mark.translate(-3, -3.5)), isFalse);
     });
+
+    // A drag publishes the row's DISPLAY clone, open-ended on the right
+    // (UI-R18 #7): the sheet clips it as it clips its own sounds.
+    test('a drag\'s preview of a sound starting past the drawn end puts it '
+        'on no row, as the sheet does', () {
+      final past = sound(32, 4);
+      final document = sheet(crossing, sounds: [past]);
+      final column = document.columns.firstWhere(
+        (column) => column.kind == TimesheetColumnKind.se,
+      );
+      bool blank(List<TimesheetCell> cells) =>
+          cells.every((cell) => cell.kind == TimesheetCellKind.empty);
+      expect(document.rowCount, greaterThan(36), reason: '⛔전제: the rows');
+      expect(blank(column.cells), isTrue, reason: '⛔전제: the sheet\'s own');
+      expect(blank(column.previewCellsBuilder!(past)), isTrue);
+    });
   });
 }

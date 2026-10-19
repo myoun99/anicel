@@ -52,8 +52,11 @@ void main() {
   // past the first two sheets' rows, not only their cuts.
   const cutStarts = [0, 24, 48];
 
-  TimesheetDocument sheetAt(int cutStart, {String? seName = 'N'}) =>
-      TimesheetDocument.fromCut(
+  TimesheetDocument sheetAt(
+    int cutStart, {
+    String? seName = 'N',
+    int pageSeconds = 1,
+  }) => TimesheetDocument.fromCut(
     cut: Cut(
       id: CutId('cut-$cutStart'),
       name: '$cutStart',
@@ -63,7 +66,7 @@ void main() {
     ),
     projectName: 'P',
     fps: 24,
-    pageSeconds: 1,
+    pageSeconds: pageSeconds,
     trackSeLayers: [
       Layer(
         id: const LayerId('se'),
@@ -117,10 +120,15 @@ void main() {
   ({List<double> writing, List<double> bars, List<double> boxes}) inkOf(
     int cutStart, {
     String? seName = 'N',
+    int pageSeconds = 1,
   }) {
     // The name box's tint — not the wash an empty row wears.
     final nameBox = AppColors.accent.withValues(alpha: 0.3).toARGB32();
-    final sheet = sheetAt(cutStart, seName: seName);
+    final sheet = sheetAt(
+      cutStart,
+      seName: seName,
+      pageSeconds: pageSeconds,
+    );
     final layout = TimesheetDocumentLayout(document: sheet);
     final ink = _SheetInk();
     TimesheetDocumentPainter(
@@ -194,6 +202,23 @@ void main() {
       }
     });
   }
+
+  // 🗣️F-358 (유저 2026-10-17): 「컷 엔드라인(OL여백이든 뭐든 총합적인
+  // 엔드라인) 넘어가는건 안보이게하고」.
+  test('the rows a page has past the line the cut is drawn to print none '
+      'of it', () {
+    // A page of 48: the first cut's sound runs on past its 24 rows, onto
+    // the half the page holds and the cut does not.
+    final ink = inkOf(0, pageSeconds: 2);
+
+    expect(ink.writing, isNotEmpty, reason: '⛔전제');
+    expect(ink.writing, everyElement(lessThan(24)));
+    expect(
+      ink.bars,
+      [closeTo(16, 0.2)],
+      reason: 'it opens, and closes on no row the cut has',
+    );
+  });
 
   test('the head is the first cut\'s and the end the last\'s: the opening '
       'bar and the name box at 16, the closing bar under 55 — and nothing '
