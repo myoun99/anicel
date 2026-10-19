@@ -305,6 +305,36 @@ void main() {
       );
       expect(blockStarts(_celA), [0], reason: 'only A\'s LANE was swept');
     });
+
+    // The other half of the anchor's law: the first row whose blocks were
+    // swept stands in only for an anchor that holds none.
+    test('a band anchored on a LAYER row keeps that row as its anchor when '
+        'it moves', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _se2,
+        anchorGlobalFrame: 2,
+        headGlobalFrame: 4,
+        anchorRow: const LayerRowAddress(_se2),
+        spanRows: const [LayerRowAddress(_se1), LayerRowAddress(_se2)],
+      );
+
+      expect(session.rangeMove.beginTrackRangeMoveDrag(_se2), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 1,
+        targetLayerId: _se2,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      expect(soundStarts(session, _se1), [3]);
+      expect(soundStarts(session, _se2), [3]);
+      expect(
+        session.trackFrameRangeSelection.value?.anchorRow,
+        const LayerRowAddress(_se2),
+        reason: 'the band was drawn from S2, and single-row flows read the '
+            'anchor alone — not S1, the first row it holds',
+      );
+    });
   });
 
   group('a span made only of lane rows still selects', () {

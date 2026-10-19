@@ -1941,8 +1941,6 @@ class LaneVerbs {
         (lanesByLayer[layerId] ??= []).add(laneId);
     for (final row in rows) {
       switch (row) {
-        case LaneRowAddress() when projectionRowUnder(row) != null:
-          break;
         case LaneRowAddress(:final layerId, :final laneId)
             when laneVerbLayerFor(layerId) != null:
           add(layerId, laneId);

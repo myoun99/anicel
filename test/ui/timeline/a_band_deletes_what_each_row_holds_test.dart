@@ -26,7 +26,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
-    show effectGroupLaneId;
+    show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
     show StoryboardToolbarPanelContext;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
@@ -186,6 +186,12 @@ void main() {
         [_b],
         reason: 'the band\'s blocks are its layer rows\' — B alone',
       );
+      expect(
+        session.frameRangeSelection.value?.layerId,
+        _b,
+        reason: 'the row a single-row flow reads is the drag\'s own only '
+            'where its blocks were swept — else the first whose were',
+      );
       expect(session.cells.canDeleteCellForSelection, isTrue);
 
       session.cells.deleteCellAtCurrentFrame();
@@ -225,6 +231,63 @@ void main() {
 
       expect(row(session, _a).timeline.keys, [0]);
       expect(row(session, _a).effects, hasLength(1));
+    });
+
+    // A lane's keys are points, so a band of lanes alone is the cells it
+    // swept; and it covers no row a press on A lands on, so X, the mark and
+    // the rename refuse rather than take A's frame.
+    test('a band over A\'s fx row alone is the cells it swept, and covers '
+        'no row of A\'s blocks', () {
+      final session = sessionWithAnFxOnA();
+      final fx = effectGroupLaneId(row(session, _a).effects.single.id);
+      session.updateFrameRangeSelectionDrag(
+        layerId: _a,
+        anchorIndex: 1,
+        headIndex: 1,
+        headLayerId: _a,
+        spanRows: [LaneRowAddress(_a, fx)],
+      );
+      final band = session.frameRangeSelection.value!;
+      expect(
+        (band.startIndex, band.endIndexExclusive),
+        (1, 2),
+        reason: 'A\'s block runs 0..3, and a band over A\'s row snaps to it',
+      );
+      expect(
+        session.bandNamesRowsThisPressWouldMiss,
+        isTrue,
+        reason: 'a press on A lands on A\'s row, which the band never swept',
+      );
+    });
+
+    // Standing on a header is no range: the press takes the keys at the
+    // playhead, as it always did.
+    test('standing on A\'s fx header takes its key at the playhead and '
+        'leaves the fx', () {
+      final session = sessionWithAnFxOnA();
+      final effect = row(session, _a).effects.single;
+      session.laneVerbs.toggleLaneKeyAt(
+        _a,
+        effectLaneId(effect.id, 'blurX'),
+        1,
+        frameIsGlobal: false,
+        description: 'Key blur',
+      );
+      session.standOnRow(
+        LaneRowAddress(_a, effectGroupLaneId(effect.id)),
+        frameIndex: 1,
+      );
+      expect(
+        session.cells.canDeleteCellAtCurrentFrame,
+        isTrue,
+        reason: 'fixture: the key at 1 is under the header stood on',
+      );
+
+      session.cells.deleteCellAtCurrentFrame();
+
+      final kept = row(session, _a).effects;
+      expect(kept, hasLength(1), reason: 'standing is no range: the fx stays');
+      expect(kept.single.parameterOf('blurX').isAnimated, isFalse);
     });
 
     test('the storyboard\'s band: an S row\'s lane is not its sounds', () {
