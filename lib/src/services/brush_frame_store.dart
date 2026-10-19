@@ -80,7 +80,8 @@ class BrushFrameStore {
   /// enter the maps — enumeration and persistence stay canonical-only
   /// (the .anicel saves each linked bank exactly once). Cut-scoped physical
   /// ops (rekey/translate/resize/snapshot) intentionally stay RAW: they
-  /// manage canonical storage directly.
+  /// manage canonical storage directly. A row's carry is not one of them
+  /// — its keys are the rows' ([carryCels], F-413).
   BrushFrameKey Function(BrushFrameKey key) _canonicalize = _identityKey;
 
   static BrushFrameKey _identityKey(BrushFrameKey key) => key;
@@ -1277,8 +1278,9 @@ class BrushFrameStore {
   /// written beside the project file.
   Future<void> drainTiering() => drainCooling();
 
-  /// Told the pairs [rekeyFrames] moved, once they are moved: every picture
-  /// made of a cel travels with its pixels, as the display cache does here.
+  /// Told the pairs [rekeyFrames] or [carryCels] moved, once they are moved,
+  /// under the keys their caller named: every picture made of a cel travels
+  /// with its pixels, as the display cache does here.
   ///
   /// 🚨F-313 (유저 2026-10-08: 「… 싹 삭제하고 법 통일. 항상 보여야함」):
   /// the image cache's pictures stayed under the key the move left, so a cel
@@ -1297,12 +1299,45 @@ class BrushFrameStore {
     void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
   ) => _rekeyListeners.remove(listener);
 
-  /// Re-homes stored drawings under new keys (a cross-layer block move,
-  /// R10-④b): content is untouched, so the display cache travels along and
+  /// Re-homes stored drawings under new keys, AS GIVEN — the cut-scoped ops
+  /// that manage canonical storage directly (a cut deleted, a cut made
+  /// 겸용). Content is untouched, so the display cache travels along and
   /// stays valid — and so do the pictures made of it ([addRekeyListener]).
   /// Missing sources are skipped (an empty cel moved). The inverse pair
   /// list undoes the move exactly.
   void rekeyFrames(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
+    _rehome(pairs);
+    _tellRekeyListeners(pairs);
+  }
+
+  /// Carries cels from one ROW to another (a block moved across rows,
+  /// R10-④b): [rowPairs] are the keys the rows ask with. The pixels are
+  /// re-homed where those keys resolve — a 겸용 row is a window onto its
+  /// group's canonical cel ([setLinkResolver]) — and the pictures made of
+  /// them travel under the rows' keys, the keys they were made under.
+  ///
+  /// 🚨F-413 (유저 2026-10-19): 「겸용컷일때 프레임블록 드래그해서
+  /// 다른행으로 이동시키면 그림이 사라짐」 — the carry re-homed the rows'
+  /// keys as given: in a cut its group is not canonical in, the row's key
+  /// held nothing to move, and the row it landed on resolved to an empty
+  /// cel.
+  void carryCels(List<(BrushFrameKey from, BrushFrameKey to)> rowPairs) {
+    _rehome([
+      for (final (from, to) in rowPairs)
+        (_canonicalize(from), _canonicalize(to)),
+    ]);
+    _tellRekeyListeners(rowPairs);
+  }
+
+  void _tellRekeyListeners(
+    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
+  ) {
+    for (final listener in List.of(_rekeyListeners)) {
+      listener(pairs);
+    }
+  }
+
+  void _rehome(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
     for (final (from, to) in pairs) {
       final state = _frames.remove(from);
       if (state != null) {
@@ -1342,9 +1377,6 @@ class BrushFrameStore {
       // kept answering for the old world. No-ops when nothing crossed.
       _noteCelContent(from);
       _noteCelContent(to);
-    }
-    for (final listener in List.of(_rekeyListeners)) {
-      listener(pairs);
     }
   }
 

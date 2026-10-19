@@ -111,6 +111,60 @@ void main() {
       store.storeBakedSurface(unlinked, surfaceWithInk());
       expect(store.bakedSnapshotForSave().hot.keys, [unlinked]);
     });
+
+    // 🚨F-413: a block carried across rows in the cut its groups are not
+    // canonical in.
+    test('a carry between two member rows moves the canonical cel, and '
+        'tells the pictures the ROWS\' keys', () {
+      final store = BrushFrameStore();
+      store.setLinkResolver(
+        LayerLinkRegistry(
+          groups: [
+            for (final row in ['x', 'y'])
+              LayerLinkGroup(
+                id: row,
+                members: [
+                  LayerLinkMember(
+                    trackId: const TrackId('t'),
+                    cutId: const CutId('c'),
+                    layerId: LayerId(row),
+                  ),
+                  LayerLinkMember(
+                    trackId: const TrackId('t'),
+                    cutId: const CutId('cut-b'),
+                    layerId: LayerId('$row-b'),
+                  ),
+                ],
+              ),
+          ],
+        ).canonicalCelKey,
+      );
+      final from = key(cut: 'cut-b', layer: 'x-b');
+      final to = key(cut: 'cut-b', layer: 'y-b');
+      store.storeBakedSurface(from, surfaceWithInk());
+      final told = <(BrushFrameKey, BrushFrameKey)>[];
+      store.addRekeyListener(told.addAll);
+
+      store.carryCels([(from, to)]);
+
+      expect(store.celHasRenderableContent(to), isTrue);
+      expect(store.celHasRenderableContent(from), isFalse);
+      expect(
+        store.bakedSnapshotForSave().hot.keys,
+        [key(layer: 'y')],
+        reason: 'under the landing row\'s canonical key, the one saved',
+      );
+      expect(
+        told,
+        [(from, to)],
+        reason: 'a picture is made under the key its row asks with',
+      );
+
+      store.carryCels([(to, from)]);
+
+      expect(store.celHasRenderableContent(from), isTrue);
+      expect(store.bakedSnapshotForSave().hot.keys, [key(layer: 'x')]);
+    });
   });
 
   test('storeBakedSurface is the content oracle; empty tiles REMOVE the '
