@@ -209,6 +209,9 @@ void main() {
     String? keys(String file) => const {
       'test/a_test.dart': 'k1',
       'test/b_test.dart': 'k2',
+      // c's bytes moved since it was kept: a run that could not say what
+      // it did leaves the old green where it was, not under the new key.
+      'test/c_test.dart': 'k3-now',
     }[file];
 
     test('a file is still green only under the key it has now', () {
