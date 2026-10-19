@@ -58,8 +58,8 @@ void main() {
       1,
       reason: 'the one that stands is inside `_clearTransform`',
     );
-    final closer = _methodBody(layer, 'void _clearTransform(');
-    expect(closer, isNotNull, reason: '⛔fixture premise: the one door exists');
+    // ⛔fixture premise: the one door exists — the body read asks it.
+    final closer = sourceBodyOf(layer, 'void _clearTransform(');
     expect(closer, contains('_box = null'));
     expect(
       closer,
