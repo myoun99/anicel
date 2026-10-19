@@ -233,7 +233,7 @@ Future<void> main(List<String> args) async {
     );
   }
 
-  final imports = buildImportGraph();
+  final imports = buildImportGraph(roots: kGraphRoots);
   final tests = _suitesIn(imports);
 
   final selected = selectTests(
@@ -260,20 +260,26 @@ Future<void> main(List<String> args) async {
       longestFirst(present, known),
       listOnly: listOnly,
       concurrency: concurrency,
-      cache: _openCache(),
+      cache: _openCache(imports),
       useCache: useCache,
     ),
   );
 }
 
+/// The roots the import graph is walked from, for the selection and the
+/// result records alike. `tool/` too: a tool test reaches what its tool
+/// imports — until 2026-10-19 the walk stopped at the tool a test named,
+/// and a change to `tool/flutter_room.dart` selected none of the line's
+/// tests that run through `tool/test_queue.dart`.
+const kGraphRoots = ['lib', 'test', 'tool'];
+
 /// This machine's result records for this checkout ([ResultCache]), keyed
-/// through every import there is — `tool/` too, which the selection's graph
-/// leaves out: a tool test's result depends on what its tool imports.
-ResultCache? _openCache() {
+/// through [imports] — the whole graph from [kGraphRoots] when not given.
+ResultCache? _openCache([Map<String, Set<String>>? imports]) {
   final cache = ResultCache.open(
     Directory.current.path,
     Platform.environment,
-    buildImportGraph(roots: const ['lib', 'test', 'tool']),
+    imports ?? buildImportGraph(roots: kGraphRoots),
   );
   if (cache == null) {
     _report('no result record this time — the machine folder, git, Flutter '

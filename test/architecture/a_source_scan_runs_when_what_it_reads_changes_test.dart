@@ -5,8 +5,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../tool/affected_tests.dart' show scansReaching, selectTests;
-import '../../tool/import_graph.dart' show pathsReadAsText;
+import '../../tool/affected_tests.dart'
+    show kGraphRoots, scansReaching, selectTests;
+import '../../tool/import_graph.dart'
+    show buildImportGraph, pathsReadAsText;
 
 /// 🚨★★★A SOURCE SCAN RUNS WHEN WHAT IT READS CHANGES.
 ///
@@ -143,6 +145,24 @@ void main() {
         (path) => File(path).readAsStringSync(),
       ),
       [law],
+    );
+  });
+
+  test('🚨a tool a test runs through is walked into — what that tool '
+      'imports selects it too', () {
+    // Until 2026-10-19 the walk stopped at the tool a test named: a change
+    // to flutter_room selected none of the line's tests.
+    const line =
+        'test/tool/a_test_run_waits_its_turn_in_the_machines_line_test.dart';
+    final graph = buildImportGraph(roots: kGraphRoots);
+    expect(
+      selectTests(
+        changed: {'tool/flutter_room.dart'},
+        tests: [line],
+        imports: graph,
+        read: (path) => File(path).readAsStringSync(),
+      ),
+      {line},
     );
   });
 }
