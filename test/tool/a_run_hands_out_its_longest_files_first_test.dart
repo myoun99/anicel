@@ -101,7 +101,7 @@ void main() {
 
   group('the record', () {
     test('reads what it writes, sorted, and skips a line that is not one', () {
-      final text = writeTimes({'b_test.dart': 2, 'a_test.dart': 1});
+      final text = writePairs({'b_test.dart': 2, 'a_test.dart': 1});
       expect(text, 'a_test.dart\t1\nb_test.dart\t2\n');
       expect(readTimes('${text}half a line\nc_test.dart\tx\n'), {
         'a_test.dart': 1,

@@ -269,9 +269,8 @@ Map<String, int> _knownTimes() {
   }
 }
 
-/// Lays the times in a batch's [report] over the machine's record. Read
-/// again just before the write, and written whole and renamed into place,
-/// so two runs that finish together lose at most a time, never the file.
+/// Lays the times in a batch's [report] over the machine's record
+/// ([updatePairs]).
 void _recordTimes(File report) {
   final file = _timesFile();
   if (file == null || !report.existsSync()) return;
@@ -281,13 +280,7 @@ void _recordTimes(File report) {
       root: Directory.current.path,
     );
     if (measured.isEmpty) return;
-    file.parent.createSync(recursive: true);
-    final known = file.existsSync()
-        ? readTimes(file.readAsStringSync())
-        : const <String, int>{};
-    final part = File('${file.path}.$pid.part')
-      ..writeAsStringSync(writeTimes(merged(known, measured)));
-    part.renameSync(file.path);
+    updatePairs(file, (known) => merged(timesIn(known), measured));
   } on FileSystemException catch (e) {
     _report('the times of this batch were not kept: ${e.message}');
   }

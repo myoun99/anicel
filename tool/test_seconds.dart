@@ -17,6 +17,7 @@
 // Per machine on purpose: a file's time is this machine's, and every
 // worktree on it shares the one record.
 import 'dart:convert';
+import 'dart:io';
 
 /// This machine's folder for what the tools keep between runs, or null if
 /// the environment names none.
@@ -31,27 +32,70 @@ String? machineCacheFolder(Map<String, String> environment) {
   return home == null || home.isEmpty ? null : '$home/.cache/anicel';
 }
 
-/// `<path>\t<milliseconds>` per line. A line that is not one is skipped —
-/// two runs that wrote at once leave, at worst, a time to measure again.
-Map<String, int> readTimes(String text) => {
+/// `<path>\t<value>` per line — every record the tools keep in
+/// [machineCacheFolder]. A line that is not one is skipped: two runs that
+/// wrote at once leave, at worst, a file to measure or run again.
+Map<String, String> readPairs(String text) => {
   for (final line in const LineSplitter().convert(text))
-    if (line.split('\t') case [final path, final ms]
-        when path.isNotEmpty && int.tryParse(ms) != null)
-      path: int.parse(ms),
+    if (line.split('\t') case [final path, final value]
+        when path.isNotEmpty && value.isNotEmpty)
+      path: value,
 };
 
-String writeTimes(Map<String, int> times) => [
-  for (final path in (times.keys.toList()..sort())) '$path\t${times[path]}\n',
+String writePairs(Map<String, Object> pairs) => [
+  for (final path in (pairs.keys.toList()..sort())) '$path\t${pairs[path]}\n',
 ].join();
 
-/// Each test file's time in a `json` report: from its loading to its last
-/// test, keyed by its path from the repository's root ([root]) with `/`.
-Map<String, int> fileTimes(String report, {required String root}) {
+/// Rewrites the record [file] with what [update] makes of what it holds.
+/// Read again just before the write, and written whole and renamed into
+/// place, so two runs that finish together lose at most a line, never the
+/// file.
+void updatePairs(
+  File file,
+  Map<String, Object> Function(Map<String, String> known) update,
+) {
+  file.parent.createSync(recursive: true);
+  final known = file.existsSync()
+      ? readPairs(file.readAsStringSync())
+      : const <String, String>{};
+  final part = File('${file.path}.$pid.part')
+    ..writeAsStringSync(writePairs(update(known)));
+  part.renameSync(file.path);
+}
+
+/// The times record: `<path>\t<milliseconds>`.
+Map<String, int> readTimes(String text) => timesIn(readPairs(text));
+
+/// The times in a record's [pairs]; a value that is no number is skipped.
+Map<String, int> timesIn(Map<String, String> pairs) => {
+  for (final MapEntry(key: path, value: ms) in pairs.entries)
+    path: ?int.tryParse(ms),
+};
+
+/// What a `json` report says of one test file, by its path from the
+/// repository's root with `/`: how long it took from its loading to its
+/// last test, and whether it was green — null for either when the report
+/// cannot say.
+typedef SuiteRun = ({String path, int? ms, bool? green});
+
+/// Every test file in a `json` report ([SuiteRun]), keyed by its path
+/// from [root].
+///
+/// ⛔GREEN ONLY FROM A RUN THAT ENDED. A file is green when every test it
+/// finished passed and none was left open — and only when the report
+/// reached its `done`: a run killed by a time limit leaves files whose
+/// finished tests all passed, and those are not green. A test skipped
+/// counts as passed; a file that failed to load is a hidden test that
+/// ends in `error`, and red.
+List<SuiteRun> suiteRuns(String report, {required String root}) {
   final prefix = '${root.replaceAll('\\', '/')}/'.toLowerCase();
   final path = <int, String>{};
   final first = <int, int>{};
   final last = <int, int>{};
   final suiteOf = <int, int>{};
+  final open = <int, int>{};
+  final red = <int>{};
+  var ended = false;
   for (final line in const LineSplitter().convert(report)) {
     final Object? event;
     try {
@@ -72,18 +116,38 @@ Map<String, int> fileTimes(String report, {required String root}) {
         final suite = test['suiteID'] as int;
         suiteOf[test['id'] as int] = suite;
         first.putIfAbsent(suite, () => time);
+        open[suite] = (open[suite] ?? 0) + 1;
       case 'testDone':
         final suite = suiteOf[event['testID'] as int];
-        if (suite != null) last[suite] = time;
+        if (suite == null) continue;
+        last[suite] = time;
+        open[suite] = open[suite]! - 1;
+        if (event['result'] != 'success') red.add(suite);
+      case 'done':
+        ended = true;
     }
   }
-  return {
+  return [
     for (final MapEntry(key: suite, value: p) in path.entries)
-      if (first[suite] != null && last[suite] != null)
-        (p.toLowerCase().startsWith(prefix) ? p.substring(prefix.length) : p):
-            last[suite]! - first[suite]!,
-  };
+      (
+        path: p.toLowerCase().startsWith(prefix)
+            ? p.substring(prefix.length)
+            : p,
+        ms: first[suite] != null && last[suite] != null
+            ? last[suite]! - first[suite]!
+            : null,
+        green: !ended || last[suite] == null || open[suite] != 0
+            ? null
+            : !red.contains(suite),
+      ),
+  ];
 }
+
+/// Each test file's time in a `json` report ([suiteRuns]).
+Map<String, int> fileTimes(String report, {required String root}) => {
+  for (final run in suiteRuns(report, root: root))
+    if (run.ms != null) run.path: run.ms!,
+};
 
 /// [known] with [measured] laid over it: a file measured again keeps the
 /// mean of the two, so one slow run on a crowded machine moves it halfway.
