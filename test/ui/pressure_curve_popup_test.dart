@@ -374,9 +374,16 @@ void main() {
 
   testWidgets('reset restores the identity line', (tester) async {
     BrushPressureCurve? received;
+    // ↩️A bent SHAPE, not `linearFrom(0.6)`: since F-176 that is a straight
+    // shape over a floor of its own, and the floor survives a reset (the
+    // floor and ceiling pins in the_curve_popup_shows_every_source_test).
     await pumpButton(
       tester,
-      curve: BrushPressureCurve.linearFrom(0.6),
+      curve: BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.5, 0.8),
+        BrushCurvePoint(1.0, 1.0),
+      ]),
       onChanged: (value) => received = value,
     );
     await openPopup(tester);

@@ -558,15 +558,10 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
         ),
         const SizedBox(width: _nameGap),
         Expanded(
-          child: FieldSlider(
+          child: FieldSlider.opacity(
             key: ValueKey<String>('curve-minimum-${source.name}'),
             label: AppText.strings.curveMinimum,
             value: draft.minimum,
-            min: 0,
-            max: 1,
-            divisions: 100,
-            unit: '%',
-            displayScale: 100,
             onChanged: (value) => _setRange(source, minimum: value),
           ),
         ),
