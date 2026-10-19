@@ -467,7 +467,8 @@ import '../../tool/refactor/clone_scan.dart';
 /// two compute is the same; the run showed when the local function that
 /// stood between the list and the walk went out of it (`_append`).
 /// 🔬Measured on the lane against its base (`ebefaea8b`, at 88): this one
-/// added, none gone.
+/// added, none gone. Measured again on the lane over master (`d13d76aa6`,
+/// at 89): 90, this one added, none gone.
 void main() {
   const ceiling = 88;
 
