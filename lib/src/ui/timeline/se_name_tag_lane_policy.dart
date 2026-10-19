@@ -185,10 +185,14 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
       // F-37: `tlNameTagGroup` was tabled for this header and read by nobody.
       label: AppText.strings.tlNameTagGroup,
       // The members' key union, the summary every group header shows
-      // ([unionKeyMarks]).
+      // ([unionKeyMarks], [unionKeyNames]).
       keyMarks: unionKeyMarks([
         for (final laneId in seNameTagLaneDisplayOrder)
           seNameTagLaneKeyMarks(keys, laneId),
+      ]),
+      keyNames: unionKeyNames([
+        for (final laneId in seNameTagLaneDisplayOrder)
+          ?seNameTagLaneLens(laneId)?.get(keys),
       ]),
       showsKeyNavigator: false,
       isGroupHeader: true,
@@ -213,6 +217,9 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
           laneId: laneId,
           label: seNameTagLaneLabel(laneId),
           keyMarks: seNameTagLaneKeyMarks(keys, laneId),
+          keyNames:
+              seNameTagLaneLens(laneId)?.get(keys).namedKeysByFrame ??
+              const {},
           valueKind: seNameTagLaneValueKind(laneId),
           colorCanBeNone: seNameTagLaneColorCanBeNone(laneId),
           valueLabel: (frame) =>

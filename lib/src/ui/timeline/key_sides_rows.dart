@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/key_mark.dart' show SidesKeyMark;
-import '../../models/key_range_move.dart' show unionMixedKeyName;
+import '../../models/key_mark.dart' show SidesKeyMark, unionMixedKeyName;
 import '../../models/key_side.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show KeySideKindWords;
