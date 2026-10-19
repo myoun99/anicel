@@ -1088,37 +1088,27 @@ void main() {
   });
 
   testWidgets('the MIDDLE of a row that takes no drop is still that row: '
-      'past the group, the outermost row lets go where it stands', (
+      'the folder\'s top member, carried onto the folder row, stays in', (
     tester,
   ) async {
-    // Rail top-down: Camera, B+1, B, Q. Nothing goes ON the camera row, so
-    // its middle hands the drag back to the gap — with the pointer still
-    // in the camera's row, past B's group. ↩️Handed no row there, the gap
-    // read the closed interval and kept B+1 in its group.
-    await _pump(
-      tester,
-      project: _stackProject([
-        Layer(id: const LayerId('q'), name: 'Q', frames: const []),
-        Layer(id: const LayerId('b'), name: 'B', frames: const []),
-        Layer(
-          id: const LayerId('bup'),
-          name: 'B+1',
-          frames: const [],
-          attachedToLayerId: const LayerId('b'),
-        ),
-      ]),
-    );
+    // Rail top-down: Camera, X, F, M2, M1, A. M2 is already at the top of
+    // F's members, so the middle of F's row hands the drag back to the gap
+    // above F — with the pointer still in the folder's rows, where a
+    // member stays in, and a member cannot stand over its folder's row.
+    // ↩️Handed no row there, the gap read the formula and let M2 out over
+    // the row it never left.
+    await _pump(tester, project: _folderMembersProject());
     final session = _sessionOf(tester);
-    final dx = tester.getCenter(_railRowGrip('bup')).dx;
+    final dx = tester.getCenter(_railRowGrip('m2')).dx;
 
-    final gesture = await lift(tester, 'bup');
-    await pointInto(tester, gesture, 'cam', fraction: 0.5, dx: dx);
-    expect(caretBefore('bup'), findsOneWidget, reason: 'its own edge');
-    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    final gesture = await lift(tester, 'm2');
+    await pointInto(tester, gesture, 'f', fraction: 0.5, dx: dx);
+    expect(anyCaret, findsNothing);
+    expect(find.text(AppText.strings.tlDropOutOfFolder), findsNothing);
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(_order(session), ['q', 'b', 'bup']);
-    expect(_layerOf(session, 'bup').attachedToLayerId, isNull);
+    expect(_order(session), ['a', 'm1', 'm2', 'x']);
+    expect(_layerOf(session, 'm2').folderId, const LayerId('f'));
   });
 
   testWidgets('🚨a row riding the conte, carried past its group, stands at '
