@@ -52,7 +52,8 @@ void main() {
   // past the first two sheets' rows, not only their cuts.
   const cutStarts = [0, 24, 48];
 
-  TimesheetDocument sheetAt(int cutStart) => TimesheetDocument.fromCut(
+  TimesheetDocument sheetAt(int cutStart, {String? seName = 'N'}) =>
+      TimesheetDocument.fromCut(
     cut: Cut(
       id: CutId('cut-$cutStart'),
       name: '$cutStart',
@@ -74,7 +75,7 @@ void main() {
             duration: 40,
             strokes: const [],
             name: words,
-            seName: 'N',
+            seName: seName,
           ),
         ],
         timeline: {
@@ -114,11 +115,12 @@ void main() {
   /// What the SE column of the cut at [cutStart] wears, on the track's
   /// axis: the writing's centres, the red bars' rows, the name boxes'.
   ({List<double> writing, List<double> bars, List<double> boxes}) inkOf(
-    int cutStart,
-  ) {
+    int cutStart, {
+    String? seName = 'N',
+  }) {
     // The name box's tint — not the wash an empty row wears.
     final nameBox = AppColors.accent.withValues(alpha: 0.3).toARGB32();
-    final sheet = sheetAt(cutStart);
+    final sheet = sheetAt(cutStart, seName: seName);
     final layout = TimesheetDocumentLayout(document: sheet);
     final ink = _SheetInk();
     TimesheetDocumentPainter(
@@ -169,6 +171,29 @@ void main() {
       reason: '⛔전제: every sheet holds a part of the line',
     );
   });
+
+  // 🗣️F-358-Q1 (유저 10-18): each glyph on the frame the rows lay it on
+  // (`seSpanParts`) — a named sound's words over its frames after the head,
+  // an unnamed one's over all of them, edge to edge.
+  for (final seName in ['N', null]) {
+    test('the words stand on the frames the rows lay them on '
+        '(${seName == null ? 'no name' : 'named'})', () {
+      final writing = [
+        for (final start in cutStarts) ...inkOf(start, seName: seName).writing,
+      ]..sort();
+      final glyphs = seName == null ? writing : writing.skip(1).toList();
+      final from = seName == null ? 16 : 17;
+      final cell = (56 - from) / words.length;
+      expect(glyphs, hasLength(words.length));
+      for (final (index, centre) in glyphs.indexed) {
+        expect(
+          centre,
+          closeTo(from + (index + 0.5) * cell, 0.02),
+          reason: 'glyph $index',
+        );
+      }
+    });
+  }
 
   test('the head is the first cut\'s and the end the last\'s: the opening '
       'bar and the name box at 16, the closing bar under 55 — and nothing '

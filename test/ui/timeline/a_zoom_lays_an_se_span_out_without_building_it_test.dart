@@ -115,6 +115,50 @@ void main() {
     }
   });
 
+  testWidgets('where a frame is narrower than the chip, the chip lies over '
+      'the words and paints over them', (tester) async {
+    // Ten frames of 10: the chip keeps its 16 over the head (the two short
+    // words hold their size in the nine after it) and reaches the second.
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 100,
+              height: row,
+              child: SeSpanVisual(
+                axis: Axis.horizontal,
+                frames: 10,
+                dialogue: 'あい',
+                seName: 'ドア',
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final chip = tester.getRect(find.bySemanticsLabel('SE name ドア'));
+    final words = tester.getRect(find.byType(DialogueFitText));
+    expect(chip.width, seNameBoxExtent);
+    expect(words.left, closeTo(10, 1e-6));
+    expect(chip.overlaps(words), isTrue, reason: '⛔premise: they meet');
+    expect(
+      [
+        for (final slot in tester.widgetList<LayoutId>(
+          find.descendant(
+            of: find.byType(SeSpanVisual),
+            matching: find.byType(LayoutId),
+          ),
+        ))
+          slot.child is DialogueFitText ? 'words' : 'chip',
+      ],
+      ['words', 'chip'],
+      reason: 'a layout paints its children in order: the name is what '
+          'stays legible (F-358-Q1 「이름은 최대한 지금처럼 잘 보이고」)',
+    );
+  });
+
   testWidgets('a column grown wider measures its dialogue again — a glyph '
       'standing in it is fitted to the width first', (tester) async {
     var across = 10.0;
