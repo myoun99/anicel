@@ -10,6 +10,10 @@
 // file again — 16.5s on 2026-10-18 under load (card tests-crowd-the-machine).
 // `dart tool/flutter_room.dart` still gives the same answer, slowly.
 //
+// Test runs do not ask it themselves: they stand in `test_queue.dart`'s one
+// line, and only the run at its head asks — through [measureRoom], once,
+// and again only while there is no room (유저 tests-crowd-the-machine-Q1).
+//
 // THE RULE IT MEASURES is CLAUDE.md's 「Flutter 실행은 여유만큼」 (유저
 // 2026-09-26 · 10-01): before a run is launched, 4GB of commit headroom
 // and fewer than four runs across every session. ⛔Not CPU% — the runs are
@@ -356,6 +360,36 @@ String _toolDir() =>
     Platform.environment['ANICEL_TOOL_DIR'] ??
     File.fromUri(Platform.script).parent.path;
 
+/// The machine as this file reads it — what [main] prints, and what
+/// `test_queue.dart` asks before the run at the head of its line goes.
+typedef MachineRoom = ({
+  int taken,
+  int freeGb,
+  bool room,
+  List<FlutterRun> runs,
+  bool bashRead,
+});
+
+/// The room on this machine for one more run — a land's gates when [aLand]
+/// — or null when it could not be measured.
+Future<MachineRoom?> measureRoom({required bool aLand}) async {
+  final answer = await _askWindows();
+  if (answer == null) return null;
+  final bash = _bashTable();
+  final runs = Machine(
+    windows: answer.processes,
+    bash: bash,
+  ).flutterRuns(landHolder: _landHolder());
+  final taken = runs.where((run) => run.of.takesAPlace).length;
+  return (
+    taken: taken,
+    freeGb: answer.freeGb,
+    room: roomFor(taken: taken, freeGb: answer.freeGb, aLand: aLand),
+    runs: runs,
+    bashRead: bash.isNotEmpty,
+  );
+}
+
 Future<void> main(List<String> args) async {
   const known = {'--land', '--list'};
   if (!args.every(known.contains)) {
@@ -363,8 +397,8 @@ Future<void> main(List<String> args) async {
     exitCode = 2;
     return;
   }
-  final answer = await _askWindows();
-  if (answer == null) {
+  final measured = await measureRoom(aLand: args.contains('--land'));
+  if (measured == null) {
     stderr.writeln(
       'flutter_room: this machine could not be measured (Windows was asked '
       'through powershell.exe)',
@@ -372,31 +406,21 @@ Future<void> main(List<String> args) async {
     exitCode = 2;
     return;
   }
-  final bash = _bashTable();
-  final runs = Machine(
-    windows: answer.processes,
-    bash: bash,
-  ).flutterRuns(landHolder: _landHolder());
-  final taken = runs.where((run) => run.of.takesAPlace).length;
-  final room = roomFor(
-    taken: taken,
-    freeGb: answer.freeGb,
-    aLand: args.contains('--land'),
-  );
   stdout.writeln(
-    'runs=$taken free_gb=${answer.freeGb} room=${room ? 'yes' : 'no'}',
+    'runs=${measured.taken} free_gb=${measured.freeGb} '
+    'room=${measured.room ? 'yes' : 'no'}',
   );
   if (args.contains('--list')) {
-    for (final run in runs) {
+    for (final run in measured.runs) {
       final counted = run.of.takesAPlace ? 'counted' : 'not counted';
       final asked = run.asked.length > 90
           ? '${run.asked.substring(0, 90)}…'
           : run.asked;
       stdout.writeln('  $counted — ${run.of.words}: pid ${run.pid}  $asked');
     }
-    if (bash.isEmpty) {
+    if (!measured.bashRead) {
       stdout.writeln("  (Git Bash's own table could not be read)");
     }
   }
-  exitCode = room ? 0 : 1;
+  exitCode = measured.room ? 0 : 1;
 }

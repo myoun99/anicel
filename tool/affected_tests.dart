@@ -21,7 +21,7 @@
 //   bash tool/run.sh affected_tests --list     # print them, run nothing
 //   bash tool/run.sh affected_tests --all      # the escape hatch
 //   bash tool/run.sh affected_tests --base HEAD~3
-//   bash tool/run.sh affected_tests --concurrency 4   # a machine in use
+//   bash tool/run.sh affected_tests --concurrency 4   # fewer than a place holds
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -30,6 +30,7 @@ import 'dart:io';
 
 import 'import_graph.dart';
 import 'native_engine_provenance.dart';
+import 'test_queue.dart';
 import 'test_seconds.dart';
 
 /// Changing one of these means the graph cannot answer, so we do not ask it.
@@ -487,22 +488,27 @@ Future<int> _runTests(
   final failed = <int>[];
   final neverRan = <int>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
-  for (var i = 0; i < batches.length; i++) {
-    if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
-    final report = File('${reports.path}/batch$i.json');
-    final result = await _flutterTest(
-      batches[i],
-      concurrency: concurrency,
-      report: report.path,
-    );
-    _recordTimes(report);
-    skipped += result.skipped;
-    if (result.exitCode != 0) {
-      failed.add(i + 1);
-      if (!result.ranTests) neverRan.add(i + 1);
-      if (worst == 0) worst = result.exitCode;
+  // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
+  // machine-Q1): the batches run in this run's turn, each at the suites a
+  // place holds — fewer when the run asked for fewer.
+  await inTurn('affected_tests', say: _report, () async {
+    for (var i = 0; i < batches.length; i++) {
+      if (batches.length > 1) _report('batch ${i + 1} of ${batches.length}');
+      final report = File('${reports.path}/batch$i.json');
+      final result = await _flutterTest(
+        batches[i],
+        concurrency: suitesFor(concurrency),
+        report: report.path,
+      );
+      _recordTimes(report);
+      skipped += result.skipped;
+      if (result.exitCode != 0) {
+        failed.add(i + 1);
+        if (!result.ranTests) neverRan.add(i + 1);
+        if (worst == 0) worst = result.exitCode;
+      }
     }
-  }
+  });
   try {
     reports.deleteSync(recursive: true);
   } on FileSystemException {
