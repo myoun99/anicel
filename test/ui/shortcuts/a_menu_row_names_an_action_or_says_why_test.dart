@@ -46,7 +46,7 @@ const ledger = <String, Why>{
   "cut_command_group.dart | 'cut-mark-button'": Why.aSecondLevel,
   // F-391: a stop of the zoom list — one value of a settings list; all its
   // row does is its own ⊖, which takes the stop out.
-  "dialogs/input_settings_dialog.dart | "
+  'dialogs/input_settings_dialog.dart | '
           "'settings-zoom-snap-\${_shownPercent(stop)}'":
       Why.aChoice,
   // 🗣️I-40-Q2 (유저 2026-10-09, a file row's ⋮ — which file would a key
