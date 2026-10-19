@@ -68,9 +68,18 @@ class _TimesheetSePass {
   /// An SE entry's start cell (R5-⑦, user-approved mockup v4): a full-width
   /// thin red bar RIGHT BEFORE the block start, a compact ACCENT name box
   /// (the app's shared accent — same chip as the timeline/X-sheet rows)
-  /// hugging the boundary, the dialogue distributed vertically over the
-  /// REST of the span — no duration bar. Single-row entries close with the
-  /// red end bar right here; longer ones close from their last held row.
+  /// standing on it, the dialogue distributed vertically over the span — no
+  /// duration bar. Single-row entries close with the red end bar right
+  /// here; longer ones close from their last held row.
+  ///
+  /// 🗣️F-358 (유저 2026-10-19): 「타임시트용지는 동일하게 se의 시작
+  /// 빨간라인 위에 이름두도록. 이건 맨처음이라도 공간있으니까 대사안으로
+  /// 넣을이유없고. 기존의 off같은 타입글자를 위로 이동하고 거기에
+  /// 이름넣는거지」. The name box stands above the start line, in the row
+  /// before — the half's title row on its first — and the delivery above
+  /// the name; the words have the entry's rows from its first. ↩️The box
+  /// hung under the line, in the entry's first row, and the words began
+  /// under it.
   ///
   /// 🗣️F-358: a sound that spilled in from an earlier cut began [lead] rows
   /// before this one. Its HEAD — the opening bar, the delivery, the name
@@ -97,19 +106,22 @@ class _TimesheetSePass {
         columnWidth: columnWidth,
         y: cellTop + 1,
       );
-      _paintDelivery(
-        canvas,
-        cell.seType,
-        boundary: Offset(centerX, cellTop),
-        maxWidth: columnWidth - 2,
-      );
+      // Off the bar by a bar's width: a sound closing on the row above
+      // closes with its own bar there, under the name.
+      final nameTop = cellTop - 2 - _nameBoxHeight;
       if (seName.isNotEmpty) {
         _paintNameBox(
           canvas,
           seName,
-          Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
+          Rect.fromLTWH(columnLeft, nameTop, columnWidth, _nameBoxHeight),
         );
       }
+      _paintDelivery(
+        canvas,
+        cell.seType,
+        boundary: Offset(centerX, seName.isNotEmpty ? nameTop : cellTop),
+        maxWidth: columnWidth - 2,
+      );
     }
 
     paintSeDialogueShare(
@@ -158,8 +170,9 @@ class _TimesheetSePass {
     );
   }
 
-  /// How far above the entry's red bar the delivery's writing starts — one
-  /// line of the name's size, so it sits on the bar rather than across it.
+  /// How far above what stands on the entry's start — the name box, or
+  /// the red bar with no name — the delivery's writing starts: one line of
+  /// the name's size, so it sits on it rather than across it.
   static const double _deliveryLift = 9.0;
 
   /// 🗣️I-20 (유저 2026-09-30): the delivery over the name — 「타임시트에도
@@ -167,7 +180,9 @@ class _TimesheetSePass {
   /// sheets print it (「OFF거나 MONO일때만」, [SeLineType.printsOnSheets]).
   /// On the half's first row the row above IS the column's title, and it
   /// lands there on purpose: 「1콤마부터 대사 나올땐 … 1콤마의 위(SE1이나
-  /// SE2 이런글자)에 겹치도록」.
+  /// SE2 이런글자)에 겹치도록」. ↩️F-358 (10-19) gave that place to the name
+  /// 「기존의 off같은 타입글자를 위로 이동하고 거기에 이름넣는거지」: a
+  /// named entry's delivery stands on its name box ([paintSeEntryStart]).
   void _paintDelivery(
     Canvas canvas,
     SeLineType? delivery, {
@@ -192,9 +207,8 @@ class _TimesheetSePass {
   /// This page half's share of an SE entry's dialogue: the glyphs that the
   /// layout over the WHOLE span lands on this half's rows, from [row] down
   /// to [rowCount] — [start] is the span's first cell on this sheet, and
-  /// carries the words and the name box they sit under; [spanOffset] is
-  /// how far down the span this row is, and [lead] how many of its rows
-  /// ran in earlier cuts.
+  /// carries the words; [spanOffset] is how far down the span this row is,
+  /// and [lead] how many of its rows ran in earlier cuts.
   ///
   /// 🗣️F-358 (유저 2026-10-14 · 10-17): 「타임시트패널에도 타임라인에서
   /// 보이는 글자 나눠짐상태? 그대로 보이도록. 즉 오프셋 맞추듯이?」. The
@@ -228,19 +242,14 @@ class _TimesheetSePass {
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
     final spanTop = cellTop - (lead + spanOffset) * rowHeight;
-    final frames = lead + (start.spanLength ?? 1);
-    final named = (start.seName ?? '').isNotEmpty;
-    // 🗣️F-358-Q1: the words lie on the frames the block views lay them on
-    // ([seSpanParts]) — a named entry's from its second row, so every glyph
-    // stands on the same frame here as on the rows; an entry of one row
-    // shares it with the name box. ↩️They began under the name box and kept
-    // off both ends by a pad, a fraction of a frame from the rows' place.
-    final single = named && frames < 2;
-    final spanBottom = spanTop + frames * rowHeight - (single ? 2 : 0);
-    final dialogueTop =
-        spanTop + (!named ? 0 : (single ? _nameBoxHeight + 4 : rowHeight));
+    // 🗣️F-358 (유저 2026-10-19): 「대사가 1코마부터 시작하게」 — the words
+    // have the span's rows edge to edge, named or not, as the block views
+    // lay them ([seNameChipPlace]): a glyph stands on the same frame here
+    // as on the rows. ↩️They began under the name box and kept off both
+    // ends by a pad, a fraction of a frame from the rows' place.
+    final spanBottom = spanTop + (lead + (start.spanLength ?? 1)) * rowHeight;
     // The window: this half's rows of the span.
-    final top = math.max(dialogueTop, cellTop);
+    final top = math.max(spanTop, cellTop);
     final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
     if (bottom <= top) {
       return;
@@ -248,10 +257,10 @@ class _TimesheetSePass {
     paintDialogueFitColumn(
       canvas,
       start.label ?? '',
-      topCenter: Offset(centerX, dialogueTop),
-      extent: spanBottom - dialogueTop,
-      shownFrom: top - dialogueTop,
-      shownTo: bottom - dialogueTop,
+      topCenter: Offset(centerX, spanTop),
+      extent: spanBottom - spanTop,
+      shownFrom: top - spanTop,
+      shownTo: bottom - spanTop,
       style: _painter.face.copyWith(
         color: TimesheetDocumentPainter._ink,
         fontSize: 9,

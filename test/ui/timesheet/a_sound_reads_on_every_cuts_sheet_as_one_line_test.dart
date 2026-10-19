@@ -163,8 +163,9 @@ void main() {
       'showing the part of it its rows hold', () {
     final writing = [for (final start in cutStarts) ...inkOf(start).writing]
       ..sort();
-    // The name rides the head; the words follow it.
-    expect(writing.first, inInclusiveRange(16, 17), reason: 'the name');
+    // The name stands over the line the sound opens on; the words have
+    // its rows (F-358, 10-19).
+    expect(writing.first, inExclusiveRange(15, 16), reason: 'the name');
     final glyphs = writing.skip(1).toList();
     expect(glyphs, hasLength(words.length), reason: 'none lost, none twice');
     final steps = [
@@ -180,9 +181,9 @@ void main() {
     );
   });
 
-  // 🗣️F-358-Q1 (유저 10-18): each glyph on the frame the rows lay it on
-  // (`seSpanParts`) — a named sound's words over its frames after the head,
-  // an unnamed one's over all of them, edge to edge.
+  // 🗣️F-358 (유저 2026-10-19): 「대사가 1코마부터 시작하게」 — each glyph
+  // on the frame the rows lay it on (`seNameChipPlace`): over the sound's
+  // frames edge to edge, named or not, the name standing outside them.
   for (final seName in ['N', null]) {
     test('the words stand on the frames the rows lay them on '
         '(${seName == null ? 'no name' : 'named'})', () {
@@ -190,8 +191,8 @@ void main() {
         for (final start in cutStarts) ...inkOf(start, seName: seName).writing,
       ]..sort();
       final glyphs = seName == null ? writing : writing.skip(1).toList();
-      final from = seName == null ? 16 : 17;
-      final cell = (56 - from) / words.length;
+      const from = 16;
+      const cell = (56 - from) / words.length;
       expect(glyphs, hasLength(words.length));
       for (final (index, centre) in glyphs.indexed) {
         expect(
@@ -221,14 +222,18 @@ void main() {
   });
 
   test('the head is the first cut\'s and the end the last\'s: the opening '
-      'bar and the name box at 16, the closing bar under 55 — and nothing '
-      'of either on the sheets the sound only runs through', () {
+      'bar at 16 and the name box over it, the closing bar under 55 — and '
+      'nothing of either on the sheets the sound only runs through', () {
     final first = inkOf(0);
     final middle = inkOf(24);
     final last = inkOf(48);
 
     expect(first.bars, [closeTo(16, 0.2)], reason: 'it opens; it never closes');
-    expect(first.boxes, [closeTo(16, 0.2)]);
+    expect(
+      first.boxes,
+      [inExclusiveRange(15, 16)],
+      reason: 'the name box stands over the line, in the row before it',
+    );
     expect(middle.bars, isEmpty);
     expect(middle.boxes, isEmpty);
     expect(last.bars, [closeTo(56, 0.2)], reason: 'it closes under 55');

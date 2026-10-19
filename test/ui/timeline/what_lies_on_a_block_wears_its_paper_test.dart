@@ -8,10 +8,14 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show endAcross, rectAlong, startAcross, startAlong;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
@@ -28,7 +32,8 @@ import '../../helpers/raster_parity.dart';
 /// WHAT LIES ON A BLOCK WEARS ITS PAPER. The paper is one shape
 /// ([timelineBlockPaperShape]); the SE paper draws it, and the name chip's
 /// tint and the warning line are cut by it — so neither has a silhouette of
-/// its own to get wrong.
+/// its own to get wrong. A chip with room before its block stands there
+/// (F-358, 10-19), on a paper of its own: the same shape, for its length.
 ///
 /// They are painters, so they are pinned by PIXELS, through the row's own
 /// overlay builders. ⚠️At an 8px cell, where the corner law gives 4: at 100%
@@ -106,11 +111,19 @@ void main() {
     );
   });
 
-  /// An SE row with one named block over `[start, start + length)`.
-  Layer named(int start, int length, {bool clipped = false}) => Layer(
+  /// An SE row with one named block over `[start, start + length)` — the
+  /// frames before it free, the room its chip may stand in outside it
+  /// (F-358, 10-19).
+  Layer named(
+    int start,
+    int length, {
+    bool clipped = false,
+    LayerMark mark = LayerMark.none,
+  }) => Layer(
     id: const LayerId('se'),
     name: 'S1',
     kind: LayerKind.se,
+    mark: mark,
     frames: [
       Frame(
         id: const FrameId('f1'),
@@ -170,7 +183,8 @@ void main() {
   for (final axis in Axis.values) {
     testWidgets('the SE name\'s tint ends where the paper ends — round at '
         'the block\'s corners, short of the row seam ($axis)', (tester) async {
-      final layer = named(2, 4);
+      // At the row's frame 0: no room before it, so the chip is the head's.
+      final layer = named(0, 4);
       final shot = await shoot(
         tester,
         axis,
@@ -181,7 +195,7 @@ void main() {
           axis: axis,
         ),
       );
-      final paper = paperOf(axis, 2, 4);
+      final paper = paperOf(axis, 0, 4);
       // The chip's stretch of the paper: its 16 from the block's start.
       final start = startAlong(axis, paper);
       final chip = rectAlong(
@@ -209,13 +223,13 @@ void main() {
         tester,
         axis,
         timelineRowSeLabelOverlays(
-          layer: named(10, 2),
+          layer: named(0, 2),
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
           axis: axis,
         ),
       );
-      final paper = paperOf(axis, 10, 2);
+      final paper = paperOf(axis, 0, 2);
       expect(shot.alphaAt(paper.center), greaterThan(0), reason: '⛔전제');
       expect(shot.painted, paper, reason: 'the chip is the whole block');
       expect(shot.cornersOf(paper), (0, 0, 0, 0));
@@ -223,14 +237,14 @@ void main() {
 
     testWidgets('what cuts them IS the paper — the shape the SE paper draws '
         'for the same block ($axis)', (tester) async {
-      final layer = named(2, 4, clipped: true);
+      final layer = named(0, 4, clipped: true);
       await shoot(tester, axis, [
         TimelineFrameSpan(
           placement: const TimelineFrameSpanPlacement(
-            startIndex: 2,
-            endIndexExclusive: 6,
+            startIndex: 0,
+            endIndexExclusive: 4,
           ),
-          child: SePaperSpan(axis: axis, frameCellExtent: cell, startFrame: 2),
+          child: SePaperSpan(axis: axis, frameCellExtent: cell, startFrame: 0),
         ),
         ...timelineRowSeLabelOverlays(
           layer: layer,
@@ -249,7 +263,7 @@ void main() {
         ),
       ]);
       final marker = find.byKey(
-        const ValueKey<String>('timeline-clip-marker-se-b2'),
+        const ValueKey<String>('timeline-clip-marker-se-b0'),
       );
       final shape = _laidUnder(tester, find.byType(SePaperSpan)).rrects.first;
       final name = _laidUnder(tester, find.byType(SeSpanVisual));
@@ -273,6 +287,106 @@ void main() {
       expect(name.rects, [chip]);
       expect(line.rects, [strip]);
       expect(timelineBlockWarningBarThickness, 2, reason: '⛔전제');
+    });
+
+    // 🗣️F-358 (유저 2026-10-19): 「블록 앞부분 왼쪽에 이름두자. 블록 밖으로
+    // 나가게되는거지」 · 「이름칸 색, 뒤가 밝은걸 기준으로 정한색이니까
+    // 그부분 잘 해결해주고」.
+    testWidgets('🚨with room before its block the chip stands there, in the '
+        'block\'s shape, and lays nothing on the block ($axis)', (
+      tester,
+    ) async {
+      // Two free frames of 8 before it: room for the chip's 16.
+      final shot = await shoot(
+        tester,
+        axis,
+        timelineRowSeLabelOverlays(
+          layer: named(2, 4),
+          frameStartIndex: 0,
+          frameEndIndexExclusive: frames,
+          axis: axis,
+        ),
+      );
+      final paper = paperOf(axis, 2, 4);
+      final chip = axis == Axis.horizontal
+          ? Rect.fromLTWH(
+              paper.left - seNameBoxExtent,
+              paper.top,
+              seNameBoxExtent,
+              paper.height,
+            )
+          : Rect.fromLTWH(
+              paper.left,
+              paper.top - seNameBoxExtent,
+              paper.width,
+              seNameBoxExtent,
+            );
+      expect(shot.alphaAt(chip.center), greaterThan(0), reason: '⛔전제');
+      expect(shot.painted, chip, reason: 'just before the block, and only');
+      expect(shot.cornersOf(chip), (0, 0, 0, 0), reason: 'a block\'s corner');
+    });
+
+    testWidgets('one frame short of that room, it is the head\'s again '
+        '($axis)', (tester) async {
+      final shot = await shoot(
+        tester,
+        axis,
+        timelineRowSeLabelOverlays(
+          layer: named(1, 4),
+          frameStartIndex: 0,
+          frameEndIndexExclusive: frames,
+          axis: axis,
+        ),
+      );
+      final paper = paperOf(axis, 1, 4);
+      final chip = axis == Axis.horizontal
+          ? Rect.fromLTWH(paper.left, paper.top, seNameBoxExtent, paper.height)
+          : Rect.fromLTWH(paper.left, paper.top, paper.width, seNameBoxExtent);
+      expect(shot.painted, chip, reason: 'the head\'s stretch of the paper');
+    });
+
+    testWidgets('outside, the chip lays the colour its tint gives the block\'s '
+        'paper — its layer\'s mark — as a paper of its own ($axis)', (
+      tester,
+    ) async {
+      const mark = LayerMark(process: LayerProcess.layout);
+      await shoot(
+        tester,
+        axis,
+        timelineRowSeLabelOverlays(
+          layer: named(2, 4, mark: mark),
+          frameStartIndex: 0,
+          frameEndIndexExclusive: frames,
+          axis: axis,
+        ),
+      );
+      final name = _laidUnder(tester, find.byType(SeSpanVisual));
+      final shape = timelineBlockPaperShape(
+        axis: axis,
+        along: seNameBoxExtent,
+        rowExtent: row,
+        frameCellExtent: cell,
+      );
+      expect(name.clips, isEmpty, reason: 'nothing laid on the block');
+      expect(name.rects, isEmpty);
+      expect(name.rrects, [
+        shape.shift(
+          axis == Axis.horizontal
+              ? const Offset(-seNameBoxExtent, 0)
+              : const Offset(0, -seNameBoxExtent),
+        ),
+      ]);
+      expect(
+        name.colors,
+        [
+          Color.alphaBlend(
+            AppColors.accent.withValues(alpha: 0.3),
+            layerMarkColor(mark),
+          ),
+        ],
+        reason: 'opaque: the dark row under it does not show through',
+      );
+      expect(layerMarkColor(mark), isNot(layerMarkColor(LayerMark.none)));
     });
   }
 }
@@ -298,6 +412,9 @@ class _PaperSpy implements Canvas {
   final rects = <Rect>[];
   final rrects = <RRect>[];
 
+  /// The colour each of [rrects] is laid in.
+  final colors = <Color>[];
+
   @override
   void clipRRect(RRect rrect, {bool doAntiAlias = true}) => clips.add(rrect);
 
@@ -305,7 +422,10 @@ class _PaperSpy implements Canvas {
   void drawRect(Rect rect, Paint paint) => rects.add(rect);
 
   @override
-  void drawRRect(RRect rrect, Paint paint) => rrects.add(rrect);
+  void drawRRect(RRect rrect, Paint paint) {
+    rrects.add(rrect);
+    colors.add(paint.color);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;

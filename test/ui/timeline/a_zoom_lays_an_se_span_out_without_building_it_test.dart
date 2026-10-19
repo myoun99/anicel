@@ -15,33 +15,39 @@ void main() {
   const dialogue = 'せりふのテキスト';
   const row = 28.0;
 
-  /// An SE span in a box [width] long, the width moved by [resize] — the
-  /// span itself the same instance throughout, as a zoom leaves it.
+  /// An SE span in a box [width] long, [left] in from the screen's edge
+  /// with [framesFreeBefore] free before it, the width moved by [resize] —
+  /// the span itself the same instance throughout, as a zoom leaves it.
   Future<void Function(double)> mount(
     WidgetTester tester, {
     required double width,
+    int frames = 4,
+    String words = dialogue,
+    int framesFreeBefore = 0,
+    double left = 0,
   }) async {
     var shown = width;
     late StateSetter setState;
+    final span = SeSpanVisual(
+      axis: Axis.horizontal,
+      frames: frames,
+      dialogue: words,
+      seName: 'ドア',
+      framesFreeBefore: framesFreeBefore,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
-            child: StatefulBuilder(
-              builder: (context, set) {
-                setState = set;
-                return SizedBox(
-                  width: shown,
-                  height: row,
-                  child: const SeSpanVisual(
-                    axis: Axis.horizontal,
-                    frames: 4,
-                    dialogue: dialogue,
-                    seName: 'ドア',
-                  ),
-                );
-              },
+            child: Padding(
+              padding: EdgeInsets.only(left: left),
+              child: StatefulBuilder(
+                builder: (context, set) {
+                  setState = set;
+                  return SizedBox(width: shown, height: row, child: span);
+                },
+              ),
             ),
           ),
         ),
@@ -90,21 +96,21 @@ void main() {
     for (final width in [400.0, 60.0, 20.0, 6.0]) {
       resize(width);
       await tester.pump();
-      final parts = seSpanParts(
+      final place = seNameChipPlace(
         width,
-        frames: 4,
-        named: true,
         dialogueExtent: natural,
+        roomBefore: 0,
       );
-      expect(tester.getSize(chip).width, closeTo(parts.chip, 1e-6));
+      expect(place.outside, isFalse, reason: '⛔premise: no room before it');
+      expect(tester.getSize(chip).width, closeTo(place.chip, 1e-6));
       expect(
         tester.getTopLeft(find.byType(DialogueFitText)).dx,
-        closeTo(width / 4, 1e-6),
-        reason: 'the words begin on the block\'s second frame, at $width',
+        closeTo(0, 1e-6),
+        reason: 'the words begin on the block\'s first frame, at $width',
       );
       expect(
         tester.getSize(find.byType(DialogueFitText)).width,
-        closeTo(width * 3 / 4, 1e-6),
+        closeTo(width, 1e-6),
         reason: 'and run to its end, at $width',
       );
       expect(
@@ -115,33 +121,48 @@ void main() {
     }
   });
 
-  testWidgets('where a frame is narrower than the chip, the chip lies over '
-      'the words and paints over them', (tester) async {
-    // Ten frames of 10: the chip keeps its 16 over the head (the two short
-    // words hold their size in the nine after it) and reaches the second.
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: SizedBox(
-              width: 100,
-              height: row,
-              child: SeSpanVisual(
-                axis: Axis.horizontal,
-                frames: 10,
-                dialogue: 'あい',
-                seName: 'ドア',
-              ),
-            ),
-          ),
-        ),
-      ),
+  // 🗣️F-358 (유저 2026-10-19): 「대사영역 바로앞. 즉 블록 앞부분 왼쪽에
+  // 이름두자. 블록 밖으로 나가게되는거지. … 공간없으면 지금처럼 블록안에
+  // 넣는데 대사랑 완전겹치는거 감수」 — and 「이름칸이 통째로 들어가면 밖,
+  // 아니면 안(화면 픽셀로)」 (F-358-Q2).
+  testWidgets('🚨with room before its block, the chip stands just before it '
+      'and the words keep the whole block — a zoom that takes the room away '
+      'lays it in, building nothing', (tester) async {
+    // Ten frames of 10, two of them free before: room for the chip's 16.
+    final resize = await mount(
+      tester,
+      width: 100,
+      frames: 10,
+      words: 'あい',
+      framesFreeBefore: 2,
+      left: 40,
     );
+    final chip = find.bySemanticsLabel('SE name ドア');
+    final words = find.byType(DialogueFitText);
+    expect(tester.getRect(chip).width, seNameBoxExtent);
+    expect(tester.getRect(chip).right, closeTo(40, 1e-6));
+    expect(tester.getRect(words).left, closeTo(40, 1e-6));
+    expect(tester.getRect(words).width, closeTo(100, 1e-6));
+
+    final rebuilt = <Type>[];
+    debugOnRebuildDirtyWidget = (element, builtOnce) =>
+        rebuilt.add(element.widget.runtimeType);
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    // Frames of 7: two of them hold 14, short of the chip.
+    resize(70);
+    await tester.pump();
+    expect(tester.getRect(chip).left, closeTo(40, 1e-6), reason: 'in');
+    expect(tester.getRect(words).left, closeTo(40, 1e-6));
+    expect(rebuilt.where((type) => '$type' == '_SeNameBox'), isEmpty);
+  });
+
+  testWidgets('with no room before its block, the chip lies over the words\' '
+      'head and paints over them', (tester) async {
+    await mount(tester, width: 100, frames: 10, words: 'あい');
     final chip = tester.getRect(find.bySemanticsLabel('SE name ドア'));
     final words = tester.getRect(find.byType(DialogueFitText));
     expect(chip.width, seNameBoxExtent);
-    expect(words.left, closeTo(10, 1e-6));
+    expect([chip.left, words.left], [0, 0], reason: 'both at the head');
     expect(chip.overlaps(words), isTrue, reason: '⛔premise: they meet');
     expect(
       [
@@ -151,7 +172,7 @@ void main() {
             matching: find.byType(LayoutId),
           ),
         ))
-          slot.child is DialogueFitText ? 'words' : 'chip',
+          if (slot.child is DialogueFitText) 'words' else 'chip',
       ],
       ['words', 'chip'],
       reason: 'a layout paints its children in order: the name is what '
@@ -198,11 +219,10 @@ void main() {
       style: style,
       maxCrossExtent: width,
     );
-    double chipIn(double width) => seSpanParts(
+    double chipIn(double width) => seNameChipPlace(
       60,
-      frames: 4,
-      named: true,
       dialogueExtent: naturalIn(width),
+      roomBefore: 0,
     ).chip;
     expect(
       chipIn(10),

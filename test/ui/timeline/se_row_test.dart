@@ -284,10 +284,10 @@ void main() {
     final nameBox = find.bySemanticsLabel('SE name 앨리스');
     expect(nameBox, findsOneWidget);
     final size = tester.getSize(nameBox);
-    // A partial band of the first frame cell, written horizontally — at
-    // most the chip's extent down the column: F-224 narrows it with its
-    // dialogue where the block cannot hold the two side by side, as this
-    // three-frame one cannot (the exact ratio is se_span_overflow_test's).
+    // A slim band written horizontally — at most the chip's extent down the
+    // column: F-224 narrows it with its dialogue where the block is shorter
+    // than its words, as this three-frame one is (the exact ratio is
+    // se_span_overflow_test's).
     expect(size.height, lessThanOrEqualTo(seNameBoxExtent));
     expect(size.width, greaterThan(size.height));
   });

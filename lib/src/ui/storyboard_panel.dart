@@ -243,6 +243,7 @@ import 'timeline/timeline_se_row_visual.dart'
     show
         SePaperSpan,
         SeSpanVisual,
+        seFramesFreeBefore,
         seRowAudioStrips,
         timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
@@ -4207,13 +4208,18 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       }
     }
     spans.add(_runLabels(context, layer));
-    // The sheet's writing on the paper blocks.
-    for (final block in blocks) {
+    // The sheet's writing on the paper blocks — each name standing in the
+    // frames free before its block ([seFramesFreeBefore]).
+    for (final (index, block) in blocks.indexed) {
       final frame = layer.frameById(block.frameId);
-      final dialogue = frame?.name;
-      final seName = frame?.seName;
       spans.add(
-        _dialogueSpan(block, layer, dialogue, seName),
+        _dialogueSpan(
+          block,
+          layer,
+          frame?.name,
+          frame?.seName,
+          framesFreeBefore: seFramesFreeBefore(blocks, index),
+        ),
       );
     }
     return spans;
@@ -4510,8 +4516,9 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     TimelineDrawingBlock block,
     Layer layer,
     String? dialogue,
-    String? seName,
-  ) => _frameSpan(
+    String? seName, {
+    required int framesFreeBefore,
+  }) => _frameSpan(
     startFrame: block.startIndex,
     endExclusive: block.endIndexExclusive,
     key: ValueKey<String>(
@@ -4522,6 +4529,9 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       frames: block.length,
       dialogue: dialogue ?? '',
       seName: seName,
+      framesFreeBefore: framesFreeBefore,
+      // ⑲: the paper [_paperSpan] lays.
+      paper: layerMarkColor(layer.mark),
     ),
   );
 
