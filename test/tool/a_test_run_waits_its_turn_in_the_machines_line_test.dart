@@ -101,6 +101,11 @@ void main() {
       expect(suitesToRun('s', line), 1);
       // …and the long run ahead of it keeps that room for it.
       expect(suitesToRun('b', line), isNull);
+      // ⛔A short run waiting ahead holds no long run's turn.
+      expect(
+        suitesToRun('b', [waiting('s', files: 1), waiting('b')], asked: 9),
+        9,
+      );
     });
 
     test('⛔with no gap a short run waits', () {
