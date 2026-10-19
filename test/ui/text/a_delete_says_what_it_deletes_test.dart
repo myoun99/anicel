@@ -16,7 +16,7 @@ void main() {
     AppLanguage.ja: matches(RegExp(r'^.+を削除$')),
     AppLanguage.ko: matches(RegExp(r'^\S.* 삭제$')),
     AppLanguage.fr: matches(RegExp(r'^Supprimer \S')),
-    AppLanguage.zhHans: matches(RegExp(r'^删除.+')),
+    AppLanguage.zhHans: matches(RegExp('^删除.+')),
   };
 
   test('in every language each reads as the app\'s other deletes do, and '
