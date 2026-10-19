@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
@@ -207,9 +208,15 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
+    // The pill as DRAWN is the size it lays itself out at (`getSize`), not
+    // the one it is shown at: a room shorter than the pill shows the whole
+    // pill smaller (the panel's pin 'a panel shorter than the left pill
+    // gets the whole pill, …'), and this window's default layout is such a
+    // room — 405 for a pill 494 tall (measured 2026-10-19, on the commit
+    // that wrote this pin too).
+    expect(tester.getSize(find.byKey(pill)).width, 28);
     final box = tester.getRect(find.byKey(pill));
-    expect(box.width, 28);
-    Rect part(String key) => tester.getRect(inPill(key));
+    Size part(String key) => tester.getSize(inPill(key));
     for (final key in [
       ...parts,
       'brush-pill-size-bar',
@@ -217,7 +224,7 @@ void main() {
     ]) {
       expect(part(key).width, 20, reason: '$key across');
       expect(
-        part(key).center.dx,
+        tester.getRect(inPill(key)).center.dx,
         closeTo(box.center.dx, 0.01),
         reason: '$key centred',
       );
@@ -255,7 +262,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
     await tester.pumpAndSettle();
     final locked = inPill('brush-tool-blend-locked');
-    expect(tester.getRect(locked).width, 20);
+    expect(tester.getSize(locked).width, 20);
     expect(
       find.descendant(of: locked, matching: find.byType(VerticalWritingText)),
       findsOneWidget,
@@ -284,9 +291,17 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
+    // The NUMBER each bar writes, which this is about. Its hands are glyphs:
+    // on a bar this thick the ± glyph's box runs past its cell across the
+    // pair while its ink stays inside (value_hands.dart, `ValueSteps`).
     for (final bar in ['brush-pill-size-bar', 'brush-pill-opacity-bar']) {
-      expect(wordsCutOff(inPill(bar)), isEmpty, reason: bar);
-      expect(wordsCutAcross(inPill(bar)), isEmpty, reason: bar);
+      final number = find.descendant(
+        of: inPill(bar),
+        matching: find.byType(GroundInkWriting),
+      );
+      expect(number, findsOneWidget, reason: '⛔fixture premise: $bar writes');
+      expect(wordsCutOff(number), isEmpty, reason: bar);
+      expect(wordsCutAcross(number), isEmpty, reason: bar);
     }
   });
 }

@@ -92,9 +92,15 @@ class ValueSteps extends StatelessWidget {
     );
   }
 
-  /// One cell: half the value's thickness, the glyph inside it — 1 short
-  /// of the cell's edge on each side, lying or stood (유저 2026-10-18 of
-  /// the pill's: 「+-버튼은 … 더 작게해도되니까 안에 들어가도록하자」).
+  /// One cell: half the value's thickness, the glyph 1 short of the cell's
+  /// edge at each end of that half, lying or stood (유저 2026-10-18 of the
+  /// pill's: 「+-버튼은 … 더 작게해도되니까 안에 들어가도록하자」).
+  ///
+  /// ⚠️ACROSS the pair — the [width] it lies — a thick bar's glyph BOX runs
+  /// past the cell (the strip's bars, 42 thick; the pill's at twice the OS
+  /// text) while its INK stays inside: a ＋ is 14 of its 24. Holding the box
+  /// inside as well would shrink the strip's ±, which nobody asked for
+  /// (measured 2026-10-19, I-34).
   Widget _cell(IconData icon, int direction, {Color? color}) {
     final half = height / 2;
     final stood = axis == Axis.vertical;

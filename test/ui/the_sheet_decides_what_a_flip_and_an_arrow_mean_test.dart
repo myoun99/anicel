@@ -92,6 +92,9 @@ void main() {
     // never locked, on the old code and the new alike. Every one of the
     // three, not the first alone: a finger on what stands over the canvas
     // is that thing's, and the canvas hears fewer than three.
+    // ↩️It tried five fixed places, and the brush's pill (I-34) came to
+    // stand on one of them — so the canvas is searched, row by row from the
+    // top, for three places side by side that it answers.
     final canvas = find.byType(CanvasViewportGestureLayer).first;
     final box = tester.getRect(canvas);
     List<Alignment> fingersFrom(Alignment first) => [
@@ -99,11 +102,9 @@ void main() {
         first + Alignment(finger * 20.0 / (box.width / 2), 0),
     ];
     final places = [
-      Alignment.center,
-      const Alignment(-0.6, -0.6),
-      const Alignment(0.6, -0.6),
-      const Alignment(-0.6, 0.6),
-      const Alignment(0.6, 0.6),
+      for (var row = -9; row <= 9; row += 1)
+        for (var column = -9; column <= 9; column += 1)
+          Alignment(column / 10, row / 10),
     ].map(fingersFrom).firstWhere(
       (three) => three.every(
         (place) => canvas.hitTestable(at: place).evaluate().isNotEmpty,
