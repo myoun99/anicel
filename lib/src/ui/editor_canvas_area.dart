@@ -130,9 +130,11 @@ typedef _ShownSpace = ({
   CanvasPoint Function(CanvasPoint point) fromCanvas,
 });
 
-/// A row's [lane] whose keys walk a path, as the canvas shows it: its frames
-/// [axisOffset] ahead of the cut's, its points shown through [space].
+/// A row's [lane] — its transform [property] — whose keys walk a path, as
+/// the canvas shows it: its frames [axisOffset] ahead of the cut's, its
+/// points shown through [space].
 typedef _PathShown = ({
+  TransformPropertyId property,
   PropertyTrack<CanvasPoint> lane,
   int axisOffset,
   _ShownSpace space,
@@ -1495,8 +1497,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return _pathTangents(
       session,
       cameraRowId,
-      TransformPropertyId.position,
-      (lane: track.position, axisOffset: 0, space: _shownThrough(null)),
+      (
+        property: TransformPropertyId.position,
+        lane: track.position,
+        axisOffset: 0,
+        space: _shownThrough(null),
+      ),
       description: 'Bend camera path',
     );
   }
@@ -1523,8 +1529,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     return _pathTangents(
       session,
       layer.id,
-      property,
       (
+        property: property,
         lane: lane,
         axisOffset: axisOffset,
         space: _pathSpaceOf(session, layer, property, canvasSize),
@@ -1533,7 +1539,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  /// The handles of a row's curved keys on the path its lane [property]
+  /// The handles of a row's curved keys on the path its [path]'s lane
   /// walks (I-89 ④): drawn wherever it is, in space and in space and time
   /// alike (🗣️F-368, 유저 2026-10-16: 「공간이든 공간+시간이든 공간이라는
   /// 정보로서」 · F-368-Q1 A 「중앙 궤적 선 + 핸들(두 모드 공통, 서 있을
@@ -1544,7 +1550,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   List<RowBoxTangent> _pathTangents(
     EditorSessionManager session,
     LayerId rowId,
-    TransformPropertyId property,
     _PathShown path, {
     required String description,
   }) {
@@ -1552,7 +1557,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (settings.show == CameraPathShow.off) {
       return const [];
     }
-    final (:lane, :axisOffset, space: shown) = path;
+    final (:property, :lane, :axisOffset, space: shown) = path;
     final (:from, :to) = settings.framesShownAt(session.currentFrameIndex);
     return [
       for (final knob in keyPathKnobs(
