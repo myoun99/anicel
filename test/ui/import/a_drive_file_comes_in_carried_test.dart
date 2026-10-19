@@ -135,7 +135,16 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     final window = find.byKey(const ValueKey<String>('import-dialog'));
-    await settleAsync(tester, () => window.evaluate().isEmpty);
+    // The fake clock too: the window leaves on its route's way out, which
+    // only that clock plays. ↩️It lent the real loop alone, so the window
+    // never left, and the whole patience ran out — sixty seconds a test
+    // (10-19).
+    final closed = await settleAsync(
+      tester,
+      () => window.evaluate().isEmpty,
+      step: const Duration(milliseconds: 50),
+    );
+    expect(closed, isTrue, reason: 'the window closes once the files landed');
     await tester.pumpAndSettle();
     s.playbackRig.prerenderScheduler.cancel();
   }

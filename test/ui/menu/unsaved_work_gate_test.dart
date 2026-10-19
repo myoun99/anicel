@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/poll_until.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// The one question both doors ask before a session is torn down:
 /// **will the work survive it?**
@@ -368,8 +369,11 @@ void main() {
     await tester.pump();
     await tester.pump();
     // The open hops to a background isolate, which the fake clock never
-    // advances — lend the real loop until the tab on screen holds it.
-    await settleAsync(
+    // advances — lend the real loop until the tab on screen holds it. And
+    // the fake clock too: a new tab comes up once the window's linger is
+    // over. ↩️It lent the real loop alone, so the tab never came, and every
+    // open here ran the whole patience out — sixty seconds a test (10-19).
+    final shown = await settleAsync(
       tester,
       () =>
           tester
@@ -378,19 +382,16 @@ void main() {
               .projectFile
               .path ==
           path,
+      step: const Duration(milliseconds: 50),
     );
+    expect(shown, isTrue, reason: 'the tab on screen holds the file');
     // The window lingers with its check for `appProgressDoneLinger`, and a
-    // window still up would swallow the next tap. Both clocks are advanced
-    // until it is gone.
-    final window = find.byKey(const ValueKey<String>('open-progress-dialog'));
-    for (var attempt = 0;
-        attempt < 40 && window.evaluate().isNotEmpty;
-        attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 100));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
-    }
+    // window still up would swallow the next tap.
+    await pumpPastTheWaitWindow(tester);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.playbackRig.prerenderScheduler.cancel();
     await tester.pumpAndSettle();
   }
 

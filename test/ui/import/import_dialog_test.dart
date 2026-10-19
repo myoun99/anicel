@@ -22,6 +22,7 @@ import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/import_preview_probe.dart';
 import '../../helpers/import_warnings.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/poll_until.dart';
 import '../../helpers/psd_fixture.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
@@ -37,18 +38,27 @@ import '../../helpers/wait_window.dart';
 /// in a loaded run, then passed three times alone and in another lane's
 /// run — and the window's own preview holding the file was measured and
 /// ruled out (its viewer document open, the write went through). The
-/// emptying is the fixture's, not what the test measures, so it waits.
+/// emptying is the fixture's, not what the test measures, so it waits —
+/// by [waitPatience]. ↩️It gave up on its fiftieth try until 2026-10-19: a
+/// count of rounds, which a busy machine runs out.
 Future<void> emptyWhenFree(File file) async {
-  for (var attempt = 1; ; attempt += 1) {
-    try {
-      await file.writeAsBytes(const <int>[]);
-      return;
-    } on FileSystemException catch (error) {
-      if (error.osError?.errorCode != 1224 || attempt == 50) {
-        rethrow;
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+  final emptied = await pollUntil(
+    () => _emptied(file),
+    beat: const Duration(milliseconds: 100),
+  );
+  expect(emptied, isTrue, reason: 'still mapped: ${file.path}');
+}
+
+/// Whether [file] took the empty write — false while a map holds it.
+Future<bool> _emptied(File file) async {
+  try {
+    await file.writeAsBytes(const <int>[]);
+    return true;
+  } on FileSystemException catch (error) {
+    if (error.osError?.errorCode != 1224) {
+      rethrow;
     }
+    return false;
   }
 }
 
@@ -1202,14 +1212,7 @@ void main() {
     // The piece is let go of once its door returns — after the last page
     // has baked, which is later than the renders being asked for. Its bytes
     // were held before it landed, so THAT is no sign the door is done.
-    for (var tries = 0;
-        tries < 200 && File(piecePath).existsSync();
-        tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
+    await settleAsync(tester, () => !File(piecePath).existsSync());
     expect(
       stagedCopyIn(s, piecePath),
       isNotNull,

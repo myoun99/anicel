@@ -124,6 +124,37 @@ void main() {
     expect(_pollStartsAt(deadline, 0), isTrue, reason: deadline.first);
   });
 
+  test('premise: the poll scan reads a header dart format broke either way, '
+      'and a count kept in the body', () {
+    const alone = [
+      'for (',
+      '  var t = 0;',
+      '  t < 9 && !seen;',
+      '  t += 1',
+      ') {',
+      '  await tester.runAsync(() => Future<void>.delayed(beat));',
+      '}',
+    ];
+    const afterItsFirstClause = [
+      'for (var t = 0;',
+      '    t < 9 && !seen;',
+      '    t += 1) {',
+      '  await tester.runAsync(() => Future<void>.delayed(beat));',
+      '}',
+    ];
+    const countedInItsBody = [
+      'for (var t = 1; ; t += 1) {',
+      '  if (seen || t == 9) return;',
+      '  await Future<void>.delayed(beat);',
+      '}',
+    ];
+    for (final loop in [alone, afterItsFirstClause, countedInItsBody]) {
+      final read = _headersOnOneLine(loop);
+      expect(read, hasLength(loop.length), reason: 'each line keeps its place');
+      expect(_pollStartsAt(read, 0), isTrue, reason: loop.first);
+    }
+  });
+
   /// 🚨**A POLL WAITS BY THE CLOCK, NOT BY A COUNT OF ROUNDS** (card
   /// `a-poll-that-counts-rounds-runs-out-under-load`). A loop that lends
   /// real time a fixed number of times and leaves the moment what it waits
@@ -138,6 +169,8 @@ void main() {
   /// for something to come. Five of them stood in a header dart format
   /// broke over lines, which a loop's own line alone never shows
   /// ([_headersOnOneLine]): read line by line, the scan had passed them.
+  /// 🔬On master `243dd8074` it passed four more: three in a header broken
+  /// after its first clause, and one that kept its count in its body.
   ///
   /// ⛔A WINDOW is rounds on purpose — given to see that something does NOT
   /// happen, it must not see less on a busy machine (`lendBothClocks`) —
@@ -356,8 +389,11 @@ bool _delayedTakesAComputation(String source) {
   return arguments != null && arguments.length > 1;
 }
 
-/// A counted `for` loop's own line — `for (var i = 0; i < n; …)`.
-final _countedLoop = RegExp(r'^\s*for \(var \w+ = \d+; \w+ < ');
+/// A counted `for` loop's own line — `for (var i = 0; i < n; …)`, or one
+/// that keeps its count in its body (`for (var i = 0; ; …)`). ↩️The second
+/// passed by until 2026-10-19: the import tests' retry of a mapped file
+/// gave up on its fiftieth try that way.
+final _countedLoop = RegExp(r'^\s*for \(var \w+ = \d+; (\w+ < |;)');
 
 /// A `while` loop's own line, or a `do` loop's.
 final _openLoop = RegExp(r'^\s*(while \(|do \{)');
@@ -467,36 +503,42 @@ int _pastHeader(String head) {
   return close == null ? head.length : close + 1;
 }
 
-/// [lines] with each loop header dart format broke over lines — `for (`
-/// or `while (` alone, its clauses, then `) {` — read as one line on its
-/// first, and the lines it took left blank, so every line keeps its
-/// number. A loop's own line is where every scan here looks for its count
-/// and its condition, and a broken header shows neither there.
+/// [lines] with each loop header dart format broke over lines read as one
+/// line on its first, and the lines it took left blank, so every line
+/// keeps its number. A loop's own line is where every scan here looks for
+/// its count and its condition, and a broken header shows neither there.
+///
+/// Read by its brackets ([matchingClose]), as the loop's block is: dart
+/// format breaks a header two ways — `for (` alone, its clauses, then
+/// `) {`; or after its first clause (`for (var i = 0;`), the rest beneath
+/// it. ↩️It knew only the first until 2026-10-19, and three polls of the
+/// import and open tests stood in the second (card
+/// `import-wait-tests-read-the-wall-clock`).
 List<String> _headersOnOneLine(List<String> lines) {
   final joined = [...lines];
   for (var i = 0; i < joined.length; i += 1) {
-    if (!_brokenHeader.hasMatch(joined[i])) {
+    final header = _loopHeader.firstMatch(joined[i]);
+    if (header == null || matchingClose(joined[i], header.end - 1) != null) {
       continue;
     }
-    var end = i + 1;
-    while (end < joined.length && !_headerCloses.hasMatch(joined[end])) {
-      end += 1;
-    }
-    if (end == joined.length) {
+    final rest = joined.sublist(i).join('\n');
+    final close = matchingClose(rest, header.end - 1);
+    if (close == null) {
       continue;
     }
-    final clauses = [for (var j = i + 1; j < end; j += 1) joined[j].trim()];
-    joined[i] = '${joined[i]}${clauses.join(' ')}${joined[end].trim()}';
+    final end = i + '\n'.allMatches(rest.substring(0, close)).length;
     for (var j = i + 1; j <= end; j += 1) {
+      joined[i] = _readOn(joined[i], joined[j].trim());
       joined[j] = '';
     }
   }
   return joined;
 }
 
-/// A loop's own line that holds nothing but its keyword and the bracket
-/// its header opens.
-final _brokenHeader = RegExp(r'^\s*(for|while) \($');
+/// A loop's own line, to the bracket its header opens.
+final _loopHeader = RegExp(r'^\s*(for|while) \(');
 
-/// The line a broken header closes on.
-final _headerCloses = RegExp(r'^\s*\)');
+/// [line] with [next] read on after it — straight on past a bracket that
+/// opens or before one that closes, and past a space between two clauses.
+String _readOn(String line, String next) =>
+    line.endsWith('(') || next.startsWith(')') ? '$line$next' : '$line $next';
