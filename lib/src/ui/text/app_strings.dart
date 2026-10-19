@@ -443,6 +443,7 @@ enum AppStrings {
   String get guideVanishingPointAtInfinity =>
       _s('guideVanishingPointAtInfinity');
   String get guideAddVanishingPoint => _s('guideAddVanishingPoint');
+  String get guideDeleteVanishingPoint => _s('guideDeleteVanishingPoint');
   String get guideParallel => _s('guideParallel');
   String get guideParallelAngle => _s('guideParallelAngle');
   String get guideLineDensity => _s('guideLineDensity');
@@ -1988,7 +1989,7 @@ enum AppStrings {
         'restores it.',
     'guideKindSymmetry': 'Symmetry',
     'guideKindPerspective': 'Perspective',
-    'guideDelete': 'Delete',
+    'guideDelete': 'Delete guide',
     'guideShow': 'Show on canvas',
     'guideActsOn': 'Acting on strokes',
     'guideActsOff': 'Not acting',
@@ -2005,6 +2006,7 @@ enum AppStrings {
     'guideVanishingPoint': 'Vanishing point',
     'guideVanishingPointAtInfinity': 'Parallel (at infinity)',
     'guideAddVanishingPoint': 'New vanishing point',
+    'guideDeleteVanishingPoint': 'Delete vanishing point',
     'guideParallel': 'Parallel',
     'guideParallelAngle': 'Angle',
     'guideLineDensity': 'Line density',
@@ -2309,7 +2311,7 @@ enum AppStrings {
     'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
     'mediaRelinkScanning': 'Reading that folder…',
     'mediaRelinkScanned': 'Folder read',
-    'mediaRemove': 'Remove',
+    'mediaRemove': 'Delete media',
     'mediaRegisterInProject': 'Keep inside the project file',
     'mediaExportWav': 'Export as WAV',
     'mediaExportWavNoAudio': 'This asset has no audio to export.',
@@ -2320,7 +2322,7 @@ enum AppStrings {
         'there any more — save once and its media moves inside the project '
         'file, and then the folder can go.',
     'mediaRemoveInUse':
-        'It is in use. Remove it anyway? The layers and frames placed from '
+        'It is in use. Delete it anyway? The layers and frames placed from '
         'it will be deleted.',
     'mediaUsesHeading': 'Where it is used',
     'mediaOpenInViewer': 'Open in Viewer',
@@ -3172,7 +3174,7 @@ enum AppStrings {
         'このカットは元のカットのサイズに変更されます。元に戻すと復元されます。',
     'guideKindSymmetry': '対称',
     'guideKindPerspective': 'パース',
-    'guideDelete': '削除',
+    'guideDelete': 'ガイドを削除',
     'guideShow': 'キャンバスに表示',
     'guideActsOn': '線に効いている',
     'guideActsOff': '効いていない',
@@ -3188,6 +3190,7 @@ enum AppStrings {
     'guideVanishingPoint': '消失点',
     'guideVanishingPointAtInfinity': '平行（無限遠）',
     'guideAddVanishingPoint': '新規消失点',
+    'guideDeleteVanishingPoint': '消失点を削除',
     'guideParallel': '平行',
     'guideParallelAngle': '角度',
     'guideLineDensity': '線の密度',
@@ -3697,7 +3700,7 @@ enum AppStrings {
     'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
     'mediaRelinkScanning': 'フォルダーを読み込み中…',
     'mediaRelinkScanned': '読み込みました',
-    'mediaRemove': '削除',
+    'mediaRemove': 'メディアを削除',
     'mediaRegisterInProject': 'プロジェクトファイルに取り込む',
     'mediaExportWav': 'WAVで書き出す',
     'mediaExportWavNoAudio': 'この素材には書き出せる音声がありません。',
@@ -4750,7 +4753,7 @@ enum AppStrings {
         '이 컷이 원본 컷의 크기로 바뀝니다. 실행 취소하면 되돌아갑니다.',
     'guideKindSymmetry': '대칭',
     'guideKindPerspective': '퍼스',
-    'guideDelete': '삭제',
+    'guideDelete': '가이드 삭제',
     'guideShow': '캔버스에 표시',
     'guideActsOn': '획에 작용 중',
     'guideActsOff': '작용 안 함',
@@ -4766,6 +4769,7 @@ enum AppStrings {
     'guideVanishingPoint': '소실점',
     'guideVanishingPointAtInfinity': '평행(무한대)',
     'guideAddVanishingPoint': '새 소실점',
+    'guideDeleteVanishingPoint': '소실점 삭제',
     'guideParallel': '평행',
     'guideParallelAngle': '각도',
     'guideLineDensity': '선 밀도',
@@ -5270,7 +5274,7 @@ enum AppStrings {
     'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
     'mediaRelinkScanning': '폴더를 읽는 중…',
     'mediaRelinkScanned': '폴더를 읽었습니다',
-    'mediaRemove': '제거',
+    'mediaRemove': '미디어 삭제',
     'mediaRegisterInProject': '프로젝트 파일에 품기',
     'mediaExportWav': 'WAV로 내보내기',
     'mediaExportWavNoAudio': '이 소재에는 내보낼 오디오가 없습니다.',
@@ -5279,7 +5283,7 @@ enum AppStrings {
     'projectLegacyAssetsFolder':
         '이 프로젝트 옆에 아직 {name} 폴더가 있습니다. 이제 쓰지 않습니다 — '
         '한 번 저장하면 안의 미디어가 프로젝트 파일로 들어가고, 그 뒤엔 폴더를 지워도 됩니다.',
-    'mediaRemoveInUse': '사용 중인데 제거하겠습니까? 배치한 레이어/프레임이 삭제됩니다.',
+    'mediaRemoveInUse': '사용 중인데 삭제하겠습니까? 배치한 레이어/프레임이 삭제됩니다.',
     'mediaUsesHeading': '쓰는 곳',
     'mediaOpenInViewer': '뷰어에서 열기',
     'mediaOpenInSubViewer': '서브 뷰어에서 열기',
@@ -6324,7 +6328,7 @@ enum AppStrings {
         'l\'emporte — il est conseillé d\'harmoniser les tailles d\'abord.',
     'guideKindSymmetry': 'Symétrie',
     'guideKindPerspective': 'Perspective',
-    'guideDelete': 'Supprimer',
+    'guideDelete': 'Supprimer le repère',
     'guideShow': 'Afficher sur le canevas',
     'guideActsOn': 'Agit sur les traits',
     'guideActsOff': 'N\'agit pas',
@@ -6342,6 +6346,7 @@ enum AppStrings {
     'guideVanishingPoint': 'Point de fuite',
     'guideVanishingPointAtInfinity': 'Parallèle (à l\'infini)',
     'guideAddVanishingPoint': 'Nouveau point de fuite',
+    'guideDeleteVanishingPoint': 'Supprimer le point de fuite',
     'guideParallel': 'Parallèle',
     'guideParallelAngle': 'Angle',
     'guideLineDensity': 'Densité des lignes',
@@ -6876,7 +6881,7 @@ enum AppStrings {
     'mediaMissingCount': '{n} fichiers multimédias introuvables',
     'mediaFindInFolder': 'Chercher dans un dossier…',
     'mediaRelinkFound': '{m} sur {n} trouvés. Les relier ?',
-    'mediaRemove': 'Retirer',
+    'mediaRemove': 'Supprimer le média',
     'mediaRegisterInProject': 'Conserver dans le fichier de projet',
     'mediaExportWav': 'Exporter en WAV',
     'mediaExportWavNoAudio': "Cet élément n'a pas d'audio à exporter.",
@@ -6913,7 +6918,7 @@ enum AppStrings {
     'panelMediaViewer': 'Visionneuse',
     'panelMediaViewerSub': 'Visionneuse secondaire',
     'mediaRemoveInUse':
-        'Ce média est utilisé. Le retirer quand même ? Les calques et '
+        'Ce média est utilisé. Le supprimer quand même ? Les calques et '
         'images placés seront supprimés.',
     'mediaUsesHeading': 'Utilisations',
     'panelCanvas': 'Canevas',
@@ -8006,7 +8011,7 @@ enum AppStrings {
         '— 建议先统一尺寸再进行更改。',
     'guideKindSymmetry': '对称',
     'guideKindPerspective': '透视',
-    'guideDelete': '删除',
+    'guideDelete': '删除参考线',
     'guideShow': '在画布上显示',
     'guideActsOn': '正在作用于笔画',
     'guideActsOff': '未作用',
@@ -8022,6 +8027,7 @@ enum AppStrings {
     'guideVanishingPoint': '消失点',
     'guideVanishingPointAtInfinity': '平行（无穷远）',
     'guideAddVanishingPoint': '新建消失点',
+    'guideDeleteVanishingPoint': '删除消失点',
     'guideParallel': '平行',
     'guideParallelAngle': '角度',
     'guideLineDensity': '线条密度',
@@ -8493,7 +8499,7 @@ enum AppStrings {
     'mediaMissingCount': '找不到 {n} 个媒体文件',
     'mediaFindInFolder': '在文件夹中查找…',
     'mediaRelinkFound': '在 {n} 个中找到 {m} 个。要重新链接吗？',
-    'mediaRemove': '移除',
+    'mediaRemove': '删除媒体',
     'mediaRegisterInProject': '收入项目文件',
     'mediaExportWav': '导出为 WAV',
     'mediaExportWavNoAudio': '此素材没有可导出的音频。',
@@ -8502,7 +8508,7 @@ enum AppStrings {
     'projectLegacyAssetsFolder':
         '此项目旁边仍有 {name} 文件夹。它已不再被写入 — 保存一次后，'
         '其中的媒体会进入项目文件，之后即可删除该文件夹。',
-    'mediaRemoveInUse': '正在使用中。仍要移除吗？放置的图层/帧将被删除。',
+    'mediaRemoveInUse': '正在使用中。仍要删除吗？放置的图层/帧将被删除。',
     'mediaUsesHeading': '使用位置',
     'mediaOpenInViewer': '在查看器中打开',
     'mediaOpenInSubViewer': '在副查看器中打开',

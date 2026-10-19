@@ -7,6 +7,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/brush/guide_panels.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -522,6 +523,34 @@ void main() {
       await tester.pump();
 
       expect(perspectiveOf(committed!, 'p1').vanishingPoints, [at(900, 50)]);
+    });
+
+    // 🗣️I-58 (유저 2026-10-18): 「ㅁㅁ 삭제」. ↩️It borrowed the guide
+    // row's string.
+    testWidgets('a point\'s delete names the point, not the guide', (
+      tester,
+    ) async {
+      await pumpSettings(
+        tester,
+        CutGuides(
+          guides: [
+            perspectiveGuide('p1', points: [at(-100, 50), at(900, 50)]),
+          ],
+        ),
+        const GuideId('p1'),
+        (_) {},
+      );
+
+      final remove = tester.widget<ToolSettingAction>(
+        find.ancestor(
+          of: find.descendant(
+            of: find.byKey(const ValueKey<String>('guide-vanishing-point-0')),
+            matching: find.byKey(const ValueKey<String>('guide-remove')),
+          ),
+          matching: find.byType(ToolSettingAction),
+        ),
+      );
+      expect(remove.label, strings.guideDeleteVanishingPoint);
     });
 
     testWidgets('🚨the ＋ adds a point on the plane beside the eye level\'s '

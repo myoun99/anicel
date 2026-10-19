@@ -186,6 +186,7 @@ void main() {
     'guideVanishingPoint': (s) => s.guideVanishingPoint,
     'guideVanishingPointAtInfinity': (s) => s.guideVanishingPointAtInfinity,
     'guideAddVanishingPoint': (s) => s.guideAddVanishingPoint,
+    'guideDeleteVanishingPoint': (s) => s.guideDeleteVanishingPoint,
     'guideParallel': (s) => s.guideParallel,
     'guideParallelAngle': (s) => s.guideParallelAngle,
     'guideLineDensity': (s) => s.guideLineDensity,

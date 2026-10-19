@@ -326,6 +326,12 @@ class MediaPoolPanel extends StatelessWidget {
   /// 2026-09-12: 「풀에서 그냥 제거버튼 누르면 사용중인데 제거하겠습니까?
   /// 배치한 레이어/프레임이 삭제됩니다. 라고 표시해서 강제삭제할수있게」). The
   /// uses ride in the question's fold; a yes removes them with the asset.
+  ///
+  /// 🗣️I-58 (유저 2026-10-18): 「ㅁㅁ 삭제」 — the button is 「미디어 삭제」:
+  /// it takes the media and what was placed from it out of the project, as
+  /// 「레이어 삭제」 takes a layer, and leaves the file on the disk. The
+  /// question asks in the button's word. ↩️Both said 「제거」, F-118's word
+  /// for the button as it was.
   Future<void> _remove(BuildContext context, MediaAsset asset) async {
     final uses = usesOf(asset.path).toList();
     if (uses.isNotEmpty) {

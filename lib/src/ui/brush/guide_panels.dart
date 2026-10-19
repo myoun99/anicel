@@ -399,6 +399,9 @@ class _GuideRow extends StatelessWidget {
               tooltip: strings.guideShow,
               onToggle: () => onVisibleChanged(!guide.visible),
             ),
+            // 🗣️I-58 (유저 2026-10-18): 「통일(레이어 추가 이런식으로 ㅁㅁ
+            // 추가. ㅁㅁ 삭제)하고」 — 「가이드 삭제」, the pair of the list's
+            // 「새 … 가이드」. ↩️It said 「삭제」, naming nothing.
             AppIconButton(
               keyValue: 'guide-delete-${guide.id.value}',
               tooltip: strings.guideDelete,
@@ -790,10 +793,13 @@ class _VanishingPointRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: ToolSettingColumns.gap),
+          // 🗣️I-58 (유저 2026-10-18): 「ㅁㅁ 삭제」 — 「소실점 삭제」, the
+          // pair of 「새 소실점」. ↩️It borrowed the guide row's string, so
+          // it said 「삭제」 and then would have said 「가이드 삭제」.
           Expanded(
             child: ToolSettingAction.glyph(
               keyValue: 'guide-remove',
-              label: strings.guideDelete,
+              label: strings.guideDeleteVanishingPoint,
               glyph: const Icon(Icons.delete_outline),
               onPressed: onRemoved,
             ),
