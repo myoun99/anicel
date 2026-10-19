@@ -13,9 +13,11 @@ import '../../tool/affected_tests.dart'
         gcTag,
         gcTagMarker,
         kBatchWall,
+        lineFor,
         nextBatch,
         partitionByGcTag,
         runInBatches;
+import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
 
 /// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
 ///
@@ -196,8 +198,9 @@ void main() {
     });
 
     test('🚨every place that runs the parity list runs it by the plan', () {
-      // `lane.sh` names the runner beside itself, in quotes.
-      final byThePlan = RegExp(r'affected_tests\.dart"? --files-from');
+      // `lane.sh` names the runner beside itself through tool/run.sh, the
+      // line broken before the flag.
+      final byThePlan = RegExp(r'affected_tests(\.dart"?)?[\s\\]+--files-from');
       final places = <String>[];
       for (final dir in ['tool', '.github', '.githooks']) {
         for (final file in filesUnder(dir)) {
@@ -232,7 +235,49 @@ void main() {
         'before the entrance would ignore --files-from', () {
       expect(
         File('tool/lane.sh').readAsStringSync(),
-        contains(r'dart run "$ROOT/tool/affected_tests.dart" --files-from'),
+        matches(
+          RegExp(r'bash "\$ROOT/tool/run\.sh" affected_tests[\s\\]+--files-from'),
+        ),
+      );
+    });
+
+    test("a land's gates run it outside the machine's line, as they run "
+        'their architecture tests — asked alone, it stands in the line', () {
+      expect(lineFor(['--files-from', 'parity.txt']).inTheLine, isTrue);
+      final gates = lineFor([
+        '--files-from',
+        'parity.txt',
+        '--outside-the-line',
+      ]);
+      expect(gates.inTheLine, isFalse);
+      expect(gates.refusal, isNull);
+      final lane = File('tool/lane.sh').readAsStringSync();
+      expect(
+        lane,
+        contains(r'cmd_native "$name" gates'),
+        reason: 'refusal 5 tells the parity run it is a gate',
+      );
+      expect(lane, contains(r'[ "${2:-}" = gates ] && line=--outside-the-line'));
+      expect(lane, contains(r'--files-from "$list" ${line:+"$line"})'));
+    });
+
+    test('⛔any other run asked outside the line is refused — it is a '
+        "session's, and stands in it", () {
+      expect(lineFor(const []).inTheLine, isTrue);
+      final asked = lineFor(['--base', 'master', '--outside-the-line']);
+      expect(asked.refusal, contains('--files-from'));
+    });
+
+    test('outside the line, a run holds what it asked at once — as on a '
+        'machine with no line', () async {
+      expect(await outsideTheLine('gates', (turn) => turn.take(files: 3)), 3);
+      expect(
+        await outsideTheLine('gates', (turn) => turn.take(), asked: 4),
+        4,
+      );
+      expect(
+        await outsideTheLine('gates', (turn) => turn.take()),
+        kMachineSuites,
       );
     });
   });

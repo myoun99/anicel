@@ -728,6 +728,34 @@ Future<T> standInLine<T>(
   }
 }
 
+/// Runs [run] with NO place in the machine's line: every `flutter test` it
+/// starts holds what it asked at once — at most [kMachineSuites], as on a
+/// machine with no line ([Turn.take] with no folder).
+///
+/// 🗣️A LAND'S GATES ONLY (유저 10-08, a-sent-lane-is-gated-once-Q1 「착지
+/// 게이트는 이 넷에 세지 않는다」): a land waiting in the line would hold the
+/// land's turn all the while, and every other lane's land behind it. Its
+/// analyze and architecture tests run straight from `tool/lane.sh`; its
+/// parity list comes through `affected_tests --outside-the-line`, and only
+/// a list run may ask for that there.
+Future<T> outsideTheLine<T>(
+  String what,
+  Future<T> Function(Turn turn) run, {
+  int? asked,
+  void Function(String) say = print,
+}) => run(
+  Turn._(
+    null,
+    what,
+    asked: asked,
+    room: () async => true,
+    ended: runHasEnded,
+    say: say,
+    lookAgain: kLookAgain,
+    askAgain: kAskAgain,
+  ),
+);
+
 /// Runs [run] — one `flutter test` naming [files] test files, or any one
 /// command — in its turn in the machine's line, handing it the suites it
 /// may hold ([Turn.take]).

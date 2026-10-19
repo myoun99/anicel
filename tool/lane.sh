@@ -740,6 +740,13 @@ cmd_engine() {
 # Refusal 5, runnable on its own. The header says why each step is there.
 cmd_native() {
   local name="${1:-}"; [ -n "$name" ] || die "native needs a name"
+  # $2 is `gates` when a land's gates ask (refusal 5): their parity run takes
+  # no place in the machine's line, as their architecture tests take none
+  # (유저 10-08 「착지 게이트는 이 넷에 세지 않는다」 — and a land waiting in
+  # the line would hold the land's turn). Asked alone, it is a session's
+  # test run and stands in the line (`affected_tests.dart`, `lineFor`).
+  local line=
+  [ "${2:-}" = gates ] && line=--outside-the-line
   name="$(lane_named "$name")" || exit 1
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
@@ -774,8 +781,8 @@ cmd_native() {
   # script, as `ensure_engine` asks the provenance tool beside it: `gate`
   # runs on a lane as it stands, and one cut before --files-from existed
   # would ignore the flag and run a selection of its own.
-  (cd "$p" && QA_REQUIRE_NATIVE=1 dart run "$ROOT/tool/affected_tests.dart" --files-from "$list") \
-    >>"$log" 2>&1 || {
+  (cd "$p" && QA_REQUIRE_NATIVE=1 bash "$ROOT/tool/run.sh" affected_tests \
+    --files-from "$list" ${line:+"$line"}) >>"$log" 2>&1 || {
     tr '\r' '\n' <"$log" | grep -a '\[E\]' | head -10 >&2
     die "parity is red against the engine this lane just built — this is refusal 5; the whole log: $log"
   }
@@ -880,9 +887,10 @@ gates() {
   fi
   rm -rf "$out"
 
-  # Refusal 5. Only a lane that touched the C pays for it.
+  # Refusal 5. Only a lane that touched the C pays for it — its parity run
+  # outside the machine's line, as the architecture tests above run.
   if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
-    cmd_native "$name"
+    cmd_native "$name" gates
   fi
 }
 

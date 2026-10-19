@@ -38,6 +38,7 @@
 //   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
 //   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
 //   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
+//   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
 // A file green on this machine with byte-for-byte the inputs it has now is
 // not run again, and a red file is run once more: green the second time,
@@ -197,6 +198,31 @@ const kNearConfigImports = 0;
   return (files: files, refusal: null);
 }
 
+/// Whether a run asked with [args] takes its turn in the machine's line
+/// (`test_queue.dart`) — or why it was asked wrongly.
+///
+/// 🗣️A LAND'S GATES TAKE NO PLACE IN IT. `tool/lane.sh` runs the native
+/// parity list among the gates a landing stands behind, beside its analyze
+/// and architecture tests, and those run at once, never in the line (유저
+/// 10-08, a-sent-lane-is-gated-once-Q1 「착지 게이트는 이 넷에 세지 않는다」;
+/// 10-18, tests-crowd-the-machine-Q2). A land waiting in the line would hold
+/// the land's turn all the while, and every other lane's land behind it. So
+/// the gates say `--outside-the-line` — ⛔for a list run only: any other run
+/// is a session's, and stands in the line.
+({bool inTheLine, String? refusal}) lineFor(List<String> args) {
+  if (!args.contains('--outside-the-line')) {
+    return (inTheLine: true, refusal: null);
+  }
+  if (!args.contains('--files-from')) {
+    return (
+      inTheLine: true,
+      refusal: "--outside-the-line is a land's gates' own, for a "
+          '--files-from list',
+    );
+  }
+  return (inTheLine: false, refusal: null);
+}
+
 /// What a change to [changed] — every changed file, Dart or not — can have
 /// broken, out of [tests]: what reaches a changed file ([Reaches]) — by its
 /// imports, however far away or no more than [within] of them, or by a path
@@ -257,6 +283,11 @@ Future<void> main(List<String> args) async {
     exit(2);
   }
   final useCache = !args.contains('--no-cache');
+  final turn = lineFor(args);
+  if (turn.refusal != null) {
+    stderr.writeln('${turn.refusal}.');
+    exit(2);
+  }
   _atIdle();
 
   final root = _repoRoot();
@@ -277,6 +308,7 @@ Future<void> main(List<String> args) async {
       cache: _openCache(imports),
       useCache: useCache,
       redsTo: redsTo,
+      inTheLine: turn.inTheLine,
     ),
   );
 
@@ -640,6 +672,7 @@ Future<int> _runTests(
   ResultCache? cache,
   bool useCache = true,
   String? redsTo,
+  bool inTheLine = true,
 }) async {
   final selected = useCache && cache != null
       ? _withoutStillGreen(files, cache)
@@ -682,12 +715,11 @@ Future<int> _runTests(
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
-  // takes the suites the line gives it then, by the work still to do.
+  // takes the suites the line gives it then, by the work still to do. A
+  // land's gates take none ([lineFor], [outsideTheLine]).
   final known = _knownTimes();
   var launched = 0;
-  await standInLine('affected_tests', say: _report, asked: concurrency, (
-    turn,
-  ) async {
+  Future<void> runBatches(Turn turn) async {
     // Runs every file of [files] in batches ([runInBatches]) and hands
     // [record] each batch's number, report and result.
     Future<void> runAll(
@@ -740,7 +772,23 @@ Future<int> _runTests(
         if (run.green == true && reds.contains(run.path)) flaky.add(run.path);
       }
     });
-  });
+  }
+
+  if (inTheLine) {
+    await standInLine(
+      'affected_tests',
+      runBatches,
+      say: _report,
+      asked: concurrency,
+    );
+  } else {
+    await outsideTheLine(
+      'affected_tests',
+      runBatches,
+      say: _report,
+      asked: concurrency,
+    );
+  }
   try {
     reports.deleteSync(recursive: true);
   } on FileSystemException {
