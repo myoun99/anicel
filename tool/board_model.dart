@@ -12,12 +12,14 @@
 // 구현 · 정정)는 칸을 바꾸지 않는다. See [kSectionState].
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 /// Which card a question belongs to, asked at SUBMIT time — before a render
 /// has built [_byOrigin].
 ///
 /// The name answers it for anything written since the `T14-Q1` convention;
-/// `of` is the override for the questions named before it, so the file is
+/// `of` is the override for the questions named before it, so the board is
 /// read for those. ⚠️Returns empty for a question that belongs to nothing —
 /// an old standalone one — and that answer still lands in 분류 전 as itself,
 /// because there is no origin for it to land on.
@@ -57,22 +59,14 @@ String answerWordFor(String id, String answer, File records) {
   return answer;
 }
 
+/// ↩️Asked of the fold since 2026-10-19 — [asksOf], the very answer the board
+/// folds the question by. It parsed the file a second way before, keeping the
+/// FIRST `of` where the fold keeps the last.
 String originOfId(String id, File records) {
-  final m = kQName.firstMatch(id);
-  final byName = m?.group(1) ?? '';
-  for (final line in records.readAsLinesSync()) {
-    final t = line.trim();
-    if (t.isEmpty) continue;
-    try {
-      final json = jsonDecode(t);
-      if (json is! Map || json['id'] != id) continue;
-      final of = '${json['of'] ?? ''}'.trim();
-      if (of.isNotEmpty) return of;
-    } on Object catch (_) {
-      continue;
-    }
+  for (final card in readBoard(records)) {
+    if (card.id == id) return asksOf(card).$1;
   }
-  return byName;
+  return kQName.firstMatch(id)?.group(1) ?? '';
 }
 
 /// One entry in a card's history: what was written, when, and — for records
@@ -149,6 +143,11 @@ class BoardLog {
   /// keeps being redesigned around.
   final BoardCard? ask;
   final String ts;
+
+  /// [ts] read as a time, once. 🧪2026-10-19: every entry was parsed again by
+  /// each of the fold's two sorts, and that alone was half of a whole fold
+  /// (0.32 of 0.55s, 13k entries) — a fold that runs after every write.
+  late final DateTime? time = DateTime.tryParse(ts);
 
   /// 🚨The PR this stage shipped, when it is a 구현 stage (유저 2026-08-26:
   /// 「한 패널이 결국 여러PR을 가질수있게된다고 생각하거든? 그러니 pr태그를
@@ -314,6 +313,38 @@ class BoardCard {
   /// 🆕Which session holds the card — a field rather than a phrase in a note
   /// (「담당: …」), so a list can group by it. Last-wins; empty clears it.
   String owner = '';
+
+  /// This card as the lines left it, for the passes that fold cards into one
+  /// another to work on — see [BoardRecords]. ⚠️EVERY FIELD ABOVE goes here;
+  /// `the_board_answers_from_memory_test` reads them out of this class.
+  /// The entries are shared, not copied: no pass changes an entry (it
+  /// replaces one or adds its own), only a later 읽음 line does — and that
+  /// mark belongs on every reading of the letter. Their parsed
+  /// [BoardLog.time] is what makes the next fold cheap.
+  BoardCard copy() => BoardCard(id, kind)
+    ..title = title
+    ..tags = tags
+    ..state = state
+    ..updated = updated
+    ..created = created
+    ..foldedInto = foldedInto
+    ..log.addAll(log)
+    ..under = under
+    ..of = of
+    ..rest = rest
+    ..care = care
+    ..tag = tag
+    ..where = where
+    ..why = why
+    ..how = how
+    ..pr = pr
+    ..prs.addAll(prs)
+    ..options = options
+    ..recommend = recommend
+    ..answer = answer
+    ..answerNote = answerNote
+    ..priority = priority
+    ..owner = owner;
 }
 
 /// Folds the append-only log into current state: a later line with the same id
@@ -401,24 +432,269 @@ typedef UnreadField = ({int line, String id, String field});
 /// gets said out loud.
 List<UnreadField> unreadFields = const [];
 
-List<BoardCard> readBoard(File file, {DateTime? now}) {
+List<BoardCard> readBoard(File file, {DateTime? now}) =>
+    BoardRecords.of(file).cards(now: now);
+
+/// One line of the records as the gate reads it by itself, beside the card it
+/// folds into — a line can be wrong in a way its card no longer shows (a
+/// stamp from the future, a hand-written `state`). [start] and [length] are
+/// where its bytes are, so a reader that wants the line itself reads only it.
+final class BoardLine {
+  BoardLine({
+    required this.no,
+    required this.kind,
+    required this.id,
+    required this.at,
+    required this.ts,
+    required this.state,
+    required this.start,
+    required this.length,
+  });
+
+  final int no;
+  final String kind;
+  final String id;
+  final String at;
+  final String ts;
+  final String state;
+  final int start;
+  final int length;
+
+  /// [ts] read as a time, once — as [BoardLog.time], and for the same reason:
+  /// the gate asked it of all 14.8k lines on every run (0.18s, 10-19).
+  late final DateTime? time = DateTime.tryParse(ts);
+}
+
+/// 🚨★★★THE RECORDS OF ONE FILE AS THIS PROCESS HAS FOLDED THEM — READ ONLY
+/// WHERE THEY GREW (유저 2026-10-19: 「세션들 활발하게 돌아갈때 … 피드백
+/// 제출버튼누르면 10초뒤에 되는느낌. 근본/구조적으로 어떻게 못하나? 대충
+/// 해결해봣자 또 … 시간지나면 점점 느려질거같은데」 · 「프로들 … 극한으로」).
+///
+/// The file is an append-only log, so what it said up to a byte it says for
+/// ever: this keeps the fold of every line so far and, asked again, reads on
+/// from where it stopped — the way an event-sourced service keeps its view
+/// and a log consumer keeps its offset. 🧪Before it every reader — the page,
+/// a card, the gate, a letter, a submit — refolded the whole file (18.8MB,
+/// 0.55s), two or three times a session turn, in the server's one line of
+/// requests; and each month the file was longer.
+///
+/// ⚠️WHAT IT TRUSTS: bytes before its offset do not change. A file that got
+/// shorter, or whose first 64 KiB or last bytes before the offset differ, was
+/// rewritten (`/purge`, a test writing a new file at the same path) and is
+/// folded again from the start. Every read checks both — a file under 64 KiB
+/// is compared whole, so a test's rewrite is always noticed, even to the same
+/// length within one tick of the clock. A rewrite past that which keeps the
+/// ends is not — nothing here writes one.
+/// ⚠️A last line with no newline is folded, and the file is folded again from
+/// the start once it grows: the line may have been finished rather than
+/// followed. Every writer here ends its lines, so that is a test's or a
+/// hand's file.
+/// ⚠️ONE PER FILE IN A PROCESS ([of]) — every reader shares what was read,
+/// which is the point.
+class BoardRecords {
+  BoardRecords._(this._file);
+
+  static final _open = <String, BoardRecords>{};
+
+  /// The records of [file], shared by every reader in this process.
+  static BoardRecords of(File file) => _open.putIfAbsent(
+      file.absolute.path.replaceAll('\\', '/'), () => BoardRecords._(file));
+
+  final File _file;
+  var _fold = _Fold();
+  var _read = 0;
+  var _openEnded = false;
+  var _generation = 0;
+  var _head = Uint8List(0);
+  var _tail = Uint8List(0);
+  ({Object key, List<BoardCard> cards})? _view;
+
+  /// How many bytes at the start and at the end of what was read stand
+  /// witness that the file was only appended to.
+  static const _headWitness = 64 * 1024;
+  static const _tailWitness = 256;
+
+  /// Which reading of the file this is — it changes exactly when the file
+  /// did, so a reader that keeps an answer per stamp needs nothing else.
+  ({int generation, int bytes}) get stamp {
+    _catchUp();
+    return (generation: _generation, bytes: _read);
+  }
+
+  /// Every line as the gate reads it, in file order.
+  List<BoardLine> get lines {
+    _catchUp();
+    return _fold.lines;
+  }
+
+  /// What [readBoard] answers. ⚠️The SAME list while nothing is written and
+  /// [now] names the same moment. A null [now] is the clock, and one reading
+  /// serves the minute it was made in: a stamp from the future joins the
+  /// story within a minute of its time, as the server's cache let it before
+  /// (「하는 중」 expiring by the clock, 2026-08-28).
+  List<BoardCard> cards({DateTime? now}) {
+    _catchUp();
+    badLines = _fold.bad;
+    unreadFields = _fold.unread;
+    final key = (
+      _generation,
+      _read,
+      now ?? DateTime.now().millisecondsSinceEpoch ~/ 60000,
+    );
+    final held = _view;
+    if (held != null && held.key == key) return held.cards;
+    final cards = _fold.cards(now);
+    _view = (key: key, cards: cards);
+    return cards;
+  }
+
+  /// The text of each line [wanted] picks, trimmed, in file order — read
+  /// where it is.
+  List<String> textOf(bool Function(BoardLine line) wanted) {
+    _catchUp();
+    final file = _file.openSync();
+    try {
+      return [
+        for (final line in _fold.lines)
+          if (wanted(line))
+            utf8.decode((file..setPositionSync(line.start))
+                .readSync(line.length)).trim(),
+      ];
+    } finally {
+      file.closeSync();
+    }
+  }
+
+  /// Writes the file again without the lines of card [id] — the one rewrite
+  /// there is (`/purge`).
+  void rewriteWithout(String id) {
+    final kept = _file.readAsLinesSync().where((line) {
+      final t = line.trim();
+      if (t.isEmpty) return false;
+      try {
+        return (jsonDecode(t) as Map<String, dynamic>)['id'] != id;
+      } on Object catch (_) {
+        return true; // unreadable lines are somebody else's problem, not ours
+      }
+    });
+    _file.writeAsStringSync('${kept.join('\n')}\n');
+    _restart();
+  }
+
+  void _catchUp() {
+    final size = _file.lengthSync();
+    final file = _file.openSync();
+    try {
+      if (size < _read ||
+          (_openEnded && size > _read) ||
+          !_onlyAppended(file)) {
+        _restart();
+      }
+      if (size > _read) {
+        _foldBytes((file..setPositionSync(_read)).readSync(size - _read));
+      }
+    } finally {
+      file.closeSync();
+    }
+  }
+
+  bool _onlyAppended(RandomAccessFile file) {
+    bool same(int at, Uint8List was) {
+      final now = (file..setPositionSync(at)).readSync(was.length);
+      if (now.length != was.length) return false;
+      for (var i = 0; i < was.length; i++) {
+        if (now[i] != was[i]) return false;
+      }
+      return true;
+    }
+
+    return same(0, _head) && same(_read - _tail.length, _tail);
+  }
+
+  void _restart() {
+    _fold = _Fold();
+    _read = 0;
+    _openEnded = false;
+    _generation++;
+    _head = Uint8List(0);
+    _tail = Uint8List(0);
+  }
+
+  /// Folds [bytes], which were the file from [_read] on. Lines end at a
+  /// newline byte — never inside a character in UTF-8.
+  void _foldBytes(Uint8List bytes) {
+    var from = 0;
+    while (from < bytes.length) {
+      var end = bytes.indexOf(0x0A, from);
+      if (end < 0) end = bytes.length;
+      _foldSegment(bytes, from, end);
+      from = end + 1;
+    }
+    _openEnded = bytes.isNotEmpty && bytes.last != 0x0A;
+    if (_head.length < _headWitness) {
+      final more = math.min(_headWitness - _head.length, bytes.length);
+      _head = Uint8List.fromList(
+          [..._head, ...Uint8List.sublistView(bytes, 0, more)]);
+    }
+    _tail = bytes.length >= _tailWitness
+        ? Uint8List.fromList(
+            Uint8List.sublistView(bytes, bytes.length - _tailWitness))
+        : Uint8List.fromList([..._tail, ...bytes].sublist(
+            math.max(0, _tail.length + bytes.length - _tailWitness)));
+    _read += bytes.length;
+  }
+
+  void _foldSegment(Uint8List bytes, int from, int end) {
+    final text = utf8.decode(Uint8List.sublistView(bytes, from, end));
+    var at = _read + from;
+    if (!text.contains('\r')) {
+      _fold.add(text, at, end - from);
+      return;
+    }
+    // A carriage return ends a line by itself too, as it did for the reader
+    // this replaced (`readAsLinesSync`); 「\r\n」 never gets here split.
+    for (final line in const LineSplitter().convert(text)) {
+      final length = utf8.encode(line).length;
+      _fold.add(line, at, length);
+      at += length + 1;
+    }
+  }
+}
+
+/// The lines of one file folded in order — the cards as the lines left them,
+/// before the passes that fold cards into one another ([cards]).
+class _Fold {
   final bad = <int>[];
   final unread = <UnreadField>[];
   final byId = <String, BoardCard>{};
-  final order = <String>[];
-  var lineNo = 0;
-  for (final line in file.readAsLinesSync()) {
+
+  /// What the gate reads of each line by itself — see [BoardLine].
+  final lines = <BoardLine>[];
+  int lineNo = 0;
+
+  /// Folds the next line of the file, [length] bytes from byte [start].
+  void add(String line, int start, int length) {
     lineNo++;
     final trimmed = line.trim();
-    if (trimmed.isEmpty) continue;
+    if (trimmed.isEmpty) return;
     Map<String, dynamic> json;
     try {
       json = jsonDecode(trimmed) as Map<String, dynamic>;
     } on Object catch (_) {
       stderr.writeln('board: line $lineNo is not valid JSON, skipped');
       bad.add(lineNo);
-      continue;
+      return;
     }
+    lines.add(BoardLine(
+      no: lineNo,
+      kind: '${json['kind'] ?? ''}',
+      id: '${json['id'] ?? ''}',
+      at: '${json['at'] ?? ''}'.trim(),
+      ts: '${json['ts'] ?? ''}',
+      state: '${json['state'] ?? ''}'.trim(),
+      start: start,
+      length: length,
+    ));
     final kind = json['kind'] as String? ?? '';
     // ⛔EXCEPT `meta`, and not as a convenience: a meta line is a note to
     // self that carries whatever that note needs, and **this file is not its
@@ -441,18 +717,15 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
     }
     if (kind == 'meta') {
       // meta lines are notes to self and carry no id.
-      continue;
+      return;
     }
     final id = json['id'] as String?;
     if (id == null) {
       stderr.writeln('board: line $lineNo has no id, skipped');
       bad.add(lineNo);
-      continue;
+      return;
     }
-    final e = byId.putIfAbsent(id, () {
-      order.add(id);
-      return BoardCard(id, kind);
-    });
+    final e = byId.putIfAbsent(id, () => BoardCard(id, kind));
     if (kind.isNotEmpty) e.kind = kind;
     final ts = '${json['ts'] ?? ''}';
     // 🚨A 읽음 IS A MARK ON THE LETTER IT NAMES, and nothing of the card's:
@@ -467,7 +740,7 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
         if (!entry.isLetter || entry.ts != named || reader.isEmpty) continue;
         entry.readBy.putIfAbsent(reader, () => ts);
       }
-      continue;
+      return;
     }
     // Last line wins: the head shows when this card last moved.
     if (ts.isNotEmpty) e.updated = ts;
@@ -674,53 +947,58 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
       }).toList();
     }
   }
-  badLines = bad;
-  unreadFields = unread;
-  // ⚠️Drop the bare 「PR #N」 placeholder once a real 구현 for that same PR has
-  // arrived. A line that claims a PR and says nothing still deserves a stage —
-  // it happened — but the moment someone writes what it DID, keeping both
-  // shows one merge as two, and the empty one is the copy to lose.
-  for (final e in byId.values) {
-    if (e.log.length < 2) continue;
-    final told = {
-      for (final l in e.log)
-        if (l.pr != null && l.text != 'PR #${l.pr}') l.pr!,
-    };
-    if (told.isEmpty) continue;
-    e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
-        l.text == 'PR #${l.pr}');
+
+  /// The cards as the board shows them: the lines' cards, folded into one
+  /// another. ⚠️On COPIES — the lines' cards are read on after the next write
+  /// ([BoardRecords]), and these passes add to the cards they fold into.
+  List<BoardCard> cards(DateTime? now) {
+    final byId = {for (final e in this.byId.values) e.id: e.copy()};
+    // ⚠️Drop the bare 「PR #N」 placeholder once a real 구현 for that same PR has
+    // arrived. A line that claims a PR and says nothing still deserves a stage —
+    // it happened — but the moment someone writes what it DID, keeping both
+    // shows one merge as two, and the empty one is the copy to lose.
+    for (final e in byId.values) {
+      if (e.log.length < 2) continue;
+      final told = {
+        for (final l in e.log)
+          if (l.pr != null && l.text != 'PR #${l.pr}') l.pr!,
+      };
+      if (told.isEmpty) continue;
+      e.log.removeWhere((l) => l.pr != null && told.contains(l.pr) &&
+          l.text == 'PR #${l.pr}');
+    }
+    // 🚨A question is an entry on its card, folded in before anything is placed
+    // — the section it lands in depends on it. See [foldQuestionsIntoCards].
+    // 🚨★★★ON A CARD, `tag` MEANS `tags` (유저 2026-08-31: 「너가 만든 카드는
+    // 태그가 없고」).
+    //
+    // ⛔It silently meant NOTHING. Chips are drawn from `tags`, and the
+    // 「손대기 전에」 laws are matched by `e.tags.contains(l.tag)` — so a card
+    // written with `tag` got no chip AND no law, and nothing said so. I wrote
+    // `"tag":"구조"` on every card I made this session and every one landed
+    // bare. Two fields one letter apart, one of which does nothing, is a trap
+    // rather than a convention.
+    //
+    // ⚠️Folded HERE rather than per line, so it cannot be undone by a later
+    // line that names `tags`. ⚠️And not on a `law`, where `tag` keeps its own
+    // meaning — WHICH tag this law governs. A law is not a card.
+    for (final e in byId.values) {
+      if (e.kind == 'law' || e.tag.isEmpty || e.tags.contains(e.tag)) continue;
+      e.tags = [...e.tags, e.tag];
+    }
+    foldQuestionsIntoCards(byId, now);
+    // 🚨★★★PLACED BEFORE THE CHECKS FOLD, because that fold has to know which
+    // hosts are still on the board — see [foldChecksIntoCards]. Then placed
+    // again, because the fold adds entries that decide where a card sits.
+    for (final e in byId.values) {
+      placeByStory(e);
+    }
+    foldChecksIntoCards(byId, now);
+    for (final e in byId.values) {
+      placeByStory(e);
+    }
+    return byId.values.toList();
   }
-  // 🚨A question is an entry on its card, folded in before anything is placed
-  // — the section it lands in depends on it. See [foldQuestionsIntoCards].
-  // 🚨★★★ON A CARD, `tag` MEANS `tags` (유저 2026-08-31: 「너가 만든 카드는
-  // 태그가 없고」).
-  //
-  // ⛔It silently meant NOTHING. Chips are drawn from `tags`, and the
-  // 「손대기 전에」 laws are matched by `e.tags.contains(l.tag)` — so a card
-  // written with `tag` got no chip AND no law, and nothing said so. I wrote
-  // `"tag":"구조"` on every card I made this session and every one landed
-  // bare. Two fields one letter apart, one of which does nothing, is a trap
-  // rather than a convention.
-  //
-  // ⚠️Folded HERE rather than per line, so it cannot be undone by a later
-  // line that names `tags`. ⚠️And not on a `law`, where `tag` keeps its own
-  // meaning — WHICH tag this law governs. A law is not a card.
-  for (final e in byId.values) {
-    if (e.kind == 'law' || e.tag.isEmpty || e.tags.contains(e.tag)) continue;
-    e.tags = [...e.tags, e.tag];
-  }
-  foldQuestionsIntoCards(byId, now);
-  // 🚨★★★PLACED BEFORE THE CHECKS FOLD, because that fold has to know which
-  // hosts are still on the board — see [foldChecksIntoCards]. Then placed
-  // again, because the fold adds entries that decide where a card sits.
-  for (final e in byId.values) {
-    placeByStory(e);
-  }
-  foldChecksIntoCards(byId, now);
-  for (final e in byId.values) {
-    placeByStory(e);
-  }
-  return [for (final id in order) byId[id]!];
 }
 
 /// 🚨★★★THE SECTION A STAGE NAME PUTS THE CARD IN — the one place a written
@@ -860,7 +1138,7 @@ String lastSection(BoardCard e) {
 bool wentQuiet(BoardCard e) {
   final own = e.log.where((entry) => !entry.isLetter);
   if (own.isEmpty) return true;
-  final last = DateTime.tryParse(own.last.ts);
+  final last = own.last.time;
   // No timestamp at all means an old record that predates the field. Those
   // cannot be renewed, so they cannot hold a claim either.
   if (last == null) return true;
@@ -1088,7 +1366,7 @@ void sortByTime(List<BoardLog> log, [DateTime? now]) {
   final clock = now ?? DateTime.now();
   final keyed = <(DateTime?, int, BoardLog)>[];
   for (var i = 0; i < log.length; i++) {
-    final t = DateTime.tryParse(log[i].ts);
+    final t = log[i].time;
     keyed.add((t != null && t.isAfter(clock) ? null : t, i, log[i]));
   }
   // A row with no time inherits the one before it, so it cannot jump.

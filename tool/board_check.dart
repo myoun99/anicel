@@ -11,7 +11,6 @@
 // gate with its own copy of the rules is a second reader of the one question
 // this redesign existed to unify, sitting inside the thing that is supposed
 // to catch second readers.
-import 'dart:convert';
 import 'dart:io';
 
 import 'board_door.dart';
@@ -58,15 +57,16 @@ String boardCheckComplaints(
   String linesSince = kLinesSince,
   DateTime? now,
 }) {
-  final cards = readBoard(file, now: now);
+  final records = BoardRecords.of(file);
+  final cards = records.cards(now: now);
   final acks = _acks(file);
   final complaints = <String>[
     ..._brokenLines(),
     ..._wordsNobodyReads(acks),
     ..._pointersToNothing(cards, acks),
-    ..._stampsTheFileContradicts(file, cards, acks),
+    ..._stampsTheFileContradicts(records.lines, cards, acks),
     ..._cardsOffTheBoard(cards, acks, since),
-    ..._sectionsTheStoryCannotName(file, cards, acks, now, linesSince),
+    ..._sectionsTheStoryCannotName(records.lines, cards, acks, now, linesSince),
     ..._workThatShipped(cards, acks, since),
     ..._questionsNobodyCanAnswer(cards, acks, since),
     ..._answersNobodyRead(cards, acks, since, now),
@@ -310,27 +310,19 @@ Iterable<String> _pointersToNothing(
 /// whichever way it is read, and complaining about history is how a gate
 /// stops being read.
 Iterable<String> _stampsTheFileContradicts(
-  File file,
+  List<BoardLine> lines,
   List<BoardCard> cards,
   Set<String> acks,
 ) sync* {
   final byId = {for (final c in cards) c.id: c};
   final byFile = <String, String>{};
   final stamped = <String, List<List<String>>>{};
-  for (final line in file.readAsLinesSync()) {
-    final t = line.trim();
-    if (t.isEmpty) continue;
-    Map<String, dynamic> json;
-    try {
-      json = jsonDecode(t) as Map<String, dynamic>;
-    } on Object catch (_) {
-      continue;
-    }
-    final id = '${json['id'] ?? ''}';
-    final at = '${json['at'] ?? ''}'.trim();
+  for (final line in lines) {
+    final id = line.id;
+    final at = line.at;
     if (id.isEmpty || at.isEmpty || !kSection.containsKey(at)) continue;
     byFile[id] = at;
-    (stamped[id] ??= []).add(['${json['ts'] ?? ''}', at]);
+    (stamped[id] ??= []).add([line.ts, at]);
   }
   final wrong = <String>[];
   for (final e in stamped.entries) {
@@ -406,7 +398,7 @@ Iterable<String> _cardsOffTheBoard(
 /// complains about corrected history forever is a gate nobody reads.
 /// ⛔Nor a line the card's story has already moved past ([_refiledAfter]).
 Iterable<String> _sectionsTheStoryCannotName(
-  File file,
+  List<BoardLine> lines,
   List<BoardCard> cards,
   Set<String> acks,
   DateTime? now,
@@ -417,19 +409,10 @@ Iterable<String> _sectionsTheStoryCannotName(
   final unknownStage = <String>[];
   final future = <String>[];
   final handWrittenState = <String>[];
-  var n = 0;
-  for (final line in file.readAsLinesSync()) {
-    n++;
-    final t = line.trim();
-    if (t.isEmpty) continue;
-    Map<String, dynamic> json;
-    try {
-      json = jsonDecode(t) as Map<String, dynamic>;
-    } on Object catch (_) {
-      continue;
-    }
-    if (json['kind'] == 'law' || json['kind'] == 'meta') continue;
-    final id = '${json['id'] ?? ''}';
+  for (final line in lines) {
+    final n = line.no;
+    if (line.kind == 'law' || line.kind == 'meta') continue;
+    final id = line.id;
     if (acks.contains(id)) continue;
     // ⚠️ASKED BEFORE the history cutoff below: a stamp in the future is
     // wrong whenever it was written, and gating it would have hidden every
@@ -444,22 +427,22 @@ Iterable<String> _sectionsTheStoryCannotName(
     //
     // `ts` is the story's ORDER now, not just a date on a panel. A stamp in
     // the future reorders somebody else's work around a time that never was.
-    final when = DateTime.tryParse('${json['ts'] ?? ''}');
+    final when = line.time;
     final clock = now ?? DateTime.now();
     if (when != null &&
         when.isAfter(clock) &&
-        '${json['ts']}'.compareTo(linesSince) >= 0) {
-      future.add('$n:$id(${json['ts']})');
+        line.ts.compareTo(linesSince) >= 0) {
+      future.add('$n:$id(${line.ts})');
     }
-    if ('${json['ts'] ?? ''}'.compareTo(linesSince) < 0) continue;
-    final at = '${json['at'] ?? ''}'.trim();
+    if (line.ts.compareTo(linesSince) < 0) continue;
+    final at = line.at;
     if (at.isNotEmpty &&
         !kSection.containsKey(at) &&
         !_kSubStage.contains(at) &&
         !_refiledAfter(byId[id], when)) {
       unknownStage.add('$n:$id($at)');
     }
-    final state = '${json['state'] ?? ''}'.trim();
+    final state = line.state;
     if (state.isNotEmpty && !knownEndings.contains(state)) {
       handWrittenState.add('$n:$id($state)');
     }
@@ -500,7 +483,7 @@ bool _refiledAfter(BoardCard? card, DateTime? when) {
   if (card == null || when == null) return false;
   for (var i = 0; i < card.log.length; i++) {
     if (!kSection.containsKey(stageName(card, i))) continue;
-    final t = DateTime.tryParse(card.log[i].ts);
+    final t = card.log[i].time;
     if (t != null && t.isAfter(when)) return true;
   }
   return false;

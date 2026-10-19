@@ -307,6 +307,11 @@ Future<void> main(List<String> args) async {
   stdout.writeln('records:   $_recordsPath');
   stdout.writeln('shots:     $_shotsDir');
 
+  // What the first page needs, read before anyone asks: the records, and the
+  // two slow answers ([_Stale]) on their way.
+  _board();
+  unawaited(_prs());
+  unawaited(_checkouts());
   await answerAll(server);
 }
 
@@ -339,6 +344,7 @@ void boardIs({
 /// each request is answered whole before the next is taken.
 Future<void> answerAll(HttpServer server) async {
   await for (final request in server) {
+    final took = Stopwatch()..start();
     try {
       await _handle(request);
     } on Object catch (e) {
@@ -347,8 +353,25 @@ Future<void> answerAll(HttpServer server) async {
       request.response.statusCode = 500;
       await request.response.close();
     }
+    if (took.elapsed > _kSlowRequest) {
+      noteRequestFailure(
+        File('${File(_recordsPath).parent.path}/$kSlowRequestLog'),
+        '${DateTime.now().toIso8601String()} ${request.method} '
+        '${request.uri.path} ${took.elapsedMilliseconds}ms',
+      );
+    }
   }
 }
+
+/// Past this a request leaves a line in [kSlowRequestLog]. Every request
+/// waits for the ones before it, so one slow answer is everybody's; and the
+/// board answers from memory now ([BoardRecords]), so a slow one is a
+/// regression with its path written down — the next 「보드가 느려」 starts
+/// from that file instead of from a guess (10-19).
+const _kSlowRequest = Duration(milliseconds: 250);
+
+/// Beside [kRequestFailureLog], kept the same way.
+const kSlowRequestLog = '.board_server.slow.log';
 
 /// The file a request that broke the server leaves its line in, beside the
 /// records — this machine's, like the flags.
@@ -739,7 +762,7 @@ Future<void> _handle(HttpRequest req) async {
       // 🆕「이 빌드로 시험 중」: what master is right now, and when — the build
       // verification is grouped by.
       case '/build':
-        final commit = _master();
+        final commit = await _master();
         _append({
           'kind': 'build',
           'id': 'build-${_now().substring(0, 19).replaceAll(':', '')}',
@@ -829,13 +852,13 @@ Future<void> _handle(HttpRequest req) async {
     req.response
       ..headers.contentType = ContentType.text
       ..headers.set('Cache-Control', 'no-store')
-      ..write(boardCheckComplaints(File(_recordsPath)));
+      ..write(_checked());
     await req.response.close();
     return;
   }
   if (path == '/api/records') {
     final asked = recordsAsked(
-      File(_recordsPath).readAsLinesSync(),
+      BoardRecords.of(File(_recordsPath)),
       id: req.uri.queryParameters['id'],
       since: req.uri.queryParameters['since'],
     );
@@ -1035,30 +1058,53 @@ document.getElementById('door').addEventListener('submit', function(e){
 /// The records a tool asked for, as the lines they are: one card's (its
 /// questions with it) by [id], or everything stamped at or after [since].
 /// Null when it asked for neither — the whole file is not an answer.
-String? recordsAsked(Iterable<String> lines, {String? id, String? since}) {
+String? recordsAsked(BoardRecords records, {String? id, String? since}) {
   if (id == null && since == null) return null;
   final out = StringBuffer();
-  for (final line in lines) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) continue;
-    Map<String, dynamic> json;
-    try {
-      json = jsonDecode(trimmed) as Map<String, dynamic>;
-    } on Object catch (_) {
-      continue;
-    }
-    final lineId = '${json['id'] ?? ''}';
-    if (id != null && lineId != id && !lineId.startsWith('$id-Q')) continue;
-    if (since != null && '${json['ts'] ?? ''}'.compareTo(since) < 0) continue;
-    out.writeln(trimmed);
+  for (final line in records.textOf((line) =>
+      (id == null || line.id == id || line.id.startsWith('$id-Q')) &&
+      (since == null || line.ts.compareTo(since) >= 0))) {
+    out.writeln(line);
   }
   return out.toString();
 }
 
+/// The gate's judgement, kept per reading of the records and of the acks.
+/// Every session asks at the end of every turn, on both machines (the Stop
+/// hook), and almost always about a board that has not moved since the last
+/// one asked. ⚠️Per minute too: the gate reads the clock (a claim lapses, a
+/// stamp stops being in the future).
+({Object key, String text})? _gate;
+
+String _checked() {
+  final records = File(_recordsPath);
+  final acks = gateAckFile(records).statSync();
+  final key = (
+    BoardRecords.of(records).stamp,
+    acks.size,
+    acks.modified,
+    DateTime.now().millisecondsSinceEpoch ~/ 60000,
+  );
+  final held = _gate;
+  if (held != null && held.key == key) return held.text;
+  final text = boardCheckComplaints(records);
+  _gate = (key: key, text: text);
+  return text;
+}
+
 /// The commit master is at now, short — what a build marks.
-String _master() {
+Future<String> _master() => _git(_gitRoot, ['rev-parse', '--short', 'master']);
+
+/// What `git -C [dir] [args]` printed, trimmed — or empty when it failed.
+/// 🚨★★★NEVER `Process.runSync` IN THIS FILE: a request waits for every
+/// request before it, so a process run in one stops the whole board. 🧪10-19:
+/// [_readCheckouts] ran sixty-two of them in a row on a refresh 「in the
+/// background」 that was not — 5~7s inside whichever request came 20s after
+/// the last, the 10s submit the user measured by hand.
+/// `the_board_answers_from_memory_test` keeps it out.
+Future<String> _git(String dir, List<String> args) async {
   try {
-    final r = Process.runSync('git', ['-C', _gitRoot, 'rev-parse', '--short', 'master'],
+    final r = await Process.run('git', ['-C', dir, ...args],
         stdoutEncoding: utf8);
     return r.exitCode == 0 ? (r.stdout as String).trim() : '';
   } on Object catch (_) {
@@ -1130,16 +1176,7 @@ String _intake(Map<String, dynamic> body) {
 bool _purge(String id) {
   final entry = _board().where((e) => e.id == id);
   if (entry.isEmpty || entry.first.state != 'inbox') return false;
-  final kept = File(_recordsPath).readAsLinesSync().where((line) {
-    final t = line.trim();
-    if (t.isEmpty) return false;
-    try {
-      return (jsonDecode(t) as Map<String, dynamic>)['id'] != id;
-    } on Object catch (_) {
-      return true; // unreadable lines are somebody else's problem, not ours
-    }
-  });
-  File(_recordsPath).writeAsStringSync('${kept.join('\n')}\n');
+  BoardRecords.of(File(_recordsPath)).rewriteWithout(id);
   for (final f in Directory(_shotsDir).listSync()) {
     final name = f.path.split(RegExp(r'[\\/]')).last;
     if (name.startsWith('$id-')) f.deleteSync();
@@ -1234,18 +1271,27 @@ class _Gh {
 /// ⚠️A failed refresh keeps the last good value rather than blanking it: the
 /// board saying nothing is worse than the board being a minute old, and `gh`
 /// failing outright already has its own banner.
+///
+/// 🚨★★★「BEHIND」 ONLY IF [_fetch] WAITS ON REAL WORK. An `async` function
+/// runs synchronously up to its first `await`, so a fetch made of
+/// `Process.runSync` ran whole inside [_refresh]'s call — inside the request
+/// that noticed the window had lapsed. 🧪10-19: the checkouts were that fetch
+/// from the day this class was written; 5~7s per lapse once there were
+/// thirty-one worktrees. See [_git].
 class _Stale<T> {
   _Stale(this._fetch);
 
   final Future<T> Function() _fetch;
   T? _value;
+  Future<T>? _first;
   DateTime _at = DateTime.fromMillisecondsSinceEpoch(0);
   bool _busy = false;
 
-  /// Only the FIRST caller of all ever waits.
+  /// Only the FIRST callers of all ever wait — on one fetch, which [main]
+  /// starts before the first request comes.
   Future<T> get() async {
     final held = _value;
-    if (held == null) return _store(await _fetch());
+    if (held == null) return _store(await (_first ??= _fetch()));
     if (DateTime.now().difference(_at).inSeconds >= _ghCacheSeconds) _refresh();
     return held;
   }
@@ -1382,37 +1428,38 @@ final _gitStale = _Stale<List<_Checkout>>(_readCheckouts);
 Future<List<_Checkout>> _checkouts() => _gitStale.get();
 
 Future<List<_Checkout>> _readCheckouts() async {
-  String run(String dir, List<String> args) {
-    try {
-      final r = Process.runSync('git', ['-C', dir, ...args],
-          stdoutEncoding: utf8);
-      return r.exitCode == 0 ? (r.stdout as String).trim() : '';
-    } on Object catch (_) {
-      return '';
-    }
-  }
-
-  final list = run(_gitRoot, ['worktree', 'list', '--porcelain']);
-  final out = <_Checkout>[];
+  final list = await _git(_gitRoot, ['worktree', 'list', '--porcelain']);
+  final named = <(String, String)>[];
   String? path;
   for (final line in const LineSplitter().convert(list)) {
     if (line.startsWith('worktree ')) {
       path = line.substring(9).trim();
     } else if (line.startsWith('branch ') && path != null) {
-      final branch = line.substring(7).replaceFirst('refs/heads/', '').trim();
-      final counts = run(path, [
-        'rev-list', '--left-right', '--count', 'origin/master...HEAD',
-      ]).split(RegExp(r'\s+'));
-      final dirty = run(path, ['status', '--porcelain']);
-      out.add(_Checkout(
-        path,
-        branch,
-        counts.length > 1 ? (int.tryParse(counts[1]) ?? 0) : 0,
-        counts.isNotEmpty ? (int.tryParse(counts[0]) ?? 0) : 0,
-        dirty.isEmpty ? 0 : const LineSplitter().convert(dirty).length,
-      ));
+      named.add(
+          (path, line.substring(7).replaceFirst('refs/heads/', '').trim()));
       path = null;
     }
+  }
+  Future<_Checkout> read((String, String) checkout) async {
+    final (path, branch) = checkout;
+    final counts = (await _git(path, [
+      'rev-list', '--left-right', '--count', 'origin/master...HEAD',
+    ])).split(RegExp(r'\s+'));
+    final dirty = await _git(path, ['status', '--porcelain']);
+    return _Checkout(
+      path,
+      branch,
+      counts.length > 1 ? (int.tryParse(counts[1]) ?? 0) : 0,
+      counts.isNotEmpty ? (int.tryParse(counts[0]) ?? 0) : 0,
+      dirty.isEmpty ? 0 : const LineSplitter().convert(dirty).length,
+    );
+  }
+
+  // Four at a time: thirty-one checkouts at once would be sixty-two `git`
+  // processes on the disk the tests are using.
+  final out = <_Checkout>[];
+  for (var i = 0; i < named.length; i += 4) {
+    out.addAll(await Future.wait(named.skip(i).take(4).map(read)));
   }
   return out;
 }
@@ -1559,29 +1606,9 @@ Map<String, dynamic>? moveRecord({
 /// ⛔No timer and no push: the board changes when a person acts on it or
 /// reloads it (유저 2026-08-31: 「그냥 새로고침 누르면 갱신되도록」).
 
-/// The file as last read. ⚠️Re-read when it changes, and after a minute even
-/// if it did not: 하는 중 expires by the clock ([wentQuiet]), not by a write.
-({int size, DateTime modified, DateTime at, List<BoardCard> cards})? _held;
-
-List<BoardCard> _board() {
-  final file = File(_recordsPath);
-  final stat = file.statSync();
-  final held = _held;
-  if (held != null &&
-      held.size == stat.size &&
-      held.modified == stat.modified &&
-      DateTime.now().difference(held.at) < const Duration(minutes: 1)) {
-    return held.cards;
-  }
-  final cards = readBoard(file);
-  _held = (
-    size: stat.size,
-    modified: stat.modified,
-    at: DateTime.now(),
-    cards: cards,
-  );
-  return cards;
-}
+/// The board as the records say it now — read on from where the last request
+/// stopped ([BoardRecords]).
+List<BoardCard> _board() => readBoard(File(_recordsPath));
 
 /// What every body renderer reads besides its own card — set before any body
 /// is drawn.
@@ -1827,7 +1854,7 @@ bool _letterWaits(BoardLog letter) =>
 
 bool _letterShows(BoardLog letter, DateTime since) {
   if (_letterWaits(letter)) return true;
-  final at = DateTime.tryParse(letter.ts);
+  final at = letter.time;
   return at != null && !at.isBefore(since);
 }
 
