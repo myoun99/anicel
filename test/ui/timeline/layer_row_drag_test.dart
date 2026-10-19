@@ -1102,7 +1102,9 @@ void main() {
     final dx = tester.getCenter(_railRowGrip('m2')).dx;
 
     final gesture = await lift(tester, 'm2');
-    await pointInto(tester, gesture, 'f', fraction: 0.5, dx: dx);
+    final folderRow = tester.getRect(find.named('timeline-folder-row-f'));
+    await gesture.moveTo(Offset(dx, folderRow.center.dy));
+    await tester.pump();
     expect(anyCaret, findsNothing);
     expect(find.text(AppText.strings.tlDropOutOfFolder), findsNothing);
     await gesture.up();
