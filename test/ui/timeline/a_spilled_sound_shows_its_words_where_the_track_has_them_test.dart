@@ -258,9 +258,10 @@ void main() {
         reason: '⛔전제: the window cuts the line',
       );
       expect(
-        extent(tester.getRect(find.bySemanticsLabel('SE name X'))).end,
-        lessThanOrEqualTo(opens + 1e-6),
-        reason: 'the chip stands at the head, in the earlier cut',
+        find.bySemanticsLabel('SE name X'),
+        findsNothing,
+        reason: 'the chip is the head frame\'s, in the earlier cut — even '
+            'where it lies over the words past it (F-358-Q1)',
       );
     });
   }

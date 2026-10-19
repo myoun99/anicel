@@ -73,8 +73,8 @@ void main() {
     expect(rebuilt, isNot(contains(LayoutBuilder)));
   });
 
-  testWidgets('🚨and the chip still narrows with the box beside the '
-      'dialogue — laid out at the length it is given', (tester) async {
+  testWidgets('🚨and the chip still narrows with the words — laid out at the '
+      'length it is given', (tester) async {
     final resize = await mount(tester, width: 400);
     final natural = dialogueNaturalExtent(
       dialogue,
@@ -90,21 +90,22 @@ void main() {
     for (final width in [400.0, 60.0, 20.0, 6.0]) {
       resize(width);
       await tester.pump();
-      expect(
-        tester.getSize(chip).width,
-        closeTo(seNameBoxExtentIn(width, dialogueExtent: natural), 1e-6),
-        reason: 'at $width',
+      final parts = seSpanParts(
+        width,
+        frames: 4,
+        named: true,
+        dialogueExtent: natural,
       );
-      expect(
-        tester.getSize(chip).width +
-            tester.getSize(find.byType(DialogueFitText)).width,
-        closeTo(width, 1e-6),
-        reason: 'the dialogue takes the rest, at $width',
-      );
+      expect(tester.getSize(chip).width, closeTo(parts.chip, 1e-6));
       expect(
         tester.getTopLeft(find.byType(DialogueFitText)).dx,
-        closeTo(tester.getTopRight(chip).dx, 1e-6),
-        reason: 'the dialogue begins where the chip ends, at $width',
+        closeTo(width / 4, 1e-6),
+        reason: 'the words begin on the block\'s second frame, at $width',
+      );
+      expect(
+        tester.getSize(find.byType(DialogueFitText)).width,
+        closeTo(width * 3 / 4, 1e-6),
+        reason: 'and run to its end, at $width',
       );
       expect(
         tester.getCenter(chip).dy,
@@ -153,19 +154,25 @@ void main() {
       style: style,
       maxCrossExtent: width,
     );
+    double chipIn(double width) => seSpanParts(
+      60,
+      frames: 4,
+      named: true,
+      dialogueExtent: naturalIn(width),
+    ).chip;
     expect(
-      naturalIn(10),
-      isNot(naturalIn(40)),
-      reason: '⛔premise: the width across moves the dialogue\'s length',
+      chipIn(10),
+      isNot(closeTo(chipIn(40), 1e-6)),
+      reason: '⛔premise: the width across moves the dialogue\'s length, '
+          'and with it the chip',
     );
 
     for (final width in [10.0, 40.0]) {
       setState(() => across = width);
       await tester.pump();
-      final natural = naturalIn(width);
       expect(
         tester.getSize(chip).height,
-        closeTo(seNameBoxExtentIn(60, dialogueExtent: natural), 1e-6),
+        closeTo(chipIn(width), 1e-6),
         reason: 'a column $width wide',
       );
     }
@@ -200,7 +207,7 @@ void main() {
     expect(
       tester.getSize(chip).width,
       lessThan(short),
-      reason: 'a longer dialogue narrows the chip beside it',
+      reason: 'a longer dialogue narrows the chip with it',
     );
   });
 

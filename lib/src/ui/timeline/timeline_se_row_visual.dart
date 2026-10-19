@@ -553,6 +553,43 @@ double seNameBoxExtentIn(double mainExtent, {required double dialogueExtent}) {
       : seNameBoxExtent * mainExtent / natural;
 }
 
+/// Where an SE span's two parts run along a block [mainExtent] long and
+/// [frames] frames, whose dialogue runs [dialogueExtent] at its natural
+/// size ([dialogueNaturalExtent]): the name chip from the head, [chip] long,
+/// and the words from [wordsFrom] to the block's end.
+///
+/// 🗣️F-358-Q1 (유저 2026-10-18 「이름칸 = 블록 머리 한 코마(짧은 블록은
+/// 비율로)」 — 「다만 이름칸이랑 대사랑 겹쳐도됨. 중요한건 이름은 최대한
+/// 지금처럼 잘 보이고 대사는 위치가 정확한게 포인트. 그러니 대사가
+/// 이름공간만큼 비켜시작하고 안해도됨」): a named block's words run from its
+/// SECOND frame, so a glyph stands on the same frame at every zoom and in
+/// every panel. The chip keeps its [seNameBoxExtent] over the head and may
+/// lie over the words where a frame is narrower; it narrows by the ratio
+/// the words do (F-224). A block of one frame has no second, so the chip
+/// and the words share it side by side ([seNameBoxExtentIn]). ↩️The words
+/// began where the chip ended, which was a different frame at each zoom.
+({double chip, double wordsFrom}) seSpanParts(
+  double mainExtent, {
+  required int frames,
+  required bool named,
+  required double dialogueExtent,
+}) {
+  if (!named) {
+    return (chip: 0, wordsFrom: 0);
+  }
+  if (frames < 2) {
+    final chip = seNameBoxExtentIn(mainExtent, dialogueExtent: dialogueExtent);
+    return (chip: chip, wordsFrom: chip);
+  }
+  final wordsFrom = mainExtent / frames;
+  final run = mainExtent - wordsFrom;
+  final narrowed = dialogueExtent <= run ? 1.0 : run / dialogueExtent;
+  return (
+    chip: math.min(mainExtent, seNameBoxExtent * narrowed),
+    wordsFrom: wordsFrom,
+  );
+}
+
 /// The sheet's SE-entry writing, the real Toei way (R4, user-approved
 /// mockup v3): a compact INVERTED name chip flush against the block's
 /// start boundary (ink fill, paper-light writing) and the dialogue fitted
@@ -605,21 +642,20 @@ class SeSpanVisual extends StatelessWidget {
     final seName = this.seName ?? '';
     final fit = _SeSpanFit(
       axis: axis,
+      frames: frames,
+      named: seName.isNotEmpty,
       dialogue: dialogue,
       style: dialogueFitStyle(context, color: timelineDrawingInkColor),
     );
+    // The chip is the head frame's, and a window opens on a whole frame: one
+    // opening past the head never shows it, even where it lies over the
+    // words (F-358-Q1).
+    final chipShown = seName.isNotEmpty && shownFrom <= 0;
     final span = CustomPaint(
-      painter: seName.isEmpty
-          ? null
-          : _SeNameGroundPainter(frames: frames, fit: fit),
+      painter: chipShown ? _SeNameGroundPainter(fit) : null,
       child: CustomMultiChildLayout(
         delegate: _SeSpanLayout(fit),
         children: [
-          if (seName.isNotEmpty)
-            LayoutId(
-              id: _SeSpanSlot.chip,
-              child: _SeNameBox(axis: axis, name: seName),
-            ),
           LayoutId(
             id: _SeSpanSlot.dialogue,
             child: DialogueFitText(
@@ -628,6 +664,13 @@ class SeSpanVisual extends StatelessWidget {
               color: timelineDrawingInkColor,
             ),
           ),
+          // Over the words: the name is what stays legible where the two
+          // lie over each other (F-358-Q1 「이름은 최대한 지금처럼 잘 보이고」).
+          if (chipShown)
+            LayoutId(
+              id: _SeSpanSlot.chip,
+              child: _SeNameBox(axis: axis, name: seName),
+            ),
         ],
       ),
     );
@@ -635,12 +678,7 @@ class SeSpanVisual extends StatelessWidget {
       return span;
     }
     return ClipRect(
-      clipper: _SeSpanShownPart(
-        fit: fit,
-        named: seName.isNotEmpty,
-        frames: frames,
-        shownFrom: shownFrom,
-      ),
+      clipper: _SeSpanShownPart(fit: fit, shownFrom: shownFrom),
       child: span,
     );
   }
@@ -649,40 +687,31 @@ class SeSpanVisual extends StatelessWidget {
 /// The part of an SE span a window shows ([SeSpanVisual.shownFrom]): from
 /// the cell of the first glyph whose centre the window holds — the glyph
 /// before it is the earlier cut's, whole, and this one is this cut's,
-/// whole ([dialogueGlyphsShownIn]). The name chip stands at the block's
-/// head, before every glyph, so a window opening past it never shows it;
-/// one opening inside it shows the chip's tail.
+/// whole ([dialogueGlyphsShownIn]).
 ///
 /// Asked at PAINT, of the box the span is laid out at: a zoom lays the
 /// span out again and does not build it again ([_SeSpanFit]).
 class _SeSpanShownPart extends CustomClipper<Rect> {
-  _SeSpanShownPart({
-    required this.fit,
-    required this.named,
-    required this.frames,
-    required this.shownFrom,
-  });
+  _SeSpanShownPart({required this.fit, required this.shownFrom});
 
   final _SeSpanFit fit;
-  final bool named;
-  final int frames;
   final int shownFrom;
 
   @override
   Rect getClip(Size size) {
     final axis = fit.axis;
     final along = extentAlong(axis, size);
-    final window = along * shownFrom / frames;
-    final chip = named ? fit.chipExtentIn(size) : 0.0;
+    final window = along * shownFrom / fit.frames;
+    final wordsFrom = fit.partsIn(size).wordsFrom;
     final glyphs = fit.dialogue.characters.length;
-    final run = along - chip;
-    final from = window <= chip || glyphs == 0
+    final run = along - wordsFrom;
+    final from = window <= wordsFrom || glyphs == 0
         ? window
-        : chip +
+        : wordsFrom +
               dialogueGlyphsShownIn(
                     glyphCount: glyphs,
                     mainExtent: run,
-                    from: window - chip,
+                    from: window - wordsFrom,
                   ).first *
                   dialogueGlyphCellExtent(glyphCount: glyphs, mainExtent: run);
     return rectAlong(
@@ -694,16 +723,13 @@ class _SeSpanShownPart extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_SeSpanShownPart oldClipper) =>
-      !fit.answersAs(oldClipper.fit) ||
-      named != oldClipper.named ||
-      frames != oldClipper.frames ||
-      shownFrom != oldClipper.shownFrom;
+      !fit.answersAs(oldClipper.fit) || shownFrom != oldClipper.shownFrom;
 }
 
-/// How far an SE span's name chip runs along the box the span lies in:
-/// [seNameBoxExtentIn] of the box's length, against the dialogue's own
-/// length at its natural size across that box — measured once for each
-/// width across, not once for each zoom step.
+/// Where an SE span's chip and words run along the box the span lies in
+/// ([seSpanParts]), against the dialogue's own length at its natural size
+/// across that box — measured once for each width across, not once for
+/// each zoom step.
 ///
 /// ↩️Narrow spans USED to DROP the name box instead of overflowing it (the
 /// storyboard's zoomed-out blocks can be slimmer than the box — same rule
@@ -711,18 +737,28 @@ class _SeSpanShownPart extends CustomClipper<Rect> {
 ///
 /// 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야. 유지한채로 가로
 /// 길이만 작게하란거야」 — the chip STAYS and narrows, the way the dialogue
-/// glyphs beside it narrow rather than vanish (`wordCondensation`).
+/// glyphs narrow rather than vanish (`wordCondensation`).
 final class _SeSpanFit {
-  _SeSpanFit({required this.axis, required this.dialogue, required this.style});
+  _SeSpanFit({
+    required this.axis,
+    required this.frames,
+    required this.named,
+    required this.dialogue,
+    required this.style,
+  });
 
   final Axis axis;
+
+  /// How many frames the block runs: the box over this is the live cell.
+  final int frames;
+  final bool named;
   final String dialogue;
   final TextStyle style;
 
   double? _measuredAcross;
   double _dialogueExtent = 0;
 
-  double chipExtentIn(Size size) {
+  ({double chip, double wordsFrom}) partsIn(Size size) {
     final across = extentAcross(axis, size);
     if (_measuredAcross != across) {
       _measuredAcross = across;
@@ -733,22 +769,27 @@ final class _SeSpanFit {
         maxCrossExtent: across,
       );
     }
-    return seNameBoxExtentIn(
+    return seSpanParts(
       extentAlong(axis, size),
+      frames: frames,
+      named: named,
       dialogueExtent: _dialogueExtent,
     );
   }
 
   /// Whether [other] answers as this does for every box.
   bool answersAs(_SeSpanFit other) =>
-      axis == other.axis && dialogue == other.dialogue && style == other.style;
+      axis == other.axis &&
+      frames == other.frames &&
+      named == other.named &&
+      dialogue == other.dialogue &&
+      style == other.style;
 }
 
 enum _SeSpanSlot { chip, dialogue }
 
-/// The chip at the span's start and the dialogue over the rest of it, each
-/// centred across — as the flex that laid them did — the chip as long as
-/// the box says ([_SeSpanFit]).
+/// The chip at the span's head and the words from where [seSpanParts] says,
+/// each centred across — as the flex that laid them did.
 class _SeSpanLayout extends MultiChildLayoutDelegate {
   _SeSpanLayout(this.fit);
 
@@ -758,7 +799,7 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
   void performLayout(Size size) {
     final axis = fit.axis;
     final across = extentAcross(axis, size);
-    final chip = hasChild(_SeSpanSlot.chip) ? fit.chipExtentIn(size) : 0.0;
+    final parts = fit.partsIn(size);
     void lay(_SeSpanSlot slot, double from, double extent) {
       final laid = layoutChild(
         slot,
@@ -776,10 +817,14 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
       );
     }
 
+    lay(
+      _SeSpanSlot.dialogue,
+      parts.wordsFrom,
+      extentAlong(axis, size) - parts.wordsFrom,
+    );
     if (hasChild(_SeSpanSlot.chip)) {
-      lay(_SeSpanSlot.chip, 0, chip);
+      lay(_SeSpanSlot.chip, 0, parts.chip);
     }
-    lay(_SeSpanSlot.dialogue, chip, extentAlong(axis, size) - chip);
   }
 
   @override
@@ -799,10 +844,7 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
 /// ([timelineBlockPaperShape]) — so a short block the chip takes whole is
 /// round at its far end too, with nobody having to think of that case.
 class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
-  const _SeNameGroundPainter({required this.frames, required this.fit});
-
-  /// The block's length in frames: the box over this is the live cell.
-  final int frames;
+  const _SeNameGroundPainter(this.fit);
 
   /// How far the chip runs ALONG the block, for the box it is painted in.
   final _SeSpanFit fit;
@@ -811,7 +853,7 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     final axis = fit.axis;
     final across = extentAcross(axis, size);
-    final extent = fit.chipExtentIn(size);
+    final extent = fit.partsIn(size).chip;
     canvas
       ..save()
       ..clipRRect(
@@ -819,7 +861,7 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
           axis: axis,
           along: extentAlong(axis, size),
           rowExtent: across,
-          frames: frames,
+          frames: fit.frames,
         ),
       )
       ..drawRect(
@@ -838,13 +880,19 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
   /// named here for a change of it to repaint. The chip's length is the
   /// box's: a box of a new size is painted again whatever these say.
   @override
-  Object get props =>
-      (fit.axis, fit.dialogue, fit.style, frames, AppColors.accent);
+  Object get props => (
+    fit.axis,
+    fit.frames,
+    fit.named,
+    fit.dialogue,
+    fit.style,
+    AppColors.accent,
+  );
 }
 
 /// The chip's room and its name. How far it runs ALONG the block is the
-/// layout's to say ([_SeSpanLayout]): its [seNameBoxExtent], narrowed with
-/// the dialogue beside it (F-224).
+/// layout's to say ([_SeSpanLayout], [seSpanParts]): its [seNameBoxExtent],
+/// narrowed with the words (F-224).
 class _SeNameBox extends StatelessWidget {
   const _SeNameBox({required this.axis, required this.name});
 

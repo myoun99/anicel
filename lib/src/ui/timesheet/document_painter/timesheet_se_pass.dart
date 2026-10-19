@@ -228,10 +228,17 @@ class _TimesheetSePass {
   }) {
     const rowHeight = TimesheetDocumentLayout.rowHeight;
     final spanTop = cellTop - (lead + spanOffset) * rowHeight;
-    final spanBottom =
-        spanTop + (lead + (start.spanLength ?? 1)) * rowHeight - 2;
+    final frames = lead + (start.spanLength ?? 1);
+    final named = (start.seName ?? '').isNotEmpty;
+    // 🗣️F-358-Q1: the words lie on the frames the block views lay them on
+    // ([seSpanParts]) — a named entry's from its second row, so every glyph
+    // stands on the same frame here as on the rows; an entry of one row
+    // shares it with the name box. ↩️They began under the name box and kept
+    // off both ends by a pad, a fraction of a frame from the rows' place.
+    final single = named && frames < 2;
+    final spanBottom = spanTop + frames * rowHeight - (single ? 2 : 0);
     final dialogueTop =
-        spanTop + ((start.seName ?? '').isEmpty ? 3 : _nameBoxHeight + 4);
+        spanTop + (!named ? 0 : (single ? _nameBoxHeight + 4 : rowHeight));
     // The window: this half's rows of the span.
     final top = math.max(dialogueTop, cellTop);
     final bottom = math.min(spanBottom, cellTop + (rowCount - row) * rowHeight);
