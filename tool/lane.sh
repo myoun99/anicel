@@ -769,7 +769,13 @@ cmd_native() {
   }
   (cd "$p" && bash tool/native_parity_tests.sh >"$list") \
     || die "the parity selector chose nothing — see tool/native_parity_tests.sh"
-  (cd "$p" && QA_REQUIRE_NATIVE=1 xargs flutter test --no-pub <"$list") >>"$log" 2>&1 || {
+  # By the run plan, as every list run goes: the collector pins alone and
+  # last (`tool/affected_tests.dart`, `filesListed`). The runner beside this
+  # script, as `ensure_engine` asks the provenance tool beside it: `gate`
+  # runs on a lane as it stands, and one cut before --files-from existed
+  # would ignore the flag and run a selection of its own.
+  (cd "$p" && QA_REQUIRE_NATIVE=1 dart run "$ROOT/tool/affected_tests.dart" --files-from "$list") \
+    >>"$log" 2>&1 || {
     tr '\r' '\n' <"$log" | grep -a '\[E\]' | head -10 >&2
     die "parity is red against the engine this lane just built — this is refusal 5; the whole log: $log"
   }

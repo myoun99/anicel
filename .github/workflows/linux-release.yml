@@ -101,7 +101,9 @@ jobs:
           set -euo pipefail
           bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
           echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
-          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt"
+          # Run by the run plan, as every list run goes: the pins that wait
+          # for the collector alone and last (tool/affected_tests.dart).
+          dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt"
 
       # The launch the Windows zip gets on the desk: still alive after 15 s,
       # with its window titled Anicel. Xvfb is the screen and Mesa's llvmpipe

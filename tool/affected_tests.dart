@@ -12,6 +12,9 @@
 // everything: the whole point of a safety net is that it does not share the
 // assumptions of the thing it is catching. What this buys is the edit-run
 // loop, where waiting 29 minutes to learn about a typo is the tax.
+// ↩️The one thing CI does take from it is HOW a list of files is run
+// (`--files-from`, [filesListed]) — never WHICH: that list comes from
+// elsewhere, so no assumption of the graph's rides along with it.
 //
 // Where it refuses to guess, it runs everything. That is the only safe
 // direction for a tool like this to be wrong in.
@@ -34,6 +37,7 @@
 //   bash tool/run.sh affected_tests --concurrency 4   # fewer than its turn gives
 //   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
 //   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
+//   bash tool/run.sh affected_tests --files-from parity.txt  # a given list
 //
 // A file green on this machine with byte-for-byte the inputs it has now is
 // not run again, and a red file is run once more: green the second time,
@@ -146,6 +150,53 @@ const kNearImports = 1;
 /// reaches is still every suite's in the wide run (`master_check`).
 const kNearConfigImports = 0;
 
+/// The files a list run names (`--files-from <file>`: one path a line, from
+/// the repository root, as `tool/native_parity_tests.sh` prints them) — or
+/// why there is nothing to run.
+///
+/// 🚨THE PARITY RUNS GO IN BATCHES TOO ([runInBatches]; parity-runs-crowd-
+/// the-collector-pins, 2026-10-17). Four places run the native parity list — `lane.sh
+/// native` and the TestFlight, Mac and Linux builds — and each ran it as ONE
+/// `xargs flutter test`, its collector pins in the very crowd the plan keeps
+/// them out of: `tile_images_are_counted` lost its 64 bytes inside a parity
+/// batch (2026-09-11). They hand the list here instead, so how a list is
+/// run is written once.
+///
+/// ⛔A list naming nothing is REFUSED, never run: to `flutter test` an empty
+/// selection is the whole suite, and a list that came back empty would turn
+/// a parity check into all of it. A path that is not there is refused too —
+/// `flutter test` would stop on it after the crowd had run.
+({List<String> files, String? refusal}) filesListed(
+  String? text, {
+  required bool Function(String path) exists,
+}) {
+  if (text == null) {
+    return (files: const <String>[], refusal: 'the list is not there');
+  }
+  final files = [
+    for (final line in text.split('\n'))
+      if (line.trim().isNotEmpty) line.trim(),
+  ];
+  if (files.isEmpty) {
+    return (
+      files: const <String>[],
+      refusal: 'the list names no file, and an empty run is the whole suite',
+    );
+  }
+  final missing = [
+    for (final file in files)
+      if (!exists(file)) file,
+  ];
+  if (missing.isNotEmpty) {
+    return (
+      files: const <String>[],
+      refusal: 'the list names ${missing.length} file(s) that are not there '
+          '— ${missing.first}',
+    );
+  }
+  return (files: files, refusal: null);
+}
+
 /// What a change to [changed] — every changed file, Dart or not — can have
 /// broken, out of [tests]: what reaches a changed file ([Reaches]) — by its
 /// imports, however far away or no more than [within] of them, or by a path
@@ -196,6 +247,9 @@ Future<void> main(List<String> args) async {
       if (arg.endsWith('_test.dart')) arg.replaceAll('\\', '/'),
   ];
   final redsTo = _flagValue(args, '--reds-to');
+  final listed = _flagValue(args, '--files-from');
+  // Where the caller stands, before the run moves to the repository root.
+  final list = listed == null ? null : File(listed).absolute;
   final asked = _flagValue(args, '--concurrency');
   final concurrency = asked == null ? null : int.tryParse(asked);
   if (asked != null && (concurrency == null || concurrency < 1)) {
@@ -225,6 +279,20 @@ Future<void> main(List<String> args) async {
       redsTo: redsTo,
     ),
   );
+
+  if (list != null) {
+    final given = filesListed(
+      list.existsSync() ? list.readAsStringSync() : null,
+      exists: (path) => File(path).existsSync(),
+    );
+    final refusal = given.refusal;
+    if (refusal != null) {
+      stderr.writeln('--files-from $listed: $refusal.');
+      exit(2);
+    }
+    _report('${given.files.length} file(s) from $listed.');
+    await run(given.files);
+  }
 
   if (runAll) {
     _report('--all: running the whole suite.');

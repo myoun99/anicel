@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import '../helpers/dart_sources.dart';
 
 import '../../tool/affected_tests.dart'
     show
+        filesListed,
         gcTag,
         gcTagMarker,
         kBatchWall,
@@ -158,6 +160,79 @@ void main() {
         contains('\n  $gcTag:'),
         reason: "a file's @Tags names a tag; one dart_test.yaml does not "
             'declare is a warning in every run that loads the file',
+      );
+    });
+  });
+
+  /// parity-runs-crowd-the-collector-pins (10-17): the native parity list
+  /// carries two of these pins, and the four places that run it each ran it
+  /// as one `xargs flutter test`. They hand it to the plan instead.
+  group('a list run (--files-from)', () {
+    test('names its files in order, a blank line and a CR left out', () {
+      final asked = filesListed(
+        'a_test.dart\r\n\r\nb_test.dart\n',
+        exists: (_) => true,
+      );
+      expect(asked.refusal, isNull);
+      expect(asked.files, ['a_test.dart', 'b_test.dart']);
+    });
+
+    test('⛔a list naming nothing is refused — an empty run is the whole '
+        'suite', () {
+      final asked = filesListed('\n \r\n', exists: (_) => true);
+      expect(asked.refusal, isNotNull);
+      expect(asked.files, isEmpty);
+    });
+
+    test('so is a list that is not there, and one naming a file that is '
+        'not — before anything runs', () {
+      expect(filesListed(null, exists: (_) => true).refusal, isNotNull);
+      final asked = filesListed(
+        'a_test.dart\nb_test.dart\n',
+        exists: (path) => path == 'a_test.dart',
+      );
+      expect(asked.refusal, contains('b_test.dart'));
+      expect(asked.files, isEmpty);
+    });
+
+    test('🚨every place that runs the parity list runs it by the plan', () {
+      // `lane.sh` names the runner beside itself, in quotes.
+      final byThePlan = RegExp(r'affected_tests\.dart"? --files-from');
+      final places = <String>[];
+      for (final dir in ['tool', '.github', '.githooks']) {
+        for (final file in filesUnder(dir)) {
+          // Latin-1 reads any byte, and all that is looked for is ASCII.
+          final text = file.readAsStringSync(encoding: latin1);
+          if (!text.contains('bash tool/native_parity_tests.sh')) continue;
+          final path = file.path.replaceAll(r'\', '/');
+          places.add(path);
+          expect(
+            text,
+            matches(byThePlan),
+            reason: '$path runs the parity list — through the plan',
+          );
+          expect(
+            text,
+            isNot(contains('xargs flutter test')),
+            reason: '$path: one `flutter test` puts the collector pins in '
+                'the crowd',
+          );
+        }
+      }
+      places.sort();
+      expect(places, [
+        '.github/workflows/linux-release.yml',
+        '.github/workflows/macos-developer-id.yml',
+        '.github/workflows/testflight.yml',
+        'tool/lane.sh',
+      ]);
+    });
+
+    test('lane.sh hands its list to the runner beside itself — a lane cut '
+        'before the entrance would ignore --files-from', () {
+      expect(
+        File('tool/lane.sh').readAsStringSync(),
+        contains(r'dart run "$ROOT/tool/affected_tests.dart" --files-from'),
       );
     });
   });

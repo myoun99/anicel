@@ -79,7 +79,9 @@ jobs:
           echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
           # A native crash is one line here; its stack is in the crash report
           # macOS writes beside it, which `print_mac_crash_reports.py` prints.
-          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt" || {
+          # Run by the run plan, as every list run goes: the pins that wait
+          # for the collector alone and last (tool/affected_tests.dart).
+          dart run tool/affected_tests.dart --files-from "$RUNNER_TEMP/parity.txt" || {
             status=$?
             python3 tool/print_mac_crash_reports.py
             exit $status
