@@ -349,7 +349,7 @@ void main() {
         'paper — its layer\'s mark — as a paper of its own ($axis)', (
       tester,
     ) async {
-      const mark = LayerMark(process: LayerProcess.layout);
+      const mark = LayerMark(process: LayerProcess.key);
       await shoot(
         tester,
         axis,
