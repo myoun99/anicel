@@ -309,9 +309,12 @@ Future<void> main(List<String> args) async {
 
   // What the first page needs, read before anyone asks: the records — kept
   // open, this process reads them all its life ([BoardRecords.keepOpen]) —
+  // the gate's answer, which a session's Stop asks first after a rebuild
+  // (🧪10-19: 275~437ms cold, then 2ms — the only lines in the slow log) —
   // and the two slow answers ([_Stale]) on their way.
   BoardRecords.of(File(_recordsPath)).keepOpen();
   _board();
+  _checked();
   unawaited(_prs());
   unawaited(_checkouts());
   await answerAll(requests);
