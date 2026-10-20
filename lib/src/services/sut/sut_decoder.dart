@@ -973,13 +973,15 @@ void _leftOut(_BrushPart part, String why) => part.warnings.add(
 
 /// 繰り返し方法, from `BrushPatternOrderType`.
 ///
-/// ⚠️THE NUMBERS ARE READ IN THE ORDER CLIP STUDIO LISTS THE SIX — 繰り返し ·
-/// 折り返し · 繰り返さない · ランダム · 一巡のみ · ランダムに一巡 — which two
-/// facts bear out without pinning: each one-tip brush of the user's stores
-/// 0, the first, and all six of their Cloud brushes, which scatter their
-/// tips at random, store 3, the fourth (📏2026-10-18, ten brushes). Board
-/// F-176-Q5 asks Clip Studio itself. `BrushPatternOrderType2` beside it
-/// holds the same number in all ten and is left unread.
+/// 📏ALL SIX NUMBERS ARE MEASURED (2026-10-21, board F-176-Q5): the user
+/// saved one brush six times in Clip Studio, the method alone changed —
+/// 繰り返し 0 · 折り返し 1 · 繰り返さない 2 · ランダム 3 · 一巡のみ 4 ·
+/// ランダムに一巡 5, the order Clip Studio lists them in.
+/// ↩️Before, two facts bore that order out without pinning it: each
+/// one-tip brush of the user's stores 0, and all six of their Cloud
+/// brushes, which scatter their tips at random, store 3 (2026-10-18, ten
+/// brushes). `BrushPatternOrderType2` beside it holds the same number in
+/// all sixteen and is left unread.
 BrushTipOrder _tipOrderOf(
   Map<String, Object?> variant, {
   required String brushName,

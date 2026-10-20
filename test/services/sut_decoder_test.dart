@@ -537,8 +537,8 @@ void main() {
   });
 
   test('繰り返し方法 comes in by the number Clip Studio stores', () async {
-    // 0 and 3 are read off the user's brushes; the rest follow the order
-    // Clip Studio lists the six in (board F-176-Q5 asks Clip Studio).
+    // All six measured off one brush the user saved six times, the method
+    // alone changed (board F-176-Q5, 2026-10-21).
     final orders = <BrushTipOrder>[];
     for (final stored in [null, 0, 1, 2, 3, 4, 5]) {
       final path = await buildFixture(
