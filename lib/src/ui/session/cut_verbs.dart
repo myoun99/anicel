@@ -171,10 +171,10 @@ class CutVerbs {
       CutId owner,
       BrushFrameKey? Function(BrushFrameKey key) inCopy,
     ) => carrySurfaces(
-      store: store,
       sources: store.bakedSurfacesForCut(owner).entries,
       surfaceOf: (written) => written.value,
       keyOfCopy: (written) => inCopy(written.key),
+      keep: (key, surface, _) => store.storeBakedSurface(key, surface),
     );
 
     carry(_renderCaches.conteInkRowStore, from, (key) {

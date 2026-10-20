@@ -407,26 +407,22 @@ _independentClipOf(
 /// writing (`CutVerbs`) were three loops saying it when the third arrived
 /// (2026-09-26).
 ///
-/// [keyOfSource], where a source has a key of its own: a copy that stores
-/// the very surface that key holds shows its source's pictures from the
-/// frame it is made ([BrushFrameStore.storeCopiedSurface], F-275).
+/// [keep] stores it: a store's own [BrushFrameStore.storeBakedSurface], or —
+/// where a source has a key of its own — its
+/// [BrushFrameStore.storeCopiedSurface], so a copy that stores the very
+/// surface that key holds shows its source's pictures from the frame it is
+/// made (F-275).
 void carrySurfaces<S>({
-  required BrushFrameStore store,
   required Iterable<S> sources,
   required BitmapSurface? Function(S source) surfaceOf,
   required BrushFrameKey? Function(S source) keyOfCopy,
-  BrushFrameKey Function(S source)? keyOfSource,
+  required void Function(BrushFrameKey key, BitmapSurface it, S source) keep,
 }) {
   for (final source in sources) {
     final surface = surfaceOf(source);
     final key = keyOfCopy(source);
-    if (surface == null || key == null) {
-      continue;
-    }
-    if (keyOfSource == null) {
-      store.storeBakedSurface(key, surface);
-    } else {
-      store.storeCopiedSurface(key, surface, source: keyOfSource(source));
+    if (surface != null && key != null) {
+      keep(key, surface, source);
     }
   }
 }
@@ -454,7 +450,6 @@ void carryBakedPictures({
   required Map<FrameId, FrameId> minted,
   required BitmapSurface? Function(FrameId source) pictureOf,
 }) => carrySurfaces(
-  store: store,
   sources: minted.entries,
   surfaceOf: (minted) => switch (pictureOf(minted.key)) {
     // 🚨A picture is kept at ITS CUT's canvas size, or its cel opens BLANK
@@ -470,7 +465,11 @@ void carryBakedPictures({
   // A cel copied on its own row — a duplicate, 링크 독립's fork of a base
   // cel and of its attach rows' mirrors — is its source's picture as it
   // stands; one pasted from anywhere else is only stored.
-  keyOfSource: (minted) => project.brushFrameKeyForCut(cut, to, minted.key),
+  keep: (key, surface, minted) => store.storeCopiedSurface(
+    key,
+    surface,
+    source: project.brushFrameKeyForCut(cut, to, minted.key),
+  ),
 );
 
 /// The pictures [cels] show as they are NOW, each under the key [keyOf]
@@ -504,10 +503,10 @@ void carryConteHandwriting({
   required Map<String, String> copies,
   required BitmapSurface? Function(String inkId) handwritingOf,
 }) => carrySurfaces(
-  store: store,
   sources: copies.entries,
   surfaceOf: (copy) => handwritingOf(copy.value),
   keyOfCopy: (copy) => conteInkRowKey(cut, copy.key),
+  keep: (key, surface, _) => store.storeBakedSurface(key, surface),
 );
 
 /// The handwriting the blocks of [exposures] show on [cut]'s conte as it is
