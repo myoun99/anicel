@@ -11,6 +11,8 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
@@ -21,8 +23,9 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
-/// The default project, its cut given [cels] more cel layers.
-Project _project({required int cels}) {
+/// The default project, its cut given [cels] more cel layers and
+/// [inbetweens] 動画 ones — the CELL block's (F-406).
+Project _project({required int cels, int inbetweens = 0}) {
   final project = createDefaultProject();
   final track = project.tracks.first;
   final cut = track.cuts.first;
@@ -39,6 +42,13 @@ Project _project({required int cels}) {
                   name: 'Z$index',
                   frames: const [],
                 ),
+              for (var index = 0; index < inbetweens; index += 1)
+                Layer(
+                  id: LayerId('inbetween-$index'),
+                  name: 'IB$index',
+                  mark: const LayerMark(process: LayerProcess.inbetween),
+                  frames: const [],
+                ),
             ],
           ),
         ],
@@ -53,8 +63,14 @@ ValueKey<String> _paper(TimesheetSheetKind kind) =>
 void main() {
   late EditorSessionManager session;
 
-  Future<void> pumpHost(WidgetTester tester, {required int cels}) async {
-    session = EditorSessionManager(initialProject: _project(cels: cels));
+  Future<void> pumpHost(
+    WidgetTester tester, {
+    required int cels,
+    int inbetweens = 0,
+  }) async {
+    session = EditorSessionManager(
+      initialProject: _project(cels: cels, inbetweens: inbetweens),
+    );
     addTearDown(session.dispose);
     final ink = TimesheetInkController();
     addTearDown(ink.dispose);
@@ -133,5 +149,19 @@ void main() {
     );
     expect(six.onTap, isNull);
     expect(three.selected, isTrue);
+  });
+
+  testWidgets('eight 動画 rows beside the 原画 ones still fit the 6-second '
+      'strip — each block holds its own, and the window offers 6초 '
+      '(F-406)', (tester) async {
+    await pumpHost(tester, cels: 0, inbetweens: 8);
+    expect(sheet(tester).sheetKind, TimesheetSheetKind.sixSeconds);
+
+    await tap(tester, const ValueKey<String>('timesheet-format-button'));
+    final six = tester.widget<Pill>(
+      find.byKey(_paper(TimesheetSheetKind.sixSeconds)),
+    );
+    expect(six.onTap, isNotNull);
+    expect(six.selected, isTrue);
   });
 }
