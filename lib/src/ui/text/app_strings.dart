@@ -1990,7 +1990,7 @@ enum AppStrings {
     'keyPathHelp':
         'The shape of the path a position takes through the key. Straight: a corner at the key · Curved: a smooth bend, laid by the keys either side.',
     'keyRovingHelp':
-        'The key keeps its place on the path and gives up its time: between the keys either side that keep theirs, it moves to the frame where the speed comes out even (After Effects' Rove Across Time). The first and last keys never rove.',
+        "The key keeps its place on the path and gives up its time: between the keys either side that keep theirs, it moves to the frame where the speed comes out even (After Effects' Rove Across Time). The first and last keys never rove.",
     'cameraPath': 'Camera path',
     'cameraPathOff': 'Off',
     'cameraPathSpace': 'Space',
@@ -6397,11 +6397,11 @@ enum AppStrings {
     'keySideIncomingHelp':
         'Comment la valeur arrive à la clé. Linéaire : vitesse constante · Lissage : en ralentissant · Vite : en accélérant · Fluide : à la vitesse que donnent les clés voisines. Influence : quelle part du trajet prend le changement.',
     'keySideOutgoingHelp':
-        'Comment la valeur quitte la clé. Linéaire : vitesse constante · Lissage : en démarrant doucement · Vite : en partant d'un coup · Fluide : à la vitesse que donnent les clés voisines · Maintien : la valeur reste jusqu'à la clé suivante. Influence : quelle part du trajet prend le changement.',
+        "Comment la valeur quitte la clé. Linéaire : vitesse constante · Lissage : en démarrant doucement · Vite : en partant d'un coup · Fluide : à la vitesse que donnent les clés voisines · Maintien : la valeur reste jusqu'à la clé suivante. Influence : quelle part du trajet prend le changement.",
     'keyPathHelp':
-        'La forme du chemin d'une position à travers la clé. Droite : un angle à la clé · Courbe : une courbe douce, tracée selon les clés voisines.',
+        "La forme du chemin d'une position à travers la clé. Droite : un angle à la clé · Courbe : une courbe douce, tracée selon les clés voisines.",
     'keyRovingHelp':
-        'La clé garde sa place sur la trajectoire et cède son temps : entre les clés voisines qui gardent le leur, elle se place à l'image où la vitesse devient régulière (Rove Across Time d'After Effects). La première et la dernière clé ne bougent jamais.',
+        "La clé garde sa place sur la trajectoire et cède son temps : entre les clés voisines qui gardent le leur, elle se place à l'image où la vitesse devient régulière (Rove Across Time d'After Effects). La première et la dernière clé ne bougent jamais.",
     'cameraPath': 'Trajectoire de la caméra',
     'cameraPathOff': 'Désactivé',
     'cameraPathSpace': 'Espace',
