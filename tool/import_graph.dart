@@ -135,17 +135,31 @@ Map<String, Set<String>> buildImportGraph({
   return graph;
 }
 
-/// Everything [start] can reach through [graph], however far away.
+/// The roots the import graph is walked from, for the selection and the
+/// result records alike. `tool/` too: a tool test reaches what its tool
+/// imports — until 2026-10-19 the walk stopped at the tool a test named,
+/// and a change to `tool/flutter_room.dart` selected none of the line's
+/// tests that run through `tool/test_queue.dart`.
+const kGraphRoots = ['lib', 'test', 'tool'];
+
+/// Everything [start] can reach through [graph] — however far away, or no
+/// more than [within] imports from it.
 ///
 /// ⚠️Excludes [start] itself unless something it reaches imports it back.
-Set<String> closureOf(String start, Map<String, Set<String>> graph) {
+Set<String> closureOf(
+  String start,
+  Map<String, Set<String>> graph, {
+  int? within,
+}) {
   final seen = <String>{};
-  final queue = <String>[start];
-  while (queue.isNotEmpty) {
-    final current = queue.removeLast();
-    for (final next in graph[current] ?? const <String>{}) {
-      if (seen.add(next)) queue.add(next);
-    }
+  var step = [start];
+  for (var away = 1; step.isNotEmpty; away++) {
+    if (within != null && away > within) break;
+    step = [
+      for (final current in step)
+        for (final next in graph[current] ?? const <String>{})
+          if (seen.add(next)) next,
+    ];
   }
   return seen;
 }
@@ -161,10 +175,16 @@ typedef Reach = ({Set<String> files, Set<String> prefixes});
 /// test whose helper reads `tool/lane.sh` was keyed on the script and never
 /// chosen by a change to it.
 class Reaches {
-  Reaches(this.imports, this.read);
+  Reaches(this.imports, this.read, {this.within});
 
   final Map<String, Set<String>> imports;
   final String Function(String path) read;
+
+  /// How many imports from a file its reach goes — every one when null:
+  /// the selection before a lane lands asks the near ones only
+  /// (`kNearImports`), the green record and the wide check every one.
+  final int? within;
+
   final _texts = <String, Set<String>>{};
   final _of = <String, Reach>{};
 
@@ -173,7 +193,7 @@ class Reaches {
   /// of `tool_choice.dart` once made every test that reaches it read all
   /// of `tool/` (10-20, 392 files for a change to one tool).
   Reach of(String start) => _of.putIfAbsent(start, () {
-    final files = {start, ...closureOf(start, imports)};
+    final files = {start, ...closureOf(start, imports, within: within)};
     return (
       files: files,
       prefixes: {

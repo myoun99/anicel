@@ -139,6 +139,15 @@ void main() {
       );
     });
 
+    test('a closure asked within N imports stops N edges out', () {
+      expect(closureOf('test/a_test.dart', graph, within: 0), isEmpty);
+      expect(closureOf('test/a_test.dart', graph, within: 1), {'lib/a.dart'});
+      expect(
+        closureOf('test/a_test.dart', graph, within: 2),
+        {'lib/a.dart', 'lib/shared.dart'},
+      );
+    });
+
     test('every start that reaches a file is recorded, not just the first', () {
       final reached = reachedBy(
         ['test/a_test.dart', 'test/b_test.dart'],

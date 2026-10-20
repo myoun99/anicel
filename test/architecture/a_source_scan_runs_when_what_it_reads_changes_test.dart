@@ -6,9 +6,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show forcesFullRun, kGraphRoots, selectTests;
+    show forcesFullRun, kNearImports, selectTests;
 import '../../tool/import_graph.dart'
-    show buildImportGraph, pathsReadAsText;
+    show buildImportGraph, kGraphRoots, pathsReadAsText;
 
 /// 🚨★★★A SOURCE SCAN RUNS WHEN WHAT IT READS CHANGES.
 ///
@@ -159,6 +159,49 @@ void main() {
           more: {usesBrush: '', brush: "json['tool']"},
         ),
         isEmpty,
+      );
+    });
+
+    test('🗣️Q8: before landing a change is asked near — what stands further '
+        'is the wide run\'s', () {
+      // plain → helper (1) → lib/a (2) → lib/b (3)
+      const helper = 'test/helpers/h.dart';
+      final imports = {
+        plain: {helper},
+        helper: {'lib/a.dart'},
+        'lib/a.dart': {'lib/b.dart'},
+      };
+      Set<String> chosen(String changed, {int? within}) => selectTests(
+        changed: {changed},
+        tests: [plain],
+        imports: imports,
+        read: (_) => '',
+        within: within,
+      );
+      expect(kNearImports, 2);
+      expect(chosen('lib/a.dart', within: kNearImports), {plain});
+      expect(chosen('lib/b.dart', within: kNearImports), isEmpty);
+      expect(chosen('lib/b.dart'), {plain});
+    });
+
+    test('🗣️Q8: the config is asked as near as the tests — the scans that '
+        'read the path are chosen at any distance', () {
+      const sandbox = 'lib/src/services/persistence/session_scratch.dart';
+      final imports = {
+        config: {'lib/a.dart'},
+        'lib/a.dart': {'lib/b.dart'},
+        'lib/b.dart': {sandbox},
+      };
+      expect(select({sandbox}, imports: imports), sources.keys.toSet());
+      expect(
+        selectTests(
+          changed: {sandbox},
+          tests: sources.keys.toList(),
+          imports: imports,
+          read: (path) => sources[path] ?? '',
+          within: kNearImports,
+        ),
+        {scanAll, scanServices},
       );
     });
 

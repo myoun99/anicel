@@ -16,13 +16,23 @@
 // Where it refuses to guess, it runs everything. That is the only safe
 // direction for a tool like this to be wrong in.
 //
+// 🗣️유저 2026-10-20 (tests-crowd-the-machine-Q8 「나눈다」): before a lane
+// lands it runs the tests NEAR its change — no more than [kNearImports]
+// imports away, and what reads the changed paths as text. Every landing
+// since the last check is then run WIDE together, once, by `master_check`,
+// which walks a red back to the landing that made it; a red it put on a
+// landing this checkout carries holds no verdict back here.
+//
 // Usage:
-//   bash tool/run.sh affected_tests            # run them
+//   bash tool/run.sh affected_tests            # the tests near the change
+//   bash tool/run.sh affected_tests --wide     # every test that reaches it
 //   bash tool/run.sh affected_tests --list     # print them, run nothing
 //   bash tool/run.sh affected_tests --all      # the escape hatch
-//   bash tool/run.sh affected_tests --base HEAD~3
+//   bash tool/run.sh affected_tests --base HEAD~3     # master when not given
+//   bash tool/run.sh affected_tests test/x_test.dart  # and these files too
 //   bash tool/run.sh affected_tests --concurrency 4   # fewer than its turn gives
 //   bash tool/run.sh affected_tests --no-cache        # run the record's greens too
+//   bash tool/run.sh affected_tests --reds-to <file>  # write the reds there
 //
 // A file green on this machine with byte-for-byte the inputs it has now is
 // not run again, and a red file is run once more: green the second time,
@@ -35,6 +45,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'import_graph.dart';
+import 'master_check.dart';
 import 'native_engine_provenance.dart';
 import 'test_queue.dart';
 import 'test_results.dart';
@@ -110,11 +121,21 @@ const gcTagMarker = "@Tags(['$gcTag'])";
   return (crowd: crowd, alone: alone);
 }
 
+/// How many imports from a test a change may stand and still choose it
+/// before a lane lands — the near run. 🗣️유저 2026-10-20,
+/// tests-crowd-the-machine-Q8 「나눈다」: 「처음엔 두 단계 안 — 착지 뒤
+/// 검사에서 놓친 빨강의 거리를 기록해 조정」. The wide run after landing
+/// (`master_check`) asks every import and keeps how far each red it finds
+/// stood (`near_misses.tsv`): this number is set by that record.
+/// 🧪Over that day's 120 landings two imports chose 64% of the work every
+/// import chose (459 of 720 machine-hours), one import 22%.
+const kNearImports = 2;
+
 /// What a change to [changed] — every changed file, Dart or not — can have
 /// broken, out of [tests]: what reaches a changed file ([Reaches]) — by its
-/// imports, however far away, or by a path it or anything it imports reads
-/// as text ([pathsReadAsText] has the rounds those reads were missing
-/// from) — the green record's own question.
+/// imports, however far away or no more than [within] of them, or by a path
+/// it or anything it imports reads as text ([pathsReadAsText] has the
+/// rounds those reads were missing from) — the green record's own question.
 ///
 /// 🚨flutter_test loads [kTestConfig] before every suite, and all it
 /// reaches with it, so a change the config reaches is every suite's. Until
@@ -126,8 +147,9 @@ Set<String> selectTests({
   required List<String> tests,
   required Map<String, Set<String>> imports,
   required String Function(String path) read,
+  int? within,
 }) {
-  final reaches = Reaches(imports, read);
+  final reaches = Reaches(imports, read, within: within);
   final everySuite = reachesAny(reaches.of(kTestConfig), changed);
   return {
     // A changed test runs because it changed, whatever it imports.
@@ -140,7 +162,18 @@ Set<String> selectTests({
 Future<void> main(List<String> args) async {
   final listOnly = args.contains('--list');
   final runAll = args.contains('--all');
-  final base = _flagValue(args, '--base') ?? 'origin/master';
+  final within = args.contains('--wide') ? null : kNearImports;
+  // ↩️`origin/master` until 10-20. Since PRs go up in bundles (08-31) the
+  // local master runs days ahead of origin — 454 commits that day — and a
+  // run given no base ran every landing since the last PR as its own. A
+  // lane's change is what it holds over master (🗣️Q8 「착지 전엔 가까운
+  // 테스트」); what landed is the wide check's (`master_check`).
+  final base = _flagValue(args, '--base') ?? 'master';
+  final named = [
+    for (final arg in args)
+      if (arg.endsWith('_test.dart')) arg.replaceAll('\\', '/'),
+  ];
+  final redsTo = _flagValue(args, '--reds-to');
   final asked = _flagValue(args, '--concurrency');
   final concurrency = asked == null ? null : int.tryParse(asked);
   if (asked != null && (concurrency == null || concurrency < 1)) {
@@ -157,22 +190,29 @@ Future<void> main(List<String> args) async {
   }
   Directory.current = root;
 
+  Future<Never> run(
+    List<String> files, [
+    Map<String, Set<String>>? imports,
+  ]) async => exit(
+    await _runTests(
+      files,
+      listOnly: listOnly,
+      concurrency: concurrency,
+      cache: _openCache(imports),
+      useCache: useCache,
+      redsTo: redsTo,
+    ),
+  );
+
   if (runAll) {
     _report('--all: running the whole suite.');
-    exit(
-      await _runTests(
-        _wholeSuite(),
-        listOnly: listOnly,
-        concurrency: concurrency,
-        cache: _openCache(),
-        useCache: useCache,
-      ),
-    );
+    await run(_wholeSuite());
   }
 
   final changed = _changedFiles(base);
-  if (changed.isEmpty) {
+  if (changed.isEmpty && named.isEmpty) {
     _report('nothing has changed against $base — nothing to run.');
+    _sayReds(redsTo, const []);
     exit(0);
   }
 
@@ -180,56 +220,67 @@ Future<void> main(List<String> args) async {
   if (blanket.isNotEmpty) {
     _report('running everything: ${blanket.first} changed'
         '${blanket.length > 1 ? ' (and ${blanket.length - 1} more like it)' : ''}.');
-    exit(
-      await _runTests(
-        _wholeSuite(),
-        listOnly: listOnly,
-        concurrency: concurrency,
-        cache: _openCache(),
-        useCache: useCache,
-      ),
-    );
+    await run(_wholeSuite());
   }
 
   final imports = buildImportGraph(roots: kGraphRoots);
   final tests = _suitesIn(imports);
 
-  final selected = selectTests(
-    changed: changed,
-    tests: tests,
-    imports: imports,
-    read: (path) => File(path).readAsStringSync(),
-  );
+  final selected = {
+    ...selectTests(
+      changed: changed,
+      tests: tests,
+      imports: imports,
+      read: (path) => File(path).readAsStringSync(),
+      within: within,
+    ),
+    ...named,
+  };
 
   final present = selected.where((f) => File(f).existsSync()).toList()..sort();
   if (present.isEmpty) {
     _report('no test reaches the ${changed.length} changed file(s).');
+    _sayReds(redsTo, const []);
     exit(0);
   }
 
   _report('${present.length} of ${tests.length} test files reach the '
-      '${changed.length} changed file(s).');
+      '${changed.length} changed file(s)'
+      '${within == null ? '' : ' within $within import(s) — --wide asks every one'}'
+      '${named.isEmpty ? '' : ', with the ${named.length} named'}.');
   final known = _knownTimes();
   _report('longest first, by this machine\'s times '
       '(${present.where(known.containsKey).length} of ${present.length} '
       'files timed before).');
-  exit(
-    await _runTests(
-      longestFirst(present, known),
-      listOnly: listOnly,
-      concurrency: concurrency,
-      cache: _openCache(imports),
-      useCache: useCache,
-    ),
-  );
+  await run(longestFirst(present, known), imports);
 }
 
-/// The roots the import graph is walked from, for the selection and the
-/// result records alike. `tool/` too: a tool test reaches what its tool
-/// imports — until 2026-10-19 the walk stopped at the tool a test named,
-/// and a change to `tool/flutter_room.dart` selected none of the line's
-/// tests that run through `tool/test_queue.dart`.
-const kGraphRoots = ['lib', 'test', 'tool'];
+/// What `master_check` reads a run by: the files red in [batches] but those
+/// [setAside] — flaky in this run, or quarantined — or null when a batch
+/// that went [red] did not say what each of its files did.
+List<String>? redsOf(
+  Map<int, List<SuiteRun>> batches,
+  Iterable<int> red,
+  bool Function(String file) setAside,
+) {
+  final told = red.every((i) {
+    final runs = batches[i] ?? const <SuiteRun>[];
+    return runs.isNotEmpty && runs.every((run) => run.green != null);
+  });
+  if (!told) return null;
+  return [
+    for (final runs in batches.values)
+      for (final run in runs)
+        if (run.green == false && !setAside(run.path)) run.path,
+  ]..sort();
+}
+
+/// Writes [reds] to the file [to] names, one a line — what `master_check`
+/// reads a run's verdict from — or nothing when none is named.
+void _sayReds(String? to, Iterable<String> reds) {
+  if (to == null) return;
+  File(to).writeAsStringSync([for (final red in reds) '$red\n'].join());
+}
 
 /// This machine's result records for this checkout ([ResultCache]), keyed
 /// through [imports] — the whole graph from [kGraphRoots] when not given.
@@ -327,6 +378,13 @@ Directory? _repoRoot() {
 
 /// Committed changes against the merge base, plus whatever is still in the
 /// working tree — the edit-run loop is mostly the latter.
+/// Whether this checkout holds the commit [sha] — a landing that
+/// `master_check` named.
+bool _carries(String sha) =>
+    Process.runSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'])
+        .exitCode ==
+    0;
+
 Set<String> _changedFiles(String base) {
   final merged = <String>{};
   final mergeBase =
@@ -490,6 +548,7 @@ Future<int> _runTests(
   int? concurrency,
   ResultCache? cache,
   bool useCache = true,
+  String? redsTo,
 }) async {
   final selected = useCache && cache != null
       ? _withoutStillGreen(files, cache)
@@ -499,6 +558,7 @@ Future<int> _runTests(
         ? 'nothing to run — every file was green with these inputs.'
         : 'PASSED (no batch — every file was green with these inputs, '
             'exit 0)');
+    if (!listOnly) _sayReds(redsTo, const []);
     return 0;
   }
   // The collector-waiting pins go last and by themselves.
@@ -598,11 +658,19 @@ Future<int> _runTests(
 
   if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
   final held = <String>{};
+  final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};
+  final fromMaster = <String, Landing>{};
   bool forgiven(String file) {
     if (flaky.contains(file)) return true;
-    final kept = cache?.isQuarantined(file) ?? false;
-    if (kept) held.add(file);
-    return kept;
+    if (cache?.isQuarantined(file) ?? false) {
+      held.add(file);
+      return true;
+    }
+    if (redOnMaster(file, onMaster, _carries) case final landing?) {
+      fromMaster[file] = landing;
+      return true;
+    }
+    return false;
   }
 
   // A batch that went red is forgiven only when the report said what every
@@ -615,6 +683,24 @@ Future<int> _runTests(
   if (held.isNotEmpty) {
     _report('⚠️quarantined, and red again — flaky before and unchanged '
         'since, so it holds no verdict back: ${(held.toList()..sort()).join(', ')}');
+  }
+  if (fromMaster.isNotEmpty) {
+    _report('⚠️red on master — master_check put it on a landing this '
+        "checkout carries, so it is not this change's and holds no verdict "
+        'back: ${[
+          for (final MapEntry(:key, :value) in fromMaster.entries)
+            '$key (${value.name})',
+        ].join(', ')}');
+  }
+
+  if (redsOf(
+        runsOf,
+        exits.keys,
+        (file) =>
+            flaky.contains(file) || (cache?.isQuarantined(file) ?? false),
+      )
+      case final reds?) {
+    _sayReds(redsTo, reds);
   }
 
   // A batch that exits non-zero having run NOTHING is not a test failure,
