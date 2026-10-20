@@ -1605,7 +1605,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// nowhere in a gap. Standing on the camera's row, where its box is
   /// ([_cameraBox]), it is drawn with the line its middle walks, and in
   /// time where the settings say; elsewhere as the export writes it
-  /// ([CameraPathOverlay.standing]).
+  /// ([CameraPathOverlay.standing]). What the export writes lies on the
+  /// picture as large as it prints at the playhead's camera
+  /// ([CameraPathOverlay.printedAt]).
   Positioned _cameraPath(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1616,7 +1618,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? const SizedBox.shrink()
           : ListenableBuilder(
               listenable: frame.session.canvasAdjust,
-              builder: (context, _) => _atTheCameraPose(frame.session, (_) {
+              builder: (context, _) => _atTheCameraPose(frame.session, (pose) {
                 final path = frame.session.camera.activeCutCameraPath(
                   _cameraFrameSizeShown(frame.session),
                 );
@@ -1628,6 +1630,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         settings: settings,
                         viewport: viewport,
                         standing: frame.isCameraLayerActive,
+                        printedAt: pose,
                       );
               }),
             ),

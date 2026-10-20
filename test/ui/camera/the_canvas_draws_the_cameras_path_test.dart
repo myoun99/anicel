@@ -5,6 +5,7 @@ import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
+import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -108,24 +109,27 @@ void main() {
   List<Offset> centreTrail(WidgetTester tester) =>
       tester.widget<CameraPathOverlay>(path()).centreTrail;
 
-  /// The screen pixels a canvas pixel spans — what its sizes are drawn by
-  /// (F-421).
-  double pixel(WidgetTester tester) =>
-      tester.widget<CameraPathOverlay>(path()).viewport.zoom;
+  /// The screen pixels a pixel of the export spans on the picture — what
+  /// the marks it writes are drawn by (F-421).
+  double pixel(WidgetTester tester) {
+    final overlay = tester.widget<CameraPathOverlay>(path());
+    return overlay.viewport.zoom / overlay.printedAt!.zoom;
+  }
 
   /// What the keys are written as — at the size a key's label takes.
   List<String> labels(WidgetTester tester) => [
     for (final mark in marks(tester))
       if (mark is SheetWords &&
-          mark.size == CameraPathOverlay.sizes.labelSize * pixel(tester))
+          (mark.size - CameraPathOverlay.sizes.labelSize * pixel(tester))
+                  .abs() <
+              1e-9)
         mark.text,
   ];
 
   /// The frames the crosses in time wear beside them.
   List<String> tickLabels(WidgetTester tester) => [
     for (final mark in marks(tester))
-      if (mark is SheetWords &&
-          mark.size == CameraPathOverlay.tickLabelSize * pixel(tester))
+      if (mark is SheetWords && mark.size == CameraPathOverlay.tickLabelSize)
         mark.text,
   ];
 
@@ -239,11 +243,11 @@ void main() {
       reason: '유저 2026-10-12: 「그 상황에서 십자가쪽에도 프레임번호」 — and '
           'the keys\' own crosses (I-89-Q16 B 「키의 십자에도」)',
     );
-    // The mock's sizes (5판): a key's cross reaches 5 canvas pixels either
-    // way, a frame's 3.
+    // The mock's sizes (5판): a key's cross reaches 5 of the export's pixels
+    // either way, a frame's 3 of the screen's — no export writes it.
     expect(arms(tester), [
       for (var arm = 0; arm < 4; arm++) closeTo(10 * pixel(tester), 1e-9),
-      for (var arm = 0; arm < 8; arm++) closeTo(6 * pixel(tester), 1e-9),
+      for (var arm = 0; arm < 8; arm++) closeTo(6, 1e-9),
     ]);
 
     CameraPathSettings.settings.value = const CameraPathSettings(
@@ -316,9 +320,7 @@ void main() {
     expect(dashes.length, greaterThan(1), reason: 'in dashes');
     expect(
       dashes,
-      everyElement(
-        closeTo(CameraPathOverlay.centreTrailWidth * pixel(tester), 1e-6),
-      ),
+      everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
     );
 
     final standing = (painter: painter(), marks: overlay().marks);
@@ -483,97 +485,155 @@ void main() {
 
   // 🗣️F-421 (유저 2026-10-20): 「캔버스 확대해도 축소해도 크기 안바뀌는
   // 벡터?느낌인데 크기는 100%인 상태에서 고정되도록」 · 「사각형 라인도
-  // 글자도 픽셀에 올리고싶단느낌」 · 「글자 3배는 너무큰거같으니 2배로」.
-  testWidgets('F-421: it lies on the picture\'s pixels — at 100% the mock\'s '
-      'sizes with its words twice, and at 200% all of it twice that, the '
-      'dashes of the camera\'s middle too', (tester) async {
-    final (s, _) = panning();
-    addTearDown(s.dispose);
-    final cameraPath = CameraPath.of(
-      s.requireActiveCut,
-      cameraOf(s).cameraFrameSize,
-    )!;
-
-    /// The path stood on in space and time, [zoom] screen pixels to a
-    /// canvas pixel — and pumped, to be painted.
-    Future<CameraPathOverlay> at(double zoom) async {
+  // 글자도 픽셀에 올리고싶단느낌」 · 「글자 3배는 너무큰거같으니 2배로」 —
+  // F-421-Q1: 「출력시 남는 것만 캔버스 픽셀에 올리고싶은게 목적임. 이유는
+  // 출력할때 선의 굵기같은게 참고가 되기때문」.
+  group('F-421: what the export writes lies on the picture as large as it '
+      'prints', () {
+    /// The camera's path of [panning], drawn [zoom] screen pixels to a
+    /// canvas pixel — printed at [printedAt], and stood on where [standing].
+    Future<CameraPathOverlay> pumpPath(
+      WidgetTester tester, {
+      required double zoom,
+      required CameraPose? printedAt,
+      bool standing = false,
+    }) async {
+      final (s, _) = panning();
+      addTearDown(s.dispose);
       final overlay = CameraPathOverlay(
-        path: cameraPath,
+        path: CameraPath.of(
+          s.requireActiveCut,
+          cameraOf(s).cameraFrameSize,
+        )!,
         playhead: 0,
         settings: const CameraPathSettings(),
         viewport: CanvasViewport(zoom: zoom),
-        standing: true,
+        standing: standing,
+        printedAt: printedAt,
       );
       await tester.pumpWidget(MaterialApp(home: overlay));
       return overlay;
     }
 
-    /// Every number [overlay]'s marks are drawn by: a word's size and its
-    /// slot, a stroke's width and its points.
-    List<double> numbersOf(CameraPathOverlay overlay) => [
+    /// Every size [overlay]'s marks are drawn at: a word's, a stroke's
+    /// width, and a cross's arm.
+    List<double> sizesOf(CameraPathOverlay overlay) => [
       for (final mark in overlay.marks)
         ...switch (mark) {
-          SheetWords(:final size, :final slot) => [
-            size,
-            slot.left,
-            slot.top,
-            slot.right,
-            slot.bottom,
-          ],
-          SheetStroke(:final width, :final points) => [
+          SheetWords(:final size) => [size],
+          SheetStroke(:final width, :final points, :final closed) => [
             width,
-            for (final point in points) ...[point.dx, point.dy],
+            if (!closed && points.length == 2)
+              (points.last - points.first).distance,
           ],
           _ => const <double>[],
         },
     ];
 
-    /// The dashes of the line the camera's middle walks, as painted: each
-    /// one's width.
-    List<double> dashes() {
-      final picture = find.byKey(const ValueKey<String>('camera-path-overlay'));
-      final canvas = TestRecordingCanvas();
-      tester
-          .widget<CustomPaint>(picture)
-          .painter!
-          .paint(canvas, tester.getSize(picture));
-      return [
-        for (final call in canvas.invocations)
-          if (call.invocation.memberName == #drawPath)
-            if (call.invocation.positionalArguments[1] case final Paint ink
-                when ink.color.toARGB32() == AppColors.accent.toARGB32())
-              ink.strokeWidth,
-      ];
-    }
+    Set<double> wordsOf(CameraPathOverlay overlay) => {
+      for (final mark in overlay.marks)
+        if (mark is SheetWords) mark.size,
+    };
 
-    final hundred = await at(1);
-    expect(
-      {
-        for (final mark in hundred.marks)
-          if (mark is SheetWords) mark.size,
-      },
-      {24.0, 20.0},
-      reason: 'a key\'s name, and a frame beside a cross: the mock\'s 12 and '
-          '10 twice over',
-    );
-    final numbers = numbersOf(hundred);
-    final dashed = dashes();
-    expect(dashed.length, greaterThan(1), reason: '⛔전제: in dashes');
-    expect(
-      dashed,
-      everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
-    );
+    final camera = CameraPose(center: CanvasPoint(x: 960, y: 540));
 
-    final twoHundred = await at(2);
-    expect(numbersOf(twoHundred), [
-      for (final number in numbers) closeTo(2 * number, 1e-6),
-    ]);
-    expect(
-      dashes(),
-      [for (final width in dashed) closeTo(2 * width, 1e-6)],
-      reason: 'a dash as long as canvas pixels make it: as many along the '
-          'path at 200% as at 100%',
-    );
+    testWidgets('at 100% under a camera at 1, the mock\'s sizes with its '
+        'words twice; at 200%, twice that; under a camera at 2, half', (
+      tester,
+    ) async {
+      final hundred = await pumpPath(tester, zoom: 1, printedAt: camera);
+      expect(
+        wordsOf(hundred),
+        {24.0},
+        reason: 'a key\'s name: the mock\'s 12 twice over',
+      );
+      final mock = sizesOf(hundred);
+      expect(mock, contains(CameraPathOverlay.sizes.frameWidth));
+
+      final twoHundred = await pumpPath(tester, zoom: 2, printedAt: camera);
+      expect(sizesOf(twoHundred), [
+        for (final size in mock) closeTo(2 * size, 1e-9),
+      ]);
+
+      final closer = await pumpPath(
+        tester,
+        zoom: 1,
+        printedAt: camera.copyWith(zoom: 2),
+      );
+      expect(
+        sizesOf(closer),
+        [for (final size in mock) closeTo(size / 2, 1e-9)],
+        reason: 'the file is the frame: a pixel of it is half the canvas\'s',
+      );
+    });
+
+    testWidgets('what it does not write keeps the screen\'s size: a path '
+        'no export writes, and standing, its crosses in time and the line '
+        'its middle walks', (tester) async {
+      Future<List<double>> unprinted(double zoom) async =>
+          sizesOf(await pumpPath(tester, zoom: zoom, printedAt: null));
+      final atHundred = await unprinted(1);
+      expect(atHundred, contains(CameraPathOverlay.sizes.labelSize));
+      expect(await unprinted(2), [
+        for (final size in atHundred) closeTo(size, 1e-9),
+      ]);
+
+      /// The crosses in time and the frames beside them, and the dashes of
+      /// the line the camera's middle walks — each one's size, as painted.
+      Future<({List<double> ticks, List<double> dashes})> stoodOn(
+        double zoom,
+      ) async {
+        final overlay = await pumpPath(
+          tester,
+          zoom: zoom,
+          printedAt: camera,
+          standing: true,
+        );
+        final picture = find.byKey(
+          const ValueKey<String>('camera-path-overlay'),
+        );
+        final canvas = TestRecordingCanvas();
+        tester
+            .widget<CustomPaint>(picture)
+            .painter!
+            .paint(canvas, tester.getSize(picture));
+        return (
+          ticks: [
+            for (final mark in overlay.marks)
+              if (mark is SheetWords && mark.size != 24 * zoom)
+                mark.size
+              else if (mark is SheetStroke &&
+                  mark.width == CameraPathOverlay.tickWidth)
+                mark.width,
+          ],
+          dashes: [
+            for (final call in canvas.invocations)
+              if (call.invocation.memberName == #drawPath)
+                if (call.invocation.positionalArguments[1] case final Paint ink
+                    when ink.color.toARGB32() == AppColors.accent.toARGB32())
+                  ink.strokeWidth,
+          ],
+        );
+      }
+
+      final hundred = await stoodOn(1);
+      expect(hundred.ticks, isNotEmpty, reason: '⛔전제: crosses in time');
+      expect(hundred.dashes, isNotEmpty, reason: '⛔전제: the middle\'s line');
+      expect(hundred.ticks, everyElement(isIn([
+        CameraPathOverlay.tickLabelSize,
+        CameraPathOverlay.tickWidth,
+      ])));
+      expect(
+        hundred.dashes,
+        everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
+      );
+      final twoHundred = await stoodOn(2);
+      expect(twoHundred.ticks, hundred.ticks);
+      expect(
+        twoHundred.dashes,
+        everyElement(closeTo(CameraPathOverlay.centreTrailWidth, 1e-6)),
+      );
+    });
   });
 
   testWidgets('its crosses in time wear where the playhead stands — grey '
@@ -585,8 +645,7 @@ void main() {
     await pumpArea(tester, s);
     List<int> ticks() => [
       for (final mark in marks(tester))
-        if (mark is SheetStroke &&
-            mark.width == CameraPathOverlay.tickWidth * pixel(tester))
+        if (mark is SheetStroke && mark.width == CameraPathOverlay.tickWidth)
           mark.argb,
     ];
     CustomPainter painter() => tester

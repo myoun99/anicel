@@ -1195,11 +1195,11 @@ class ExportFrameRenderer {
   /// The camera's work laid over [task]'s cel (CAM, I-89-Q18) — the camera
   /// of the cut the hand laid it in ([ExportCelGroupTask.listedCut]): its
   /// path as the canvas writes it off the camera's row
-  /// ([CameraPathOverlay.standing]), at the canvas's sizes — a pixel of the
-  /// file for each pixel of the canvas at 100%, so a file seen at 1:1 reads
-  /// as the canvas does there — on the canvas [view] looks at, over
-  /// everything laid before it. Null where none is laid, or the camera
-  /// moves nothing ([CameraPath.of]).
+  /// ([CameraPathOverlay.standing]), at its sizes ([CameraPathOverlay.sizes])
+  /// in the file's pixels — as large on the picture as the canvas draws
+  /// them ([CameraPathOverlay.printedAt], F-421) — on the canvas [view]
+  /// looks at, over everything laid before it. Null where none is laid, or
+  /// the camera moves nothing ([CameraPath.of]).
   ///
   /// 🗣️I-89-Q20 (유저 2026-10-12): 「캔버스와 같은 픽셀 수」 — ⛔not grown with
   /// the camera's frame as the conte sheet's are, though a large frame
@@ -1218,9 +1218,8 @@ class ExportFrameRenderer {
     final marks = cameraPathMarks(
       path,
       place: (point) => point,
-      // The file is the view's frame at full size: a canvas pixel is
-      // [CameraPose.zoom] of its pixels.
-      sizes: CameraPathOverlay.sizes.scaledBy(1 / view.pose.zoom),
+      // The file is the view's frame at full size.
+      sizes: CameraPathOverlay.sizesOnTheCanvas(view.pose),
       layer: SheetPaintLayer.picture,
     ).toList();
     final paper = ui.Size(
