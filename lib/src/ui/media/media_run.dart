@@ -487,7 +487,8 @@ class MediaRun {
       _behind.clockStarts();
       _runs(true);
       // Its sound on its way: the run stands where it was put until it has
-      // come ([_soundHasCome]).
+      // come ([_soundHasCome]) — buffering, so its pages go on only when the
+      // wait lets them ([_goesOn]).
       buffering = _soundComing;
     });
   }
@@ -556,11 +557,16 @@ class MediaRun {
     // budget every frame from the fifth on was decoded twice (measured
     // 2026-09-30). The turn's own rebuild asks from the new page.
     fillBuffer();
-    if (_soundComing && !_soundHasCome()) {
-      // Stands where it was put: its sound is on its way ([_wait]).
-    } else if (turnsItsOwnPages) {
+    // A sound on its way is asked for again at every look; until it has
+    // come, a run that turns its own pages stands by the one wait ([_wait],
+    // through [_goesOn] — the press left it buffering), and the sound alone
+    // has nothing to follow yet. ↩️This stood for the sound ahead of the
+    // wait, which then never saw it coming: a mutant that unwired the
+    // wait's sound lived (10-20).
+    final soundHasCome = !_soundComing || _soundHasCome();
+    if (turnsItsOwnPages) {
       _turnThePage();
-    } else {
+    } else if (soundHasCome) {
       _followTheSound();
     }
     if (_surface.mounted && frameAt(rate) != shown) {
