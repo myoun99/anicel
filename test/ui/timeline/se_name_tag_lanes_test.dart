@@ -163,10 +163,13 @@ void main() {
       'one undo (F-374: 「참조fx에서 리셋버튼도 안먹힘」, and so here)', () {
     final s = session();
     addTearDown(s.dispose);
+    // What the tag shows at the frame — a typed size is a key now
+    // (F-407), not the style it was made with.
     double? size() => s.layers
         .firstWhere((layer) => layer.id == seLayerId)
         .seNameTag
-        ?.style
+        ?.resolveAt(0)
+        .style
         .fontSize;
     s.laneVerbs.setLaneValueAt(
       seLayerId,
