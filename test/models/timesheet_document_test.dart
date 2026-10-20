@@ -26,11 +26,13 @@ Layer _layer(
   List<Frame> frames = const [],
   Map<int, TimelineExposure>? timeline,
   String? attachedTo,
+  LayerMark mark = LayerMark.none,
 }) {
   return Layer(
     id: LayerId(id),
     name: id,
     kind: kind,
+    mark: mark,
     onTimesheet: onTimesheet,
     frames: frames,
     timeline: timeline ?? const {},
@@ -149,8 +151,8 @@ void main() {
 
   group('TimesheetDocument columns', () {
     test('onTimesheet animation layers fill the ACTION slots in order, headed '
-        'by their real names; unbacked slots and the CELL block print no '
-        'placeholder letters', () {
+        'by their real names; unbacked slots print no placeholder letters, '
+        'and the CELL block, with no 動画 row, prints nothing', () {
       final document = _document(
         _cut(
           layers: [
@@ -177,21 +179,19 @@ void main() {
           .where((column) => column.kind == TimesheetColumnKind.cel)
           .toList();
       expect(celColumns, hasLength(8), reason: 'CELL form columns');
-      // The CELL headers mirror the ACTION layer names (UI-R10 #10); the
-      // content stays blank handwriting space.
-      expect(celColumns[0].label, 'Line');
-      expect(celColumns[1].label, 'Color');
-      expect(celColumns[2].label, isEmpty);
       expect(
         celColumns.every(
           (column) =>
+              column.label.isEmpty &&
               column.layerName == null &&
               column.cells.every(
                 (cell) => cell.kind == TimesheetCellKind.empty,
               ),
         ),
         isTrue,
-        reason: 'headers only — no backing layer, no content',
+        reason:
+            'F-406-Q1: the ACTION rows\' names are not mirrored over the '
+            'CELL block any more',
       );
       expect(
         document.columns
@@ -205,6 +205,134 @@ void main() {
             .map((column) => column.label),
         ['1', '2'],
       );
+    });
+
+    group('🎯F-406 — a 動画 row prints in the CELL block (유저 2026-10-19: '
+        '「색라벨 공정이 동화면 타임시트용지패널의 CELL란에 표시하도록. '
+        '액션란에는 표시안함. 동화의 어떤 수정공정이던 CELL란표시」)', () {
+      final frames = [
+        Frame(
+          id: const FrameId('f1'),
+          duration: 1,
+          name: '1',
+          strokes: const [],
+        ),
+        Frame(id: const FrameId('f2'), duration: 1, strokes: const []),
+      ];
+      final timeline = {
+        0: const TimelineExposure.drawing(FrameId('f1'), length: 3),
+        5: const TimelineExposure.drawing(FrameId('f2'), length: 2),
+      };
+      const inbetween = LayerMark(process: LayerProcess.inbetween);
+      List<TimesheetColumn> block(
+        TimesheetDocument document,
+        TimesheetColumnKind kind,
+      ) => [
+        for (final column in document.columns)
+          if (column.kind == kind) column,
+      ];
+      List<(TimesheetCellKind, String?)> printed(TimesheetColumn column) => [
+        for (final cell in column.cells) (cell.kind, cell.label),
+      ];
+
+      test('in its own place among the 動画 rows, whatever its revise — '
+          'and not in the ACTION block, which lays the rest in turn', () {
+        final document = _document(
+          _cut(
+            layers: [
+              _layer('IB', mark: inbetween),
+              _layer('Line'),
+              _layer(
+                'IB-check',
+                mark: const LayerMark(
+                  process: LayerProcess.inbetween,
+                  revise: LayerRevise.inbetweenCheck,
+                ),
+              ),
+              _layer('Color', mark: const LayerMark(process: LayerProcess.key)),
+            ],
+          ),
+        );
+
+        expect(
+          [
+            for (final column in block(document, TimesheetColumnKind.action))
+              column.label,
+          ].take(3),
+          ['Line', 'Color', ''],
+        );
+        expect(
+          [
+            for (final column in block(document, TimesheetColumnKind.cel))
+              (column.label, column.layerName),
+          ].take(3),
+          [('IB', 'IB'), ('IB-check', 'IB-check'), ('', null)],
+        );
+      });
+
+      test('by the ACTION block\'s law — the cells it would print there, '
+          'and the drag preview it would take there', () {
+        Cut cutOf(LayerMark mark) => _cut(
+          layers: [
+            _layer('IB', mark: mark, frames: frames, timeline: timeline),
+          ],
+          duration: 8,
+        );
+        final asAction = block(
+          _document(cutOf(LayerMark.none)),
+          TimesheetColumnKind.action,
+        ).first;
+        final asCell = block(
+          _document(cutOf(inbetween)),
+          TimesheetColumnKind.cel,
+        ).first;
+
+        expect(printed(asCell), printed(asAction));
+        expect(
+          printed(asAction).first,
+          (TimesheetCellKind.drawing, '1'),
+          reason: 'premise: the row prints something',
+        );
+        expect(asCell.layerId, const LayerId('IB'));
+        expect(asCell.previewCellsBuilder, isNotNull);
+      });
+
+      test('each block marks the books among its own rows, at its own '
+          'columns — the CELL block\'s past the ACTION and SE ones', () {
+        final document = _document(
+          _cut(
+            layers: [
+              _layer('A'),
+              _layer('IB1', mark: inbetween),
+              Layer(
+                id: const LayerId('book'),
+                name: 'BOOK',
+                kind: LayerKind.image,
+                mark: const LayerMark(process: LayerProcess.art),
+                frames: [
+                  Frame(
+                    id: const FrameId('book-f'),
+                    duration: 1,
+                    name: '2',
+                    strokes: const [],
+                  ),
+                ],
+              ),
+              _layer('IB2', mark: inbetween),
+              _layer('B'),
+            ],
+          ),
+        );
+        final firstCell = document.columns.indexWhere(
+          (column) => column.kind == TimesheetColumnKind.cel,
+        );
+
+        expect(document.books, [
+          (boundary: 1, label: 'BOOK2'),
+          (boundary: firstCell + 1, label: 'BOOK2'),
+        ]);
+        expect(document.columns[firstCell].label, 'IB1');
+      });
     });
 
     test('an image row stays off the ACTION block even with its sheet '

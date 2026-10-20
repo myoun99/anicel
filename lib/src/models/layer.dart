@@ -713,7 +713,7 @@ bool layerKindEligibleForTimesheetToggle(LayerKind kind) => !kind.groupsLayers;
 bool layerCarriesTimesheetToggle(Layer layer) =>
     layerKindEligibleForTimesheetToggle(layer.kind) && !isAttachedLayer(layer);
 
-/// D24: whether this layer prints an ACTION cel column — the ONE gate the
+/// D24: whether this layer prints a cel column — the ONE gate the
 /// printed timesheet, the cut envelope's cel counts and the XDTS export
 /// all read (three inline copies of `animation && onTimesheet` used to
 /// drift apart). The real sheets keep BG/BOOK picture rows out of the
@@ -733,6 +733,14 @@ bool layerTakesSheetCelColumn(Layer layer) =>
     layerCarriesTimesheetToggle(layer) &&
     layer.kind == LayerKind.animation &&
     layer.onTimesheet;
+
+/// F-406: whether this layer's cel column is the timesheet's CELL block's
+/// rather than its ACTION block's — a row whose colour label is 動画,
+/// whatever its revise (유저 2026-10-19: 「색라벨 공정이 동화면
+/// 타임시트용지패널의 CELL란에 표시하도록. 액션란에는 표시안함. 동화의 어떤
+/// 수정공정이던 CELL란표시」).
+bool layerMarkedInbetween(Layer layer) =>
+    layer.mark.process == LayerProcess.inbetween;
 
 /// D24 후반: whether this layer marks a BOOK on the sheet — an image row
 /// whose colour label is 美術, whatever its revise and whatever its name

@@ -14,7 +14,8 @@ class SheetSources {
   SheetSources._({
     required this.playbackFrameCount,
     required this.celLayers,
-    required this.books,
+    required this.actionBooks,
+    required this.cellBooks,
     required this.seLayers,
     required this.instructionLayers,
   });
@@ -34,14 +35,25 @@ class SheetSources {
     );
     return SheetSources._(
       playbackFrameCount: playbackFrameCount,
-      // ACTION-block cel columns: ONE gate shared with the envelope and
-      // the XDTS export ([layerTakesSheetCelColumn], D24) — image rows
-      // answer false, a nameless held picture prints nothing.
+      // Cel columns: ONE gate shared with the envelope and the XDTS export
+      // ([layerTakesSheetCelColumn], D24) — image rows answer false, a
+      // nameless held picture prints nothing.
       celLayers: [
         for (final layer in cut.layers)
           if (layerTakesSheetCelColumn(layer)) layer,
       ],
-      books: sheetBooksOf(cut.layers),
+      // Each block's books among its own rows — the rows of the other
+      // block are not there for a book to lie between (F-406-Q1).
+      actionBooks: sheetBooksOf([
+        for (final layer in cut.layers)
+          if (!layerTakesSheetCelColumn(layer) || !layerMarkedInbetween(layer))
+            layer,
+      ]),
+      cellBooks: sheetBooksOf([
+        for (final layer in cut.layers)
+          if (!layerTakesSheetCelColumn(layer) || layerMarkedInbetween(layer))
+            layer,
+      ]),
       seLayers: [
         for (final layer in cut.layers)
           if (layer.kind == LayerKind.se && layer.onTimesheet)
@@ -79,11 +91,43 @@ class SheetSources {
   /// The cut's length in rows the sheet must show, never less than 1.
   final int playbackFrameCount;
 
-  /// The rows that take an ACTION-block cel column.
+  /// The rows that take a cel column — on the printed timesheet, the
+  /// ACTION block's ([actionLayers]) and the CELL block's ([cellLayers]).
   final List<Layer> celLayers;
 
-  /// The books the sheet marks between those columns ([sheetBooksOf]).
-  final List<SheetBook> books;
+  /// The cel rows the timesheet prints in its ACTION block: all but the
+  /// 動画 ones (F-406).
+  List<Layer> get actionLayers => [
+    for (final layer in celLayers)
+      if (!layerMarkedInbetween(layer)) layer,
+  ];
+
+  /// The cel rows the timesheet prints in its CELL block: the 動画 ones,
+  /// by the ACTION block's law (F-406: 「기본적인 규칙 왠만한건 액션란 등
+  /// 규칙 똑같음. 법 통일」).
+  ///
+  /// 🗣️F-406-Q1 (유저 2026-10-20): 「CELL 은 동화 행만」 — each block lays
+  /// its own rows in turn, and the ACTION block's names are not mirrored
+  /// over the CELL block any more: 「동화 하는 사람이 액션이랑 셀 칸
+  /// 위치맞추기 알아서 하도록 … 동화 레이어 끼리만 위치관계 가지는느낌?
+  /// 액션란도 그렇잖아」. ↩️The CELL block was blank paper headed by the
+  /// ACTION rows' names (UI-R10 #10).
+  List<Layer> get cellLayers => [
+    for (final layer in celLayers)
+      if (layerMarkedInbetween(layer)) layer,
+  ];
+
+  /// The cel columns a timesheet's paper must hold: its wider block's.
+  int get celColumnsAcross {
+    final cells = cellLayers.length;
+    final actions = celLayers.length - cells;
+    return actions > cells ? actions : cells;
+  }
+
+  /// The books the ACTION block marks between its columns, and those the
+  /// CELL block marks between its own ([sheetBooksOf]).
+  final List<SheetBook> actionBooks;
+  final List<SheetBook> cellBooks;
 
   /// The SE rows, already windowed and clipped to this cut, each with the
   /// two facts the printed sheet marks: whether the row's block runs past

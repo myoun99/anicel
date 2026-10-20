@@ -300,9 +300,10 @@ class TimesheetPage {
 ///
 /// The column set follows the Japanese paper form: the ACTION block carries
 /// the onTimesheet animation layers (headed by their real names, leftover
-/// slots blank), then the frame rail, S1/S2 dialogue-SE slots, a blank CELL
-/// block and the camera columns — fixed slots that stay blank when
-/// unbacked, with no placeholder letters anywhere.
+/// slots blank), then the frame rail, S1/S2 dialogue-SE slots, the CELL
+/// block — the 動画 layers, which the ACTION block does not carry (F-406)
+/// — and the camera columns: fixed slots that stay blank when unbacked,
+/// with no placeholder letters anywhere.
 class TimesheetDocument {
   TimesheetDocument._({
     required this.title,
@@ -387,12 +388,12 @@ class TimesheetDocument {
       spans: transitionSpans,
     );
     final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
-    final animationLayers = sources.celLayers;
+    final actionLayers = sources.actionLayers;
+    final cellLayers = sources.cellLayers;
     final sheetKind = sheetKindFor(
       cut.metadata.sheetKind,
-      celColumns: animationLayers.length,
+      celColumns: sources.celColumnsAcross,
     );
-    final actionColumnCount = sheetKind.celColumns;
     final celColumnCount = sheetKind.celColumns;
     final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
@@ -439,22 +440,18 @@ class TimesheetDocument {
       rowCount: rowCount,
       instructionDefById: instructionDefById,
     );
+    final actionSlots = _slotCount(celColumnCount, actionLayers);
+    final seColumnSlots = _slotCount(seColumnCount, seSlots);
     final columns = <TimesheetColumn>[
-      // Animation layers fill the ACTION block in order, headed by their
-      // real names; unbacked slots stay blank handwriting space.
-      for (
-        var slot = 0;
-        slot < _slotCount(actionColumnCount, animationLayers);
-        slot += 1
-      )
-        _actionColumn(slot, animationLayers, rowCount, playbackFrameCount, dataSheet),
-      for (var slot = 0; slot < _slotCount(seColumnCount, seSlots); slot += 1)
+      // The cel rows fill the ACTION block in order, headed by their real
+      // names — but the 動画 ones, which fill the CELL block by the same law
+      // (F-406); unbacked slots stay blank handwriting space.
+      for (var slot = 0; slot < actionSlots; slot += 1)
+        _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet),
+      for (var slot = 0; slot < seColumnSlots; slot += 1)
         _seColumn(slot, seSlots, rowCount, playbackFrameCount, dataSheet, clipToSheet),
-      // The CELL block mirrors the ACTION layers' NAMES as its headers
-      // (UI-R10 #10) — the cel re-assignment content stays blank
-      // handwriting space.
-      for (var slot = 0; slot < celColumnCount; slot += 1)
-        _celColumn(slot, animationLayers, rowCount),
+      for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
+        _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, dataSheet),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
       // past the fixed count when a cut carries more.
@@ -477,7 +474,15 @@ class TimesheetDocument {
       sheetKind: sheetKind,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
-      books: List.unmodifiable(sources.books),
+      books: List.unmodifiable([
+        ...sources.actionBooks,
+        // The CELL block's at its own columns, past the ACTION and SE ones.
+        for (final book in sources.cellBooks)
+          (
+            boundary: actionSlots + seColumnSlots + book.boundary,
+            label: book.label,
+          ),
+      ]),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -486,16 +491,6 @@ class TimesheetDocument {
             frameCount: pageFrameCount,
           ),
       ]),
-    );
-  }
-
-  static TimesheetColumn _celColumn(int slot, List<Layer> animationLayers, int rowCount) {
-    return TimesheetColumn(
-      kind: TimesheetColumnKind.cel,
-      label: slot < animationLayers.length
-          ? animationLayers[slot].name
-          : '',
-      cells: _blankCells(rowCount),
     );
   }
 
@@ -539,9 +534,9 @@ class TimesheetDocument {
     );
   }
 
-  static TimesheetColumn _actionColumn(int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet) {
+  static TimesheetColumn _celRowColumn(TimesheetColumnKind kind, int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet) {
     return TimesheetColumn(
-      kind: TimesheetColumnKind.action,
+      kind: kind,
       label: slot < animationLayers.length
           ? animationLayers[slot].name
           : '',
@@ -629,8 +624,8 @@ class TimesheetDocument {
 
   final List<TimesheetColumn> columns;
 
-  /// The books tagged over the ACTION block, left to right — each at a
-  /// boundary of its cel columns ([SheetBook]).
+  /// The books tagged over the ACTION and CELL blocks, left to right — each
+  /// at a boundary of its block's columns, as a column index ([SheetBook]).
   final List<SheetBook> books;
 
   final List<TimesheetPage> pages;

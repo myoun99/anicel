@@ -281,7 +281,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             ? null
             : (
                 kind: cut.metadata.sheetKind,
-                celColumns: SheetSources.of(cut: cut).celLayers.length,
+                celColumns: SheetSources.of(cut: cut).celColumnsAcross,
               ),
       ),
       commit: (format) => session.updateTimesheetFormat(

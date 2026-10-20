@@ -306,7 +306,7 @@ class TimesheetDocumentLayout {
   static const double bookTagFontSize = 9;
   static const double bookTagFloorGap = 2;
 
-  /// Where each book's tag stands over the ACTION block of [half] of
+  /// Where each book's tag stands over its block of [half] of
   /// [pageIndex]: the x of its boundary and the tag's bottom edge. The last
   /// book's tag sits on the memo band's bottom and each before it a step
   /// higher — the reference sheets' diagonal (유저 2026-09-25, 사진 셋),

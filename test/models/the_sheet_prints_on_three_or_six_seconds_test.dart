@@ -5,8 +5,8 @@
 // cells as wide as the 6-second sheet's and as many as fit — 19 ACTION and
 // 19 CELL columns (유저 2026-10-08, F-252: 「셀 칸 하나 가로길이
 // 유지한채로 그만큼 칸 더 많이 만들도록」; ↩️12 and 12 printed wider,
-// timesheet-3s-columns-Q1); a cut with more cel layers than the 6-second
-// strip's eight prints on it whatever it chose.
+// timesheet-3s-columns-Q1); a cut with more cel rows in either block than
+// the 6-second strip's eight prints on it whatever it chose.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_size.dart';
@@ -15,12 +15,17 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
+/// A cut of [cels] ACTION rows and [inbetweens] 動画 ones, the CELL
+/// block's (F-406).
 Cut _cut({
   required int cels,
+  int inbetweens = 0,
   TimesheetSheetKind kind = TimesheetSheetKind.sixSeconds,
 }) => Cut(
   id: const CutId('cut'),
@@ -33,6 +38,13 @@ Cut _cut({
       Layer(
         id: LayerId('cel-$index'),
         name: String.fromCharCode(65 + index),
+        frames: const [],
+      ),
+    for (var index = 0; index < inbetweens; index += 1)
+      Layer(
+        id: LayerId('inbetween-$index'),
+        name: 'IB$index',
+        mark: const LayerMark(process: LayerProcess.inbetween),
         frames: const [],
       ),
   ],
@@ -84,11 +96,20 @@ void main() {
     }
   });
 
-  test('a cut with more cel layers than the 6-second strip holds prints on '
-      'the 3-second sheet whatever it chose — past nineteen its ACTION '
-      'block grows, its CELL block does not', () {
+  test('a cut with more cel rows in either block than the 6-second strip '
+      'holds prints on the 3-second sheet whatever it chose — past '
+      'nineteen that block grows, the other does not', () {
     expect(_sheet(_cut(cels: 8)).sheetKind, TimesheetSheetKind.sixSeconds);
     expect(_sheet(_cut(cels: 9)).sheetKind, TimesheetSheetKind.threeSeconds);
+    // F-406: the paper holds its wider block, not the two together.
+    expect(
+      _sheet(_cut(cels: 8, inbetweens: 8)).sheetKind,
+      TimesheetSheetKind.sixSeconds,
+    );
+    expect(
+      _sheet(_cut(cels: 1, inbetweens: 9)).sheetKind,
+      TimesheetSheetKind.threeSeconds,
+    );
     expect(
       sheetKindFits(TimesheetSheetKind.sixSeconds, celColumns: 9),
       isFalse,
@@ -101,6 +122,9 @@ void main() {
     final crowded = _sheet(_cut(cels: 21));
     expect(_count(crowded, TimesheetColumnKind.action), 21);
     expect(_count(crowded, TimesheetColumnKind.cel), 19);
+    final crowdedCells = _sheet(_cut(cels: 2, inbetweens: 21));
+    expect(_count(crowdedCells, TimesheetColumnKind.action), 19);
+    expect(_count(crowdedCells, TimesheetColumnKind.cel), 21);
   });
 
   test('🚨the 3-second sheet keeps the 6-second sheet\'s cell width, on '
