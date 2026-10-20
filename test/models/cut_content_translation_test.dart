@@ -31,11 +31,8 @@ void main() {
 
     final moved = translateCutCamera(
       camera,
-      -40,
-      25,
+      (dx: -40, dy: 25, centreDx: -40, centreDy: 25),
       from: _canvas,
-      centreDx: -40,
-      centreDy: 25,
     );
 
     expect(moved.keyframeAt(0)!.center.x, 60);
@@ -53,11 +50,8 @@ void main() {
       identical(
         translateCutCamera(
           camera,
-          10,
-          10,
+          (dx: 10, dy: 10, centreDx: 10, centreDy: 10),
           from: _canvas,
-          centreDx: 10,
-          centreDy: 10,
         ),
         camera,
       ),
@@ -71,11 +65,8 @@ void main() {
       'moves with the content', () {
     final moved = translateCutCamera(
       CutCamera.empty(),
-      0,
-      0,
+      (dx: 0, dy: 0, centreDx: 100, centreDy: 50),
       from: _canvas,
-      centreDx: 100,
-      centreDy: 50,
     );
 
     expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 960, y: 540));
@@ -96,11 +87,8 @@ void main() {
 
     final moved = translateCutCamera(
       camera,
-      -200,
-      -100,
+      (dx: -200, dy: -100, centreDx: -100, centreDy: -50),
       from: _canvas,
-      centreDx: -100,
-      centreDy: -50,
     );
 
     expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 760, y: 440));
@@ -111,11 +99,8 @@ void main() {
       'rounded half a pixel off the centre', () {
     final moved = translateCutCamera(
       CutCamera.empty(),
-      1,
-      0,
+      (dx: 1, dy: 0, centreDx: 0.5, centreDy: 0),
       from: _canvas,
-      centreDx: 0.5,
-      centreDy: 0,
     );
 
     expect(moved.track.position.keyAt(0)!.value, CanvasPoint(x: 961, y: 540));
@@ -405,11 +390,8 @@ void main() {
 
     final moved = translateCutCamera(
       camera,
-      10,
-      -5,
+      (dx: 10, dy: -5, centreDx: 10, centreDy: -5),
       from: _canvas,
-      centreDx: 10,
-      centreDy: -5,
     );
     final position = moved.track.position;
     expect(position.keyAt(0)!.value.x, 110);
@@ -441,11 +423,8 @@ void main() {
       identical(
         translateCutCamera(
           camera,
-          0,
-          0,
+          (dx: 0, dy: 0, centreDx: 0, centreDy: 0),
           from: _canvas,
-          centreDx: 0,
-          centreDy: 0,
         ),
         camera,
       ),

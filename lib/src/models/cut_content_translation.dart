@@ -53,10 +53,15 @@ PropertyTrack<CanvasPoint> _translatedPointTrack(
   );
 }
 
-/// A POSITION lane moved by ([dx], [dy]) for a resize. EMPTY, it reads
+/// How a resize moves what stands on the canvas: the content by (dx, dy),
+/// and the canvas centre — what an unkeyed pose reads — by (centreDx,
+/// centreDy).
+typedef ResizeWalk = ({double dx, double dy, double centreDx, double centreDy});
+
+/// A POSITION lane moved by [walk]'s (dx, dy) for a resize. EMPTY, it reads
 /// [centre] — the canvas centre of the size it stood on, which walks by
-/// ([centreDx], [centreDy]); where that is not the lane's own move, it is
-/// keyed first where it stood, or its pose walks off its picture.
+/// [walk]'s (centreDx, centreDy); where that is not the lane's own move,
+/// it is keyed first where it stood, or its pose walks off its picture.
 ///
 /// 🗣️F-362 (유저 2026-10-20): 「캔버스 크기 바꾸면 카메라도 이동해버림.
 /// 소재는 기존 위치에 존재하는게 규칙 … 키를 찍어서라도 이동시켜두도록」 —
@@ -67,11 +72,9 @@ PropertyTrack<CanvasPoint> _translatedPointTrack(
 PropertyTrack<CanvasPoint> _translatedPositionLane(
   PropertyTrack<CanvasPoint> lane, {
   required CanvasPoint centre,
-  required double dx,
-  required double dy,
-  required double centreDx,
-  required double centreDy,
+  required ResizeWalk walk,
 }) {
+  final (:dx, :dy, :centreDx, :centreDy) = walk;
   final stood = lane.isEmpty && (dx != centreDx || dy != centreDy)
       ? pathLaneKeyed(lane, 0, centre)
       : lane;
@@ -87,22 +90,20 @@ PropertyTrack<CanvasPoint> _translatedPositionLane(
 /// reads [defaultCameraPoseFor] on [from] ([_translatedPositionLane]).
 CutCamera translateCutCamera(
   CutCamera camera,
-  double dx,
-  double dy, {
+  ResizeWalk walk, {
   required CanvasSize from,
-  required double centreDx,
-  required double centreDy,
 }) {
   final track = camera.track;
   final position = _translatedPositionLane(
     track.position,
     centre: defaultCameraPoseFor(from).center,
-    dx: dx,
-    dy: dy,
-    centreDx: centreDx,
-    centreDy: centreDy,
+    walk: walk,
   );
-  final anchorPoint = _translatedPointTrack(track.anchorPoint, dx, dy);
+  final anchorPoint = _translatedPointTrack(
+    track.anchorPoint,
+    walk.dx,
+    walk.dy,
+  );
   if (identical(position, track.position) &&
       identical(anchorPoint, track.anchorPoint)) {
     return camera;
@@ -208,10 +209,12 @@ Layer translateLayerForResize(
       position: _translatedPositionLane(
         track.position,
         centre: layerIdentityPose(from).center,
-        dx: positionDx,
-        dy: positionDy,
-        centreDx: centreDx,
-        centreDy: centreDy,
+        walk: (
+          dx: positionDx,
+          dy: positionDy,
+          centreDx: centreDx,
+          centreDy: centreDy,
+        ),
       ),
       anchorPoint: _translatedPointTrack(track.anchorPoint, dx, dy),
     ),
@@ -247,11 +250,8 @@ Cut translateCutContentModel(
   return cut.copyWith(
     camera: translateCutCamera(
       cut.camera,
-      dx,
-      dy,
+      (dx: dx, dy: dy, centreDx: centreDx, centreDy: centreDy),
       from: cut.canvasSize,
-      centreDx: centreDx,
-      centreDy: centreDy,
     ),
     guides: translateCutGuides(cut.guides, dx, dy),
     layers: [
