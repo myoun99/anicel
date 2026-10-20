@@ -32,7 +32,7 @@ import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
-import 'package:anicel/src/ui/export/export_cels_stack.dart';
+import 'package:anicel/src/ui/export/export_cels_board.dart';
 
 /// 🚨F-300 (유저 2026-10-05): 「출력창은 현재컷을 기준으로 생각하긴한다만
 /// 렌더에 현재컷 관련 로직 있는건 이상하니 근본/구조적으로 해결」.
@@ -263,7 +263,7 @@ void main() {
       expect(
         tester.widget<AppWindow>(find.byType(AppWindow)).width,
         // ↩️1018 while the cel list stood 184 wide (F-395 widened it).
-        1018 - 184 + ExportCelsStack.stackWidth,
+        1018 - 184 + ExportCelsBoard.stackWidth,
         reason: 'the four columns with both drawers folded — two thirds of '
             '1200 by area is narrower',
       );
