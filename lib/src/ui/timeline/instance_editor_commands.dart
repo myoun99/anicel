@@ -31,6 +31,7 @@ import 'toolbar_panel_context.dart'
     show
         StoryboardEditCut,
         StoryboardEditLaneKey,
+        StoryboardEditRows,
         StoryboardEditSeEntry,
         StoryboardEditTimelineCells,
         StoryboardEditTransitionSpan,
@@ -252,6 +253,9 @@ Future<void> editOnPanel(
   switch (panel.editTarget) {
     case StoryboardEditCut():
       await renameActiveCutWithDialog(context, session);
+    case StoryboardEditRows():
+      // The shared ladder's rows rung, the timeline's rename (F-359).
+      await renameActiveLayerWithDialog(context, session);
     case StoryboardEditSeEntry(:final layerId, :final globalFrame):
       await editSeEntryInstance(
         context,

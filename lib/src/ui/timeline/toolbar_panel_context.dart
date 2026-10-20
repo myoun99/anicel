@@ -447,6 +447,18 @@ class StoryboardEditCut extends StoryboardEditTarget {
   const StoryboardEditCut();
 }
 
+/// The selected ROWS — the shared ladder's rows rung, whose Edit is the
+/// rename the timeline's opens (`renameableSelectedLayerIds`): an S row, a
+/// conte row this rail selects.
+///
+/// 🗣️F-359 (유저 2026-10-14): 「콘티패널에서 s행선택하고 삭제/편집버튼
+/// 활성화안됨. 타임라인패널은 되는데. 그러니 통일하고」. ↩️This ladder had
+/// no rows rung: a selected S row fell through to the block under the
+/// cursor.
+class StoryboardEditRows extends StoryboardEditTarget {
+  const StoryboardEditRows();
+}
+
 /// The SE block under the cursor on the standing S row, addressed on the
 /// global axis (the #1113 door, [editSeEntryInstance]).
 class StoryboardEditSeEntry extends StoryboardEditTarget {
@@ -786,6 +798,10 @@ class StoryboardToolbarPanelContext
     if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return const StoryboardEditCut();
     }
+    // The rows rung, second as on the shared ladder (F-359).
+    if (session.layerVerbs.renameableSelectedLayerIds().isNotEmpty) {
+      return const StoryboardEditRows();
+    }
     // …and a band that names rows this press would MISS claims it before
     // the standing row speaks.
     //
@@ -896,6 +912,11 @@ class StoryboardToolbarPanelContext
     if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
       return PillSubject.cuts;
     }
+    // The rows rung, second as on the shared ladder (F-359) — its press
+    // confirms first ([deletePress]).
+    if (session.layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
+      return PillSubject.layers;
+    }
     if (session.cells.canDeleteCellForSelection) {
       return PillSubject.cells;
     }
@@ -913,7 +934,8 @@ class StoryboardToolbarPanelContext
 
   @override
   void deleteSelectionSubject() {
-    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty) {
+    if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty ||
+        session.layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
       session.deleteSelectionSubject();
       return;
     }

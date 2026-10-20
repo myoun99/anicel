@@ -463,6 +463,35 @@ class LayerVerbs {
     );
   }
 
+  /// One row's delete, where the row lives: an S row off its TRACK — while
+  /// the track keeps more than its floor of two, asked again at each one so
+  /// a multi-row delete stops there — any other row in [cutId], whose
+  /// floors the coordinator asks ([CutCommandCoordinator.deleteLayer]).
+  ///
+  /// 🗣️F-359 (유저 2026-10-14): 「s행은 삭제창통해 삭제해도 삭제가안됨」.
+  /// ↩️Only the active row's delete took an S row off its track; the
+  /// selection's — the one the delete window commits — handed it to the
+  /// cut's, which holds no S row and refused it.
+  void _deleteRow(CutId cutId, LayerId layerId) {
+    final track = _selection.activeTrack;
+    if (!track.seLayers.any((row) => row.id == layerId)) {
+      _project.cutCommandCoordinator.deleteLayer(
+        cutId: cutId,
+        layerId: layerId,
+      );
+      return;
+    }
+    if (track.seLayers.length > 2) {
+      _project.historyManager.execute(
+        RemoveTrackSeLayerCommand(
+          repository: _project.repository,
+          trackId: _selection.selectedTrackId,
+          layerId: layerId,
+        ),
+      );
+    }
+  }
+
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
   void deleteActiveLayer() {
@@ -477,13 +506,7 @@ class LayerVerbs {
         beforeLayers: beforeSe,
         deletedLayerId: activeLayer.id,
       );
-      _project.historyManager.execute(
-        RemoveTrackSeLayerCommand(
-          repository: _project.repository,
-          trackId: _selection.selectedTrackId,
-          layerId: activeLayer.id,
-        ),
-      );
+      _deleteRow(_project.requireActiveCut.id, activeLayer.id);
       _changes.refreshAfterCutCommand(
         preferredActiveLayerId: nextActiveLayerId,
         filterSparesStanding: false,
@@ -532,10 +555,7 @@ class LayerVerbs {
     final nextActiveLayerId = _standAfterDeleting(ordered);
     _project.historyManager.runAsOneStep('Delete rows', () {
       for (final layerId in ordered) {
-        _project.cutCommandCoordinator.deleteLayer(
-          cutId: cut.id,
-          layerId: layerId,
-        );
+        _deleteRow(cut.id, layerId);
       }
     });
     _selection.clearRowSelection();
