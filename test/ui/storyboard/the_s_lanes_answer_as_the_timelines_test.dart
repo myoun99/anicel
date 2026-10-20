@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_twirls.dart';
 
 /// I-89 ① ⓕ (2026-10-20) — what the conte panel's S rows answer, against
 /// the timeline's (유저 2026-10-13: 「다시 말하지만 이런건 다 콘티패널에도
@@ -46,10 +47,14 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => StoryboardTabHost(
+          body: withStoryboardTwirls(
+            s,
+            (twirls) => StoryboardTabHost(
               session: s,
+              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
+              onToggleLayerLanes: twirls.onToggleLayerLanes,
+              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
+              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
               pixelsPerFrame: 24,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,

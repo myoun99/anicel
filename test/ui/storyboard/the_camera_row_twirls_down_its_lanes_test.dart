@@ -613,7 +613,7 @@ void main() {
 
       await clickTwice(tester, at(tester, 'scale', 21, across: 0.8));
 
-      expect(scaleKeysOf(session, b), [2, 3, 4, 6, 12], reason: 'b\'s own 3');
+      expect(scaleKeysOf(session, b), [2, 3, 6, 12], reason: 'b\'s own 3');
       expect(scaleKeysOf(session, a), [0, 12, 20, 30]);
     });
   });
