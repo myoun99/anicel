@@ -205,6 +205,29 @@ void main() {
       ]);
     });
 
+    test('⛔a key the second program puts on a row the first one named is '
+        'not shipped, and takes nothing', () {
+      // TVPaint's redo is Shift+U, and redo is Clip Studio's row. No row of
+      // the registry stands on that key today, so the rule is asked of a
+      // row made for it.
+      const onShiftU = EditorActionDefinition(
+        id: 'a-row-no-preset-names-on-shift-u',
+        label: '',
+        shelf: ShortcutShelf.tools,
+        defaultActivators: [
+          SingleActivator(LogicalKeyboardKey.keyU, shift: true),
+        ],
+      );
+      expect(keysOf(ShortcutPreset.clipStudio, EditorActionIds.redo), [
+        'Ctrl+Y',
+        'Ctrl+Shift+Z',
+      ]);
+      expect(
+        written(presetActivators(ShortcutPreset.clipStudio, onShiftU)),
+        ['Shift+U'],
+      );
+    });
+
     test('a key a program gave to something else leaves the action that '
         'had it — 「부딪히면 그 프로그램의 뜻을 따른다」 — the first program\'s '
         'before the second\'s', () {
