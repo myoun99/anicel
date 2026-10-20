@@ -478,16 +478,23 @@ List<Layer> attachedGroupMembers(LayerId baseId, List<Layer> layers) {
 /// 생성되기도함. A랑 A-2만 있을때 추가하면 A-2가 만들어짐 … ABCD라는 이름을
 /// 나눠쓰는 규칙 그대로 쓰면서 통일할거 통일해서 제대로 순서대로 생성하도록」.
 /// ↩️The number was the side's COUNT plus one, so a side that had lost a
-/// row handed out a name still in use. It is the first one no row of
-/// [layers] wears (`firstUnusedLayerName`) — the cels' own rule, and the
+/// row handed out a name still in use. It is the first one no attach row
+/// of [base] wears (`firstUnusedName`) — the cels' own rule, and the
 /// fifth row kind to name itself by it: A with A-2 gets A-1.
+///
+/// 🗣️F-397 (유저 2026-10-18): 「-1을 붙이거나 -1이 있으면 -2를 붙이는
+/// 이름규칙이 기준 레이어의 어태치상태만을 보도록. 지금 BOOK이라는
+/// 이미지레이어가 여러개있고 … BOOK이라는 어태치가 아무것도 없는 레이어에
+/// 어태치추가시 BOOK-5로 명명되길래 발견했음」. ↩️F-292 read every row of
+/// [layers]: image rows after BG all wear BOOK, so each one's attach rows
+/// took the numbers from the next one's.
 String nextAttachedLayerName(
   Layer base,
   List<Layer> layers,
   AttachedPlacement placement,
 ) => attachedLayerNameAmong(
   base.name,
-  {for (final layer in layers) layer.name},
+  {for (final layer in attachedLayersOf(base.id, layers)) layer.name},
   placement,
 );
 
