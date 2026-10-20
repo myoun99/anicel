@@ -249,8 +249,9 @@ Future<Uint8List?> _halvedStrip({required bool across}) {
   return (debugEngineHalving ?? _engineHalving)(bytes, width, height);
 }
 
-/// [halvingPicture]'s halving of [bytes], read back — null where the engine
-/// would not hold them whole.
+/// [halvingPicture]'s halving of [bytes], read back. (An engine that held
+/// them smaller halves a sum two ways across the strips, and so has no
+/// table: [_measureHalving] needs no check of its own for that.)
 Future<Uint8List?> _engineHalving(
   Uint8List bytes,
   int width,
@@ -259,9 +260,6 @@ Future<Uint8List?> _engineHalving(
   final image = await uploadRawRgba(bytes, width: width, height: height);
   final ui.Image half;
   try {
-    if (image.width != width || image.height != height) {
-      return null;
-    }
     final picture = halvingPicture([(image: image, at: ui.Offset.zero)]);
     try {
       half = await picture.toImage(width ~/ 2, height ~/ 2);

@@ -620,6 +620,28 @@ void main() {
     // On the halving grid past the wall — corners even — holding its ink.
     const half = ui.Rect.fromLTRB(-46, 2, 62, 14);
 
+    /// Two rows of tiles laid past the wall across — so a tile's half lands
+    /// rows down in the level as well as along it — over [twoRowsHalf].
+    BitmapSurface twoRowsPastTheWall() {
+      const where = ui.Rect.fromLTRB(-45, 3, 61, 29);
+      return BitmapSurface(
+        canvasSize: const CanvasSize(width: 16, height: 16),
+        tileSize: 16,
+        tiles: {
+          for (var x = -3; x < 4; x += 1)
+            for (var y = 0; y < 2; y += 1)
+              TileCoord(x: x, y: y): inked(
+                x * 2 + y,
+                at: TileCoord(x: x, y: y),
+                lies: where,
+              ),
+        },
+        laidBounds: DirtyRegion.wholePixelsOf(where),
+      );
+    }
+
+    const twoRowsHalf = ui.Rect.fromLTRB(-46, 2, 62, 30);
+
     /// The Surface Pro 11's halving (`the_cpu_halving_is_the_engines_test`).
     int deviceRule(int sum) =>
         sum % 4 == 2 && sum != 510 ? sum ~/ 4 : (sum + 2) ~/ 4;
@@ -657,8 +679,11 @@ void main() {
 
     /// The picture over [half] at full size — its bytes, the raster's byte
     /// for byte (pinned above) — halved by [deviceRule].
-    Future<Uint8List> wantHalved(BitmapSurface surface) async {
-      final full = (await composePositionedSurfaceImage(surface, over: half))!;
+    Future<Uint8List> wantHalved(
+      BitmapSurface surface, {
+      ui.Rect over = half,
+    }) async {
+      final full = (await composePositionedSurfaceImage(surface, over: over))!;
       try {
         return halvedByRule(await bytesOf(full.image), full.image.width);
       } finally {
@@ -679,19 +704,23 @@ void main() {
           QaNativeEngine.debugForceDartFallback = byDart;
           halvingAsTheDevice();
           await tester.runAsync(() async {
-            final surface = pastTheWallWithAText();
-            final want = await wantHalved(surface);
-            debugComposesFromBytes = 0;
+            for (final (surface, over, size) in [
+              (pastTheWallWithAText(), half, (54, 6)),
+              (twoRowsPastTheWall(), twoRowsHalf, (54, 14)),
+            ]) {
+              final want = await wantHalved(surface, over: over);
+              debugComposesFromBytes = 0;
 
-            final level = (await composeHalvedSurfaceImage(
-              surface,
-              over: half,
-            ))!;
+              final level = (await composeHalvedSurfaceImage(
+                surface,
+                over: over,
+              ))!;
 
-            expect(debugComposesFromBytes, 1);
-            expect((level.width, level.height), (54, 6));
-            expect(await bytesOf(level), want);
-            level.dispose();
+              expect(debugComposesFromBytes, 1, reason: '$over');
+              expect((level.width, level.height), size);
+              expect(await bytesOf(level), want, reason: '$over');
+              level.dispose();
+            }
           });
         },
       );
