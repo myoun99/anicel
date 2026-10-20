@@ -29,7 +29,8 @@ import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
 import 'axis_turn.dart' show centerEndAlong, centerStartAlong, partAcross;
 import 'layer_drop_policy.dart';
-import 'layer_label_controls.dart' show layerKindIcon;
+import 'layer_label_controls.dart'
+    show layerKindIcon, layerSectionLabelSlotWidth;
 import 'memo_token.dart' show ByIdentity;
 import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
@@ -1049,6 +1050,19 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     );
   }
 
+  /// Where the row's LAYER AREA starts: what a drop draws on a row is drawn
+  /// from here.
+  ///
+  /// 🗣️F-423② (유저 2026-10-20): 「ㅁㅁ 밖으로 안으로 등 가로선에 메시지도
+  /// 액션섹션에 잘려서 다 안보임. 가로선 안에 다 보이도록」. A rail row
+  /// lends its leading slot to the section zone, which is painted OVER the
+  /// rows' run (`SectionBandZone`) — so a notice hung 6px into the row went
+  /// under the 액션 band. The selection band starts past the zone for the
+  /// same reason (A2, 「레이어 영역만 칠하도록」). The sheet's columns
+  /// reserve no slot: their band is a strip of its own.
+  double get _layerAreaStart =>
+      widget.axis == Axis.horizontal ? layerSectionLabelSlotWidth : 0;
+
   /// The row that would SWALLOW the drop: an outline around the whole row
   /// rather than a line beside it (R5 #15).
   ///
@@ -1059,6 +1073,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   /// beyond moving has to be readable BEFORE the release.
   Widget _swallowHighlight(ColorScheme colorScheme, String? label) {
     return Positioned.fill(
+      left: _layerAreaStart,
       key: ValueKey<String>(
         'timeline-row-swallow-${_keyOf(widget.subject)}',
       ),
@@ -1174,7 +1189,9 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
         'timeline-row-caret-${atStart ? 'before' : 'after'}-'
         '${_keyOf(widget.subject)}',
       ),
-      left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),
+      left: horizontal
+          ? _layerAreaStart
+          : (atStart ? -layerRowCaretThickness / 2 : null),
       right: horizontal ? 0 : (atStart ? null : -layerRowCaretThickness / 2),
       top: horizontal ? (atStart ? -layerRowCaretThickness / 2 : null) : 0,
       bottom: horizontal ? (atStart ? null : -layerRowCaretThickness / 2) : 0,

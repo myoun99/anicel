@@ -24,6 +24,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/held_row_pin.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show SectionBandZone;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
@@ -330,6 +332,25 @@ Project _folderMembersProject() => _stackProject([
   ),
   createFolderLayer(id: const LayerId('f'), name: 'F'),
   Layer(id: const LayerId('x'), name: 'X', frames: const []),
+]);
+
+/// The same folder with nothing loose above it. Rail top-down: Camera,
+/// transitions, F, M2, M1, A.
+Project _topFolderProject() => _stackProject([
+  Layer(id: const LayerId('a'), name: 'A', frames: const []),
+  Layer(
+    id: const LayerId('m1'),
+    name: 'M1',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  Layer(
+    id: const LayerId('m2'),
+    name: 'M2',
+    frames: const [],
+    folderId: const LayerId('f'),
+  ),
+  createFolderLayer(id: const LayerId('f'), name: 'F'),
 ]);
 
 /// The conte with a row riding it on each side, two loose rows above.
@@ -1029,6 +1050,67 @@ void main() {
     await tester.pumpAndSettle();
     expect(_order(session), ['a', 'm2', 'm1', 'x']);
     expect(_layerOf(session, 'm2').folderId, const LayerId('f'));
+  });
+
+  testWidgets('🚨F-423: a member of the TOP folder carried over the camera '
+      'rows lands above its folder, out of it — as over a loose row there', (
+    tester,
+  ) async {
+    // 유저 2026-10-20: 「선택한 파일을 폴더 위로 옮기는게 불가. 위 폴더밖에
+    // 레이어가 존재해야만 이동되는거같은데」. The camera rows take no drop,
+    // so the line they point at is the nearest one the drag may draw.
+    await _pump(tester, project: _topFolderProject());
+    final session = _sessionOf(tester);
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+
+    final gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'cam', fraction: 0.8, dx: dx);
+    expect(caretBefore('f'), findsOneWidget);
+    expect(find.text(AppText.strings.tlDropOutOfFolder), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final ids = [
+      for (final layer in session.requireActiveCut.layers) layer.id.value,
+    ];
+    expect(ids.indexOf('m1'), greaterThan(ids.indexOf('f')));
+    expect(_layerOf(session, 'm1').folderId, isNull);
+  });
+
+  testWidgets('🚨F-423②: what a drop draws on a row — the line\'s notice, '
+      'the swallow\'s outline — starts clear of the section zone', (
+    tester,
+  ) async {
+    // 유저 2026-10-20: 「ㅁㅁ 밖으로 안으로 등 가로선에 메시지도 액션섹션에
+    // 잘려서 다 안보임. 가로선 안에 다 보이도록」.
+    await _pump(tester, project: _topFolderProject());
+    final dx = tester.getCenter(_railRowGrip('m1')).dx;
+    final folder = tester.getRect(find.named('timeline-folder-row-f'));
+    final zone = [
+      for (final element in find.byType(SectionBandZone).evaluate())
+        if (element.renderObject case final RenderBox box)
+          box.localToGlobal(Offset.zero) & box.size,
+    ].singleWhere(
+      (band) => band.top <= folder.top && band.bottom >= folder.bottom,
+    );
+
+    var gesture = await lift(tester, 'm1');
+    await pointInto(tester, gesture, 'cam', fraction: 0.8, dx: dx);
+    final notice = find.ancestor(
+      of: find.text(AppText.strings.tlDropOutOfFolder),
+      matching: find.byType(DecoratedBox),
+    );
+    expect(notice, findsWidgets, reason: '⛔전제: the line says it');
+    expect(tester.getRect(notice.first).left, greaterThanOrEqualTo(zone.right));
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+
+    gesture = await lift(tester, 'a');
+    await pointInto(tester, gesture, 'm2', fraction: 0.5, dx: dx);
+    final swallow = find.byKey(const ValueKey('timeline-row-swallow-m2'));
+    expect(swallow, findsOneWidget, reason: '⛔전제: M2 takes it on');
+    expect(tester.getRect(swallow).left, greaterThanOrEqualTo(zone.right));
+    await gesture.cancel();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the pointer over a row\'s LANES stands in that row — its own '
