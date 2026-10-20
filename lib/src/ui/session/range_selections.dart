@@ -950,6 +950,52 @@ class RangeSelections {
         : onTrack.endingAt(end);
   }
 
+  /// THE band a shove left standing, grown over the blocks it holds now
+  /// ([snapHeldSpanToBlocks]) — on the rows it swept, whichever axis it is
+  /// in: a cut's cells, an S row's sounds, the cut row's cuts.
+  ///
+  /// 🗣️F-264 (유저 2026-10-08): 「선택범위는 당기고 갱신됨 … 자기 위치에
+  /// 갱신된다해야하나? 왜냐면 블록이 범위안에 들어오면 선택범위가
+  /// 커져야하니까」.
+  void growOverTheBlocksItHolds() {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      final span = snapHeldSpanToBlocks(
+        lanes: [
+          for (final id in inCut.spanLayerIds)
+            if (_project.rangeLayerById(id) case final layer?)
+              ...rowBlockLanes(layer, _rowSpans.aggregateRunsForRow(layer)),
+        ],
+        startIndex: inCut.startIndex,
+        endIndexExclusive: inCut.endIndexExclusive,
+      );
+      if (span != null && span.endIndexExclusive > inCut.endIndexExclusive) {
+        _selection.frameRangeSelection.value = inCut.endingAt(
+          span.endIndexExclusive,
+        );
+      }
+      return;
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack == null) {
+      return;
+    }
+    final axis = _projectSettings.axisForTrack(onTrack.trackId);
+    final span = snapHeldSpanToBlocks(
+      lanes: [
+        for (final row in onTrack.spanRows)
+          ?_rowSpans.trackRowSnapLane(row, axis),
+      ],
+      startIndex: onTrack.startFrame,
+      endIndexExclusive: onTrack.endFrameExclusive,
+    );
+    if (span != null && span.endIndexExclusive > onTrack.endFrameExclusive) {
+      _selection.trackFrameRangeSelection.value = onTrack.endingAt(
+        span.endIndexExclusive,
+      );
+    }
+  }
+
   /// Where the last retimed block of [startsByLayer] ends now (max across
   /// rows), each row's commit keys brought [behind] frames back onto the
   /// axis asking. Null when no row answers.

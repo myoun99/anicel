@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../models/row_block_shift.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../models/track_id.dart';
+import 'range_selections.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
@@ -23,13 +24,16 @@ class CutShift {
     required ProjectAccess project,
     required ChangeSink changes,
     required StoryboardRows storyboardRows,
+    required RangeSelections rangeSelections,
   }) : _project = project,
        _changes = changes,
-       _storyboardRows = storyboardRows;
+       _storyboardRows = storyboardRows,
+       _rangeSelections = rangeSelections;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final StoryboardRows _storyboardRows;
+  final RangeSelections _rangeSelections;
 
   /// The cut-axis scope: which track, and the ordinal the shove starts at —
   /// the first of the cuts the selection covers, else the cut stood on.
@@ -134,6 +138,7 @@ class CutShift {
     // `BlockShift`). The tidy-up is a cut command's and leaves a track
     // selection be.
     _changes.refreshAfterCutCommand();
+    _rangeSelections.growOverTheBlocksItHolds();
     _changes.notifyChanged();
   }
 }

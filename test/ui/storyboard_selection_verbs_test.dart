@@ -269,8 +269,9 @@ void main() {
       session.blockShift.pullFrames(1);
 
       expect(seLayerOf(session).timeline.keys, [2, 8]);
-      final selection = session.trackFrameRangeSelection.value!;
-      expect((selection.startFrame, selection.endFrameExclusive), (9, 12));
+      final selection = session.trackFrameRangeSelection.value;
+      expect(selection, isNotNull);
+      expect((selection!.startFrame, selection.endFrameExclusive), (9, 12));
       expect(session.blockShift.canPullFrames(), isFalse);
     });
 
@@ -871,7 +872,11 @@ void main() {
       session.blockShift.pushBlocks(3);
       expect(selected(), [cut2.id]);
       final pushed = session.trackFrameRangeSelection.value!;
-      expect((pushed.startFrame, pushed.endFrameExclusive), (8, 14));
+      expect(
+        (pushed.startFrame, pushed.endFrameExclusive),
+        (8, 17),
+        reason: 'from where it stood, over the cut it still holds, whole',
+      );
 
       session.blockShift.pullBlocks(1);
       session.blockShift.pullBlocks(1);
@@ -900,6 +905,12 @@ void main() {
       session.blockShift.pushBlocks(2);
 
       expect(seLayerOf(session).timeline.keys, [4, 11]);
+      final band = session.trackFrameRangeSelection.value!;
+      expect(
+        (band.startFrame, band.endFrameExclusive),
+        (2, 7),
+        reason: 'F-264: in its place, over the sound it still holds',
+      );
       expect(
         session.repository
             .requireProject()

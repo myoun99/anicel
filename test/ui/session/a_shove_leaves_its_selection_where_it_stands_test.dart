@@ -87,7 +87,56 @@ void main() {
     expect(shoveOf(s).canPullFrames(), isFalse);
   });
 
-  test('a band over several rows keeps every row, in its place', () {
+  test('a longer block pulled into it is taken in whole — 「블록이 '
+      '범위안에 들어오면 선택범위가 커져야」', () {
+    final (:s, :row) = blockOnFourSelected([0, 4, 8]);
+    s.clearTimelineSelections();
+    s.selectFrameIndex(8);
+    s.edgeDrag.setCommaForTimelineCursor(3);
+    s.updateFrameRangeSelectionDrag(layerId: row, anchorIndex: 4, headIndex: 4);
+    expect(blocksOn(s, row), [(0, 1), (4, 5), (8, 11)], reason: '⛔전제');
+
+    for (var press = 0; press < 6; press += 1) {
+      shoveOf(s).pullFrames(1);
+    }
+
+    expect(blocksOn(s, row), [(0, 1), (3, 4), (4, 7)]);
+    expect(cellsSelected(s), (4, 7));
+    expect(shoveOf(s).canPullFrames(), isFalse);
+  });
+
+  test('pushed, the block it holds is still its own, wherever it went', () {
+    final (:s, :row) = blockOnFourSelected([0, 4]);
+    s.clearTimelineSelections();
+    s.selectFrameIndex(4);
+    s.edgeDrag.setCommaForTimelineCursor(3);
+    s.updateFrameRangeSelectionDrag(layerId: row, anchorIndex: 4, headIndex: 4);
+    expect(cellsSelected(s), (4, 7), reason: '⛔전제: the block, whole');
+
+    shoveOf(s).pushFrames(2);
+
+    expect(blocksOn(s, row), [(0, 1), (6, 9)]);
+    expect(cellsSelected(s), (4, 9));
+  });
+
+  test('a block pulled back past its start is no longer one it grows for — '
+      'its start, the anchor, stays', () {
+    final (:s, :row) = blockOnFourSelected([0, 4]);
+    s.clearTimelineSelections();
+    s.selectFrameIndex(4);
+    s.edgeDrag.setCommaForTimelineCursor(3);
+    s.updateFrameRangeSelectionDrag(layerId: row, anchorIndex: 4, headIndex: 4);
+    expect(cellsSelected(s), (4, 7), reason: '⛔전제: the block, whole');
+
+    shoveOf(s).pullFrames(1);
+
+    expect(blocksOn(s, row), [(0, 1), (3, 6)]);
+    expect(cellsSelected(s), (4, 7));
+    expect(shoveOf(s).canPullFrames(), isFalse, reason: '「선택범위까지만」');
+  });
+
+  test('a band over several rows keeps every row, in its place, grown '
+      'over the longest block it holds', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final lower = s.activeLayer!.id;
@@ -97,6 +146,7 @@ void main() {
     final upper = s.activeLayer!.id;
     s.selectFrameIndex(4);
     s.createDrawingAtCurrentFrame();
+    s.edgeDrag.setCommaForTimelineCursor(3);
     s.updateFrameRangeSelectionDrag(
       layerId: lower,
       anchorIndex: 4,
@@ -105,13 +155,14 @@ void main() {
     );
     final rows = s.frameRangeSelection.value!.spanLayerIds;
     expect(rows, unorderedEquals([lower, upper]), reason: '⛔전제');
+    expect(cellsSelected(s), (4, 7), reason: '⛔전제: both blocks, whole');
 
     shoveOf(s).pushFrames(1);
     shoveOf(s).pushFrames(1);
 
     expect(blocksOn(s, lower), [(6, 7)]);
-    expect(blocksOn(s, upper), [(6, 7)]);
-    expect(cellsSelected(s), (4, 5));
+    expect(blocksOn(s, upper), [(6, 9)]);
+    expect(cellsSelected(s), (4, 9));
     expect(s.frameRangeSelection.value!.spanLayerIds, rows);
   });
 

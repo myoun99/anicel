@@ -2865,6 +2865,7 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     controllers: activeCutControllers,
     cutShift: cutShift,
+    rangeSelections: rangeSelections,
   );
 
   // ── the cut-axis shove: its own object, in its own file ───────────────
@@ -2876,6 +2877,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     storyboardRows: storyboardRows,
+    rangeSelections: rangeSelections,
   );
 
   // --- Frame RANGE selection (UI-R8, TVP-style) ----------------------------

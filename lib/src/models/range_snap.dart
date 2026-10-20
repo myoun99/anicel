@@ -94,6 +94,32 @@ RangeSpan? snapSpanToBlocks({
   return (startIndex: start, endIndexExclusive: endExclusive);
 }
 
+/// The span `[startIndex, endIndexExclusive)` snapped over the blocks it
+/// HOLDS — the ones starting inside it — and over no other: its start stays
+/// where it stands, and its end reaches as far as they do.
+///
+/// 🗣️F-264 (유저 2026-10-08): a shove leaves the band that aimed it in its
+/// place, 「자기 위치에 갱신 … 블록이 범위안에 들어오면 선택범위가
+/// 커져야하니까」. A block pulled back past its start is one the shove no
+/// longer moves from there, so it is no longer the band's to grow for:
+/// grown over it, the band's start — the anchor — would go after it, and
+/// the pull would never run out.
+RangeSpan? snapHeldSpanToBlocks({
+  required List<RangeBlockAt> lanes,
+  required int startIndex,
+  required int endIndexExclusive,
+}) => snapSpanToBlocks(
+  lanes: [
+    for (final blockAt in lanes)
+      (index) => switch (blockAt(index)) {
+        final block? when block.startIndex >= startIndex => block,
+        _ => null,
+      },
+  ],
+  anchorIndex: startIndex,
+  headIndex: endIndexExclusive - 1,
+);
+
 /// The unit ONE cell stands for: the block covering it, or the cell itself —
 /// and whether it IS a block.
 typedef StandingUnit = ({int startIndex, int endIndexExclusive, bool block});
