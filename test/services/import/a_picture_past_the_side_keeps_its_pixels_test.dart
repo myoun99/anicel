@@ -231,6 +231,32 @@ void main() {
       );
     });
 
+    testWidgets('a GIF with a clear colour, a clear pixel all zero', (
+      tester,
+    ) async {
+      final image = img.Image(
+        width: 100,
+        height: 20,
+        withPalette: true,
+        numChannels: 4,
+      );
+      for (var i = 0; i < 256; i += 1) {
+        image.palette!.setRgba(
+          i,
+          i * 53 % 256,
+          i * 97 % 256,
+          i * 31 % 256,
+          i == 1 ? 0 : 255,
+        );
+      }
+      for (var y = 0; y < 20; y += 1) {
+        for (var x = 0; x < 100; x += 1) {
+          image.setPixelR(x, y, (x + y * 3) % 256);
+        }
+      }
+      await tester.runAsync(() => readAsTheEngine(img.encodeGif(image)));
+    });
+
     testWidgets('a JPEG', (tester) async {
       await tester.runAsync(
         () => readAsTheEngine(
