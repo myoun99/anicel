@@ -44,10 +44,10 @@ abstract final class TimelineZoomLimits {
   static double _zoomOf(int steps) =>
       steps * referencePixelsPerFrame / _stepsPerReference;
 
-  /// The step nearest [pixelsPerFrame], which is held inside the range
-  /// first.
+  /// The step nearest [pixelsPerFrame]. The range is its callers' to hold
+  /// ([clamped], [stepped]), each after its own arithmetic.
   static int _stepsOf(double pixelsPerFrame) =>
-      (pixelsPerFrame.clamp(0, maxPixelsPerFrame) *
+      (pixelsPerFrame *
               _stepsPerReference /
               referencePixelsPerFrame)
           .round();
