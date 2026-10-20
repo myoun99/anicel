@@ -240,8 +240,14 @@ void main() {
     final pressed = smoothed.committed.map((dab) => dab.pressure).toList();
     expect(pressed.first, closeTo(0.1, 1e-9));
     expect(pressed.last, closeTo(0.8, 1e-9));
-    for (var i = 1; i < pressed.length; i += 1) {
-      expect(pressed[i], greaterThanOrEqualTo(pressed[i - 1] - 1e-9));
+    // The pen pressed 0.1 more every 20 px along x.
+    for (final dab in smoothed.committed) {
+      expect(
+        dab.pressure,
+        closeTo(0.1 + (dab.center.x - 10) / 200, 0.05),
+        reason: 'at x ${dab.center.x}: as hard as the pen pressed there — '
+            'not as it pressed last',
+      );
     }
   });
 
