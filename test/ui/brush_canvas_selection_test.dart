@@ -8943,6 +8943,86 @@ void main() {
         reason: '리두도 같은 순서 문제를 갖는다 — 되살릴 선택이 애초에 없다',
       );
     });
+
+    /// 🚨F-401 — 유저 2026-10-19: 「변형도구로 움직이고 확정안누르고 지우개등
+    /// 도구바꿈. 그림은 확정되있음. 다시 한번 더 변형도구로 움직이면 빨간
+    /// 변형도구 라인 뒤에 개미행렬이 보임. 그 상태서 확정짓거나 하면
+    /// 개미행렬이 존재함」.
+    ///
+    /// A painting tool takes the selection layer down, and the move lands on
+    /// the way out. The made-up box has to go with it — and the layer that
+    /// mounts again must not take what it finds for a selection.
+    testWidgets('a painting tool between two moves leaves no selection '
+        'behind', (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(30, 30), const Offset(40, 35));
+      expect(env.commands.movePending, isTrue, reason: 'the session opened');
+
+      await env.setTool(CanvasTool.eraser);
+      // The unmount lands a frame later — history never runs in a build.
+      await tester.pump();
+      await tester.pump();
+      await settle(tester);
+      expect(
+        env.commands.movePending,
+        isFalse,
+        reason: '「그림은 확정되있음」 — the premise',
+      );
+      expect(
+        env.commands.liveShape,
+        isNull,
+        reason: 'the box closed, and the shape it framed went with it',
+      );
+
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(40, 35), const Offset(50, 40));
+      expect(
+        env.commands.movePending,
+        isTrue,
+        reason: '🚨the second session has to be OPEN or this proves nothing',
+      );
+      expect(
+        antsOnScreen(tester)!.committedRegion,
+        isNull,
+        reason: '「다시 한번 더 변형도구로 움직이면 빨간 변형도구 라인 뒤에 '
+            '개미행렬이 보임」',
+      );
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      expect(
+        env.commands.liveShape,
+        isNull,
+        reason: '「그 상태서 확정짓거나 하면 개미행렬이 존재함」',
+      );
+      expect(antsOnScreen(tester)!.committedRegion, isNull);
+    });
+
+    /// The other half of F-401: the layer that mounts again copies the
+    /// shape from the channel — and has to copy what it IS with it. It took
+    /// the shape and started its flag at false, which made the move tool's
+    /// box a selection with ants.
+    testWidgets('a layer mounting on a made-up shape does not take it for '
+        'a selection', (tester) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.eraser);
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 20, top: 20, right: 70, bottom: 70),
+        ),
+        implicit: true,
+      );
+      await tester.pump();
+      expect(env.commands.region, isNull, reason: 'the premise: not chosen');
+
+      await env.setTool(CanvasTool.move);
+      expect(
+        find.byKey(layerKey),
+        findsOneWidget,
+        reason: 'the layer mounted on it',
+      );
+      expect(antsOnScreen(tester)!.committedRegion, isNull);
+    });
   });
 
   /// 🚨I-23 — 유저 2026-09-30: 「근데 지금 보니까 페이스트보드 밖도

@@ -10,6 +10,18 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import 'transform_tool_options.dart';
 
+/// A shape on the canvas, and whether a TOOL synthesized it rather than the
+/// user choosing it (F-108) — one value, so neither travels without the
+/// other ([CanvasSelectionDocument._shape]).
+typedef LiveShape = ({CanvasSelectionRegion region, bool implicit});
+
+/// [region] as a [LiveShape] — none for no region: nothing is implicit
+/// about nothing, so clearing always clears both.
+LiveShape? liveShapeOf(
+  CanvasSelectionRegion? region, {
+  bool implicit = false,
+}) => region == null ? null : (region: region, implicit: implicit);
+
 /// ONE PROJECT's selection on its canvas: the marquee (or the box a tool
 /// made) and an open polygon trace. The channel below shows the one of the
 /// project on screen ([CanvasSelectionCommands.document]).
@@ -31,10 +43,17 @@ final class CanvasSelectionDocument {
   /// app's channel until I-7, on the project's document since) makes the
   /// region a DOCUMENT-level fact: it survives tool switches, the ants
   /// keep showing under every tool, and painting can clip to it.
-  CanvasSelectionRegion? _region;
-
-  /// Whether [_region] is a shape a TOOL synthesized rather than one the
-  /// user chose.
+  ///
+  /// [LiveShape.implicit] says whether it is a shape a TOOL synthesized
+  /// rather than one the user chose.
+  ///
+  /// 🚨★★★**ONE FIELD, NOT TWO** (F-401, 유저 2026-10-19: 「아직도 선택안하고
+  /// 변형도구쓸때 개미행렬 작동하는 문제 … 구조/근본적으로 나눌거 나누고 법
+  /// 통일/단순화」). The shape and its flag were two fields here and two
+  /// more on the layer, and the layer, mounting again after a painting
+  /// tool, took the shape and left the flag behind — the move tool's box
+  /// came back as a selection the user never made. A [LiveShape] cannot be
+  /// copied without what it is.
   ///
   /// 🚨★★★**F-108** (유저 2026-09-12: 「선택툴 안하고 그냥 변형사용시 … 변형
   /// 하고 확정하고 되돌리면 **선택툴의 개미행렬이 남아있음**. 그 상태에서
@@ -48,12 +67,12 @@ final class CanvasSelectionDocument {
   /// ⛔**THE FIX IS THE NAMING, NOT A GUARD AT EACH READER.**
   /// [CanvasSelectionCommands.region] — the name every consumer outside
   /// the layer already reads — now means 「what the user selected」 and goes
-  /// null while this is set. The raw geometry is
+  /// null while the shape is implicit. The raw geometry is
   /// [CanvasSelectionCommands.liveShape], and the only thing that wants it
   /// is the layer that draws the box. A new reader cannot pick the wrong
   /// one by accident, which is the whole point of splitting the two
   /// questions instead of adding a flag for readers to remember.
-  bool _regionIsImplicit = false;
+  LiveShape? _shape;
 
   /// The vertices of an OPEN polygon trace, oldest first; empty when none
   /// is being traced.
@@ -111,14 +130,17 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// 🚨THE SELECTION — what the USER chose. Null while the live shape is a
   /// tool's own implicit target (F-108 — the document's implicit flag).
-  CanvasSelectionRegion? get region =>
-      _document._regionIsImplicit ? null : _document._region;
+  CanvasSelectionRegion? get region {
+    final shape = _document._shape;
+    return shape == null || shape.implicit ? null : shape.region;
+  }
 
   /// The live SHAPE on the canvas, selection or not — the marquee's
-  /// outline, or the box the move tool synthesized with nothing selected.
+  /// outline, or the box the move tool synthesized with nothing selected —
+  /// and which of the two it is.
   /// ⚠️GEOMETRY. The layer that owns the box reads this to stay in step
   /// with the channel; everyone else means [region].
-  CanvasSelectionRegion? get liveShape => _document._region;
+  LiveShape? get liveShape => _document._shape;
 
   /// True when a region is selected — the single truth the shortcuts, the
   /// paint clip and the ants all read.
@@ -144,15 +166,11 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// command replaying a selection, a host handing one in — and a shape
   /// that has to be declared implicit is one nobody can make by forgetting.
   void setRegion(CanvasSelectionRegion? region, {bool implicit = false}) {
-    // Nothing is implicit about nothing: clearing always clears both.
-    final nextImplicit = region != null && implicit;
-    final document = _document;
-    if (document._region == region &&
-        document._regionIsImplicit == nextImplicit) {
+    final next = liveShapeOf(region, implicit: implicit);
+    if (_document._shape == next) {
       return;
     }
-    document._region = region;
-    document._regionIsImplicit = nextImplicit;
+    _document._shape = next;
     notifySessionChanged();
   }
 
@@ -414,7 +432,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
       layerDeselect();
       return;
     }
-    final before = _document._region;
+    final before = _document._shape?.region;
     if (before == null) {
       return;
     }

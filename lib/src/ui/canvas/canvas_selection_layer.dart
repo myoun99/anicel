@@ -548,10 +548,18 @@ enum SessionInterruption {
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin
     implements FloatWarpHost {
-  /// The live selection, mirrored from [CanvasSelectionCommands.region]
+  /// The live shape, mirrored from [CanvasSelectionCommands.liveShape]
   /// (R28-S: the channel OWNS it, so it survives this layer unmounting on
   /// a tool switch — see the channel's own note).
-  CanvasSelectionRegion? _region;
+  ///
+  /// ⛔**THE SHAPE AND WHETHER IT IS A SELECTION, TAKEN AS ONE** (F-401).
+  /// They were two fields, and mounting again after a painting tool copied
+  /// the shape from the channel and started the flag at false — the move
+  /// tool's whole-picture box came back as a selection, with its ants.
+  LiveShape? _shape;
+
+  /// The live shape's outline, selection or not.
+  CanvasSelectionRegion? get _region => _shape?.region;
 
   /// Assigns the region and pushes it to the app-level channel. Callers
   /// wrap in setState; the channel's setter is idempotent, so the round
@@ -570,8 +578,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// does: the confirm cleared it, and the undo that came afterwards then
   /// had nothing left to tell it the restored shape had never been chosen.
   void _setRegion(CanvasSelectionRegion? region, {bool implicit = false}) {
-    _region = region;
-    _shapeIsImplicitWholePicture = region != null && implicit;
+    _shape = liveShapeOf(region, implicit: implicit);
     widget.selectionCommands?.setRegion(region, implicit: implicit);
   }
 
@@ -597,10 +604,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// R26 #13: true while [_region] is the IMPLICIT whole-canvas target the
   /// MOVE tool synthesized because no selection existed ("선택하지 않은
-  /// 상황이어도 그림 전체를 이동"). The session's end — confirm or revert
-  /// — returns to NO selection, and the implicit shape never records a
-  /// selection history entry (the user never selected anything).
-  bool _shapeIsImplicitWholePicture = false;
+  /// 상황이어도 그림 전체를 이동"). The box closing — whatever closes it —
+  /// returns to NO selection ([_clearTransform]), and the implicit shape
+  /// never records a selection history entry (the user never selected
+  /// anything).
+  bool get _shapeIsImplicitWholePicture => _shape?.implicit ?? false;
 
   /// The implicit whole-picture shape of the cel you stand on
   /// ([CanvasSelectionShape.wholePicture], from the host's ink bounds).
@@ -722,18 +730,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// only the landing moves the region ([_foldOpenBox]), so a revert finds
   /// the outline where the session found it — the put-back wrote the shape
   /// over itself, and a mutant deleting it lived (2026-10-19).
+  ///
+  /// ⚠️An implicit whole-picture shape goes back to NO selection when the
+  /// box closes, as it does under every ending ([_clearTransform]).
   void _revertMoveSession() {
     if (_endSession(_SessionEnd.revert) == null) {
       return;
-    }
-    if (mounted) {
-      setState(() {
-        // R26 #13: an implicit whole-picture session reverts to NO
-        // selection — the user never selected anything.
-        if (_shapeIsImplicitWholePicture) {
-          _setRegion(null);
-        }
-      });
     }
     _syncAnts();
   }
@@ -766,24 +768,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (folded == null) {
       return;
     }
-    void settle() {
-      // The box that folded is spent: its transform is in the landing now,
-      // and the floats went with the session ([_endSession]). A box that
-      // changed nothing is the caller's to close.
-      if (folded) {
+    // The box that folded is spent: its transform is in the landing now,
+    // and the floats went with the session ([_endSession]). A box that
+    // changed nothing is the caller's to close — and an implicit
+    // whole-picture shape ends with whichever box closes ([_clearTransform]).
+    if (folded) {
+      if (mounted) {
+        setState(_clearTransform);
+      } else {
         _clearTransform();
       }
-      // R26 #13: a confirmed implicit whole-picture session lands and
-      // simply ends — back to no selection.
-      if (_shapeIsImplicitWholePicture) {
-        _setRegion(null);
-      }
-    }
-
-    if (mounted) {
-      setState(settle);
-    } else {
-      settle();
     }
     _syncAnts();
   }
@@ -981,7 +975,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R28-S: adopt whatever the app already has selected — the region
     // outlives this layer (tool switches unmount it), so mounting must
     // pick it back up instead of starting empty.
-    _region = widget.selectionCommands?.liveShape;
+    _shape = widget.selectionCommands?.liveShape;
     _bindCommands();
     widget.selectionCommands?.addListener(_adoptChannelRegion);
   }
@@ -1002,13 +996,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       setState(() => _polygonTracePoints = tracePoints);
       _syncAnts();
     }
-    final channelRegion = widget.selectionCommands?.liveShape;
-    if (channelRegion == _region) {
+    final channelShape = widget.selectionCommands?.liveShape;
+    if (channelShape == _shape) {
       return;
     }
     setState(() {
-      _region = channelRegion;
-      _shapeIsImplicitWholePicture = false;
+      _shape = channelShape;
       // 🚨★★★THIS DROPS A PENDING MOVE WITHOUT LANDING IT, and what makes
       // that safe is not visible from here. [_letGoOfSession] lets the
       // float go, so a pending session reaching this line loses the user's
@@ -1035,7 +1028,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // (`_confirmMoveSession()`, the way the committed-region path below
       // does), rather than widening this comment.
       _letGoOfSession();
-      if (channelRegion == null) {
+      if (channelShape == null) {
         _clearTransform();
       }
     });
@@ -1048,7 +1041,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (!identical(oldWidget.selectionCommands, widget.selectionCommands)) {
       oldWidget.selectionCommands?.unbind(this);
       oldWidget.selectionCommands?.removeListener(_adoptChannelRegion);
-      _region = widget.selectionCommands?.liveShape;
+      _shape = widget.selectionCommands?.liveShape;
       _bindCommands();
       widget.selectionCommands?.addListener(_adoptChannelRegion);
     }
@@ -1473,11 +1466,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _takeBackFloats();
     if (_disposing) {
       // ⚠️SAME LANDING, NO UI TO UPDATE. The widget is going, so the part
-      // of a commit that paints — closing the box, re-running the ants —
-      // has nothing to paint on, and `setState` on a defunct element is an
-      // assertion, not a no-op. The fold makes the session hold what the
-      // box showed, which is the whole of the landing.
+      // of a commit that paints — re-running the ants — has nothing to
+      // paint on, and `setState` on a defunct element is an assertion, not
+      // a no-op. The fold makes the session hold what the box showed,
+      // which is the whole of the landing.
+      //
+      // 🚨**AND THE BOX CLOSES ALL THE SAME** (F-401): the channel outlives
+      // this layer, and a whole-picture shape the box framed must not be
+      // left on it for the next mount to take as a selection.
       _endLanded();
+      _clearTransform();
       return;
     }
     _confirmSession();
@@ -1796,6 +1794,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ↩️So does everything else the box held: they were thirteen fields
     // cleared here by name, and are one object dropped ([TransformBox]).
     _box = null;
+    // 🚨★★★**THE SHAPE THE MOVE TOOL MADE UP GOES WITH THE BOX IT FRAMED**
+    // (R26 #13 · F-401). Nothing was selected, so once the box is gone
+    // there is nothing — whatever closed it.
+    // ↩️The confirm and the revert each did this for themselves, and only
+    // when a session was riding: the landing of a painting tool's switch
+    // (this layer going away) and a box a frame walk had carried both
+    // skipped it, and the next mount took the made-up shape for a
+    // selection (유저 2026-10-19: 「다시 한번 더 변형도구로 움직이면 빨간
+    // 변형도구 라인 뒤에 개미행렬이 보임」).
+    if (_shapeIsImplicitWholePicture) {
+      _setRegion(null);
+    }
   }
 
   /// Ctrl+T: opens the free-transform box on the live selection (R19
