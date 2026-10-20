@@ -8,6 +8,7 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
+  "launch_splash.cpp"
   "main.cpp"
   "utils.cpp"
   "win32_window.cpp"
@@ -47,6 +48,8 @@ target_link_libraries(${BINARY_NAME} PRIVATE "imm32.lib")
 # SetWindowSubclass: a modifier Windows let go of is let go of in the
 # engine too (F-411 — flutter_window.cpp says why).
 target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
+# WIC: the launch splash decodes its picture (launch_splash.cpp).
+target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

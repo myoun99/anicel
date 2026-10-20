@@ -642,8 +642,58 @@ final class FullScreenSwitch: NSObject {
   }
 }
 
+/// The picture that stands in the middle of the screen from the moment the
+/// app is launched until its first frame (I-106-Q3/Q4/Q5, user 2026-10-20:
+/// the teal A and the white name, nothing behind them — the desktop shows
+/// through — on every desktop). The picture is drawn by tool/app_art.
+///
+/// UNVERIFIED-ON-DEVICE: authored on the Windows workstation.
+final class LaunchSplash {
+  private var panel: NSPanel?
+
+  /// Shows the splash centred on [screen]. Shows nothing when the picture
+  /// is missing — the app starts the same without it.
+  func show(on screen: NSScreen?) {
+    guard
+      let image = NSImage(named: "LaunchSplash"),
+      let screen = screen ?? NSScreen.main
+    else { return }
+    // I-106-Q6 (user, 2026-10-20): half as tall as the screen's short
+    // side — 「짧은 변의 50%로하면 가로일땐 높이의 50%」 — so a turned
+    // monitor gets the same picture. Spelled again in
+    // windows/runner/launch_splash.cpp and linux/runner/launch_splash.cc.
+    let area = screen.visibleFrame
+    let height = min(area.width, area.height) / 2
+    let width = height * image.size.width / image.size.height
+    let frame = NSRect(
+      x: area.midX - width / 2, y: area.midY - height / 2,
+      width: width, height: height)
+    let panel = NSPanel(
+      contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+      backing: .buffered, defer: false)
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = false
+    let view = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
+    view.image = image
+    view.imageScaling = .scaleProportionallyUpOrDown
+    panel.contentView = view
+    panel.orderFrontRegardless()
+    // Drawn now: the run loop is about to be busy starting the engine.
+    panel.display()
+    self.panel = panel
+  }
+
+  func close() {
+    panel?.orderOut(nil)
+    panel = nil
+  }
+}
+
 class MainFlutterWindow: NSWindow {
   private let penStreamHandler = PenSidecarStreamHandler()
+
+  private let launchSplash = LaunchSplash()
 
   /// Held for the channel's sake, like the handlers beside it.
   private var fullScreenSwitch: FullScreenSwitch?
@@ -654,6 +704,14 @@ class MainFlutterWindow: NSWindow {
   private let pathGrantHandler = PathGrantHandler()
 
   override func awakeFromNib() {
+    // Before the engine starts: starting it is the wait the splash covers.
+    // The window stays ordered in — so the full screen the last run left
+    // can be thrown before the first frame — but unseen and untouchable
+    // until that frame.
+    launchSplash.show(on: self.screen)
+    self.alphaValue = 0
+    self.ignoresMouseEvents = true
+
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
@@ -699,6 +757,23 @@ class MainFlutterWindow: NSWindow {
       default:
         result(FlutterMethodNotImplemented)
       }
+    }
+
+    // I-106: the first frame, said by Dart — this embedder has no hook for
+    // it (lib/src/native/launch_splash.dart says why).
+    let launchChannel = FlutterMethodChannel(
+      name: "anicel/launch",
+      binaryMessenger: flutterViewController.engine.binaryMessenger)
+    launchChannel.setMethodCallHandler { [weak self] call, result in
+      guard call.method == "firstFrame" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      self?.alphaValue = 1
+      self?.ignoresMouseEvents = false
+      // After the window shows, so the screen is never left with neither.
+      self?.launchSplash.close()
+      result(nil)
     }
 
     RegisterGeneratedPlugins(registry: flutterViewController)

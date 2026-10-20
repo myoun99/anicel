@@ -8,6 +8,7 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME}
   "main.cc"
+  "launch_splash.cc"
   "my_application.cc"
   "pen_sidecar.cc"
   "window_full_screen.cc"

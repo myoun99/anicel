@@ -172,6 +172,10 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
 
+  // Before the engine starts: starting it is the wait the splash covers.
+  launch_splash_.Show(
+      ::MonitorFromWindow(GetHandle(), MONITOR_DEFAULTTOPRIMARY));
+
   RECT frame = GetClientArea();
 
   // The size here must match the window dimensions to avoid unnecessary surface
@@ -192,6 +196,8 @@ bool FlutterWindow::OnCreate() {
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
+    // After the window shows, so the screen is never left with neither.
+    launch_splash_.Close();
     // A frame means Dart is running, and its platform channel is listening.
     app_can_answer_ = true;
   });

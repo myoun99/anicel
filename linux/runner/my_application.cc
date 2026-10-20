@@ -1,5 +1,6 @@
 #include "my_application.h"
 
+#include "launch_splash.h"
 #include "pen_sidecar.h"
 #include "window_full_screen.h"
 
@@ -13,6 +14,8 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  // Stands on screen from before the engine starts until its first frame.
+  GtkWidget* launch_splash;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -20,11 +23,17 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
+  // After the window shows, so the screen is never left with neither.
+  anicel_launch_splash_close(self->launch_splash);
+  self->launch_splash = nullptr;
 }
 
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+  anicel_app_icon_set();
+  // Before the engine starts: starting it is the wait the splash covers.
+  self->launch_splash = anicel_launch_splash_show();
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 

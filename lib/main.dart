@@ -8,6 +8,7 @@ import 'package:flutter/services.dart'
     show SystemChrome, SystemUiMode, rootBundle;
 
 import 'src/native/device_battery.dart';
+import 'src/native/launch_splash.dart';
 import 'src/services/persistence/app_support_path.dart';
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
@@ -156,6 +157,7 @@ Future<void> main() async {
   // is reported at the next launch and not at every launch after it.
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
+  LaunchSplash.closeAtFirstFrame();
   runApp(const AnicelApp());
   // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
   // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the

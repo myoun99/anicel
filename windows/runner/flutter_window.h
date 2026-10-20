@@ -9,6 +9,7 @@
 #include <memory>
 #include <vector>
 
+#include "launch_splash.h"
 #include "win32_window.h"
 
 // A window that does nothing but host a Flutter view.
@@ -80,6 +81,9 @@ class FlutterWindow : public Win32Window {
 
   // Whether the app has drawn a frame, and so has someone to answer a close.
   bool app_can_answer_ = false;
+
+  // Stands on screen from before the engine starts until its first frame.
+  LaunchSplash launch_splash_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
