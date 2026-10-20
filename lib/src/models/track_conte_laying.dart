@@ -921,14 +921,18 @@ Layer _worn(Layer row, ConteEntry entry, _Stand stand) {
 
 /// The row [entry] gives a cut whose conte has none of it, as [id]:
 /// holding nothing, born as the entry says ([ConteEntry.kind],
-/// [ConteEntry.attachedMode]) — and off the timesheet, as the ＋ makes an
-/// attach row (which rows a cut's sheet prints is the cut's).
+/// [ConteEntry.attachedMode]), and on the sheet as its head is — it wears
+/// the head as every row does ([_worn]).
+///
+/// ↩️It was born off the timesheet, as the ＋ makes an attach row, for
+/// which rows a cut's sheet prints was the cut's. The conte row's sheet
+/// switch is its head's since Q22 (유저: 「콘티행은 그런부분 글로벌이니까
+/// 아니면 글로벌시키고 넣고 머리로 하나」).
 Layer _fillFor(ConteEntry entry, LayerId id, Layer base) => Layer(
   id: id,
   name: entry.head.name,
   frames: const [],
   kind: entry.kind,
-  onTimesheet: false,
   attachedToLayerId: entry.isFolder ? null : base.id,
   attachedMode: entry.attachedMode,
   folderId: base.folderId,

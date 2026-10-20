@@ -173,7 +173,8 @@ void main() {
     });
 
     test('gives a cut the row it has none of empty, riding its own conte on '
-        'its side, off the timesheet, under an id the same every time', () {
+        'its side, on the sheet as its head is, under an id the same every '
+        'time', () {
       final laid = write(legacy);
       final q = rowOf(laid, 'a', 'Q');
       final u = rowOf(laid, 'a', 'U');
@@ -185,7 +186,22 @@ void main() {
       expect(q.attachedMode, AttachedMode.free, reason: 'the row it is of');
       expect(q.kind, LayerKind.storyboard);
       expect(q.frames, isEmpty);
-      expect(q.onTimesheet, isFalse, reason: 'as the ＋ makes an attach row');
+      // Q22: the conte row's sheet switch is its head's — b's Q wears it.
+      expect(q.onTimesheet, isTrue, reason: 'on the sheet, as b\'s Q is');
+      final offTheSheet = write(
+        edited(legacy, 'b', (layers) => [
+          for (final layer in layers)
+            if (layer.name == 'Q')
+              layer.copyWith(onTimesheet: false)
+            else
+              layer,
+        ]),
+      );
+      expect(
+        rowOf(offTheSheet, 'a', 'Q').onTimesheet,
+        isFalse,
+        reason: 'and off it, as b\'s Q is',
+      );
       expect(u.attachedPlacement, AttachedPlacement.below);
       expect(
         [for (final layer in cutIn(write(legacy), 'a').layers) layer.id],
