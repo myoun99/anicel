@@ -56,6 +56,7 @@ void main() {
     WidgetTester tester, {
     List<String> notes = const [],
     int duration = 24,
+    Set<TimesheetHeaderField> roads = edited,
   }) async {
     committedMemos = [];
     committedHeads = [];
@@ -83,7 +84,7 @@ void main() {
                 onMemoCommitted: (page, memo) =>
                     committedMemos.add((page, memo)),
                 headerCommits: {
-                  for (final field in edited)
+                  for (final field in roads)
                     field: (text) => committedHeads.add((field, text)),
                 },
               ),
@@ -220,6 +221,22 @@ void main() {
       ]);
       expect(committedHeads, hasLength(4));
       expect(committedMemos, isEmpty);
+    });
+
+    // 「타임은 안하는게 나을듯. 페이지도 자동이고.」 — the sheet counts them.
+    testWidgets('⛔the length and the page open no field, whatever road '
+        'they are handed — the sheet counts them', (tester) async {
+      await pumpLayer(tester, roads: TimesheetHeaderField.values.toSet());
+
+      for (final box in layout.headerFieldBoxes(0)) {
+        if (box.field != TimesheetHeaderField.time &&
+            box.field != TimesheetHeaderField.sheet) {
+          continue;
+        }
+        await tester.tapAt(layerOrigin + box.rect.center);
+        await tester.pumpAndSettle();
+        expect(find.byKey(_editorKey), findsNothing, reason: box.field.name);
+      }
     });
   });
 
