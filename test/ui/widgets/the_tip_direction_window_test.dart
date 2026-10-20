@@ -123,6 +123,49 @@ void main() {
       reason: 'the random turn written off the brush the button was built '
           'over would put the base back',
     );
+
+    // …and the other way round: a base picked after the random turn keeps
+    // the random turn.
+    final random = notifier.value.angleJitter;
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-tool-rotation-direction')),
+    );
+    await tester.pumpAndSettle();
+    expect(notifier.value.rotationMode, BrushTipRotationMode.direction);
+    expect(notifier.value.angleJitter, random);
+
+    // The button in the angle row shows the setting the window left — the
+    // panel hands a row back only while it shows the same thing.
+    expect(
+      tester.widget<TipDirectionButton>(find.byType(TipDirectionButton))
+          .direction,
+      (base: BrushTipRotationMode.direction, random: random),
+    );
+  });
+
+  testWidgets('a dead source button opens nothing — the angle\'s and the '
+      'pressure curve\'s alike', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SettingSourceButton(
+              keyValue: 'dead-source-button',
+              tooltip: 'dead',
+              active: true,
+              enabled: false,
+              onPressed: (_) => fail('a dead button was pressed'),
+              glyph: (ink) => _NoGlyph(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('dead-source-button')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
   });
 
   testWidgets('the lit base is the one the tip turns from — 「선택 표시는 '
@@ -155,4 +198,12 @@ void main() {
         base == BrushTipRotationMode.direction,
     ]);
   });
+}
+
+class _NoGlyph extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {}
+
+  @override
+  bool shouldRepaint(_NoGlyph oldDelegate) => false;
 }
