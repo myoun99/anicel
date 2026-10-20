@@ -1628,37 +1628,36 @@ class TimelineLaneGraphPainter extends CustomPainter {
     }
   }
 
-  /// The handle a press at [position] takes on a picture [size] big: the
-  /// one drawn last over it, on what is drawn of it — its circle and its
-  /// ink — and nowhere round it (F-262: 「보이는 만큼 존재하도록」). Null
-  /// where there is none.
+  /// The handle a press at [position] takes on a picture [size] big — on
+  /// its circle and its ink ([_drawnLastAt]).
   LaneGraphHandle? handleAt(Offset position, Size size) {
     const reach = _laneGraphHandleRadius + _laneGraphHandleStroke / 2;
-    for (final handle in handlesIn(size).reversed) {
-      if ((handle.at - position).distance <= reach) {
-        return handle;
-      }
-    }
-    return null;
+    return _drawnLastAt(
+      handlesIn(size),
+      (handle) => (handle.at - position).distance <= reach,
+    );
   }
 
-  /// The key a press at [position] picks on a picture [size] big (I-3):
-  /// the one marked last over it, in the box its mark is drawn in — stood
-  /// a quarter turn on the X-sheet, as [paintKeyMark] stands it — and
-  /// nowhere round it, as a handle is (F-262). Null where there is none.
+  /// The key a press at [position] picks on a picture [size] big (I-3) —
+  /// in the box its mark is drawn in, stood a quarter turn on the X-sheet
+  /// as [paintKeyMark] stands it ([_drawnLastAt]).
   LaneGraphKey? keyAt(Offset position, Size size) {
     final box = axis == Axis.vertical ? _keySize.flipped : _keySize;
-    for (final key in keysIn(size).reversed) {
-      if (Rect.fromCenter(
+    return _drawnLastAt(
+      keysIn(size),
+      (key) => Rect.fromCenter(
         center: key.at,
         width: box.width,
         height: box.height,
-      ).contains(position)) {
-        return key;
-      }
-    }
-    return null;
+      ).contains(position),
+    );
   }
+
+  /// Of [marks], in the order they are drawn, the one drawn last that a
+  /// press [hits] — on what is drawn of it, and nowhere round it (F-262:
+  /// 「보이는 만큼 존재하도록」). Null where there is none.
+  static T? _drawnLastAt<T>(List<T> marks, bool Function(T mark) hits) =>
+      marks.reversed.where(hits).firstOrNull;
 
   /// How big a key's mark is: its member lane's — every line is one, a cell
   /// and a lane's row wide at this zoom (🗣️F-367-Q3, 유저 2026-10-17: 「레인

@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphMode;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
@@ -151,6 +153,20 @@ void main() {
     s.updateLaneRangeSelectionDrag(
       layerId: _drawId,
       laneId: 'rotation',
+      anchorIndex: 2,
+      headIndex: 4,
+      spanLaneIds: const ['rotation'],
+    );
+    await tester.pumpAndSettle();
+    expect(
+      _paintOf(tester),
+      isNot(ring),
+      reason: 'its lane is held, but none of its keys',
+    );
+
+    s.updateLaneRangeSelectionDrag(
+      layerId: _drawId,
+      laneId: 'rotation',
       anchorIndex: 8,
       headIndex: 8,
       spanLaneIds: const ['rotation'],
@@ -184,6 +200,23 @@ void main() {
 
     expect(rows.pixels, 0);
     expect(_keyedFrames(s), [0, 10]);
+  });
+
+  testWidgets('a speed graph marks no key, so it has none to pick', (
+    tester,
+  ) async {
+    final s = await _pump(tester);
+    await _openTheGraph(tester, s);
+    _keyOnScreen(tester, 8); // ⛔전제: the value graph marks it
+
+    SessionRowButtonPresses(s).plotLaneGraph(
+      _transformGroup,
+      LaneGraphMode.speed,
+    );
+    await tester.pumpAndSettle();
+
+    final (:painter, :box) = _graphOf(tester);
+    expect(painter.keysIn(box.size), isEmpty);
   });
 }
 
