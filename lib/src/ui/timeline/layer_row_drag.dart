@@ -458,7 +458,7 @@ class LayerRowDragTarget extends StatelessWidget {
     this.selectRowDeltaAt,
     this.pointerRowsAt,
     required this.child,
-    this.isLastRow = false,
+    this.drawsTheGapAfter = false,
     this.grabOffsetWithinRun = 0,
     this.onGripTaken,
     this.onGripReleased,
@@ -495,7 +495,7 @@ class LayerRowDragTarget extends StatelessWidget {
        onGripTaken = null,
        onGripReleased = null,
        slotBefore = null,
-       isLastRow = false,
+       drawsTheGapAfter = false,
        onCrossed = _neverCrosses,
        pointerRowsAt = null;
 
@@ -587,9 +587,10 @@ class LayerRowDragTarget extends StatelessWidget {
   /// 간다」.
   final double Function(double offset)? pointerRowsAt;
 
-  /// Whether this is the last row of the rail — only it can show the
-  /// trailing caret, or two adjacent rows would both draw the same gap.
-  final bool isLastRow;
+  /// Whether this row shows the trailing caret — the line past it. Only
+  /// the row the next one does not draw it for may, or two adjacent rows
+  /// would both draw the same gap ([LayerRowCaret.drawsTheGapAfter]).
+  final bool drawsTheGapAfter;
 
   /// A5 (2026-08-17): the press landed here and its recognizer lives in
   /// this row's State — a host that windows its rows listens so it can
@@ -630,7 +631,7 @@ class LayerRowDragTarget extends StatelessWidget {
       onSelectCrossed: onSelectCrossed,
       selectRowDeltaAt: selectRowDeltaAt,
       pointerRowsAt: pointerRowsAt,
-      isLastRow: isLastRow,
+      drawsTheGapAfter: drawsTheGapAfter,
       grabOffsetWithinRun: grabOffsetWithinRun,
       onGripTaken: onGripTaken,
       onGripReleased: onGripReleased,
@@ -650,7 +651,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.hooks,
     required this.onCrossed,
     required this.canReorder,
-    required this.isLastRow,
+    required this.drawsTheGapAfter,
     this.onSelectCrossed,
     this.selectRowDeltaAt,
     this.pointerRowsAt,
@@ -682,7 +683,7 @@ class _LayerRowDragBody extends StatefulWidget {
 
   /// See [LayerRowDragTarget.grip].
   final List<DragChipItem> Function()? grip;
-  final bool isLastRow;
+  final bool drawsTheGapAfter;
   final Widget child;
 
   @override
@@ -991,7 +992,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
         final leading = caretShowing && showing.caretSlot == slot;
         final trailing =
             caretShowing &&
-            widget.isLastRow &&
+            widget.drawsTheGapAfter &&
             slot != null &&
             showing.caretSlot == slot + 1;
         final lifted = drag?.subject == widget.subject || _lifting;
@@ -1378,7 +1379,7 @@ Widget layerRowDragWrapper({
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
     grip: grip,
-    isLastRow: caret.isLastRow,
+    drawsTheGapAfter: caret.drawsTheGapAfter,
     onCrossed: hooks == null
         ? (_, _, _) {}
         : (steps, onRow, inRow) {
@@ -1440,7 +1441,7 @@ typedef LayerRowDragInputs = ({
   void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan,
   int? caretSlot,
-  bool? caretIsLastRow,
+  bool? caretDrawsTheGapAfter,
 });
 
 /// See [LayerRowDragInputs].
@@ -1456,7 +1457,7 @@ LayerRowDragInputs layerRowDragInputs({
     hooks: ByIdentity(hooks),
     onRowSelectionSpan: onRowSelectionSpan,
     caretSlot: caret?.slot,
-    caretIsLastRow: caret?.isLastRow,
+    caretDrawsTheGapAfter: caret?.drawsTheGapAfter,
   );
 }
 
@@ -1500,7 +1501,7 @@ Widget _laneSelectOnlyDragTarget(
     pointerRowsAt: wiring.reach.pointerRowsAt,
     axis: wiring.axis,
     hooks: hooks,
-    isLastRow: false,
+    drawsTheGapAfter: false,
     onCrossed: (_, _, _) {},
     onSelectCrossed: onSelectCrossed,
     child: child,
@@ -1592,7 +1593,7 @@ Widget _laneRowDragTarget(
     onGripTaken: wiring.onGripTaken,
     onGripReleased: wiring.onGripReleased,
     grip: () => [effectRowDragChip(subject.lane)],
-    isLastRow: slot == headers.length - 1,
+    drawsTheGapAfter: slot == headers.length - 1,
     // An fx chain has no "inside a row" to drop into — an effect holds
     // nothing — so the on-row band is ignored here and the caret stays
     // the only answer (R5 #15).

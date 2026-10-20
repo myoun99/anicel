@@ -105,9 +105,9 @@ void main() {
     });
 
     test('the last row on screen is the last one a caret can follow', () {
-      expect(LayerRowCaret.of(rows, z.id)!.isLastRow, isTrue);
+      expect(LayerRowCaret.of(rows, z.id)!.drawsTheGapAfter, isTrue);
       expect(
-        LayerRowCaret.of(rows, folder.id)!.isLastRow,
+        LayerRowCaret.of(rows, folder.id)!.drawsTheGapAfter,
         isFalse,
         reason: 'z has a row; the members between them do not',
       );

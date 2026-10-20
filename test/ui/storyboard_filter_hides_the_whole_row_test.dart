@@ -206,7 +206,7 @@ void main() {
       dragOf(shown.track).first,
     );
     expect(filtered.slotBefore, 0, reason: 'S2 is hidden; S1 is the first');
-    expect(filtered.isLastRow, isTrue);
+    expect(filtered.drawsTheGapAfter, isTrue);
   });
 
   testWidgets('the ring stands on the row the rail draws, with a row hidden '

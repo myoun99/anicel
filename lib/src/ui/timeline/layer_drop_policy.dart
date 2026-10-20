@@ -1306,7 +1306,16 @@ class LayerRowCaret {
   /// The layers a drop may land between: the ones with a row on screen.
   List<Layer> get layers => [for (final row in rows) row.layer];
 
-  bool get isLastRow => slot == rows.length - 1;
+  /// Whether the row draws the line PAST it: the rail's last, or the last
+  /// before a row that draws none — a row that takes no drop (the camera's,
+  /// the transitions') draws no line, so the seat at a section's far end
+  /// before one is its last row's to draw.
+  ///
+  /// 🗣️F-423 (유저 2026-10-20) on the sheet: its drawing columns can end at
+  /// the camera's, and a drawing column carried onto them landed at that
+  /// end with no line drawn anywhere.
+  bool get drawsTheGapAfter =>
+      slot == rows.length - 1 || !rows[slot + 1].layer.kind.reordersInCut;
 
   /// The gap a travel of [rowSteps] RAIL rows lands on.
   ///

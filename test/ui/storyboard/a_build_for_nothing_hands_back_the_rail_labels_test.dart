@@ -731,17 +731,17 @@ void main() {
     final s2 = key('storyboard-se-label-t1-2');
     // S3 over S2: S2 the lower of the two shown.
     expect(wrapper(tester, s2).slotBefore, 1, reason: 'premise');
-    expect(wrapper(tester, s2).isLastRow, isTrue, reason: 'premise');
+    expect(wrapper(tester, s2).drawsTheGapAfter, isTrue, reason: 'premise');
 
     // S2 over S1: the upper of two.
     await resheet(tester, session, {'t1-s3'});
     expect(wrapper(tester, s2).slotBefore, 0);
-    expect(wrapper(tester, s2).isLastRow, isFalse);
+    expect(wrapper(tester, s2).drawsTheGapAfter, isFalse);
 
     // S2 alone: the upper, and the last.
     await resheet(tester, session, {'t1-s1', 't1-s3'});
     expect(wrapper(tester, s2).slotBefore, 0);
-    expect(wrapper(tester, s2).isLastRow, isTrue);
+    expect(wrapper(tester, s2).drawsTheGapAfter, isTrue);
   });
 
   testWidgets('🚨a conte row the filter shows somewhere else builds its '
@@ -755,17 +755,17 @@ void main() {
     final seat1 = key('storyboard-conte+1-label-t1');
     // +2 over +1: +1 the lower of the two shown.
     expect(wrapper(tester, seat1).slotBefore, 1, reason: 'premise');
-    expect(wrapper(tester, seat1).isLastRow, isTrue, reason: 'premise');
+    expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue, reason: 'premise');
 
     // +1 over the conte: the upper of two.
     await resheet(tester, session, {'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
-    expect(wrapper(tester, seat1).isLastRow, isFalse);
+    expect(wrapper(tester, seat1).drawsTheGapAfter, isFalse);
 
     // +1 alone: the upper, and the last.
     await resheet(tester, session, {'a-conte', 'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
-    expect(wrapper(tester, seat1).isLastRow, isTrue);
+    expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue);
   });
 
   /// The twirl that opens the Transform group of the lanes now open.
@@ -832,7 +832,7 @@ void main() {
       'it — it is not the last row any more', (tester) async {
     final session = await pumpPanel(tester, twoTracks());
     final v2 = key('storyboard-track-select-t2');
-    expect(wrapper(tester, v2).isLastRow, isTrue, reason: 'premise');
+    expect(wrapper(tester, v2).drawsTheGapAfter, isTrue, reason: 'premise');
 
     session.repository.updateProject(
       (project) => project.copyWith(
@@ -845,7 +845,7 @@ void main() {
     session.notifyChanged();
     await tester.pump();
 
-    expect(wrapper(tester, v2).isLastRow, isFalse);
+    expect(wrapper(tester, v2).drawsTheGapAfter, isFalse);
   });
 
   testWidgets('🚨a V row its tracks can re-order takes its group\'s height '

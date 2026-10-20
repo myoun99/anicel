@@ -109,7 +109,7 @@ void main() {
     );
     expect(b.subject, isA<EffectRowSubject>());
     expect(b.slotBefore, a.slotBefore, reason: 'slot 1 of the chain, twice');
-    expect(b.isLastRow, a.isLastRow);
+    expect(b.drawsTheGapAfter, a.drawsTheGapAfter);
     expect(b.rowExtent, a.rowExtent);
     expect(
       (b.subject as EffectRowSubject).effectId,

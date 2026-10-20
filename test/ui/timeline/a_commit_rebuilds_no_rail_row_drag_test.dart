@@ -232,7 +232,7 @@ void main() {
       for (final target in tester.widgetList<LayerRowDragTarget>(
         find.byType(LayerRowDragTarget),
       ))
-        target.subject: (target.slotBefore, target.isLastRow),
+        target.subject: (target.slotBefore, target.drawsTheGapAfter),
     };
 
     for (final sheet in [false, true]) {

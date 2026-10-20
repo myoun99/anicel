@@ -1113,6 +1113,42 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('F-423 on the sheet: a drawing column carried past its '
+      'section\'s far end draws its line at that end', (tester) async {
+    await _pump(tester, project: _topFolderProject());
+    final session = _sessionOf(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    final grip = find.named('xsheet-layer-name-a');
+    await tester.ensureVisible(grip);
+    await tester.pumpAndSettle();
+    await tester.drag(grip, const Offset(0, 30));
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(grip));
+    await tester.pump(const Duration(milliseconds: 16));
+    final cam = tester.getRect(find.named('xsheet-layer-row-cam'));
+    await gesture.moveTo(
+      Offset(cam.left + cam.width * 0.8, tester.getCenter(grip).dy),
+    );
+    await tester.pump();
+    expect(
+      [
+        for (final element in anyCaret.evaluate())
+          (element.widget.key! as ValueKey<String>).value,
+      ],
+      ['timeline-row-caret-after-f'],
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    final ids = [
+      for (final layer in session.requireActiveCut.layers) layer.id.value,
+    ];
+    expect(ids.indexOf('a'), ids.indexOf('f') + 1);
+  });
+
   testWidgets('the pointer over a row\'s LANES stands in that row — its own '
       'or a neighbour\'s', (tester) async {
     await _pump(tester, project: _folderMembersProject());
@@ -1503,6 +1539,57 @@ void main() {
       reason: 'the bar straddles the column boundary, badge or no badge',
     );
     expect(find.text('어태치 해제'), findsOneWidget);
+  });
+
+  testWidgets('F-423② on the sheet: a column\'s swallow outline is the whole '
+      'column — its band is a strip of its own, not a slot in it', (
+    tester,
+  ) async {
+    final drag = ValueNotifier<LayerRowDragState?>(
+      const LayerRowDragState(
+        subject: LayerRowSubject(LayerId('a')),
+        caretSlot: 0,
+        legal: true,
+        onRowTarget: LayerId('b'),
+      ),
+    );
+    addTearDown(drag.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              height: 300,
+              child: LayerRowDragTarget(
+                subject: const LayerRowSubject(LayerId('b')),
+                slotBefore: 1,
+                rowExtent: 28,
+                axis: Axis.vertical,
+                hooks: TimelineRowDragHooks(
+                  drag: drag,
+                  onBegin: (_) {},
+                  onUpdate: (_, _, {pointerInRow}) {},
+                  onRowTarget: (_, _, _) {},
+                  onEffectUpdate: (_, _, _) {},
+                  onEnd: () {},
+                  onCancel: () {},
+                ),
+                onCrossed: (_, _, _) {},
+                child: const SizedBox(width: 28, key: ValueKey('the-column')),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final swallow = find.byKey(const ValueKey('timeline-row-swallow-b'));
+    expect(swallow, findsOneWidget, reason: '⛔전제');
+    expect(
+      tester.getRect(swallow).left,
+      tester.getRect(find.byKey(const ValueKey('the-column'))).left,
+    );
   });
 
   testWidgets('A5: the wrapper takes the ONE pin for the row it holds, and '
