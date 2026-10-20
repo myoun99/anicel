@@ -950,29 +950,31 @@ class RangeSelections {
         : onTrack.endingAt(end);
   }
 
-  /// THE band a shove left standing, grown over the blocks it holds now
-  /// ([snapHeldSpanToBlocks]) — on the rows it swept, whichever axis it is
-  /// in: a cut's cells, an S row's sounds, the cut row's cuts.
+  /// THE band a shove left standing, grown over the blocks it holds now —
+  /// on the rows it swept, whichever axis it is in: a cut's cells, an S
+  /// row's sounds, the cut row's cuts. The shared snap ([snapSpanToBlocks])
+  /// is asked, and only its END is taken: the start is the shove's anchor
+  /// and stays where it stands.
   ///
   /// 🗣️F-264 (유저 2026-10-08): 「선택범위는 당기고 갱신됨 … 자기 위치에
   /// 갱신된다해야하나? 왜냐면 블록이 범위안에 들어오면 선택범위가
-  /// 커져야하니까」.
+  /// 커져야하니까」. A block pulled back past the start still reaches into
+  /// the band, and the snap grows the start over it; taken, the anchor would
+  /// go after the block and the pull would never run out.
   void growOverTheBlocksItHolds() {
     final inCut = _selection.frameRangeSelection.value;
     if (inCut != null) {
-      final span = snapHeldSpanToBlocks(
-        lanes: [
+      final end = _grownEnd(
+        [
           for (final id in inCut.spanLayerIds)
             if (_project.rangeLayerById(id) case final layer?)
               ...rowBlockLanes(layer, _rowSpans.aggregateRunsForRow(layer)),
         ],
-        startIndex: inCut.startIndex,
-        endIndexExclusive: inCut.endIndexExclusive,
+        inCut.startIndex,
+        inCut.endIndexExclusive,
       );
-      if (span != null && span.endIndexExclusive > inCut.endIndexExclusive) {
-        _selection.frameRangeSelection.value = inCut.endingAt(
-          span.endIndexExclusive,
-        );
+      if (end != null) {
+        _selection.frameRangeSelection.value = inCut.endingAt(end);
       }
       return;
     }
@@ -981,19 +983,35 @@ class RangeSelections {
       return;
     }
     final axis = _projectSettings.axisForTrack(onTrack.trackId);
-    final span = snapHeldSpanToBlocks(
-      lanes: [
+    final end = _grownEnd(
+      [
         for (final row in onTrack.spanRows)
           ?_rowSpans.trackRowSnapLane(row, axis),
       ],
-      startIndex: onTrack.startFrame,
-      endIndexExclusive: onTrack.endFrameExclusive,
+      onTrack.startFrame,
+      onTrack.endFrameExclusive,
     );
-    if (span != null && span.endIndexExclusive > onTrack.endFrameExclusive) {
-      _selection.trackFrameRangeSelection.value = onTrack.endingAt(
-        span.endIndexExclusive,
-      );
+    if (end != null) {
+      _selection.trackFrameRangeSelection.value = onTrack.endingAt(end);
     }
+  }
+
+  /// Where the shared snap of `[start, endExclusive)` over [lanes] ends,
+  /// when that is past [endExclusive]; null when it ends there.
+  static int? _grownEnd(
+    List<RangeBlockAt> lanes,
+    int start,
+    int endExclusive,
+  ) {
+    final snapped = snapSpanToBlocks(
+      lanes: lanes,
+      anchorIndex: start,
+      headIndex: endExclusive - 1,
+    );
+    return switch (snapped?.endIndexExclusive) {
+      final end? when end > endExclusive => end,
+      _ => null,
+    };
   }
 
   /// Where the last retimed block of [startsByLayer] ends now (max across
