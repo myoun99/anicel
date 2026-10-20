@@ -145,9 +145,25 @@ void main() {
     ),
   ];
 
+  /// What every scan handed to [linesMatching] holds: the axis asked by
+  /// name, then the `?` — so a source without one anywhere holds nothing
+  /// for them, and they are not run on it.
+  ///
+  /// ↩️Run on every file, the four bans that read all of `lib` and `test`
+  /// took 67s of this file's 71: the `\w*` [axisAsked] opens with is tried
+  /// at every letter of every file. With this first, 4s — and the same
+  /// lines in all 4214 files, 31 of them (measured 2026-10-21,
+  /// heavy-tests-common).
+  final asksTheAxis = RegExp(
+    r'(?:[Hh]orizontal|[Vv]ertical|across|along)\s*\?',
+  );
+
   /// Lines of [source] that [scans] match — its comments aside, so a
   /// decision that quotes the old spelling is not one.
   List<int> linesMatching(List<RegExp> scans, String source) {
+    if (!asksTheAxis.hasMatch(source)) {
+      return const [];
+    }
     final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
     int lineOf(int index) =>
         '\n'.allMatches(code.substring(0, index)).length + 1;
