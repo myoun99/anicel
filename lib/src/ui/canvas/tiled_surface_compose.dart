@@ -515,8 +515,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
     over: worldRect,
     deferred: false,
   );
-  final image =
-      _laidPastTheWall(surface) && !debugRastersPastTheWall
+  final image = _madeFromBytes(surface)
       ? await _composedFromBytes(
           _bytesShownOver(surface, worldRect),
           shouldAbort: shouldAbort,
@@ -548,10 +547,127 @@ bool _laidPastTheWall(BitmapSurface surface) {
   return wall.expandToInclude(laid.rect) != wall;
 }
 
+/// Whether a compose of [surface] is made from its bytes: a file's picture
+/// laid past the wall ([_laidPastTheWall]), but for the test's hatch.
+bool _madeFromBytes(BitmapSurface surface) =>
+    _laidPastTheWall(surface) && !debugRastersPastTheWall;
+
 /// [surface]'s bytes over [over], as shown ([_shownBy]) — what a compose
-/// past the wall is made from.
-SurfaceRegionBytes _bytesShownOver(BitmapSurface surface, ui.Rect over) =>
-    SurfaceRegionBytes(_shownBy(surface), DirtyRegion.wholePixelsOf(over));
+/// past the wall is made from — halved through [halving] when it is given.
+_BytesFill _bytesShownOver(
+  BitmapSurface surface,
+  ui.Rect over, {
+  Uint8List? halving,
+}) => _BytesFill(
+  SurfaceRegionBytes(_shownBy(surface), DirtyRegion.wholePixelsOf(over)),
+  halving: halving,
+);
+
+/// How a compose from bytes writes each tile's part of [bytes]: as it is,
+/// or — given [halving], the engine's measured halving
+/// ([measuredHalving]) — halved at its place, the first level made from the
+/// bytes themselves as a halved raster makes it from the tiles' pictures
+/// ([composeHalvedSurfaceImage]).
+///
+/// ⚠️A halved fill is exact only on the halving grid — the region's corners
+/// even, as every tile's are — so each 2×2 block lies inside one tile's
+/// part, as a halved raster's does ([_TileLaying]).
+class _BytesFill {
+  _BytesFill(this.bytes, {this.halving})
+    : assert(
+        halving == null ||
+            [
+              bytes.region.left,
+              bytes.region.top,
+              bytes.width,
+              bytes.height,
+            ].every((edge) => edge.isEven),
+        'a halved fill lies on the halving grid (got ${bytes.region})',
+      );
+
+  final SurfaceRegionBytes bytes;
+  final Uint8List? halving;
+
+  int get width => halving == null ? bytes.width : bytes.width ~/ 2;
+  int get height => halving == null ? bytes.height : bytes.height ~/ 2;
+  int get byteLength => width * height * 4;
+
+  /// The tiles whose parts [fill] writes, row by row.
+  Iterable<CoveredTile> get tiles =>
+      tilesCovering(bytes.surface, bytes.region);
+
+  /// A tile's part premultiplied before it is halved — one tile big, made
+  /// once a fill and let go by [dispose].
+  Pointer<Uint8>? _part;
+
+  /// [tile]'s part premultiplied by [native] into [target] where it lies —
+  /// or, halved, where its half lies.
+  void fill(QaNativeEngine native, CoveredTile tile, Pointer<Uint8> target) {
+    final table = halving;
+    if (table == null) {
+      bytes.premultiplyInto(native, tile, target);
+      return;
+    }
+    final part = SurfaceRegionBytes(
+      bytes.surface,
+      DirtyRegion(
+        left: tile.left,
+        top: tile.top,
+        rightExclusive: tile.rightExclusive,
+        bottomExclusive: tile.bottomExclusive,
+      ),
+    );
+    final tileSize = bytes.surface.tileSize;
+    final scratch = _part ??= calloc<Uint8>(tileSize * tileSize * 4);
+    part.premultiplyInto(native, tile, scratch);
+    halveRgbaWords(
+      table,
+      scratch.cast<Uint32>().asTypedList(part.width * part.height),
+      fromStart: 0,
+      fromStride: part.width,
+      width: part.width,
+      height: part.height,
+      into: target.cast<Uint32>().asTypedList(width * height),
+      intoStart:
+          (tile.top - bytes.region.top) ~/ 2 * width +
+          (tile.left - bytes.region.left) ~/ 2,
+      intoStride: width,
+    );
+  }
+
+  /// Every part at once where there is no engine: the door's bytes in one
+  /// read, halved after through [halving] when it is given. Copied out, as
+  /// they are the door's only while it reads them.
+  Uint8List readAll() {
+    final table = halving;
+    if (table == null) {
+      return bytes.readPremultiplied(Uint8List.fromList);
+    }
+    return bytes.readPremultiplied((whole) {
+      final half = Uint8List(byteLength);
+      halveRgbaWords(
+        table,
+        whole.buffer.asUint32List(whole.offsetInBytes, whole.length ~/ 4),
+        fromStart: 0,
+        fromStride: bytes.width,
+        width: bytes.width,
+        height: bytes.height,
+        into: half.buffer.asUint32List(),
+        intoStart: 0,
+        intoStride: width,
+      );
+      return half;
+    });
+  }
+
+  void dispose() {
+    final part = _part;
+    if (part != null) {
+      calloc.free(part);
+      _part = null;
+    }
+  }
+}
 
 /// The picture of [bytes] — the bytes the door reads — made from them, not
 /// rastered: premultiplied into memory of this compose's own a tile at a
@@ -583,7 +699,7 @@ SurfaceRegionBytes _bytesShownOver(BitmapSurface surface, ui.Rect over) =>
 /// decoder holds: 20000 wide came back 16384, its height kept — is let go,
 /// and the picture [rastered] as it always was.
 Future<ui.Image?> _composedFromBytes(
-  SurfaceRegionBytes bytes, {
+  _BytesFill bytes, {
   required bool Function()? shouldAbort,
   required MissingTilePictures missing,
   required Future<ui.Image?> Function() rastered,
@@ -593,18 +709,16 @@ Future<ui.Image?> _composedFromBytes(
   if (native == null) {
     // No engine — a load that failed: every build the app ships carries
     // one. The door's bytes in one read, not paced: what this road keeps
-    // is the memory, one image where a raster held 9–15. Copied out, as
-    // they are the door's only while it reads them.
-    final premultiplied = bytes.readPremultiplied(Uint8List.fromList);
-    return _uploadedOrRastered(premultiplied, bytes, shouldAbort, rastered);
+    // is the memory, one image where a raster held 9–15.
+    return _uploadedOrRastered(bytes.readAll(), bytes, shouldAbort, rastered);
   }
-  final byteLength = bytes.width * bytes.height * 4;
+  final byteLength = bytes.byteLength;
   final target = calloc<Uint8>(byteLength);
   try {
     final watch = Stopwatch()..start();
     int now() => debugTilePictureClock?.call() ?? watch.elapsedMicroseconds;
     var runBegan = now();
-    for (final tile in tilesCovering(bytes.surface, bytes.region)) {
+    for (final tile in bytes.tiles) {
       if (missing == MissingTilePictures.madeInTurn &&
           now() - runBegan >= tilePictureRun.inMicroseconds) {
         await _giveWay();
@@ -613,7 +727,7 @@ Future<ui.Image?> _composedFromBytes(
       if (shouldAbort?.call() ?? false) {
         return null;
       }
-      bytes.premultiplyInto(native, tile, target);
+      bytes.fill(native, tile, target);
     }
     return await _uploadedOrRastered(
       target.asTypedList(byteLength),
@@ -622,6 +736,7 @@ Future<ui.Image?> _composedFromBytes(
       rastered,
     );
   } finally {
+    bytes.dispose();
     calloc.free(target);
   }
 }
@@ -631,7 +746,7 @@ Future<ui.Image?> _composedFromBytes(
 /// size than [bytes] is.
 Future<ui.Image?> _uploadedOrRastered(
   Uint8List premultiplied,
-  SurfaceRegionBytes bytes,
+  _BytesFill bytes,
   bool Function()? shouldAbort,
   Future<ui.Image?> Function() rastered,
 ) async {
@@ -675,15 +790,46 @@ Future<ui.Image?> _uploadedOrRastered(
 /// bytes in the call, or a raster of every tile's picture at 9–15 times
 /// the image — so a row that was not on screen arrives from the
 /// asynchronous road, as such rows always have.
-ui.Image? _composedFromBytesNow(SurfaceRegionBytes bytes) {
+ui.Image? _composedFromBytesNow(_BytesFill bytes) {
   debugComposesFromBytes += 1;
-  final image = wholePictureUploadedOrNull(_BytesOfItsOwn(bytes));
-  if (image == null ||
-      image.width == bytes.width && image.height == bytes.height) {
-    return image;
+  try {
+    final image = wholePictureUploadedOrNull(_BytesOfItsOwn(bytes));
+    if (image == null ||
+        image.width == bytes.width && image.height == bytes.height) {
+      return image;
+    }
+    image.dispose();
+    return null;
+  } finally {
+    bytes.dispose();
   }
-  image.dispose();
-  return null;
+}
+
+/// A compose made now ([_composeSync]'s answer) past the wall
+/// ([_madeFromBytes]): nothing on the free road ([makePictures] false —
+/// [_composedFromBytesNow] says why), the picture made from [bytes] — a
+/// plain picture already, and [snapshot]'s a handle of its own on it — or,
+/// where [bytes] is null or the upload is refused, [rastered]. Inside the
+/// wall it is [rastered].
+({ui.Image deferred, Future<ui.Image>? real})? _madeNow(
+  BitmapSurface surface, {
+  required bool makePictures,
+  required bool snapshot,
+  required _BytesFill? Function() bytes,
+  required ({ui.Image deferred, Future<ui.Image>? real})? Function() rastered,
+}) {
+  if (!_madeFromBytes(surface)) {
+    return rastered();
+  }
+  if (!makePictures) {
+    return null;
+  }
+  final fill = bytes();
+  final now = fill == null ? null : _composedFromBytesNow(fill);
+  if (now == null) {
+    return rastered();
+  }
+  return (deferred: now, real: snapshot ? Future.value(now.clone()) : null);
 }
 
 /// [bytes] premultiplied into memory of this read's own where the engine
@@ -692,7 +838,7 @@ ui.Image? _composedFromBytesNow(SurfaceRegionBytes bytes) {
 class _BytesOfItsOwn implements PictureBytes {
   _BytesOfItsOwn(this.bytes);
 
-  final SurfaceRegionBytes bytes;
+  final _BytesFill bytes;
 
   @override
   int get width => bytes.width;
@@ -700,21 +846,29 @@ class _BytesOfItsOwn implements PictureBytes {
   @override
   int get height => bytes.height;
 
+  /// ⛔Not of a halved fill: a halving is of premultiplied texels, and
+  /// straight bytes made back from it are not the picture's. Nothing asks —
+  /// the upload made now reads premultiplied bytes alone
+  /// ([wholePictureUploadedOrNull]).
   @override
-  T readStraight<T>(T Function(Uint8List straight) use) =>
-      bytes.readStraight(use);
+  T readStraight<T>(T Function(Uint8List straight) use) {
+    if (bytes.halving != null) {
+      throw UnsupportedError('a halving has no straight bytes');
+    }
+    return bytes.bytes.readStraight(use);
+  }
 
   @override
   T readPremultiplied<T>(T Function(Uint8List premultiplied) use) {
     final native = QaNativeEngine.instance;
     if (native == null) {
-      return bytes.readPremultiplied(use);
+      return use(bytes.readAll());
     }
-    final byteLength = width * height * 4;
+    final byteLength = bytes.byteLength;
     final target = calloc<Uint8>(byteLength);
     try {
-      for (final tile in tilesCovering(bytes.surface, bytes.region)) {
-        bytes.premultiplyInto(native, tile, target);
+      for (final tile in bytes.tiles) {
+        bytes.fill(native, tile, target);
       }
       return use(target.asTypedList(byteLength));
     } finally {
@@ -743,24 +897,18 @@ composePositionedSurfaceImageSync(
   ui.Rect? over,
 }) {
   final worldRect = _composedOver(surface, over);
-  if (_laidPastTheWall(surface) && !debugRastersPastTheWall) {
-    if (!makePictures) {
-      return null;
-    }
-    final now = _composedFromBytesNow(_bytesShownOver(surface, worldRect));
-    if (now != null) {
-      return (
-        deferred: PositionedSurfaceImage(image: now, worldRect: worldRect),
-        real: snapshot ? Future.value(now.clone()) : null,
-      );
-    }
-  }
-  final composed = _composeSync(
+  final composed = _madeNow(
     surface,
-    reuse: reuse,
     makePictures: makePictures,
     snapshot: snapshot,
-    over: worldRect,
+    bytes: () => _bytesShownOver(surface, worldRect),
+    rastered: () => _composeSync(
+      surface,
+      reuse: reuse,
+      makePictures: makePictures,
+      snapshot: snapshot,
+      over: worldRect,
+    ),
   );
   if (composed == null) {
     return null;
@@ -794,36 +942,77 @@ composePositionedSurfaceImageSync(
 /// ([BitmapTileImageCache.instance]); a block with a tile that lacks one is
 /// pictured whole, in turn ([MissingTilePictures.madeInTurn]) — a level is
 /// made off the frame, by the warm or for a row the canvas fills in.
+///
+/// 🚨★★★PAST THE WALL IT IS MADE FROM THE BYTES, HALVED BY THE ENGINE'S OWN
+/// TABLE ([measuredHalving]; board a-big-reference-picture-still-costs-
+/// when-zoomed-out, 🗣️유저 2026-10-18 「엔진과 같은 바이트를 내는 CPU 반감을
+/// 찾는다」). A full-size picture past the wall is its bytes
+/// ([_composedFromBytes]); its first level was still a raster of every
+/// tile's picture — the cost the bytes road had taken away, at a quarter of
+/// the pixels. Halved on the CPU through the table the engine's own
+/// halving gave, it is the raster's picture byte for byte; an engine whose
+/// halving is not the sum's has no table, and its level is rastered as it
+/// always was.
 Future<ui.Image?> composeHalvedSurfaceImage(
   BitmapSurface surface, {
   bool Function()? shouldAbort,
   required ui.Rect over,
   bool deferred = false,
-}) => _composeAsync(
-  surface,
-  reuse: BitmapTileImageCache.instance,
-  shouldAbort: shouldAbort,
-  missing: MissingTilePictures.madeInTurn,
-  over: _composedOver(surface, over),
-  deferred: deferred,
-  halved: true,
-);
+}) async {
+  final halvedOver = _composedOver(surface, over);
+  Future<ui.Image?> rastered() => _composeAsync(
+    surface,
+    reuse: BitmapTileImageCache.instance,
+    shouldAbort: shouldAbort,
+    missing: MissingTilePictures.madeInTurn,
+    over: halvedOver,
+    deferred: deferred,
+    halved: true,
+  );
+  if (!_madeFromBytes(surface)) {
+    return rastered();
+  }
+  final halving = await measuredHalving();
+  if (halving == null) {
+    return rastered();
+  }
+  return _composedFromBytes(
+    _bytesShownOver(surface, halvedOver, halving: halving),
+    shouldAbort: shouldAbort,
+    missing: MissingTilePictures.madeInTurn,
+    rastered: rastered,
+  );
+}
 
 /// [composeHalvedSurfaceImage] made now — [_composeSync] says what
-/// [makePictures] and [snapshot] mean.
+/// [makePictures] and [snapshot] mean, and [_madeNow] what is made past the
+/// wall: from the bytes once the engine's halving has been read
+/// ([measuredHalvingIfRead]), rastered before.
 ({ui.Image deferred, Future<ui.Image>? real})? composeHalvedSurfaceImageSync(
   BitmapSurface surface, {
   required bool makePictures,
   required bool snapshot,
   required ui.Rect over,
-}) => _composeSync(
-  surface,
-  reuse: BitmapTileImageCache.instance,
-  makePictures: makePictures,
-  snapshot: snapshot,
-  over: _composedOver(surface, over),
-  halved: true,
-);
+}) {
+  final halvedOver = _composedOver(surface, over);
+  return _madeNow(
+    surface,
+    makePictures: makePictures,
+    snapshot: snapshot,
+    bytes: () => switch (measuredHalvingIfRead) {
+      final halving? => _bytesShownOver(surface, halvedOver, halving: halving),
+      null => null,
+    },
+    rastered: () => _composeSync(
+      surface,
+      reuse: BitmapTileImageCache.instance,
+      makePictures: makePictures,
+      snapshot: snapshot,
+      over: halvedOver,
+      halved: true,
+    ),
+  );
+}
 
 /// The rect a positioned compose rasters: [over], or the whole content.
 ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {

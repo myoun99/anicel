@@ -17,6 +17,7 @@ import 'src/services/persistence/app_ui_scale_store.dart';
 import 'src/services/persistence/app_window_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
+import 'src/ui/canvas/level_image.dart' show measuredHalving;
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -167,6 +168,13 @@ Future<void> main() async {
   // once, which is what makes this cheap on every later launch.
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => unawaited(AppStorage.ensureMicrophoneAccess()),
+  );
+  // The engine's halving read once, after the first frame (a few small
+  // pictures, off the frame): a level of a picture laid past the wall is
+  // halved through it ([measuredHalving]), and one made inside a build
+  // before it is read is rastered as it always was.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => unawaited(measuredHalving()),
   );
 }
 

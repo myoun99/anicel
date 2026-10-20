@@ -15,6 +15,7 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/level_image.dart';
 import 'package:anicel/src/ui/canvas/surface_region_picture.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
@@ -609,6 +610,181 @@ void main() {
           now.deferred.image.dispose();
           kept.dispose();
         }
+      });
+    });
+  });
+
+  group('🗣️its first level is made from its bytes too, halved through the '
+      'engine\'s own table (a-big-reference-picture-still-costs-when-'
+      'zoomed-out)', () {
+    // On the halving grid past the wall — corners even — holding its ink.
+    const half = ui.Rect.fromLTRB(-46, 2, 62, 14);
+
+    /// The Surface Pro 11's halving (`the_cpu_halving_is_the_engines_test`).
+    int deviceRule(int sum) =>
+        sum % 4 == 2 && sum != 510 ? sum ~/ 4 : (sum + 2) ~/ 4;
+
+    /// [bytes], [width] wide, halved by [deviceRule] block by block.
+    Uint8List halvedByRule(Uint8List bytes, int width) {
+      final height = bytes.length ~/ (width * 4);
+      final halved = Uint8List(bytes.length ~/ 4);
+      for (var y = 0; y < height ~/ 2; y += 1) {
+        for (var x = 0; x < width ~/ 2; x += 1) {
+          for (var channel = 0; channel < 4; channel += 1) {
+            int at(int dx, int dy) =>
+                bytes[((2 * y + dy) * width + 2 * x + dx) * 4 + channel];
+            halved[(y * (width ~/ 2) + x) * 4 + channel] = deviceRule(
+              at(0, 0) + at(1, 0) + at(0, 1) + at(1, 1),
+            );
+          }
+        }
+      }
+      return halved;
+    }
+
+    setUp(debugForgetMeasuredHalving);
+
+    tearDown(() {
+      debugEngineHalving = null;
+      debugWholePictureUploader = null;
+      debugForgetMeasuredHalving();
+    });
+
+    /// The device's engine, to the measure: the test runner's own halves a
+    /// tie two ways and has no table.
+    void halvingAsTheDevice() => debugEngineHalving = (bytes, width, _) async =>
+        halvedByRule(bytes, width);
+
+    /// The picture over [half] at full size — its bytes, the raster's byte
+    /// for byte (pinned above) — halved by [deviceRule].
+    Future<Uint8List> wantHalved(BitmapSurface surface) async {
+      final full = (await composePositionedSurfaceImage(surface, over: half))!;
+      try {
+        return halvedByRule(await bytesOf(full.image), full.image.width);
+      } finally {
+        full.image.dispose();
+      }
+    }
+
+    for (final byDart in [false, true]) {
+      testWidgets(
+        byDart
+            ? '…and by Dart where there is no engine'
+            : 'its tiles\' bytes premultiplied by the engine and halved a '
+                  'tile at a time — the full picture halved, texel for texel',
+        (tester) async {
+          if (!byDart && engineMissing()) {
+            return;
+          }
+          QaNativeEngine.debugForceDartFallback = byDart;
+          halvingAsTheDevice();
+          await tester.runAsync(() async {
+            final surface = pastTheWallWithAText();
+            final want = await wantHalved(surface);
+            debugComposesFromBytes = 0;
+
+            final level = (await composeHalvedSurfaceImage(
+              surface,
+              over: half,
+            ))!;
+
+            expect(debugComposesFromBytes, 1);
+            expect((level.width, level.height), (54, 6));
+            expect(await bytesOf(level), want);
+            level.dispose();
+          });
+        },
+      );
+    }
+
+    testWidgets('🔬with no table — the test runner\'s own engine has none — '
+        'it is the halved raster, as it always was', (tester) async {
+      await tester.runAsync(() async {
+        final surface = pastTheWallWithAText();
+        debugRastersPastTheWall = true;
+        final rastered = (await composeHalvedSurfaceImage(
+          surface,
+          over: half,
+        ))!;
+        debugRastersPastTheWall = false;
+
+        final level = (await composeHalvedSurfaceImage(surface, over: half))!;
+
+        expect(measuredHalvingIfRead, isNull, reason: '⛔전제: no table');
+        expect(debugComposesFromBytes, 0);
+        expect(await bytesOf(level), await bytesOf(rastered));
+        level.dispose();
+        rastered.dispose();
+      });
+    });
+
+    testWidgets('made now: rastered until the table has been read, from its '
+        'bytes after — and nothing on the free road', (tester) async {
+      if (engineMissing()) {
+        return;
+      }
+      halvingAsTheDevice();
+      await tester.runAsync(() async {
+        final surface = pastTheWallWithAText();
+        Uint8List? uploaded;
+        debugWholePictureUploader = (bytes) {
+          uploaded = bytes.readPremultiplied(Uint8List.fromList);
+          final recorder = ui.PictureRecorder();
+          ui.Canvas(recorder);
+          final picture = recorder.endRecording();
+          try {
+            return picture.toImageSync(bytes.width, bytes.height);
+          } finally {
+            picture.dispose();
+          }
+        };
+        ({ui.Image deferred, Future<ui.Image>? real})? madeNow({
+          bool makePictures = true,
+        }) => composeHalvedSurfaceImageSync(
+          surface,
+          makePictures: makePictures,
+          snapshot: true,
+          over: half,
+        );
+
+        final before = madeNow()!;
+        expect(debugComposesFromBytes, 0, reason: 'no table yet: rastered');
+        before.deferred.dispose();
+        (await before.real!).dispose();
+
+        await measuredHalving();
+        final want = await wantHalved(surface);
+        debugComposesFromBytes = 0;
+        final now = madeNow()!;
+        expect(debugComposesFromBytes, 1);
+        expect(uploaded, want, reason: 'its bytes halved, uploaded now');
+        expect((now.deferred.width, now.deferred.height), (54, 6));
+        now.deferred.dispose();
+        (await now.real!).dispose();
+
+        expect(
+          madeNow(makePictures: false),
+          isNull,
+          reason: 'past the wall a level is no free compose either',
+        );
+      });
+    });
+
+    testWidgets('inside the wall a level is rastered as it was, with a '
+        'table read', (tester) async {
+      halvingAsTheDevice();
+      await tester.runAsync(() async {
+        expect(await measuredHalving(), isNotNull, reason: '⛔전제');
+        final surface = laid(-16, 32);
+        const over = ui.Rect.fromLTRB(-16, 0, 32, 16);
+        (await composeHalvedSurfaceImage(surface, over: over))!.dispose();
+        composeHalvedSurfaceImageSync(
+          surface,
+          makePictures: true,
+          snapshot: false,
+          over: over,
+        )!.deferred.dispose();
+        expect(debugComposesFromBytes, 0);
       });
     });
   });
