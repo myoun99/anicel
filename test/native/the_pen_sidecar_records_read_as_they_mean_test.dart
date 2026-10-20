@@ -150,4 +150,25 @@ void main() {
       reason: 'a report with no twist is not a pen turned to 0°',
     );
   });
+
+  test('each observer\'s report is read as long as its ABI writes it — '
+      'long enough for what that ABI carries, and no longer', () {
+    Float32List posedAt(int rawAbi) {
+      final floats = Float32List(QaTabletBridge.rawFloatsAt(rawAbi));
+      for (var i = 2; i < floats.length; i += 1) {
+        floats[i] = 1;
+      }
+      return floats;
+    }
+
+    final newest = QaTabletBridge.rawStateFrom(
+      posedAt(QaTabletBridge.rawAbiVersion),
+    );
+    expect(newest.tilt, isNotNull);
+    expect(newest.twistDegrees, isNotNull);
+    final v2 = QaTabletBridge.rawStateFrom(posedAt(2));
+    expect(v2.tilt, isNotNull);
+    expect(v2.twistDegrees, isNull);
+    expect(QaTabletBridge.rawStateFrom(posedAt(1)).tilt, isNull);
+  });
 }

@@ -160,13 +160,14 @@ class QaTabletBridge {
 
   /// A report's floats at each raw ABI: flags and counter (v1), then the
   /// tilt (v2), then the twist (v3).
-  static int _rawFloatsAt(int rawAbi) => switch (rawAbi) {
+  @visibleForTesting
+  static int rawFloatsAt(int rawAbi) => switch (rawAbi) {
     1 => 2,
     2 => 5,
     _ => 7,
   };
   final Pointer<Float> _rawBuffer = malloc<Float>(
-    _rawFloatsAt(rawAbiVersion),
+    rawFloatsAt(rawAbiVersion),
   );
 
   /// Whether wintab32 loads AND an installed driver answers.
@@ -284,13 +285,13 @@ class QaTabletBridge {
       int Function()? rawStart;
       void Function()? rawStop;
       int Function(Pointer<Float>, int)? rawPoll;
-      var rawFloats = _rawFloatsAt(1);
+      var rawFloats = rawFloatsAt(1);
       try {
         final rawAbi = lib.lookupFunction<Int32 Function(), int Function()>(
           'qpr_abi_version',
         )();
         if (rawAbi >= 1 && rawAbi <= rawAbiVersion) {
-          rawFloats = _rawFloatsAt(rawAbi);
+          rawFloats = rawFloatsAt(rawAbi);
           rawStart = lib.lookupFunction<Int32 Function(), int Function()>(
             'qpr_start',
           );
@@ -307,7 +308,7 @@ class QaTabletBridge {
         rawStart = null;
         rawStop = null;
         rawPoll = null;
-        rawFloats = _rawFloatsAt(1);
+        rawFloats = rawFloatsAt(1);
       }
       return QaTabletBridge._(
         lib.lookupFunction<Int32 Function(), int Function()>('qat_available'),
