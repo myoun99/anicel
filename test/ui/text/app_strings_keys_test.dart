@@ -876,6 +876,7 @@ void main() {
     'viewBackdropColor': (s) => s.viewBackdropColor,
     'colorUseCurrent': (s) => s.colorUseCurrent,
     'colorNone': (s) => s.colorNone,
+    'colorPresent': (s) => s.colorPresent,
     'tlSections': (s) => s.tlSections,
     'tlAllDisplayedLayers': (s) => s.tlAllDisplayedLayers,
     'tlShowAll': (s) => s.tlShowAll,
