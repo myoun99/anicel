@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -133,6 +134,37 @@ void main() {
     await tester.drag(spacingSlider, const Offset(80, 0));
     await tester.pumpAndSettle();
     expect(state.spacing, greaterThan(BrushToolState.defaultSpacing));
+  });
+
+  testWidgets("the 손떨림 보정 slider sets the brush's own, which its preset "
+      'keeps (F-418-Q6)', (tester) async {
+    var state = BrushToolState.defaults;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => BrushSettingsPanel(
+                state: state,
+                onChanged: (next) => setState(() => state = next),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final slider = find.byKey(
+      const ValueKey<String>('brush-tool-stabilizer-slider'),
+    );
+    await tester.ensureVisible(slider);
+    await tester.drag(slider, const Offset(80, 0));
+    await tester.pumpAndSettle();
+    expect(
+      state.correction.stabilization,
+      greaterThan(BrushCorrection.defaultStabilization),
+    );
+    expect(state.toBrushSettings().correction, state.correction);
   });
 
   testWidgets('BrushSettingsPanel updates hardness and flow (the tip '

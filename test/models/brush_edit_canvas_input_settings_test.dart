@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 
@@ -201,12 +202,18 @@ void main() {
         size: 7,
         hardness: 0.8,
         antiAlias: BrushAntiAlias.none,
+        correction: const BrushCorrection(stabilization: 30),
       );
       final erasing = brush.copyWith(
         erase: true,
         blendMode: BrushBlendMode.erase,
       );
       expect(erasing.antiAlias, BrushAntiAlias.none);
+      expect(
+        erasing.correction,
+        const BrushCorrection(stabilization: 30),
+        reason: 'a mapped-erase stroke steadies as its brush does (F-418)',
+      );
       expect(
         brush.copyWith(color: 0xFF000000).copyWith(color: brush.color),
         brush,

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -86,6 +88,50 @@ void main() {
     );
   });
 
+  testWidgets("the line's clock starts at the press", (tester) async {
+    // The move comes 8 ms after the press: the line closes that much of
+    // the way, not the share of the 16 ms since the clocks' zero.
+    final lag = const BrushCorrection(stabilization: 30).lag!;
+    final share = 1 - math.exp(-8000 / lag.inMicroseconds);
+    final steadied = await _draw(tester, const [
+      Offset(10, 20),
+      Offset(40, 20),
+    ], stabilization: 30);
+    expect(
+      _reach(steadied.beforeLift),
+      closeTo(10 + 30 * share, 1.01),
+      reason: 'within a dab spacing of where the line got to',
+    );
+  });
+
+  testWidgets('the line carries what the pen read where the line is — a '
+      'harder press reaches it as the line does — and lifts with what the '
+      'pen read last', (tester) async {
+    const pressures = [0.2, 0.2, 0.2, 1.0, 1.0, 1.0];
+    final steadied = await _draw(
+      tester,
+      straight,
+      stabilization: 100,
+      pressures: pressures,
+    );
+    final pressed = steadied.beforeLift.map((dab) => dab.pressure);
+    expect(pressed.reduce(math.max), lessThan(0.5));
+    expect(pressed.reduce(math.max), greaterThan(0.2));
+    expect(steadied.committed.last.pressure, closeTo(1.0, 1e-9));
+
+    final plain = await _draw(
+      tester,
+      straight,
+      stabilization: 0,
+      pressures: pressures,
+    );
+    expect(
+      plain.beforeLift.map((dab) => dab.pressure).reduce(math.max),
+      closeTo(1.0, 1e-9),
+      reason: 'the pen itself pressed harder',
+    );
+  });
+
   testWidgets('a resting pen is reached before it lifts — the line keeps '
       'going, on screen the frame it moves, and then asks for no more '
       'frames', (tester) async {
@@ -121,13 +167,15 @@ double _reach(List<BrushDab> dabs) =>
 
 /// Draws [hand] with a stylus, a sample every 8 ms, on a fresh canvas at
 /// 100%: the dabs laid before the lift and those the stroke committed.
-/// [rest] runs between the last move and the lift with the dabs laid so far.
+/// [rest] runs between the last move and the lift with the dabs laid so far;
+/// [pressures], one per point of [hand], are what the pen reads there.
 Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
   WidgetTester tester,
   List<Offset> hand, {
   required double stabilization,
   ActiveStrokeOverlayModel? overlay,
   Future<void> Function(List<BrushDab> laid)? rest,
+  List<double>? pressures,
 }) async {
   final committed = <List<BrushDab>>[];
   final laid = debugStrokeDabsLaid = <BrushDab>[];
@@ -158,7 +206,10 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
   );
 
   var time = Duration.zero;
+  var sample = 0;
   PointerEvent at(Offset local, {required bool down}) {
+    final pressure = pressures?[sample] ?? 1.0;
+    sample += 1;
     time += const Duration(milliseconds: 8);
     final position = canvasGlobalOffset(tester, local);
     return down
@@ -167,14 +218,18 @@ Future<({List<BrushDab> beforeLift, List<BrushDab> committed})> _draw(
             kind: PointerDeviceKind.stylus,
             position: position,
             timeStamp: time,
-            pressure: 1,
+            pressure: pressure,
+            pressureMin: 0,
+            pressureMax: 1,
           )
         : PointerMoveEvent(
             pointer: 1,
             kind: PointerDeviceKind.stylus,
             position: position,
             timeStamp: time,
-            pressure: 1,
+            pressure: pressure,
+            pressureMin: 0,
+            pressureMax: 1,
           );
   }
 

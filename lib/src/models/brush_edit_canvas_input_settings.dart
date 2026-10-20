@@ -46,10 +46,7 @@ class BrushEditCanvasInputSettings {
     bool erase = false,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
-    // None, as the pull string it replaced was off here (F-418) — not the
-    // brush's own default: this is the canvas's flat form, and a stroke the
-    // tool state gives it carries its brush's ([fromShape]).
-    BrushCorrection correction = BrushCorrection.none,
+    BrushCorrection correction = const BrushCorrection(),
   }) {
     assert(size > 0.0, 'BrushEditCanvasInputSettings.size must be > 0.');
     assert(
@@ -158,11 +155,7 @@ class BrushEditCanvasInputSettings {
   /// value now that the public constructor is a (non-const) factory.
   static const BrushEditCanvasInputSettings defaults =
       BrushEditCanvasInputSettings._raw(
-        shape: BrushShape(
-          size: 1.0,
-          spacing: 0.25,
-          correction: BrushCorrection.none,
-        ),
+        shape: BrushShape(size: 1.0, spacing: 0.25),
         erase: false,
         blendMode: BrushBlendMode.color,
       );

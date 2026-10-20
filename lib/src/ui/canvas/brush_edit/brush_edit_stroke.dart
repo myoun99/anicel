@@ -58,12 +58,22 @@ class _BrushEditStroke {
       // a stroke is one window's now (H49, 09-30), and the press still
       // decides its dice.
       dice: Object.hash(event.pointer, event.timeStamp),
-      startedAt: event.timeStamp,
     );
     // A press off the pasteboard lays nothing down; the stroke's first dab
-    // comes where a move crosses in.
+    // comes where a move crosses in. The line starts steadying either way,
+    // when the press is painted: with the readings it is painted with, the
+    // first a held press waited for and not the stand-in it was taken with.
     _state._opening.press(
-      startsInsidePasteboard ? () => _paintPress(canvasPosition) : () {},
+      () {
+        _startSteadying(
+          strokeSettings,
+          at: canvasPosition,
+          startedAt: event.timeStamp,
+        );
+        if (startsInsidePasteboard) {
+          _paintPress(canvasPosition);
+        }
+      },
       at: event.timeStamp,
       position: canvasPosition,
     );
@@ -129,15 +139,15 @@ class _BrushEditStroke {
   }
 
   /// THE PEN'S STROKE IS ARMED — everything it stands on before its first
-  /// dab: the host hears that one is in flight, the stabiliser, the snap,
-  /// the symmetry, the dynamics and the ground mixer are made for it from
-  /// [strokeSettings], and the overlay opens in its blend.
+  /// dab: the host hears that one is in flight, the snap, the symmetry, the
+  /// dynamics and the ground mixer are made for it from [strokeSettings],
+  /// and the overlay opens in its blend. The stabiliser starts on the press
+  /// ([_startSteadying]).
   void _arm(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
     required bool startsInsidePasteboard,
     required int dice,
-    required Duration startedAt,
   }) {
     _state.widget.onActiveStrokeChanged?.call(true);
     _armItsOwn(
@@ -146,10 +156,6 @@ class _BrushEditStroke {
       startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
     );
-    final lag = strokeSettings.shape.correction.lag;
-    _state._stabilizer = lag == null
-        ? null
-        : StrokeStabilizer(lag: lag, start: at, at: startedAt);
     _openOverlay(strokeSettings);
     _state._prepareLiveRasterizer();
   }
@@ -180,7 +186,8 @@ class _BrushEditStroke {
 
   /// What a stroke stands on that is its OWN — the snap, the symmetry, the
   /// dice, the dynamics, the ground mixer, the dabs laid so far — made
-  /// afresh from [strokeSettings]. The stabiliser is the pen's ([_arm]).
+  /// afresh from [strokeSettings]. The stabiliser is the pen's
+  /// ([_startSteadying]).
   void _armItsOwn(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
@@ -235,14 +242,15 @@ class _BrushEditStroke {
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the
     // three-route parity holds by construction (P7). A held sample reaches
-    // it when it is painted, in the order it came, at the time it came.
+    // it when it is painted, in the order it came, at the time it came,
+    // with the readings it is painted with.
     void paint() {
       final stabilizer = _state._stabilizer;
       if (stabilizer == null) {
         advanceStrokeThroughGuides(penPosition);
         return;
       }
-      advanceStrokeThroughGuides(stabilizer.follow(penPosition, at: at));
+      _paintSteadied(stabilizer.follow(penPosition, _readings, at: at));
       _keepSteadying();
     }
     if (_state._opening.holds(
@@ -254,6 +262,47 @@ class _BrushEditStroke {
       return;
     }
     paint();
+  }
+
+  /// The pen's line starts steadying at [at], on the press — or steadies
+  /// nothing, for a brush that corrects nothing (F-418).
+  void _startSteadying(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required Duration startedAt,
+  }) {
+    final lag = strokeSettings.shape.correction.lag;
+    _state._stabilizer = lag == null
+        ? null
+        : StrokeStabilizer(
+            lag: lag,
+            start: at,
+            readings: _readings,
+            at: startedAt,
+          );
+  }
+
+  /// What the pen reads now.
+  PenReadings get _readings => (
+    pressure: _state._currentPressure,
+    lean: _state._currentTilt,
+    speed: _state._currentSpeed,
+  );
+
+  /// Lays the line to where it has got to, with what it reads there — and
+  /// leaves the pen's current readings as they were, as the opening paints
+  /// what waited ([_BrushEditOpening._paintWaiting]).
+  void _paintSteadied(SteadiedPoint brush) {
+    final pressure = _state._currentPressure;
+    final tilt = _state._currentTilt;
+    final speed = _state._currentSpeed;
+    _state._currentPressure = brush.readings.pressure;
+    _state._currentTilt = brush.readings.lean;
+    _state._currentSpeed = brush.readings.speed;
+    advanceStrokeThroughGuides(brush.position);
+    _state._currentPressure = pressure;
+    _state._currentTilt = tilt;
+    _state._currentSpeed = speed;
   }
 
   /// While the line has not reached the pen, frames move it on — Clip
@@ -274,7 +323,7 @@ class _BrushEditStroke {
     }
     final moved = stabilizer.lookAtFrame(frameAt);
     if (moved != null) {
-      advanceStrokeThroughGuides(moved);
+      _paintSteadied(moved);
       // On screen THIS frame: the queue's own flush may have run already.
       _state._overlay.flushPendingOverlayDabs();
     }
@@ -285,7 +334,7 @@ class _BrushEditStroke {
   void finishSteadying() {
     final rest = _state._stabilizer?.finish();
     if (rest != null) {
-      advanceStrokeThroughGuides(rest);
+      _paintSteadied(rest);
     }
   }
 

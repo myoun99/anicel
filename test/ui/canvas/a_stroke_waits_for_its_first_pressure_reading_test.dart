@@ -35,6 +35,10 @@ import '../brush_canvas_test_helpers.dart';
 /// driver took while the pen still hovered. The stroke painted it. It now
 /// waits for the contact's first READING and paints every sample that
 /// waited with it.
+///
+/// These pin which reading lands on which sample, so they draw with brushes
+/// that steady nothing: a steadied line carries its readings in behind the
+/// pen (F-418). The one about the stabiliser says its own.
 void main() {
   setUp(() {
     CanvasTouchContacts.reset();
@@ -217,6 +221,7 @@ void main() {
       final results = await _strokes(
         tester,
         BrushEditCanvasInputSettings(
+          correction: BrushCorrection.none,
           size: 8,
           curves: {
             (BrushPressureTarget.size, BrushInputSource.tilt):
@@ -972,10 +977,17 @@ void main() {
     });
 
     for (final (name, brush) in [
-      ('a brush that reads none of it', BrushEditCanvasInputSettings(size: 10)),
+      (
+        'a brush that reads none of it',
+        BrushEditCanvasInputSettings(
+          size: 10,
+          correction: BrushCorrection.none,
+        ),
+      ),
       (
         'scatter thrown all around',
         BrushEditCanvasInputSettings(
+          correction: BrushCorrection.none,
           size: 10,
           scatterRadiusRatio: 1.0,
           scatterBothAxes: true,
@@ -1474,11 +1486,13 @@ const double _stand = 0.33;
 
 final BrushEditCanvasInputSettings _pressureBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 40,
       sizePressureCurve: BrushPressureCurve.identity(),
     );
 
 final BrushEditCanvasInputSettings _tiltBrush = BrushEditCanvasInputSettings(
+  correction: BrushCorrection.none,
   size: 40,
   curves: {
     (BrushPressureTarget.size, BrushInputSource.tilt):
@@ -1488,6 +1502,7 @@ final BrushEditCanvasInputSettings _tiltBrush = BrushEditCanvasInputSettings(
 
 final BrushEditCanvasInputSettings _directionBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 10,
       roundness: 0.5,
       rotationMode: BrushTipRotationMode.direction,
@@ -1495,6 +1510,7 @@ final BrushEditCanvasInputSettings _directionBrush =
 
 final BrushEditCanvasInputSettings _acrossScatterBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 10,
       scatterRadiusRatio: 1.0,
       scatterBothAxes: false,
@@ -1507,6 +1523,7 @@ const PenLedgerReading _estimatedReading = (
 
 final BrushEditCanvasInputSettings _speedAndPressureBrush =
     BrushEditCanvasInputSettings(
+      correction: BrushCorrection.none,
       size: 40,
       curves: {
         (BrushPressureTarget.size, BrushInputSource.pressure):
@@ -1517,6 +1534,7 @@ final BrushEditCanvasInputSettings _speedAndPressureBrush =
     );
 
 final BrushEditCanvasInputSettings _speedBrush = BrushEditCanvasInputSettings(
+  correction: BrushCorrection.none,
   size: 40,
   curves: {
     (BrushPressureTarget.size, BrushInputSource.speed):
