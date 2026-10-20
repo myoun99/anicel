@@ -7,6 +7,7 @@
 #include <flutter/method_channel.h>
 
 #include <memory>
+#include <vector>
 
 #include "win32_window.h"
 
@@ -40,6 +41,22 @@ class FlutterWindow : public Win32Window {
   // Puts this window full screen over its monitor, or back where it stood,
   // and says on the channel which it is now.
   void SetFullScreen(bool on);
+
+  // The view's key messages on their way to the engine: a modifier Windows
+  // has let go of is let go of in the engine too (F-411). The constants by
+  // kLetGoWithWindows say why.
+  static LRESULT CALLBACK LetGoWithWindows(HWND view, UINT message,
+                                           WPARAM wparam, LPARAM lparam,
+                                           UINT_PTR id, DWORD_PTR window);
+
+  // A modifier key-down handed to the engine and not yet let go of: the key
+  // and its shape — the scan code and the extended bit, which name the
+  // physical key the engine records.
+  struct HeldModifier {
+    WPARAM key;
+    LPARAM shape;
+  };
+  std::vector<HeldModifier> held_modifiers_;
 
   // The project to run.
   flutter::DartProject project_;

@@ -44,6 +44,9 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 # ImmAssociateContextEx: the IME listens only while a text field holds the
 # keyboard (I-19 ④ — flutter_window.cpp says why).
 target_link_libraries(${BINARY_NAME} PRIVATE "imm32.lib")
+# SetWindowSubclass: a modifier Windows let go of is let go of in the
+# engine too (F-411 — flutter_window.cpp says why).
+target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

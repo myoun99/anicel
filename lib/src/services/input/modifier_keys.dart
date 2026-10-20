@@ -28,6 +28,11 @@ import '../../native/windows_key_state.dart';
 /// every key event. ⛔Not only of the two the engine drops: every modifier
 /// is asked the same way, so no reader has to know which.
 ///
+/// ⚠️The other way round — the record holding a modifier Windows let go of
+/// (F-411) — never reaches here: the Windows runner hands the engine that
+/// key's up (`windows/runner/flutter_window.cpp`), so the record every
+/// reader shares is put right, not only these getters.
+///
 /// ⚠️A widget test never touches the hardware: under `FLUTTER_TEST` the
 /// machine's own keyboard is not asked, and [debugWindowsKeyDown] stands in
 /// for it — on any machine.

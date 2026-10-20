@@ -1,8 +1,10 @@
 #include "flutter_window.h"
 
+#include <commctrl.h>
 #include <flutter/standard_method_codec.h>
 #include <imm.h>
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <variant>
@@ -93,6 +95,71 @@ constexpr char kWindowChannel[] = "anicel/window";
 constexpr char kSetFullScreen[] = "setFullScreen";
 constexpr char kFullScreenChanged[] = "fullScreenChanged";
 
+// 🚨★★★F-411 — A MODIFIER WINDOWS LET GO OF IS LET GO OF IN THE ENGINE TOO.
+//
+// 유저 2026-10-19: 「입력 인스펙터 확인하니 보통은 D held [D]라면 D held
+// [Shift right, D] 라고 되있었음 … 다른 앱 … 정상으로 쉬프트없이 q라고
+// 입력됨 … 앱 재기동하니까 해결되있음」.
+//
+// The engine (Flutter 3.47.4, keyboard_key_embedder_handler.cc) records a key
+// by its physical key — the scan code and the extended bit — and before every
+// key event syncs Shift, Ctrl, Alt and the Windows keys to GetKeyState. But
+// it syncs ONE physical key per virtual key, the last one it saw
+// (UpdateLastSeenCriticalKey). A key-down of another shape — the fake Shift
+// Windows sends round a gray arrow while Shift is held, E0 36 for the right
+// one — is a key of its own there, named Shift Right; the real Shift going up
+// makes the real key the last seen, and nothing lets the other go. Every
+// reader of the record (the shortcut table, the framework's own shortcuts,
+// ModifierKeys) then holds Shift until the app restarts, while Windows and
+// every other app do not. 🧪tool/probe/shift_probe_main.dart drives that
+// shape into this runner: before this, D held [Shift Right, Key D].
+//
+// So the runner sees the view's key messages before the engine, keeps each
+// modifier key-down it hands over by its shape, and once Windows says that
+// key is up hands the engine the same shape's key-up — the way the engine
+// itself forges Ctrl Left's up round AltGr (keyboard_manager.cc). An up the
+// engine holds nothing for it drops (`had_record`), so one too many costs
+// nothing. ⛔Not by dropping the extended Shift messages: that is one shape
+// that leaves a key behind, not the only one the record can be handed.
+constexpr UINT_PTR kLetGoWithWindows = 0x411;
+
+// The bits of a key message's LPARAM that name its physical key: the scan
+// code (16-23) and the extended bit (24).
+constexpr LPARAM kKeyShape = 0x01FF0000;
+
+// A key-up's other bits: one stroke, the key was down, and it goes up.
+constexpr LPARAM kKeyUp = static_cast<LPARAM>(0xC0000001);
+
+// What GetKeyState is asked of a modifier's key message — either side of
+// Shift, Ctrl and Alt as one, as Windows names them in the message; each
+// Windows key alone. 0 for a key that is no modifier.
+int ModifierAskedOf(WPARAM key) {
+  switch (key) {
+    case VK_SHIFT:
+    case VK_LSHIFT:
+    case VK_RSHIFT:
+      return VK_SHIFT;
+    case VK_CONTROL:
+    case VK_LCONTROL:
+    case VK_RCONTROL:
+      return VK_CONTROL;
+    case VK_MENU:
+    case VK_LMENU:
+    case VK_RMENU:
+      return VK_MENU;
+    case VK_LWIN:
+    case VK_RWIN:
+      return static_cast<int>(key);
+    default:
+      return 0;
+  }
+}
+
+bool IsKeyMessage(UINT message) {
+  return message == WM_KEYDOWN || message == WM_SYSKEYDOWN ||
+         message == WM_KEYUP || message == WM_SYSKEYUP;
+}
+
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
@@ -119,6 +186,9 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   ListenForTheIme(flutter_controller_->view()->GetNativeWindow());
   ListenForFullScreen();
+  ::SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
+                      LetGoWithWindows, kLetGoWithWindows,
+                      reinterpret_cast<DWORD_PTR>(this));
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
@@ -204,6 +274,46 @@ void FlutterWindow::AskTheAppToClose(HWND window) {
           ::PostMessage(window, kCloseApproved, 0, 0);
         }
       });
+}
+
+LRESULT CALLBACK FlutterWindow::LetGoWithWindows(HWND view, UINT message,
+                                                 WPARAM wparam, LPARAM lparam,
+                                                 UINT_PTR id,
+                                                 DWORD_PTR window) {
+  if (message == WM_NCDESTROY) {
+    ::RemoveWindowSubclass(view, LetGoWithWindows, id);
+  } else if (IsKeyMessage(message)) {
+    std::vector<HeldModifier>& held =
+        reinterpret_cast<FlutterWindow*>(window)->held_modifiers_;
+    const LPARAM shape = lparam & kKeyShape;
+    const auto is_this_key = [wparam, shape](const HeldModifier& modifier) {
+      return modifier.key == wparam && modifier.shape == shape;
+    };
+    // Before this key reaches the engine, so it is read with the modifiers
+    // Windows holds.
+    std::vector<HeldModifier> let_go;
+    for (auto it = held.begin(); it != held.end();) {
+      if (!is_this_key(*it) && ::GetKeyState(ModifierAskedOf(it->key)) >= 0) {
+        let_go.push_back(*it);
+        it = held.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    for (const HeldModifier& modifier : let_go) {
+      ::DefSubclassProc(view, WM_KEYUP, modifier.key, modifier.shape | kKeyUp);
+    }
+    if (ModifierAskedOf(wparam) != 0) {
+      const auto same = std::find_if(held.begin(), held.end(), is_this_key);
+      const bool down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+      if (down && same == held.end()) {
+        held.push_back({wparam, shape});
+      } else if (!down && same != held.end()) {
+        held.erase(same);
+      }
+    }
+  }
+  return ::DefSubclassProc(view, message, wparam, lparam);
 }
 
 void FlutterWindow::ListenForTheIme(HWND view) {
