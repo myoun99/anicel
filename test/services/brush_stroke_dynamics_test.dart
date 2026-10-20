@@ -186,8 +186,9 @@ void main() {
 
     test('no tilt, or an upright pen, leaves the base angle', () {
       final [mouse] = dynamics.apply([_dab()], firstSequence: 0);
+      // An azimuth it would add if it read one: upright, it says nothing.
       final [upright] = dynamics.apply(
-        [leaning(altitude: 1.0)],
+        [leaning(altitude: 1.0, azimuth: 70)],
         firstSequence: 0,
       );
       expect(mouse.angleDegrees, 30.0);
