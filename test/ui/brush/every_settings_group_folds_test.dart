@@ -29,8 +29,18 @@ void main() {
   final plain = BrushToolState.defaults.toBrushSettings();
   final tipFolded = plain.copyWith(folded: {BrushSettingsGroup.tip});
 
+  /// The group header named [label] — not a row that shares its word (the
+  /// texture's tip row is named as its group is).
+  Finder headerOf(String label) => find.descendant(
+    of: find.byType(ToolSettingsGroupHeader),
+    matching: find.text(label),
+  );
+
   Finder arrowOf(String header, IconData icon) => find.descendant(
-    of: find.ancestor(of: find.text(header), matching: find.byType(Row)),
+    of: find.ancestor(
+      of: headerOf(header),
+      matching: find.byType(ToolSettingsGroupHeader),
+    ),
     matching: find.byIcon(icon),
   );
 
@@ -134,7 +144,7 @@ void main() {
       expect(find.byKey(roundness), findsOneWidget);
       expect(arrowOf(strings.brGroupTip, Icons.expand_more), findsOneWidget);
 
-      await tester.tap(find.text(strings.brGroupTip));
+      await tester.tap(headerOf(strings.brGroupTip));
       await tester.pump();
 
       expect(notifier.value.folded, {BrushSettingsGroup.tip});
@@ -143,7 +153,7 @@ void main() {
       expect(find.byKey(flow), findsOneWidget, reason: 'インク stays open');
       expect(find.byKey(stabilizer), findsOneWidget, reason: '補正 too');
 
-      await tester.tap(find.text(strings.brGroupTip));
+      await tester.tap(headerOf(strings.brGroupTip));
       await tester.pump();
 
       expect(notifier.value.folded, isEmpty);
@@ -171,7 +181,8 @@ void main() {
       final allRows = rowCount();
 
       for (final MapEntry(key: header, value: group) in groups.entries) {
-        await tester.tap(find.text(header));
+        await tester.ensureVisible(headerOf(header));
+        await tester.tap(headerOf(header));
         await tester.pump();
         expect(notifier.value.folded, {group}, reason: header);
         expect(rowCount(), lessThan(allRows), reason: header);
@@ -180,7 +191,8 @@ void main() {
           findsOneWidget,
           reason: header,
         );
-        await tester.tap(find.text(header));
+        await tester.ensureVisible(headerOf(header));
+        await tester.tap(headerOf(header));
         await tester.pump();
         expect(notifier.value.folded, isEmpty, reason: header);
       }
@@ -230,7 +242,7 @@ void main() {
       expect(byKey('text-tool-font'), findsOneWidget);
       expect(byKey('text-tool-rotation'), findsOneWidget);
 
-      await tester.tap(find.text(strings.textToolLetters));
+      await tester.tap(headerOf(strings.textToolLetters));
       await tester.pump();
       expect(byKey('text-tool-font'), findsNothing);
       expect(byKey('text-tool-rotation'), findsOneWidget);
@@ -248,7 +260,7 @@ void main() {
       await pumpTool(tester, CanvasTool.text);
       expect(byKey('text-tool-font'), findsNothing);
 
-      await tester.tap(find.text(strings.textToolLetters));
+      await tester.tap(headerOf(strings.textToolLetters));
       await tester.pump();
       expect(byKey('text-tool-font'), findsOneWidget);
     });
@@ -258,13 +270,13 @@ void main() {
     ) async {
       await pumpTool(tester, CanvasTool.move);
 
-      await tester.tap(find.text(strings.trFinish));
+      await tester.tap(headerOf(strings.trFinish));
       await tester.pump();
       expect(byKey('move-antialias-switch'), findsNothing);
       expect(byKey('move-reset-button'), findsOneWidget);
       expect(arrowOf(strings.trFinish, Icons.chevron_right), findsOneWidget);
 
-      await tester.tap(find.text(strings.trFinish));
+      await tester.tap(headerOf(strings.trFinish));
       await tester.pump();
       expect(byKey('move-antialias-switch'), findsOneWidget);
     });
@@ -303,14 +315,14 @@ void main() {
 
       await pick('a');
       expect(point, findsOneWidget);
-      await tester.tap(find.text(strings.guideVanishingPoint));
+      await tester.tap(headerOf(strings.guideVanishingPoint));
       await tester.pump();
       expect(point, findsNothing);
       expect(byKey('guide-add-vanishing-point'), findsOneWidget);
 
       await pick('b');
       expect(point, findsNothing);
-      await tester.tap(find.text(strings.guideVanishingPoint));
+      await tester.tap(headerOf(strings.guideVanishingPoint));
       await tester.pump();
       expect(point, findsOneWidget);
     });
