@@ -194,6 +194,9 @@ void main() {
   test('a link paste lands in the sibling too, above its own row there, '
       'linked with them all — and its undo takes both back', () {
     final repository = linkedPair();
+    // A row of the sibling's own under its shared one: its seat there is
+    // its own, not the one aimed at here.
+    repository.insertLayer(cutId: b, layer: row('own-b'), index: 0);
     final history = HistoryManager();
     final coordinator = CutCommandCoordinator(
       repository: repository,
@@ -209,8 +212,8 @@ void main() {
 
     expect(idsIn(repository, a), [const LayerId('shared-a'), copy]);
     final inB = idsIn(repository, b);
-    expect(inB, hasLength(2));
-    expect(inB.first, const LayerId('shared-b'));
+    expect(inB, hasLength(3));
+    expect(inB.take(2), [const LayerId('own-b'), const LayerId('shared-b')]);
     final copyB = inB.last;
     expect(copyB, isNot(copy));
     expect(
@@ -225,7 +228,10 @@ void main() {
     );
 
     history.undo();
-    expect(idsIn(repository, b), [const LayerId('shared-b')]);
+    expect(idsIn(repository, b), [
+      const LayerId('own-b'),
+      const LayerId('shared-b'),
+    ]);
     expect(
       repository.requireProject().linkRegistry.groups.single.members,
       hasLength(2),
@@ -236,7 +242,8 @@ void main() {
   });
 
   test('a link paste of a group carrying its folder ties the copied folders '
-      'to each other, never to the folder they copy', () {
+      'to each other, never to the folder they copy — and no two of its '
+      'groups share an id', () {
     Layer rider(CutId cutId) => Layer(
       id: LayerId('rider-${cutId.value}'),
       name: 'rider',
@@ -266,11 +273,9 @@ void main() {
           ),
         ],
         linkRegistry: LayerLinkRegistry(
-          groups: [
-            pair('link-base', 'base'),
-            pair('link-rider', 'rider'),
-            pair('link-org', 'org'),
-          ],
+          // The riders are each their own cut's: a copy joins its rider in
+          // a group of their own, in either cut.
+          groups: [pair('link-base', 'base'), pair('link-org', 'org')],
         ),
       ),
     );
@@ -310,13 +315,14 @@ void main() {
       [const LayerId('org-a'), const LayerId('org-b')],
     );
     expect(
-      registry.counterpartIn(
-        cutId: b,
-        layerId: riderCopy.id,
-        targetCutId: a,
-      ),
-      isNotNull,
-      reason: 'the rider copies share the riders\' picture',
+      registry
+          .groupOf(cutId: b, layerId: riderCopy.id)
+          ?.members
+          .map((member) => member.layerId),
+      [const LayerId('rider-b'), riderCopy.id],
+      reason: 'the rider\'s copy shares its rider\'s picture',
     );
+    final ids = [for (final group in registry.groups) group.id];
+    expect(ids.toSet(), hasLength(ids.length));
   });
 }
