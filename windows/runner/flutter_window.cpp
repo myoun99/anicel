@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "pen_leaves.h"
 
 namespace {
 
@@ -250,6 +251,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_ENABLE:
+      // F-427 — pen_leaves.h says why.
+      if (wparam && flutter_controller_) {
+        LetPensGo(flutter_controller_->view()->GetNativeWindow());
+      }
+      break;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
@@ -286,6 +293,7 @@ LRESULT CALLBACK FlutterWindow::LetGoWithWindows(HWND view, UINT message,
                                                  WPARAM wparam, LPARAM lparam,
                                                  UINT_PTR id,
                                                  DWORD_PTR window) {
+  NotePenPointer(message, wparam);
   if (message == WM_NCDESTROY) {
     ::RemoveWindowSubclass(view, LetGoWithWindows, id);
   } else if (IsKeyMessage(message)) {

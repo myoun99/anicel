@@ -43,8 +43,9 @@ class FlutterWindow : public Win32Window {
   // and says on the channel which it is now.
   void SetFullScreen(bool on);
 
-  // The view's key messages on their way to the engine: a modifier Windows
-  // has let go of is let go of in the engine too (F-411). The constants by
+  // The view's messages on their way to the engine: a modifier Windows has
+  // let go of is let go of in the engine too (F-411), and a pen is noted for
+  // its leave to be handed over (F-427, pen_leaves.h). The constants by
   // kLetGoWithWindows say why.
   static LRESULT CALLBACK LetGoWithWindows(HWND view, UINT message,
                                            WPARAM wparam, LPARAM lparam,

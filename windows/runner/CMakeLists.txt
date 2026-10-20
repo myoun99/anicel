@@ -8,6 +8,7 @@ project(runner LANGUAGES CXX)
 # Any new source files that you add to the application should be added here.
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
+  "pen_leaves.cpp"
   "launch_splash.cpp"
   "main.cpp"
   "utils.cpp"
@@ -46,7 +47,8 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 # keyboard (I-19 ④ — flutter_window.cpp says why).
 target_link_libraries(${BINARY_NAME} PRIVATE "imm32.lib")
 # SetWindowSubclass: a modifier Windows let go of is let go of in the
-# engine too (F-411 — flutter_window.cpp says why).
+# engine too (F-411 — flutter_window.cpp says why), and a disabled window
+# lets go of the pens its view heard (F-427 — pen_leaves.h says why).
 target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
 # WIC: the launch splash decodes its picture (launch_splash.cpp).
 target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
