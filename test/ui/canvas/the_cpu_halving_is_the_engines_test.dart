@@ -45,14 +45,12 @@ void main() {
     final half = Uint8List(width * height);
     halveRgbaWords(
       table,
-      bytes.buffer.asUint32List(),
-      fromStart: 0,
-      fromStride: width,
-      width: width,
-      height: height,
-      into: half.buffer.asUint32List(),
-      intoStart: 0,
-      intoStride: width ~/ 2,
+      from: (
+        rows: (words: bytes.buffer.asUint32List(), start: 0, stride: width),
+        width: width,
+        height: height,
+      ),
+      into: (words: half.buffer.asUint32List(), start: 0, stride: width ~/ 2),
     );
     return half;
   }
@@ -151,14 +149,16 @@ void main() {
     // 9-wide target.
     halveRgbaWords(
       table,
-      from.buffer.asUint32List(),
-      fromStart: 4 * 12 + 2,
-      fromStride: 12,
-      width: 8,
-      height: 6,
-      into: into,
-      intoStart: 1 * 9 + 3,
-      intoStride: 9,
+      from: (
+        rows: (
+          words: from.buffer.asUint32List(),
+          start: 4 * 12 + 2,
+          stride: 12,
+        ),
+        width: 8,
+        height: 6,
+      ),
+      into: (words: into, start: 1 * 9 + 3, stride: 9),
     );
     final whole = halvedBy(from, 12, 10, deviceRule).buffer.asUint32List();
     for (var y = 0; y < 6; y += 1) {

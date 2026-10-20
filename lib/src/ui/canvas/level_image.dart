@@ -312,37 +312,37 @@ Future<Uint8List?> _measureHalving() async {
   return Uint8List.fromList(table);
 }
 
+/// Rows of rgba8888 [words]: the first texel at [start], a row every
+/// [stride] words.
+typedef RgbaWordRows = ({Uint32List words, int start, int stride});
+
 /// Halves premultiplied rgba8888 words through the engine's measured
-/// halving ([measuredHalving]): each of [width] × [height] (both even)
-/// texels of [from], a row every [fromStride] words from [fromStart], halved
-/// into [into] at [intoStart], a row every [intoStride] words — each value
-/// [table]'s for the sum of its 2×2 block's four.
+/// halving ([measuredHalving]): the [width] × [height] texels (both even)
+/// of [from], halved into [into] — each value [table]'s for the sum of its
+/// 2×2 block's four.
 ///
 /// Two channels a lane: a word's alternate bytes masked apart sum without
 /// carrying into each other (four values sum to at most 1020), and land
 /// back where they came from — whichever end of the word a channel is.
 void halveRgbaWords(
-  Uint8List table,
-  Uint32List from, {
-  required int fromStart,
-  required int fromStride,
-  required int width,
-  required int height,
-  required Uint32List into,
-  required int intoStart,
-  required int intoStride,
+  Uint8List table, {
+  required ({RgbaWordRows rows, int width, int height}) from,
+  required RgbaWordRows into,
 }) {
+  final (rows: source, :width, :height) = from;
   assert(width.isEven && height.isEven, 'a halving of whole blocks');
   const mask = 0x00FF00FF;
+  final words = source.words;
+  final target = into.words;
   for (var y = 0; y < height ~/ 2; y += 1) {
-    var top = fromStart + 2 * y * fromStride;
-    var bottom = top + fromStride;
-    var out = intoStart + y * intoStride;
+    var top = source.start + 2 * y * source.stride;
+    var bottom = top + source.stride;
+    var out = into.start + y * into.stride;
     for (var x = 0; x < width ~/ 2; x += 1) {
-      final a = from[top];
-      final b = from[top + 1];
-      final c = from[bottom];
-      final d = from[bottom + 1];
+      final a = words[top];
+      final b = words[top + 1];
+      final c = words[bottom];
+      final d = words[bottom + 1];
       top += 2;
       bottom += 2;
       final even = (a & mask) + (b & mask) + (c & mask) + (d & mask);
@@ -351,7 +351,7 @@ void halveRgbaWords(
           ((b >> 8) & mask) +
           ((c >> 8) & mask) +
           ((d >> 8) & mask);
-      into[out] =
+      target[out] =
           table[even & 0xFFFF] |
           table[odd & 0xFFFF] << 8 |
           table[even >> 16] << 16 |

@@ -622,16 +622,22 @@ class _BytesFill {
     part.premultiplyInto(native, tile, scratch);
     halveRgbaWords(
       table,
-      scratch.cast<Uint32>().asTypedList(part.width * part.height),
-      fromStart: 0,
-      fromStride: part.width,
-      width: part.width,
-      height: part.height,
-      into: target.cast<Uint32>().asTypedList(width * height),
-      intoStart:
-          (tile.top - bytes.region.top) ~/ 2 * width +
-          (tile.left - bytes.region.left) ~/ 2,
-      intoStride: width,
+      from: (
+        rows: (
+          words: scratch.cast<Uint32>().asTypedList(part.width * part.height),
+          start: 0,
+          stride: part.width,
+        ),
+        width: part.width,
+        height: part.height,
+      ),
+      into: (
+        words: target.cast<Uint32>().asTypedList(width * height),
+        start:
+            (tile.top - bytes.region.top) ~/ 2 * width +
+            (tile.left - bytes.region.left) ~/ 2,
+        stride: width,
+      ),
     );
   }
 
@@ -647,14 +653,19 @@ class _BytesFill {
       final half = Uint8List(byteLength);
       halveRgbaWords(
         table,
-        whole.buffer.asUint32List(whole.offsetInBytes, whole.length ~/ 4),
-        fromStart: 0,
-        fromStride: bytes.width,
-        width: bytes.width,
-        height: bytes.height,
-        into: half.buffer.asUint32List(),
-        intoStart: 0,
-        intoStride: width,
+        from: (
+          rows: (
+            words: whole.buffer.asUint32List(
+              whole.offsetInBytes,
+              whole.length ~/ 4,
+            ),
+            start: 0,
+            stride: bytes.width,
+          ),
+          width: bytes.width,
+          height: bytes.height,
+        ),
+        into: (words: half.buffer.asUint32List(), start: 0, stride: width),
       );
       return half;
     });
