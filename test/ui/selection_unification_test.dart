@@ -516,6 +516,51 @@ void main() {
     expect(region.containsPoint(CanvasPoint(x: 170, y: 105)), isFalse);
   });
 
+  testWidgets('🗣️I-110-Q1: a Shift held from before a select lasso\'s press '
+      'is the fold\'s — it adds, and locks nothing', (tester) async {
+    final env = await pumpPanel(tester, shape: CanvasShapeKind.lasso);
+    env.commands.combineMode = SelectionCombineMode.replace;
+    await tester.pump();
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    Future<void> lasso(List<Offset> points) async {
+      final gesture = await tester.startGesture(
+        origin + points.first,
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.pump();
+      for (final to in points.skip(1)) {
+        await gesture.moveTo(origin + to);
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+    }
+
+    await lasso(const [
+      Offset(150, 20),
+      Offset(200, 20),
+      Offset(200, 60),
+      Offset(150, 60),
+    ]);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await lasso(const [
+      Offset(20, 20),
+      Offset(100, 40),
+      Offset(100, 100),
+      Offset(20, 100),
+    ]);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+    final region = env.commands.region!;
+    expect(region.containsPoint(CanvasPoint(x: 175, y: 40)), isTrue);
+    expect(
+      region.containsPoint(CanvasPoint(x: 60, y: 70)),
+      isTrue,
+      reason: 'traced free: a locked trace would have been one line',
+    );
+  });
+
   testWidgets('what the lock still holds when the hand lifts lands on the '
       'outline', (tester) async {
     final env = await pumpPanel(tester, shape: CanvasShapeKind.lasso);
