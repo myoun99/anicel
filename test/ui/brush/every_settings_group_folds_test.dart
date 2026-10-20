@@ -4,6 +4,7 @@ import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_settings_group.dart';
+import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
@@ -97,7 +98,17 @@ void main() {
         {BrushSettingsGroup.tip},
         reason: 'a setting moved leaves the folds as they were',
       );
+      expect(
+        held.withMask(BrushMaskSlot.texture, null).folded,
+        {BrushSettingsGroup.tip},
+        reason: 'and so does a part of the shape taken off',
+      );
       expect(held, isNot(held.copyWith(folded: const {})));
+      expect(
+        held,
+        isNot(held.copyWith(folded: const {BrushSettingsGroup.texture})),
+        reason: 'as many folded, but not the same groups',
+      );
       expect(BrushToolState.fromBrushSettings(tipFolded).folded, {
         BrushSettingsGroup.tip,
       });
