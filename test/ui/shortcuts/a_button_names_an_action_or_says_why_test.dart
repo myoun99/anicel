@@ -159,9 +159,10 @@ const ledger = <String, Why>{
   // 🗣️I-40-Q7 (유저 2026-10-10, the sheets' own pills — the 붓 that lets a
   // sheet take ink, on the timesheet, the conte and the cut envelope alike,
   // and the page turns of the first two: one button per panel, so which
-  // panel's would a key press?): 「주지 않는다」.
-  'brush/sheet_canvas_panel.dart | '
-          "'\${brush.keyPrefix}-brush-toggle-button'":
+  // panel's would a key press?): 「주지 않는다」. The viewers wear the same
+  // button since I-114 (「다른 캔버스 베이스패널의 브러시 허용이랑 똑같은」),
+  // one per viewer, so the same answer.
+  "brush/sheet_canvas_panel.dart | '\$keyPrefix-brush-toggle-button'":
       Why.declined,
   "widgets/page_turn_bar.dart | '\$keyPrefix-next-page-button'":
       Why.declined,
