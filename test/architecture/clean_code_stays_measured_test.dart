@@ -819,7 +819,20 @@ void main() {
   /// named that one added and nothing gone. ⛔Not split to fit: it is one
   /// flat list of what a preset keeps, and a list cut in two is read as
   /// one anyway.
-  const longBodies = 412;
+  ///
+  /// ⚠️412 → 416 on 2026-10-20, four named as the rule above asks
+  /// (F-418-Q10, 유저 「모든 그룹 머리가 접힌다」). The brush's settings fold
+  /// by Clip Studio's categories, so the panel's one list of rows — its
+  /// `build`, 465 lines — is a list a category now, which the category's
+  /// header shows or folds away: `_tipRows` (86), `_textureRows` (124) and
+  /// `_correctionRows` (77) stand over the line, and `build` (66), a group
+  /// a category, still does. The text tool's `TextToolSettings.build` (63)
+  /// crossed it taking its folds from the tool's store around the section.
+  /// 🔬`clean_code_diff` against the lane's base (`d890f68b0`, at 412)
+  /// named those four added and nothing gone. ⛔Not split to fit: a
+  /// category's rows are what its header folds, and a list cut in two
+  /// would fold as one anyway.
+  const longBodies = 416;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1072,7 +1085,16 @@ void main() {
   /// 10-17 「텍스트 변형이든 뭐든」). ⛔Not split to fit: whose step a
   /// landing is (`_StepOf`) is decided where the tool lands the text it
   /// holds, and the run is the holding's own.
-  const longClasses = 69;
+  ///
+  /// ⚠️69 → 70 on 2026-10-20, ONE name: the brush's settings panel state
+  /// crossed (543 → 609) when its groups came to fold (F-418-Q10, 유저
+  /// 「모든 그룹 머리가 접힌다」) — each of Clip Studio's six categories a
+  /// list of its own, called by its header, and the brush's own folds
+  /// read and written (`_foldOf`). 🔬`clean_code_diff` against the lane's
+  /// base (`d890f68b0`) names this one and no other class. ⛔Not split to
+  /// fit: the rows are the panel's, written from the one state it shows,
+  /// and the categories are read in the one place the panel lists them.
+  const longClasses = 70;
 
   late CleanCodeScan scan;
   setUpAll(() {

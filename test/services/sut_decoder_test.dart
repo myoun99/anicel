@@ -1240,7 +1240,16 @@ void main() {
 
     expect(result.presets, hasLength(2));
     expect(result.presets.first.settings.tipMask, isNull);
-    expect(result.warnings, isNotEmpty);
+    expect(
+      result.warnings,
+      contains(
+        allOf(
+          startsWith('Brush "'),
+          endsWith('tip bitmap is not embedded; imported without it.'),
+        ),
+      ),
+      reason: 'the warning names the brush and the part it came without',
+    );
   });
 
   test('rejects non-sqlite and non-brush files with clear errors', () async {
