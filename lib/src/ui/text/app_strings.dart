@@ -1176,13 +1176,13 @@ enum AppStrings {
   String get noticeExportSameName => _s('noticeExportSameName');
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
-  String get exApplyLayerFxHelp => _s('exApplyLayerFxHelp');
   String get exMuxSeMix => _s('exMuxSeMix');
   String get exLabel => _s('exLabel');
   String get exApply => _s('exApply');
   String get exKinds => _s('exKinds');
   String get exLayerFilter => _s('exLayerFilter');
   String get exSelBase => _s('exSelBase');
+  String get exCelsLayersOut => _s('exCelsLayersOut');
   String get exSelAttach => _s('exSelAttach');
   String get exSelSheet => _s('exSelSheet');
   String get exSelDirection => _s('exSelDirection');
@@ -2494,14 +2494,14 @@ enum AppStrings {
     'noticeExportSameName':
         'A row of the same name already exports this picture',
     'exDigits': 'Digits',
-    'exApplyLayerFx': 'Apply layer FX',
-    'exApplyLayerFxHelp': 'Apply layer FX (transforms and animated opacity)',
+    'exApplyLayerFx': 'Layer FX',
     'exMuxSeMix': 'Mux the SE mix into the video',
     'exLabel': 'Label',
     'exApply': 'Apply',
     'exKinds': 'Kinds to export',
     'exLayerFilter': 'Layers',
     'exSelBase': 'Base',
+    'exCelsLayersOut': 'Layers to export',
     'exSelAttach': 'Attach',
     'exSelSheet': 'Sheet only',
     'exSelDirection': 'Direction',
@@ -3899,14 +3899,14 @@ enum AppStrings {
     'noticeExportNotPlaced': 'タイムラインに置かれていない絵です',
     'noticeExportSameName': '同じ名前の行がこの絵を書き出します',
     'exDigits': '桁数',
-    'exApplyLayerFx': 'レイヤーFXを適用',
-    'exApplyLayerFxHelp': 'レイヤーFXを適用（変形とアニメーション不透明度）',
+    'exApplyLayerFx': 'レイヤーFX',
     'exMuxSeMix': 'SEミックスを動画に多重化',
     'exLabel': 'ラベル',
     'exApply': '適用',
     'exKinds': '書き出す種類',
     'exLayerFilter': 'レイヤー',
     'exSelBase': '基準',
+    'exCelsLayersOut': '出力するレイヤー',
     'exSelAttach': 'アタッチ',
     'exSelSheet': 'シートのみ',
     'exSelDirection': 'ディレクション',
@@ -5495,14 +5495,14 @@ enum AppStrings {
     'noticeExportNotPlaced': '타임라인에 놓이지 않은 그림입니다',
     'noticeExportSameName': '같은 이름의 줄이 이 그림을 내보냅니다',
     'exDigits': '자릿수',
-    'exApplyLayerFx': '레이어 FX 적용',
-    'exApplyLayerFxHelp': '레이어 FX 적용 (변형과 애니메이션 불투명도)',
+    'exApplyLayerFx': '레이어 FX',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
     'exLabel': '라벨',
     'exApply': '적용',
     'exKinds': '내보낼 종류',
     'exLayerFilter': '레이어',
     'exSelBase': '기준',
+    'exCelsLayersOut': '출력할 레이어',
     'exSelAttach': '어태치',
     'exSelSheet': '시트만',
     'exSelDirection': '디렉션',
@@ -7141,15 +7141,14 @@ enum AppStrings {
     'noticeExportNotPlaced': 'Ce dessin n\'est pas sur la timeline',
     'noticeExportSameName': 'Une ligne du même nom exporte déjà ce dessin',
     'exDigits': 'Chiffres',
-    'exApplyLayerFx': 'Appliquer les FX de calque',
-    'exApplyLayerFxHelp':
-        'Appliquer les FX de calque (transformations et opacité animée)',
+    'exApplyLayerFx': 'FX de calque',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
     'exKinds': 'Types à exporter',
     'exLayerFilter': 'Calques',
     'exSelBase': 'Base',
+    'exCelsLayersOut': 'Calques à exporter',
     'exSelAttach': 'Attaches',
     'exSelSheet': 'Feuille seule',
     'exSelDirection': 'Direction',
@@ -8767,14 +8766,14 @@ enum AppStrings {
     'noticeExportNotPlaced': '此画未放在时间轴上',
     'noticeExportSameName': '同名的行已导出此画',
     'exDigits': '位数',
-    'exApplyLayerFx': '应用图层 FX',
-    'exApplyLayerFxHelp': '应用图层 FX（变换与动画不透明度）',
+    'exApplyLayerFx': '图层 FX',
     'exMuxSeMix': '将 SE 混音封装进视频',
     'exLabel': '标签',
     'exApply': '应用',
     'exKinds': '导出种类',
     'exLayerFilter': '图层',
     'exSelBase': '基准',
+    'exCelsLayersOut': '要导出的图层',
     'exSelAttach': '附属',
     'exSelSheet': '仅律表',
     'exSelDirection': '指示',

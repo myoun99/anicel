@@ -129,7 +129,7 @@ void main() {
     final before = dialog.debugSpecs.sequence.applyLayerFx;
     final label = find.descendant(
       of: find.byKey(tile),
-      matching: find.text(AppText.strings.exApplyLayerFxHelp),
+      matching: find.text(AppText.strings.exApplyLayerFx),
     );
 
     await tester.ensureVisible(label);

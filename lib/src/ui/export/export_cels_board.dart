@@ -193,8 +193,11 @@ class ExportCelsBoard extends StatefulWidget {
       2;
 
   /// The attach column's width (export-four-tabs-Q1, 유저 2026-10-08: 「안 A —
-  /// 규칙 칸과 행 사이에 어태치 칸(184px)」).
-  static const double stackWidth = 184;
+  /// 규칙 칸과 행 사이에 어태치 칸(184px)」) — grown by the cells its lines
+  /// lead with since F-395, the base's slot and the timeline's label, take
+  /// and kind, so a name keeps the room it had. ↩️184 while a line was led
+  /// by the base's word or an attach row's arrow alone.
+  static const double stackWidth = 248;
 
   /// The narrowest the board lays out at: the rules, the attach column, the
   /// vertical bar's lane, the rail and five blocks.

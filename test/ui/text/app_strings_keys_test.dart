@@ -548,7 +548,7 @@ void main() {
     'noticeExportSameName': (s) => s.noticeExportSameName,
     'exDigits': (s) => s.exDigits,
     'exApplyLayerFx': (s) => s.exApplyLayerFx,
-    'exApplyLayerFxHelp': (s) => s.exApplyLayerFxHelp,
+    'exCelsLayersOut': (s) => s.exCelsLayersOut,
     'exMuxSeMix': (s) => s.exMuxSeMix,
     'exLabel': (s) => s.exLabel,
     'exApply': (s) => s.exApply,

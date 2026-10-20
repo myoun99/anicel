@@ -1473,9 +1473,9 @@ void main() {
       );
     });
 
-    test('what its BLOCK reads: its number, its row\'s name where it has '
-        'none — and of a direction\'s drawing what its block says alone, the '
-        'whole name kept for where there is the room', () {
+    test('what its BLOCK reads: its number, 🎯NOTHING where it has none '
+        '(F-395) — and of a direction\'s drawing what its block says alone, '
+        'the whole name kept for where there is the room', () {
       final built = plan([
         base('a', 'A', [frame('f1')]),
         image('k', 'BOOK', frame('p', unnamed: true)),
@@ -1506,9 +1506,9 @@ void main() {
         },
         {
           'A': ('1', '1', '1'),
-          'BOOK': ('BOOK', '', 'BOOK'),
+          'BOOK': ('', '', 'BOOK'),
           'Camera': ('T.U', 'T.U_A-B', 'T.U_A-B'),
-          'Notes': ('Notes', '', 'Notes'),
+          'Notes': ('', '', 'Notes'),
         },
       );
     });

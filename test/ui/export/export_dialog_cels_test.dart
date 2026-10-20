@@ -44,6 +44,10 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_preview_panel.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkPlates;
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show LayerTypeButton;
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -51,7 +55,6 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/export_preview_probe.dart';
-import '../../helpers/named_finders.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
@@ -649,19 +652,42 @@ void main() {
     await pumpCels(tester, session);
     await standOn(tester, 'a');
     expect(tester.celsStackLines, [('a-color', true), ('a', true)]);
-    // The base wears its word, an attach row its side's arrow.
+    // 🗣️F-395: the column says what it is, and every line is led as the
+    // timeline leads the row — its label, take and kind — after a slot of
+    // its own that marks the base.
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey<String>('export-cels-stack-line-a')),
-        matching: find.text(AppText.strings.exSelBase),
+        of: find.byKey(const ValueKey<String>('export-cels-stack-head')),
+        matching: find.text(AppText.strings.exCelsLayersOut),
+        matchRoot: true,
       ),
       findsOneWidget,
     );
     expect(
-      find.named('export-cels-stack-layer-attach-arrow-a-color'),
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('export-cels-stack-base-a')),
+        matching: find.text(AppText.strings.exSelBase),
+        matchRoot: true,
+      ),
       findsOneWidget,
     );
-    expect(find.named('export-cels-stack-layer-attach-arrow-a'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-stack-base-a-color')),
+      findsNothing,
+    );
+    for (final id in ['a-color', 'a']) {
+      final line = find.byKey(ValueKey<String>('export-cels-stack-line-$id'));
+      expect(
+        find.descendant(of: line, matching: find.byType(LayerMarkPlates)),
+        findsOneWidget,
+        reason: '$id: its label and take',
+      );
+      expect(
+        find.descendant(of: line, matching: find.byType(LayerTypeButton)),
+        findsOneWidget,
+        reason: '$id: its kind',
+      );
+    }
     final before = tester.exportPreviewDocument!.look;
     await tester.settleExportPreview();
     final pictureBefore = tester.exportPreviewImage;

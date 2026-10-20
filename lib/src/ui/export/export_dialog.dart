@@ -3400,7 +3400,6 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       _fxAccordion(
         keyValue: 'export-apply-fx-toggle',
-        label: AppText.strings.exApplyLayerFxHelp,
         applyLayerFx: spec.applyLayerFx,
         onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
       ),
@@ -3428,7 +3427,6 @@ class ExportDialogState extends State<ExportDialog> {
       ),
       _fxAccordion(
         keyValue: 'export-image-fx-toggle',
-        label: AppText.strings.exApplyLayerFx,
         applyLayerFx: spec.applyLayerFx,
         onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
       ),
@@ -3908,7 +3906,6 @@ class ExportDialogState extends State<ExportDialog> {
       // places, rather than a fourth idea of what this question looks like.
       _fxAccordion(
         keyValue: 'export-cels-apply-fx-toggle',
-        label: AppText.strings.exApplyLayerFxHelp,
         applyLayerFx: spec.applyLayerFx,
         onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
       ),
@@ -4101,12 +4098,14 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// ⛔THE PREVIEW CLEAR IS PART OF THE SWITCH. Flipping fx changes what
   /// renders, and a tab that flipped the spec without clearing would keep
-  /// showing the picture the OTHER setting made. [keyValue] and [label]
-  /// stay each tab's own: the keys name their tab, and one tab's label
-  /// carries the longer help line.
+  /// showing the picture the OTHER setting made. [keyValue] stays each
+  /// tab's own: the keys name their tab.
+  ///
+  /// 🗣️F-395 (유저 2026-10-18): 「다른곳에 fx적용있으면 마찬가지인데 글이 너무
+  /// 설명적임. 레이어 FX 라는 텍스트만으로 충분」 — ONE word on every tab.
+  /// ↩️Two tabs' label carried a help line in brackets.
   ExportAccordion _fxAccordion({
     required String keyValue,
-    required String label,
     required bool applyLayerFx,
     required void Function(bool applyLayerFx) onChanged,
   }) => ExportAccordion(
@@ -4115,7 +4114,7 @@ class ExportDialogState extends State<ExportDialog> {
     expansion: _expansion('options'),
     child: SettingsSwitchRow(
       tileKey: ValueKey<String>(keyValue),
-      label: label,
+      label: AppText.strings.exApplyLayerFx,
       value: applyLayerFx,
       onChanged: _isExporting
           ? null

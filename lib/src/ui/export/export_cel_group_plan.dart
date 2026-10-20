@@ -181,11 +181,15 @@ class ExportCelSheet extends ExportListSheet {
   /// picture that goes out under its row's name alone.
   final String celName;
 
-  /// What its BLOCK reads: its number, its row's name where it has none,
-  /// and of a direction's drawing what its block says alone (`T.U`) — a
-  /// block is one cell wide (drawn so in the F-289 mock, and of the band's
-  /// buttons 유저 2026-10-06: 「버튼엔 지시이름만 넣자. T.U 이렇게하고
-  /// 툴팁으로 T.U_A-B 이렇게」).
+  /// What its BLOCK reads: its number, and of a direction's drawing what its
+  /// block says alone (`T.U`) — a block is one cell wide (drawn so in the
+  /// F-289 mock, and of the band's buttons 유저 2026-10-06: 「버튼엔 지시이름만
+  /// 넣자. T.U 이렇게하고 툴팁으로 T.U_A-B 이렇게」). Nothing where it has no
+  /// name.
+  ///
+  /// 🗣️F-395 (유저 2026-10-18): 「이미지레이어등 프레임이름없으면 스샷처럼
+  /// 블록에 레이어이름을 적는데, 그게아니라 이름 없는건 없는거니까 블록도 이름
+  /// 없는상태이도록」. ↩️It read its row's name.
   @override
   final String word;
 
@@ -561,7 +565,7 @@ Iterable<_RowCel> _celsOf(Layer axis, CameraInstructionSet terms) sync* {
           row: axis,
           frame: frame,
           celName: celName,
-          word: celName.isEmpty ? axis.name : celName,
+          word: celName,
         );
       }
     }
@@ -572,7 +576,7 @@ Iterable<_RowCel> _celsOf(Layer axis, CameraInstructionSet terms) sync* {
       row: axis,
       frame: frame,
       celName: directionCelName(says, terms),
-      word: says == null ? axis.name : _directionWord(says, terms),
+      word: says == null ? '' : _directionWord(says, terms),
     );
   }
 }
@@ -625,7 +629,9 @@ List<ExportDirectionDrawing> exportDirectionDrawingsOf(
       for (final drawing in _celsOf(row, terms))
         (
           ref: (row: row.id, cel: drawing.frame.id),
-          name: drawing.word,
+          // The button names what it lays, where its block reads nothing
+          // (F-395 took the row's name off the BLOCK alone).
+          name: drawing.word.isEmpty ? row.name : drawing.word,
           fullName: drawing.celName.isEmpty ? row.name : drawing.celName,
         ),
 ];
