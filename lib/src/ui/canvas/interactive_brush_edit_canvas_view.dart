@@ -422,11 +422,14 @@ class _InteractiveBrushEditCanvasViewState
   /// race the batch that produced them.
   BrushGroundColorSampler? _groundSampler;
 
-  /// Pull-string stabilization for the active stroke (P7): created at
-  /// pointer-down when the strength is non-zero (rope = screen px / zoom,
-  /// frozen per stroke); pen positions run through it BEFORE clipping and
-  /// interpolation, so every downstream route sees the smoothed chain.
+  /// The pen's stroke's 손떨림 보정 (F-418): made at pointer-down from the
+  /// brush's own, none when it steadies nothing; pen positions run through
+  /// it BEFORE clipping and interpolation, so every downstream route sees
+  /// the smoothed chain.
   StrokeStabilizer? _stabilizer;
+
+  /// A frame is asked for the stabilizer to keep closing on a resting pen.
+  bool _steadyingFrameAsked = false;
 
   /// The active stroke's lock — a snapping perspective's ray, or the eight
   /// ways while Shift is held (I-61): created at pointer-down, and fed

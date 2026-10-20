@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
@@ -246,10 +247,11 @@ void main() {
     // back into the default, so the round-trip equality below fails loudly
     // instead of passing on default==default (the trap the old, partial
     // version of this test walked into). What is NOT carried into
-    // BrushSettings is what is not a brush parameter — `tool` and
-    // `stabilizerStrength` (hand feel) — so they stay at their defaults
-    // here. ⛔The blend used to be on that list under R26 #10 and is not
-    // any more: it is a carried field like every other, and it is below.
+    // BrushSettings is what is not a brush parameter — `tool` — so it stays
+    // at its default here. ⛔The blend used to be on that list under R26 #10
+    // and is not any more: it is a carried field like every other, and it is
+    // below. ⛔So is the stabilizer, which was on it as hand feel (P7) — the
+    // brush's own `correction` now (F-418-Q6).
     BrushTipMask maskFor(String id) => BrushTipMask(
       id: id,
       size: 2,
@@ -284,6 +286,7 @@ void main() {
       textureScale: 1.2,
       textureDensity: 0.9,
       blendMode: BrushBlendMode.multiply,
+      correction: const BrushCorrection(stabilization: 33),
     );
 
     test('every carried field survives toBrushSettings/fromBrushSettings', () {
@@ -318,6 +321,7 @@ void main() {
       expect(input.textureScale, state.textureScale);
       expect(input.textureDensity, state.textureDensity);
       expect(input.blendMode, state.blendMode);
+      expect(input.correction, state.correction);
     });
 
     // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저

@@ -6,6 +6,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_correction.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_preset.dart';
@@ -428,6 +429,23 @@ BrushSettings _settingsFromVariant(
       variant['AntiAlias'],
       brushName: brushName,
       warnings: warnings,
+    ),
+    correction: _correctionOf(variant),
+  );
+}
+
+/// The brush's 補正 — its 手ブレ補正 (`FlickerReduction`, Clip Studio's
+/// 0..100; measured in the user's own files, F-418) on our scale.
+///
+/// 🗣️A file without it reads as Clip Studio's 0 (유저 2026-10-20,
+/// F-418-Q6: 「없으면 클튜 0인거랑 동일한 우리의 값으로 기본값으로」).
+BrushCorrection _correctionOf(Map<String, Object?> variant) {
+  final flickerReduction = _doubleOf(variant['FlickerReduction']);
+  return BrushCorrection(
+    stabilization: BrushCorrection.fromClipStudio(
+      flickerReduction == null || !flickerReduction.isFinite
+          ? 0
+          : flickerReduction,
     ),
   );
 }

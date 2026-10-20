@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
@@ -186,6 +187,7 @@ void main() {
     Uint8List? tipArray,
     Uint8List? dualArray,
     int? patternOrderType,
+    int? flickerReduction,
   }) async {
     // Unique per call: a test that builds several fixtures would otherwise
     // reopen the first one and fail on its existing tables.
@@ -216,7 +218,7 @@ void main() {
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
         BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
         CompositeMode INTEGER, AntiAlias INTEGER,
-        BrushPatternOrderType INTEGER);
+        BrushPatternOrderType INTEGER, FlickerReduction INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -246,10 +248,10 @@ void main() {
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
       'BrushIntervalEffector, CompositeMode, AntiAlias, '
-      'BrushPatternOrderType) '
+      'BrushPatternOrderType, FlickerReduction) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
       '?, 200.0, 4, ?, 182.0, 90, 1, -40, 30, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '
-      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
         effector(
@@ -297,6 +299,7 @@ void main() {
         compositeMode,
         antiAlias,
         patternOrderType,
+        flickerReduction,
       ],
     );
     // Round brush without pattern data.
@@ -1028,6 +1031,43 @@ void main() {
     );
 
     expect(result.presets.first.settings.antiAlias, BrushAntiAlias.none);
+  });
+
+  test("손떨림 보정 comes in on our scale: Clip Studio's 0..100 is our "
+      '1..100 (F-418-Q6)', () async {
+    const expected = <int, double>{0: 1, 4: 4.96, 100: 100};
+    for (final entry in expected.entries) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        flickerReduction: entry.key,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(
+        result.presets.first.settings.correction.stabilization,
+        closeTo(entry.value, 1e-9),
+        reason: 'FlickerReduction ${entry.key}',
+      );
+    }
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test("a brush whose file says nothing steadies as Clip Studio's 0 "
+      '(F-418-Q6)', () async {
+    final path = await buildFixture(tipPng: await blackPng(4, 4));
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+    expect(result.presets, hasLength(2));
+    for (final preset in result.presets) {
+      expect(
+        preset.settings.correction,
+        const BrushCorrection(),
+        reason: preset.name,
+      );
+    }
   });
 
   test('ground-colour mixing imports behind its gate', () async {

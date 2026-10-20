@@ -1,6 +1,7 @@
 import 'brush_anti_alias.dart';
 import 'brush_input_source.dart';
 import 'brush_blend_mode.dart';
+import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
@@ -69,6 +70,7 @@ class BrushShape {
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
     this.colorStretch = 0.0,
+    this.correction = const BrushCorrection(),
   });
 
   /// 🚨The finest [spacing] a brush may have: 1% of its size (유저
@@ -285,6 +287,10 @@ class BrushShape {
   /// Clip Studio's 색 늘이기. This is what smears colour along a stroke.
   final double colorStretch;
 
+  /// How the line this brush draws is corrected — Clip Studio's 補正, the
+  /// brush's own (F-418-Q6).
+  final BrushCorrection correction;
+
   /// The curve by which [source] drives [target], if any.
   BrushPressureCurve? curveFor(
     BrushPressureTarget target,
@@ -383,6 +389,7 @@ class BrushShape {
       paintAmount: paintAmount,
       paintDensity: paintDensity,
       colorStretch: colorStretch,
+      correction: correction,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
@@ -436,6 +443,7 @@ class BrushShape {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    BrushCorrection? correction,
   }) {
     return BrushShape(
       color: color ?? this.color,
@@ -470,6 +478,7 @@ class BrushShape {
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      correction: correction ?? this.correction,
     );
   }
 
@@ -508,7 +517,8 @@ class BrushShape {
           other.mixesGroundColor == mixesGroundColor &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
-          other.colorStretch == colorStretch;
+          other.colorStretch == colorStretch &&
+          other.correction == correction;
 
   @override
   int get hashCode => Object.hashAll([
@@ -545,6 +555,7 @@ class BrushShape {
     paintAmount,
     paintDensity,
     colorStretch,
+    correction,
   ]);
 
   @override
@@ -562,7 +573,8 @@ class BrushShape {
       'textureInvert: $textureInvert, '
       'textureBrightness: $textureBrightness, '
       'textureContrast: $textureContrast, '
-      'textureScale: $textureScale, textureDensity: $textureDensity)';
+      'textureScale: $textureScale, textureDensity: $textureDensity, '
+      'correction: $correction)';
 }
 
 /// Whether two curve maps hold the same curves.

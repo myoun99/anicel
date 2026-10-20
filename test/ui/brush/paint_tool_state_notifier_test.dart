@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 
@@ -26,7 +27,8 @@ void main() {
     expect(notifier.value.size, 80);
   });
 
-  test('color and stabilizer stay SHARED across the switch', () {
+  test('color stays SHARED across the switch; the stabilizer is the '
+      "brush's own and stays with it (F-418-Q6; ↩️P7 shared it)", () {
     final notifier = PaintToolStateNotifier(
       BrushToolState.defaults.copyWith(size: 30),
     );
@@ -34,14 +36,20 @@ void main() {
     notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
     notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
 
-    // Change color + stabilizer on the brush, then switch: both carry.
+    // Change color + stabilizer on the brush, then switch.
     notifier.value = notifier.value.copyWith(
       color: 0xFF00CC44,
-      stabilizerStrength: 42,
+      correction: const BrushCorrection(stabilization: 42),
     );
     notifier.value = notifier.value.copyWith(tool: CanvasTool.eraser);
     expect(notifier.value.color, 0xFF00CC44);
-    expect(notifier.value.stabilizerStrength, 42);
+    expect(
+      notifier.value.correction,
+      const BrushCorrection(),
+      reason: "the eraser's brush steadies as it did",
+    );
+    notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
+    expect(notifier.value.correction.stabilization, 42);
   });
 
   test('an assignment carrying new settings wins over the bank (preset '

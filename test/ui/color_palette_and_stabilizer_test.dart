@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -20,20 +20,30 @@ Future<void> _pumpWorkspace(WidgetTester tester) async {
 
 /// P4 (palette rows in the Color tab) + P7 (stabilizer setting) wiring.
 void main() {
-  test('the stabilizer strength is HAND-FEEL state: presets neither carry '
-      'nor clobber it', () {
-    final tuned = BrushToolState(stabilizerStrength: 40);
-    // Preset payload excludes it...
-    final settings = tuned.toBrushSettings();
-    final applied = BrushToolState.fromBrushSettings(settings);
-    expect(applied.stabilizerStrength, 0, reason: 'not preset payload');
-    // ...and the preset-apply site carries the live value over.
-    final preserved = applied.copyWith(
-      stabilizerStrength: tuned.stabilizerStrength,
+  test("the stabilizer is the brush's own: its preset carries it (F-418-Q6; "
+      '↩️P7 kept it out as hand feel)', () {
+    final tuned = BrushToolState(
+      correction: const BrushCorrection(stabilization: 40),
     );
-    expect(preserved.stabilizerStrength, 40);
-    // Settings round-trips keep every preset field intact.
-    expect(preserved.toBrushSettings(), isA<BrushSettings>());
+    final settings = tuned.toBrushSettings();
+    expect(settings.correction, const BrushCorrection(stabilization: 40));
+    final applied = BrushToolState.fromBrushSettings(settings);
+    expect(applied.correction.stabilization, 40);
+  });
+
+  test('the tool state clamps it onto the scale', () {
+    expect(
+      BrushToolState(
+        correction: const BrushCorrection(stabilization: 140),
+      ).correction.stabilization,
+      100,
+    );
+    expect(
+      BrushToolState()
+          .copyWith(correction: const BrushCorrection(stabilization: -5))
+          .correction,
+      BrushCorrection.none,
+    );
   });
 
   /// The colour GROUP: the wheel, the RGB bars and the palette are three

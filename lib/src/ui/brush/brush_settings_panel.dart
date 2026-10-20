@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_anti_alias.dart';
+import '../../models/brush_correction.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
 import '../../models/brush_tip_entry.dart';
@@ -527,18 +528,22 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
                         onChanged(state.copyWith(textureContrast: value)),
             ),
             ToolSettingsGroupHeader(AppText.strings.brGroupCorrection),
-            // Pull-string stabilization (P7): a hand-feel setting, kept OUT
-            // of brush presets on purpose.
+            // The brush's own, kept in its preset as Clip Studio keeps it
+            // (F-418-Q6). ↩️It was the pull string's rope, a hand-feel
+            // setting kept out of presets (P7).
             _PanelSlider(
               label: AppText.strings.brStabilizer,
-              value: BrushToolState.clampStabilizerStrength(
-                state.stabilizerStrength,
+              value: BrushToolState.clampStabilization(
+                state.correction.stabilization,
               ),
               min: 0,
-              max: 100,
+              max: BrushCorrection.maxStabilization,
               keyValue: 'brush-tool-stabilizer-slider',
-              onChanged: (value) =>
-                  onChanged(state.copyWith(stabilizerStrength: value)),
+              onChanged: (value) => onChanged(
+                state.copyWith(
+                  correction: state.correction.copyWith(stabilization: value),
+                ),
+              ),
             ),
             // ⛔THE AUTO-FRAME TOGGLE IS NOT HERE ANY MORE (F-61, 유저:
             // 「프레임 자동생성 버튼 툴 설정에 있는데, **왜 이딴식으로

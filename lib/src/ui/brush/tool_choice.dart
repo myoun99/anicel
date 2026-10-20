@@ -14,8 +14,9 @@ import 'paint_tool_state_notifier.dart';
 /// 지우개인지, 채우기툴에서 뭐 골라져있는지 등) … 존재안하는게 있으면 해당
 /// 분야만 초기값으로」.
 ///
-/// ⛔NOT the colour and NOT the stabilizer: every tool shares those (the
-/// notifier's own law), so they are not something one tool was holding.
+/// ⛔NOT the colour: every tool shares it (the notifier's own law), so it is
+/// not something one tool was holding. (The stabilizer was shared too until
+/// it became the brush's own — F-418-Q6.)
 ///
 /// 🚨EVERY PART ANSWERS FOR ITSELF. A name this build does not know, an
 /// opacity out of range — that part reads as absent and keeps its default,

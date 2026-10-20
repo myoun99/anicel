@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -46,6 +47,7 @@ BrushShape _everyFieldNonDefault() => BrushShape(
   textureContrast: 0.6,
   textureScale: 1.2,
   textureDensity: 0.9,
+  correction: const BrushCorrection(stabilization: 40),
 );
 
 void main() {
@@ -94,6 +96,7 @@ void main() {
       expect(base.copyWith(textureContrast: 0.0), isNot(base));
       expect(base.copyWith(textureScale: 1.0), isNot(base));
       expect(base.copyWith(textureDensity: 1.0), isNot(base));
+      expect(base.copyWith(correction: const BrushCorrection()), isNot(base));
       // The pressure curves too.
       expect(
         base.withPressureCurve(

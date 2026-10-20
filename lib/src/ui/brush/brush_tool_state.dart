@@ -1,5 +1,6 @@
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_correction.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -308,10 +309,11 @@ List<CanvasShapeKind> canvasToolShapes(CanvasTool tool) => switch (tool) {
 /// What survives is the LAYOUT — size and opacity on the strip, the rest in
 /// the panel — not two kinds of value.
 ///
-/// What is genuinely the tool state's own is [tool], [stabilizerStrength]
-/// (hand feel, not a brush parameter), and the NON-BRUSH tools' settings
-/// ([fillBlendMode], [cutStampBlendMode], [fillOpacity], [cutStampOpacity]):
-/// those tools have no preset for a value to belong to.
+/// What is genuinely the tool state's own is [tool] and the NON-BRUSH tools'
+/// settings ([fillBlendMode], [cutStampBlendMode], [fillOpacity],
+/// [cutStampOpacity]): those tools have no preset for a value to belong to.
+/// ↩️The stabilizer was here too, as hand feel (P7); it is the brush's own
+/// now, as in Clip Studio ([correction], 유저 2026-10-20 F-418-Q6).
 class BrushToolState {
   factory BrushToolState({
     double size = defaultSize,
@@ -348,7 +350,7 @@ class BrushToolState {
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     CanvasShapeKind drawShape = CanvasShapeKind.rect,
-    double stabilizerStrength = 0.0,
+    BrushCorrection correction = const BrushCorrection(),
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
@@ -394,7 +396,7 @@ class BrushToolState {
       cutShape: cutShape,
       fillShape: fillShape,
       drawShape: drawShape,
-      stabilizerStrength: stabilizerStrength,
+      correction: correction,
       blendMode: blendMode,
       antiAlias: antiAlias,
       fillBlendMode: fillBlendMode,
@@ -414,7 +416,6 @@ class BrushToolState {
     this.cutShape = CanvasShapeKind.rect,
     this.fillShape = CanvasShapeKind.rect,
     this.drawShape = CanvasShapeKind.rect,
-    this.stabilizerStrength = 0.0,
     this.fillBlendMode = BrushBlendMode.color,
     this.cutStampBlendMode = BrushBlendMode.color,
     this.shapeBlendMode = BrushBlendMode.color,
@@ -426,7 +427,7 @@ class BrushToolState {
   });
 
   /// Builds tool state from a loose [BrushShape] and the values that still
-  /// live outside it (tool, stabilizer, the non-brush tools' own blends and
+  /// live outside it (tool, the non-brush tools' own blends and
   /// opacities — see the class doc), clamping every shared parameter into the
   /// panel's ranges (see [_clampShape]). This is the wholesale hop the
   /// preset-load path takes — [fromBrushSettings] routes through it — so no
@@ -441,7 +442,6 @@ class BrushToolState {
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
     CanvasShapeKind fillShape = CanvasShapeKind.rect,
     CanvasShapeKind drawShape = CanvasShapeKind.rect,
-    double stabilizerStrength = 0.0,
     BrushBlendMode fillBlendMode = BrushBlendMode.color,
     BrushBlendMode cutStampBlendMode = BrushBlendMode.color,
     BrushBlendMode shapeBlendMode = BrushBlendMode.color,
@@ -457,7 +457,6 @@ class BrushToolState {
       cutShape: cutShape,
       fillShape: fillShape,
       drawShape: drawShape,
-      stabilizerStrength: clampStabilizerStrength(stabilizerStrength),
       fillBlendMode: fillBlendMode,
       cutStampBlendMode: cutStampBlendMode,
       shapeBlendMode: shapeBlendMode,
@@ -507,7 +506,7 @@ class BrushToolState {
     CanvasShapeKind? cutShape,
     CanvasShapeKind? fillShape,
     CanvasShapeKind? drawShape,
-    double? stabilizerStrength,
+    BrushCorrection? correction,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     BrushBlendMode? fillBlendMode,
@@ -558,13 +557,13 @@ class BrushToolState {
         colorStretch: colorStretch ?? 0.0,
         blendMode: blendMode ?? BrushBlendMode.color,
         antiAlias: antiAlias ?? BrushAntiAlias.high,
+        correction: correction ?? const BrushCorrection(),
       ),
       tool: tool ?? CanvasTool.brush,
       selectShape: selectShape ?? CanvasShapeKind.rect,
       cutShape: cutShape ?? CanvasShapeKind.rect,
       fillShape: fillShape ?? CanvasShapeKind.rect,
       drawShape: drawShape ?? CanvasShapeKind.rect,
-      stabilizerStrength: stabilizerStrength ?? 0.0,
       fillBlendMode: fillBlendMode ?? BrushBlendMode.color,
       cutStampBlendMode: cutStampBlendMode ?? BrushBlendMode.color,
       shapeBlendMode: shapeBlendMode ?? BrushBlendMode.color,
@@ -600,6 +599,9 @@ class BrushToolState {
     textureDensity: clampZeroToOne(s.textureDensity),
     textureBrightness: clampSignedUnit(s.textureBrightness),
     textureContrast: clampSignedUnit(s.textureContrast),
+    correction: s.correction.copyWith(
+      stabilization: clampStabilization(s.correction.stabilization),
+    ),
   );
 
   /// −1..1, the range both texture LEVEL knobs live in. Neutral is 0 in the
@@ -694,6 +696,9 @@ class BrushToolState {
 
   /// How hard this brush's edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
+
+  /// How this brush corrects its line — see [BrushShape.correction].
+  BrushCorrection get correction => shape.correction;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -807,11 +812,6 @@ class BrushToolState {
       _ => this,
     };
   }
-
-  /// Pull-string stabilization strength (P7), 0..100 screen px of rope.
-  /// A HAND-FEEL setting, deliberately outside brush presets — preset
-  /// application carries it over unchanged.
-  final double stabilizerStrength;
 
   /// The FILL's composite mode, kept apart from the brush's (유저 확정:
   /// 블렌드모드 선택은 툴에 산다).
@@ -1023,9 +1023,10 @@ class BrushToolState {
   ///
   /// ⇒ A preset owns **the shape**, and everything outside the shape survives
   /// because it is never touched rather than because it was listed. The
-  /// remembered shape kinds, the stabilizer and the per-tool blends are all
-  /// out there, so a field added tomorrow is safe without anyone knowing this
-  /// method exists.
+  /// remembered shape kinds and the per-tool blends are all out there, so a
+  /// field added tomorrow is safe without anyone knowing this method exists.
+  /// (The stabilizer was out there too until it became the brush's own —
+  /// F-418-Q6 — and a preset now carries it.)
   ///
   /// ⚠️Two exceptions stay, and they are named because they are DECISIONS,
   /// not omissions.
@@ -1052,9 +1053,9 @@ class BrushToolState {
   /// come back with it, not three values laid on top of the file.
   ///
   /// The list went from eleven entries to one, and the one that remains is
-  /// the only one a reader has to be able to justify. (The stabilizer and
-  /// the remembered shape kinds were on the old list and no longer need to
-  /// be — they are outside the shape, so they are already safe.)
+  /// the only one a reader has to be able to justify. (The remembered shape
+  /// kinds were on the old list and no longer need to be — they are outside
+  /// the shape, so they are already safe.)
   BrushToolState withPreset(
     BrushPreset preset, {
     required CanvasTool tool,
@@ -1103,7 +1104,6 @@ class BrushToolState {
       // stages, one loading the brush and one laying the stroke down — so
       // suppressing the blend was a deviation, not a safeguard.
       blendMode: activeBlendMode,
-      stabilizerStrength: stabilizerStrength,
     );
   }
 
@@ -1160,7 +1160,7 @@ class BrushToolState {
     CanvasShapeKind? cutShape,
     CanvasShapeKind? fillShape,
     CanvasShapeKind? drawShape,
-    double? stabilizerStrength,
+    BrushCorrection? correction,
     BrushBlendMode? fillBlendMode,
     BrushBlendMode? cutStampBlendMode,
     BrushBlendMode? shapeBlendMode,
@@ -1221,6 +1221,7 @@ class BrushToolState {
           colorStretch: colorStretch,
           blendMode: blendMode,
           antiAlias: antiAlias,
+          correction: correction,
         ),
       ),
       tool: tool ?? this.tool,
@@ -1228,9 +1229,6 @@ class BrushToolState {
       cutShape: cutShape ?? this.cutShape,
       fillShape: fillShape ?? this.fillShape,
       drawShape: drawShape ?? this.drawShape,
-      stabilizerStrength: clampStabilizerStrength(
-        stabilizerStrength ?? this.stabilizerStrength,
-      ),
       fillBlendMode: fillBlendMode ?? this.fillBlendMode,
       cutStampBlendMode: cutStampBlendMode ?? this.cutStampBlendMode,
       shapeBlendMode: shapeBlendMode ?? this.shapeBlendMode,
@@ -1288,7 +1286,6 @@ class BrushToolState {
     cutShape: cutShape,
     fillShape: fillShape,
     drawShape: drawShape,
-    stabilizerStrength: stabilizerStrength,
     fillBlendMode: fillBlendMode,
     cutStampBlendMode: cutStampBlendMode,
     shapeBlendMode: shapeBlendMode,
@@ -1399,12 +1396,12 @@ class BrushToolState {
     return value.clamp(0.05, 10.0).toDouble();
   }
 
-  /// Clamps the stabilizer rope to [0, 100] screen pixels.
-  static double clampStabilizerStrength(double value) {
+  /// Clamps the 손떨림 보정 into 0..[BrushCorrection.maxStabilization].
+  static double clampStabilization(double value) {
     if (!value.isFinite) {
       return 0.0;
     }
-    return value.clamp(0.0, 100.0).toDouble();
+    return value.clamp(0.0, BrushCorrection.maxStabilization).toDouble();
   }
 
   @override
@@ -1421,7 +1418,6 @@ class BrushToolState {
           other.cutShape == cutShape &&
           other.fillShape == fillShape &&
           other.drawShape == drawShape &&
-          other.stabilizerStrength == stabilizerStrength &&
           // BB-3 audit fix: the brush's blend was MISSING from ==/hashCode
           // since BB-1 — two states differing only in blend compared equal,
           // so listeners could skip rebuilding on a blend change. It now
@@ -1446,7 +1442,6 @@ class BrushToolState {
     cutShape,
     fillShape,
     drawShape,
-    stabilizerStrength,
     fillBlendMode,
     cutStampBlendMode,
     shapeBlendMode,

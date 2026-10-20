@@ -384,22 +384,24 @@ class _BrushEditPress {
   /// touches nothing, so a caller never has to ask first (and cannot ask
   /// wrongly).
   ///
-  /// 🗣️**A STABILISED LINE ENDS WHERE THE BRUSH IS** (유저 2026-09-28, H45
-  /// 「펜업시 마지막 진행방향에 선이 하나 생겨. 정밀하게 멈추고 뗀건데도」 →
-  /// H45-Q1 「따라잡지 않는다 — 선은 붓이 있던 자리에서 끝난다」). The brush
-  /// trails the pen by up to a rope length, and a pen held still leaves it
-  /// there. ↩️P7 (2026-07-11, mine, not the user's) closed that gap at
-  /// pen-up with one straight segment to the pen — the tail drawn in the
-  /// last direction of travel however precisely the pen had stopped.
-  /// Without it a quick stroke ends a rope short of the lift: the cost the
-  /// user took with the answer.
+  /// 🗣️**A STABILISED LINE ENDS WHERE THE PEN LIFTED** (유저 2026-10-20,
+  /// F-418-Q2 「과거 결정 무시해도됨. 클튜는 100으로 하면 선을 떼면 바로 뗀
+  /// 자리까지 선이 감」): the line still behind the pen goes straight to it.
+  /// ↩️H45 (2026-09-28) had it end where the brush was — H45-Q1 「따라잡지
+  /// 않는다 — 선은 붓이 있던 자리에서 끝난다」, against 「펜업시 마지막
+  /// 진행방향에 선이 하나 생겨. 정밀하게 멈추고 뗀건데도」 — while the brush
+  /// hung a rope behind a pen held still. The line that replaced the rope
+  /// keeps closing on a resting pen, so a pen stopped precisely has been
+  /// reached before it lifts.
   bool landActiveStroke() {
     if (_state._activeDrawingPointer == null) {
       return false;
     }
     // Whatever still waits for the contact's first readings lands first
-    // (H43).
+    // (H43), and the line then goes to where the pen lifted — both before
+    // the lock settles, which sees the whole travel.
     _state._opening.stopWaiting();
+    _state._stroke.finishSteadying();
     // A stroke can lift before it travelled far enough to name a ray; the
     // lock settles on the best guess it has rather than swallowing a short
     // flick.

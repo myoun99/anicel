@@ -1,5 +1,6 @@
 import 'brush_anti_alias.dart';
 import 'brush_blend_mode.dart';
+import 'brush_correction.dart';
 import 'separable_blend_mode.dart';
 import 'brush_input_source.dart';
 import 'brush_pressure_curve.dart';
@@ -50,6 +51,7 @@ class BrushSettings {
     double paintAmount = 1.0,
     double paintDensity = 1.0,
     double colorStretch = 0.0,
+    BrushCorrection correction = const BrushCorrection(),
   }) : shape = BrushShape(
          color: color,
          size: size,
@@ -91,6 +93,7 @@ class BrushSettings {
          paintAmount: paintAmount,
          paintDensity: paintDensity,
          colorStretch: colorStretch,
+         correction: correction,
        ) {
     _validateShape(shape);
   }
@@ -172,6 +175,9 @@ class BrushSettings {
   double get paintDensity => shape.paintDensity;
   double get colorStretch => shape.colorStretch;
 
+  /// The line's correction — see [BrushShape.correction].
+  BrushCorrection get correction => shape.correction;
+
   /// The pressure curve driving [target], if any.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
@@ -212,6 +218,7 @@ class BrushSettings {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    BrushCorrection? correction,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -260,6 +267,7 @@ class BrushSettings {
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
       colorStretch: colorStretch ?? this.colorStretch,
+      correction: correction ?? this.correction,
     );
   }
 
@@ -326,6 +334,10 @@ class BrushSettings {
       'paintDensity': paintDensity,
       'colorStretch': colorStretch,
     },
+    // Written only off its default, as the tip order is — a preset saved
+    // before the brush held its correction round-trips byte-identically.
+    if (correction != const BrushCorrection())
+      'correction': correction.toJson(),
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -402,6 +414,7 @@ class BrushSettings {
       paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
       colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
+      correction: BrushCorrection.fromJson(json['correction']),
     );
   }
 
@@ -438,6 +451,7 @@ void _validateShape(BrushShape shape) {
   _validateUnitInterval(shape.paintAmount, 'paintAmount');
   _validateUnitInterval(shape.paintDensity, 'paintDensity');
   _validateUnitInterval(shape.colorStretch, 'colorStretch');
+  _validateStabilization(shape.correction.stabilization);
   _validatePositive(shape.size, 'size');
   _validateUnitInterval(shape.opacity, 'opacity');
   _validateUnitInterval(shape.flow, 'flow');
@@ -472,6 +486,19 @@ void _validateUnitInterval(double value, String fieldName) {
       value,
       fieldName,
       'BrushSettings.$fieldName must be between 0.0 and 1.0 inclusive.',
+    );
+  }
+}
+
+void _validateStabilization(double value) {
+  if (!value.isFinite ||
+      value < 0.0 ||
+      value > BrushCorrection.maxStabilization) {
+    throw ArgumentError.value(
+      value,
+      'stabilization',
+      'BrushSettings.correction.stabilization must be between 0 and '
+          '${BrushCorrection.maxStabilization} inclusive.',
     );
   }
 }

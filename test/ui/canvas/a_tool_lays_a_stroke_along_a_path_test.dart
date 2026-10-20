@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
@@ -655,7 +656,7 @@ BrushEditCanvasInputSettings _brush({
     .copyWith(
       size: 6,
       roundness: 0.5,
-      stabilizerStrength: stabilizer,
+      correction: BrushCorrection(stabilization: stabilizer),
       rotationMode: rotation,
     )
     .toInputSettings();

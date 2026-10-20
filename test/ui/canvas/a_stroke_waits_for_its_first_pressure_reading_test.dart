@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
@@ -82,7 +83,9 @@ void main() {
     (tester) async {
       final results = await _parity(
         tester,
-        _pressureBrush.copyWith(stabilizerStrength: 40),
+        _pressureBrush.copyWith(
+          correction: const BrushCorrection(stabilization: 40),
+        ),
         waited: [
           _s(const Offset(4, 8), _stand, 0),
           _s(const Offset(30, 20), _stand, 8),

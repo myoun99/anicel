@@ -58,6 +58,7 @@ class _BrushEditStroke {
       // a stroke is one window's now (H49, 09-30), and the press still
       // decides its dice.
       dice: Object.hash(event.pointer, event.timeStamp),
+      startedAt: event.timeStamp,
     );
     // A press off the pasteboard lays nothing down; the stroke's first dab
     // comes where a move crosses in.
@@ -136,6 +137,7 @@ class _BrushEditStroke {
     required CanvasPoint at,
     required bool startsInsidePasteboard,
     required int dice,
+    required Duration startedAt,
   }) {
     _state.widget.onActiveStrokeChanged?.call(true);
     _armItsOwn(
@@ -144,6 +146,10 @@ class _BrushEditStroke {
       startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
     );
+    final lag = strokeSettings.shape.correction.lag;
+    _state._stabilizer = lag == null
+        ? null
+        : StrokeStabilizer(lag: lag, start: at, at: startedAt);
     _openOverlay(strokeSettings);
     _state._prepareLiveRasterizer();
   }
@@ -172,9 +178,9 @@ class _BrushEditStroke {
     _state._overlay._overlayModel.preBlendBase = strokeSurface;
   }
 
-  /// What a stroke stands on that is its OWN — the stabiliser, the snap,
-  /// the symmetry, the dice, the dynamics, the ground mixer, the dabs laid
-  /// so far — made afresh from [strokeSettings].
+  /// What a stroke stands on that is its OWN — the snap, the symmetry, the
+  /// dice, the dynamics, the ground mixer, the dabs laid so far — made
+  /// afresh from [strokeSettings]. The stabiliser is the pen's ([_arm]).
   void _armItsOwn(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
@@ -185,13 +191,6 @@ class _BrushEditStroke {
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
-    final stabilizerStrength = strokeSettings.stabilizerStrength;
-    _state._stabilizer = stabilizerStrength > 0
-        ? StrokeStabilizer(
-            ropeLength: stabilizerStrength / _state.widget.viewport.zoom,
-            start: canvasPosition,
-          )
-        : null;
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
     // line that is already down.
@@ -236,10 +235,16 @@ class _BrushEditStroke {
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the
     // three-route parity holds by construction (P7). A held sample reaches
-    // it when it is painted, in the order it came.
-    void paint() => advanceStrokeThroughGuides(
-      _state._stabilizer?.follow(penPosition) ?? penPosition,
-    );
+    // it when it is painted, in the order it came, at the time it came.
+    void paint() {
+      final stabilizer = _state._stabilizer;
+      if (stabilizer == null) {
+        advanceStrokeThroughGuides(penPosition);
+        return;
+      }
+      advanceStrokeThroughGuides(stabilizer.follow(penPosition, at: at));
+      _keepSteadying();
+    }
     if (_state._opening.holds(
       paint,
       penPosition: penPosition,
@@ -249,6 +254,39 @@ class _BrushEditStroke {
       return;
     }
     paint();
+  }
+
+  /// While the line has not reached the pen, frames move it on — Clip
+  /// Studio's line keeps going while the pen rests (F-418).
+  void _keepSteadying() {
+    if (_state._steadyingFrameAsked || (_state._stabilizer?.settled ?? true)) {
+      return;
+    }
+    _state._steadyingFrameAsked = true;
+    SchedulerBinding.instance.scheduleFrameCallback(_steadyOneFrame);
+  }
+
+  void _steadyOneFrame(Duration frameAt) {
+    _state._steadyingFrameAsked = false;
+    final stabilizer = _state._stabilizer;
+    if (!_state.mounted || stabilizer == null) {
+      return;
+    }
+    final moved = stabilizer.lookAtFrame(frameAt);
+    if (moved != null) {
+      advanceStrokeThroughGuides(moved);
+      // On screen THIS frame: the queue's own flush may have run already.
+      _state._overlay.flushPendingOverlayDabs();
+    }
+    _keepSteadying();
+  }
+
+  /// The pen lifted: the line goes straight to where it was (F-418-Q2).
+  void finishSteadying() {
+    final rest = _state._stabilizer?.finish();
+    if (rest != null) {
+      advanceStrokeThroughGuides(rest);
+    }
   }
 
   /// The stroke's FIRST dab, under the press.

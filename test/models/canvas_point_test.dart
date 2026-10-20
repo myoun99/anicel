@@ -51,7 +51,7 @@ void main() {
     });
 
     // The two vector operations every point type owns (Offset.distance /
-    // Offset.lerp): the stabilizer's rope, the stamp drag, the dab
+    // Offset.lerp): the stabilizer, the stamp drag, the dab
     // interpolator and the transform track each spelled them out (the
     // audit's clone scan, 2026-09-06).
     test('distanceTo is the Euclidean length, both ways round', () {
