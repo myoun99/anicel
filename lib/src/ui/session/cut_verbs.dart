@@ -263,13 +263,16 @@ class CutVerbs {
 
   /// Names the active cut's sheet worker — the 러프원화 a sheet's name box
   /// prints ([sheetArtistMark]) — on it and its 겸용 siblings, as 컷 설정
-  /// names a stage (I-112: the box and the setting are one name).
-  void setActiveCutSheetArtist(String name) => _activeCut.onActiveCut(
-    (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
-      cutIds: [cutId],
-      names: {sheetArtistMark: name},
-    ),
-  );
+  /// names a stage (I-112: the box and the setting are one name). A name
+  /// changes no cut's shape, so — as there — the repaint is the whole of
+  /// the reaction.
+  void setActiveCutSheetArtist(String name) =>
+      _activeCut.onActiveCutQuietly(
+        (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
+          cutIds: [cutId],
+          names: {sheetArtistMark: name},
+        ),
+      );
 
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut(
