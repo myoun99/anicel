@@ -20,6 +20,9 @@ import 'dart:io';
 ///   payloads that die with the run. See [SessionScratch].
 /// • `memory-log.txt` — the black box's one page, written by a run and
 ///   read by the next. See `MemoryBlackBox.logPath`.
+/// • `launch-labels.txt` — the launch splash's stage names in the app's
+///   language, written by a run and read by the next one's runner, which
+///   speaks before Dart does. See `LaunchSplash.labelsFileName`.
 ///
 /// 🪦**TWO ROOMS FULL OF PROJECT DATA ARE GONE.** `Recovery/` held autosave
 /// sidecars until the tick started saving the project file itself, and

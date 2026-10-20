@@ -15,6 +15,7 @@ import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/services/persistence/app_ui_scale_store.dart';
 import 'src/services/persistence/app_window_store.dart';
+import 'src/services/persistence/app_language_settings_store.dart';
 import 'src/native/window_full_screen.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/canvas/level_image.dart' show measuredHalving;
@@ -55,6 +56,15 @@ Future<void> main() async {
   // here can do is leave an entry at the old address for the next launch
   // to try again. See [migrateSettingsIntoTheirRoom].
   migrateSettingsIntoTheirRoom();
+  // The language, AWAITED here and not left to the session's restore: the
+  // launch splash says what the launch is doing in the app's own language
+  // (I-106, 2026-10-21), and it says it before the session exists. One
+  // small file read; the session's restore then lands on the same value.
+  final language = await AppLanguageSettingsStore().load();
+  if (language != null) {
+    AppText.settings.value = language;
+  }
+  await LaunchSplash.preparing(AppText.strings);
   // Full screen on the platforms that have an OS strip to give up (유저
   // 확정, 프로크리·카리페그처럼): the clock and the battery cost a band of
   // canvas across the top, and a drawing app is the case the immersive
@@ -158,7 +168,7 @@ Future<void> main() async {
   // is reported at the next launch and not at every launch after it.
   MemoryBlackBox.lastUnfinished = MemoryBlackBox.unfinishedEntry();
   MemoryBlackBox.reset();
-  LaunchSplash.closeAtFirstFrame();
+  LaunchSplash.drawing(AppText.strings);
   runApp(const AnicelApp());
   // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
   // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the

@@ -40,6 +40,14 @@ const double kMacBody = 824 / 1024;
 /// The splash's layout, in its own units.
 const double kSplashWidth = 240;
 const double kSplashHeight = 232;
+
+/// Where the runners write the launch stage (I-106, 2026-10-21): close
+/// under the name, small and faint — 「Anicel 아래에 어느정도 붙고, 글자크기도
+/// 좀 작게 … 있는듯 없는듯한 느낌으로」. Left empty here, its place kept in
+/// the picture's own margin. The runners spell its middle and its type
+/// size again, as shares of the picture's height: 210 / 232 and 8 / 232.
+const double kSplashStageCenter = 210;
+const double kSplashStageSize = 8;
 const double kSplashLetterScale = 1.3;
 const double kSplashNameSize = 34;
 const double kSplashGap = 12;
@@ -142,7 +150,8 @@ Future<Uint8List> renderSplash(double scale) {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    final top = (kSplashHeight - letterHeight - kSplashGap - name.height) / 2;
+    final top =
+        (kSplashHeight - letterHeight - kSplashGap - name.height) / 2;
     final left = (kSplashWidth - letterWidth) / 2;
 
     void placeLetter() => canvas

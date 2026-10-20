@@ -34,6 +34,7 @@ static void my_application_activate(GApplication* application) {
   anicel_app_icon_set();
   // Before the engine starts: starting it is the wait the splash covers.
   self->launch_splash = anicel_launch_splash_show();
+  anicel_launch_splash_say_runner_stage(self->launch_splash, 0);
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -93,6 +94,9 @@ static void my_application_activate(GApplication* application) {
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
 
+  // I-106: the stages Dart runs, after the two the runner says itself.
+  anicel_launch_splash_listen(&self->launch_splash, view);
+  anicel_launch_splash_say_runner_stage(self->launch_splash, 1);
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
   gtk_widget_grab_focus(GTK_WIDGET(view));

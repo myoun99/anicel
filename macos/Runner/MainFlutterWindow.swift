@@ -651,9 +651,32 @@ final class FullScreenSwitch: NSObject {
 final class LaunchSplash {
   private var panel: NSPanel?
 
+  /// I-106 (user, 2026-10-21): under the name, what the launch is doing,
+  /// small and faint — 「Anicel 아래에 어느정도 붙고, 글자크기도 좀 작게 …
+  /// 있는듯 없는듯한 느낌으로」 — with dots that turn once a second. Its
+  /// middle and type size as shares of the picture's height
+  /// (tool/app_art/render_app_art_test.dart), and its ink; spelled again in
+  /// windows/runner/launch_splash.cpp and linux/runner/launch_splash.cc.
+  private static let stageCenter: CGFloat = 210.0 / 232.0
+  private static let stageSize: CGFloat = 8.0 / 232.0
+  private static let stageInk = NSColor(white: 1, alpha: 0.6)
+  private static let stageShadow: Float = 0.3
+  private static let dotTurn: CFTimeInterval = 1
+  private static let mostDots = 3
+
+  /// What the last launch left (lib/src/native/launch_splash.dart,
+  /// LaunchSplash.labelsFileName under appSupportFilePath's base).
+  private var faceFiles = ""
+  private var stageNames: [String] = []
+
+  private var stageLayers: [CATextLayer] = []
+  private var fontFaceFiles: String?
+  private var font: CTFont?
+
   /// Shows the splash centred on [screen]. Shows nothing when the picture
   /// is missing — the app starts the same without it.
   func show(on screen: NSScreen?) {
+    readLabels()
     guard
       let image = NSImage(named: "LaunchSplash"),
       let screen = screen ?? NSScreen.main
@@ -674,19 +697,133 @@ final class LaunchSplash {
     panel.isOpaque = false
     panel.backgroundColor = .clear
     panel.hasShadow = false
-    let view = NSImageView(frame: NSRect(origin: .zero, size: frame.size))
+    let bounds = NSRect(origin: .zero, size: frame.size)
+    let content = NSView(frame: bounds)
+    content.wantsLayer = true
+    let view = NSImageView(frame: bounds)
     view.image = image
     view.imageScaling = .scaleProportionallyUpOrDown
-    panel.contentView = view
+    content.addSubview(view)
+    // The name, then one layer a dot.
+    stageLayers = (0...LaunchSplash.mostDots).map { _ in
+      let layer = CATextLayer()
+      layer.contentsScale = screen.backingScaleFactor
+      layer.shadowColor = NSColor.black.cgColor
+      layer.shadowOpacity = LaunchSplash.stageShadow
+      layer.shadowRadius = 0
+      layer.shadowOffset = CGSize(width: 0, height: -height / 232)
+      content.layer?.addSublayer(layer)
+      return layer
+    }
+    panel.contentView = content
     panel.orderFrontRegardless()
+    self.panel = panel
     // Drawn now: the run loop is about to be busy starting the engine.
     panel.display()
-    self.panel = panel
+    CATransaction.flush()
+  }
+
+  /// Says the runner's own stage [index] (0 the engine, 1 the plugins) by
+  /// the name the last launch left. The first launch has none yet: the
+  /// line stays empty, its place kept, until Dart speaks.
+  func sayRunnerStage(_ index: Int) {
+    if index < stageNames.count {
+      say(faceFiles: faceFiles, name: stageNames[index])
+    }
+  }
+
+  /// Says a stage in the face of [faceFiles] (tab-separated, relative to
+  /// flutter_assets; empty is the OS's face).
+  func say(faceFiles: String, name: String) {
+    guard let panel = panel, let nameLayer = stageLayers.first else { return }
+    let height = panel.frame.height
+    if fontFaceFiles != faceFiles {
+      fontFaceFiles = faceFiles
+      font = LaunchSplash.face(faceFiles, size: height * LaunchSplash.stageSize)
+    }
+    guard let font = font else { return }
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: font, .foregroundColor: LaunchSplash.stageInk,
+    ]
+    let nameText = NSAttributedString(string: name, attributes: attributes)
+    let dotText = NSAttributedString(string: ".", attributes: attributes)
+    let nameSize = nameText.size()
+    let dotSize = dotText.size()
+    let middle = height * (1 - LaunchSplash.stageCenter)
+    let bottom = middle - nameSize.height / 2
+    // The name stands still; the dots grow to its right.
+    let left = (panel.frame.width - nameSize.width) / 2
+
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    nameLayer.string = nameText
+    nameLayer.frame = CGRect(
+      x: left, y: bottom, width: nameSize.width, height: nameSize.height)
+    let now = CACurrentMediaTime()
+    for (i, dot) in stageLayers.dropFirst().enumerated() {
+      dot.string = dotText
+      dot.frame = CGRect(
+        x: left + nameSize.width + CGFloat(i) * dotSize.width, y: bottom,
+        width: dotSize.width, height: nameSize.height)
+      // 「1초마다 .을 붙이고 초기화하고」: dot i shows from second i of each
+      // three, on the window server, so it turns while the main thread
+      // starts the engine. A new stage starts again from one dot.
+      dot.removeAllAnimations()
+      if i > 0 {
+        let turn = CAKeyframeAnimation(keyPath: "opacity")
+        turn.calculationMode = .discrete
+        turn.values = [0, 1]
+        let shows = Double(i) / Double(LaunchSplash.mostDots)
+        turn.keyTimes = [0, NSNumber(value: shows), 1]
+        turn.duration = LaunchSplash.dotTurn * Double(LaunchSplash.mostDots)
+        turn.repeatCount = .infinity
+        turn.beginTime = now
+        dot.add(turn, forKey: "turn")
+      }
+    }
+    CATransaction.commit()
+    CATransaction.flush()
   }
 
   func close() {
     panel?.orderOut(nil)
     panel = nil
+    stageLayers = []
+  }
+
+  private func readLabels() {
+    let environment = ProcessInfo.processInfo.environment
+    guard let base = environment["APPDATA"] ?? environment["HOME"],
+      let text = try? String(
+        contentsOfFile: base + "/anicel/launch-labels.txt", encoding: .utf8)
+    else { return }
+    var lines = text.components(separatedBy: "\n")
+    faceFiles = lines.removeFirst()
+    stageNames = lines.filter { !$0.isEmpty }
+  }
+
+  /// The face's files in order — the first speaks, the rest fill in what
+  /// it lacks, then the OS — or the OS's own face when there are none.
+  private static func face(_ faceFiles: String, size: CGFloat) -> CTFont {
+    let assets = Bundle.main.privateFrameworksURL?
+      .appendingPathComponent("App.framework/Resources/flutter_assets")
+    let descriptors: [CTFontDescriptor] = faceFiles
+      .split(separator: "\t")
+      .compactMap { file in
+        guard let url = assets?.appendingPathComponent(String(file)) else {
+          return nil
+        }
+        let found = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL)
+        return (found as? [CTFontDescriptor])?.first
+      }
+    guard let first = descriptors.first else {
+      return NSFont.systemFont(ofSize: size) as CTFont
+    }
+    let cascaded = CTFontDescriptorCreateCopyWithAttributes(
+      first,
+      [kCTFontCascadeListAttribute: Array(descriptors.dropFirst())]
+        as CFDictionary)
+    return CTFontCreateWithFontDescriptor(cascaded, size, nil)
   }
 }
 
@@ -709,6 +846,7 @@ class MainFlutterWindow: NSWindow {
     // can be thrown before the first frame — but unseen and untouchable
     // until that frame.
     launchSplash.show(on: self.screen)
+    launchSplash.sayRunnerStage(0)
     self.alphaValue = 0
     self.ignoresMouseEvents = true
 
@@ -759,23 +897,33 @@ class MainFlutterWindow: NSWindow {
       }
     }
 
-    // I-106: the first frame, said by Dart — this embedder has no hook for
-    // it (lib/src/native/launch_splash.dart says why).
+    // I-106: the stages Dart runs — [face files, name] — and the first
+    // frame, which this embedder has no hook for
+    // (lib/src/native/launch_splash.dart says why).
     let launchChannel = FlutterMethodChannel(
       name: "anicel/launch",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
     launchChannel.setMethodCallHandler { [weak self] call, result in
-      guard call.method == "firstFrame" else {
+      switch call.method {
+      case "stage":
+        guard let said = call.arguments as? [String], said.count == 2 else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        self?.launchSplash.say(faceFiles: said[0], name: said[1])
+        result(nil)
+      case "firstFrame":
+        self?.alphaValue = 1
+        self?.ignoresMouseEvents = false
+        // After the window shows, so the screen is never left with neither.
+        self?.launchSplash.close()
+        result(nil)
+      default:
         result(FlutterMethodNotImplemented)
-        return
       }
-      self?.alphaValue = 1
-      self?.ignoresMouseEvents = false
-      // After the window shows, so the screen is never left with neither.
-      self?.launchSplash.close()
-      result(nil)
     }
 
+    launchSplash.sayRunnerStage(1)
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()

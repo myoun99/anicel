@@ -159,6 +159,13 @@ enum AppStrings {
   String get programLanguageHelp => _s('programLanguageHelp');
   String get notationLanguageHelp => _s('notationLanguageHelp');
 
+  /// The launch splash's stages, in the order they run (I-106, user
+  /// 2026-10-21: 「투명하게 하고있는걸 보여주면되. 시간이 매우 짧더라도」).
+  String get launchStageEngine => _s('launchStageEngine');
+  String get launchStagePlugins => _s('launchStagePlugins');
+  String get launchStageApp => _s('launchStageApp');
+  String get launchStageFirstFrame => _s('launchStageFirstFrame');
+
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
@@ -1856,6 +1863,10 @@ enum AppStrings {
   };
 
   static const _enValues = <String, String>{
+    'launchStageEngine': 'Starting engine',
+    'launchStagePlugins': 'Registering plugins',
+    'launchStageApp': 'Preparing app',
+    'launchStageFirstFrame': 'Drawing first screen',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -3069,6 +3080,10 @@ enum AppStrings {
   };
 
   static const _jaValues = <String, String>{
+    'launchStageEngine': 'エンジン起動',
+    'launchStagePlugins': 'プラグイン登録',
+    'launchStageApp': 'アプリ準備',
+    'launchStageFirstFrame': '最初の画面を描画',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -4674,6 +4689,10 @@ enum AppStrings {
   };
 
   static const _koValues = <String, String>{
+    'launchStageEngine': '엔진 시작',
+    'launchStagePlugins': '플러그인 등록',
+    'launchStageApp': '앱 준비',
+    'launchStageFirstFrame': '첫 화면 그리기',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -6266,6 +6285,10 @@ enum AppStrings {
   };
 
   static const _frValues = <String, String>{
+    'launchStageEngine': 'Démarrage du moteur',
+    'launchStagePlugins': 'Enregistrement des plugins',
+    'launchStageApp': "Préparation de l'application",
+    'launchStageFirstFrame': 'Affichage du premier écran',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -7991,6 +8014,10 @@ enum AppStrings {
   };
 
   static const _zhHansValues = <String, String>{
+    'launchStageEngine': '启动引擎',
+    'launchStagePlugins': '注册插件',
+    'launchStageApp': '准备应用',
+    'launchStageFirstFrame': '绘制首个画面',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',

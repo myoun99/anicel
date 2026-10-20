@@ -119,6 +119,12 @@ constexpr char kWindowChannel[] = "anicel/window";
 constexpr char kSetFullScreen[] = "setFullScreen";
 constexpr char kFullScreenChanged[] = "fullScreenChanged";
 
+// I-106 (user, 2026-10-21): the launch splash says the stages Dart runs —
+// [face files, name] — after the two the runner says itself
+// (lib/src/native/launch_splash.dart says why).
+constexpr char kLaunchChannel[] = "anicel/launch";
+constexpr char kSayStage[] = "stage";
+
 // 🚨★★★F-411 — A MODIFIER WINDOWS LET GO OF IS LET GO OF IN THE ENGINE TOO.
 //
 // 유저 2026-10-19: 「입력 인스펙터 확인하니 보통은 D held [D]라면 D held
@@ -199,6 +205,7 @@ bool FlutterWindow::OnCreate() {
   // Before the engine starts: starting it is the wait the splash covers.
   launch_splash_.Show(
       ::MonitorFromWindow(GetHandle(), MONITOR_DEFAULTTOPRIMARY));
+  launch_splash_.SayRunnerStage(0);
 
   RECT frame = GetClientArea();
 
@@ -210,10 +217,12 @@ bool FlutterWindow::OnCreate() {
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
+  launch_splash_.SayRunnerStage(1);
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   ListenForTheIme(flutter_controller_->view()->GetNativeWindow());
   ListenForFullScreen();
+  ListenForLaunchStages();
   ::SetWindowSubclass(flutter_controller_->view()->GetNativeWindow(),
                       LetGoWithWindows, kLetGoWithWindows,
                       reinterpret_cast<DWORD_PTR>(this));
@@ -238,6 +247,7 @@ void FlutterWindow::OnDestroy() {
   // The channels speak through the engine's messenger, so they go first.
   ime_channel_ = nullptr;
   window_channel_ = nullptr;
+  launch_channel_ = nullptr;
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
@@ -370,6 +380,32 @@ void FlutterWindow::ListenForTheIme(HWND view) {
         // mode the user left it; no context at all is how Win32 turns the
         // IME off for one window.
         ::ImmAssociateContextEx(view, nullptr, *open ? IACE_DEFAULT : 0);
+        result->Success();
+      });
+}
+
+void FlutterWindow::ListenForLaunchStages() {
+  launch_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(), kLaunchChannel,
+          &flutter::StandardMethodCodec::GetInstance());
+  launch_channel_->SetMethodCallHandler(
+      [this](const flutter::MethodCall<flutter::EncodableValue>& call,
+             std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+                 result) {
+        const auto* said =
+            std::get_if<flutter::EncodableList>(call.arguments());
+        const std::string* face =
+            said && said->size() == 2 ? std::get_if<std::string>(&(*said)[0])
+                                      : nullptr;
+        const std::string* name =
+            said && said->size() == 2 ? std::get_if<std::string>(&(*said)[1])
+                                      : nullptr;
+        if (call.method_name() != kSayStage || !face || !name) {
+          result->NotImplemented();
+          return;
+        }
+        launch_splash_.SayStage(*face, *name);
         result->Success();
       });
 }

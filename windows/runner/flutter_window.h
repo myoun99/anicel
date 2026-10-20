@@ -39,6 +39,9 @@ class FlutterWindow : public Win32Window {
   // channel's constants say why.
   void ListenForFullScreen();
 
+  // Lets Dart say its launch stages on the splash (I-106).
+  void ListenForLaunchStages();
+
   // Puts this window full screen over its monitor, or back where it stood,
   // and says on the channel which it is now.
   void SetFullScreen(bool on);
@@ -72,6 +75,10 @@ class FlutterWindow : public Win32Window {
   // Where Dart asks for full screen, and hears what the window did.
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       window_channel_;
+
+  // Where Dart says its launch stages.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      launch_channel_;
 
   // Whether the window covers its monitor, and how it stood before — its
   // place, its size, whether it was maximized, and its frame's style.

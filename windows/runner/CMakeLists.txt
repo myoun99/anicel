@@ -50,6 +50,8 @@ target_link_libraries(${BINARY_NAME} PRIVATE "imm32.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "comctl32.lib")
 # WIC: the launch splash decodes its picture (launch_splash.cpp).
 target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
+# Direct2D and DirectWrite: the splash writes its launch stage.
+target_link_libraries(${BINARY_NAME} PRIVATE "d2d1.lib" "dwrite.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
