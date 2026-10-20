@@ -613,7 +613,7 @@ void main() {
       'timeline-lane-group-toggle-${se.id.value}-'
       '${transformGroupHeaderLane.laneId}',
     );
-    Offset? tagOnTheCanvas() {
+    CanvasPoint tagOnTheCanvas() {
       final overlay = tester
           .widgetList<CustomPaint>(find.byType(CustomPaint))
           .map((paint) => paint.painter)
@@ -624,7 +624,10 @@ void main() {
       // The overlay's painter is private; its tags are read through it.
       // ignore: avoid_dynamic_calls
       final tags = (overlay as dynamic).tags as List<ResolvedSeNameTag>;
-      return tags.single.content.position;
+      final tag = tags.single;
+      return tag.placement.apply(
+        CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
+      );
     }
 
     final before = tagOnTheCanvas();

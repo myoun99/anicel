@@ -1006,15 +1006,19 @@ class _InteractiveCanvasBuild {
     if (layer == null || !(frame.boxGrabbable || frame.crossGrabbable)) {
       return const SizedBox.shrink();
     }
-    if (layer.kind == LayerKind.se) {
-      return _state._seBox(
-        frame,
-        viewport,
-        _canvasSize,
-        _seNameTagsShown(frame.session),
-      );
-    }
-    return _state._layerBox(frame, viewport, _canvasSize);
+    return _state._layerBox(
+      frame,
+      viewport,
+      _canvasSize,
+      picture: layer.kind == LayerKind.se
+          ? _EditorCanvasAreaState._sePicture(
+              frame.session,
+              layer,
+              _seNameTagsShown(frame.session),
+              _canvasSize,
+            )
+          : _EditorCanvasAreaState._layerPicture(frame, _canvasSize),
+    );
   }
 
   /// The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark

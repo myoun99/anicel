@@ -150,7 +150,12 @@ void main() {
       s.seEntries.seNameTagsForCutFrame(s.requireActiveCut, 0).single;
 
   /// Where [tag]'s anchor lies on the canvas.
-  CanvasPoint onTheCanvas(ResolvedSeNameTag tag) => tag.shot.apply(
+  CanvasPoint onTheCanvas(ResolvedSeNameTag tag) => tag.placement.apply(
+    CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
+  );
+
+  /// Where [tag]'s anchor lies in its shot — where its row lays it.
+  CanvasPoint inTheShot(ResolvedSeNameTag tag) => tag.inShot.apply(
     CanvasPoint(x: tag.content.position!.dx, y: tag.content.position!.dy),
   );
 
@@ -255,8 +260,8 @@ void main() {
       description: 'Set Position',
     );
     expect(
-      tagOf(s).content.position,
-      const Offset(100, 200),
+      inTheShot(tagOf(s)),
+      CanvasPoint(x: 100, y: 200),
       reason: '⛔전제: the row moved it',
     );
 
@@ -266,8 +271,8 @@ void main() {
     );
 
     expect(
-      tagOf(s).content.position,
-      Offset(centreOfTheFrame.x, centreOfTheFrame.y),
+      inTheShot(tagOf(s)),
+      centreOfTheFrame,
     );
   });
 
@@ -355,9 +360,20 @@ void main() {
       reason: 'the box is the tag\'s own, not the shot it stands in',
     );
 
-    final grabbed = box.viewport.canvasToViewportOffset(box.pose.center);
+    // Inside the tag, a quarter across it — off the cross at its centre,
+    // which is the anchor's and is grabbed first, as a layer's is (F-262).
+    final edge = box.corners;
+    final inside = CanvasPoint(
+      x: edge[0].x * 0.75 + edge[1].x * 0.25,
+      y: (edge[0].y + edge[3].y) / 2,
+    );
+    final grabbed = box.viewport.canvasToViewportOffset(inside);
     final letGo = grabbed + const Offset(40, 0);
     final dropped = box.viewport.viewportOffsetToCanvas(letGo);
+    final travel = CanvasPoint(
+      x: dropped.x - inside.x,
+      y: dropped.y - inside.y,
+    );
     final origin = tester.getTopLeft(find.byType(RowTransformBox));
     final gesture = await tester.startGesture(
       origin + grabbed,
@@ -375,9 +391,9 @@ void main() {
         .value;
     final landed = shotPlacement(panned, frame).apply(written);
     const why =
-        'what is written is the shot\'s — through the camera it lands where '
-        'the handle was let go';
-    expect(landed.x, closeTo(dropped.x, 1), reason: why);
-    expect(landed.y, closeTo(dropped.y, 1), reason: why);
+        'what is written is the shot\'s — through the camera it lands as far '
+        'as the hand went';
+    expect(landed.x, closeTo(box.pose.center.x + travel.x, 1), reason: why);
+    expect(landed.y, closeTo(box.pose.center.y + travel.y, 1), reason: why);
   });
 }

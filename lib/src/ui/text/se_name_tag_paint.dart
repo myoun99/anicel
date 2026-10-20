@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart' show TextCelContent;
+import '../../services/composite_effect_paint.dart' show alphaOnly;
 import '../../services/layer_pose_matrix.dart' show placementMatrix;
 import '../../services/se_name_tag_plan.dart';
 import 'text_cel_render.dart';
@@ -12,10 +13,10 @@ import 'text_cel_render.dart';
 /// looks.
 ///
 /// The caller has already set up whatever transform puts CANVAS space on
-/// screen (viewport, camera projection, cut pose); each tag stands in its
-/// shot, and this lays the shot on the canvas through the tag's own
-/// [ResolvedSeNameTag.shot] before it paints (I-67-Q1). Positions and
-/// sizes below are the shot's.
+/// screen (viewport, camera projection, cut pose); each tag is laid by its
+/// row's transform in its shot, and this lays it on the canvas through the
+/// tag's own [ResolvedSeNameTag.placement] before it paints (I-67-Q1,
+/// F-387). Positions and sizes below are the tag's own.
 ///
 /// GEOMETRY (R5 #7, the user's rule, corrected twice on the mockup):
 /// the tag's stored position is the name BOX's exact geometric centre, and
@@ -31,10 +32,18 @@ void paintSeNameTags(
   required CanvasSize canvasSize,
 }) {
   for (final tag in tags) {
+    if (tag.opacity <= 0) {
+      continue;
+    }
     final layouts = <TextCelLayout>[];
     final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
     canvas.save();
-    canvas.transform(placementMatrix(tag.shot).storage);
+    canvas.transform(placementMatrix(tag.placement).storage);
+    // The row's opacity takes the tag as ONE picture, as a layer's takes
+    // its own: the box under the name is not seen through the name.
+    if (tag.opacity < 1) {
+      canvas.saveLayer(null, ui.Paint()..color = alphaOnly(tag.opacity));
+    }
     try {
       // The name is laid out once to measure, then MOVED so its ink (box
       // included) is centred on the anchor.
@@ -106,6 +115,9 @@ void paintSeNameTags(
         layout.paint(canvas);
       }
     } finally {
+      if (tag.opacity < 1) {
+        canvas.restore();
+      }
       canvas.restore();
       for (final layout in layouts) {
         layout.dispose();
@@ -178,7 +190,7 @@ ui.Offset seNameTagAnchorOf(
 /// Where the name BOX lands for [tag] — the rectangle the anchor centres,
 /// exposed so a test can state the rule the painter follows instead of
 /// re-deriving it, and so the canvas gizmo can frame the same box. It is
-/// the SHOT's rectangle: [ResolvedSeNameTag.shot] lays it on the canvas.
+/// the tag's own rectangle: [ResolvedSeNameTag.placement] lays it.
 ui.Rect seNameTagBoxBounds(
   ResolvedSeNameTag tag, {
   required CanvasSize canvasSize,
