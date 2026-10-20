@@ -63,16 +63,17 @@ void main() {
     });
   });
 
+  late final waiters = windowWaitersUnder('test');
+
   test('⛔premise: the scan finds the family', () {
     // 41 on 2026-10-16: the tests and the helpers they wait through.
-    expect(windowWaitersUnder('test'), hasLength(greaterThanOrEqualTo(41)));
+    expect(waiters, hasLength(greaterThanOrEqualTo(41)));
   });
 
   test('🚨and every one of them stops the warmer', () {
     expect(
       [
-        for (final MapEntry(:key, :value)
-            in windowWaitersUnder('test').entries)
+        for (final MapEntry(:key, :value) in waiters.entries)
           if (!value) key,
       ],
       isEmpty,
@@ -86,9 +87,14 @@ void main() {
 /// Each function under [dir] — `'test'` spelled out, for the affected-tests
 /// selector — that waits out the window, as 「file:line」, with whether it
 /// stops the warmer.
+///
+/// Only a file that names the wait is parsed: a parse of every file under
+/// `test` was 2.8 s of this file's run, and the wait is called by name.
 Map<String, bool> windowWaitersUnder(String dir) => {
   for (final file in dartFilesUnder(dir))
-    ...waitersIn(file.path.replaceAll(r'\', '/'), file.readAsStringSync()),
+    if (file.readAsStringSync() case final source
+        when source.contains('pumpPastTheWaitWindow'))
+      ...waitersIn(file.path.replaceAll(r'\', '/'), source),
 };
 
 /// The functions in [source] that call `pumpPastTheWaitWindow`, by the line
